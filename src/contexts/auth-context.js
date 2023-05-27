@@ -157,6 +157,7 @@ export const AuthProvider = (props) => {
   };
 
   const updateUser = async (user) => {
+    
     const userRef = doc(db, "profile", user.id);
     await updateDoc(userRef, user);
 

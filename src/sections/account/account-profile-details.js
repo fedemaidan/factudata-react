@@ -22,12 +22,12 @@ export const AccountProfileDetails = () => {
   const auth = useAuth();
   const formik = useFormik({
     initialValues: {
-      firstName: user.firstName,
-      lastName: user.lastName,
-      email: user.email,
-      phone: user.phone,
-      state: user.state,
-      country: user.country,
+      firstName: user?.firstName,
+      lastName: user?.lastName,
+      email: user?.email,
+      phone: user?.phone,
+      state: user?.state,
+      country: user?.country,
       submit: null
     },
     validationSchema: Yup.object({

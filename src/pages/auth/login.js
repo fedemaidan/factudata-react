@@ -7,6 +7,7 @@ import {
   Alert,
   Box,
   Button,
+  CircularProgress,
   FormHelperText,
   Link,
   Stack,
@@ -17,9 +18,11 @@ import {
 } from '@mui/material';
 import { Layout as AuthLayout } from 'src/layouts/auth/layout';
 import { useAuth } from 'src/hooks/use-auth';
+import { useState } from 'react';
 
 const Page = () => {
-  
+  const [isLoading, setIsLoading] = useState(false);
+
   const router = useRouter();
   const auth = useAuth();
   const formik = useFormik({
@@ -41,12 +44,15 @@ const Page = () => {
     }),
     onSubmit: async (values, helpers) => {
       try {
+        setIsLoading(true);
         await auth.classicSignIn(values.email, values.password);
         router.push('/');
+        setIsLoading(false);
       } catch (err) {
         helpers.setStatus({ success: false });
         helpers.setErrors({ submit: err.message });
         helpers.setSubmitting(false);
+        setIsLoading(false);
       }
     }
   });
@@ -57,7 +63,7 @@ const Page = () => {
     <>
       <Head>
         <title>
-          Login | Devias Kit
+          Login | Factudata
         </title>
       </Head>
       <Box
@@ -140,7 +146,15 @@ const Page = () => {
                     {formik.errors.submit}
                   </Typography>
                 )}
-                <Button
+                <Box
+                  sx={{
+                    display: 'flex',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    mt: 3,
+                  }}
+                >
+                {!isLoading && <Button
                   fullWidth
                   size="large"
                   sx={{ mt: 3 }}
@@ -148,8 +162,9 @@ const Page = () => {
                   variant="contained"
                 >
                   Continue
-                </Button>
-                
+                </Button>}
+                {isLoading && <CircularProgress sx={{ mt: 3 }}/>}
+                </Box>
               </form>
           </div>
         </Box>

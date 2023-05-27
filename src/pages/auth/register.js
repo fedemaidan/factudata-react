@@ -3,11 +3,13 @@ import NextLink from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useFormik } from 'formik';
 import * as Yup from 'yup';
-import { Box, Button, Link, Stack, TextField, Typography } from '@mui/material';
+import { Box, Button, CircularProgress, Link, Stack, TextField, Typography } from '@mui/material';
 import { Layout as AuthLayout } from 'src/layouts/auth/layout';
 import { useAuth } from 'src/hooks/use-auth';
+import { useState } from 'react';
 
 const Page = () => {
+  const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
   const auth = useAuth();
 
@@ -30,13 +32,15 @@ const Page = () => {
     }),
     onSubmit: async (values, helpers) => {
       try {
-        console.log(values.email, values.password)
+        setIsLoading(true);
         await auth.signUp(values.email, values.password);
         router.push('/');
+        setIsLoading(false);
       } catch (err) {
         helpers.setStatus({ success: false });
         helpers.setErrors({ submit: err.message });
         helpers.setSubmitting(false);
+        setIsLoading(false);
       }
     }
   });
@@ -125,15 +129,25 @@ const Page = () => {
                   {formik.errors.submit}
                 </Typography>
               )}
-              <Button
-                fullWidth
-                size="large"
-                sx={{ mt: 3 }}
-                type="submit"
-                variant="contained"
-              >
-                Continue
-              </Button>
+              <Box
+                  sx={{
+                    display: 'flex',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    mt: 3,
+                  }}
+                >
+                {!isLoading && <Button
+                  fullWidth
+                  size="large"
+                  sx={{ mt: 3 }}
+                  type="submit"
+                  variant="contained"
+                >
+                  Continue
+                </Button>}
+                {isLoading && <CircularProgress sx={{ mt: 3 }}/>}
+              </Box>
             </form>
           </div>
         </Box>
