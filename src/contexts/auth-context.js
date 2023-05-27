@@ -2,12 +2,13 @@ import { createContext, useContext, useEffect, useReducer, useRef } from 'react'
 import PropTypes from 'prop-types';
 import { auth } from "../config/firebase";
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from "firebase/auth"
-import { collection, addDoc, getDocs, doc, query, where } from 'firebase/firestore'
+import { collection, addDoc, getDocs, doc, query, where, updateDoc } from 'firebase/firestore'
 import { db } from 'src/config/firebase';
 const HANDLERS = {
   INITIALIZE: 'INITIALIZE',
   SIGN_IN: 'SIGN_IN',
-  SIGN_OUT: 'SIGN_OUT'
+  SIGN_OUT: 'SIGN_OUT',
+  UPDATE_USER: 'UPDATE_USER'
 };
 
 const initialState = {
@@ -45,6 +46,14 @@ const handlers = {
       user
     };
   },
+  [HANDLERS.UPDATE_USER]: (state, action) => {
+    const user = action.payload;
+
+    return {
+      ...state,
+      user
+    };
+  },
   [HANDLERS.SIGN_OUT]: (state) => {
     return {
       ...state,
@@ -76,7 +85,6 @@ export const AuthProvider = (props) => {
     initialized.current = true;
 
     if (state.isAuthenticated) {
-
       dispatch({
         type: HANDLERS.INITIALIZE,
         payload: state.user
@@ -99,16 +107,19 @@ export const AuthProvider = (props) => {
   const classicSignIn = async (email, password)  => {
     const response = await signInWithEmailAndPassword(auth, email,password);
     
-    const userRef = collection(db, "users");
-    console.log(response)
-    const q = query(userRef, where("id", "==", response.user.uid));
+    const userRef = collection(db, "profile");
+    
+    const q = query(userRef, where("user_id", "==", response.user.uid));
     const querySnapshot = await getDocs(q);    
     const user =  querySnapshot.docs[0].data();
-
-
+    const id = querySnapshot.docs[0].id;
+    
     dispatch({
       type: HANDLERS.SIGN_IN,
-      payload: user
+      payload: {
+        ...user,
+        id: id
+      }
     });
   }
 
@@ -116,19 +127,26 @@ export const AuthProvider = (props) => {
     const response = await createUserWithEmailAndPassword(auth, email, password);
     
     const user = {
-      id: response.user.uid,
+      user_id: response.user.uid,
+      id: '',
       avatar: '',
-      name: '',
-      email: email
+      firstName: '',
+      lastName: '',
+      email: email,
+      phone: '',
+      state: '',
+      country: ''
     };
     
-    const usersCollectionRef = collection(db, 'users');
-    await addDoc(usersCollectionRef, user)
-    
+    const usersCollectionRef = collection(db, 'profile');
+    const userRef = await addDoc(usersCollectionRef, user)
 
     dispatch({
       type: HANDLERS.SIGN_IN,
-      payload: user
+      payload: {
+        ...user,
+        id: userRef.id
+      }
     });
   };
 
@@ -138,13 +156,24 @@ export const AuthProvider = (props) => {
     });
   };
 
+  const updateUser = async (user) => {
+    const userRef = doc(db, "profile", user.id);
+    await updateDoc(userRef, user);
+
+    dispatch({
+      type: HANDLERS.UPDATE_USER,
+      payload: user
+    });
+  }
+
   return (
     <AuthContext.Provider
       value={{
         ...state,
         classicSignIn,
         signUp,
-        signOut
+        signOut,
+        updateUser
       }}
     >
       {children}

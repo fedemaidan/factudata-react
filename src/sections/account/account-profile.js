@@ -14,7 +14,9 @@ const user = {
   city: 'Los Angeles',
   country: 'USA',
   jobTitle: 'Senior Developer',
-  name: 'Anika Visser',
+  // name: 'Anika Visser',
+  firstName: 'Anika',
+  lastName: 'Visserrrr',
   timezone: 'GTM-7'
 };
 
@@ -40,7 +42,7 @@ export const AccountProfile = () => (
           gutterBottom
           variant="h5"
         >
-          {user.name}
+          {user.firstName} {user.lastName}
         </Typography>
         <Typography
           color="text.secondary"

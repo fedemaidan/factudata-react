@@ -8,21 +8,26 @@ import {
   CardHeader,
   Divider,
   TextField,
+  Typography,
   Unstable_Grid2 as Grid
 } from '@mui/material';
 import { useFormik } from 'formik';
 import * as Yup from 'yup';
+import { useAuthContext } from 'src/contexts/auth-context';
+import { useAuth } from 'src/hooks/use-auth';
 
 export const AccountProfileDetails = () => {
 
+  const {user} = useAuthContext();
+  const auth = useAuth();
   const formik = useFormik({
     initialValues: {
-      firstName: 'Fede',
-      lastName: 'Visser',
-      email: '',
-      phone: '',
-      state: 'los-angeles',
-      country: 'USA',
+      firstName: user.firstName,
+      lastName: user.lastName,
+      email: user.email,
+      phone: user.phone,
+      state: user.state,
+      country: user.country,
       submit: null
     },
     validationSchema: Yup.object({
@@ -54,8 +59,15 @@ export const AccountProfileDetails = () => {
     }),
     onSubmit: async (values, helpers) => {
       try {
-        console.log("Submit");
-        console.log(values);
+        console.log(values, user.id, user.user_id)
+        const userUpdated = {
+          ...values,
+          id: user.id,
+          user_id: user.user_id
+        }
+        await auth.updateUser(userUpdated);
+        helpers.setStatus({ success: true });
+        helpers.setSubmitting(false);
       } catch (err) {
         helpers.setStatus({ success: false });
         helpers.setErrors({ submit: err.message });
@@ -182,6 +194,15 @@ export const AccountProfileDetails = () => {
             type="submit">
             Save details
           </Button>
+          {formik.status.success && (
+            <Typography
+              sx={{ mt: 3 }}
+              variant="body2"
+              color="success"
+            >
+              Datos actualizados exitosamente.
+            </Typography>
+          )}
             {formik.errors.submit && (
                 <Typography
                   color="error"
