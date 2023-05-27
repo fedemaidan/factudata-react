@@ -13,30 +13,11 @@ import {
 import { useFormik } from 'formik';
 import * as Yup from 'yup';
 
-const states = [
-  {
-    value: 'alabama',
-    label: 'Alabama'
-  },
-  {
-    value: 'new-york',
-    label: 'New York'
-  },
-  {
-    value: 'san-francisco',
-    label: 'San Francisco'
-  },
-  {
-    value: 'los-angeles',
-    label: 'Los Angeles'
-  }
-];
-
 export const AccountProfileDetails = () => {
 
   const formik = useFormik({
     initialValues: {
-      firstName: 'Anika',
+      firstName: 'Fede',
       lastName: 'Visser',
       email: '',
       phone: '',
@@ -83,41 +64,11 @@ export const AccountProfileDetails = () => {
     }
   });
 
-  const [values, setValues] = useState({
-    firstName: 'Anika',
-    lastName: 'Visser',
-    email: 'demo@devias.io',
-    phone: '',
-    state: 'los-angeles',
-    country: 'USA'
-  });
-
-  const handleChange = useCallback(
-    (event) => {
-      console.log("chau")
-      setValues((prevState) => ({
-        ...prevState,
-        [event.target.name]: event.target.value
-      }));
-    },
-    []
-  );
-
-  const handleSubmit = useCallback(
-    (event) => {
-      event.preventDefault();
-      console.log("Hola")
-      console.log(event.target)
-      
-    },
-    []
-  );
-
   return (
     <form
       autoComplete="off"
       noValidate
-      onSubmit={handleSubmit}
+      onSubmit={formik.handleSubmit}
     >
       <Card>
         <CardHeader
@@ -136,12 +87,13 @@ export const AccountProfileDetails = () => {
               >
                 <TextField
                   fullWidth
-                  helperText="Please specify the first name"
-                  label="First name"
+                  helperText={formik.touched.firstName && formik.errors.firstName}
+                  error={!!(formik.touched.firstName && formik.errors.firstName)}
+                  label="Nombre"
                   name="firstName"
-                  onChange={handleChange}
+                  onChange={formik.handleChange}
                   required
-                  value={values.firstName}
+                  value={formik.values.firstName}
                 />
               </Grid>
               <Grid
@@ -150,11 +102,13 @@ export const AccountProfileDetails = () => {
               >
                 <TextField
                   fullWidth
-                  label="Last name"
+                  helperText={formik.touched.lastName && formik.errors.lastName}
+                  error={!!(formik.touched.lastName && formik.errors.lastName)}
+                  label="Apellido"
                   name="lastName"
-                  onChange={handleChange}
+                  onChange={formik.handleChange}
                   required
-                  value={values.lastName}
+                  value={formik.values.lastName}
                 />
               </Grid>
               <Grid
@@ -163,11 +117,13 @@ export const AccountProfileDetails = () => {
               >
                 <TextField
                   fullWidth
-                  label="Email Address"
+                  helperText={formik.touched.email && formik.errors.email}
+                  error={!!(formik.touched.email && formik.errors.email)}
+                  label="Email"
                   name="email"
-                  onChange={handleChange}
+                  onChange={formik.handleChange}
                   required
-                  value={values.email}
+                  value={formik.values.email}
                 />
               </Grid>
               <Grid
@@ -176,11 +132,13 @@ export const AccountProfileDetails = () => {
               >
                 <TextField
                   fullWidth
-                  label="Phone Number"
+                  helperText={formik.touched.phone && formik.errors.phone}
+                  error={!!(formik.touched.phone && formik.errors.phone)}
+                  label="Teléfono"
                   name="phone"
-                  onChange={handleChange}
-                  type="number"
-                  value={values.phone}
+                  onChange={formik.handleChange}
+                  type="phone"
+                  value={formik.values.phone}
                 />
               </Grid>
               <Grid
@@ -189,11 +147,13 @@ export const AccountProfileDetails = () => {
               >
                 <TextField
                   fullWidth
-                  label="Country"
+                  helperText={formik.touched.country && formik.errors.country}
+                  error={!!(formik.touched.country && formik.errors.country)}
+                  label="País"
                   name="country"
-                  onChange={handleChange}
+                  onChange={formik.handleChange}
                   required
-                  value={values.country}
+                  value={formik.values.country}
                 />
               </Grid>
               <Grid
@@ -202,22 +162,14 @@ export const AccountProfileDetails = () => {
               >
                 <TextField
                   fullWidth
-                  label="Select State"
+                  helperText={formik.touched.state && formik.errors.state}
+                  error={!!(formik.touched.state && formik.errors.state)}
+                  label="Provincia"
                   name="state"
-                  onChange={handleChange}
+                  onChange={formik.handleChange}
                   required
-                  select
-                  SelectProps={{ native: true }}
-                  value={values.state}
+                  value={formik.values.state}
                 >
-                  {states.map((option) => (
-                    <option
-                      key={option.value}
-                      value={option.value}
-                    >
-                      {option.label}
-                    </option>
-                  ))}
                 </TextField>
               </Grid>
             </Grid>
@@ -226,10 +178,19 @@ export const AccountProfileDetails = () => {
         <Divider />
         <CardActions sx={{ justifyContent: 'flex-end' }}>
           <Button 
-            // onClick={handleSubmit} 
-            variant="contained">
+            variant="contained"
+            type="submit">
             Save details
           </Button>
+            {formik.errors.submit && (
+                <Typography
+                  color="error"
+                  sx={{ mt: 3 }}
+                  variant="body2"
+                >
+                  {formik.errors.submit}
+                </Typography>
+            )}
         </CardActions>
       </Card>
     </form>
