@@ -73,9 +73,8 @@ export const AccountProfileDetails = () => {
     }),
     onSubmit: async (values, helpers) => {
       try {
-        
-        console.log("Submit")
-        console.log("values")
+        console.log("Submit");
+        console.log(values);
       } catch (err) {
         helpers.setStatus({ success: false });
         helpers.setErrors({ submit: err.message });
