@@ -10,6 +10,8 @@ import {
   TextField,
   Unstable_Grid2 as Grid
 } from '@mui/material';
+import { useFormik } from 'formik';
+import * as Yup from 'yup';
 
 const states = [
   {
@@ -31,6 +33,57 @@ const states = [
 ];
 
 export const AccountProfileDetails = () => {
+
+  const formik = useFormik({
+    initialValues: {
+      firstName: 'Anika',
+      lastName: 'Visser',
+      email: '',
+      phone: '',
+      state: 'los-angeles',
+      country: 'USA',
+      submit: null
+    },
+    validationSchema: Yup.object({
+      email: Yup
+        .string()
+        .email('El email debe ser valido')
+        .max(255)
+        .required('Email es obligatorio'),
+      firstName: Yup
+        .string()
+        .max(255)
+        .required('Nombre es obligatorio'),
+      lastName: Yup
+        .string()
+        .max(255)
+        .required('Apellido es obligatorio'),
+      phone: Yup
+        .string()
+        .max(255),
+      state: Yup
+        .string()
+        .max(255)
+        .required('Provincia es obligatorio'),
+      country: Yup
+        .string()
+        .max(255)
+        .required('País es obligatorio')
+      
+    }),
+    onSubmit: async (values, helpers) => {
+      try {
+        
+        console.log("Submit")
+        console.log("values")
+      } catch (err) {
+        helpers.setStatus({ success: false });
+        helpers.setErrors({ submit: err.message });
+        helpers.setSubmitting(false);
+      }
+    }
+  });
+
   const [values, setValues] = useState({
     firstName: 'Anika',
     lastName: 'Visser',
