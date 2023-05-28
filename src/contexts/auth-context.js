@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useReducer, useRef } from 'react';
 import PropTypes from 'prop-types';
 import { auth } from "../config/firebase";
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from "firebase/auth"
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut as firebaseSignOut } from "firebase/auth"
 import { collection, addDoc, getDocs, doc, query, where, updateDoc } from 'firebase/firestore'
 import { db } from 'src/config/firebase';
 const HANDLERS = {
@@ -39,12 +39,14 @@ const handlers = {
   },
   [HANDLERS.SIGN_IN]: (state, action) => {
     const user = action.payload;
-
-    return {
+    const newState = {
       ...state,
       isAuthenticated: true,
       user
     };
+
+    window.localStorage.setItem('MY_APP_STATE', JSON.stringify(newState));
+    return newState;
   },
   [HANDLERS.UPDATE_USER]: (state, action) => {
     const user = action.payload;
@@ -84,10 +86,14 @@ export const AuthProvider = (props) => {
 
     initialized.current = true;
 
-    if (state.isAuthenticated) {
+    const storageState = window.localStorage.getItem('MY_APP_STATE');
+
+    if (storageState) {
+      const savedState = JSON.parse(storageState);
+
       dispatch({
         type: HANDLERS.INITIALIZE,
-        payload: state.user
+        payload: savedState.user
       });
     } else {
       dispatch({
@@ -113,7 +119,7 @@ export const AuthProvider = (props) => {
     const querySnapshot = await getDocs(q);    
     const user =  querySnapshot.docs[0].data();
     const id = querySnapshot.docs[0].id;
-    
+
     dispatch({
       type: HANDLERS.SIGN_IN,
       payload: {
@@ -129,7 +135,7 @@ export const AuthProvider = (props) => {
     const user = {
       user_id: response.user.uid,
       id: '',
-      avatar: '',
+      avatar: auth.currentUser.photoURL,
       firstName: '',
       lastName: '',
       email: email,
@@ -151,6 +157,8 @@ export const AuthProvider = (props) => {
   };
 
   const signOut = () => {
+    window.localStorage.removeItem('MY_APP_STATE');
+
     dispatch({
       type: HANDLERS.SIGN_OUT
     });

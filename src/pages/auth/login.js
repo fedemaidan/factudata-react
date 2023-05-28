@@ -154,16 +154,16 @@ const Page = () => {
                     mt: 3,
                   }}
                 >
-                {!isLoading && <Button
-                  fullWidth
-                  size="large"
-                  sx={{ mt: 3 }}
-                  type="submit"
-                  variant="contained"
-                >
-                  Continue
-                </Button>}
-                {isLoading && <CircularProgress sx={{ mt: 3 }}/>}
+                  {!isLoading && <Button
+                    fullWidth
+                    size="large"
+                    sx={{ mt: 3 }}
+                    type="submit"
+                    variant="contained"
+                  >
+                    Continue
+                  </Button>}
+                  {isLoading && <CircularProgress sx={{ mt: 3 }}/>}
                 </Box>
               </form>
           </div>

@@ -194,7 +194,7 @@ export const AccountProfileDetails = () => {
             type="submit">
             Save details
           </Button>
-          {formik.status.success && (
+          {formik.status?.success && (
             <Typography
               sx={{ mt: 3 }}
               variant="body2"
@@ -203,7 +203,7 @@ export const AccountProfileDetails = () => {
               Datos actualizados exitosamente.
             </Typography>
           )}
-            {formik.errors.submit && (
+            {formik.errors?.submit && (
                 <Typography
                   color="error"
                   sx={{ mt: 3 }}

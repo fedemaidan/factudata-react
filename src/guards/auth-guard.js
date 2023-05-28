@@ -7,6 +7,7 @@ export const AuthGuard = (props) => {
   const { children } = props;
   const router = useRouter();
   const { isAuthenticated } = useAuthContext();
+  const { user } = useAuthContext();
   const ignore = useRef(false);
   const [checked, setChecked] = useState(false);
 
@@ -37,6 +38,10 @@ export const AuthGuard = (props) => {
           .catch(console.error);
       } else {
         setChecked(true);
+      }
+
+      if ( isAuthenticated && (!user || user.firstName == '' || user.lastName == '' || user.country == '' || user.state == '')) {
+        router.push('/account');
       }
     },
     [router.isReady]
