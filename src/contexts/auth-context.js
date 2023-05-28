@@ -4,9 +4,10 @@ import { auth } from "../config/firebase";
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut as firebaseSignOut } from "firebase/auth"
 import { collection, addDoc, getDocs, doc, query, where, updateDoc } from 'firebase/firestore'
 import { db } from 'src/config/firebase';
+import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
+import { storage } from 'src/config/firebase';
 const HANDLERS = {
   INITIALIZE: 'INITIALIZE',
-  SIGN_IN: 'SIGN_IN',
   SIGN_OUT: 'SIGN_OUT',
   UPDATE_USER: 'UPDATE_USER'
 };
@@ -37,7 +38,7 @@ const handlers = {
       )
     };
   },
-  [HANDLERS.SIGN_IN]: (state, action) => {
+  [HANDLERS.UPDATE_USER]: (state, action) => {
     const user = action.payload;
     const newState = {
       ...state,
@@ -48,15 +49,8 @@ const handlers = {
     window.localStorage.setItem('MY_APP_STATE', JSON.stringify(newState));
     return newState;
   },
-  [HANDLERS.UPDATE_USER]: (state, action) => {
-    const user = action.payload;
-
-    return {
-      ...state,
-      user
-    };
-  },
   [HANDLERS.SIGN_OUT]: (state) => {
+    window.localStorage.removeItem('MY_APP_STATE');
     return {
       ...state,
       isAuthenticated: false,
@@ -121,7 +115,7 @@ export const AuthProvider = (props) => {
     const id = querySnapshot.docs[0].id;
 
     dispatch({
-      type: HANDLERS.SIGN_IN,
+      type: HANDLERS.UPDATE_USER,
       payload: {
         ...user,
         id: id
@@ -148,7 +142,7 @@ export const AuthProvider = (props) => {
     const userRef = await addDoc(usersCollectionRef, user)
 
     dispatch({
-      type: HANDLERS.SIGN_IN,
+      type: HANDLERS.UPDATE_USER,
       payload: {
         ...user,
         id: userRef.id
@@ -157,15 +151,12 @@ export const AuthProvider = (props) => {
   };
 
   const signOut = () => {
-    window.localStorage.removeItem('MY_APP_STATE');
-
     dispatch({
       type: HANDLERS.SIGN_OUT
     });
   };
 
   const updateUser = async (user) => {
-    
     const userRef = doc(db, "profile", user.id);
     await updateDoc(userRef, user);
 
@@ -175,6 +166,18 @@ export const AuthProvider = (props) => {
     });
   }
 
+  const updateAvatar = async (user, avatarFile) => {
+    const filesFolderRef = ref(storage, `avatars/${avatarFile.name}`);
+    await uploadBytes(filesFolderRef, avatarFile);
+    const downloadURL = await getDownloadURL(filesFolderRef);
+    
+    const userUpdated = {
+      ...user,
+      avatar: downloadURL
+    };
+    await updateUser(userUpdated);
+  }
+
   return (
     <AuthContext.Provider
       value={{
@@ -182,7 +185,8 @@ export const AuthProvider = (props) => {
         classicSignIn,
         signUp,
         signOut,
-        updateUser
+        updateUser,
+        updateAvatar
       }}
     >
       {children}

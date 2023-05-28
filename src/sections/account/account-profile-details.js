@@ -61,9 +61,8 @@ export const AccountProfileDetails = () => {
       try {
         console.log(values, user.id, user.user_id)
         const userUpdated = {
+          ...user,
           ...values,
-          id: user.id,
-          user_id: user.user_id
         }
         await auth.updateUser(userUpdated);
         helpers.setStatus({ success: true });

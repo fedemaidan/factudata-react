@@ -8,7 +8,7 @@ const Page = () => (
   <>
     <Head>
       <title>
-        Account | Devias Kit
+        Datos de la cuenta
       </title>
     </Head>
     <Box
@@ -22,7 +22,7 @@ const Page = () => (
         <Stack spacing={3}>
           <div>
             <Typography variant="h4">
-              Account
+            Datos de la cuenta
             </Typography>
           </div>
           <div>
