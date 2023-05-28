@@ -9,7 +9,8 @@ import {
   Divider,
   TextField,
   Typography,
-  Unstable_Grid2 as Grid
+  Unstable_Grid2 as Grid,
+  Alert
 } from '@mui/material';
 import { useFormik } from 'formik';
 import * as Yup from 'yup';
@@ -59,7 +60,6 @@ export const AccountProfileDetails = () => {
     }),
     onSubmit: async (values, helpers) => {
       try {
-        console.log(values, user.id, user.user_id)
         const userUpdated = {
           ...user,
           ...values,
@@ -193,25 +193,13 @@ export const AccountProfileDetails = () => {
             type="submit">
             Save details
           </Button>
-          {formik.status?.success && (
-            <Typography
-              sx={{ mt: 3 }}
-              variant="body2"
-              color="success"
-            >
-              Datos actualizados exitosamente.
-            </Typography>
-          )}
-            {formik.errors?.submit && (
-                <Typography
-                  color="error"
-                  sx={{ mt: 3 }}
-                  variant="body2"
-                >
-                  {formik.errors.submit}
-                </Typography>
-            )}
         </CardActions>
+        {formik.errors?.submit 
+            && <Alert severity="error">{formik.errors.submit}</Alert>
+          }
+          {formik.status?.success  
+          && <Alert severity="success">Se actualizaron los datos correctamente</Alert>
+          }
       </Card>
     </form>
   );

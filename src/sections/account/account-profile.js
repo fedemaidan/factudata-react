@@ -25,10 +25,9 @@ export const AccountProfile = () => {
   }
 
   const handleFileSelect = async (event) => {
-    console.log("Handle file select")
     const file = event.target.files[0];
     setSelectedFile(file);
-    console.log("Estoy en handle")
+  
     if (!selectedFile)
       return;
     try {
