@@ -10,7 +10,8 @@ import {
   TextField,
   Typography,
   Unstable_Grid2 as Grid,
-  Alert
+  Alert,
+  LinearProgress
 } from '@mui/material';
 import { useFormik } from 'formik';
 import * as Yup from 'yup';
@@ -18,6 +19,7 @@ import { useAuthContext } from 'src/contexts/auth-context';
 import { useAuth } from 'src/hooks/use-auth';
 
 export const AccountProfileDetails = () => {
+  const [isLoading, setIsLoading] = useState(false);
 
   const {user} = useAuthContext();
   const auth = useAuth();
@@ -60,6 +62,7 @@ export const AccountProfileDetails = () => {
     }),
     onSubmit: async (values, helpers) => {
       try {
+        setIsLoading(true);
         const userUpdated = {
           ...user,
           ...values,
@@ -67,10 +70,12 @@ export const AccountProfileDetails = () => {
         await auth.updateUser(userUpdated);
         helpers.setStatus({ success: true });
         helpers.setSubmitting(false);
+        setIsLoading(false);
       } catch (err) {
         helpers.setStatus({ success: false });
         helpers.setErrors({ submit: err.message });
         helpers.setSubmitting(false);
+        setIsLoading(false);
       }
     }
   });
@@ -199,6 +204,11 @@ export const AccountProfileDetails = () => {
           }
           {formik.status?.success  
           && <Alert severity="success">Se actualizaron los datos correctamente</Alert>
+          }
+          {isLoading && 
+          <Box sx={{ width: '100%' }}>
+            <LinearProgress />
+          </Box>
           }
       </Card>
     </form>

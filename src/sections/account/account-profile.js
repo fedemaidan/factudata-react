@@ -7,6 +7,7 @@ import {
   CardContent,
   Divider,
   Input,
+  LinearProgress,
   Typography
 } from '@mui/material';
 import { useRef, useState } from 'react';
@@ -17,7 +18,8 @@ export const AccountProfile = () => {
   const { user } = useAuthContext();
   const auth = useAuth();
 
-  const [selectedFile, setSelectedFile] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
+  
   const fileInputRef = useRef(null);
 
   const handleUploadClick = async () => {
@@ -26,15 +28,18 @@ export const AccountProfile = () => {
 
   const handleFileSelect = async (event) => {
     const file = event.target.files[0];
-    setSelectedFile(file);
-  
-    if (!selectedFile)
+    
+    if (!file){
       return;
+    }
     try {
-      await auth.updateAvatar(user, selectedFile);
+      setIsLoading(true)
+      await auth.updateAvatar(user, file);
+      setIsLoading(false)
     }
     catch(e) {
       console.error(e);
+      setIsLoading(false);
     }
   };
 
@@ -88,6 +93,11 @@ export const AccountProfile = () => {
           Upload picture
         </Button>
       </CardActions>
+       {isLoading && 
+          <Box sx={{ width: '100%' }}>
+            <LinearProgress />
+          </Box>
+        }
     </Card>
   );
 }
