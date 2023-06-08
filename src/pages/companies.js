@@ -71,7 +71,6 @@ const companies = [
 ];
 
 const Page = () => {
-  console.log("I am here");
 
   const [facturasList, setFacturasList] = useState([]);
 
