@@ -175,9 +175,6 @@ export const AuthProvider = (props) => {
       ...user,
       avatar: downloadURL
     };
-    console.log("user",user);
-    console.log("url",downloadURL);
-    console.log(userUpdated,userUpdated);
     await updateUser(userUpdated);
   }
 

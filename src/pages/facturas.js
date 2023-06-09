@@ -1,6 +1,5 @@
 import { useCallback, useMemo, useState, useEffect, useRef } from 'react';
 import Head from 'next/head';
-import { subDays, subHours } from 'date-fns';
 import ArrowDownOnSquareIcon from '@heroicons/react/24/solid/ArrowDownOnSquareIcon';
 import ArrowUpOnSquareIcon from '@heroicons/react/24/solid/ArrowUpOnSquareIcon';
 import PlusIcon from '@heroicons/react/24/solid/PlusIcon';
@@ -11,12 +10,12 @@ import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import { FacturasTable } from 'src/sections/facturas/facturas-table';
 import { CustomersSearch } from 'src/sections/customer/customers-search';
 import { applyPagination } from 'src/utils/apply-pagination';
-import { addDoc, collection, deleteDoc, doc, getDocs } from 'firebase/firestore';
-import { db, storage } from 'src/config/firebase';
-import { ref, uploadBytes } from 'firebase/storage';
-const now = new Date();
 import { red } from '@mui/material/colors';
-
+import {
+  getFacturas,
+  deleteFactura,
+  uploadFile,
+} from 'src/services/facturasService'; 
 
 const useFacturasIds = (facturas) => {
   return useMemo(
@@ -30,62 +29,50 @@ const useFacturasIds = (facturas) => {
 const Page = () => {
   const fileInputRef = useRef(null);
   const [facturasList, setFacturasList] = useState([]);
-  const facturasCollectionRef = collection(db, 'facturas');
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(25);
   const facturasIds = useFacturasIds(facturasList);
   const facturasSelection = useSelection(facturasIds);
+  const [isLoading, setIsLoading] = useState(false);
 
   const getFacturasList = async () => {
-    try{
-      const data = await getDocs(facturasCollectionRef);
-      const filteredData = data.docs.map( (doc) =>  ({
-        ...doc.data(),
-        id: doc.id
-      }))
-      const paginatedData = applyPagination(filteredData, page, rowsPerPage);
+    try {
+      const data = await getFacturas(); 
+      const paginatedData = applyPagination(data, page, rowsPerPage);
       setFacturasList(paginatedData);
-    }
-    catch(err) {
+    } catch (err) {
       console.error(err);
     }
-    
+  };
+
+  const handleDeleteFactura = async () => {
+    await setIsLoading(true);
+    if (facturasSelection.selected.length > 0) {
+      facturasSelection.selected.forEach(async (selectedId) => {
+        const deleted = await deleteFactura(selectedId); // Llama a la función del servicio de Firebase
+        if (deleted) {
+          getFacturasList();
+        }
+      });
+    }  
+    await setIsLoading(false);              
   }
 
-  const deleteFactura = async (id) => {
-    const facturaDoc = doc(db, "facturas", id);
-    await deleteDoc(facturaDoc);
-    getFacturasList();
-  }
   useEffect(() => {
     getFacturasList();
   }, [])
 
-  const uploadFile = async (files) => {
-    if (!files)
-      return;
-    
-    try {
-      for(let i = 0; i < files.length;i++) {
-        const fileUpload = files[i];
-        const filename = `probandoFiles/${fileUpload.name}`;
-        const filesFolderRef = ref(storage, filename);
-        await uploadBytes(filesFolderRef, fileUpload)
-        await addDoc(facturasCollectionRef, {
-          tipo: "COMPRA",
-          filename: filename
-        })
-      }
-      
-      getFacturasList();
+  const handleUploadFile = async (files) => {
+    const uploaded = await uploadFile(files); // Llama a la función del servicio de Firebase
+    if (uploaded) {
+      await getFacturasList();
+    }
+    await setIsLoading(false);
+  };
 
-    }
-    catch(e) {
-      console.error(e);
-    }
-  }
 
   const handleUploadClick = async () => {
+    await setIsLoading(true);
     fileInputRef.current.click();
   }
 
@@ -128,22 +115,10 @@ const Page = () => {
                 <Typography variant="h4">
                   Facturas
                 </Typography>
-                <Stack
-                  alignItems="center"
-                  direction="row"
-                  spacing={1}
-                >
-                  <Button
-                    color="inherit"
-                    startIcon={(
-                      <SvgIcon fontSize="small">
-                        <ArrowUpOnSquareIcon />
-                      </SvgIcon>
-                    )}
-                  >
-                    Import
-                  </Button>
-                  <Button
+                
+              </Stack>
+              <div>
+              <Button
                     color="inherit"
                     startIcon={(
                       <SvgIcon fontSize="small">
@@ -153,15 +128,12 @@ const Page = () => {
                   >
                     Export
                   </Button>
-                </Stack>
-              </Stack>
-              <div>
                 <input 
                   type='file' 
                   ref={fileInputRef}
                   style={{ display: 'none' }}
                   onClick={(e) => {
-                    uploadFile(e.target.files)
+                    handleUploadFile(e.target.files)
                   }}
                   multiple
                 />
@@ -173,18 +145,13 @@ const Page = () => {
                     </SvgIcon>
                   )}
                   variant="contained"
+                  disabled={isLoading} 
                 >
-                  Add
+                  {isLoading ? 'Cargando...' : 'Subir archivos'}
                 </Button>
                 {facturasSelection.selected.length > 0 ? 
                 <Button
-                  onClick={() => {
-                    if (facturasSelection.selected.length > 0) {
-                      facturasSelection.selected.forEach((selectedId) => {
-                        deleteFactura(selectedId);
-                      });
-                    }                
-                  }}
+                  onClick={handleDeleteFactura}
                   startIcon={(
                     <SvgIcon fontSize="small">
                       <TrashIcon />
@@ -193,7 +160,7 @@ const Page = () => {
                   variant="contained"
                   style={{ backgroundColor: red[700], marginLeft: 5 }} 
                 >
-                  Remove ({facturasSelection.selected.length})
+                   {isLoading ? 'Loading...' : `Borrar (${facturasSelection.selected.length})`}
                 </Button> : ""}
               </div>
             </Stack>

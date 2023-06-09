@@ -5,6 +5,7 @@ import {
   Box,
   Card,
   Checkbox,
+  Link,
   Stack,
   Table,
   TableBody,
@@ -33,6 +34,7 @@ export const FacturasTable = (props) => {
 
   const selectedSome = (selected.length > 0) && (selected.length < items.length);
   const selectedAll = (items.length > 0) && (selected.length === items.length);
+
 
   return (
     <Card>
@@ -101,15 +103,15 @@ export const FacturasTable = (props) => {
                       />
                     </TableCell>
                     <TableCell>
-                      <Stack
-                        alignItems="center"
-                        direction="row"
-                        spacing={2}
-                      >
-                        <Typography variant="subtitle2">
-                          {factura.filename}
-                        </Typography>
-                      </Stack>
+                      {/* <Link to={imgPath + factura.filename}>
+                        Link
+                      </Link> */}
+                      {/* <Link to="www.ole.com.ar">
+                        otro link
+                      </Link> */}
+                      <Link to={factura.filename}>
+                        <img src={factura.filename} alt="Factura" style={{ width: '300px', height: '200px' }} />
+                      </Link>
                     </TableCell>
                     <TableCell>
                       {factura.tipo}
