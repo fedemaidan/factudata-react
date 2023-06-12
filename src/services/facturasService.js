@@ -1,21 +1,38 @@
-import { collection, doc, addDoc, deleteDoc, getDocs } from 'firebase/firestore';
+import { collection, doc, addDoc, deleteDoc, query, orderBy, startAfter, limit, getDocs } from 'firebase/firestore';
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { db, storage } from 'src/config/firebase';
 
-export const getFacturas = async () => {
+export const getFacturas = async (start, end) => {
   try {
     const facturasCollectionRef = collection(db, 'facturas');
-    const data = await getDocs(facturasCollectionRef);
-    const filteredData = data.docs.map((doc) => ({
+    let facturasQuery = query(facturasCollectionRef, orderBy('filename'), startAfter(start), limit(end)); 
+    const querySnapshot = await getDocs(facturasQuery);
+    
+    const facturas = querySnapshot.docs.map((doc) => ({
       ...doc.data(),
       id: doc.id,
     }));
-    return filteredData;
+    console.log("recibi facturas", facturas)
+    return facturas;
   } catch (err) {
     console.error(err);
     return [];
   }
 };
+
+
+export const getTotalFacturas = async () => {
+  try {
+    const facturasCollectionRef = collection(db, 'facturas');
+    const querySnapshot = await getDocs(facturasCollectionRef);
+    const totalFacturas = querySnapshot.size;
+    return totalFacturas;
+  } catch (err) {
+    console.error(err);
+    return 0;
+  }
+};
+
 
 export const deleteFactura = async (id) => {
   try {

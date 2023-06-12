@@ -1,7 +1,6 @@
 import { useCallback, useMemo, useState, useEffect, useRef } from 'react';
 import Head from 'next/head';
 import ArrowDownOnSquareIcon from '@heroicons/react/24/solid/ArrowDownOnSquareIcon';
-import ArrowUpOnSquareIcon from '@heroicons/react/24/solid/ArrowUpOnSquareIcon';
 import PlusIcon from '@heroicons/react/24/solid/PlusIcon';
 import TrashIcon from '@heroicons/react/24/solid/TrashIcon';
 import { Box, Button, Container, Stack, SvgIcon, Typography } from '@mui/material';
@@ -9,12 +8,12 @@ import { useSelection } from 'src/hooks/use-selection';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import { FacturasTable } from 'src/sections/facturas/facturas-table';
 import { CustomersSearch } from 'src/sections/customer/customers-search';
-import { applyPagination } from 'src/utils/apply-pagination';
 import { red } from '@mui/material/colors';
 import {
   getFacturas,
   deleteFactura,
   uploadFile,
+  getTotalFacturas
 } from 'src/services/facturasService'; 
 
 const useFacturasIds = (facturas) => {
@@ -29,29 +28,33 @@ const useFacturasIds = (facturas) => {
 const Page = () => {
   const fileInputRef = useRef(null);
   const [facturasList, setFacturasList] = useState([]);
+  const [facturasTotal, setFacturasTotal] = useState(0);
   const [page, setPage] = useState(0);
-  const [rowsPerPage, setRowsPerPage] = useState(25);
+  const [rowsPerPage, setRowsPerPage] = useState(5);
   const facturasIds = useFacturasIds(facturasList);
   const facturasSelection = useSelection(facturasIds);
   const [isLoading, setIsLoading] = useState(false);
+  let startAfter = 0;
 
-  const getFacturasList = async () => {
+  const getFacturasList = async (page, rowsPerPage) => {
     try {
-      const data = await getFacturas(); 
-      const paginatedData = applyPagination(data, page, rowsPerPage);
-      setFacturasList(paginatedData);
+      const limit = 99; 
+      const data = await getFacturas(startAfter, limit);
+      setFacturasList(data);
+      setFacturasTotal(await getTotalFacturas())
     } catch (err) {
       console.error(err);
     }
   };
 
+  
   const handleDeleteFactura = async () => {
     await setIsLoading(true);
     if (facturasSelection.selected.length > 0) {
       facturasSelection.selected.forEach(async (selectedId) => {
         const deleted = await deleteFactura(selectedId); // Llama a la función del servicio de Firebase
         if (deleted) {
-          getFacturasList();
+          getFacturasList(page, rowsPerPage);
         }
       });
     }  
@@ -59,13 +62,13 @@ const Page = () => {
   }
 
   useEffect(() => {
-    getFacturasList();
+    getFacturasList(page, rowsPerPage);
   }, [])
 
   const handleUploadFile = async (files) => {
     const uploaded = await uploadFile(files); // Llama a la función del servicio de Firebase
     if (uploaded) {
-      await getFacturasList();
+      await getFacturasList(page, rowsPerPage);
     }
     await setIsLoading(false);
   };
@@ -77,15 +80,20 @@ const Page = () => {
   }
 
   const handlePageChange = useCallback(
-    (event, value) => {
+    async (event, value) => {
+      if (value > page) // subio de página
+        startAfter = facturasList[facturasList.length - 1];
+      
       setPage(value);
+      await getFacturasList(value, rowsPerPage);
     },
-    []
+    [rowsPerPage]
   );
 
   const handleRowsPerPageChange = useCallback(
     (event) => {
       setRowsPerPage(event.target.value);
+      getFacturasList(page, event.target.value);
     },
     []
   );
@@ -166,16 +174,16 @@ const Page = () => {
             </Stack>
             <CustomersSearch />
             <FacturasTable
-              count={facturasList.length}
+              count={facturasTotal}
               items={facturasList}
               onDeselectAll={facturasSelection.handleDeselectAll}
               onDeselectOne={facturasSelection.handleDeselectOne}
-              onPageChange={handlePageChange}
-              onRowsPerPageChange={handleRowsPerPageChange}
+              // onPageChange={handlePageChange}
+              // onRowsPerPageChange={handleRowsPerPageChange}
               onSelectAll={facturasSelection.handleSelectAll}
               onSelectOne={facturasSelection.handleSelectOne}
-              page={page}
-              rowsPerPage={rowsPerPage}
+              // page={page}
+              // rowsPerPage={rowsPerPage}
               selected={facturasSelection.selected}
             />
           </Stack>

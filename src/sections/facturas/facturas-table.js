@@ -103,12 +103,6 @@ export const FacturasTable = (props) => {
                       />
                     </TableCell>
                     <TableCell>
-                      {/* <Link to={imgPath + factura.filename}>
-                        Link
-                      </Link> */}
-                      {/* <Link to="www.ole.com.ar">
-                        otro link
-                      </Link> */}
                       <Link to={factura.filename}>
                         <img src={factura.filename} alt="Factura" style={{ width: '300px', height: '200px' }} />
                       </Link>
@@ -138,7 +132,7 @@ export const FacturasTable = (props) => {
           </Table>
         </Box>
       </Scrollbar>
-      <TablePagination
+      {/* <TablePagination
         component="div"
         count={count}
         onPageChange={onPageChange}
@@ -146,7 +140,7 @@ export const FacturasTable = (props) => {
         page={page}
         rowsPerPage={rowsPerPage}
         rowsPerPageOptions={[5, 10, 25]}
-      />
+      /> */}
     </Card>
   );
 };
