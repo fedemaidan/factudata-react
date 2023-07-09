@@ -12,7 +12,7 @@ export const getFacturas = async (start, end) => {
       ...doc.data(),
       id: doc.id,
     }));
-    console.log("recibi facturas", facturas)
+    
     return facturas;
   } catch (err) {
     console.error(err);

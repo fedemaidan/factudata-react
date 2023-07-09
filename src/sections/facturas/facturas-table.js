@@ -1,8 +1,10 @@
 import PropTypes from 'prop-types';
-import { format } from 'date-fns';
+import { useState } from 'react';
+
 import {
   Avatar,
   Box,
+  Button,
   Card,
   Checkbox,
   Link,
@@ -16,7 +18,7 @@ import {
   Typography
 } from '@mui/material';
 import { Scrollbar } from 'src/components/scrollbar';
-
+import { extraerDataFactura } from 'src/services/extraerService'
 export const FacturasTable = (props) => {
   const {
     count = 0,
@@ -34,8 +36,40 @@ export const FacturasTable = (props) => {
 
   const selectedSome = (selected.length > 0) && (selected.length < items.length);
   const selectedAll = (items.length > 0) && (selected.length === items.length);
+  const [updatedItems, setItems] = useState(items);
 
+  const handleImageClick = (e) => {
+    e.preventDefault();
+    window.open(e.target.src, '_blank');
+  };
 
+  
+
+  const handleCargarDatos = async (factura) => {
+    try {
+      const data = await extraerDataFactura(factura.filename, factura.id);
+      // Actualizar los datos de la factura correspondiente en items
+      const updatedItems = updatedItems.map((item) => {
+        if (item.id === factura.id) {
+          // Actualizar los campos de la factura con los datos extraídos
+          return {
+            ...item,
+            ...data,
+            // ...otros campos actualizados
+          };
+        }
+        return item;
+      });
+      // Actualizar el estado de los items con los datos actualizados
+      setItems(updatedItems);
+      console.log(updatedItems)
+    } catch (error) {
+      console.error(error);
+      // Manejo de errores
+    }
+  };
+
+  
   return (
     <Card>
       <Scrollbar>
@@ -66,13 +100,22 @@ export const FacturasTable = (props) => {
                   Emisor
                 </TableCell>
                 <TableCell>
+                  Número factura
+                </TableCell>
+                <TableCell>
                   Condición IVA
                 </TableCell>
                 <TableCell>
                   Fecha
                 </TableCell>
                 <TableCell>
-                  IVA
+                  Neto
+                </TableCell>
+                <TableCell>
+                  IVA 21%
+                </TableCell>
+                <TableCell>
+                  IVA 10.5%
                 </TableCell>
                 <TableCell>
                   Total
@@ -82,7 +125,6 @@ export const FacturasTable = (props) => {
             <TableBody>
               {items.map((factura) => {
                 const isSelected = selected.includes(factura.id);
-                const createdAt = factura.fecha? format(factura.fecha, 'dd/MM/yyyy'): "";
 
                 return (
                   <TableRow
@@ -103,27 +145,39 @@ export const FacturasTable = (props) => {
                       />
                     </TableCell>
                     <TableCell>
-                      <Link to={factura.filename}>
-                        <img src={factura.filename} alt="Factura" style={{ width: '300px', height: '200px' }} />
+                      <Link to={factura.filename} onClick={handleImageClick}>
+                        <img src={factura.filename} alt="Factura" style={{ width: '100px', height: '150px' }} />
                       </Link>
+                      <Button onClick={() => handleCargarDatos(factura)}>
+                        Cargar datos
+                      </Button>
                     </TableCell>
                     <TableCell>
                       {factura.tipo}
                     </TableCell>
                     <TableCell>
-                    {factura.emisor}
+                    {factura.nombre_emisor}
                     </TableCell>
                     <TableCell>
-                      {factura.condicionIVA}
+                    {factura.numero_factura}
                     </TableCell>
                     <TableCell>
-                      {createdAt}
+                      {factura.condicion_iva}
                     </TableCell>
                     <TableCell>
-                      { factura.iva ? factura.iva.toLocaleString('es-AR', { style: 'currency', currency: 'ARS' }) : ""}
+                      {factura.fecha}
                     </TableCell>
                     <TableCell>
-                      { factura.total ? factura.total.toLocaleString('es-AR', { style: 'currency', currency: 'ARS' }) : ""}
+                      ${ factura.valor_neto_sin_iva ? factura.valor_neto_sin_iva.toLocaleString('es-AR', { style: 'currency', currency: 'ARS' }) : ""}
+                    </TableCell>
+                    <TableCell>
+                      ${ factura.iva_21 ? factura.iva_21.toLocaleString('es-AR', { style: 'currency', currency: 'ARS' }) : ""}
+                    </TableCell>
+                    <TableCell>
+                      ${ factura.iva_10_5 ? factura.iva_10_5.toLocaleString('es-AR', { style: 'currency', currency: 'ARS' }) : ""}
+                    </TableCell>
+                    <TableCell>
+                      ${ factura.total ? factura.total.toLocaleString('es-AR', { style: 'currency', currency: 'ARS' }) : ""}
                     </TableCell>
                   </TableRow>
                 );
