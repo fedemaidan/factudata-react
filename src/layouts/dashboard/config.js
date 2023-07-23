@@ -36,6 +36,15 @@ export const items = [
       </SvgIcon>
     )
   },
+  {
+    title: 'Generar pedido',
+    path: '/generarPedido',
+    icon: (
+      <SvgIcon fontSize="small">
+        <ShoppingBagIcon />
+      </SvgIcon>
+    )
+  },
   // {
   //   title: 'Companies',
   //   path: '/companies',
