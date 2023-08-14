@@ -19,14 +19,14 @@ const GenerarPedidoPage = () => {
     setActiveStep(activeStep + 1);
     if (activeStep === 1) {
       setFileType(data.fileType);
-      setFiles(data.selectedFiles)
+      setFiles(data.selectedFiles);
     } else if (activeStep === 2) {
       setSelectedTagsData(data.tags);
       setReason(data.reason);
       setRowAmount(data.rowValue);
       setRowAmountType(data.rowOption);
-      console.log(data)
-      if (data.rowOption == 'exact') {
+      console.log(data);
+      if (data.rowOption === 'exact') {
         const price = data.tags.length * data.rowValue * files.length * 50;
         setEstimatedPrice(`$${price}`);
       } 
@@ -43,7 +43,7 @@ const GenerarPedidoPage = () => {
   };
 
   return (
-    <Container maxWidth="sm">
+    <Container maxWidth="md">
       <Grid container spacing={3}>
         {/* Primera columna que ocupa 2 tercios */}
         <Grid item xs={12}>
@@ -64,6 +64,9 @@ const GenerarPedidoPage = () => {
             {activeStep === 3 && (
               <OnboardingStep3
                 estimatedPrice={estimatedPrice}
+                selectedFiles={files}
+                fileType={fileType}
+                selectedTags={selectedTagsData}
                 onPreviousStep={handlePreviousStep}
                 onPay={handlePay}
               />

@@ -1,17 +1,12 @@
 import React, { useRef, useState } from 'react';
-import { Box, Button, FormControl, InputLabel, MenuItem, Select, SvgIcon, Typography, TextField } from '@mui/material';
+import { Box, Button, SvgIcon, Typography, TextField } from '@mui/material';
 import ArrowDownOnSquareIcon from '@heroicons/react/24/solid/ArrowDownOnSquareIcon';
 
 const OnboardingStep1 = ({ onNextStep }) => {
   const fileInputRef = useRef(null);
-  const [fileType, setFileType] = useState('');
   const [selectedFiles, setSelectedFiles] = useState([]);
+  const [selectedType, setSelectedType] = useState('');
   const [otherFileType, setOtherFileType] = useState('');
-
-  const handleFileTypeChange = (event) => {
-    setFileType(event.target.value);
-    setOtherFileType('');
-  };
 
   const handleFileInputChange = (event) => {
     const files = Array.from(event.target.files);
@@ -19,35 +14,40 @@ const OnboardingStep1 = ({ onNextStep }) => {
   };
 
   const handleNextStep = () => {
-    if (fileType && selectedFiles.length > 0) {
+    if (selectedType !== '' && selectedFiles.length > 0) {
+      const fileType = selectedType === 'custom' ? otherFileType : selectedType;
       onNextStep({ fileType, selectedFiles });
     } else {
       alert('Seleccione el tipo de archivo y al menos un archivo antes de continuar.');
     }
   };
 
-  const isFileTypeSelected = !!fileType;
-
   return (
     <Box sx={{ mt: 2 }}>
-      <Typography variant="h5">Paso 1: Subir archivos y seleccionar el tipo</Typography>
+      <Typography variant="h5">Paso 1: Selecciona la opción que desea y suba los archivos</Typography>
       <Box sx={{ mt: 5 }}>
-        <FormControl variant="outlined" fullWidth>
-          <InputLabel>Tipo de archivos</InputLabel>
-          <Select
-            label="Tipo de archivos"
-            value={fileType}
-            onChange={handleFileTypeChange}
-          >
-            <MenuItem value="">Seleccione...</MenuItem>
-            <MenuItem value="Facturas">Facturas</MenuItem>
-            <MenuItem value="Legajos">Legajos</MenuItem>
-            <MenuItem value="Listados de precio">Listados de precio</MenuItem>
-            <MenuItem value="Otros">Otros</MenuItem>
-          </Select>
-        </FormControl>
+        <Button
+          variant={selectedType === 'Libro de IVA' ? 'contained' : 'outlined'}
+          onClick={() => setSelectedType('Libro de IVA')}
+          sx={{ mr: 2 }}
+        >
+          Libro de IVA
+        </Button>
+        <Button
+          variant={selectedType === 'Análisis de gastos' ? 'contained' : 'outlined'}
+          onClick={() => setSelectedType('Análisis de gastos')}
+          sx={{ mr: 2 }}
+        >
+          Análisis de gastos
+        </Button>
+        <Button
+          variant={selectedType === 'custom' ? 'contained' : 'outlined'}
+          onClick={() => setSelectedType('custom')}
+        >
+          Personalizar
+        </Button>
       </Box>
-      {fileType === 'Otros' && (
+      {selectedType === 'custom' && (
         <Box sx={{ mt: 2 }}>
           <TextField
             label="Especificar tipo de archivos"
@@ -62,9 +62,9 @@ const OnboardingStep1 = ({ onNextStep }) => {
         <Button
           onClick={() => fileInputRef.current.click()}
           startIcon={<SvgIcon fontSize="small"><ArrowDownOnSquareIcon /></SvgIcon>}
-          disabled={!isFileTypeSelected}
+          disabled={selectedType === ''}
         >
-          {isFileTypeSelected ? 'Seleccionar archivos' : 'Seleccione el tipo primero'}
+          {selectedType ? 'Seleccionar archivos' : 'Seleccione el tipo primero'}
         </Button>
         {selectedFiles.length > 0 && (
           <Box sx={{ mt: 2 }}>
