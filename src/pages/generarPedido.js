@@ -4,6 +4,8 @@ import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import OnboardingStep1 from 'src/components/onboarding/onboardingStep1';
 import OnboardingStep2 from 'src/components/onboarding/onboardingStep2';
 import OnboardingStep3 from 'src/components/onboarding/onboardingStep3';
+import ticketService from 'src/services/ticketService';
+
 
 const GenerarPedidoPage = () => {
   const [activeStep, setActiveStep] = useState(1);
@@ -12,8 +14,6 @@ const GenerarPedidoPage = () => {
   const [selectedTagsData, setSelectedTagsData] = useState([]);
   const [reason, setReason] = useState('');
   const [estimatedPrice, setEstimatedPrice] = useState('');
-  const [rowAmountType, setRowAmountType] = useState('exact');
-  const [rowAmount, setRowAmount] = useState('');
 
   const handleNextStep = (data) => {
     setActiveStep(activeStep + 1);
@@ -23,13 +23,8 @@ const GenerarPedidoPage = () => {
     } else if (activeStep === 2) {
       setSelectedTagsData(data.tags);
       setReason(data.reason);
-      setRowAmount(data.rowValue);
-      setRowAmountType(data.rowOption);
-      console.log(data);
-      if (data.rowOption === 'exact') {
-        const price = data.tags.length * data.rowValue * files.length * 50;
-        setEstimatedPrice(`$${price}`);
-      } 
+      const price = data.tags.length * files.length * 50;
+      setEstimatedPrice(`$${price}`);
     }
   };
 
@@ -37,9 +32,38 @@ const GenerarPedidoPage = () => {
     setActiveStep(activeStep - 1);
   };
 
-  const handlePay = () => {
-    // Handle the payment process here
-    alert(`You clicked Pay, the estimated price is: ${estimatedPrice}`);
+  const handlePay = async () => {
+
+      try {
+        // 1. Generar ticket
+        const ticketData = {
+          tipo: fileType, // Ejemplo de tipo de ticket
+          tags: selectedTagsData,
+          precioEstimado: estimatedPrice,
+          archivos: files
+        };
+  
+        const ticketCreationResult = await ticketService.createTicket(ticketData);
+        
+        if (ticketCreationResult) {
+          alert('Ticket creado exitosamente');
+        } else {
+          alert('Error al crear el ticket');
+        }
+      } catch (error) {
+        console.error('Error:', error);
+        alert('Ocurrió un error al intentar crear el ticket');
+      }
+
+    /*
+      1. Generar ticket.
+        - tipo
+        - tags
+        - precio_estimado
+      2. Crear facturas asociadas al ticket
+        - crear las facturas y tengan el ticket asociado
+      3. agregar links a las facturas al ticket
+    */
   };
 
   return (
@@ -57,9 +81,7 @@ const GenerarPedidoPage = () => {
                 reason={reason}
                 onPreviousStep={handlePreviousStep}
                 onNextStep={handleNextStep}
-                rowAmountType={rowAmountType}
-                rowAmount={rowAmount}
-              />
+                />
             )}
             {activeStep === 3 && (
               <OnboardingStep3

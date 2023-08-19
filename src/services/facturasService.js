@@ -45,19 +45,20 @@ export const deleteFactura = async (id) => {
   }
 };
 
-export const uploadFile = async (files) => {
+export const uploadFile = async (files, tipo = 'COMPRA', ticketId) => {
   if (!files) return false;
 
   try {
     for (let i = 0; i < files.length; i++) {
       const fileUpload = files[i];
-      const filename = `probandoFiles/${fileUpload.name}`;
+      const filename = `files/${fileUpload.name}`;
       const filesFolderRef = ref(storage, filename);
       await uploadBytes(filesFolderRef, fileUpload);
       const newUrl = await getDownloadURL(filesFolderRef);
       await addDoc(collection(db, 'facturas'), {
-        tipo: 'COMPRA',
+        tipo: tipo,
         filename: newUrl,
+        ticket: ticketId
       });
     }
     return true;
