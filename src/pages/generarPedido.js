@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
-import { Container, Grid, Stack, Typography } from '@mui/material';
+import { Container, Grid, Stack } from '@mui/material';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import OnboardingStep1 from 'src/components/onboarding/onboardingStep1';
 import OnboardingStep2 from 'src/components/onboarding/onboardingStep2';
 import OnboardingStep3 from 'src/components/onboarding/onboardingStep3';
 import ticketService from 'src/services/ticketService';
+import { useRouter } from 'next/router';
 
 
 const GenerarPedidoPage = () => {
@@ -14,6 +15,7 @@ const GenerarPedidoPage = () => {
   const [selectedTagsData, setSelectedTagsData] = useState([]);
   const [reason, setReason] = useState('');
   const [estimatedPrice, setEstimatedPrice] = useState('');
+  const router = useRouter();
 
   const handleNextStep = (data) => {
     setActiveStep(activeStep + 1);
@@ -35,9 +37,8 @@ const GenerarPedidoPage = () => {
   const handlePay = async () => {
 
       try {
-        // 1. Generar ticket
         const ticketData = {
-          tipo: fileType, // Ejemplo de tipo de ticket
+          tipo: fileType, 
           tags: selectedTagsData,
           precioEstimado: estimatedPrice,
           archivos: files
@@ -47,6 +48,7 @@ const GenerarPedidoPage = () => {
         
         if (ticketCreationResult) {
           alert('Ticket creado exitosamente');
+          router.push(`/ticketDetails?ticketId=${ticketCreationResult.id}`);
         } else {
           alert('Error al crear el ticket');
         }
@@ -55,15 +57,6 @@ const GenerarPedidoPage = () => {
         alert('Ocurrió un error al intentar crear el ticket');
       }
 
-    /*
-      1. Generar ticket.
-        - tipo
-        - tags
-        - precio_estimado
-      2. Crear facturas asociadas al ticket
-        - crear las facturas y tengan el ticket asociado
-      3. agregar links a las facturas al ticket
-    */
   };
 
   return (

@@ -46,24 +46,31 @@ export const deleteFactura = async (id) => {
 };
 
 export const uploadFile = async (files, tipo = 'COMPRA', ticketId) => {
-  if (!files) return false;
+  if (!files) return [];
 
   try {
+    const enlacesFacturas = [];
+    
     for (let i = 0; i < files.length; i++) {
       const fileUpload = files[i];
       const filename = `files/${fileUpload.name}`;
       const filesFolderRef = ref(storage, filename);
       await uploadBytes(filesFolderRef, fileUpload);
       const newUrl = await getDownloadURL(filesFolderRef);
+      
+      // Guardar el enlace en el arreglo de enlaces
+      enlacesFacturas.push(newUrl);
+      
       await addDoc(collection(db, 'facturas'), {
         tipo: tipo,
         filename: newUrl,
         ticket: ticketId
       });
     }
-    return true;
+
+    return enlacesFacturas; // Retornar los enlaces de los archivos subidos
   } catch (e) {
     console.error(e);
-    return false;
+    return [];
   }
 };

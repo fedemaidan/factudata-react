@@ -1,3 +1,4 @@
+import React from 'react';
 import Head from 'next/head';
 import { CacheProvider } from '@emotion/react';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
@@ -9,6 +10,8 @@ import { useNProgress } from 'src/hooks/use-nprogress';
 import { createTheme } from 'src/theme';
 import { createEmotionCache } from 'src/utils/create-emotion-cache';
 import 'simplebar-react/dist/simplebar.min.css';
+import { BrowserRouter as Router, Switch, Route } from 'react-router-dom';
+import { TicketDetails } from 'src/pages/ticketDetails'; // Ajusta la ruta a tu estructura de carpetas
 
 const clientSideEmotionCache = createEmotionCache();
 
@@ -26,9 +29,7 @@ const App = (props) => {
   return (
     <CacheProvider value={emotionCache}>
       <Head>
-        <title>
-          Devias Kit
-        </title>
+        <title>Devias Kit</title>
         <meta
           name="viewport"
           content="initial-scale=1, width=device-width"
@@ -39,12 +40,15 @@ const App = (props) => {
           <ThemeProvider theme={theme}>
             <CssBaseline />
             <AuthConsumer>
-              {
-                (auth) => auth.isLoading
-                  ? <SplashScreen />
-                  : getLayout(<Component {...pageProps} />)
+              {(auth) =>
+                auth.isLoading ? (
+                  <SplashScreen />
+                ) : (
+                  getLayout(<Component {...pageProps} />)
+                )
               }
             </AuthConsumer>
+           
           </ThemeProvider>
         </AuthProvider>
       </LocalizationProvider>
