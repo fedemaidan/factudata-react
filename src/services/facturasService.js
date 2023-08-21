@@ -59,7 +59,10 @@ export const uploadFile = async (files, tipo = 'COMPRA', ticketId) => {
       const newUrl = await getDownloadURL(filesFolderRef);
       
       // Guardar el enlace en el arreglo de enlaces
-      enlacesFacturas.push(newUrl);
+      enlacesFacturas.push({
+        name: newUrl,
+        originalName: fileUpload.name
+      });
       
       await addDoc(collection(db, 'facturas'), {
         tipo: tipo,

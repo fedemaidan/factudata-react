@@ -9,7 +9,7 @@ import TicketInfo from 'src/components/ticketInfo';
 
 const TicketDetailsPage = () => {
   const router = useRouter();
-  const { ticketId } = router.query; // Obtener el valor del query parameter
+  const { ticketId } = router.query; 
 
   const [ticketData, setTicketData] = useState(null);
 
@@ -33,7 +33,7 @@ const TicketDetailsPage = () => {
           selectedTags={ticketData.tags}
           selectedFiles={ticketData.archivos}
           fileType={ticketData.tipo}
-          status="Confirmación pendiente"
+          status={ticketData.estado}
         />
       ) : (
         <Typography variant="body1">Cargando...</Typography>

@@ -10,14 +10,7 @@ const TicketInfo = ({ estimatedPrice, selectedTags, selectedFiles, fileType, sta
   // Calculate the total number of rows based on the selected files
   const totalRows = selectedFiles.length;
 
-  // Generate the table rows for the preview
-  const tableRows = selectedFiles.map((file, index) => (
-    <TableRow key={index}>
-      <TableCell>{file.name}</TableCell>
-      <TableCell>{totalRows}</TableCell>
-      <TableCell>{selectedTags.join(', ')}</TableCell>
-    </TableRow>
-  ));
+  console.log(selectedFiles)
 
   return (
     <Box>
@@ -41,7 +34,9 @@ const TicketInfo = ({ estimatedPrice, selectedTags, selectedFiles, fileType, sta
           <TableBody>
             {selectedFiles.map((file, fileIndex) => (
               <TableRow key={fileIndex}>
-                <TableCell>{file.name}</TableCell>
+                <TableCell>
+                  <img src={file.name} alt={file.name} style={{ maxWidth: '100px' }} />
+                </TableCell>
                 {selectedTags.map((tag, tagIndex) => (
                   <TableCell key={tagIndex} style={blurredStyle}>
                     123 
