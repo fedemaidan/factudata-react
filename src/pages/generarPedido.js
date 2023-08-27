@@ -25,10 +25,28 @@ const GenerarPedidoPage = () => {
     } else if (activeStep === 2) {
       setSelectedTagsData(data.tags);
       setReason(data.reason);
-      const price = data.tags.length * files.length * 50;
-      setEstimatedPrice(`$${price}`);
+      const paquete = recomendarPaquete(files.length);
+      setEstimatedPrice(paquete);
     }
   };
+
+  const recomendarPaquete = (cantidad) => {
+    console.log(cantidad)
+    let result;
+    if (cantidad < 20)
+      {result = "Puedes utilizar la prueba gratuita";}
+    else if (cantidad < 400)
+      {result = "$20.000 - Plan Inicial";}
+    else if (cantidad < 2500)
+     { result = "$100.000 - Plan emprendedor"; }
+    else if (cantidad < 6000)
+     { result = "$210.000 - Plan empresa";}
+    else {
+      result = "$35 por factura - Plan empresa plus"; 
+    }
+    console.log(result)
+    return result;
+  }
 
   const handlePreviousStep = () => {
     setActiveStep(activeStep - 1);
