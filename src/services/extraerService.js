@@ -2,7 +2,8 @@ import axios from 'axios';
 
 export const extraerDataFactura = async (filename, id) => {
     try {
-      const url = 'http://localhost:5000';
+      // const url = 'http://localhost:5000';
+      const url = 'https://factudata-function-4tbluuq42q-uc.a.run.app';
       const data = {
         filename,
         id,
