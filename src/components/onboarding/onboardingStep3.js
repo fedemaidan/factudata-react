@@ -1,9 +1,8 @@
 import React from 'react';
-import { Box, Button  } from '@mui/material';
+import { Box, Button, CircularProgress } from '@mui/material';
 import TicketInfo from 'src/components/ticketInfo';
 
-const OnboardingStep3 = ({ estimatedPrice, selectedTags, selectedFiles, fileType, onPreviousStep, onPay }) => {
-  
+const OnboardingStep3 = ({ estimatedPrice, selectedTags, selectedFiles, fileType, onPreviousStep, onPay, isLoading }) => {
   return (
     <Box>
       <TicketInfo
@@ -14,10 +13,10 @@ const OnboardingStep3 = ({ estimatedPrice, selectedTags, selectedFiles, fileType
         status="Confirmación pendiente"
       />
       <Button onClick={onPreviousStep}>Volver</Button>
-      <Button onClick={onPay}>Confirmar Pedido</Button>
+      <Button onClick={onPay} disabled={isLoading}>Confirmar Pedido</Button>
+      {isLoading && <CircularProgress />}
     </Box>
   );
 };
 
 export default OnboardingStep3;
-

@@ -6,6 +6,7 @@ import OnboardingStep2 from 'src/components/onboarding/onboardingStep2';
 import OnboardingStep3 from 'src/components/onboarding/onboardingStep3';
 import ticketService from 'src/services/ticketService';
 import { useRouter } from 'next/router';
+import { useAuthContext } from 'src/contexts/auth-context';
 
 
 const GenerarPedidoPage = () => {
@@ -15,8 +16,10 @@ const GenerarPedidoPage = () => {
   const [selectedTagsData, setSelectedTagsData] = useState([]);
   const [reason, setReason] = useState('');
   const [estimatedPrice, setEstimatedPrice] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
-
+  const { user } = useAuthContext();
+  
   const handleNextStep = (data) => {
     setActiveStep(activeStep + 1);
     if (activeStep === 1) {
@@ -53,13 +56,15 @@ const GenerarPedidoPage = () => {
   };
 
   const handlePay = async () => {
+    setIsLoading(true);
 
       try {
         const ticketData = {
           tipo: fileType, 
           tags: selectedTagsData,
           precioEstimado: estimatedPrice,
-          archivos: files
+          archivos: files,
+          userId: user.id
         };
   
         const ticketCreationResult = await ticketService.createTicket(ticketData);
@@ -73,6 +78,8 @@ const GenerarPedidoPage = () => {
       } catch (error) {
         console.error('Error:', error);
         alert('Ocurrió un error al intentar crear el ticket');
+      } finally {
+        setIsLoading(false); // Finalizar el indicador de carga, independientemente del resultado
       }
 
   };
@@ -102,6 +109,7 @@ const GenerarPedidoPage = () => {
                 selectedTags={selectedTagsData}
                 onPreviousStep={handlePreviousStep}
                 onPay={handlePay}
+                isLoading={isLoading} 
               />
             )}
           </Stack>

@@ -1,18 +1,22 @@
-import { collection, doc, addDoc, getDoc, updateDoc} from 'firebase/firestore';
+import { collection, doc, addDoc, getDoc, updateDoc, query, where, getDocs, serverTimestamp} from 'firebase/firestore';
+import { use } from 'react';
 import { db } from 'src/config/firebase';
 import { uploadFile } from './facturasService'; // Importa el servicio de facturas para subir los archivos
+
 
 const ticketService = {
   createTicket: async (ticketData) => {
     try {
-      const { tipo, tags, precioEstimado, archivos } = ticketData;
+      const { tipo, tags, precioEstimado, archivos, userId } = ticketData;
   
       // Agregar el ticket a la colección 'tickets'
       const ticketRef = await addDoc(collection(db, 'tickets'), {
         tipo: tipo,
         tags: tags,
         precioEstimado: precioEstimado,
-        estado: "Pago pendiente"
+        estado: "Pago pendiente",
+        userId: userId,
+        created_at: serverTimestamp(),
       });
   
       // Subir las facturas y asociarlas al ticket
@@ -54,6 +58,28 @@ const ticketService = {
     } catch (err) {
       console.error(err);
       return null;
+    }
+  },
+  getTicketsForUser: async (userId) => {
+    try {
+      console.log(userId)
+      const q = query(collection(db, 'tickets'), where('userId', '==', userId));
+      const querySnapshot = await getDocs(q);
+
+      const tickets = [];
+      querySnapshot.forEach((doc) => {
+        // Agregar cada ticket a la lista
+        const ticket = {
+          id: doc.id,
+          ...doc.data(),
+        };
+        tickets.push(ticket);
+      });
+      console.log(tickets)
+      return tickets;
+    } catch (err) {
+      console.error(err);
+      return [];
     }
   },
 };

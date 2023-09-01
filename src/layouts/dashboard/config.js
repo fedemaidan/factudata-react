@@ -28,8 +28,8 @@ export const items = [
   //   )
   // },
   {
-    title: 'Facturas',
-    path: '/facturas',
+    title: 'Tickets',
+    path: '/tickets',
     icon: (
       <SvgIcon fontSize="small">
         <ShoppingBagIcon />
