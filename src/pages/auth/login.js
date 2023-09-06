@@ -63,7 +63,7 @@ const Page = () => {
     <>
       <Head>
         <title>
-          Login | Factudata
+          Login | Sorbydata
         </title>
       </Head>
       <Box

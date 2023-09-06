@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Container, Grid, Stack } from '@mui/material';
+import { Container, Grid, Stack, Snackbar, Alert } from '@mui/material';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import OnboardingStep1 from 'src/components/onboarding/onboardingStep1';
 import OnboardingStep2 from 'src/components/onboarding/onboardingStep2';
@@ -17,6 +17,9 @@ const GenerarPedidoPage = () => {
   const [reason, setReason] = useState('');
   const [estimatedPrice, setEstimatedPrice] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [snackbarOpen, setSnackbarOpen] = useState(false);
+  const [snackbarMessage, setSnackbarMessage] = useState('');
+  const [snackbarSeverity, setSnackbarSeverity] = useState('success'); // Puedes usar 'error' para errores
   const router = useRouter();
   const { user } = useAuthContext();
   
@@ -70,18 +73,28 @@ const GenerarPedidoPage = () => {
         const ticketCreationResult = await ticketService.createTicket(ticketData);
         
         if (ticketCreationResult) {
-          alert('Ticket creado exitosamente');
+          setSnackbarSeverity('success');
+          setSnackbarMessage('Ticket creado exitosamente');
+          setSnackbarOpen(true);
           router.push(`/ticketDetails?ticketId=${ticketCreationResult.id}`);
         } else {
-          alert('Error al crear el ticket');
+          setSnackbarSeverity('error');
+          setSnackbarMessage('Error al crear el ticket');
+          setSnackbarOpen(true);
         }
       } catch (error) {
         console.error('Error:', error);
-        alert('Ocurrió un error al intentar crear el ticket');
+        setSnackbarSeverity('error');
+        setSnackbarMessage('Ocurrió un error al intentar crear el ticket');
+        setSnackbarOpen(true);
       } finally {
         setIsLoading(false); // Finalizar el indicador de carga, independientemente del resultado
       }
 
+  };
+
+  const handleCloseSnackbar = () => {
+    setSnackbarOpen(false);
   };
 
   return (
@@ -90,16 +103,14 @@ const GenerarPedidoPage = () => {
         {/* Primera columna que ocupa 2 tercios */}
         <Grid item xs={12}>
           <Stack spacing={3}>
-            {activeStep === 1 && (
-              <OnboardingStep1 onNextStep={handleNextStep} />
-            )}
+            {activeStep === 1 && <OnboardingStep1 onNextStep={handleNextStep} />}
             {activeStep === 2 && (
               <OnboardingStep2
                 selectedTagsData={selectedTagsData}
                 reason={reason}
                 onPreviousStep={handlePreviousStep}
                 onNextStep={handleNextStep}
-                />
+              />
             )}
             {activeStep === 3 && (
               <OnboardingStep3
@@ -109,12 +120,21 @@ const GenerarPedidoPage = () => {
                 selectedTags={selectedTagsData}
                 onPreviousStep={handlePreviousStep}
                 onPay={handlePay}
-                isLoading={isLoading} 
+                isLoading={isLoading}
               />
             )}
           </Stack>
         </Grid>
       </Grid>
+      <Snackbar
+        open={snackbarOpen}
+        autoHideDuration={5000}
+        onClose={handleCloseSnackbar}
+      >
+        <Alert severity={snackbarSeverity} onClose={handleCloseSnackbar}>
+          {snackbarMessage}
+        </Alert>
+      </Snackbar>
     </Container>
   );
 };
