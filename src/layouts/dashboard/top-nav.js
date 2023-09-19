@@ -13,6 +13,7 @@ import { alpha } from '@mui/material/styles';
 import { usePopover } from 'src/hooks/use-popover';
 import { AccountPopover } from './account-popover';
 import { useAuthContext } from 'src/contexts/auth-context';
+import Bars3Icon from '@heroicons/react/24/solid/Bars3Icon';
 
 const SIDE_NAV_WIDTH = 280;
 const TOP_NAV_HEIGHT = 64;
