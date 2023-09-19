@@ -136,7 +136,7 @@ export const AuthProvider = (props) => {
       phone: '',
       state: '',
       country: '',
-      credit: 30
+      credit: 20
     };
     
     const usersCollectionRef = collection(db, 'profile');

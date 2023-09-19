@@ -41,16 +41,18 @@ const GenerarPedidoPage = () => {
   const recomendarPaquete = (cantidad) => {
     
     let result;
-    if (cantidad < 20)
+    let creditoRestante = cantidad - user.credit;
+
+    if (creditoRestante < 20)
       {result = "Puedes utilizar la prueba gratuita";}
-    else if (cantidad < 400)
+    else if (creditoRestante < 400)
       {result = "$20.000 - Plan Inicial";}
-    else if (cantidad < 2500)
-     { result = "$100.000 - Plan emprendedor"; }
-    else if (cantidad < 6000)
+    else if (creditoRestante < 2500)
+     { result = "$100.000 - Plan emprendedor";}
+    else if (creditoRestante < 6000)
      { result = "$210.000 - Plan empresa";}
     else {
-      result = "$35 por factura - Plan empresa plus"; 
+      result = "$35 por factura - Plan empresa plus";
     }
     
     return result;
@@ -58,7 +60,7 @@ const GenerarPedidoPage = () => {
 
   const fetchTicketProgress = async (id) => {
     console.log("te boludeo con id", id);
-    // if (isLoading) {
+    if (isLoading) {
       // Obtener el ticket actual
       const archivos = await getFacturasByTicketId(id);
       console.log("archivos", archivos)
@@ -67,18 +69,19 @@ const GenerarPedidoPage = () => {
         const totalFiles = files.length;
         const uploadedFiles = archivos.length;
         const progress = (uploadedFiles / totalFiles) * 100;
-        console.log(progress)
-        console.log(uploadedFiles)
-        console.log(totalFiles)
+        
         // Actualizar el estado de progreso de carga
         setUploadProgress(progress);
         
-        const interval = setInterval(() => {
-          fetchTicketProgress(id);
-        }, 4000);
-    
+        if (progress < 100) {
+          const interval = setInterval(() => {
+            fetchTicketProgress(id);
+          }, 4000);
+      
+        }
+        
       }
-    // }
+    }
   };
 
 
