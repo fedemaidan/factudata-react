@@ -28,8 +28,8 @@ export const items = [
   //   )
   // },
   {
-    title: 'Tickets',
-    path: '/tickets',
+    title: 'Bandeja de solicitudes',
+    path: '/solicitudes',
     icon: (
       <SvgIcon fontSize="small">
         <ShoppingBagIcon />
@@ -37,7 +37,7 @@ export const items = [
     )
   },
   {
-    title: 'Generar pedido',
+    title: 'Nueva solicitud',
     path: '/generarPedido',
     icon: (
       <SvgIcon fontSize="small">

@@ -7,7 +7,7 @@ import { uploadFile } from './facturasService'; // Importa el servicio de factur
 const ticketService = {
   createTicket: async (ticketData) => {
     try {
-      const { tipo, tags, precioEstimado, archivos, userId } = ticketData;
+      const { tipo, tags, precioEstimado, userId } = ticketData;
   
       // Agregar el ticket a la colección 'tickets'
       const ticketRef = await addDoc(collection(db, 'tickets'), {
@@ -17,30 +17,39 @@ const ticketService = {
         estado: "Pago pendiente",
         userId: userId,
         created_at: serverTimestamp(),
+        archivos: []
       });
-  
-      // Subir las facturas y asociarlas al ticket
-      if (archivos && archivos.length > 0) {
-        const ticketId = ticketRef.id; // Obtener el ID del ticket recién creado
-        const uploadResult = await uploadFile(archivos, tipo, ticketId);
-        
-        if (!uploadResult) {
-          console.error('Error al subir las facturas');
-          return false;
-        }
 
-        // Guardar los enlaces de los archivos en el ticket
-        await updateDoc(doc(db, 'tickets', ticketId), {
-            archivos: uploadResult,
-        });
-      }
-  
       return ticketRef;
+
+      // Subir las facturas y asociarlas al ticket
+      
     } catch (err) {
       console.error(err);
       return false;
     }
-  },  
+  },
+  finishTicketWithFiles: async (ticketId, ticketData) => {
+    const { tipo, archivos } = ticketData;
+    // console.log("data", ticketData)
+    // console.log("files", files)
+    if (archivos && archivos.length > 0) {
+      
+      const uploadResult = await uploadFile(archivos, tipo, ticketId);
+      
+      if (!uploadResult) {
+        console.error('Error al subir las facturas');
+        return false;
+      }
+
+      // Guardar los enlaces de los archivos en el ticket
+      await updateDoc(doc(db, 'tickets', ticketId), {
+          archivos: uploadResult,
+      });
+    }
+
+    return ticketId;
+  },
   getTicketById: async (ticketId) => {
     try {
       const ticketDocRef = doc(db, 'tickets', ticketId);

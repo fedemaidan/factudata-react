@@ -1,6 +1,24 @@
-import { collection, doc, addDoc, deleteDoc, query, orderBy, startAfter, limit, getDocs } from 'firebase/firestore';
+import { collection, doc, addDoc, deleteDoc, where, query, orderBy, startAfter, limit, getDocs } from 'firebase/firestore';
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { db, storage } from 'src/config/firebase';
+
+export const getFacturasByTicketId = async (ticketId) => {
+  try {
+    const facturasCollectionRef = collection(db, 'facturas');
+    const facturasQuery = query(facturasCollectionRef, where('ticket', '==', ticketId));
+    const querySnapshot = await getDocs(facturasQuery);
+
+    const facturas = querySnapshot.docs.map((doc) => ({
+      ...doc.data(),
+      id: doc.id,
+    }));
+
+    return facturas;
+  } catch (err) {
+    console.error(err);
+    return [];
+  }
+};
 
 export const getFacturas = async (start, end) => {
   try {
@@ -19,8 +37,6 @@ export const getFacturas = async (start, end) => {
     return [];
   }
 };
-
-
 export const getTotalFacturas = async () => {
   try {
     const facturasCollectionRef = collection(db, 'facturas');

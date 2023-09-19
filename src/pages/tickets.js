@@ -48,9 +48,9 @@ const Page = () => {
       >
         <Container maxWidth="xl">
           <Stack spacing={3}>
-            <Typography variant="h4">Tickets</Typography>
+            <Typography variant="h4">Solicitudes</Typography>
             <Button variant="contained" onClick={handleCreateTicket}>
-              Crear Nuevo Ticket
+              Crear nueva solicitud
             </Button>
             <TicketTable
               items={ticketsList}

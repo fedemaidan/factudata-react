@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Container, Grid, Stack, Snackbar, Alert } from '@mui/material';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import OnboardingStep1 from 'src/components/onboarding/onboardingStep1';
 import OnboardingStep2 from 'src/components/onboarding/onboardingStep2';
 import OnboardingStep3 from 'src/components/onboarding/onboardingStep3';
 import ticketService from 'src/services/ticketService';
+import {getFacturasByTicketId} from 'src/services/facturasService';
 import { useRouter } from 'next/router';
 import { useAuthContext } from 'src/contexts/auth-context';
 
@@ -20,6 +21,7 @@ const GenerarPedidoPage = () => {
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
   const [snackbarSeverity, setSnackbarSeverity] = useState('success'); // Puedes usar 'error' para errores
+  const [uploadProgress, setUploadProgress] = useState(0);
   const router = useRouter();
   const { user } = useAuthContext();
   
@@ -37,7 +39,7 @@ const GenerarPedidoPage = () => {
   };
 
   const recomendarPaquete = (cantidad) => {
-    console.log(cantidad)
+    
     let result;
     if (cantidad < 20)
       {result = "Puedes utilizar la prueba gratuita";}
@@ -50,9 +52,35 @@ const GenerarPedidoPage = () => {
     else {
       result = "$35 por factura - Plan empresa plus"; 
     }
-    console.log(result)
+    
     return result;
   }
+
+  const fetchTicketProgress = async (id) => {
+    console.log("te boludeo con id", id);
+    // if (isLoading) {
+      // Obtener el ticket actual
+      const archivos = await getFacturasByTicketId(id);
+      console.log("archivos", archivos)
+      if (archivos) {
+        // Calcular el progreso de carga
+        const totalFiles = files.length;
+        const uploadedFiles = archivos.length;
+        const progress = (uploadedFiles / totalFiles) * 100;
+        console.log(progress)
+        console.log(uploadedFiles)
+        console.log(totalFiles)
+        // Actualizar el estado de progreso de carga
+        setUploadProgress(progress);
+        
+        const interval = setInterval(() => {
+          fetchTicketProgress(id);
+        }, 4000);
+    
+      }
+    // }
+  };
+
 
   const handlePreviousStep = () => {
     setActiveStep(activeStep - 1);
@@ -70,7 +98,12 @@ const GenerarPedidoPage = () => {
           userId: user.id
         };
   
-        const ticketCreationResult = await ticketService.createTicket(ticketData);
+        let ticketCreationResult = await ticketService.createTicket(ticketData);
+        fetchTicketProgress(ticketCreationResult.id);
+        console.log("aaaaaa")
+        console.log("estos archivos", files)
+        await ticketService.finishTicketWithFiles(ticketCreationResult.id, ticketData);
+        
         
         if (ticketCreationResult) {
           setSnackbarSeverity('success');
@@ -88,13 +121,17 @@ const GenerarPedidoPage = () => {
         setSnackbarMessage('Ocurrió un error al intentar crear el ticket');
         setSnackbarOpen(true);
       } finally {
-        setIsLoading(false); // Finalizar el indicador de carga, independientemente del resultado
+        setIsLoading(false);
       }
 
   };
 
   const handleCloseSnackbar = () => {
     setSnackbarOpen(false);
+  };
+
+  const updateUploadProgress = (progress) => {
+    setUploadProgress(progress);
   };
 
   return (
@@ -121,6 +158,7 @@ const GenerarPedidoPage = () => {
                 onPreviousStep={handlePreviousStep}
                 onPay={handlePay}
                 isLoading={isLoading}
+                progress={uploadProgress}
               />
             )}
           </Stack>

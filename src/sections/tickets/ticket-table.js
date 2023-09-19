@@ -72,7 +72,7 @@ export const TicketTable = (props) => {
                         variant="outlined"
                         onClick={() => router.push('/ticketDetails?ticketId='+ticket.id)}
                       >
-                        Ver Ticket
+                        Ver solicitud
                       </Button>
                     </TableCell>
                   </TableRow>
