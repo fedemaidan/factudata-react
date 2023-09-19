@@ -1,14 +1,10 @@
 import PropTypes from 'prop-types';
-import BellIcon from '@heroicons/react/24/solid/BellIcon';
-import UsersIcon from '@heroicons/react/24/solid/UsersIcon';
-import Bars3Icon from '@heroicons/react/24/solid/Bars3Icon';
-import MagnifyingGlassIcon from '@heroicons/react/24/solid/MagnifyingGlassIcon';
 import {
   Avatar,
-  Badge,
   Box,
   IconButton,
   Stack,
+  Typography, 
   SvgIcon,
   Tooltip,
   useMediaQuery
@@ -26,6 +22,8 @@ export const TopNav = (props) => {
   const lgUp = useMediaQuery((theme) => theme.breakpoints.up('lg'));
   const accountPopover = usePopover();
   const { user } = useAuthContext();
+  const credit = user?.credit; 
+
   return (
     <>
       <Box
@@ -56,7 +54,7 @@ export const TopNav = (props) => {
         >
           <Stack
             alignItems="center"
-            direction="row"
+            direction="row-reverse"
             spacing={2}
           >
             {!lgUp && (
@@ -66,48 +64,22 @@ export const TopNav = (props) => {
                 </SvgIcon>
               </IconButton>
             )}
-            <Tooltip title="Search">
-              <IconButton>
-                <SvgIcon fontSize="small">
-                  <MagnifyingGlassIcon />
-                </SvgIcon>
-              </IconButton>
-            </Tooltip>
           </Stack>
           <Stack
             alignItems="center"
             direction="row"
             spacing={2}
           >
-            <Tooltip title="Contacts">
-              <IconButton>
-                <SvgIcon fontSize="small">
-                  <UsersIcon />
-                </SvgIcon>
-              </IconButton>
-            </Tooltip>
-            <Tooltip title="Notifications">
-              <IconButton>
-                <Badge
-                  badgeContent={4}
-                  color="success"
-                  variant="dot"
-                >
-                  <SvgIcon fontSize="small">
-                    <BellIcon />
-                  </SvgIcon>
-                </Badge>
-              </IconButton>
-            </Tooltip>
+            <Typography variant="body1">{`Crédito: ${credit}`} </Typography> 
             <Avatar
               onClick={accountPopover.handleOpen}
               ref={accountPopover.anchorRef}
               sx={{
                 cursor: 'pointer',
                 height: 40,
-                width: 40
+                width: 40,
               }}
-              src={user.avatar}
+              src={user?.avatar}
             />
           </Stack>
         </Stack>
