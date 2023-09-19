@@ -55,7 +55,7 @@ export const items = [
   //   )
   // },
   {
-    title: 'Account',
+    title: 'Cuenta',
     path: '/account',
     icon: (
       <SvgIcon fontSize="small">
