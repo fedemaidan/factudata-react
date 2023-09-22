@@ -89,7 +89,7 @@ const GenerarPedidoPage = () => {
     setActiveStep(activeStep - 1);
   };
 
-  const handlePay = async () => {
+  const handleSave = async () => {
     setIsLoading(true);
 
       try {
@@ -103,10 +103,8 @@ const GenerarPedidoPage = () => {
   
         let ticketCreationResult = await ticketService.createTicket(ticketData);
         fetchTicketProgress(ticketCreationResult.id);
-        console.log("aaaaaa")
-        console.log("estos archivos", files)
-        await ticketService.finishTicketWithFiles(ticketCreationResult.id, ticketData);
         
+        await ticketService.finishTicketWithFiles(ticketCreationResult.id, ticketData);
         
         if (ticketCreationResult) {
           setSnackbarSeverity('success');
@@ -159,7 +157,7 @@ const GenerarPedidoPage = () => {
                 fileType={fileType}
                 selectedTags={selectedTagsData}
                 onPreviousStep={handlePreviousStep}
-                onPay={handlePay}
+                onSave={handleSave}
                 isLoading={isLoading}
                 progress={uploadProgress}
               />

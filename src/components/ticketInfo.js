@@ -1,55 +1,75 @@
-import React from 'react';
-import { Box, Typography, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper } from '@mui/material';
+import React, { useState } from 'react';
+import { Box, Typography, Paper, Tabs, Tab } from '@mui/material';
+import { grey } from '@mui/material/colors';
 
 const TicketInfo = ({ estimatedPrice, selectedTags, selectedFiles, fileType, status }) => {
-  const blurredStyle = {
-    color: 'transparent',
-    textShadow: '0 0 5px rgba(0, 0, 0, 0.5)',
+  const [currentTab, setCurrentTab] = useState(0);
+
+  const chunkedFiles = [];
+  for (let i = 0; i < selectedFiles.length; i += 5) {
+    chunkedFiles.push(selectedFiles.slice(i, i + 5));
+  }
+
+  const handleChange = (event, newValue) => {
+    setCurrentTab(newValue);
   };
 
-  // Calculate the total number of rows based on the selected files
-  const totalRows = selectedFiles.length;
-
-  console.log(selectedFiles)
+  const labelArchivos = `Archivos (${selectedFiles.length})`;
 
   return (
-    <Box>
-      <Typography variant="h5">{fileType}</Typography>
-      <Typography variant="body1">Cantidad de archivos: {totalRows}</Typography>
-      <Typography variant="body1">Tags seleccionados: {selectedTags.join(', ')}</Typography>
-      <Typography variant="body1">Presupuesto estimado: {estimatedPrice}</Typography>
-      <Typography variant="body1">Estado: {status}</Typography>
-      
+    <Box sx={{ backgroundColor: grey[100], padding: '16px' }}>
+      <Paper elevation={2} sx={{ backgroundColor: '#fff', borderRadius: '12px', marginBottom: '16px' }}>
+        <Tabs 
+          value={currentTab} 
+          onChange={handleChange} 
+          indicatorColor="primary"
+          textColor="primary"
+          centered
+        >
+          <Tab label="Información general" />
+          <Tab label={labelArchivos} />
+        </Tabs>
+      </Paper>
 
-      <TableContainer component={Paper} sx={{ mt: 3 }}>
-        <Table>
-          <TableHead>
-            <TableRow>
-              <TableCell>Archivo</TableCell>
-              {selectedTags.map((tag) => (
-                <TableCell key={tag}>{tag}</TableCell>
+      {currentTab === 0 && (
+        <Paper elevation={2} sx={{ padding: '24px', backgroundColor: '#fff', borderRadius: '12px' }}>
+        <Typography variant="body1" gutterBottom>
+          <strong>Tipo de trabajo:</strong> <span style={{ fontWeight: 300 }}>{fileType}</span>
+        </Typography>
+        <Typography variant="body1" gutterBottom>
+          <strong>Datos de cada factura:</strong> <span style={{ fontWeight: 300 }}>{selectedTags.join(', ')}</span>
+        </Typography>
+        <Typography variant="body1" gutterBottom>
+          <strong>Créditos necesarios:</strong> <span style={{ fontWeight: 300 }}>{selectedFiles.length} créditos</span>
+        </Typography>
+        <Typography variant="body1">
+          <strong>Estado:</strong> <span style={{ fontWeight: 300 }}>{status}</span>
+        </Typography>
+      </Paper>
+      
+      )}
+
+      {currentTab === 1 && (
+        <Paper elevation={2} sx={{ padding: '24px', backgroundColor: '#fff', borderRadius: '12px' }}>
+          {chunkedFiles.map((fileChunk, chunkIndex) => (
+            <Box 
+              key={chunkIndex} 
+              display="flex" 
+              justifyContent="flex-start" 
+              alignItems="center"
+              mb={2}
+            >
+              {fileChunk.map((file, fileIndex) => (
+                <Box key={fileIndex} mx={1}>
+                  <img src={file.name} alt={file.name} style={{ maxWidth: '100px', borderRadius: '8px' }} />
+                </Box>
               ))}
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {selectedFiles.map((file, fileIndex) => (
-              <TableRow key={fileIndex}>
-                <TableCell>
-                  <img src={file.name} alt={file.name} style={{ maxWidth: '100px' }} />
-                </TableCell>
-                {selectedTags.map((tag, tagIndex) => (
-                  <TableCell key={tagIndex} style={blurredStyle}>
-                    123 
-                  </TableCell>
-                ))}
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </TableContainer>
+            </Box>
+          ))}
+        </Paper>
+      )}
     </Box>
   );
 };
 
 export default TicketInfo;
-

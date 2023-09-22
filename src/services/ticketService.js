@@ -1,5 +1,4 @@
 import { collection, doc, addDoc, getDoc, updateDoc, query, where, getDocs, serverTimestamp} from 'firebase/firestore';
-import { use } from 'react';
 import { db } from 'src/config/firebase';
 import { uploadFile } from './facturasService'; // Importa el servicio de facturas para subir los archivos
 
@@ -14,7 +13,7 @@ const ticketService = {
         tipo: tipo,
         tags: tags,
         precioEstimado: precioEstimado,
-        estado: "Pago pendiente",
+        estado: "Borrador",
         userId: userId,
         created_at: serverTimestamp(),
         archivos: []
@@ -31,8 +30,7 @@ const ticketService = {
   },
   finishTicketWithFiles: async (ticketId, ticketData) => {
     const { tipo, archivos } = ticketData;
-    // console.log("data", ticketData)
-    // console.log("files", files)
+    
     if (archivos && archivos.length > 0) {
       
       const uploadResult = await uploadFile(archivos, tipo, ticketId);
@@ -71,7 +69,6 @@ const ticketService = {
   },
   getTicketsForUser: async (userId) => {
     try {
-      console.log(userId)
       const q = query(collection(db, 'tickets'), where('userId', '==', userId));
       const querySnapshot = await getDocs(q);
 

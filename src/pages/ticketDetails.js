@@ -1,29 +1,43 @@
-// pages/ticket/[ticketId].js
-
 import { useRouter } from 'next/router';
 import React, { useEffect, useState } from 'react';
-import { Typography, Container, Box } from '@mui/material';
+import { Typography, Container, Box, Button, Tooltip } from '@mui/material';
 import ticketService from 'src/services/ticketService';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import TicketInfo from 'src/components/ticketInfo';
+import { useAuthContext } from 'src/contexts/auth-context';
 
 const TicketDetailsPage = () => {
   const router = useRouter();
   const { ticketId } = router.query; 
-
+  const { user } = useAuthContext();
   const [ticketData, setTicketData] = useState(null);
+  const userCredits = user.credit; // Supongamos que esta es la cantidad de créditos del usuario. Reemplácelo con el valor real.
 
   useEffect(() => {
     if (ticketId) {
       async function fetchTicketData() {
         const ticket = await ticketService.getTicketById(ticketId);
         setTicketData(ticket);
-        console.log(ticket)
       }
       
       fetchTicketData();
     }
   }, [ticketId]);
+
+  // Actions for buttons
+  const handleConfirm = () => {
+    // Confirm ticket logic here
+  };
+  
+  const handleBuyCredit = () => {
+    // Buy credit logic here
+  };
+  
+  const handleDelete = () => {
+    // Cancel ticket logic here
+  };
+
+  const shouldDisableConfirm = ticketData?.archivos?.length > userCredits;
 
   return (
     <Container maxWidth="md">
@@ -38,6 +52,40 @@ const TicketDetailsPage = () => {
       ) : (
         <Typography variant="body1">Cargando...</Typography>
       )}
+      <Box mb={3}>
+      {ticketData?.estado === 'Borrador' && (
+          <Tooltip title={shouldDisableConfirm ? "No puedes confirmar porque no tienes suficiente crédito" : ""}>
+            <span> {/* Envuelve el botón con un elemento span para que Tooltip funcione incluso cuando el botón esté deshabilitado */}
+              <Button 
+                variant="contained" 
+                color="primary" 
+                sx={{ mx: 1 }} 
+                disabled={shouldDisableConfirm}
+                onClick={handleConfirm}
+              >
+                Confirmar solicitud
+              </Button>
+            </span>
+          </Tooltip>
+        )}
+        {ticketData?.estado === 'Borrador' && shouldDisableConfirm && (
+          <Button 
+            variant="contained" 
+            color="primary" 
+            sx={{ mx: 1 }} 
+            onClick={handleBuyCredit}
+          >
+            Comprar crédito
+          </Button>
+        )}
+        <Button 
+          variant="outlined" 
+          sx={{ mx: 1, borderColor: 'red', color: 'red' }} 
+          onClick={handleDelete}
+        >
+          Borrar pedido
+        </Button>
+      </Box>
     </Container>
   );
 };
