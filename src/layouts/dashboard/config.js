@@ -55,6 +55,15 @@ export const items = [
   //   )
   // },
   {
+    title: 'Creditos',
+    path: '/creditos',
+    icon: (
+      <SvgIcon fontSize="small">
+        <ShoppingBagIcon />
+      </SvgIcon>
+    )
+  },
+  {
     title: 'Cuenta',
     path: '/account',
     icon: (
