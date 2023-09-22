@@ -59,8 +59,8 @@ const GenerarPedidoPage = () => {
   }
 
   const fetchTicketProgress = async (id) => {
-    console.log("te boludeo con id", id);
-    if (isLoading) {
+    console.log("te boludeo con id", id, isLoading);
+    // if (isLoading) {
       // Obtener el ticket actual
       const archivos = await getFacturasByTicketId(id);
       console.log("archivos", archivos)
@@ -73,14 +73,7 @@ const GenerarPedidoPage = () => {
         // Actualizar el estado de progreso de carga
         setUploadProgress(progress);
         
-        if (progress < 100) {
-          const interval = setInterval(() => {
-            fetchTicketProgress(id);
-          }, 4000);
-      
-        }
-        
-      }
+      // }
     }
   };
 
@@ -102,8 +95,11 @@ const GenerarPedidoPage = () => {
         };
   
         let ticketCreationResult = await ticketService.createTicket(ticketData);
-        fetchTicketProgress(ticketCreationResult.id);
         
+        const interval = setInterval(() => {
+          fetchTicketProgress(ticketCreationResult.id);
+        }, 4000);
+
         await ticketService.finishTicketWithFiles(ticketCreationResult.id, ticketData);
         
         if (ticketCreationResult) {
