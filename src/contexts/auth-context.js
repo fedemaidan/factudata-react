@@ -6,6 +6,8 @@ import { collection, addDoc, getDocs, doc, query, where, updateDoc } from 'fireb
 import { db } from 'src/config/firebase';
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { storage } from 'src/config/firebase';
+import {getTotalCreditsForUser, addCreditsForUser } from 'src/services/creditService';
+
 const HANDLERS = {
   INITIALIZE: 'INITIALIZE',
   SIGN_OUT: 'SIGN_OUT',
@@ -113,11 +115,13 @@ export const AuthProvider = (props) => {
     const querySnapshot = await getDocs(q);    
     const user =  querySnapshot.docs[0].data();
     const id = querySnapshot.docs[0].id;
+    const credit = await getTotalCreditsForUser(id);
 
     dispatch({
       type: HANDLERS.UPDATE_USER,
       payload: {
         ...user,
+        credit: credit,
         id: id
       }
     });
@@ -125,7 +129,7 @@ export const AuthProvider = (props) => {
 
   const signUp = async (email, password) => {
     const response = await createUserWithEmailAndPassword(auth, email, password);
-    
+    const initCredit = 20;
     const user = {
       user_id: response.user.uid,
       id: '',
@@ -135,17 +139,18 @@ export const AuthProvider = (props) => {
       email: email,
       phone: '',
       state: '',
-      country: '',
-      credit: 20
+      country: ''
     };
     
     const usersCollectionRef = collection(db, 'profile');
     const userRef = await addDoc(usersCollectionRef, user)
-
+    await addCreditsForUser(userRef.id,initCredit);
+    
     dispatch({
       type: HANDLERS.UPDATE_USER,
       payload: {
         ...user,
+        credit: initCredit,
         id: userRef.id
       }
     });
@@ -160,10 +165,28 @@ export const AuthProvider = (props) => {
   const updateUser = async (user) => {
     const userRef = doc(db, "profile", user.id);
     await updateDoc(userRef, user);
-
+    
     dispatch({
       type: HANDLERS.UPDATE_USER,
       payload: user
+    });
+  }
+
+  const refreshUser = async(id) => {
+    const userRef = collection(db, "profile");
+    
+    const q = query(userRef, where("user_id", "==", id));
+    const querySnapshot = await getDocs(q);    
+    const user =  querySnapshot.docs[0].data();
+    const credit = await getTotalCreditsForUser(id);
+    console.log(credit);
+    dispatch({
+      type: HANDLERS.UPDATE_USER,
+      payload: {
+        ...user,
+        credit: credit,
+        id: id
+      }
     });
   }
 
@@ -187,7 +210,8 @@ export const AuthProvider = (props) => {
         signUp,
         signOut,
         updateUser,
-        updateAvatar
+        updateAvatar,
+        refreshUser,
       }}
     >
       {children}

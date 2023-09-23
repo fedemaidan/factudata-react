@@ -31,7 +31,8 @@ export const CreditTable = (props) => {
               <TableRow>
                 <TableCell>Fecha de Compra</TableCell>
                 <TableCell>Cantidad</TableCell>
-                <TableCell>ID de Transacción</TableCell>
+                <TableCell>Costo</TableCell>
+                <TableCell>Tipo</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -39,7 +40,8 @@ export const CreditTable = (props) => {
                 <TableRow key={credit.id}>
                   <TableCell>{formatTimestamp(credit.date)}</TableCell>
                   <TableCell>{credit.amount}</TableCell>
-                  <TableCell>{credit.transactionId}</TableCell>
+                  <TableCell>{credit.cost}</TableCell>
+                  <TableCell>{credit.type}</TableCell>
                 </TableRow>
               ))}
             </TableBody>

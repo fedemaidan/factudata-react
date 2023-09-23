@@ -17,6 +17,7 @@ const CreditsPage = () => {
     try {
       setIsLoading(true);
       const data = await getCreditsForUser(user.id); 
+      console.log(data)
       setCreditsList(data);
     } catch (err) {
       console.error(err);

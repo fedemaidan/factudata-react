@@ -1,7 +1,7 @@
 import { collection, doc, addDoc, getDoc, updateDoc, query, where, getDocs, serverTimestamp} from 'firebase/firestore';
 import { db } from 'src/config/firebase';
 import { uploadFile } from './facturasService'; // Importa el servicio de facturas para subir los archivos
-
+import { removeCreditsForUser } from './creditService';
 
 const ticketService = {
   createTicket: async (ticketData) => {
@@ -62,6 +62,19 @@ const ticketService = {
         console.error('El ticket no existe');
         return null;
       }
+    } catch (err) {
+      console.error(err);
+      return null;
+    }
+  },
+  confirmTicketById: async (ticketId, amount, userId) => {
+    
+    try {
+      await updateDoc(doc(db, 'tickets', ticketId), {
+        estado: "Confirmado",
+      });
+      removeCreditsForUser(userId, amount);
+      
     } catch (err) {
       console.error(err);
       return null;

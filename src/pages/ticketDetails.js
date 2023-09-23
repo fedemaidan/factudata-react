@@ -5,13 +5,15 @@ import ticketService from 'src/services/ticketService';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import TicketInfo from 'src/components/ticketInfo';
 import { useAuthContext } from 'src/contexts/auth-context';
+import { useAuth } from 'src/hooks/use-auth';
 
 const TicketDetailsPage = () => {
   const router = useRouter();
   const { ticketId } = router.query; 
   const { user } = useAuthContext();
+  const auth = useAuth();
   const [ticketData, setTicketData] = useState(null);
-  const userCredits = user.credit; // Supongamos que esta es la cantidad de créditos del usuario. Reemplácelo con el valor real.
+  const userCredits = user?.credit; // Supongamos que esta es la cantidad de créditos del usuario. Reemplácelo con el valor real.
 
   useEffect(() => {
     if (ticketId) {
@@ -26,7 +28,7 @@ const TicketDetailsPage = () => {
 
   // Actions for buttons
   const handleConfirm = () => {
-    // Confirm ticket logic here
+    ticketService.confirmTicketById(ticketId,ticketData.archivos.length, user.id);
   };
   
   const handleBuyCredit = () => {
