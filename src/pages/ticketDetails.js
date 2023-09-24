@@ -38,7 +38,7 @@ const TicketDetailsPage = () => {
   };
   
   const handleDelete = () => {
-    // Cancel ticket logic here
+    await ticketService.cancelTicketById(ticketId, user.id);
   };
 
   const shouldDisableConfirm = ticketData?.archivos?.length > userCredits;

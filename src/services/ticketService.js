@@ -79,6 +79,17 @@ const ticketService = {
       return null;
     }
   },
+  cancelTicketById: async (ticketId) => {
+    try {
+      await updateDoc(doc(db, 'tickets', ticketId), {
+        estado: "Cancelado",
+      });
+      
+    } catch (err) {
+      console.error(err);
+      return null;
+    }
+  },
   getTicketsForUser: async (userId) => {
     try {
       const q = query(collection(db, 'tickets'), where('userId', '==', userId));
