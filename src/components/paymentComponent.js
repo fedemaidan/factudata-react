@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
 import { Box, Typography, Divider, Button, Input, Stack } from '@mui/material';
+import { CircularProgress } from '@mui/material';
 
 const PaymentComponent = ({ paymentValue, creditAmount,onPaymentConfirm }) => {
   const [file, setFile] = useState(null);
   const [fileName, setFileName] = useState("Ningún archivo seleccionado");
+  const [loading, setLoading] = useState(false);
 
   const handleFileChange = (event) => {
     const selectedFile = event.target.files[0];
@@ -11,8 +13,10 @@ const PaymentComponent = ({ paymentValue, creditAmount,onPaymentConfirm }) => {
     setFileName(selectedFile ? selectedFile.name : "Ningún archivo seleccionado");
   };
 
-  const handleConfirm = () => {
-    onPaymentConfirm(paymentValue, parseInt(creditAmount), file);
+  const handleConfirm = async () => {
+    setLoading(true);  
+    await onPaymentConfirm(parseInt(paymentValue), parseInt(creditAmount), file);
+    setLoading(false);  
   };
 
   return (
@@ -53,9 +57,9 @@ const PaymentComponent = ({ paymentValue, creditAmount,onPaymentConfirm }) => {
             variant="contained"
             color="primary"
             onClick={handleConfirm}
-            disabled={!file}
+            disabled={!file || loading}
           >
-            Confirmar Operación
+            {loading ? <CircularProgress size={24} /> : "Confirmar Operación"}          
           </Button>
         </Stack>
       </Box>

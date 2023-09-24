@@ -13,6 +13,8 @@ const BuyCreditsPage = () => {
   useEffect(() => {
     if (router.query.credits) {
       setCreditQuantity(parseInt(router.query.credits));
+    } else {
+      setCreditQuantity(0);
     }
   }, [router.query.credits]);
 
@@ -34,8 +36,13 @@ const BuyCreditsPage = () => {
     { id: 4, name: 'Sorby Pro', pricePerCredit: 35, totalCredits: 6000, totalPrice: 210000, recommended: dataForPackages.recommendedId == 4 ? true: false }
   ];
 
-  const packages = defaultPackages.filter((p) => p.totalCredits >= creditQuantity);
-
+  const packages = defaultPackages.filter((p) => {
+    if (p.id === 1 && creditQuantity === 0) {
+      return false;  // Excluir paquete con id 1 si creditQuantity es 0
+    }
+    return p.totalCredits >= creditQuantity;
+  });
+  
   const handleSelectedPayment = (payment, credit) => {
     let url = '/payments?paymentValue='+payment+'&creditAmount='+credit;
     if (router.query.ticketId)
@@ -51,7 +58,7 @@ const BuyCreditsPage = () => {
 
       <Box sx={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center' }}>
         {packages.map((pkg) => (
-      
+          
           <Card key={pkg.name} sx={{ maxWidth: 200, m: 2 }}>
             <PricingCard 
               name={pkg.name}

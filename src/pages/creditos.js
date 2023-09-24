@@ -10,7 +10,7 @@ import { useRouter } from 'next/router';
 const CreditsPage = () => {
   const [creditsList, setCreditsList] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
-
+  const router = useRouter();
   const { user } = useAuthContext();
 
   const getCreditsList = async () => {
@@ -30,6 +30,9 @@ const CreditsPage = () => {
     getCreditsList();
   }, []);
 
+  const handleCargarCredito = () => {
+    router.push('/buyCredits')
+  };
   return (
     <>
       <Head>
@@ -45,6 +48,9 @@ const CreditsPage = () => {
         <Container maxWidth="xl">
           <Stack spacing={3}>
             <Typography variant="h4">Mis Créditos</Typography>
+            <Button variant="contained" onClick={handleCargarCredito}>
+              Cargar crédito
+            </Button>
             <CreditTable
               items={creditsList}
               isLoading={isLoading}
