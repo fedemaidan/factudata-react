@@ -82,13 +82,15 @@ const TicketDetailsPage = () => {
             Comprar crédito
           </Button>
         )}
+        {ticketData?.estado === 'Borrador' && (
         <Button 
           variant="outlined" 
           sx={{ mx: 1, borderColor: 'red', color: 'red' }} 
           onClick={handleDelete}
         >
-          Borrar pedido
+          Cancelar pedido
         </Button>
+        )}
       </Box>
     </Container>
   );
