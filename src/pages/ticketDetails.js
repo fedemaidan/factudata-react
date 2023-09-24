@@ -37,8 +37,8 @@ const TicketDetailsPage = () => {
     // Buy credit logic here
   };
   
-  const handleDelete = () => {
-    await ticketService.cancelTicketById(ticketId, user.id);
+  const handleDelete = async () => {
+    await ticketService.cancelTicketById(ticketId);
   };
 
   const shouldDisableConfirm = ticketData?.archivos?.length > userCredits;
