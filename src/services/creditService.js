@@ -22,12 +22,13 @@ export const getCreditsForUser = async (userId) => {
 export const getTotalCreditsForUser = async (userId) => {
   try {
     let total = 0;
-    
-    const querySnapshot = await db.collection("credits").where("userId", "==", userId).get();
-    
+    const q = query(collection(db, 'credits'), where('userId', '==', userId));
+    const querySnapshot = await getDocs(q);
+
     querySnapshot.forEach((doc) => {
       console.log(doc)
-      total += doc.data.amount;
+      console.log(doc.data())
+      total += doc.data().amount;
     });
     
     return total;

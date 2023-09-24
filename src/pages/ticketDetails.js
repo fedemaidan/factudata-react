@@ -27,8 +27,10 @@ const TicketDetailsPage = () => {
   }, [ticketId]);
 
   // Actions for buttons
-  const handleConfirm = () => {
-    ticketService.confirmTicketById(ticketId,ticketData.archivos.length, user.id);
+  const handleConfirm = async () => {
+    await ticketService.confirmTicketById(ticketId,ticketData.archivos.length, user.id);
+    await auth.refreshUser(user);
+    router.push('/solicitudes');
   };
   
   const handleBuyCredit = () => {

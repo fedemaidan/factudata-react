@@ -116,7 +116,8 @@ export const AuthProvider = (props) => {
     const user =  querySnapshot.docs[0].data();
     const id = querySnapshot.docs[0].id;
     const credit = await getTotalCreditsForUser(id);
-
+    console.log("pase por acá", credit)
+    
     dispatch({
       type: HANDLERS.UPDATE_USER,
       payload: {
@@ -172,20 +173,15 @@ export const AuthProvider = (props) => {
     });
   }
 
-  const refreshUser = async(id) => {
-    const userRef = collection(db, "profile");
+  const refreshUser = async(user) => {
     
-    const q = query(userRef, where("user_id", "==", id));
-    const querySnapshot = await getDocs(q);    
-    const user =  querySnapshot.docs[0].data();
-    const credit = await getTotalCreditsForUser(id);
-    console.log(credit);
+    const credit = await getTotalCreditsForUser(user.id);
+    
     dispatch({
       type: HANDLERS.UPDATE_USER,
       payload: {
         ...user,
-        credit: credit,
-        id: id
+        credit: credit
       }
     });
   }

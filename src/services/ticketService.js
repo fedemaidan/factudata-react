@@ -68,12 +68,11 @@ const ticketService = {
     }
   },
   confirmTicketById: async (ticketId, amount, userId) => {
-    
     try {
       await updateDoc(doc(db, 'tickets', ticketId), {
         estado: "Confirmado",
       });
-      removeCreditsForUser(userId, amount);
+      await removeCreditsForUser(userId, amount);
       
     } catch (err) {
       console.error(err);
