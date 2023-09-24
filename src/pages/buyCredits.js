@@ -17,10 +17,10 @@ const BuyCreditsPage = () => {
   }, [router.query.credits]);
 
   const packages = [
-    { name: 'Paquete a medida', pricePerCredit: 60, totalCredits: creditQuantity, totalPrice: creditQuantity * 60 },
-    { name: 'Sorby Independiente', pricePerCredit: 50, totalCredits: 400, totalPrice: 20000 },
-    { name: 'Sorby Avanzado', pricePerCredit: 40, totalCredits: 2500, totalPrice: 100000 },
-    { name: 'Sorby Pro', pricePerCredit: 35, totalCredits: 6000, totalPrice: 210000 }
+    { name: 'Paquete a medida', pricePerCredit: 60, totalCredits: creditQuantity, totalPrice: creditQuantity * 60, recommended: false },
+    { name: 'Sorby Independiente', pricePerCredit: 50, totalCredits: 400, totalPrice: 20000, recommended: false },
+    { name: 'Sorby Avanzado', pricePerCredit: 40, totalCredits: 2500, totalPrice: 100000, recommended: true },
+    { name: 'Sorby Pro', pricePerCredit: 35, totalCredits: 6000, totalPrice: 210000, recommended: false }
   ];
 
   const handleBuy = (packageName) => {
@@ -46,6 +46,7 @@ const BuyCreditsPage = () => {
               totalPrice={pkg.totalPrice}
               totalCredits={pkg.totalCredits}
               pricePerCredit={pkg.pricePerCredit}
+              recommended={pkg.recommended}
               />
           </Card>
         ))}
