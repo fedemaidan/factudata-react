@@ -36,18 +36,17 @@ const BuyCreditsPage = () => {
 
   const packages = defaultPackages.filter((p) => p.totalCredits >= creditQuantity);
 
-  const handleBuy = (packageName) => {
-    // Implement your buy logic here
-    console.log(`Buying package: ${packageName}`);
+  const handleSelectedPayment = (payment, credit) => {
+    let url = '/payments?paymentValue='+payment+'&creditAmount='+credit;
+    if (router.query.ticketId)
+      url += '&ticketId='+router.query.ticketId
+    router.push(url)
   };
 
   return (
     <Box sx={{ py: 8 }}>
       <Typography variant="h4" gutterBottom align="center">
-        Costos del Servicio
-      </Typography>
-      <Typography variant="subtitle1" gutterBottom align="center">
-        <strong>Hay un paquete pensado para la etapa profesional en la que te encontrás: elegilo.</strong>
+        Elegí el paquete que más te convenga
       </Typography>
 
       <Box sx={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center' }}>
@@ -60,6 +59,7 @@ const BuyCreditsPage = () => {
               totalCredits={pkg.totalCredits}
               pricePerCredit={pkg.pricePerCredit}
               recommended={pkg.recommended}
+              onSelectedPayment={handleSelectedPayment}
               />
           </Card>
         ))}

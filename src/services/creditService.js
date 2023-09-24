@@ -1,6 +1,7 @@
 import { db } from 'src/config/firebase';
 import { collection, doc, addDoc, getDoc, updateDoc, query, where, getDocs, serverTimestamp} from 'firebase/firestore';
-
+import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
+import { storage } from 'src/config/firebase';
 
 export const getCreditsForUser = async (userId) => {
   try {
@@ -26,8 +27,7 @@ export const getTotalCreditsForUser = async (userId) => {
     const querySnapshot = await getDocs(q);
 
     querySnapshot.forEach((doc) => {
-      console.log(doc)
-      console.log(doc.data())
+      console.log("Estoy calculando", doc.data().amount)
       total += doc.data().amount;
     });
     
@@ -38,16 +38,15 @@ export const getTotalCreditsForUser = async (userId) => {
   }
 };
 
-const addRegisterCreditForUser = async (userId, amount, type, cost) => {
-  amount = type == "ADD"? amount : -amount;
-  console.log(type, amount);
-
+const addRegisterCreditForUser = async (userId, amount, type, cost, url, status) => {
   const newCredit = {
     userId,
     type,
     amount,
     cost,
     date: serverTimestamp(),
+    comprobante: url,
+    status: status
   };
   const creditRef = await addDoc(collection(db, 'credits'), newCredit);
 
@@ -55,10 +54,19 @@ const addRegisterCreditForUser = async (userId, amount, type, cost) => {
 }
 
 // Agregar créditos para un usuario
-export const addCreditsForUser = async (userId, amount, cost = 0) => {
+export const addCreditsForUser = async (userId, amount, cost = 0, file = null) => {
   try {
-    console.log("aoaoaoa, estoy")
-    return addRegisterCreditForUser(userId, amount, "ADD", cost);
+    let url = null;
+    let status = "Init";
+
+    if (file != null && cost > 0) {
+      const filesFolderRef = ref(storage, `comprobantesCredito/${userId}/${file.name}`);
+      await uploadBytes(filesFolderRef, file);
+      url = await getDownloadURL(filesFolderRef);
+      status = "Pending"
+    }
+
+    return addRegisterCreditForUser(userId, amount, "ADD", cost, url, status);
   } catch (error) {
     console.error("Error al agregar créditos: ", error);
     return null;
@@ -68,7 +76,7 @@ export const addCreditsForUser = async (userId, amount, cost = 0) => {
 // Eliminar créditos para un usuario
 export const removeCreditsForUser = async (userId, amount) => {
   try {
-    return addRegisterCreditForUser(userId, amount, "REMOVE", 0);
+    return addRegisterCreditForUser(userId, -amount, "REMOVE", 0, null, null);
   } catch (error) {
     console.error("Error al eliminar créditos: ", error);
     return false;

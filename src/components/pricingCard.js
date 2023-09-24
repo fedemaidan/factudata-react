@@ -8,13 +8,19 @@ const CheckIcon = (props) => (
   </SvgIcon>
 );
 
-export default function PricingCard({ pricePerCredit, name, totalCredits, totalPrice, recommended = false }) {
+export default function PricingCard({ onSelectedPayment, pricePerCredit, name, totalCredits, totalPrice, recommended = false }) {
   const formattedPrice = totalPrice.toLocaleString('es-AR', {
-    style: 'currency',
+    // style: 'currency',
     currency: 'ARS',
     minimumFractionDigits: 0,
     maximumFractionDigits: 0
   });
+
+  const handleButtonClick = () => {
+    if (onSelectedPayment) {
+      onSelectedPayment(formattedPrice, totalCredits);
+    }
+  };
 
   return (
     <Card elevation={recommended ? 3 : 1} sx={{ borderRadius: '12px', width: '100%', position: 'relative' }}>
@@ -41,8 +47,8 @@ export default function PricingCard({ pricePerCredit, name, totalCredits, totalP
           </Stack>
         </Stack>
         <Box sx={{ mt: 2 }}>
-          <Button variant={recommended ? 'contained' : 'outlined'} color="primary" fullWidth>
-            Contratalo por {formattedPrice}
+          <Button variant={recommended ? 'contained' : 'outlined'} color="primary" fullWidth onClick={handleButtonClick}>
+            Contratalo por ${formattedPrice}
           </Button>
         </Box>
       </CardContent>

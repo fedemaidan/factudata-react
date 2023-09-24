@@ -9,6 +9,7 @@ import {
   TableRow,
 } from '@mui/material';
 import { Scrollbar } from 'src/components/scrollbar';
+import Link from 'next/link';
 
 export const CreditTable = (props) => {
   const { items = [] } = props;
@@ -33,6 +34,8 @@ export const CreditTable = (props) => {
                 <TableCell>Cantidad</TableCell>
                 <TableCell>Costo</TableCell>
                 <TableCell>Tipo</TableCell>
+                <TableCell>Status</TableCell>
+                <TableCell>Ver comprobante</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -42,6 +45,16 @@ export const CreditTable = (props) => {
                   <TableCell>{credit.amount}</TableCell>
                   <TableCell>{credit.cost}</TableCell>
                   <TableCell>{credit.type}</TableCell>
+                  <TableCell>{credit.status}</TableCell>
+                  <TableCell>              
+                    {credit.comprobante ? (
+                      <Link href={credit.comprobante} target="_blank" rel="noopener">
+                          Ver comprobante
+                      </Link>
+                    ) : (
+                      ""  // Puedes cambiar esto por cualquier otra representación cuando `credit.comprobante` sea nulo.
+                    )}
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>

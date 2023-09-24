@@ -34,7 +34,7 @@ const TicketDetailsPage = () => {
   };
   
   const handleBuyCredit = () => {
-    // Buy credit logic here
+    router.push('/buyCredits?credits='+ticketData.archivos.length+'&ticketId='+ticketId)
   };
   
   const handleDelete = async () => {
