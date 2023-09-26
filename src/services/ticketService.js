@@ -111,6 +111,27 @@ const ticketService = {
       return [];
     }
   },
+  getTickets: async () => {
+    try {
+      const q = query(collection(db, 'tickets'));
+      const querySnapshot = await getDocs(q);
+
+      const tickets = [];
+      querySnapshot.forEach((doc) => {
+        // Agregar cada ticket a la lista
+        const ticket = {
+          id: doc.id,
+          ...doc.data(),
+        };
+        tickets.push(ticket);
+      });
+      console.log(tickets)
+      return tickets;
+    } catch (err) {
+      console.error(err);
+      return [];
+    }
+  },
 };
 
 export default ticketService;

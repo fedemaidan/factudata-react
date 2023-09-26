@@ -24,6 +24,7 @@ export const TicketTable = (props) => {
     onSelectAll,
     onSelectOne,
     selected = [],
+    soy_privado
   } = props;
   const router = useRouter();
 
@@ -48,6 +49,7 @@ export const TicketTable = (props) => {
           <Table>
             <TableHead>
               <TableRow>
+                {soy_privado && <TableCell>UserId</TableCell>}
                 <TableCell>Creación</TableCell>
                 <TableCell>Tipo</TableCell>
                 <TableCell>Estado</TableCell>
@@ -62,6 +64,9 @@ export const TicketTable = (props) => {
 
                 return (
                   <TableRow hover key={ticket.id} selected={isSelected}>
+                    {soy_privado && 
+                    (<TableCell>{ticket.userId}</TableCell>)
+                    }
                     <TableCell>{formatTimestamp(ticket.created_at)}</TableCell>
                     <TableCell>{ticket.tipo}</TableCell>
                     <TableCell>{ticket.estado}</TableCell>
