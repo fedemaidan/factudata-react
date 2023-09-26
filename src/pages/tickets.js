@@ -19,24 +19,10 @@ const Page = () => {
   const router = useRouter();
  
   useEffect(() => {
-    if (router.query.soy_privado == "facukpo") {
-
-      setSoyPrivado(true);
-      const fetchProfiles = async () => {
-        try {
-          const profilesData = await profileService.getProfiles();
-          setProfiles(profilesData);
-        } catch (err) {
-          console.error(err);
-        }
-      };
-      
-      fetchProfiles();
-    }
     
     getTicketsList();
 
-  }, [router.query.soy_privado]);
+  }, []);
 
 
 
@@ -67,12 +53,23 @@ const Page = () => {
   };
   
   const handleSelectedProfile = (event, newValue) => {
-    console.log("pase por acá", newValue)
     setSelectedProfile(newValue) 
     if (newValue) {
-      console.log("pase por acá 2", newValue.email, newValue.id)
       getTicketsList(newValue.id)
     }
+  }
+
+  const handleVerPrivado = (event) => {
+    setSoyPrivado(!soy_privado);
+    const fetchProfiles = async () => {
+        try {
+          const profilesData = await profileService.getProfiles();
+          setProfiles(profilesData);
+        } catch (err) {
+          console.error(err);
+        }
+      };
+      fetchProfiles();
   }
 
   return (
@@ -88,6 +85,10 @@ const Page = () => {
         }}
       >
         <Container maxWidth="xl">
+          {(user.email == "fede.maidan@gmail.com" || user.email == "facundo.ferro@outlook.com") && 
+          <Button variant="contained" onClick={handleVerPrivado}>
+          Ver privado
+        </Button>}
           <Stack spacing={3}>
             <Typography variant="h4">Solicitudes</Typography>
             {soy_privado && <Autocomplete
