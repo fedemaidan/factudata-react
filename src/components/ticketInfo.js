@@ -79,11 +79,11 @@ const TicketInfo = ({ estimatedPrice, selectedTags, selectedFiles, fileType, sta
             >
               {fileChunk.map((file, fileIndex) => (
                 <Box key={fileIndex} mx={1}>
-                <a href={file.name} download target="_blank" rel="noopener">
+                <a href={file.name} target="_blank" rel="noopener">
                   <img src={file.name} alt={file.name} style={{ maxWidth: '100px', borderRadius: '8px' }} />
                 </a>
                 <Typography align="center" variant="body2" style={{ marginTop: '8px' }}>
-                  <a href={file.name} download target="_blank" rel="noopener" style={{ textDecoration: 'none', color: 'inherit' }}>
+                  <a href={file.name} target="_blank" rel="noopener" style={{ textDecoration: 'none', color: 'inherit' }}>
                     {file.originalName}
                   </a>
                 </Typography>
