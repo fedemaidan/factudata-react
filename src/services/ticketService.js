@@ -1,6 +1,6 @@
 import { collection, doc, addDoc, getDoc, updateDoc, query, where, getDocs, serverTimestamp} from 'firebase/firestore';
 import { db } from 'src/config/firebase';
-import { uploadFile } from './facturasService'; // Importa el servicio de facturas para subir los archivos
+import { uploadFile, deleteFacturaByFilename } from './facturasService'; // Importa el servicio de facturas para subir los archivos
 import { removeCreditsForUser } from './creditService';
 
 const ticketService = {
@@ -45,6 +45,29 @@ const ticketService = {
     }
 
     return ticketId;
+  },
+  removeFileToTicket: async (ticketId, file) => {
+    try {
+      // Obtener datos del ticket actual
+      const ticket = await ticketService.getTicketById(ticketId);
+      if (!ticket) throw new Error('Ticket no encontrado');
+      console.log(file)
+      // Filtrar los archivos, eliminando el archivo especificado
+      const updatedFiles = ticket.archivos.filter(archivo => archivo.name !== file.name);
+
+      // Actualizar el ticket con la lista de archivos filtrada
+      await updateDoc(doc(db, 'tickets', ticketId), { archivos: updatedFiles });
+
+      // Eliminar el archivo del sistema de almacenamiento
+      // Asegúrate de tener una función deleteFile en facturasService
+      // que maneje la eliminación real del archivo
+      await deleteFacturaByFilename(file.name);
+
+      return true;
+    } catch (err) {
+      console.error(err);
+      return false;
+    }
   },
   getTicketById: async (ticketId) => {
     try {

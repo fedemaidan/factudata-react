@@ -101,7 +101,7 @@ const TicketInfo = ({ selectedTags, selectedFiles, fileType, status, onConfirmNe
                 onClick={() => fileInputRef.current.click()}
                 sx={{ marginRight: '8px' }}
               >
-                Agregar Archivo
+                Agregar Archivos
               </Button>
               {newFiles.length > 0 && 
                 <Button 

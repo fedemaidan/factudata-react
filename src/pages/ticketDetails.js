@@ -43,8 +43,12 @@ const TicketDetailsPage = () => {
 
   const shouldDisableConfirm = ticketData?.archivos?.length > userCredits;
 
-  const handleRemoveFile = (fileToRemove) => {
-    console.log(fileToRemove)  
+  const handleRemoveFile = async (fileToRemove) => { //TODO
+    ticketService.removeFileToTicket(ticketId, fileToRemove)
+    console.log(ticketData)
+    ticketData.archivos = await ticketData.archivos.filter(file => file.name !== fileToRemove.name)
+  
+    setTicketData(ticketData);
   };
   
   const handleConfirmNewFiles = (files) => {
