@@ -2,7 +2,7 @@ import React from 'react';
 import { Box, Button, CircularProgress, Backdrop } from '@mui/material';
 import TicketInfo from 'src/components/ticketInfo';
 
-const OnboardingStep3 = ({ estimatedPrice, selectedTags, selectedFiles, fileType, onPreviousStep, onSave, isLoading, progress }) => {
+const OnboardingStep3 = ({ estimatedPrice, selectedTags, selectedFiles, fileType, onPreviousStep, onSave, isLoading, progress,onRemoveFile, onConfirmNewFiles }) => {
   return (
     <Box>
       <TicketInfo
@@ -11,6 +11,8 @@ const OnboardingStep3 = ({ estimatedPrice, selectedTags, selectedFiles, fileType
         selectedFiles={selectedFiles}
         fileType={fileType}
         status="Borrador"
+        onConfirmNewFiles={onConfirmNewFiles}
+        onRemoveFile={onRemoveFile}
       />
       <Button onClick={onPreviousStep}>Volver</Button>
       <Button onClick={onSave} disabled={isLoading}>Guardar solicitud</Button>

@@ -1,16 +1,35 @@
-import React, { useState } from 'react';
-import { Box, Typography, Paper, Tabs, Tab, Button } from '@mui/material';
+import React, { useState, useRef } from 'react';
+import { Box, Typography, Paper, Tabs, Tab, Button, IconButton, SvgIcon } from '@mui/material';
 import { grey } from '@mui/material/colors';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
+import TrashIcon from '@heroicons/react/24/solid/TrashIcon';
 
-const TicketInfo = ({ estimatedPrice, selectedTags, selectedFiles, fileType, status }) => {
+
+const TicketInfo = ({ selectedTags, selectedFiles, fileType, status, onConfirmNewFiles, onRemoveFile }) => {
   const [currentTab, setCurrentTab] = useState(0);
+  const [newFiles, setNewFiles] = useState([]);
+  const fileInputRef = useRef(null);
 
-  const chunkedFiles = [];
-  for (let i = 0; i < selectedFiles.length; i += 5) {
-    chunkedFiles.push(selectedFiles.slice(i, i + 5));
+  // const chunkedFiles = [];
+  // for (let i = 0; i < selectedFiles.length; i += 5) {
+  //   chunkedFiles.push(selectedFiles.slice(i, i + 5));
+  // }
+
+  const handleFileUpload = (event) => {
+    const files = Array.from(event.target.files);
+    setNewFiles(prevFiles => [...prevFiles, ...files]);
+    event.target.value = ''; 
+  };
+
+  const handleConfirmNewFiles = (newFiles) => {
+    onConfirmNewFiles(newFiles)
+    setNewFiles([])
   }
+
+  const removePendingFile = (index) => {
+    setNewFiles(prevFiles => prevFiles.filter((file, i) => i !== index));
+  };
 
   const downloadAllFiles = async () => {
     const zip = new JSZip();
@@ -22,8 +41,6 @@ const TicketInfo = ({ estimatedPrice, selectedTags, selectedFiles, fileType, sta
     const content = await zip.generateAsync({ type: 'blob' });
     saveAs(content, 'archivos.zip');
   };
-
-
 
   const handleChange = (event, newValue) => {
     setCurrentTab(newValue);
@@ -69,28 +86,54 @@ const TicketInfo = ({ estimatedPrice, selectedTags, selectedFiles, fileType, sta
           {/* <Button variant="outlined" onClick={downloadAllFiles} style={{ marginBottom: '16px' }}>
             Descargar todas
           </Button> */}
-          {chunkedFiles.map((fileChunk, chunkIndex) => (
-            <Box 
-              key={chunkIndex} 
-              display="flex" 
-              justifyContent="flex-start" 
-              alignItems="center"
-              mb={2}
-            >
-              {fileChunk.map((file, fileIndex) => (
-                <Box key={fileIndex} mx={1}>
-                <a href={file.name} target="_blank" rel="noreferrer">
-                  <img src={file.name} alt={file.name} style={{ maxWidth: '100px', borderRadius: '8px' }} />
-                </a>
-                <Typography align="center" variant="body2" style={{ marginTop: '8px' }}>
-                  <a href={file.name} target="_blank" rel="noreferrer" style={{ textDecoration: 'none', color: 'inherit' }}>
-                    {file.originalName}
-                  </a>
-                </Typography>
-              </Box>
-              
-              ))}
+          {status === 'Borrador' && (
+            <Box sx={{ mb: 2 }}>
+              <input
+                type="file"
+                ref={fileInputRef}
+                style={{ display: 'none' }}
+                onChange={handleFileUpload}
+                multiple 
+              />
+              <Button 
+                variant="outlined"
+                color="primary"
+                onClick={() => fileInputRef.current.click()}
+                sx={{ marginRight: '8px' }}
+              >
+                Agregar Archivo
+              </Button>
+              {newFiles.length > 0 && 
+                <Button 
+                  variant="contained"
+                  color="secondary"
+                  onClick={() => handleConfirmNewFiles(newFiles)}
+                >
+                  Confirmar nuevos archivos {newFiles.length}
+                </Button>
+              }
             </Box>
+          )}
+          {newFiles.length > 0 && newFiles.map((file, index) => (
+            <Box 
+              key={index} 
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                marginBottom: '8px',
+              }}
+            >
+              <Typography variant="body2" sx={{ marginRight: '8px' }}>{file.name}</Typography>
+              <IconButton size="small" onClick={() => removePendingFile(index)} color="error">
+                  <SvgIcon fontSize="small"><TrashIcon /></SvgIcon>
+              </IconButton>
+            </Box>
+          ))}
+          {selectedFiles.map((file, index) => (
+            <li key={index}>
+              {file.originalName? file.originalName: file.name}
+              <Button size="small" onClick={() => onRemoveFile(file)}><SvgIcon fontSize="small"><TrashIcon /></SvgIcon></Button>
+            </li>
           ))}
         </Paper>
       )}

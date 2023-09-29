@@ -38,6 +38,14 @@ const GenerarPedidoPage = () => {
     }
   };
 
+  const handleRemoveFile = (fileToRemove) => {
+    setFiles((prevFiles) => prevFiles.filter(file => file !== fileToRemove));
+  };
+  
+  const handleConfirmNewFiles = (newFiles) => {
+    setFiles(prevSelectedFiles => [...prevSelectedFiles, ...newFiles]);
+  };
+
   const recomendarPaquete = (cantidad) => {
     
     let result;
@@ -63,7 +71,7 @@ const GenerarPedidoPage = () => {
     // if (isLoading) {
       // Obtener el ticket actual
       const archivos = await getFacturasByTicketId(id);
-      console.log("archivos", archivos)
+      
       if (archivos) {
         // Calcular el progreso de carga
         const totalFiles = files.length;
@@ -156,6 +164,8 @@ const GenerarPedidoPage = () => {
                 onSave={handleSave}
                 isLoading={isLoading}
                 progress={uploadProgress}
+                onRemoveFile={handleRemoveFile}
+                onConfirmNewFiles={handleConfirmNewFiles}
               />
             )}
           </Stack>

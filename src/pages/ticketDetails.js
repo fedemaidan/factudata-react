@@ -43,6 +43,14 @@ const TicketDetailsPage = () => {
 
   const shouldDisableConfirm = ticketData?.archivos?.length > userCredits;
 
+  const handleRemoveFile = (fileToRemove) => {
+    console.log(fileToRemove)  
+  };
+  
+  const handleConfirmNewFiles = (files) => {
+    console.log(files)  
+  };
+
   return (
     <Container maxWidth="md">
       {ticketData ? (
@@ -52,6 +60,8 @@ const TicketDetailsPage = () => {
           selectedFiles={ticketData.archivos}
           fileType={ticketData.tipo}
           status={ticketData.estado}
+          onConfirmNewFiles={handleConfirmNewFiles}
+          onRemoveFile={handleRemoveFile}
         />
       ) : (
         <Typography variant="body1">Cargando...</Typography>

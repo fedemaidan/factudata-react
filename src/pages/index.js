@@ -1,3 +1,3 @@
-import Page from "src/pages/tickets";
+import Page from "src/pages/generarPedido";
 
 export default Page;

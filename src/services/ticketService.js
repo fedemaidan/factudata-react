@@ -20,8 +20,6 @@ const ticketService = {
       });
 
       return ticketRef;
-
-      // Subir las facturas y asociarlas al ticket
       
     } catch (err) {
       console.error(err);
