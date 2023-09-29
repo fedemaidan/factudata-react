@@ -14,6 +14,7 @@ const TicketDetailsPage = () => {
   const auth = useAuth();
   const [ticketData, setTicketData] = useState(null);
   const userCredits = user?.credit; // Supongamos que esta es la cantidad de créditos del usuario. Reemplácelo con el valor real.
+  const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
     if (ticketId) {
@@ -43,17 +44,36 @@ const TicketDetailsPage = () => {
 
   const shouldDisableConfirm = ticketData?.archivos?.length > userCredits;
 
-  const handleRemoveFile = async (fileToRemove) => { //TODO
-    ticketService.removeFileToTicket(ticketId, fileToRemove)
-    console.log(ticketData)
-    ticketData.archivos = await ticketData.archivos.filter(file => file.name !== fileToRemove.name)
-  
-    setTicketData(ticketData);
+  const handleRemoveFile = async (fileToRemove) => { 
+    setIsLoading(true);
+    try {
+      await ticketService.removeFileToTicket(ticketId, fileToRemove);
+      const updatedTicketData = { ...ticketData };
+      updatedTicketData.archivos = updatedTicketData.archivos.filter(file => file.name !== fileToRemove.name);
+      setTicketData(updatedTicketData);
+    } catch (error) {
+      console.error(error);
+      // Handle the error appropriately.
+    } finally {
+      setIsLoading(false);
+    }
   };
   
-  const handleConfirmNewFiles = (files) => {
-    console.log(files)  
+  const handleConfirmNewFiles = async (files) => {
+    setIsLoading(true);
+    try {
+      await ticketService.addFilesToTicket(ticketId, files);
+      const updatedTicketData = { ...ticketData };
+      updatedTicketData.archivos = updatedTicketData.archivos.concat(files);
+      setTicketData(updatedTicketData);
+    } catch (error) {
+      console.error(error);
+      // Handle the error appropriately.
+    } finally {
+      setIsLoading(false);
+    }
   };
+  
 
   return (
     <Container maxWidth="md">
@@ -66,6 +86,7 @@ const TicketDetailsPage = () => {
           status={ticketData.estado}
           onConfirmNewFiles={handleConfirmNewFiles}
           onRemoveFile={handleRemoveFile}
+          isLoading={isLoading}
         />
       ) : (
         <Typography variant="body1">Cargando...</Typography>

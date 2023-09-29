@@ -4,18 +4,14 @@ import { grey } from '@mui/material/colors';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 import TrashIcon from '@heroicons/react/24/solid/TrashIcon';
+import CircularProgress from '@mui/material/CircularProgress';
 
 
-const TicketInfo = ({ selectedTags, selectedFiles, fileType, status, onConfirmNewFiles, onRemoveFile }) => {
+const TicketInfo = ({ selectedTags, selectedFiles, fileType, status, onConfirmNewFiles, onRemoveFile, isLoading }) => {
   const [currentTab, setCurrentTab] = useState(0);
   const [newFiles, setNewFiles] = useState([]);
   const fileInputRef = useRef(null);
-
-  // const chunkedFiles = [];
-  // for (let i = 0; i < selectedFiles.length; i += 5) {
-  //   chunkedFiles.push(selectedFiles.slice(i, i + 5));
-  // }
-
+  
   const handleFileUpload = (event) => {
     const files = Array.from(event.target.files);
     setNewFiles(prevFiles => [...prevFiles, ...files]);
@@ -95,6 +91,10 @@ const TicketInfo = ({ selectedTags, selectedFiles, fileType, status, onConfirmNe
                 onChange={handleFileUpload}
                 multiple 
               />
+              {isLoading ? (
+                <Box display="flex" justifyContent="center" alignItems="center" minHeight="100vh">
+                  <CircularProgress />
+                </Box>) : (
               <Button 
                 variant="outlined"
                 color="primary"
@@ -102,7 +102,7 @@ const TicketInfo = ({ selectedTags, selectedFiles, fileType, status, onConfirmNe
                 sx={{ marginRight: '8px' }}
               >
                 Agregar Archivos
-              </Button>
+              </Button>)}
               {newFiles.length > 0 && 
                 <Button 
                   variant="contained"

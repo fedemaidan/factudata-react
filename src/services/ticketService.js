@@ -69,6 +69,29 @@ const ticketService = {
       return false;
     }
   },
+  addFilesToTicket: async (ticketId, files) => {
+    try {
+      // Obtener datos del ticket actual
+      const ticket = await ticketService.getTicketById(ticketId);
+      if (!ticket) throw new Error('Ticket no encontrado');
+
+      // Subir nuevos archivos y obtener sus detalles
+      // Asegúrate de tener una función uploadFiles en facturasService
+      // que maneje la carga y devuelva detalles sobre los archivos cargados
+      const uploadedFiles = await uploadFile(files, ticket.tipo, ticketId);
+      console.log(uploadedFiles)
+      // Concatenar los archivos existentes con los nuevos archivos cargados
+      const allFiles = ticket.archivos.concat(uploadedFiles);
+
+      // Actualizar el ticket con la lista de archivos completa
+      await updateDoc(doc(db, 'tickets', ticketId), { archivos: allFiles });
+
+      return true;
+    } catch (err) {
+      console.error(err);
+      return false;
+    }
+  },
   getTicketById: async (ticketId) => {
     try {
       const ticketDocRef = doc(db, 'tickets', ticketId);
