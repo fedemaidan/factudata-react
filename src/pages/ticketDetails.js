@@ -58,6 +58,21 @@ const TicketDetailsPage = () => {
       setIsLoading(false);
     }
   };
+
+  const handleRemoveResultFile = async (fileToRemove) => { 
+    setIsLoading(true);
+    try {
+      await ticketService.removeResultFileToTicket(ticketId, fileToRemove);
+      const updatedTicketData = { ...ticketData };
+      updatedTicketData.resultado = updatedTicketData.resultado.filter(file => file.name !== fileToRemove.name);
+      setTicketData(updatedTicketData);
+    } catch (error) {
+      console.error(error);
+      // Handle the error appropriately.
+    } finally {
+      setIsLoading(false);
+    }
+  };
   
   const handleConfirmNewFiles = async (files) => {
     setIsLoading(true);
@@ -74,6 +89,23 @@ const TicketDetailsPage = () => {
     }
   };
   
+  const handleAddResult = async (files) => {
+    setIsLoading(true);
+    console.log("pase por aqui", files)
+    try {
+      await ticketService.addResultToTicket(ticketId, files);
+      const updatedTicketData = { ...ticketData };
+      if (!updatedTicketData.resultado)
+        updatedTicketData.resultado = []
+      updatedTicketData.resultado = updatedTicketData.resultado.concat(files);
+      setTicketData(updatedTicketData);
+    } catch (error) {
+      console.error(error);
+      // Handle the error appropriately.
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   return (
     <Container maxWidth="md">
@@ -84,8 +116,11 @@ const TicketDetailsPage = () => {
           selectedFiles={ticketData.archivos}
           fileType={ticketData.tipo}
           status={ticketData.estado}
+          resultFiles={ticketData.resultado}
           onConfirmNewFiles={handleConfirmNewFiles}
           onRemoveFile={handleRemoveFile}
+          onRemoveResultFile={handleRemoveResultFile}
+          onAddResult={handleAddResult}
           isLoading={isLoading}
         />
       ) : (

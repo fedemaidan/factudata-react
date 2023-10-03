@@ -16,7 +16,8 @@ const ticketService = {
         estado: "Borrador",
         userId: userId,
         created_at: serverTimestamp(),
-        archivos: []
+        archivos: [],
+        resultado: []
       });
 
       return ticketRef;
@@ -69,6 +70,25 @@ const ticketService = {
       return false;
     }
   },
+  removeResultFileToTicket: async (ticketId, file) => {
+    try {
+      // Obtener datos del ticket actual
+      const ticket = await ticketService.getTicketById(ticketId);
+      if (!ticket) throw new Error('Ticket no encontrado');
+      console.log(file, ticket.resultado)
+      
+      // Filtrar los archivos, eliminando el archivo especificado
+      const updatedFiles = ticket.resultado.filter(archivo => archivo.name !== file.name);
+
+      // Actualizar el ticket con la lista de archivos filtrada
+      await updateDoc(doc(db, 'tickets', ticketId), { resultado: updatedFiles });
+
+      return true;
+    } catch (err) {
+      console.error(err);
+      return false;
+    }
+  },
   addFilesToTicket: async (ticketId, files) => {
     try {
       // Obtener datos del ticket actual
@@ -78,13 +98,33 @@ const ticketService = {
       // Subir nuevos archivos y obtener sus detalles
       // Asegúrate de tener una función uploadFiles en facturasService
       // que maneje la carga y devuelva detalles sobre los archivos cargados
-      const uploadedFiles = await uploadFile(files, ticket.tipo, ticketId);
-      console.log(uploadedFiles)
+      const uploadedFiles = await uploadFile(files, 'input', ticketId);
+      
       // Concatenar los archivos existentes con los nuevos archivos cargados
       const allFiles = ticket.archivos.concat(uploadedFiles);
 
       // Actualizar el ticket con la lista de archivos completa
       await updateDoc(doc(db, 'tickets', ticketId), { archivos: allFiles });
+
+      return true;
+    } catch (err) {
+      console.error(err);
+      return false;
+    }
+  },
+  addResultToTicket: async (ticketId, files) => {
+    try {
+      // Obtener datos del ticket actual
+      const ticket = await ticketService.getTicketById(ticketId);
+      if (!ticket) throw new Error('Ticket no encontrado');
+
+      const uploadedFiles = await uploadFile(files, 'output', ticketId);
+      if (!ticket.resultado)
+        ticket.resultado = []
+      const allFiles = ticket.resultado.concat(uploadedFiles);
+
+      // Actualizar el ticket con la lista de archivos completa
+      await updateDoc(doc(db, 'tickets', ticketId), { resultado: allFiles });
 
       return true;
     } catch (err) {

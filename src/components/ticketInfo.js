@@ -5,13 +5,17 @@ import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 import TrashIcon from '@heroicons/react/24/solid/TrashIcon';
 import CircularProgress from '@mui/material/CircularProgress';
+import { useAuthContext } from 'src/contexts/auth-context';
 
 
-const TicketInfo = ({ selectedTags, selectedFiles, fileType, status, onConfirmNewFiles, onRemoveFile, isLoading }) => {
+const TicketInfo = ({ selectedTags, selectedFiles, resultFiles, fileType, status, onConfirmNewFiles, onRemoveFile, onRemoveResultFile, onAddResult, isLoading }) => {
   const [currentTab, setCurrentTab] = useState(0);
   const [newFiles, setNewFiles] = useState([]);
   const fileInputRef = useRef(null);
-  
+  const [newResultFiles, setNewResultFiles] = useState([]);
+  const resultFileInputRef = useRef(null);
+  const { user } = useAuthContext();
+
   const handleFileUpload = (event) => {
     const files = Array.from(event.target.files);
     setNewFiles(prevFiles => [...prevFiles, ...files]);
@@ -23,9 +27,25 @@ const TicketInfo = ({ selectedTags, selectedFiles, fileType, status, onConfirmNe
     setNewFiles([])
   }
 
+  const handleResultFileUpload = (event) => {
+    const files = Array.from(event.target.files);
+    setNewResultFiles(prevFiles => [...prevFiles, ...files]);
+    event.target.value = ''; 
+  };
+
   const removePendingFile = (index) => {
     setNewFiles(prevFiles => prevFiles.filter((file, i) => i !== index));
   };
+
+  const handleConfirmNewResultFiles = () => {
+    onAddResult(newResultFiles);
+    setNewResultFiles([]);
+  }
+
+  const removePendingResultFile = (index) => {
+    setNewResultFiles(prevFiles => prevFiles.filter((file, i) => i !== index));
+  };
+
 
   const downloadAllFiles = async () => {
     const zip = new JSZip();
@@ -42,8 +62,9 @@ const TicketInfo = ({ selectedTags, selectedFiles, fileType, status, onConfirmNe
     setCurrentTab(newValue);
   };
 
-  const labelArchivos = `Archivos (${selectedFiles.length})`;
-  
+  const labelArchivos = `Bandeja de entrada (${selectedFiles.length})`;
+  const labelBandejaSalida = `Bandeja de salida`;
+
   return (
     <Box sx={{ backgroundColor: grey[100], padding: '16px' }}>
       <Paper elevation={2} sx={{ backgroundColor: '#fff', borderRadius: '12px', marginBottom: '16px' }}>
@@ -56,6 +77,7 @@ const TicketInfo = ({ selectedTags, selectedFiles, fileType, status, onConfirmNe
         >
           <Tab label="Información general" />
           <Tab label={labelArchivos} />
+          <Tab label={labelBandejaSalida} />
         </Tabs>
       </Paper>
 
@@ -136,6 +158,63 @@ const TicketInfo = ({ selectedTags, selectedFiles, fileType, status, onConfirmNe
             </li>
           ))}
         </Paper>
+      )}
+      {(currentTab === 2 && status === 'Confirmado') && (
+        <Paper elevation={2}>
+        {resultFiles.length == 0 && <Typography variant="body1">Estamos procesando tu pedido.</Typography>}
+        {(user.email === "fede.maidan@gmail.com" || user.email === "facundo.ferro@outlook.com") && (
+          <>
+            <input
+              type="file"
+              ref={resultFileInputRef}
+              style={{ display: 'none' }}
+              onChange={handleResultFileUpload}
+              multiple
+            />
+            {isLoading ? (
+                <Box display="flex" justifyContent="center" alignItems="center" minHeight="100vh">
+                  <CircularProgress />
+                </Box>) : ( <Button 
+              variant="outlined"
+              color="primary"
+              onClick={() => resultFileInputRef.current.click()}
+              sx={{ marginRight: '8px' }}
+            >
+              Agregar Archivos de Resultado
+            </Button>)}
+            {newResultFiles.length > 0 && 
+              <Button 
+                variant="contained"
+                color="secondary"
+                onClick={handleConfirmNewResultFiles}
+              >
+                Confirmar Archivos de Resultado {newResultFiles.length}
+              </Button>
+            }
+            {newResultFiles.length > 0 && newResultFiles.map((file, index) => (
+              <Box 
+                key={index} 
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  marginBottom: '8px',
+                }}
+              >
+                <Typography variant="body2" sx={{ marginRight: '8px' }}>{file.name}</Typography>
+                <IconButton size="small" onClick={() => removePendingResultFile(index)} color="error">
+                    <SvgIcon fontSize="small"><TrashIcon /></SvgIcon>
+                </IconButton>
+              </Box>
+            ))}
+            {resultFiles.map((file, index) => (
+            <li key={index}>
+              {file.originalName? file.originalName: file.name}
+              <Button size="small" onClick={() => onRemoveResultFile(file)}><SvgIcon fontSize="small"><TrashIcon /></SvgIcon></Button>
+            </li>
+          ))}
+          </>
+        )}
+      </Paper>
       )}
     </Box>
   );
