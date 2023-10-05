@@ -221,7 +221,9 @@ const TicketInfo = ({ selectedTags, selectedFiles, resultFiles = [], fileType, s
                 </a> :
                 file.name
               }
-              <Button size="small" onClick={() => onRemoveResultFile(file)}><SvgIcon fontSize="small"><TrashIcon /></SvgIcon></Button>
+              {(user.email === "fede.maidan@gmail.com" || user.email === "facundo.ferro@outlook.com") && (
+                <Button size="small" onClick={() => onRemoveResultFile(file)}><SvgIcon fontSize="small"><TrashIcon /></SvgIcon></Button>
+              )}
             </li>
           ))}
       </Paper>
