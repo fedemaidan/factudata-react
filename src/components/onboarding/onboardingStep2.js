@@ -60,8 +60,15 @@ const OnboardingStep2 = ({ reason, onPreviousStep, onNextStep }) => {
           sx={{ mt: 2 }}
           renderInput={(params) => <TextField {...params} label="Campos a extraer.." variant="outlined" />}
         />
-        <Typography sx={{ mt: 2 }}>¿Quieres agregar otros campos? Escribe el que quieras y presiona "Agregar"</Typography>
-        <Box sx={{ display: 'flex', alignItems: 'center', mt: 1 }}>
+        <Typography sx={{ mt: 2 }}>
+          ¿Quieres agregar otros campos? Escribe el que quieras y presiona {'"Agregar"'}
+        </Typography>
+        <Box 
+          sx={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            mt: 1 }}
+        >
           <TextField 
             value={customTag}
             onChange={(e) => setCustomTag(e.target.value)}
