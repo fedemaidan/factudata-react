@@ -146,14 +146,16 @@ export const AuthProvider = (props) => {
     const usersCollectionRef = collection(db, 'profile');
     const userRef = await addDoc(usersCollectionRef, user)
     await addCreditsForUser(userRef.id,initCredit);
+    const newUser = {
+      ...user,
+      credit: initCredit,
+      id: userRef.id
+    }
+    await updateUser(newUser)
     
     dispatch({
       type: HANDLERS.UPDATE_USER,
-      payload: {
-        ...user,
-        credit: initCredit,
-        id: userRef.id
-      }
+      payload: newUser
     });
   };
 

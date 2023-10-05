@@ -8,7 +8,7 @@ import CircularProgress from '@mui/material/CircularProgress';
 import { useAuthContext } from 'src/contexts/auth-context';
 
 
-const TicketInfo = ({ selectedTags, selectedFiles, resultFiles, fileType, status, onConfirmNewFiles, onRemoveFile, onRemoveResultFile, onAddResult, isLoading }) => {
+const TicketInfo = ({ selectedTags, selectedFiles, resultFiles = [], fileType, status, onConfirmNewFiles, onRemoveFile, onRemoveResultFile, onAddResult, isLoading }) => {
   const [currentTab, setCurrentTab] = useState(0);
   const [newFiles, setNewFiles] = useState([]);
   const fileInputRef = useRef(null);
@@ -63,7 +63,7 @@ const TicketInfo = ({ selectedTags, selectedFiles, resultFiles, fileType, status
   };
 
   const labelArchivos = `Bandeja de entrada (${selectedFiles.length})`;
-  const labelBandejaSalida = `Bandeja de salida`;
+  const labelBandejaSalida = `Bandeja de salida (${resultFiles.length})`;
 
   return (
     <Box sx={{ backgroundColor: grey[100], padding: '16px' }}>
@@ -77,7 +77,7 @@ const TicketInfo = ({ selectedTags, selectedFiles, resultFiles, fileType, status
         >
           <Tab label="Información general" />
           <Tab label={labelArchivos} />
-          <Tab label={labelBandejaSalida} />
+          {status == "Confirmado" && <Tab label={labelBandejaSalida} />}
         </Tabs>
       </Paper>
 
@@ -191,7 +191,9 @@ const TicketInfo = ({ selectedTags, selectedFiles, resultFiles, fileType, status
                 Confirmar Archivos de Resultado {newResultFiles.length}
               </Button>
             }
-            {newResultFiles.length > 0 && newResultFiles.map((file, index) => (
+          </>
+        )}
+        {newResultFiles.length > 0 && newResultFiles.map((file, index) => (
               <Box 
                 key={index} 
                 sx={{
@@ -212,8 +214,6 @@ const TicketInfo = ({ selectedTags, selectedFiles, resultFiles, fileType, status
               <Button size="small" onClick={() => onRemoveResultFile(file)}><SvgIcon fontSize="small"><TrashIcon /></SvgIcon></Button>
             </li>
           ))}
-          </>
-        )}
       </Paper>
       )}
     </Box>

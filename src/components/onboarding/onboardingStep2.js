@@ -21,7 +21,7 @@ const OnboardingStep2 = ({ reason, onPreviousStep, onNextStep }) => {
 
   const handleNextStep = () => {
     onNextStep({
-      tags: [...selectedTags, customTag],
+      tags: selectedTags,
       reason: reasonData,
     });
   };
@@ -30,17 +30,17 @@ const OnboardingStep2 = ({ reason, onPreviousStep, onNextStep }) => {
     setReasonData(value);
   };
 
-  const handleTagInputChange = (event, newValue) => {
-    setCustomTag(newValue);
+  const handleAddCustomTag = () => {
+    if (customTag.trim() !== '' && !selectedTags.includes(customTag)) {
+      setTags((prevTags) => [...prevTags, customTag]);
+      setSelectedTags((prevSelectedTags) => [...prevSelectedTags, customTag]);
+      setCustomTag('');
+    }
   };
 
   const handleKeyDown = (event) => {
     if (event.key === 'Enter') {
-      if (customTag.trim() !== '' && !selectedTags.includes(customTag)) {
-        setTags((prevTags) => [...prevTags, customTag]);
-        setSelectedTags((prevSelectedTags) => [...prevSelectedTags, customTag]);
-      }
-      setCustomTag('');
+      handleAddCustomTag();
     }
   };
 
@@ -58,11 +58,19 @@ const OnboardingStep2 = ({ reason, onPreviousStep, onNextStep }) => {
             setSelectedTags(newValue);
           }}
           sx={{ mt: 2 }}
-          inputValue={customTag}
-          onInputChange={handleTagInputChange}
-          onKeyDown={handleKeyDown}
           renderInput={(params) => <TextField {...params} label="Campos a extraer.." variant="outlined" />}
         />
+        <Typography sx={{ mt: 2 }}>¿Quieres agregar otros campos? Escribe el que quieras y presiona "Agregar"</Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center', mt: 1 }}>
+          <TextField 
+            value={customTag}
+            onChange={(e) => setCustomTag(e.target.value)}
+            label="Campo personalizado"
+            variant="outlined"
+            onKeyDown={handleKeyDown}
+          />
+          <Button onClick={handleAddCustomTag} sx={{ ml: 2 }}>Agregar</Button>
+        </Box>
         <Typography>2. Dejanos comentarios extra sobre la carga para ayudarnos a hacerlo lo mejor posible</Typography>
         <TextField
           label="Opcional: ¿Para qué los vas a usar? ¿Algo que quieras aclarar?"

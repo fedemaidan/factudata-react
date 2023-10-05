@@ -15,7 +15,6 @@ const profileService = {
         };
         profiles.push(profile);
       });
-      console.log(profiles)
       return profiles;
     } catch (err) {
       console.error(err);
