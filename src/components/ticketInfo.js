@@ -153,7 +153,12 @@ const TicketInfo = ({ selectedTags, selectedFiles, resultFiles = [], fileType, s
           ))}
           {selectedFiles.map((file, index) => (
             <li key={index}>
-              {file.originalName? file.originalName: file.name}
+              {file.originalName?
+                <a href={file.name} target="_blank" rel="noopener noreferrer">
+                  {file.originalName}
+                </a> :
+                file.name
+              }
               <Button size="small" onClick={() => onRemoveFile(file)}><SvgIcon fontSize="small"><TrashIcon /></SvgIcon></Button>
             </li>
           ))}
@@ -210,7 +215,12 @@ const TicketInfo = ({ selectedTags, selectedFiles, resultFiles = [], fileType, s
             ))}
             {resultFiles.map((file, index) => (
             <li key={index}>
-              {file.originalName? file.originalName: file.name}
+              {file.originalName?
+                <a href={file.name} target="_blank" rel="noopener noreferrer">
+                  {file.originalName}
+                </a> :
+                file.name
+              }
               <Button size="small" onClick={() => onRemoveResultFile(file)}><SvgIcon fontSize="small"><TrashIcon /></SvgIcon></Button>
             </li>
           ))}
