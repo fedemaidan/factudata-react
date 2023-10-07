@@ -4,6 +4,19 @@ import { uploadFile, deleteFacturaByFilename } from './facturasService'; // Impo
 import { removeCreditsForUser } from './creditService';
 
 const ticketService = {
+  calcularEta: (cantidad) => {
+    const hoy = new Date();
+    let diasASumar;
+  
+    if (cantidad < 100) diasASumar = 2;
+    else if (cantidad < 500) diasASumar = 4;
+    else if (cantidad < 1000) diasASumar = 6;
+    else return "Calculando..";
+  
+    hoy.setDate(hoy.getDate() + diasASumar);
+
+    return hoy.toLocaleDateString('es-AR', { year: 'numeric', month: 'long', day: 'numeric' });
+  },  
   createTicket: async (ticketData) => {
     try {
       const { tipo, tags, precioEstimado, userId } = ticketData;
@@ -16,6 +29,7 @@ const ticketService = {
         estado: "Borrador",
         userId: userId,
         created_at: serverTimestamp(),
+        eta: "",
         archivos: [],
         resultado: []
       });
@@ -42,6 +56,7 @@ const ticketService = {
       // Guardar los enlaces de los archivos en el ticket
       await updateDoc(doc(db, 'tickets', ticketId), {
           archivos: uploadResult,
+          eta: ticketService.calcularEta(uploadResult.length),
       });
     }
 
@@ -104,7 +119,7 @@ const ticketService = {
       const allFiles = ticket.archivos.concat(uploadedFiles);
 
       // Actualizar el ticket con la lista de archivos completa
-      await updateDoc(doc(db, 'tickets', ticketId), { archivos: allFiles });
+      await updateDoc(doc(db, 'tickets', ticketId), { archivos: allFiles, eta: ticketService.calcularEta(allFiles.length) });
 
       return true;
     } catch (err) {
@@ -155,6 +170,7 @@ const ticketService = {
     try {
       await updateDoc(doc(db, 'tickets', ticketId), {
         estado: "Confirmado",
+        eta: ticketService.calcularEta(amount)
       });
       await removeCreditsForUser(userId, amount);
       

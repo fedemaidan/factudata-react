@@ -20,6 +20,7 @@ const TicketDetailsPage = () => {
     if (ticketId) {
       async function fetchTicketData() {
         const ticket = await ticketService.getTicketById(ticketId);
+        console.log(ticket)
         setTicketData(ticket);
       }
       
@@ -91,7 +92,6 @@ const TicketDetailsPage = () => {
   
   const handleAddResult = async (files) => {
     setIsLoading(true);
-    console.log("pase por aqui", files)
     try {
       await ticketService.addResultToTicket(ticketId, files);
       const updatedTicketData = { ...ticketData };
@@ -117,6 +117,7 @@ const TicketDetailsPage = () => {
           fileType={ticketData.tipo}
           status={ticketData.estado}
           resultFiles={ticketData.resultado}
+          eta={ticketData.eta}
           onConfirmNewFiles={handleConfirmNewFiles}
           onRemoveFile={handleRemoveFile}
           onRemoveResultFile={handleRemoveResultFile}

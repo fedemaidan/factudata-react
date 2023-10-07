@@ -161,6 +161,7 @@ const GenerarPedidoPage = () => {
                 fileType={fileType}
                 selectedTags={selectedTagsData}
                 onPreviousStep={handlePreviousStep}
+                eta={ticketService.calcularEta(files.length)}
                 onSave={handleSave}
                 isLoading={isLoading}
                 progress={uploadProgress}

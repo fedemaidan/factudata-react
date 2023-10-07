@@ -55,6 +55,7 @@ export const TicketTable = (props) => {
                 <TableCell>Estado</TableCell>
                 <TableCell>Campos</TableCell>
                 <TableCell>Cantidad de Archivos</TableCell>
+                <TableCell>Tiempo de entrega estimado</TableCell>
                 <TableCell>Acciones</TableCell>
               </TableRow>
             </TableHead>
@@ -72,6 +73,7 @@ export const TicketTable = (props) => {
                     <TableCell>{ticket.estado}</TableCell>
                     <TableCell>{ticket.tags.join(', ')}</TableCell>
                     <TableCell>{ticket.archivos.length}</TableCell>
+                    <TableCell>{ticket.eta ? ticket.eta: "No definido"}</TableCell>
                     <TableCell>
                       <Button
                         variant="outlined"

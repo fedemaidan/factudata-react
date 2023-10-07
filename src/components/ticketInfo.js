@@ -8,7 +8,7 @@ import CircularProgress from '@mui/material/CircularProgress';
 import { useAuthContext } from 'src/contexts/auth-context';
 
 
-const TicketInfo = ({ selectedTags, selectedFiles, resultFiles = [], fileType, status, onConfirmNewFiles, onRemoveFile, onRemoveResultFile, onAddResult, isLoading }) => {
+const TicketInfo = ({ selectedTags, selectedFiles, resultFiles = [], fileType, status, eta, onConfirmNewFiles, onRemoveFile, onRemoveResultFile, onAddResult, isLoading }) => {
   const [currentTab, setCurrentTab] = useState(0);
   const [newFiles, setNewFiles] = useState([]);
   const fileInputRef = useRef(null);
@@ -85,6 +85,9 @@ const TicketInfo = ({ selectedTags, selectedFiles, resultFiles = [], fileType, s
         <Paper elevation={2} sx={{ padding: '24px', backgroundColor: '#fff', borderRadius: '12px' }}>
         <Typography variant="body1" gutterBottom>
           <strong>Tipo de trabajo:</strong> <span style={{ fontWeight: 300 }}>{fileType}</span>
+        </Typography>
+        <Typography variant="body1" gutterBottom>
+          <strong>Fecha de entrega estimado:</strong> <span style={{ fontWeight: 300 }}>{eta}</span>
         </Typography>
         <Typography variant="body1" gutterBottom>
           <strong>Datos de cada factura:</strong> <span style={{ fontWeight: 300 }}>{selectedTags.join(', ')}</span>
