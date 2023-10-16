@@ -137,9 +137,15 @@ const ticketService = {
       if (!ticket.resultado)
         ticket.resultado = []
       const allFiles = ticket.resultado.concat(uploadedFiles);
-
+      const hoy = new Date().toLocaleDateString('es-AR', { year: 'numeric', month: 'long', day: 'numeric' });
+      console.log(hoy)
       // Actualizar el ticket con la lista de archivos completa
-      await updateDoc(doc(db, 'tickets', ticketId), { resultado: allFiles });
+      await updateDoc(doc(db, 'tickets', ticketId), 
+        { 
+          estado: "Completado", 
+          eta: hoy,
+          resultado: allFiles 
+      });
 
       return true;
     } catch (err) {
