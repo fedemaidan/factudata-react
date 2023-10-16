@@ -19,8 +19,13 @@ const ticketService = {
   },  
   createTicket: async (ticketData) => {
     try {
-      const { tipo, tags, precioEstimado, userId } = ticketData;
-  
+      const { tipo, tags, precioEstimado, userId, reason } = ticketData;
+      const comentarios =  [{
+        who: "user",
+        created_at: "Init",
+        data: reason
+      }] 
+      console.log(comentarios)
       // Agregar el ticket a la colección 'tickets'
       const ticketRef = await addDoc(collection(db, 'tickets'), {
         tipo: tipo,
@@ -31,7 +36,8 @@ const ticketService = {
         created_at: serverTimestamp(),
         eta: "",
         archivos: [],
-        resultado: []
+        resultado: [],
+        comentarios: comentarios
       });
 
       return ticketRef;
@@ -138,7 +144,7 @@ const ticketService = {
         ticket.resultado = []
       const allFiles = ticket.resultado.concat(uploadedFiles);
       const hoy = new Date().toLocaleDateString('es-AR', { year: 'numeric', month: 'long', day: 'numeric' });
-      console.log(hoy)
+      
       // Actualizar el ticket con la lista de archivos completa
       await updateDoc(doc(db, 'tickets', ticketId), 
         { 

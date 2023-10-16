@@ -99,9 +99,10 @@ const GenerarPedidoPage = () => {
           tags: selectedTagsData,
           precioEstimado: estimatedPrice,
           archivos: files,
-          userId: user.id
+          userId: user.id,
+          reason: reason
         };
-  
+        console.log(ticketData)
         let ticketCreationResult = await ticketService.createTicket(ticketData);
         
         const interval = setInterval(() => {

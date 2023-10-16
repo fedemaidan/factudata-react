@@ -20,7 +20,6 @@ const TicketDetailsPage = () => {
     if (ticketId) {
       async function fetchTicketData() {
         const ticket = await ticketService.getTicketById(ticketId);
-        console.log(ticket)
         setTicketData(ticket);
       }
       
@@ -118,6 +117,7 @@ const TicketDetailsPage = () => {
           status={ticketData.estado}
           resultFiles={ticketData.resultado}
           eta={ticketData.eta}
+          comentarios={ticketData.comentarios}
           onConfirmNewFiles={handleConfirmNewFiles}
           onRemoveFile={handleRemoveFile}
           onRemoveResultFile={handleRemoveResultFile}
