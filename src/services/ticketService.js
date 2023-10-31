@@ -1,4 +1,4 @@
-import { collection, doc, addDoc, getDoc, updateDoc, query, where, getDocs, serverTimestamp} from 'firebase/firestore';
+import { collection, doc, addDoc, getDoc, updateDoc, query, where, getDocs, orderBy, serverTimestamp} from 'firebase/firestore';
 import { db } from 'src/config/firebase';
 import { uploadFile, deleteFacturaByFilename } from './facturasService'; // Importa el servicio de facturas para subir los archivos
 import { removeCreditsForUser } from './creditService';
@@ -205,7 +205,7 @@ const ticketService = {
   getTicketsForUser: async (userId) => {
     console.log("User",userId)
     try {
-      const q = query(collection(db, 'tickets'), where('userId', '==', userId));
+      const q = query(collection(db, 'tickets'), where('userId', '==', userId), orderBy('created_at', 'desc')  );
       const querySnapshot = await getDocs(q);
 
       const tickets = [];
