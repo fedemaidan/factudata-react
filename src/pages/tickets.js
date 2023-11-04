@@ -85,7 +85,7 @@ const Page = () => {
         }}
       >
         <Container maxWidth="xl">
-          {(user.email == "fede.maidan@gmail.com" || user.email == "facundo.ferro@outlook.com") && 
+          {(user.admin) && 
           <Button variant="contained" onClick={handleVerPrivado}>
           Ver privado
         </Button>}

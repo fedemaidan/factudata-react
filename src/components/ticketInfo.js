@@ -174,7 +174,8 @@ const TicketInfo = ({ selectedTags, selectedFiles, resultFiles = [], comentarios
       {(currentTab === 2 && status === 'Confirmado') && (
         <Paper elevation={2}>
         {resultFiles.length == 0 && <Typography variant="body1">Estamos procesando tu pedido.</Typography>}
-        {(user.email === "fede.maidan@gmail.com" || user.email === "facundo.ferro@outlook.com") && (
+        {(user.admin) && (
+          
           <>
             <input
               type="file"
@@ -228,7 +229,7 @@ const TicketInfo = ({ selectedTags, selectedFiles, resultFiles = [], comentarios
                 </a> :
                 file.name
               }
-              {(user.email === "fede.maidan@gmail.com" || user.email === "facundo.ferro@outlook.com") && (
+              {(user.admin) && (
                 <Button size="small" onClick={() => onRemoveResultFile(file)}><SvgIcon fontSize="small"><TrashIcon /></SvgIcon></Button>
               )}
             </li>

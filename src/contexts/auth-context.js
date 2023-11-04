@@ -116,14 +116,15 @@ export const AuthProvider = (props) => {
     const user =  querySnapshot.docs[0].data();
     const id = querySnapshot.docs[0].id;
     const credit = await getTotalCreditsForUser(id);
-    console.log("pase por acá", credit)
     
+    console.log(user.admin)
     dispatch({
       type: HANDLERS.UPDATE_USER,
       payload: {
         ...user,
         credit: credit,
-        id: id
+        id: id,
+        admin: user.admin? user.admin : false,
       }
     });
   }
@@ -140,7 +141,8 @@ export const AuthProvider = (props) => {
       email: email,
       phone: '',
       state: '',
-      country: ''
+      country: '',
+      admin: false
     };
     
     const usersCollectionRef = collection(db, 'profile');
