@@ -27,8 +27,10 @@ const ImageDataEntryPage = () => {
 
   const handleSendData = (data) => {
     const dataString = JSON.stringify(data, null, 2); // Indentación de 2 espacios para una mejor lectura
+    alert(`Datos recibidos:\n${dataString}`);
     getnext()
   }
+
 
   useEffect(() => {
     if (ticketId) {
