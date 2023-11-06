@@ -157,7 +157,8 @@ export const SideNav = (props) => {
     return (
       <Drawer
         anchor="left"
-        open
+        onClose={onClose}
+        open={open}
         PaperProps={{
           sx: {
             backgroundColor: 'neutral.800',
@@ -166,6 +167,7 @@ export const SideNav = (props) => {
           }
         }}
         variant="permanent"
+        //variant="temporary" si queremos jugar con que sea más flexible
       >
         {content}
       </Drawer>
