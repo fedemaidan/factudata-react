@@ -191,6 +191,17 @@ const ticketService = {
       return null;
     }
   },
+  updateTicketResultRowsById: async (ticketId, resultRows) => {
+    try {
+      console.log(resultRows)
+      await updateDoc(doc(db, 'tickets', ticketId), {
+        resultados: resultRows,
+      });
+    } catch (err) {
+      console.error(err);
+      return null;
+    }
+  },
   cancelTicketById: async (ticketId) => {
     try {
       await updateDoc(doc(db, 'tickets', ticketId), {

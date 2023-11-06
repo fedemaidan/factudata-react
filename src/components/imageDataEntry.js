@@ -45,7 +45,7 @@ const ImageDataEntry = ({ url, formFields, originalName, handleSendData }) => {
   const handleSubmit = (event) => {
     event.preventDefault();
     handleSendData(formData);
-    resetFormFields(); 
+    // resetFormFields(); 
   };
 
   

@@ -17,6 +17,7 @@ const ImageDataEntryPage = () => {
   const [file, setFile] = useState(null);
   const [allFiles, setAllFiles] = useState([]);
   const [pos, setPos] = useState(0);
+  const [resultData, setResultData] = useState([]);
 
   const getnext = () => {
     setFile(allFiles[pos + 1])
@@ -26,6 +27,15 @@ const ImageDataEntryPage = () => {
   const handleSendData = (data) => {
     const dataString = JSON.stringify(data, null, 2); // Indentación de 2 espacios para una mejor lectura
     alert(`Datos recibidos:\n${dataString}`);
+    const resultados = ticketData.archivos.map( (element) => {
+      if (file.name == element.name && file.originalName == element.originalName) {
+        element.data = data;
+      }
+      
+      return element
+      })
+    setResultData(resultados)
+    ticketService.updateTicketResultRowsById(ticketId,resultados);
     getnext()
   }
   
@@ -36,6 +46,7 @@ const ImageDataEntryPage = () => {
         const ticket = await ticketService.getTicketById(ticketId);
         setTicketData(ticket);
         createForm(ticket);
+        createResultData(ticket);
         setAllFiles(ticket.archivos)
         setFile(ticket.archivos[pos])
       }
@@ -45,15 +56,28 @@ const ImageDataEntryPage = () => {
   }, [ticketId]);
 
   
+  const createResultData = async (ticket) => {
+    let resultados = [];
+    if (ticket.resultados)
+      resultados = ticket.resultados
+    else
+      resultados = ticket.archivos.map( (file) => {
+        return {
+          originalName: file.originalName,
+          name: file.name,
+        }
+      })
+      setResultData(resultados)
+  }
+
   const createForm = async (ticket) => {
     let formulario = ticket.tags.map( (item) => {
       return {
-        name: item,
-        label: item
+        name: item == "" ? "NO_RECONOCIDO": item,
+        label: item == "" ? "NO_RECONOCIDO": item
       }
     })
     setFormFields(formulario)
-    
   }
 
   
