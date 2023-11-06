@@ -7,15 +7,20 @@ import ChevronDownIcon from '@heroicons/react/24/solid/ChevronDownIcon';
 import { SvgIcon } from '@mui/material';
 
 const ImageDataEntry = ({ url, formFields, originalName, handleSendData }) => {
-  const [formData, setFormData] = React.useState(
-    formFields.reduce((acc, field) => ({ ...acc, [field.name]: '' }), {})
-  );
+  const initialState = formFields.reduce((acc, field) => ({ ...acc, [field.name]: '' }), {});
+
+  const [formData, setFormData] = useState(initialState);
+    
   const [iframeHeight, setIframeHeight] = useState(1200);
   const [customFile, setCustomFile] = useState(false);
   
   const handleCustomFile = () => {
     setCustomFile(!customFile);
   }
+
+  const resetFormFields = () => {
+    setFormData(initialState);
+  };
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -39,8 +44,11 @@ const ImageDataEntry = ({ url, formFields, originalName, handleSendData }) => {
 
   const handleSubmit = (event) => {
     event.preventDefault();
-    handleSendData(formData)
+    handleSendData(formData);
+    resetFormFields(); 
   };
+
+  
 
   return (
     <Box display="flex" p={2}>

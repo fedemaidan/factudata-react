@@ -15,12 +15,10 @@ const ImageDataEntryPage = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [formFields, setFormFields] = useState([]);
   const [file, setFile] = useState(null);
-  const [isPdf, setIsPdf] = useState(false);
   const [allFiles, setAllFiles] = useState([]);
   const [pos, setPos] = useState(0);
 
   const getnext = () => {
-    setIsPdf(allFiles[pos + 1].originalName.endsWith('.pdf'))
     setFile(allFiles[pos + 1])
     setPos(pos + 1);
   };
@@ -30,22 +28,14 @@ const ImageDataEntryPage = () => {
     alert(`Datos recibidos:\n${dataString}`);
     getnext()
   }
-
+  
 
   useEffect(() => {
     if (ticketId) {
       async function fetchTicketData() {
         const ticket = await ticketService.getTicketById(ticketId);
         setTicketData(ticket);
-        let formulario = ticket.tags.map( (item) => {
-          return {
-            name: item,
-            label: item
-          }
-        })
-        setIsPdf(ticket.archivos[pos].originalName.endsWith('.pdf'))
-        console.log(ticket.archivos[pos].originalName.endsWith('.pdf'))
-        setFormFields(formulario)
+        createForm(ticket);
         setAllFiles(ticket.archivos)
         setFile(ticket.archivos[pos])
       }
@@ -54,12 +44,23 @@ const ImageDataEntryPage = () => {
     }
   }, [ticketId]);
 
+  
+  const createForm = async (ticket) => {
+    let formulario = ticket.tags.map( (item) => {
+      return {
+        name: item,
+        label: item
+      }
+    })
+    setFormFields(formulario)
+    
+  }
 
   
   return (
     <>
       <Head>
-        <title>Carga de Datos de Imagen</title>
+        <title>Carga de Datos de Imagenn</title>
       </Head>
       <Box
         component="main"
