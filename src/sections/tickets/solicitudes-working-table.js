@@ -75,7 +75,7 @@ export const SolicitudesWorkingTable = (props) => {
                         variant="outlined"
                         onClick={() => router.push('/dataEntryPage?ticketId='+ticket.id)}
                       >
-                        Ver solicitud
+                        Cargar solicitud
                       </Button>
                     </TableCell>
                   </TableRow>
