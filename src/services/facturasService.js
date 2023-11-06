@@ -89,7 +89,7 @@ export const deleteFactura = async (id) => {
   }
 };
 
-export const uploadFile = async (files, tipo = 'input', ticketId, ) => {
+export const uploadFile = async (files, tipo = 'input', ticketId, userId = "NOT_DEFINED") => {
   if (!files) return [];
 
   try {
@@ -97,7 +97,7 @@ export const uploadFile = async (files, tipo = 'input', ticketId, ) => {
     
     for (let i = 0; i < files.length; i++) {
       const fileUpload = files[i];
-      const filename = `files/${tipo}/${fileUpload.name}`;
+      const filename = `files/${userId}/${ticketId}/${fileUpload.name}`;
       const filesFolderRef = ref(storage, filename);
       await uploadBytes(filesFolderRef, fileUpload);
       const newUrl = await getDownloadURL(filesFolderRef);

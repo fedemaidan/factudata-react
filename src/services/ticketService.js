@@ -52,7 +52,7 @@ const ticketService = {
     
     if (archivos && archivos.length > 0) {
       
-      const uploadResult = await uploadFile(archivos, tipo, ticketId);
+      const uploadResult = await uploadFile(archivos, tipo, ticketId, ticketData.userId);
       
       if (!uploadResult) {
         console.error('Error al subir las facturas');
@@ -119,7 +119,7 @@ const ticketService = {
       // Subir nuevos archivos y obtener sus detalles
       // Asegúrate de tener una función uploadFiles en facturasService
       // que maneje la carga y devuelva detalles sobre los archivos cargados
-      const uploadedFiles = await uploadFile(files, 'input', ticketId);
+      const uploadedFiles = await uploadFile(files, 'input', ticketId, ticket.userId);
       
       // Concatenar los archivos existentes con los nuevos archivos cargados
       const allFiles = ticket.archivos.concat(uploadedFiles);
@@ -139,7 +139,7 @@ const ticketService = {
       const ticket = await ticketService.getTicketById(ticketId);
       if (!ticket) throw new Error('Ticket no encontrado');
 
-      const uploadedFiles = await uploadFile(files, 'output', ticketId);
+      const uploadedFiles = await uploadFile(files, 'output', ticketId, ticket.userId);
       if (!ticket.resultado)
         ticket.resultado = []
       const allFiles = ticket.resultado.concat(uploadedFiles);
