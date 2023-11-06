@@ -1,11 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Box, Button, Stack, TextField, Typography } from '@mui/material';
 import Autocomplete from '@mui/material/Autocomplete';
 
 const OnboardingStep2 = ({ reason, onPreviousStep, onNextStep }) => {
   const [reasonData, setReasonData] = useState(reason);
   const [customTag, setCustomTag] = useState('');
-  const [tags, setTags] = useState([
+  const initialTags = [
     "Emisor",
     "Número de factura",
     "Condición IVA",
@@ -14,7 +14,8 @@ const OnboardingStep2 = ({ reason, onPreviousStep, onNextStep }) => {
     "IVA 21%",
     "IVA 10.5%",
     "Total",
-  ]);
+  ];
+  const [tags, setTags] = useState(initialTags);
 
   // Initialize all tags as selected
   const [selectedTags, setSelectedTags] = useState(tags);
@@ -32,11 +33,22 @@ const OnboardingStep2 = ({ reason, onPreviousStep, onNextStep }) => {
 
   const handleAddCustomTag = () => {
     if (customTag.trim() !== '' && !selectedTags.includes(customTag)) {
+      const newTags = [...selectedTags, customTag];
       setTags((prevTags) => [...prevTags, customTag]);
-      setSelectedTags((prevSelectedTags) => [...prevSelectedTags, customTag]);
+      setSelectedTags(newTags);
+      localStorage.setItem('selectedTags', JSON.stringify(newTags)); // Guarda los tags en localStorage
       setCustomTag('');
     }
   };
+  
+  useEffect(() => {
+    const savedTags = JSON.parse(localStorage.getItem('selectedTags'));
+    if (savedTags) {
+      setTags((prevTags) => [...new Set([...prevTags, ...savedTags])]); // Asegúrate de que no haya duplicados
+      setSelectedTags(savedTags);
+    }
+  }, []);
+  
 
   const handleKeyDown = (event) => {
     if (event.key === 'Enter') {
