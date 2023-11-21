@@ -39,7 +39,6 @@ const ticketService = {
         resultado: [],
         comentarios: comentarios
       });
-
       return ticketRef;
       
     } catch (err) {
@@ -64,6 +63,8 @@ const ticketService = {
           archivos: uploadResult,
           eta: ticketService.calcularEta(uploadResult.length),
       });
+
+      const envia = await ticketService.enviarSuscripcion(ticketId, uploadResult.length);
     }
 
     return ticketId;
@@ -254,6 +255,31 @@ const ticketService = {
     } catch (err) {
       console.error(err);
       return [];
+    }
+  },
+  enviarSuscripcion: async (ticketId, cantidad) => {
+    const url = 'https://script.google.com/macros/s/AKfycbzaQuvQi1Xmin-am_cfVrMRHVoRTQFCaucrnZ2fVNicu4duegYfF2pvO0Q7d5qb5BcM/exec';
+          
+
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded'
+        },
+        body: `ticketId=${encodeURIComponent(ticketId)}&cantidad=${encodeURIComponent(cantidad)}`
+      });
+
+      if (!response.ok) {
+        throw new Error('Error al enviar el contacto');
+      }
+
+      // Aquí puedes manejar la respuesta exitosa
+      return "Te contactaremos pronto.";
+
+    } catch (error) {
+      console.error('Error al enviar el formulario:', error);
+      throw error; // Lanza el error para ser manejado en otra parte de tu aplicación
     }
   },
 };

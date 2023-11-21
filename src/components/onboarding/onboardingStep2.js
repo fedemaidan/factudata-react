@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Box, Button, Stack, TextField, Typography } from '@mui/material';
 import Autocomplete from '@mui/material/Autocomplete';
 
-const OnboardingStep2 = ({ reason, onPreviousStep, onNextStep }) => {
+const OnboardingStep2 = ({ reason, fileType, onPreviousStep, onNextStep }) => {
   const [reasonData, setReasonData] = useState(reason);
   const [customTag, setCustomTag] = useState('');
   const initialTags = [
@@ -21,6 +21,32 @@ const OnboardingStep2 = ({ reason, onPreviousStep, onNextStep }) => {
   const [selectedTags, setSelectedTags] = useState(tags);
 
   const handleNextStep = () => {
+    let tagsTypeSaved = localStorage.getItem('tagsType');
+    let newTagsType;
+
+    if (tagsTypeSaved) {
+      tagsTypeSaved = JSON.parse(localStorage.getItem('tags'))
+      let encontrado = false;
+      newTagsType = tagsTypeSaved.map( (t) => {
+        if (t.type == fileType) {
+          t.tags = tags;
+          encontrado = true;
+        }
+        return t;
+      })
+      if (!encontrado) {
+        const newTag = { 'type': fileType, 'tags': tags}
+        newTagsType = tagsTypeSaved.push(tagsTypeSaved)
+      }
+    } else {
+      const newTag = { 'type': fileType, 'tags': tags}
+      newTagsType = []
+      newTagsType.push(newTag)
+    }
+
+
+    localStorage.setItem('tagsType', JSON.stringify(newTagsType));
+    
     onNextStep({
       tags: selectedTags,
       reason: reasonData,
@@ -36,16 +62,15 @@ const OnboardingStep2 = ({ reason, onPreviousStep, onNextStep }) => {
       const newTags = [...selectedTags, customTag];
       setTags((prevTags) => [...prevTags, customTag]);
       setSelectedTags(newTags);
-      localStorage.setItem('selectedTags', JSON.stringify(newTags)); // Guarda los tags en localStorage
+      localStorage.setItem('tags', JSON.stringify(newTags)); // Guarda los tags en localStorage
       setCustomTag('');
     }
   };
   
   useEffect(() => {
-    const savedTags = JSON.parse(localStorage.getItem('selectedTags'));
+    const savedTags = JSON.parse(localStorage.getItem('tags'));
     if (savedTags) {
       setTags((prevTags) => [...new Set([...prevTags, ...savedTags])]); // Asegúrate de que no haya duplicados
-      setSelectedTags(savedTags);
     }
   }, []);
   

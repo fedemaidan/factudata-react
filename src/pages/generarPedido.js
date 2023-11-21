@@ -151,6 +151,7 @@ const GenerarPedidoPage = () => {
               <OnboardingStep2
                 selectedTagsData={selectedTagsData}
                 reason={reason}
+                fileType={fileType}
                 onPreviousStep={handlePreviousStep}
                 onNextStep={handleNextStep}
               />

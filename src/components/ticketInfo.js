@@ -77,7 +77,7 @@ const TicketInfo = ({ selectedTags, selectedFiles, resultFiles = [], comentarios
         >
           <Tab label="Información general" />
           <Tab label={labelArchivos} />
-          {status == "Confirmado" && <Tab label={labelBandejaSalida} />}
+          {(status == "Confirmado" ||   status == "Completado") && <Tab label={labelBandejaSalida} />}
         </Tabs>
       </Paper>
 
@@ -171,7 +171,7 @@ const TicketInfo = ({ selectedTags, selectedFiles, resultFiles = [], comentarios
           ))}
         </Paper>
       )}
-      {(currentTab === 2 && status === 'Confirmado') && (
+      {(currentTab === 2 && (status == "Confirmado" ||   status == "Completado")) && (
         <Paper elevation={2}>
         {resultFiles.length == 0 && <Typography variant="body1">Estamos procesando tu pedido.</Typography>}
         {(user.admin) && (
