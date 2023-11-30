@@ -19,7 +19,7 @@ const ticketService = {
   },  
   createTicket: async (ticketData) => {
     try {
-      const { tipo, tags, precioEstimado, userId, reason } = ticketData;
+      const { tipo, tags, precioEstimado, userId, reason, userEmail } = ticketData;
       const comentarios =  [{
         who: "user",
         created_at: "Init",
@@ -33,6 +33,7 @@ const ticketService = {
         precioEstimado: precioEstimado,
         estado: "Borrador",
         userId: userId,
+        userEmail: userEmail,
         created_at: serverTimestamp(),
         eta: "",
         archivos: [],

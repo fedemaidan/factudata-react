@@ -108,9 +108,9 @@ const TicketInfo = ({ selectedTags, selectedFiles, resultFiles = [], comentarios
 
       {currentTab === 1 && (
         <Paper elevation={2} sx={{ padding: '24px', backgroundColor: '#fff', borderRadius: '12px' }}>
-          {/* <Button variant="outlined" onClick={downloadAllFiles} style={{ marginBottom: '16px' }}>
+          {/* { <Button variant="outlined" onClick={downloadAllFiles} style={{ marginBottom: '16px' }}>
             Descargar todas
-          </Button> */}
+          </Button> } */}
           {status === 'Borrador' && (
             <Box sx={{ mb: 2 }}>
               <input

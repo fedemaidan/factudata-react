@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useReducer, useRef } from 'react'
 import PropTypes from 'prop-types';
 import { auth } from "../config/firebase";
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut as firebaseSignOut } from "firebase/auth"
-import { collection, addDoc, getDocs, doc, query, where, updateDoc } from 'firebase/firestore'
+import { collection, addDoc, getDocs, doc, query, where, updateDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from 'src/config/firebase';
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { storage } from 'src/config/firebase';
@@ -142,6 +142,7 @@ export const AuthProvider = (props) => {
       phone: '',
       state: '',
       country: '',
+      created_at: serverTimestamp(),
       admin: false
     };
     

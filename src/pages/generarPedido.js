@@ -67,7 +67,6 @@ const GenerarPedidoPage = () => {
   }
 
   const fetchTicketProgress = async (id) => {
-    console.log("te boludeo con id", id, isLoading);
     // if (isLoading) {
       // Obtener el ticket actual
       const archivos = await getFacturasByTicketId(id);
@@ -100,6 +99,7 @@ const GenerarPedidoPage = () => {
           precioEstimado: estimatedPrice,
           archivos: files,
           userId: user.id,
+          userEmail: user.email,
           reason: reason
         };
         console.log(ticketData)
