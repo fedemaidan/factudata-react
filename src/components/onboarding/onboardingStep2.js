@@ -15,35 +15,7 @@ const OnboardingStep2 = ({ reason, fileType, onPreviousStep, onNextStep }) => {
     "IVA 10.5%",
     "Total",
   ];
-  // const initialTags = [
-  //   "Emisor",
-  //   "Número de factura",
-  //   "Condición IVA",
-  //   "Fecha",
-  //   "Cuit",
-  //   "Referencia Guia N°",
-  //   "Neto",
-  //   "10 DERECHOS IVA TASA GRAL.",
-  //   "DERECHOS BIENES DE CAPITAL",
-  //   "11 ESTADISTICAS IVA TASA GRAL.",
-  //   "22 FLETE INTERNACI0NAL",
-  //   "120 ALMACENAJE",
-  //   "518 RES.3244 SERV.EXTRAORDINARI0S",
-  //   "24 SEGUR0",
-  //   "131 GASTOS OPERATIVOS",
-  //   "300 VALOR A.N.A BIENES DE CAPITAL",
-  //   "70 ENVI0S A DOMICILI0 INTERN.",
-  //   "IVA 21%",
-  //   "IVA 10.5%",
-  //   "Total",
-  //   "Cotización del dolar 1 USS",
-  //   "Perc. IB",
-  //   "Pos:",
-  //   "Fob:",
-  //   "Solicitud N°/Despacho:",
-  //   "Póliza A.N.A."
-  // ]
-  
+
   
   const [tags, setTags] = useState(initialTags);
 
@@ -51,32 +23,6 @@ const OnboardingStep2 = ({ reason, fileType, onPreviousStep, onNextStep }) => {
   const [selectedTags, setSelectedTags] = useState(tags);
 
   const handleNextStep = () => {
-    let tagsTypeSaved = localStorage.getItem('tagsType');
-    let newTagsType;
-
-    if (tagsTypeSaved) {
-      tagsTypeSaved = JSON.parse(localStorage.getItem('tags'))
-      let encontrado = false;
-      newTagsType = tagsTypeSaved.map( (t) => {
-        if (t.type == fileType) {
-          t.tags = tags;
-          encontrado = true;
-        }
-        return t;
-      })
-      if (!encontrado) {
-        const newTag = { 'type': fileType, 'tags': tags}
-        newTagsType = tagsTypeSaved.push(tagsTypeSaved)
-      }
-    } else {
-      const newTag = { 'type': fileType, 'tags': tags}
-      newTagsType = []
-      newTagsType.push(newTag)
-    }
-
-
-    localStorage.setItem('tagsType', JSON.stringify(newTagsType));
-    
     onNextStep({
       tags: selectedTags,
       reason: reasonData,
@@ -92,17 +38,9 @@ const OnboardingStep2 = ({ reason, fileType, onPreviousStep, onNextStep }) => {
       const newTags = [...selectedTags, customTag];
       setTags((prevTags) => [...prevTags, customTag]);
       setSelectedTags(newTags);
-      localStorage.setItem('tags', JSON.stringify(newTags)); // Guarda los tags en localStorage
       setCustomTag('');
     }
   };
-  
-  useEffect(() => {
-    const savedTags = JSON.parse(localStorage.getItem('tags'));
-    if (savedTags) {
-      setTags((prevTags) => [...new Set([...prevTags, ...savedTags])]); // Asegúrate de que no haya duplicados
-    }
-  }, []);
   
 
   const handleKeyDown = (event) => {

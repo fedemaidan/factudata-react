@@ -216,7 +216,6 @@ const ticketService = {
     }
   },
   getTicketsForUser: async (userId) => {
-    console.log("User",userId)
     try {
       const q = query(collection(db, 'tickets'), where('userId', '==', userId), orderBy('created_at', 'desc')  );
       const querySnapshot = await getDocs(q);
