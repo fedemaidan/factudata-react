@@ -5,6 +5,7 @@ import OnboardingStep1 from 'src/components/onboarding/onboardingStep1';
 import OnboardingStep2 from 'src/components/onboarding/onboardingStep2';
 import OnboardingStep3 from 'src/components/onboarding/onboardingStep3';
 import ticketService from 'src/services/ticketService';
+import tagsService from 'src/services/tagsService';
 import {getFacturasByTicketId} from 'src/services/facturasService';
 import { useRouter } from 'next/router';
 import { useAuthContext } from 'src/contexts/auth-context';
@@ -13,6 +14,7 @@ import { useAuthContext } from 'src/contexts/auth-context';
 const GenerarPedidoPage = () => {
   const [activeStep, setActiveStep] = useState(1);
   const [fileType, setFileType] = useState('');
+  const [compatibleType, setCompatibleType] = useState('');
   const [files, setFiles] = useState([]);
   const [selectedTagsData, setSelectedTagsData] = useState([]);
   const [reason, setReason] = useState('');
@@ -30,6 +32,13 @@ const GenerarPedidoPage = () => {
     if (activeStep === 1) {
       setFileType(data.fileType);
       setFiles(data.selectedFiles);
+      setCompatibleType(data.compatibleType);
+      setSelectedTagsData(tagsService.getTags(data.fileType, data.compatibleType));
+      console.log(data.fileType, data.compatibleType)
+      console.log(data.fileType == 'comprobantes_compatibles_con' && data.compatibleType != 'Otros')
+      if (data.fileType == 'comprobantes_compatibles_con' && data.compatibleType != 'Otros') {
+        setActiveStep(3);
+      }
     } else if (activeStep === 2) {
       setSelectedTagsData(data.tags);
       setReason(data.reason);

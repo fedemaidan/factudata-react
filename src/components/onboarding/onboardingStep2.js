@@ -2,19 +2,10 @@ import React, { useState } from 'react';
 import { Box, Button, Stack, TextField, Typography } from '@mui/material';
 import Autocomplete from '@mui/material/Autocomplete';
 
-const OnboardingStep2 = ({ reason, onPreviousStep, onNextStep }) => {
+const OnboardingStep2 = ({ reason, selectedTagsData, onPreviousStep, onNextStep }) => {
   const [reasonData, setReasonData] = useState(reason);
   const [customTag, setCustomTag] = useState('');
-  const [tags, setTags] = useState([
-    "Emisor",
-    "Número de factura",
-    "Condición IVA",
-    "Fecha",
-    "Neto",
-    "IVA 21%",
-    "IVA 10.5%",
-    "Total",
-  ]);
+  const [tags, setTags] = useState(selectedTagsData);
 
   // Initialize all tags as selected
   const [selectedTags, setSelectedTags] = useState(tags);
