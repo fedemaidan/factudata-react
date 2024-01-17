@@ -47,6 +47,14 @@ const GenerarPedidoPage = () => {
     }
   };
 
+  const handleRemoveFile = (fileToRemove) => {
+    setFiles((prevFiles) => prevFiles.filter(file => file !== fileToRemove));
+  };
+  
+  const handleConfirmNewFiles = (newFiles) => {
+    setFiles(prevSelectedFiles => [...prevSelectedFiles, ...newFiles]);
+  };
+
   const recomendarPaquete = (cantidad) => {
     
     let result;
@@ -68,11 +76,10 @@ const GenerarPedidoPage = () => {
   }
 
   const fetchTicketProgress = async (id) => {
-    console.log("te boludeo con id", id, isLoading);
     // if (isLoading) {
       // Obtener el ticket actual
       const archivos = await getFacturasByTicketId(id);
-      console.log("archivos", archivos)
+      
       if (archivos) {
         // Calcular el progreso de carga
         const totalFiles = files.length;
@@ -100,9 +107,11 @@ const GenerarPedidoPage = () => {
           tags: selectedTagsData,
           precioEstimado: estimatedPrice,
           archivos: files,
-          userId: user.id
+          userId: user.id,
+          userEmail: user.email,
+          reason: reason
         };
-  
+        console.log(ticketData)
         let ticketCreationResult = await ticketService.createTicket(ticketData);
         
         const interval = setInterval(() => {
@@ -151,6 +160,7 @@ const GenerarPedidoPage = () => {
               <OnboardingStep2
                 selectedTagsData={selectedTagsData}
                 reason={reason}
+                fileType={fileType}
                 onPreviousStep={handlePreviousStep}
                 onNextStep={handleNextStep}
               />
@@ -162,9 +172,12 @@ const GenerarPedidoPage = () => {
                 fileType={fileType}
                 selectedTags={selectedTagsData}
                 onPreviousStep={handlePreviousStep}
+                eta={ticketService.calcularEta(files.length)}
                 onSave={handleSave}
                 isLoading={isLoading}
                 progress={uploadProgress}
+                onRemoveFile={handleRemoveFile}
+                onConfirmNewFiles={handleConfirmNewFiles}
               />
             )}
           </Stack>

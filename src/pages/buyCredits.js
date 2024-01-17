@@ -19,10 +19,10 @@ const BuyCreditsPage = () => {
   }, [router.query.credits]);
 
   const recomendedAndPricingRange = [
-    {min: 0, max: 400, recommendedId: 2, pricePerCredit: 60},
-    {min: 401, max: 2500, recommendedId: 3, pricePerCredit: 50},
-    {min: 2501, max: 6000, recommendedId: 4, pricePerCredit: 40},
-    {min: 6000, max: 999999, recommendedId: 1, pricePerCredit: 35},
+    {min: 0, max: 400, recommendedId: 2, pricePerCredit: 120},
+    {min: 401, max: 2500, recommendedId: 3, pricePerCredit: 100},
+    {min: 2501, max: 6000, recommendedId: 4, pricePerCredit: 80},
+    {min: 6000, max: 999999, recommendedId: 1, pricePerCredit: 70},
   ]
 
   const dataForPackages = recomendedAndPricingRange.find((element) => 
@@ -31,9 +31,9 @@ const BuyCreditsPage = () => {
 
   const defaultPackages = [
     { id: 1, name: 'Paquete a medida', pricePerCredit: dataForPackages.pricePerCredit, totalCredits: creditQuantity, totalPrice: creditQuantity * dataForPackages.pricePerCredit, recommended: dataForPackages.recommendedId == 1 ? true: false },
-    { id: 2, name: 'Sorby Independiente', pricePerCredit: 50, totalCredits: 400, totalPrice: 20000, recommended: dataForPackages.recommendedId == 2 ? true: false },
-    { id: 3, name: 'Sorby Avanzado', pricePerCredit: 40, totalCredits: 2500, totalPrice: 100000, recommended: dataForPackages.recommendedId == 3 ? true: false },
-    { id: 4, name: 'Sorby Pro', pricePerCredit: 35, totalCredits: 6000, totalPrice: 210000, recommended: dataForPackages.recommendedId == 4 ? true: false }
+    { id: 2, name: 'Sorby Independiente', pricePerCredit: 100, totalCredits: 400, totalPrice: 20000, recommended: dataForPackages.recommendedId == 2 ? true: false },
+    { id: 3, name: 'Sorby Avanzado', pricePerCredit: 80, totalCredits: 2500, totalPrice: 100000, recommended: dataForPackages.recommendedId == 3 ? true: false },
+    { id: 4, name: 'Sorby Pro', pricePerCredit: 70, totalCredits: 6000, totalPrice: 210000, recommended: dataForPackages.recommendedId == 4 ? true: false }
   ];
 
   const packages = defaultPackages.filter((p) => {

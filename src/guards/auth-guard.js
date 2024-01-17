@@ -40,9 +40,6 @@ export const AuthGuard = (props) => {
         setChecked(true);
       }
 
-      if ( isAuthenticated && (!user || user.firstName == '' || user.lastName == '' || user.country == '' || user.state == '')) {
-        router.push('/account');
-      }
     },
     [router.isReady]
   );

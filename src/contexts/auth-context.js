@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useReducer, useRef } from 'react'
 import PropTypes from 'prop-types';
 import { auth } from "../config/firebase";
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut as firebaseSignOut } from "firebase/auth"
-import { collection, addDoc, getDocs, doc, query, where, updateDoc } from 'firebase/firestore'
+import { collection, addDoc, getDocs, doc, query, where, updateDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from 'src/config/firebase';
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { storage } from 'src/config/firebase';
@@ -116,14 +116,15 @@ export const AuthProvider = (props) => {
     const user =  querySnapshot.docs[0].data();
     const id = querySnapshot.docs[0].id;
     const credit = await getTotalCreditsForUser(id);
-    console.log("pase por acá", credit)
     
+    console.log(user.admin)
     dispatch({
       type: HANDLERS.UPDATE_USER,
       payload: {
         ...user,
         credit: credit,
-        id: id
+        id: id,
+        admin: user.admin? user.admin : false,
       }
     });
   }
@@ -140,20 +141,24 @@ export const AuthProvider = (props) => {
       email: email,
       phone: '',
       state: '',
-      country: ''
+      country: '',
+      created_at: serverTimestamp(),
+      admin: false
     };
     
     const usersCollectionRef = collection(db, 'profile');
     const userRef = await addDoc(usersCollectionRef, user)
     await addCreditsForUser(userRef.id,initCredit);
+    const newUser = {
+      ...user,
+      credit: initCredit,
+      id: userRef.id
+    }
+    await updateUser(newUser)
     
     dispatch({
       type: HANDLERS.UPDATE_USER,
-      payload: {
-        ...user,
-        credit: initCredit,
-        id: userRef.id
-      }
+      payload: newUser
     });
   };
 

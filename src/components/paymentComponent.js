@@ -27,11 +27,12 @@ const PaymentComponent = ({ paymentValue, creditAmount,onPaymentConfirm }) => {
       <Typography variant="body1">
         Por favor, realiza una transferencia bancaria con los siguientes datos:
       </Typography>
-
+      
       <Box mt={2}>
-        <Typography variant="subtitle1">Banco: Banco Ejemplo</Typography>
-        <Typography variant="subtitle1">Número de cuenta: 1234-5678-9012-3456</Typography>
-        <Typography variant="subtitle1">Titular de la cuenta: Nombre Apellido</Typography>
+        <Typography variant="subtitle1">Banco: BANCO HSBC</Typography>
+        <Typography variant="subtitle1">CBU: 1500691400069166131300</Typography>
+        <Typography variant="subtitle1">Alias: TIENTO.BOLSA.POZO</Typography>
+        <Typography variant="subtitle1">Titular de la cuenta: FACUNDO JAVIER FERRO</Typography>
       </Box>
 
       <Typography variant="body1" mt={2}>

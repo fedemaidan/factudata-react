@@ -1,6 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { Box, Button, SvgIcon, Typography, TextField, MenuItem, Select } from '@mui/material';
 import ArrowDownOnSquareIcon from '@heroicons/react/24/solid/ArrowDownOnSquareIcon';
+import TrashIcon from '@heroicons/react/24/solid/TrashIcon';
 
 const OnboardingStep1 = ({ onNextStep }) => {
   const fileInputRef = useRef(null);
@@ -18,8 +19,9 @@ const OnboardingStep1 = ({ onNextStep }) => {
   ];
 
   const handleFileInputChange = (event) => {
-    const files = Array.from(event.target.files);
-    setSelectedFiles(files);
+    const newFiles = Array.from(event.target.files);
+    setSelectedFiles(prevSelectedFiles => [...prevSelectedFiles, ...newFiles]);
+    event.target.value = ''; 
   };
 
   const compatibleOptions = ['Xubio', 'Tango', 'SOS-Contador', 'Colppy', 'Colppy-Afip', 'Otros'];
@@ -40,6 +42,13 @@ const OnboardingStep1 = ({ onNextStep }) => {
       alert('Seleccione el tipo de archivo y al menos un archivo antes de continuar.');
     }
   };
+
+  const removeSelectedFile = (indexToRemove) => {
+    setSelectedFiles(prevSelectedFiles =>
+      prevSelectedFiles.filter((_, index) => index !== indexToRemove)
+    );
+  };
+
 
   return (
     <Box sx={{ mt: 2 }}>
@@ -99,14 +108,17 @@ const OnboardingStep1 = ({ onNextStep }) => {
           startIcon={<SvgIcon fontSize="small"><ArrowDownOnSquareIcon /></SvgIcon>}
           disabled={selectedType === ''}
         >
-          {selectedType ? 'Seleccionar archivos' : 'Seleccione el tipo primero'}
+          {selectedType ? (selectedFiles.length == 0 ? 'Seleccionar archivos': "Agregar más archivos") : 'Seleccione el tipo primero'}
         </Button>
         {selectedFiles.length > 0 && (
           <Box sx={{ mt: 2 }}>
             <Typography variant="body1">Archivos seleccionados:</Typography>
             <ul>
               {selectedFiles.map((file, index) => (
-                <li key={index}>{file.name}</li>
+                <li key={index}>
+                  {file.name}
+                  <Button size="small" onClick={() => removeSelectedFile(index)}><SvgIcon fontSize="small"><TrashIcon /></SvgIcon></Button>
+                </li>
               ))}
             </ul>
           </Box>

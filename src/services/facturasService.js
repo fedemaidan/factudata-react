@@ -49,6 +49,34 @@ export const getTotalFacturas = async () => {
   }
 };
 
+export const deleteFacturaByFilename = async (filename) => {
+  try {
+    // Define la colección y la consulta
+    console.log(filename)
+    const facturasCollection = collection(db, 'facturas');
+    const q = query(facturasCollection, where('filename', '==', filename));
+
+    // Ejecuta la consulta
+    const querySnapshot = await getDocs(q);
+
+    // Verifica si se encontró algún documento
+    if (querySnapshot.empty) {
+      console.error('No se encontró ninguna factura con el nombre de archivo especificado');
+      return false;
+    }
+
+    // Recorre los documentos encontrados y elimínalos
+    // (En este caso, se supone que solo hay uno, ya que los nombres de archivo deberían ser únicos)
+    querySnapshot.forEach(async (doc) => {
+      await deleteDoc(doc.ref);
+    });
+
+    return true;
+  } catch (err) {
+    console.error(err);
+    return false;
+  }
+};
 
 export const deleteFactura = async (id) => {
   try {
@@ -61,21 +89,21 @@ export const deleteFactura = async (id) => {
   }
 };
 
-export const uploadFile = async (files, tipo = 'COMPRA', ticketId) => {
+export const uploadFile = async (files, tipo = 'input', ticketId, userId = "NOT_DEFINED") => {
   if (!files) return [];
 
   try {
-    const enlacesFacturas = [];
+    const enlaces = [];
     
     for (let i = 0; i < files.length; i++) {
       const fileUpload = files[i];
-      const filename = `files/${fileUpload.name}`;
+      const filename = `files/${userId}/${ticketId}/${fileUpload.name}`;
       const filesFolderRef = ref(storage, filename);
       await uploadBytes(filesFolderRef, fileUpload);
       const newUrl = await getDownloadURL(filesFolderRef);
       
       // Guardar el enlace en el arreglo de enlaces
-      enlacesFacturas.push({
+      enlaces.push({
         name: newUrl,
         originalName: fileUpload.name
       });
@@ -87,7 +115,7 @@ export const uploadFile = async (files, tipo = 'COMPRA', ticketId) => {
       });
     }
 
-    return enlacesFacturas; // Retornar los enlaces de los archivos subidos
+    return enlaces; // Retornar los enlaces de los archivos subidos
   } catch (e) {
     console.error(e);
     return [];

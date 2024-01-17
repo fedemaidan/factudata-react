@@ -16,7 +16,7 @@ import {
 import { Scrollbar } from 'src/components/scrollbar';
 import { useRouter } from 'next/router';
 
-export const TicketTable = (props) => {
+export const SolicitudesWorkingTable = (props) => {
   const {
     items = [],
     onDeselectAll,
@@ -49,7 +49,6 @@ export const TicketTable = (props) => {
           <Table>
             <TableHead>
               <TableRow>
-                {soy_privado && <TableCell>UserId</TableCell>}
                 <TableCell>Creación</TableCell>
                 <TableCell>Tipo</TableCell>
                 <TableCell>Estado</TableCell>
@@ -65,9 +64,6 @@ export const TicketTable = (props) => {
 
                 return (
                   <TableRow hover key={ticket.id} selected={isSelected}>
-                    {soy_privado && 
-                    (<TableCell>{ticket.userId}</TableCell>)
-                    }
                     <TableCell>{formatTimestamp(ticket.created_at)}</TableCell>
                     <TableCell>{ticket.tipo}</TableCell>
                     <TableCell>{ticket.estado}</TableCell>
@@ -77,9 +73,9 @@ export const TicketTable = (props) => {
                     <TableCell>
                       <Button
                         variant="outlined"
-                        onClick={() => router.push('/ticketDetails?ticketId='+ticket.id)}
+                        onClick={() => router.push('/dataEntryPage?ticketId='+ticket.id)}
                       >
-                        Ver solicitud
+                        Cargar solicitud
                       </Button>
                     </TableCell>
                   </TableRow>
@@ -93,7 +89,7 @@ export const TicketTable = (props) => {
   );
 };
 
-TicketTable.propTypes = {
+SolicitudesWorkingTable.propTypes = {
   items: PropTypes.array,
   onDeselectAll: PropTypes.func,
   onDeselectOne: PropTypes.func,

@@ -1,13 +1,31 @@
-import { collection, doc, addDoc, getDoc, updateDoc, query, where, getDocs, serverTimestamp} from 'firebase/firestore';
+import { collection, doc, addDoc, getDoc, updateDoc, query, where, getDocs, orderBy, serverTimestamp} from 'firebase/firestore';
 import { db } from 'src/config/firebase';
-import { uploadFile } from './facturasService'; // Importa el servicio de facturas para subir los archivos
+import { uploadFile, deleteFacturaByFilename } from './facturasService'; // Importa el servicio de facturas para subir los archivos
 import { removeCreditsForUser } from './creditService';
 
 const ticketService = {
+  calcularEta: (cantidad) => {
+    const hoy = new Date();
+    let diasASumar;
+  
+    if (cantidad < 100) diasASumar = 2;
+    else if (cantidad < 500) diasASumar = 4;
+    else if (cantidad < 1000) diasASumar = 6;
+    else return "Calculando..";
+  
+    hoy.setDate(hoy.getDate() + diasASumar);
+
+    return hoy.toLocaleDateString('es-AR', { year: 'numeric', month: 'long', day: 'numeric' });
+  },  
   createTicket: async (ticketData) => {
     try {
-      const { tipo, tags, precioEstimado, userId } = ticketData;
-  
+      const { tipo, tags, precioEstimado, userId, reason, userEmail } = ticketData;
+      const comentarios =  [{
+        who: "user",
+        created_at: "Init",
+        data: reason
+      }] 
+      console.log(comentarios)
       // Agregar el ticket a la colección 'tickets'
       const ticketRef = await addDoc(collection(db, 'tickets'), {
         tipo: tipo,
@@ -15,13 +33,14 @@ const ticketService = {
         precioEstimado: precioEstimado,
         estado: "Borrador",
         userId: userId,
+        userEmail: userEmail,
         created_at: serverTimestamp(),
-        archivos: []
+        eta: "",
+        archivos: [],
+        resultado: [],
+        comentarios: comentarios
       });
-
       return ticketRef;
-
-      // Subir las facturas y asociarlas al ticket
       
     } catch (err) {
       console.error(err);
@@ -33,7 +52,7 @@ const ticketService = {
     
     if (archivos && archivos.length > 0) {
       
-      const uploadResult = await uploadFile(archivos, tipo, ticketId);
+      const uploadResult = await uploadFile(archivos, tipo, ticketId, ticketData.userId);
       
       if (!uploadResult) {
         console.error('Error al subir las facturas');
@@ -43,10 +62,104 @@ const ticketService = {
       // Guardar los enlaces de los archivos en el ticket
       await updateDoc(doc(db, 'tickets', ticketId), {
           archivos: uploadResult,
+          eta: ticketService.calcularEta(uploadResult.length),
       });
+
+      const envia = await ticketService.enviarSuscripcion(ticketId, uploadResult.length);
     }
 
     return ticketId;
+  },
+  removeFileToTicket: async (ticketId, file) => {
+    try {
+      // Obtener datos del ticket actual
+      const ticket = await ticketService.getTicketById(ticketId);
+      if (!ticket) throw new Error('Ticket no encontrado');
+      console.log(file)
+      // Filtrar los archivos, eliminando el archivo especificado
+      const updatedFiles = ticket.archivos.filter(archivo => archivo.name !== file.name);
+
+      // Actualizar el ticket con la lista de archivos filtrada
+      await updateDoc(doc(db, 'tickets', ticketId), { archivos: updatedFiles });
+
+      // Eliminar el archivo del sistema de almacenamiento
+      // Asegúrate de tener una función deleteFile en facturasService
+      // que maneje la eliminación real del archivo
+      await deleteFacturaByFilename(file.name);
+
+      return true;
+    } catch (err) {
+      console.error(err);
+      return false;
+    }
+  },
+  removeResultFileToTicket: async (ticketId, file) => {
+    try {
+      // Obtener datos del ticket actual
+      const ticket = await ticketService.getTicketById(ticketId);
+      if (!ticket) throw new Error('Ticket no encontrado');
+      console.log(file, ticket.resultado)
+      
+      // Filtrar los archivos, eliminando el archivo especificado
+      const updatedFiles = ticket.resultado.filter(archivo => archivo.name !== file.name);
+
+      // Actualizar el ticket con la lista de archivos filtrada
+      await updateDoc(doc(db, 'tickets', ticketId), { resultado: updatedFiles });
+
+      return true;
+    } catch (err) {
+      console.error(err);
+      return false;
+    }
+  },
+  addFilesToTicket: async (ticketId, files) => {
+    try {
+      // Obtener datos del ticket actual
+      const ticket = await ticketService.getTicketById(ticketId);
+      if (!ticket) throw new Error('Ticket no encontrado');
+
+      // Subir nuevos archivos y obtener sus detalles
+      // Asegúrate de tener una función uploadFiles en facturasService
+      // que maneje la carga y devuelva detalles sobre los archivos cargados
+      const uploadedFiles = await uploadFile(files, 'input', ticketId, ticket.userId);
+      
+      // Concatenar los archivos existentes con los nuevos archivos cargados
+      const allFiles = ticket.archivos.concat(uploadedFiles);
+
+      // Actualizar el ticket con la lista de archivos completa
+      await updateDoc(doc(db, 'tickets', ticketId), { archivos: allFiles, eta: ticketService.calcularEta(allFiles.length) });
+
+      return true;
+    } catch (err) {
+      console.error(err);
+      return false;
+    }
+  },
+  addResultToTicket: async (ticketId, files) => {
+    try {
+      // Obtener datos del ticket actual
+      const ticket = await ticketService.getTicketById(ticketId);
+      if (!ticket) throw new Error('Ticket no encontrado');
+
+      const uploadedFiles = await uploadFile(files, 'output', ticketId, ticket.userId);
+      if (!ticket.resultado)
+        ticket.resultado = []
+      const allFiles = ticket.resultado.concat(uploadedFiles);
+      const hoy = new Date().toLocaleDateString('es-AR', { year: 'numeric', month: 'long', day: 'numeric' });
+      
+      // Actualizar el ticket con la lista de archivos completa
+      await updateDoc(doc(db, 'tickets', ticketId), 
+        { 
+          estado: "Completado", 
+          eta: hoy,
+          resultado: allFiles 
+      });
+
+      return true;
+    } catch (err) {
+      console.error(err);
+      return false;
+    }
   },
   getTicketById: async (ticketId) => {
     try {
@@ -71,9 +184,21 @@ const ticketService = {
     try {
       await updateDoc(doc(db, 'tickets', ticketId), {
         estado: "Confirmado",
+        eta: ticketService.calcularEta(amount)
       });
       await removeCreditsForUser(userId, amount);
       
+    } catch (err) {
+      console.error(err);
+      return null;
+    }
+  },
+  updateTicketResultRowsById: async (ticketId, resultRows) => {
+    try {
+      console.log(resultRows)
+      await updateDoc(doc(db, 'tickets', ticketId), {
+        resultados: resultRows,
+      });
     } catch (err) {
       console.error(err);
       return null;
@@ -92,7 +217,7 @@ const ticketService = {
   },
   getTicketsForUser: async (userId) => {
     try {
-      const q = query(collection(db, 'tickets'), where('userId', '==', userId));
+      const q = query(collection(db, 'tickets'), where('userId', '==', userId), orderBy('created_at', 'desc')  );
       const querySnapshot = await getDocs(q);
 
       const tickets = [];
@@ -130,6 +255,31 @@ const ticketService = {
     } catch (err) {
       console.error(err);
       return [];
+    }
+  },
+  enviarSuscripcion: async (ticketId, cantidad) => {
+    const url = 'https://script.google.com/macros/s/AKfycbzaQuvQi1Xmin-am_cfVrMRHVoRTQFCaucrnZ2fVNicu4duegYfF2pvO0Q7d5qb5BcM/exec';
+          
+
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded'
+        },
+        body: `ticketId=${encodeURIComponent(ticketId)}&cantidad=${encodeURIComponent(cantidad)}`
+      });
+
+      if (!response.ok) {
+        throw new Error('Error al enviar el contacto');
+      }
+
+      // Aquí puedes manejar la respuesta exitosa
+      return "Te contactaremos pronto.";
+
+    } catch (error) {
+      console.error('Error al enviar el formulario:', error);
+      throw error; // Lanza el error para ser manejado en otra parte de tu aplicación
     }
   },
 };

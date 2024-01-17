@@ -7,13 +7,15 @@ import {
   Typography, 
   SvgIcon,
   Tooltip,
-  useMediaQuery
+  useMediaQuery,
+  Button
 } from '@mui/material';
 import { alpha } from '@mui/material/styles';
 import { usePopover } from 'src/hooks/use-popover';
 import { AccountPopover } from './account-popover';
 import { useAuthContext } from 'src/contexts/auth-context';
 import Bars3Icon from '@heroicons/react/24/solid/Bars3Icon';
+import { useRouter } from 'next/router';
 
 const SIDE_NAV_WIDTH = 280;
 const TOP_NAV_HEIGHT = 64;
@@ -24,7 +26,13 @@ export const TopNav = (props) => {
   const accountPopover = usePopover();
   const { user } = useAuthContext();
   const credit = user?.credit; 
+  const requiereCargarDatos = (user?.firstName == '' || user?.lastName == '' || user?.country == '' || user?.state == '')
+  const router = useRouter();
 
+  const handleCompleteAccountData = () => {
+    router.push('/account');
+  };
+  
   return (
     <>
       <Box
@@ -71,6 +79,13 @@ export const TopNav = (props) => {
             direction="row"
             spacing={2}
           >
+            {requiereCargarDatos &&
+              <Button style={{ textTransform: 'none', padding: 0 }} onClick={handleCompleteAccountData}>
+                <Typography variant="body1" color="primary">
+                  Completar datos de la cuenta
+                </Typography>
+              </Button>
+            }
             <Typography variant="body1">{`Crédito: ${credit}`} </Typography> 
             <Avatar
               onClick={accountPopover.handleOpen}
