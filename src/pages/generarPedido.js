@@ -5,7 +5,7 @@ import OnboardingStep1 from 'src/components/onboarding/onboardingStep1';
 import OnboardingStep2 from 'src/components/onboarding/onboardingStep2';
 import OnboardingStep3 from 'src/components/onboarding/onboardingStep3';
 import ticketService from 'src/services/ticketService';
-import tagsService from 'src/services/tagsService';
+import workTypeService from 'src/services/workTypeService';
 import {getFacturasByTicketId} from 'src/services/facturasService';
 import { useRouter } from 'next/router';
 import { useAuthContext } from 'src/contexts/auth-context';
@@ -18,7 +18,8 @@ const GenerarPedidoPage = () => {
   const [files, setFiles] = useState([]);
   const [selectedTagsData, setSelectedTagsData] = useState([]);
   const [reason, setReason] = useState('');
-  const [estimatedPrice, setEstimatedPrice] = useState('');
+  const [extractionMethod, setExtractionMethod] = useState('manual'); // 'manual' o 'excel'
+  const [excelFileModel, setExcelFileModel] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
@@ -33,17 +34,15 @@ const GenerarPedidoPage = () => {
       setFileType(data.fileType);
       setFiles(data.selectedFiles);
       setCompatibleType(data.compatibleType);
-      setSelectedTagsData(tagsService.getTags(data.fileType, data.compatibleType));
-      console.log(data.fileType, data.compatibleType)
-      console.log(data.fileType == 'comprobantes_compatibles_con' && data.compatibleType != 'Otros')
+      setSelectedTagsData(workTypeService.getTags(data.fileType, data.compatibleType));
       if (data.fileType == 'comprobantes_compatibles_con' && data.compatibleType != 'Otros') {
         setActiveStep(3);
       }
     } else if (activeStep === 2) {
       setSelectedTagsData(data.tags);
       setReason(data.reason);
-      const paquete = recomendarPaquete(files.length);
-      setEstimatedPrice(paquete);
+      setExtractionMethod(data.extractionMethod)
+      setExcelFileModel(data.excelFileModel)
     }
   };
 
@@ -54,26 +53,6 @@ const GenerarPedidoPage = () => {
   const handleConfirmNewFiles = (newFiles) => {
     setFiles(prevSelectedFiles => [...prevSelectedFiles, ...newFiles]);
   };
-
-  const recomendarPaquete = (cantidad) => {
-    
-    let result;
-    let creditoRestante = cantidad - user.credit;
-
-    if (creditoRestante < 20)
-      {result = "Puedes utilizar la prueba gratuita";}
-    else if (creditoRestante < 400)
-      {result = "$20.000 - Plan Inicial";}
-    else if (creditoRestante < 2500)
-     { result = "$100.000 - Plan emprendedor";}
-    else if (creditoRestante < 6000)
-     { result = "$210.000 - Plan empresa";}
-    else {
-      result = "$35 por factura - Plan empresa plus";
-    }
-    
-    return result;
-  }
 
   const fetchTicketProgress = async (id) => {
     // if (isLoading) {
@@ -105,13 +84,15 @@ const GenerarPedidoPage = () => {
         const ticketData = {
           tipo: fileType, 
           tags: selectedTagsData,
-          precioEstimado: estimatedPrice,
           archivos: files,
           userId: user.id,
           userEmail: user.email,
-          reason: reason
+          reason: reason,
+          excelFileModel: excelFileModel,
+          extractionMethod: extractionMethod,
+          compatibleType: compatibleType
         };
-        console.log(ticketData)
+        
         let ticketCreationResult = await ticketService.createTicket(ticketData);
         
         const interval = setInterval(() => {
@@ -167,11 +148,13 @@ const GenerarPedidoPage = () => {
             )}
             {activeStep === 3 && (
               <OnboardingStep3
-                estimatedPrice={estimatedPrice}
                 selectedFiles={files}
                 fileType={fileType}
                 selectedTags={selectedTagsData}
+                excelFileModel={excelFileModel}
+                extractionMethod={extractionMethod}
                 onPreviousStep={handlePreviousStep}
+                compatibleType={compatibleType}
                 eta={ticketService.calcularEta(files.length)}
                 onSave={handleSave}
                 isLoading={isLoading}

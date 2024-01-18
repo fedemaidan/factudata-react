@@ -11,7 +11,7 @@ const tagsDefault = [
 
 const tagsMapper = {
     "libro_iva": tagsDefault,
-    "analisis_gasto": tagsDefault,
+    "analisis_gastos": tagsDefault,
     "comprobantes_compatibles_con_Otros": tagsDefault,
     "custom": tagsDefault,
     "comprobantes_compatibles_con_Xubio": [
@@ -107,7 +107,13 @@ const tagsMapper = {
     ]
 }
 
-const tagsService = {
+const workTypeWording = {
+    'comprobantes_compatibles_con': "Compatible con ",
+    'libro_iva': 'Libro de IVA',
+    'analisis_gastos': 'Análisis de gastos',
+};
+
+const workTypeService = {
   getTags: (workType, compatibleType) => {
     try {
         if (workType != "comprobantes_compatibles_con")
@@ -118,6 +124,22 @@ const tagsService = {
         console.error(err);
       return false;
     }
-  }};
+  },
+  getNameWorkType: (workType, compatibleType) => {
+    try {
+        if (workType != "comprobantes_compatibles_con")
+            if (workTypeWording[workType])
+                return workTypeWording[workType];
+            else 
+                return workType;
+        else
+            return workTypeWording[workType] + " " + compatibleType;
+            
+    } catch (err) {
+        console.error(err);
+      return false;
+    }
+    }
+};
 
-export default tagsService;
+export default workTypeService;

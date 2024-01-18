@@ -108,7 +108,7 @@ const OnboardingStep1 = ({ onNextStep }) => {
           startIcon={<SvgIcon fontSize="small"><ArrowDownOnSquareIcon /></SvgIcon>}
           disabled={selectedType === ''}
         >
-          {selectedType ? (selectedFiles.length == 0 ? 'Seleccionar archivos': "Agregar más archivos") : 'Seleccione el tipo primero'}
+          {selectedType ? (selectedFiles.length == 0 ? 'Subir archivos': "Subir más archivos") : 'Seleccione el tipo primero'}
         </Button>
         {selectedFiles.length > 0 && (
           <Box sx={{ mt: 2 }}>

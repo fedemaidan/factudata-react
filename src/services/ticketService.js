@@ -1,9 +1,28 @@
 import { collection, doc, addDoc, getDoc, updateDoc, query, where, getDocs, orderBy, serverTimestamp} from 'firebase/firestore';
-import { db } from 'src/config/firebase';
+import { db, storage } from 'src/config/firebase';
+import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { uploadFile, deleteFacturaByFilename } from './facturasService'; // Importa el servicio de facturas para subir los archivos
 import { removeCreditsForUser } from './creditService';
 
 const ticketService = {
+  cloneTicket: async (ticketId) => {
+    const originalTicket = await ticketService.getTicketById(ticketId);
+    console.log(originalTicket)
+
+    const newTicket = {
+      tipo: originalTicket.tipo,
+      tags: originalTicket.tags, 
+      userId: originalTicket.userId, 
+      userEmail: originalTicket.userEmail, 
+      excelFileModel: originalTicket.modelo_excel, 
+      extractionMethod: originalTicket.metodo_extraccion, 
+      compatibleType: originalTicket.compatible_con,
+      reason: "",
+    }
+    console.log(originalTicket)
+
+    return await ticketService.createTicket(newTicket);
+  },
   calcularEta: (cantidad) => {
     const hoy = new Date();
     let diasASumar;
@@ -19,18 +38,19 @@ const ticketService = {
   },  
   createTicket: async (ticketData) => {
     try {
-      const { tipo, tags, precioEstimado, userId, reason, userEmail } = ticketData;
+      const { tipo, tags, userId, reason, userEmail, excelFileModel, extractionMethod, compatibleType } = ticketData;
       const comentarios =  [{
         who: "user",
         created_at: "Init",
         data: reason
       }] 
-      console.log(comentarios)
+
+
+      let urlFileModel = await ticketService.addFileModel(userId, extractionMethod, excelFileModel);
       // Agregar el ticket a la colección 'tickets'
       const ticketRef = await addDoc(collection(db, 'tickets'), {
         tipo: tipo,
         tags: tags,
-        precioEstimado: precioEstimado,
         estado: "Borrador",
         userId: userId,
         userEmail: userEmail,
@@ -38,7 +58,10 @@ const ticketService = {
         eta: "",
         archivos: [],
         resultado: [],
-        comentarios: comentarios
+        comentarios: comentarios,
+        modelo_excel: urlFileModel, 
+        metodo_extraccion: extractionMethod,
+        compatible_con: compatibleType
       });
       return ticketRef;
       
@@ -70,21 +93,24 @@ const ticketService = {
 
     return ticketId;
   },
+  addFileModel: async (userId, extractionMethod, excelFileModel) => {
+    let url = null;
+    if (extractionMethod == 'excel') {
+      const filename = `files/${userId}/${excelFileModel.name}`;
+      const filesFolderRef = ref(storage, filename);
+      await uploadBytes(filesFolderRef, excelFileModel);
+      url = await getDownloadURL(filesFolderRef);
+    }
+
+    return url;
+  },
   removeFileToTicket: async (ticketId, file) => {
     try {
       // Obtener datos del ticket actual
       const ticket = await ticketService.getTicketById(ticketId);
       if (!ticket) throw new Error('Ticket no encontrado');
-      console.log(file)
-      // Filtrar los archivos, eliminando el archivo especificado
       const updatedFiles = ticket.archivos.filter(archivo => archivo.name !== file.name);
-
-      // Actualizar el ticket con la lista de archivos filtrada
       await updateDoc(doc(db, 'tickets', ticketId), { archivos: updatedFiles });
-
-      // Eliminar el archivo del sistema de almacenamiento
-      // Asegúrate de tener una función deleteFile en facturasService
-      // que maneje la eliminación real del archivo
       await deleteFacturaByFilename(file.name);
 
       return true;

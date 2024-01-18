@@ -15,7 +15,8 @@ import {
 } from '@mui/material';
 import { Scrollbar } from 'src/components/scrollbar';
 import { useRouter } from 'next/router';
-
+import ticketService from 'src/services/ticketService';
+import workTypeService from 'src/services/workTypeService'
 export const TicketTable = (props) => {
   const {
     items = [],
@@ -40,6 +41,11 @@ export const TicketTable = (props) => {
     const date = new Date(timestamp.seconds * 1000); // Convert seconds to milliseconds
     return date.toLocaleString(); // Format the date as a string
   };
+
+  const handleTicketClone = async (ticketId)  => {
+    let ticketCreationResult = await ticketService.cloneTicket(ticketId)
+    router.push('/ticketDetails?ticketId='+ticketCreationResult.id)
+  } 
 
 
   return (
@@ -69,17 +75,26 @@ export const TicketTable = (props) => {
                     (<TableCell>{ticket.userId}</TableCell>)
                     }
                     <TableCell>{formatTimestamp(ticket.created_at)}</TableCell>
-                    <TableCell>{ticket.tipo}</TableCell>
+                    <TableCell>{workTypeService.getNameWorkType(ticket.tipo,ticket.compatible_con)}</TableCell>
                     <TableCell>{ticket.estado}</TableCell>
                     <TableCell>{ticket.tags.join(', ')}</TableCell>
                     <TableCell>{ticket.archivos.length}</TableCell>
                     <TableCell>{ticket.eta ? ticket.eta: "No definido"}</TableCell>
                     <TableCell>
                       <Button
-                        variant="outlined"
+                        variant="contained"
+                        sx={{ m:1 }} 
                         onClick={() => router.push('/ticketDetails?ticketId='+ticket.id)}
                       >
                         Ver solicitud
+                      </Button>
+                      <Button
+                        variant="outlined"
+                        color="secondary"
+                        sx={{ m:1 }} 
+                        onClick={() => {handleTicketClone(ticket.id)}}
+                        >
+                        Clonar
                       </Button>
                     </TableCell>
                   </TableRow>

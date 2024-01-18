@@ -6,9 +6,9 @@ import { saveAs } from 'file-saver';
 import TrashIcon from '@heroicons/react/24/solid/TrashIcon';
 import CircularProgress from '@mui/material/CircularProgress';
 import { useAuthContext } from 'src/contexts/auth-context';
+import workTypeService from 'src/services/workTypeService'
 
-
-const TicketInfo = ({ selectedTags, selectedFiles, resultFiles = [], comentarios, fileType, status, eta, onConfirmNewFiles, onRemoveFile, onRemoveResultFile, onAddResult, isLoading }) => {
+const TicketInfo = ({ selectedTags, selectedFiles, resultFiles = [], comentarios, fileType, excelFileModel, compatibleType, extractionMethod, status, eta, onConfirmNewFiles, onRemoveFile, onRemoveResultFile, onAddResult, isLoading }) => {
   const [currentTab, setCurrentTab] = useState(0);
   const [newFiles, setNewFiles] = useState([]);
   const fileInputRef = useRef(null);
@@ -16,6 +16,8 @@ const TicketInfo = ({ selectedTags, selectedFiles, resultFiles = [], comentarios
   const resultFileInputRef = useRef(null);
   const { user } = useAuthContext();
 
+  const workType = workTypeService.getNameWorkType(fileType,compatibleType)
+  
   const handleFileUpload = (event) => {
     const files = Array.from(event.target.files);
     setNewFiles(prevFiles => [...prevFiles, ...files]);
@@ -84,14 +86,26 @@ const TicketInfo = ({ selectedTags, selectedFiles, resultFiles = [], comentarios
       {currentTab === 0 && (
         <Paper elevation={2} sx={{ padding: '24px', backgroundColor: '#fff', borderRadius: '12px' }}>
         <Typography variant="body1" gutterBottom>
-          <strong>Tipo de trabajo:</strong> <span style={{ fontWeight: 300 }}>{fileType}</span>
+          <strong>Tipo de trabajo:</strong> <span style={{ fontWeight: 300 }}>{workType}</span>
         </Typography>
         <Typography variant="body1" gutterBottom>
-          <strong>Fecha de entrega estimado:</strong> <span style={{ fontWeight: 300 }}>{eta}</span>
+          <strong>Fecha de entrega estimado:</strong> <span style={{ fontWeight: 300 }}> {eta}</span>
         </Typography>
-        <Typography variant="body1" gutterBottom>
-          <strong>Datos de cada factura:</strong> <span style={{ fontWeight: 300 }}>{selectedTags.join(', ')}</span>
-        </Typography>
+        {extractionMethod == 'manual' && (
+          <Typography variant="body1" gutterBottom>
+            <strong>Datos de cada factura:</strong> <span style={{ fontWeight: 300 }}>{selectedTags.join(', ')}</span>
+          </Typography>
+        )}
+        {extractionMethod == 'excel' && (
+          <Typography variant="body1" gutterBottom>
+            <strong>Modelo:</strong> 
+            <span style={{ fontWeight: 300 }}>
+            <a href={excelFileModel} target="_blank" rel="noopener noreferrer">
+                  Descargar modelo
+                </a>
+            </span> 
+          </Typography>
+        )}
         <Typography variant="body1" gutterBottom>
           <strong>Créditos necesarios:</strong> <span style={{ fontWeight: 300 }}>{selectedFiles.length} créditos</span>
         </Typography>

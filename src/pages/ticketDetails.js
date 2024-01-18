@@ -42,7 +42,8 @@ const TicketDetailsPage = () => {
     await ticketService.cancelTicketById(ticketId);
   };
 
-  const shouldDisableConfirm = ticketData?.archivos?.length > userCredits;
+  const shouldDisableConfirmByCredits = ticketData?.archivos?.length > userCredits;
+  const shouldDisableConfirmByFiles = ticketData?.archivos?.length == 0;
 
   const handleRemoveFile = async (fileToRemove) => { 
     setIsLoading(true);
@@ -117,6 +118,9 @@ const TicketDetailsPage = () => {
           status={ticketData.estado}
           resultFiles={ticketData.resultado}
           eta={ticketData.eta}
+          excelFileModel={ticketData.modelo_excel}
+          extractionMethod={ticketData.metodo_extraccion}
+          compatibleType={ticketData.compatible_con}
           comentarios={ticketData.comentarios}
           onConfirmNewFiles={handleConfirmNewFiles}
           onRemoveFile={handleRemoveFile}
@@ -129,13 +133,13 @@ const TicketDetailsPage = () => {
       )}
       <Box mb={3}>
       {ticketData?.estado === 'Borrador' && (
-          <Tooltip title={shouldDisableConfirm ? "No puedes confirmar porque no tienes suficiente crédito" : ""}>
+          <Tooltip title={shouldDisableConfirmByCredits ? "No puedes confirmar porque no tienes suficiente crédito" : (shouldDisableConfirmByFiles? "Debes cargar al menos 1 archivo": "")}>
             <span> {/* Envuelve el botón con un elemento span para que Tooltip funcione incluso cuando el botón esté deshabilitado */}
               <Button 
                 variant="contained" 
                 color="primary" 
                 sx={{ mx: 1 }} 
-                disabled={shouldDisableConfirm}
+                disabled={shouldDisableConfirmByCredits || shouldDisableConfirmByFiles}
                 onClick={handleConfirm}
               >
                 Confirmar solicitud
@@ -143,7 +147,7 @@ const TicketDetailsPage = () => {
             </span>
           </Tooltip>
         )}
-        {ticketData?.estado === 'Borrador' && shouldDisableConfirm && (
+        {ticketData?.estado === 'Borrador' && (shouldDisableConfirmByCredits && shouldDisableConfirmByFiles) && (
           <Button 
             variant="contained" 
             color="primary" 
