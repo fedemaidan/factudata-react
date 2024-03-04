@@ -19,7 +19,6 @@ const ticketService = {
       compatibleType: originalTicket.compatible_con,
       reason: "",
     }
-    console.log(originalTicket)
 
     return await ticketService.createTicket(newTicket);
   },
