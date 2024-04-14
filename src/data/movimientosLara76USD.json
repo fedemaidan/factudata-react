@@ -1,0 +1,107 @@
+[
+    {
+      "FECHA": "2023-12-30",
+      "INGRESO": 5000,
+      "EGRESO": "",
+      "TC": 0,
+      "OBS": "Transferencia"
+    },
+    {
+      "FECHA": "2024-01-06",
+      "INGRESO": "",
+      "EGRESO": 1087,
+      "TC": 914,
+      "OBS": "Cambio a caja pesos"
+    },
+    {
+      "FECHA": "2024-01-09",
+      "INGRESO": "",
+      "EGRESO": 280,
+      "TC": 854,
+      "OBS": "Cambio a caja pesos"
+    },
+    {
+      "FECHA": "2024-01-15",
+      "INGRESO": "",
+      "EGRESO": 3166,
+      "TC": 792,
+      "OBS": "Cambio a caja pesos"
+    },
+    {
+      "FECHA": "2024-01-16",
+      "INGRESO": "",
+      "EGRESO": 966,
+      "TC": 952,
+      "OBS": "Cambio a caja pesos"
+    },
+    {
+      "FECHA": "2024-01-22",
+      "INGRESO": "",
+      "EGRESO": 6592,
+      "TC": 841,
+      "OBS": "Cambio a caja pesos"
+    },
+    {
+      "FECHA": "2024-01-23",
+      "INGRESO": "",
+      "EGRESO": 1022,
+      "TC": 808,
+      "OBS": "Cambio a caja pesos"
+    },
+    {
+      "FECHA": "2024-01-23",
+      "INGRESO": 10000,
+      "EGRESO": "",
+      "TC": 0,
+      "OBS": "Transferencia"
+    },
+    {
+      "FECHA": "2024-02-14",
+      "INGRESO": "",
+      "EGRESO": 963,
+      "TC": 721,
+      "OBS": "Cambio a caja pesos"
+    },
+    {
+      "FECHA": "2024-02-17",
+      "INGRESO": "",
+      "EGRESO": 1260,
+      "TC": 873,
+      "OBS": "Cambio a caja pesos"
+    },
+    {
+      "FECHA": "2024-02-21",
+      "INGRESO": "",
+      "EGRESO": 1619,
+      "TC": 832,
+      "OBS": "Cambio a caja pesos"
+    },
+    {
+      "FECHA": "2024-02-21",
+      "INGRESO": 10000,
+      "EGRESO": "",
+      "TC": 0,
+      "OBS": "Transferencia"
+    },
+    {
+      "FECHA": "2024-02-28",
+      "INGRESO": 12400,
+      "EGRESO": "",
+      "TC": 0,
+      "OBS": "Transferencia"
+    },
+    {
+      "FECHA": "2024-03-01",
+      "INGRESO": "",
+      "EGRESO": 36,
+      "TC": 1145,
+      "OBS": "Cambio a caja pesos"
+    },
+    {
+      "FECHA": "2024-03-01",
+      "INGRESO": "",
+      "EGRESO": 1497,
+      "TC": 1159,
+      "OBS": "Cambio a caja pesos"
+    }
+]

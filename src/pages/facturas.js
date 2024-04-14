@@ -8,7 +8,7 @@ import { useSelection } from 'src/hooks/use-selection';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import { FacturasTable } from 'src/sections/facturas/facturas-table';
 import { CustomersSearch } from 'src/sections/customer/customers-search';
-import { red } from '@mui/material/colors';
+import { red, green } from '@mui/material/colors';
 import {
   getFacturas,
   deleteFactura,
@@ -39,7 +39,41 @@ const Page = () => {
   const getFacturasList = async (page, rowsPerPage) => {
     try {
       const limit = 99; 
-      const data = await getFacturas(startAfter, limit);
+      //const data = await getFacturas(startAfter, limit);
+      const data = [
+        {
+          filename: '/assets/facturas/factura1.png',
+          fecha: "18/02/2024",
+          emisor: "LHS WORLDWISE SA",
+          cuit: 30757845573,
+          numero_factura: "0001-00001034",
+          total: 200000
+        },
+        {
+          filename: '/assets/facturas/factura2.jpeg',
+          fecha: "27/02/2024",
+          emisor: "El Bravo",
+          cuit: 30717858073,
+          numero_factura: "0003-00007028",
+          total: 8800
+        },
+        {
+          filename: '/assets/facturas/factura3.jpeg',
+          fecha: "27/03/2024",
+          emisor: "WANG YANZHU",
+          cuit: 30887859010,
+          numero_factura: "0009-000098918",
+          total: 983000
+        },
+        {
+          filename: '/assets/facturas/factura4.jpeg',
+          fecha: "10/03/2024",
+          emisor: "Dario Company",
+          cuit: 30887859010,
+          numero_factura: "00030098918",
+          total: 333993
+        }
+      ]
       setFacturasList(data);
       setFacturasTotal(await getTotalFacturas())
     } catch (err) {
@@ -66,6 +100,7 @@ const Page = () => {
   }, [])
 
   const handleUploadFile = async (files) => {
+    
     const uploaded = await uploadFile(files); // Llama a la función del servicio de Firebase
     if (uploaded) {
       await getFacturasList(page, rowsPerPage);
@@ -75,6 +110,7 @@ const Page = () => {
 
 
   const handleUploadClick = async () => {
+    console.log("pase")
     await setIsLoading(true);
     fileInputRef.current.click();
   }
@@ -123,9 +159,12 @@ const Page = () => {
                 <Typography variant="h4">
                   Facturas
                 </Typography>
-                
+                {/* <Typography variant="h6" style={{ color: green[700], marginLeft: 5 }} >
+                  Prespuesto gastado: $33.000 / $94.000
+                </Typography> */}
               </Stack>
               <div>
+                
               <Button
                     color="inherit"
                     startIcon={(
@@ -134,7 +173,7 @@ const Page = () => {
                       </SvgIcon>
                     )}
                   >
-                    Export
+                    Exportar
                   </Button>
                 <input 
                   type='file' 

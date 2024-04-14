@@ -7,6 +7,9 @@ import UserIcon from '@heroicons/react/24/solid/UserIcon';
 // import UsersIcon from '@heroicons/react/24/solid/UsersIcon';
 // import XCircleIcon from '@heroicons/react/24/solid/XCircleIcon';
 import { SvgIcon } from '@mui/material';
+import DashboardIcon from '@mui/icons-material/Dashboard';
+import StoreIcon from '@mui/icons-material/Store';
+import AddCircleIcon from '@mui/icons-material/AddCircle';
 
 export const items = [
   // {
@@ -28,20 +31,20 @@ export const items = [
   //   )
   // },
   {
-    title: 'Bandeja de solicitudes',
-    path: '/solicitudes',
+    title: 'Vista general',
+    path: '/resumenConstructoras',
     icon: (
       <SvgIcon fontSize="small">
-        <ShoppingBagIcon />
+        <DashboardIcon />
       </SvgIcon>
     )
   },
   {
-    title: 'Nueva solicitud',
-    path: '/generarPedido',
+    title: 'Caja Lares 7633',
+    path: '/cajaProyecto',
     icon: (
       <SvgIcon fontSize="small">
-        <ShoppingBagIcon />
+        <StoreIcon />
       </SvgIcon>
     )
   },
@@ -55,20 +58,38 @@ export const items = [
   //   )
   // },
   {
-    title: 'Creditos',
-    path: '/creditos',
+    title: 'Caja La Martona 92',
+    path: '/cajaProyecto',
     icon: (
       <SvgIcon fontSize="small">
-        <ShoppingBagIcon />
+        <StoreIcon />
       </SvgIcon>
     )
   },
   {
-    title: 'Cuenta',
-    path: '/account',
+    title: 'Caja La Martona 259',
+    path: '/cajaProyecto',
     icon: (
       <SvgIcon fontSize="small">
-        <UserIcon />
+        <StoreIcon />
+      </SvgIcon>
+    )
+  },
+  {
+    title: 'Caja Lares 138',
+    path: '/cajaProyecto',
+    icon: (
+      <SvgIcon fontSize="small">
+        <StoreIcon />
+      </SvgIcon>
+    )
+  },
+  {
+    title: 'Agregar proyecto',
+    path: '/cajaProyecto',
+    icon: (
+      <SvgIcon fontSize="small">
+        <AddCircleIcon />
       </SvgIcon>
     )
   },

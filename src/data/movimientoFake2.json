@@ -1,0 +1,115 @@
+[
+    {
+      "FECHA": "2024-02-17",
+      "INGRESO": "",
+      "EGRESO": 32000,
+      "TC": 1.0,
+      "OBS": "Compra de supermercado"
+    },
+    {
+      "FECHA": "2024-02-18",
+      "INGRESO": "",
+      "EGRESO": 15000,
+      "TC": 1.0,
+      "OBS": "Recarga de celular"
+    },
+    {
+      "FECHA": "2024-02-20",
+      "INGRESO": "",
+      "EGRESO": 22000,
+      "TC": 1.0,
+      "OBS": "Compra de libros"
+    },
+    {
+      "FECHA": "2024-02-23",
+      "INGRESO": "",
+      "EGRESO": 12000,
+      "TC": 1.0,
+      "OBS": "Recarga de tarjeta SUBE"
+    },
+    {
+      "FECHA": "2024-02-25",
+      "INGRESO": "",
+      "EGRESO": 45000,
+      "TC": 1.0,
+      "OBS": "Pago de servicio de luz"
+    },
+    {
+      "FECHA": "2024-02-27",
+      "INGRESO": "",
+      "EGRESO": 18000,
+      "TC": 1.0,
+      "OBS": "Entrada al cine"
+    },
+    {
+      "FECHA": "2024-03-01",
+      "INGRESO": "",
+      "EGRESO": 45000,
+      "TC": 1.0,
+      "OBS": "Alimento"
+    },
+    {
+      "FECHA": "2024-03-03",
+      "INGRESO": "",
+      "EGRESO": 20000,
+      "TC": 1.0,
+      "OBS": "Compra de medicamentos"
+    },
+    {
+      "FECHA": "2024-03-04",
+      "INGRESO": "",
+      "EGRESO": 10000,
+      "TC": 1.0,
+      "OBS": "Regalo para cumpleaños"
+    },
+    {
+      "FECHA": "2024-03-05",
+      "INGRESO": "",
+      "EGRESO": 35000,
+      "TC": 1.0,
+      "OBS": "Pago de cuota del gimnasio"
+    },
+    {
+      "FECHA": "2024-03-07",
+      "INGRESO": "",
+      "EGRESO": 28000,
+      "TC": 1.0,
+      "OBS": "Salida a comer con amigos"
+    },
+    {
+      "FECHA": "2024-03-08",
+      "INGRESO": "",
+      "EGRESO": 12000,
+      "TC": 1.0,
+      "OBS": "Mano de obra"
+    },
+    {
+      "FECHA": "2024-03-10",
+      "INGRESO": "",
+      "EGRESO": 7000,
+      "TC": 1.0,
+      "OBS": "Transporte público"
+    },
+    {
+      "FECHA": "2024-03-11",
+      "INGRESO": "",
+      "EGRESO": 25000,
+      "TC": 1.0,
+      "OBS": "Pago de alquiler"
+    },
+    {
+      "FECHA": "2024-02-19",
+      "INGRESO": "",
+      "EGRESO": 11000,
+      "TC": 1.0,
+      "OBS": "Alimento"
+    },
+    {
+      "FECHA": "202-02-05",
+      "INGRESO": "",
+      "EGRESO": 11000,
+      "TC": 1.0,
+      "OBS": "Alimento"
+    }
+]
+  

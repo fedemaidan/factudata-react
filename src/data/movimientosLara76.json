@@ -1,0 +1,1493 @@
+[
+    {
+      "FECHA": "2023-05-17",
+      "INGRESO": 860000,
+      "EGRESO": "",
+      "TC": "",
+      "OBS": "Deposito Galicia"
+    },
+    {
+      "FECHA": "2023-05-17",
+      "INGRESO": "",
+      "EGRESO": 25800,
+      "TC": "",
+      "OBS": "3% desc."
+    },
+    {
+      "FECHA": "2023-05-17",
+      "INGRESO": "",
+      "EGRESO": 834200,
+      "TC": "",
+      "OBS": "A cta. Adelanto M.O"
+    },
+    {
+      "FECHA": "2023-05-23",
+      "INGRESO": 708450,
+      "EGRESO": "",
+      "TC": "",
+      "OBS": "Transfe Gaston"
+    },
+    {
+      "FECHA": "2023-05-23",
+      "INGRESO": "",
+      "EGRESO": 708450,
+      "TC": "",
+      "OBS": "A cta. Adelanto M.O"
+    },
+    {
+      "FECHA": "2023-05-29",
+      "INGRESO": 170000,
+      "EGRESO": "",
+      "TC": "",
+      "OBS": "Transfe Gaston"
+    },
+    {
+      "FECHA": "2023-05-29",
+      "INGRESO": "",
+      "EGRESO": 170000,
+      "TC": "",
+      "OBS": "A cta. Adelanto M.O"
+    },
+    {
+      "FECHA": "2023-05-30",
+      "INGRESO": 4510800,
+      "EGRESO": "",
+      "TC": "",
+      "OBS": "Deposito gaston en ofi toscas"
+    },
+    {
+      "FECHA": "2023-05-30",
+      "INGRESO": "",
+      "EGRESO": 4510800,
+      "TC": "",
+      "OBS": "Saldo adelanto M.O"
+    },
+    {
+      "FECHA": "2023-06-01",
+      "INGRESO": 100000,
+      "EGRESO": "",
+      "TC": "",
+      "OBS": "Transferencia gasti"
+    },
+    {
+      "FECHA": "2023-06-06",
+      "INGRESO": 525260,
+      "EGRESO": "",
+      "TC": 483,
+      "OBS": "Cambio USD"
+    },
+    {
+      "FECHA": "2023-06-06",
+      "INGRESO": "",
+      "EGRESO": 625260,
+      "TC": "",
+      "OBS": "Maderera"
+    },
+    {
+      "FECHA": "2023-06-09",
+      "INGRESO": 134226,
+      "EGRESO": "",
+      "TC": 480,
+      "OBS": "Cambio usd"
+    },
+    {
+      "FECHA": "2023-06-09",
+      "INGRESO": "",
+      "EGRESO": 134226,
+      "TC": "",
+      "OBS": "Galectro"
+    },
+    {
+      "FECHA": "2023-06-15",
+      "INGRESO": 1548000,
+      "EGRESO": "",
+      "TC": 489,
+      "OBS": "Cambio usd"
+    },
+    {
+      "FECHA": "2023-06-15",
+      "INGRESO": "",
+      "EGRESO": 1530000,
+      "TC": "",
+      "OBS": "Mov de suelo"
+    },
+    {
+      "FECHA": "2023-06-15",
+      "INGRESO": "",
+      "EGRESO": 18000,
+      "TC": "",
+      "OBS": "Baño quimico"
+    },
+    {
+      "FECHA": "2023-06-16",
+      "INGRESO": 466500,
+      "EGRESO": "",
+      "TC": 483,
+      "OBS": "Cambio usd"
+    },
+    {
+      "FECHA": "2023-06-16",
+      "INGRESO": "",
+      "EGRESO": 466500,
+      "TC": "",
+      "OBS": "Mano de obra"
+    },
+    {
+      "FECHA": "2023-06-22",
+      "INGRESO": 3223473,
+      "EGRESO": "",
+      "TC": 489,
+      "OBS": "Cambio usd"
+    },
+    {
+      "FECHA": "2023-06-22",
+      "INGRESO": "",
+      "EGRESO": 2890000,
+      "TC": "",
+      "OBS": "Hormigon"
+    },
+    {
+      "FECHA": "2023-06-22",
+      "INGRESO": "",
+      "EGRESO": 333473,
+      "TC": "",
+      "OBS": "Maderera"
+    },
+    {
+      "FECHA": "2023-06-23",
+      "INGRESO": 500000,
+      "EGRESO": "",
+      "TC": "",
+      "OBS": "Cambio usd"
+    },
+    {
+      "FECHA": "2023-06-23",
+      "INGRESO": "",
+      "EGRESO": 500000,
+      "TC": "",
+      "OBS": "Mano de obra"
+    },
+    {
+      "FECHA": "2023-06-23",
+      "INGRESO": "",
+      "EGRESO": "",
+      "TC": "",
+      "OBS": "Ingreso gasti"
+    },
+    {
+      "FECHA": "2023-06-30",
+      "INGRESO": "",
+      "EGRESO": 500000,
+      "TC": "",
+      "OBS": "Mano de obra"
+    },
+    {
+      "FECHA": "2023-07-07",
+      "INGRESO": "",
+      "EGRESO": 700000,
+      "TC": "",
+      "OBS": "Mano de obra"
+    },
+    {
+      "FECHA": "2023-07-07",
+      "INGRESO": "",
+      "EGRESO": 350000,
+      "TC": "",
+      "OBS": "Direccion de obra Cta. 1"
+    },
+    {
+      "FECHA": "2023-07-10",
+      "INGRESO": "",
+      "EGRESO": 221022,
+      "TC": "",
+      "OBS": "Mat electricos"
+    },
+    {
+      "FECHA": "2023-07-13",
+      "INGRESO": "",
+      "EGRESO": 18000,
+      "TC": "",
+      "OBS": "Baño químico"
+    },
+    {
+      "FECHA": "2023-07-14",
+      "INGRESO": 489022,
+      "EGRESO": "",
+      "TC": 508,
+      "OBS": "cambio usd"
+    },
+    {
+      "FECHA": "2023-07-14",
+      "INGRESO": "",
+      "EGRESO": 700000,
+      "TC": "",
+      "OBS": "mano de obra"
+    },
+    {
+      "FECHA": "2023-07-17",
+      "INGRESO": 645000,
+      "EGRESO": "",
+      "TC": 512,
+      "OBS": "Cambio usd"
+    },
+    {
+      "FECHA": "2023-07-17",
+      "INGRESO": "",
+      "EGRESO": 645000,
+      "TC": "",
+      "OBS": "Corralon AM"
+    },
+    {
+      "FECHA": "2023-07-21",
+      "INGRESO": 845141,
+      "EGRESO": "",
+      "TC": 522,
+      "OBS": "Cambio usd"
+    },
+    {
+      "FECHA": "2023-07-21",
+      "INGRESO": "",
+      "EGRESO": 700000,
+      "TC": "",
+      "OBS": "mano de obra"
+    },
+    {
+      "FECHA": "2023-07-21",
+      "INGRESO": "",
+      "EGRESO": 145141,
+      "TC": "",
+      "OBS": "Hierros"
+    },
+    {
+      "FECHA": "2023-07-21",
+      "INGRESO": 2000000,
+      "EGRESO": "",
+      "TC": "",
+      "OBS": "mano de obra"
+    },
+    {
+      "FECHA": "2023-07-28",
+      "INGRESO": "",
+      "EGRESO": 700000,
+      "TC": "",
+      "OBS": ""
+    },
+    {
+      "FECHA": "2023-07-28",
+      "INGRESO": "",
+      "EGRESO": 46800,
+      "TC": "",
+      "OBS": "Resta sanitarios"
+    },
+    {
+      "FECHA": "2023-07-31",
+      "INGRESO": "",
+      "EGRESO": 101995,
+      "TC": "",
+      "OBS": "Sanitarios arieta"
+    },
+    {
+      "FECHA": "2023-08-02",
+      "INGRESO": "",
+      "EGRESO": 185000,
+      "TC": "",
+      "OBS": "Maderera Otero"
+    },
+    {
+      "FECHA": "2023-08-03",
+      "INGRESO": "",
+      "EGRESO": 806555,
+      "TC": "",
+      "OBS": "Hierros"
+    },
+    {
+      "FECHA": "2023-08-04",
+      "INGRESO": 1099850,
+      "EGRESO": "",
+      "TC": 564,
+      "OBS": "Cambio USD"
+    },
+    {
+      "FECHA": "2023-08-04",
+      "INGRESO": "",
+      "EGRESO": 724500,
+      "TC": "",
+      "OBS": "mano de obra"
+    },
+    {
+      "FECHA": "2023-08-04",
+      "INGRESO": "",
+      "EGRESO": 350000,
+      "TC": "",
+      "OBS": "Direccion de obra Cta. 2"
+    },
+    {
+      "FECHA": "2023-08-04",
+      "INGRESO": "",
+      "EGRESO": 185000,
+      "TC": "",
+      "OBS": "Sanitarios arieta"
+    },
+    {
+      "FECHA": "2023-08-09",
+      "INGRESO": 1013900,
+      "EGRESO": "",
+      "TC": 590,
+      "OBS": "Cambio USD"
+    },
+    {
+      "FECHA": "2023-08-09",
+      "INGRESO": "",
+      "EGRESO": 1013900,
+      "TC": "",
+      "OBS": "Corralon AM"
+    },
+    {
+      "FECHA": "2023-08-11",
+      "INGRESO": 742500,
+      "EGRESO": "",
+      "TC": 600,
+      "OBS": "Cambio usd"
+    },
+    {
+      "FECHA": "2023-08-11",
+      "INGRESO": "",
+      "EGRESO": 724500,
+      "TC": "",
+      "OBS": "Mano de obra"
+    },
+    {
+      "FECHA": "2023-08-11",
+      "INGRESO": "",
+      "EGRESO": 18000,
+      "TC": "",
+      "OBS": "Baño químico"
+    },
+    {
+      "FECHA": "2023-08-15",
+      "INGRESO": 1633400,
+      "EGRESO": "",
+      "TC": 680,
+      "OBS": "Cambio usd"
+    },
+    {
+      "FECHA": "2023-08-15",
+      "INGRESO": "",
+      "EGRESO": 185300,
+      "TC": "",
+      "OBS": "Maderera"
+    },
+    {
+      "FECHA": "2023-08-15",
+      "INGRESO": "",
+      "EGRESO": 1448100,
+      "TC": "",
+      "OBS": "Hormigon"
+    },
+    {
+      "FECHA": "2023-08-16",
+      "INGRESO": 1022597,
+      "EGRESO": "",
+      "TC": 750,
+      "OBS": "Cambio usd"
+    },
+    {
+      "FECHA": "2023-08-16",
+      "INGRESO": "",
+      "EGRESO": 1022597,
+      "TC": "",
+      "OBS": "Corralon AM"
+    },
+    {
+      "FECHA": "2023-08-18",
+      "INGRESO": 724500,
+      "EGRESO": "",
+      "TC": 700,
+      "OBS": "Cambio usd"
+    },
+    {
+      "FECHA": "2023-08-18",
+      "INGRESO": "",
+      "EGRESO": 724500,
+      "TC": "",
+      "OBS": "Mano de obra"
+    },
+    {
+      "FECHA": "2023-08-25",
+      "INGRESO": 1084300,
+      "EGRESO": "",
+      "TC": 710,
+      "OBS": "Cambio usd"
+    },
+    {
+      "FECHA": "2023-08-25",
+      "INGRESO": "",
+      "EGRESO": 724500,
+      "TC": "",
+      "OBS": "Mano de obra"
+    },
+    {
+      "FECHA": "2023-08-25",
+      "INGRESO": "",
+      "EGRESO": 359800,
+      "TC": "",
+      "OBS": "Galectro"
+    },
+    {
+      "FECHA": "2023-08-31",
+      "INGRESO": 26000,
+      "EGRESO": "",
+      "TC": 730,
+      "OBS": "Cambio usd"
+    },
+    {
+      "FECHA": "2023-08-31",
+      "INGRESO": "",
+      "EGRESO": 26000,
+      "TC": "",
+      "OBS": "Volquete"
+    },
+    {
+      "FECHA": "2023-09-01",
+      "INGRESO": 1074500,
+      "EGRESO": "",
+      "TC": 718,
+      "OBS": "Cambio usd"
+    },
+    {
+      "FECHA": "2023-09-01",
+      "INGRESO": "",
+      "EGRESO": 724500,
+      "TC": "",
+      "OBS": "Mano de obra"
+    },
+    {
+      "FECHA": "2023-09-01",
+      "INGRESO": "",
+      "EGRESO": 350000,
+      "TC": "",
+      "OBS": "Direccion de obra Cta. 3"
+    },
+    {
+      "FECHA": "2023-09-08",
+      "INGRESO": 905800,
+      "EGRESO": "",
+      "TC": 705,
+      "OBS": "Cambio usd"
+    },
+    {
+      "FECHA": "2023-09-08",
+      "INGRESO": "",
+      "EGRESO": 905800,
+      "TC": "",
+      "OBS": "Mano de obra"
+    },
+    {
+      "FECHA": "2023-09-12",
+      "INGRESO": 116980,
+      "EGRESO": "",
+      "TC": 718,
+      "OBS": "Cambio usd"
+    },
+    {
+      "FECHA": "2023-09-12",
+      "INGRESO": "",
+      "EGRESO": 116980,
+      "TC": "",
+      "OBS": "Metal grande"
+    },
+    {
+      "FECHA": "2023-09-14",
+      "INGRESO": 20000,
+      "EGRESO": "",
+      "TC": 725,
+      "OBS": "Cambio usd"
+    },
+    {
+      "FECHA": "2023-09-14",
+      "INGRESO": "",
+      "EGRESO": 20000,
+      "TC": "",
+      "OBS": "Baño químico"
+    },
+    {
+      "FECHA": "2023-09-15",
+      "INGRESO": 905800,
+      "EGRESO": "",
+      "TC": 708,
+      "OBS": "Cambio usd"
+    },
+    {
+      "FECHA": "2023-09-15",
+      "INGRESO": "",
+      "EGRESO": 905800,
+      "TC": "",
+      "OBS": "Mano de obra"
+    },
+    {
+      "FECHA": "2023-09-22",
+      "INGRESO": 905800,
+      "EGRESO": "",
+      "TC": 738,
+      "OBS": "Cambio usd"
+    },
+    {
+      "FECHA": "2023-09-22",
+      "INGRESO": "",
+      "EGRESO": 905800,
+      "TC": "",
+      "OBS": "Mano de obra"
+    },
+    {
+      "FECHA": "2023-09-28",
+      "INGRESO": 26000,
+      "EGRESO": "",
+      "TC": 770,
+      "OBS": "Cambio usd"
+    },
+    {
+      "FECHA": "2023-09-28",
+      "INGRESO": "",
+      "EGRESO": 26000,
+      "TC": "",
+      "OBS": "Volquete"
+    },
+    {
+      "FECHA": "2023-09-29",
+      "INGRESO": 5089400,
+      "EGRESO": "",
+      "TC": 780,
+      "OBS": "Cambio usd"
+    },
+    {
+      "FECHA": "2023-09-29",
+      "INGRESO": "",
+      "EGRESO": 905800,
+      "TC": "",
+      "OBS": "Mano de obra"
+    },
+    {
+      "FECHA": "2023-09-29",
+      "INGRESO": "",
+      "EGRESO": 676700,
+      "TC": "",
+      "OBS": "Galectro"
+    },
+    {
+      "FECHA": "2023-09-29",
+      "INGRESO": "",
+      "EGRESO": 3506900,
+      "TC": "",
+      "OBS": "Corralon AM"
+    },
+    {
+      "FECHA": "2023-10-04",
+      "INGRESO": 70000,
+      "EGRESO": "",
+      "TC": "",
+      "OBS": "Cambio usd"
+    },
+    {
+      "FECHA": "2023-10-04",
+      "INGRESO": "",
+      "EGRESO": 70000,
+      "TC": "",
+      "OBS": "Factibilidad metro gas"
+    },
+    {
+      "FECHA": "2023-10-06",
+      "INGRESO": 1386000,
+      "EGRESO": "",
+      "TC": 845,
+      "OBS": "Cambio usd"
+    },
+    {
+      "FECHA": "2023-10-06",
+      "INGRESO": "",
+      "EGRESO": 1036000,
+      "TC": "",
+      "OBS": "Mano de obra"
+    },
+    {
+      "FECHA": "2023-10-06",
+      "INGRESO": "",
+      "EGRESO": 350000,
+      "TC": "",
+      "OBS": "Direccion de obra Cta. 4"
+    },
+    {
+      "FECHA": "2023-10-10",
+      "INGRESO": 1757319,
+      "EGRESO": "",
+      "TC": 980,
+      "OBS": "Cambio usd"
+    },
+    {
+      "FECHA": "2023-10-10",
+      "INGRESO": "",
+      "EGRESO": 1757319,
+      "TC": "",
+      "OBS": "Sanitarios Cañuelas"
+    },
+    {
+      "FECHA": "2023-10-12",
+      "INGRESO": 1036000,
+      "EGRESO": "",
+      "TC": 960,
+      "OBS": "Cambio usd"
+    },
+    {
+      "FECHA": "2023-10-12",
+      "INGRESO": "",
+      "EGRESO": 1036000,
+      "TC": "",
+      "OBS": "Mano de obra"
+    },
+    {
+      "FECHA": "2023-10-20",
+      "INGRESO": 1855400,
+      "EGRESO": "",
+      "TC": 1000,
+      "OBS": "Cambio usd"
+    },
+    {
+      "FECHA": "2023-10-20",
+      "INGRESO": "",
+      "EGRESO": 1036000,
+      "TC": "",
+      "OBS": "Mano de obra"
+    },
+    {
+      "FECHA": "2023-10-20",
+      "INGRESO": "",
+      "EGRESO": 819400,
+      "TC": "",
+      "OBS": "Corralon AM"
+    },
+    {
+      "FECHA": "2023-10-26",
+      "INGRESO": 20000,
+      "EGRESO": "",
+      "TC": 960,
+      "OBS": "Cambio usd"
+    },
+    {
+      "FECHA": "2023-10-26",
+      "INGRESO": "",
+      "EGRESO": 20000,
+      "TC": "",
+      "OBS": "Baño químico"
+    },
+    {
+      "FECHA": "2023-10-27",
+      "INGRESO": 1036000,
+      "EGRESO": "",
+      "TC": 955,
+      "OBS": "Cambio usd"
+    },
+    {
+      "FECHA": "2023-10-27",
+      "INGRESO": "",
+      "EGRESO": 1036000,
+      "TC": "",
+      "OBS": "Mano de obra"
+    },
+    {
+      "FECHA": "2023-10-30",
+      "INGRESO": 525980,
+      "EGRESO": "",
+      "TC": 950,
+      "OBS": "Cambio usd"
+    },
+    {
+      "FECHA": "2023-10-30",
+      "INGRESO": "",
+      "EGRESO": 525980,
+      "TC": "",
+      "OBS": "Sanitarios Cañuelas"
+    },
+    {
+      "FECHA": "2023-11-02",
+      "INGRESO": 29000,
+      "EGRESO": "",
+      "TC": 895,
+      "OBS": "Cambio usd"
+    },
+    {
+      "FECHA": "2023-11-02",
+      "INGRESO": "",
+      "EGRESO": 29000,
+      "TC": "",
+      "OBS": "Volquete"
+    },
+    {
+      "FECHA": "2023-11-03",
+      "INGRESO": 1476000,
+      "EGRESO": "",
+      "TC": 900,
+      "OBS": "Cambio usd"
+    },
+    {
+      "FECHA": "2023-11-03",
+      "INGRESO": "",
+      "EGRESO": 1126000,
+      "TC": "",
+      "OBS": "Mano de obra"
+    },
+    {
+      "FECHA": "2023-11-03",
+      "INGRESO": "",
+      "EGRESO": 350000,
+      "TC": "",
+      "OBS": "Direccion de obra Cta. 5"
+    },
+    {
+      "FECHA": "2023-11-08",
+      "INGRESO": 23000,
+      "EGRESO": "",
+      "TC": 870,
+      "OBS": "Cambio usd"
+    },
+    {
+      "FECHA": "2023-11-08",
+      "INGRESO": "",
+      "EGRESO": 23000,
+      "TC": "",
+      "OBS": "Baño quimico"
+    },
+    {
+      "FECHA": "2023-11-10",
+      "INGRESO": 5735271,
+      "EGRESO": "",
+      "TC": 925,
+      "OBS": "Cambio usd"
+    },
+    {
+      "FECHA": "2023-11-10",
+      "INGRESO": "",
+      "EGRESO": 4375800,
+      "TC": "",
+      "OBS": "Piso radiante"
+    },
+    {
+      "FECHA": "2023-11-10",
+      "INGRESO": "",
+      "EGRESO": 1126000,
+      "TC": "",
+      "OBS": "Mano de obra"
+    },
+    {
+      "FECHA": "2023-11-10",
+      "INGRESO": "",
+      "EGRESO": 233471,
+      "TC": "",
+      "OBS": "Sanitarios aranda"
+    },
+    {
+      "FECHA": "2023-11-16",
+      "INGRESO": 33000,
+      "EGRESO": "",
+      "TC": 980,
+      "OBS": "Cambio usd"
+    },
+    {
+      "FECHA": "2023-11-16",
+      "INGRESO": "",
+      "EGRESO": 33000,
+      "TC": "",
+      "OBS": "Volquete"
+    },
+    {
+      "FECHA": "2023-11-17",
+      "INGRESO": 2695600,
+      "EGRESO": "",
+      "TC": 950,
+      "OBS": "Cambio usd"
+    },
+    {
+      "FECHA": "2023-11-17",
+      "INGRESO": "",
+      "EGRESO": 1126000,
+      "TC": "",
+      "OBS": "Mano de obra"
+    },
+    {
+      "FECHA": "2023-11-17",
+      "INGRESO": "",
+      "EGRESO": 1569600,
+      "TC": "",
+      "OBS": "Corralon AM"
+    },
+    {
+      "FECHA": "2023-11-23",
+      "INGRESO": 1159000,
+      "EGRESO": "",
+      "TC": 1030,
+      "OBS": "Cambio usd"
+    },
+    {
+      "FECHA": "2023-11-23",
+      "INGRESO": "",
+      "EGRESO": 1126000,
+      "TC": "",
+      "OBS": "Mano de obra"
+    },
+    {
+      "FECHA": "2023-11-23",
+      "INGRESO": "",
+      "EGRESO": 33000,
+      "TC": "",
+      "OBS": "Volquete"
+    },
+    {
+      "FECHA": "2023-11-30",
+      "INGRESO": 522950,
+      "EGRESO": "",
+      "TC": 875,
+      "OBS": "Cambio usd"
+    },
+    {
+      "FECHA": "2023-11-30",
+      "INGRESO": "",
+      "EGRESO": 522950,
+      "TC": "",
+      "OBS": "Sanitarios Cañuelas"
+    },
+    {
+      "FECHA": "2023-12-01",
+      "INGRESO": 1732800,
+      "EGRESO": "",
+      "TC": 910,
+      "OBS": "Cambio usd"
+    },
+    {
+      "FECHA": "2023-12-01",
+      "INGRESO": "",
+      "EGRESO": 1218000,
+      "TC": "",
+      "OBS": "Mano de obra"
+    },
+    {
+      "FECHA": "2023-12-01",
+      "INGRESO": "",
+      "EGRESO": 350000,
+      "TC": "",
+      "OBS": "Direccion de obra Cta. 6"
+    },
+    {
+      "FECHA": "2023-12-01",
+      "INGRESO": "",
+      "EGRESO": 164800,
+      "TC": "",
+      "OBS": "Galectro"
+    },
+    {
+      "FECHA": "2023-12-06",
+      "INGRESO": 1450800,
+      "EGRESO": "",
+      "TC": 900,
+      "OBS": "cambio usd"
+    },
+    {
+      "FECHA": "2023-12-06",
+      "INGRESO": "",
+      "EGRESO": 1218000,
+      "TC": "",
+      "OBS": "Mano de obra"
+    },
+    {
+      "FECHA": "2023-12-06",
+      "INGRESO": "",
+      "EGRESO": 232800,
+      "TC": "",
+      "OBS": "Conduflex cables"
+    },
+    {
+      "FECHA": "2023-12-07",
+      "INGRESO": 543500,
+      "EGRESO": "",
+      "TC": 935,
+      "OBS": "cambio usd"
+    },
+    {
+      "FECHA": "2023-12-07",
+      "INGRESO": "",
+      "EGRESO": 543500,
+      "TC": "",
+      "OBS": "Corralon AM"
+    },
+    {
+      "FECHA": "2023-12-12",
+      "INGRESO": 79480,
+      "EGRESO": "",
+      "TC": "",
+      "OBS": "cambio usd"
+    },
+    {
+      "FECHA": "2023-12-12",
+      "INGRESO": "",
+      "EGRESO": 79480,
+      "TC": "",
+      "OBS": "Corralon La Lomita"
+    },
+    {
+      "FECHA": "2023-12-12",
+      "INGRESO": 2149300,
+      "EGRESO": "",
+      "TC": 970,
+      "OBS": ""
+    },
+    {
+      "FECHA": "2023-12-12",
+      "INGRESO": "",
+      "EGRESO": 2149300,
+      "TC": "",
+      "OBS": "Conduflex cables"
+    },
+    {
+      "FECHA": "2023-12-14",
+      "INGRESO": 4183769,
+      "EGRESO": "",
+      "TC": 990,
+      "OBS": "cambio usd"
+    },
+    {
+      "FECHA": "2023-12-14",
+      "INGRESO": "",
+      "EGRESO": 2965769,
+      "TC": "",
+      "OBS": "Materiales en seco"
+    },
+    {
+      "FECHA": "2023-12-14",
+      "INGRESO": "",
+      "EGRESO": 1218000,
+      "TC": "",
+      "OBS": "Mano de obra"
+    },
+    {
+      "FECHA": "2023-12-15",
+      "INGRESO": 1756514,
+      "EGRESO": "",
+      "TC": 960,
+      "OBS": "cambio usd"
+    },
+    {
+      "FECHA": "2023-12-15",
+      "INGRESO": "",
+      "EGRESO": 26000,
+      "TC": "",
+      "OBS": "Baño quimico"
+    },
+    {
+      "FECHA": "2023-12-15",
+      "INGRESO": "",
+      "EGRESO": 1730514,
+      "TC": "",
+      "OBS": "Sanitarios Aranda"
+    },
+    {
+      "FECHA": "2023-12-21",
+      "INGRESO": 1218000,
+      "EGRESO": "",
+      "TC": 955,
+      "OBS": "cambio usd"
+    },
+    {
+      "FECHA": "2023-12-21",
+      "INGRESO": "",
+      "EGRESO": 1218000,
+      "TC": "",
+      "OBS": "Mano de obra"
+    },
+    {
+      "FECHA": "2023-12-22",
+      "INGRESO": 3837317,
+      "EGRESO": "",
+      "TC": 955,
+      "OBS": "cambio usd"
+    },
+    {
+      "FECHA": "2023-12-22",
+      "INGRESO": "",
+      "EGRESO": 2859740,
+      "TC": "",
+      "OBS": "Hormigon CP"
+    },
+    {
+      "FECHA": "2023-12-22",
+      "INGRESO": "",
+      "EGRESO": 977577,
+      "TC": "",
+      "OBS": "AM corralon"
+    },
+    {
+      "FECHA": "2023-12-28",
+      "INGRESO": 1218000,
+      "EGRESO": "",
+      "TC": 975,
+      "OBS": "cambio usd"
+    },
+    {
+      "FECHA": "2023-12-28",
+      "INGRESO": "",
+      "EGRESO": 1218000,
+      "TC": "",
+      "OBS": "Mano de obra"
+    },
+    {
+      "FECHA": "2023-12-29",
+      "INGRESO": 916790,
+      "EGRESO": "",
+      "TC": 975,
+      "OBS": "cambio usd"
+    },
+    {
+      "FECHA": "2023-12-29",
+      "INGRESO": "",
+      "EGRESO": 515900,
+      "TC": "",
+      "OBS": "Galectro"
+    },
+    {
+      "FECHA": "2023-12-29",
+      "INGRESO": "",
+      "EGRESO": 400890,
+      "TC": "",
+      "OBS": "Sanitarios Aranda"
+    },
+    {
+      "FECHA": "2024-01-04",
+      "INGRESO": 1535000,
+      "EGRESO": "",
+      "TC": 990,
+      "OBS": "cambio usd"
+    },
+    {
+      "FECHA": "2024-01-04",
+      "INGRESO": "",
+      "EGRESO": 1185000,
+      "TC": "",
+      "OBS": "Mano de obra"
+    },
+    {
+      "FECHA": "2024-01-04",
+      "INGRESO": "",
+      "EGRESO": 350000,
+      "TC": "",
+      "OBS": "Direccion de obra Cta. 7"
+    },
+    {
+      "FECHA": "2024-01-11",
+      "INGRESO": 1185000,
+      "EGRESO": "",
+      "TC": 1115,
+      "OBS": "cambio usd"
+    },
+    {
+      "FECHA": "2024-01-11",
+      "INGRESO": "",
+      "EGRESO": 1185000,
+      "TC": "",
+      "OBS": "Mano de obra"
+    },
+    {
+      "FECHA": "2024-01-12",
+      "INGRESO": 1223700,
+      "EGRESO": "",
+      "TC": 1090,
+      "OBS": "Cambio usd"
+    },
+    {
+      "FECHA": "2024-01-12",
+      "INGRESO": "",
+      "EGRESO": 1183700,
+      "TC": "",
+      "OBS": "Conduflex cables"
+    },
+    {
+      "FECHA": "2024-01-12",
+      "INGRESO": "",
+      "EGRESO": 40000,
+      "TC": "",
+      "OBS": "Baño químico"
+    },
+    {
+      "FECHA": "2024-01-15",
+      "INGRESO": 542555,
+      "EGRESO": "",
+      "TC": 1090,
+      "OBS": "Cambio usd"
+    },
+    {
+      "FECHA": "2024-01-15",
+      "INGRESO": "",
+      "EGRESO": 542555,
+      "TC": "",
+      "OBS": "Materiales en seco"
+    },
+    {
+      "FECHA": "2024-01-18",
+      "INGRESO": 4758000,
+      "EGRESO": "",
+      "TC": 1200,
+      "OBS": "Cambio usd"
+    },
+    {
+      "FECHA": "2024-01-18",
+      "INGRESO": "",
+      "EGRESO": 3518000,
+      "TC": "",
+      "OBS": "Membrana"
+    },
+    {
+      "FECHA": "2024-01-18",
+      "INGRESO": "",
+      "EGRESO": 55000,
+      "TC": "",
+      "OBS": "Volquete"
+    },
+    {
+      "FECHA": "2024-01-18",
+      "INGRESO": "",
+      "EGRESO": 1185000,
+      "TC": "",
+      "OBS": "Mano de obra"
+    },
+    {
+      "FECHA": "2024-01-25",
+      "INGRESO": 1185000,
+      "EGRESO": "",
+      "TC": 1230,
+      "OBS": "Cambio usd"
+    },
+    {
+      "FECHA": "2024-01-25",
+      "INGRESO": "",
+      "EGRESO": 1185000,
+      "TC": "",
+      "OBS": "Mano de obra"
+    },
+    {
+      "FECHA": "2024-01-26",
+      "INGRESO": 1092916,
+      "EGRESO": "",
+      "TC": 1190,
+      "OBS": "Cambio usd"
+    },
+    {
+      "FECHA": "2024-01-26",
+      "INGRESO": "",
+      "EGRESO": 364704,
+      "TC": "",
+      "OBS": "Sanitarios aranda"
+    },
+    {
+      "FECHA": "2024-01-26",
+      "INGRESO": "",
+      "EGRESO": 728212,
+      "TC": "",
+      "OBS": "Corralon AM"
+    },
+    {
+      "FECHA": "2024-01-29",
+      "INGRESO": 10200,
+      "EGRESO": "",
+      "TC": 1190,
+      "OBS": "Cambio usd"
+    },
+    {
+      "FECHA": "2024-01-29",
+      "INGRESO": "",
+      "EGRESO": 10200,
+      "TC": "",
+      "OBS": "Corralon 7hnos"
+    },
+    {
+      "FECHA": "2024-01-30",
+      "INGRESO": 22384,
+      "EGRESO": "",
+      "TC": 1190,
+      "OBS": "Cambio usd"
+    },
+    {
+      "FECHA": "2024-01-30",
+      "INGRESO": "",
+      "EGRESO": 22384,
+      "TC": "",
+      "OBS": "Ferretería"
+    },
+    {
+      "FECHA": "2024-02-01",
+      "INGRESO": 1750000,
+      "EGRESO": "",
+      "TC": 1160,
+      "OBS": "Cambio usd"
+    },
+    {
+      "FECHA": "2024-02-01",
+      "INGRESO": "",
+      "EGRESO": 1320000,
+      "TC": "",
+      "OBS": "Mano de obra"
+    },
+    {
+      "FECHA": "2024-02-01",
+      "INGRESO": "",
+      "EGRESO": 350000,
+      "TC": "",
+      "OBS": "Dirección de obra cta. 8"
+    },
+    {
+      "FECHA": "2024-02-01",
+      "INGRESO": "",
+      "EGRESO": 80000,
+      "TC": "",
+      "OBS": "Adicional electricidad"
+    },
+    {
+      "FECHA": "2024-02-02",
+      "INGRESO": 1260652,
+      "EGRESO": "",
+      "TC": 1160,
+      "OBS": "Cambio usd"
+    },
+    {
+      "FECHA": "2024-02-02",
+      "INGRESO": "",
+      "EGRESO": 1260652,
+      "TC": "",
+      "OBS": "corralon AM"
+    },
+    {
+      "FECHA": "2024-02-06",
+      "INGRESO": 2552363,
+      "EGRESO": "",
+      "TC": 1125,
+      "OBS": "Cambio usd"
+    },
+    {
+      "FECHA": "2024-02-06",
+      "INGRESO": "",
+      "EGRESO": 2552363,
+      "TC": "",
+      "OBS": "Pintureria"
+    },
+    {
+      "FECHA": "2024-02-08",
+      "INGRESO": 1553600,
+      "EGRESO": "",
+      "TC": 1130,
+      "OBS": "Cambio usd"
+    },
+    {
+      "FECHA": "2024-02-08",
+      "INGRESO": "",
+      "EGRESO": 40000,
+      "TC": "",
+      "OBS": "Baño quimico"
+    },
+    {
+      "FECHA": "2024-02-08",
+      "INGRESO": "",
+      "EGRESO": 1320000,
+      "TC": "",
+      "OBS": "mano de obra"
+    },
+    {
+      "FECHA": "2024-02-08",
+      "INGRESO": "",
+      "EGRESO": 193600,
+      "TC": "",
+      "OBS": "Galectro"
+    },
+    {
+      "FECHA": "2024-02-15",
+      "INGRESO": 1320000,
+      "EGRESO": "",
+      "TC": 1060,
+      "OBS": "Cambio usd"
+    },
+    {
+      "FECHA": "2024-02-15",
+      "INGRESO": "",
+      "EGRESO": 1320000,
+      "TC": "",
+      "OBS": "Mano de obra"
+    },
+    {
+      "FECHA": "2024-02-20",
+      "INGRESO": 96220,
+      "EGRESO": "",
+      "TC": 1090,
+      "OBS": "Cambio usd"
+    },
+    {
+      "FECHA": "2024-02-20",
+      "INGRESO": "",
+      "EGRESO": 96220,
+      "TC": "",
+      "OBS": "Pintureria"
+    },
+    {
+      "FECHA": "2024-02-21",
+      "INGRESO": 73365,
+      "EGRESO": "",
+      "TC": 1095,
+      "OBS": "Cambio usd"
+    },
+    {
+      "FECHA": "2024-02-21",
+      "INGRESO": "",
+      "EGRESO": 49365,
+      "TC": "",
+      "OBS": "Pintureria"
+    },
+    {
+      "FECHA": "2024-02-21",
+      "INGRESO": "",
+      "EGRESO": 24000,
+      "TC": "",
+      "OBS": "Corralon 7hnos corrugados"
+    },
+    {
+      "FECHA": "2024-02-22",
+      "INGRESO": 1320000,
+      "EGRESO": "",
+      "TC": 1070,
+      "OBS": "Cambio usd"
+    },
+    {
+      "FECHA": "2024-02-22",
+      "INGRESO": "",
+      "EGRESO": 1320000,
+      "TC": "",
+      "OBS": "Mano de obra"
+    },
+    {
+      "FECHA": "2024-02-23",
+      "INGRESO": 55000,
+      "EGRESO": "",
+      "TC": 1060,
+      "OBS": "Cambio usd"
+    },
+    {
+      "FECHA": "2024-02-23",
+      "INGRESO": "",
+      "EGRESO": 55000,
+      "TC": "",
+      "OBS": "Volquete"
+    },
+    {
+      "FECHA": "2024-03-01",
+      "INGRESO": 1880944,
+      "EGRESO": "",
+      "TC": 990,
+      "OBS": "cambio USD"
+    },
+    {
+      "FECHA": "2024-03-01",
+      "INGRESO": "",
+      "EGRESO": 1357500,
+      "TC": "",
+      "OBS": "Mano de obra"
+    },
+    {
+      "FECHA": "2024-03-01",
+      "INGRESO": "",
+      "EGRESO": 350000,
+      "TC": "",
+      "OBS": "direccion de obra Cta. 9"
+    },
+    {
+      "FECHA": "2024-03-01",
+      "INGRESO": "",
+      "EGRESO": 173444,
+      "TC": "",
+      "OBS": "corralon AM"
+    },
+    {
+      "FECHA": "2024-03-04",
+      "INGRESO": 181835,
+      "EGRESO": "",
+      "TC": 1010,
+      "OBS": "cambio usd"
+    },
+    {
+      "FECHA": "2024-03-04",
+      "INGRESO": "",
+      "EGRESO": 181835,
+      "TC": "",
+      "OBS": "construccion en seco"
+    },
+    {
+      "FECHA": "2024-03-05",
+      "INGRESO": 136011,
+      "EGRESO": "",
+      "TC": 995,
+      "OBS": "cambio usd"
+    },
+    {
+      "FECHA": "2024-03-05",
+      "INGRESO": "",
+      "EGRESO": 136011,
+      "TC": "",
+      "OBS": "Pintureria"
+    },
+    {
+      "FECHA": "2024-03-06",
+      "INGRESO": 62000,
+      "EGRESO": "",
+      "TC": 980,
+      "OBS": "cambio usd"
+    },
+    {
+      "FECHA": "2024-03-06",
+      "INGRESO": "",
+      "EGRESO": 62000,
+      "TC": "",
+      "OBS": "Ferretería"
+    },
+    {
+      "FECHA": "2024-03-07",
+      "INGRESO": 1412500,
+      "EGRESO": "",
+      "TC": 970,
+      "OBS": "cambio usd"
+    },
+    {
+      "FECHA": "2024-03-07",
+      "INGRESO": "",
+      "EGRESO": 1357500,
+      "TC": "",
+      "OBS": "mano de obra"
+    },
+    {
+      "FECHA": "2024-03-07",
+      "INGRESO": "",
+      "EGRESO": 67629.85,
+      "TC": "",
+      "OBS": "Materiales"
+    },
+    {
+      "FECHA": "2024-03-07",
+      "INGRESO": "",
+      "EGRESO": 55000,
+      "TC": "",
+      "OBS": "volquete"
+    },
+    {
+      "FECHA": "2024-03-08",
+      "INGRESO": 300000,
+      "EGRESO": "",
+      "TC": 960,
+      "OBS": "cambio usd"
+    },
+    {
+      "FECHA": "2024-03-08",
+      "INGRESO": "",
+      "EGRESO": 300000,
+      "TC": "",
+      "OBS": "adicional satinado"
+    }
+  ]

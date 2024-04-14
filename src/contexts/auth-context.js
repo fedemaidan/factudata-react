@@ -116,8 +116,7 @@ export const AuthProvider = (props) => {
     const user =  querySnapshot.docs[0].data();
     const id = querySnapshot.docs[0].id;
     const credit = await getTotalCreditsForUser(id);
-    
-    console.log(user.admin)
+    console.log("USER", user)
     dispatch({
       type: HANDLERS.UPDATE_USER,
       payload: {
@@ -143,7 +142,8 @@ export const AuthProvider = (props) => {
       state: '',
       country: '',
       created_at: serverTimestamp(),
-      admin: false
+      admin: false,
+      empresa: null
     };
     
     const usersCollectionRef = collection(db, 'profile');

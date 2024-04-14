@@ -4,13 +4,13 @@ import { Box, Container, Typography, Button } from '@mui/material';
 import { useRouter } from 'next/router';
 import React, { useEffect, useState } from 'react';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
-import ImageDataEntry from 'src/components/ImageDataEntry'; 
+import ImageDataEntry from 'src/components/imageDataEntry'; 
 import ticketService from 'src/services/ticketService';
 
 const ImageDataEntryPage = () => {
 
   const router = useRouter();
-  const { ticketId } = router.query; 
+  // const { ticketId } = router.query; 
   const [ticketData, setTicketData] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [formFields, setFormFields] = useState([]);
@@ -41,19 +41,24 @@ const ImageDataEntryPage = () => {
   
 
   useEffect(() => {
-    if (ticketId) {
+    // if (ticketId) {
       async function fetchTicketData() {
-        const ticket = await ticketService.getTicketById(ticketId);
+        // const ticket = await ticketService.getTicketById(ticketId);
+        const ticket = {
+          archivos: [ { filename: '/assets/facturas/ejemplo_corralon.png', originalName: '/assets/facturas/ejemplo_corralon.png'}]
+        }
         setTicketData(ticket);
         createForm(ticket);
         createResultData(ticket);
         setAllFiles(ticket.archivos)
-        setFile(ticket.archivos[pos])
-      }
+        // setFile(ticket.archivos[pos])
+        setFile(ticket.archivos[0])
+      // }
       
       fetchTicketData();
     }
-  }, [ticketId]);
+  // }, [ticketId]);
+}, []);
 
   
   const createResultData = async (ticket) => {
@@ -77,6 +82,24 @@ const ImageDataEntryPage = () => {
         label: item == "" ? "NO_RECONOCIDO": item
       }
     })
+    formulario = [
+      {
+        name: "fecha",
+        label: "Fecha"
+      },{
+        name: "emisor",
+        label: "Emisor"
+      },{
+        name: "cuit",
+        label: "CUIT"
+      },{
+        name: "numero",
+        label: "Número de factura"
+      },{
+        name: "total",
+        label: "Total"
+      }
+    ]
     setFormFields(formulario)
   }
 
@@ -84,7 +107,7 @@ const ImageDataEntryPage = () => {
   return (
     <>
       <Head>
-        <title>Carga de Datos de Imagenn</title>
+        <title>Carga de Datos de Imagen</title>
       </Head>
       <Box
         component="main"
@@ -94,14 +117,51 @@ const ImageDataEntryPage = () => {
         }}
       >
         <Container maxWidth="lg">
-        <Typography variant="h4">
+        {/* <Typography variant="h4">
           {file?.originalName} ({pos} de {allFiles.length})
-        </Typography>
+        </Typography> */}
         <ImageDataEntry
-            url={file?.name}
-            formFields={formFields}
-            originalName={file?.originalName}
-            handleSendData={handleSendData}
+            url='/assets/facturas/ejemplo_corralon.png'
+            formFields={[
+              {
+                name: "fecha_factura",
+                label: "Fecha factura",
+                type: "date"
+              },{
+                name: "nombre_proveedor",
+                label: "Proveedor",
+                type: "select",
+                elements: ["FERRETERIA MODULO 4","FERRETERIA MODULO 3","FERRETERIA MODULO 1","Wilson","Corralon Catan", "Otro"]
+              },{
+                name: "cuit",
+                label: "CUIT",
+                type: "text"
+              },{
+                name: "numero_factura",
+                label: "Número de factura",
+                type: "text"
+              },{
+                name: "proyecto",
+                label: "Proyecto",
+                type: "select",
+                elements: ["La Martona 259","La Martona 196","LM 786","CC / Capri","Lares 138", "Lares 146","Lares 147",	"Lares 76",	"Stefanello Obra pesos",	"Alameda 113", "Alameda 225"]
+              },{
+                name: "categoria",
+                label: "Categoría",
+                type: "text"
+              }
+              ,{
+                name: "items",
+                label: "Items",
+                type: "array"
+              },{
+                name: "total",
+                label: "Total",
+                type: "number"
+              }
+            ]}
+            originalName='/assets/facturas/ejemplo_corralon.png'
+            // handleSendData={x}
             />
         </Container>
       </Box>

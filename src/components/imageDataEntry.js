@@ -1,13 +1,52 @@
 import React from 'react';
-import { Box, TextField, Button } from '@mui/material';
+import { Box, TextField, Button, Select, MenuItem, InputLabel, FormControl } from '@mui/material';
 import { useState, useEffect } from 'react';
 import AdjustmentsVerticalIcon from '@heroicons/react/24/solid/AdjustmentsVerticalIcon';
 import ChevronUpIcon from '@heroicons/react/24/solid/ChevronUpIcon';
 import ChevronDownIcon from '@heroicons/react/24/solid/ChevronDownIcon';
 import { SvgIcon } from '@mui/material';
+import Autocomplete from '@mui/material/Autocomplete';
 
 const ImageDataEntry = ({ url, formFields, originalName, handleSendData }) => {
-  const initialState = formFields.reduce((acc, field) => ({ ...acc, [field.name]: '' }), {});
+  // const initialState = formFields.reduce((acc, field) => ({ ...acc, [field.name]: '' }), {});
+
+  const initialState = {
+    "filename": '/assets/facturas/ejemplo_corralon.png',
+    "nombre_proveedor": "Corralon Catan",
+    "fecha_factura":"2024-03-15",
+    "total": 81862.12,
+    "cuit": "30-71622440-9",
+    "numero_factura": "00001-00006244",
+    "categoria": "Materiales",
+    "proyecto": "La Martona 92",
+    "items": [
+      "Disco VERDE ALIAFOR Diamantado Turbo FINO 4.5\""
+    ],
+    "extra": {
+      "vendedor": "Ramiro",
+      "fecha_entrega": "7/3/2024",
+      "moneda": "Peso",
+      "cotizacion": "1.00",
+      "ubicacion": "Mariano Castex 5453, CANNING - Buenos Aires",
+      "email": "ferreteriamodulo4@gmail.com",
+      "telefono": "21533425",
+      "cantidad_items": [
+        {
+          "codigo": "7981",
+          "cantidad": 2.00,
+          "precio_unitario_con_dcto": "33814.93",
+          "importe": "67629.85"
+        }
+      ],
+      "comentarios": "Presupuesto la martona 196",
+      "subtotal": "81862.12",
+      "bonificacion": ".00",
+      "importe_total": "81862.12"
+    }
+  }
+  
+
+
 
   const [formData, setFormData] = useState(initialState);
     
@@ -48,7 +87,77 @@ const ImageDataEntry = ({ url, formFields, originalName, handleSendData }) => {
     // resetFormFields(); 
   };
 
-  
+  const renderInputField = (field) => {
+    switch (field.type) {
+      case 'date':
+        return (
+          <TextField
+            margin="normal"
+            fullWidth
+            id={field.name}
+            label={field.label}
+            name={field.name}
+            type="date"
+            InputLabelProps={{ shrink: true }}
+            value={formData[field.name]}
+            onChange={handleInputChange}
+          />
+        );
+      case 'select':
+        return (
+          <FormControl fullWidth margin="normal">
+            <InputLabel id={`label-${field.name}`}>{field.label}</InputLabel>
+            <Select
+              labelId={`label-${field.name}`}
+              id={field.name}
+              name={field.name}
+              label={field.label}
+              value={formData[field.name]}
+              onChange={handleInputChange}
+            >
+              {field.elements.map((element, index) => (
+                <MenuItem key={index} value={element}>
+                  {element}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+        );
+      case 'array':
+        return (
+          <Autocomplete
+            multiple
+            id={field.name}
+            options={formData[field.name]}
+            value={formData[field.name]}
+            sx={{ mt: 2 }}
+            // onChange={(event, newValue) => {
+            //   formData[field.name].push(newValue)
+            // }}
+            // inputValue={formData[field.name]}
+            // onInputChange={handleTagInputChange}
+            // onKeyDown={handleKeyDown}
+            renderInput={(params) => <TextField {...params} label="Items" variant="outlined" />}
+          />
+        )
+      case 'text':
+      case 'number':
+      default:
+        return (
+          <TextField
+            margin="normal"
+            fullWidth
+            id={field.name}
+            label={field.label}
+            name={field.name}
+            type={field.type}
+            value={formData[field.name]}
+            onChange={handleInputChange}
+          />
+        );
+    }
+  };
+
 
   return (
     <Box display="flex" p={2}>
@@ -95,18 +204,9 @@ const ImageDataEntry = ({ url, formFields, originalName, handleSendData }) => {
       {/* División del formulario */}
       <Box width="30%" p={1} component="form" onSubmit={handleSubmit}>
         {formFields.map((field, index) => (
-          <TextField
-            key={index}
-            margin="normal"
-            fullWidth
-            id={field.name}
-            label={field.label}
-            name={field.name}
-            autoComplete={field.name}
-            autoFocus={index === 0}
-            value={formData[field.name]}
-            onChange={handleInputChange}
-          />
+          <React.Fragment key={index}>
+            {renderInputField(field)}
+          </React.Fragment>
         ))}
         <Button
           type="submit"
@@ -114,7 +214,7 @@ const ImageDataEntry = ({ url, formFields, originalName, handleSendData }) => {
           variant="contained"
           sx={{ mt: 3, mb: 2 }}
         >
-          Enviar Datos
+          Guardar
         </Button>
       </Box>
     </Box>

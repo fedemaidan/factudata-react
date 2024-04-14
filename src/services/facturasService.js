@@ -89,6 +89,16 @@ export const deleteFactura = async (id) => {
   }
 };
 
+const getBillDetailsFromChatGPT = (file) => {
+  return {
+    fecha: "27/02/2024",
+    razon_social: "El Bravo",
+    cuit: 30717858073,
+    numero_factura: "0003-00007028",
+    total: 8800
+  }
+}
+
 export const uploadFile = async (files, tipo = 'input', ticketId, userId = "NOT_DEFINED") => {
   if (!files) return [];
 
@@ -102,6 +112,8 @@ export const uploadFile = async (files, tipo = 'input', ticketId, userId = "NOT_
       await uploadBytes(filesFolderRef, fileUpload);
       const newUrl = await getDownloadURL(filesFolderRef);
       
+      const facturaData = await getBillDetailsFromChatGPT(fileUpload);
+      console.log(facturaData)
       // Guardar el enlace en el arreglo de enlaces
       enlaces.push({
         name: newUrl,
@@ -111,7 +123,8 @@ export const uploadFile = async (files, tipo = 'input', ticketId, userId = "NOT_
       await addDoc(collection(db, 'facturas'), {
         tipo: tipo,
         filename: newUrl,
-        ticket: ticketId
+        ticket: ticketId,
+        data: facturaData
       });
     }
 
