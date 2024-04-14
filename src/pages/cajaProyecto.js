@@ -11,53 +11,54 @@ import MoreVertIcon from '@mui/icons-material/MoreVert';
 import FilterListIcon from '@mui/icons-material/FilterList';
 import FilterListOffIcon from '@mui/icons-material/FilterListOff';
 import EditIcon from '@mui/icons-material/Edit';
-import VisibilityIcon from '@mui/icons-material/Visibility';
 import { useRouter } from 'next/router';
+import ticketService from 'src/services/ticketService';
+import {getProyectoById} from 'src/services/proyectosService';
 
-function procesarDatosMovimientos(datos, proyecto) {
-    return datos.map(movimiento => ({
-      fecha: movimiento.FECHA,
-      proyecto: proyecto,
-      tipo: movimiento.INGRESO ? "ingreso" : "egreso",
-      total: movimiento.INGRESO || movimiento.EGRESO,
-      descripcion: movimiento.OBS,
-      tc: movimiento.TC || null,
-      filename: '/assets/facturas/factura1.png'
-    }));
+const formatTimestamp = (timestamp) => {
+  if (!timestamp) {
+    return '';
   }
 
-function dameMovimientosDelFile(archivo, proyecto) {
-    const fs = require('fs');
-    const path = require('path');
-  
-    const filePath = path.resolve('src/data', archivo);
-    const data = fs.readFileSync(filePath, 'utf8');
-    const datosMovimientos = JSON.parse(data);
-    return procesarDatosMovimientos(datosMovimientos, proyecto);
-  }
+  const date = new Date(timestamp.seconds * 1000); // Convert seconds to milliseconds
+  const year = date.getFullYear();
+  const month = `0${date.getMonth() + 1}`.slice(-2); // getMonth() devuelve un índice basado en cero, así que se agrega 1
+  const day = `0${date.getDate()}`.slice(-2);
 
-export async function getServerSideProps(context) {
+  return `${year}-${month}-${day}`; // Formato YYYY-MM-DD
+};
 
-    // Aquí lees el archivo en el servidor y pasas los datos a la página
-  const movimientosData = dameMovimientosDelFile('movimientosLara76.json','Lares76');
-  const movimientosDataUSD = dameMovimientosDelFile('movimientosLara76USD.json','Lares76');
 
-  // Pasar los datos de movimientos a la página a través de props
-  return { props: { movimientosData, movimientosDataUSD } };
-  }
-
-const ProyectoMovimientosPage = ({ movimientosData, movimientosDataUSD }) => {
+const ProyectoMovimientosPage = ({ }) => {
   // Estado para la lista de movimientos
-  const [movimientos, setMovimientos] = useState(movimientosData);
-  const [movimientosUSD, setMovimientosUSD] = useState(movimientosDataUSD);
+  const [movimientos, setMovimientos] = useState([]);
+  const [movimientosUSD, setMovimientosUSD] = useState([]);
   const [tablaActiva, setTablaActiva] = useState('ARS'); 
   const [filtrosActivos, setFiltrosActivos] = useState(false); 
   const [accionesActivas, setAccionesActivas] = useState(false); 
+  const [proyecto, setProyecto] = useState(null); 
   // Estados para los filtros
   const [filtroDias, setFiltroDias] = useState('30');
   const [filtroObs, setFiltroObs] = useState('');
 
   const router = useRouter();
+  const { proyectoId } = router.query; 
+
+
+  useEffect(() => {
+    if (proyectoId) {
+      async function fetchMovimientosData() {
+        const proyecto = await getProyectoById(proyectoId);
+        setProyecto(proyecto)
+        const movs = await ticketService.getMovimientosForProyecto(proyectoId, 'ARS');
+        const movsUsd = await ticketService.getMovimientosForProyecto(proyectoId, 'USD');
+        setMovimientos(movs);
+        setMovimientosUSD(movsUsd);
+      }
+      
+      fetchMovimientosData();
+    }
+  }, [proyectoId]);
 
   // Función para formatear números como moneda
   const formatCurrency = (amount) => {
@@ -76,7 +77,7 @@ const ProyectoMovimientosPage = ({ movimientosData, movimientosDataUSD }) => {
   // Calcular el saldo total de la caja
   const saldoTotalCaja = useMemo(() => {
     return movimientos.reduce((acc, mov) => {
-      if(mov.tipo === 'ingreso') {
+      if(mov.type === 'ingreso') {
         return acc + mov.total;
       } else {
         return acc - mov.total;
@@ -84,14 +85,24 @@ const ProyectoMovimientosPage = ({ movimientosData, movimientosDataUSD }) => {
     }, 0);
   }, [movimientos]);
 
-  const saldoTotalCajaUSD = 3000;
+  const saldoTotalCajaUSD = useMemo(() => {
+    return movimientosUSD.reduce((acc, mov) => {
+      if(mov.type === 'ingreso') {
+        return acc + mov.total;
+      } else {
+        return acc - mov.total;
+      }
+    }, 0);
+  }, [movimientosUSD]);
+
   // Filtro por días y observación
   const movimientosFiltrados = useMemo(() => {
     const hoy = new Date();
     const filtrados = movimientos.filter((mov) => {
-      const fechaMovimiento = new Date(mov.fecha);
+      const fechaMovimiento = new Date(formatTimestamp(mov.fecha_factura));
       const diferenciaDias = (hoy - fechaMovimiento) / (1000 * 60 * 60 * 24);
-      return diferenciaDias <= filtroDias && (!mov.descripcion || mov.descripcion.toLowerCase().includes(filtroObs.toLowerCase()));
+      mov.observacion = mov.observacion ? mov.observacion : "";
+      return diferenciaDias <= filtroDias && (mov.observacion.toLowerCase().includes(filtroObs.toLowerCase()));
     });
     
   
@@ -102,15 +113,17 @@ const ProyectoMovimientosPage = ({ movimientosData, movimientosDataUSD }) => {
       return fechaB - fechaA;
     });
   
+    // return filtrados;
     return filtrados;
   }, [movimientos, filtroDias, filtroObs]);
 
   const movimientosFiltradosUSD = useMemo(() => {
     const hoy = new Date();
     const filtrados = movimientosUSD.filter((mov) => {
-      const fechaMovimiento = new Date(mov.fecha);
+      const fechaMovimiento = new Date(formatTimestamp(mov.fecha_factura));
       const diferenciaDias = (hoy - fechaMovimiento) / (1000 * 60 * 60 * 24);
-      return diferenciaDias <= filtroDias && (!mov.descripcion || mov.descripcion.toLowerCase().includes(filtroObs.toLowerCase()));
+      mov.observacion = mov.observacion ? mov.observacion : "";
+      return diferenciaDias <= filtroDias && (mov.observacion.toLowerCase().includes(filtroObs.toLowerCase()));
     });
     
   
@@ -122,13 +135,13 @@ const ProyectoMovimientosPage = ({ movimientosData, movimientosDataUSD }) => {
     });
   
     return filtrados;
-  }, [movimientos, filtroDias, filtroObs]);
+  }, [movimientosUSD, filtroDias, filtroObs]);
   
 
   return (
     <>
       <Head>
-        <title>La Martona 92</title>
+        <title>{proyecto?.nombre}</title>
       </Head>
       <Box
         component="main"
@@ -139,7 +152,7 @@ const ProyectoMovimientosPage = ({ movimientosData, movimientosDataUSD }) => {
       >
         <Container maxWidth="xl">
           <Stack spacing={3}>
-            <Typography variant="h4">La Martona 92</Typography>
+            <Typography variant="h4">{proyecto?.nombre}</Typography>
             {/* <Typography>Saldo Total Caja: {formatCurrency(saldoTotalCaja)}</Typography> */}
             <Stack direction="row" spacing={2}>
               <Button
@@ -258,21 +271,21 @@ const ProyectoMovimientosPage = ({ movimientosData, movimientosDataUSD }) => {
                 <TableBody>
                   {movimientosFiltrados.map((mov, index) => (
                     <TableRow key={index}>
-                      <TableCell>{mov.fecha}</TableCell>
+                      <TableCell>{formatTimestamp(mov.fecha_factura)}</TableCell>
                       <TableCell>
-                            {mov.tipo == "ingreso" ? <Chip label={formatCurrency(mov.total)} color="success" size="small" />: ""}
+                            {mov.type == "ingreso" ? <Chip label={formatCurrency(mov.total)} color="success" size="small" />: ""}
                         </TableCell>
                       <TableCell>
-                         {mov.tipo == "egreso" ? <Chip label={formatCurrency(mov.total)} color="error" size="small" />: ""}
+                         {mov.type == "egreso" ? <Chip label={formatCurrency(mov.total)} color="error" size="small" />: ""}
                       </TableCell>
-                      <TableCell>{mov.descripcion}</TableCell>
+                      <TableCell>{mov.observacion}</TableCell>
                       <TableCell>{mov.tc ? "$ ":""}{mov.tc}</TableCell>
                     
                         <TableCell>
                         <Button
                             color="primary"
                             startIcon={<EditIcon />}
-                            onClick={() => router.push('/dataEntryPage?ticketId=111')}
+                            onClick={() => router.push('/movimiento?id='+mov.id)}
                         >
                             Ver / Editar
                         </Button>
@@ -287,7 +300,7 @@ const ProyectoMovimientosPage = ({ movimientosData, movimientosDataUSD }) => {
             <Table>
                 <TableHead>
                   <TableRow>
-                    <TableCell>Fechaa</TableCell>
+                    <TableCell>Fecha</TableCell>
                     <TableCell>Ingreso</TableCell>
                     <TableCell>Egreso</TableCell>
                     <TableCell>Observación</TableCell>
@@ -296,15 +309,15 @@ const ProyectoMovimientosPage = ({ movimientosData, movimientosDataUSD }) => {
                 </TableHead>
                 <TableBody>
                   {movimientosFiltradosUSD.map((mov, index) => (
-                    <TableRow key={index}>
-                      <TableCell>{mov.fecha}</TableCell>
+                    <TableRow key={mov.id}>
+                      <TableCell>{formatTimestamp(mov.fecha_factura)}</TableCell>
                       <TableCell>
-                            {mov.tipo == "ingreso" ? <Chip label={formatCurrency(mov.total)} color="success" size="small" />: ""}
+                            {mov.type == "ingreso" ? <Chip label={formatCurrency(mov.total)} color="success" size="small" />: ""}
                         </TableCell>
                       <TableCell>
-                         {mov.tipo == "egreso" ? <Chip label={formatCurrency(mov.total)} color="error" size="small" />: ""}
+                         {mov.type == "egreso" ? <Chip label={formatCurrency(mov.total)} color="error" size="small" />: ""}
                       </TableCell>
-                      <TableCell>{mov.descripcion}</TableCell>
+                      <TableCell>{mov.observacion}</TableCell>
                       <TableCell>{mov.tc ? "$ ":""}{mov.tc}</TableCell>
                     </TableRow>
                   ))}

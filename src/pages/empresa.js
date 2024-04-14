@@ -1,6 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { doc, getDoc } from 'firebase/firestore';
-import { db } from 'src/config/firebase'; 
 import Head from 'next/head';
 import { Box, Container, Stack, Typography, Tab, Tabs, TextField, Button } from '@mui/material';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
@@ -8,29 +6,34 @@ import { NumerosTelefonoDetails } from 'src/sections/empresa/numerosTelefonoDeta
 import { ProyectosDetails } from 'src/sections/empresa/proyectosDetails';
 import { CategoriasDetails } from 'src/sections/empresa/categoriasDetails';
 import { ProveedoresDetails } from 'src/sections/empresa/proveedoresDetails';
-import { updateEmpresaDetails, getEmpresaDetailsFromUser } from 'src/services/empresaService'; // Asegúrate de que la ruta es correcta
+import { updateEmpresaDetails, getEmpresaById } from 'src/services/empresaService'; 
+import { getProyectosByEmpresa } from 'src/services/proyectosService'; 
 import { useAuthContext } from 'src/contexts/auth-context';
+import { useRouter } from 'next/router';
 
 
 const EmpresaPage = () => {
+  const router = useRouter();
   const { user } = useAuthContext();
   
-  const [currentTab, setCurrentTab] = useState('telefonos');
+  const [currentTab, setCurrentTab] = useState('');
   const [empresa, setEmpresa] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
-  
+  const { empresaId } = router.query; 
+
 
   const tabs = [
     // { value: 'telefonos', label: 'Números de Teléfono' },
-    // { value: 'proyectos', label: 'Proyectos' },
+    { value: 'proyectos', label: 'Proyectos' },
     { value: 'categorias', label: 'Categorías' },
     { value: 'proveedores', label: 'Proveedores' },
   ];
 
   useEffect(() => {
     const fetchEmpresaData = async () => {
-      const empresa = await getEmpresaDetailsFromUser(user)
+      const empresa = await getEmpresaById(empresaId)
       setEmpresa(empresa)
+      setCurrentTab('categorias')
     };
 
     fetchEmpresaData();
@@ -117,8 +120,8 @@ const EmpresaPage = () => {
                 </Tabs>
               </>
             )}
-            {/* {currentTab === 'telefonos' && <NumerosTelefonoDetails />}
-            {currentTab === 'proyectos' && <ProyectosDetails />} */}
+             {/* {currentTab === 'telefonos' && <NumerosTelefonoDetails />} */}
+             {currentTab === 'proyectos' && <ProyectosDetails empresa={empresa}/>} 
             {currentTab === 'categorias' && <CategoriasDetails empresa={empresa}/>}
             {currentTab === 'proveedores' && <ProveedoresDetails empresa={empresa}/>}
           </Stack>

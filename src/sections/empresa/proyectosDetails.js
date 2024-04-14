@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   Button,
@@ -8,72 +8,66 @@ import {
   CardHeader,
   Divider,
   TextField,
-  Typography,
-  Checkbox,
-  FormControlLabel,
   IconButton,
-  Alert,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemSecondaryAction,
   LinearProgress
 } from '@mui/material';
 import { useFormik } from 'formik';
 import * as Yup from 'yup';
-import AddCircleIcon from '@mui/icons-material/AddCircle';
+import EditIcon from '@mui/icons-material/Edit';
 import SaveIcon from '@mui/icons-material/Save';
+import { getProyectosByEmpresa, updateProyecto } from 'src/services/proyectosService';
 
-export const ProyectosDetails = () => {
+export const ProyectosDetails = ({ empresa }) => {
   const [isLoading, setIsLoading] = useState(false);
-  const [proyectos, setProyectos] = useState([
-    {
-      id: 1,
-      nombre: 'Lares',
-      usuarios: [
-        { id: 1, nombre: 'Usuario 1', puedeEditar: false },
-        { id: 2, nombre: 'Usuario 2', puedeEditar: true },
-        // ... más usuarios
-      ]
-    },{
-        id: 2,
-        nombre: 'Martona',
-        usuarios: [
-          { id: 1, nombre: 'Usuario 1', puedeEditar: false },
-          { id: 2, nombre: 'Usuario 2', puedeEditar: true },
-          // ... más usuarios
-        ]
-      },
-    // ... más proyectos
-  ]);
+  const [proyectos, setProyectos] = useState([]);
+  const [editingProyecto, setEditingProyecto] = useState(null);
+  
+  useEffect(() => {
+    const fetchEmpresaData = async () => {
+      const proyectosData = await getProyectosByEmpresa(empresa)
+      setProyectos(proyectosData)
+    };
 
-  // Funciones para manejar los proyectos y los permisos de los usuarios
-  const toggleUserPermission = (proyectoId, usuarioId) => {
-    setProyectos(proyectos.map(proyecto => {
-      if (proyecto.id === proyectoId) {
-        return {
-          ...proyecto,
-          usuarios: proyecto.usuarios.map(usuario => {
-            if (usuario.id === usuarioId) {
-              return { ...usuario, puedeEditar: !usuario.puedeEditar };
-            }
-            return usuario;
-          })
-        };
-      }
-      return proyecto;
-    }));
-  };
+    fetchEmpresaData();
+  }, [empresa]);
 
-  // useFormik para manejar el formulario (como ejemplo, solo se muestra para agregar proyectos)
   const formik = useFormik({
     initialValues: {
-      nuevoProyecto: '',
+      nombre: editingProyecto ? editingProyecto.nombre : '',
+      carpetaRef: editingProyecto ? editingProyecto.carpetaRef : '',
     },
+    enableReinitialize: true,
     validationSchema: Yup.object({
-      nuevoProyecto: Yup.string().required('El nombre del proyecto es requerido'),
+      nombre: Yup.string().required('El nombre del proyecto es requerido'),
     }),
-    onSubmit: (values, { resetForm }) => {
-      // Lógica para agregar un nuevo proyecto
+    onSubmit: async (values, { resetForm }) => {
+      setIsLoading(true);
+      
+      if (editingProyecto) {
+        await updateProyecto(editingProyecto.id, {nombre: values.nombre, carpetaRef: values.carpetaRef})
+        const proyectosData = await getProyectosByEmpresa(empresa)
+        setProyectos(proyectosData)
+      } 
+
       resetForm();
+      setEditingProyecto(null);
+      setIsLoading(false);
     },
   });
+
+  const iniciarEdicionProyecto = (proyecto) => {
+    setEditingProyecto(proyecto);
+  };
+
+  const cancelarEdicion = () => {
+    setEditingProyecto(null);
+    formik.resetForm();
+  };
+
 
   return (
     <form autoComplete="off" noValidate onSubmit={formik.handleSubmit}>
@@ -81,43 +75,73 @@ export const ProyectosDetails = () => {
         <CardHeader title="Gestionar Proyectos" />
         <Divider />
         <CardContent>
-          {/* UI para Proyectos */}
-          <Typography variant="h6">Proyectos</Typography>
-          {proyectos.map((proyecto) => (
-            <Box key={proyecto.id} sx={{ mb: 2 }}>
-              <Typography variant="subtitle1">{proyecto.nombre}</Typography>
-              {proyecto.usuarios.map((usuario) => (
-                <FormControlLabel
-                  key={usuario.id}
-                  control={
-                    <Checkbox
-                      checked={usuario.puedeEditar}
-                      onChange={() => toggleUserPermission(proyecto.id, usuario.id)}
-                    />
-                  }
-                  label={usuario.nombre}
-                />
-              ))}
-            </Box>
-          ))}
-          <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+          <List>
+            {proyectos.map((proyecto) => (
+              <ListItem key={proyecto.id} divider>
+                <ListItemText primary={proyecto.nombre} secondary={`Carpeta: ${proyecto.carpetaRef}`} />
+                <ListItemSecondaryAction>
+                  <IconButton edge="end" onClick={() => iniciarEdicionProyecto(proyecto)}>
+                    <EditIcon />
+                  </IconButton>
+                  {/* <IconButton edge="end" onClick={() => eliminarProyecto(proyecto.id)}>
+                    <DeleteIcon />
+                  </IconButton> */}
+                </ListItemSecondaryAction>
+              </ListItem>
+            ))}
+          </List>
+          <Box sx={{ display: 'flex', flexDirection: 'column', mb: 1 }}>
+          {
+              editingProyecto && 
             <TextField
               fullWidth
-              name="nuevoProyecto"
-              label="Agregar Proyecto"
-              value={formik.values.nuevoProyecto}
+              name="nombre"
+              label="Nombre del Proyecto"
+              value={formik.values.nombre}
               onChange={formik.handleChange}
-              error={formik.touched.nuevoProyecto && Boolean(formik.errors.nuevoProyecto)}
-              helperText={formik.touched.nuevoProyecto && formik.errors.nuevoProyecto}
+              error={formik.touched.nombre && Boolean(formik.errors.nombre)}
+              helperText={formik.touched.nombre && formik.errors.nombre}
+            />}  
+            {
+              editingProyecto &&
+            <TextField
+              fullWidth
+              name="carpetaRef"
+              label="Carpeta de Referencia"
+              value={formik.values.carpetaRef}
+              onChange={formik.handleChange}
+              error={formik.touched.carpetaRef && Boolean(formik.errors.carpetaRef)}
+              helperText={formik.touched.carpetaRef && formik.errors.carpetaRef}
+              style={{ marginTop: '1rem' }}
             />
-            <IconButton type="submit" color="primary">
-              <AddCircleIcon />
-            </IconButton>
+            }
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
+              {
+              // editingProyecto ? (
+                <Button onClick={cancelarEdicion} color="primary">
+                  Cancelar
+                </Button>
+              // ) : (
+              //   <IconButton type="submit" color="primary">
+              //     <AddCircleIcon />
+              //   </IconButton>
+              // )
+              }
+              {editingProyecto && (
+                <Button
+                  variant="contained"
+                  startIcon={<SaveIcon />}
+                  type="submit"
+                  sx={{ ml: 2 }}
+                >
+                  Guardar Cambios
+                </Button>
+              )}
+            </Box>
           </Box>
         </CardContent>
         <Divider />
         <CardActions sx={{ justifyContent: 'flex-end' }}>
-          <Button variant="contained" startIcon={<SaveIcon />} type="submit">Guardar Cambios</Button>
         </CardActions>
       </Card>
       {isLoading && <LinearProgress />}

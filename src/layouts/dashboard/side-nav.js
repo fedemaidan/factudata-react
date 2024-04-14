@@ -19,10 +19,12 @@ import { Scrollbar } from 'src/components/scrollbar';
 import { SideNavItem } from './side-nav-item';
 import { useAuthContext } from 'src/contexts/auth-context';
 import { getProyectosFromUser } from 'src/services/proyectosService'; 
+import { getEmpresaDetailsFromUser } from 'src/services/empresaService'; 
 import { SvgIcon } from '@mui/material';
 import DashboardIcon from '@mui/icons-material/Dashboard';
 import StoreIcon from '@mui/icons-material/Store';
 import AddCircleIcon from '@mui/icons-material/AddCircle';
+import CogIcon from '@heroicons/react/24/solid/CogIcon';
 
 const initialItems = [
   {
@@ -42,17 +44,28 @@ export const SideNav = (props) => {
   const { user } = useAuthContext();
   const [items, setItems] = useState(initialItems)
   const [proyectos, setProyectos] = useState(null);
+  const [empresa, setEmpresa] = useState(null);
 
   useEffect( () => {
     const fetchProyectosData = async () => {
+      const empresa = await getEmpresaDetailsFromUser(user)
       const proyectos = await getProyectosFromUser(user)
       setProyectos(proyectos)
-      let newItems = initialItems
+      const empresaElement = {
+        title: "Configurar " + empresa.nombre,
+        path: 'empresa?empresaId=' + empresa.id,
+        icon: (
+          <SvgIcon fontSize="small">
+            <CogIcon />
+          </SvgIcon>
+        )
+      }
+      let newItems = [empresaElement, ...initialItems]
       await proyectos.forEach( (proy ) => {
         newItems.push(
           {
             title: proy.nombre,
-            path: 'cajaProyecto/' + proy.id,
+            path: 'cajaProyecto?proyectoId=' + proy.id,
             icon: (
               <SvgIcon fontSize="small">
                 <StoreIcon />
@@ -61,17 +74,7 @@ export const SideNav = (props) => {
           }
         )
       })
-      newItems.push(
-        {
-          title: "Agregar nuevo",
-          path: 'cajaProyecto/',
-          icon: (
-            <SvgIcon fontSize="small">
-              <AddCircleIcon />
-            </SvgIcon>
-          )
-        }
-      )
+      
 
       setItems(newItems)
     };

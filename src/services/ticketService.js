@@ -261,6 +261,27 @@ const ticketService = {
       return [];
     }
   },
+  getMovimientosForProyecto: async (proyectoId, moneda) => {
+    try {
+      const q = query(collection(db, 'movimientos'), where('proyecto_id', '==', proyectoId), where('moneda', '==', moneda), orderBy('fecha_factura', 'desc')  );
+      const querySnapshot = await getDocs(q);
+
+      const movimientos = [];
+      querySnapshot.forEach((doc) => {
+        // Agregar cada ticket a la lista
+        const mov = {
+          id: doc.id,
+          ...doc.data(),
+        };
+        movimientos.push(mov);
+      });
+      console.log(movimientos)
+      return movimientos;
+    } catch (err) {
+      console.error(err);
+      return [];
+    }
+  },
   getTickets: async () => {
     try {
       const q = query(collection(db, 'tickets'));

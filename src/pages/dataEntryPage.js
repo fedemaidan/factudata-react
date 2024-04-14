@@ -10,7 +10,7 @@ import ticketService from 'src/services/ticketService';
 const ImageDataEntryPage = () => {
 
   const router = useRouter();
-  // const { ticketId } = router.query; 
+  const { ticketId } = router.query; 
   const [ticketData, setTicketData] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [formFields, setFormFields] = useState([]);

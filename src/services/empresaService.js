@@ -53,3 +53,29 @@ export const getEmpresaDetailsFromUser = async (user) => {
     return null; // Retorna null en caso de error
   }
 };
+
+/**
+ * Obtiene los detalles de una empresa por su ID.
+ * @param {string} empresaId - El ID de la empresa a obtener.
+ * @returns {Promise<object|null>} - Retorna un objeto con los detalles de la empresa o null si no se encuentra.
+ */
+export const getEmpresaById = async (empresaId) => {
+  try {
+    const empresaDocRef = doc(db, 'empresas', empresaId);
+    const empresaDoc = await getDoc(empresaDocRef);
+
+    if (empresaDoc.exists()) {
+      console.log('Detalles de la empresa obtenidos con éxito');
+      return {
+        ...empresaDoc.data(),
+        id: empresaDoc.id,
+      };
+    } else {
+      console.log('No se encontró la empresa con ID:', empresaId);
+      return null;
+    }
+  } catch (err) {
+    console.error('Error al obtener los detalles de la empresa:', err);
+    return null;
+  }
+};
