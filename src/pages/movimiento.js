@@ -78,7 +78,7 @@ const MovementDataEntryPage = () => {
         setEmpresa(empresa)
         const cates = empresa.categorias.map( (cate) => {
           return cate.name
-        } )
+        })
         setCategorias(cates)
         // Aquí deberías obtener los datos del movimiento usando movimientoId
         const data = await movimientosService.getMovimientoById(movimientoId);
