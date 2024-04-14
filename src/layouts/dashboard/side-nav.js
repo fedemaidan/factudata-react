@@ -1,3 +1,4 @@
+import React, { useState, useEffect } from 'react';
 import NextLink from 'next/link';
 import { usePathname } from 'next/navigation';
 import PropTypes from 'prop-types';
@@ -9,19 +10,75 @@ import {
   Divider,
   Drawer,
   Stack,
-  SvgIcon,
   Typography,
   useMediaQuery
 } from '@mui/material';
 import { Logo } from 'src/components/logo';
 import { Scrollbar } from 'src/components/scrollbar';
-import { items } from './config';
+// import { items } from './config';
 import { SideNavItem } from './side-nav-item';
+import { useAuthContext } from 'src/contexts/auth-context';
+import { getProyectosFromUser } from 'src/services/proyectosService'; 
+import { SvgIcon } from '@mui/material';
+import DashboardIcon from '@mui/icons-material/Dashboard';
+import StoreIcon from '@mui/icons-material/Store';
+import AddCircleIcon from '@mui/icons-material/AddCircle';
 
+const initialItems = [
+  {
+    title: 'Vista general',
+    path: '/resumenConstructoras',
+    icon: (
+      <SvgIcon fontSize="small">
+        <DashboardIcon />
+      </SvgIcon>
+    )
+  }
+]
 export const SideNav = (props) => {
   const { open, onClose } = props;
   const pathname = usePathname();
   const lgUp = useMediaQuery((theme) => theme.breakpoints.up('lg'));
+  const { user } = useAuthContext();
+  const [items, setItems] = useState(initialItems)
+  const [proyectos, setProyectos] = useState(null);
+
+  useEffect( () => {
+    const fetchProyectosData = async () => {
+      const proyectos = await getProyectosFromUser(user)
+      setProyectos(proyectos)
+      let newItems = initialItems
+      await proyectos.forEach( (proy ) => {
+        newItems.push(
+          {
+            title: proy.nombre,
+            path: 'cajaProyecto/' + proy.id,
+            icon: (
+              <SvgIcon fontSize="small">
+                <StoreIcon />
+              </SvgIcon>
+            )
+          }
+        )
+      })
+      newItems.push(
+        {
+          title: "Agregar nuevo",
+          path: 'cajaProyecto/',
+          icon: (
+            <SvgIcon fontSize="small">
+              <AddCircleIcon />
+            </SvgIcon>
+          )
+        }
+      )
+
+      setItems(newItems)
+    };
+
+    fetchProyectosData();
+    
+  }, [user]);
 
   const content = (
     <Scrollbar

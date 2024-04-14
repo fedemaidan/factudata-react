@@ -21,8 +21,8 @@ const EmpresaPage = () => {
   
 
   const tabs = [
-    { value: 'telefonos', label: 'Números de Teléfono' },
-    { value: 'proyectos', label: 'Proyectos' },
+    // { value: 'telefonos', label: 'Números de Teléfono' },
+    // { value: 'proyectos', label: 'Proyectos' },
     { value: 'categorias', label: 'Categorías' },
     { value: 'proveedores', label: 'Proveedores' },
   ];
@@ -46,7 +46,6 @@ const EmpresaPage = () => {
   };
 
   const handleSave = async () => {
-    // Llama a la función updateEmpresaDetails para guardar el nuevo nombre
     const updated = await updateEmpresaDetails(empresa.id, { nombre: empresa.nombre });
     if (updated) {
       console.log('Nombre de la empresa actualizado correctamente');
@@ -118,8 +117,8 @@ const EmpresaPage = () => {
                 </Tabs>
               </>
             )}
-            {currentTab === 'telefonos' && <NumerosTelefonoDetails />}
-            {currentTab === 'proyectos' && <ProyectosDetails />}
+            {/* {currentTab === 'telefonos' && <NumerosTelefonoDetails />}
+            {currentTab === 'proyectos' && <ProyectosDetails />} */}
             {currentTab === 'categorias' && <CategoriasDetails empresa={empresa}/>}
             {currentTab === 'proveedores' && <ProveedoresDetails empresa={empresa}/>}
           </Stack>

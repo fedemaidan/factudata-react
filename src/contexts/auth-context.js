@@ -143,7 +143,8 @@ export const AuthProvider = (props) => {
       country: '',
       created_at: serverTimestamp(),
       admin: false,
-      empresa: null
+      empresa: null,
+      proyectos: []
     };
     
     const usersCollectionRef = collection(db, 'profile');
