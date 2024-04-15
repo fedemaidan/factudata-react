@@ -1,7 +1,7 @@
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db } from 'src/config/firebase';
 
-const movimientoService = {
+const movimientosService = {
   // Método para obtener un movimiento por su ID
   getMovimientoById: async (movimientoId) => {
     try {
@@ -23,6 +23,30 @@ const movimientoService = {
       return null;
     }
   },
+  updateMovimiento: async (movimientoId, nuevosDatos) => {
+    try {
+      const movimientoDocRef = doc(db, 'movimientos', movimientoId);
+      await updateDoc(movimientoDocRef, nuevosDatos);
+      console.log('Movimiento actualizado con éxito');
+      return true;
+    } catch (err) {
+      console.error('Error al actualizar el movimiento:', err);
+      return false;
+    }
+  },
+  deleteMovimientoById: async (movimientoId) => {
+    try {
+      const movimientoDocRef = doc(db, 'movimientos', movimientoId);
+      await deleteDoc(movimientoDocRef);
+      console.log('Movimiento eliminado con éxito');
+      return true;
+    } catch (err) {
+      console.error('Error al eliminar el movimiento:', err);
+      return false;
+    }
+  },
+
 };
 
-export default movimientoService;
+export default movimientosService;
+

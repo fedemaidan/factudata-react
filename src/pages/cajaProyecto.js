@@ -11,9 +11,11 @@ import MoreVertIcon from '@mui/icons-material/MoreVert';
 import FilterListIcon from '@mui/icons-material/FilterList';
 import FilterListOffIcon from '@mui/icons-material/FilterListOff';
 import EditIcon from '@mui/icons-material/Edit';
+import DeleteIcon from '@mui/icons-material/Delete';
 import { useRouter } from 'next/router';
 import ticketService from 'src/services/ticketService';
 import {getProyectoById} from 'src/services/proyectosService';
+import movimientosService from 'src/services/movimientosService';
 
 const formatTimestamp = (timestamp) => {
   if (!timestamp) {
@@ -38,12 +40,29 @@ const ProyectoMovimientosPage = ({ }) => {
   const [accionesActivas, setAccionesActivas] = useState(false); 
   const [proyecto, setProyecto] = useState(null); 
   // Estados para los filtros
-  const [filtroDias, setFiltroDias] = useState('30');
+  const [filtroDias, setFiltroDias] = useState('730');
   const [filtroObs, setFiltroObs] = useState('');
 
   const router = useRouter();
   const { proyectoId } = router.query; 
 
+  const eliminarMovimiento = async (movimientoId) => {
+    const confirmado = window.confirm('¿Estás seguro de que quieres eliminar este movimiento?');
+    if (confirmado) {
+      // setIsLoading(true);
+      const resultado = await movimientosService.deleteMovimientoById(movimientoId);
+      if (resultado) {
+        setMovimientos(movimientos.filter(mov => mov.id !== movimientoId));
+        setMovimientosUSD(movimientosUSD.filter(mov => mov.id !== movimientoId));
+        console.log('Movimiento eliminado.');
+        // Opcional: Mostrar una notificación de éxito
+      } else {
+        console.error('Error al eliminar el movimiento.');
+        // Opcional: Mostrar una notificación de error
+      }
+      // setIsLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (proyectoId) {
@@ -64,7 +83,6 @@ const ProyectoMovimientosPage = ({ }) => {
   const formatCurrency = (amount) => {
     return amount.toLocaleString('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0 });
   };
-
 
   const handleFiltrosActivos  = () => {
     setFiltrosActivos(filtrosActivos ? false : true);
@@ -178,13 +196,13 @@ const ProyectoMovimientosPage = ({ }) => {
               >
                 {filtrosActivos ? "Ocultar filtro": "Filtrar"}
               </Button>
-              <Button
+              {/* <Button
                 color="primary"
                 startIcon={<MoreVertIcon />}
                 onClick={handleAccionesActivas}
               > 
                 {accionesActivas ? "Ocultar acciones": "Acciones"}
-               </Button>
+               </Button> */}
             </Stack>
             <Stack direction="row" spacing={2} alignItems="center">
               {filtrosActivos && 
@@ -265,7 +283,7 @@ const ProyectoMovimientosPage = ({ }) => {
                     <TableCell>Egreso</TableCell>
                     <TableCell>Observación</TableCell>
                     <TableCell>Tipo de cambio</TableCell>
-                    <TableCell>Ver / Editar</TableCell>
+                    <TableCell>Acciones</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -281,15 +299,22 @@ const ProyectoMovimientosPage = ({ }) => {
                       <TableCell>{mov.observacion}</TableCell>
                       <TableCell>{mov.tc ? "$ ":""}{mov.tc}</TableCell>
                     
-                        <TableCell>
+                      <TableCell>
                         <Button
                             color="primary"
                             startIcon={<EditIcon />}
-                            onClick={() => router.push('/movimiento?id='+mov.id)}
+                            onClick={() => router.push('/movimiento?movimientoId='+mov.id)}
                         >
                             Ver / Editar
                         </Button>
-                        </TableCell>
+                        <Button
+                            color="error"
+                            startIcon={<DeleteIcon />}
+                            onClick={() => eliminarMovimiento(mov.id)}
+                        >
+                            Eliminar
+                        </Button>
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -305,6 +330,7 @@ const ProyectoMovimientosPage = ({ }) => {
                     <TableCell>Egreso</TableCell>
                     <TableCell>Observación</TableCell>
                     <TableCell>Tipo de cambio</TableCell>
+                    <TableCell>Acciones</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -319,6 +345,22 @@ const ProyectoMovimientosPage = ({ }) => {
                       </TableCell>
                       <TableCell>{mov.observacion}</TableCell>
                       <TableCell>{mov.tc ? "$ ":""}{mov.tc}</TableCell>
+                      <TableCell>
+                        <Button
+                            color="primary"
+                            startIcon={<EditIcon />}
+                            onClick={() => router.push('/movimiento?movimientoId='+mov.id)}
+                        >
+                            Ver / Editar
+                        </Button>
+                        <Button
+                            color="error"
+                            startIcon={<DeleteIcon />}
+                            onClick={() => eliminarMovimiento(mov.id)}
+                        >
+                            Eliminar
+                        </Button>
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
