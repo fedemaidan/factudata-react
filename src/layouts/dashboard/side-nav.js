@@ -25,14 +25,15 @@ import DashboardIcon from '@mui/icons-material/Dashboard';
 import StoreIcon from '@mui/icons-material/Store';
 import AddCircleIcon from '@mui/icons-material/AddCircle';
 import CogIcon from '@heroicons/react/24/solid/CogIcon';
+import UserPlusIcon from '@heroicons/react/24/solid/UserPlusIcon';
 
 const initialItems = [
   {
-    title: 'Vista general',
-    path: '/resumenConstructoras',
+    title: "Cuenta ",
+    path: 'account',
     icon: (
       <SvgIcon fontSize="small">
-        <DashboardIcon />
+        <UserPlusIcon />
       </SvgIcon>
     )
   }
@@ -60,6 +61,15 @@ export const SideNav = (props) => {
           </SvgIcon>
         )
       }
+      // const vistaGeneralElement = {
+      //   title: 'Vista general',
+      //   path: '/resumenConstructoras?empresaId=' + empresa.id,
+      //   icon: (
+      //     <SvgIcon fontSize="small">
+      //       <DashboardIcon />
+      //     </SvgIcon>
+      //   )
+      // }
       let newItems = [empresaElement, ...initialItems]
       await proyectos.forEach( (proy ) => {
         newItems.push(

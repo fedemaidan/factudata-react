@@ -15,26 +15,26 @@ const formatNumber = (number) => {
 };
 
 
-function dameMovimientosDelFile(archivo, proyecto) {
-  const fs = require('fs');
-  const path = require('path');
+// function dameMovimientosDelFile(archivo, proyecto) {
+//   const fs = require('fs');
+//   const path = require('path');
 
-  const filePath = path.resolve('src/data', archivo);
-  const data = fs.readFileSync(filePath, 'utf8');
-  const datosMovimientos = JSON.parse(data);
-  return procesarDatosMovimientos(datosMovimientos, proyecto);
-}
+//   const filePath = path.resolve('src/data', archivo);
+//   const data = fs.readFileSync(filePath, 'utf8');
+//   const datosMovimientos = JSON.parse(data);
+//   return procesarDatosMovimientos(datosMovimientos, proyecto);
+// }
 
-export async function getServerSideProps(context) {
+// export async function getServerSideProps(context) {
 
-  const movimientosData76 = dameMovimientosDelFile('movimientosLara76.json','La Martona 92');
-  const movimientosFake = dameMovimientosDelFile('movimientoFake.json', "Lares 7633");
-  const movimientosFake2 = dameMovimientosDelFile('movimientoFake2.json', "La Martona 259");
-  const movimientosFake3 = dameMovimientosDelFile('movimientoFake3.json', "Lares 138");
-  const fakeMovimientosData = movimientosData76.concat(movimientosFake).concat(movimientosFake2).concat(movimientosFake3);
+//   const movimientosData76 = dameMovimientosDelFile('movimientosLara76.json','La Martona 92');
+//   const movimientosFake = dameMovimientosDelFile('movimientoFake.json', "Lares 7633");
+//   const movimientosFake2 = dameMovimientosDelFile('movimientoFake2.json', "La Martona 259");
+//   const movimientosFake3 = dameMovimientosDelFile('movimientoFake3.json', "Lares 138");
+//   const fakeMovimientosData = movimientosData76.concat(movimientosFake).concat(movimientosFake2).concat(movimientosFake3);
 
-  return { props: { fakeMovimientosData } };
-  }
+//   return { props: { fakeMovimientosData } };
+//   }
 
 function procesarDatosMovimientos(datos, proyecto) {
   return datos.map(movimiento => ({

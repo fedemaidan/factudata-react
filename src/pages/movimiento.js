@@ -121,7 +121,7 @@ const MovementDataEntryPage = () => {
         setCategorias(cates)
         setProveedores(proveedores)
 
-        const data = await movimientosService.getMovimientoById(movimientoId);
+        const data = await movimientosService.getMovimientosById([movimientoId]);
         data.fecha_factura = formatTimestamp(data.fecha_factura)
         setMovimiento(data);
 

@@ -68,25 +68,25 @@ function procesarDatosMovimientos(datos, proyecto) {
   }
 
   
-function dameMovimientosDelFile(archivo, proyecto) {
-    const fs = require('fs');
-    const path = require('path');
+// function dameMovimientosDelFile(archivo, proyecto) {
+//     const fs = require('fs');
+//     const path = require('path');
   
-    const filePath = path.resolve('src/data', archivo);
-    const data = fs.readFileSync(filePath, 'utf8');
-    const datosMovimientos = JSON.parse(data);
-    return procesarDatosMovimientos(datosMovimientos, proyecto);
-  }
+//     const filePath = path.resolve('src/data', archivo);
+//     const data = fs.readFileSync(filePath, 'utf8');
+//     const datosMovimientos = JSON.parse(data);
+//     return procesarDatosMovimientos(datosMovimientos, proyecto);
+//   }
 
-export async function getServerSideProps(context) {
+// export async function getServerSideProps(context) {
 
-    // Aquí lees el archivo en el servidor y pasas los datos a la página
-  const movimientosData = dameMovimientosDelFile('movimientosLara76.json','Lares76');
-  const movimientosDataUSD = dameMovimientosDelFile('movimientosLara76USD.json','Lares76');
+//     // Aquí lees el archivo en el servidor y pasas los datos a la página
+//   const movimientosData = dameMovimientosDelFile('movimientosLara76.json','Lares76');
+//   const movimientosDataUSD = dameMovimientosDelFile('movimientosLara76USD.json','Lares76');
 
-  // Pasar los datos de movimientos a la página a través de props
-  return { props: { movimientosData, movimientosDataUSD } };
-  }
+//   // Pasar los datos de movimientos a la página a través de props
+//   return { props: { movimientosData, movimientosDataUSD } };
+//   }
 
 const ProyectoMovimientosPage = ({ movimientosData, movimientosDataUSD }) => {
   // Estado para la lista de movimientos
