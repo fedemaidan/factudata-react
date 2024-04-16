@@ -45,7 +45,6 @@ const movimientosService = {
       return false;
     }
   },
-
 };
 
 export default movimientosService;
