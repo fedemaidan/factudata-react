@@ -10,6 +10,9 @@ import movimientosService from 'src/services/movimientosService';
 import {getEmpresaDetailsFromUser} from 'src/services/empresaService';
 import { useAuthContext } from 'src/contexts/auth-context';
 import { Timestamp } from 'firebase/firestore';
+import Snackbar from '@mui/material/Snackbar';
+import Alert from '@mui/material/Alert';
+import { margin } from '@mui/system';
 
 
 const formatTimestamp = (timestamp) => {
@@ -50,6 +53,13 @@ const MovementDataEntryPage = () => {
   const [categorias, setCategorias] = useState([]);
   const [proveedores, setProveedores] = useState([]);
   const [categoriaSeleccionada, setCategoriaSeleccionada] = useState(null);
+  
+  const [alert, setAlert] = useState({
+    open: false,
+    message: '',
+    severity: 'info', 
+  });
+
   const [tipos, setTipos] = useState([
     {value: 'egreso', name: 'Egreso'},
     {value: 'ingreso', name: 'Ingreso'},
@@ -66,6 +76,14 @@ const MovementDataEntryPage = () => {
     { value: 'datos', label: 'Datos' },
     { value: 'comprobante', label: 'Comprobante' },
   ];
+
+  const handleCloseAlert = (event, reason) => {
+    if (reason === 'clickaway') {
+      return;
+    }
+    setAlert({ ...alert, open: false });
+  };
+
 
   const formik = useFormik({
     initialValues: {
@@ -84,29 +102,44 @@ const MovementDataEntryPage = () => {
       // Validaciones de cada campo
     }),
     onSubmit: async (values) => {
-      setIsLoading(true);
-      values.fecha_factura = dateToTimestamp(values.fecha_factura)
-      const success = await movimientosService.updateMovimiento(movimientoId, { ...movimiento , ...values});
-      values.fecha_factura = formatTimestamp(values.fecha_factura)
-      setIsLoading(false);
+      try {
+        setIsLoading(true);
+        const originalValues = {...values};
+        values.fecha_factura = dateToTimestamp(values.fecha_factura)
+        const success = await movimientosService.updateMovimiento(movimientoId, { ...movimiento , ...values});
+        values.fecha_factura = formatTimestamp(values.fecha_factura)
+        setIsLoading(false);
     
-      if (success) {
-        console.log('Movimiento actualizado!');
-      } else {
-        console.error('Hubo un error al actualizar el movimiento.');
+        if (success) {
+          setAlert({
+            open: true,
+            message: 'Movimiento actualizado con éxito!',
+            severity: 'success',
+          });
+        } else {
+          setAlert({
+            open: true,
+            message: 'Error al actualizar el movimiento.',
+            severity: 'error',
+          });
+          values = {...originalValues}
+      }} catch (error) {
+        setAlert({
+          open: true,
+          message: 'Error inesperado al actualizar.',
+          severity: 'error',
+        });
+        values = {...originalValues}
+        setIsLoading(false);
       }
-    },
+    
+  },
   });
-
   
   const handleTabsChange = (event, value) => {
     setCurrentTab(value);
   };
 
-  // useEffect(() => {
-  //   const categoriaEncontrada = categorias.find(c => c.name === formik.values.categoria);
-  //   setCategoriaSeleccionada(categoriaEncontrada);
-  // }, [formik.values.categoria, categorias]);
 
   useEffect(() => {
     if (movimientoId) {
@@ -121,7 +154,7 @@ const MovementDataEntryPage = () => {
         setCategorias(cates)
         setProveedores(proveedores)
 
-        const data = await movimientosService.getMovimientosById([movimientoId]);
+        const data = await movimientosService.getMovimientoById(movimientoId);
         data.fecha_factura = formatTimestamp(data.fecha_factura)
         setMovimiento(data);
 
@@ -149,7 +182,6 @@ const MovementDataEntryPage = () => {
 
   return (
     <>
-    {isLoading && <CircularProgress />}
       <Head>
         <title>Detalle del Movimiento</title>
       </Head>
@@ -162,7 +194,7 @@ const MovementDataEntryPage = () => {
           }}
         >
           <Typography variant="h4" sx={{ mb: 3 }}>
-            Detalle del Movimiento
+            Detalle del Movimiento - Caja {movimiento.proyecto}
           </Typography>
           <Tabs
                 value={currentTab}
@@ -178,14 +210,21 @@ const MovementDataEntryPage = () => {
           <form onSubmit={formik.handleSubmit}>
           {currentTab === 'comprobante' && 
           <>
-          <input
+          {/* <input
               accept="image/*"
               type="file"
               onChange={(event) => {
                 formik.setFieldValue("url_imagen", event.currentTarget.files[0]);
-              }}/>
-
-            <img src={formik.values.url_imagen} alt="Imagen del movimiento" />
+              }}/> */}
+              {!formik.values.url_imagen && 
+               <Typography variant="p" sx={{ mb: 3 }}>
+               Movimiento sin comprobante asociado
+             </Typography>
+             }
+            <Button color="primary" variant="text">
+                Actualizar imagen es una funcionalidad en desarrollo - Contactar al Soporte técnico si necesita actualizar la imagen
+              </Button> 
+              {formik.values.url_imagen && <img src={formik.values.url_imagen} alt="Imagen del movimiento" />}
             </>
               } 
              {currentTab === 'datos' && 
@@ -320,10 +359,21 @@ const MovementDataEntryPage = () => {
 
             <Box sx={{ py: 2 }}>
               <Button color="primary" variant="contained" type="submit">
-                Guardar cambios
+                {!isLoading && "Guardar cambios"}
+                {isLoading && "Guardando cambios"}
+                {isLoading && <CircularProgress />}
+              </Button>
+              <Button color="primary" variant="text" type="submit" onClick={() => router.push('/cajaProyecto?proyectoId='+movimiento.proyecto_id)}>
+                Volver a caja {movimiento.proyecto}
               </Button>
             </Box>
+            
           </form>
+          <Snackbar open={alert.open} autoHideDuration={6000} onClose={handleCloseAlert}>
+            <Alert onClose={handleCloseAlert} severity={alert.severity} sx={{ width: '100%' }}>
+              {alert.message}
+            </Alert>
+          </Snackbar>
         </Box>
       </Container>
     </>

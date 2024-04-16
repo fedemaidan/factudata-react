@@ -7,7 +7,6 @@ import AddCircle from '@mui/icons-material/AddCircle';
 import SaveAltIcon from '@mui/icons-material/SaveAlt';
 import CurrencyExchangeIcon from '@mui/icons-material/CurrencyExchange';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
-import MoreVertIcon from '@mui/icons-material/MoreVert';
 import FilterListIcon from '@mui/icons-material/FilterList';
 import FilterListOffIcon from '@mui/icons-material/FilterListOff';
 import EditIcon from '@mui/icons-material/Edit';
@@ -16,6 +15,8 @@ import { useRouter } from 'next/router';
 import ticketService from 'src/services/ticketService';
 import {getProyectoById} from 'src/services/proyectosService';
 import movimientosService from 'src/services/movimientosService';
+import Snackbar from '@mui/material/Snackbar';
+import Alert from '@mui/material/Alert';
 
 const formatTimestamp = (timestamp) => {
   if (!timestamp) {
@@ -39,28 +40,47 @@ const ProyectoMovimientosPage = ({ }) => {
   const [filtrosActivos, setFiltrosActivos] = useState(false); 
   const [accionesActivas, setAccionesActivas] = useState(false); 
   const [proyecto, setProyecto] = useState(null); 
+  const [deletingElement, setDeletingElement] = useState(null);
   // Estados para los filtros
   const [filtroDias, setFiltroDias] = useState('730');
   const [filtroObs, setFiltroObs] = useState('');
-
+  const [alert, setAlert] = useState({
+    open: false,
+    message: '',
+    severity: 'info', // puede ser 'error', 'warning', 'info', 'success'
+  });
   const router = useRouter();
-  const { proyectoId } = router.query; 
+  const { proyectoId } = router.query;
+  
+  const handleCloseAlert = (event, reason) => {
+    if (reason === 'clickaway') {
+      return;
+    }
+    setAlert({ ...alert, open: false });
+  };
 
   const eliminarMovimiento = async (movimientoId) => {
     const confirmado = window.confirm('¿Estás seguro de que quieres eliminar este movimiento?');
     if (confirmado) {
-      // setIsLoading(true);
+      setDeletingElement(movimientoId);
       const resultado = await movimientosService.deleteMovimientoById(movimientoId);
       if (resultado) {
         setMovimientos(movimientos.filter(mov => mov.id !== movimientoId));
         setMovimientosUSD(movimientosUSD.filter(mov => mov.id !== movimientoId));
-        console.log('Movimiento eliminado.');
-        // Opcional: Mostrar una notificación de éxito
+        setAlert({
+          open: true,
+          message: 'Movimiento eliminado con éxito',
+          severity: 'success',
+        });
+        setDeletingElement(null);
       } else {
-        console.error('Error al eliminar el movimiento.');
-        // Opcional: Mostrar una notificación de error
+        setAlert({
+          open: true,
+          message: 'Error al eliminar el elemento',
+          severity: 'error',
+        });
+        setDeletingElement(null);
       }
-      // setIsLoading(false);
     }
   };
 
@@ -273,6 +293,11 @@ const ProyectoMovimientosPage = ({ }) => {
             </Stack>
 
             <Paper>
+            <Snackbar open={alert.open} autoHideDuration={6000} onClose={handleCloseAlert}>
+            <Alert onClose={handleCloseAlert} severity={alert.severity} sx={{ width: '100%' }}>
+              {alert.message}
+            </Alert>
+          </Snackbar>
               {
                 tablaActiva === "ARS" &&
                 <Table>
@@ -312,7 +337,8 @@ const ProyectoMovimientosPage = ({ }) => {
                             startIcon={<DeleteIcon />}
                             onClick={() => eliminarMovimiento(mov.id)}
                         >
-                            Eliminar
+                            {deletingElement != mov.id && "Eliminar" }
+                            {deletingElement === mov.id && "Eliminando.." }
                         </Button>
                       </TableCell>
                     </TableRow>
@@ -358,7 +384,8 @@ const ProyectoMovimientosPage = ({ }) => {
                             startIcon={<DeleteIcon />}
                             onClick={() => eliminarMovimiento(mov.id)}
                         >
-                            Eliminar
+                            {deletingElement != mov.id && "Eliminar" }
+                            {deletingElement === mov.id && "Eliminando.." }
                         </Button>
                       </TableCell>
                     </TableRow>
