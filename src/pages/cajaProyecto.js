@@ -101,7 +101,10 @@ const ProyectoMovimientosPage = ({ }) => {
 
   // Función para formatear números como moneda
   const formatCurrency = (amount) => {
-    return amount.toLocaleString('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0 });
+    if (amount)
+      return amount.toLocaleString('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0 });
+    else
+      return "$ 0";
   };
 
   const handleFiltrosActivos  = () => {
