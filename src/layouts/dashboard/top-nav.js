@@ -86,7 +86,7 @@ export const TopNav = (props) => {
                 </Typography>
               </Button>
             }
-            <Typography variant="body1">{`Crédito: ${credit}`} </Typography> 
+            {/* <Typography variant="body1">{`Crédito: ${credit}`} </Typography>  */}
             <Avatar
               onClick={accountPopover.handleOpen}
               ref={accountPopover.anchorRef}
