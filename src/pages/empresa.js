@@ -105,7 +105,7 @@ const EmpresaPage = () => {
                     variant="outlined"
                     onClick={handleEdit}
                   >
-                    Editar nombre
+                    Editar nombre empresa
                   </Button>
                 </Stack>
                 <Tabs
