@@ -61,16 +61,16 @@ export const SideNav = (props) => {
           </SvgIcon>
         )
       }
-      // const vistaGeneralElement = {
-      //   title: 'Vista general',
-      //   path: '/resumenConstructoras?empresaId=' + empresa.id,
-      //   icon: (
-      //     <SvgIcon fontSize="small">
-      //       <DashboardIcon />
-      //     </SvgIcon>
-      //   )
-      // }
-      let newItems = [empresaElement, ...initialItems]
+      const vistaGeneralElement = {
+        title: 'Vista general',
+        path: '/resumenMovimientos?empresaId=' + empresa.id,
+        icon: (
+          <SvgIcon fontSize="small">
+            <DashboardIcon />
+          </SvgIcon>
+        )
+      }
+      let newItems = [empresaElement, vistaGeneralElement, ...initialItems]
       await proyectos.forEach( (proy ) => {
         newItems.push(
           {

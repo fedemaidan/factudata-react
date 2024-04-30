@@ -1,4 +1,4 @@
-import { doc, getDoc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, deleteDoc, addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import { db } from 'src/config/firebase';
 
 const movimientosService = {
@@ -45,6 +45,22 @@ const movimientosService = {
       return false;
     }
   },
+  addMovimiento: async (datosMovimiento) => {
+    try {
+      const nuevoMovimiento = {
+        ...datosMovimiento,
+        fecha_factura: serverTimestamp(), // Asigna la fecha y hora del servidor al momento de la creación
+      };
+
+      const movimientoDocRef = await addDoc(collection(db, 'movimientos'), nuevoMovimiento);
+      console.log('Movimiento agregado con éxito con ID:', movimientoDocRef.id);
+      return true;
+    } catch (err) {
+      console.error('Error al agregar el movimiento:', err);
+      return false;
+    }
+  }
+
 };
 
 export default movimientosService;

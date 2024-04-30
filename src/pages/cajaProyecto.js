@@ -10,6 +10,7 @@ import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import FilterListIcon from '@mui/icons-material/FilterList';
 import FilterListOffIcon from '@mui/icons-material/FilterListOff';
 import EditIcon from '@mui/icons-material/Edit';
+import MoreVertIcon from '@mui/icons-material/MoreVert';
 import DeleteIcon from '@mui/icons-material/Delete';
 import { useRouter } from 'next/router';
 import ticketService from 'src/services/ticketService';
@@ -17,6 +18,8 @@ import {getProyectoById} from 'src/services/proyectosService';
 import movimientosService from 'src/services/movimientosService';
 import Snackbar from '@mui/material/Snackbar';
 import Alert from '@mui/material/Alert';
+import { useAuthContext } from 'src/contexts/auth-context';
+
 
 const formatTimestamp = (timestamp) => {
   if (!timestamp) {
@@ -33,6 +36,7 @@ const formatTimestamp = (timestamp) => {
 
 
 const ProyectoMovimientosPage = ({ }) => {
+  const { user } = useAuthContext();
   // Estado para la lista de movimientos
   const [movimientos, setMovimientos] = useState([]);
   const [movimientosUSD, setMovimientosUSD] = useState([]);
@@ -219,13 +223,14 @@ const ProyectoMovimientosPage = ({ }) => {
               >
                 {filtrosActivos ? "Ocultar filtro": "Filtrar"}
               </Button>
-              {/* <Button
+              {(user.admin) && (
+              <Button
                 color="primary"
                 startIcon={<MoreVertIcon />}
                 onClick={handleAccionesActivas}
               > 
                 {accionesActivas ? "Ocultar acciones": "Acciones"}
-               </Button> */}
+               </Button>)}
             </Stack>
             <Stack direction="row" spacing={2} alignItems="center">
               {filtrosActivos && 
@@ -262,14 +267,14 @@ const ProyectoMovimientosPage = ({ }) => {
             {accionesActivas && 
                <>
               <Button
-                variant="contained"
+                variant="outlined"
                 color="success"
                 startIcon={<AddCircle />}
-                onClick={console.log("ingreso")}
+                onClick={() => router.push('/addMovimiento?proyectoName='+proyecto.nombre+'&proyectoId='+proyecto.id)}
               >
-                Registrar ingreso
+                Registrar movimiento
               </Button>
-              <Button
+              {/* <Button
                 variant="outlined"
                 color="error"
                 startIcon={<CloudUploadIcon />}
@@ -291,7 +296,7 @@ const ProyectoMovimientosPage = ({ }) => {
                 onClick={console.log("cambiar")}
               >
                 Cambiar $$ / USD
-              </Button>
+              </Button> */}
               </>}
             </Stack>
 

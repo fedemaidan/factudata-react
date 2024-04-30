@@ -39,6 +39,7 @@ export const ProyectosDetails = ({ empresa }) => {
     initialValues: {
       nombre: editingProyecto ? editingProyecto.nombre : '',
       carpetaRef: editingProyecto ? editingProyecto.carpetaRef : '',
+      proyecto_default_id: editingProyecto ? editingProyecto.proyecto_default_id : '',
     },
     enableReinitialize: true,
     validationSchema: Yup.object({
@@ -48,7 +49,7 @@ export const ProyectosDetails = ({ empresa }) => {
       setIsLoading(true);
       
       if (editingProyecto) {
-        await updateProyecto(editingProyecto.id, {nombre: values.nombre, carpetaRef: values.carpetaRef})
+        await updateProyecto(editingProyecto.id, {nombre: values.nombre, carpetaRef: values.carpetaRef, proyecto_default_id: values.proyecto_default_id})
         const proyectosData = await getProyectosByEmpresa(empresa)
         setProyectos(proyectosData)
       } 
@@ -78,7 +79,7 @@ export const ProyectosDetails = ({ empresa }) => {
           <List>
             {proyectos.map((proyecto) => (
               <ListItem key={proyecto.id} divider>
-                <ListItemText primary={proyecto.nombre} secondary={`Carpeta: ${proyecto.carpetaRef}`} />
+                <ListItemText primary={proyecto.nombre} secondary={`Carpeta: ${proyecto.carpetaRef} Caja central: ${proyecto.proyecto_default_id}`} />
                 <ListItemSecondaryAction>
                   <IconButton edge="end" onClick={() => iniciarEdicionProyecto(proyecto)}>
                     <EditIcon />
@@ -112,6 +113,19 @@ export const ProyectosDetails = ({ empresa }) => {
               onChange={formik.handleChange}
               error={formik.touched.carpetaRef && Boolean(formik.errors.carpetaRef)}
               helperText={formik.touched.carpetaRef && formik.errors.carpetaRef}
+              style={{ marginTop: '1rem' }}
+            />
+            }
+            {
+              editingProyecto &&
+            <TextField
+              fullWidth
+              name="proyecto_default_id"
+              label="Caja central"
+              value={formik.values.proyecto_default_id}
+              onChange={formik.handleChange}
+              error={formik.touched.proyecto_default_id && Boolean(formik.errors.proyecto_default_id)}
+              helperText={formik.touched.proyecto_default_id && formik.errors.proyecto_default_id}
               style={{ marginTop: '1rem' }}
             />
             }

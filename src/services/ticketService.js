@@ -1,4 +1,4 @@
-import { collection, doc, addDoc, getDoc, updateDoc, query, where, getDocs, orderBy, serverTimestamp} from 'firebase/firestore';
+import { collection, doc, addDoc, getDoc, updateDoc,limit,  query, where, getDocs, orderBy, serverTimestamp, Timestamp} from 'firebase/firestore';
 import { db, storage } from 'src/config/firebase';
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { uploadFile, deleteFacturaByFilename } from './facturasService'; // Importa el servicio de facturas para subir los archivos
@@ -282,6 +282,39 @@ const ticketService = {
       return [];
     }
   },
+  getLastMovimientosForProyecto: async (proyectoId) => {
+    try {
+      // Calcula la fecha hace 7 días
+      const sieteDiasAtras = new Date();
+      sieteDiasAtras.setDate(sieteDiasAtras.getDate() - 7);
+  
+      const q = query(
+        collection(db, 'movimientos'),
+        where('proyecto_id', '==', proyectoId),
+        // where('fecha_factura', '>=', Timestamp.fromDate(sieteDiasAtras)),
+        where('fecha_factura', '>=', Timestamp.fromDate(sieteDiasAtras)),
+        orderBy('fecha_factura', 'desc'),
+        limit(7)
+      );
+  
+      const querySnapshot = await getDocs(q);
+  
+      const movimientos = [];
+      querySnapshot.forEach((doc) => {
+        // Agregar cada movimiento a la lista
+        const mov = {
+          id: doc.id,
+          ...doc.data(),
+        };
+        movimientos.push(mov);
+      });
+  
+      return movimientos;
+    } catch (err) {
+      console.error('Error al obtener los movimientos:', err);
+      return [];
+    }
+  },  
   getTickets: async () => {
     try {
       const q = query(collection(db, 'tickets'));
