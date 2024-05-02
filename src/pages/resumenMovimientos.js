@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react';
 import Head from 'next/head';
-import { Box, Container, Stack, Chip,Typography, Paper, Table, TableBody, TableCell, TableHead, TableRow, IconButton } from '@mui/material';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import ExpandLessIcon from '@mui/icons-material/ExpandLess';
+import { Box, Container, Stack, Chip, Typography, Paper, Table, TableBody, TableCell, TableHead, TableRow, Checkbox, FormControlLabel, FormGroup } from '@mui/material';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import { getProyectosByEmpresa } from 'src/services/proyectosService';
 import ticketService from 'src/services/ticketService';
 import { useRouter } from 'next/router';
 import { getEmpresaById } from 'src/services/empresaService'; 
+import { getEmpresaDetailsFromUser } from 'src/services/empresaService'; 
+import { useAuthContext } from 'src/contexts/auth-context';
 
 const formatCurrency = (amount) => {
     return new Intl.NumberFormat('es-AR', {
@@ -16,104 +16,108 @@ const formatCurrency = (amount) => {
       minimumFractionDigits: 0,  // Define el mínimo de dígitos fraccionarios a 0
       maximumFractionDigits: 0   // Define el máximo de dígitos fraccionarios a 0
     }).format(amount);
-  };
-  
-  const formatTimestamp = (timestamp) => {
+};
+
+const formatTimestamp = (timestamp) => {
     if (!timestamp) {
       return '';
     }
-  
-    const date = new Date(timestamp.seconds * 1000); // Convert seconds to milliseconds
-    const year = date.getFullYear();
-    const month = `0${date.getMonth() + 1}`.slice(-2); // getMonth() devuelve un índice basado en cero, así que se agrega 1
-    const day = `0${date.getDate()}`.slice(-2);
-  
-    return `${year}-${month}-${day}`; // Formato YYYY-MM-DD
-  };
+    const date = new Date(timestamp.seconds * 1000);
+    return `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}`;
+};
+
 const ResumenMovimientosPage = () => {
     const router = useRouter();
     const { empresaId } = router.query;
+    const { user } = useAuthContext();
+    const [allMovimientos, setAllMovimientos] = useState([]);
+    // const [columnVisibility, setColumnVisibility] = useState({
+    //     fecha: true,
+    //     proyecto: true,
+    //     ingreso: true,
+    //     egreso: true,
+    //     observacion: true,
+    //     categoria: true,
+    //     subcategoria: true
+    // });
 
-    const [proyectos, setProyectos] = useState([]);
-    const [movimientos, setMovimientos] = useState({});
-    const [expandedProyectos, setExpandedProyectos] = useState({});
+    // const handleColumnVisibilityChange = (column) => {
+    //     setColumnVisibility(prev => ({
+    //         ...prev,
+    //         [column]: !prev[column]
+    //     }));
+    // };
+
 
     useEffect(() => {
-        const fetchProyectos = async () => {
-            const empresa = await getEmpresaById(empresaId)
-            const fetchedProyectos = await getProyectosByEmpresa(empresa);
-            setProyectos(fetchedProyectos);
-            fetchedProyectos.forEach(async (proyecto) => {
+        const fetchAllMovimientos = async () => {
+            let empresa;
+            if (!empresaId) {
+                empresa = await getEmpresaDetailsFromUser(user)
+            } else {
+                empresa = await getEmpresaById(empresaId);
+            }
+            const proyectos = await getProyectosByEmpresa(empresa);
+            const allMovs = [];
+
+            for (const proyecto of proyectos) {
                 const movs = await ticketService.getLastMovimientosForProyecto(proyecto.id);
-                setMovimientos(prevMovimientos => ({ ...prevMovimientos, [proyecto.id]: movs }));
-                setExpandedProyectos({...expandedProyectos, [proyecto.id]: false})
-            });
+                allMovs.push(...movs.map(mov => ({ ...mov, proyectoNombre: proyecto.nombre })));
+            }
+
+            allMovs.sort((a, b) => b.fecha_factura.seconds - a.fecha_factura.seconds);
+            setAllMovimientos(allMovs);
         };
 
-        fetchProyectos();
+        fetchAllMovimientos();
     }, [empresaId]);
-
-    const toggleProyecto = (proyectoId) => {
-        setExpandedProyectos(prev => ({
-            ...prev,
-            [proyectoId]: !prev[proyectoId]
-        }));
-    };
 
     return (
         <>
             <Head>
-                <title>Movimientos por Proyecto</title>
+                <title>Movimientos últimos 7 días</title>
             </Head>
-            <Box
-                component="main"
-                sx={{ flexGrow: 1, py: 8 }}
-            >
+            <Box component="main" sx={{ flexGrow: 1, py: 8 }}>
                 <Container maxWidth="xl">
                     <Stack spacing={3}>
-                        <Typography variant="h4">Movimientos por Proyecto</Typography>
-                        {proyectos.map((proyecto) => (
-                            <Paper key={proyecto.id} sx={{ my: 2 }}>
-                                <Typography variant="h6" sx={{ p: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }} onClick={() => toggleProyecto(proyecto.id)}>
-                                    {proyecto.nombre} / Caja ARS: {formatCurrency(proyecto.totalPesos,0)} / Caja USD: {formatCurrency(proyecto.totalDolares)}
-                                    <IconButton>
-                                        {expandedProyectos[proyecto.id] ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-                                    </IconButton>
-                                </Typography>
-                                {expandedProyectos[proyecto.id] && (
-                                    <Table>
-                                        <TableHead>
-                                            <TableRow>
-                                            <TableCell>Fecha</TableCell>
-                                            <TableCell>Ingreso</TableCell>
-                                            <TableCell>Egreso</TableCell>
-                                            <TableCell>Categoría</TableCell>
-                                            <TableCell>Subcategoría</TableCell>
-                                            <TableCell>Observación</TableCell>
-                                            <TableCell>Tipo de cambio</TableCell>
-                                            </TableRow>
-                                        </TableHead>
-                                        <TableBody>
-                                            {movimientos[proyecto.id] && movimientos[proyecto.id].map((mov) => (
-                                                <TableRow key={mov.id}>
-                                                    <TableCell>{formatTimestamp(mov.fecha_factura)}</TableCell>
-                                                        <TableCell>
-                                                                {mov.type == "ingreso" ? <Chip label={formatCurrency(mov.total)} color="success" size="small" />: ""}
-                                                            </TableCell>
-                                                        <TableCell>
-                                                            {mov.type == "egreso" ? <Chip label={formatCurrency(mov.total)} color="error" size="small" />: ""}
-                                                        </TableCell>
-                                                        <TableCell>{mov.categoria}</TableCell>
-                                                        <TableCell>{mov.subcategoria}</TableCell>
-                                                        <TableCell>{mov.observacion}</TableCell>
-                                                        <TableCell>{mov.tc ? "$ ":""}{mov.tc}</TableCell>
-                                                </TableRow>
-                                            ))}
-                                        </TableBody>
-                                    </Table>
-                                )}
-                            </Paper>
-                        ))}
+                        <Typography variant="h4">Movimientos últimos 7 días</Typography>
+                        {/* <FormGroup row>
+                            {Object.keys(columnVisibility).map((key) => (
+                                <FormControlLabel
+                                    control={<Checkbox checked={columnVisibility[key]} onChange={() => handleColumnVisibilityChange(key)} />}
+                                    label={key.charAt(0).toUpperCase() + key.slice(1)}
+                                    key={key}
+                                />
+                            ))}
+                        </FormGroup> */}
+                        <Paper sx={{ my: 2 }}>
+                            <Table>
+                                <TableHead>
+                                    <TableRow>
+                                        <TableCell>Fecha</TableCell>
+                                        <TableCell>Proyecto</TableCell>
+                                        <TableCell>Ingreso</TableCell>
+                                        <TableCell>Egreso</TableCell>
+                                        <TableCell>Observación</TableCell>
+                                        {/* <TableCell>Categoria</TableCell>
+                                        <TableCell>Subcategoria</TableCell> */}
+                                    </TableRow>
+                                </TableHead>
+                                <TableBody>
+                                    {allMovimientos.map((mov, index) => (
+                                        <TableRow key={index}>
+                                            <TableCell>{formatTimestamp(mov.fecha_factura)}</TableCell>
+                                            <TableCell>{mov.proyectoNombre}</TableCell>
+                                            <TableCell>{mov.type == "ingreso" ? <Chip label={formatCurrency(mov.total)} color="success" size="small" />: ""}</TableCell>
+                                            <TableCell>{mov.type == "egreso" ? <Chip label={formatCurrency(mov.total)} color="error" size="small" />: ""}</TableCell>
+                                            <TableCell>{mov.observacion}</TableCell>
+                                            {/* <TableCell>{mov.categoria}</TableCell>
+                                            <TableCell>{mov.subcategoria}</TableCell> */}
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        </Paper>
                     </Stack>
                 </Container>
             </Box>
