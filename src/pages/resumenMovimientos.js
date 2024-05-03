@@ -98,6 +98,7 @@ const ResumenMovimientosPage = () => {
                                         <TableCell>Proyecto</TableCell>
                                         <TableCell>Ingreso</TableCell>
                                         <TableCell>Egreso</TableCell>
+                                        <TableCell>Moneda</TableCell>
                                         <TableCell>Observación</TableCell>
                                         {/* <TableCell>Categoria</TableCell>
                                         <TableCell>Subcategoria</TableCell> */}
@@ -110,6 +111,7 @@ const ResumenMovimientosPage = () => {
                                             <TableCell>{mov.proyectoNombre}</TableCell>
                                             <TableCell>{mov.type == "ingreso" ? <Chip label={formatCurrency(mov.total)} color="success" size="small" />: ""}</TableCell>
                                             <TableCell>{mov.type == "egreso" ? <Chip label={formatCurrency(mov.total)} color="error" size="small" />: ""}</TableCell>
+                                            <TableCell>{mov.moneda}</TableCell>
                                             <TableCell>{mov.observacion}</TableCell>
                                             {/* <TableCell>{mov.categoria}</TableCell>
                                             <TableCell>{mov.subcategoria}</TableCell> */}
