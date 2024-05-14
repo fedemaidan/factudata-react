@@ -27,13 +27,51 @@ import { useFormik } from 'formik';
 import * as Yup from 'yup';
 import EditIcon from '@mui/icons-material/Edit';
 import SaveIcon from '@mui/icons-material/Save';
-import { getProyectosByEmpresa, updateProyecto } from 'src/services/proyectosService';
+import { getProyectosByEmpresa, hasPermission, updateProyecto } from 'src/services/proyectosService';
 
 export const ProyectosDetails = ({ empresa }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [proyectos, setProyectos] = useState([]);
   const [editingProyecto, setEditingProyecto] = useState(null);
   const [openModal, setOpenModal] = useState(false);
+  const [sheetPermissionError, setSheetPermissionError] = useState(false);
+  const [folderPermissionError, setFolderPermissionError] = useState(false);
+  
+  const handleSheetWithClientChange = async (event) => {
+    const newSheetId = event.target.value;
+    formik.setFieldValue('sheetWithClient', newSheetId, false); 
+    console.log("Estoy acá")
+    try {
+        const permissionResult = await hasPermission(newSheetId);
+        setSheetPermissionError(!permissionResult);
+        if (!permissionResult) {
+          formik.setFieldError('sheetWithClient', 'No tienes permisos para editar esta hoja de Google Sheet');
+          formik.setTouched({ ...formik.touched, sheetWithClient: true });
+      }
+    } catch (error) {
+        console.error('Error al verificar los permisos:', error);
+        formik.setFieldError('sheetWithClient', 'Error al verificar los permisos');
+    }
+};
+
+const handleCarpetaRefChange = async (event) => {
+    const newFolderId = event.target.value;
+    formik.setFieldValue('carpetaRef', newFolderId, false);
+
+    try {
+        const permissionResult = await hasPermission(newFolderId);
+        setFolderPermissionError(!permissionResult);
+        if (!permissionResult) {
+            formik.setFieldError('carpetaRef', 'No tienes permisos para editar esta carpeta');
+            formik.setTouched({ ...formik.touched, carpetaRef: true });
+        }
+    } catch (error) {
+        console.error('Error al verificar los permisos:', error);
+        formik.setFieldError('carpetaRef', 'Error al verificar los permisos');
+    }
+};
+
+
 
   useEffect(() => {
     const fetchEmpresaData = async () => {
@@ -68,7 +106,7 @@ export const ProyectosDetails = ({ empresa }) => {
       resetForm();
       setEditingProyecto(null);
       setIsLoading(false);
-    },
+    }
   });
 
   const iniciarEdicionProyecto = (proyecto) => {
@@ -125,14 +163,17 @@ export const ProyectosDetails = ({ empresa }) => {
               helperText={formik.touched.nombre && formik.errors.nombre}
             />
             <TextField
-              fullWidth
-              name="carpetaRef"
-              label="Carpeta de Referencia"
-              value={formik.values.carpetaRef}
-              onChange={formik.handleChange}
-              error={formik.touched.carpetaRef && Boolean(formik.errors.carpetaRef)}
-              helperText={formik.touched.carpetaRef && formik.errors.carpetaRef}
-              style={{ marginTop: '1rem' }}
+                fullWidth
+                name="carpetaRef"
+                label="Carpeta de Referencia"
+                value={formik.values.carpetaRef}
+                onChange={event => {
+                  handleCarpetaRefChange(event);
+                  formik.handleChange(event);
+              }}              
+                error={formik.touched.carpetaRef && (Boolean(formik.errors.carpetaRef) || folderPermissionError)}
+                helperText={formik.touched.carpetaRef && (formik.errors.carpetaRef || (folderPermissionError && "No tienes permisos para editar esta carpeta"))}
+                style={{ marginTop: '1rem' }}
             />
             <FormControl fullWidth style={{ marginTop: '1rem' }}>
               <InputLabel id="proyecto-default-label">Caja central</InputLabel>
@@ -154,14 +195,17 @@ export const ProyectosDetails = ({ empresa }) => {
               </Select>
             </FormControl>
             <TextField
-              fullWidth
-              name="sheetWithClient"
-              label="ID de Google Sheet"
-              value={formik.values.sheetWithClient}
-              onChange={formik.handleChange}
-              error={formik.touched.sheetWithClient && Boolean(formik.errors.sheetWithClient)}
-              helperText={formik.touched.sheetWithClient && formik.errors.sheetWithClient}
-              style={{ marginTop: '1rem' }}
+                fullWidth
+                name="sheetWithClient"
+                label="ID de Google Sheet"
+                value={formik.values.sheetWithClient}
+                onChange={ async (event) => {
+                  await handleSheetWithClientChange(event);
+                  formik.handleChange(event);
+              }}              
+                error={formik.touched.sheetWithClient && (Boolean(formik.errors.sheetWithClient) || sheetPermissionError)}
+                helperText={formik.touched.sheetWithClient && (formik.errors.sheetWithClient || (sheetPermissionError && "No tienes permisos para editar esta hoja de Google Sheet"))}
+                style={{ marginTop: '1rem' }}
             />
           </DialogContent>
           <DialogActions>

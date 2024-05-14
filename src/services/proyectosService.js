@@ -112,7 +112,6 @@ export const updateProyecto = async (id, proyecto) => {
   }
 };
 
-
 export const recargarProyecto = async (idProyecto) => {
   try {
     const response = await api.get(`recargar_sheets/${idProyecto}`);
@@ -125,6 +124,21 @@ export const recargarProyecto = async (idProyecto) => {
     }
   } catch (err) {
       console.error('Error al actualizando sheets:', err);
+      return false;
+  }
+}
+
+export const hasPermission = async (fileId) => {
+  try {
+    const response = await api.get(`permisosDrive/${fileId}`);
+    if (response.status === 201) {
+        return response.data.hasPermission;
+    } else {
+        console.error('Error al verificando permisos');
+        return false;
+    }
+  } catch (err) {
+      console.error('Error al verificando permisos', err);
       return false;
   }
 }
