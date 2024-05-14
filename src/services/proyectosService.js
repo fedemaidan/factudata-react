@@ -1,5 +1,6 @@
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { db } from 'src/config/firebase';
+import api from './axiosConfig';
 
 /**
  * Obtiene los proyectos de un empresa a partir de las referencias almacenadas en el atributo proyectos.
@@ -110,3 +111,20 @@ export const updateProyecto = async (id, proyecto) => {
     return false;
   }
 };
+
+
+export const recargarProyecto = async (idProyecto) => {
+  try {
+    const response = await api.get(`recargar_sheets/${idProyecto}`);
+    if (response.status === 201) {
+        console.log('Sheets actualizados');
+        return true;
+    } else {
+        console.error('Error al actualizando sheets');
+        return false;
+    }
+  } catch (err) {
+      console.error('Error al actualizando sheets:', err);
+      return false;
+  }
+}

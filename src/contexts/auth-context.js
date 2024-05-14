@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useReducer, useRef } from 'react';
 import PropTypes from 'prop-types';
 import { auth } from "../config/firebase";
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut as firebaseSignOut } from "firebase/auth"
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut as firebaseSignOut, onAuthStateChanged } from "firebase/auth"
 import { collection, addDoc, getDocs, doc, query, where, updateDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from 'src/config/firebase';
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
@@ -22,6 +22,7 @@ const initialState = {
 
 const handlers = {
   [HANDLERS.INITIALIZE]: (state, action) => {
+    console.log("HANDLERS.INITIALIZE")
     const user = action.payload;
 
     return {
@@ -47,12 +48,13 @@ const handlers = {
       isAuthenticated: true,
       user
     };
-
     window.localStorage.setItem('MY_APP_STATE', JSON.stringify(newState));
+    window.localStorage.setItem('authToken', user.token);
     return newState;
   },
   [HANDLERS.SIGN_OUT]: (state) => {
     window.localStorage.removeItem('MY_APP_STATE');
+
     return {
       ...state,
       isAuthenticated: false,
@@ -75,18 +77,16 @@ export const AuthProvider = (props) => {
   const initialized = useRef(false);
 
   const initialize = async () => {
-    // Prevent from calling twice in development mode with React.StrictMode enabled
     if (initialized.current) {
       return;
     }
 
     initialized.current = true;
-
     const storageState = window.localStorage.getItem('MY_APP_STATE');
-
+    
     if (storageState) {
       const savedState = JSON.parse(storageState);
-
+      console.log(savedState)
       dispatch({
         type: HANDLERS.INITIALIZE,
         payload: savedState.user
@@ -96,7 +96,28 @@ export const AuthProvider = (props) => {
         type: HANDLERS.INITIALIZE
       });
     }
+
+
+    onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        // Obtén el token actualizado
+        const idToken = await user.getIdToken(true); // Forzar actualización
+
+        // Actualiza el estado del contexto con el token y otros datos
+        const updatedUser = await getPayloadUserByUid(user.uid,idToken);
+
+        dispatch({
+          type: HANDLERS.UPDATE_USER,
+          payload: updatedUser
+        });
+      } else {
+        dispatch({
+          type: HANDLERS.INITIALIZE
+        });
+      }
+    });
   };
+
 
   useEffect(
     () => {
@@ -106,27 +127,41 @@ export const AuthProvider = (props) => {
     []
   );
 
-  const classicSignIn = async (email, password)  => {
-    const response = await signInWithEmailAndPassword(auth, email,password);
-    
+  const getPayloadUserByUid = async (uid,idToken)=> {
     const userRef = collection(db, "profile");
-    
-    const q = query(userRef, where("user_id", "==", response.user.uid));
+    const q = query(userRef, where("user_id", "==", uid));
     const querySnapshot = await getDocs(q);    
     const user =  querySnapshot.docs[0].data();
     const id = querySnapshot.docs[0].id;
     const credit = await getTotalCreditsForUser(id);
-    console.log("USER", user)
-    dispatch({
-      type: HANDLERS.UPDATE_USER,
-      payload: {
-        ...user,
-        credit: credit,
-        id: id,
-        admin: user.admin? user.admin : false,
-      }
-    });
+    return {
+      ...user,
+      credit: credit,
+      id: id,
+      admin: user.admin? user.admin : false,
+      token: idToken
+    }
   }
+
+  const classicSignIn = async (email, password) => {
+    try {
+      const response = await signInWithEmailAndPassword(auth, email, password);
+      const idToken = await response.user.getIdToken(true);
+      const payload = await getPayloadUserByUid(response.user.uid, idToken);
+  
+      dispatch({
+        type: HANDLERS.UPDATE_USER,
+        payload: payload
+      });
+    } catch (error) {
+      if (error.code === 'auth/id-token-expired') {
+        await refreshToken();
+        return classicSignIn(email, password); // Reintenta la autenticación
+      }
+      console.error("Error in classicSignIn:", error);
+    }
+  }
+  
 
   const signUp = async (email, password) => {
     const response = await createUserWithEmailAndPassword(auth, email, password);
@@ -164,10 +199,13 @@ export const AuthProvider = (props) => {
   };
 
   const signOut = () => {
-    dispatch({
-      type: HANDLERS.SIGN_OUT
+    firebaseSignOut(auth).then(() => {
+      dispatch({
+        type: HANDLERS.SIGN_OUT
+      });
     });
   };
+
 
   const updateUser = async (user) => {
     const userRef = doc(db, "profile", user.id);
@@ -180,9 +218,7 @@ export const AuthProvider = (props) => {
   }
 
   const refreshUser = async(user) => {
-    
     const credit = await getTotalCreditsForUser(user.id);
-    
     dispatch({
       type: HANDLERS.UPDATE_USER,
       payload: {
@@ -203,6 +239,26 @@ export const AuthProvider = (props) => {
     };
     await updateUser(userUpdated);
   }
+
+  const refreshToken = async () => {
+    try {
+      const currentUser = auth.currentUser;
+      const idToken = await currentUser.getIdToken(true); // Forzar la renovación del token
+      const user = {
+        ...state.user,
+        token: idToken
+      };
+      dispatch({
+        type: HANDLERS.UPDATE_USER,
+        payload: user
+      });
+      window.localStorage.setItem('authToken', idToken); // Actualizar el token en localStorage
+      return idToken;
+    } catch (error) {
+      console.error("Error refreshing token:", error);
+    }
+  }
+  
 
   return (
     <AuthContext.Provider

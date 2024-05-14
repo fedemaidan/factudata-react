@@ -1,5 +1,7 @@
-import { doc, getDoc, updateDoc, deleteDoc, addDoc, collection, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc } from 'firebase/firestore';
 import { db } from 'src/config/firebase';
+import api from './axiosConfig';
+
 
 const movimientosService = {
   // Método para obtener un movimiento por su ID
@@ -25,42 +27,52 @@ const movimientosService = {
   },
   updateMovimiento: async (movimientoId, nuevosDatos) => {
     try {
-      const movimientoDocRef = doc(db, 'movimientos', movimientoId);
-      await updateDoc(movimientoDocRef, nuevosDatos);
-      console.log('Movimiento actualizado con éxito');
-      return true;
+      const response = await api.put(`movimiento/${movimientoId}`, nuevosDatos);
+      if (response.status === 201) {
+          console.log('Movimiento editado con éxito');
+          return true;
+      } else {
+          console.error('Error al editar el movimiento');
+          return false;
+      }
     } catch (err) {
-      console.error('Error al actualizar el movimiento:', err);
-      return false;
+        console.error('Error al editar el movimiento:', err);
+        return false;
     }
   },
   deleteMovimientoById: async (movimientoId) => {
     try {
-      const movimientoDocRef = doc(db, 'movimientos', movimientoId);
-      await deleteDoc(movimientoDocRef);
-      console.log('Movimiento eliminado con éxito');
-      return true;
+      const response = await api.delete(`movimiento/${movimientoId}`);
+      if (response.status === 201) {
+          console.log('Movimiento borrado con éxito');
+          return true;
+      } else {
+          console.error('Error al borrar el movimiento');
+          return false;
+      }
     } catch (err) {
-      console.error('Error al eliminar el movimiento:', err);
-      return false;
+        console.error('Error al borrar el movimiento:', err);
+        return false;
     }
   },
   addMovimiento: async (datosMovimiento) => {
     try {
-      const nuevoMovimiento = {
-        ...datosMovimiento,
-        fecha_factura: serverTimestamp(), // Asigna la fecha y hora del servidor al momento de la creación
-      };
-
-      const movimientoDocRef = await addDoc(collection(db, 'movimientos'), nuevoMovimiento);
-      console.log('Movimiento agregado con éxito con ID:', movimientoDocRef.id);
-      return true;
+        const nuevoMovimiento = {
+              ...datosMovimiento
+            };
+        const response = await api.post(`movimiento/create`, nuevoMovimiento);
+        if (response.status === 201) {
+            console.log('Movimiento agregado con éxito');
+            return true;
+        } else {
+            console.error('Error al agregar el movimiento');
+            return false;
+        }
     } catch (err) {
-      console.error('Error al agregar el movimiento:', err);
-      return false;
+        console.error('Error al agregar el movimiento:', err);
+        return false;
     }
   }
-
 };
 
 export default movimientosService;

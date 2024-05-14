@@ -2,10 +2,8 @@ import { useState, useMemo, useEffect } from 'react';
 import Head from 'next/head';
 import { Box, Container, Stack, Chip, Typography, TextField, InputAdornment, Paper, Table, TableBody, TableCell, TableHead, TableRow, Button, Select, MenuItem, FormControl, InputLabel } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
-import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import AddCircle from '@mui/icons-material/AddCircle';
-import SaveAltIcon from '@mui/icons-material/SaveAlt';
-import CurrencyExchangeIcon from '@mui/icons-material/CurrencyExchange';
+import GridOnIcon from '@mui/icons-material/GridOn';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import FilterListIcon from '@mui/icons-material/FilterList';
 import FilterListOffIcon from '@mui/icons-material/FilterListOff';
@@ -14,7 +12,7 @@ import MoreVertIcon from '@mui/icons-material/MoreVert';
 import DeleteIcon from '@mui/icons-material/Delete';
 import { useRouter } from 'next/router';
 import ticketService from 'src/services/ticketService';
-import {getProyectoById} from 'src/services/proyectosService';
+import {getProyectoById, recargarProyecto} from 'src/services/proyectosService';
 import movimientosService from 'src/services/movimientosService';
 import Snackbar from '@mui/material/Snackbar';
 import Alert from '@mui/material/Alert';
@@ -62,6 +60,24 @@ const ProyectoMovimientosPage = ({ }) => {
     }
     setAlert({ ...alert, open: false });
   };
+
+  const handleRecargarProyecto = async (proyecto_id) => {
+    const resultado = await recargarProyecto(proyecto_id)
+    if (resultado) {
+      setAlert({
+        open: true,
+        message: 'Sheets recalculados con éxito',
+        severity: 'success',
+      });
+    }
+    else {
+      setAlert({
+        open: true,
+        message: 'Error al recalcular sheets',
+        severity: 'error',
+      });
+    }
+  }
 
   const eliminarMovimiento = async (movimientoId) => {
     const confirmado = window.confirm('¿Estás seguro de que quieres eliminar este movimiento?');
@@ -273,6 +289,13 @@ const ProyectoMovimientosPage = ({ }) => {
                 onClick={() => router.push('/addMovimiento?proyectoName='+proyecto.nombre+'&proyectoId='+proyecto.id)}
               >
                 Registrar movimiento
+              </Button>
+              <Button
+                variant="contained"
+                startIcon={<GridOnIcon />}
+                onClick={() => handleRecargarProyecto(proyecto.id)}
+              >
+                Recalcular sheets
               </Button>
               {/* <Button
                 variant="outlined"

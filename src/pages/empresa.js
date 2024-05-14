@@ -6,6 +6,7 @@ import { NumerosTelefonoDetails } from 'src/sections/empresa/numerosTelefonoDeta
 import { ProyectosDetails } from 'src/sections/empresa/proyectosDetails';
 import { CategoriasDetails } from 'src/sections/empresa/categoriasDetails';
 import { ProveedoresDetails } from 'src/sections/empresa/proveedoresDetails';
+import { ConfiguracionGeneral } from 'src/sections/empresa/configuracionGeneral';
 import { updateEmpresaDetails, getEmpresaById } from 'src/services/empresaService'; 
 import { getProyectosByEmpresa } from 'src/services/proyectosService'; 
 import { useAuthContext } from 'src/contexts/auth-context';
@@ -27,6 +28,7 @@ const EmpresaPage = () => {
     { value: 'proyectos', label: 'Proyectos' },
     { value: 'categorias', label: 'Categorías' },
     { value: 'proveedores', label: 'Proveedores' },
+    { value: 'configuracion', label: 'Configuración General' },
   ];
 
   useEffect(() => {
@@ -124,6 +126,7 @@ const EmpresaPage = () => {
              {currentTab === 'proyectos' && <ProyectosDetails empresa={empresa}/>} 
             {currentTab === 'categorias' && <CategoriasDetails empresa={empresa}/>}
             {currentTab === 'proveedores' && <ProveedoresDetails empresa={empresa}/>}
+            {currentTab === 'configuracion' && <ConfiguracionGeneral empresa={empresa} updateEmpresaData={updateEmpresaDetails}/>}
           </Stack>
         </Container>
       </Box>

@@ -13,7 +13,15 @@ import {
   ListItem,
   ListItemText,
   ListItemSecondaryAction,
-  LinearProgress
+  LinearProgress,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel
 } from '@mui/material';
 import { useFormik } from 'formik';
 import * as Yup from 'yup';
@@ -25,11 +33,12 @@ export const ProyectosDetails = ({ empresa }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [proyectos, setProyectos] = useState([]);
   const [editingProyecto, setEditingProyecto] = useState(null);
-  
+  const [openModal, setOpenModal] = useState(false);
+
   useEffect(() => {
     const fetchEmpresaData = async () => {
-      const proyectosData = await getProyectosByEmpresa(empresa)
-      setProyectos(proyectosData)
+      const proyectosData = await getProyectosByEmpresa(empresa);
+      setProyectos(proyectosData);
     };
 
     fetchEmpresaData();
@@ -37,23 +46,25 @@ export const ProyectosDetails = ({ empresa }) => {
 
   const formik = useFormik({
     initialValues: {
-      nombre: editingProyecto ? editingProyecto.nombre : '',
-      carpetaRef: editingProyecto ? editingProyecto.carpetaRef : '',
-      proyecto_default_id: editingProyecto ? editingProyecto.proyecto_default_id : '',
+      nombre: '',
+      carpetaRef: '',
+      proyecto_default_id: '',
+      sheetWithClient: ''
     },
     enableReinitialize: true,
     validationSchema: Yup.object({
       nombre: Yup.string().required('El nombre del proyecto es requerido'),
+      proyecto_default_id: Yup.string(),
+      sheetWithClient: Yup.string().nullable()
     }),
     onSubmit: async (values, { resetForm }) => {
       setIsLoading(true);
-      
       if (editingProyecto) {
-        await updateProyecto(editingProyecto.id, {nombre: values.nombre, carpetaRef: values.carpetaRef, proyecto_default_id: values.proyecto_default_id})
-        const proyectosData = await getProyectosByEmpresa(empresa)
-        setProyectos(proyectosData)
-      } 
-
+        await updateProyecto(editingProyecto.id, values);
+        const proyectosData = await getProyectosByEmpresa(empresa);
+        setProyectos(proyectosData);
+        setOpenModal(false);
+      }
       resetForm();
       setEditingProyecto(null);
       setIsLoading(false);
@@ -62,16 +73,23 @@ export const ProyectosDetails = ({ empresa }) => {
 
   const iniciarEdicionProyecto = (proyecto) => {
     setEditingProyecto(proyecto);
+    formik.setValues(proyecto);
+    setOpenModal(true);
   };
 
   const cancelarEdicion = () => {
     setEditingProyecto(null);
     formik.resetForm();
+    setOpenModal(false);
   };
 
+  const findProyectoNombreById = id => {
+    const proyecto = proyectos.find(proj => proj.id === id);
+    return proyecto ? proyecto.nombre : "Sin caja central";
+  };
 
   return (
-    <form autoComplete="off" noValidate onSubmit={formik.handleSubmit}>
+    <>
       <Card>
         <CardHeader title="Gestionar Proyectos" />
         <Divider />
@@ -79,21 +97,24 @@ export const ProyectosDetails = ({ empresa }) => {
           <List>
             {proyectos.map((proyecto) => (
               <ListItem key={proyecto.id} divider>
-                <ListItemText primary={proyecto.nombre} secondary={`Carpeta: ${proyecto.carpetaRef} Caja central: ${proyecto.proyecto_default_id}`} />
+                <ListItemText primary={proyecto.nombre} secondary={`Carpeta: ${proyecto.carpetaRef} Caja central: ${findProyectoNombreById(proyecto.proyecto_default_id)} Google Sheet ID: ${proyecto.sheetWithClient || 'No asignado'}`} />
                 <ListItemSecondaryAction>
                   <IconButton edge="end" onClick={() => iniciarEdicionProyecto(proyecto)}>
                     <EditIcon />
                   </IconButton>
-                  {/* <IconButton edge="end" onClick={() => eliminarProyecto(proyecto.id)}>
-                    <DeleteIcon />
-                  </IconButton> */}
                 </ListItemSecondaryAction>
               </ListItem>
             ))}
           </List>
-          <Box sx={{ display: 'flex', flexDirection: 'column', mb: 1 }}>
-          {
-              editingProyecto && 
+        </CardContent>
+        <Divider />
+        <CardActions sx={{ justifyContent: 'flex-end' }}>
+        </CardActions>
+      </Card>
+      <Dialog open={openModal} onClose={cancelarEdicion} aria-labelledby="form-dialog-title">
+        <form autoComplete="off" noValidate onSubmit={formik.handleSubmit}>
+          <DialogTitle id="form-dialog-title">Editar Proyecto</DialogTitle>
+          <DialogContent>
             <TextField
               fullWidth
               name="nombre"
@@ -102,9 +123,7 @@ export const ProyectosDetails = ({ empresa }) => {
               onChange={formik.handleChange}
               error={formik.touched.nombre && Boolean(formik.errors.nombre)}
               helperText={formik.touched.nombre && formik.errors.nombre}
-            />}  
-            {
-              editingProyecto &&
+            />
             <TextField
               fullWidth
               name="carpetaRef"
@@ -115,50 +134,52 @@ export const ProyectosDetails = ({ empresa }) => {
               helperText={formik.touched.carpetaRef && formik.errors.carpetaRef}
               style={{ marginTop: '1rem' }}
             />
-            }
-            {
-              editingProyecto &&
+            <FormControl fullWidth style={{ marginTop: '1rem' }}>
+              <InputLabel id="proyecto-default-label">Caja central</InputLabel>
+              <Select
+                labelId="proyecto-default-label"
+                name="proyecto_default_id"
+                value={formik.values.proyecto_default_id}
+                onChange={formik.handleChange}
+                error={formik.touched.proyecto_default_id && Boolean(formik.errors.proyecto_default_id)}
+              >
+                <MenuItem value="">
+                  Sin caja central
+                </MenuItem>
+                {proyectos.map((proyecto) => (
+                  <MenuItem key={proyecto.id} value={proyecto.id}>
+                    {proyecto.nombre}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
             <TextField
               fullWidth
-              name="proyecto_default_id"
-              label="Caja central"
-              value={formik.values.proyecto_default_id}
+              name="sheetWithClient"
+              label="ID de Google Sheet"
+              value={formik.values.sheetWithClient}
               onChange={formik.handleChange}
-              error={formik.touched.proyecto_default_id && Boolean(formik.errors.proyecto_default_id)}
-              helperText={formik.touched.proyecto_default_id && formik.errors.proyecto_default_id}
+              error={formik.touched.sheetWithClient && Boolean(formik.errors.sheetWithClient)}
+              helperText={formik.touched.sheetWithClient && formik.errors.sheetWithClient}
               style={{ marginTop: '1rem' }}
             />
-            }
-            <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
-              {
-              // editingProyecto ? (
-                <Button onClick={cancelarEdicion} color="primary">
-                  Cancelar
-                </Button>
-              // ) : (
-              //   <IconButton type="submit" color="primary">
-              //     <AddCircleIcon />
-              //   </IconButton>
-              // )
-              }
-              {editingProyecto && (
-                <Button
-                  variant="contained"
-                  startIcon={<SaveIcon />}
-                  type="submit"
-                  sx={{ ml: 2 }}
-                >
-                  Guardar Cambios
-                </Button>
-              )}
-            </Box>
-          </Box>
-        </CardContent>
-        <Divider />
-        <CardActions sx={{ justifyContent: 'flex-end' }}>
-        </CardActions>
-      </Card>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={cancelarEdicion} color="primary">
+              Cancelar
+            </Button>
+            <Button
+              variant="contained"
+              startIcon={<SaveIcon />}
+              type="submit"
+              sx={{ ml: 2 }}
+            >
+              Guardar Cambios
+            </Button>
+          </DialogActions>
+        </form>
+      </Dialog>
       {isLoading && <LinearProgress />}
-    </form>
+    </>
   );
 };
