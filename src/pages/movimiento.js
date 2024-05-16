@@ -210,19 +210,18 @@ const MovementDataEntryPage = () => {
           <form onSubmit={formik.handleSubmit}>
           {currentTab === 'comprobante' && 
           <>
-          {/* <input
+          <input
               accept="image/*"
               type="file"
               onChange={(event) => {
                 formik.setFieldValue("url_imagen", event.currentTarget.files[0]);
-              }}/> */}
+              }}/>
               {!formik.values.url_imagen && 
                <Typography variant="p" sx={{ mb: 3 }}>
                Movimiento sin comprobante asociado
              </Typography>
              }
             <Button color="primary" variant="text">
-                Actualizar imagen es una funcionalidad en desarrollo - Contactar al Soporte técnico si necesita actualizar la imagen
               </Button> 
               {formik.values.url_imagen && <img src={formik.values.url_imagen} alt="Imagen del movimiento" />}
             </>

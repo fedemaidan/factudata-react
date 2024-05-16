@@ -37,12 +37,8 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
         const permissionResult = await hasPermission(newSheetId);
         if (!permissionResult) {
             setHasPermissionError(true);
-            setSnackbarInfo({ message: 'No tienes permisos para editar esta hoja de Google Sheet.', severity: 'error' });
-            setSnackbarOpen(true);
         } else {
             setHasPermissionError(false);
-            setSnackbarInfo({ message: 'Permisos verificados con éxito.', severity: 'success' });
-            setSnackbarOpen(true);
         }
     } catch (error) {
         console.error('Error al verificar los permisos:', error);

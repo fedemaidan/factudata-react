@@ -45,7 +45,7 @@ export const ProyectosDetails = ({ empresa }) => {
         const permissionResult = await hasPermission(newSheetId);
         setSheetPermissionError(!permissionResult);
         if (!permissionResult) {
-          formik.setFieldError('sheetWithClient', 'No tienes permisos para editar esta hoja de Google Sheet');
+          formik.setFieldError('sheetWithClient', 'El google sheet no está configurado para que podamos editarlo. Asegurate que el id esté bien escrito y de darle permisos de edición a firebase-adminsdk-xts1d@factudata-3afdf.iam.gserviceaccount.com.');
           formik.setTouched({ ...formik.touched, sheetWithClient: true });
       }
     } catch (error) {
@@ -62,7 +62,7 @@ const handleCarpetaRefChange = async (event) => {
         const permissionResult = await hasPermission(newFolderId);
         setFolderPermissionError(!permissionResult);
         if (!permissionResult) {
-            formik.setFieldError('carpetaRef', 'No tienes permisos para editar esta carpeta');
+            formik.setFieldError('carpetaRef', 'La carpeta no está configurada para que podamos editarlo. Asegurate que el id esté bien escrito y de darle permisos de edición a firebase-adminsdk-xts1d@factudata-3afdf.iam.gserviceaccount.com.');
             formik.setTouched({ ...formik.touched, carpetaRef: true });
         }
     } catch (error) {
@@ -172,7 +172,7 @@ const handleCarpetaRefChange = async (event) => {
                   formik.handleChange(event);
               }}              
                 error={formik.touched.carpetaRef && (Boolean(formik.errors.carpetaRef) || folderPermissionError)}
-                helperText={formik.touched.carpetaRef && (formik.errors.carpetaRef || (folderPermissionError && "No tienes permisos para editar esta carpeta"))}
+                helperText={formik.touched.carpetaRef && (formik.errors.carpetaRef || (folderPermissionError && "La carpeta no está configurado para que podamos editarlo. Asegurate que el id esté bien escrito y de darle permisos de edición a firebase-adminsdk-xts1d@factudata-3afdf.iam.gserviceaccount.com."))}
                 style={{ marginTop: '1rem' }}
             />
             <FormControl fullWidth style={{ marginTop: '1rem' }}>
@@ -204,7 +204,7 @@ const handleCarpetaRefChange = async (event) => {
                   formik.handleChange(event);
               }}              
                 error={formik.touched.sheetWithClient && (Boolean(formik.errors.sheetWithClient) || sheetPermissionError)}
-                helperText={formik.touched.sheetWithClient && (formik.errors.sheetWithClient || (sheetPermissionError && "No tienes permisos para editar esta hoja de Google Sheet"))}
+                helperText={formik.touched.sheetWithClient && (formik.errors.sheetWithClient || (sheetPermissionError && "El google sheet no está configurado para que podamos editarlo. Asegurate que el id esté bien escrito y de darle permisos de edición a firebase-adminsdk-xts1d@factudata-3afdf.iam.gserviceaccount.com."))}
                 style={{ marginTop: '1rem' }}
             />
           </DialogContent>
