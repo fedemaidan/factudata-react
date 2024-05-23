@@ -50,7 +50,8 @@ export const SideNav = (props) => {
   useEffect( () => {
     const fetchProyectosData = async () => {
       const empresa = await getEmpresaDetailsFromUser(user)
-      const proyectos = await getProyectosFromUser(user)
+      let proyectos = await getProyectosFromUser(user)
+      proyectos = proyectos.filter(proyecto => proyecto.activo);
       setProyectos(proyectos)
       const empresaElement = {
         title: "Configurar " + empresa.nombre,

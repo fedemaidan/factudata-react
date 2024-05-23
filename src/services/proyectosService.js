@@ -102,6 +102,13 @@ export const getProyectoById = async (id) => {
  */
 export const updateProyecto = async (id, proyecto) => {
   try {
+    proyecto = {
+      carpetaRef: proyecto.carpetaRef ?? "",
+      proyecto_default_id: proyecto.proyecto_default_id ?? "",
+      sheetWithClient: proyecto.sheetWithClient ?? "",
+      nombre: proyecto.nombre,
+      activo: proyecto.activo ?? true,
+    }
     const proyectoDocRef = doc(db, 'proyectos', id);
     await updateDoc(proyectoDocRef, proyecto);
     console.log('Proyecto actualizado con éxito');

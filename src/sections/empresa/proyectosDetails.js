@@ -23,7 +23,9 @@ import {
   FormControl,
   InputLabel,
   Switch,
-  Typography
+  Typography,
+  Snackbar,
+  Alert
 } from '@mui/material';
 import { useFormik } from 'formik';
 import * as Yup from 'yup';
@@ -39,6 +41,13 @@ export const ProyectosDetails = ({ empresa }) => {
   const [openModal, setOpenModal] = useState(false);
   const [sheetPermissionError, setSheetPermissionError] = useState(false);
   const [folderPermissionError, setFolderPermissionError] = useState(false);
+  const [snackbarOpen, setSnackbarOpen] = useState(false);
+  const [snackbarMessage, setSnackbarMessage] = useState('');
+  const [snackbarSeverity, setSnackbarSeverity] = useState('success');
+
+  const handleSnackbarClose = () => {
+    setSnackbarOpen(false);
+  };
 
   const handleSheetWithClientChange = async (event) => {
     const newSheetId = event.target.value;
@@ -88,7 +97,6 @@ export const ProyectosDetails = ({ empresa }) => {
       carpetaRef: '',
       proyecto_default_id: '',
       sheetWithClient: '',
-      activo: true,
     },
     enableReinitialize: true,
     validationSchema: Yup.object({
@@ -103,21 +111,30 @@ export const ProyectosDetails = ({ empresa }) => {
         carpetaRef: values.carpetaRef,
         proyecto_default_id: values.proyecto_default_id,
         sheetWithClient: values.sheetWithClient,
-        activo: values.activo,
       };
 
-      if (editingProyecto) {
-        await updateProyecto(editingProyecto.id, proyectoData);
-      } else {
-        await crearProyecto(proyectoData);
+      try {
+        if (editingProyecto) {
+          await updateProyecto(editingProyecto.id, proyectoData);
+          setSnackbarMessage('Proyecto actualizado con éxito');
+        } else {
+          await crearProyecto(proyectoData);
+          setSnackbarMessage('Proyecto creado con éxito');
+        }
+        setSnackbarSeverity('success');
+      } catch (error) {
+        console.error('Error al crear/actualizar el proyecto:', error);
+        setSnackbarMessage('Error al crear/actualizar el proyecto');
+        setSnackbarSeverity('error');
+      } finally {
+        setSnackbarOpen(true);
+        const proyectosData = await getProyectosByEmpresa(empresa);
+        setProyectos(proyectosData);
+        setOpenModal(false);
+        resetForm();
+        setEditingProyecto(null);
+        setIsLoading(false);
       }
-
-      const proyectosData = await getProyectosByEmpresa(empresa);
-      setProyectos(proyectosData);
-      setOpenModal(false);
-      resetForm();
-      setEditingProyecto(null);
-      setIsLoading(false);
     }
   });
 
@@ -140,10 +157,20 @@ export const ProyectosDetails = ({ empresa }) => {
   };
 
   const toggleProyectoActivo = async (proyecto) => {
-    const updatedProyecto = { ...proyecto, activo: !proyecto.activo };
-    await updateProyecto(proyecto.id, updatedProyecto);
-    const proyectosData = await getProyectosByEmpresa(empresa);
-    setProyectos(proyectosData);
+    try {
+      const updatedProyecto = { ...proyecto, activo: !proyecto.activo };
+      await updateProyecto(proyecto.id, updatedProyecto);
+      setSnackbarMessage(`Proyecto ${updatedProyecto.activo ? 'activado' : 'desactivado'} con éxito`);
+      setSnackbarSeverity('success');
+    } catch (error) {
+      console.error('Error al cambiar el estado del proyecto:', error);
+      setSnackbarMessage('Error al cambiar el estado del proyecto');
+      setSnackbarSeverity('error');
+    } finally {
+      setSnackbarOpen(true);
+      const proyectosData = await getProyectosByEmpresa(empresa);
+      setProyectos(proyectosData);
+    }
   };
 
   const findProyectoNombreById = id => {
@@ -255,19 +282,6 @@ export const ProyectosDetails = ({ empresa }) => {
               helperText={formik.touched.sheetWithClient && (formik.errors.sheetWithClient || (sheetPermissionError && "El google sheet no está configurado para que podamos editarlo. Asegúrate de que el id esté bien escrito y de darle permisos de edición a firebase-adminsdk-xts1d@factudata-3afdf.iam.gserviceaccount.com."))}
               style={{ marginTop: '1rem' }}
             />
-            <FormControl fullWidth style={{ marginTop: '1rem' }}>
-              <InputLabel id="proyecto-activo-label">Activo</InputLabel>
-              <Select
-                labelId="proyecto-activo-label"
-                name="activo"
-                value={formik.values.activo}
-                onChange={formik.handleChange}
-                error={formik.touched.activo && Boolean(formik.errors.activo)}
-              >
-                <MenuItem value={true}>Activo</MenuItem>
-                <MenuItem value={false}>Inactivo</MenuItem>
-              </Select>
-            </FormControl>
           </DialogContent>
           <DialogActions>
             <Button onClick={cancelarEdicion} color="primary">
@@ -284,6 +298,16 @@ export const ProyectosDetails = ({ empresa }) => {
           </DialogActions>
         </form>
       </Dialog>
+      <Snackbar
+        open={snackbarOpen}
+        autoHideDuration={6000}
+        onClose={handleSnackbarClose}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert onClose={handleSnackbarClose} severity={snackbarSeverity} sx={{ width: '100%' }}>
+          {snackbarMessage}
+        </Alert>
+      </Snackbar>
       {isLoading && <LinearProgress />}
     </>
   );
