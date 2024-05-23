@@ -60,7 +60,7 @@ const movimientosService = {
         const nuevoMovimiento = {
               ...datosMovimiento
             };
-        const response = await api.post(`movimiento/create`, nuevoMovimiento);
+        const response = await api.post(`movimiento/`, nuevoMovimiento);
         if (response.status === 201) {
             console.log('Movimiento agregado con éxito');
             return true;

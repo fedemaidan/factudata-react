@@ -6,6 +6,7 @@ import { NumerosTelefonoDetails } from 'src/sections/empresa/numerosTelefonoDeta
 import { ProyectosDetails } from 'src/sections/empresa/proyectosDetails';
 import { CategoriasDetails } from 'src/sections/empresa/categoriasDetails';
 import { ProveedoresDetails } from 'src/sections/empresa/proveedoresDetails';
+import { UsuariosDetails } from 'src/sections/empresa/usuariosDetails';
 import { ConfiguracionGeneral } from 'src/sections/empresa/configuracionGeneral';
 import { updateEmpresaDetails, getEmpresaById } from 'src/services/empresaService'; 
 import { getProyectosByEmpresa, hasPermission } from 'src/services/proyectosService'; 
@@ -29,6 +30,7 @@ const EmpresaPage = () => {
     { value: 'categorias', label: 'Categorías' },
     { value: 'proveedores', label: 'Proveedores' },
     { value: 'configuracion', label: 'Configuración General' },
+    { value: 'usuarios', label: 'Usuarios' },
   ];
 
   useEffect(() => {
@@ -122,7 +124,7 @@ const EmpresaPage = () => {
                 </Tabs>
               </>
             )}
-             {/* {currentTab === 'telefonos' && <NumerosTelefonoDetails />} */}
+            {currentTab === 'usuarios' && <UsuariosDetails empresa={empresa}/>}
              {currentTab === 'proyectos' && <ProyectosDetails empresa={empresa}/>} 
             {currentTab === 'categorias' && <CategoriasDetails empresa={empresa}/>}
             {currentTab === 'proveedores' && <ProveedoresDetails empresa={empresa}/>}

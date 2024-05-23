@@ -21,13 +21,16 @@ import {
   Select,
   MenuItem,
   FormControl,
-  InputLabel
+  InputLabel,
+  Switch,
+  Typography
 } from '@mui/material';
 import { useFormik } from 'formik';
 import * as Yup from 'yup';
 import EditIcon from '@mui/icons-material/Edit';
 import SaveIcon from '@mui/icons-material/Save';
-import { getProyectosByEmpresa, hasPermission, updateProyecto } from 'src/services/proyectosService';
+import AddCircleIcon from '@mui/icons-material/AddCircle';
+import { getProyectosByEmpresa, hasPermission, updateProyecto, crearProyecto } from 'src/services/proyectosService';
 
 export const ProyectosDetails = ({ empresa }) => {
   const [isLoading, setIsLoading] = useState(false);
@@ -36,11 +39,10 @@ export const ProyectosDetails = ({ empresa }) => {
   const [openModal, setOpenModal] = useState(false);
   const [sheetPermissionError, setSheetPermissionError] = useState(false);
   const [folderPermissionError, setFolderPermissionError] = useState(false);
-  
+
   const handleSheetWithClientChange = async (event) => {
     const newSheetId = event.target.value;
     formik.setFieldValue('sheetWithClient', newSheetId, false); 
-    console.log("Estoy acá")
     try {
         const permissionResult = await hasPermission(newSheetId);
         setSheetPermissionError(!permissionResult);
@@ -52,9 +54,9 @@ export const ProyectosDetails = ({ empresa }) => {
         console.error('Error al verificar los permisos:', error);
         formik.setFieldError('sheetWithClient', 'Error al verificar los permisos');
     }
-};
+  };
 
-const handleCarpetaRefChange = async (event) => {
+  const handleCarpetaRefChange = async (event) => {
     const newFolderId = event.target.value;
     formik.setFieldValue('carpetaRef', newFolderId, false);
 
@@ -62,16 +64,14 @@ const handleCarpetaRefChange = async (event) => {
         const permissionResult = await hasPermission(newFolderId);
         setFolderPermissionError(!permissionResult);
         if (!permissionResult) {
-            formik.setFieldError('carpetaRef', 'La carpeta no está configurada para que podamos editarlo. Asegurate que el id esté bien escrito y de darle permisos de edición a firebase-adminsdk-xts1d@factudata-3afdf.iam.gserviceaccount.com.');
+            formik.setFieldError('carpetaRef', 'La carpeta no está configurada para que podamos editarla. Asegurate que el id esté bien escrito y de darle permisos de edición a firebase-adminsdk-xts1d@factudata-3afdf.iam.gserviceaccount.com.');
             formik.setTouched({ ...formik.touched, carpetaRef: true });
         }
     } catch (error) {
         console.error('Error al verificar los permisos:', error);
         formik.setFieldError('carpetaRef', 'Error al verificar los permisos');
     }
-};
-
-
+  };
 
   useEffect(() => {
     const fetchEmpresaData = async () => {
@@ -87,7 +87,8 @@ const handleCarpetaRefChange = async (event) => {
       nombre: '',
       carpetaRef: '',
       proyecto_default_id: '',
-      sheetWithClient: ''
+      sheetWithClient: '',
+      activo: true,
     },
     enableReinitialize: true,
     validationSchema: Yup.object({
@@ -97,12 +98,23 @@ const handleCarpetaRefChange = async (event) => {
     }),
     onSubmit: async (values, { resetForm }) => {
       setIsLoading(true);
+      const proyectoData = {
+        nombre: values.nombre,
+        carpetaRef: values.carpetaRef,
+        proyecto_default_id: values.proyecto_default_id,
+        sheetWithClient: values.sheetWithClient,
+        activo: values.activo,
+      };
+
       if (editingProyecto) {
-        await updateProyecto(editingProyecto.id, values);
-        const proyectosData = await getProyectosByEmpresa(empresa);
-        setProyectos(proyectosData);
-        setOpenModal(false);
+        await updateProyecto(editingProyecto.id, proyectoData);
+      } else {
+        await crearProyecto(proyectoData);
       }
+
+      const proyectosData = await getProyectosByEmpresa(empresa);
+      setProyectos(proyectosData);
+      setOpenModal(false);
       resetForm();
       setEditingProyecto(null);
       setIsLoading(false);
@@ -115,10 +127,23 @@ const handleCarpetaRefChange = async (event) => {
     setOpenModal(true);
   };
 
+  const iniciarCreacionProyecto = () => {
+    setEditingProyecto(null);
+    formik.resetForm();
+    setOpenModal(true);
+  };
+
   const cancelarEdicion = () => {
     setEditingProyecto(null);
     formik.resetForm();
     setOpenModal(false);
+  };
+
+  const toggleProyectoActivo = async (proyecto) => {
+    const updatedProyecto = { ...proyecto, activo: !proyecto.activo };
+    await updateProyecto(proyecto.id, updatedProyecto);
+    const proyectosData = await getProyectosByEmpresa(empresa);
+    setProyectos(proyectosData);
   };
 
   const findProyectoNombreById = id => {
@@ -135,8 +160,23 @@ const handleCarpetaRefChange = async (event) => {
           <List>
             {proyectos.map((proyecto) => (
               <ListItem key={proyecto.id} divider>
-                <ListItemText primary={proyecto.nombre} secondary={`Carpeta: ${proyecto.carpetaRef} Caja central: ${findProyectoNombreById(proyecto.proyecto_default_id)} Google Sheet ID: ${proyecto.sheetWithClient || 'No asignado'}`} />
+                <ListItemText
+                  primary={proyecto.nombre}
+                  secondary={
+                    <>
+                      <Typography variant="body2">Carpeta: {proyecto.carpetaRef}</Typography>
+                      <Typography variant="body2">Caja central: {findProyectoNombreById(proyecto.proyecto_default_id)}</Typography>
+                      <Typography variant="body2">Google Sheet ID: {proyecto.sheetWithClient || 'No asignado'}</Typography>
+                      <Typography variant="body2">Estado: {proyecto.activo ? 'Activo' : 'Inactivo'}</Typography>
+                    </>
+                  }
+                />
                 <ListItemSecondaryAction>
+                  <Switch
+                    checked={proyecto.activo}
+                    onChange={() => toggleProyectoActivo(proyecto)}
+                    color="primary"
+                  />
                   <IconButton edge="end" onClick={() => iniciarEdicionProyecto(proyecto)}>
                     <EditIcon />
                   </IconButton>
@@ -147,11 +187,19 @@ const handleCarpetaRefChange = async (event) => {
         </CardContent>
         <Divider />
         <CardActions sx={{ justifyContent: 'flex-end' }}>
+          <Button
+            color="primary"
+            variant="contained"
+            startIcon={<AddCircleIcon />}
+            onClick={iniciarCreacionProyecto}
+          >
+            Agregar Proyecto
+          </Button>
         </CardActions>
       </Card>
       <Dialog open={openModal} onClose={cancelarEdicion} aria-labelledby="form-dialog-title">
         <form autoComplete="off" noValidate onSubmit={formik.handleSubmit}>
-          <DialogTitle id="form-dialog-title">Editar Proyecto</DialogTitle>
+          <DialogTitle id="form-dialog-title">{editingProyecto ? 'Editar Proyecto' : 'Agregar Proyecto'}</DialogTitle>
           <DialogContent>
             <TextField
               fullWidth
@@ -163,17 +211,17 @@ const handleCarpetaRefChange = async (event) => {
               helperText={formik.touched.nombre && formik.errors.nombre}
             />
             <TextField
-                fullWidth
-                name="carpetaRef"
-                label="Carpeta de Referencia"
-                value={formik.values.carpetaRef}
-                onChange={event => {
-                  handleCarpetaRefChange(event);
-                  formik.handleChange(event);
-              }}              
-                error={formik.touched.carpetaRef && (Boolean(formik.errors.carpetaRef) || folderPermissionError)}
-                helperText={formik.touched.carpetaRef && (formik.errors.carpetaRef || (folderPermissionError && "La carpeta no está configurado para que podamos editarlo. Asegurate que el id esté bien escrito y de darle permisos de edición a firebase-adminsdk-xts1d@factudata-3afdf.iam.gserviceaccount.com."))}
-                style={{ marginTop: '1rem' }}
+              fullWidth
+              name="carpetaRef"
+              label="Carpeta de Referencia"
+              value={formik.values.carpetaRef}
+              onChange={event => {
+                handleCarpetaRefChange(event);
+                formik.handleChange(event);
+              }}
+              error={formik.touched.carpetaRef && (Boolean(formik.errors.carpetaRef) || folderPermissionError)}
+              helperText={formik.touched.carpetaRef && (formik.errors.carpetaRef || (folderPermissionError && "La carpeta no está configurada para que podamos editarla. Asegúrate de que el id esté bien escrito y de darle permisos de edición a firebase-adminsdk-xts1d@factudata-3afdf.iam.gserviceaccount.com."))}
+              style={{ marginTop: '1rem' }}
             />
             <FormControl fullWidth style={{ marginTop: '1rem' }}>
               <InputLabel id="proyecto-default-label">Caja central</InputLabel>
@@ -195,18 +243,31 @@ const handleCarpetaRefChange = async (event) => {
               </Select>
             </FormControl>
             <TextField
-                fullWidth
-                name="sheetWithClient"
-                label="ID de Google Sheet"
-                value={formik.values.sheetWithClient}
-                onChange={ async (event) => {
-                  await handleSheetWithClientChange(event);
-                  formik.handleChange(event);
-              }}              
-                error={formik.touched.sheetWithClient && (Boolean(formik.errors.sheetWithClient) || sheetPermissionError)}
-                helperText={formik.touched.sheetWithClient && (formik.errors.sheetWithClient || (sheetPermissionError && "El google sheet no está configurado para que podamos editarlo. Asegurate que el id esté bien escrito y de darle permisos de edición a firebase-adminsdk-xts1d@factudata-3afdf.iam.gserviceaccount.com."))}
-                style={{ marginTop: '1rem' }}
+              fullWidth
+              name="sheetWithClient"
+              label="ID de Google Sheet"
+              value={formik.values.sheetWithClient}
+              onChange={async (event) => {
+                await handleSheetWithClientChange(event);
+                formik.handleChange(event);
+              }}
+              error={formik.touched.sheetWithClient && (Boolean(formik.errors.sheetWithClient) || sheetPermissionError)}
+              helperText={formik.touched.sheetWithClient && (formik.errors.sheetWithClient || (sheetPermissionError && "El google sheet no está configurado para que podamos editarlo. Asegúrate de que el id esté bien escrito y de darle permisos de edición a firebase-adminsdk-xts1d@factudata-3afdf.iam.gserviceaccount.com."))}
+              style={{ marginTop: '1rem' }}
             />
+            <FormControl fullWidth style={{ marginTop: '1rem' }}>
+              <InputLabel id="proyecto-activo-label">Activo</InputLabel>
+              <Select
+                labelId="proyecto-activo-label"
+                name="activo"
+                value={formik.values.activo}
+                onChange={formik.handleChange}
+                error={formik.touched.activo && Boolean(formik.errors.activo)}
+              >
+                <MenuItem value={true}>Activo</MenuItem>
+                <MenuItem value={false}>Inactivo</MenuItem>
+              </Select>
+            </FormControl>
           </DialogContent>
           <DialogActions>
             <Button onClick={cancelarEdicion} color="primary">
@@ -218,7 +279,7 @@ const handleCarpetaRefChange = async (event) => {
               type="submit"
               sx={{ ml: 2 }}
             >
-              Guardar Cambios
+              {editingProyecto ? 'Guardar Cambios' : 'Agregar Proyecto'}
             </Button>
           </DialogActions>
         </form>

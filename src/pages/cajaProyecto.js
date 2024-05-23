@@ -239,14 +239,13 @@ const ProyectoMovimientosPage = ({ }) => {
               >
                 {filtrosActivos ? "Ocultar filtro": "Filtrar"}
               </Button>
-              {(user.admin) && (
               <Button
                 color="primary"
                 startIcon={<MoreVertIcon />}
                 onClick={handleAccionesActivas}
               > 
                 {accionesActivas ? "Ocultar acciones": "Acciones"}
-               </Button>)}
+               </Button>
             </Stack>
             <Stack direction="row" spacing={2} alignItems="center">
               {filtrosActivos && 

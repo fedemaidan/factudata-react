@@ -3,13 +3,17 @@ import NextLink from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useFormik } from 'formik';
 import * as Yup from 'yup';
-import { Box, Button, CircularProgress, Link, Stack, TextField, Typography } from '@mui/material';
+import { Box, Button, CircularProgress, Link, Stack, TextField, Typography, FormControlLabel, Radio, RadioGroup } from '@mui/material';
 import { Layout as AuthLayout } from 'src/layouts/auth/layout';
 import { useAuth } from 'src/hooks/use-auth';
+import profileService from 'src/services/profileService';
 import { useState } from 'react';
 
 const Page = () => {
   const [isLoading, setIsLoading] = useState(false);
+  const [hasCode, setHasCode] = useState(false);
+  const [isCodeValid, setIsCodeValid] = useState(false);
+  const [empresaName, setEmpresaName] = useState('');
   const router = useRouter();
   const auth = useAuth();
 
@@ -17,23 +21,34 @@ const Page = () => {
     initialValues: {
       email: '',
       password: '',
+      code: '',
       submit: null
     },
     validationSchema: Yup.object({
       email: Yup
         .string()
-        .email('Must be a valid email')
+        .email('Debe ser un correo válido')
         .max(255)
-        .required('Email is required'),
+        .required('El correo es requerido'),
       password: Yup
         .string()
         .max(255)
-        .required('Password is required')
+        .required('La contraseña es requerida'),
+      code: Yup
+        .string()
+        .when('hasCode', {
+          is: true,
+          then: Yup.string().required('El código es requerido')
+        })
     }),
     onSubmit: async (values, helpers) => {
       try {
         setIsLoading(true);
-        await auth.signUp(values.email, values.password);
+        if (hasCode) {
+          await auth.signUpWithCode(values.email, values.password, values.code);
+        } else {
+          await auth.signUp(values.email, values.password);
+        }
         router.push('/');
         setIsLoading(false);
       } catch (err) {
@@ -44,6 +59,28 @@ const Page = () => {
       }
     }
   });
+
+  const handleCodeChange = async (event) => {
+    const code = event.target.value;
+    formik.setFieldValue('code', code);
+    if (code.length > 0) {
+      setIsLoading(true);
+      const profile = await profileService.getProfileByCode(code);
+
+      if (profile) {
+        setIsCodeValid(true);
+        formik.setFieldValue('email', profile.email);
+        setEmpresaName(profile.empresaData.nombre);
+      } else {
+        setIsCodeValid(false);
+        setEmpresaName('');
+      }
+      setIsLoading(false);
+    } else {
+      setIsCodeValid(false);
+      setEmpresaName('');
+    }
+  };
 
   return (
     <>
@@ -80,7 +117,7 @@ const Page = () => {
                 color="text.secondary"
                 variant="body2"
               >
-                Already have an account?
+                ¿Ya tienes una cuenta?
                 &nbsp;
                 <Link
                   component={NextLink}
@@ -88,36 +125,71 @@ const Page = () => {
                   underline="hover"
                   variant="subtitle2"
                 >
-                  Log in
+                  Iniciar sesión
                 </Link>
               </Typography>
             </Stack>
+            <RadioGroup
+              row
+              value={hasCode}
+              onChange={(event) => {
+                setHasCode(event.target.value === 'true');
+                formik.setFieldValue('code', '');
+                setIsCodeValid(false);
+                setEmpresaName('');
+              }}
+            >
+              <FormControlLabel value={false} control={<Radio />} label="Nueva Empresa" />
+              <FormControlLabel value={true} control={<Radio />} label="Tengo un Código" />
+            </RadioGroup>
             <form
               noValidate
               onSubmit={formik.handleSubmit}
             >
               <Stack spacing={3}>
+                {hasCode && (
+                  <>
+                    <TextField
+                      error={!!(formik.touched.code && formik.errors.code)}
+                      fullWidth
+                      helperText={formik.touched.code && formik.errors.code}
+                      label="Código de Empresa"
+                      name="code"
+                      onBlur={formik.handleBlur}
+                      onChange={handleCodeChange}
+                      type="text"
+                      value={formik.values.code}
+                    />
+                    {isCodeValid && (
+                      <Typography variant="body2" color="textSecondary">
+                        Registrate para unirte a {empresaName}
+                      </Typography>
+                    )}
+                  </>
+                )}
                 <TextField
                   error={!!(formik.touched.email && formik.errors.email)}
                   fullWidth
                   helperText={formik.touched.email && formik.errors.email}
-                  label="Email Address"
+                  label="Correo Electrónico"
                   name="email"
                   onBlur={formik.handleBlur}
                   onChange={formik.handleChange}
                   type="email"
                   value={formik.values.email}
+                  disabled={hasCode && !isCodeValid}
                 />
                 <TextField
                   error={!!(formik.touched.password && formik.errors.password)}
                   fullWidth
                   helperText={formik.touched.password && formik.errors.password}
-                  label="Password"
+                  label="Contraseña"
                   name="password"
                   onBlur={formik.handleBlur}
                   onChange={formik.handleChange}
                   type="password"
                   value={formik.values.password}
+                  disabled={hasCode && !isCodeValid}
                 />
               </Stack>
               {formik.errors.submit && (
@@ -130,21 +202,22 @@ const Page = () => {
                 </Typography>
               )}
               <Box
-                  sx={{
-                    display: 'flex',
-                    justifyContent: 'center',
-                    alignItems: 'center',
-                    mt: 3,
-                  }}
-                >
+                sx={{
+                  display: 'flex',
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                  mt: 3,
+                }}
+              >
                 {!isLoading && <Button
                   fullWidth
                   size="large"
                   sx={{ mt: 3 }}
                   type="submit"
                   variant="contained"
+                  disabled={hasCode && !isCodeValid}
                 >
-                  Continue
+                  Continuar
                 </Button>}
                 {isLoading && <CircularProgress sx={{ mt: 3 }}/>}
               </Box>

@@ -142,3 +142,26 @@ export const hasPermission = async (fileId) => {
       return false;
   }
 }
+
+/**
+ * Realiza una solicitud POST para crear un nuevo proyecto.
+ * @param {object} proyecto - Un objeto con los datos del proyecto a crear.
+ * @param {string} token - El token de autenticación del usuario.
+ * @returns {Promise<object>} - Retorna un objeto con la respuesta del servidor.
+ */
+export const crearProyecto = async (proyecto) => {
+  try {
+    const response = await api.post('/proyecto/', proyecto);
+
+    if (response.status === 201) {
+      console.log('Proyecto creado con éxito');
+      return response.data;
+    } else {
+      console.error('Error al crear el proyecto');
+      return null;
+    }
+  } catch (err) {
+    console.error('Error al crear el proyecto:', err);
+    return null;
+  }
+};

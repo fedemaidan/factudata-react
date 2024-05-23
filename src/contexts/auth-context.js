@@ -1,12 +1,13 @@
 import { createContext, useContext, useEffect, useReducer, useRef } from 'react';
 import PropTypes from 'prop-types';
 import { auth } from "../config/firebase";
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut as firebaseSignOut, onAuthStateChanged } from "firebase/auth"
-import { collection, addDoc, getDocs, doc, query, where, updateDoc, serverTimestamp } from 'firebase/firestore'
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut as firebaseSignOut, onAuthStateChanged } from "firebase/auth";
+import { collection, addDoc, getDocs, doc, query, where, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from 'src/config/firebase';
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { storage } from 'src/config/firebase';
-import {getTotalCreditsForUser, addCreditsForUser } from 'src/services/creditService';
+import { getTotalCreditsForUser, addCreditsForUser } from 'src/services/creditService';
+import profileService from 'src/services/profileService';
 
 const HANDLERS = {
   INITIALIZE: 'INITIALIZE',
@@ -22,23 +23,19 @@ const initialState = {
 
 const handlers = {
   [HANDLERS.INITIALIZE]: (state, action) => {
-    console.log("HANDLERS.INITIALIZE")
     const user = action.payload;
 
     return {
       ...state,
-      ...(
-        // if payload (user) is provided, then is authenticated
-        user
-          ? ({
+      ...(user
+        ? {
             isAuthenticated: true,
             isLoading: false,
             user
-          })
-          : ({
+          }
+        : {
             isLoading: false
           })
-      )
     };
   },
   [HANDLERS.UPDATE_USER]: (state, action) => {
@@ -67,8 +64,6 @@ const reducer = (state, action) => (
   handlers[action.type] ? handlers[action.type](state, action) : state
 );
 
-// The role of this context is to propagate authentication state through the App tree.
-
 export const AuthContext = createContext({ undefined });
 
 export const AuthProvider = (props) => {
@@ -86,7 +81,6 @@ export const AuthProvider = (props) => {
     
     if (storageState) {
       const savedState = JSON.parse(storageState);
-      console.log(savedState)
       dispatch({
         type: HANDLERS.INITIALIZE,
         payload: savedState.user
@@ -97,14 +91,10 @@ export const AuthProvider = (props) => {
       });
     }
 
-
     onAuthStateChanged(auth, async (user) => {
       if (user) {
-        // Obtén el token actualizado
         const idToken = await user.getIdToken(true); // Forzar actualización
-
-        // Actualiza el estado del contexto con el token y otros datos
-        const updatedUser = await getPayloadUserByUid(user.uid,idToken);
+        const updatedUser = await getPayloadUserByUid(user.uid, idToken);
 
         dispatch({
           type: HANDLERS.UPDATE_USER,
@@ -118,30 +108,32 @@ export const AuthProvider = (props) => {
     });
   };
 
+  useEffect(() => {
+    initialize();
+  }, []);
 
-  useEffect(
-    () => {
-      initialize();
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    []
-  );
-
-  const getPayloadUserByUid = async (uid,idToken)=> {
+  const getPayloadUserByUid = async (uid, idToken) => {
     const userRef = collection(db, "profile");
     const q = query(userRef, where("user_id", "==", uid));
-    const querySnapshot = await getDocs(q);    
-    const user =  querySnapshot.docs[0].data();
+    const querySnapshot = await getDocs(q);
+    
+    if (querySnapshot.docs.length == 0) {
+      const error = new Error("Perfil no encontrado.")
+      error.code = "sorby/deleted-user"
+      throw error;
+    }
+    
+    const user = querySnapshot.docs[0].data();
     const id = querySnapshot.docs[0].id;
     const credit = await getTotalCreditsForUser(id);
     return {
       ...user,
-      credit: credit,
-      id: id,
-      admin: user.admin? user.admin : false,
+      credit,
+      id,
+      admin: user.admin || false,
       token: idToken
-    }
-  }
+    };
+  };
 
   const classicSignIn = async (email, password) => {
     try {
@@ -156,23 +148,26 @@ export const AuthProvider = (props) => {
     } catch (error) {
       if (error.code === 'auth/id-token-expired') {
         await refreshToken();
-        return classicSignIn(email, password); // Reintenta la autenticación
+        return classicSignIn(email, password);
+      }
+      if (error.code === 'sorby/deleted-user') {
+        throw new Error("Usuario eliminado por el administrador.");
       }
       console.error("Error in classicSignIn:", error);
+      throw error;
     }
-  }
-  
+  };
 
   const signUp = async (email, password) => {
     const response = await createUserWithEmailAndPassword(auth, email, password);
-    const initCredit = 20;
+    
     const user = {
       user_id: response.user.uid,
       id: '',
       avatar: auth.currentUser.photoURL,
       firstName: '',
       lastName: '',
-      email: email,
+      email,
       phone: '',
       state: '',
       country: '',
@@ -183,19 +178,51 @@ export const AuthProvider = (props) => {
     };
     
     const usersCollectionRef = collection(db, 'profile');
-    const userRef = await addDoc(usersCollectionRef, user)
-    await addCreditsForUser(userRef.id,initCredit);
+    const userRef = await addDoc(usersCollectionRef, user);
+    
     const newUser = {
       ...user,
-      credit: initCredit,
       id: userRef.id
-    }
-    await updateUser(newUser)
+    };
+    await updateUser(newUser);
     
     dispatch({
       type: HANDLERS.UPDATE_USER,
       payload: newUser
     });
+  };
+
+  const signUpWithCode = async (email, password, code) => {
+    try {
+      const profile = await profileService.getProfileByCode(code);
+      if (!profile) {
+        throw new Error("Invalid confirmation code");
+      }
+
+      const response = await createUserWithEmailAndPassword(auth, email, password);
+      const userId = response.user.uid;
+
+      // Update profile with the new email and user ID
+      const updatedProfile = {
+        ...profile,
+        user_id: userId,
+        email,
+        confirmed: true
+      };
+
+      await updateDoc(doc(db, 'profile', profile.id), updatedProfile);
+      const idToken = await response.user.getIdToken(true);
+
+      const payload = await getPayloadUserByUid(userId, idToken);
+
+      dispatch({
+        type: HANDLERS.UPDATE_USER,
+        payload: payload
+      });
+    } catch (error) {
+      console.error("Error in signUpWithCode:", error);
+      throw error;
+    }
   };
 
   const signOut = () => {
@@ -206,7 +233,6 @@ export const AuthProvider = (props) => {
     });
   };
 
-
   const updateUser = async (user) => {
     const userRef = doc(db, "profile", user.id);
     await updateDoc(userRef, user);
@@ -215,18 +241,18 @@ export const AuthProvider = (props) => {
       type: HANDLERS.UPDATE_USER,
       payload: user
     });
-  }
+  };
 
-  const refreshUser = async(user) => {
+  const refreshUser = async (user) => {
     const credit = await getTotalCreditsForUser(user.id);
     dispatch({
       type: HANDLERS.UPDATE_USER,
       payload: {
         ...user,
-        credit: credit
+        credit
       }
     });
-  }
+  };
 
   const updateAvatar = async (user, avatarFile) => {
     const filesFolderRef = ref(storage, `avatars/${avatarFile.name}`);
@@ -238,7 +264,7 @@ export const AuthProvider = (props) => {
       avatar: downloadURL
     };
     await updateUser(userUpdated);
-  }
+  };
 
   const refreshToken = async () => {
     try {
@@ -257,8 +283,7 @@ export const AuthProvider = (props) => {
     } catch (error) {
       console.error("Error refreshing token:", error);
     }
-  }
-  
+  };
 
   return (
     <AuthContext.Provider
@@ -266,6 +291,7 @@ export const AuthProvider = (props) => {
         ...state,
         classicSignIn,
         signUp,
+        signUpWithCode,
         signOut,
         updateUser,
         updateAvatar,
