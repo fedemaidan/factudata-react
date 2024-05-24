@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import profileService from 'src/services/profileService';
 import {
   Typography, Button, Card, CardContent, CardActions, CardHeader, Divider, IconButton, LinearProgress, TextField, Select, MenuItem, InputLabel, FormControl,
-  Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Dialog, DialogActions, DialogContent, DialogTitle
+  Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Dialog, DialogActions, DialogContent, DialogTitle, Snackbar, Alert
 } from '@mui/material';
 import AddCircleIcon from '@mui/icons-material/AddCircle';
 import EditIcon from '@mui/icons-material/Edit';
@@ -19,6 +19,12 @@ export const UsuariosDetails = ({ empresa }) => {
   const [proyectos, setProyectos] = useState([]);
   const [editingUsuario, setEditingUsuario] = useState(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmMessage, setConfirmMessage] = useState('');
+  const [confirmAction, setConfirmAction] = useState(null);
+  const [snackbarOpen, setSnackbarOpen] = useState(false);
+  const [snackbarMessage, setSnackbarMessage] = useState('');
+  const [snackbarSeverity, setSnackbarSeverity] = useState('success');
 
   useEffect(() => {
     const fetchProfiles = async () => {
@@ -30,7 +36,6 @@ export const UsuariosDetails = ({ empresa }) => {
         return prof;
       }));
 
-      console.log(profilesWithProjects);
       setUsuarios(profilesWithProjects);
       setIsLoading(false);
     };
@@ -61,30 +66,41 @@ export const UsuariosDetails = ({ empresa }) => {
     }),
     onSubmit: async (values, { resetForm }) => {
       setIsLoading(true);
-      const selectedProyectosRefs = values.proyectos.map(projId => doc(db, 'proyectos', projId));
-      if (editingUsuario) {
-        const updatedUsuario = { ...values, proyectos: selectedProyectosRefs };
-        const updatedUsuarios = usuarios.map((user) =>
-          user.id === editingUsuario.id ? { ...user, ...updatedUsuario, proyectosData: values.proyectos.map(projId => proyectos.find(p => p.id === projId)) } : user
-        );
-        setUsuarios(updatedUsuarios);
+      try {
+        const selectedProyectosRefs = values.proyectos.map(projId => doc(db, 'proyectos', projId));
+        if (editingUsuario) {
+          const updatedUsuario = { ...values, proyectos: selectedProyectosRefs };
+          const updatedUsuarios = usuarios.map((user) =>
+            user.id === editingUsuario.id ? { ...user, ...updatedUsuario, proyectosData: values.proyectos.map(projId => proyectos.find(p => p.id === projId)) } : user
+          );
+          setUsuarios(updatedUsuarios);
+          await profileService.updateProfile(editingUsuario.id, updatedUsuario);
+          setSnackbarMessage('Usuario actualizado con éxito');
+        } else {
+          const newUsuario = {
+            email: values.email,
+            phone: values.phone,
+            firstName: values.firstName,
+            lastName: values.lastName,
+            proyectos: selectedProyectosRefs,
+            proyectosData: values.proyectos.map(projId => proyectos.find(p => p.id === projId)),
+          };
+          const createdUsuario = await profileService.createProfile(newUsuario, empresa);
+          setUsuarios([...usuarios, createdUsuario]);
+          setSnackbarMessage('Usuario agregado con éxito');
+        }
+        setSnackbarSeverity('success');
+      } catch (error) {
+        console.error('Error al actualizar/agregar el usuario:', error);
+        setSnackbarMessage('Error al actualizar/agregar el usuario');
+        setSnackbarSeverity('error');
+      } finally {
+        setSnackbarOpen(true);
+        resetForm();
+        setIsDialogOpen(false);
+        setIsLoading(false);
         setEditingUsuario(null);
-        await profileService.updateProfile(editingUsuario.id, updatedUsuario);
-      } else {
-        const newUsuario = {
-          email: values.email,
-          phone: values.phone,
-          firstName: values.firstName,
-          lastName: values.lastName,
-          proyectos: selectedProyectosRefs,
-          proyectosData: values.proyectos.map(projId => proyectos.find(p => p.id === projId)),
-        };
-        const createdUsuario = await profileService.createProfile(newUsuario, empresa);
-        setUsuarios([...usuarios, createdUsuario]);
       }
-      resetForm();
-      setIsDialogOpen(false);
-      setIsLoading(false);
     },
   });
 
@@ -102,20 +118,47 @@ export const UsuariosDetails = ({ empresa }) => {
 
   const startEditUsuario = (usuario) => {
     setEditingUsuario(usuario);
-    formik.setFieldValue('email', usuario.email, false);
-    formik.setFieldValue('phone', usuario.phone, false);
-    formik.setFieldValue('firstName', usuario.firstName, false);
-    formik.setFieldValue('lastName', usuario.lastName, false);
-    formik.setFieldValue('proyectos', usuario.proyectosData.map(proj => proj.id), false);
+    formik.setValues({
+      email: usuario.email,
+      phone: usuario.phone,
+      firstName: usuario.firstName,
+      lastName: usuario.lastName,
+      proyectos: usuario.proyectosData.map(proj => proj.id)
+    });
     setIsDialogOpen(true);
   };
 
+  const confirmarEliminacion = (message, action) => {
+    setConfirmMessage(message);
+    setConfirmAction(() => () => {
+      action();
+      setConfirmOpen(false);
+    });
+    setConfirmOpen(true);
+  };
+
   const eliminarUsuario = async (id) => {
-    setIsLoading(true);
-    const updatedUsuarios = usuarios.filter((user) => user.id !== id);
-    setUsuarios(updatedUsuarios);
-    await profileService.deleteProfile(id);
-    setIsLoading(false);
+    confirmarEliminacion(`¿Estás seguro de que deseas eliminar este usuario?`, async () => {
+      setIsLoading(true);
+      try {
+        const updatedUsuarios = usuarios.filter((user) => user.id !== id);
+        setUsuarios(updatedUsuarios);
+        await profileService.deleteProfile(id);
+        setSnackbarMessage('Usuario eliminado con éxito');
+        setSnackbarSeverity('success');
+      } catch (error) {
+        console.error('Error al eliminar usuario:', error);
+        setSnackbarMessage('Error al eliminar usuario');
+        setSnackbarSeverity('error');
+      } finally {
+        setSnackbarOpen(true);
+        setIsLoading(false);
+      }
+    });
+  };
+
+  const handleSnackbarClose = () => {
+    setSnackbarOpen(false);
   };
 
   return (
@@ -246,6 +289,36 @@ export const UsuariosDetails = ({ empresa }) => {
           </DialogActions>
         </form>
       </Dialog>
+
+      <Dialog open={confirmOpen} onClose={() => setConfirmOpen(false)}>
+        <DialogTitle>Confirmación</DialogTitle>
+        <DialogContent>
+          <Typography>{confirmMessage}</Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmOpen(false)} color="primary">
+            Cancelar
+          </Button>
+          <Button
+            onClick={confirmAction}
+            color="primary"
+            variant="contained"
+          >
+            Confirmar
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Snackbar
+        open={snackbarOpen}
+        autoHideDuration={6000}
+        onClose={handleSnackbarClose}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert onClose={handleSnackbarClose} severity={snackbarSeverity} sx={{ width: '100%' }}>
+          {snackbarMessage}
+        </Alert>
+      </Snackbar>
     </div>
   );
 };

@@ -1,20 +1,51 @@
 import React, { useState } from 'react';
 import {
-  Box, Button, Card, CardActions, CardContent, CardHeader, Divider,
-  TextField, Typography, IconButton, List, ListItem, ListItemText,
-  ListItemSecondaryAction, LinearProgress, Chip
+  Box,
+  Button,
+  Card,
+  CardActions,
+  CardContent,
+  CardHeader,
+  Divider,
+  TextField,
+  Typography,
+  IconButton,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemSecondaryAction,
+  LinearProgress,
+  Chip,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Snackbar,
+  Alert
 } from '@mui/material';
 import { useFormik } from 'formik';
 import * as Yup from 'yup';
 import AddCircleIcon from '@mui/icons-material/AddCircle';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
+import SaveIcon from '@mui/icons-material/Save';
 import { updateEmpresaDetails } from 'src/services/empresaService';
 
-export const CategoriasDetails = ( {empresa }) => {
+export const CategoriasDetails = ({ empresa }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [categorias, setCategorias] = useState(empresa.categorias);
   const [editingCategoria, setEditingCategoria] = useState(null);
+  const [openModal, setOpenModal] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmMessage, setConfirmMessage] = useState('');
+  const [confirmAction, setConfirmAction] = useState(null);
+  const [snackbarOpen, setSnackbarOpen] = useState(false);
+  const [snackbarMessage, setSnackbarMessage] = useState('');
+  const [snackbarSeverity, setSnackbarSeverity] = useState('success');
+
+  const handleSnackbarClose = () => {
+    setSnackbarOpen(false);
+  };
 
   const formik = useFormik({
     initialValues: {
@@ -27,57 +58,126 @@ export const CategoriasDetails = ( {empresa }) => {
     }),
     onSubmit: async (values, { resetForm }) => {
       setIsLoading(true);
-      if (editingCategoria) {
-        const newCategories = categorias.map((cat) => cat.id === editingCategoria.id ? { ...cat, name: values.name } : cat);
-        setCategorias(newCategories);
-        setEditingCategoria(null);
-        await updateEmpresaDetails(empresa.id, {categorias: newCategories})
-      } else {
-        const newCategoria = { id: Date.now(), name: values.name, subcategorias: [] };
-        setCategorias([...categorias, newCategoria]);
-        await updateEmpresaDetails(empresa.id, {categorias: [...categorias, newCategoria]})
+      try {
+        if (editingCategoria) {
+          const newCategories = categorias.map((cat) =>
+            cat.id === editingCategoria.id ? { ...cat, name: values.name } : cat
+          );
+          setCategorias(newCategories);
+          setEditingCategoria(null);
+          setSnackbarMessage('Categoría actualizada con éxito');
+        } else {
+          const newCategoria = { id: Date.now(), name: values.name, subcategorias: [] };
+          setCategorias([...categorias, newCategoria]);
+          setSnackbarMessage('Categoría creada con éxito');
+        }
+        await updateEmpresaDetails(empresa.id, { categorias });
+        setSnackbarSeverity('success');
+      } catch (error) {
+        console.error('Error al actualizar/crear la categoría:', error);
+        setSnackbarMessage('Error al actualizar/crear la categoría');
+        setSnackbarSeverity('error');
+      } finally {
+        setSnackbarOpen(true);
+        resetForm();
+        setOpenModal(false);
+        setIsLoading(false);
       }
-      resetForm();
-      setIsLoading(false);
     },
   });
 
   const agregarSubcategoria = async (categoriaId, subcategoria) => {
     setIsLoading(true);
-    const newCategorias = categorias.map((cat) =>
-    cat.id === categoriaId ? { ...cat, subcategorias: [...cat.subcategorias, subcategoria] } : cat
-  )
-    setCategorias(newCategorias);
-    formik.setFieldValue('subcategoria', '', false);
-    await updateEmpresaDetails(empresa.id, {categorias: newCategorias})
-    setIsLoading(false);
+    try {
+      const newCategorias = categorias.map((cat) =>
+        cat.id === categoriaId ? { ...cat, subcategorias: [...cat.subcategorias, subcategoria] } : cat
+      );
+      setCategorias(newCategorias);
+      formik.setFieldValue('subcategoria', '', false);
+      await updateEmpresaDetails(empresa.id, { categorias: newCategorias });
+      setSnackbarMessage('Subcategoría agregada con éxito');
+      setSnackbarSeverity('success');
+    } catch (error) {
+      console.error('Error al agregar subcategoría:', error);
+      setSnackbarMessage('Error al agregar subcategoría');
+      setSnackbarSeverity('error');
+    } finally {
+      setSnackbarOpen(true);
+      setIsLoading(false);
+    }
+  };
+
+  const confirmarEliminacion = (message, action) => {
+    setConfirmMessage(message);
+    setConfirmAction(() => () => {
+      action();
+      setConfirmOpen(false);
+    });
+    setConfirmOpen(true);
   };
 
   const eliminarSubcategoria = async (categoriaId, subcategoria) => {
-    setIsLoading(true)
-    const newCategorias = categorias.map((cat) =>
-    cat.id === categoriaId ? { ...cat, subcategorias: cat.subcategorias.filter(sub => sub !== subcategoria) } : cat
-  )
-    setCategorias(newCategorias);
-    await updateEmpresaDetails(empresa.id, {categorias: newCategorias})
-    setIsLoading(false);
+    confirmarEliminacion(`¿Estás seguro de que deseas eliminar la subcategoría "${subcategoria}"?`, async () => {
+      setIsLoading(true);
+      try {
+        const newCategorias = categorias.map((cat) =>
+          cat.id === categoriaId ? { ...cat, subcategorias: cat.subcategorias.filter(sub => sub !== subcategoria) } : cat
+        );
+        setCategorias(newCategorias);
+        await updateEmpresaDetails(empresa.id, { categorias: newCategorias });
+        setSnackbarMessage('Subcategoría eliminada con éxito');
+        setSnackbarSeverity('success');
+      } catch (error) {
+        console.error('Error al eliminar subcategoría:', error);
+        setSnackbarMessage('Error al eliminar subcategoría');
+        setSnackbarSeverity('error');
+      } finally {
+        setSnackbarOpen(true);
+        setIsLoading(false);
+      }
+    });
+  };
+
+  const eliminarCategoria = async (id) => {
+    confirmarEliminacion(`¿Estás seguro de que deseas eliminar la categoría?`, async () => {
+      setIsLoading(true);
+      try {
+        const newCategorias = categorias.filter((cat) => cat.id !== id);
+        setCategorias(newCategorias);
+        await updateEmpresaDetails(empresa.id, { categorias: newCategorias });
+        setSnackbarMessage('Categoría eliminada con éxito');
+        setSnackbarSeverity('success');
+      } catch (error) {
+        console.error('Error al eliminar categoría:', error);
+        setSnackbarMessage('Error al eliminar categoría');
+        setSnackbarSeverity('error');
+      } finally {
+        setSnackbarOpen(true);
+        setIsLoading(false);
+      }
+    });
   };
 
   const startEditCategoria = (categoria) => {
     setEditingCategoria(categoria);
-    formik.setFieldValue('name', categoria.name, false);
+    formik.setValues({ name: categoria.name, subcategoria: '' });
+    setOpenModal(true);
   };
 
-  const eliminarCategoria = async (id) => {
-    setIsLoading(true);
-    const newCategorias =categorias.filter((cat) => cat.id !== id);
-    setCategorias(newCategorias);
-    await updateEmpresaDetails(empresa.id, {categorias: newCategorias})
-    setIsLoading(false);
+  const iniciarCreacionCategoria = () => {
+    setEditingCategoria(null);
+    formik.resetForm();
+    setOpenModal(true);
+  };
+
+  const cancelarEdicion = () => {
+    setEditingCategoria(null);
+    formik.resetForm();
+    setOpenModal(false);
   };
 
   return (
-    <form autoComplete="off" noValidate onSubmit={formik.handleSubmit}>
+    <>
       <Card>
         <CardHeader title="Gestionar Categorías" />
         <Divider />
@@ -108,7 +208,24 @@ export const CategoriasDetails = ( {empresa }) => {
               </ListItem>
             ))}
           </List>
-          <Box sx={{ display: 'flex', flexDirection: 'column', mb: 1 }}>
+        </CardContent>
+        <Divider />
+        <CardActions sx={{ justifyContent: 'flex-end' }}>
+          <Button
+            color="primary"
+            variant="contained"
+            startIcon={<AddCircleIcon />}
+            onClick={iniciarCreacionCategoria}
+          >
+            Agregar Categoría
+          </Button>
+        </CardActions>
+      </Card>
+
+      <Dialog open={openModal} onClose={cancelarEdicion} aria-labelledby="form-dialog-title">
+        <form autoComplete="off" noValidate onSubmit={formik.handleSubmit}>
+          <DialogTitle id="form-dialog-title">{editingCategoria ? 'Editar Categoría' : 'Agregar Categoría'}</DialogTitle>
+          <DialogContent>
             <TextField
               fullWidth
               name="name"
@@ -117,6 +234,7 @@ export const CategoriasDetails = ( {empresa }) => {
               onChange={formik.handleChange}
               error={formik.touched.name && Boolean(formik.errors.name)}
               helperText={formik.touched.name && formik.errors.name}
+              style={{ marginTop: '1rem' }}
             />
             {editingCategoria && (
               <TextField
@@ -131,24 +249,57 @@ export const CategoriasDetails = ( {empresa }) => {
                     agregarSubcategoria(editingCategoria.id, formik.values.subcategoria);
                   }
                 }}
+                style={{ marginTop: '1rem' }}
               />
             )}
-            <IconButton type="submit" color="primary">
-              <AddCircleIcon />
-            </IconButton>
-            {editingCategoria && (
-              <Button onClick={() => setEditingCategoria(null)}>
-                Cancelar
-              </Button>
-            )}
-          </Box>
-        </CardContent>
-        <Divider />
-        <CardActions sx={{ justifyContent: 'flex-end' }}>
-          {/* <Button variant="contained" startIcon={<SaveIcon />} type="submit">Guardar Cambios</Button> */}
-        </CardActions>
-      </Card>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={cancelarEdicion} color="primary">
+              Cancelar
+            </Button>
+            <Button
+              variant="contained"
+              startIcon={<SaveIcon />}
+              type="submit"
+              sx={{ ml: 2 }}
+            >
+              {editingCategoria ? 'Guardar Cambios' : 'Agregar Categoría'}
+            </Button>
+          </DialogActions>
+        </form>
+      </Dialog>
+
+      <Dialog open={confirmOpen} onClose={() => setConfirmOpen(false)}>
+        <DialogTitle>Confirmación</DialogTitle>
+        <DialogContent>
+          <Typography>{confirmMessage}</Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmOpen(false)} color="primary">
+            Cancelar
+          </Button>
+          <Button
+            onClick={confirmAction}
+            color="primary"
+            variant="contained"
+          >
+            Confirmar
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Snackbar
+        open={snackbarOpen}
+        autoHideDuration={6000}
+        onClose={handleSnackbarClose}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert onClose={handleSnackbarClose} severity={snackbarSeverity} sx={{ width: '100%' }}>
+          {snackbarMessage}
+        </Alert>
+      </Snackbar>
+
       {isLoading && <LinearProgress />}
-    </form>
+    </>
   );
 };

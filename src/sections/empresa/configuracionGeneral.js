@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-
+import { useAuthContext } from 'src/contexts/auth-context';
 import { Button, Checkbox, CircularProgress, FormControl, InputLabel, ListItemText, MenuItem, Select, TextField, Snackbar, Alert } from '@mui/material';
 
 export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission }) => {
@@ -12,7 +12,8 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarInfo, setSnackbarInfo] = useState({ message: '', severity: 'success' });
   const [hasPermissionError, setHasPermissionError] = useState(false);
-  
+  const { user } = useAuthContext();
+
   const opcionesAcciones = [
     "BIENVENIDA", "CREAR_EGRESO", "CREAR_INGRESO", "VER_CAJAS", 
     "AJUSTAR_CAJA", "TRANSFERIR_ENTRE_CAJAS", "CREAR_NUEVO_PROYECTO", 
@@ -80,7 +81,8 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
 
   return (
     <>
-      <FormControl fullWidth sx={{ mt: 2 }}>
+    {
+      user.admin && <FormControl fullWidth sx={{ mt: 2 }}>
         <InputLabel id="acciones-label">Acciones Configuradas</InputLabel>
         <Select
           labelId="acciones-label"
@@ -97,6 +99,8 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
           ))}
         </Select>
       </FormControl>
+    }
+      
       <FormControl fullWidth>
         <InputLabel id="campos-obligatorios-label">Campos Obligatorios</InputLabel>
         <Select

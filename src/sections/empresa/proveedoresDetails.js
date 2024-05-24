@@ -14,7 +14,13 @@ import {
   ListItem,
   ListItemText,
   ListItemSecondaryAction,
-  LinearProgress
+  LinearProgress,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Snackbar,
+  Alert
 } from '@mui/material';
 import { useFormik } from 'formik';
 import * as Yup from 'yup';
@@ -27,11 +33,22 @@ import { updateEmpresaDetails } from 'src/services/empresaService';
 export const ProveedoresDetails = ({ empresa }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [proveedores, setProveedores] = useState(empresa.proveedores);
+  const [editingProveedor, setEditingProveedor] = useState(null);
+  const [openModal, setOpenModal] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmMessage, setConfirmMessage] = useState('');
+  const [confirmAction, setConfirmAction] = useState(null);
+  const [snackbarOpen, setSnackbarOpen] = useState(false);
+  const [snackbarMessage, setSnackbarMessage] = useState('');
+  const [snackbarSeverity, setSnackbarSeverity] = useState('success');
 
-  // useFormik para manejar el formulario de proveedores
+  const handleSnackbarClose = () => {
+    setSnackbarOpen(false);
+  };
+
   const formik = useFormik({
     initialValues: {
-      nombre: '',
+      nombre: editingProveedor ? editingProveedor : '',
     },
     enableReinitialize: true,
     validationSchema: Yup.object({
@@ -39,34 +56,94 @@ export const ProveedoresDetails = ({ empresa }) => {
     }),
     onSubmit: async (values, { resetForm }) => {
       setIsLoading(true);
-      const newProveedor = values.nombre;
-      const newProveedores = [...proveedores, newProveedor]
-      setProveedores([...proveedores, newProveedor]);
-      await updateEmpresaDetails(empresa.id, {proveedores: newProveedores})
-      resetForm();
-      setIsLoading(false);
+      try {
+        const newProveedor = values.nombre;
+        let newProveedores;
+        if (editingProveedor) {
+          newProveedores = proveedores.map((prov) => (prov === editingProveedor ? newProveedor : prov));
+          setSnackbarMessage('Proveedor actualizado con éxito');
+        } else {
+          newProveedores = [...proveedores, newProveedor];
+          setSnackbarMessage('Proveedor agregado con éxito');
+        }
+        setProveedores(newProveedores);
+        await updateEmpresaDetails(empresa.id, { proveedores: newProveedores });
+        setEditingProveedor(null);
+        setSnackbarSeverity('success');
+      } catch (error) {
+        console.error('Error al actualizar/agregar el proveedor:', error);
+        setSnackbarMessage('Error al actualizar/agregar el proveedor');
+        setSnackbarSeverity('error');
+      } finally {
+        setSnackbarOpen(true);
+        resetForm();
+        setOpenModal(false);
+        setIsLoading(false);
+      }
     },
   });
 
+  const confirmarEliminacion = (message, action) => {
+    setConfirmMessage(message);
+    setConfirmAction(() => () => {
+      action();
+      setConfirmOpen(false);
+    });
+    setConfirmOpen(true);
+  };
+
   const eliminarProveedor = async (nombreProveedor) => {
-    setIsLoading(true);
-    const newProveedores = proveedores.filter((prov) => prov !== nombreProveedor);
-    setProveedores(newProveedores);
-    await updateEmpresaDetails(empresa.id, { proveedores: newProveedores })
-    setIsLoading(false);
+    confirmarEliminacion(`¿Estás seguro de que deseas eliminar el proveedor "${nombreProveedor}"?`, async () => {
+      setIsLoading(true);
+      try {
+        const newProveedores = proveedores.filter((prov) => prov !== nombreProveedor);
+        setProveedores(newProveedores);
+        await updateEmpresaDetails(empresa.id, { proveedores: newProveedores });
+        setSnackbarMessage('Proveedor eliminado con éxito');
+        setSnackbarSeverity('success');
+      } catch (error) {
+        console.error('Error al eliminar proveedor:', error);
+        setSnackbarMessage('Error al eliminar proveedor');
+        setSnackbarSeverity('error');
+      } finally {
+        setSnackbarOpen(true);
+        setIsLoading(false);
+      }
+    });
+  };
+
+  const iniciarEdicionProveedor = (proveedor) => {
+    setEditingProveedor(proveedor);
+    formik.setValues({ nombre: proveedor });
+    setOpenModal(true);
+  };
+
+  const iniciarCreacionProveedor = () => {
+    setEditingProveedor(null);
+    formik.resetForm();
+    setOpenModal(true);
+  };
+
+  const cancelarEdicion = () => {
+    setEditingProveedor(null);
+    formik.resetForm();
+    setOpenModal(false);
   };
 
   return (
-    <form autoComplete="off" noValidate onSubmit={formik.handleSubmit}>
+    <>
       <Card>
         <CardHeader title="Gestionar Proveedores" />
         <Divider />
         <CardContent>
           <List>
-            {proveedores.map((proveedor, index) => ( // Usar index como key en caso de que haya nombres duplicados
-              <ListItem key={index} divider> 
+            {proveedores.map((proveedor, index) => (
+              <ListItem key={index} divider>
                 <ListItemText primary={proveedor} />
                 <ListItemSecondaryAction>
+                  <IconButton edge="end" onClick={() => iniciarEdicionProveedor(proveedor)}>
+                    <EditIcon />
+                  </IconButton>
                   <IconButton edge="end" onClick={() => eliminarProveedor(proveedor)}>
                     <DeleteIcon />
                   </IconButton>
@@ -74,7 +151,24 @@ export const ProveedoresDetails = ({ empresa }) => {
               </ListItem>
             ))}
           </List>
-          <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+        </CardContent>
+        <Divider />
+        <CardActions sx={{ justifyContent: 'flex-end' }}>
+          <Button
+            color="primary"
+            variant="contained"
+            startIcon={<AddCircleIcon />}
+            onClick={iniciarCreacionProveedor}
+          >
+            Agregar Proveedor
+          </Button>
+        </CardActions>
+      </Card>
+
+      <Dialog open={openModal} onClose={cancelarEdicion} aria-labelledby="form-dialog-title">
+        <form autoComplete="off" noValidate onSubmit={formik.handleSubmit}>
+          <DialogTitle id="form-dialog-title">{editingProveedor ? 'Editar Proveedor' : 'Agregar Proveedor'}</DialogTitle>
+          <DialogContent>
             <TextField
               fullWidth
               name="nombre"
@@ -83,15 +177,56 @@ export const ProveedoresDetails = ({ empresa }) => {
               onChange={formik.handleChange}
               error={formik.touched.nombre && Boolean(formik.errors.nombre)}
               helperText={formik.touched.nombre && formik.errors.nombre}
+              style={{ marginTop: '1rem' }}
             />
-            <IconButton type="submit" color="primary">
-              <AddCircleIcon />
-            </IconButton>
-          </Box>
-        </CardContent>
-        <Divider />
-      </Card>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={cancelarEdicion} color="primary">
+              Cancelar
+            </Button>
+            <Button
+              variant="contained"
+              startIcon={<SaveIcon />}
+              type="submit"
+              sx={{ ml: 2 }}
+            >
+              {editingProveedor ? 'Guardar Cambios' : 'Agregar Proveedor'}
+            </Button>
+          </DialogActions>
+        </form>
+      </Dialog>
+
+      <Dialog open={confirmOpen} onClose={() => setConfirmOpen(false)}>
+        <DialogTitle>Confirmación</DialogTitle>
+        <DialogContent>
+          <Typography>{confirmMessage}</Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmOpen(false)} color="primary">
+            Cancelar
+          </Button>
+          <Button
+            onClick={confirmAction}
+            color="primary"
+            variant="contained"
+          >
+            Confirmar
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Snackbar
+        open={snackbarOpen}
+        autoHideDuration={6000}
+        onClose={handleSnackbarClose}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert onClose={handleSnackbarClose} severity={snackbarSeverity} sx={{ width: '100%' }}>
+          {snackbarMessage}
+        </Alert>
+      </Snackbar>
+
       {isLoading && <LinearProgress />}
-    </form>
+    </>
   );
 };
