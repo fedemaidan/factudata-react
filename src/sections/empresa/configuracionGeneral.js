@@ -17,7 +17,7 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
   const opcionesAcciones = [
     "BIENVENIDA", "CREAR_EGRESO", "CREAR_INGRESO", "VER_CAJAS", 
     "AJUSTAR_CAJA", "TRANSFERIR_ENTRE_CAJAS", "CREAR_NUEVO_PROYECTO", 
-    "COMPRAR_MONEDA", "VENDER_MONEDA", "COMPLETAR_OPERACION"
+    "COMPRAR_MONEDA", "VENDER_MONEDA", "COMPLETAR_OPERACION", "VALIDAR_CODIGO"
   ];
   
   const opcionesCampos = ["proyecto", "categoria", "total", "observacion", "nombre_proveedor", "fecha_factura"]; 
@@ -137,6 +137,7 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
       >
         <MenuItem value="Constructora">Constructora</MenuItem>
         <MenuItem value="Financiera">Financiera</MenuItem>
+        <MenuItem value="Logistica">Logística</MenuItem>
         <MenuItem value="Rinde gastos">Rinde Gastos</MenuItem>
       </TextField>
       <TextField

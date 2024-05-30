@@ -50,44 +50,59 @@ export const SideNav = (props) => {
   useEffect( () => {
     const fetchProyectosData = async () => {
       const empresa = await getEmpresaDetailsFromUser(user)
-      let proyectos = await getProyectosFromUser(user)
-      proyectos = proyectos.filter(proyecto => proyecto.activo);
-      setProyectos(proyectos)
-      const empresaElement = {
-        title: "Configurar " + empresa.nombre,
-        path: 'empresa?empresaId=' + empresa.id,
-        icon: (
-          <SvgIcon fontSize="small">
-            <CogIcon />
-          </SvgIcon>
-        )
-      }
-      const vistaGeneralElement = {
-        title: 'Vista general',
-        path: '/resumenMovimientos?empresaId=' + empresa.id,
-        icon: (
-          <SvgIcon fontSize="small">
-            <DashboardIcon />
-          </SvgIcon>
-        )
-      }
-      let newItems = [empresaElement, vistaGeneralElement, ...initialItems]
-      await proyectos.forEach( (proy ) => {
-        newItems.push(
-          {
-            title: proy.nombre,
-            path: 'cajaProyecto?proyectoId=' + proy.id,
-            icon: (
-              <SvgIcon fontSize="small">
-                <StoreIcon />
-              </SvgIcon>
-            )
-          }
-        )
-      })
-      
+      console.log(empresa)
+      if (empresa.tipo == "Logistica") {
+        const hojasDeRutaPage = {
+          title: 'Hojas de ruta',
+          path: '/hojasDeRuta?empresaId=' + empresa.id,
+          icon: (
+            <SvgIcon fontSize="small">
+              <DashboardIcon />
+            </SvgIcon>
+          )
+        }
 
-      setItems(newItems)
+        setItems([hojasDeRutaPage])
+      } else {
+        let proyectos = await getProyectosFromUser(user)
+        proyectos = proyectos.filter(proyecto => proyecto.activo);
+        setProyectos(proyectos)
+        const empresaElement = {
+          title: "Configurar " + empresa.nombre,
+          path: 'empresa?empresaId=' + empresa.id,
+          icon: (
+            <SvgIcon fontSize="small">
+              <CogIcon />
+            </SvgIcon>
+          )
+        }
+        const vistaGeneralElement = {
+          title: 'Vista general',
+          path: '/resumenMovimientos?empresaId=' + empresa.id,
+          icon: (
+            <SvgIcon fontSize="small">
+              <DashboardIcon />
+            </SvgIcon>
+          )
+        }
+        let newItems = [empresaElement, vistaGeneralElement, ...initialItems]
+        await proyectos.forEach( (proy ) => {
+          newItems.push(
+            {
+              title: proy.nombre,
+              path: 'cajaProyecto?proyectoId=' + proy.id,
+              icon: (
+                <SvgIcon fontSize="small">
+                  <StoreIcon />
+                </SvgIcon>
+              )
+            }
+          )
+        })
+        
+  
+        setItems(newItems)
+      }
     };
 
     fetchProyectosData();

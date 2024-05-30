@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import Head from 'next/head';
-import { Box, Container, Stack, Chip, Typography, TextField, InputAdornment, Paper, Table, TableBody, TableCell, TableHead, TableRow, Button, Select, MenuItem, FormControl, InputLabel } from '@mui/material';
+import { Box, Container, Stack, Chip, Typography, TextField, InputAdornment, Paper, Table, TableBody, TableCell, TableHead, TableRow, Button, Select, MenuItem, FormControl, InputLabel, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import AddCircle from '@mui/icons-material/AddCircle';
 import GridOnIcon from '@mui/icons-material/GridOn';
@@ -12,12 +12,11 @@ import MoreVertIcon from '@mui/icons-material/MoreVert';
 import DeleteIcon from '@mui/icons-material/Delete';
 import { useRouter } from 'next/router';
 import ticketService from 'src/services/ticketService';
-import {getProyectoById, recargarProyecto} from 'src/services/proyectosService';
+import { getProyectoById, recargarProyecto } from 'src/services/proyectosService';
 import movimientosService from 'src/services/movimientosService';
 import Snackbar from '@mui/material/Snackbar';
 import Alert from '@mui/material/Alert';
 import { useAuthContext } from 'src/contexts/auth-context';
-
 
 const formatTimestamp = (timestamp) => {
   if (!timestamp) {
@@ -32,17 +31,18 @@ const formatTimestamp = (timestamp) => {
   return `${year}-${month}-${day}`; // Formato YYYY-MM-DD
 };
 
-
 const ProyectoMovimientosPage = ({ }) => {
   const { user } = useAuthContext();
   // Estado para la lista de movimientos
   const [movimientos, setMovimientos] = useState([]);
   const [movimientosUSD, setMovimientosUSD] = useState([]);
-  const [tablaActiva, setTablaActiva] = useState('ARS'); 
-  const [filtrosActivos, setFiltrosActivos] = useState(false); 
-  const [accionesActivas, setAccionesActivas] = useState(false); 
-  const [proyecto, setProyecto] = useState(null); 
+  const [tablaActiva, setTablaActiva] = useState('ARS');
+  const [filtrosActivos, setFiltrosActivos] = useState(false);
+  const [accionesActivas, setAccionesActivas] = useState(false);
+  const [proyecto, setProyecto] = useState(null);
   const [deletingElement, setDeletingElement] = useState(null);
+  const [openDialog, setOpenDialog] = useState(false);
+  const [movimientoAEliminar, setMovimientoAEliminar] = useState(null);
   // Estados para los filtros
   const [filtroDias, setFiltroDias] = useState('730');
   const [filtroObs, setFiltroObs] = useState('');
@@ -53,7 +53,7 @@ const ProyectoMovimientosPage = ({ }) => {
   });
   const router = useRouter();
   const { proyectoId } = router.query;
-  
+
   const handleCloseAlert = (event, reason) => {
     if (reason === 'clickaway') {
       return;
@@ -79,29 +79,32 @@ const ProyectoMovimientosPage = ({ }) => {
     }
   }
 
-  const eliminarMovimiento = async (movimientoId) => {
-    const confirmado = window.confirm('¿Estás seguro de que quieres eliminar este movimiento?');
-    if (confirmado) {
-      setDeletingElement(movimientoId);
-      const resultado = await movimientosService.deleteMovimientoById(movimientoId);
-      if (resultado) {
-        setMovimientos(movimientos.filter(mov => mov.id !== movimientoId));
-        setMovimientosUSD(movimientosUSD.filter(mov => mov.id !== movimientoId));
-        setAlert({
-          open: true,
-          message: 'Movimiento eliminado con éxito',
-          severity: 'success',
-        });
-        setDeletingElement(null);
-      } else {
-        setAlert({
-          open: true,
-          message: 'Error al eliminar el elemento',
-          severity: 'error',
-        });
-        setDeletingElement(null);
-      }
+  const eliminarMovimiento = async () => {
+    setDeletingElement(movimientoAEliminar);
+    const resultado = await movimientosService.deleteMovimientoById(movimientoAEliminar);
+    if (resultado) {
+      setMovimientos(movimientos.filter(mov => mov.id !== movimientoAEliminar));
+      setMovimientosUSD(movimientosUSD.filter(mov => mov.id !== movimientoAEliminar));
+      setAlert({
+        open: true,
+        message: 'Movimiento eliminado con éxito',
+        severity: 'success',
+      });
+      setDeletingElement(null);
+    } else {
+      setAlert({
+        open: true,
+        message: 'Error al eliminar el elemento',
+        severity: 'error',
+      });
+      setDeletingElement(null);
     }
+    setOpenDialog(false);
+  };
+
+  const handleEliminarClick = (movimientoId) => {
+    setMovimientoAEliminar(movimientoId);
+    setOpenDialog(true);
   };
 
   useEffect(() => {
@@ -114,7 +117,7 @@ const ProyectoMovimientosPage = ({ }) => {
         setMovimientos(movs);
         setMovimientosUSD(movsUsd);
       }
-      
+
       fetchMovimientosData();
     }
   }, [proyectoId]);
@@ -127,18 +130,18 @@ const ProyectoMovimientosPage = ({ }) => {
       return "$ 0";
   };
 
-  const handleFiltrosActivos  = () => {
+  const handleFiltrosActivos = () => {
     setFiltrosActivos(filtrosActivos ? false : true);
   }
 
-  const handleAccionesActivas  = () => {
+  const handleAccionesActivas = () => {
     setAccionesActivas(accionesActivas ? false : true);
   }
 
   // Calcular el saldo total de la caja
   const saldoTotalCaja = useMemo(() => {
     return movimientos.reduce((acc, mov) => {
-      if(mov.type === 'ingreso') {
+      if (mov.type === 'ingreso') {
         return acc + mov.total;
       } else {
         return acc - mov.total;
@@ -148,7 +151,7 @@ const ProyectoMovimientosPage = ({ }) => {
 
   const saldoTotalCajaUSD = useMemo(() => {
     return movimientosUSD.reduce((acc, mov) => {
-      if(mov.type === 'ingreso') {
+      if (mov.type === 'ingreso') {
         return acc + mov.total;
       } else {
         return acc - mov.total;
@@ -165,16 +168,15 @@ const ProyectoMovimientosPage = ({ }) => {
       mov.observacion = mov.observacion ? mov.observacion : "";
       return diferenciaDias <= filtroDias && (mov.observacion.toLowerCase().includes(filtroObs.toLowerCase()));
     });
-    
-  
+
+
     // Ordenar de manera descendente por fecha
     filtrados.sort((a, b) => {
       const fechaA = new Date(a.fecha);
       const fechaB = new Date(b.fecha);
       return fechaB - fechaA;
     });
-  
-    // return filtrados;
+
     return filtrados;
   }, [movimientos, filtroDias, filtroObs]);
 
@@ -186,18 +188,17 @@ const ProyectoMovimientosPage = ({ }) => {
       mov.observacion = mov.observacion ? mov.observacion : "";
       return diferenciaDias <= filtroDias && (mov.observacion.toLowerCase().includes(filtroObs.toLowerCase()));
     });
-    
-  
+
+
     // Ordenar de manera descendente por fecha
     filtrados.sort((a, b) => {
       const fechaA = new Date(a.fecha);
       const fechaB = new Date(b.fecha);
       return fechaB - fechaA;
     });
-  
+
     return filtrados;
   }, [movimientosUSD, filtroDias, filtroObs]);
-  
 
   return (
     <>
@@ -214,7 +215,6 @@ const ProyectoMovimientosPage = ({ }) => {
         <Container maxWidth="xl">
           <Stack spacing={3}>
             <Typography variant="h4">{proyecto?.nombre}</Typography>
-            {/* <Typography>Saldo Total Caja: {formatCurrency(saldoTotalCaja)}</Typography> */}
             <Stack direction="row" spacing={2}>
               <Button
                 variant={tablaActiva === 'ARS' ? "contained" : "outlined"}
@@ -222,7 +222,7 @@ const ProyectoMovimientosPage = ({ }) => {
                 onClick={() => setTablaActiva('ARS')}
                 sx={{ flexGrow: 1, py: 2 }}
               >
-                Caja en Pesos:   {saldoTotalCaja > 0? formatCurrency(saldoTotalCaja): "(" +formatCurrency(saldoTotalCaja) + ")"}
+                Caja en Pesos:   {saldoTotalCaja > 0 ? formatCurrency(saldoTotalCaja) : "(" + formatCurrency(saldoTotalCaja) + ")"}
               </Button>
               <Button
                 variant={tablaActiva === 'USD' ? "contained" : "outlined"}
@@ -230,204 +230,201 @@ const ProyectoMovimientosPage = ({ }) => {
                 onClick={() => setTablaActiva('USD')}
                 sx={{ flexGrow: 1, py: 2 }}
               >
-                Caja en Dólares: US {saldoTotalCajaUSD > 0? formatCurrency(saldoTotalCajaUSD): "(" +formatCurrency(saldoTotalCajaUSD) + ")"}{}
+                Caja en Dólares: US {saldoTotalCajaUSD > 0 ? formatCurrency(saldoTotalCajaUSD) : "(" + formatCurrency(saldoTotalCajaUSD) + ")"}{}
               </Button>
               <Button
                 color="primary"
-                startIcon={filtrosActivos ? <FilterListOffIcon />: <FilterListIcon />}
+                startIcon={filtrosActivos ? <FilterListOffIcon /> : <FilterListIcon />}
                 onClick={handleFiltrosActivos}
               >
-                {filtrosActivos ? "Ocultar filtro": "Filtrar"}
+                {filtrosActivos ? "Ocultar filtro" : "Filtrar"}
               </Button>
               <Button
                 color="primary"
                 startIcon={<MoreVertIcon />}
                 onClick={handleAccionesActivas}
-              > 
-                {accionesActivas ? "Ocultar acciones": "Acciones"}
-               </Button>
+              >
+                {accionesActivas ? "Ocultar acciones" : "Acciones"}
+              </Button>
             </Stack>
             <Stack direction="row" spacing={2} alignItems="center">
-              {filtrosActivos && 
-               <>
-              <FormControl >
-              <InputLabel>Filtrar por días</InputLabel>
-              <Select
-                value={filtroDias}
-                onChange={(e) => setFiltroDias(e.target.value)}
-                label="Filtrar por días"
-              >
-                <MenuItem value="15">Últimos 15 días</MenuItem>
-                <MenuItem value="30">Últimos 30 días</MenuItem>
-                <MenuItem value="60">Últimos 60 días</MenuItem>
-                <MenuItem value="90">Últimos 90 días</MenuItem>
-                <MenuItem value="365">Último año</MenuItem>
-                <MenuItem value="730">Últimos 2 años</MenuItem>
-              </Select>
-            </FormControl>
-            <TextField
-              
-              label="Buscar por Observación"
-              variant="outlined"
-              onChange={(e) => setFiltroObs(e.target.value)}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <SearchIcon />
-                  </InputAdornment>
-                ),
-              }}
-            />
-            </>}
-            {accionesActivas && 
-               <>
-              <Button
-                variant="outlined"
-                color="success"
-                startIcon={<AddCircle />}
-                onClick={() => router.push('/addMovimiento?proyectoName='+proyecto.nombre+'&proyectoId='+proyecto.id)}
-              >
-                Registrar movimiento
-              </Button>
-              <Button
-                variant="contained"
-                startIcon={<GridOnIcon />}
-                onClick={() => handleRecargarProyecto(proyecto.id)}
-              >
-                Recalcular sheets
-              </Button>
-              {/* <Button
-                variant="outlined"
-                color="error"
-                startIcon={<CloudUploadIcon />}
-                onClick={console.log("egreso")}
-              >
-                Registrar egreso
-              </Button>
-              <Button
-                variant="contained"
-                startIcon={<SaveAltIcon />}
-                onClick={console.log("exportar")}
-              >
-                Exportar
-              </Button>
-              <Button
-                variant="contained"
-                color="primary"
-                startIcon={<CurrencyExchangeIcon />}
-                onClick={console.log("cambiar")}
-              >
-                Cambiar $$ / USD
-              </Button> */}
-              </>}
+              {filtrosActivos &&
+                <>
+                  <FormControl >
+                    <InputLabel>Filtrar por días</InputLabel>
+                    <Select
+                      value={filtroDias}
+                      onChange={(e) => setFiltroDias(e.target.value)}
+                      label="Filtrar por días"
+                    >
+                      <MenuItem value="15">Últimos 15 días</MenuItem>
+                      <MenuItem value="30">Últimos 30 días</MenuItem>
+                      <MenuItem value="60">Últimos 60 días</MenuItem>
+                      <MenuItem value="90">Últimos 90 días</MenuItem>
+                      <MenuItem value="365">Último año</MenuItem>
+                      <MenuItem value="730">Últimos 2 años</MenuItem>
+                    </Select>
+                  </FormControl>
+                  <TextField
+                    label="Buscar por Observación"
+                    variant="outlined"
+                    onChange={(e) => setFiltroObs(e.target.value)}
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <SearchIcon />
+                        </InputAdornment>
+                      ),
+                    }}
+                  />
+                </>}
+              {accionesActivas &&
+                <>
+                  <Button
+                    variant="outlined"
+                    color="success"
+                    startIcon={<AddCircle />}
+                    onClick={() => router.push('/addMovimiento?proyectoName=' + proyecto.nombre + '&proyectoId=' + proyecto.id)}
+                  >
+                    Registrar movimiento
+                  </Button>
+                  <Button
+                    variant="contained"
+                    startIcon={<GridOnIcon />}
+                    onClick={() => handleRecargarProyecto(proyecto.id)}
+                  >
+                    Recalcular sheets
+                  </Button>
+                </>}
             </Stack>
 
             <Paper>
-            <Snackbar open={alert.open} autoHideDuration={6000} onClose={handleCloseAlert}>
-            <Alert onClose={handleCloseAlert} severity={alert.severity} sx={{ width: '100%' }}>
-              {alert.message}
-            </Alert>
-          </Snackbar>
+              <Snackbar open={alert.open} autoHideDuration={6000} onClose={handleCloseAlert}>
+                <Alert onClose={handleCloseAlert} severity={alert.severity} sx={{ width: '100%' }}>
+                  {alert.message}
+                </Alert>
+              </Snackbar>
               {
                 tablaActiva === "ARS" &&
                 <Table>
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Fecha</TableCell>
-                    <TableCell>Ingreso</TableCell>
-                    <TableCell>Egreso</TableCell>
-                    <TableCell>Observación</TableCell>
-                    <TableCell>Tipo de cambio</TableCell>
-                    <TableCell>Acciones</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {movimientosFiltrados.map((mov, index) => (
-                    <TableRow key={index}>
-                      <TableCell>{formatTimestamp(mov.fecha_factura)}</TableCell>
-                      <TableCell>
-                            {mov.type == "ingreso" ? <Chip label={formatCurrency(mov.total)} color="success" size="small" />: ""}
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Fecha</TableCell>
+                      <TableCell>Ingreso</TableCell>
+                      <TableCell>Egreso</TableCell>
+                      <TableCell>Observación</TableCell>
+                      <TableCell>Tipo de cambio</TableCell>
+                      <TableCell>Acciones</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {movimientosFiltrados.map((mov, index) => (
+                      <TableRow key={index}>
+                        <TableCell>{formatTimestamp(mov.fecha_factura)}</TableCell>
+                        <TableCell>
+                          {mov.type == "ingreso" ? <Chip label={formatCurrency(mov.total)} color="success" size="small" /> : ""}
                         </TableCell>
-                      <TableCell>
-                         {mov.type == "egreso" ? <Chip label={formatCurrency(mov.total)} color="error" size="small" />: ""}
-                      </TableCell>
-                      <TableCell>{mov.observacion}</TableCell>
-                      <TableCell>{mov.tc ? "$ ":""}{mov.tc}</TableCell>
-                    
-                      <TableCell>
-                        <Button
+                        <TableCell>
+                          {mov.type == "egreso" ? <Chip label={formatCurrency(mov.total)} color="error" size="small" /> : ""}
+                        </TableCell>
+                        <TableCell>{mov.observacion}</TableCell>
+                        <TableCell>{mov.tc ? "$ " : ""}{mov.tc}</TableCell>
+
+                        <TableCell>
+                          <Button
                             color="primary"
                             startIcon={<EditIcon />}
-                            onClick={() => router.push('/movimiento?movimientoId='+mov.id)}
-                        >
+                            onClick={() => router.push('/movimiento?movimientoId=' + mov.id)}
+                          >
                             Ver / Editar
-                        </Button>
-                        <Button
+                          </Button>
+                          <Button
                             color="error"
                             startIcon={<DeleteIcon />}
-                            onClick={() => eliminarMovimiento(mov.id)}
-                        >
-                            {deletingElement != mov.id && "Eliminar" }
-                            {deletingElement === mov.id && "Eliminando.." }
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            }
-            {
+                            onClick={() => handleEliminarClick(mov.id)}
+                          >
+                            {deletingElement != mov.id && "Eliminar"}
+                            {deletingElement === mov.id && "Eliminando.."}
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              }
+              {
                 tablaActiva === "USD" &&
-            <Table>
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Fecha</TableCell>
-                    <TableCell>Ingreso</TableCell>
-                    <TableCell>Egreso</TableCell>
-                    <TableCell>Observación</TableCell>
-                    <TableCell>Tipo de cambio</TableCell>
-                    <TableCell>Acciones</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {movimientosFiltradosUSD.map((mov, index) => (
-                    <TableRow key={mov.id}>
-                      <TableCell>{formatTimestamp(mov.fecha_factura)}</TableCell>
-                      <TableCell>
-                            {mov.type == "ingreso" ? <Chip label={formatCurrency(mov.total)} color="success" size="small" />: ""}
+                <Table>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Fecha</TableCell>
+                      <TableCell>Ingreso</TableCell>
+                      <TableCell>Egreso</TableCell>
+                      <TableCell>Observación</TableCell>
+                      <TableCell>Tipo de cambio</TableCell>
+                      <TableCell>Acciones</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {movimientosFiltradosUSD.map((mov, index) => (
+                      <TableRow key={mov.id}>
+                        <TableCell>{formatTimestamp(mov.fecha_factura)}</TableCell>
+                        <TableCell>
+                          {mov.type == "ingreso" ? <Chip label={formatCurrency(mov.total)} color="success" size="small" /> : ""}
                         </TableCell>
-                      <TableCell>
-                         {mov.type == "egreso" ? <Chip label={formatCurrency(mov.total)} color="error" size="small" />: ""}
-                      </TableCell>
-                      <TableCell>{mov.observacion}</TableCell>
-                      <TableCell>{mov.tc ? "$ ":""}{mov.tc}</TableCell>
-                      <TableCell>
-                        <Button
+                        <TableCell>
+                          {mov.type == "egreso" ? <Chip label={formatCurrency(mov.total)} color="error" size="small" /> : ""}
+                        </TableCell>
+                        <TableCell>{mov.observacion}</TableCell>
+                        <TableCell>{mov.tc ? "$ " : ""}{mov.tc}</TableCell>
+                        <TableCell>
+                          <Button
                             color="primary"
                             startIcon={<EditIcon />}
-                            onClick={() => router.push('/movimiento?movimientoId='+mov.id)}
-                        >
+                            onClick={() => router.push('/movimiento?movimientoId=' + mov.id)}
+                          >
                             Ver / Editar
-                        </Button>
-                        <Button
+                          </Button>
+                          <Button
                             color="error"
                             startIcon={<DeleteIcon />}
-                            onClick={() => eliminarMovimiento(mov.id)}
-                        >
-                            {deletingElement != mov.id && "Eliminar" }
-                            {deletingElement === mov.id && "Eliminando.." }
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-               } 
+                            onClick={() => handleEliminarClick(mov.id)}
+                          >
+                            {deletingElement != mov.id && "Eliminar"}
+                            {deletingElement === mov.id && "Eliminando.."}
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              }
             </Paper>
           </Stack>
         </Container>
       </Box>
-      
+
+      <Dialog
+        open={openDialog}
+        onClose={() => setOpenDialog(false)}
+        aria-labelledby="alert-dialog-title"
+        aria-describedby="alert-dialog-description"
+      >
+        <DialogTitle id="alert-dialog-title">
+          {"Confirmar eliminación"}
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText id="alert-dialog-description">
+            ¿Estás seguro de que quieres eliminar este movimiento?
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpenDialog(false)}>Cancelar</Button>
+          <Button onClick={eliminarMovimiento} color="error" autoFocus>
+            Eliminar
+          </Button>
+        </DialogActions>
+      </Dialog>
     </>
   );
 };
