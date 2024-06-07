@@ -50,8 +50,20 @@ export const SideNav = (props) => {
   useEffect( () => {
     const fetchProyectosData = async () => {
       const empresa = await getEmpresaDetailsFromUser(user)
-      console.log(empresa)
-      if (empresa.tipo == "Logistica") {
+      if (!empresa) {
+        const onboardingPage = {
+          title: 'Onboarding',
+          path: '/onboarding',
+          icon: (
+            <SvgIcon fontSize="small">
+              <DashboardIcon />
+            </SvgIcon>
+          )
+        }
+
+        setItems([onboardingPage])
+      }
+      else if (empresa.tipo == "Logistica") {
         const hojasDeRutaPage = {
           title: 'Hojas de ruta',
           path: '/hojasDeRuta?empresaId=' + empresa.id,
@@ -85,8 +97,10 @@ export const SideNav = (props) => {
             </SvgIcon>
           )
         }
-        let newItems = [empresaElement, vistaGeneralElement, ...initialItems]
+        let newItems = [empresaElement, vistaGeneralElement, ...initialItems];
+        
         await proyectos.forEach( (proy ) => {
+          console.log(proy.nombre)
           newItems.push(
             {
               title: proy.nombre,
@@ -100,7 +114,7 @@ export const SideNav = (props) => {
           )
         })
         
-  
+        console.log(newItems)
         setItems(newItems)
       }
     };

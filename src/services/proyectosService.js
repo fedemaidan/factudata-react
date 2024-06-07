@@ -1,7 +1,7 @@
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, addDoc, collection } from 'firebase/firestore';
 import { db } from 'src/config/firebase';
 import api from './axiosConfig';
-
+import  { addProyectoToEmpresa } from 'src/services/empresaService';
 /**
  * Obtiene los proyectos de un empresa a partir de las referencias almacenadas en el atributo proyectos.
  * @param {object} empresa - El objeto empresa que contiene las referencias de los proyectos.
@@ -40,7 +40,7 @@ export const getProyectosFromUser = async (user) => {
       console.log('Referencias de proyectos no proporcionadas o incompletas en el objeto usuario');
       return [];
     }
-
+      
       const proyectos = await Promise.all(user.proyectos.map(async (proyectoRef) => {
       const pathSegments = proyectoRef._key.path.segments;
       const path = pathSegments.slice(proyectoRef._key.path.offset, proyectoRef._key.path.offset + proyectoRef._key.path.len).join('/');
@@ -58,7 +58,7 @@ export const getProyectosFromUser = async (user) => {
         return null; 
       }
     }));
-
+    
     return proyectos.filter(proyecto => proyecto !== null);
   } catch (err) {
     console.error('Error al obtener los proyectos del usuario:', err);
@@ -151,22 +151,34 @@ export const hasPermission = async (fileId) => {
 }
 
 /**
- * Realiza una solicitud POST para crear un nuevo proyecto.
+ * Crea un nuevo proyecto y retorna el proyecto creado.
  * @param {object} proyecto - Un objeto con los datos del proyecto a crear.
- * @param {string} token - El token de autenticación del usuario.
- * @returns {Promise<object>} - Retorna un objeto con la respuesta del servidor.
+ * @param {string} empresaId - El ID de la empresa a la que se asociará el proyecto.
+ * @returns {Promise<object|null>} - Retorna un objeto con los datos del proyecto creado o null si falla.
  */
-export const crearProyecto = async (proyecto) => {
+export const crearProyecto = async (proyecto, empresaId) => {
   try {
-    const response = await api.post('/proyecto/', proyecto);
+    // Crear el nuevo proyecto en Firestore
+    const proyectoDocRef = await addDoc(collection(db, 'proyectos'), {
+      ...proyecto,
+      empresaId
+    });
 
-    if (response.status === 201) {
-      console.log('Proyecto creado con éxito');
-      return response.data;
-    } else {
-      console.error('Error al crear el proyecto');
+    // Obtener los datos del nuevo proyecto
+    const proyectoDoc = await getDoc(proyectoDocRef);
+    if (!proyectoDoc.exists()) {
+      console.error('No se pudo obtener el proyecto recién creado');
       return null;
     }
+
+    const nuevoProyecto = {
+      ...proyectoDoc.data(),
+      id: proyectoDoc.id,
+    };
+
+    await addProyectoToEmpresa(empresaId, nuevoProyecto.id);
+
+    return nuevoProyecto;
   } catch (err) {
     console.error('Error al crear el proyecto:', err);
     return null;

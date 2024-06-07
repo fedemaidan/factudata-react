@@ -29,11 +29,14 @@ import {
   FormControl,
   InputLabel,
   Chip,
+  CircularProgress,
+  Backdrop
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import AddCircle from '@mui/icons-material/AddCircle';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
+import SyncIcon from '@mui/icons-material/Sync';
 import FilterListIcon from '@mui/icons-material/FilterList';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import remitoService from 'src/services/remitoService';
@@ -55,6 +58,12 @@ const RemitosPage = () => {
   const [snackbarMessage, setSnackbarMessage] = useState('');
   const [snackbarSeverity, setSnackbarSeverity] = useState('success');
   const [filtersVisible, setFiltersVisible] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+
+  const [validadoCount, setValidadoCount] = useState(0);
+  const [revisarCount, setRevisarCount] = useState(0);
+  const [pendienteCount, setPendienteCount] = useState(0);
+  const [todosCount, setTodosCount] = useState(0); 
 
   const handleSnackbarClose = () => {
     setSnackbarOpen(false);
@@ -63,10 +72,12 @@ const RemitosPage = () => {
   useEffect(() => {
     if (hojaDeRutaId) {
       const fetchRemitos = async () => {
+        setIsLoading(true);
         const remitosData = await remitoService.getRemitosByHojaDeRuta(hojaDeRutaId);
         setRemitos(remitosData);
         const hdr = await hojaDeRutaService.getHojaDeRutaById(hojaDeRutaId);
         setHojasDeRuta(hdr);
+        setIsLoading(false);
       };
 
       fetchRemitos();
@@ -93,8 +104,26 @@ const RemitosPage = () => {
     }
 
     setFilteredRemitos(filtered);
+    setValidadoCount(remitos.filter(remito => remito.verificacionAutomatica === true).length);
+    setRevisarCount(remitos.filter(remito => remito.verificacionAutomatica === false).length);
+    setPendienteCount(remitos.filter(remito => remito.verificacionAutomatica === "").length);
+    setTodosCount(remitos.length); 
   }, [filterNumero, filterEstado, filterVerificacionAutomatica, remitos]);
-
+  
+  const handleUpdateRemitos = async () => {
+    setIsLoading(true);
+    try {
+      const remitosData = await remitoService.getRemitosByHojaDeRuta(hojaDeRutaId);
+      setRemitos(remitosData);
+      const hdr = await hojaDeRutaService.getHojaDeRutaById(hojaDeRutaId);
+      setHojasDeRuta(hdr);
+    } catch (error) {
+      console.error('Error al actualizar la lista de remitos:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
   const formik = useFormik({
     initialValues: {
       fecha: editingRemito ? editingRemito.fecha : new Date().toISOString().slice(0, 10),
@@ -110,6 +139,7 @@ const RemitosPage = () => {
       estado: Yup.string().required('El estado es requerido'),
     }),
     onSubmit: async (values, { resetForm }) => {
+      setIsLoading(true);
       try {
         if (values.archivos.remitoOriginal instanceof File) {
           const remitoURL = await remitoService.uploadFile(values.archivos.remitoOriginal, values.numero);
@@ -117,7 +147,7 @@ const RemitosPage = () => {
         }
 
         values.hojaDeRutaId = hojaDeRutaId;
-        
+
         if (editingRemito) {
           await remitoService.updateRemito(editingRemito.id, values);
           setSnackbarMessage('Remito actualizado con éxito');
@@ -137,6 +167,7 @@ const RemitosPage = () => {
         resetForm();
         setIsDialogOpen(false);
         setEditingRemito(null);
+        setIsLoading(false);
       }
     },
   });
@@ -160,6 +191,7 @@ const RemitosPage = () => {
   };
 
   const handleDeleteRemito = async (id) => {
+    setIsLoading(true);
     try {
       await remitoService.deleteRemito(id);
       setSnackbarMessage('Remito eliminado con éxito');
@@ -171,6 +203,7 @@ const RemitosPage = () => {
       setSnackbarSeverity('error');
     } finally {
       setSnackbarOpen(true);
+      setIsLoading(false);
     }
   };
 
@@ -196,17 +229,48 @@ const RemitosPage = () => {
         <Container maxWidth="xl">
           <Stack spacing={3}>
             <Typography variant="h4">Detalle hoja de ruta de {hojaDeRuta.nombreChofer} - Código {hojaDeRuta.codigo}</Typography>
-            <Stack direction="row" spacing={2}>
-              <Button variant="contained" color="primary" startIcon={<AddCircle />} onClick={handleOpenDialog}>
-                Agregar Remito
+            <Stack direction="row" spacing={2} justifyContent="space-between">
+              <Stack direction="row" spacing={2}>
+              <Button variant="outlined" onClick={handleUpdateRemitos} startIcon={<SyncIcon />}>
+                
               </Button>
+                <Button variant="contained" color="primary" startIcon={<AddCircle />} onClick={handleOpenDialog}>
+                  Agregar Remito
+                </Button>
+                <Button
+                  variant="outlined"
+                  startIcon={<FilterListIcon />}
+                  onClick={() => setFiltersVisible(!filtersVisible)}
+                >
+                  {filtersVisible ? 'Ocultar Filtros' : 'Mostrar Filtros'}
+                </Button>
+              </Stack>
+              <Stack direction="row" spacing={2}>
               <Button
                 variant="outlined"
-                startIcon={<FilterListIcon />}
-                onClick={() => setFiltersVisible(!filtersVisible)}
+                onClick={() => setFilterVerificacionAutomatica('')}
               >
-                {filtersVisible ? 'Ocultar Filtros' : 'Mostrar Filtros'}
+                Todos ({todosCount})
               </Button>
+                <Button
+                  variant="outlined"
+                  onClick={() => setFilterVerificacionAutomatica('true')}
+                >
+                  Validados ({validadoCount})
+                </Button>
+                <Button
+                  variant="outlined"
+                  onClick={() => setFilterVerificacionAutomatica('false')}
+                >
+                  Revisar ({revisarCount})
+                </Button>
+                <Button
+                  variant="outlined"
+                  onClick={() => setFilterVerificacionAutomatica('null')}
+                >
+                  Pendientes ({pendienteCount})
+                </Button>
+              </Stack>
             </Stack>
             <Collapse in={filtersVisible}>
               <Stack direction="row" spacing={2} alignItems="center">
@@ -256,63 +320,69 @@ const RemitosPage = () => {
                 </FormControl>
               </Stack>
             </Collapse>
-            <Paper>
-              <Table>
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Fecha</TableCell>
-                    <TableCell>Número de Remito</TableCell>
-                    <TableCell>Estado</TableCell>
-                    <TableCell>Verificación Automática</TableCell>
-                    <TableCell>Archivos</TableCell>
-                    <TableCell>Acciones</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {filteredRemitos.map((remito) => (
-                    <TableRow key={remito.id}>
-                      <TableCell>{remito.fecha}</TableCell>
-                      <TableCell>{remito.numero}</TableCell>
-                      <TableCell>{remito.estado}</TableCell>
-                      <TableCell>
-                        <Chip
-                          label={
-                            remito.verificacionAutomatica === false ? "Revisar" : 
-                            remito.verificacionAutomatica === true ? "Validado" : 
-                            "Pendiente"
-                          }
-                          color={getChipColor(remito.verificacionAutomatica)}
-                        />
-                      </TableCell>
-                      <TableCell>
-                        {remito.archivos.remitoOriginal && (
-                          <Button
-                            onClick={() => window.open(remito.archivos.remitoOriginal, '_blank')}
-                          >
-                            Ver Remito Original
-                          </Button>
-                        )}
-                        {remito.archivos.remitoFirmado && (
-                          <Button
-                            onClick={() => window.open(remito.archivos.remitoFirmado, '_blank')}
-                          >
-                            Ver Remito Firmado
-                          </Button>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <IconButton onClick={() => startEditRemito(remito)}>
-                          <EditIcon />
-                        </IconButton>
-                        <IconButton onClick={() => handleDeleteRemito(remito.id)}>
-                          <DeleteIcon />
-                        </IconButton>
-                      </TableCell>
+            {isLoading ? (
+              <Box display="flex" justifyContent="center" alignItems="center" height="60vh">
+                <CircularProgress />
+              </Box>
+            ) : (
+              <Paper>
+                <Table>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Fecha</TableCell>
+                      <TableCell>Número de Remito</TableCell>
+                      <TableCell>Estado</TableCell>
+                      <TableCell>Verificación Automática</TableCell>
+                      <TableCell>Archivos</TableCell>
+                      <TableCell>Acciones</TableCell>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </Paper>
+                  </TableHead>
+                  <TableBody>
+                    {filteredRemitos.map((remito) => (
+                      <TableRow key={remito.id}>
+                        <TableCell>{remito.fecha}</TableCell>
+                        <TableCell>{remito.numero}</TableCell>
+                        <TableCell>{remito.estado}</TableCell>
+                        <TableCell>
+                          <Chip
+                            label={
+                              remito.verificacionAutomatica === false ? "Revisar: " + remito.estadoAutomatico : 
+                              remito.verificacionAutomatica === true ? "Validado" : 
+                              "Pendiente"
+                            }
+                            color={getChipColor(remito.verificacionAutomatica)}
+                          />
+                        </TableCell>
+                        <TableCell>
+                          {remito.archivos.remitoOriginal && (
+                            <Button
+                              onClick={() => window.open(remito.archivos.remitoOriginal, '_blank')}
+                            >
+                              Ver Remito Original
+                            </Button>
+                          )}
+                          {remito.archivos.remitoFirmado && (
+                            <Button
+                              onClick={() => window.open(remito.archivos.remitoFirmado, '_blank')}
+                            >
+                              Ver Remito Firmado
+                            </Button>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <IconButton onClick={() => startEditRemito(remito)}>
+                            <EditIcon />
+                          </IconButton>
+                          <IconButton onClick={() => handleDeleteRemito(remito.id)}>
+                            <DeleteIcon />
+                          </IconButton>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </Paper>
+            )}
           </Stack>
         </Container>
       </Box>
@@ -387,6 +457,10 @@ const RemitosPage = () => {
           {snackbarMessage}
         </Alert>
       </Snackbar>
+
+      <Backdrop open={isLoading} style={{ zIndex: 9999 }}>
+        <CircularProgress color="inherit" />
+      </Backdrop>
     </>
   );
 };

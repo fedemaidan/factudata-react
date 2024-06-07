@@ -135,6 +135,32 @@ const profileService = {
       console.error(err);
     }
   },
+  updateProfileWithEmpresa: async (profileId, empresaId, proyectosIds) => {
+    try {
+      
+      const profileDocRef = doc(db, 'profile', profileId);
+      const empresaRef = doc(db, 'empresas', empresaId);
+      const profileDoc = await getDoc(profileDocRef);
+
+      if (!profileDoc.exists()) {
+        console.error('No se encontró el perfil para actualizar');
+        return false;
+      }
+
+      // const profileData = profileDoc.data();
+      // const updatedEmpresaIds = profileData.empresaIds ? [...profileData.empresaIds, empresaId] : [empresaId];
+      const proyectos = proyectosIds.map( (id) => {
+        return doc(db, 'proyectos', id);
+      })
+      await updateDoc(profileDocRef, { empresa: empresaRef, proyectos: proyectos });
+
+      console.log('Perfil actualizado con la nueva empresa y proyectos');
+      return true;
+    } catch (err) {
+      console.error('Error al actualizar el perfil:', err);
+      return false;
+    }
+  }
 };
 
 export default profileService;

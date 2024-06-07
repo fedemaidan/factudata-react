@@ -8,6 +8,7 @@ import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { storage } from 'src/config/firebase';
 import { getTotalCreditsForUser, addCreditsForUser } from 'src/services/creditService';
 import profileService from 'src/services/profileService';
+import { useRouter } from 'next/router';
 
 const HANDLERS = {
   INITIALIZE: 'INITIALIZE',
@@ -47,6 +48,10 @@ const handlers = {
     };
     window.localStorage.setItem('MY_APP_STATE', JSON.stringify(newState));
     window.localStorage.setItem('authToken', user.token);
+    if (!user.empresa) {
+      const router = useRouter();
+      router.push('/onboarding')
+    }
     return newState;
   },
   [HANDLERS.SIGN_OUT]: (state) => {
@@ -140,7 +145,7 @@ export const AuthProvider = (props) => {
       const response = await signInWithEmailAndPassword(auth, email, password);
       const idToken = await response.user.getIdToken(true);
       const payload = await getPayloadUserByUid(response.user.uid, idToken);
-  
+      
       dispatch({
         type: HANDLERS.UPDATE_USER,
         payload: payload

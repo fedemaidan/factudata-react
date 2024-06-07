@@ -22,7 +22,9 @@ import {
   Snackbar,
   Alert,
   IconButton,
-  Collapse
+  Collapse,
+  Backdrop,
+  CircularProgress
 } from '@mui/material';
 import AddCircle from '@mui/icons-material/AddCircle';
 import EditIcon from '@mui/icons-material/Edit';
@@ -65,6 +67,7 @@ const HojasDeRutaPage = () => {
   const [snackbarMessage, setSnackbarMessage] = useState('');
   const [snackbarSeverity, setSnackbarSeverity] = useState('success');
   const [filtersVisible, setFiltersVisible] = useState(false);
+  const [loading, setLoading] = useState(false); // Estado para el indicador de carga
 
   const handleSnackbarClose = () => {
     setSnackbarOpen(false);
@@ -72,8 +75,10 @@ const HojasDeRutaPage = () => {
 
   useEffect(() => {
     const fetchHojasDeRuta = async () => {
+      setLoading(true);
       const hojasDeRutaData = await hojaDeRutaService.getHojasDeRutaByEmpresa(empresaId);
       setHojasDeRuta(hojasDeRutaData);
+      setLoading(false);
     };
 
     if (empresaId) {
@@ -112,6 +117,7 @@ const HojasDeRutaPage = () => {
     }),
     onSubmit: async (values, { resetForm }) => {
       try {
+        setLoading(true);
         values.fechaSalida = dateToTimestamp(values.fechaSalida);
         values.empresaId = empresaId;
         if (editingHojaDeRuta) {
@@ -133,13 +139,14 @@ const HojasDeRutaPage = () => {
         resetForm();
         setIsDialogOpen(false);
         setEditingHojaDeRuta(null);
+        setLoading(false);
       }
     },
   });
 
   const regenerateCode = () => {
-  formik.setFieldValue('codigo', generateCode());
-};
+    formik.setFieldValue('codigo', generateCode());
+  };
 
   const handleOpenDialog = () => {
     setEditingHojaDeRuta(null);
@@ -164,6 +171,7 @@ const HojasDeRutaPage = () => {
 
   const handleDeleteHojaDeRuta = async (id) => {
     try {
+      setLoading(true);
       await hojaDeRutaService.deleteHojaDeRuta(id);
       setSnackbarMessage('Hoja de Ruta eliminada con éxito');
       setSnackbarSeverity('success');
@@ -174,6 +182,7 @@ const HojasDeRutaPage = () => {
       setSnackbarSeverity('error');
     } finally {
       setSnackbarOpen(true);
+      setLoading(false);
     }
   };
 
@@ -205,7 +214,7 @@ const HojasDeRutaPage = () => {
             <Collapse in={filtersVisible}>
               <Stack direction="row" spacing={2} alignItems="center">
                 <TextField
-                  label="Buscar por número empresa"
+                  label="Buscar por empresa transportista"
                   variant="outlined"
                   onChange={(e) => setFilterEmpresaTransportista(e.target.value)}
                 />
@@ -261,83 +270,82 @@ const HojasDeRutaPage = () => {
         </Container>
       </Box>
 
-  <Dialog open={isDialogOpen} onClose={handleCloseDialog}>
-    <DialogTitle>{editingHojaDeRuta ? 'Editar Hoja de Ruta' : 'Agregar Hoja de Ruta'}</DialogTitle>
-    <form onSubmit={formik.handleSubmit}>
-      <DialogContent>
-        <TextField
-          fullWidth
-          margin="dense"
-          name="fechaSalida"
-          label="Fecha de Salida"
-          type="datetime-local"
-          value={formik.values.fechaSalida}
-          onChange={formik.handleChange}
-          error={formik.touched.fechaSalida && Boolean(formik.errors.fechaSalida)}
-          helperText={formik.touched.fechaSalida && formik.errors.fechaSalida}
-          InputLabelProps={{
-            shrink: true,
-          }}
-        />
-        <TextField
-          fullWidth
-          margin="dense"
-          name="empresaTransportista"
-          label="Empresa Transportista"
-          value={formik.values.empresaTransportista}
-          onChange={formik.handleChange}
-          error={formik.touched.empresaTransportista && Boolean(formik.errors.empresaTransportista)}
-          helperText={formik.touched.empresaTransportista && formik.errors.empresaTransportista}
-        />
-        <TextField
-          fullWidth
-          margin="dense"
-          name="nombreChofer"
-          label="Nombre del Chofer"
-          value={formik.values.nombreChofer}
-          onChange={formik.handleChange}
-          error={formik.touched.nombreChofer && Boolean(formik.errors.nombreChofer)}
-          helperText={formik.touched.nombreChofer && formik.errors.nombreChofer}
-        />
-        <TextField
-          fullWidth
-          margin="dense"
-          name="whatsappChofer"
-          label="WhatsApp del Chofer"
-          value={formik.values.whatsappChofer}
-          onChange={formik.handleChange}
-          error={formik.touched.whatsappChofer && Boolean(formik.errors.whatsappChofer)}
-          helperText={formik.touched.whatsappChofer && formik.errors.whatsappChofer}
-        />
-        <TextField
-          fullWidth
-          margin="dense"
-          name="codigo"
-          label="Código"
-          value={formik.values.codigo}
-          onChange={formik.handleChange}
-          error={formik.touched.codigo && Boolean(formik.errors.codigo)}
-          helperText={formik.touched.codigo && formik.errors.codigo}
-          InputProps={{
-            endAdornment: (
-              <Button onClick={regenerateCode} color="primary">
-                Regenerar Código
-              </Button>
-            ),
-          }}
-        />
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={handleCloseDialog} color="secondary">
-          Cancelar
-        </Button>
-        <Button type="submit" color="primary">
-          {editingHojaDeRuta ? 'Guardar Cambios' : 'Agregar'}
-        </Button>
-      </DialogActions>
-    </form>
-  </Dialog>
-
+      <Dialog open={isDialogOpen} onClose={handleCloseDialog}>
+        <DialogTitle>{editingHojaDeRuta ? 'Editar Hoja de Ruta' : 'Agregar Hoja de Ruta'}</DialogTitle>
+        <form onSubmit={formik.handleSubmit}>
+          <DialogContent>
+            <TextField
+              fullWidth
+              margin="dense"
+              name="fechaSalida"
+              label="Fecha de Salida"
+              type="datetime-local"
+              value={formik.values.fechaSalida}
+              onChange={formik.handleChange}
+              error={formik.touched.fechaSalida && Boolean(formik.errors.fechaSalida)}
+              helperText={formik.touched.fechaSalida && formik.errors.fechaSalida}
+              InputLabelProps={{
+                shrink: true,
+              }}
+            />
+            <TextField
+              fullWidth
+              margin="dense"
+              name="empresaTransportista"
+              label="Empresa Transportista"
+              value={formik.values.empresaTransportista}
+              onChange={formik.handleChange}
+              error={formik.touched.empresaTransportista && Boolean(formik.errors.empresaTransportista)}
+              helperText={formik.touched.empresaTransportista && formik.errors.empresaTransportista}
+            />
+            <TextField
+              fullWidth
+              margin="dense"
+              name="nombreChofer"
+              label="Nombre del Chofer"
+              value={formik.values.nombreChofer}
+              onChange={formik.handleChange}
+              error={formik.touched.nombreChofer && Boolean(formik.errors.nombreChofer)}
+              helperText={formik.touched.nombreChofer && formik.errors.nombreChofer}
+            />
+            <TextField
+              fullWidth
+              margin="dense"
+              name="whatsappChofer"
+              label="WhatsApp del Chofer"
+              value={formik.values.whatsappChofer}
+              onChange={formik.handleChange}
+              error={formik.touched.whatsappChofer && Boolean(formik.errors.whatsappChofer)}
+              helperText={formik.touched.whatsappChofer && formik.errors.whatsappChofer}
+            />
+            <TextField
+              fullWidth
+              margin="dense"
+              name="codigo"
+              label="Código"
+              value={formik.values.codigo}
+              onChange={formik.handleChange}
+              error={formik.touched.codigo && Boolean(formik.errors.codigo)}
+              helperText={formik.touched.codigo && formik.errors.codigo}
+              InputProps={{
+                endAdornment: (
+                  <Button onClick={regenerateCode} color="primary">
+                    Regenerar Código
+                  </Button>
+                ),
+              }}
+            />
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={handleCloseDialog} color="secondary">
+              Cancelar
+            </Button>
+            <Button type="submit" color="primary">
+              {editingHojaDeRuta ? 'Guardar Cambios' : 'Agregar'}
+            </Button>
+          </DialogActions>
+        </form>
+      </Dialog>
 
       <Snackbar
         open={snackbarOpen}
@@ -349,6 +357,10 @@ const HojasDeRutaPage = () => {
           {snackbarMessage}
         </Alert>
       </Snackbar>
+
+      <Backdrop open={loading} style={{ zIndex: 9999 }}>
+        <CircularProgress color="inherit" />
+      </Backdrop>
     </>
   );
 };
