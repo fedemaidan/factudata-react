@@ -1,6 +1,7 @@
 import { collection, getDocs, query, where, doc, updateDoc, deleteDoc, addDoc, getDoc } from 'firebase/firestore';
 import { auth, db } from 'src/config/firebase';
 import { serverTimestamp } from 'firebase/firestore';
+import { useAuth } from 'src/hooks/use-auth';
 
 const generateConfirmationCode = () => {
   return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
@@ -147,18 +148,18 @@ const profileService = {
         return false;
       }
 
-      // const profileData = profileDoc.data();
-      // const updatedEmpresaIds = profileData.empresaIds ? [...profileData.empresaIds, empresaId] : [empresaId];
+      const profileData = profileDoc.data();
       const proyectos = proyectosIds.map( (id) => {
         return doc(db, 'proyectos', id);
       })
       await updateDoc(profileDocRef, { empresa: empresaRef, proyectos: proyectos });
-
+      const newUser = {...profileData, empresa: empresaRef, proyectos: proyectos }
+      
       console.log('Perfil actualizado con la nueva empresa y proyectos');
-      return true;
+      return {updated: true, user: newUser};
     } catch (err) {
       console.error('Error al actualizar el perfil:', err);
-      return false;
+      return {updated: false};;
     }
   }
 };

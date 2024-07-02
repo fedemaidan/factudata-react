@@ -4,26 +4,24 @@ import OnboardingPreview from 'src/sections/onboarding/onboardingPreview';
 import { handleOnboarding } from 'src/services/onboardingService';
 import { useAuthContext } from 'src/contexts/auth-context';
 import { useRouter } from 'next/router';
+import { useAuth } from 'src/hooks/use-auth';
+
+
 
 const ReviewStep = ({ formData, handleBack }) => {
   const { user } = useAuthContext();
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+  const auth = useAuth();
 
   const handleCreateEmpresa = async () => {
     setLoading(true);
-    const nuevaEmpresa = await handleOnboarding(formData, user.id);
+    const userUpdated = await handleOnboarding(formData, user.id);
     setLoading(false);
-
-    if (nuevaEmpresa) {
-        setTimeout(() => {
-            router.push('/listaProyectos');
-        }, 2000); 
-      
-    } else {
-      console.error('Error al completar el onboarding');
-      // Aquí puedes mostrar un mensaje de error
-    }
+    
+    if (userUpdated.empresa)
+      await auth.updateUser(userUpdated);
+      router.push('/listaProyectos');
   };
 
   return (

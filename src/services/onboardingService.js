@@ -66,7 +66,6 @@ const categoriasConstructora = [
  */
 export const handleOnboarding = async (formData, profileId) => {
   try {
-    console.log(categoriasConstructora[0])
     formData =  {
         tipo: "Constructora",
         acciones: [],
@@ -79,7 +78,7 @@ export const handleOnboarding = async (formData, profileId) => {
         categorias: [].concat(categoriasConstructora),
         ...formData,
     }
-    console.log(formData)
+
     // Crear la empresa primero
     const nuevaEmpresa = await crearEmpresa(formData);
     if (!nuevaEmpresa) {
@@ -96,13 +95,13 @@ export const handleOnboarding = async (formData, profileId) => {
     }
 
     // Actualizar el perfil del usuario con la nueva empresa y proyectos
-    const profileUpdated = await profileService.updateProfileWithEmpresa(profileId, empresaId, nuevaEmpresa.proyectosIds);
-    if (!profileUpdated) {
+    const {updated, user} = await profileService.updateProfileWithEmpresa(profileId, empresaId, nuevaEmpresa.proyectosIds);
+    if (!updated) {
         console.error('Error al actualizar el perfil del usuario');
         return null;
     }
     
-    return nuevaEmpresa;
+    return user;
   } catch (err) {
     console.error('Error en el proceso de onboarding:', err);
     return null;

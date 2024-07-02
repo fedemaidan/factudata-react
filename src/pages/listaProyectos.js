@@ -27,11 +27,14 @@ const ListaProyectosPage = () => {
       if (user) {
         let empresa;
             if (!empresaId) {
+                console.log(user)
                 empresa = await getEmpresaDetailsFromUser(user)
+                console.log(empresa)
             } else {
                 empresa = await getEmpresaById(empresaId);
             }
-        const proyectosData = await getProyectosByEmpresa(empresa);
+        let proyectosData = await getProyectosByEmpresa(empresa);
+        
         setProyectos(proyectosData);
       }
     };
