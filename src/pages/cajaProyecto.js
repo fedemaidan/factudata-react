@@ -1,11 +1,15 @@
 import { useState, useMemo, useEffect } from 'react';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import Head from 'next/head';
-import { Box, Container, Stack, Chip, Typography, TextField, InputAdornment, Paper, Card, CardContent, Button, Select, MenuItem, FormControl, InputLabel, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, useMediaQuery, IconButton, Fab, Menu, MenuItem as MenuOption } from '@mui/material';
+import { Box, Container, Stack, Chip, Typography, TextField, InputAdornment, Paper, Card, CardContent, Button, Select, MenuItem, FormControl, InputLabel, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, useMediaQuery, IconButton, Fab, Menu, Table, TableBody, TableCell, TableHead, TableRow, MenuItem as MenuOption } from '@mui/material';
 import { useTheme } from '@mui/material/styles';
 import SearchIcon from '@mui/icons-material/Search';
 import AddCircle from '@mui/icons-material/AddCircle';
 import GridOnIcon from '@mui/icons-material/GridOn';
+import FilterListIcon from '@mui/icons-material/FilterList';
+import AddCircleIcon from '@mui/icons-material/AddCircle';
+import RefreshIcon from '@mui/icons-material/Refresh';
+
 import EditIcon from '@mui/icons-material/Edit';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -216,15 +220,33 @@ const ProyectoMovimientosPage = () => {
     return filtrados;
   }, [movimientosUSD, filtroDias, filtroObs]);
 
-  return (
+  const handleMenuOptionClick = (action) => {
+    switch (action) {
+      case 'filtrar':
+        handleFiltrosActivos();
+        break;
+      case 'registrarMovimiento':
+        router.push('/addMovimiento?proyectoName=' + proyecto.nombre + '&proyectoId=' + proyecto.id);
+        break;
+      case 'recalcularSheets':
+        handleRecargarProyecto(proyecto.id);
+        break;
+      default:
+        break;
+    }
+    handleCloseMenu();
+  };
+
+
+    return (
     <>
       <Head>
         <title>{proyecto?.nombre}</title>
       </Head>
-      <Box component="main" sx={{ flexGrow: 1, py: 8 }}>
+      <Box component="main" sx={{ flexGrow: 1, py: 8, paddingTop: 2 }}>
         <Container maxWidth="xl">
           <Stack spacing={3}>
-            <Typography variant="h5">{proyecto?.nombre}</Typography>
+            <Typography variant="h6">{proyecto?.nombre}</Typography>
             <Stack direction="row" spacing={2}>
               <Button
                 variant={tablaActiva === 'ARS' ? "contained" : "outlined"}
@@ -274,25 +296,6 @@ const ProyectoMovimientosPage = () => {
                 />
               </Stack>
             )}
-            {accionesActivas && (
-              <Stack direction="row" spacing={2} alignItems="center">
-                <Button
-                  variant="outlined"
-                  color="success"
-                  startIcon={<AddCircle />}
-                  onClick={() => router.push('/addMovimiento?proyectoName=' + proyecto.nombre + '&proyectoId=' + proyecto.id)}
-                >
-                  Registrar movimiento
-                </Button>
-                <Button
-                  variant="contained"
-                  startIcon={<GridOnIcon />}
-                  onClick={() => handleRecargarProyecto(proyecto.id)}
-                >
-                  Recalcular sheets
-                </Button>
-              </Stack>
-            )}
             <Paper>
               <Snackbar open={alert.open} autoHideDuration={6000} onClose={handleCloseAlert}>
                 <Alert onClose={handleCloseAlert} severity={alert.severity} sx={{ width: '100%' }}>
@@ -300,97 +303,210 @@ const ProyectoMovimientosPage = () => {
                 </Alert>
               </Snackbar>
               {tablaActiva === "ARS" && (
-                <Stack spacing={2}>
-                  {movimientosFiltrados.map((mov, index) => (
-                    <Card key={index}>
-                      <CardContent>
-                        <Typography variant="h6" color={mov.type === "ingreso" ? "green" : "red"}>
-                          {mov.type === "ingreso" ? `Ingreso: ${formatCurrency(mov.total)}` : `Egreso: ${formatCurrency(mov.total)}`}
-                        </Typography>
-                        <Typography variant="body2">{mov.observacion}</Typography>
-                        {mov.tc && <Typography variant="body2">Tipo de cambio: ${mov.tc}</Typography>}
-                        <Typography variant="caption" color="textSecondary">
-                          {formatTimestamp(mov.fecha_factura)}
-                        </Typography>
-                        <Stack direction="row" spacing={1} mt={2}>
-                          <Button
-                            color="primary"
-                            startIcon={<EditIcon />}
-                            onClick={() => router.push('/movimiento?movimientoId=' + mov.id)}
-                          >
-                            Ver / Editar
-                          </Button>
-                          <Button
-                            color="error"
-                            startIcon={<DeleteIcon />}
-                            onClick={() => handleEliminarClick(mov.id)}
-                          >
-                            {deletingElement !== mov.id ? "Eliminar" : "Eliminando..."}
-                          </Button>
-                        </Stack>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </Stack>
+                isMobile ? (
+                  <Stack spacing={2}>
+                    {movimientosFiltrados.map((mov, index) => (
+                      <Card key={index}>
+                        <CardContent>
+                          <Typography variant="h6" color={mov.type === "ingreso" ? "green" : "red"}>
+                            {mov.type === "ingreso" ? `Ingreso: ${formatCurrency(mov.total)}` : `Egreso: ${formatCurrency(mov.total)}`}
+                          </Typography>
+                          <Typography variant="body2">{mov.observacion}</Typography>
+                          {mov.tc && <Typography variant="body2">Tipo de cambio: ${mov.tc}</Typography>}
+                          <Typography variant="caption" color="textSecondary">
+                            {formatTimestamp(mov.fecha_factura)}
+                          </Typography>
+                          <Stack direction="row" spacing={1} mt={2}>
+                            <Button
+                              color="primary"
+                              startIcon={<EditIcon />}
+                              onClick={() => router.push('/movimiento?movimientoId=' + mov.id)}
+                            >
+                              Ver / Editar
+                            </Button>
+                            <Button
+                              color="error"
+                              startIcon={<DeleteIcon />}
+                              onClick={() => handleEliminarClick(mov.id)}
+                            >
+                              {deletingElement !== mov.id ? "Eliminar" : "Eliminando..."}
+                            </Button>
+                          </Stack>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </Stack>
+                ) : (
+                  <Table>
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Fecha</TableCell>
+                        <TableCell>Tipo</TableCell>
+                        <TableCell>Total</TableCell>
+                        <TableCell>Observación</TableCell>
+                        <TableCell>Tipo de cambio</TableCell>
+                        <TableCell>Acciones</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {movimientosFiltrados.map((mov, index) => (
+                        <TableRow key={index}>
+                          <TableCell>{formatTimestamp(mov.fecha_factura)}</TableCell>
+                          <TableCell>
+                            <Chip
+                              label={mov.type === "ingreso" ? "Ingreso" : "Egreso"}
+                              color={mov.type === "ingreso" ? "success" : "error"}
+                            />
+                          </TableCell>
+                          <TableCell>{formatCurrency(mov.total)}</TableCell>
+                          <TableCell>{mov.observacion}</TableCell>
+                          <TableCell>{mov.tc ? `$ ${mov.tc}` : "-"}</TableCell>
+                          <TableCell>
+                            <Button
+                              color="primary"
+                              startIcon={<EditIcon />}
+                              onClick={() => router.push('/movimiento?movimientoId=' + mov.id)}
+                            >
+                              Ver / Editar
+                            </Button>
+                            <Button
+                              color="error"
+                              startIcon={<DeleteIcon />}
+                              onClick={() => handleEliminarClick(mov.id)}
+                            >
+                              {deletingElement !== mov.id ? "Eliminar" : "Eliminando..."}
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )
               )}
               {tablaActiva === "USD" && (
-                <Stack spacing={2}>
-                  {movimientosFiltradosUSD.map((mov, index) => (
-                    <Card key={index}>
-                      <CardContent>
-                        <Typography variant="h6" color={mov.type === "ingreso" ? "green" : "red"}>
-                          {mov.type === "ingreso" ? `Ingreso: ${formatCurrency(mov.total)}` : `Egreso: ${formatCurrency(mov.total)}`}
-                        </Typography>
-                        <Typography variant="body2">{mov.observacion}</Typography>
-                        {mov.tc && <Typography variant="body2">Tipo de cambio: ${mov.tc}</Typography>}
-                        <Typography variant="caption" color="textSecondary">
-                          {formatTimestamp(mov.fecha_factura)}
-                        </Typography>
-                        <Stack direction="row" spacing={1} mt={2}>
-                          <Button
-                            color="primary"
-                            startIcon={<EditIcon />}
-                            onClick={() => router.push('/movimiento?movimientoId=' + mov.id)}
-                          >
-                            Ver / Editar
-                          </Button>
-                          <Button
-                            color="error"
-                            startIcon={<DeleteIcon />}
-                            onClick={() => handleEliminarClick(mov.id)}
-                          >
-                            {deletingElement !== mov.id ? "Eliminar" : "Eliminando..."}
-                          </Button>
-                        </Stack>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </Stack>
+                isMobile ? (
+                  <Stack spacing={2}>
+                    {movimientosFiltradosUSD.map((mov, index) => (
+                      <Card key={index}>
+                        <CardContent>
+                          <Typography variant="h6" color={mov.type === "ingreso" ? "green" : "red"}>
+                            {mov.type === "ingreso" ? `Ingreso: ${formatCurrency(mov.total)}` : `Egreso: ${formatCurrency(mov.total)}`}
+                          </Typography>
+                          <Typography variant="body2">{mov.observacion}</Typography>
+                          {mov.tc && <Typography variant="body2">Tipo de cambio: ${mov.tc}</Typography>}
+                          <Typography variant="caption" color="textSecondary">
+                            {formatTimestamp(mov.fecha_factura)}
+                          </Typography>
+                          <Stack direction="row" spacing={1} mt={2}>
+                            <Button
+                              color="primary"
+                              startIcon={<EditIcon />}
+                              onClick={() => router.push('/movimiento?movimientoId=' + mov.id)}
+                            >
+                              Ver / Editar
+                            </Button>
+                            <Button
+                              color="error"
+                              startIcon={<DeleteIcon />}
+                              onClick={() => handleEliminarClick(mov.id)}
+                            >
+                              {deletingElement !== mov.id ? "Eliminar" : "Eliminando..."}
+                            </Button>
+                          </Stack>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </Stack>
+                ) : (
+                  <Table>
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Fecha</TableCell>
+                        <TableCell>Tipo</TableCell>
+                        <TableCell>Total</TableCell>
+                        <TableCell>Observación</TableCell>
+                        <TableCell>Tipo de cambio</TableCell>
+                        <TableCell>Acciones</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {movimientosFiltradosUSD.map((mov, index) => (
+                        <TableRow key={index}>
+                          <TableCell>{formatTimestamp(mov.fecha_factura)}</TableCell>
+                          <TableCell>
+                            <Chip
+                              label={mov.type === "ingreso" ? "Ingreso" : "Egreso"}
+                              color={mov.type === "ingreso" ? "success" : "error"}
+                            />
+                          </TableCell>
+                          <TableCell>{formatCurrency(mov.total)}</TableCell>
+                          <TableCell>{mov.observacion}</TableCell>
+                          <TableCell>{mov.tc ? `$ ${mov.tc}` : "-"}</TableCell>
+                          <TableCell>
+                            <Button
+                              color="primary"
+                              startIcon={<EditIcon />}
+                              onClick={() => router.push('/movimiento?movimientoId=' + mov.id)}
+                            >
+                              Ver / Editar
+                            </Button>
+                            <Button
+                              color="error"
+                              startIcon={<DeleteIcon />}
+                              onClick={() => handleEliminarClick(mov.id)}
+                            >
+                              {deletingElement !== mov.id ? "Eliminar" : "Eliminando..."}
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )
               )}
             </Paper>
           </Stack>
         </Container>
-        <Fab
-          color="primary"
-          aria-label="more"
-          onClick={handleOpenMenu}
-          sx={{ position: 'fixed', bottom: 16, right: 16 }}
-        >
-          <MoreVertIcon />
-        </Fab>
-        <Menu
-          anchorEl={anchorEl}
-          open={Boolean(anchorEl)}
-          onClose={handleCloseMenu}
-          keepMounted
-        >
-          <MenuOption onClick={handleFiltrosActivos}>
-            {filtrosActivos ? "Ocultar filtro" : "Filtrar"}
-          </MenuOption>
-          <MenuOption onClick={handleAccionesActivas}>
-            {accionesActivas ? "Ocultar acciones" : "Acciones"}
-          </MenuOption>
-        </Menu>
+        {isMobile ? (
+            <Fab
+              color="primary"
+              aria-label="more"
+              onClick={handleOpenMenu}
+              sx={{ position: 'fixed', bottom: 16, right: 16 }}
+            >
+              <MoreVertIcon />
+            </Fab>
+          ) : (
+            <Button
+              variant="contained"
+              color="primary"
+              onClick={handleOpenMenu}
+              sx={{ position: 'fixed', bottom: 16, right: 16 }}
+              startIcon={<MoreVertIcon />}
+            >
+              Menu de acciones y filtros
+            </Button>
+          )}
+
+          <Menu
+            anchorEl={anchorEl}
+            open={Boolean(anchorEl)}
+            onClose={handleCloseMenu}
+            keepMounted
+          >
+            <MenuOption onClick={() => handleMenuOptionClick('registrarMovimiento')}>
+              <AddCircleIcon sx={{ mr: 1 }} />
+              Registrar movimiento
+            </MenuOption>
+            <MenuOption onClick={() => handleMenuOptionClick('recalcularSheets')}>
+              <RefreshIcon sx={{ mr: 1 }} />
+              Recalcular sheets
+            </MenuOption>
+            <MenuOption onClick={() => handleMenuOptionClick('filtrar')}>
+              <FilterListIcon sx={{ mr: 1 }} />
+              {filtrosActivos ? "Ocultar filtro" : "Filtrar"}
+            </MenuOption>
+          </Menu>
       </Box>
 
       <Dialog
