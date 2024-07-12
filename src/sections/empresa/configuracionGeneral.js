@@ -15,7 +15,7 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
   const { user } = useAuthContext();
 
   const opcionesAcciones = [
-    "BIENVENIDA", "CREAR_EGRESO", "CREAR_INGRESO", "VER_CAJAS", 
+    "CREAR_EGRESO", "CREAR_INGRESO", "VER_CAJAS", 
     "AJUSTAR_CAJAS", "TRANSFERIR_ENTRE_CAJAS", "CREAR_NUEVO_PROYECTO", 
     "COMPRAR_MONEDA", "VENDER_MONEDA", "COMPLETAR_OPERACION", "VALIDAR_CODIGO"
   ];

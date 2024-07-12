@@ -51,6 +51,12 @@ const handlers = {
     if (!user.empresa) {
       const router = useRouter();
       router.push('/onboarding')
+    } else {
+      if (user.proyectos.length == 1) {
+        const router = useRouter();
+        router.push("/cajaProyecto")
+    }      
+
     }
     return newState;
   },

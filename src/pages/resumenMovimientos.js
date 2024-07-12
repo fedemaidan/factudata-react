@@ -58,6 +58,7 @@ const ResumenMovimientosPage = () => {
                 empresa = await getEmpresaById(empresaId);
             }
             const proyectos = await getProyectosByEmpresa(empresa);
+            
             const allMovs = [];
 
             for (const proyecto of proyectos) {

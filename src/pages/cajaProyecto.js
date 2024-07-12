@@ -1,12 +1,11 @@
 import { useState, useMemo, useEffect } from 'react';
+import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import Head from 'next/head';
-import { Box, Container, Stack, Chip, Typography, TextField, InputAdornment, Paper, Table, TableBody, TableCell, TableHead, TableRow, Button, Select, MenuItem, FormControl, InputLabel, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle } from '@mui/material';
+import { Box, Container, Stack, Chip, Typography, TextField, InputAdornment, Paper, Card, CardContent, Button, Select, MenuItem, FormControl, InputLabel, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, useMediaQuery, IconButton, Fab, Menu, MenuItem as MenuOption } from '@mui/material';
+import { useTheme } from '@mui/material/styles';
 import SearchIcon from '@mui/icons-material/Search';
 import AddCircle from '@mui/icons-material/AddCircle';
 import GridOnIcon from '@mui/icons-material/GridOn';
-import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
-import FilterListIcon from '@mui/icons-material/FilterList';
-import FilterListOffIcon from '@mui/icons-material/FilterListOff';
 import EditIcon from '@mui/icons-material/Edit';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -17,23 +16,23 @@ import movimientosService from 'src/services/movimientosService';
 import Snackbar from '@mui/material/Snackbar';
 import Alert from '@mui/material/Alert';
 import { useAuthContext } from 'src/contexts/auth-context';
+import { getEmpresaDetailsFromUser } from 'src/services/empresaService'; 
+import { getProyectosByEmpresa } from 'src/services/proyectosService';
 
 const formatTimestamp = (timestamp) => {
   if (!timestamp) {
     return '';
   }
-
-  const date = new Date(timestamp.seconds * 1000); // Convert seconds to milliseconds
+  const date = new Date(timestamp.seconds * 1000); 
   const year = date.getFullYear();
-  const month = `0${date.getMonth() + 1}`.slice(-2); // getMonth() devuelve un índice basado en cero, así que se agrega 1
+  const month = `0${date.getMonth() + 1}`.slice(-2); 
   const day = `0${date.getDate()}`.slice(-2);
 
-  return `${year}-${month}-${day}`; // Formato YYYY-MM-DD
+  return `${year}-${month}-${day}`;
 };
 
-const ProyectoMovimientosPage = ({ }) => {
+const ProyectoMovimientosPage = () => {
   const { user } = useAuthContext();
-  // Estado para la lista de movimientos
   const [movimientos, setMovimientos] = useState([]);
   const [movimientosUSD, setMovimientosUSD] = useState([]);
   const [tablaActiva, setTablaActiva] = useState('ARS');
@@ -43,16 +42,26 @@ const ProyectoMovimientosPage = ({ }) => {
   const [deletingElement, setDeletingElement] = useState(null);
   const [openDialog, setOpenDialog] = useState(false);
   const [movimientoAEliminar, setMovimientoAEliminar] = useState(null);
-  // Estados para los filtros
   const [filtroDias, setFiltroDias] = useState('730');
   const [filtroObs, setFiltroObs] = useState('');
   const [alert, setAlert] = useState({
     open: false,
     message: '',
-    severity: 'info', // puede ser 'error', 'warning', 'info', 'success'
+    severity: 'info',
   });
   const router = useRouter();
   const { proyectoId } = router.query;
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const [anchorEl, setAnchorEl] = useState(null);
+
+  const handleOpenMenu = (event) => {
+    setAnchorEl(event.currentTarget);
+  };
+
+  const handleCloseMenu = () => {
+    setAnchorEl(null);
+  };
 
   const handleCloseAlert = (event, reason) => {
     if (reason === 'clickaway') {
@@ -62,22 +71,31 @@ const ProyectoMovimientosPage = ({ }) => {
   };
 
   const handleRecargarProyecto = async (proyecto_id) => {
-    const resultado = await recargarProyecto(proyecto_id)
+    const resultado = await recargarProyecto(proyecto_id);
     if (resultado) {
       setAlert({
         open: true,
         message: 'Sheets recalculados con éxito',
         severity: 'success',
       });
-    }
-    else {
+    } else {
       setAlert({
         open: true,
         message: 'Error al recalcular sheets',
         severity: 'error',
       });
     }
-  }
+  };
+
+  const handleFiltrosActivos = () => {
+    setFiltrosActivos(!filtrosActivos);
+    handleCloseMenu();
+  };
+
+  const handleAccionesActivas = () => {
+    setAccionesActivas(!accionesActivas);
+    handleCloseMenu();
+  };
 
   const eliminarMovimiento = async () => {
     setDeletingElement(movimientoAEliminar);
@@ -108,21 +126,33 @@ const ProyectoMovimientosPage = ({ }) => {
   };
 
   useEffect(() => {
-    if (proyectoId) {
-      async function fetchMovimientosData() {
-        const proyecto = await getProyectoById(proyectoId);
-        setProyecto(proyecto)
-        const movs = await ticketService.getMovimientosForProyecto(proyectoId, 'ARS');
-        const movsUsd = await ticketService.getMovimientosForProyecto(proyectoId, 'USD');
-        setMovimientos(movs);
-        setMovimientosUSD(movsUsd);
+    const fetchMovimientosData = async (proyectoId) => {
+      const proyecto = await getProyectoById(proyectoId);
+      setProyecto(proyecto);
+      const movs = await ticketService.getMovimientosForProyecto(proyectoId, 'ARS');
+      const movsUsd = await ticketService.getMovimientosForProyecto(proyectoId, 'USD');
+      setMovimientos(movs);
+      setMovimientosUSD(movsUsd);
+    };
+
+    const fetchData = async () => {
+      let pid = proyectoId;
+      if (!proyectoId) {
+        const empresa = await getEmpresaDetailsFromUser(user);
+        const proyectos = await getProyectosByEmpresa(empresa);
+        if (proyectos.length === 1) {
+          pid = proyectos[0].id;
+        }
       }
 
-      fetchMovimientosData();
-    }
-  }, [proyectoId]);
+      if (pid) {
+        await fetchMovimientosData(pid);
+      }
+    };
 
-  // Función para formatear números como moneda
+    fetchData();
+  }, [proyectoId, user]);
+
   const formatCurrency = (amount) => {
     if (amount)
       return amount.toLocaleString('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0 });
@@ -130,15 +160,6 @@ const ProyectoMovimientosPage = ({ }) => {
       return "$ 0";
   };
 
-  const handleFiltrosActivos = () => {
-    setFiltrosActivos(filtrosActivos ? false : true);
-  }
-
-  const handleAccionesActivas = () => {
-    setAccionesActivas(accionesActivas ? false : true);
-  }
-
-  // Calcular el saldo total de la caja
   const saldoTotalCaja = useMemo(() => {
     return movimientos.reduce((acc, mov) => {
       if (mov.type === 'ingreso') {
@@ -159,7 +180,6 @@ const ProyectoMovimientosPage = ({ }) => {
     }, 0);
   }, [movimientosUSD]);
 
-  // Filtro por días y observación
   const movimientosFiltrados = useMemo(() => {
     const hoy = new Date();
     const filtrados = movimientos.filter((mov) => {
@@ -169,8 +189,6 @@ const ProyectoMovimientosPage = ({ }) => {
       return diferenciaDias <= filtroDias && (mov.observacion.toLowerCase().includes(filtroObs.toLowerCase()));
     });
 
-
-    // Ordenar de manera descendente por fecha
     filtrados.sort((a, b) => {
       const fechaA = new Date(a.fecha);
       const fechaB = new Date(b.fecha);
@@ -189,8 +207,6 @@ const ProyectoMovimientosPage = ({ }) => {
       return diferenciaDias <= filtroDias && (mov.observacion.toLowerCase().includes(filtroObs.toLowerCase()));
     });
 
-
-    // Ordenar de manera descendente por fecha
     filtrados.sort((a, b) => {
       const fechaA = new Date(a.fecha);
       const fechaB = new Date(b.fecha);
@@ -205,16 +221,10 @@ const ProyectoMovimientosPage = ({ }) => {
       <Head>
         <title>{proyecto?.nombre}</title>
       </Head>
-      <Box
-        component="main"
-        sx={{
-          flexGrow: 1,
-          py: 8
-        }}
-      >
+      <Box component="main" sx={{ flexGrow: 1, py: 8 }}>
         <Container maxWidth="xl">
           <Stack spacing={3}>
-            <Typography variant="h4">{proyecto?.nombre}</Typography>
+            <Typography variant="h5">{proyecto?.nombre}</Typography>
             <Stack direction="row" spacing={2}>
               <Button
                 variant={tablaActiva === 'ARS' ? "contained" : "outlined"}
@@ -222,7 +232,7 @@ const ProyectoMovimientosPage = ({ }) => {
                 onClick={() => setTablaActiva('ARS')}
                 sx={{ flexGrow: 1, py: 2 }}
               >
-                Caja en Pesos:   {saldoTotalCaja > 0 ? formatCurrency(saldoTotalCaja) : "(" + formatCurrency(saldoTotalCaja) + ")"}
+                Caja en Pesos: {saldoTotalCaja > 0 ? formatCurrency(saldoTotalCaja) : "(" + formatCurrency(saldoTotalCaja) + ")"}
               </Button>
               <Button
                 variant={tablaActiva === 'USD' ? "contained" : "outlined"}
@@ -232,105 +242,77 @@ const ProyectoMovimientosPage = ({ }) => {
               >
                 Caja en Dólares: US {saldoTotalCajaUSD > 0 ? formatCurrency(saldoTotalCajaUSD) : "(" + formatCurrency(saldoTotalCajaUSD) + ")"}{}
               </Button>
-              <Button
-                color="primary"
-                startIcon={filtrosActivos ? <FilterListOffIcon /> : <FilterListIcon />}
-                onClick={handleFiltrosActivos}
-              >
-                {filtrosActivos ? "Ocultar filtro" : "Filtrar"}
-              </Button>
-              <Button
-                color="primary"
-                startIcon={<MoreVertIcon />}
-                onClick={handleAccionesActivas}
-              >
-                {accionesActivas ? "Ocultar acciones" : "Acciones"}
-              </Button>
             </Stack>
-            <Stack direction="row" spacing={2} alignItems="center">
-              {filtrosActivos &&
-                <>
-                  <FormControl >
-                    <InputLabel>Filtrar por días</InputLabel>
-                    <Select
-                      value={filtroDias}
-                      onChange={(e) => setFiltroDias(e.target.value)}
-                      label="Filtrar por días"
-                    >
-                      <MenuItem value="15">Últimos 15 días</MenuItem>
-                      <MenuItem value="30">Últimos 30 días</MenuItem>
-                      <MenuItem value="60">Últimos 60 días</MenuItem>
-                      <MenuItem value="90">Últimos 90 días</MenuItem>
-                      <MenuItem value="365">Último año</MenuItem>
-                      <MenuItem value="730">Últimos 2 años</MenuItem>
-                    </Select>
-                  </FormControl>
-                  <TextField
-                    label="Buscar por Observación"
-                    variant="outlined"
-                    onChange={(e) => setFiltroObs(e.target.value)}
-                    InputProps={{
-                      startAdornment: (
-                        <InputAdornment position="start">
-                          <SearchIcon />
-                        </InputAdornment>
-                      ),
-                    }}
-                  />
-                </>}
-              {accionesActivas &&
-                <>
-                  <Button
-                    variant="outlined"
-                    color="success"
-                    startIcon={<AddCircle />}
-                    onClick={() => router.push('/addMovimiento?proyectoName=' + proyecto.nombre + '&proyectoId=' + proyecto.id)}
+            {filtrosActivos && (
+              <Stack direction="row" spacing={2} alignItems="center">
+                <FormControl>
+                  <InputLabel>Filtrar por días</InputLabel>
+                  <Select
+                    value={filtroDias}
+                    onChange={(e) => setFiltroDias(e.target.value)}
+                    label="Filtrar por días"
                   >
-                    Registrar movimiento
-                  </Button>
-                  <Button
-                    variant="contained"
-                    startIcon={<GridOnIcon />}
-                    onClick={() => handleRecargarProyecto(proyecto.id)}
-                  >
-                    Recalcular sheets
-                  </Button>
-                </>}
-            </Stack>
-
+                    <MenuItem value="15">Últimos 15 días</MenuItem>
+                    <MenuItem value="30">Últimos 30 días</MenuItem>
+                    <MenuItem value="60">Últimos 60 días</MenuItem>
+                    <MenuItem value="90">Últimos 90 días</MenuItem>
+                    <MenuItem value="365">Último año</MenuItem>
+                    <MenuItem value="730">Últimos 2 años</MenuItem>
+                  </Select>
+                </FormControl>
+                <TextField
+                  label="Buscar por Observación"
+                  variant="outlined"
+                  onChange={(e) => setFiltroObs(e.target.value)}
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <SearchIcon />
+                      </InputAdornment>
+                    ),
+                  }}
+                />
+              </Stack>
+            )}
+            {accionesActivas && (
+              <Stack direction="row" spacing={2} alignItems="center">
+                <Button
+                  variant="outlined"
+                  color="success"
+                  startIcon={<AddCircle />}
+                  onClick={() => router.push('/addMovimiento?proyectoName=' + proyecto.nombre + '&proyectoId=' + proyecto.id)}
+                >
+                  Registrar movimiento
+                </Button>
+                <Button
+                  variant="contained"
+                  startIcon={<GridOnIcon />}
+                  onClick={() => handleRecargarProyecto(proyecto.id)}
+                >
+                  Recalcular sheets
+                </Button>
+              </Stack>
+            )}
             <Paper>
               <Snackbar open={alert.open} autoHideDuration={6000} onClose={handleCloseAlert}>
                 <Alert onClose={handleCloseAlert} severity={alert.severity} sx={{ width: '100%' }}>
                   {alert.message}
                 </Alert>
               </Snackbar>
-              {
-                tablaActiva === "ARS" &&
-                <Table>
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Fecha</TableCell>
-                      <TableCell>Ingreso</TableCell>
-                      <TableCell>Egreso</TableCell>
-                      <TableCell>Observación</TableCell>
-                      <TableCell>Tipo de cambio</TableCell>
-                      <TableCell>Acciones</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {movimientosFiltrados.map((mov, index) => (
-                      <TableRow key={index}>
-                        <TableCell>{formatTimestamp(mov.fecha_factura)}</TableCell>
-                        <TableCell>
-                          {mov.type == "ingreso" ? <Chip label={formatCurrency(mov.total)} color="success" size="small" /> : ""}
-                        </TableCell>
-                        <TableCell>
-                          {mov.type == "egreso" ? <Chip label={formatCurrency(mov.total)} color="error" size="small" /> : ""}
-                        </TableCell>
-                        <TableCell>{mov.observacion}</TableCell>
-                        <TableCell>{mov.tc ? "$ " : ""}{mov.tc}</TableCell>
-
-                        <TableCell>
+              {tablaActiva === "ARS" && (
+                <Stack spacing={2}>
+                  {movimientosFiltrados.map((mov, index) => (
+                    <Card key={index}>
+                      <CardContent>
+                        <Typography variant="h6" color={mov.type === "ingreso" ? "green" : "red"}>
+                          {mov.type === "ingreso" ? `Ingreso: ${formatCurrency(mov.total)}` : `Egreso: ${formatCurrency(mov.total)}`}
+                        </Typography>
+                        <Typography variant="body2">{mov.observacion}</Typography>
+                        {mov.tc && <Typography variant="body2">Tipo de cambio: ${mov.tc}</Typography>}
+                        <Typography variant="caption" color="textSecondary">
+                          {formatTimestamp(mov.fecha_factura)}
+                        </Typography>
+                        <Stack direction="row" spacing={1} mt={2}>
                           <Button
                             color="primary"
                             startIcon={<EditIcon />}
@@ -343,41 +325,28 @@ const ProyectoMovimientosPage = ({ }) => {
                             startIcon={<DeleteIcon />}
                             onClick={() => handleEliminarClick(mov.id)}
                           >
-                            {deletingElement != mov.id && "Eliminar"}
-                            {deletingElement === mov.id && "Eliminando.."}
+                            {deletingElement !== mov.id ? "Eliminar" : "Eliminando..."}
                           </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              }
-              {
-                tablaActiva === "USD" &&
-                <Table>
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Fecha</TableCell>
-                      <TableCell>Ingreso</TableCell>
-                      <TableCell>Egreso</TableCell>
-                      <TableCell>Observación</TableCell>
-                      <TableCell>Tipo de cambio</TableCell>
-                      <TableCell>Acciones</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {movimientosFiltradosUSD.map((mov, index) => (
-                      <TableRow key={mov.id}>
-                        <TableCell>{formatTimestamp(mov.fecha_factura)}</TableCell>
-                        <TableCell>
-                          {mov.type == "ingreso" ? <Chip label={formatCurrency(mov.total)} color="success" size="small" /> : ""}
-                        </TableCell>
-                        <TableCell>
-                          {mov.type == "egreso" ? <Chip label={formatCurrency(mov.total)} color="error" size="small" /> : ""}
-                        </TableCell>
-                        <TableCell>{mov.observacion}</TableCell>
-                        <TableCell>{mov.tc ? "$ " : ""}{mov.tc}</TableCell>
-                        <TableCell>
+                        </Stack>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </Stack>
+              )}
+              {tablaActiva === "USD" && (
+                <Stack spacing={2}>
+                  {movimientosFiltradosUSD.map((mov, index) => (
+                    <Card key={index}>
+                      <CardContent>
+                        <Typography variant="h6" color={mov.type === "ingreso" ? "green" : "red"}>
+                          {mov.type === "ingreso" ? `Ingreso: ${formatCurrency(mov.total)}` : `Egreso: ${formatCurrency(mov.total)}`}
+                        </Typography>
+                        <Typography variant="body2">{mov.observacion}</Typography>
+                        {mov.tc && <Typography variant="body2">Tipo de cambio: ${mov.tc}</Typography>}
+                        <Typography variant="caption" color="textSecondary">
+                          {formatTimestamp(mov.fecha_factura)}
+                        </Typography>
+                        <Stack direction="row" spacing={1} mt={2}>
                           <Button
                             color="primary"
                             startIcon={<EditIcon />}
@@ -390,18 +359,38 @@ const ProyectoMovimientosPage = ({ }) => {
                             startIcon={<DeleteIcon />}
                             onClick={() => handleEliminarClick(mov.id)}
                           >
-                            {deletingElement != mov.id && "Eliminar"}
-                            {deletingElement === mov.id && "Eliminando.."}
+                            {deletingElement !== mov.id ? "Eliminar" : "Eliminando..."}
                           </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              }
+                        </Stack>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </Stack>
+              )}
             </Paper>
           </Stack>
         </Container>
+        <Fab
+          color="primary"
+          aria-label="more"
+          onClick={handleOpenMenu}
+          sx={{ position: 'fixed', bottom: 16, right: 16 }}
+        >
+          <MoreVertIcon />
+        </Fab>
+        <Menu
+          anchorEl={anchorEl}
+          open={Boolean(anchorEl)}
+          onClose={handleCloseMenu}
+          keepMounted
+        >
+          <MenuOption onClick={handleFiltrosActivos}>
+            {filtrosActivos ? "Ocultar filtro" : "Filtrar"}
+          </MenuOption>
+          <MenuOption onClick={handleAccionesActivas}>
+            {accionesActivas ? "Ocultar acciones" : "Acciones"}
+          </MenuOption>
+        </Menu>
       </Box>
 
       <Dialog

@@ -1,13 +1,13 @@
 import Head from 'next/head';
 import NextLink from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter } from 'next/router'; // Nota: Cambiado a useRouter de 'next/router'
 import { useFormik } from 'formik';
 import * as Yup from 'yup';
 import { Box, Button, CircularProgress, Link, Stack, TextField, Typography, FormControlLabel, Radio, RadioGroup } from '@mui/material';
 import { Layout as AuthLayout } from 'src/layouts/auth/layout';
 import { useAuth } from 'src/hooks/use-auth';
 import profileService from 'src/services/profileService';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 const Page = () => {
   const [isLoading, setIsLoading] = useState(false);
@@ -81,6 +81,14 @@ const Page = () => {
       setEmpresaName('');
     }
   };
+
+  useEffect(() => {
+    const { code } = router.query;
+    if (code) {
+      setHasCode(true);
+      handleCodeChange({ target: { value: code } });
+    }
+  }, [router.query]);
 
   return (
     <>
