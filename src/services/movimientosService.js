@@ -2,7 +2,6 @@ import { doc, getDoc } from 'firebase/firestore';
 import { db } from 'src/config/firebase';
 import api from './axiosConfig';
 
-
 const movimientosService = {
   // Método para obtener un movimiento por su ID
   getMovimientoById: async (movimientoId) => {
@@ -25,6 +24,7 @@ const movimientosService = {
       return null;
     }
   },
+  
   updateMovimiento: async (movimientoId, nuevosDatos) => {
     try {
       const response = await api.put(`movimiento/${movimientoId}`, nuevosDatos);
@@ -40,6 +40,7 @@ const movimientosService = {
         return false;
     }
   },
+
   deleteMovimientoById: async (movimientoId) => {
     try {
       const response = await api.delete(`movimiento/${movimientoId}`);
@@ -55,6 +56,7 @@ const movimientosService = {
         return false;
     }
   },
+
   addMovimiento: async (datosMovimiento) => {
     try {
         const nuevoMovimiento = {
@@ -72,8 +74,32 @@ const movimientosService = {
         console.error('Error al agregar el movimiento:', err);
         return false;
     }
-  }
+  },
+
+  // Nuevo método para reemplazar la imagen de un movimiento
+  reemplazarImagen: async (movimientoId, archivo) => {
+    try {
+      const formData = new FormData();
+      formData.append('nuevoArchivo', archivo);  // El archivo seleccionado por el usuario
+
+      const response = await api.put(`/reemplazar-imagen/${movimientoId}`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+
+      if (response.status === 200) {
+        console.log('Imagen reemplazada con éxito');
+        return response.data;
+      } else {
+        console.error('Error al reemplazar la imagen');
+        return null;
+      }
+    } catch (err) {
+      console.error('Error al reemplazar la imagen:', err);
+      throw new Error('Error al reemplazar la imagen');
+    }
+  },
 };
 
 export default movimientosService;
-

@@ -71,6 +71,7 @@ export const addProyectoToEmpresa = async (empresaId, proyectoId) => {
  */
 export const updateEmpresaDetails = async (empresaId, newDetails) => {
   try {
+    console.log(newDetails)
     const empresaDocRef = doc(db, 'empresas', empresaId);
     await updateDoc(empresaDocRef, newDetails);
     console.log('Detalles de la empresa actualizados con éxito');

@@ -1,4 +1,3 @@
-// pages/movement-data-entry.js
 import Head from 'next/head';
 import { Box, Container, TextField, Typography, Button, CircularProgress, Tab, Tabs, FormControl, InputLabel, Select, MenuItem } from '@mui/material';
 import { useRouter } from 'next/router';
@@ -14,13 +13,11 @@ import Snackbar from '@mui/material/Snackbar';
 import Alert from '@mui/material/Alert';
 import { margin } from '@mui/system';
 
-
 const formatTimestamp = (timestamp) => {
   if (!timestamp) {
     return '';
   }
 
-  // Suponiendo que timestamp es un objeto con 'seconds' y 'nanoseconds'
   const date = new Date(timestamp.seconds * 1000);
   const year = date.getFullYear();
   const month = `0${date.getMonth() + 1}`.slice(-2);
@@ -36,11 +33,11 @@ const dateToTimestamp = (dateString) => {
 
   const dateParts = dateString.split('-');
   const year = Number(dateParts[0]);
-  const month = Number(dateParts[1]) - 1; // Los meses en JavaScript van de 0 a 11
+  const month = Number(dateParts[1]) - 1;
   const day = Number(dateParts[2]);
 
   const date = new Date(year, month, day);
-  const timestamp = Timestamp.fromDate(date); // Convierte la fecha en un Timestamp de Firebase
+  const timestamp = Timestamp.fromDate(date);
   
   return timestamp;
 };
@@ -53,7 +50,9 @@ const MovementDataEntryPage = () => {
   const [categorias, setCategorias] = useState([]);
   const [proveedores, setProveedores] = useState([]);
   const [categoriaSeleccionada, setCategoriaSeleccionada] = useState(null);
-  
+  const [nuevoArchivo, setNuevoArchivo] = useState(null);
+  const [isReemplazandoImagen, setIsReemplazandoImagen] = useState(false);
+
   const [alert, setAlert] = useState({
     open: false,
     message: '',
@@ -84,7 +83,6 @@ const MovementDataEntryPage = () => {
     setAlert({ ...alert, open: false });
   };
 
-
   const formik = useFormik({
     initialValues: {
       categoria: '',
@@ -105,9 +103,9 @@ const MovementDataEntryPage = () => {
       try {
         setIsLoading(true);
         const originalValues = {...values};
-        values.fecha_factura = dateToTimestamp(values.fecha_factura)
-        const success = await movimientosService.updateMovimiento(movimientoId, { ...movimiento , ...values});
-        values.fecha_factura = formatTimestamp(values.fecha_factura)
+        values.fecha_factura = dateToTimestamp(values.fecha_factura);
+        const success = await movimientosService.updateMovimiento(movimientoId, { ...movimiento , ...values });
+        values.fecha_factura = formatTimestamp(values.fecha_factura);
         setIsLoading(false);
     
         if (success) {
@@ -122,40 +120,77 @@ const MovementDataEntryPage = () => {
             message: 'Error al actualizar el movimiento.',
             severity: 'error',
           });
-          values = {...originalValues}
-      }} catch (error) {
+          values = {...originalValues};
+        }
+      } catch (error) {
         setAlert({
           open: true,
           message: 'Error inesperado al actualizar.',
           severity: 'error',
         });
-        values = {...originalValues}
+        values = {...originalValues};
         setIsLoading(false);
       }
-    
-  },
+    },
   });
   
   const handleTabsChange = (event, value) => {
     setCurrentTab(value);
   };
 
+  const handleReemplazarImagen = async () => {
+    if (!nuevoArchivo) {
+      setAlert({
+        open: true,
+        message: 'Por favor selecciona un archivo para reemplazar la imagen.',
+        severity: 'warning',
+      });
+      return;
+    }
+  
+    try {
+      setIsReemplazandoImagen(true);
+      const result = await movimientosService.reemplazarImagen(movimientoId, nuevoArchivo);
+  
+      setAlert({
+        open: true,
+        message: 'Imagen reemplazada con éxito!',
+        severity: 'success',
+      });
+      
+      setMovimiento((prevMovimiento) => ({
+        ...prevMovimiento,
+        url_imagen: `${prevMovimiento.url_imagen}&t=${new Date().getTime()}`,
+      }));
+  
+      setNuevoArchivo(null);
+    } catch (error) {
+      setAlert({
+        open: true,
+        message: 'Error al reemplazar la imagen.',
+        severity: 'error',
+      });
+    } finally {
+      setIsReemplazandoImagen(false);
+    }
+  };
+  
 
   useEffect(() => {
     if (movimientoId) {
       setIsLoading(true);
 
       async function fetchMovimientoData() {
-        const empresa = await getEmpresaDetailsFromUser(user)
-        setEmpresa(empresa)
-        const cates = empresa.categorias
-        const proveedores = empresa.proveedores
-        cates.push({name: "Ingreso dinero", subcategorias: []})
-        setCategorias(cates)
-        setProveedores(proveedores)
+        const empresa = await getEmpresaDetailsFromUser(user);
+        setEmpresa(empresa);
+        const cates = empresa.categorias;
+        const proveedores = empresa.proveedores;
+        cates.push({ name: "Ingreso dinero", subcategorias: [] });
+        setCategorias(cates);
+        setProveedores(proveedores);
 
         const data = await movimientosService.getMovimientoById(movimientoId);
-        data.fecha_factura = formatTimestamp(data.fecha_factura)
+        data.fecha_factura = formatTimestamp(data.fecha_factura);
         setMovimiento(data);
 
         if (data.categoria) {
@@ -168,7 +203,6 @@ const MovementDataEntryPage = () => {
           categoria: data.categoria || '',
         });
         setCurrentTab('datos');
-        
       }
       
       fetchMovimientoData();
@@ -190,183 +224,212 @@ const MovementDataEntryPage = () => {
           component="main"
           sx={{
             flexGrow: 1,
-            py: 8
+            py: 8,
           }}
         >
           <Typography variant="h4" sx={{ mb: 3 }}>
             Detalle del Movimiento - Caja {movimiento.proyecto}
           </Typography>
           <Tabs
-                value={currentTab}
-                onChange={handleTabsChange}
-                textColor="primary"
-                indicatorColor="primary"
-            >
-                {tabs.map((tab) => (
-                <Tab key={tab.value} label={tab.label} value={tab.value} />
-                ))}
-            </Tabs>
+            value={currentTab}
+            onChange={handleTabsChange}
+            textColor="primary"
+            indicatorColor="primary"
+          >
+            {tabs.map((tab) => (
+              <Tab key={tab.value} label={tab.label} value={tab.value} />
+            ))}
+          </Tabs>
 
           <form onSubmit={formik.handleSubmit}>
-          {currentTab === 'comprobante' && 
-          <>
-          <input
-              accept="image/*"
-              type="file"
-              onChange={(event) => {
-                formik.setFieldValue("url_imagen", event.currentTarget.files[0]);
-              }}/>
-              {!formik.values.url_imagen && 
-               <Typography variant="p" sx={{ mb: 3 }}>
-               Movimiento sin comprobante asociado
-             </Typography>
-             }
-            <Button color="primary" variant="text">
-              </Button> 
-              {formik.values.url_imagen && <img src={formik.values.url_imagen} alt="Imagen del movimiento" />}
-            </>
-              } 
-             {currentTab === 'datos' && 
-             <>
-            <Typography variant="p" sx={{ mb: 3 }}>
-            Whatsapp: {movimiento.user_phone}
-          </Typography>
-             <TextField
-                fullWidth
-                label="Fecha de la Factura"
-                name="fecha_factura"
-                type="date"
-                value={formik.values.fecha_factura}
-                onChange={formik.handleChange}
-                error={formik.touched.fecha_factura && Boolean(formik.errors.fecha_factura)}
-                helperText={formik.touched.fecha_factura && formik.errors.fecha_factura}
-                margin="normal"
-              />
-              <FormControl fullWidth margin="normal">
-                <InputLabel id={`label-categorias`}>Tipo</InputLabel>
-                <Select
-                  labelId={`label-type`}
-                  id="type"
-                  name="type"
-                  label="Tipo"
-                  value={formik.values.type}
-                  onChange={formik.handleChange}
-                >
-                  {tipos.map((element, index) => (
-                    <MenuItem key={index} value={element.value}>
-                      {element.name}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-              <TextField
-                fullWidth
-                label="Total"
-                name="total"
-                type="number"
-                value={formik.values.total}
-                onChange={formik.handleChange}
-                error={formik.touched.total && Boolean(formik.errors.total)}
-                helperText={formik.touched.total && formik.errors.total}
-                margin="normal"
-              />
-              <FormControl fullWidth margin="normal">
-                <InputLabel id={`label-monedas`}>Moneda</InputLabel>
-                <Select
-                  labelId={`label-moneda`}
-                  id="moneda"
-                  name="moneda"
-                  label="Moneda"
-                  value={formik.values.moneda}
-                  onChange={formik.handleChange}
-                >
-                  {monedas.map((element, index) => (
-                    <MenuItem key={index} value={element.value}>
-                      {element.name}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-              
-              <FormControl fullWidth margin="normal">
-                <InputLabel id={`label-proveedor`}>Proveedor</InputLabel>
-                <Select
-                  labelId={`label-proveedor`}
-                  id="nombre_proveedor"
-                  name="nombre_proveedor"
-                  label="Proveedor"
-                  value={formik.values.nombre_proveedor}
-                  onChange={formik.handleChange}
-                >
-                  {proveedores.map((element, index) => (
-                    <MenuItem key={index} value={element}>
-                      {element}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-      <FormControl fullWidth margin="normal">
-            <InputLabel id={`label-categorias`}>Categorías</InputLabel>
-            <Select
-              labelId={`label-categorias`}
-              id="categoria"
-              name="categoria"
-              label="Categoría"
-              value={formik.values.categoria}
-              onChange={formik.handleChange}
-            >
-              {categorias.map((element, index) => (
-                <MenuItem key={index} value={element.name}>
-                  {element.name}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-        {(categoriaSeleccionada && categoriaSeleccionada.subcategorias?.length != 0) && 
-          <FormControl fullWidth margin="normal">
-            <InputLabel id={`label-subcategoria`}>Subcategoría</InputLabel>
-            <Select
-              labelId={`label-subcategorias`}
-              id="subcategoria"
-              name="subcategoria"
-              label="Subcategoría"
-              value={formik.values.subcategoria}
-              onChange={formik.handleChange}
-            >
-              {categoriaSeleccionada.subcategorias.map((element, index) => (
-                <MenuItem key={index} value={element}>
-                  {element}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>}
+            {currentTab === 'comprobante' && (
+              <>
+                {/* Botón para reemplazar la imagen */}
+                <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+                  <Button
+                    color="primary"
+                    variant="contained"
+                    onClick={handleReemplazarImagen}
+                    disabled={isReemplazandoImagen || !nuevoArchivo}
+                  >
+                    {isReemplazandoImagen ? <CircularProgress size={24} /> : 'Reemplazar Imagen'}
+                  </Button>
 
-          <TextField
-            fullWidth
-            label="Observación"
-            name="observacion"
-            multiline
-            rows={4}
-            value={formik.values.observacion}
-            onChange={formik.handleChange}
-            error={formik.touched.observacion && Boolean(formik.errors.observacion)}
-            helperText={formik.touched.observacion && formik.errors.observacion}
-            margin="normal"
-          />
-          </>
-            }
+                  <input
+                    accept="image/*"
+                    type="file"
+                    onChange={(event) => setNuevoArchivo(event.currentTarget.files[0])}
+                    style={{ marginTop: '10px' }}
+                  />
+
+                  {!formik.values.url_imagen && (
+                    <Typography variant="p" sx={{ mb: 3 }}>
+                      Movimiento sin comprobante asociado
+                    </Typography>
+                  )}
+
+                  {formik.values.url_imagen && (
+                    <Box sx={{ mt: 2 }}>
+                      <img
+                        src={movimiento.url_imagen}  // La nueva imagen con el timestamp
+                        alt="Imagen del movimiento"
+                        style={{ maxWidth: '100%', maxHeight: '500px', marginTop: '10px' }}
+                      />
+                    </Box>
+                  )}
+                </Box>
+              </>
+            )}
+
+            {currentTab === 'datos' && (
+              <>
+                <Typography variant="p" sx={{ mb: 3 }}>
+                  Whatsapp: {movimiento.user_phone}
+                </Typography>
+                <TextField
+                  fullWidth
+                  label="Fecha de la Factura"
+                  name="fecha_factura"
+                  type="date"
+                  value={formik.values.fecha_factura}
+                  onChange={formik.handleChange}
+                  error={formik.touched.fecha_factura && Boolean(formik.errors.fecha_factura)}
+                  helperText={formik.touched.fecha_factura && formik.errors.fecha_factura}
+                  margin="normal"
+                />
+                <FormControl fullWidth margin="normal">
+                  <InputLabel id={`label-categorias`}>Tipo</InputLabel>
+                  <Select
+                    labelId={`label-type`}
+                    id="type"
+                    name="type"
+                    label="Tipo"
+                    value={formik.values.type}
+                    onChange={formik.handleChange}
+                  >
+                    {tipos.map((element, index) => (
+                      <MenuItem key={index} value={element.value}>
+                        {element.name}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                <TextField
+                  fullWidth
+                  label="Total"
+                  name="total"
+                  type="number"
+                  value={formik.values.total}
+                  onChange={formik.handleChange}
+                  error={formik.touched.total && Boolean(formik.errors.total)}
+                  helperText={formik.touched.total && formik.errors.total}
+                  margin="normal"
+                />
+                <FormControl fullWidth margin="normal">
+                  <InputLabel id={`label-monedas`}>Moneda</InputLabel>
+                  <Select
+                    labelId={`label-moneda`}
+                    id="moneda"
+                    name="moneda"
+                    label="Moneda"
+                    value={formik.values.moneda}
+                    onChange={formik.handleChange}
+                  >
+                    {monedas.map((element, index) => (
+                      <MenuItem key={index} value={element.value}>
+                        {element.name}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+
+                <FormControl fullWidth margin="normal">
+                  <InputLabel id={`label-proveedor`}>Proveedor</InputLabel>
+                  <Select
+                    labelId={`label-proveedor`}
+                    id="nombre_proveedor"
+                    name="nombre_proveedor"
+                    label="Proveedor"
+                    value={formik.values.nombre_proveedor}
+                    onChange={formik.handleChange}
+                  >
+                    {proveedores.map((element, index) => (
+                      <MenuItem key={index} value={element}>
+                        {element}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+
+                <FormControl fullWidth margin="normal">
+                  <InputLabel id={`label-categorias`}>Categorías</InputLabel>
+                  <Select
+                    labelId={`label-categorias`}
+                    id="categoria"
+                    name="categoria"
+                    label="Categoría"
+                    value={formik.values.categoria}
+                    onChange={formik.handleChange}
+                  >
+                    {categorias.map((element, index) => (
+                      <MenuItem key={index} value={element.name}>
+                        {element.name}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+
+                {(categoriaSeleccionada && categoriaSeleccionada.subcategorias?.length !== 0) && (
+                  <FormControl fullWidth margin="normal">
+                    <InputLabel id={`label-subcategoria`}>Subcategoría</InputLabel>
+                    <Select
+                      labelId={`label-subcategorias`}
+                      id="subcategoria"
+                      name="subcategoria"
+                      label="Subcategoría"
+                      value={formik.values.subcategoria}
+                      onChange={formik.handleChange}
+                    >
+                      {categoriaSeleccionada.subcategorias.map((element, index) => (
+                        <MenuItem key={index} value={element}>
+                          {element}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                )}
+
+                <TextField
+                  fullWidth
+                  label="Observación"
+                  name="observacion"
+                  multiline
+                  rows={4}
+                  value={formik.values.observacion}
+                  onChange={formik.handleChange}
+                  error={formik.touched.observacion && Boolean(formik.errors.observacion)}
+                  helperText={formik.touched.observacion && formik.errors.observacion}
+                  margin="normal"
+                />
+              </>
+            )}
 
             <Box sx={{ py: 2 }}>
+             { currentTab === 'datos' &&
               <Button color="primary" variant="contained" type="submit">
-                {!isLoading && "Guardar cambios"}
-                {isLoading && "Guardando cambios"}
+                {!isLoading && 'Guardar cambios'}
+                {isLoading && 'Guardando cambios'}
                 {isLoading && <CircularProgress />}
-              </Button>
-              <Button color="primary" variant="text" type="submit" onClick={() => router.push('/cajaProyecto?proyectoId='+movimiento.proyecto_id)}>
+              </Button> }
+              <Button
+                color="primary"
+                variant="text"
+                type="submit"
+                onClick={() => router.push('/cajaProyecto?proyectoId=' + movimiento.proyecto_id)}
+              >
                 Volver a caja {movimiento.proyecto}
               </Button>
             </Box>
-            
           </form>
           <Snackbar open={alert.open} autoHideDuration={6000} onClose={handleCloseAlert}>
             <Alert onClose={handleCloseAlert} severity={alert.severity} sx={{ width: '100%' }}>

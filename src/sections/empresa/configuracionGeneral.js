@@ -12,6 +12,7 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarInfo, setSnackbarInfo] = useState({ message: '', severity: 'success' });
   const [hasPermissionError, setHasPermissionError] = useState(false);
+  const [dolarDeAjuste, setDolarDeAjuste] = useState(empresa.dolarDeAjuste || "MANUAL");
   const { user } = useAuthContext();
 
   const opcionesAcciones = [
@@ -19,8 +20,23 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
     "AJUSTAR_CAJAS", "TRANSFERIR_ENTRE_CAJAS", "CREAR_NUEVO_PROYECTO", 
     "COMPRAR_MONEDA", "VENDER_MONEDA", "COMPLETAR_OPERACION", "VALIDAR_CODIGO"
   ];
+
+  const dolarAjuste = [
+    "MANUAL",
+    "OFICIAL_COMPRA",
+    "OFICIAL_VENTA",
+    "OFICIAL_MEDIO",
+    "BLUE_COMPRA",
+    "BLUE_VENTA",
+    "BLUE_MEDIO",
+  ]
   
   const opcionesCampos = ["proyecto", "categoria", "total", "observacion", "nombre_proveedor", "fecha_factura"]; 
+
+  const handleDolarAjusteChange = (event) => {
+    setDolarDeAjuste(event.target.value);
+  };
+  
 
   const handleCampoChange = (event) => {
     setCamposObligatorios(event.target.value);
@@ -57,7 +73,8 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
       conf_fecha: confFecha,
       tipo: tipo,
       sheetCentral: sheetCentral,
-      acciones: acciones 
+      acciones: acciones,
+      dolarDeAjuste: dolarDeAjuste
     };
     try {
       await updateEmpresaData(empresa.id, updatedData);
@@ -140,6 +157,19 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
         <MenuItem value="Logistica">Logística</MenuItem>
         <MenuItem value="Rinde gastos">Rinde Gastos</MenuItem>
       </TextField>
+      <TextField
+      select
+      label="Dólar de Ajuste"
+      value={dolarDeAjuste}
+      onChange={handleDolarAjusteChange}
+      fullWidth
+    >
+      {dolarAjuste.map((tipoDolar) => (
+        <MenuItem key={tipoDolar} value={tipoDolar}>
+          {tipoDolar.replace('_', ' ')}
+        </MenuItem>
+      ))}
+    </TextField>
       <TextField
           label="ID de Google Sheet Central"
           value={sheetCentral}
