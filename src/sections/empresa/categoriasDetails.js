@@ -60,9 +60,15 @@ export const CategoriasDetails = ({ empresa }) => {
       setIsLoading(true);
       try {
         if (editingCategoria) {
-          const newCategories = categorias.map((cat) =>
+          let newCategories = categorias.map((cat) =>
             cat.id === editingCategoria.id ? { ...cat, name: values.name } : cat
           );
+          if (values.subcategoria) {
+            newCategories = newCategories.map((cat) =>
+            cat.id === editingCategoria.id ? { ...cat, subcategorias: [...cat.subcategorias, values.subcategoria] } : cat
+          );
+          }
+
           setCategorias(newCategories);
           setEditingCategoria(null);
           setSnackbarMessage('Categoría actualizada con éxito');
@@ -243,12 +249,15 @@ export const CategoriasDetails = ({ empresa }) => {
                 label="Añadir Subcategoría"
                 value={formik.values.subcategoria}
                 onChange={formik.handleChange}
-                onKeyPress={event => {
-                  if (event.key === 'Enter') {
-                    event.preventDefault();
-                    agregarSubcategoria(editingCategoria.id, formik.values.subcategoria);
-                  }
-                }}
+                // onKeyPress={event => {
+                //   console.log("paso")
+                //   // if (event.key === 'Enter') {
+                //     console.log("paso1")
+                //     event.preventDefault();
+                //     console.log("paso2")
+                //     agregarSubcategoria(editingCategoria.id, formik.values.subcategoria);
+                //   // }
+                // }}
                 style={{ marginTop: '1rem' }}
               />
             )}

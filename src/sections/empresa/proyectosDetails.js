@@ -118,7 +118,7 @@ export const ProyectosDetails = ({ empresa }) => {
           await updateProyecto(editingProyecto.id, proyectoData);
           setSnackbarMessage('Proyecto actualizado con éxito');
         } else {
-          await crearProyecto(proyectoData);
+          await crearProyecto(proyectoData, empresa.id);
           setSnackbarMessage('Proyecto creado con éxito');
         }
         setSnackbarSeverity('success');
@@ -188,7 +188,11 @@ export const ProyectosDetails = ({ empresa }) => {
             {proyectos.map((proyecto) => (
               <ListItem key={proyecto.id} divider>
                 <ListItemText
-                  primary={proyecto.nombre}
+                  primary={
+                    <a href={`/cajaProyecto/?proyectoId=${proyecto.id}`} target="_blank" rel="noopener noreferrer">
+                      {proyecto.nombre}
+                    </a>
+                  }
                   secondary={
                     <>
                       <Typography variant="body2">Carpeta: {proyecto.carpetaRef}</Typography>
