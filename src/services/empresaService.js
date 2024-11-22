@@ -1,5 +1,78 @@
-import { doc, updateDoc, getDoc, addDoc, collection } from 'firebase/firestore';
+import { doc, updateDoc, getDoc, addDoc, collection, getDocs, deleteDoc } from 'firebase/firestore';
 import { db } from 'src/config/firebase';
+import profileService from 'src/services/profileService';
+import { deleteCajaById, deleteProyectoById, getCajasByEmpresaId, getProyectoById } from 'src/services/proyectosService';
+import TicketService from './ticketService';
+
+
+/**
+ * Obtiene información detallada de perfiles, proyectos y movimientos antes de eliminar la empresa.
+ * @param {string} empresaId - El ID de la empresa a eliminar.
+ * @returns {Promise<object>} - Retorna un objeto con la información de perfiles, proyectos y movimientos.
+ */
+export const getInfoToDeleteEmpresa = async (empresaId) => {
+  try {
+    const profiles = await profileService.getProfileByEmpresa(empresaId);
+    const empresaDocRef = doc(db, 'empresas', empresaId);
+    const empresaDoc = await getDoc(empresaDocRef);
+
+    if (!empresaDoc.exists()) {
+      console.error('No se encontró la empresa');
+      return null;
+    }
+
+    const { proyectosIds, nombre, tipo } = empresaDoc.data();
+    if (tipo == "Constructora") {
+      const proyectos = await Promise.all(
+        proyectosIds.map(async (proyectoId) => {
+          const proyecto = await getProyectoById(proyectoId);
+          const movimientosARS = await TicketService.getMovimientosForProyecto(proyectoId, 'ARS');
+          const movimientosUSD = await TicketService.getMovimientosForProyecto(proyectoId, 'USD');
+          const todosMovimientos = [...movimientosARS, ...movimientosUSD];
+  
+          // Ordena los movimientos por fecha descendente y obtiene el último movimiento
+          const ultimoMovimiento = todosMovimientos.sort((a, b) => b.fecha_factura.seconds - a.fecha_factura.seconds)[0];
+          const fechaUltimoMovimiento = ultimoMovimiento ? new Date(ultimoMovimiento.fecha_factura.seconds * 1000) : null;
+  
+          return {
+            ...proyecto,
+            movimientosCount: todosMovimientos.length,
+            fechaUltimoMovimiento, // Añade la fecha del último movimiento
+          };
+        })
+      );
+  
+      return {
+        nombre,
+        tipo,
+        profiles: profiles.map((profile) => ({
+          email: profile.email,
+          phone: profile.phone,
+        })),
+        proyectos: proyectos.map((proyecto) => ({
+          nombre: proyecto.nombre,
+          movimientosCount: proyecto.movimientosCount,
+          fechaUltimoMovimiento: proyecto.fechaUltimoMovimiento
+            ? proyecto.fechaUltimoMovimiento.toLocaleDateString()
+            : 'No hay movimientos',
+        })),
+      };
+    } else {
+      return {
+        nombre,
+        tipo,
+        profiles: profiles.map((profile) => ({
+          email: profile.email,
+          phone: profile.phone,
+        })),
+      };
+    }
+    
+  } catch (err) {
+    console.error('Error al obtener información para borrar la empresa:', err);
+    return null;
+  }
+};
 
 
 /**
@@ -140,5 +213,69 @@ export const getEmpresaById = async (empresaId) => {
   } catch (err) {
     console.error('Error al obtener los detalles de la empresa:', err);
     return null;
+  }
+};
+
+
+/**
+ * Obtiene todas las empresas en la base de datos.
+ * @returns {Promise<Array<object>>} - Retorna un array con los detalles de cada empresa o un array vacío si falla.
+ */
+export const getAllEmpresas = async () => {
+  try {
+    const empresasCollectionRef = collection(db, 'empresas');
+    const empresasSnapshot = await getDocs(empresasCollectionRef);
+
+    const empresas = empresasSnapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
+
+    console.log('Empresas obtenidas con éxito');
+    return empresas;
+  } catch (err) {
+    console.error('Error al obtener las empresas:', err);
+    return [];
+  }
+};
+
+
+/**
+ * Elimina una empresa de la base de datos, junto con sus perfiles y proyectos asociados.
+ * @param {string} empresaId - El ID de la empresa a eliminar.
+ * @returns {Promise<void>}
+ */
+export const deleteEmpresa = async (empresaId) => {
+  try {
+    // Eliminar perfiles asociados a la empresa
+    const profiles = await profileService.getProfileByEmpresa(empresaId);
+    
+    for (const profile of profiles) {
+      await profileService.deleteProfile(profile.id);
+    }
+
+    // Obtener y eliminar proyectos asociados a la empresa
+    const empresaDocRef = doc(db, 'empresas', empresaId);
+    const empresaDoc = await getDoc(empresaDocRef);
+    if (empresaDoc.exists()) {
+      const empresa = empresaDoc.data();
+      if (empresa.tipo == "Constructora") {
+        for (const proyectoId of empresa.proyectosIds) {
+          await deleteProyectoById(proyectoId);
+        }
+      }
+      else {
+        const cajas = await getCajasByEmpresaId(empresa.id)
+        for (const cajaId of cajas) {
+          await deleteCajaById(cajaId.id);
+        }
+      }
+    }
+
+    // // Finalmente, eliminar la empresa
+    await deleteDoc(empresaDocRef);
+    console.log('Empresa, perfiles y proyectos eliminados con éxito');
+  } catch (err) {
+    console.error('Error al eliminar la empresa y sus dependencias:', err);
   }
 };

@@ -345,6 +345,7 @@ const ProyectoMovimientosPage = () => {
                         <TableCell>Total</TableCell>
                         <TableCell>Observación</TableCell>
                         <TableCell>Tipo de cambio</TableCell>
+                        <TableCell>Estado</TableCell>
                         <TableCell>Acciones</TableCell>
                       </TableRow>
                     </TableHead>
@@ -361,6 +362,7 @@ const ProyectoMovimientosPage = () => {
                           <TableCell>{formatCurrency(mov.total)}</TableCell>
                           <TableCell>{mov.observacion}</TableCell>
                           <TableCell>{mov.tc ? `$ ${mov.tc}` : "-"}</TableCell>
+                          <TableCell>{mov.estado ? mov.estado : ""}</TableCell>
                           <TableCell>
                             <Button
                               color="primary"

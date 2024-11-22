@@ -94,6 +94,7 @@ const MovementDataEntryPage = () => {
       subcategoria: '',
       total: '',
       type: '',
+      estado: 'Pendiente',
       url_imagen: null,
     },
     validationSchema: Yup.object({
@@ -101,8 +102,10 @@ const MovementDataEntryPage = () => {
     }),
     onSubmit: async (values) => {
       try {
+        console.log("Values",values)
         setIsLoading(true);
         const originalValues = {...values};
+        console.log("originalValues",originalValues)
         values.fecha_factura = dateToTimestamp(values.fecha_factura);
         const success = await movimientosService.updateMovimiento(movimientoId, { ...movimiento , ...values });
         values.fecha_factura = formatTimestamp(values.fecha_factura);
@@ -398,6 +401,22 @@ const MovementDataEntryPage = () => {
                     </Select>
                   </FormControl>
                 )}
+                <FormControl fullWidth margin="normal">
+                  <InputLabel id="label-estado">Estado</InputLabel>
+                  <Select
+                    labelId="label-estado"
+                    id="estado"
+                    name="estado"
+                    label="Estado"
+                    value={formik.values.estado || ''}
+                    onChange={formik.handleChange}
+                  >
+                    <MenuItem value="">Ninguno</MenuItem>
+                    <MenuItem value="Pendiente">Pendiente</MenuItem>
+                    <MenuItem value="Pagado">Pagado</MenuItem>
+                  </Select>
+                </FormControl>
+
 
                 <TextField
                   fullWidth

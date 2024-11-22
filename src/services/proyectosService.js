@@ -1,7 +1,9 @@
-import { doc, getDoc, updateDoc, addDoc, collection } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, addDoc, collection, deleteDoc, query, getDocs, where } from 'firebase/firestore';
 import { db } from 'src/config/firebase';
 import api from './axiosConfig';
 import  { addProyectoToEmpresa } from 'src/services/empresaService';
+import movimientosService from 'src/services/movimientosService';
+
 /**
  * Obtiene los proyectos de un empresa a partir de las referencias almacenadas en el atributo proyectos.
  * @param {object} empresa - El objeto empresa que contiene las referencias de los proyectos.
@@ -158,10 +160,13 @@ export const hasPermission = async (fileId) => {
  */
 export const crearProyecto = async (proyecto, empresaId) => {
   try {
-    // Crear el nuevo proyecto en Firestore
+    // Crear referencia a la empresa
+    const empresaRef = doc(db, 'empresas', empresaId);
+
+    // Crear el nuevo proyecto en Firestore, incluyendo la referencia a la empresa
     const proyectoDocRef = await addDoc(collection(db, 'proyectos'), {
       ...proyecto,
-      empresaId
+      empresa: empresaRef, // Guardamos la referencia a la empresa en lugar de empresaId
     });
 
     // Obtener los datos del nuevo proyecto
@@ -182,5 +187,88 @@ export const crearProyecto = async (proyecto, empresaId) => {
   } catch (err) {
     console.error('Error al crear el proyecto:', err);
     return null;
+  }
+};
+
+/**
+ * Elimina un proyecto y todos sus movimientos asociados.
+ * @param {string} proyectoId - El ID del proyecto a eliminar.
+ * @returns {Promise<boolean>} - Retorna true si la eliminación fue exitosa, false si falló.
+ */
+export const deleteProyectoById = async (proyectoId) => {
+  try {
+    // Obtén todos los movimientos asociados al proyecto
+    const movimientosQuery = query(
+      collection(db, 'movimientos'),
+      where('proyecto_id', '==', proyectoId)
+    );
+    const movimientosSnapshot = await getDocs(movimientosQuery);
+
+    // Elimina cada movimiento asociado al proyecto
+    const deleteMovementsPromises = movimientosSnapshot.docs.map((movimientoDoc) =>
+      movimientosService.deleteMovimientoById(movimientoDoc.id)
+    );
+    await Promise.all(deleteMovementsPromises);
+
+    // Elimina el proyecto una vez que todos los movimientos se han eliminado
+    const proyectoDocRef = doc(db, 'proyectos', proyectoId);
+    await deleteDoc(proyectoDocRef);
+
+    console.log('Proyecto y movimientos eliminados con éxito');
+    return true;
+  } catch (err) {
+    console.error('Error al eliminar el proyecto y sus movimientos:', err);
+    return false;
+  }
+};
+
+export const deleteCajaById = async (cajaId) => {
+  try {
+    // Obtén todos los movimientos asociados al proyecto
+    const movimientosQuery = query(
+      collection(db, 'movimientos'),
+      where('caja_id', '==', cajaId)
+    );
+    const movimientosSnapshot = await getDocs(movimientosQuery);
+
+    // Elimina cada movimiento asociado al proyecto
+    const deleteMovementsPromises = movimientosSnapshot.docs.map((movimientoDoc) =>
+      movimientosService.deleteMovimientoById(movimientoDoc.id)
+    );
+    await Promise.all(deleteMovementsPromises);
+
+    // Elimina el proyecto una vez que todos los movimientos se han eliminado
+    const cajaDocRef = doc(db, 'cajas', cajaId);
+    await deleteDoc(cajaDocRef);
+
+    console.log('Caja y movimientos eliminados con éxito');
+    return true;
+  } catch (err) {
+    console.error('Error al eliminar el caja y sus movimientos:', err);
+    return false;
+  }
+};
+
+/**
+ * Obtiene todas las cajas de una empresa filtradas por empresa_id.
+ * @param {string} empresaId - El ID de la empresa para filtrar las cajas.
+ * @returns {Promise<Array<object>>} - Retorna un array de cajas que pertenecen a la empresa especificada.
+ */
+export const getCajasByEmpresaId = async (empresaId) => {
+  try {
+    const cajasCollection = collection(db, 'cajas');
+    const cajasQuery = query(cajasCollection, where('empresa_id', '==', empresaId));
+    const querySnapshot = await getDocs(cajasQuery);
+
+    const cajas = querySnapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
+
+    console.log('Cajas obtenidas con éxito:', cajas);
+    return cajas;
+  } catch (err) {
+    console.error('Error al obtener las cajas:', err);
+    return [];
   }
 };

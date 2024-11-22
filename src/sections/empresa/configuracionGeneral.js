@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuthContext } from 'src/contexts/auth-context';
-import { Button, Checkbox, CircularProgress, FormControl, InputLabel, ListItemText, MenuItem, Select, TextField, Snackbar, Alert } from '@mui/material';
+import { Button, Checkbox, CircularProgress, FormControl, InputLabel, ListItemText, MenuItem, Select, TextField, Snackbar, Alert, Typography, Grid } from '@mui/material';
 
 export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission }) => {
   const [camposObligatorios, setCamposObligatorios] = useState(empresa.camposObligatorios || []);
@@ -13,12 +13,31 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
   const [snackbarInfo, setSnackbarInfo] = useState({ message: '', severity: 'success' });
   const [hasPermissionError, setHasPermissionError] = useState(false);
   const [dolarDeAjuste, setDolarDeAjuste] = useState(empresa.dolarDeAjuste || "MANUAL");
-  const { user } = useAuthContext();
+  const [comprobanteInfo, setComprobanteInfo] = useState(empresa.comprobante_info || {
+    categoria: true,
+    observacion: true,
+    proveedor: true,
+    proyecto: true,
+    subcategoria: false,
+    total_original: false
+  });
+  const [conEstados, setConEstados] = useState(empresa.con_estados || false);
+const [soloDolar, setSoloDolar] = useState(empresa.solo_dolar || false);
 
+
+  const handleComprobanteInfoChange = (field) => (event) => {
+    setComprobanteInfo((prevState) => ({
+      ...prevState,
+      [field]: event.target.checked,
+    }));
+  };
+  
+  const { user } = useAuthContext();
+  
   const opcionesAcciones = [
     "CREAR_EGRESO", "CREAR_INGRESO", "VER_CAJAS", 
     "AJUSTAR_CAJAS", "TRANSFERIR_ENTRE_CAJAS", "CREAR_NUEVO_PROYECTO", 
-    "COMPRAR_MONEDA", "VENDER_MONEDA", "COMPLETAR_OPERACION", "VALIDAR_CODIGO"
+    "COMPRAR_MONEDA", "VENDER_MONEDA", "COMPLETAR_OPERACION", "VALIDAR_CODIGO", "CONFIRMAR_PAGOS_PENDIENTES", "VER_DRIVE"
   ];
 
   const dolarAjuste = [
@@ -74,8 +93,12 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
       tipo: tipo,
       sheetCentral: sheetCentral,
       acciones: acciones,
-      dolarDeAjuste: dolarDeAjuste
+      dolarDeAjuste: dolarDeAjuste,
+      comprobante_info: comprobanteInfo,
+      con_estados: conEstados,
+      solo_dolar: soloDolar
     };
+    
     try {
       await updateEmpresaData(empresa.id, updatedData);
       setSnackbarInfo({ message: 'Configuración guardada con éxito.', severity: 'success' });
@@ -135,6 +158,22 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
           ))}
         </Select>
       </FormControl>
+
+      <Typography variant="h6" sx={{ mt: 4 }}>Configuración de campos que muestra de un movimiento de caja</Typography>
+        <Grid container spacing={2} sx={{ mt: 1 }}>
+          {Object.keys(comprobanteInfo).map((field) => (
+            <Grid item xs={6} md={4} key={field}>
+              <FormControl>
+                <Checkbox
+                  checked={comprobanteInfo[field]}
+                  onChange={handleComprobanteInfoChange(field)}
+                />
+                <ListItemText primary={field.charAt(0).toUpperCase() + field.slice(1)} />
+              </FormControl>
+            </Grid>
+          ))}
+        </Grid>
+
       <TextField
         select
         label="Configuración de Fecha"
@@ -170,6 +209,22 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
         </MenuItem>
       ))}
     </TextField>
+    <FormControl sx={{ mt: 2 }}>
+  <Checkbox
+    checked={conEstados}
+    onChange={(e) => setConEstados(e.target.checked)}
+  />
+  <ListItemText primary="Con Estados" />
+</FormControl>
+
+<FormControl sx={{ mt: 2 }}>
+  <Checkbox
+    checked={soloDolar}
+    onChange={(e) => setSoloDolar(e.target.checked)}
+  />
+  <ListItemText primary="Solo Dólar" />
+</FormControl>
+
       <TextField
           label="ID de Google Sheet Central"
           value={sheetCentral}

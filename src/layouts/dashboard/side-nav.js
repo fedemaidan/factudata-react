@@ -50,7 +50,31 @@ export const SideNav = (props) => {
   useEffect( () => {
     const fetchProyectosData = async () => {
       const empresa = await getEmpresaDetailsFromUser(user)
-      if (!empresa) {
+
+      if (user.email == "nico@mail.com") {
+          const productosElement = {
+            title: 'Productos',
+            path: '/productos',
+            icon: (
+              <SvgIcon fontSize="small">
+                <DashboardIcon />
+              </SvgIcon>
+            )
+          }
+
+          const ofertasElement = {
+            title: 'Ofertas',
+            path: '/ofertas',
+            icon: (
+              <SvgIcon fontSize="small">
+                <DashboardIcon />
+              </SvgIcon>
+            )
+          }
+
+          setItems([productosElement, ofertasElement])
+      }
+      else if (!empresa) {
         const onboardingPage = {
           title: 'Onboarding',
           path: '/onboarding',
@@ -97,7 +121,8 @@ export const SideNav = (props) => {
             </SvgIcon>
           )
         }
-        let newItems = [empresaElement, vistaGeneralElement, ...initialItems];
+
+        let newItems = [empresaElement, vistaGeneralElement,  ...initialItems];
         
         await proyectos.forEach( (proy ) => {
           console.log(proy.nombre)
@@ -114,7 +139,6 @@ export const SideNav = (props) => {
           )
         })
         
-        console.log(newItems)
         setItems(newItems)
       }
     };
