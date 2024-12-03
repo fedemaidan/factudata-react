@@ -3,6 +3,18 @@ import { useAuthContext } from 'src/contexts/auth-context';
 import { Button, Checkbox, CircularProgress, FormControl, InputLabel, ListItemText, MenuItem, Select, TextField, Snackbar, Alert, Typography, Grid } from '@mui/material';
 
 export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission }) => {
+  
+  const comprobante_info_default = {
+    categoria: true,
+    observacion: true,
+    proveedor: true,
+    proyecto: true,
+    subcategoria: false,
+    total_original: false,
+    medio_pago: false,
+    tipo_factura: false,
+  }
+
   const [camposObligatorios, setCamposObligatorios] = useState(empresa.camposObligatorios || []);
   const [confFecha, setConfFecha] = useState(empresa.conf_fecha || "REAL");
   const [tipo, setTipo] = useState(empresa.tipo || "Constructora");
@@ -13,18 +25,10 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
   const [snackbarInfo, setSnackbarInfo] = useState({ message: '', severity: 'success' });
   const [hasPermissionError, setHasPermissionError] = useState(false);
   const [dolarDeAjuste, setDolarDeAjuste] = useState(empresa.dolarDeAjuste || "MANUAL");
-  const [comprobanteInfo, setComprobanteInfo] = useState(empresa.comprobante_info || {
-    categoria: true,
-    observacion: true,
-    proveedor: true,
-    proyecto: true,
-    subcategoria: false,
-    total_original: false
-  });
+  const [comprobanteInfo, setComprobanteInfo] = useState({...comprobante_info_default, ...empresa.comprobante_info} || comprobante_info_default);
   const [conEstados, setConEstados] = useState(empresa.con_estados || false);
-const [soloDolar, setSoloDolar] = useState(empresa.solo_dolar || false);
-
-
+  const [soloDolar, setSoloDolar] = useState(empresa.solo_dolar || false);
+  
   const handleComprobanteInfoChange = (field) => (event) => {
     setComprobanteInfo((prevState) => ({
       ...prevState,

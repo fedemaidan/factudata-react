@@ -72,7 +72,17 @@ export const SideNav = (props) => {
             )
           }
 
-          setItems([productosElement, ofertasElement])
+          const principiosActivosElement = {
+            title: 'Principios Activos',
+            path: '/principiosActivos',
+            icon: (
+              <SvgIcon fontSize="small">
+                <DashboardIcon />
+              </SvgIcon>
+            )
+          }
+
+          setItems([productosElement, ofertasElement, principiosActivosElement])
       }
       else if (!empresa) {
         const onboardingPage = {

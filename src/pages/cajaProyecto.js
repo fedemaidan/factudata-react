@@ -426,6 +426,7 @@ const ProyectoMovimientosPage = () => {
                         <TableCell>Fecha</TableCell>
                         <TableCell>Tipo</TableCell>
                         <TableCell>Total</TableCell>
+                        <TableCell>Total Original</TableCell>
                         <TableCell>Observación</TableCell>
                         <TableCell>Tipo de cambio</TableCell>
                         <TableCell>Acciones</TableCell>
@@ -442,6 +443,7 @@ const ProyectoMovimientosPage = () => {
                             />
                           </TableCell>
                           <TableCell>{formatCurrency(mov.total)}</TableCell>
+                          <TableCell>{formatCurrency(mov.total_original)}</TableCell>
                           <TableCell>{mov.observacion}</TableCell>
                           <TableCell>{mov.tc ? `$ ${mov.tc}` : "-"}</TableCell>
                           <TableCell>

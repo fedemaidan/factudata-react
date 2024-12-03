@@ -93,6 +93,7 @@ const MovementDataEntryPage = () => {
       categoria: '',
       subcategoria: '',
       total: '',
+      total_original: '',
       type: '',
       estado: 'Pendiente',
       url_imagen: null,
@@ -326,6 +327,17 @@ const MovementDataEntryPage = () => {
                   onChange={formik.handleChange}
                   error={formik.touched.total && Boolean(formik.errors.total)}
                   helperText={formik.touched.total && formik.errors.total}
+                  margin="normal"
+                />
+                <TextField
+                  fullWidth
+                  label="Total Original"
+                  name="total_original"
+                  type="number"
+                  value={formik.values.total_original}
+                  onChange={formik.handleChange}
+                  error={formik.touched.total_original && Boolean(formik.errors.total_original)}
+                  helperText={formik.touched.total_original && formik.errors.total_original}
                   margin="normal"
                 />
                 <FormControl fullWidth margin="normal">

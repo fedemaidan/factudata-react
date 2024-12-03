@@ -14,6 +14,9 @@ const ProductosPage = () => {
   const { user } = useAuthContext();
   const [productos, setProductos] = useState([]);
   const [filteredProductos, setFilteredProductos] = useState([]);
+  const [filtroMarca, setFiltroMarca] = useState('');
+  const [filtroStock, setFiltroStock] = useState(false); 
+  const [filtroActive, setFiltroActive] = useState(false); 
   const [alert, setAlert] = useState({
     open: false,
     message: '',
@@ -75,13 +78,17 @@ const ProductosPage = () => {
   };
 
   const handleFiltroChange = () => {
-    const productosFiltrados = productos.filter((producto) => 
+    const productosFiltrados = productos.filter((producto) =>
       (filtroRegistro === '' || producto.registro.toLowerCase().includes(filtroRegistro.toLowerCase())) &&
-      (filtroActivo === '' || producto.activos.toLowerCase().includes(filtroActivo.toLowerCase()))
+      (filtroActivo === '' || producto.activos.toLowerCase().includes(filtroActivo.toLowerCase())) &&
+      (filtroMarca === '' || producto.marca.toLowerCase().includes(filtroMarca.toLowerCase())) &&
+      (!filtroStock || producto.stock > 0) &&
+      (!filtroActive || producto.activo == true)
     );
     setFilteredProductos(productosFiltrados);
     setPage(1); // Reiniciar a la primera página al aplicar filtros
   };
+  
   
 
   const handlePageChange = (event, value) => {
@@ -94,7 +101,7 @@ const ProductosPage = () => {
 
   useEffect(() => {
     handleFiltroChange();
-  }, [filtroRegistro, filtroActivo, productos]);
+  }, [filtroRegistro, filtroActivo, filtroMarca, filtroStock,filtroActive,  productos]);
 
   // Calcular los productos a mostrar en la página actual
   const productosPaginados = filteredProductos.slice((page - 1) * rowsPerPage, page * rowsPerPage);
@@ -116,11 +123,35 @@ const ProductosPage = () => {
                 onChange={(e) => setFiltroRegistro(e.target.value)}
               />
               <TextField
-                label="Filtro por Activo"
+                label="Filtro por Principio Activo"
                 variant="outlined"
                 value={filtroActivo}
                 onChange={(e) => setFiltroActivo(e.target.value)}
               />
+              <TextField
+                label="Filtro por Marca"
+                variant="outlined"
+                value={filtroMarca}
+                onChange={(e) => setFiltroMarca(e.target.value)}
+              />
+              <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                <input
+                  type="checkbox"
+                  checked={filtroStock}
+                  onChange={(e) => setFiltroStock(e.target.checked)}
+                  style={{ marginRight: '8px' }}
+                />
+                <Typography>Con Stock</Typography>
+              </Box>
+              <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                <input
+                  type="checkbox"
+                  checked={filtroActive}
+                  onChange={(e) => setFiltroActive(e.target.checked)}
+                  style={{ marginRight: '8px' }}
+                />
+                <Typography>Productos activos</Typography>
+              </Box>
               <Button variant="contained" onClick={fetchProductos} startIcon={<RefreshIcon />}>
                 Refrescar
               </Button>
@@ -135,12 +166,13 @@ const ProductosPage = () => {
                 <TableHead>
                   <TableRow>
                     <TableCell>Registro</TableCell>
-                    <TableCell>Especie</TableCell>
-                    <TableCell>Cultivar</TableCell>
                     <TableCell>Activos</TableCell>
+                    <TableCell>Empresa</TableCell>
+                    <TableCell>Marca</TableCell>
                     <TableCell>Precio</TableCell>
                     <TableCell>Producto Propio</TableCell>
                     <TableCell>Stock</TableCell>
+                    <TableCell>Activo</TableCell>
                     <TableCell>Rentabilidad (%)</TableCell>
                     <TableCell>Acciones</TableCell>
                   </TableRow>
@@ -149,12 +181,13 @@ const ProductosPage = () => {
                   {productosPaginados.map((producto, index) => (
                     <TableRow key={index}>
                       <TableCell>{producto.registro}</TableCell>
-                      <TableCell>{producto.especie}</TableCell>
-                      <TableCell>{producto.cultivar}</TableCell>
                       <TableCell>{producto.activos}</TableCell>
+                      <TableCell>{producto.empresa}</TableCell>
+                      <TableCell>{producto.marca}</TableCell>
                       <TableCell>${producto.precio}</TableCell>
                       <TableCell>{producto.producto_propio ? 'Sí' : 'No'}</TableCell>
                       <TableCell>{producto.stock}</TableCell>
+                      <TableCell>{producto.activo ? 'Sí' : 'No'}</TableCell>
                       <TableCell>{producto.rentabilidad}%</TableCell>
                       <TableCell>
                         <Button

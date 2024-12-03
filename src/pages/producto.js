@@ -35,6 +35,7 @@ const ProductoFormPage = () => {
       rentabilidad: '',
       precio_minimo: '',     // Nuevo campo
       precio_maximo: '',     // Nuevo campo
+      activo: false,
     },
     validationSchema: Yup.object({
       registro: Yup.string().required('El registro es requerido'),
@@ -100,6 +101,17 @@ const ProductoFormPage = () => {
           helperText={formik.touched.registro && formik.errors.registro}
           margin="normal"
         />
+        <FormControlLabel
+  control={
+    <Checkbox
+      name="activo"
+      checked={formik.values.activo}
+      onChange={formik.handleChange}
+    />
+  }
+  label="Activo"
+/>
+
 
         <TextField
           fullWidth
