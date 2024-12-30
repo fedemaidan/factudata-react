@@ -282,11 +282,12 @@ const ticketService = {
       return [];
     }
   },
-  getLastMovimientosForProyecto: async (proyectoId) => {
+  getLastMovimientosForProyecto: async (proyectoId, limiteDias = 7) => {
     try {
+      console.log("getLastMovimientosForProyecto")
       // Calcula la fecha hace 7 días
       const sieteDiasAtras = new Date();
-      sieteDiasAtras.setDate(sieteDiasAtras.getDate() - 7);
+      sieteDiasAtras.setDate(sieteDiasAtras.getDate() - limiteDias);
   
       const q = query(
         collection(db, 'movimientos'),

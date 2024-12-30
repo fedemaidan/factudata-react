@@ -22,6 +22,7 @@ import Alert from '@mui/material/Alert';
 import { useAuthContext } from 'src/contexts/auth-context';
 import { getEmpresaDetailsFromUser } from 'src/services/empresaService'; 
 import { getProyectosByEmpresa } from 'src/services/proyectosService';
+import { CheckBox } from '@mui/icons-material';
 
 const formatTimestamp = (timestamp) => {
   if (!timestamp) {
@@ -40,8 +41,11 @@ const ProyectoMovimientosPage = () => {
   const [movimientos, setMovimientos] = useState([]);
   const [movimientosUSD, setMovimientosUSD] = useState([]);
   const [tablaActiva, setTablaActiva] = useState('ARS');
-  const [filtrosActivos, setFiltrosActivos] = useState(false);
+  const [empresa, setEmpresa] = useState(null);
+  const [filtrosActivos, setFiltrosActivos] = useState(true);
   const [accionesActivas, setAccionesActivas] = useState(false);
+  const [showDolar, setShowDolar] = useState(true);
+  const [showPesos, setShowPesos] = useState(true);
   const [proyecto, setProyecto] = useState(null);
   const [deletingElement, setDeletingElement] = useState(null);
   const [openDialog, setOpenDialog] = useState(false);
@@ -58,6 +62,7 @@ const ProyectoMovimientosPage = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [anchorEl, setAnchorEl] = useState(null);
+  
 
   const handleOpenMenu = (event) => {
     setAnchorEl(event.currentTarget);
@@ -130,7 +135,18 @@ const ProyectoMovimientosPage = () => {
   };
 
   useEffect(() => {
+    if (isMobile) {
+      setShowDolar(false);
+      setShowPesos(true);
+    }
     const fetchMovimientosData = async (proyectoId) => {
+
+      const empresa = await getEmpresaDetailsFromUser(user);
+      setEmpresa(empresa)
+      if (empresa.solo_dolar) {
+        setTablaActiva("USD")
+      }
+
       const proyecto = await getProyectoById(proyectoId);
       setProyecto(proyecto);
       const movs = await ticketService.getMovimientosForProyecto(proyectoId, 'ARS');
@@ -141,12 +157,15 @@ const ProyectoMovimientosPage = () => {
 
     const fetchData = async () => {
       let pid = proyectoId;
+
       if (!proyectoId) {
-        const empresa = await getEmpresaDetailsFromUser(user);
+        
         const proyectos = await getProyectosByEmpresa(empresa);
         if (proyectos.length === 1) {
           pid = proyectos[0].id;
         }
+        
+
       }
 
       if (pid) {
@@ -247,15 +266,16 @@ const ProyectoMovimientosPage = () => {
         <Container maxWidth="xl">
           <Stack spacing={3}>
             <Typography variant="h6">{proyecto?.nombre}</Typography>
+            
             <Stack direction="row" spacing={2}>
-              <Button
+            {!empresa?.solo_dolar &&  <Button
                 variant={tablaActiva === 'ARS' ? "contained" : "outlined"}
                 color="primary"
                 onClick={() => setTablaActiva('ARS')}
                 sx={{ flexGrow: 1, py: 2 }}
               >
                 Caja en Pesos: {saldoTotalCaja > 0 ? formatCurrency(saldoTotalCaja) : "(" + formatCurrency(saldoTotalCaja) + ")"}
-              </Button>
+              </Button>}
               <Button
                 variant={tablaActiva === 'USD' ? "contained" : "outlined"}
                 color="primary"
@@ -294,6 +314,26 @@ const ProyectoMovimientosPage = () => {
                     ),
                   }}
                 />
+                {empresa?.solo_dolar &&  
+                <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                  <input
+                    type="checkbox"
+                    checked={showPesos}
+                    onChange={(e) => setShowPesos(e.target.checked)}
+                    style={{ marginRight: '8px' }}
+                  />
+                  <Typography>Mostrar pesos</Typography>
+                </Box> }
+                {empresa?.solo_dolar &&  
+                <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                  <input
+                    type="checkbox"
+                    checked={showDolar}
+                    onChange={(e) => setShowDolar(e.target.checked)}
+                    style={{ marginRight: '8px' }}
+                  />
+                  <Typography>Mostrar dólares</Typography>
+                </Box> }
               </Stack>
             )}
             <Paper>
@@ -391,11 +431,25 @@ const ProyectoMovimientosPage = () => {
                     {movimientosFiltradosUSD.map((mov, index) => (
                       <Card key={index}>
                         <CardContent>
-                          <Typography variant="h6" color={mov.type === "ingreso" ? "green" : "red"}>
-                            {mov.type === "ingreso" ? `Ingreso: ${formatCurrency(mov.total)}` : `Egreso: ${formatCurrency(mov.total)}`}
-                          </Typography>
+                          {
+                            empresa?.solo_dolar && showDolar &&
+                            <Typography variant="h6" color={mov.type === "ingreso" ? "green" : "red"}>
+                              {mov.type === "ingreso" ? `Ingreso: ${formatCurrency(mov.total)} USD` : `Egreso: ${formatCurrency(mov.total)} USD`}
+                            </Typography>
+                          }
+                          {
+                            empresa?.solo_dolar && showPesos &&
+                            <Typography variant="h6" color={mov.type === "ingreso" ? "green" : "red"}>
+                              {mov.type === "ingreso" ? `Ingreso: ${formatCurrency(mov.total_original)} ARS` : `Egreso: ${formatCurrency(mov.total_original)} ARS`}
+                            </Typography>
+                          }
+                          { !empresa?.solo_dolar &&
+                            <Typography variant="h6" color={mov.type === "ingreso" ? "green" : "red"}>
+                              {mov.type === "ingreso" ? `Ingreso: ${formatCurrency(mov.total)}` : `Egreso: ${formatCurrency(mov.total)}`}
+                            </Typography>
+                          }
                           <Typography variant="body2">{mov.observacion}</Typography>
-                          {mov.tc && <Typography variant="body2">Tipo de cambio: ${mov.tc}</Typography>}
+                          {mov.categoria && <Typography variant="body2">Categoría: {mov.categoria} - {mov.subcategoria}</Typography>}
                           <Typography variant="caption" color="textSecondary">
                             {formatTimestamp(mov.fecha_factura)}
                           </Typography>
@@ -425,10 +479,10 @@ const ProyectoMovimientosPage = () => {
                       <TableRow>
                         <TableCell>Fecha</TableCell>
                         <TableCell>Tipo</TableCell>
-                        <TableCell>Total</TableCell>
-                        <TableCell>Total Original</TableCell>
+                        { showDolar &&<TableCell>Total USD</TableCell>}
+                        {empresa?.solo_dolar && showPesos && <TableCell>Total Pesos</TableCell> }
                         <TableCell>Observación</TableCell>
-                        <TableCell>Tipo de cambio</TableCell>
+                        <TableCell>Categoría</TableCell>
                         <TableCell>Acciones</TableCell>
                       </TableRow>
                     </TableHead>
@@ -442,10 +496,10 @@ const ProyectoMovimientosPage = () => {
                               color={mov.type === "ingreso" ? "success" : "error"}
                             />
                           </TableCell>
-                          <TableCell>{formatCurrency(mov.total)}</TableCell>
-                          <TableCell>{formatCurrency(mov.total_original)}</TableCell>
+                          { showDolar && <TableCell>{formatCurrency(mov.total)}</TableCell>}
+                          {empresa?.solo_dolar && showPesos &&   <TableCell>{formatCurrency(mov.total_original)}</TableCell> }
                           <TableCell>{mov.observacion}</TableCell>
-                          <TableCell>{mov.tc ? `$ ${mov.tc}` : "-"}</TableCell>
+                          <TableCell>{mov.categoria +" - "+ mov.subcategoria}</TableCell>
                           <TableCell>
                             <Button
                               color="primary"

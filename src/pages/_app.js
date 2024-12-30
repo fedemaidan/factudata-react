@@ -24,8 +24,12 @@ const App = (props) => {
 
   const getLayout = Component.getLayout ?? ((page) => page);
 
-  const theme = createTheme();
-
+  const theme = createTheme({
+    palette: {
+      mode: 'light', // Cambia a 'dark' si quieres un tema oscuro
+    },
+  });
+  
   return (
     <CacheProvider value={emotionCache}>
       <Head>

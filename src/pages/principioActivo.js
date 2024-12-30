@@ -157,6 +157,14 @@ const PrincipioActivoFormPage = () => {
           <Button color="primary" variant="contained" type="submit" disabled={isLoading}>
             {!isLoading ? 'Guardar Principio Activo' : <CircularProgress />}
           </Button>
+          <Button
+                color="primary"
+                variant="text"
+                // type="submit"
+                onClick={() => router.push('/principiosActivos')}
+              >
+                Cancelar
+              </Button>
         </Box>
       </form>
       <Snackbar open={alert.open} autoHideDuration={6000} onClose={handleCloseAlert}>

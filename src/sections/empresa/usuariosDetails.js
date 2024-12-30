@@ -188,7 +188,7 @@ export const UsuariosDetails = ({ empresa }) => {
                     <TableCell>{usuario.phone}</TableCell>
                     <TableCell>{usuario.firstName}</TableCell>
                     <TableCell>{usuario.lastName}</TableCell>
-                    <TableCell>{usuario.confirmationCode}</TableCell>
+                    <TableCell>{"https://admin.sorbydata.com/auth/register/?code=" + usuario.confirmationCode}</TableCell>
                     <TableCell>{usuario.confirmed ? "Sí" : "No"}</TableCell>
                     <TableCell>
                       {usuario.proyectosData.map(project => (

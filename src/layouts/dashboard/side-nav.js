@@ -23,6 +23,8 @@ import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
 import { SvgIcon } from '@mui/material';
 import DashboardIcon from '@mui/icons-material/Dashboard';
 import StoreIcon from '@mui/icons-material/Store';
+import NoteAltIcon from '@mui/icons-material/NoteAlt';
+
 import AddCircleIcon from '@mui/icons-material/AddCircle';
 import CogIcon from '@heroicons/react/24/solid/CogIcon';
 import UserPlusIcon from '@heroicons/react/24/solid/UserPlusIcon';
@@ -123,7 +125,7 @@ export const SideNav = (props) => {
           )
         }
         const vistaGeneralElement = {
-          title: 'Vista general',
+          title: 'Vista 7 días',
           path: '/resumenMovimientos?empresaId=' + empresa.id,
           icon: (
             <SvgIcon fontSize="small">
@@ -132,7 +134,27 @@ export const SideNav = (props) => {
           )
         }
 
-        let newItems = [empresaElement, vistaGeneralElement,  ...initialItems];
+        const vistaTodosLosMovElement = {
+          title: 'Todos los movimientos',
+          path: '/todosProyectos?empresaId=' + empresa.id,
+          icon: (
+            <SvgIcon fontSize="small">
+              <DashboardIcon />
+            </SvgIcon>
+          )
+        }
+
+        const notaPedidoElement = {
+          title: 'Notas de pedido',
+          path: '/notaPedido',
+          icon: (
+            <SvgIcon fontSize="small">
+              <NoteAltIcon />
+            </SvgIcon>
+          )
+        }
+
+        let newItems = [empresaElement, vistaGeneralElement, vistaTodosLosMovElement, notaPedidoElement, ...initialItems];
         
         await proyectos.forEach( (proy ) => {
           console.log(proy.nombre)
@@ -141,7 +163,7 @@ export const SideNav = (props) => {
               title: proy.nombre,
               path: 'cajaProyecto?proyectoId=' + proy.id,
               icon: (
-                <SvgIcon fontSize="small">
+                <SvgIcon fontSize="small" sx={{ color: proy.activo ? 'green' : 'grey' }}>
                   <StoreIcon />
                 </SvgIcon>
               )

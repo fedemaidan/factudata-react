@@ -10,7 +10,6 @@ import movimientosService from 'src/services/movimientosService';
  * @returns {Promise<object[]>} - Retorna un array con los proyectos o un array vacío si no se encuentran o hay un error.
  */
 export const getProyectosByEmpresa = async (empresa) => {
-
     try {
       if (!empresa || !empresa.proyectosIds) {
         console.log('Referencias de proyectos no proporcionadas o incompletas en el objeto usuario');

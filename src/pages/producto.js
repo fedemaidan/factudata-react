@@ -287,6 +287,14 @@ const ProductoFormPage = () => {
           <Button color="primary" variant="contained" type="submit" disabled={isLoading}>
             {!isLoading ? 'Guardar Producto' : <CircularProgress />}
           </Button>
+          <Button
+                color="primary"
+                variant="text"
+                // type="submit"
+                onClick={() => router.push('/productos')}
+              >
+                Cancelar
+              </Button>
         </Box>
       </form>
 
