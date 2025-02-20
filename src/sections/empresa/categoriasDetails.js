@@ -29,7 +29,70 @@ import AddCircleIcon from '@mui/icons-material/AddCircle';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import SaveIcon from '@mui/icons-material/Save';
+import RestoreIcon from '@mui/icons-material/Restore';
 import { updateEmpresaDetails } from 'src/services/empresaService';
+
+//todo - borrar luego
+const categoriasDefault = [
+  {
+      id: 1,
+      name: "Mano de obra",
+      subcategorias: [
+          "Tareas preliminares",
+          "Estructura",
+          "Albañilería",
+          "Instalaciones sanitarios",
+          "Instalaciones eléctricas",
+          "Instalaciones de gas",
+          "Cielorrasos",
+          "Colocaciones",
+          "Pintura",
+          "Climatización",
+          "Aire acondicionado",
+          "Pileta",
+          "Riego",
+          "Paisajismo",
+          "Limpieza",
+      ]
+  },
+  {
+      id: 2,
+      name: "Materiales",
+      subcategorias: [
+          "Aberturas",
+          "Baño químico",
+          "Corralon",
+          "Durlock",
+          "Ferretería",
+          "Grillo Mov Suelos",
+          "Hierros",
+          "Hormigón",
+          "Maderera",
+          "Materiales Eléctricos",
+          "Piedra",
+          "Pileta",
+          "Pintureria",
+          "Sanitarios",
+          "Volquetes",
+          "Zingueria",
+      ]
+  },
+  {
+      id: 3,
+      name: "Administración",
+      subcategorias: [
+          "Sueldos",
+          "Honorarios",
+          "Alquiler oficina",
+          "Sistema gestión",
+          "Fotografía",
+          "Renders",
+          "Expensas"
+      ]
+  }
+];
+// borrar luego
+
 
 export const CategoriasDetails = ({ empresa }) => {
   const [isLoading, setIsLoading] = useState(false);
@@ -92,27 +155,6 @@ export const CategoriasDetails = ({ empresa }) => {
     },
   });
 
-  const agregarSubcategoria = async (categoriaId, subcategoria) => {
-    setIsLoading(true);
-    try {
-      const newCategorias = categorias.map((cat) =>
-        cat.id === categoriaId ? { ...cat, subcategorias: [...cat.subcategorias, subcategoria] } : cat
-      );
-      setCategorias(newCategorias);
-      formik.setFieldValue('subcategoria', '', false);
-      await updateEmpresaDetails(empresa.id, { categorias: newCategorias });
-      setSnackbarMessage('Subcategoría agregada con éxito');
-      setSnackbarSeverity('success');
-    } catch (error) {
-      console.error('Error al agregar subcategoría:', error);
-      setSnackbarMessage('Error al agregar subcategoría');
-      setSnackbarSeverity('error');
-    } finally {
-      setSnackbarOpen(true);
-      setIsLoading(false);
-    }
-  };
-
   const confirmarEliminacion = (message, action) => {
     setConfirmMessage(message);
     setConfirmAction(() => () => {
@@ -120,6 +162,23 @@ export const CategoriasDetails = ({ empresa }) => {
       setConfirmOpen(false);
     });
     setConfirmOpen(true);
+  };
+
+  const resetCategorias = async () => {
+    setIsLoading(true);
+    try {
+      setCategorias(categoriasDefault);
+      await updateEmpresaDetails(empresa.id, { categorias: categoriasDefault });
+      setSnackbarMessage('Categorías restauradas con éxito');
+      setSnackbarSeverity('success');
+    } catch (error) {
+      console.error('Error al restaurar categorías:', error);
+      setSnackbarMessage('Error al restaurar categorías');
+      setSnackbarSeverity('error');
+    } finally {
+      setSnackbarOpen(true);
+      setIsLoading(false);
+    }
   };
 
   const eliminarSubcategoria = async (categoriaId, subcategoria) => {
@@ -192,7 +251,7 @@ export const CategoriasDetails = ({ empresa }) => {
             {categorias.map((categoria) => (
               <ListItem key={categoria.id} divider>
                 <ListItemText primary={categoria.name} secondary={
-                  categoria.subcategorias.map(sub => (
+                  categoria.subcategorias?.map(sub => (
                     <Chip
                       key={sub}
                       label={sub}
@@ -225,6 +284,14 @@ export const CategoriasDetails = ({ empresa }) => {
           >
             Agregar Categoría
           </Button>
+          <Button
+            color="secondary"
+            variant="contained"
+            startIcon={<RestoreIcon />}
+            onClick={resetCategorias}
+          >
+            Restaurar Categorías por defecto
+          </Button>
         </CardActions>
       </Card>
 
@@ -249,15 +316,6 @@ export const CategoriasDetails = ({ empresa }) => {
                 label="Añadir Subcategoría"
                 value={formik.values.subcategoria}
                 onChange={formik.handleChange}
-                // onKeyPress={event => {
-                //   console.log("paso")
-                //   // if (event.key === 'Enter') {
-                //     console.log("paso1")
-                //     event.preventDefault();
-                //     console.log("paso2")
-                //     agregarSubcategoria(editingCategoria.id, formik.values.subcategoria);
-                //   // }
-                // }}
                 style={{ marginTop: '1rem' }}
               />
             )}

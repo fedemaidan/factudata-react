@@ -37,6 +37,9 @@ import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import DeleteIcon from '@mui/icons-material/Delete';
 import profileService from 'src/services/profileService';
 import RefreshIcon from '@mui/icons-material/Refresh';
+import { useCallback } from 'react';
+import { getProyectosByEmpresa } from 'src/services/proyectosService';
+import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
 
 
 const formatTimestamp = (timestamp) => {
@@ -56,17 +59,18 @@ const NotaPedidoPage = () => {
   const [openFilters, setOpenFilters] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [openAddDialog, setOpenAddDialog] = useState(false); // Estado para añadir nota
-  const [newNoteData, setNewNoteData] = useState({ titulo: '', descripcion: '' }); // Datos de nueva nota
+  const [newNoteData, setNewNoteData] = useState({ descripcion: '', proyecto_id: '' }); // Datos de nueva nota
   const [currentNota, setCurrentNota] = useState(null);
   const [openDeleteDialog, setOpenDeleteDialog] = useState(false);
   const [notaToDelete, setNotaToDelete] = useState(null);
   const [profiles, setProfiles] = useState([]);
+  const [proyectos, setProyectos] = useState([]);
+
 
   const [formData, setFormData] = useState({
-    titulo: '',
-    descripcion: '',
+    descripcion: '', proyecto_id: '', estado: '', owner: '', creador: '',
   });
-  const [filters, setFilters] = useState({ text: '', estado: '' });
+  const [filters, setFilters] = useState({ text: '', estado: '', proyecto_id: '' });
   const isMobile = useMediaQuery((theme) => theme.breakpoints.down('sm'));
  
   const fetchProfiles = async () => {
@@ -77,35 +81,55 @@ const NotaPedidoPage = () => {
       console.error('Error al obtener perfiles:', error);
     }
   };
+
+  const fetchProyectos = useCallback(async () => {
+    try {
+      const empresa = await getEmpresaDetailsFromUser(user);
+      const proyectosData = await getProyectosByEmpresa(empresa);
+      console.log(proyectosData)
+      setProyectos(proyectosData);
+    } catch (error) {
+      console.error('Error al obtener proyectos:', error);
+    }
+  }, [user?.empresa?.id]);
+  
   
   useEffect(() => {
     if (user) {
       fetchProfiles();
+      fetchProyectos();
     }
   }, [user]);
   
-  const fetchNotas = async () => {
+  const fetchNotas = useCallback(async () => {
     try {
       const notasData = await notaPedidoService.getNotasByEmpresa(user.empresa.id);
       setNotas(notasData);
       setFilteredNotas(notasData);
+
     } catch (error) {
       console.error('Error al obtener notas:', error);
     }
-  };
+  }, [user?.empresa?.id]);
+  
 
   const applyFilters = () => {
     let filtered = notas;
     if (filters.text) {
       filtered = filtered.filter(
         (nota) =>
-          nota.titulo.toLowerCase().includes(filters.text.toLowerCase()) ||
           nota.descripcion.toLowerCase().includes(filters.text.toLowerCase())
       );
     }
+
     if (filters.estado) {
       filtered = filtered.filter((nota) => nota.estado === filters.estado);
     }
+
+    if (filters.proyecto_id) {
+      filtered = filtered.filter((nota) => nota.proyecto_id === filters.proyecto_id);
+    }
+  
     setFilteredNotas(filtered);
   };
 
@@ -119,15 +143,14 @@ const NotaPedidoPage = () => {
 
   const handleEdit = (nota) => {
     setCurrentNota(nota);
-    setFormData({ titulo: nota.titulo, descripcion: nota.descripcion, estado: nota.estado, owner: nota.owner, creador: nota.creador });
+    setFormData({ descripcion: nota.descripcion, estado: nota.estado, owner: nota.owner, creador: nota.creador, proyecto_id: nota.proyecto_id });
     setIsEditing(true);
   };
 
   const handleSaveNewNote = async () => {
     try {
-      console.log(profiles)
       const ownerObj = profiles.filter( (p) => p.id === newNoteData.owner)[0]
-      console.log(ownerObj)
+      const proyectoObj = proyectos.filter( (p) => p.id === newNoteData.proyecto_id)[0]
       const newNote = {
         ...newNoteData,
         owner: newNoteData.owner || user.id,
@@ -136,13 +159,15 @@ const NotaPedidoPage = () => {
         empresaId: user.empresa.id,
         creador: user.id,
         creador_name: user.firstName + " " + user.lastName,
+        proyecto_id: newNoteData.proyecto_id,
+        proyecto_nombre: proyectoObj.nombre,
       };
       console.log(newNote)
       const savedNote = await notaPedidoService.createNota(newNote);
       setNotas([savedNote, ...notas]);
       setAlert({ open: true, message: 'Nota añadida con éxito', severity: 'success' });
       setOpenAddDialog(false);
-      setNewNoteData({ titulo: '', descripcion: '' }); // Reiniciar formulario
+      setNewNoteData({  descripcion: '' }); // Reiniciar formulario
     } catch (error) {
       console.error('Error al añadir nota:', error);
       setAlert({ open: true, message: 'Error al añadir la nota', severity: 'error' });
@@ -162,7 +187,26 @@ const NotaPedidoPage = () => {
 
   const handleSaveEdit = async () => {
     try {
+      console.log("currentNota", currentNota)
+      console.log("formData", formData)
+      if (formData?.owner) {
+        const ownerObj = profiles.filter( (p) => p.id === formData.owner)[0]
+        formData.owner_name = ownerObj.firstName + " " + ownerObj.lastName
+      }
+
+      if (formData?.proyecto_id) {
+        const proyectoObj = proyectos.filter( (p) => p.id === formData.proyecto_id)[0]
+        formData.proyecto_nombre = proyectoObj.nombre
+      }
+
+      if (formData?.proyecto_id === '') {
+        formData.proyecto_nombre = null;
+        formData.proyecto_id = null;
+      }
+
       const updatedNota = { ...currentNota, ...formData };
+      console.log("updatedNota", updatedNota)
+      
       const success = await notaPedidoService.updateNota(currentNota.id, updatedNota);
       if (success) {
         setNotas(notas.map((n) => (n.id === currentNota.id ? updatedNota : n)));
@@ -180,7 +224,7 @@ const NotaPedidoPage = () => {
 
   const handleChangeEstado = async (nota) => {
     const nuevoEstado =
-      nota.estado === 'Pendiente' ? 'Haciendo' : nota.estado === 'Haciendo' ? 'Completa' : null;
+      nota.estado === 'Pendiente' ? 'En proceso' : nota.estado === 'En proceso' ? 'Completa' : null;
   
     if (!nuevoEstado) return; // Si ya está en "Completa", no cambiar más.
   
@@ -203,7 +247,8 @@ const NotaPedidoPage = () => {
 
   useEffect(() => {
     if (user) fetchNotas();
-  }, [user]);
+  }, [user, fetchNotas]);
+  
 
   useEffect(() => {
     applyFilters();
@@ -222,6 +267,7 @@ const NotaPedidoPage = () => {
   alignItems={isMobile ? 'center' : 'flex-start'}
   mb={3}
 >
+  
   {isMobile ? (
     <ButtonGroup variant="text" color="primary" orientation="horizontal">
       <Button
@@ -232,8 +278,8 @@ const NotaPedidoPage = () => {
         P
       </Button>
       <Button
-        startIcon={<Chip label={notas.filter((n) => n.estado === 'Haciendo').length} color="primary" />}
-        onClick={() => setEstado('Haciendo')}
+        startIcon={<Chip label={notas.filter((n) => n.estado === 'En proceso').length} color="primary" />}
+        onClick={() => setEstado('En proceso')}
         sx={{ fontSize: '0.8rem' }}
       >
         H
@@ -253,7 +299,40 @@ const NotaPedidoPage = () => {
     </ButtonGroup>
   ) : (
     <>
-      <Button
+    
+  <Box
+    sx={{
+      display: 'flex',
+      gap: 2,
+      alignItems: 'center',
+      mb: 3,
+      p: 2,
+      backgroundColor: 'background.paper',
+      borderRadius: 1,
+      boxShadow: 1,
+    }}
+  >
+    <FormControl size="small">
+      <InputLabel>Proyecto</InputLabel>
+      <Select
+        value={filters.proyecto_id}
+        onChange={(e) => setFilters({ ...filters, proyecto_id: e.target.value })}
+      >
+        <MenuItem value="">Todos</MenuItem>
+        {proyectos.map((proyecto) => (
+          <MenuItem key={proyecto.id} value={proyecto.id}>
+            {proyecto.nombre}
+          </MenuItem>
+        ))}
+      </Select>
+    </FormControl>
+    <TextField
+      label="Buscar por texto"
+      value={filters.text}
+      onChange={(e) => setFilters({ ...filters, text: e.target.value })}
+      size="small"
+    />
+    <Button
         variant={filters.estado === 'Pendiente' ? 'contained' : 'outlined'}
         startIcon={<Chip label={notas.filter((n) => n.estado === 'Pendiente').length} color="warning" />}
         onClick={() => setEstado('Pendiente')}
@@ -262,12 +341,12 @@ const NotaPedidoPage = () => {
         Pendiente
       </Button>
       <Button
-        variant={filters.estado === 'Haciendo' ? 'contained' : 'outlined'}
-        startIcon={<Chip label={notas.filter((n) => n.estado === 'Haciendo').length} color="primary" />}
-        onClick={() => setEstado('Haciendo')}
+        variant={filters.estado === 'En proceso' ? 'contained' : 'outlined'}
+        startIcon={<Chip label={notas.filter((n) => n.estado === 'En proceso').length} color="primary" />}
+        onClick={() => setEstado('En proceso')}
         color="primary"
       >
-        Haciendo
+        En proceso
       </Button>
       <Button
         variant={filters.estado === 'Completa' ? 'contained' : 'outlined'}
@@ -284,11 +363,21 @@ const NotaPedidoPage = () => {
       >
         Todos
       </Button>
-      <Button
-        variant="contained"
-        startIcon={<RefreshIcon />}
-        onClick={fetchNotas}
-      >Actualizar</Button>
+    <Button
+      variant="contained"
+      startIcon={<RefreshIcon />}
+      onClick={fetchNotas}
+    >
+      Actualizar
+    </Button>
+    <Button
+      variant="contained"
+      startIcon={<AddIcon />}
+      onClick={setOpenAddDialog}
+    >
+      Agregar nota
+    </Button>
+  </Box>
     </>
   )}
 </Stack>
@@ -299,9 +388,9 @@ const NotaPedidoPage = () => {
             {filteredNotas.map((nota) => (
               <Card key={nota.id}>
                 <CardContent>
-                  <Typography variant="h6">{nota.titulo}</Typography>
+                  <Typography variant="h6">Código: {nota.codigo} - {nota.proyecto_nombre}</Typography>
                   <Typography variant="body2" color="textSecondary">
-                  {nota.codigo} - {nota.descripcion}
+                  {nota.descripcion}
                   </Typography>
                   <Typography variant="body2" sx={{ mt: 1 }}>
                     Responsable: {nota.owner_name}
@@ -314,7 +403,7 @@ const NotaPedidoPage = () => {
                     color={
                       nota.estado === 'Pendiente'
                         ? 'warning'
-                        : nota.estado === 'Haciendo'
+                        : nota.estado === 'En proceso'
                         ? 'primary'
                         : 'success'
                     }
@@ -327,7 +416,7 @@ const NotaPedidoPage = () => {
                         onClick={() => handleChangeEstado(nota)}
                       >
                         {nota.estado === 'Pendiente'
-                          ? 'Marcar Haciendo'
+                          ? 'Marcar En proceso'
                           : 'Marcar Completa'
                           }
                       </Button>)}
@@ -355,9 +444,9 @@ const NotaPedidoPage = () => {
             <TableHead>
               <TableRow>
                 <TableCell>Código</TableCell>
-                <TableCell>Owner</TableCell>
+                <TableCell>Proyecto</TableCell>
+                <TableCell>Responsable</TableCell>
                 <TableCell>Creador</TableCell>
-                <TableCell>Título</TableCell>
                 <TableCell>Descripción</TableCell>
                 <TableCell>Estado</TableCell>
                 <TableCell>Fecha Creación</TableCell>
@@ -368,9 +457,9 @@ const NotaPedidoPage = () => {
               {filteredNotas.map((nota) => (
                 <TableRow key={nota.id}>
                   <TableCell>{nota.codigo}</TableCell>
+                  <TableCell>{nota.proyecto_nombre}</TableCell>
                   <TableCell>{nota.owner_name}</TableCell>
                   <TableCell>{nota.creador_name}</TableCell>
-                  <TableCell>{nota.titulo}</TableCell>
                   <TableCell>{nota.descripcion}</TableCell>
                   <TableCell>
                     <Chip
@@ -378,7 +467,7 @@ const NotaPedidoPage = () => {
                       color={
                         nota.estado === 'Pendiente'
                           ? 'warning'
-                          : nota.estado === 'Haciendo'
+                          : nota.estado === 'En proceso'
                           ? 'primary'
                           : 'success'
                       }
@@ -393,7 +482,7 @@ const NotaPedidoPage = () => {
                         onClick={() => handleChangeEstado(nota)}
                       >
                         {nota.estado === 'Pendiente'
-                          ? 'Marcar Haciendo'
+                          ? 'Marcar En proceso'
                           : 'Marcar Completa'}
                       </Button>)}
                       <Button
@@ -418,7 +507,8 @@ const NotaPedidoPage = () => {
             </TableBody>
           </Table>
         )}
-
+  {isMobile && (
+    <>
         <Fab
           color="primary"
           aria-label="filter"
@@ -436,16 +526,13 @@ const NotaPedidoPage = () => {
         >
           <AddIcon />
         </Fab>
+        </>
+  )}
+
         <Dialog open={isEditing} onClose={() => setIsEditing(false)} maxWidth="sm" fullWidth>
   <DialogTitle>Editar Nota</DialogTitle>
   <DialogContent>
     <Stack spacing={2}>
-      <TextField
-        label="Título"
-        value={formData.titulo}
-        onChange={(e) => setFormData({ ...formData, titulo: e.target.value })}
-        fullWidth
-      />
       <TextField
         label="Descripción"
         value={formData.descripcion}
@@ -461,7 +548,7 @@ const NotaPedidoPage = () => {
           onChange={(e) => setFormData({ ...formData, estado: e.target.value })}
         >
           <MenuItem value="Pendiente">Pendiente</MenuItem>
-          <MenuItem value="Haciendo">Haciendo</MenuItem>
+          <MenuItem value="En proceso">En proceso</MenuItem>
           <MenuItem value="Completa">Completa</MenuItem>
         </Select>
       </FormControl>
@@ -478,6 +565,23 @@ const NotaPedidoPage = () => {
     ))}
   </Select>
 </FormControl>
+<FormControl fullWidth>
+  <InputLabel>Proyecto</InputLabel>
+  <Select
+    value={formData.proyecto_id || ''}
+    onChange={(e) => setFormData({ ...formData, proyecto_id: e.target.value })}
+  >
+    {proyectos.map((proyecto) => (
+      <MenuItem key={proyecto.id} value={proyecto.id}>
+        {proyecto.nombre}
+      </MenuItem>
+    ))}
+    <MenuItem key='no-definido' value=''>
+        No definido
+      </MenuItem>
+  </Select>
+</FormControl>
+
     </Stack>
   </DialogContent>
   <DialogActions>
@@ -492,12 +596,6 @@ const NotaPedidoPage = () => {
   <DialogTitle>Añadir Nota</DialogTitle>
   <DialogContent>
     <Stack spacing={2}>
-      <TextField
-        label="Título"
-        value={newNoteData.titulo}
-        onChange={(e) => setNewNoteData({ ...newNoteData, titulo: e.target.value })}
-        fullWidth
-      />
       <TextField
         label="Descripción"
         value={newNoteData.descripcion}
@@ -519,6 +617,20 @@ const NotaPedidoPage = () => {
     ))}
   </Select>
 </FormControl>
+<FormControl fullWidth>
+  <InputLabel>Proyecto</InputLabel>
+  <Select
+    value={newNoteData.proyecto_id}
+    onChange={(e) => setNewNoteData({ ...newNoteData, proyecto_id: e.target.value })}
+  >
+    {proyectos.map((proyecto) => (
+      <MenuItem key={proyecto.id} value={proyecto.id}>
+        {proyecto.nombre}
+      </MenuItem>
+    ))}
+  </Select>
+</FormControl>
+
 
     </Stack>
   </DialogContent>
@@ -534,7 +646,7 @@ const NotaPedidoPage = () => {
   <DialogTitle>Confirmar eliminación</DialogTitle>
   <DialogContent>
     <Typography>
-      ¿Estás seguro de que deseas eliminar la nota "{notaToDelete?.titulo}"? Esta acción no se puede deshacer.
+      ¿Estás seguro de que deseas eliminar la nota con código <strong>&quot;{notaToDelete?.codigo}&quot;</strong>? Esta acción no se puede deshacer.
     </Typography>
   </DialogContent>
   <DialogActions>
@@ -581,10 +693,24 @@ const NotaPedidoPage = () => {
                 >
                   <MenuItem value="">Todos</MenuItem>
                   <MenuItem value="Pendiente">Pendiente</MenuItem>
-                  <MenuItem value="Haciendo">Haciendo</MenuItem>
+                  <MenuItem value="En proceso">En proceso</MenuItem>
                   <MenuItem value="Completa">Completa</MenuItem>
                 </Select>
               </FormControl>
+              <FormControl>
+                <InputLabel>Proyecto</InputLabel>
+                <Select
+                  value={filters.proyecto_id}
+                  onChange={(e) => setFilters({ ...filters, proyecto_id: e.target.value })}
+                >
+                  <MenuItem value="">No definido</MenuItem>
+                    {proyectos.map((proyecto) => (
+                      <MenuItem key={proyecto.id} value={proyecto.id}>
+                        {proyecto.nombre}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
             </Stack>
           </DialogContent>
           <DialogActions>
@@ -600,7 +726,6 @@ const NotaPedidoPage = () => {
             </Button>
           </DialogActions>
         </Dialog>
-
         <Snackbar
           open={alert.open}
           autoHideDuration={6000}

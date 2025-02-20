@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuthContext } from 'src/contexts/auth-context';
 import { Button, Checkbox, CircularProgress, FormControl, InputLabel, ListItemText, MenuItem, Select, TextField, Snackbar, Alert, Typography, Grid } from '@mui/material';
+import { Autocomplete } from '@mui/material';
 
 export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission }) => {
   
@@ -28,6 +29,13 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
   const [comprobanteInfo, setComprobanteInfo] = useState({...comprobante_info_default, ...empresa.comprobante_info} || comprobante_info_default);
   const [conEstados, setConEstados] = useState(empresa.con_estados || false);
   const [soloDolar, setSoloDolar] = useState(empresa.solo_dolar || false);
+  const [notasEstados, setNotasEstados] = useState(
+    empresa.notas_estados || ["Pendiente", "En proceso", "Completa"]
+  );
+
+  const handleNotasEstadosChange = (event, newValue) => {
+    setNotasEstados(newValue);
+  };
   
   const handleComprobanteInfoChange = (field) => (event) => {
     setComprobanteInfo((prevState) => ({
@@ -41,7 +49,8 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
   const opcionesAcciones = [
     "CREAR_EGRESO", "CREAR_INGRESO", "VER_CAJAS", 
     "AJUSTAR_CAJAS", "TRANSFERIR_ENTRE_CAJAS", "CREAR_NUEVO_PROYECTO", 
-    "COMPRAR_MONEDA", "VENDER_MONEDA", "COMPLETAR_OPERACION", "VALIDAR_CODIGO", "CONFIRMAR_PAGOS_PENDIENTES", "VER_DRIVE", "CREAR_NOTA_PEDIDO"
+    "COMPRAR_MONEDA", "VENDER_MONEDA", "COMPLETAR_OPERACION", "VALIDAR_CODIGO", "CONFIRMAR_PAGOS_PENDIENTES", "VER_DRIVE", "CREAR_NOTA_PEDIDO", "VER_NOTAS_PEDIDO_PENDIENTES", "VER_NOTAS_PEDIDO_COMPLETAS", "VER_NOTA_PEDIDO_CODIGO", "MODIFICAR_NOTA_PEDIDO", "ELIMINAR_NOTA_PEDIDO",
+    "VER_NOTAS_DE_PEDIDO"
   ];
 
   const dolarAjuste = [
@@ -100,7 +109,8 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
       dolarDeAjuste: dolarDeAjuste,
       comprobante_info: comprobanteInfo,
       con_estados: conEstados,
-      solo_dolar: soloDolar
+      solo_dolar: soloDolar,
+      notas_estados: notasEstados,
     };
     
     try {
@@ -213,6 +223,17 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
         </MenuItem>
       ))}
     </TextField>
+    <Autocomplete
+      multiple
+      options={["Pendiente", "En proceso", "Completa", "Cancelada", "Devuelta"]}
+      value={notasEstados}
+      onChange={handleNotasEstadosChange}
+      freeSolo
+      renderInput={(params) => (
+        <TextField {...params} label="Estados del Pedido" variant="outlined" fullWidth />
+      )}
+    />
+
     <FormControl sx={{ mt: 2 }}>
   <Checkbox
     checked={conEstados}

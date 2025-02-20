@@ -49,7 +49,7 @@ const FiltersBar = ({
           {Object.entries(estadosCount).map(([estado, count]) => (
             <Button
               key={estado}
-              startIcon={<Chip label={count} color={estado === 'Pendiente' ? 'warning' : estado === 'Haciendo' ? 'primary' : 'success'} />}
+              startIcon={<Chip label={count} color={estado === 'Pendiente' ? 'warning' : estado === 'En proceso' ? 'primary' : 'success'} />}
               onClick={() => handleEstadoFilter(estado)}
               sx={{ fontSize: '0.8rem' }}
             >
@@ -62,9 +62,9 @@ const FiltersBar = ({
           <Button
             key={estado}
             variant={filters.estado === estado ? 'contained' : 'outlined'}
-            startIcon={<Chip label={count} color={estado === 'Pendiente' ? 'warning' : estado === 'Haciendo' ? 'primary' : 'success'} />}
+            startIcon={<Chip label={count} color={estado === 'Pendiente' ? 'warning' : estado === 'En proceso' ? 'primary' : 'success'} />}
             onClick={() => handleEstadoFilter(estado)}
-            color={estado === 'Pendiente' ? 'warning' : estado === 'Haciendo' ? 'primary' : 'success'}
+            color={estado === 'Pendiente' ? 'warning' : estado === 'En proceso' ? 'primary' : 'success'}
           >
             {estado}
           </Button>
