@@ -65,6 +65,7 @@ const NotaPedidoPage = () => {
   const [notaToDelete, setNotaToDelete] = useState(null);
   const [profiles, setProfiles] = useState([]);
   const [proyectos, setProyectos] = useState([]);
+  const [notasEstados, setNotasEstados] = useState([]);
 
 
   const [formData, setFormData] = useState({
@@ -92,6 +93,48 @@ const NotaPedidoPage = () => {
       console.error('Error al obtener proyectos:', error);
     }
   }, [user?.empresa?.id]);
+  
+  
+  useEffect(() => {
+    const fetchEmpresa = async () => {
+      try {
+        const empresa = await getEmpresaDetailsFromUser(user);
+        const notasEstados = empresa.notas_estados || ["Pendiente", "En proceso", "Completa"]
+        setNotasEstados(notasEstados);
+      } catch (error) {
+        console.error('Error al obtener los estados de nota de pedido:', error);
+      }
+    };
+  
+    if (user) {
+      fetchEmpresa();
+    }
+  }, [user]);
+
+  const getEstadoColor = (index) => {
+    let colors;
+    switch (notasEstados.length) {
+      case 0:
+      case 1:
+        return "default";
+      case 2:
+        colors = ["primary", "success"];
+        break
+      case 3:
+        colors = ["warning", "primary", "success"];
+        break;
+      case 4:
+        colors = ["warning", "info", "primary", "success"];
+        break;
+      case 5:
+        colors = ["default", "warning", "info", "primary", "success"];
+        break;
+      default:
+        return "default";
+    }
+    
+    return colors[index % colors.length]; 
+  };
   
   
   useEffect(() => {
@@ -258,7 +301,7 @@ const NotaPedidoPage = () => {
     <Box component="main" sx={{ flexGrow: 1, py: 8 }}>
       <Container maxWidth="xl">
         <Stack direction="row" justifyContent="space-between" alignItems="center" mb={3}>
-          <Typography variant="h6">Notas de Pedido</Typography>
+          <Typography variant="h6">Notas de Pedido {filters.estado}</Typography>
         </Stack>
 
         <Stack
@@ -270,27 +313,21 @@ const NotaPedidoPage = () => {
   
   {isMobile ? (
     <ButtonGroup variant="text" color="primary" orientation="horizontal">
-      <Button
-        startIcon={<Chip label={notas.filter((n) => n.estado === 'Pendiente').length} color="warning" />}
-        onClick={() => setEstado('Pendiente')}
-        sx={{ fontSize: '0.8rem' }}
-      >
-        P
-      </Button>
-      <Button
-        startIcon={<Chip label={notas.filter((n) => n.estado === 'En proceso').length} color="primary" />}
-        onClick={() => setEstado('En proceso')}
-        sx={{ fontSize: '0.8rem' }}
-      >
-        H
-      </Button>
-      <Button
-        startIcon={<Chip label={notas.filter((n) => n.estado === 'Completa').length} color="success" />}
-        onClick={() => setEstado('Completa')}
-        sx={{ fontSize: '0.8rem' }}
-      >
-        C
-      </Button>
+      {notasEstados.map((estado, index) => (
+        <Button
+          key={estado}
+          variant={filters.estado === estado ? 'contained' : 'outlined'}
+          startIcon={
+            <Chip
+              label={notas.filter((n) => n.estado === estado).length}
+              color={getEstadoColor(index)}
+            />
+          }
+          onClick={() => setEstado(estado)}
+        >
+          {estado.substr(0, 1)}
+        </Button>
+  ))}
       <Button
         variant="contained"
         startIcon={<RefreshIcon />}
@@ -332,37 +369,32 @@ const NotaPedidoPage = () => {
       onChange={(e) => setFilters({ ...filters, text: e.target.value })}
       size="small"
     />
+    <Stack direction="row" spacing={1}>
+  {notasEstados.map((estado, index) => (
     <Button
-        variant={filters.estado === 'Pendiente' ? 'contained' : 'outlined'}
-        startIcon={<Chip label={notas.filter((n) => n.estado === 'Pendiente').length} color="warning" />}
-        onClick={() => setEstado('Pendiente')}
-        color="warning"
-      >
-        Pendiente
-      </Button>
-      <Button
-        variant={filters.estado === 'En proceso' ? 'contained' : 'outlined'}
-        startIcon={<Chip label={notas.filter((n) => n.estado === 'En proceso').length} color="primary" />}
-        onClick={() => setEstado('En proceso')}
-        color="primary"
-      >
-        En proceso
-      </Button>
-      <Button
-        variant={filters.estado === 'Completa' ? 'contained' : 'outlined'}
-        startIcon={<Chip label={notas.filter((n) => n.estado === 'Completa').length} color="success" />}
-        onClick={() => setEstado('Completa')}
-        color="success"
-      >
-        Completa
-      </Button>
-      <Button
-        variant={filters.estado === '' ? 'contained' : 'outlined'}
-        startIcon={<Chip label={notas.length} color="default" />}
-        onClick={() => setEstado('')}
-      >
-        Todos
-      </Button>
+      key={estado}
+      variant={filters.estado === estado ? 'contained' : 'outlined'}
+      startIcon={
+        <Chip
+          label={notas.filter((n) => n.estado === estado).length}
+          color={getEstadoColor(index)}
+        />
+      }
+      onClick={() => setEstado(estado)}
+    >
+      {estado}
+    </Button>
+  ))}
+  <Button
+    variant={filters.estado === '' ? 'contained' : 'outlined'}
+    startIcon={<Chip label={notas.length} color="default" />}
+    onClick={() => setEstado('')}
+  >
+    Todos
+  </Button>
+</Stack>
+
+
     <Button
       variant="contained"
       startIcon={<RefreshIcon />}
@@ -401,11 +433,7 @@ const NotaPedidoPage = () => {
                   <Chip
                     label={nota.estado}
                     color={
-                      nota.estado === 'Pendiente'
-                        ? 'warning'
-                        : nota.estado === 'En proceso'
-                        ? 'primary'
-                        : 'success'
+                      getEstadoColor(notasEstados.indexOf(nota.estado))
                     }
                     sx={{ mt: 1 }}
                   />
@@ -465,11 +493,7 @@ const NotaPedidoPage = () => {
                     <Chip
                       label={nota.estado}
                       color={
-                        nota.estado === 'Pendiente'
-                          ? 'warning'
-                          : nota.estado === 'En proceso'
-                          ? 'primary'
-                          : 'success'
+                        getEstadoColor(notasEstados.indexOf(nota.estado))
                       }
                     />
                   </TableCell>
