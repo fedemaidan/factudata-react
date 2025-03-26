@@ -1,5 +1,5 @@
 import Head from 'next/head';
-import { Box, Container, TextField, Typography, Button, CircularProgress, Tab, Tabs, FormControl, InputLabel, Select, MenuItem } from '@mui/material';
+import { Box, Container, TextField, Typography, Button, CircularProgress, Tab, Tabs, FormControl, InputLabel, Select, MenuItem, Autocomplete } from '@mui/material';
 import { useRouter } from 'next/router';
 import React, { useEffect, useState } from 'react';
 import { useFormik } from 'formik';
@@ -45,13 +45,14 @@ const dateToTimestamp = (dateString) => {
 const MovementDataEntryPage = () => {
   const { user } = useAuthContext();
   const router = useRouter();
-  const { movimientoId } = router.query;
+  const { movimientoId, lastPageUrl, lastPageName } = router.query;
   const [movimiento, setMovimiento] = useState(null);
   const [categorias, setCategorias] = useState([]);
   const [proveedores, setProveedores] = useState([]);
   const [categoriaSeleccionada, setCategoriaSeleccionada] = useState(null);
   const [nuevoArchivo, setNuevoArchivo] = useState(null);
   const [isReemplazandoImagen, setIsReemplazandoImagen] = useState(false);
+  const [tagsExtra, setTagsExtra] = useState([]);
 
   const [alert, setAlert] = useState({
     open: false,
@@ -76,6 +77,11 @@ const MovementDataEntryPage = () => {
     { value: 'comprobante', label: 'Comprobante' },
   ];
 
+  const handleTagsExtraChange = (event, newValue) => {
+    setTagsExtra(newValue);
+  };
+  
+
   const handleCloseAlert = (event, reason) => {
     if (reason === 'clickaway') {
       return;
@@ -97,6 +103,7 @@ const MovementDataEntryPage = () => {
       type: '',
       estado: 'Pendiente',
       url_imagen: null,
+      tags_extra: [],
     },
     validationSchema: Yup.object({
       // Validaciones de cada campo
@@ -108,7 +115,7 @@ const MovementDataEntryPage = () => {
         const originalValues = {...values};
         console.log("originalValues",originalValues)
         values.fecha_factura = dateToTimestamp(values.fecha_factura);
-        const success = await movimientosService.updateMovimiento(movimientoId, { ...movimiento , ...values });
+        const success = await movimientosService.updateMovimiento(movimientoId, { ...movimiento , ...values, tags_extra: values.tags_extra  || [] });
         values.fecha_factura = formatTimestamp(values.fecha_factura);
         setIsLoading(false);
     
@@ -192,6 +199,7 @@ const MovementDataEntryPage = () => {
         cates.push({ name: "Ingreso dinero", subcategorias: [] });
         setCategorias(cates);
         setProveedores(proveedores);
+        setTagsExtra(empresa.tags_extra || []);
 
         const data = await movimientosService.getMovimientoById(movimientoId);
         data.fecha_factura = formatTimestamp(data.fecha_factura);
@@ -201,10 +209,12 @@ const MovementDataEntryPage = () => {
           const categoriaEncontrada = empresa.categorias.find(c => c.name === formik.values.categoria);
           setCategoriaSeleccionada(categoriaEncontrada);
         }
+        console.log("data", data)
 
         formik.setValues({
           ...data,
           categoria: data.categoria || '',
+          tags_extra: data.tags_extra || [],
         });
         setCurrentTab('datos');
       }
@@ -221,7 +231,7 @@ const MovementDataEntryPage = () => {
   return (
     <>
       <Head>
-        <title>Detalle del Movimiento</title>
+        <title>Detalle del Movimiento - {movimiento.codigo_operacion}</title>
       </Head>
       <Container maxWidth="lg">
         <Box
@@ -232,7 +242,7 @@ const MovementDataEntryPage = () => {
           }}
         >
           <Typography variant="h4" sx={{ mb: 3 }}>
-            Detalle del Movimiento - Caja {movimiento.proyecto}
+            Caja {movimiento.proyecto} ({movimiento.codigo_operacion})
           </Typography>
           <Tabs
             value={currentTab}
@@ -279,6 +289,7 @@ const MovementDataEntryPage = () => {
                         alt="Imagen del movimiento"
                         style={{ maxWidth: '100%', maxHeight: '500px', marginTop: '10px' }}
                       />
+                      <embed src={movimiento.url_imagen} width="800px" height="2100px" />
                     </Box>
                   )}
                 </Box>
@@ -413,6 +424,18 @@ const MovementDataEntryPage = () => {
                     </Select>
                   </FormControl>
                 )}
+
+                  <Autocomplete
+                    multiple
+                    options={tagsExtra} // Opciones predefinidas si las hay, sino queda vacío
+                    value={formik.values.tags_extra || []}
+                    onChange={(event, newValue) => formik.setFieldValue("tags_extra", newValue)} // Actualizar formik
+                    freeSolo
+                    renderInput={(params) => (
+                      <TextField {...params} label="Tags Extra" variant="outlined" fullWidth />
+                    )}
+                  />
+
                 <FormControl fullWidth margin="normal">
                   <InputLabel id="label-estado">Estado</InputLabel>
                   <Select
@@ -429,7 +452,7 @@ const MovementDataEntryPage = () => {
                   </Select>
                 </FormControl>
 
-
+                    
                 <TextField
                   fullWidth
                   label="Observación"
@@ -456,9 +479,9 @@ const MovementDataEntryPage = () => {
                 color="primary"
                 variant="text"
                 type="submit"
-                onClick={() => router.push('/cajaProyecto?proyectoId=' + movimiento.proyecto_id)}
+                onClick={() => router.push(lastPageUrl? lastPageUrl: '/cajaProyecto?proyectoId=' + movimiento.proyecto_id)}
               >
-                Volver a caja {movimiento.proyecto}
+                Volver a {lastPageName? lastPageName :  movimiento.proyecto}
               </Button>
             </Box>
           </form>

@@ -59,21 +59,50 @@ const NotaPedidoPage = () => {
   const [openFilters, setOpenFilters] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [openAddDialog, setOpenAddDialog] = useState(false); // Estado para añadir nota
-  const [newNoteData, setNewNoteData] = useState({ descripcion: '', proyecto_id: '' }); // Datos de nueva nota
+  const [newNoteData, setNewNoteData] = useState({ descripcion: '', proyecto_id: '', proveedor: '' }); // Datos de nueva nota
   const [currentNota, setCurrentNota] = useState(null);
   const [openDeleteDialog, setOpenDeleteDialog] = useState(false);
   const [notaToDelete, setNotaToDelete] = useState(null);
   const [profiles, setProfiles] = useState([]);
   const [proyectos, setProyectos] = useState([]);
   const [notasEstados, setNotasEstados] = useState([]);
+  const [sortConfig, setSortConfig] = useState({ key: 'fechaCreacion', direction: 'desc' });
 
 
   const [formData, setFormData] = useState({
-    descripcion: '', proyecto_id: '', estado: '', owner: '', creador: '',
+    descripcion: '', proyecto_id: '', estado: '', owner: '', creador: '', proveedor: ''
   });
-  const [filters, setFilters] = useState({ text: '', estado: '', proyecto_id: '' });
+  const [filters, setFilters] = useState({ text: '', estado: '', proyecto_id: '', proveedor: '' });
   const isMobile = useMediaQuery((theme) => theme.breakpoints.down('sm'));
- 
+  
+  const sortedNotas = [...filteredNotas].sort((a, b) => {
+    if (!a[sortConfig.key] || !b[sortConfig.key]) return 0; // Evitar errores con valores nulos
+  
+    let aValue = a[sortConfig.key];
+    let bValue = b[sortConfig.key];
+  
+    // Si es una fecha, convertir a timestamp
+    if (sortConfig.key === 'fechaCreacion') {
+      aValue = aValue._seconds || 0;
+      bValue = bValue._seconds || 0;
+    } else if (typeof aValue === 'string' && typeof bValue === 'string') {
+      aValue = aValue.toLowerCase();
+      bValue = bValue.toLowerCase();
+    }
+  
+    if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
+    if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
+    return 0;
+  });
+
+  const handleSort = (key) => {
+    setSortConfig((prev) => ({
+      key,
+      direction: prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc',
+    }));
+  };
+
+  
   const fetchProfiles = async () => {
     try {
       const profilesData = await profileService.getProfileByEmpresa(user.empresa.id);
@@ -111,6 +140,13 @@ const NotaPedidoPage = () => {
     }
   }, [user]);
 
+  const getEstadoSiguiente = (estado) => {
+    const index = notasEstados.indexOf(estado);
+    if (index === -1) return null;
+    if (index === notasEstados.length - 1) return null;
+    return notasEstados[index + 1]; 
+  }
+  
   const getEstadoColor = (index) => {
     let colors;
     switch (notasEstados.length) {
@@ -160,10 +196,12 @@ const NotaPedidoPage = () => {
     let filtered = notas;
     if (filters.text) {
       filtered = filtered.filter(
-        (nota) =>
-          nota.descripcion.toLowerCase().includes(filters.text.toLowerCase())
+          (nota) =>
+              nota.descripcion.toLowerCase().includes(filters.text.toLowerCase()) ||
+              (nota.proveedor && nota.proveedor.toLowerCase().includes(filters.text.toLowerCase()))
       );
-    }
+  }
+  
 
     if (filters.estado) {
       filtered = filtered.filter((nota) => nota.estado === filters.estado);
@@ -186,7 +224,7 @@ const NotaPedidoPage = () => {
 
   const handleEdit = (nota) => {
     setCurrentNota(nota);
-    setFormData({ descripcion: nota.descripcion, estado: nota.estado, owner: nota.owner, creador: nota.creador, proyecto_id: nota.proyecto_id });
+    setFormData({ descripcion: nota.descripcion, estado: nota.estado, owner: nota.owner, creador: nota.creador, proyecto_id: nota.proyecto_id, proveedor: nota.proveedor });
     setIsEditing(true);
   };
 
@@ -198,14 +236,15 @@ const NotaPedidoPage = () => {
         ...newNoteData,
         owner: newNoteData.owner || user.id,
         owner_name: ownerObj.firstName + " " + ownerObj.lastName,
-        estado: 'Pendiente',
+        estado: notasEstados[0],
         empresaId: user.empresa.id,
         creador: user.id,
         creador_name: user.firstName + " " + user.lastName,
         proyecto_id: newNoteData.proyecto_id,
         proyecto_nombre: proyectoObj.nombre,
+        proveedor: newNoteData.proveedor || '',
       };
-      console.log(newNote)
+      
       const savedNote = await notaPedidoService.createNota(newNote);
       setNotas([savedNote, ...notas]);
       setAlert({ open: true, message: 'Nota añadida con éxito', severity: 'success' });
@@ -266,8 +305,11 @@ const NotaPedidoPage = () => {
   };
 
   const handleChangeEstado = async (nota) => {
-    const nuevoEstado =
-      nota.estado === 'Pendiente' ? 'En proceso' : nota.estado === 'En proceso' ? 'Completa' : null;
+    const index = notasEstados.indexOf(nota.estado);
+    if (index === -1) return;
+    if (index === notasEstados.length - 1) return;
+
+    const nuevoEstado = notasEstados[index + 1];
   
     if (!nuevoEstado) return; // Si ya está en "Completa", no cambiar más.
   
@@ -430,6 +472,9 @@ const NotaPedidoPage = () => {
                   <Typography variant="body2" sx={{ mt: 1 }}>
                     Creado el: {formatTimestamp(nota.fechaCreacion)} por {nota.creador_name}
                   </Typography>
+                  <Typography variant="body2" sx={{ mt: 1 }}>
+                    Proveedor: {nota.proveedor}
+                  </Typography>
                   <Chip
                     label={nota.estado}
                     color={
@@ -438,15 +483,12 @@ const NotaPedidoPage = () => {
                     sx={{ mt: 1 }}
                   />
                   <Stack direction="row" spacing={1} mt={2}>
-                  {nota.estado !== 'Completa' && (<Button
+                  {getEstadoSiguiente(nota.estado) && (<Button
                         variant="outlined"
-                        color={nota.estado === 'Pendiente' ? 'primary' : 'success'}
+                        color={getEstadoColor(notasEstados.indexOf(nota.estado)+1)}
                         onClick={() => handleChangeEstado(nota)}
                       >
-                        {nota.estado === 'Pendiente'
-                          ? 'Marcar En proceso'
-                          : 'Marcar Completa'
-                          }
+                        Macar en {getEstadoSiguiente(nota.estado)}
                       </Button>)}
                       <Button
                         startIcon={<EditIcon />}
@@ -471,21 +513,40 @@ const NotaPedidoPage = () => {
           <Table>
             <TableHead>
               <TableRow>
-                <TableCell>Código</TableCell>
-                <TableCell>Proyecto</TableCell>
-                <TableCell>Responsable</TableCell>
-                <TableCell>Creador</TableCell>
-                <TableCell>Descripción</TableCell>
-                <TableCell>Estado</TableCell>
-                <TableCell>Fecha Creación</TableCell>
+                <TableCell onClick={() => handleSort('codigo')}>Código
+                {sortConfig.key === 'codigo' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
+                </TableCell>
+                <TableCell onClick={() => handleSort('proyecto_nombre')}>Proyecto
+                {sortConfig.key === 'proyecto_nombre' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
+                </TableCell>
+                <TableCell onClick={() => handleSort('proveedor')}>Proveedor
+                {sortConfig.key === 'proveedor' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
+                </TableCell>
+                <TableCell onClick={() => handleSort('owner_name')}>Responsable
+                {sortConfig.key === 'owner_name' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
+                </TableCell>
+                <TableCell onClick={() => handleSort('creador_name')}>Creador
+                {sortConfig.key === 'creador_name' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
+                </TableCell>
+                <TableCell onClick={() => handleSort('descripcion')}>Descripción  
+                {sortConfig.key === 'descripcion' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
+                </TableCell>
+                <TableCell onClick={() => handleSort('estado')}>Estado
+                  {sortConfig.key === 'estado' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
+                </TableCell>
+                <TableCell onClick={() => handleSort('fechaCreacion')}>
+                  Fecha Creación {sortConfig.key === 'fechaCreacion' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
+                </TableCell>
                 <TableCell>Acciones</TableCell>
               </TableRow>
             </TableHead>
+
             <TableBody>
-              {filteredNotas.map((nota) => (
+              {sortedNotas.map((nota) => (
                 <TableRow key={nota.id}>
                   <TableCell>{nota.codigo}</TableCell>
                   <TableCell>{nota.proyecto_nombre}</TableCell>
+                  <TableCell>{nota.proveedor}</TableCell>
                   <TableCell>{nota.owner_name}</TableCell>
                   <TableCell>{nota.creador_name}</TableCell>
                   <TableCell>{nota.descripcion}</TableCell>
@@ -499,15 +560,13 @@ const NotaPedidoPage = () => {
                   </TableCell>
                   <TableCell>{formatTimestamp(nota.fechaCreacion)}</TableCell>
                   <TableCell>
-                      {nota.estado !== 'Completa' && (
+                      {notasEstados.indexOf(nota.estado) !== (notasEstados.length - 1) && (
                       <Button
                         variant="outlined"
-                        color={nota.estado === 'Pendiente' ? 'primary' : 'success'}
+                        color={getEstadoColor(notasEstados.indexOf(nota.estado)+1)}
                         onClick={() => handleChangeEstado(nota)}
                       >
-                        {nota.estado === 'Pendiente'
-                          ? 'Marcar En proceso'
-                          : 'Marcar Completa'}
+                        Macar en {getEstadoSiguiente(nota.estado)}
                       </Button>)}
                       <Button
                         startIcon={<EditIcon />}
@@ -565,15 +624,23 @@ const NotaPedidoPage = () => {
         rows={3}
         fullWidth
       />
+      <TextField
+        label="Proveedor"
+        value={formData.proveedor}
+        onChange={(e) => setFormData({ ...formData, proveedor: e.target.value })}
+        fullWidth
+      />
       <FormControl fullWidth>
         <InputLabel>Estado</InputLabel>
         <Select
           value={formData.estado}
           onChange={(e) => setFormData({ ...formData, estado: e.target.value })}
         >
-          <MenuItem value="Pendiente">Pendiente</MenuItem>
-          <MenuItem value="En proceso">En proceso</MenuItem>
-          <MenuItem value="Completa">Completa</MenuItem>
+          {notasEstados.map((estado) => (
+            <MenuItem key={estado} value={estado}>
+              {estado}
+            </MenuItem>
+          ))}
         </Select>
       </FormControl>
       <FormControl fullWidth>
@@ -626,6 +693,12 @@ const NotaPedidoPage = () => {
         onChange={(e) => setNewNoteData({ ...newNoteData, descripcion: e.target.value })}
         multiline
         rows={3}
+        fullWidth
+      />
+      <TextField
+        label="Proveedor"
+        value={newNoteData.proveedor}
+        onChange={(e) => setNewNoteData({ ...newNoteData, proveedor: e.target.value })}
         fullWidth
       />
       <FormControl fullWidth>
@@ -716,9 +789,11 @@ const NotaPedidoPage = () => {
                   onChange={(e) => setFilters({ ...filters, estado: e.target.value })}
                 >
                   <MenuItem value="">Todos</MenuItem>
-                  <MenuItem value="Pendiente">Pendiente</MenuItem>
-                  <MenuItem value="En proceso">En proceso</MenuItem>
-                  <MenuItem value="Completa">Completa</MenuItem>
+                  {notasEstados.map((estado) => (
+                    <MenuItem key={estado} value={estado}>
+                      {estado}
+                    </MenuItem>
+                  ))}
                 </Select>
               </FormControl>
               <FormControl>

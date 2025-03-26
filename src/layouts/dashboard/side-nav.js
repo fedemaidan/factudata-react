@@ -24,7 +24,7 @@ import { SvgIcon } from '@mui/material';
 import DashboardIcon from '@mui/icons-material/Dashboard';
 import StoreIcon from '@mui/icons-material/Store';
 import NoteAltIcon from '@mui/icons-material/NoteAlt';
-
+import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
 import AddCircleIcon from '@mui/icons-material/AddCircle';
 import CogIcon from '@heroicons/react/24/solid/CogIcon';
 import UserPlusIcon from '@heroicons/react/24/solid/UserPlusIcon';
@@ -154,7 +154,19 @@ export const SideNav = (props) => {
           )
         }
 
-        let newItems = [empresaElement, vistaGeneralElement, vistaTodosLosMovElement, notaPedidoElement, ...initialItems];
+        const cajaChicaElement = {
+          title: 'Caja Chica',
+          path: '/cajaChica',
+          icon: (
+            <SvgIcon fontSize="small">
+              <AttachMoneyIcon />
+            </SvgIcon>
+          )
+        }
+
+        let newItems = [vistaGeneralElement, vistaTodosLosMovElement, notaPedidoElement, cajaChicaElement, ...initialItems];
+        if (user.admin) 
+            newItems.push(empresaElement)
         
         await proyectos.forEach( (proy ) => {
           console.log(proy.nombre)
@@ -170,7 +182,18 @@ export const SideNav = (props) => {
             }
           )
         })
+
+        const odooIntegration = {
+          title: 'Integración con Odoo',
+          path: '/odooIntegracion?empresaId=' + empresa.id,
+          icon: (
+            <SvgIcon fontSize="small">
+              <NoteAltIcon />
+            </SvgIcon>
+          )
+        }
         
+        newItems.push(odooIntegration)
         setItems(newItems)
       }
     };

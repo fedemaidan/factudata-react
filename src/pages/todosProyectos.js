@@ -147,6 +147,7 @@ const TodosProyectosPage = () => {
                 <Table>
                   <TableHead>
                     <TableRow>
+                      <TableCell>Código</TableCell>
                       <TableCell>Fecha</TableCell>
                       <TableCell>Proyecto</TableCell>
                       <TableCell>Categoría</TableCell>
@@ -161,6 +162,7 @@ const TodosProyectosPage = () => {
                   <TableBody>
                     {movimientosFiltrados.map((mov, index) => (
                       <TableRow key={index}>
+                        <TableCell>{mov.codigo_operacion}</TableCell>
                         <TableCell>{formatTimestamp(mov.fecha_factura)}</TableCell>
                         <TableCell>{mov.proyectoNombre}</TableCell>
                         <TableCell>{mov.categoria || '-'}</TableCell>

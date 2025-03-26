@@ -12,6 +12,7 @@ import { updateEmpresaDetails, getEmpresaById } from 'src/services/empresaServic
 import { getProyectosByEmpresa, hasPermission } from 'src/services/proyectosService'; 
 import { useAuthContext } from 'src/contexts/auth-context';
 import { useRouter } from 'next/router';
+import { PermisosUsuarios } from 'src/sections/empresa/PermisosUsuarios';
 
 
 const EmpresaPage = () => {
@@ -31,6 +32,7 @@ const EmpresaPage = () => {
     { value: 'proveedores', label: 'Proveedores' },
     { value: 'configuracion', label: 'Configuración General' },
     { value: 'usuarios', label: 'Usuarios' },
+    { value: 'permisos', label: 'Permisos' }
   ];
 
   useEffect(() => {
@@ -129,6 +131,7 @@ const EmpresaPage = () => {
             {currentTab === 'categorias' && <CategoriasDetails empresa={empresa}/>}
             {currentTab === 'proveedores' && <ProveedoresDetails empresa={empresa}/>}
             {currentTab === 'configuracion' && <ConfiguracionGeneral empresa={empresa} updateEmpresaData={updateEmpresaDetails} hasPermission={hasPermission}/>}
+            {currentTab === 'permisos' && <PermisosUsuarios empresa={empresa} />}
           </Stack>
         </Container>
       </Box>

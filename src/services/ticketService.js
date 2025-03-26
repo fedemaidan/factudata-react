@@ -282,6 +282,36 @@ const ticketService = {
       return [];
     }
   },
+  getCajaChicaDelUsuario: async (user, moneda = 'ARS') => {
+    try {
+      let queryRef = collection(db, 'movimientos');
+  
+      // Armamos la query para los movimientos de caja chica
+      let movsQuery = query(
+        queryRef,
+        where('caja_chica', '==', true),
+        where('id_user', '==', user.id),
+        where('moneda', '==', moneda),
+        orderBy('codigo_operacion', 'desc')
+      );
+  
+      const movsSnapshot = await getDocs(movsQuery);
+      const movimientos = [];
+  
+      movsSnapshot.forEach((doc) => {
+        movimientos.push({
+          id: doc.id,
+          ...doc.data()
+        });
+      });
+  
+      return movimientos;
+    } catch (err) {
+      console.error('Error en getCajaChicaDelUsuario:', err);
+      return [];
+    }
+  },
+  
   getLastMovimientosForProyecto: async (proyectoId, limiteDias = 7) => {
     try {
       console.log("getLastMovimientosForProyecto")

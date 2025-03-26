@@ -14,6 +14,8 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
     total_original: false,
     medio_pago: false,
     tipo_factura: false,
+    tags_extra: false,
+    caja_chica: false
   }
 
   const [camposObligatorios, setCamposObligatorios] = useState(empresa.camposObligatorios || []);
@@ -32,7 +34,12 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
   const [notasEstados, setNotasEstados] = useState(
     empresa.notas_estados || ["Pendiente", "En proceso", "Completa"]
   );
+  const [tagsExtra, setTagsExtra] = useState(empresa.tags_extra || []);
 
+  const handleTagsExtraChange = (event, newValue) => {
+    setTagsExtra(newValue);
+  };
+  
   const handleNotasEstadosChange = (event, newValue) => {
     setNotasEstados(newValue);
   };
@@ -49,8 +56,8 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
   const opcionesAcciones = [
     "CREAR_EGRESO", "CREAR_INGRESO", "VER_CAJAS", 
     "AJUSTAR_CAJAS", "TRANSFERIR_ENTRE_CAJAS", "CREAR_NUEVO_PROYECTO", 
-    "COMPRAR_MONEDA", "VENDER_MONEDA", "COMPLETAR_OPERACION", "VALIDAR_CODIGO", "CONFIRMAR_PAGOS_PENDIENTES", "VER_DRIVE", "CREAR_NOTA_PEDIDO", "VER_NOTAS_PEDIDO_PENDIENTES", "VER_NOTAS_PEDIDO_COMPLETAS", "VER_NOTA_PEDIDO_CODIGO", "MODIFICAR_NOTA_PEDIDO", "ELIMINAR_NOTA_PEDIDO",
-    "VER_NOTAS_DE_PEDIDO"
+    "VENDER_DOLARES", "VALIDAR_CODIGO", "CONFIRMAR_PAGOS_PENDIENTES", "VER_DRIVE", "CREAR_NOTA_PEDIDO", "VER_NOTAS_PEDIDO_PENDIENTES", "VER_NOTAS_PEDIDO_COMPLETAS", "VER_NOTA_PEDIDO_CODIGO", "MODIFICAR_NOTA_PEDIDO", "ELIMINAR_NOTA_PEDIDO",
+    "VER_NOTAS_DE_PEDIDO", "GESTIONAR_MOVIMIENTO", "CREAR_INGRESO_CAJA_CHICA", "VER_MI_CAJA_CHICA"
   ];
 
   const dolarAjuste = [
@@ -111,6 +118,7 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
       con_estados: conEstados,
       solo_dolar: soloDolar,
       notas_estados: notasEstados,
+      tags_extra: tagsExtra,
     };
     
     try {
@@ -225,7 +233,7 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
     </TextField>
     <Autocomplete
       multiple
-      options={["Pendiente", "En proceso", "Completa", "Cancelada", "Devuelta"]}
+      options={[]}
       value={notasEstados}
       onChange={handleNotasEstadosChange}
       freeSolo
@@ -233,6 +241,17 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
         <TextField {...params} label="Estados del Pedido" variant="outlined" fullWidth />
       )}
     />
+    <Autocomplete
+        multiple
+        options={[]} // Opciones predefinidas si las hay, sino queda vacío
+        value={tagsExtra}
+        onChange={handleTagsExtraChange}
+        freeSolo
+        renderInput={(params) => (
+          <TextField {...params} label="Tags Extra" variant="outlined" fullWidth />
+        )}
+      />
+
 
     <FormControl sx={{ mt: 2 }}>
   <Checkbox

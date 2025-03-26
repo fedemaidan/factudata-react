@@ -103,13 +103,16 @@ export const getProyectoById = async (id) => {
  */
 export const updateProyecto = async (id, proyecto) => {
   try {
+    console.log("proyecto", proyecto);
     proyecto = {
       carpetaRef: proyecto.carpetaRef ?? "",
       proyecto_default_id: proyecto.proyecto_default_id ?? "",
       sheetWithClient: proyecto.sheetWithClient ?? "",
       nombre: proyecto.nombre,
       activo: proyecto.activo ?? true,
+      extraSheets: proyecto.extraSheets ?? [],
     }
+    console.log("proyecto nuevo", proyecto);
     const proyectoDocRef = doc(db, 'proyectos', id);
     await updateDoc(proyectoDocRef, proyecto);
     console.log('Proyecto actualizado con éxito');
@@ -152,42 +155,31 @@ export const hasPermission = async (fileId) => {
 }
 
 /**
- * Crea un nuevo proyecto y retorna el proyecto creado.
+ * Crea un nuevo proyecto utilizando la API en lugar de Firebase directamente.
  * @param {object} proyecto - Un objeto con los datos del proyecto a crear.
  * @param {string} empresaId - El ID de la empresa a la que se asociará el proyecto.
  * @returns {Promise<object|null>} - Retorna un objeto con los datos del proyecto creado o null si falla.
  */
 export const crearProyecto = async (proyecto, empresaId) => {
   try {
-    // Crear referencia a la empresa
-    const empresaRef = doc(db, 'empresas', empresaId);
-
-    // Crear el nuevo proyecto en Firestore, incluyendo la referencia a la empresa
-    const proyectoDocRef = await addDoc(collection(db, 'proyectos'), {
+    const response = await api.post('/proyecto/', {
       ...proyecto,
-      empresa: empresaRef, // Guardamos la referencia a la empresa en lugar de empresaId
+      empresaId,  // Enviar la empresa ID en el body
     });
 
-    // Obtener los datos del nuevo proyecto
-    const proyectoDoc = await getDoc(proyectoDocRef);
-    if (!proyectoDoc.exists()) {
-      console.error('No se pudo obtener el proyecto recién creado');
+    if (response.status === 201) {
+      console.log('Proyecto creado con éxito:', response.data.proyecto);
+      return response.data.proyecto;
+    } else {
+      console.error('Error al crear el proyecto:', response.data);
       return null;
     }
-
-    const nuevoProyecto = {
-      ...proyectoDoc.data(),
-      id: proyectoDoc.id,
-    };
-
-    await addProyectoToEmpresa(empresaId, nuevoProyecto.id);
-
-    return nuevoProyecto;
   } catch (err) {
     console.error('Error al crear el proyecto:', err);
     return null;
   }
 };
+
 
 /**
  * Elimina un proyecto y todos sus movimientos asociados.
@@ -271,3 +263,29 @@ export const getCajasByEmpresaId = async (empresaId) => {
     return [];
   }
 };
+
+/**
+ * Sube un archivo CSV y carga los movimientos en un proyecto.
+ * @param {string} proyectoId - ID del proyecto donde se cargarán los movimientos.
+ * @param {File} archivo - Archivo CSV a subir.
+ * @returns {Promise<object>} - Respuesta de la API.
+ */
+export const subirCSVProyecto = async (proyectoId, archivo, proyectoNombre) => {
+  try {
+    const formData = new FormData();
+    formData.append('archivo', archivo);
+    formData.append('proyecto_nombre', proyectoNombre);
+
+    const response = await api.post(`/proyecto/${proyectoId}/cargar-movimientos`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+
+    return response.data;
+  } catch (err) {
+    console.error('Error al subir el archivo CSV:', err);
+    throw err;
+  }
+};
+

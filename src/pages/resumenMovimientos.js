@@ -84,6 +84,9 @@ const ResumenMovimientosPage = () => {
                                             <Typography variant="body2" sx={{ color: 'textSecondary', mb: 1 }}>
                                                 Observación: {mov.observacion || 'Ninguna'}
                                             </Typography>
+                                            <Typography variant="body2" sx={{ color: 'textSecondary' }}>
+                                                Código de operación: {mov.codigo_operacion || 'Ninguno'}
+                                            </Typography>
                                             <Box display="flex" justifyContent="space-between">
                                                 <Button
                                                     variant="text"

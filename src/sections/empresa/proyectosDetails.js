@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
+  Chip,
   Box,
   Button,
   Card,
@@ -32,7 +33,7 @@ import * as Yup from 'yup';
 import EditIcon from '@mui/icons-material/Edit';
 import SaveIcon from '@mui/icons-material/Save';
 import AddCircleIcon from '@mui/icons-material/AddCircle';
-import { getProyectosByEmpresa, hasPermission, updateProyecto, crearProyecto } from 'src/services/proyectosService';
+import { getProyectosByEmpresa, hasPermission, updateProyecto, crearProyecto, subirCSVProyecto } from 'src/services/proyectosService';
 
 export const ProyectosDetails = ({ empresa }) => {
   const [isLoading, setIsLoading] = useState(false);
@@ -44,6 +45,11 @@ export const ProyectosDetails = ({ empresa }) => {
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
   const [snackbarSeverity, setSnackbarSeverity] = useState('success');
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadProjectId, setUploadProjectId] = useState(null);
+  const [uploadProjectName, setUploadProjectName] = useState('');
+  const [sheetsPermissions, setSheetsPermissions] = useState({});
 
   const handleSnackbarClose = () => {
     setSnackbarOpen(false);
@@ -82,6 +88,45 @@ export const ProyectosDetails = ({ empresa }) => {
     }
   };
 
+  const handleFileChange = (event, proyectoId, proyectoNombre) => {
+    const file = event.target.files[0];
+    if (file && file.type === 'text/csv') {
+      setSelectedFile(file);
+      setUploadProjectId(proyectoId);
+      setUploadProjectName(proyectoNombre);
+    } else {
+      setSnackbarMessage('Por favor, selecciona un archivo CSV válido.');
+      setSnackbarSeverity('error');
+      setSnackbarOpen(true);
+    }
+  };
+  
+  const handleUploadCSV = async () => {
+    if (!selectedFile || !uploadProjectId) {
+      setSnackbarMessage('Selecciona un archivo CSV antes de subirlo.');
+      setSnackbarSeverity('error');
+      setSnackbarOpen(true);
+      return;
+    }
+  
+    setUploading(true);
+  
+    try {
+      await subirCSVProyecto(uploadProjectId, selectedFile, uploadProjectName);
+      setSnackbarMessage('Movimientos cargados con éxito.');
+      setSnackbarSeverity('success');
+      setSelectedFile(null);
+    } catch (error) {
+      console.log(error)
+      setSnackbarMessage('Error al subir el archivo CSV.');
+      setSnackbarSeverity('error');
+    } finally {
+      setUploading(false);
+      setSnackbarOpen(true);
+    }
+  };
+  
+
   useEffect(() => {
     const fetchEmpresaData = async () => {
       const proyectosData = await getProyectosByEmpresa(empresa);
@@ -97,6 +142,7 @@ export const ProyectosDetails = ({ empresa }) => {
       carpetaRef: '',
       proyecto_default_id: '',
       sheetWithClient: '',
+      extraSheets: [] 
     },
     enableReinitialize: true,
     validationSchema: Yup.object({
@@ -111,6 +157,7 @@ export const ProyectosDetails = ({ empresa }) => {
         carpetaRef: values.carpetaRef,
         proyecto_default_id: values.proyecto_default_id,
         sheetWithClient: values.sheetWithClient,
+        extraSheets: values.extraSheets
       };
 
       try {
@@ -178,6 +225,55 @@ export const ProyectosDetails = ({ empresa }) => {
     return proyecto ? proyecto.nombre : "Sin caja central";
   };
 
+  const handleAddExtraSheet = async (event) => {
+    if (event.key === 'Enter' && event.target.value.trim() !== '') {
+      event.preventDefault(); // 🔥 Evita que el formulario se envíe al presionar Enter
+  
+      const newSheetId = event.target.value.trim();
+      const extraSheetsArray = formik.values.extraSheets || []; // Asegurar que es un array
+  
+      // Evitar duplicados
+      if (extraSheetsArray.includes(newSheetId)) {
+        setSnackbarMessage('El Google Sheet ya fue agregado.');
+        setSnackbarSeverity('warning');
+        setSnackbarOpen(true);
+        event.target.value = ''; // Limpiar input
+        return;
+      }
+  
+      try {
+        const permissionResult = await hasPermission(newSheetId);
+        
+        // Actualizar el estado de permisos
+        setSheetsPermissions(prev => ({
+          ...prev,
+          [newSheetId]: permissionResult
+        }));
+  
+        // Agregar el Sheet a extraSheets
+        formik.setFieldValue('extraSheets', [...extraSheetsArray, newSheetId]);
+  
+      } catch (error) {
+        console.error('Error al verificar permisos:', error);
+        setSnackbarMessage('Error al verificar permisos del Google Sheet.');
+        setSnackbarSeverity('error');
+        setSnackbarOpen(true);
+      }
+  
+      event.target.value = ''; // Limpiar input
+    }
+  };
+  
+  
+  
+  const handleRemoveExtraSheet = (sheetId) => {
+    formik.setFieldValue(
+      'extraSheets',
+      formik.values.extraSheets?.filter((id) => id !== sheetId)
+    );
+  };
+  
+
   return (
     <>
       <Card>
@@ -195,23 +291,98 @@ export const ProyectosDetails = ({ empresa }) => {
                   }
                   secondary={
                     <>
-                      <Typography variant="body2">Carpeta: {proyecto.carpetaRef}</Typography>
                       <Typography variant="body2">Caja central: {findProyectoNombreById(proyecto.proyecto_default_id)}</Typography>
-                      <Typography variant="body2">Google Sheet ID: {proyecto.sheetWithClient || 'No asignado'}</Typography>
+                      <Typography variant="body2">
+                         
+                        {proyecto.carpetaRef ? (
+                          <a 
+                            href={`https://drive.google.com/drive/folders/${proyecto.carpetaRef}`} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            style={{ marginLeft: '5px', textDecoration: 'none', color: '#1a73e8', fontWeight: 'bold' }}
+                          >
+                            Link Carpeta
+                          </a>
+                        ) : "Carpeta: No asignada"}
+                      </Typography>
+
+                      <Typography variant="body2">
+                        
+                        {proyecto.sheetWithClient ? (
+                          <a 
+                            href={`https://docs.google.com/spreadsheets/d/${proyecto.sheetWithClient}`} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            style={{ marginLeft: '5px', textDecoration: 'none', color: '#1a73e8', fontWeight: 'bold' }}
+                          >
+                            Link Google Sheet
+                          </a>
+                        ) : "Google Sheet No asignado"}
+                      </Typography>
+
                       <Typography variant="body2">Estado: {proyecto.activo ? 'Activo' : 'Inactivo'}</Typography>
+                      <Typography variant="body2">
+                          Sheets Adicionales:
+                          {proyecto.extraSheets && proyecto.extraSheets?.length > 0
+                            ? proyecto.extraSheets?.map((sheetId, index) => (
+                                <a
+                                  key={index}
+                                  href={`https://docs.google.com/spreadsheets/d/${sheetId}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  style={{ marginLeft: '5px', textDecoration: 'none', color: '#1a73e8', fontWeight: 'bold' }}
+                                >
+                                  {` Sheet ${index + 1} `}
+                                </a>
+                              ))
+                            : ' No asignados'}
+                        </Typography>
+
                     </>
                   }
                 />
                 <ListItemSecondaryAction>
-                  <Switch
-                    checked={proyecto.activo}
-                    onChange={() => toggleProyectoActivo(proyecto)}
-                    color="primary"
-                  />
-                  <IconButton edge="end" onClick={() => iniciarEdicionProyecto(proyecto)}>
-                    <EditIcon />
-                  </IconButton>
-                </ListItemSecondaryAction>
+  <Switch
+    checked={proyecto.activo}
+    onChange={() => toggleProyectoActivo(proyecto)}
+    color="primary"
+  />
+  <IconButton edge="end" onClick={() => iniciarEdicionProyecto(proyecto)}>
+    <EditIcon />
+  </IconButton>
+  <input
+    accept=".csv"
+    style={{ display: 'none' }}
+    id={`upload-csv-${proyecto.id}`}
+    type="file"
+    onChange={(event) => handleFileChange(event, proyecto.id, proyecto.nombre)}
+  />
+  <label htmlFor={`upload-csv-${proyecto.id}`}>
+    <Button
+      variant="contained"
+      component="span"
+      color="secondary"
+      size="small"
+      disabled={uploading}
+      sx={{ ml: 2 }}
+    >
+      Subir CSV
+    </Button>
+  </label>
+  {selectedFile && uploadProjectId === proyecto.id && (
+    <Button
+      variant="contained"
+      color="primary"
+      size="small"
+      onClick={handleUploadCSV}
+      disabled={uploading}
+      sx={{ ml: 2 }}
+    >
+      {uploading ? 'Subiendo...' : 'Cargar'}
+    </Button>
+  )}
+</ListItemSecondaryAction>
+
               </ListItem>
             ))}
           </List>
@@ -286,6 +457,33 @@ export const ProyectosDetails = ({ empresa }) => {
               helperText={formik.touched.sheetWithClient && (formik.errors.sheetWithClient || (sheetPermissionError && "El google sheet no está configurado para que podamos editarlo. Asegúrate de que el id esté bien escrito y de darle permisos de edición a firebase-adminsdk-xts1d@factudata-3afdf.iam.gserviceaccount.com."))}
               style={{ marginTop: '1rem' }}
             />
+            <Box sx={{ mt: 2 }}>
+  <Typography variant="subtitle1">Google Sheets Adicionales</Typography>
+  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 1 }}>
+    {formik.values.extraSheets?.map((sheetId, index) => (
+      <Chip
+        key={index}
+        label={`Sheet ${index + 1}`}
+        onClick={() => window.open(`https://docs.google.com/spreadsheets/d/${sheetId}`, '_blank')}
+        onDelete={() => handleRemoveExtraSheet(sheetId)}
+        sx={{
+          cursor: 'pointer',
+          backgroundColor: sheetsPermissions[sheetId] ? 'green' : 'red',
+          color: 'white'
+        }}
+      />
+    ))}
+  </Box>
+  <TextField
+    fullWidth
+    label="Agregar ID de Google Sheet"
+    variant="outlined"
+    size="small"
+    onKeyDown={handleAddExtraSheet}
+    sx={{ mt: 1 }}
+  />
+</Box>
+
           </DialogContent>
           <DialogActions>
             <Button onClick={cancelarEdicion} color="primary">

@@ -35,7 +35,7 @@ export const UsuariosDetails = ({ empresa }) => {
         prof.proyectosData = await getProyectosFromUser(prof);
         return prof;
       }));
-
+      console.log(profiles)
       setUsuarios(profilesWithProjects);
       setIsLoading(false);
     };
@@ -56,6 +56,8 @@ export const UsuariosDetails = ({ empresa }) => {
       firstName: editingUsuario ? editingUsuario.firstName : '',
       lastName: editingUsuario ? editingUsuario.lastName : '',
       proyectos: editingUsuario ? editingUsuario.proyectosData.map(proj => proj.id) : [],
+      tipo_validacion_remito: editingUsuario ? editingUsuario.tipo_validacion_remito : '',
+      default_caja_chica: editingUsuario ? editingUsuario.default_caja_chica : null
     },
     enableReinitialize: true,
     validationSchema: Yup.object({
@@ -69,7 +71,7 @@ export const UsuariosDetails = ({ empresa }) => {
       try {
         const selectedProyectosRefs = values.proyectos.map(projId => doc(db, 'proyectos', projId));
         if (editingUsuario) {
-          const updatedUsuario = { ...values, proyectos: selectedProyectosRefs };
+          const updatedUsuario = { ...values, proyectos: selectedProyectosRefs, default_caja_chica: values.default_caja_chica };
           const updatedUsuarios = usuarios.map((user) =>
             user.id === editingUsuario.id ? { ...user, ...updatedUsuario, proyectosData: values.proyectos.map(projId => proyectos.find(p => p.id === projId)) } : user
           );
@@ -84,6 +86,8 @@ export const UsuariosDetails = ({ empresa }) => {
             lastName: values.lastName,
             proyectos: selectedProyectosRefs,
             proyectosData: values.proyectos.map(projId => proyectos.find(p => p.id === projId)),
+            tipo_validacion_remito: values.tipo_validacion_remito,
+            default_caja_chica: values.default_caja_chica
           };
           const createdUsuario = await profileService.createProfile(newUsuario, empresa);
           setUsuarios([...usuarios, createdUsuario]);
@@ -123,7 +127,8 @@ export const UsuariosDetails = ({ empresa }) => {
       phone: usuario.phone,
       firstName: usuario.firstName,
       lastName: usuario.lastName,
-      proyectos: usuario.proyectosData.map(proj => proj.id)
+      proyectos: usuario.proyectosData.map(proj => proj.id),
+      tipo_validacion_remito: usuario.tipo_validacion_remito
     });
     setIsDialogOpen(true);
   };
@@ -175,9 +180,11 @@ export const UsuariosDetails = ({ empresa }) => {
                   <TableCell>WhatsApp</TableCell>
                   <TableCell>Nombre</TableCell>
                   <TableCell>Apellido</TableCell>
+                  <TableCell>Validación Remito</TableCell>
                   <TableCell>Código de Confirmación</TableCell>
                   <TableCell>Confirmado</TableCell>
                   <TableCell>Proyectos</TableCell>
+                  <TableCell>Caja chica</TableCell>
                   <TableCell>Acciones</TableCell>
                 </TableRow>
               </TableHead>
@@ -188,6 +195,7 @@ export const UsuariosDetails = ({ empresa }) => {
                     <TableCell>{usuario.phone}</TableCell>
                     <TableCell>{usuario.firstName}</TableCell>
                     <TableCell>{usuario.lastName}</TableCell>
+                    <TableCell>{usuario.tipo_validacion_remito}</TableCell>
                     <TableCell>{"https://admin.sorbydata.com/auth/register/?code=" + usuario.confirmationCode}</TableCell>
                     <TableCell>{usuario.confirmed ? "Sí" : "No"}</TableCell>
                     <TableCell>
@@ -195,6 +203,7 @@ export const UsuariosDetails = ({ empresa }) => {
                         <Typography key={project.id}>{project.nombre}</Typography>
                       ))}
                     </TableCell>
+                    <TableCell>{usuario.default_caja_chica ? "Si" : (usuario.default_caja_chica == false ? "No": "No definido")}</TableCell>
                     <TableCell>
                       <IconButton onClick={() => startEditUsuario(usuario)}>
                         <EditIcon />
@@ -278,6 +287,32 @@ export const UsuariosDetails = ({ empresa }) => {
                 ))}
               </Select>
             </FormControl>
+            <FormControl fullWidth margin="dense">
+              <InputLabel id="tipo-validacion-label">Validación de remito</InputLabel>
+              <Select
+                labelId="tipo-validacion-label"
+                name="tipo_validacion_remito"
+                value={formik.values.tipo_validacion_remito}
+                onChange={formik.handleChange}
+              >
+                <MenuItem value="web">Web</MenuItem>
+                <MenuItem value="whatsapp">WhatsApp</MenuItem>
+              </Select>
+            </FormControl>
+            <FormControl fullWidth margin="dense">
+              <InputLabel id="default-caja-chica-label">Caja chica por defecto</InputLabel>
+              <Select
+                labelId="default-caja-chica-label"
+                name="default_caja_chica"
+                value={formik.values.default_caja_chica}
+                onChange={formik.handleChange}
+              >
+                <MenuItem value={true}>Sí</MenuItem>
+                <MenuItem value={false}>No</MenuItem>
+                <MenuItem value={null}>Ninguno</MenuItem>
+              </Select>
+            </FormControl>
+
           </DialogContent>
           <DialogActions>
             <Button onClick={handleCloseDialog} color="secondary">

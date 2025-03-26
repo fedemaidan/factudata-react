@@ -134,6 +134,23 @@ const ProyectoMovimientosPage = () => {
     setOpenDialog(true);
   };
 
+  const handleRefresh = async () => {
+    if (!proyectoId) return;
+  
+    const movs = await ticketService.getMovimientosForProyecto(proyectoId, 'ARS');
+    const movsUsd = await ticketService.getMovimientosForProyecto(proyectoId, 'USD');
+  
+    setMovimientos(movs);
+    setMovimientosUSD(movsUsd);
+  
+    setAlert({
+      open: true,
+      message: 'Listado actualizado correctamente',
+      severity: 'success',
+    });
+  };
+  
+
   useEffect(() => {
     if (isMobile) {
       setShowDolar(false);
@@ -284,6 +301,10 @@ const ProyectoMovimientosPage = () => {
               >
                 Caja en Dólares: US {saldoTotalCajaUSD > 0 ? formatCurrency(saldoTotalCajaUSD) : "(" + formatCurrency(saldoTotalCajaUSD) + ")"}{}
               </Button>
+              <IconButton color="primary" onClick={handleRefresh}>
+                  <RefreshIcon />
+                </IconButton>
+
             </Stack>
             {filtrosActivos && (
               <Stack direction="row" spacing={2} alignItems="center">
@@ -314,6 +335,7 @@ const ProyectoMovimientosPage = () => {
                     ),
                   }}
                 />
+                
                 {empresa?.solo_dolar &&  
                 <Box sx={{ display: 'flex', alignItems: 'center' }}>
                   <input
@@ -356,6 +378,9 @@ const ProyectoMovimientosPage = () => {
                           <Typography variant="caption" color="textSecondary">
                             {formatTimestamp(mov.fecha_factura)}
                           </Typography>
+                          <Typography variant="body2" color="textSecondary">
+                            Código de operación: {mov.codigo_operacion || "Ninguno"}
+                          </Typography>
                           <Stack direction="row" spacing={1} mt={2}>
                             <Button
                               color="primary"
@@ -380,9 +405,12 @@ const ProyectoMovimientosPage = () => {
                   <Table>
                     <TableHead>
                       <TableRow>
+                        <TableCell>Código</TableCell>
                         <TableCell>Fecha</TableCell>
                         <TableCell>Tipo</TableCell>
                         <TableCell>Total</TableCell>
+                        <TableCell>Categoria</TableCell>
+                        <TableCell>Proveedor</TableCell>
                         <TableCell>Observación</TableCell>
                         <TableCell>Tipo de cambio</TableCell>
                         <TableCell>Estado</TableCell>
@@ -392,6 +420,7 @@ const ProyectoMovimientosPage = () => {
                     <TableBody>
                       {movimientosFiltrados.map((mov, index) => (
                         <TableRow key={index}>
+                          <TableCell>{mov.codigo_operacion}</TableCell>
                           <TableCell>{formatTimestamp(mov.fecha_factura)}</TableCell>
                           <TableCell>
                             <Chip
@@ -400,6 +429,8 @@ const ProyectoMovimientosPage = () => {
                             />
                           </TableCell>
                           <TableCell>{formatCurrency(mov.total)}</TableCell>
+                          <TableCell>{mov.categoria}</TableCell>
+                          <TableCell>{mov.nombre_proveedor}</TableCell>
                           <TableCell>{mov.observacion}</TableCell>
                           <TableCell>{mov.tc ? `$ ${mov.tc}` : "-"}</TableCell>
                           <TableCell>{mov.estado ? mov.estado : ""}</TableCell>
@@ -453,6 +484,9 @@ const ProyectoMovimientosPage = () => {
                           <Typography variant="caption" color="textSecondary">
                             {formatTimestamp(mov.fecha_factura)}
                           </Typography>
+                          <Typography variant="caption" color="textSecondary">
+                            Código de operación: {mov.codigo_operacion}
+                          </Typography>
                           <Stack direction="row" spacing={1} mt={2}>
                             <Button
                               color="primary"
@@ -477,6 +511,7 @@ const ProyectoMovimientosPage = () => {
                   <Table>
                     <TableHead>
                       <TableRow>
+                        <TableCell>Código</TableCell>
                         <TableCell>Fecha</TableCell>
                         <TableCell>Tipo</TableCell>
                         { showDolar &&<TableCell>Total USD</TableCell>}
@@ -489,6 +524,7 @@ const ProyectoMovimientosPage = () => {
                     <TableBody>
                       {movimientosFiltradosUSD.map((mov, index) => (
                         <TableRow key={index}>
+                          <TableCell>{mov.codigo_operacion}</TableCell>
                           <TableCell>{formatTimestamp(mov.fecha_factura)}</TableCell>
                           <TableCell>
                             <Chip
