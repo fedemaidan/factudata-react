@@ -43,7 +43,10 @@ const TodosProyectosPage = () => {
   const [filtroMontoMax, setFiltroMontoMax] = useState('');
   const [filtroProveedor, setFiltroProveedor] = useState('');
   const [filtroDias, setFiltroDias] = useState(7);
-  
+  const [filtroObservacion, setFiltroObservacion] = useState('');
+  const [filtroMoneda, setFiltroMoneda] = useState('');
+  const [filtroTipo, setFiltroTipo] = useState('');
+
 
   const [alert, setAlert] = useState({ open: false, message: '', severity: 'info' });
   const [isLoading, setIsLoading] = useState(false);
@@ -79,18 +82,50 @@ const TodosProyectosPage = () => {
     fetchData();
   }, [user, filtroDias]);
 
+  
   const movimientosFiltrados = useMemo(() => {
     return movimientos.filter((mov) => {
+      console.log(mov)
       const matchProyecto = filtroProyecto ? mov.proyectoNombre.includes(filtroProyecto) : true;
       const matchCategoria = filtroCategoria ? mov.categoria?.includes(filtroCategoria) : true;
       const matchSubcategoria = filtroSubcategoria ? mov.subcategoria?.includes(filtroSubcategoria) : true;
       const matchProveedor = filtroProveedor ? mov.nombre_proveedor?.includes(filtroProveedor) : true;
       const matchMontoMin = filtroMontoMin ? mov.total >= parseFloat(filtroMontoMin) : true;
       const matchMontoMax = filtroMontoMax ? mov.total <= parseFloat(filtroMontoMax) : true;
+      const matchObservacion = filtroObservacion ? mov.observacion?.toLowerCase().includes(filtroObservacion.toLowerCase()) : true;
+      const matchMoneda = filtroMoneda ? mov.moneda === filtroMoneda : true;
+      const matchTipo = filtroTipo ? mov.type === filtroTipo : true;
 
-      return matchProyecto && matchCategoria && matchSubcategoria && matchProveedor && matchMontoMin && matchMontoMax;
+
+
+      return matchProyecto && matchCategoria && matchSubcategoria && matchProveedor && matchMontoMin && matchMontoMax && matchObservacion && matchMoneda && matchTipo;
     });
-  }, [movimientos, filtroProyecto, filtroCategoria, filtroSubcategoria, filtroProveedor, filtroMontoMin, filtroMontoMax]);
+  }, [movimientos, filtroProyecto, filtroCategoria, filtroSubcategoria, filtroProveedor, filtroMontoMin, filtroMontoMax, filtroObservacion, filtroMoneda, filtroTipo]);
+
+  const totalesPorMoneda = useMemo(() => {
+    return movimientosFiltrados.reduce(
+      (acc, mov) => {
+        const valor = mov.type === 'ingreso' ? mov.total : -mov.total;
+        if (mov.moneda === 'ARS') acc.ars += valor;
+        if (mov.moneda === 'USD') acc.usd += valor;
+        return acc;
+      },
+      { ars: 0, usd: 0 }
+    );
+  }, [movimientosFiltrados]);
+
+  const categoriasUnicas = useMemo(() => {
+    return [...new Set(movimientos.map(m => m.categoria).filter(Boolean))];
+  }, [movimientos]);
+  
+  const subcategoriasUnicas = useMemo(() => {
+    return [...new Set(movimientos.map(m => m.subcategoria).filter(Boolean))];
+  }, [movimientos]);
+  
+  const proveedoresUnicos = useMemo(() => {
+    return [...new Set(movimientos.map(m => m.nombre_proveedor).filter(Boolean))];
+  }, [movimientos]);
+  
 
   return (
     <>
@@ -120,11 +155,82 @@ const TodosProyectosPage = () => {
                 </Select>
               </FormControl>
 
-              <TextField label="Categoría" value={filtroCategoria} onChange={(e) => setFiltroCategoria(e.target.value)} />
-              <TextField label="Subcategoría" value={filtroSubcategoria} onChange={(e) => setFiltroSubcategoria(e.target.value)} />
+              <FormControl sx={{ minWidth: 200 }}>
+                <InputLabel>Categoría</InputLabel>
+                <Select
+                  value={filtroCategoria}
+                  onChange={(e) => setFiltroCategoria(e.target.value)}
+                  label="Categoría"
+                >
+                  <MenuItem value="">Todas</MenuItem>
+                  {categoriasUnicas.map((cat, i) => (
+                    <MenuItem key={i} value={cat}>{cat}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+
+              <FormControl sx={{ minWidth: 200 }}>
+                <InputLabel>Subcategoría</InputLabel>
+                <Select
+                  value={filtroSubcategoria}
+                  onChange={(e) => setFiltroSubcategoria(e.target.value)}
+                  label="Subcategoría"
+                >
+                  <MenuItem value="">Todas</MenuItem>
+                  {subcategoriasUnicas.map((sub, i) => (
+                    <MenuItem key={i} value={sub}>{sub}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+
+              <FormControl sx={{ minWidth: 200 }}>
+                <InputLabel>Proveedor</InputLabel>
+                <Select
+                  value={filtroProveedor}
+                  onChange={(e) => setFiltroProveedor(e.target.value)}
+                  label="Proveedor"
+                >
+                  <MenuItem value="">Todos</MenuItem>
+                  {proveedoresUnicos.map((prov, i) => (
+                    <MenuItem key={i} value={prov}>{prov}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <FormControl sx={{ minWidth: 200 }}>
+                <InputLabel>Tipo</InputLabel>
+                <Select
+                  value={filtroTipo}
+                  onChange={(e) => setFiltroTipo(e.target.value)}
+                  label="Tipo"
+                >
+                  <MenuItem value="">Todos</MenuItem>
+                  <MenuItem value="ingreso">Ingreso</MenuItem>
+                  <MenuItem value="egreso">Egreso</MenuItem>
+                </Select>
+              </FormControl>
+
+              <FormControl sx={{ minWidth: 200 }}>
+                <InputLabel>Moneda</InputLabel>
+                <Select
+                  value={filtroMoneda}
+                  onChange={(e) => setFiltroMoneda(e.target.value)}
+                  label="Moneda"
+                >
+                  <MenuItem value="">Todas</MenuItem>
+                  <MenuItem value="ARS">Pesos (ARS)</MenuItem>
+                  <MenuItem value="USD">Dólares (USD)</MenuItem>
+                </Select>
+              </FormControl>
+
               <TextField label="Monto Mínimo" type="number" value={filtroMontoMin} onChange={(e) => setFiltroMontoMin(e.target.value)} />
               <TextField label="Monto Máximo" type="number" value={filtroMontoMax} onChange={(e) => setFiltroMontoMax(e.target.value)} />
-              <TextField label="Proveedor" value={filtroProveedor} onChange={(e) => setFiltroProveedor(e.target.value)} />
+              <TextField
+                  label="Observación"
+                  value={filtroObservacion}
+                  onChange={(e) => setFiltroObservacion(e.target.value)}
+                  sx={{ minWidth: 200 }}
+                />
+
 
               <FormControl sx={{ minWidth: 200 }}>
                 <InputLabel>Días</InputLabel>
@@ -144,6 +250,16 @@ const TodosProyectosPage = () => {
                 <CircularProgress />
               </Box>
             ) : (
+              <>
+              <Stack direction="row" spacing={4}>
+                <Typography variant="h6">
+                  Total en Pesos: {formatCurrency(totalesPorMoneda.ars)}
+                </Typography>
+                <Typography variant="h6">
+                  Total en Dólares: {formatCurrency(totalesPorMoneda.usd)}
+                </Typography>
+              </Stack>
+
               <Paper>
                 <Table>
                   <TableHead>
@@ -154,6 +270,7 @@ const TodosProyectosPage = () => {
                       <TableCell>Categoría</TableCell>
                       <TableCell>Subcategoría</TableCell>
                       <TableCell>Proveedor</TableCell>
+                      <TableCell>Observacion</TableCell>
                       <TableCell>Tipo</TableCell>
                       <TableCell>Moneda</TableCell>
                       <TableCell>Monto</TableCell>
@@ -169,6 +286,7 @@ const TodosProyectosPage = () => {
                         <TableCell>{mov.categoria || '-'}</TableCell>
                         <TableCell>{mov.subcategoria || '-'}</TableCell>
                         <TableCell>{mov.nombre_proveedor || '-'}</TableCell>
+                        <TableCell>{mov.observacion || '-'}</TableCell>
                         <TableCell>
                           <Chip
                             label={mov.type === 'ingreso' ? 'Ingreso' : 'Egreso'}
@@ -183,6 +301,7 @@ const TodosProyectosPage = () => {
                   </TableBody>
                 </Table>
               </Paper>
+              </>
             )}
           </Stack>
         </Container>
