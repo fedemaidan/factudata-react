@@ -25,32 +25,22 @@ import DashboardIcon from '@mui/icons-material/Dashboard';
 import StoreIcon from '@mui/icons-material/Store';
 import NoteAltIcon from '@mui/icons-material/NoteAlt';
 import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
-import AddCircleIcon from '@mui/icons-material/AddCircle';
 import CogIcon from '@heroicons/react/24/solid/CogIcon';
 import UserPlusIcon from '@heroicons/react/24/solid/UserPlusIcon';
+import InventoryIcon from '@mui/icons-material/Inventory';
 
-const initialItems = [
-  {
-    title: "Cuenta ",
-    path: 'account',
-    icon: (
-      <SvgIcon fontSize="small">
-        <UserPlusIcon />
-      </SvgIcon>
-    )
-  }
-]
 export const SideNav = (props) => {
   const { open, onClose } = props;
   const pathname = usePathname();
   const lgUp = useMediaQuery((theme) => theme.breakpoints.up('lg'));
   const { user } = useAuthContext();
-  const [items, setItems] = useState(initialItems)
+  const [items, setItems] = useState([])
   const [proyectos, setProyectos] = useState(null);
   const [empresa, setEmpresa] = useState(null);
 
   useEffect( () => {
     const fetchProyectosData = async () => {
+      
       const empresa = await getEmpresaDetailsFromUser(user)
 
       if (user.email == "nico@mail.com") {
@@ -115,73 +105,111 @@ export const SideNav = (props) => {
         let proyectos = await getProyectosFromUser(user)
         proyectos = proyectos.filter(proyecto => proyecto.activo);
         setProyectos(proyectos)
-        const empresaElement = {
-          title: "Configurar " + empresa.nombre,
-          path: 'empresa?empresaId=' + empresa.id,
-          icon: (
-            <SvgIcon fontSize="small">
-              <CogIcon />
-            </SvgIcon>
-          )
-        }
-        const vistaGeneralElement = {
-          title: 'Vista 7 días',
-          path: '/resumenMovimientos?empresaId=' + empresa.id,
-          icon: (
-            <SvgIcon fontSize="small">
-              <DashboardIcon />
-            </SvgIcon>
-          )
-        }
+        const hasPermisosOcultos = user.permisosOcultos ? true : false;
 
-        const vistaTodosLosMovElement = {
-          title: 'Todos los movimientos',
-          path: '/todosProyectos?empresaId=' + empresa.id,
+        let newItems = [{
+          title: "Cuenta ",
+          path: 'account',
           icon: (
             <SvgIcon fontSize="small">
-              <DashboardIcon />
+              <UserPlusIcon />
             </SvgIcon>
           )
-        }
-
-        const notaPedidoElement = {
-          title: 'Notas de pedido',
-          path: '/notaPedido',
-          icon: (
-            <SvgIcon fontSize="small">
-              <NoteAltIcon />
-            </SvgIcon>
-          )
-        }
-
-        const cajaChicaElement = {
-          title: 'Caja Chica',
-          path: '/cajaChica',
-          icon: (
-            <SvgIcon fontSize="small">
-              <AttachMoneyIcon />
-            </SvgIcon>
-          )
-        }
-
-        let newItems = [vistaGeneralElement, vistaTodosLosMovElement, notaPedidoElement, cajaChicaElement, ...initialItems];
-        if (user.admin) 
-            newItems.push(empresaElement)
+        }];
         
-        await proyectos.forEach( (proy ) => {
-          console.log(proy.nombre)
-          newItems.push(
-            {
-              title: proy.nombre,
-              path: 'cajaProyecto?proyectoId=' + proy.id,
+        if (user.admin) {
+            newItems.push({
+              title: "Configurar " + empresa.nombre,
+              path: 'empresa?empresaId=' + empresa.id,
               icon: (
-                <SvgIcon fontSize="small" sx={{ color: proy.activo ? 'green' : 'grey' }}>
-                  <StoreIcon />
+                <SvgIcon fontSize="small">
+                  <CogIcon />
                 </SvgIcon>
               )
-            }
-          )
-        })
+            })
+        }
+
+        if (!hasPermisosOcultos || !user.permisosOcultos.includes('VER_NOTAS_DE_PEDIDO')) {
+          newItems.push({
+            title: 'Notas de pedido',
+            path: '/notaPedido',
+            icon: (
+              <SvgIcon fontSize="small">
+                <NoteAltIcon />
+              </SvgIcon>
+            )
+          })
+        }
+
+        if (!hasPermisosOcultos || !user.permisosOcultos.includes('CREAR_ACOPIO')) {
+          newItems.push({
+            title: 'Acopio',
+            path: '/acopios?empresaId=' + empresa.id,
+            icon: (
+              <SvgIcon fontSize="small">
+                <InventoryIcon />
+              </SvgIcon>
+            )
+          })
+        }
+        
+        if (!hasPermisosOcultos || !user.permisosOcultos.includes('VER_MI_CAJA_CHICA')) {
+          newItems.push({
+            title: 'Caja Chica',
+            path: '/cajaChica',
+            icon: (
+              <SvgIcon fontSize="small">
+                <AttachMoneyIcon />
+              </SvgIcon>
+            )
+          })
+        }
+        
+        if (!hasPermisosOcultos || !user.permisosOcultos.includes('VER_CAJAS')) {
+
+          newItems.push({
+            title: 'Ver cajas chicas',
+            path: '/perfilesEmpresa',
+            icon: (
+              <SvgIcon fontSize="small">
+                <AttachMoneyIcon />
+              </SvgIcon>
+            )
+          })
+        
+          
+          const vistaGeneralElement = {
+            title: 'Vista 7 días',
+            path: '/resumenMovimientos?empresaId=' + empresa.id,
+            icon: (
+              <SvgIcon fontSize="small">
+                <DashboardIcon />
+              </SvgIcon>
+            )
+          }
+  
+          const vistaTodosLosMovElement = {
+            title: 'Todos los movimientos',
+            path: '/todosProyectos?empresaId=' + empresa.id,
+            icon: (
+              <SvgIcon fontSize="small">
+                <DashboardIcon />
+              </SvgIcon>
+            )
+          }
+          newItems = [vistaGeneralElement, vistaTodosLosMovElement, ...newItems];
+            const cajasProyectoItems = proyectos.map((proy) => ({
+            title: proy.nombre,
+            path: 'cajaProyecto?proyectoId=' + proy.id,
+            icon: (
+              <SvgIcon fontSize="small" sx={{ color: proy.activo ? 'green' : 'grey' }}>
+                <StoreIcon />
+              </SvgIcon>
+            )
+          }));
+          
+          newItems = [...newItems, ...cajasProyectoItems]; 
+        }
 
         const odooIntegration = {
           title: 'Integración con Odoo',

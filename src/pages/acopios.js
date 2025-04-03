@@ -16,15 +16,7 @@ import {
   TableRow,
   useMediaQuery,
   Fab,
-  Dialog,
-    DialogTitle,
-    DialogContent,
-    DialogActions,
-    TextField,
-    InputLabel,
-    Select,
-    MenuItem,
-    FormControl
+  Dialog
 } from '@mui/material';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import AddIcon from '@mui/icons-material/Add';
@@ -34,6 +26,7 @@ import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import AcopioService from 'src/services/acopioService';
 import { getProyectosByEmpresa } from 'src/services/proyectosService';
 import { getEmpresaById } from 'src/services/empresaService';
+import { CircularProgress } from '@mui/material';
 
 
 const AcopiosPage = () => {
@@ -43,12 +36,30 @@ const AcopiosPage = () => {
   const [acopios, setAcopios] = useState([]);
   const [alert, setAlert] = useState({ open: false, message: '', severity: 'info' });
   const isMobile = useMediaQuery((theme) => theme.breakpoints.down('sm'));
-  const [proveedor, setProveedor] = useState('');
-  const [codigoAcopio, setCodigoAcopio] = useState('');
-  const [openDialog, setOpenDialog] = useState(false);
-  const [proyectoId, setProyectoId] = useState('');
-const [proyectos, setProyectos] = useState([]);
+  const [acopioAEliminar, setAcopioAEliminar] = useState(null);
+const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
 const [totalAcopios, setTotalAcopios] = useState(0);
+const [loading, setLoading] = useState(true);
+
+
+const handleEliminarAcopio = async () => {
+  if (!acopioAEliminar) return;
+  try {
+    const exito = await AcopioService.eliminarAcopio(acopioAEliminar.id);
+    if (exito) {
+      setAlert({ open: true, message: 'Acopio eliminado con éxito', severity: 'success' });
+      fetchAcopios();
+    } else {
+      setAlert({ open: true, message: 'Error al eliminar el acopio', severity: 'error' });
+    }
+  } catch (error) {
+    setAlert({ open: true, message: 'Error al eliminar el acopio', severity: 'error' });
+  } finally {
+    setConfirmDialogOpen(false);
+    setAcopioAEliminar(null);
+  }
+};
+
 
 const formatCurrency = (amount) => {
     if (amount)
@@ -58,112 +69,90 @@ const formatCurrency = (amount) => {
   };
   
 
-  // Obtener la lista de acopios
   const fetchAcopios = useCallback(async () => {
-    try {
-      const acopiosData = await AcopioService.listarAcopios(empresaId);
-      setAcopios(acopiosData);
-  
-      // 🔥 Calcular el total sumando los valores de cada acopio
-      const total = acopiosData.reduce((sum, acopio) => sum + (acopio.totalValor || 0), 0);
-      setTotalAcopios(total);
-      
-    } catch (error) {
-      console.error('Error al obtener acopios:', error);
-      setAlert({ open: true, message: 'Error al obtener los acopios', severity: 'error' });
-    }
-  }, [empresaId]);
-  
+  setLoading(true);
+  try {
+    const acopiosData = await AcopioService.listarAcopios(empresaId);
+    setAcopios(acopiosData);
+    const total = acopiosData.reduce((sum, acopio) => sum + (acopio.totalValor || 0), 0);
+    setTotalAcopios(total);
+  } catch (error) {
+    console.error('Error al obtener acopios:', error);
+    setAlert({ open: true, message: 'Error al obtener los acopios', severity: 'error' });
+  } finally {
+    setLoading(false);
+  }
+}, [empresaId]);
 
-  const handleCrearAcopio = async () => {
-    if (!codigoAcopio || !proveedor) {
-      setAlert({ open: true, message: 'Debe ingresar código y proveedor.', severity: 'warning' });
-      return;
-    }
-  
-    try {
-      const success = await AcopioService.crearAcopio({
-        empresaId: user.empresa.id,
-        codigo: codigoAcopio,
-        proveedor: proveedor,
-      });
-  
-      if (success) {
-        setAlert({ open: true, message: 'Acopio creado con éxito', severity: 'success' });
-        fetchAcopios();
-      } else {
-        setAlert({ open: true, message: 'Error al crear el acopio', severity: 'error' });
-      }
-  
-      setOpenDialog(false);
-      setCodigoAcopio('');
-      setProveedor('');
-    } catch (error) {
-      console.error('Error al crear acopio:', error);
-      setAlert({ open: true, message: 'Error al crear el acopio', severity: 'error' });
-    }
-  };
-
-  
-  const fetchProyectos = useCallback(async () => {
-    try {
-        const empresa = await getEmpresaById(empresaId); // Debes agregar esta función al servicio
-      const proyectosData = await getProyectosByEmpresa(empresa); // Debes agregar esta función al servicio
-      setProyectos(proyectosData);
-      console.log('Proyectos:', proyectosData);
-    } catch (error) {
-      console.error('Error al obtener proyectos:', error);
-      setAlert({ open: true, message: 'Error al obtener los proyectos', severity: 'error' });
-    }
-  }, [empresaId]);
-  
-  useEffect(() => {
-    if (user) fetchProyectos();
-  }, [user, fetchProyectos, empresaId]);
-  
 
   useEffect(() => {
-    if (user) fetchAcopios();
-  }, [user, fetchAcopios, empresaId]);
-
+    fetchAcopios();
+  }, [fetchAcopios]);
   
-  const handleUploadClick = () => {
-    setOpenDialog(true);
-  };
-  
-  
+  if (loading) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '70vh' }}>
+        <CircularProgress />
+      </Box>
+    );
+  }
   
   return (
     <Box component="main" sx={{ flexGrow: 1, py: 8 }}>
       <Container maxWidth="xl">
-        <Stack direction="row" justifyContent="space-between" alignItems="center">
-          <Typography variant="h6">Total General de Acopios: {formatCurrency(totalAcopios)}</Typography>
-          <Button variant="contained" startIcon={<RefreshIcon />} onClick={fetchAcopios}>
-            Actualizar
-          </Button>
-          <Button
-  variant="contained"
-  color="secondary"
-  startIcon={<AddIcon />}
-  onClick={() => setOpenDialog(true)} // Abre el diálogo
->
-  Crear Acopio
-</Button>
+      <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={2}>
+  <Typography variant="h6">Total General de Acopios: {formatCurrency(totalAcopios)}</Typography>
+  <Stack direction="row" spacing={2}>
+    <Button variant="contained" startIcon={<RefreshIcon />} onClick={fetchAcopios}>
+      Actualizar
+    </Button>
+    {!isMobile && (
+      <Button
+        variant="contained"
+        startIcon={<AddIcon />}
+        onClick={() => router.push(`/crearAcopio?empresaId=${empresaId}`)}
+      >
+        Crear Acopio
+      </Button>
+    )}
+  </Stack>
+</Stack>
 
-        </Stack>
         
         {isMobile ? (
           <Stack spacing={2}>
             {acopios.map((acopio) => (
               <Card key={acopio.id}>
-                <CardContent>
-                  <Typography variant="h6">
-                    Código: {acopio.codigo} - {acopio.proveedor}
-                  </Typography>
-                  <Typography variant="body2">Proyecto: {acopio.proyecto_nombre}</Typography>
-                  <Typography variant="body2">Fecha: {new Date(acopio.fecha).toLocaleDateString()}</Typography>
-                </CardContent>
-              </Card>
+              <CardContent>
+                <Typography variant="h6">
+                  Código: {acopio.codigo} - {acopio.proveedor}
+                </Typography>
+                <Typography variant="body2">Proyecto: {acopio.proyecto_nombre}</Typography>
+                <Typography variant="body2">Fecha: {new Date(acopio.fecha).toLocaleDateString()}</Typography>
+            
+                <Stack direction="row" spacing={1} mt={2}>
+                  <Button
+                    variant="contained"
+                    size="small"
+                    onClick={() => router.push(`/movimientosAcopio?acopioId=${acopio.id}`)}
+                  >
+                    Ver
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    color="error"
+                    onClick={() => {
+                      setAcopioAEliminar(acopio);
+                      setConfirmDialogOpen(true);
+                    }}
+                  >
+                    Eliminar
+                  </Button>
+                </Stack>
+              </CardContent>
+            </Card>
+            
             ))}
           </Stack>
         ) : (
@@ -193,11 +182,29 @@ const formatCurrency = (amount) => {
                     >
                     Ver Movimientos
                     </Button>
+                    <Button
+                      variant="outlined"
+                      color="error"
+                      sx={{ mt: 1 }}
+                      onClick={() => {
+                        setAcopioAEliminar(acopio);
+                        setConfirmDialogOpen(true);
+                      }}
+                    >
+                      Eliminar
+                    </Button>
+                    <Button
+                      variant="outlined"
+                      sx={{ mt: 1 }}
+                      onClick={() => router.push(`/crearAcopio/?empresaId=${empresaId}&acopioId=${acopio.id}`)}
+                    >
+                      Editar
+                    </Button>
+
                 </TableCell>
                 </TableRow>
               ))}
             </TableBody>
-
 
           </Table>
         )}
@@ -206,65 +213,40 @@ const formatCurrency = (amount) => {
           <Fab
             color="primary"
             aria-label="add"
-            onClick={() => setAlert({ open: true, message: 'Función en desarrollo', severity: 'info' })}
+            onClick={() => router.push(`/crearAcopio?empresaId=${empresaId}`)}
             sx={{ position: 'fixed', bottom: 16, right: 16 }}
           >
             <AddIcon />
           </Fab>
         )}
+        <Dialog
+  open={confirmDialogOpen}
+  onClose={() => setConfirmDialogOpen(false)}
+>
+  <Card sx={{ p: 3, maxWidth: 400 }}>
+    <Typography variant="h6" gutterBottom>
+      ¿Estás seguro que querés eliminar el acopio?
+    </Typography>
+    <Typography variant="body2" color="text.secondary" mb={2}>
+      Esta acción eliminará todos los remitos, compras y movimientos asociados.
+    </Typography>
+    <Stack direction="row" spacing={2} justifyContent="flex-end">
+      <Button onClick={() => setConfirmDialogOpen(false)} variant="outlined">
+        Cancelar
+      </Button>
+      <Button onClick={handleEliminarAcopio} variant="contained" color="error">
+        Eliminar
+      </Button>
+    </Stack>
+  </Card>
+</Dialog>
+
 
         <Snackbar open={alert.open} autoHideDuration={6000} onClose={() => setAlert({ ...alert, open: false })}>
           <Alert onClose={() => setAlert({ ...alert, open: false })} severity={alert.severity}>
             {alert.message}
           </Alert>
         </Snackbar>
-        <Dialog open={openDialog} onClose={() => setOpenDialog(false)} maxWidth="sm" fullWidth>
-  <DialogTitle>Crear Acopio</DialogTitle>
-  <DialogContent>
-    <Stack spacing={2}>
-      <TextField
-        label="Proveedor"
-        value={proveedor}
-        onChange={(e) => setProveedor(e.target.value)}
-        fullWidth
-      />
-      <TextField
-        label="Código de Acopio"
-        value={codigoAcopio}
-        onChange={(e) => setCodigoAcopio(e.target.value)}
-        fullWidth
-      />
-      <FormControl fullWidth>
-        <InputLabel>Proyecto</InputLabel>
-        <Select
-          value={proyectoId}
-          onChange={(e) => setProyectoId(e.target.value)}
-        >
-          {proyectos.map((proyecto) => (
-            <MenuItem key={proyecto.id} value={proyecto.id}>
-              {proyecto.nombre}
-            </MenuItem>
-          ))}
-        </Select>
-      </FormControl>
-    </Stack>
-  </DialogContent>
-  <DialogActions>
-  <Button onClick={() => setOpenDialog(false)}>Cancelar</Button>
-
-  <Button
-    variant="contained"
-    color="primary"
-    disabled={!proveedor || !codigoAcopio}
-    onClick={handleCrearAcopio}
-  >
-    Confirmar y Crear Acopio
-  </Button>
-</DialogActions>
-
-
-</Dialog>
-
       </Container>
     </Box>
   );

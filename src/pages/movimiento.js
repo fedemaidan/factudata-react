@@ -104,6 +104,7 @@ const MovementDataEntryPage = () => {
       estado: 'Pendiente',
       url_imagen: null,
       tags_extra: [],
+      caja_chica: false,
     },
     validationSchema: Yup.object({
       // Validaciones de cada campo
@@ -215,6 +216,7 @@ const MovementDataEntryPage = () => {
           ...data,
           categoria: data.categoria || '',
           tags_extra: data.tags_extra || [],
+          caja_chica: data.caja_chica ?? false,
         });
         setCurrentTab('datos');
       }
@@ -451,6 +453,22 @@ const MovementDataEntryPage = () => {
                     <MenuItem value="Pagado">Pagado</MenuItem>
                   </Select>
                 </FormControl>
+
+                <FormControl fullWidth margin="normal">
+                  <InputLabel id="label-caja-chica">Caja chica</InputLabel>
+                  <Select
+                    labelId="label-caja-chica"
+                    id="caja_chica"
+                    name="caja_chica"
+                    label="Caja chica"
+                    value={formik.values.caja_chica}
+                    onChange={formik.handleChange}
+                  >
+                    <MenuItem value={true}>Sí</MenuItem>
+                    <MenuItem value={false}>No</MenuItem>
+                  </Select>
+                </FormControl>
+
 
                     
                 <TextField

@@ -1,29 +1,82 @@
 import api from './axiosConfig';
 
 const AcopioService = {
+  /**
+   * Crea un nuevo acopio a partir de datos (sin archivo CSV)
+   * @param {Object} acopioData - Datos del acopio
+   * @param {string} acopioData.empresaId
+   * @param {string} acopioData.proveedor
+   * @param {string} acopioData.proyectoId
+   * @param {string} acopioData.codigo
+   * @param {Array} acopioData.productos - Lista de productos con {codigo, descripcion, cantidad, valorUnitario}
+   * @returns {Promise<Object>} - { message, acopioId }
+   */
+  crearAcopio: async (acopioData) => {
+    try {
+      const response = await api.post(`/acopio/crear`, acopioData);
+      if (response.status === 201) {
+        console.log('✅ Acopio creado con éxito');
+        return response.data;
+      } else {
+        console.error('❌ Error al crear acopio');
+        throw new Error('No se pudo crear el acopio.');
+      }
+    } catch (error) {
+      console.error('❌ Error en crearAcopioDesdeDatos:', error);
+      throw error;
+    }
+  },
 
-       subirCSVAcopio: async (empresaId, proveedor, codigoAcopio, proyectoId, archivo) => {
-        try {
-          const formData = new FormData();
-          formData.append('archivo', archivo);
-          formData.append('empresaId', empresaId);
-          formData.append('proveedor', proveedor);
-          formData.append('codigoAcopio', codigoAcopio);
-          formData.append('proyectoId', proyectoId);
-      
-          const response = await api.post(`/acopio/create-by-file`, formData, {
-            headers: {
-              'Content-Type': 'multipart/form-data',
-            },
-          });
-      
-          return response.data;
-        } catch (err) {
-          console.error('Error al subir el archivo CSV para acopio:', err);
-          throw err;
+  crearRemitoConMovimientos: async (acopioId, materiales, remitoData) => {
+    try {
+      const formData = new FormData();
+      formData.append('fecha', remitoData.fecha);
+      formData.append('archivo', remitoData.archivo); // archivo es obligatorio ahora
+      formData.append('materiales', JSON.stringify(materiales));
+  
+      const response = await api.post(
+        `/acopio/${acopioId}/remito/crear-con-movimientos`,
+        formData,
+        {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
         }
-      },
-      
+      );
+  
+      if (response.status === 201) {
+        console.log('✅ Remito creado con éxito');
+        return response.data;
+      } else {
+        console.error('❌ Error al crear el remito con movimientos');
+        throw new Error('No se pudo crear el remito.');
+      }
+    } catch (error) {
+      console.error('❌ Error en crearRemitoConMovimientos:', error);
+      throw error;
+    }
+  },
+  
+  
+
+  extraerDatosDesdeArchivo: async (acopioId, archivo, archivo_url) => {
+    try {
+      const formData = new FormData();
+      formData.append('archivo', archivo);
+      formData.append('archivo_url', archivo_url);
+  
+      const response = await api.post(`/acopio/${acopioId}/remito/extraer`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
+      });
+  
+      return response.data;
+    } catch (error) {
+      console.error('Error al extraer datos del remito:', error);
+      throw error;
+    }
+  },
 
   /**
    * Obtiene la lista de acopios de una empresa
@@ -45,6 +98,27 @@ const AcopioService = {
       return [];
     }
   },
+
+  /**
+ * Obtiene los materiales disponibles (acopiados) de un acopio
+ * @param {string} acopioId - ID del acopio
+ * @returns {Promise<Array>} - Lista de materiales con { codigo, descripcion, valorUnitario }
+ */
+getMaterialesAcopiados: async (acopioId) => {
+  try {
+    const response = await api.get(`/acopio/${acopioId}/materiales`);
+    if (response.status === 200) {
+      return response.data.materiales;
+    } else {
+      console.error('Error al obtener materiales acopiados');
+      return [];
+    }
+  } catch (error) {
+    console.error('Error al obtener materiales acopiados:', error);
+    return [];
+  }
+},
+
 
   /**
    * Obtiene los detalles de un acopio específico
@@ -148,6 +222,234 @@ const AcopioService = {
           return [];
         }
       },
+
+        /**
+   * Obtiene los remitos de un acopio específico
+   * @param {string} acopioId - ID del acopio
+   * @returns {Promise<Array>} - Lista de remitos
+   */
+  obtenerRemitos: async (acopioId) => {
+    try {
+      const response = await api.get(`/acopio/${acopioId}/remitos`);
+      if (response.status === 200) {
+        return response.data.remitos;
+      } else {
+        console.error('Error al obtener remitos del acopio');
+        return [];
+      }
+    } catch (error) {
+      console.error('Error al obtener remitos del acopio:', error);
+      return [];
+    }
+  },
+
+    /**
+   * Obtiene las compras de un acopio específico
+   * @param {string} acopioId - ID del acopio
+   * @returns {Promise<Array>} - Lista de compras
+   */
+    obtenerCompras: async (acopioId) => {
+      try {
+        const response = await api.get(`/acopio/${acopioId}/compras`);
+        if (response.status === 200) {
+          return response.data;
+        } else {
+          console.error('Error al obtener compras del acopio');
+          return [];
+        }
+      } catch (error) {
+        console.error('Error al obtener compras del acopio:', error);
+        return [];
+      }
+    },
+
+    obtenerMovimientosDeRemito: async (acopioId, remitoId) => {
+      try {
+        const response = await api.get(`/acopio/${acopioId}/remito/${remitoId}/movimientos`);
+        if (response.status === 200) {
+          return response.data.movimientos;
+        } else {
+          console.error('Error al obtener movimientos del remito');
+          return [];
+        }
+      } catch (error) {
+        console.error('Error al obtener movimientos del remito:', error);
+        return [];
+      }
+    },
+
+    /**
+ * Obtiene un remito específico por su ID
+ * @param {string} acopioId - ID del acopio
+ * @param {string} remitoId - ID del remito
+ * @returns {Promise<Object>} - Datos del remito
+ */
+obtenerRemito: async (acopioId, remitoId) => {
+  try {
+    const response = await api.get(`/acopio/${acopioId}/remito/${remitoId}`);
+    if (response.status === 200) {
+      return response.data;
+    } else {
+      console.error('Error al obtener el remito');
+      return null;
+    }
+  } catch (error) {
+    console.error('Error al obtener el remito:', error);
+    return null;
+  }
+},
+
+editarRemito: async (acopioId, remitoId, movimientos, remitoData, archivoFile = null) => {
+  try {
+    remitoData.movimientos = movimientos;
+    // 1. Actualizar datos del remito (fecha, valorOperacion, etc.)
+    const response = await api.put(`/acopio/${acopioId}/remito/${remitoId}`, remitoData);
+
+    if (response.status !== 200) {
+      console.error('❌ Error al actualizar remito');
+      return false;
+    }
+
+    // 2. Si hay archivo nuevo, lo subimos
+    if (archivoFile) {
+      const formData = new FormData();
+      formData.append('archivo', archivoFile);
+
+      const subirArchivo = await api.post(
+        `/acopio/${acopioId}/remito/${remitoId}/archivo`,
+        formData,
+        { headers: { 'Content-Type': 'multipart/form-data' } }
+      );
+
+      if (subirArchivo.status !== 200) {
+        console.error('❌ Error al subir nuevo archivo del remito');
+        return false;
+      }
+    }
+
+    console.log('✅ Remito editado con éxito');
+    return true;
+  } catch (error) {
+    console.error('❌ Error en editarRemito:', error);
+    return false;
+  }
+},
+  
+  /**
+   * Elimina un remito de un acopio
+   * @param {string} acopioId - ID del acopio
+   * @param {string} remitoId - ID del remito
+   * @returns {Promise<boolean>}
+   */
+  eliminarRemito: async (acopioId, remitoId) => {
+    try {
+      const response = await api.delete(`/acopio/${acopioId}/remito/${remitoId}`);
+      if (response.status === 200) {
+        console.log('✅ Remito eliminado correctamente');
+        return true;
+      } else {
+        console.error('❌ Error al eliminar remito');
+        return false;
+      }
+    } catch (error) {
+      console.error('❌ Error al eliminar remito:', error);
+      return false;
+    }
+  },
+
+  /**
+   * Elimina un acopio completo (incluye remitos, compras y movimientos)
+   * @param {string} acopioId - ID del acopio
+   * @returns {Promise<boolean>}
+   */
+  eliminarAcopio: async (acopioId) => {
+    try {
+      const response = await api.delete(`/acopio/${acopioId}`);
+      if (response.status === 200) {
+        console.log('✅ Acopio eliminado correctamente');
+        return true;
+      } else {
+        console.error('❌ Error al eliminar acopio');
+        return false;
+      }
+    } catch (error) {
+      console.error('❌ Error al eliminar acopio:', error);
+      return false;
+    }
+  },
+
+  /**
+ * Cambia un remito de un acopio a otro (sin movimientos, solo copia el archivo y crea nuevo remito)
+ * @param {string} remitoId - ID del remito a mover
+ * @param {string} acopioOrigenId - ID del acopio actual
+ * @param {string} acopioDestinoId - ID del nuevo acopio
+ * @returns {Promise<string>} - nuevo remitoId
+ */
+cambiarRemitoDeAcopio: async (remitoId, acopioOrigenId, acopioDestinoId) => {
+  try {
+    const response = await api.post(`/acopio/remito/${remitoId}/cambiar-acopio`, {
+      acopioOrigenId,
+      acopioDestinoId,
+    });
+
+    if (response.status === 200) {
+      console.log('✅ Remito movido de acopio con éxito');
+      return response.data.nuevoRemitoId;
+    } else {
+      console.error('❌ Error al cambiar remito de acopio');
+      throw new Error('No se pudo cambiar el remito de acopio.');
+    }
+  } catch (error) {
+    console.error('❌ Error en cambiarRemitoDeAcopio:', error);
+    throw error;
+  }
+},
+
+moverRemitoAotroAcopio: async (remitoId, origenAcopioId, destinoAcopioId) => {
+  try {
+    const response = await api.post(`/acopio/${origenAcopioId}/remito/${remitoId}/mover`, {
+      acopioDestinoId: destinoAcopioId
+    });
+
+    if (response.status === 200) {
+      console.log('✅ Remito movido correctamente');
+      return true;
+    } else {
+      console.error('❌ Error al mover remito');
+      return false;
+    }
+  } catch (error) {
+    console.error('❌ Error al mover remito:', error);
+    return false;
+  }
+},
+
+/**
+ * Edita los datos de un acopio existente
+ * @param {string} acopioId - ID del acopio a editar
+ * @param {Object} acopioData - Nuevos datos del acopio
+ * @returns {Promise<boolean>}
+ */
+editarAcopio: async (acopioId, acopioData) => {
+  try {
+    const response = await api.put(`/acopio/${acopioId}`, acopioData);
+    if (response.status === 200) {
+      console.log('✅ Acopio actualizado con éxito');
+      return true;
+    } else {
+      console.error('❌ Error al actualizar acopio');
+      return false;
+    }
+  } catch (error) {
+    console.error('❌ Error en editarAcopio:', error);
+    return false;
+  }
+},
+
+
+
+
+
 };
 
 export default AcopioService;

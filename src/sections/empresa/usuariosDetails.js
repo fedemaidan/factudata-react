@@ -13,6 +13,27 @@ import { getProyectosByEmpresa, getProyectosFromUser } from 'src/services/proyec
 import { doc } from 'firebase/firestore';
 import { db } from 'src/config/firebase';
 
+function reemplazarUndefined(obj) {
+  if (Array.isArray(obj)) {
+    return obj.map(item => reemplazarUndefined(item));
+  }
+
+  if (typeof obj === 'object' && obj !== null) {
+    const nuevoObj = {};
+    for (const key in obj) {
+      if (obj[key] === undefined) {
+        nuevoObj[key] = "";
+      } else {
+        nuevoObj[key] = reemplazarUndefined(obj[key]);
+      }
+    }
+    return nuevoObj;
+  }
+
+  return obj;
+}
+
+
 export const UsuariosDetails = ({ empresa }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [usuarios, setUsuarios] = useState([]);
@@ -56,7 +77,7 @@ export const UsuariosDetails = ({ empresa }) => {
       firstName: editingUsuario ? editingUsuario.firstName : '',
       lastName: editingUsuario ? editingUsuario.lastName : '',
       proyectos: editingUsuario ? editingUsuario.proyectosData.map(proj => proj.id) : [],
-      tipo_validacion_remito: editingUsuario ? editingUsuario.tipo_validacion_remito : '',
+      tipo_validacion_remito: editingUsuario ? editingUsuario.tipo_validacion_remito : "",
       default_caja_chica: editingUsuario ? editingUsuario.default_caja_chica : null
     },
     enableReinitialize: true,
@@ -68,15 +89,18 @@ export const UsuariosDetails = ({ empresa }) => {
     }),
     onSubmit: async (values, { resetForm }) => {
       setIsLoading(true);
+      values = reemplazarUndefined(values);
       try {
         const selectedProyectosRefs = values.proyectos.map(projId => doc(db, 'proyectos', projId));
         if (editingUsuario) {
-          const updatedUsuario = { ...values, proyectos: selectedProyectosRefs, default_caja_chica: values.default_caja_chica };
+          const updatedUsuario = { ...values, proyectos: selectedProyectosRefs };
+          console.log(updatedUsuario, "updatedUsuario")
           const updatedUsuarios = usuarios.map((user) =>
             user.id === editingUsuario.id ? { ...user, ...updatedUsuario, proyectosData: values.proyectos.map(projId => proyectos.find(p => p.id === projId)) } : user
           );
           setUsuarios(updatedUsuarios);
-          await profileService.updateProfile(editingUsuario.id, updatedUsuario);
+          const result = await profileService.updateProfile(editingUsuario.id, updatedUsuario);
+          console.log(result, "result")
           setSnackbarMessage('Usuario actualizado con éxito');
         } else {
           const newUsuario = {
@@ -86,7 +110,7 @@ export const UsuariosDetails = ({ empresa }) => {
             lastName: values.lastName,
             proyectos: selectedProyectosRefs,
             proyectosData: values.proyectos.map(projId => proyectos.find(p => p.id === projId)),
-            tipo_validacion_remito: values.tipo_validacion_remito,
+            tipo_validacion_remito: values.tipo_validacion_remito ?? "",
             default_caja_chica: values.default_caja_chica
           };
           const createdUsuario = await profileService.createProfile(newUsuario, empresa);
@@ -128,7 +152,7 @@ export const UsuariosDetails = ({ empresa }) => {
       firstName: usuario.firstName,
       lastName: usuario.lastName,
       proyectos: usuario.proyectosData.map(proj => proj.id),
-      tipo_validacion_remito: usuario.tipo_validacion_remito
+      tipo_validacion_remito: usuario.tipo_validacion_remito ?? ""
     });
     setIsDialogOpen(true);
   };
@@ -297,6 +321,7 @@ export const UsuariosDetails = ({ empresa }) => {
               >
                 <MenuItem value="web">Web</MenuItem>
                 <MenuItem value="whatsapp">WhatsApp</MenuItem>
+                <MenuItem value="">No Definido</MenuItem>
               </Select>
             </FormControl>
             <FormControl fullWidth margin="dense">

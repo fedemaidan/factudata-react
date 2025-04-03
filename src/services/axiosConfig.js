@@ -10,10 +10,20 @@ const api = axios.create({
     }
 });
 
+const waitForUser = () =>
+    new Promise((resolve, reject) => {
+        const unsubscribe = auth.onAuthStateChanged(user => {
+            unsubscribe();
+            if (user) resolve(user);
+            else reject(new Error("No hay usuario autenticado"));
+        });
+    });
+
 api.interceptors.request.use(
     async config => {
         try {
-            const token = await auth.currentUser.getIdToken(); // Obtener el token actualizado
+            const user = auth.currentUser || await waitForUser();
+            const token = await user.getIdToken();
             if (token) {
                 config.headers['Authorization'] = `Bearer ${token}`;
             }

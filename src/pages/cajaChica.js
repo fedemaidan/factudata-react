@@ -10,6 +10,8 @@ import ticketService from 'src/services/ticketService';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import movimientosService from 'src/services/movimientosService';
 import { useRouter } from 'next/router';
+import profileService from 'src/services/profileService';
+import { set } from 'nprogress';
 
 const formatTimestamp = (timestamp) => {
   if (!timestamp) return '';
@@ -30,11 +32,16 @@ const formatCurrency = (amount) => {
 const CajaChicaPage = () => {
     const router = useRouter();
   const { user } = useAuthContext();
+  const { userId } = router.query;
   const [movimientos, setMovimientos] = useState([]);
   const [alert, setAlert] = useState({ open: false, message: '', severity: 'info' });
   const [filtroDias, setFiltroDias] = useState('730');
   const [filtroObs, setFiltroObs] = useState('');
-  
+  const [filtroProveedor, setFiltroProveedor] = useState('');
+  const [filtroProyecto, setFiltroProyecto] = useState('');
+  const [userById, setUserById] = useState(null);
+
+
   const [deletingElement, setDeletingElement] = useState(null);
     const [openDialog, setOpenDialog] = useState(false);
     const [movimientoAEliminar, setMovimientoAEliminar] = useState(null);
@@ -65,7 +72,14 @@ const CajaChicaPage = () => {
   useEffect(() => {
     const fetchMovimientos = async () => {
       if (!user) return;
-       const movs = await ticketService.getCajaChicaDelUsuario(user);
+      let userU = user;
+      
+      if (userId) {
+        userU = await profileService.getProfileById(userId);
+        setUserById(userU);
+      }
+      
+      const movs = await ticketService.getCajaChicaDelUsuario(userU);
       setMovimientos(movs.filter(m => m.moneda === 'ARS'));
     };
     fetchMovimientos();
@@ -79,52 +93,97 @@ const CajaChicaPage = () => {
     }, 0);
   }, [movimientos]);
 
+  const proyectosUnicos = useMemo(() => {
+    const set = new Set();
+    movimientos.forEach((m) => m.proyecto && set.add(m.proyecto));
+    return Array.from(set);
+  }, [movimientos]);
+  
+
   const movimientosFiltrados = useMemo(() => {
     const hoy = new Date();
     return movimientos.filter((mov) => {
       const fechaMovimiento = new Date(formatTimestamp(mov.fecha_factura));
       const diferenciaDias = (hoy - fechaMovimiento) / (1000 * 60 * 60 * 24);
       mov.observacion = mov.observacion || "";
-      return diferenciaDias <= filtroDias && mov.observacion.toLowerCase().includes(filtroObs.toLowerCase());
+      const coincideDias = diferenciaDias <= filtroDias;
+      const coincideObs = mov.observacion.toLowerCase().includes(filtroObs.toLowerCase());
+      const coincideProveedor = filtroProveedor ? mov.nombre_proveedor?.toLowerCase().includes(filtroProveedor.toLowerCase()) : true;
+      const coincideProyecto = filtroProyecto ? mov.proyecto === filtroProyecto : true;
+      return coincideDias && coincideObs && coincideProveedor && coincideProyecto;
     }).sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
-  }, [movimientos, filtroDias, filtroObs]);
-
+  }, [movimientos, filtroDias, filtroObs, filtroProveedor, filtroProyecto]);
+  
+  const saldoFiltrado = useMemo(() => {
+    return movimientosFiltrados.reduce((acc, mov) => {
+      return acc + (mov.type === 'ingreso' ? mov.total : -mov.total);
+    }, 0);
+  }, [movimientosFiltrados]);
+  
   return (
     <>
       <Head>
-        <title>Mi Caja Chica</title>
+        <title>
+          { userById ? "Caja chica de " + userById.firstName + " " + userById.lastName : "Mi Caja Chica"}
+          </title>
       </Head>
       <Box component="main" sx={{ flexGrow: 1, py: 8 }}>
         <Container maxWidth="xl">
           <Stack spacing={3}>
-            <Typography variant="h4">Mi Caja Chica</Typography>
+            <Typography variant="h4">
+            { userById ? "Caja chica de " + userById.firstName + " " + userById.lastName : "Mi Caja Chica"}
+            </Typography>
             <Typography variant="h6">Saldo Disponible: {formatCurrency(saldoTotalCaja)}</Typography>
+            <Typography variant="subtitle1">
+              Saldo con filtros aplicados: {formatCurrency(saldoFiltrado)}
+            </Typography>
+
 
             <Stack direction="row" spacing={2}>
               <Select
-                value={filtroDias}
-                onChange={(e) => setFiltroDias(e.target.value)}
-                label="Filtrar por días"
-              >
-                <MenuItem value="15">Últimos 15 días</MenuItem>
-                <MenuItem value="30">Últimos 30 días</MenuItem>
-                <MenuItem value="60">Últimos 60 días</MenuItem>
-                <MenuItem value="90">Últimos 90 días</MenuItem>
-                <MenuItem value="365">Último año</MenuItem>
-                <MenuItem value="730">Últimos 2 años</MenuItem>
-              </Select>
-              <TextField
-                label="Buscar por Observación"
-                variant="outlined"
-                onChange={(e) => setFiltroObs(e.target.value)}
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <SearchIcon />
-                    </InputAdornment>
-                  ),
-                }}
-              />
+                  value={filtroDias}
+                  onChange={(e) => setFiltroDias(e.target.value)}
+                  label="Filtrar por días"
+                >
+                  <MenuItem value="15">Últimos 15 días</MenuItem>
+                  <MenuItem value="30">Últimos 30 días</MenuItem>
+                  <MenuItem value="60">Últimos 60 días</MenuItem>
+                  <MenuItem value="90">Últimos 90 días</MenuItem>
+                  <MenuItem value="365">Último año</MenuItem>
+                  <MenuItem value="730">Últimos 2 años</MenuItem>
+                </Select>
+
+                <TextField
+                  label="Buscar por Observación"
+                  variant="outlined"
+                  onChange={(e) => setFiltroObs(e.target.value)}
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <SearchIcon />
+                      </InputAdornment>
+                    ),
+                  }}
+                />
+
+                <Select
+                  value={filtroProyecto}
+                  onChange={(e) => setFiltroProyecto(e.target.value)}
+                  displayEmpty
+                >
+                  <MenuItem value="">Todos los proyectos</MenuItem>
+                  {proyectosUnicos.map((proy, index) => (
+                    <MenuItem key={index} value={proy}>
+                      {proy}
+                    </MenuItem>
+                  ))}
+                </Select>
+
+                <TextField
+                  label="Proveedor"
+                  value={filtroProveedor}
+                  onChange={(e) => setFiltroProveedor(e.target.value)}
+                />
             </Stack>
 
             <Paper>

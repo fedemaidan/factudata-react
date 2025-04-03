@@ -122,7 +122,10 @@ const profileService = {
   updateProfile: async (id, profile) => {
     try {
       const profileDoc = doc(db, 'profile', id);
-      await updateDoc(profileDoc, profile);
+      console.log('profile', profile);
+      console.log('profileDoc', profileDoc);
+      const result = await updateDoc(profileDoc, profile);
+      return result;
     } catch (err) {
       console.error(err);
     }
@@ -161,7 +164,40 @@ const profileService = {
       console.error('Error al actualizar el perfil:', err);
       return {updated: false};;
     }
-  }
+  },
+  getProfileById: async (profileId) => {
+    try {
+      const profileDocRef = doc(db, 'profile', profileId);
+      const profileDoc = await getDoc(profileDocRef);
+  
+      if (!profileDoc.exists()) {
+        return null;
+      }
+  
+      const profileData = profileDoc.data();
+  
+      // Traer los datos de la empresa (si existe)
+      let empresaData = null;
+      if (profileData.empresa) {
+        const empresaDoc = await getDoc(profileData.empresa);
+        if (empresaDoc.exists()) {
+          empresaData = {
+            id: empresaDoc.id,
+            ...empresaDoc.data(),
+          };
+        }
+      }
+  
+      return {
+        id: profileDoc.id,
+        ...profileData,
+        empresaData
+      };
+    } catch (err) {
+      console.error('Error al obtener el perfil por ID:', err);
+      return null;
+    }
+  }  
 };
 
 export default profileService;

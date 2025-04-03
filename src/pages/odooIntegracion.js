@@ -421,57 +421,62 @@ return (
 
             {currentTab === 'configuracion' && (
               <Stack spacing={2}>
-                <TextField
-                  label="URL de Odoo"
-                  name="odooUrl"
-                  value={config.odooUrl}
-                  onChange={handleChange}
-                  fullWidth
-                />
-                <TextField
-                  label="Base de Datos"
-                  name="db"
-                  value={config.db}
-                  onChange={handleChange}
-                  fullWidth
-                />
-                <TextField
-                  label="Usuario"
-                  name="username"
-                  value={config.username}
-                  onChange={handleChange}
-                  fullWidth
-                />
-                <TextField
-                    label="Contraseña / API Key"
-                    name="password"
-                    type="password"
-                    value={isEditingPassword ? newPassword : '********'}
-                    onChange={handlePasswordChange}
+              { 
+                isEditingPassword && (
+                  <>
+                    <TextField
+                    label="URL de Odoo"
+                    name="odooUrl"
+                    value={config.odooUrl}
+                    onChange={handleChange}
                     fullWidth
-                    disabled={!isEditingPassword}
-                    />
-                    <Button
-                    color="secondary"
-                    variant="outlined"
-                    onClick={toggleEditPassword}
-                    >
-                    {isEditingPassword ? 'Cancelar' : 'Editar Contraseña'}
-                    </Button>
+                  />
+                  <TextField
+                    label="Base de Datos"
+                    name="db"
+                    value={config.db}
+                    onChange={handleChange}
+                    fullWidth
+                  />
+                  <TextField
+                    label="Usuario"
+                    name="username"
+                    value={config.username}
+                    onChange={handleChange}
+                    fullWidth
+                  />
+                  <TextField
+                      label="Contraseña / API Key"
+                      name="password"
+                      type="password"
+                      value={isEditingPassword ? newPassword : '********'}
+                      onChange={handlePasswordChange}
+                      fullWidth
+                      disabled={!isEditingPassword}
+                      />
+                </>
+                )
+              }
+              <Button
+                color="secondary"
+                variant="outlined"
+                onClick={toggleEditPassword}
+                >
+                {isEditingPassword ? 'Cancelar' : 'Editar configuración'}
+                </Button>
 
-                    <Stack direction="row" spacing={2}>
-                        <Button color="primary" variant="contained" onClick={handleSincronizar} disabled={isLoading}>
-                            Sincronizar datos
-                        </Button>
-                        <Button color="secondary" variant="outlined" onClick={handleVerConfiguracion} disabled={isLoading}>
-                            Ver Configuración
-                        </Button>
-                        <Button color="error" variant="outlined" onClick={handleEliminarIntegracion} disabled={isLoading}>
-                            Eliminar Integración
-                        </Button>
-                        </Stack>
-
-                    </Stack>
+                <Stack direction="row" spacing={2}>
+                  <Button color="primary" variant="contained" onClick={handleSincronizar} disabled={isLoading}>
+                      Sincronizar datos
+                  </Button>
+                  <Button color="secondary" variant="outlined" onClick={handleVerConfiguracion} disabled={isLoading}>
+                      Ver Configuración
+                  </Button>
+                  <Button color="error" variant="outlined" onClick={handleEliminarIntegracion} disabled={isLoading}>
+                      Eliminar Integración
+                  </Button>
+                </Stack>
+              </Stack>
             )}
 
 {currentTab === 'datos' && (

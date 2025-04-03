@@ -43,6 +43,7 @@ const TodosProyectosPage = () => {
   const [filtroMontoMax, setFiltroMontoMax] = useState('');
   const [filtroProveedor, setFiltroProveedor] = useState('');
   const [filtroDias, setFiltroDias] = useState(7);
+  
 
   const [alert, setAlert] = useState({ open: false, message: '', severity: 'info' });
   const [isLoading, setIsLoading] = useState(false);

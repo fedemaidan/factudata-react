@@ -9,7 +9,7 @@ export const PermisosUsuarios = ({ empresa }) => {
   const [usuarios, setUsuarios] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const accionesEmpresa = empresa.acciones || [];
-
+  
   useEffect(() => {
     const fetchUsuarios = async () => {
       setIsLoading(true);
