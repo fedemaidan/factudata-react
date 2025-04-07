@@ -31,6 +31,7 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import SaveIcon from '@mui/icons-material/Save';
 import RestoreIcon from '@mui/icons-material/Restore';
 import { updateEmpresaDetails } from 'src/services/empresaService';
+import Papa from 'papaparse';
 
 //todo - borrar luego
 const categoriasDefault = [
@@ -164,6 +165,54 @@ export const CategoriasDetails = ({ empresa }) => {
     setConfirmOpen(true);
   };
 
+const handleImportarCSV = async (e) => {
+  const archivo = e.target.files[0];
+  if (!archivo) return;
+
+  try {
+    const texto = await archivo.text();
+    const resultado = Papa.parse(texto, {
+      header: true,
+      skipEmptyLines: true
+    });
+
+    const nuevasCategorias = [...categorias];
+
+    resultado.data.forEach(({ Categoria, Subcategoria }) => {
+      if (!Categoria || !Subcategoria) return;
+
+      const catNombre = Categoria.trim();
+      const subNombre = Subcategoria.trim();
+
+      let categoriaExistente = nuevasCategorias.find(c => c.name === catNombre);
+      if (categoriaExistente) {
+        if (!categoriaExistente.subcategorias.includes(subNombre)) {
+          categoriaExistente.subcategorias.push(subNombre);
+        }
+      } else {
+        nuevasCategorias.push({
+          id: Date.now() + Math.random(), // ID único
+          name: catNombre,
+          subcategorias: [subNombre]
+        });
+      }
+    });
+
+    setCategorias(nuevasCategorias);
+    await updateEmpresaDetails(empresa.id, { categorias: nuevasCategorias });
+
+    setSnackbarMessage('Categorías importadas con éxito');
+    setSnackbarSeverity('success');
+  } catch (error) {
+    console.error('Error al importar:', error);
+    setSnackbarMessage('Error al importar el CSV');
+    setSnackbarSeverity('error');
+  } finally {
+    setSnackbarOpen(true);
+  }
+};
+
+
   const resetCategorias = async () => {
     setIsLoading(true);
     try {
@@ -275,6 +324,36 @@ export const CategoriasDetails = ({ empresa }) => {
           </List>
         </CardContent>
         <Divider />
+        <Button
+          color="primary"
+          variant="outlined"
+          component="label"
+        >
+          Importar desde CSV
+          <input
+            type="file"
+            accept=".csv"
+            hidden
+            onChange={handleImportarCSV}
+          />
+        </Button>
+        <Button
+          variant="text"
+          onClick={() => {
+            const contenido = "Categoria,Subcategoria\nMateriales,Cemento\nAdministración,Sueldos";
+            const blob = new Blob([contenido], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'categorias_template.csv';
+            a.click();
+            URL.revokeObjectURL(url);
+          }}
+        >
+          Descargar ejemplo CSV
+        </Button>
+
+
         <CardActions sx={{ justifyContent: 'flex-end' }}>
           <Button
             color="primary"

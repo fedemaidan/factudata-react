@@ -463,7 +463,7 @@ const NotaPedidoPage = () => {
               <Card key={nota.id}>
                 <CardContent>
                   <Typography variant="h6">Código: {nota.codigo} - {nota.proyecto_nombre}</Typography>
-                  <Typography variant="body2" color="textSecondary">
+                  <Typography variant="body2" color="textSecondary" sx={{ whiteSpace: 'pre-line' }}>
                   {nota.descripcion}
                   </Typography>
                   <Typography variant="body2" sx={{ mt: 1 }}>
@@ -549,7 +549,17 @@ const NotaPedidoPage = () => {
                   <TableCell>{nota.proveedor}</TableCell>
                   <TableCell>{nota.owner_name}</TableCell>
                   <TableCell>{nota.creador_name}</TableCell>
-                  <TableCell>{nota.descripcion}</TableCell>
+                  <TableCell>
+                    {nota.descripcion?.split('\n').map((item, index) => (
+                      ( item.trim() !== '' && (
+                          <Typography key={index} variant="body2" sx={{ display: 'block' }}>
+                          {item.trim()}
+                          </Typography>
+                        )
+                      )
+                    ))}
+                  </TableCell>
+
                   <TableCell>
                     <Chip
                       label={nota.estado}

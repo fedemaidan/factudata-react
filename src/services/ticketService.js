@@ -326,7 +326,6 @@ const ticketService = {
         // where('fecha_factura', '>=', Timestamp.fromDate(sieteDiasAtras)),
         where('fecha_factura', '>=', Timestamp.fromDate(sieteDiasAtras)),
         orderBy('fecha_factura', 'desc'),
-        limit(7)
       );
   
       const querySnapshot = await getDocs(q);

@@ -23,7 +23,7 @@ import {
   CircularProgress,
 } from '@mui/material';
 import ticketService from 'src/services/ticketService';
-import { getProyectosByEmpresa } from 'src/services/proyectosService';
+import { getProyectosByEmpresa, getProyectosFromUser } from 'src/services/proyectosService';
 import { useAuthContext } from 'src/contexts/auth-context';
 import { formatCurrency, formatTimestamp } from 'src/utils/formatters';
 import { getEmpresaById, getEmpresaDetailsFromUser } from 'src/services/empresaService';
@@ -36,16 +36,16 @@ const TodosProyectosPage = () => {
   const [movimientos, setMovimientos] = useState([]);
 
   // Estados de Filtros
-  const [filtroProyecto, setFiltroProyecto] = useState('');
-  const [filtroCategoria, setFiltroCategoria] = useState('');
-  const [filtroSubcategoria, setFiltroSubcategoria] = useState('');
+  const [filtroProyecto, setFiltroProyecto] = useState([]);
+  const [filtroCategoria, setFiltroCategoria] = useState([]);
+  const [filtroSubcategoria, setFiltroSubcategoria] = useState([]);
+  const [filtroProveedor, setFiltroProveedor] = useState([]);
+  const [filtroMoneda, setFiltroMoneda] = useState([]);
+  const [filtroTipo, setFiltroTipo] = useState([]);
   const [filtroMontoMin, setFiltroMontoMin] = useState('');
   const [filtroMontoMax, setFiltroMontoMax] = useState('');
-  const [filtroProveedor, setFiltroProveedor] = useState('');
   const [filtroDias, setFiltroDias] = useState(7);
   const [filtroObservacion, setFiltroObservacion] = useState('');
-  const [filtroMoneda, setFiltroMoneda] = useState('');
-  const [filtroTipo, setFiltroTipo] = useState('');
 
 
   const [alert, setAlert] = useState({ open: false, message: '', severity: 'info' });
@@ -64,7 +64,7 @@ const TodosProyectosPage = () => {
           empresa = await getEmpresaDetailsFromUser(user);
         }
 
-        const proyectosData = await getProyectosByEmpresa(empresa);
+        const proyectosData = await getProyectosFromUser(user);
         setProyectos(proyectosData);
 
         const movimientosData = [];
@@ -86,15 +86,15 @@ const TodosProyectosPage = () => {
   const movimientosFiltrados = useMemo(() => {
     return movimientos.filter((mov) => {
       console.log(mov)
-      const matchProyecto = filtroProyecto ? mov.proyectoNombre.includes(filtroProyecto) : true;
-      const matchCategoria = filtroCategoria ? mov.categoria?.includes(filtroCategoria) : true;
-      const matchSubcategoria = filtroSubcategoria ? mov.subcategoria?.includes(filtroSubcategoria) : true;
-      const matchProveedor = filtroProveedor ? mov.nombre_proveedor?.includes(filtroProveedor) : true;
+      const matchProyecto = filtroProyecto.length === 0 || filtroProyecto.includes(mov.proyectoNombre);
+      const matchSubcategoria = filtroSubcategoria.length === 0 || filtroSubcategoria.includes(mov.subcategoria);
+      const matchProveedor = filtroProveedor.length === 0 || filtroProveedor.includes(mov.nombre_proveedor);
+      const matchMoneda = filtroMoneda.length === 0 || filtroMoneda.includes(mov.moneda);
+      const matchTipo = filtroTipo.length === 0 || filtroTipo.includes(mov.type);
+      const matchCategoria = filtroCategoria.length === 0 || filtroCategoria.includes(mov.categoria);
       const matchMontoMin = filtroMontoMin ? mov.total >= parseFloat(filtroMontoMin) : true;
       const matchMontoMax = filtroMontoMax ? mov.total <= parseFloat(filtroMontoMax) : true;
       const matchObservacion = filtroObservacion ? mov.observacion?.toLowerCase().includes(filtroObservacion.toLowerCase()) : true;
-      const matchMoneda = filtroMoneda ? mov.moneda === filtroMoneda : true;
-      const matchTipo = filtroTipo ? mov.type === filtroTipo : true;
 
 
 
@@ -142,11 +142,11 @@ const TodosProyectosPage = () => {
               <FormControl sx={{ minWidth: 200 }}>
                 <InputLabel>Proyecto</InputLabel>
                 <Select
+                  multiple
                   value={filtroProyecto}
                   onChange={(e) => setFiltroProyecto(e.target.value)}
                   label="Proyecto"
                 >
-                  <MenuItem value="">Todos</MenuItem>
                   {proyectos.map((proyecto) => (
                     <MenuItem key={proyecto.id} value={proyecto.nombre}>
                       {proyecto.nombre}
@@ -158,11 +158,11 @@ const TodosProyectosPage = () => {
               <FormControl sx={{ minWidth: 200 }}>
                 <InputLabel>Categoría</InputLabel>
                 <Select
+                  multiple
                   value={filtroCategoria}
                   onChange={(e) => setFiltroCategoria(e.target.value)}
                   label="Categoría"
                 >
-                  <MenuItem value="">Todas</MenuItem>
                   {categoriasUnicas.map((cat, i) => (
                     <MenuItem key={i} value={cat}>{cat}</MenuItem>
                   ))}
@@ -172,11 +172,11 @@ const TodosProyectosPage = () => {
               <FormControl sx={{ minWidth: 200 }}>
                 <InputLabel>Subcategoría</InputLabel>
                 <Select
+                  multiple
                   value={filtroSubcategoria}
                   onChange={(e) => setFiltroSubcategoria(e.target.value)}
                   label="Subcategoría"
                 >
-                  <MenuItem value="">Todas</MenuItem>
                   {subcategoriasUnicas.map((sub, i) => (
                     <MenuItem key={i} value={sub}>{sub}</MenuItem>
                   ))}
@@ -186,11 +186,11 @@ const TodosProyectosPage = () => {
               <FormControl sx={{ minWidth: 200 }}>
                 <InputLabel>Proveedor</InputLabel>
                 <Select
+                  multiple
                   value={filtroProveedor}
                   onChange={(e) => setFiltroProveedor(e.target.value)}
                   label="Proveedor"
                 >
-                  <MenuItem value="">Todos</MenuItem>
                   {proveedoresUnicos.map((prov, i) => (
                     <MenuItem key={i} value={prov}>{prov}</MenuItem>
                   ))}
@@ -199,11 +199,11 @@ const TodosProyectosPage = () => {
               <FormControl sx={{ minWidth: 200 }}>
                 <InputLabel>Tipo</InputLabel>
                 <Select
+                  multiple
                   value={filtroTipo}
                   onChange={(e) => setFiltroTipo(e.target.value)}
                   label="Tipo"
                 >
-                  <MenuItem value="">Todos</MenuItem>
                   <MenuItem value="ingreso">Ingreso</MenuItem>
                   <MenuItem value="egreso">Egreso</MenuItem>
                 </Select>
@@ -212,11 +212,11 @@ const TodosProyectosPage = () => {
               <FormControl sx={{ minWidth: 200 }}>
                 <InputLabel>Moneda</InputLabel>
                 <Select
+                  multiple
                   value={filtroMoneda}
                   onChange={(e) => setFiltroMoneda(e.target.value)}
                   label="Moneda"
                 >
-                  <MenuItem value="">Todas</MenuItem>
                   <MenuItem value="ARS">Pesos (ARS)</MenuItem>
                   <MenuItem value="USD">Dólares (USD)</MenuItem>
                 </Select>

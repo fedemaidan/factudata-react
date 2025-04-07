@@ -29,6 +29,7 @@ import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import SaveIcon from '@mui/icons-material/Save';
 import { updateEmpresaDetails } from 'src/services/empresaService';
+import Papa from 'papaparse';
 
 export const ProveedoresDetails = ({ empresa }) => {
   const [isLoading, setIsLoading] = useState(false);
@@ -130,6 +131,39 @@ export const ProveedoresDetails = ({ empresa }) => {
     setOpenModal(false);
   };
 
+
+const handleImportarProveedoresCSV = async (e) => {
+  const archivo = e.target.files[0];
+  if (!archivo) return;
+
+  try {
+    const texto = await archivo.text();
+    const resultado = Papa.parse(texto, {
+      header: true,
+      skipEmptyLines: true
+    });
+
+    const nuevos = resultado.data
+      .map(row => row.Proveedor?.trim())
+      .filter(Boolean);
+
+    const proveedoresUnicos = Array.from(new Set([...proveedores, ...nuevos]));
+
+    setProveedores(proveedoresUnicos);
+    await updateEmpresaDetails(empresa.id, { proveedores: proveedoresUnicos });
+
+    setSnackbarMessage('Proveedores importados con éxito');
+    setSnackbarSeverity('success');
+  } catch (error) {
+    console.error('Error al importar proveedores:', error);
+    setSnackbarMessage('Error al importar el CSV de proveedores');
+    setSnackbarSeverity('error');
+  } finally {
+    setSnackbarOpen(true);
+  }
+};
+
+
   return (
     <>
       <Card>
@@ -153,6 +187,35 @@ export const ProveedoresDetails = ({ empresa }) => {
           </List>
         </CardContent>
         <Divider />
+        <Button
+            color="primary"
+            variant="outlined"
+            component="label"
+          >
+            Importar desde CSV
+            <input
+              type="file"
+              accept=".csv"
+              hidden
+              onChange={handleImportarProveedoresCSV}
+            />
+          </Button>
+          <Button
+            variant="text"
+            onClick={() => {
+              const contenido = "Proveedor\nGómez Construcciones\nAcero SA";
+              const blob = new Blob([contenido], { type: 'text/csv' });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = 'proveedores_template.csv';
+              a.click();
+              URL.revokeObjectURL(url);
+            }}
+          >
+            Descargar ejemplo CSV
+          </Button>
+
         <CardActions sx={{ justifyContent: 'flex-end' }}>
           <Button
             color="primary"
@@ -162,6 +225,7 @@ export const ProveedoresDetails = ({ empresa }) => {
           >
             Agregar Proveedor
           </Button>
+          
         </CardActions>
       </Card>
 

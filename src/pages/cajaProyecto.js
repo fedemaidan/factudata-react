@@ -321,6 +321,7 @@ const ProyectoMovimientosPage = () => {
                     <MenuItem value="90">Últimos 90 días</MenuItem>
                     <MenuItem value="365">Último año</MenuItem>
                     <MenuItem value="730">Últimos 2 años</MenuItem>
+                    <MenuItem value="999999999999999">Sin filtro</MenuItem>
                   </Select>
                 </FormControl>
                 <TextField

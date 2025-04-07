@@ -60,7 +60,8 @@ const GestionRemitoPage = () => {
         setFecha(remito.fecha || '');
         setEstado(remito.estado || '');
         setMovimientos(remito.movimientos || []);
-        setArchivoRemitoUrl(remito.url_remito || null);
+        const url_remito = Array.isArray(remito.url_remito) ? remito.url_remito[0] : remito.url_remito;
+        setArchivoRemitoUrl(url_remito || null);
         const total = remito.movimientos?.reduce((sum, m) => sum + (m.valorUnitario * m.cantidad), 0) || 0;
         setValorTotal(total);
 

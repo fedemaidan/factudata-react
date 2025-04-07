@@ -78,7 +78,8 @@ export const UsuariosDetails = ({ empresa }) => {
       lastName: editingUsuario ? editingUsuario.lastName : '',
       proyectos: editingUsuario ? editingUsuario.proyectosData.map(proj => proj.id) : [],
       tipo_validacion_remito: editingUsuario ? editingUsuario.tipo_validacion_remito : "",
-      default_caja_chica: editingUsuario ? editingUsuario.default_caja_chica : null
+      default_caja_chica: editingUsuario ? editingUsuario.default_caja_chica : null,
+      notificacion_nota_pedido: editingUsuario ? editingUsuario.notificacion_nota_pedido : false,
     },
     enableReinitialize: true,
     validationSchema: Yup.object({
@@ -111,7 +112,8 @@ export const UsuariosDetails = ({ empresa }) => {
             proyectos: selectedProyectosRefs,
             proyectosData: values.proyectos.map(projId => proyectos.find(p => p.id === projId)),
             tipo_validacion_remito: values.tipo_validacion_remito ?? "",
-            default_caja_chica: values.default_caja_chica
+            default_caja_chica: values.default_caja_chica,
+            notificacion_nota_pedido: values.notificacion_nota_pedido || false,
           };
           const createdUsuario = await profileService.createProfile(newUsuario, empresa);
           setUsuarios([...usuarios, createdUsuario]);
@@ -152,7 +154,8 @@ export const UsuariosDetails = ({ empresa }) => {
       firstName: usuario.firstName,
       lastName: usuario.lastName,
       proyectos: usuario.proyectosData.map(proj => proj.id),
-      tipo_validacion_remito: usuario.tipo_validacion_remito ?? ""
+      tipo_validacion_remito: usuario.tipo_validacion_remito ?? "",
+      notificacion_nota_pedido: usuario.notificacion_nota_pedido || false,
     });
     setIsDialogOpen(true);
   };
@@ -209,6 +212,7 @@ export const UsuariosDetails = ({ empresa }) => {
                   <TableCell>Confirmado</TableCell>
                   <TableCell>Proyectos</TableCell>
                   <TableCell>Caja chica</TableCell>
+                  <TableCell>Notificación Nota Pedido</TableCell>
                   <TableCell>Acciones</TableCell>
                 </TableRow>
               </TableHead>
@@ -228,6 +232,7 @@ export const UsuariosDetails = ({ empresa }) => {
                       ))}
                     </TableCell>
                     <TableCell>{usuario.default_caja_chica ? "Si" : (usuario.default_caja_chica == false ? "No": "No definido")}</TableCell>
+                    <TableCell>{usuario.notificacion_nota_pedido ? "Si" : (usuario.notificacion_nota_pedido == false ? "No": "No definido")}</TableCell>
                     <TableCell>
                       <IconButton onClick={() => startEditUsuario(usuario)}>
                         <EditIcon />
@@ -330,6 +335,19 @@ export const UsuariosDetails = ({ empresa }) => {
                 labelId="default-caja-chica-label"
                 name="default_caja_chica"
                 value={formik.values.default_caja_chica}
+                onChange={formik.handleChange}
+              >
+                <MenuItem value={true}>Sí</MenuItem>
+                <MenuItem value={false}>No</MenuItem>
+                <MenuItem value={null}>Ninguno</MenuItem>
+              </Select>
+            </FormControl>
+            <FormControl fullWidth margin="dense">
+              <InputLabel id="default-caja-chica-label">Notificación Nota Pedido</InputLabel>
+              <Select
+                labelId="default-caja-chica-label"
+                name="notificacion_nota_pedido"
+                value={formik.values.notificacion_nota_pedido}
                 onChange={formik.handleChange}
               >
                 <MenuItem value={true}>Sí</MenuItem>
