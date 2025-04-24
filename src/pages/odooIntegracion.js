@@ -591,9 +591,10 @@ return (
                       ? [{ key: 'list_price', label: 'Precio' }, { key: 'company_id', label: 'Id Empresa' }] 
                       : tipoSeleccionado === 'taxes' 
                       ? [{ key: 'amount', label: 'Monto' }, { key: 'company_id', label: 'Id Empresa' }] 
-                      : tipoSeleccionado === 'cuentas' // 🔥 Agregar campos para cuentas analíticas
+                      : tipoSeleccionado === 'cuentas' 
                       ? [{ key: 'code', label: 'Código' }, { key: 'company_id', label: 'Id Empresa' }]
-                      : []
+                      : tipoSeleccionado === 'proveedores' 
+                      ? [{ key: 'id', label: 'Id' }, { key: 'company_id', label: 'Id Empresa' }, { key: 'vat', label: 'Cuit' }]: []
                   )}
 
 

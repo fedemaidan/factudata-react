@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import Head from 'next/head';
 import { Box, Container, Stack, Typography, Tab, Tabs, TextField, Button } from '@mui/material';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
-import { NumerosTelefonoDetails } from 'src/sections/empresa/numerosTelefonoDetails';
 import { ProyectosDetails } from 'src/sections/empresa/proyectosDetails';
 import { CategoriasDetails } from 'src/sections/empresa/categoriasDetails';
 import { ProveedoresDetails } from 'src/sections/empresa/proveedoresDetails';

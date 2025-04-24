@@ -49,8 +49,10 @@ const handlers = {
     window.localStorage.setItem('MY_APP_STATE', JSON.stringify(newState));
     window.localStorage.setItem('authToken', user.token);
     if (!user.empresa) {
-      const router = useRouter();
-      router.push('/onboarding')
+      if (user.email == "comunelliluciana@gmail.com") {
+        const router = useRouter();
+        router.push("/materiales")
+      }
     } else {
       if (user.proyectos.length == 1) {
         const router = useRouter();

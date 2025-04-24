@@ -17,6 +17,19 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
     tags_extra: false,
     caja_chica: false
   }
+  const ingreso_info_default = {
+    observacion: true,
+    medio_pago: false,
+    categoria: false,
+    subcategoria: false,
+    tags_extra: false
+  };
+  
+  const [ingresoInfo, setIngresoInfo] = useState({
+    ...ingreso_info_default,
+    ...empresa.ingreso_info
+  });
+  
 
   const [camposObligatorios, setCamposObligatorios] = useState(empresa.camposObligatorios || []);
   const [confFecha, setConfFecha] = useState(empresa.conf_fecha || "REAL");
@@ -50,14 +63,23 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
       [field]: event.target.checked,
     }));
   };
+
+  const handleIngresoInfoChange = (field) => (event) => {
+    setIngresoInfo((prevState) => ({
+      ...prevState,
+      [field]: event.target.checked,
+    }));
+  };
+  
   
   const { user } = useAuthContext();
   
   const opcionesAcciones = [
     "CREAR_EGRESO", "CREAR_INGRESO", "VER_CAJAS", 
     "AJUSTAR_CAJAS", "TRANSFERIR_ENTRE_CAJAS", "CREAR_NUEVO_PROYECTO", 
-    "VENDER_DOLARES", "VALIDAR_CODIGO", "CONFIRMAR_PAGOS_PENDIENTES", "VER_DRIVE", "CREAR_NOTA_PEDIDO", "VER_NOTAS_PEDIDO_PENDIENTES", "VER_NOTAS_PEDIDO_COMPLETAS", "VER_NOTA_PEDIDO_CODIGO", "MODIFICAR_NOTA_PEDIDO", "ELIMINAR_NOTA_PEDIDO",
-    "VER_NOTAS_DE_PEDIDO", "GESTIONAR_MOVIMIENTO", "CREAR_INGRESO_CAJA_CHICA", "VER_MI_CAJA_CHICA", "LISTAR_MOVIMIENTOS"
+    "VENDER_DOLARES", "VALIDAR_CODIGO", "CONFIRMAR_PAGOS_PENDIENTES", "VER_DRIVE", "CREAR_NOTA_PEDIDO", "MODIFICAR_NOTA_PEDIDO", "ELIMINAR_NOTA_PEDIDO",
+    "VER_NOTAS_DE_PEDIDO", "GESTIONAR_MOVIMIENTO", "CREAR_INGRESO_CAJA_CHICA", "VER_MI_CAJA_CHICA", "LISTAR_MOVIMIENTOS",
+    "ADMIN_USUARIOS", "CREAR_ACOPIO", "CREAR_PRESUPUESTO", "VER_PRESUPUESTOS", "MODIFICAR_PRESUPUESTO", "ELIMINAR_PRESUPUESTO", "VER_ACOPIO"
   ];
 
   const dolarAjuste = [
@@ -119,6 +141,7 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
       solo_dolar: soloDolar,
       notas_estados: notasEstados,
       tags_extra: tagsExtra,
+      ingreso_info: ingresoInfo,
     };
     
     try {
@@ -181,7 +204,7 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
         </Select>
       </FormControl>
 
-      <Typography variant="h6" sx={{ mt: 4 }}>Configuración de campos que muestra de un movimiento de caja</Typography>
+      <Typography variant="h6" sx={{ mt: 4 }}>Configuración de campos que muestra un egreso</Typography>
         <Grid container spacing={2} sx={{ mt: 1 }}>
           {Object.keys(comprobanteInfo).map((field) => (
             <Grid item xs={6} md={4} key={field}>
@@ -195,6 +218,20 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
             </Grid>
           ))}
         </Grid>
+        <Typography variant="h6" sx={{ mt: 4 }}>Configuración de campos que muestra un ingreso</Typography>
+          <Grid container spacing={2} sx={{ mt: 1 }}>
+            {Object.keys(ingresoInfo).map((field) => (
+              <Grid item xs={6} md={4} key={field}>
+                <FormControl>
+                  <Checkbox
+                    checked={ingresoInfo[field]}
+                    onChange={handleIngresoInfoChange(field)}
+                  />
+                  <ListItemText primary={field.charAt(0).toUpperCase() + field.slice(1)} />
+                </FormControl>
+              </Grid>
+            ))}
+          </Grid>
 
       <TextField
         select

@@ -92,10 +92,9 @@ export const UsuariosDetails = ({ empresa }) => {
       setIsLoading(true);
       values = reemplazarUndefined(values);
       try {
-        const selectedProyectosRefs = values.proyectos.map(projId => doc(db, 'proyectos', projId));
+        ;
         if (editingUsuario) {
-          const updatedUsuario = { ...values, proyectos: selectedProyectosRefs };
-          console.log(updatedUsuario, "updatedUsuario")
+          const updatedUsuario = { ...values };
           const updatedUsuarios = usuarios.map((user) =>
             user.id === editingUsuario.id ? { ...user, ...updatedUsuario, proyectosData: values.proyectos.map(projId => proyectos.find(p => p.id === projId)) } : user
           );
@@ -109,7 +108,7 @@ export const UsuariosDetails = ({ empresa }) => {
             phone: values.phone,
             firstName: values.firstName,
             lastName: values.lastName,
-            proyectos: selectedProyectosRefs,
+            proyectos: values.proyectos,
             proyectosData: values.proyectos.map(projId => proyectos.find(p => p.id === projId)),
             tipo_validacion_remito: values.tipo_validacion_remito ?? "",
             default_caja_chica: values.default_caja_chica,

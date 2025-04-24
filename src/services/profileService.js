@@ -86,50 +86,65 @@ const profileService = {
     try {
       const confirmationCode = generateConfirmationCode();
       const empresaDocRef = doc(db, 'empresas', empresa.id);
-
-      // Crear perfil en Firestore
+  
+      // Convertir IDs de proyectos a referencias
+      const proyectosRefs = Array.isArray(profile.proyectos)
+        ? profile.proyectos.map(id => doc(db, 'proyectos', id))
+        : [];
+  
       const userProfile = {
         firstName: profile.firstName,
         lastName: profile.lastName,
         email: profile.email,
         phone: profile.phone,
         empresa: empresaDocRef,
+        proyectos: proyectosRefs,
         created_at: serverTimestamp(),
         admin: profile.admin || false,
-        proyectos: [],
+        permisosOcultos: profile.permisosOcultos || [],
+        acciones: profile.acciones || [],
         confirmationCode,
         confirmed: false
       };
-
+  
       const usersCollectionRef = collection(db, 'profile');
       const userRef = await addDoc(usersCollectionRef, userProfile);
-
+  
       const newUserProfile = {
         ...userProfile,
         id: userRef.id
       };
-
-      // Actualizar el documento con el ID
+  
       await updateDoc(userRef, { id: userRef.id });
-
       return newUserProfile;
     } catch (err) {
-      console.error(err);
+      console.error('Error al crear el perfil:', err);
       return null;
     }
   },
+  
 
-  updateProfile: async (id, profile) => {
+  updateProfile: async (profileId, profileData) => {
     try {
-      const profileDoc = doc(db, 'profile', id);
-      console.log('profile', profile);
-      console.log('profileDoc', profileDoc);
-      const result = await updateDoc(profileDoc, profile);
-      return result;
+      const docRef = doc(db, 'profile', profileId);
+      console.log(profileData, profileId)
+      const proyectosRefs = Array.isArray(profileData.proyectos)
+        ? profileData.proyectos.map(id => doc(db, 'proyectos', id))
+        : [];
+  
+      const data = {
+        ...profileData,
+        proyectos: proyectosRefs
+      };
+  
+      await updateDoc(docRef, data);
+      return true;
     } catch (err) {
-      console.error(err);
+      console.error('Error al actualizar perfil:', err);
+      return false;
     }
   },
+  
 
   deleteProfile: async (id) => {
     try {

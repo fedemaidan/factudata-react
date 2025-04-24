@@ -274,9 +274,9 @@ const ticketService = {
           ...doc.data(),
         };
         movimientos.push(mov);
-        console.log(mov)
+      
       });
-      console.log(movimientos)
+      
       return movimientos;
     } catch (err) {
       console.error(err);

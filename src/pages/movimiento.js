@@ -14,14 +14,22 @@ import Alert from '@mui/material/Alert';
 import { margin } from '@mui/system';
 
 const formatTimestamp = (timestamp) => {
-  if (!timestamp) {
-    return '';
-  }
+  if (!timestamp) return '';
 
-  const date = new Date(timestamp.seconds * 1000);
-  const year = date.getFullYear();
-  const month = `0${date.getMonth() + 1}`.slice(-2);
-  const day = `0${date.getDate()}`.slice(-2);
+  const utcDate = new Date(timestamp.seconds * 1000);
+
+  const isMidnightUTC = 
+    utcDate.getUTCHours() === 0 &&
+    utcDate.getUTCMinutes() === 0 &&
+    utcDate.getUTCSeconds() === 0;
+
+  const displayDate = isMidnightUTC
+    ? utcDate
+    : new Date(utcDate.getTime() - 3 * 60 * 60 * 1000); // Ajustar a UTC-3
+
+  const year = displayDate.getFullYear();
+  const month = `0${displayDate.getMonth() + 1}`.slice(-2);
+  const day = `0${displayDate.getDate()}`.slice(-2);
 
   return `${year}-${month}-${day}`;
 };
@@ -105,6 +113,7 @@ const MovementDataEntryPage = () => {
       url_imagen: null,
       tags_extra: [],
       caja_chica: false,
+      medio_pago: '',
     },
     validationSchema: Yup.object({
       // Validaciones de cada campo
@@ -217,6 +226,7 @@ const MovementDataEntryPage = () => {
           categoria: data.categoria || '',
           tags_extra: data.tags_extra || [],
           caja_chica: data.caja_chica ?? false,
+          medio_pago: data.medio_pago || '', // <--- agregar
         });
         setCurrentTab('datos');
       }
@@ -371,23 +381,30 @@ const MovementDataEntryPage = () => {
                   </Select>
                 </FormControl>
 
-                <FormControl fullWidth margin="normal">
-                  <InputLabel id={`label-proveedor`}>Proveedor</InputLabel>
-                  <Select
-                    labelId={`label-proveedor`}
-                    id="nombre_proveedor"
-                    name="nombre_proveedor"
-                    label="Proveedor"
-                    value={formik.values.nombre_proveedor}
-                    onChange={formik.handleChange}
-                  >
-                    {proveedores.map((element, index) => (
-                      <MenuItem key={index} value={element}>
-                        {element}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
+                <Autocomplete
+                  freeSolo
+                  options={proveedores}
+                  value={formik.values.nombre_proveedor || ''}
+                  onChange={(event, newValue) => {
+                    formik.setFieldValue('nombre_proveedor', newValue || '');
+                  }}
+                  onInputChange={(event, newInputValue) => {
+                    // Esto asegura que también se guarde si el usuario escribe directamente y no selecciona
+                    if (event?.type === 'change') {
+                      formik.setFieldValue('nombre_proveedor', newInputValue);
+                    }
+                  }}
+                  renderInput={(params) => (
+                    <TextField
+                      {...params}
+                      label="Proveedor"
+                      fullWidth
+                      margin="normal"
+                      error={formik.touched.nombre_proveedor && Boolean(formik.errors.nombre_proveedor)}
+                      helperText={formik.touched.nombre_proveedor && formik.errors.nombre_proveedor}
+                    />
+                  )}
+                />
 
                 <FormControl fullWidth margin="normal">
                   <InputLabel id={`label-categorias`}>Categorías</InputLabel>
@@ -453,6 +470,26 @@ const MovementDataEntryPage = () => {
                     <MenuItem value="Pagado">Pagado</MenuItem>
                   </Select>
                 </FormControl>
+
+                <FormControl fullWidth margin="normal">
+                <InputLabel id="label-medio-pago">Medio de Pago</InputLabel>
+                <Select
+                  labelId="label-medio-pago"
+                  id="medio_pago"
+                  name="medio_pago"
+                  label="Medio de Pago"
+                  value={formik.values.medio_pago}
+                  onChange={formik.handleChange}
+                >
+                  <MenuItem value="">Ninguno</MenuItem>
+                  <MenuItem value="Efectivo">Efectivo</MenuItem>
+                  <MenuItem value="Transferencia">Transferencia</MenuItem>
+                  <MenuItem value="Tarjeta">Tarjeta</MenuItem>
+                  <MenuItem value="Mercado Pago">Mercado Pago</MenuItem>
+                  <MenuItem value="Cheque">Cheque</MenuItem>
+                </Select>
+              </FormControl>
+
 
                 <FormControl fullWidth margin="normal">
                   <InputLabel id="label-caja-chica">Caja chica</InputLabel>

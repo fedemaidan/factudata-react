@@ -22,7 +22,7 @@ export const getProyectosByEmpresa = async (empresa) => {
         
       }));
   
-      return proyectos.filter(proyecto => proyecto !== null);
+      return proyectos.filter(proyecto => proyecto !== null && proyecto.eliminado !== true);
     } catch (err) {
       console.error('Error al obtener los proyectos del usuario:', err);
       return []; 
@@ -111,6 +111,7 @@ export const updateProyecto = async (id, proyecto) => {
       nombre: proyecto.nombre,
       activo: proyecto.activo ?? true,
       extraSheets: proyecto.extraSheets ?? [],
+      eliminado: proyecto.eliminado || false
     }
     console.log("proyecto nuevo", proyecto);
     const proyectoDocRef = doc(db, 'proyectos', id);

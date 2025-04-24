@@ -50,6 +50,7 @@ export const ProyectosDetails = ({ empresa }) => {
   const [uploadProjectId, setUploadProjectId] = useState(null);
   const [uploadProjectName, setUploadProjectName] = useState('');
   const [sheetsPermissions, setSheetsPermissions] = useState({});
+  const [proyectoAEliminar, setProyectoAEliminar] = useState(null);
 
   const handleSnackbarClose = () => {
     setSnackbarOpen(false);
@@ -71,6 +72,25 @@ export const ProyectosDetails = ({ empresa }) => {
     }
   };
 
+  const confirmarEliminacionProyecto = async () => {
+    try {
+      const updatedProyecto = { ...proyectoAEliminar, activo: false, eliminado: true };
+      await updateProyecto(proyectoAEliminar.id, updatedProyecto);
+      setSnackbarMessage('Proyecto eliminado (lógicamente) con éxito');
+      setSnackbarSeverity('success');
+    } catch (error) {
+      console.error('Error al eliminar el proyecto:', error);
+      setSnackbarMessage('Error al eliminar el proyecto');
+      setSnackbarSeverity('error');
+    } finally {
+      setSnackbarOpen(true);
+      setProyectoAEliminar(null);
+      const proyectosData = await getProyectosByEmpresa(empresa);
+      setProyectos(proyectosData);
+    }
+  };
+
+  
   const handleCarpetaRefChange = async (event) => {
     const newFolderId = event.target.value;
     formik.setFieldValue('carpetaRef', newFolderId, false);
@@ -368,6 +388,15 @@ export const ProyectosDetails = ({ empresa }) => {
     >
       Subir CSV
     </Button>
+    <Button
+      variant="outlined"
+      color="error"
+      size="small"
+      sx={{ ml: 2 }}
+      onClick={() => setProyectoAEliminar(proyecto)}
+    >
+      Eliminar
+    </Button>
   </label>
   {selectedFile && uploadProjectId === proyecto.id && (
     <Button
@@ -500,6 +529,28 @@ export const ProyectosDetails = ({ empresa }) => {
           </DialogActions>
         </form>
       </Dialog>
+      <Dialog
+  open={!!proyectoAEliminar}
+  onClose={() => setProyectoAEliminar(null)}
+>
+  <DialogTitle>¿Eliminar proyecto?</DialogTitle>
+  <DialogContent>
+    <Typography>
+      ¿Estás seguro de que querés eliminar el proyecto <strong>{proyectoAEliminar?.nombre}</strong>? Esta acción desactivará el proyecto pero no lo eliminará permanentemente.
+    </Typography>
+  </DialogContent>
+  <DialogActions>
+    <Button onClick={() => setProyectoAEliminar(null)}>Cancelar</Button>
+    <Button
+      onClick={confirmarEliminacionProyecto}
+      variant="contained"
+      color="error"
+    >
+      Confirmar Eliminación
+    </Button>
+  </DialogActions>
+</Dialog>
+
       <Snackbar
         open={snackbarOpen}
         autoHideDuration={6000}

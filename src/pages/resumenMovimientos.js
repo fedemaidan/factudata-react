@@ -21,12 +21,26 @@ const formatCurrency = (amount) => {
 };
 
 const formatTimestamp = (timestamp) => {
-    if (!timestamp) {
-        return '';
-    }
-    const date = new Date(timestamp.seconds * 1000);
-    return `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}`;
-};
+    if (!timestamp) return '';
+  
+    const utcDate = new Date(timestamp.seconds * 1000);
+  
+    const isMidnightUTC = 
+      utcDate.getUTCHours() === 0 &&
+      utcDate.getUTCMinutes() === 0 &&
+      utcDate.getUTCSeconds() === 0;
+  
+    const displayDate = isMidnightUTC
+      ? utcDate
+      : new Date(utcDate.getTime() - 3 * 60 * 60 * 1000); // Ajustar a UTC-3
+  
+    const year = displayDate.getFullYear();
+    const month = `0${displayDate.getMonth() + 1}`.slice(-2);
+    const day = `0${displayDate.getDate()}`.slice(-2);
+  
+    return `${year}-${month}-${day}`;
+  };
+
 
 const ResumenMovimientosPage = () => {
     const router = useRouter();

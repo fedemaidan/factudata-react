@@ -44,10 +44,22 @@ import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
 
 const formatTimestamp = (timestamp) => {
   if (!timestamp) return '';
-  const date = new Date(timestamp._seconds * 1000);
-  const year = date.getFullYear();
-  const month = `0${date.getMonth() + 1}`.slice(-2);
-  const day = `0${date.getDate()}`.slice(-2);
+
+  const utcDate = new Date(timestamp.seconds * 1000);
+
+  const isMidnightUTC = 
+    utcDate.getUTCHours() === 0 &&
+    utcDate.getUTCMinutes() === 0 &&
+    utcDate.getUTCSeconds() === 0;
+
+  const displayDate = isMidnightUTC
+    ? utcDate
+    : new Date(utcDate.getTime() - 3 * 60 * 60 * 1000); // Ajustar a UTC-3
+
+  const year = displayDate.getFullYear();
+  const month = `0${displayDate.getMonth() + 1}`.slice(-2);
+  const day = `0${displayDate.getDate()}`.slice(-2);
+
   return `${year}-${month}-${day}`;
 };
 
@@ -482,6 +494,15 @@ const NotaPedidoPage = () => {
                     }
                     sx={{ mt: 1 }}
                   />
+                  {nota.notaUrl && nota.notaUrl.trim() !== '' && (
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      onClick={() => window.open(nota.notaUrl, '_blank')}
+                    >
+                      Ver adjunto
+                    </Button>
+                  )}
                   <Stack direction="row" spacing={1} mt={2}>
                   {getEstadoSiguiente(nota.estado) && (<Button
                         variant="outlined"
@@ -558,6 +579,15 @@ const NotaPedidoPage = () => {
                         )
                       )
                     ))}
+                    {nota.urlNota && nota.urlNota.trim() !== '' && (
+                      <Button
+                        variant="outlined"
+                        size="small"
+                        onClick={() => window.open(nota.urlNota, '_blank')}
+                      >
+                        Ver adjunto
+                      </Button>
+                    )}
                   </TableCell>
 
                   <TableCell>

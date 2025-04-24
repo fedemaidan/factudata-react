@@ -39,7 +39,8 @@ const MovimientosAcopioPage = () => {
   const [loading, setLoading] = useState(false);
   const [remitoAEliminar, setRemitoAEliminar] = useState(null);
   const [dialogoEliminarAbierto, setDialogoEliminarAbierto] = useState(false);
-  
+  const [remitosDuplicados, setRemitosDuplicados] = useState(new Set());
+
   const fetchAcopio = useCallback(async () => {
     try {
       setLoading(true);
@@ -87,6 +88,7 @@ const fetchRemitos = useCallback(async () => {
     setLoading(true);
     const remitos = await AcopioService.obtenerRemitos(acopioId);
     setRemitos(remitos);
+    setRemitosDuplicados(detectarDuplicados(remitos))
   } catch (error) {
     console.error('Error al obtener remitos:', error);
     setAlert({ open: true, message: 'Error al obtener remitos', severity: 'error' });
@@ -111,6 +113,8 @@ const eliminarRemito = async () => {
     setDialogoEliminarAbierto(false);
     setRemitoAEliminar(null);
   }
+
+  
 };
 
 
@@ -169,6 +173,40 @@ useEffect(() => {
     }
   }, [acopioId]);
 
+  const detectarDuplicados = (remitos) => {
+    console.log(remitos)
+    const duplicadosPorNumero = {};
+    const duplicadosPorValorYFecha = {};
+  
+    remitos.forEach((r) => {
+      // clave por número de remito
+      if (r.numero_remito) {
+        const claveNumero = r.numero_remito.trim().toLowerCase();
+        duplicadosPorNumero[claveNumero] = duplicadosPorNumero[claveNumero] || [];
+        duplicadosPorNumero[claveNumero].push(r.id);
+      }
+  
+      // clave por valor de operación + fecha
+      const claveVF = `${r.valorOperacion}_${new Date(r.fecha).toISOString().split('T')[0]}`;
+      duplicadosPorValorYFecha[claveVF] = duplicadosPorValorYFecha[claveVF] || [];
+      duplicadosPorValorYFecha[claveVF].push(r.id);
+    });
+  
+    const duplicadosSet = new Set();
+  
+    Object.values(duplicadosPorNumero).forEach((ids) => {
+      if (ids.length > 1) ids.forEach((id) => duplicadosSet.add(id));
+    });
+    
+    Object.values(duplicadosPorValorYFecha).forEach((ids) => {
+      if (ids.length > 1) ids.forEach((id) => duplicadosSet.add(id));
+    });
+    console.log(duplicadosSet)
+    return duplicadosSet;
+  };
+  
+  
+  
   return (
     <Box component="main" sx={{ flexGrow: 1, py: 8 }}>
       <Container maxWidth="xl">
@@ -273,6 +311,7 @@ useEffect(() => {
     <Table>
       <TableHead>
         <TableRow>
+          <TableCell>Número remito</TableCell>
           <TableCell>Fecha</TableCell>
           <TableCell>Estado</TableCell>
           <TableCell>Valor Operación</TableCell>
@@ -299,6 +338,9 @@ useEffect(() => {
         }
       }}
     >
+       <TableCell>{remito.numero_remito} {remitosDuplicados.has(remito.id) && (
+      <Chip label="Posible duplicado" color="warning" size="small" />
+    )}</TableCell> 
       <TableCell>{new Date(remito.fecha).toLocaleDateString()}</TableCell>
       <TableCell>{remito.estado}</TableCell>
       <TableCell>{formatCurrency(remito.valorOperacion || 0)}</TableCell>

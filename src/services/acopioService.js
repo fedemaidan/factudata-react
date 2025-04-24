@@ -31,6 +31,7 @@ const AcopioService = {
     try {
       const formData = new FormData();
       formData.append('fecha', remitoData.fecha);
+      formData.append('numero_remito', remitoData.numero_remito);
       formData.append('archivo', remitoData.archivo); // archivo es obligatorio ahora
       formData.append('materiales', JSON.stringify(materiales));
   

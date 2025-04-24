@@ -43,7 +43,8 @@ const GestionRemitoPage = () => {
   const [acopiosDisponibles, setAcopiosDisponibles] = useState([]);
   const [dialogoMoverAbierto, setDialogoMoverAbierto] = useState(false);
   const [nuevoAcopioSeleccionado, setNuevoAcopioSeleccionado] = useState('');
-  
+  const [numeroRemito, setNumeroRemito] = useState('');
+
   
   useEffect(() => {
   const cargarDatos = async () => {
@@ -59,6 +60,7 @@ const GestionRemitoPage = () => {
         const remito = await AcopioService.obtenerRemito(acopioId, router.query.remitoId);
         setFecha(remito.fecha || '');
         setEstado(remito.estado || '');
+        setNumeroRemito(remito.numero_remito || '');
         setMovimientos(remito.movimientos || []);
         const url_remito = Array.isArray(remito.url_remito) ? remito.url_remito[0] : remito.url_remito;
         setArchivoRemitoUrl(url_remito || null);
@@ -97,7 +99,8 @@ const GestionRemitoPage = () => {
         await AcopioService.editarRemito(acopioId, remitoId, movimientos, {
             fecha,
             valorOperacion: valorTotal,
-            estado: 'confirmado'
+            estado: 'confirmado',
+            numero_remito: numeroRemito,
         }, archivoRemitoFile); 
         
         setAlert({ open: true, message: 'Remito actualizado con éxito', severity: 'success' });
@@ -105,7 +108,8 @@ const GestionRemitoPage = () => {
       } else {
         const resultado = await AcopioService.crearRemitoConMovimientos(acopioId, movimientos, {
           fecha,
-          archivo: archivoRemitoFile
+          archivo: archivoRemitoFile,
+          numero_remito: numeroRemito,
         });
   
         setAlert({ open: true, message: 'Remito creado con éxito', severity: 'success' });
@@ -232,6 +236,13 @@ const GestionRemitoPage = () => {
           {showFormulario && (
             <Grid item xs={12} md={getGridColumnSize()}>
               <Stack spacing={3}>
+              <TextField
+                label="Número de Remito"
+                value={numeroRemito}
+                onChange={(e) => setNumeroRemito(e.target.value)}
+                fullWidth
+              />
+
                 <TextField
                   label="Fecha"
                   type="date"

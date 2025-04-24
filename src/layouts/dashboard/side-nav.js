@@ -38,6 +38,11 @@ export const SideNav = (props) => {
   const [proyectos, setProyectos] = useState(null);
   const [empresa, setEmpresa] = useState(null);
 
+  const getPermisosVisibles = (empresaAcciones, permisosOcultos = []) => {
+    return empresaAcciones.filter(accion => !permisosOcultos.includes(accion));
+  };
+  
+  
   useEffect( () => {
     const fetchProyectosData = async () => {
       
@@ -76,6 +81,19 @@ export const SideNav = (props) => {
 
           setItems([productosElement, ofertasElement, principiosActivosElement])
       }
+      else if (user.email == "comunelliluciana@gmail.com") {
+        const onboardingPage = {
+          title: 'Materiales',
+          path: '/materiales',
+          icon: (
+            <SvgIcon fontSize="small">
+              <DashboardIcon />
+            </SvgIcon>
+          )
+        }
+
+        setItems([onboardingPage])
+      }
       else if (!empresa) {
         const onboardingPage = {
           title: 'Onboarding',
@@ -105,7 +123,7 @@ export const SideNav = (props) => {
         let proyectos = await getProyectosFromUser(user)
         proyectos = proyectos.filter(proyecto => proyecto.activo);
         setProyectos(proyectos)
-        const hasPermisosOcultos = user.permisosOcultos ? true : false;
+        const permisosUsuario = getPermisosVisibles(empresa.acciones || [], user.permisosOcultos || []);
 
         let newItems = [{
           title: "Cuenta ",
@@ -129,7 +147,19 @@ export const SideNav = (props) => {
             })
         }
 
-        if (!hasPermisosOcultos || !user.permisosOcultos.includes('VER_NOTAS_DE_PEDIDO')) {
+        if (permisosUsuario.includes('ADMIN_USUARIOS')) {
+          newItems.push({
+            title: "Administrar" + empresa.nombre,
+            path: 'configuracionBasica/?empresaId=' + empresa.id,
+            icon: (
+              <SvgIcon fontSize="small">
+                <CogIcon />
+              </SvgIcon>
+            )
+          })
+      }
+
+        if (permisosUsuario.includes('VER_NOTAS_DE_PEDIDO')) {
           newItems.push({
             title: 'Notas de pedido',
             path: '/notaPedido',
@@ -141,7 +171,7 @@ export const SideNav = (props) => {
           })
         }
 
-        if (!hasPermisosOcultos || !user.permisosOcultos.includes('CREAR_ACOPIO')) {
+        if (permisosUsuario.includes('CREAR_ACOPIO')) {
           newItems.push({
             title: 'Acopio',
             path: '/acopios?empresaId=' + empresa.id,
@@ -153,7 +183,8 @@ export const SideNav = (props) => {
           })
         }
         
-        if (!hasPermisosOcultos || !user.permisosOcultos.includes('VER_MI_CAJA_CHICA')) {
+        
+        if (permisosUsuario.includes('VER_MI_CAJA_CHICA')) {
           newItems.push({
             title: 'Caja Chica',
             path: '/cajaChica',
@@ -165,7 +196,7 @@ export const SideNav = (props) => {
           })
         }
         
-        if (!hasPermisosOcultos || !user.permisosOcultos.includes('VER_CAJAS')) {
+        if (permisosUsuario.includes('VER_CAJAS')) {
 
           newItems.push({
             title: 'Ver cajas chicas',
