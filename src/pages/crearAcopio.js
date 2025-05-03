@@ -37,7 +37,9 @@ const CrearAcopioPage = () => {
   const [proveedores, setProveedores] = useState([]);
   const [proyectos, setProyectos] = useState([]);
   const [editando, setEditando] = useState(false);
-
+  const [archivoCompra, setArchivoCompra] = useState(null);
+  const [cargandoArchivo, setCargandoArchivo] = useState(false);
+  
   
   useEffect(() => {
     const cargarDatos = async () => {
@@ -68,7 +70,32 @@ const CrearAcopioPage = () => {
       cargarDatos();
     }
   }, [empresaId, acopioId]);
-
+  const manejarExtraccionDeCompra = async () => {
+    if (!archivoCompra) return;
+    try {
+      setCargandoArchivo(true);
+      const nuevosMateriales = await AcopioService.extraerDatosCompraDesdeArchivo(acopioId, archivoCompra, null);
+  
+      if (nuevosMateriales && nuevosMateriales.length > 0) {
+        const nuevosProductos = [...productos, ...nuevosMateriales];
+        setProductos(nuevosProductos);
+        const nuevoTotal = nuevosProductos.reduce(
+          (sum, p) => sum + (p.valorUnitario * p.cantidad),
+          0
+        );
+        setValorTotal(nuevoTotal);
+        setAlert({ open: true, message: 'Materiales extraídos con éxito.', severity: 'success' });
+      } else {
+        setAlert({ open: true, message: 'No se detectaron materiales.', severity: 'info' });
+      }
+    } catch (error) {
+      console.error('Error al extraer datos de compra:', error);
+      setAlert({ open: true, message: 'Error al extraer materiales.', severity: 'error' });
+    } finally {
+      setCargandoArchivo(false);
+    }
+  };
+  
   const guardarAcopio = async () => {
     try {
       const proyecto_nombre = proyectos.find(p => p.id === proyecto)?.nombre;
@@ -115,9 +142,25 @@ const CrearAcopioPage = () => {
               <MenuItem key={proj.id} value={proj.id}>{proj.nombre}</MenuItem>
             ))}
           </TextField>
+          <Stack spacing={2}>
+            <Typography variant="subtitle1">📄 Extraer materiales desde un archivo</Typography>
+            <input
+              type="file"
+              accept="image/*,.pdf"
+              onChange={(e) => setArchivoCompra(e.target.files[0])}
+            />
+            <Button
+              variant="outlined"
+              disabled={!archivoCompra || cargandoArchivo}
+              onClick={manejarExtraccionDeCompra}
+            >
+              {cargandoArchivo ? 'Procesando...' : 'Extraer materiales'}
+            </Button>
+          </Stack>
+
 
           <ProductosForm productos={productos} setProductos={setProductos} valorTotal={valorTotal} setValorTotal={setValorTotal} />
-
+              
           <Typography variant="subtitle1">Valor total: ${valorTotal.toLocaleString()}</Typography>
           <Button variant="contained" onClick={guardarAcopio}>
             {editando ? 'Guardar Cambios' : 'Guardar Acopio'}

@@ -22,6 +22,7 @@ const notaPedidoService = {
       const response = await api.get(`nota-pedido/empresa/${empresaId}`);
       if (response.status === 200) {
         console.log('Notas obtenidas con éxito');
+        console.log("responseeeeee", response.data)
         return response.data; // Devuelve las notas
       } else {
         console.error('Error al obtener las notas');

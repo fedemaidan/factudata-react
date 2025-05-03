@@ -12,27 +12,7 @@ import { Timestamp } from 'firebase/firestore';
 import Snackbar from '@mui/material/Snackbar';
 import Alert from '@mui/material/Alert';
 import { margin } from '@mui/system';
-
-const formatTimestamp = (timestamp) => {
-  if (!timestamp) return '';
-
-  const utcDate = new Date(timestamp.seconds * 1000);
-
-  const isMidnightUTC = 
-    utcDate.getUTCHours() === 0 &&
-    utcDate.getUTCMinutes() === 0 &&
-    utcDate.getUTCSeconds() === 0;
-
-  const displayDate = isMidnightUTC
-    ? utcDate
-    : new Date(utcDate.getTime() - 3 * 60 * 60 * 1000); // Ajustar a UTC-3
-
-  const year = displayDate.getFullYear();
-  const month = `0${displayDate.getMonth() + 1}`.slice(-2);
-  const day = `0${displayDate.getDate()}`.slice(-2);
-
-  return `${year}-${month}-${day}`;
-};
+import { formatTimestamp } from 'src/utils/formatters';
 
 const dateToTimestamp = (dateString) => {
   if (!dateString) {
@@ -44,7 +24,7 @@ const dateToTimestamp = (dateString) => {
   const month = Number(dateParts[1]) - 1;
   const day = Number(dateParts[2]);
 
-  const date = new Date(year, month, day);
+  const date = new Date(year, month, day, 13, 30);
   const timestamp = Timestamp.fromDate(date);
   
   return timestamp;

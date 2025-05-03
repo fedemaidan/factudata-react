@@ -276,6 +276,8 @@ const ticketService = {
         movimientos.push(mov);
       
       });
+
+      console.log("movimientossssssss",movimientos)
       
       return movimientos;
     } catch (err) {

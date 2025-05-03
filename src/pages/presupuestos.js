@@ -29,6 +29,7 @@ import presupuestoService from 'src/services/presupuestoService';
 import { getEmpresaById, getEmpresaDetailsFromUser } from 'src/services/empresaService';
 import { getProyectosFromUser } from 'src/services/proyectosService';
 import { Timestamp } from 'firebase/firestore';
+import { formatTimestamp } from 'src/utils/formatters';
 const formatFechaInput = (fecha) => {
   if (!fecha) return '';
   
@@ -57,27 +58,6 @@ const parseFechaInput = (fechaString) => {
 };
 
 
-
-const formatTimestamp = (timestamp) => {
-  if (!timestamp) return '';
-
-  const utcDate = new Date(timestamp.seconds * 1000);
-
-  const isMidnightUTC = 
-    utcDate.getUTCHours() === 0 &&
-    utcDate.getUTCMinutes() === 0 &&
-    utcDate.getUTCSeconds() === 0;
-
-  const displayDate = isMidnightUTC
-    ? utcDate
-    : new Date(utcDate.getTime() - 3 * 60 * 60 * 1000); // Ajustar a UTC-3
-
-  const year = displayDate.getFullYear();
-  const month = `0${displayDate.getMonth() + 1}`.slice(-2);
-  const day = `0${displayDate.getDate()}`.slice(-2);
-
-  return `${year}-${month}-${day}`;
-};
 
 const PresupuestosPage = () => {
 

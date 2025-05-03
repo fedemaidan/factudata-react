@@ -10,6 +10,7 @@ import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
 import { useAuthContext } from 'src/contexts/auth-context';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
+import { formatTimestamp } from 'src/utils/formatters';
 
 const formatCurrency = (amount) => {
     return new Intl.NumberFormat('es-AR', {
@@ -19,28 +20,6 @@ const formatCurrency = (amount) => {
         maximumFractionDigits: 0
     }).format(amount);
 };
-
-const formatTimestamp = (timestamp) => {
-    if (!timestamp) return '';
-  
-    const utcDate = new Date(timestamp.seconds * 1000);
-  
-    const isMidnightUTC = 
-      utcDate.getUTCHours() === 0 &&
-      utcDate.getUTCMinutes() === 0 &&
-      utcDate.getUTCSeconds() === 0;
-  
-    const displayDate = isMidnightUTC
-      ? utcDate
-      : new Date(utcDate.getTime() - 3 * 60 * 60 * 1000); // Ajustar a UTC-3
-  
-    const year = displayDate.getFullYear();
-    const month = `0${displayDate.getMonth() + 1}`.slice(-2);
-    const day = `0${displayDate.getDate()}`.slice(-2);
-  
-    return `${year}-${month}-${day}`;
-  };
-
 
 const ResumenMovimientosPage = () => {
     const router = useRouter();

@@ -100,7 +100,7 @@ const ProductosForm = ({ productos, setProductos, valorTotal, setValorTotal }) =
 
 
       <Typography variant="h6">Productos</Typography>
-      <Table>
+      <Table sx={{ width: '100%' }}>
         <TableHead>
           <TableRow>
             <TableCell>Código</TableCell>
@@ -113,42 +113,42 @@ const ProductosForm = ({ productos, setProductos, valorTotal, setValorTotal }) =
         <TableBody>
           {productos.map((prod, index) => (
             <TableRow key={index}>
-              <TableCell>
-                <TextField
-                  value={prod.codigo}
-                  onChange={(e) => actualizarProducto(index, 'codigo', e.target.value)}
-                  fullWidth
-                />
-              </TableCell>
-              <TableCell>
-                <TextField
-                  value={prod.descripcion}
-                  onChange={(e) => actualizarProducto(index, 'descripcion', e.target.value)}
-                  fullWidth
-                />
-              </TableCell>
-              <TableCell>
-                <TextField
-                  type="number"
-                  value={prod.cantidad}
-                  onChange={(e) => actualizarProducto(index, 'cantidad', e.target.value)}
-                  fullWidth
-                />
-              </TableCell>
-              <TableCell>
-                <TextField
-                  type="number"
-                  value={prod.valorUnitario}
-                  onChange={(e) => actualizarProducto(index, 'valorUnitario', e.target.value)}
-                  fullWidth
-                />
-              </TableCell>
-              <TableCell>
-                <IconButton onClick={() => eliminarProducto(index)}>
-                  <Delete />
-                </IconButton>
-              </TableCell>
-            </TableRow>
+            <TableCell sx={{ width: 200 }}>
+              <TextField
+                value={prod.codigo}
+                onChange={(e) => actualizarProducto(index, 'codigo', e.target.value)}
+                fullWidth
+              />
+            </TableCell>
+            <TableCell sx={{ width: '40%' }}>
+              <TextField
+                value={prod.descripcion}
+                onChange={(e) => actualizarProducto(index, 'descripcion', e.target.value)}
+                fullWidth
+              />
+            </TableCell>
+            <TableCell sx={{ width: 60 }}>
+              <TextField
+                type="number"
+                value={prod.cantidad}
+                onChange={(e) => actualizarProducto(index, 'cantidad', e.target.value)}
+                fullWidth
+              />
+            </TableCell>
+            <TableCell sx={{ width: 200 }}>
+              <TextField
+                type="number"
+                value={prod.valorUnitario}
+                onChange={(e) => actualizarProducto(index, 'valorUnitario', e.target.value)}
+                fullWidth
+              />
+            </TableCell>
+            <TableCell sx={{ width: 20 }}>
+              <IconButton onClick={() => eliminarProducto(index)}>
+                <Delete />
+              </IconButton>
+            </TableCell>
+          </TableRow>          
           ))}
         </TableBody>
       </Table>

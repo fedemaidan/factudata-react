@@ -79,6 +79,32 @@ const AcopioService = {
     }
   },
 
+  extraerDatosCompraDesdeArchivo: async (acopioId, archivo, archivo_url) => {
+    try {
+      const formData = new FormData();
+      if (archivo) formData.append('archivo', archivo);
+      if (archivo_url) formData.append('archivo_url', archivo_url);
+  
+      const response = await api.post(`/acopio/${acopioId}/compra/extraer`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
+      });
+  
+      if (response.status === 200) {
+        console.log('✅ Datos de compra extraídos con éxito');
+        return response.data.materiales;
+      } else {
+        console.error('❌ Error al extraer datos de la compra');
+        throw new Error('No se pudo extraer la información de la compra.');
+      }
+    } catch (error) {
+      console.error('❌ Error en extraerDatosCompraDesdeArchivo:', error);
+      throw error;
+    }
+  },
+  
+
   /**
    * Obtiene la lista de acopios de una empresa
    * @param {string} empresaId - ID de la empresa
