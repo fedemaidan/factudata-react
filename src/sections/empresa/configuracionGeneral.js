@@ -15,7 +15,11 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
     medio_pago: false,
     tipo_factura: false,
     tags_extra: false,
-    caja_chica: false
+    caja_chica: false,
+    impuestos: false,
+    numero_factura: false,
+    proveedor_cuit: false,
+    subtotal: false,
   }
   const ingreso_info_default = {
     observacion: true,
@@ -75,7 +79,7 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
   const { user } = useAuthContext();
   
   const opcionesAcciones = [
-    "CREAR_EGRESO", "CREAR_INGRESO", "VER_CAJAS", 
+    "CREAR_EGRESO", "CREAR_EGRESO_PRORATEADO", "CREAR_INGRESO", "VER_CAJAS", 
     "AJUSTAR_CAJAS", "TRANSFERIR_ENTRE_CAJAS", "CREAR_NUEVO_PROYECTO", 
     "VENDER_DOLARES", "VALIDAR_CODIGO", "CONFIRMAR_PAGOS_PENDIENTES", "VER_DRIVE", "CREAR_NOTA_PEDIDO", "MODIFICAR_NOTA_PEDIDO", "ELIMINAR_NOTA_PEDIDO",
     "VER_NOTAS_DE_PEDIDO", "GESTIONAR_MOVIMIENTO", "CREAR_INGRESO_CAJA_CHICA", "VER_MI_CAJA_CHICA", "LISTAR_MOVIMIENTOS",

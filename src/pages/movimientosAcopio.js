@@ -17,13 +17,18 @@ import {
   Tabs,
   Tab,
   Dialog,
-  DialogContent
+  DialogContent,
+  Paper,
+  Grid,
+  LinearProgress
 } from '@mui/material';
 import CircularProgress from '@mui/material/CircularProgress';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import { useRouter } from 'next/router';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import AcopioService from 'src/services/acopioService';
+import RemitosTable from 'src/components/remitosTable';
+
 
 const MovimientosAcopioPage = () => {
   const router = useRouter();
@@ -122,6 +127,7 @@ useEffect(() => {
   if (acopioId) fetchRemitos();
 }, [fetchRemitos]);
 
+const porcentajeDisponible = (1 - (acopio?.valor_desacopio / acopio?.valor_acopio)) * 100;
 
   // Obtener los movimientos del acopio
   const fetchMovimientos = useCallback(async () => {
@@ -210,18 +216,6 @@ useEffect(() => {
   return (
     <Box component="main" sx={{ flexGrow: 1, py: 8 }}>
       <Container maxWidth="xl">
-        <Stack direction="row" justifyContent="right" mb={3}>
-          <Button variant="contained" startIcon={<RefreshIcon />} onClick={fetchActualTab}>
-            Actualizar
-          </Button>
-          <Button
-            variant="contained"
-            color="primary"
-            onClick={() => router.push(`/gestionRemito?acopioId=${acopioId}`)}
-          >
-            Agregar Remito
-          </Button>
-        </Stack>
         <Tabs value={tabActiva} onChange={handleChangeTab}>
           <Tab label="Info Acopio" value="acopio" />
           <Tab label="Remitos" value="remitos" />
@@ -307,135 +301,54 @@ useEffect(() => {
         </Table>
         </>)}
         {tabActiva === "remitos" && (
-  <Box>
-    <Table>
-      <TableHead>
-        <TableRow>
-          <TableCell>Número remito</TableCell>
-          <TableCell>Fecha</TableCell>
-          <TableCell>Estado</TableCell>
-          <TableCell>Valor Operación</TableCell>
-          <TableCell>Remito</TableCell>
-        </TableRow>
-      </TableHead>
-      <TableBody>
-      {remitos.length === 0 && (
-      <Typography variant="body1">No hay remitos para mostrar</Typography>
-    )}
-      {remitos.map((remito) => (
-  <React.Fragment key={remito.id}>
-    <TableRow
-      sx={{ cursor: 'pointer', backgroundColor: expanded === remito.id ? "#f5f5f5" : "inherit" }}
-      onClick={async () => {
-        if (expanded === remito.id) {
-          setExpanded(null); // cerrar si ya está abierto
-        } else {
-          if (!remitoMovimientos[remito.id]) {
-            const movimientos = await AcopioService.obtenerMovimientosDeRemito(acopioId, remito.id);
-            setRemitoMovimientos((prev) => ({ ...prev, [remito.id]: movimientos }));
-          }
-          setExpanded(remito.id);
-        }
-      }}
-    >
-       <TableCell>{remito.numero_remito} {remitosDuplicados.has(remito.id) && (
-      <Chip label="Posible duplicado" color="warning" size="small" />
-    )}</TableCell> 
-      <TableCell>{new Date(remito.fecha).toLocaleDateString()}</TableCell>
-      <TableCell>{remito.estado}</TableCell>
-      <TableCell>{formatCurrency(remito.valorOperacion || 0)}</TableCell>
-      <TableCell>
-        <Stack direction="column" spacing={1}>
-          {remito.url_remito ? (
-            <a
-              href={remito.url_remito}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Ver remito
-            </a>
-          ) : (
-            "-"
-          )}
-          <Button
-            variant="outlined"
-            size="small"
-            onClick={(e) => {
-              e.stopPropagation(); // Para evitar expandir el detalle al hacer click
-              router.push(`/gestionRemito?acopioId=${acopioId}&remitoId=${remito.id}`);
-            }}
-          >
-            Editar
-          </Button>
-          <Button
-            variant="outlined"
-            size="small"
-            color="error"
-            onClick={(e) => {
-              e.stopPropagation();
-              setRemitoAEliminar(remito.id);
-              setDialogoEliminarAbierto(true);
-            }}
-          >
-            Eliminar
-          </Button>
-
-        </Stack>
-      </TableCell>
-
-    </TableRow>
-
-    <TableRow>
-      <TableCell colSpan={5} sx={{ p: 0 }}>
-        <Collapse in={expanded === remito.id} timeout="auto" unmountOnExit>
-          <Box sx={{ m: 2 }}>
-            <Typography variant="subtitle1">Movimientos del Remito</Typography>
-            <Table size="small">
-              <TableHead>
-                <TableRow>
-                  <TableCell>Fecha</TableCell>
-                  <TableCell>Código</TableCell>
-                  <TableCell>Descripción</TableCell>
-                  <TableCell>Cantidad</TableCell>
-                  <TableCell>Valor Unitario</TableCell>
-                  <TableCell>Valor Total</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {(remitoMovimientos[remito.id] || []).map((mov) => (
-                  <TableRow key={mov.id}>
-                    <TableCell>{new Date(mov.fecha).toLocaleDateString()}</TableCell>
-                    <TableCell>{mov.codigo}</TableCell>
-                    <TableCell>{mov.descripcion}</TableCell>
-                    <TableCell>{mov.cantidad}</TableCell>
-                    <TableCell>{formatCurrency(mov.valorUnitario)}</TableCell>
-                    <TableCell>{formatCurrency(mov.valorOperacion)}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </Box>
-        </Collapse>
-      </TableCell>
-    </TableRow>
-  </React.Fragment>
-))}
-
-      </TableBody>
-    </Table>
-  </Box>
-)}
+          <Box>
+          <RemitosTable
+          remitos={remitos}
+          remitoMovimientos={remitoMovimientos}
+          expanded={expanded}
+          setExpanded={setExpanded}
+          router={router}
+          acopioId={acopioId}
+          remitosDuplicados={remitosDuplicados}
+          setDialogoEliminarAbierto={setDialogoEliminarAbierto}
+          setRemitoAEliminar={setRemitoAEliminar}
+        />
+        </Box>)}
 {tabActiva === "acopio" && (
   <Box mt={3}>
     {acopio && (
-      <Box my={2}>
-        <Typography><strong>Código:</strong> {acopio.codigo}</Typography>
-        <Typography><strong>Proveedor:</strong> {acopio.proveedor}</Typography>
-        <Typography><strong>Proyecto:</strong> {acopio.proyecto_nombre}</Typography>
-        <Typography><strong>Valor Total Acopiado:</strong> {formatCurrency(acopio.valor_acopio)}</Typography>
-        <Typography><strong>Valor Total Desacopiado:</strong> {formatCurrency(acopio.valor_desacopio)}</Typography>
-        <Typography><strong>Disponible:</strong> {formatCurrency(acopio.valor_acopio - acopio.valor_desacopio)}</Typography>
-      </Box>
+      <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
+      <Typography variant="h6" gutterBottom>Resumen del Acopio</Typography>
+      <Grid container spacing={2}>
+        <Grid item xs={12} sm={6} md={4}>
+          <Typography variant="subtitle2">Código</Typography>
+          <Typography>{acopio.codigo}</Typography>
+        </Grid>
+        <Grid item xs={12} sm={6} md={4}>
+          <Typography variant="subtitle2">Proveedor</Typography>
+          <Typography>{acopio.proveedor}</Typography>
+        </Grid>
+        <Grid item xs={12} sm={6} md={4}>
+          <Typography variant="subtitle2">Proyecto</Typography>
+          <Typography>{acopio.proyecto_nombre}</Typography>
+        </Grid>
+        <Grid item xs={12} sm={4}>
+          <Typography variant="subtitle2">Valor Total Acopiado</Typography>
+          <Typography>{formatCurrency(acopio.valor_acopio)}</Typography>
+        </Grid>
+        <Grid item xs={12} sm={4}>
+          <Typography variant="subtitle2">Valor Total Desacopiado</Typography>
+          <Typography>{formatCurrency(acopio.valor_desacopio)}</Typography>
+        </Grid>
+        <Grid item xs={12} sm={4}>
+          <Typography variant="subtitle2">Disponible {porcentajeDisponible.toFixed(2)}%</Typography>
+          <LinearProgress variant="determinate" value={porcentajeDisponible} />
+          <Typography sx={{ fontWeight: 'bold' }}>
+            {formatCurrency(acopio.valor_acopio - acopio.valor_desacopio)}
+          </Typography>
+        </Grid>
+      </Grid>
+    </Paper>    
     )}
 
     <Table>
@@ -485,6 +398,28 @@ useEffect(() => {
             {alert.message}
           </Alert>
         </Snackbar>
+        <Box
+  sx={{
+    position: 'fixed',
+    bottom: 16,
+    right: 16,
+    zIndex: 10,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 1,
+  }}
+>
+  <Button
+    variant="outlined"
+    size="small"
+    startIcon={<RefreshIcon />}
+    onClick={fetchActualTab}
+    sx={{ minWidth: 'auto', px: 2 }}
+  >
+    Actualizar
+  </Button>
+</Box>
+
       </Container>
     </Box>
   );

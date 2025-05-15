@@ -14,7 +14,8 @@ import {
   Snackbar,
   Alert,
   IconButton,
-  MenuItem
+  MenuItem,
+  Autocomplete
 } from '@mui/material';
 import { Add, Delete } from '@mui/icons-material';
 import AcopioService from 'src/services/acopioService';
@@ -74,7 +75,7 @@ const CrearAcopioPage = () => {
     if (!archivoCompra) return;
     try {
       setCargandoArchivo(true);
-      const nuevosMateriales = await AcopioService.extraerDatosCompraDesdeArchivo(acopioId, archivoCompra, null);
+      const nuevosMateriales = await AcopioService.extraerDatosCompraDesdeArchivo(archivoCompra, null);
   
       if (nuevosMateriales && nuevosMateriales.length > 0) {
         const nuevosProductos = [...productos, ...nuevosMateriales];
@@ -108,7 +109,14 @@ const CrearAcopioPage = () => {
         productos,
         empresaId
       };
-
+  
+      // Si el proveedor no está en la lista, agregarlo
+      if (proveedor && !proveedores.includes(proveedor)) {
+        console.log("entre a agregar proveedor", proveedor, proveedores);
+        const nuevosProveedores = [...proveedores, proveedor];
+        await updateEmpresaDetails(empresaId, { proveedores: nuevosProveedores });
+      }
+  
       if (editando) {
         await AcopioService.editarAcopio(acopioId, acopio);
         setAlert({ open: true, message: 'Acopio actualizado con éxito.', severity: 'success' });
@@ -116,14 +124,14 @@ const CrearAcopioPage = () => {
         await AcopioService.crearAcopio(acopio);
         setAlert({ open: true, message: 'Acopio creado con éxito', severity: 'success' });
       }
-
+  
       router.push('/acopios?empresaId=' + empresaId);
     } catch (error) {
       console.error('Error al guardar acopio:', error);
       setAlert({ open: true, message: 'Error al guardar acopio', severity: 'error' });
     }
   };
-
+  
   return (
     <Box component="main" sx={{ flexGrow: 1, py: 8 }}>
       <Container maxWidth="md">
@@ -132,11 +140,17 @@ const CrearAcopioPage = () => {
       </Typography>
         <Stack spacing={3}>
           <TextField label="Código" value={codigo} onChange={(e) => setCodigo(e.target.value)} fullWidth />
-          <TextField select label="Proveedor" value={proveedor} onChange={(e) => setProveedor(e.target.value)} fullWidth>
-            {proveedores.map((prov) => (
-              <MenuItem key={prov} value={prov}>{prov}</MenuItem>
-            ))}
-          </TextField>
+          <Autocomplete
+            freeSolo
+            options={proveedores}
+            value={proveedor}
+            onInputChange={(event, newInputValue) => {
+              setProveedor(newInputValue);
+            }}
+            renderInput={(params) => (
+              <TextField {...params} label="Proveedor" fullWidth />
+            )}
+          />
           <TextField select label="Proyecto" value={proyecto} onChange={(e) => setProyecto(e.target.value)} fullWidth>
             {proyectos.map((proj) => (
               <MenuItem key={proj.id} value={proj.id}>{proj.nombre}</MenuItem>

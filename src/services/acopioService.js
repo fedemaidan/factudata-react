@@ -79,13 +79,13 @@ const AcopioService = {
     }
   },
 
-  extraerDatosCompraDesdeArchivo: async (acopioId, archivo, archivo_url) => {
+  extraerDatosCompraDesdeArchivo: async (archivo, archivo_url) => {
     try {
       const formData = new FormData();
       if (archivo) formData.append('archivo', archivo);
       if (archivo_url) formData.append('archivo_url', archivo_url);
   
-      const response = await api.post(`/acopio/${acopioId}/compra/extraer`, formData, {
+      const response = await api.post(`/acopio/compra/extraer`, formData, {
         headers: {
           'Content-Type': 'multipart/form-data'
         }

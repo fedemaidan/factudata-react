@@ -12,6 +12,9 @@ import { createEmotionCache } from 'src/utils/create-emotion-cache';
 import 'simplebar-react/dist/simplebar.min.css';
 import { BrowserRouter as Router, Switch, Route } from 'react-router-dom';
 import { TicketDetails } from 'src/pages/ticketDetails'; // Ajusta la ruta a tu estructura de carpetas
+import 'src/styles/react-datepicker.css';
+
+
 
 const clientSideEmotionCache = createEmotionCache();
 

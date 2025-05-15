@@ -347,7 +347,39 @@ const ticketService = {
       console.error('Error al obtener los movimientos:', err);
       return [];
     }
-  },  
+  }, 
+  getMovimientosEnRango: async (proyectoId, desde, hasta) => {
+    try {
+      console.log("getMovimientosEnRango");
+
+      // Convertir fechas JS a Timestamp de Firebase
+      const desdeTimestamp = Timestamp.fromDate(new Date(desde));
+      const hastaTimestamp = Timestamp.fromDate(new Date(hasta));
+
+      const q = query(
+        collection(db, 'movimientos'),
+        where('proyecto_id', '==', proyectoId),
+        where('fecha_factura', '>=', desdeTimestamp),
+        where('fecha_factura', '<=', hastaTimestamp),
+        orderBy('fecha_factura', 'desc')
+      );
+
+      const querySnapshot = await getDocs(q);
+      const movimientos = [];
+
+      querySnapshot.forEach((doc) => {
+        movimientos.push({
+          id: doc.id,
+          ...doc.data(),
+        });
+      });
+
+      return movimientos;
+    } catch (err) {
+      console.error('Error al obtener movimientos en rango:', err);
+      return [];
+    }
+  }, 
   getTickets: async () => {
     try {
       const q = query(collection(db, 'tickets'));
