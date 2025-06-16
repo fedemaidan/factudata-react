@@ -167,7 +167,7 @@ export const getEmpresaDetailsFromUser = async (user) => {
       console.log('Información de la empresa no proporcionada o incompleta en el objeto usuario');
       return null;
     }
-    console.log(user.empresa)
+    console.log(user.empresa, "1")
     const pathSegments = user.empresa._key.path.segments;
     const path = pathSegments.slice(user.empresa._key.path.offset, user.empresa._key.path.offset + user.empresa._key.path.len).join('/');
     console.log(path)

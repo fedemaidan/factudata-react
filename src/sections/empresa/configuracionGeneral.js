@@ -20,6 +20,8 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
     numero_factura: false,
     proveedor_cuit: false,
     subtotal: false,
+    cuenta_interna: false,
+    etapa: false,
   }
   const ingreso_info_default = {
     observacion: true,
@@ -52,6 +54,8 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
     empresa.notas_estados || ["Pendiente", "En proceso", "Completa"]
   );
   const [tagsExtra, setTagsExtra] = useState(empresa.tags_extra || []);
+  const [cuentasInternas, setCuentasInternas] = useState(empresa.cuentas_internas || []);
+
 
   const handleTagsExtraChange = (event, newValue) => {
     setTagsExtra(newValue);
@@ -146,6 +150,7 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
       notas_estados: notasEstados,
       tags_extra: tagsExtra,
       ingreso_info: ingresoInfo,
+      cuentas_internas: cuentasInternas, 
     };
     
     try {
@@ -292,6 +297,18 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
           <TextField {...params} label="Tags Extra" variant="outlined" fullWidth />
         )}
       />
+
+      <Autocomplete
+        multiple
+        options={[]} // podés dejarlo vacío para permitir cuentas libres
+        value={cuentasInternas}
+        onChange={(event, newValue) => setCuentasInternas(newValue)}
+        freeSolo
+        renderInput={(params) => (
+          <TextField {...params} label="Cuentas Internas" variant="outlined" fullWidth />
+        )}
+      />
+
 
 
     <FormControl sx={{ mt: 2 }}>

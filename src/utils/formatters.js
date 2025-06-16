@@ -32,4 +32,12 @@ const formatTimestamp = (timestamp) => {
   };
 
 
-export {formatTimestamp, formatCurrency};
+  const toDateFromFirestore = (timestamp) => {
+    if (!timestamp) return null;
+    const seconds = timestamp.seconds ?? timestamp._seconds;
+    if (seconds === undefined) return null;
+    return new Date(seconds * 1000);
+  };
+  
+
+export {formatTimestamp, formatCurrency, toDateFromFirestore};

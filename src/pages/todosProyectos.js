@@ -1,6 +1,12 @@
 import { useState, useMemo, useEffect } from 'react';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import Head from 'next/head';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
+import TableViewIcon from '@mui/icons-material/TableView';
+import InsertDriveFileIcon from '@mui/icons-material/InsertDriveFile';
+import MoreVertIcon from '@mui/icons-material/MoreVert';
+import TablePagination from '@mui/material/TablePagination';
 import {
   Box,
   Button,
@@ -9,6 +15,7 @@ import {
   Typography,
   Select,
   MenuItem,
+  Menu,
   FormControl,
   InputLabel,
   TextField,
@@ -22,6 +29,9 @@ import {
   Snackbar,
   Alert,
   CircularProgress,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
 } from '@mui/material';
 import ticketService from 'src/services/ticketService';
 import { getProyectosByEmpresa, getProyectosFromUser } from 'src/services/proyectosService';
@@ -35,6 +45,8 @@ import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { Tooltip } from '@mui/material';
+
 
 const TodosProyectosPage = () => {
   const { user } = useAuthContext();
@@ -42,7 +54,7 @@ const TodosProyectosPage = () => {
   const [proyectos, setProyectos] = useState([]);
   const [empresa, setEmpresa] = useState(null);
   const [movimientos, setMovimientos] = useState([]);
-
+  const [tableHeadArray, setTableHeadArray] = useState([]);
   // Estados de Filtros existentes
   const [filtroProyecto, setFiltroProyecto] = useState([]);
   const [filtroCategoria, setFiltroCategoria] = useState([]);
@@ -53,11 +65,23 @@ const TodosProyectosPage = () => {
   const [filtroMontoMin, setFiltroMontoMin] = useState('');
   const [filtroMontoMax, setFiltroMontoMax] = useState('');
   const [filtroObservacion, setFiltroObservacion] = useState('');
+  const [filtroCuentaInterna, setFiltroCuentaInterna] = useState([]);
 
 const [filtroFechaDesde, setFiltroFechaDesde] = useState(subDays(new Date(), 7));
 const [filtroFechaHasta, setFiltroFechaHasta] = useState(new Date());
 const [ordenCampo, setOrdenCampo] = useState('codigo_operacion');
 const [ordenDireccion, setOrdenDireccion] = useState('desc');
+
+const [filtroMedioPago, setFiltroMedioPago] = useState([]);
+const [filtroPalabrasSueltas, setFiltroPalabrasSueltas] = useState('');
+const [filtroTagsExtra, setFiltroTagsExtra] = useState([]);
+
+const [page, setPage] = useState(0); // Página actual
+const [rowsPerPage, setRowsPerPage] = useState(10); // Filas por página
+
+const [anchorElExport, setAnchorElExport] = useState(null);
+const handleExportClick = (event) => setAnchorElExport(event.currentTarget);
+const handleExportClose = () => setAnchorElExport(null);
 
 
   const [alert, setAlert] = useState({ open: false, message: '', severity: 'info' });
@@ -76,7 +100,7 @@ const [ordenDireccion, setOrdenDireccion] = useState('desc');
     categoria: 'Categoría',
     subcategoria: 'Subcategoría',
     nombre_proveedor: 'Proveedor',
-    cuit_proveedor: 'CUIT Proveedor',
+    // cuit_proveedor: 'CUIT Proveedor',
     observacion: 'Observación',
     total_original: 'Monto Original',
     medio_pago: 'Medio de pago',
@@ -86,7 +110,47 @@ const [ordenDireccion, setOrdenDireccion] = useState('desc');
     subtotal: 'Subtotal',
     impuestos: 'Impuestos',
     numero_factura: 'Número de factura',
+    cuenta_interna: 'Cuenta interna',
   };
+
+  function getTableHeadArray(empresa) {
+    const head_array = [
+      ['codigo_operacion', 'Código'],
+      ['fecha_factura', 'Fecha'],
+      ['proyectoNombre', 'Proyecto'],
+      ['categoria', 'Categoría']]
+    if (empresa.comprobante_info?.subcategoria) {
+      head_array.push(['subcategoria', 'Subcategoría']);
+    }
+    if (empresa.comprobante_info?.medio_pago) {
+      head_array.push(['medio_pago', 'Medio de pago']);
+    }
+    if (empresa.comprobante_info?.cuenta_interna) {
+      head_array.push(['cuenta_interna', 'Cuenta Interna']);
+    }
+
+    if (empresa.comprobante_info?.impuestos) {
+      head_array.push(['impuestos', 'Impuestos']);
+    }
+
+    head_array.push(
+      ['nombre_proveedor', 'Proveedor'],
+      ['observacion', 'Observación'],
+      ['type', 'Tipo'],
+      ['moneda', 'Moneda'])
+
+    if (empresa.comprobante_info?.subtotal) {
+      head_array.push(['subtotal', 'Subtotal']);
+    }
+    if (empresa.comprobante_info?.total_original) {
+      head_array.push(['total_original', 'Total Original']);
+    }
+      head_array.push(
+        ['total', 'Monto'],
+      ['acciones', 'Acciones'],
+    )
+    return head_array;
+  }
 
   function formatearCampo(campo, valor) {
     if (valor === undefined || valor === null) return '-';
@@ -95,8 +159,8 @@ const [ordenDireccion, setOrdenDireccion] = useState('desc');
       case 'fecha_factura':
         return formatTimestamp(valor); // ya tenés esta función
   
-      case 'total':
-      case 'total_original':
+      // case 'total':
+      // case 'total_original':
         return formatCurrency(valor); // ya tenés esta función también
   
       case 'type':
@@ -109,7 +173,7 @@ const [ordenDireccion, setOrdenDireccion] = useState('desc');
         return Array.isArray(valor) ? valor.join(' - ') : valor;
       
       case 'impuestos':
-        return Array.isArray(valor) ? valor.map((imp) => `${imp.nombre}: ${formatCurrency(imp.monto)}`).join(' - ') : valor;
+        return Array.isArray(valor) ? valor.map((imp) => `${imp.nombre}: ${formatCurrency(imp.monto)}`).join('\n') : valor;
   
       default:
         return valor;
@@ -144,6 +208,53 @@ const [ordenDireccion, setOrdenDireccion] = useState('desc');
     saveAs(blob, 'movimientos.xlsx');
   };
   
+  const exportAfipExcel = () => {
+    const rows = movimientosFiltrados.map((mov) => {
+
+      // dame un mapper que mappee el tipo que viene del movimiento con el tipo que espera afip
+      const camposAfip = {
+        'FACTURA A': '001 – FACTURAS A',
+        'FACTURA B': '006 – FACTURAS B',
+        'FACTURA C': '011 – FACTURAS C',
+      };
+
+      const iva = mov.impuestos?.find(i => i.nombre.includes('IVA'))?.monto || 0;
+      const otrosTributos = mov.impuestos?.filter(i => !i.nombre.includes('IVA')).reduce((acc, i) => acc + (i.monto || 0), 0) || 0;
+      
+      const proveedoresData = empresa.proveedores_data || [];
+      console.log('Proveedores Data:', proveedoresData);
+
+      const proveedor = proveedoresData.find(p => p.id === mov.id_proveedor);
+      const punto_venta = mov.numero_factura?.split('-')[0] || '';
+      const numero_desde = mov.numero_factura?.split('-')[1] || '';
+      return {
+        'Fecha': formatTimestamp(mov.fecha_factura),
+        'Tipo': camposAfip[mov.tipo_factura] || '', // deberías mapearlo a los códigos AFIP si los tenés
+        'Punto de Venta': parseInt(punto_venta) || '', // si tenés este dato
+        'Número Desde': parseInt(numero_desde) || '', // o separalo en 'desde' y 'hasta'
+        'Número Hasta': '',
+        'Cód. Autorización': '',
+        'Tipo Doc. Emisor': 'CUIT', // hardcodeado si no se guarda
+        'Nro. Doc. Emisor': proveedor?.cuit || '', // si lo tenés
+        'Denominación Emisor': proveedor?.razon_social || mov.nombre_proveedor || '',
+        'Tipo Cambio': 1,
+        'Moneda': mov.moneda === 'USD' ? 'U$S' : '$',
+        'Imp. Neto Gravado': mov.subtotal || mov.total - iva - otrosTributos,
+        'Imp. Neto No Gravado': 0,
+        'Imp. Op. Exentas': 0,
+        'Otros Tributos': otrosTributos,
+        'IVA': iva,
+        'Imp. Total': mov.total || 0
+      };
+    });
+  
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'AFIP Comprobantes');
+    const buffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+    const blob = new Blob([buffer], { type: 'application/octet-stream' });
+    saveAs(blob, 'comprobantes_afip.xlsx');
+  };  
   
   const exportToCSV = () => {
     const camposExportables = {
@@ -194,60 +305,105 @@ const [ordenDireccion, setOrdenDireccion] = useState('desc');
     doc.save('movimientos.pdf');
   };
   
-  
-  useEffect(() => {
-    const fetchData = async () => {
-      setIsLoading(true);
-      try {
-        const { empresaId } = router.query;
-        let empresa;
-        if (empresaId) {
-          empresa = await getEmpresaById(empresaId);
-          setEmpresa(empresa);
-        } else {
-          empresa = await getEmpresaDetailsFromUser(user);
-          setEmpresa(empresa);
-        }
-        const proyectosData = await getProyectosFromUser(user);
-        setProyectos(proyectosData);
-
-        const movimientosData = [];
-        for (const proyecto of proyectosData) {
-          let movs;
-          // Si se han seleccionado ambas fechas, se usa el rango personalizado
-          if (filtroFechaDesde && filtroFechaHasta) {
-            movs = await ticketService.getMovimientosEnRango(
-              proyecto.id,
-              filtroFechaDesde,
-              filtroFechaHasta
-            );
-          }
-          movimientosData.push(...movs.map((m) => ({ ...m, proyectoNombre: proyecto.nombre })));
-        }
-        setMovimientos(movimientosData);
-      } catch (error) {
-        setAlert({ open: true, message: 'Error al cargar los movimientos.', severity: 'error' });
-      } finally {
-        setIsLoading(false);
+  const fetchData = async () => {
+    setIsLoading(true);
+    
+    try {
+      const { empresaId } = router.query;
+      let empresa;
+      if (empresaId) {
+        empresa = await getEmpresaById(empresaId);
+        setEmpresa(empresa);
+      } else {
+        empresa = await getEmpresaDetailsFromUser(user);
+        setEmpresa(empresa);
       }
-    };
+
+      const proyectosData = await getProyectosFromUser(user);
+      setProyectos(proyectosData);
+      setTableHeadArray(getTableHeadArray(empresa));
+      
+      const movimientosData = [];
+      for (const proyecto of proyectosData) {
+        let movs;
+        // Si se han seleccionado ambas fechas, se usa el rango personalizado
+        if (filtroFechaDesde && filtroFechaHasta) {
+          movs = await ticketService.getMovimientosEnRango(
+            proyecto.id,
+            filtroFechaDesde,
+            filtroFechaHasta
+          );
+        }
+        movimientosData.push(...movs.map((m) => ({ ...m, proyectoNombre: proyecto.nombre })));
+      }
+      
+      setMovimientos(movimientosData);
+    } catch (error) {
+      setAlert({ open: true, message: 'Error al cargar los movimientos.', severity: 'error' });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
     fetchData();
   }, [user, filtroFechaDesde, filtroFechaHasta]);
 
   const movimientosFiltrados = useMemo(() => {
     const filtrados = movimientos.filter((mov) => {
       const matchProyecto = filtroProyecto.length === 0 || filtroProyecto.includes(mov.proyectoNombre);
+      const matchCategoria = filtroCategoria.length === 0 || filtroCategoria.includes(mov.categoria);
       const matchSubcategoria = filtroSubcategoria.length === 0 || filtroSubcategoria.includes(mov.subcategoria);
       const matchProveedor = filtroProveedor.length === 0 || filtroProveedor.includes(mov.nombre_proveedor);
       const matchMoneda = filtroMoneda.length === 0 || filtroMoneda.includes(mov.moneda);
       const matchTipo = filtroTipo.length === 0 || filtroTipo.includes(mov.type);
-      const matchCategoria = filtroCategoria.length === 0 || filtroCategoria.includes(mov.categoria);
       const matchMontoMin = filtroMontoMin ? mov.total >= parseFloat(filtroMontoMin) : true;
       const matchMontoMax = filtroMontoMax ? mov.total <= parseFloat(filtroMontoMax) : true;
-      const matchObservacion = filtroObservacion ? mov.observacion?.toLowerCase().includes(filtroObservacion.toLowerCase()) : true;
-  
-      return matchProyecto && matchCategoria && matchSubcategoria && matchProveedor && matchMontoMin && matchMontoMax && matchObservacion && matchMoneda && matchTipo;
+      const matchObservacion = filtroObservacion
+        ? mov.observacion?.toLowerCase().includes(filtroObservacion.toLowerCase())
+        : true;
+    
+      const matchMedioPago = filtroMedioPago.length === 0 || filtroMedioPago.includes(mov.medio_pago);
+      const matchCuentaInterna = filtroCuentaInterna.length === 0 || filtroCuentaInterna.includes(mov.cuenta_interna);
+
+      const matchTagsExtra = filtroTagsExtra.length === 0 || (
+        Array.isArray(mov.tags_extra) &&
+        filtroTagsExtra.every((tag) => mov.tags_extra.includes(tag))
+      );
+    
+      const matchPalabrasSueltas =
+          filtroPalabrasSueltas === '' ||
+          Object.values(mov).some((valor) => {
+            if (typeof valor === 'string') {
+              return valor.toLowerCase().includes(filtroPalabrasSueltas.toLowerCase());
+            }
+            if (Array.isArray(valor)) {
+              return valor.some((item) =>
+                typeof item === 'string' &&
+                item.toLowerCase().includes(filtroPalabrasSueltas.toLowerCase())
+              );
+            }
+            return false;
+          });
+
+    
+      return (
+        matchProyecto &&
+        matchCategoria &&
+        matchSubcategoria &&
+        matchProveedor &&
+        matchMontoMin &&
+        matchMontoMax &&
+        matchObservacion &&
+        matchMoneda &&
+        matchTipo &&
+        matchMedioPago &&
+        matchTagsExtra &&
+        matchPalabrasSueltas &&
+        matchCuentaInterna
+      );
     });
+    
   
     if (!ordenCampo) return filtrados;
   
@@ -275,8 +431,14 @@ const [ordenDireccion, setOrdenDireccion] = useState('desc');
   }, [
     movimientos, filtroProyecto, filtroCategoria, filtroSubcategoria, filtroProveedor,
     filtroMontoMin, filtroMontoMax, filtroObservacion, filtroMoneda, filtroTipo,
-    ordenCampo, ordenDireccion,
+    ordenCampo, ordenDireccion, filtroMedioPago, filtroTagsExtra, filtroPalabrasSueltas, filtroCuentaInterna
   ]);
+  
+  const movimientosPaginados = useMemo(() => {
+    const start = page * rowsPerPage;
+    const end = start + rowsPerPage;
+    return movimientosFiltrados.slice(start, end);
+  }, [movimientosFiltrados, page, rowsPerPage]);
   
   const totalesPorMoneda = useMemo(() => {
     return movimientosFiltrados.reduce((acc, mov) => {
@@ -309,7 +471,12 @@ const [ordenDireccion, setOrdenDireccion] = useState('desc');
           <Stack spacing={3}>
             <Typography variant="h4">Movimientos de Todos los Proyectos</Typography>
 
-            {/* Filtros */}
+            <Accordion defaultExpanded>
+  <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+    <Typography variant="h6">Filtros</Typography>
+  </AccordionSummary>
+  <AccordionDetails>
+
             <Stack direction="row" spacing={2} flexWrap="wrap">
               {/* Filtros existentes */}
               <FormControl sx={{ minWidth: 200 }}>
@@ -414,6 +581,57 @@ const [ordenDireccion, setOrdenDireccion] = useState('desc');
                 onChange={(e) => setFiltroObservacion(e.target.value)}
                 sx={{ minWidth: 200 }}
               />
+              <FormControl sx={{ minWidth: 200 }}>
+                <InputLabel>Medio de pago</InputLabel>
+                <Select
+                  multiple
+                  value={filtroMedioPago}
+                  onChange={(e) => setFiltroMedioPago(e.target.value)}
+                  label="Medio de pago"
+                >
+                  {[...new Set(movimientos.map(m => m.medio_pago).filter(Boolean))].map((medio, i) => (
+                    <MenuItem key={i} value={medio}>{medio}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+
+              <TextField
+                label="Palabras sueltas"
+                value={filtroPalabrasSueltas}
+                onChange={(e) => setFiltroPalabrasSueltas(e.target.value)}
+                sx={{ minWidth: 200 }}
+              />
+
+              <FormControl sx={{ minWidth: 200 }}>
+                <InputLabel>Tags extra</InputLabel>
+                <Select
+                  multiple
+                  value={filtroTagsExtra}
+                  onChange={(e) => setFiltroTagsExtra(e.target.value)}
+                  label="Tags extra"
+                >
+                  {[...new Set(
+                    movimientos.flatMap(m => Array.isArray(m.tags_extra) ? m.tags_extra : [])
+                  )].map((tag, i) => (
+                    <MenuItem key={i} value={tag}>{tag}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+
+              <FormControl sx={{ minWidth: 200 }}>
+                <InputLabel>Cuenta Interna</InputLabel>
+                <Select
+                  multiple
+                  value={filtroCuentaInterna}
+                  onChange={(e) => setFiltroCuentaInterna(e.target.value)}
+                  label="Cuenta Interna"
+                >
+                  {[...new Set(movimientos.map(m => m.cuenta_interna).filter(Boolean))].map((cuenta, i) => (
+                    <MenuItem key={i} value={cuenta}>{cuenta}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+
 
               {/* NUEVO: Filtro de rango de fechas */}
               <Stack direction="row" spacing={1} alignItems="center">
@@ -437,12 +655,53 @@ const [ordenDireccion, setOrdenDireccion] = useState('desc');
                   dateFormat="dd/MM/yyyy"
                 />
               </Stack>
+              <Button variant="contained" onClick={fetchData}>Actualizar</Button>
+              <Stack direction="row" spacing={2} justifyContent="space-between" alignItems="center">
+                <div>
+                  <Button
+                    variant="outlined"
+                    onClick={handleExportClick}
+                    endIcon={<MoreVertIcon />}
+                  >
+                    Exportar
+                  </Button>
+                  <Menu
+                    anchorEl={anchorElExport}
+                    open={Boolean(anchorElExport)}
+                    onClose={handleExportClose}
+                  >
+                    <MenuItem
+                      onClick={() => { exportAfipExcel(); handleExportClose(); }}
+                    >
+                      <TableViewIcon fontSize="small" sx={{ mr: 1 }} />
+                      AFIP (Excel)
+                    </MenuItem>
+                    <MenuItem
+                      onClick={() => { exportToExcel(); handleExportClose(); }}
+                    >
+                      <TableViewIcon fontSize="small" sx={{ mr: 1 }} />
+                      Excel
+                    </MenuItem>
+                    <MenuItem
+                      onClick={() => { exportToCSV(); handleExportClose(); }}
+                    >
+                      <InsertDriveFileIcon fontSize="small" sx={{ mr: 1 }} />
+                      CSV
+                    </MenuItem>
+                    <MenuItem
+                      onClick={() => { exportToPDF(); handleExportClose(); }}
+                    >
+                      <PictureAsPdfIcon fontSize="small" sx={{ mr: 1 }} />
+                      PDF
+                    </MenuItem>
+                  </Menu>
+                </div>
+              </Stack>
             </Stack>
-            <Stack direction="row" spacing={2}>
-  <Button variant="outlined" onClick={exportToExcel}>Exportar a Excel</Button>
-  <Button variant="outlined" onClick={exportToCSV}>Exportar a CSV</Button>
-  <Button variant="outlined" onClick={exportToPDF}>Exportar a PDF</Button>
-</Stack>
+  </AccordionDetails>
+</Accordion>
+
+
 
             {/* Loading */}
             {isLoading ? (
@@ -463,19 +722,7 @@ const [ordenDireccion, setOrdenDireccion] = useState('desc');
                   <Table>
                   <TableHead>
                       <TableRow>
-                        {[
-                          ['codigo_operacion', 'Código'],
-                          ['fecha_factura', 'Fecha'],
-                          ['proyectoNombre', 'Proyecto'],
-                          ['categoria', 'Categoría'],
-                          ['subcategoria', 'Subcategoría'],
-                          ['nombre_proveedor', 'Proveedor'],
-                          ['observacion', 'Observación'],
-                          ['type', 'Tipo'],
-                          ['moneda', 'Moneda'],
-                          ['total', 'Monto'],
-                          ['total_original', 'Monto original'],
-                        ].map(([campo, label]) => (
+                        {tableHeadArray.map(([campo, label]) => (
                           <TableCell
                             key={campo}
                             onClick={() => {
@@ -496,13 +743,38 @@ const [ordenDireccion, setOrdenDireccion] = useState('desc');
                     </TableHead>
 
                     <TableBody>
-                      {movimientosFiltrados.map((mov, index) => (
+                      {movimientosPaginados.map((mov, index) => (
                         <TableRow key={index}>
                           <TableCell>{mov.codigo_operacion}</TableCell>
                           <TableCell>{formatTimestamp(mov.fecha_factura)}</TableCell>
                           <TableCell>{mov.proyectoNombre}</TableCell>
                           <TableCell>{mov.categoria || '-'}</TableCell>
-                          <TableCell>{mov.subcategoria || '-'}</TableCell>
+                          {empresa?.comprobante_info.subcategoria && <TableCell>{mov.subcategoria}</TableCell>}
+                          {empresa?.comprobante_info.medio_pago && <TableCell>{mov.medio_pago}</TableCell>}
+                          {empresa?.comprobante_info.cuenta_interna && <TableCell>{mov.cuenta_interna}</TableCell>}
+                          <TableCell>
+                                {Array.isArray(mov.impuestos) && mov.impuestos.length > 0 ? (
+                                  <Tooltip
+                                    title={
+                                      <Box>
+                                        {mov.impuestos.map((imp, i) => (
+                                          <Typography key={i} variant="body2">
+                                            {imp.nombre}: {formatCurrency(imp.monto)}
+                                          </Typography>
+                                        ))}
+                                      </Box>
+                                    }
+                                    arrow
+                                    placement="top"
+                                  >
+                                    <span style={{ cursor: 'help', textDecoration: 'underline dotted' }}>
+                                      {formatCurrency(mov.impuestos.reduce((acc, imp) => acc + (imp.monto || 0), 0))}
+                                    </span>
+                                  </Tooltip>
+                                ) : (
+                                  '-'
+                                )}
+                              </TableCell>
                           <TableCell>{mov.nombre_proveedor || '-'}</TableCell>
                           <TableCell>{mov.observacion || '-'}</TableCell>
                           <TableCell>
@@ -512,12 +784,40 @@ const [ordenDireccion, setOrdenDireccion] = useState('desc');
                             />
                           </TableCell>
                           <TableCell>{mov.moneda || '-'}</TableCell>
+                          {empresa?.comprobante_info.subtotal && <TableCell>{formatCurrency(mov.subtotal)}</TableCell>}
+                          {empresa?.comprobante_info.total_original && <TableCell>{formatCurrency(mov.total_original)}</TableCell>}
                           <TableCell>{formatCurrency(mov.total)}</TableCell>
-                          <TableCell>{formatCurrency(mov.total_original)}</TableCell>
+                          <TableCell>
+                              <Button
+                                variant="outlined"
+                                size="small"
+                                onClick={() =>
+                                  router.push(
+                                    `/movementForm?movimientoId=${mov.id}&lastPageName='Ver movimientos'&proyectoId=${mov.proyecto_id}&proyectoName=${mov.proyectoNombre}&lastPageUrl=${router.asPath}`
+                                  )
+                                }
+                              >
+                                Ver
+                              </Button>
+                            </TableCell>
+
                         </TableRow>
                       ))}
                     </TableBody>
                   </Table>
+                  <TablePagination
+                      rowsPerPageOptions={[10, 25, 50, 100]}
+                      component="div"
+                      count={movimientosFiltrados.length}
+                      rowsPerPage={rowsPerPage}
+                      page={page}
+                      onPageChange={(event, newPage) => setPage(newPage)}
+                      onRowsPerPageChange={(event) => {
+                        setRowsPerPage(parseInt(event.target.value, 10));
+                        setPage(0); // reset page cuando cambia el tamaño
+                      }}
+                    />
+
                 </Paper>
               </>
             )}

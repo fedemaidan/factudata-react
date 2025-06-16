@@ -20,7 +20,9 @@ import {
   DialogContent,
   DialogActions,
   Snackbar,
-  Alert
+  Alert,
+  Chip,
+  Autocomplete
 } from '@mui/material';
 import { useFormik } from 'formik';
 import * as Yup from 'yup';
@@ -33,8 +35,21 @@ import Papa from 'papaparse';
 
 export const ProveedoresDetails = ({ empresa }) => {
   const [isLoading, setIsLoading] = useState(false);
-  const [proveedores, setProveedores] = useState(empresa.proveedores);
-  const [editingProveedor, setEditingProveedor] = useState(null);
+  const [aliasInput, setAliasInput] = useState('');
+
+  const [proveedoresData, setProveedoresData] = useState(() => {
+    if (empresa.proveedores_data?.length > 0) return empresa.proveedores_data;
+    return (empresa.proveedores ?? []).map((nombre) => ({
+      id: crypto.randomUUID(),
+      nombre,
+      razon_social: '',
+      cuit: '',
+      direccion: '',
+      alias: [],
+      categorias: []
+    }));
+  });
+  const [editingProveedorIndex, setEditingProveedorIndex] = useState(null);
   const [openModal, setOpenModal] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmMessage, setConfirmMessage] = useState('');
@@ -43,46 +58,70 @@ export const ProveedoresDetails = ({ empresa }) => {
   const [snackbarMessage, setSnackbarMessage] = useState('');
   const [snackbarSeverity, setSnackbarSeverity] = useState('success');
 
-  const handleSnackbarClose = () => {
-    setSnackbarOpen(false);
-  };
+  const handleSnackbarClose = () => setSnackbarOpen(false);
 
   const formik = useFormik({
     initialValues: {
-      nombre: editingProveedor ? editingProveedor : '',
+      nombre: '',
+      razon_social: '',
+      cuit: '',
+      direccion: '',
+      alias: [],
+      categorias: []
     },
     enableReinitialize: true,
     validationSchema: Yup.object({
-      nombre: Yup.string().required('El nombre del proveedor es requerido'),
+      nombre: Yup.string().required('El nombre es obligatorio'),
     }),
     onSubmit: async (values, { resetForm }) => {
       setIsLoading(true);
       try {
-        const newProveedor = values.nombre;
-        let newProveedores;
-        if (editingProveedor) {
-          newProveedores = proveedores.map((prov) => (prov === editingProveedor ? newProveedor : prov));
-          setSnackbarMessage('Proveedor actualizado con éxito');
+        const nuevoProveedor = {
+          id: editingProveedorIndex !== null
+            ? proveedoresData[editingProveedorIndex].id
+            : crypto.randomUUID(), 
+          nombre: values.nombre.trim(),
+          razon_social: values.razon_social.trim(),
+          cuit: values.cuit.trim(),
+          direccion: values.direccion.trim(),
+          alias: values.alias,
+          categorias: values.categorias,
+        };
+
+        const nuevosData = [...proveedoresData];
+        if (editingProveedorIndex !== null) {
+          nuevosData[editingProveedorIndex] = nuevoProveedor;
         } else {
-          newProveedores = [...proveedores, newProveedor];
-          setSnackbarMessage('Proveedor agregado con éxito');
+          nuevosData.push(nuevoProveedor);
         }
-        setProveedores(newProveedores);
-        await updateEmpresaDetails(empresa.id, { proveedores: newProveedores });
-        setEditingProveedor(null);
+
+        const nuevosNombres = nuevosData.map(p => p.nombre);
+        setProveedoresData(nuevosData);
+        await updateEmpresaDetails(empresa.id, {
+          proveedores: nuevosNombres,
+          proveedores_data: nuevosData
+        });
+
+        setSnackbarMessage(editingProveedorIndex !== null ? 'Proveedor actualizado' : 'Proveedor agregado');
         setSnackbarSeverity('success');
-      } catch (error) {
-        console.error('Error al actualizar/agregar el proveedor:', error);
-        setSnackbarMessage('Error al actualizar/agregar el proveedor');
+      } catch (err) {
+        console.error(err);
+        setSnackbarMessage('Error al guardar el proveedor');
         setSnackbarSeverity('error');
       } finally {
         setSnackbarOpen(true);
-        resetForm();
         setOpenModal(false);
+        setEditingProveedorIndex(null);
+        resetForm();
         setIsLoading(false);
       }
-    },
+    }
   });
+
+  const categoriasOptions = (empresa.categorias || []).flatMap(cat => [
+    cat.name,
+    ...(cat.subcategorias || []).map(sub => `${cat.name} - ${sub}`)
+  ]);
 
   const confirmarEliminacion = (message, action) => {
     setConfirmMessage(message);
@@ -97,9 +136,13 @@ export const ProveedoresDetails = ({ empresa }) => {
     confirmarEliminacion(`¿Estás seguro de que deseas eliminar el proveedor "${nombreProveedor}"?`, async () => {
       setIsLoading(true);
       try {
-        const newProveedores = proveedores.filter((prov) => prov !== nombreProveedor);
-        setProveedores(newProveedores);
-        await updateEmpresaDetails(empresa.id, { proveedores: newProveedores });
+        const nuevosData = proveedoresData.filter((prov) => prov.nombre !== nombreProveedor);
+        const nuevosNombres = nuevosData.map(p => p.nombre);
+        setProveedoresData(nuevosData);
+        await updateEmpresaDetails(empresa.id, {
+          proveedores: nuevosNombres,
+          proveedores_data: nuevosData
+        });
         setSnackbarMessage('Proveedor eliminado con éxito');
         setSnackbarSeverity('success');
       } catch (error) {
@@ -113,56 +156,98 @@ export const ProveedoresDetails = ({ empresa }) => {
     });
   };
 
-  const iniciarEdicionProveedor = (proveedor) => {
-    setEditingProveedor(proveedor);
-    formik.setValues({ nombre: proveedor });
+  const iniciarEdicionProveedor = (index) => {
+    const p = proveedoresData[index];
+    setEditingProveedorIndex(index);
+    formik.setValues({
+      nombre: p.nombre,
+      razon_social: p.razon_social ?? '',
+      cuit: p.cuit,
+      direccion: p.direccion,
+      alias: p.alias ?? [],
+      categorias: p.categorias ?? []
+    });
     setOpenModal(true);
   };
 
   const iniciarCreacionProveedor = () => {
-    setEditingProveedor(null);
+    setEditingProveedorIndex(null);
     formik.resetForm();
+    setAliasInput('');
     setOpenModal(true);
   };
 
   const cancelarEdicion = () => {
-    setEditingProveedor(null);
+    setEditingProveedorIndex(null);
     formik.resetForm();
+    setAliasInput('');
     setOpenModal(false);
   };
+  const handleAliasKeyDown = (e) => {
+    if (e.key === 'Enter' && aliasInput.trim()) {
+      e.preventDefault();
+      if (!formik.values.alias.includes(aliasInput.trim())) {
+        formik.setFieldValue('alias', [...formik.values.alias, aliasInput.trim()]);
+      }
+      setAliasInput('');
+    }
+  };
+  
+  const eliminarAlias = (alias) => {
+    formik.setFieldValue('alias', formik.values.alias.filter(a => a !== alias));
+  };
+  
 
-
-const handleImportarProveedoresCSV = async (e) => {
-  const archivo = e.target.files[0];
-  if (!archivo) return;
-
-  try {
-    const texto = await archivo.text();
-    const resultado = Papa.parse(texto, {
-      header: true,
-      skipEmptyLines: true
-    });
-
-    const nuevos = resultado.data
-      .map(row => row.Proveedor?.trim())
-      .filter(Boolean);
-
-    const proveedoresUnicos = Array.from(new Set([...proveedores, ...nuevos]));
-
-    setProveedores(proveedoresUnicos);
-    await updateEmpresaDetails(empresa.id, { proveedores: proveedoresUnicos });
-
-    setSnackbarMessage('Proveedores importados con éxito');
-    setSnackbarSeverity('success');
-  } catch (error) {
-    console.error('Error al importar proveedores:', error);
-    setSnackbarMessage('Error al importar el CSV de proveedores');
-    setSnackbarSeverity('error');
-  } finally {
-    setSnackbarOpen(true);
-  }
-};
-
+  const handleImportarProveedoresCSV = async (e) => {
+    const archivo = e.target.files[0];
+    if (!archivo) return;
+  
+    try {
+      const texto = await archivo.text();
+      const resultado = Papa.parse(texto, {
+        header: true,
+        skipEmptyLines: true
+      });
+  
+      const categoriasValidas = new Set(categoriasOptions);
+  
+      const nuevos = resultado.data.map(row => {
+        const categoriasRaw = row.Categorias?.split(',') ?? [];
+        const categoriasFiltradas = categoriasRaw
+          .map(c => c.trim())
+          .filter(c => categoriasValidas.has(c));
+  
+        return {
+          id: crypto.randomUUID(),
+          nombre: row.Nombre?.trim() ?? '',
+          cuit: row.CUIT?.trim() ?? '',
+          razon_social: row['Razon Social']?.trim() ?? '',
+          direccion: row.Direccion?.trim() ?? '',
+          alias: row.Alias?.split(',').map(a => a.trim()).filter(Boolean) ?? [],
+          categorias: categoriasFiltradas
+        };
+      }).filter(p => p.nombre);
+  
+      const actualizados = [...proveedoresData, ...nuevos];
+      const nombres = actualizados.map(p => p.nombre);
+      setProveedoresData(actualizados);
+  
+      await updateEmpresaDetails(empresa.id, {
+        proveedores: nombres,
+        proveedores_data: actualizados
+      });
+  
+      setSnackbarMessage('Proveedores importados con éxito');
+      setSnackbarSeverity('success');
+    } catch (error) {
+      console.error('Error al importar proveedores:', error);
+      setSnackbarMessage('Error al importar el CSV de proveedores');
+      setSnackbarSeverity('error');
+    } finally {
+      setSnackbarOpen(true);
+    }
+  };
+  
 
   return (
     <>
@@ -171,14 +256,17 @@ const handleImportarProveedoresCSV = async (e) => {
         <Divider />
         <CardContent>
           <List>
-            {proveedores.map((proveedor, index) => (
+            {proveedoresData.map((prov, index) => (
               <ListItem key={index} divider>
-                <ListItemText primary={proveedor} />
+                <ListItemText
+                  primary={prov.nombre}
+                  secondary={`CUIT: ${prov.cuit} | Razón social: ${prov.razon_social} | Dirección: ${prov.direccion} | Alias: ${prov.alias.join(', ')} | Categorías: ${prov.categorias.join(', ')}`}
+                />
                 <ListItemSecondaryAction>
-                  <IconButton edge="end" onClick={() => iniciarEdicionProveedor(proveedor)}>
+                  <IconButton edge="end" onClick={() => iniciarEdicionProveedor(index)}>
                     <EditIcon />
                   </IconButton>
-                  <IconButton edge="end" onClick={() => eliminarProveedor(proveedor)}>
+                  <IconButton edge="end" onClick={() => eliminarProveedor(prov.nombre)}>
                     <DeleteIcon />
                   </IconButton>
                 </ListItemSecondaryAction>
@@ -187,23 +275,15 @@ const handleImportarProveedoresCSV = async (e) => {
           </List>
         </CardContent>
         <Divider />
-        <Button
-            color="primary"
-            variant="outlined"
-            component="label"
-          >
+        <CardActions sx={{ justifyContent: 'space-between' }}>
+          <Button color="primary" variant="outlined" component="label">
             Importar desde CSV
-            <input
-              type="file"
-              accept=".csv"
-              hidden
-              onChange={handleImportarProveedoresCSV}
-            />
+            <input type="file" accept=".csv" hidden onChange={handleImportarProveedoresCSV} />
           </Button>
           <Button
             variant="text"
             onClick={() => {
-              const contenido = "Proveedor\nGómez Construcciones\nAcero SA";
+              const contenido = "Nombre,CUIT,Razon Social, Direccion,Alias,Categorias\nGomez,Gomez SRL,20123456789,Calle Falsa 123,Construcciones,Materiales";
               const blob = new Blob([contenido], { type: 'text/csv' });
               const url = URL.createObjectURL(blob);
               const a = document.createElement('a');
@@ -215,47 +295,57 @@ const handleImportarProveedoresCSV = async (e) => {
           >
             Descargar ejemplo CSV
           </Button>
-
-        <CardActions sx={{ justifyContent: 'flex-end' }}>
-          <Button
-            color="primary"
-            variant="contained"
-            startIcon={<AddCircleIcon />}
-            onClick={iniciarCreacionProveedor}
-          >
+          <Button color="primary" variant="contained" startIcon={<AddCircleIcon />} onClick={iniciarCreacionProveedor}>
             Agregar Proveedor
           </Button>
-          
         </CardActions>
       </Card>
 
       <Dialog open={openModal} onClose={cancelarEdicion} aria-labelledby="form-dialog-title">
         <form autoComplete="off" noValidate onSubmit={formik.handleSubmit}>
-          <DialogTitle id="form-dialog-title">{editingProveedor ? 'Editar Proveedor' : 'Agregar Proveedor'}</DialogTitle>
+          <DialogTitle id="form-dialog-title">
+            {editingProveedorIndex !== null ? 'Editar Proveedor' : 'Agregar Proveedor'}
+          </DialogTitle>
           <DialogContent>
-            <TextField
-              fullWidth
-              name="nombre"
-              label="Nombre del Proveedor"
-              value={formik.values.nombre}
-              onChange={formik.handleChange}
-              error={formik.touched.nombre && Boolean(formik.errors.nombre)}
-              helperText={formik.touched.nombre && formik.errors.nombre}
-              style={{ marginTop: '1rem' }}
+            <TextField fullWidth name="nombre" label="Nombre" value={formik.values.nombre} onChange={formik.handleChange} sx={{ mt: 2 }} />
+            <TextField fullWidth name="cuit" label="CUIT" value={formik.values.cuit} onChange={formik.handleChange} sx={{ mt: 2 }} />
+            <TextField fullWidth name="razon_social" label="Razón Social" value={formik.values.razon_social} onChange={formik.handleChange} sx={{ mt: 2 }} />
+            <TextField fullWidth name="direccion" label="Dirección" value={formik.values.direccion} onChange={formik.handleChange} sx={{ mt: 2 }} />
+            <Box sx={{ mt: 2 }}>
+              <Typography variant="subtitle2">Alias</Typography>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 1 }}>
+                {formik.values.alias.map((a, index) => (
+                  <Chip key={index} label={a} onDelete={() => eliminarAlias(a)} />
+                ))}
+              </Box>
+              <TextField
+                fullWidth
+                value={aliasInput}
+                onChange={(e) => setAliasInput(e.target.value)}
+                onKeyDown={handleAliasKeyDown}
+                placeholder="Escribí y presioná Enter"
+                sx={{ mt: 1 }}
+              />
+            </Box>
+
+            <Autocomplete
+              multiple
+              options={categoriasOptions}
+              value={formik.values.categorias}
+              onChange={(event, newValue) => formik.setFieldValue('categorias', newValue)}
+              renderTags={(value, getTagProps) =>
+                value.map((option, index) => (
+                  <Chip key={index} variant="outlined" label={option} {...getTagProps({ index })} />
+                ))
+              }
+              renderInput={(params) => (
+                <TextField {...params} label="Categorías" placeholder="Seleccioná" sx={{ mt: 2 }} />
+              )}
             />
           </DialogContent>
           <DialogActions>
-            <Button onClick={cancelarEdicion} color="primary">
-              Cancelar
-            </Button>
-            <Button
-              variant="contained"
-              startIcon={<SaveIcon />}
-              type="submit"
-              sx={{ ml: 2 }}
-            >
-              {editingProveedor ? 'Guardar Cambios' : 'Agregar Proveedor'}
-            </Button>
+            <Button onClick={cancelarEdicion}>Cancelar</Button>
+            <Button type="submit" variant="contained" startIcon={<SaveIcon />}>Guardar</Button>
           </DialogActions>
         </form>
       </Dialog>
@@ -266,25 +356,12 @@ const handleImportarProveedoresCSV = async (e) => {
           <Typography>{confirmMessage}</Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setConfirmOpen(false)} color="primary">
-            Cancelar
-          </Button>
-          <Button
-            onClick={confirmAction}
-            color="primary"
-            variant="contained"
-          >
-            Confirmar
-          </Button>
+          <Button onClick={() => setConfirmOpen(false)}>Cancelar</Button>
+          <Button onClick={confirmAction} variant="contained">Confirmar</Button>
         </DialogActions>
       </Dialog>
 
-      <Snackbar
-        open={snackbarOpen}
-        autoHideDuration={6000}
-        onClose={handleSnackbarClose}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-      >
+      <Snackbar open={snackbarOpen} autoHideDuration={6000} onClose={handleSnackbarClose} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
         <Alert onClose={handleSnackbarClose} severity={snackbarSeverity} sx={{ width: '100%' }}>
           {snackbarMessage}
         </Alert>

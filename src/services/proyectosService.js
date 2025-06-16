@@ -111,6 +111,7 @@ export const updateProyecto = async (id, proyecto) => {
       nombre: proyecto.nombre,
       activo: proyecto.activo ?? true,
       extraSheets: proyecto.extraSheets ?? [],
+      subproyectos: proyecto.subproyectos ?? [],
       eliminado: proyecto.eliminado || false
     }
     console.log("proyecto nuevo", proyecto);

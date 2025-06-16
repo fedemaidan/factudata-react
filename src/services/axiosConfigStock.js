@@ -4,7 +4,7 @@ import { auth } from 'src/config/firebase'; // Asegúrate de tener la referencia
 
 const isProduction = process.env.NODE_ENV === 'production';
 // const apiUrl = isProduction ? 'https://stock-whatsapp-sorby-production.up.railway.app' : 'http://localhost:3000/';
-const apiUrl = 'https://stock-whatsapp-sorby-production.up.railway.app'
+const apiUrl = 'https://api.sorbydata.com/materiales'
 // Crea una instancia de axios
 const api = axios.create({
     baseURL: apiUrl,

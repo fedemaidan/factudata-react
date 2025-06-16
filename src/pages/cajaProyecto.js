@@ -251,7 +251,7 @@ const ProyectoMovimientosPage = () => {
         handleFiltrosActivos();
         break;
       case 'registrarMovimiento':
-        router.push('/addMovimiento?proyectoName=' + proyecto.nombre + '&proyectoId=' + proyecto.id);
+        router.push('/movementForm?proyectoName=' + proyecto.nombre + '&proyectoId=' + proyecto.id + '&lastPageUrl=' + router.asPath + "&lastPageName=" + proyecto.nombre);
         break;
       case 'recalcularSheets':
         handleRecargarProyecto(proyecto.id);
@@ -375,7 +375,7 @@ const ProyectoMovimientosPage = () => {
                             <Button
                               color="primary"
                               startIcon={<EditIcon />}
-                              onClick={() => router.push('/movimiento?movimientoId=' + mov.id)}
+                              onClick={() => router.push(`/movementForm?movimientoId=${mov.id}&lastPageName=${proyecto.nombre}&proyectoId=${proyecto.id}&proyectoName=${proyecto.nombre}&lastPageUrl=${router.asPath}`)}
                             >
                               Ver / Editar
                             </Button>
@@ -400,10 +400,12 @@ const ProyectoMovimientosPage = () => {
                         <TableCell>Tipo</TableCell>
                         <TableCell>Total</TableCell>
                         <TableCell>Categoria</TableCell>
+                        {empresa?.comprobante_info.subcategoria && <TableCell>Subcategoría</TableCell>}
+                        {empresa?.comprobante_info.medio_pago && <TableCell>Medio de pago</TableCell>}
                         <TableCell>Proveedor</TableCell>
                         <TableCell>Observación</TableCell>
                         <TableCell>Tipo de cambio</TableCell>
-                        <TableCell>Estado</TableCell>
+                        {empresa?.con_estados && <TableCell>Estado</TableCell>}
                         <TableCell>Acciones</TableCell>
                       </TableRow>
                     </TableHead>
@@ -420,15 +422,17 @@ const ProyectoMovimientosPage = () => {
                           </TableCell>
                           <TableCell>{formatCurrency(mov.total)}</TableCell>
                           <TableCell>{mov.categoria}</TableCell>
+                          {empresa?.comprobante_info.subcategoria && <TableCell>{mov.subcategoria}</TableCell>}
+                          {empresa?.comprobante_info.medio_pago && <TableCell>{mov.medio_pago}</TableCell>}
                           <TableCell>{mov.nombre_proveedor}</TableCell>
                           <TableCell>{mov.observacion}</TableCell>
                           <TableCell>{mov.tc ? `$ ${mov.tc}` : "-"}</TableCell>
-                          <TableCell>{mov.estado ? mov.estado : ""}</TableCell>
+                          {empresa?.con_estados && <TableCell>{mov.estado ? mov.estado : ""}</TableCell>} 
                           <TableCell>
                             <Button
                               color="primary"
                               startIcon={<EditIcon />}
-                              onClick={() => router.push('/movimiento?movimientoId=' + mov.id)}
+                              onClick={() => router.push(`/movementForm?movimientoId=${mov.id}&lastPageName=${proyecto.nombre}&proyectoId=${proyecto.id}&proyectoName=${proyecto.nombre}&lastPageUrl=${router.asPath}`)}
                             >
                               Ver / Editar
                             </Button>
@@ -481,7 +485,7 @@ const ProyectoMovimientosPage = () => {
                             <Button
                               color="primary"
                               startIcon={<EditIcon />}
-                              onClick={() => router.push('/movimiento?movimientoId=' + mov.id)}
+                              onClick={() => router.push('/movementForm?movimientoId=' + mov.id + '&lastPageUrl=' + router.asPath + "&lastPageName=" + proyecto.nombre)}
                             >
                               Ver / Editar
                             </Button>
@@ -530,7 +534,7 @@ const ProyectoMovimientosPage = () => {
                             <Button
                               color="primary"
                               startIcon={<EditIcon />}
-                              onClick={() => router.push('/movimiento?movimientoId=' + mov.id)}
+                              onClick={() => router.push(`/movementForm?movimientoId=${mov.id}&lastPageName=${proyecto.nombre}&proyectoId=${proyecto.id}&proyectoName=${proyecto.nombre}&lastPageUrl=${router.asPath}`)}
                             >
                               Ver / Editar
                             </Button>

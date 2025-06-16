@@ -26,7 +26,8 @@ import {
   Switch,
   Typography,
   Snackbar,
-  Alert
+  Alert,
+  Autocomplete
 } from '@mui/material';
 import { useFormik } from 'formik';
 import * as Yup from 'yup';
@@ -162,7 +163,8 @@ export const ProyectosDetails = ({ empresa }) => {
       carpetaRef: '',
       proyecto_default_id: '',
       sheetWithClient: '',
-      extraSheets: [] 
+      extraSheets: [],
+      subproyectos: []
     },
     enableReinitialize: true,
     validationSchema: Yup.object({
@@ -177,7 +179,8 @@ export const ProyectosDetails = ({ empresa }) => {
         carpetaRef: values.carpetaRef,
         proyecto_default_id: values.proyecto_default_id,
         sheetWithClient: values.sheetWithClient,
-        extraSheets: values.extraSheets
+        extraSheets: values.extraSheets,
+        subproyectos: values.subproyectos,
       };
 
       try {
@@ -503,6 +506,102 @@ export const ProyectosDetails = ({ empresa }) => {
       />
     ))}
   </Box>
+  <Box sx={{ mt: 3 }}>
+  <Typography variant="subtitle1" gutterBottom>
+    Subproyectos
+  </Typography>
+  {formik.values.subproyectos?.map((sp, idx) => (
+    <Box
+      key={idx}
+      sx={{
+        border: '1px solid #ccc',
+        borderRadius: 2,
+        p: 2,
+        mb: 2,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 1,
+        backgroundColor: '#fafafa'
+      }}
+    >
+      <TextField
+        label="Nombre"
+        value={sp.nombre}
+        onChange={(e) => {
+          const updated = [...formik.values.subproyectos];
+          updated[idx].nombre = e.target.value;
+          formik.setFieldValue('subproyectos', updated);
+        }}
+        fullWidth
+      />
+      <FormControl fullWidth>
+        <InputLabel>Estado</InputLabel>
+        <Select
+          value={sp.estado}
+          label="Estado"
+          onChange={(e) => {
+            const updated = [...formik.values.subproyectos];
+            updated[idx].estado = e.target.value;
+            // Limpiar meses si ya no es alquilado
+            if (e.target.value !== 'Alquilado') updated[idx].meses = '';
+            formik.setFieldValue('subproyectos', updated);
+          }}
+        >
+          <MenuItem value="Disponible">Disponible</MenuItem>
+          <MenuItem value="Vendido">Vendido</MenuItem>
+          <MenuItem value="Alquilado">Alquilado</MenuItem>
+        </Select>
+      </FormControl>
+      <TextField
+        label="Valor"
+        type="number"
+        value={sp.valor}
+        onChange={(e) => {
+          const updated = [...formik.values.subproyectos];
+          updated[idx].valor = e.target.value;
+          formik.setFieldValue('subproyectos', updated);
+        }}
+        fullWidth
+      />
+      {sp.estado === 'Alquilado' && (
+        <TextField
+          label="Meses de alquiler"
+          type="number"
+          value={sp.meses || ''}
+          onChange={(e) => {
+            const updated = [...formik.values.subproyectos];
+            updated[idx].meses = e.target.value;
+            formik.setFieldValue('subproyectos', updated);
+          }}
+          fullWidth
+        />
+      )}
+      <Button
+        variant="outlined"
+        color="error"
+        onClick={() => {
+          const updated = formik.values.subproyectos.filter((_, i) => i !== idx);
+          formik.setFieldValue('subproyectos', updated);
+        }}
+      >
+        Eliminar
+      </Button>
+    </Box>
+  ))}
+  <Button
+    variant="outlined"
+    onClick={() =>
+      formik.setFieldValue('subproyectos', [
+        ...formik.values.subproyectos,
+        { nombre: '', estado: 'Disponible', valor: '', meses: '' }
+      ])
+    }
+  >
+    Agregar Subproyecto
+  </Button>
+</Box>
+
+
   <TextField
     fullWidth
     label="Agregar ID de Google Sheet"

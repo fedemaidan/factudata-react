@@ -85,7 +85,7 @@ const ResumenMovimientosPage = () => {
                                                     variant="text"
                                                     color="primary"
                                                     startIcon={<EditIcon />}
-                                                    onClick={() => router.push(`/movimiento/?movimientoId=${mov.id}`)}
+                                                    onClick={() => router.push(`/movementForm?movimientoId=${mov.id}&lastPageName=${mov.proyecto_nombre}&proyectoId=${mov.proyecto_id}&proyectoName=${mov.proyecto_nombre}&lastPageUrl=${router.asPath}`)}
                                                 >
                                                     Ver / Editar
                                                 </Button>

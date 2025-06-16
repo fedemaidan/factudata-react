@@ -122,26 +122,28 @@ export const CategoriasDetails = ({ empresa }) => {
     }),
     onSubmit: async (values, { resetForm }) => {
       setIsLoading(true);
+      let newCategorias = [...categorias];
       try {
         if (editingCategoria) {
-          let newCategories = categorias.map((cat) =>
+          newCategorias = newCategorias.map((cat) =>
             cat.id === editingCategoria.id ? { ...cat, name: values.name } : cat
           );
           if (values.subcategoria) {
-            newCategories = newCategories.map((cat) =>
+            newCategorias = newCategorias.map((cat) =>
             cat.id === editingCategoria.id ? { ...cat, subcategorias: [...cat.subcategorias, values.subcategoria] } : cat
           );
           }
 
-          setCategorias(newCategories);
           setEditingCategoria(null);
           setSnackbarMessage('Categoría actualizada con éxito');
         } else {
           const newCategoria = { id: Date.now(), name: values.name, subcategorias: [] };
-          setCategorias([...categorias, newCategoria]);
+          newCategorias = [...newCategorias, newCategoria];
           setSnackbarMessage('Categoría creada con éxito');
         }
-        await updateEmpresaDetails(empresa.id, { categorias });
+
+        setCategorias(newCategorias);
+        await updateEmpresaDetails(empresa.id, { categorias: newCategorias });
         setSnackbarSeverity('success');
       } catch (error) {
         console.error('Error al actualizar/crear la categoría:', error);
@@ -177,7 +179,7 @@ const handleImportarCSV = async (e) => {
     });
 
     const nuevasCategorias = [...categorias];
-
+    console.log(resultado)
     resultado.data.forEach(({ Categoria, Subcategoria }) => {
       if (!Categoria || !Subcategoria) return;
 

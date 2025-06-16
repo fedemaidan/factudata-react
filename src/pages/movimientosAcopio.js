@@ -28,6 +28,7 @@ import { useRouter } from 'next/router';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import AcopioService from 'src/services/acopioService';
 import RemitosTable from 'src/components/remitosTable';
+import MaterialesTable from 'src/components/materialesTable';
 
 
 const MovimientosAcopioPage = () => {
@@ -231,75 +232,12 @@ const porcentajeDisponible = (1 - (acopio?.valor_desacopio / acopio?.valor_acopi
 
         {/* Tabla de materiales agrupados */}
         {tabActiva === "materiales" && (
-  <>
-        <Table>
-          <TableHead>
-            <TableRow>
-              <TableCell>Código</TableCell>
-              <TableCell>Descripción</TableCell>
-              <TableCell>Cant. Acopiada</TableCell>
-              <TableCell>Cant. Desacopiada</TableCell>
-              <TableCell>Valor Total Acopiado</TableCell>
-              <TableCell>Valor Total Desacopiado</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {Object.values(materialesAgrupados).map((material) => (
-              <React.Fragment key={material.codigo}>
-                <TableRow
-                  onClick={() => setExpanded(expanded === material.codigo ? null : material.codigo)}
-                  sx={{ cursor: 'pointer', backgroundColor: expanded === material.codigo ? "#f5f5f5" : "inherit" }}
-                >
-                  <TableCell>{material.codigo}</TableCell>
-                  <TableCell>{material.descripcion}</TableCell>
-                  <TableCell>{material.cantidadAcopiada}</TableCell>
-                  <TableCell>{material.cantidadDesacopiada}</TableCell>
-                  <TableCell>{formatCurrency(material.valorTotalAcopiado)}</TableCell>
-                  <TableCell>{formatCurrency(material.valorTotalDesacopiado)}</TableCell>
-                </TableRow>
-
-                {/* Detalle de movimientos al hacer click en un material */}
-                <TableRow>
-                  <TableCell colSpan={6} sx={{ p: 0 }}>
-                    <Collapse in={expanded === material.codigo} timeout="auto" unmountOnExit>
-                      <Box sx={{ margin: 2 }}>
-                        <Typography variant="subtitle1">Detalles de {material.descripcion}</Typography>
-                        <Table size="small">
-                          <TableHead>
-                            <TableRow>
-                              <TableCell>Fecha</TableCell>
-                              <TableCell>Tipo</TableCell>
-                              <TableCell>Cantidad</TableCell>
-                              <TableCell>Valor Unitario</TableCell>
-                              <TableCell>Valor Total</TableCell>
-                            </TableRow>
-                          </TableHead>
-                          <TableBody>
-                            {material.detalles.map((mov) => (
-                              <TableRow key={mov.id}>
-                                <TableCell>{new Date(mov.fecha).toLocaleDateString()}</TableCell>
-                                <TableCell>
-                                <Chip
-                                  label={mov.tipo === "acopio" ? "Acopio" : "Desacopio"}
-                                  color={mov.tipo === "acopio" ? "success" : "error"}
-                                />
-                                </TableCell>
-                                <TableCell>{mov.cantidad}</TableCell>
-                                <TableCell>{formatCurrency(mov.valorUnitario)}</TableCell>
-                                <TableCell>{formatCurrency(mov.valorOperacion)}</TableCell>
-                              </TableRow>
-                            ))}
-                          </TableBody>
-                        </Table>
-                      </Box>
-                    </Collapse>
-                  </TableCell>
-                </TableRow>
-              </React.Fragment>
-            ))}
-          </TableBody>
-        </Table>
-        </>)}
+          <MaterialesTable
+            materialesAgrupados={materialesAgrupados}
+            expanded={expanded}
+            setExpanded={setExpanded}
+          />
+        )}
         {tabActiva === "remitos" && (
           <Box>
           <RemitosTable

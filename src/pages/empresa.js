@@ -6,12 +6,15 @@ import { ProyectosDetails } from 'src/sections/empresa/proyectosDetails';
 import { CategoriasDetails } from 'src/sections/empresa/categoriasDetails';
 import { ProveedoresDetails } from 'src/sections/empresa/proveedoresDetails';
 import { UsuariosDetails } from 'src/sections/empresa/usuariosDetails';
+import { MediosPagoDetails } from 'src/sections/empresa/mediosPagoDetails';
+import { ImpuestosDetails } from 'src/sections/empresa/impuestosDetails';
 import { ConfiguracionGeneral } from 'src/sections/empresa/configuracionGeneral';
 import { updateEmpresaDetails, getEmpresaById } from 'src/services/empresaService'; 
 import { getProyectosByEmpresa, hasPermission } from 'src/services/proyectosService'; 
 import { useAuthContext } from 'src/contexts/auth-context';
 import { useRouter } from 'next/router';
 import { PermisosUsuarios } from 'src/sections/empresa/PermisosUsuarios';
+import { EtapasDetails } from 'src/sections/empresa/etapasDetails';
 
 
 const EmpresaPage = () => {
@@ -29,6 +32,9 @@ const EmpresaPage = () => {
     { value: 'proyectos', label: 'Proyectos' },
     { value: 'categorias', label: 'Categorías' },
     { value: 'proveedores', label: 'Proveedores' },
+    { value: 'etapas', label: 'Etapas' },
+    { value: 'medios_pago', label: 'Medios de Pago' },
+    { value: 'impuestos', label: 'Impuestos' },
     { value: 'configuracion', label: 'Configuración General' },
     { value: 'usuarios', label: 'Usuarios' },
     { value: 'permisos', label: 'Permisos' }
@@ -37,6 +43,7 @@ const EmpresaPage = () => {
   useEffect(() => {
     const fetchEmpresaData = async () => {
       const empresa = await getEmpresaById(empresaId)
+      console.log(empresa)
       setEmpresa(empresa)
       setCurrentTab('categorias')
     };
@@ -129,8 +136,12 @@ const EmpresaPage = () => {
              {currentTab === 'proyectos' && <ProyectosDetails empresa={empresa}/>} 
             {currentTab === 'categorias' && <CategoriasDetails empresa={empresa}/>}
             {currentTab === 'proveedores' && <ProveedoresDetails empresa={empresa}/>}
+            {currentTab === 'etapas' && <EtapasDetails empresa={empresa} />} 
             {currentTab === 'configuracion' && <ConfiguracionGeneral empresa={empresa} updateEmpresaData={updateEmpresaDetails} hasPermission={hasPermission}/>}
             {currentTab === 'permisos' && <PermisosUsuarios empresa={empresa} />}
+            {currentTab === 'medios_pago' && <MediosPagoDetails empresa={empresa} />}
+            {currentTab === 'impuestos' && <ImpuestosDetails empresa={empresa} />}
+
           </Stack>
         </Container>
       </Box>

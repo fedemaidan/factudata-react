@@ -228,7 +228,16 @@ export const SideNav = (props) => {
               </SvgIcon>
             )
           }
-          newItems = [vistaGeneralElement, vistaTodosLosMovElement, ...newItems];
+          const vistaRevisionFactura = {
+            title: 'Revision de facturas',
+            path: '/revisionFacturas?empresaId=' + empresa.id,
+            icon: (
+              <SvgIcon fontSize="small">
+                <DashboardIcon />
+              </SvgIcon>
+            )
+          }
+          newItems = [vistaGeneralElement, vistaTodosLosMovElement, vistaRevisionFactura, ...newItems];
             const cajasProyectoItems = proyectos.map((proy) => ({
             title: proy.nombre,
             path: 'cajaProyecto?proyectoId=' + proy.id,
