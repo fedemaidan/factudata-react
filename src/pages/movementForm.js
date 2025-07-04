@@ -105,6 +105,7 @@ const MovementFormPage = () => {
       fecha_factura: '',
       type: '',
       total: '',
+      subtotal: '',
       total_original: '',
       moneda: '',
       nombre_proveedor: '',

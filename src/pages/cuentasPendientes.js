@@ -34,8 +34,14 @@ const CuentasPendientesPage = () => {
     moneda_nominal: 'ARS',
     proveedor_o_cliente: '',
     unidad_indexacion: '',
-    frecuencia_indexacion: ''
+    frecuencia_indexacion: '',
+    cantidad_cuotas: 1,
+    proyecto_id: '',
+    proyecto_nombre: '',
+    subproyecto_id: '',
+    subproyecto_nombre: ''
   });
+  
 
   const handleChangeTab = (_, value) => setTabActiva(value);
 
@@ -131,6 +137,52 @@ const CuentasPendientesPage = () => {
           <DialogTitle>Nueva Cuenta Pendiente</DialogTitle>
           <DialogContent>
           <FormControl fullWidth margin="dense">
+            <InputLabel>Proyecto</InputLabel>
+            <Select
+              value={nuevaCuenta.proyecto_id}
+              label="Proyecto"
+              onChange={(e) => {
+                const proyectoSeleccionado = proyectos.find(p => p.id === e.target.value);
+                setNuevaCuenta({
+                  ...nuevaCuenta,
+                  proyecto_id: e.target.value,
+                  proyecto_nombre: proyectoSeleccionado?.nombre || '',
+                  subproyecto_id: '',
+                  subproyecto_nombre: ''
+                });
+              }}
+            >
+              {proyectos.map((p) => (
+                <MenuItem key={p.id} value={p.id}>{p.nombre}</MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+
+          {nuevaCuenta.proyecto_id && (
+            <FormControl fullWidth margin="dense">
+              <InputLabel>Subproyecto</InputLabel>
+              <Select
+                value={nuevaCuenta.subproyecto_id}
+                label="Subproyecto"
+                onChange={(e) => {
+                  const sub = proyectos.find(p => p.id === nuevaCuenta.proyecto_id)?.subproyectos?.find(s => s.id === e.target.value);
+                  setNuevaCuenta({
+                    ...nuevaCuenta,
+                    subproyecto_id: e.target.value,
+                    subproyecto_nombre: sub?.nombre || ''
+                  });
+                }}
+              >
+                {proyectos
+                  .find(p => p.id === nuevaCuenta.proyecto_id)
+                  ?.subproyectos?.map((sub) => (
+                    <MenuItem key={sub.id} value={sub.id}>{sub.nombre}</MenuItem>
+                  ))}
+              </Select>
+            </FormControl>
+          )}
+
+          <FormControl fullWidth margin="dense">
             <InputLabel>Tipo</InputLabel>
             <Select
                 value={nuevaCuenta.tipo || ''}
@@ -204,7 +256,8 @@ const CuentasPendientesPage = () => {
                 >
                 <MenuItem value="diaria">Diaria</MenuItem>
                 <MenuItem value="mensual">Mensual</MenuItem>
-                <MenuItem value="cada_2_meses">Cada 2 meses</MenuItem>
+                <MenuItem value="trimestral">Trimestral</MenuItem>
+                <MenuItem value="semestral">Semestral</MenuItem>
                 <MenuItem value="anual">Anual</MenuItem>
                 </Select>
             </FormControl>

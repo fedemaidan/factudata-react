@@ -104,19 +104,45 @@ export const CajaProyectoManager = () => {
             />
             <Collapse in={isExpanded} timeout="auto" unmountOnExit>
               <CardContent>
-                <Box mb={2}>
-                  <Typography variant="subtitle1">Subproyectos:</Typography>
-                  {proyecto.subproyectos?.map((sub, index) => (
-                    <Box key={index} display="flex" alignItems="center" justifyContent="space-between" my={1}>
-                      <Box display="flex" alignItems="center" gap={1}>
-                        <Typography>{sub.nombre} - {formatCurrency(parseFloat(sub.valor))}</Typography>
-                        <Chip label={sub.estado} color={getEstadoChipColor(sub.estado)} size="small" />
-                        {sub.estado === 'alquilado' && <Typography>({sub.meses} meses)</Typography>}
-                      </Box>
-                      <IconButton onClick={() => handleEliminarSubproyecto(proyecto.id, index)}><Delete /></IconButton>
-                    </Box>
-                  ))}
-                </Box>
+              <Box mb={2}>
+  
+  {(() => {
+    const agrupados = {};
+
+    proyecto.subproyectos?.forEach((sp, index) => {
+      const path = (sp.path || ['Sin grupo']).join(' / ');
+      if (!agrupados[path]) agrupados[path] = [];
+      agrupados[path].push({ ...sp, index });
+    });
+
+    return Object.entries(agrupados).map(([grupo, items]) => {
+      const totalEstimado = items.reduce((acc, sp) => acc + (parseFloat(sp.valor) || 0), 0);
+      const totalVendido = items
+        .filter(sp => sp.estado?.toLowerCase() === 'vendido')
+        .reduce((acc, sp) => acc + (parseFloat(sp.valor) || 0), 0);
+
+      return (
+        <Box key={grupo} ml={2} mb={2}>
+          <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mt: 1 }}>
+            {grupo} – Estimado: {formatCurrency(totalEstimado)} | Vendido: {formatCurrency(totalVendido)}
+          </Typography>
+          {items.map(({ nombre, valor, estado, meses, index }) => (
+            <Box key={index} display="flex" alignItems="center" justifyContent="space-between" my={0.5}>
+              <Box display="flex" alignItems="center" gap={1}>
+                <Typography>{nombre} - {formatCurrency(parseFloat(valor))}</Typography>
+                <Chip label={estado} color={getEstadoChipColor(estado)} size="small" />
+                {estado?.toLowerCase() === 'alquilado' && <Typography>({meses} meses)</Typography>}
+              </Box>
+              <IconButton onClick={() => handleEliminarSubproyecto(proyecto.id, index)}><Delete /></IconButton>
+            </Box>
+          ))}
+        </Box>
+      );
+    });
+  })()}
+</Box>
+
+
                 <Divider />
                 <Box mt={2}>
                   <Typography variant="subtitle1">Agregar Subproyecto</Typography>

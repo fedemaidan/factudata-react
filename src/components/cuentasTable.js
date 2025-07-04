@@ -1,7 +1,7 @@
 import React from 'react';
 import {
   Table, TableHead, TableRow, TableCell, TableBody,
-  Button, Collapse, Box, Typography
+  Button, Collapse, Box, Typography, Chip
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
@@ -12,6 +12,8 @@ export const CuentasTable = ({ cuentas, expandedCuentaId, setExpandedCuentaId, o
   <Table>
     <TableHead>
       <TableRow>
+        <TableCell>Proyecto</TableCell>
+        <TableCell>Subproyecto</TableCell>
         <TableCell>Descripción</TableCell>
         <TableCell>Tipo</TableCell>
         <TableCell>Cliente/Proveedor</TableCell>
@@ -19,20 +21,32 @@ export const CuentasTable = ({ cuentas, expandedCuentaId, setExpandedCuentaId, o
         <TableCell>Moneda</TableCell>
         <TableCell>Cuotas</TableCell>
         <TableCell>Indexación</TableCell>
+        <TableCell>Fecha</TableCell>
         <TableCell>Acciones</TableCell>
       </TableRow>
     </TableHead>
+
     <TableBody>
       {cuentas.map((cuenta) => (
         <React.Fragment key={cuenta.id}>
           <TableRow>
+            <TableCell>{cuenta.proyecto_nombre || '-'}</TableCell>
+            <TableCell>{cuenta.subproyecto_nombre || '-'}</TableCell>
             <TableCell>{cuenta.descripcion}</TableCell>
-            <TableCell>{cuenta.tipo}</TableCell>
+            <TableCell>
+              <Chip
+                label={cuenta.tipo === 'a_cobrar' ? 'A cobrar' : 'A pagar'}
+                color={cuenta.tipo === 'a_cobrar' ? 'success' : 'error'}
+                size="small"
+              />
+            </TableCell>
+
             <TableCell>{cuenta.proveedor_o_cliente}</TableCell>
             <TableCell>{formatCurrency(cuenta.monto_total)}</TableCell>
             <TableCell>{cuenta.moneda_nominal}</TableCell>
             <TableCell>{cuenta.cantidad_cuotas}</TableCell>
             <TableCell>{cuenta.unidad_indexacion || '-'}</TableCell>
+            <TableCell>{cuenta.fecha_creacion ? formatTimestamp(cuenta.fecha_creacion) : '-'}</TableCell>
             <TableCell>
               <Button
                 onClick={() => setExpandedCuentaId((prev) => (prev === cuenta.id ? null : cuenta.id))}
@@ -54,6 +68,7 @@ export const CuentasTable = ({ cuentas, expandedCuentaId, setExpandedCuentaId, o
               </Button>
             </TableCell>
           </TableRow>
+
           <TableRow>
             <TableCell colSpan={8} sx={{ p: 0 }}>
               <Collapse in={expandedCuentaId === cuenta.id}>
@@ -68,10 +83,12 @@ export const CuentasTable = ({ cuentas, expandedCuentaId, setExpandedCuentaId, o
                         <TableCell>Tipo</TableCell>
                         <TableCell>Pagado</TableCell>
                         <TableCell>Pagos</TableCell>
+                        <TableCell>Acciones</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
                       {(cuenta.cuotas || []).map((cuota, idx) => (
+                        console.log(cuota),
                         <CuotaRowWithActions
                             key={cuota.id || idx}
                             cuota={cuota}

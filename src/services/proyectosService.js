@@ -4,6 +4,24 @@ import api from './axiosConfig';
 import  { addProyectoToEmpresa } from 'src/services/empresaService';
 import movimientosService from 'src/services/movimientosService';
 
+import { v4 as uuidv4 } from 'uuid';
+
+/**
+ * Asegura que cada subproyecto tenga un ID único.
+ * Modifica el array en lugar.
+ */
+export const asegurarIdsSubproyectos = (proyecto) => {
+  console.log(proyecto, " asegurando IDs de subproyectos");
+  if (!Array.isArray(proyecto.subproyectos)) return;
+  console.log(proyecto.subproyectos, " asegurando IDs de subproyectosssss");
+  proyecto.subproyectos = proyecto.subproyectos.map(sp => ({
+    ...sp,
+    id: sp.id || uuidv4()
+  }));
+  console.log(proyecto.subproyectos, " ya con ids");
+};
+
+
 /**
  * Obtiene los proyectos de un empresa a partir de las referencias almacenadas en el atributo proyectos.
  * @param {object} empresa - El objeto empresa que contiene las referencias de los proyectos.
@@ -103,7 +121,8 @@ export const getProyectoById = async (id) => {
  */
 export const updateProyecto = async (id, proyecto) => {
   try {
-    console.log("proyecto", proyecto);
+    asegurarIdsSubproyectos(proyecto); // ← agregar esta línea
+
     proyecto = {
       carpetaRef: proyecto.carpetaRef ?? "",
       proyecto_default_id: proyecto.proyecto_default_id ?? "",
@@ -164,6 +183,8 @@ export const hasPermission = async (fileId) => {
  */
 export const crearProyecto = async (proyecto, empresaId) => {
   try {
+    asegurarIdsSubproyectos(proyecto); // ← agregar esta línea
+
     const response = await api.post('/proyecto/', {
       ...proyecto,
       empresaId,  // Enviar la empresa ID en el body

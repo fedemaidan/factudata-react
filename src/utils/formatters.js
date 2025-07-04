@@ -24,9 +24,10 @@ const formatTimestamp = (timestamp) => {
 };
 
 
-  const formatCurrency = (amount) => {
+  const formatCurrency = (amount, digits = 0) => {
+    console.log(amount)
     if (amount)
-      return amount.toLocaleString('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0 });
+      return amount.toLocaleString('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: digits });
     else
       return "$ 0";
   };

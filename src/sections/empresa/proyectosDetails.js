@@ -180,7 +180,7 @@ export const ProyectosDetails = ({ empresa }) => {
         proyecto_default_id: values.proyecto_default_id,
         sheetWithClient: values.sheetWithClient,
         extraSheets: values.extraSheets,
-        subproyectos: values.subproyectos,
+        subproyectos: values.subproyectos || [],
       };
 
       try {
@@ -207,6 +207,7 @@ export const ProyectosDetails = ({ empresa }) => {
       }
     }
   });
+ 
 
   const iniciarEdicionProyecto = (proyecto) => {
     setEditingProyecto(proyecto);
@@ -524,6 +525,36 @@ export const ProyectosDetails = ({ empresa }) => {
         backgroundColor: '#fafafa'
       }}
     >
+      <Autocomplete
+  multiple
+  freeSolo
+  options={[]} // no hay opciones predefinidas
+  value={sp.path || []}
+  onChange={(_, newValue) => {
+    const updated = [...formik.values.subproyectos];
+    updated[idx].path = newValue;
+    formik.setFieldValue('subproyectos', updated);
+  }}
+  renderTags={(value, getTagProps) =>
+    value.map((option, index) => (
+      <Chip
+        variant="outlined"
+        label={option}
+        {...getTagProps({ index })}
+        key={index}
+      />
+    ))
+  }
+  renderInput={(params) => (
+    <TextField
+      {...params}
+      variant="outlined"
+      label="Path (jerarquía)"
+      placeholder="Ej: Edificio 1, Unidad 2"
+    />
+  )}
+/>
+
       <TextField
         label="Nombre"
         value={sp.nombre}
@@ -543,13 +574,13 @@ export const ProyectosDetails = ({ empresa }) => {
             const updated = [...formik.values.subproyectos];
             updated[idx].estado = e.target.value;
             // Limpiar meses si ya no es alquilado
-            if (e.target.value !== 'Alquilado') updated[idx].meses = '';
+            if (e.target.value !== 'alquilado') updated[idx].meses = '';
             formik.setFieldValue('subproyectos', updated);
           }}
         >
           <MenuItem value="Disponible">Disponible</MenuItem>
           <MenuItem value="Vendido">Vendido</MenuItem>
-          <MenuItem value="Alquilado">Alquilado</MenuItem>
+          <MenuItem value="alquilado">Alquilado</MenuItem>
         </Select>
       </FormControl>
       <TextField
@@ -563,7 +594,7 @@ export const ProyectosDetails = ({ empresa }) => {
         }}
         fullWidth
       />
-      {sp.estado === 'Alquilado' && (
+      {sp.estado === 'alquilado' && (
         <TextField
           label="Meses de alquiler"
           type="number"
@@ -588,6 +619,9 @@ export const ProyectosDetails = ({ empresa }) => {
       </Button>
     </Box>
   ))}
+
+
+
   <Button
     variant="outlined"
     onClick={() =>

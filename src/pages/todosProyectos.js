@@ -32,6 +32,12 @@ import {
   Accordion,
   AccordionSummary,
   AccordionDetails,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  Switch,
+  FormControlLabel,
+  DialogActions,
 } from '@mui/material';
 import ticketService from 'src/services/ticketService';
 import { getProyectosByEmpresa, getProyectosFromUser } from 'src/services/proyectosService';
@@ -46,6 +52,7 @@ import { saveAs } from 'file-saver';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { Tooltip } from '@mui/material';
+import { ColumnSelector } from 'src/components/columnSelector';
 
 
 const TodosProyectosPage = () => {
@@ -66,6 +73,15 @@ const TodosProyectosPage = () => {
   const [filtroMontoMax, setFiltroMontoMax] = useState('');
   const [filtroObservacion, setFiltroObservacion] = useState('');
   const [filtroCuentaInterna, setFiltroCuentaInterna] = useState([]);
+  const [columnasVisibles, setColumnasVisibles] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('columnasVisibles');
+      return stored ? JSON.parse(stored) : null;
+    }
+    return null;
+  });
+  const [open, setOpen] = useState(false);
+
 
 const [filtroFechaDesde, setFiltroFechaDesde] = useState(subDays(new Date(), 7));
 const [filtroFechaHasta, setFiltroFechaHasta] = useState(new Date());
@@ -134,6 +150,13 @@ const handleExportClose = () => setAnchorElExport(null);
     }
 
     head_array.push(
+      ['subtotal_usd_blue', 'Subtotal USD Blue'],
+      ['total_usd_blue', 'Total USD Blue'],
+      ['subtotal_usd_oficial', 'Subtotal USD Oficial'],
+      ['total_usd_oficial', 'Total USD Oficial']
+    );
+
+    head_array.push(
       ['nombre_proveedor', 'Proveedor'],
       ['observacion', 'Observación'],
       ['type', 'Tipo'],
@@ -154,13 +177,12 @@ const handleExportClose = () => setAnchorElExport(null);
 
   function formatearCampo(campo, valor) {
     if (valor === undefined || valor === null) return '-';
-  
     switch (campo) {
       case 'fecha_factura':
         return formatTimestamp(valor); // ya tenés esta función
   
-      // case 'total':
-      // case 'total_original':
+      case 'total':
+      case 'total_original':
         return formatCurrency(valor); // ya tenés esta función también
   
       case 'type':
@@ -175,11 +197,22 @@ const handleExportClose = () => setAnchorElExport(null);
       case 'impuestos':
         return Array.isArray(valor) ? valor.map((imp) => `${imp.nombre}: ${formatCurrency(imp.monto)}`).join('\n') : valor;
   
+        case 'subtotal_usd_blue':
+        case 'total_usd_blue':
+        case 'subtotal_usd_oficial':
+        case 'total_usd_oficial':
+          return formatCurrency(valor);
+
       default:
         return valor;
     }
   }  
 
+  const columnasFiltradas = useMemo(() => {
+    const tableHeadArrayConf = tableHeadArray.filter(([key]) => key !== 'acciones');
+    return (tableHeadArrayConf || []).filter(([key]) => columnasVisibles?.[key]);
+  }, [tableHeadArray, columnasVisibles]);
+  
   
   const exportToExcel = () => {
     const exportData = movimientosFiltrados.map((mov) => {
@@ -187,13 +220,13 @@ const handleExportClose = () => setAnchorElExport(null);
       
       // Siempre incluir campos base
       for (let key in camposBase) {
-        fila[camposBase[key]] = formatearCampo(key, mov[key]);
+        fila[camposBase[key]] = obtenerValorExportable(key, mov[key]);
       }
   
       // Incluir opcionales según configuración
       for (let key in camposOpcionales) {
         if (empresa.comprobante_info?.[key]) {
-          fila[camposOpcionales[key]] = formatearCampo(key, mov[key]);
+          fila[camposOpcionales[key]] = obtenerValorExportable(key, mov[key]);
         }
       }
   
@@ -269,7 +302,7 @@ const handleExportClose = () => setAnchorElExport(null);
     const headers = Object.values(camposExportables);
     const rows = movimientosFiltrados.map((mov) =>
       Object.keys(camposExportables).map((campo) =>
-        formatearCampo(campo, mov[campo])
+        obtenerValorExportable(campo, mov[campo])
       )
     );
   
@@ -334,7 +367,16 @@ const handleExportClose = () => setAnchorElExport(null);
             filtroFechaHasta
           );
         }
-        movimientosData.push(...movs.map((m) => ({ ...m, proyectoNombre: proyecto.nombre })));
+        const movsConEquivalencias = movs.map((m) => ({
+          ...m,
+          proyectoNombre: proyecto.nombre,
+          subtotal_usd_blue: m.equivalencias?.subtotal?.usd_blue,
+          total_usd_blue: m.equivalencias?.total?.usd_blue,
+          subtotal_usd_oficial: m.equivalencias?.subtotal?.usd_oficial,
+          total_usd_oficial: m.equivalencias?.total?.usd_oficial,
+        }));
+        
+        movimientosData.push(...movsConEquivalencias);        
       }
       
       setMovimientos(movimientosData);
@@ -460,6 +502,76 @@ const handleExportClose = () => setAnchorElExport(null);
   const proveedoresUnicos = useMemo(() => {
     return [...new Set(movimientos.map(m => m.nombre_proveedor).filter(Boolean))];
   }, [movimientos]);
+  
+  useEffect(() => {
+    if (empresa) {
+      let todas = getTableHeadArray(empresa);
+      todas = todas.filter(([key]) => key !== 'acciones');
+  
+      let porDefecto = columnasVisibles || {};
+  
+      // Agregar nuevas columnas si no estaban
+      for (const [key] of todas) {
+        if (!(key in porDefecto)) {
+          porDefecto[key] = false; // por defecto apagadas
+        }
+      }
+  
+      // ✅ Si todas están en false, borro la variable del localStorage
+      const algunaActiva = Object.values(porDefecto).some((val) => val === true);
+      if (!algunaActiva) {
+        localStorage.removeItem('columnasVisibles');
+        porDefecto = {};
+        // Activar columnas mínimas para no quedar vacío
+        for (const [key] of todas) {
+          if (['codigo_operacion', 'proyectoNombre', 'fecha_factura', 'total', 'moneda', 'type'].includes(key)) {
+            porDefecto[key] = true;
+          }
+        }
+      }
+  
+      setColumnasVisibles(porDefecto);
+      localStorage.setItem('columnasVisibles', JSON.stringify(porDefecto));
+    }
+  }, [empresa]);
+  
+  
+
+  function obtenerValorExportable(campo, valor) {
+    if (valor === undefined || valor === null) return '';
+  
+    switch (campo) {
+      case 'fecha_factura':
+        return formatTimestamp(valor); // string legible
+  
+      case 'total':
+      case 'total_original':
+      case 'subtotal':
+      case 'subtotal_usd_blue':
+      case 'total_usd_blue':
+      case 'subtotal_usd_oficial':
+      case 'total_usd_oficial':
+        return typeof valor === 'number' ? valor : Number(String(valor).replace(/[^\d.-]+/g, ''));
+  
+      case 'type':
+        return valor === 'ingreso' ? 'Ingreso' : 'Egreso';
+  
+      case 'caja_chica':
+        return valor ? 'Sí' : 'No';
+  
+      case 'tags_extra':
+        return Array.isArray(valor) ? valor.join(' - ') : valor;
+  
+      case 'impuestos':
+        return Array.isArray(valor)
+          ? valor.map((imp) => `${imp.nombre}: ${imp.monto}`).join('\n')
+          : valor;
+  
+      default:
+        return valor;
+    }
+  }
+
   
   return (
     <>
@@ -717,93 +829,69 @@ const handleExportClose = () => setAnchorElExport(null);
                   <Typography variant="h6">
                     Total en Dólares: {formatCurrency(totalesPorMoneda.usd)}
                   </Typography>
+                  <Button onClick={() => setOpen(true)}>Columnas visibles</Button>
+                  
+<ColumnSelector
+  open={open}
+  setOpen={setOpen}
+  columnasVisibles={columnasVisibles}
+  setColumnasVisibles={setColumnasVisibles}
+  tableHeadArray={tableHeadArray}
+/>
+
+
                 </Stack>
                 <Paper>
                   <Table>
                   <TableHead>
-                      <TableRow>
-                        {tableHeadArray.map(([campo, label]) => (
-                          <TableCell
-                            key={campo}
-                            onClick={() => {
-                              if (ordenCampo === campo) {
-                                setOrdenDireccion(ordenDireccion === 'asc' ? 'desc' : 'asc');
-                              } else {
-                                setOrdenCampo(campo);
-                                setOrdenDireccion('asc');
-                              }
-                            }}
-                            sx={{ cursor: 'pointer', fontWeight: 'bold' }}
-                          >
-                            {label}
-                            {ordenCampo === campo ? (ordenDireccion === 'asc' ? ' ▲' : ' ▼') : ''}
-                          </TableCell>
-                        ))}
-                      </TableRow>
-                    </TableHead>
+  <TableRow>
+    {columnasFiltradas.map(([campo, label]) => (
+      <TableCell
+        key={campo}
+        onClick={() => {
+          if (ordenCampo === campo) {
+            setOrdenDireccion(ordenDireccion === 'asc' ? 'desc' : 'asc');
+          } else {
+            setOrdenCampo(campo);
+            setOrdenDireccion('asc');
+          }
+        }}
+        sx={{ cursor: 'pointer', fontWeight: 'bold' }}
+      >
+        {label}
+        {ordenCampo === campo ? (ordenDireccion === 'asc' ? ' ▲' : ' ▼') : ''}
+      </TableCell>
+    ))}
+    <TableCell key="acciones">Acciones</TableCell>
+  </TableRow>
+</TableHead>
 
-                    <TableBody>
-                      {movimientosPaginados.map((mov, index) => (
-                        <TableRow key={index}>
-                          <TableCell>{mov.codigo_operacion}</TableCell>
-                          <TableCell>{formatTimestamp(mov.fecha_factura)}</TableCell>
-                          <TableCell>{mov.proyectoNombre}</TableCell>
-                          <TableCell>{mov.categoria || '-'}</TableCell>
-                          {empresa?.comprobante_info.subcategoria && <TableCell>{mov.subcategoria}</TableCell>}
-                          {empresa?.comprobante_info.medio_pago && <TableCell>{mov.medio_pago}</TableCell>}
-                          {empresa?.comprobante_info.cuenta_interna && <TableCell>{mov.cuenta_interna}</TableCell>}
-                          <TableCell>
-                                {Array.isArray(mov.impuestos) && mov.impuestos.length > 0 ? (
-                                  <Tooltip
-                                    title={
-                                      <Box>
-                                        {mov.impuestos.map((imp, i) => (
-                                          <Typography key={i} variant="body2">
-                                            {imp.nombre}: {formatCurrency(imp.monto)}
-                                          </Typography>
-                                        ))}
-                                      </Box>
-                                    }
-                                    arrow
-                                    placement="top"
-                                  >
-                                    <span style={{ cursor: 'help', textDecoration: 'underline dotted' }}>
-                                      {formatCurrency(mov.impuestos.reduce((acc, imp) => acc + (imp.monto || 0), 0))}
-                                    </span>
-                                  </Tooltip>
-                                ) : (
-                                  '-'
-                                )}
-                              </TableCell>
-                          <TableCell>{mov.nombre_proveedor || '-'}</TableCell>
-                          <TableCell>{mov.observacion || '-'}</TableCell>
-                          <TableCell>
-                            <Chip
-                              label={mov.type === 'ingreso' ? 'Ingreso' : 'Egreso'}
-                              color={mov.type === 'ingreso' ? 'success' : 'error'}
-                            />
-                          </TableCell>
-                          <TableCell>{mov.moneda || '-'}</TableCell>
-                          {empresa?.comprobante_info.subtotal && <TableCell>{formatCurrency(mov.subtotal)}</TableCell>}
-                          {empresa?.comprobante_info.total_original && <TableCell>{formatCurrency(mov.total_original)}</TableCell>}
-                          <TableCell>{formatCurrency(mov.total)}</TableCell>
-                          <TableCell>
-                              <Button
-                                variant="outlined"
-                                size="small"
-                                onClick={() =>
-                                  router.push(
-                                    `/movementForm?movimientoId=${mov.id}&lastPageName='Ver movimientos'&proyectoId=${mov.proyecto_id}&proyectoName=${mov.proyectoNombre}&lastPageUrl=${router.asPath}`
-                                  )
-                                }
-                              >
-                                Ver
-                              </Button>
-                            </TableCell>
 
-                        </TableRow>
-                      ))}
-                    </TableBody>
+
+<TableBody>
+  {movimientosPaginados.map((mov, index) => (
+    <TableRow key={index}>
+      {columnasFiltradas.map(([campo]) => (
+        campo !== 'acciones' && (
+          <TableCell key={campo}>{formatearCampo(campo, mov[campo])}</TableCell>
+        )
+      ))}
+      <TableCell>
+        <Button
+          variant="outlined"
+          size="small"
+          onClick={() =>
+            router.push(
+              `/movementForm?movimientoId=${mov.id}&lastPageName='Ver movimientos'&proyectoId=${mov.proyecto_id}&proyectoName=${mov.proyectoNombre}&lastPageUrl=${router.asPath}`
+            )
+          }
+        >
+          Ver
+        </Button>
+      </TableCell>
+    </TableRow>
+  ))}
+</TableBody>
                   </Table>
                   <TablePagination
                       rowsPerPageOptions={[10, 25, 50, 100]}

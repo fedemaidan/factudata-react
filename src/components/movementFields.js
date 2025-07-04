@@ -16,6 +16,7 @@ const DEFINICION_CAMPOS = [
   { name: 'fecha_factura', label: 'Fecha de la Factura', type: 'date' },
   { name: 'type', label: 'Tipo', type: 'select', options: ['egreso', 'ingreso'] },
   { name: 'total', label: 'Total', type: 'number' },
+  { name: 'subtotal', label: 'Subtotal', type: 'number' },
   { name: 'total_original', label: 'Total Original', type: 'number', visibleIf: (info) => info.total_original },
   { name: 'moneda', label: 'Moneda', type: 'select', options: ['ARS', 'USD'] },
   { name: 'nombre_proveedor', label: 'Proveedor', type: 'autocomplete', optionsKey: 'proveedores', visibleIf: (info) => info.proveedor },
