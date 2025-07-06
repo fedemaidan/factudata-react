@@ -21,15 +21,26 @@ import {
   MenuItem,
   FormControl,
   InputLabel,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle
 } from '@mui/material';
+import { LinearProgress } from '@mui/material';
+import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
+import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
 import { useRouter } from 'next/router';
-import { Delete, Edit, Save } from '@mui/icons-material';
+import { Autorenew, Delete, Edit, Save } from '@mui/icons-material';
 import { useAuthContext } from 'src/contexts/auth-context';
 import presupuestoService from 'src/services/presupuestoService';
 import { getEmpresaById, getEmpresaDetailsFromUser } from 'src/services/empresaService';
 import { getProyectosFromUser } from 'src/services/proyectosService';
 import { Timestamp } from 'firebase/firestore';
-import { formatTimestamp } from 'src/utils/formatters';
+import { formatCurrency, formatTimestamp } from 'src/utils/formatters';
+import * as XLSX from 'xlsx';
+
+
 const formatFechaInput = (fecha) => {
   if (!fecha) return '';
   
@@ -72,7 +83,68 @@ const PresupuestosPage = () => {
   const [editing, setEditing] = useState({});
   const [alert, setAlert] = useState({ open: false, message: '', severity: 'info' });
   const [proveedores, setProveedores] = useState([]);
+  const [etapas, setEtapas] = useState([]);
+  const [nuevaEtapa, setNuevaEtapa] = useState('');
+  const [orderBy, setOrderBy] = useState('fechaInicio');
+const [orderDirection, setOrderDirection] = useState('asc');
+const [searchTerm, setSearchTerm] = useState('');
+const [filteredPresupuestos, setFilteredPresupuestos] = useState([]);
+const [deleteDialog, setDeleteDialog] = useState({ open: false, codigo: null });
 
+useEffect(() => {
+  const timeout = setTimeout(() => {
+    const term = searchTerm.toLowerCase();
+    setFilteredPresupuestos(
+      presupuestos.filter((p) => {
+        const proveedor = p.proveedor?.toLowerCase() || '';
+        const etapa = p.etapa?.toLowerCase() || '';
+        const proyecto = proyectos.find(pr => pr.id === p.proyecto_id)?.nombre?.toLowerCase() || '';
+        return proveedor.includes(term) || etapa.includes(term) || proyecto.includes(term);
+      })
+    );
+  }, 300);
+  return () => clearTimeout(timeout);
+}, [searchTerm, presupuestos, proyectos]);
+
+const handleSort = (field) => {
+  if (orderBy === field) {
+    setOrderDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+  } else {
+    setOrderBy(field);
+    setOrderDirection('asc');
+  }
+};
+
+const sortedPresupuestos = [...presupuestos].sort((a, b) => {
+  const valA = a[orderBy] || '';
+  const valB = b[orderBy] || '';
+  if (typeof valA === 'number' && typeof valB === 'number') {
+    return orderDirection === 'asc' ? valA - valB : valB - valA;
+  }
+  return orderDirection === 'asc'
+    ? String(valA).localeCompare(String(valB))
+    : String(valB).localeCompare(String(valA));
+});
+
+
+  const handleRecalcularPresupuesto = async (id) => {
+    try {
+      const { success, presupuesto } = await presupuestoService.recalcularPresupuesto(id, empresaId);
+      if (success) {
+        setPresupuestos(prev =>
+          prev.map(p => p.id === id ? presupuesto : p)
+        );
+        setAlert({ open: true, message: 'Presupuesto recalculado.', severity: 'success' });
+      } else {
+        setAlert({ open: true, message: 'No se pudo recalcular.', severity: 'warning' });
+      }
+    } catch (err) {
+      setAlert({ open: true, message: 'Error al recalcular.', severity: 'error' });
+    }
+  };
+  
+
+  
   useEffect(() => {
     const fetchData = async () => {
         
@@ -90,8 +162,13 @@ const PresupuestosPage = () => {
         setProyectos(proyectosUsuario);
         setEmpresaId(empresa.id);
         setProveedores(empresa.proveedores || []);
+        const etapas = empresa.etapas.map( etapa => etapa.nombre);
+        setEtapas(etapas || []);
+
         const {presupuestos, success} = await presupuestoService.listarPresupuestos(empresa.id);
         setPresupuestos(presupuestos);
+        setFilteredPresupuestos(presupuestos);
+
       } catch (err) {
         setAlert({ open: true, message: 'Error al cargar presupuestos.', severity: 'error' });
       }
@@ -102,7 +179,7 @@ const PresupuestosPage = () => {
   const handleAgregarPresupuesto = async () => {
     try {
       if (!nuevoMonto || !nuevoProveedor || !nuevoProyecto) return;
-      const {presupuesto} = await presupuestoService.crearPresupuesto({ empresa_id: empresaId, monto: parseFloat(nuevoMonto), proveedor: nuevoProveedor, proyecto_id: nuevoProyecto });
+      const {presupuesto} = await presupuestoService.crearPresupuesto({ empresa_id: empresaId, monto: parseFloat(nuevoMonto), proveedor: nuevoProveedor, proyecto_id: nuevoProyecto, etapa: nuevaEtapa });
       setPresupuestos(prev => [...prev, presupuesto]);
       setNuevoMonto('');
       setNuevoProveedor('');
@@ -155,7 +232,6 @@ const PresupuestosPage = () => {
         nuevo_monto: item.monto,
         empresa_id: empresaId,
         nuevaFechaInicio: formatFechaInput(item.fechaInicio),
-        nuevaFechaFin: formatFechaInput(item.fechaFin),
       });
       setEditing(prev => ({ ...prev, [codigo]: false }));
     } catch (err) {
@@ -177,124 +253,196 @@ const PresupuestosPage = () => {
     <>
       <Head><title>Presupuestos</title></Head>
       <Box component="main" sx={{ flexGrow: 1, py: 8 }}>
-        <Container maxWidth="md">
-          <Stack spacing={3}>
-            <Typography variant="h4">Presupuestos</Typography>
+      <Container maxWidth={false} sx={{ px: 4 }}>
+      <Stack spacing={2}>
+  <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems="center" justifyContent="space-between">
+    <Typography variant="h4">Presupuestos</Typography>
+    <Button
+      variant="outlined"
+      onClick={() => {
+        const data = filteredPresupuestos.map((p) => ({
+          Código: p.codigo,
+          'Fecha inicio': formatTimestamp(p.fechaInicio),
+          Monto: p.monto,
+          Proveedor: p.proveedor,
+          Etapa: p.etapa,
+          Proyecto: proyectos.find((pr) => pr.id === p.proyecto_id)?.nombre || '',
+          Gastado: p.ejecutado,
+          '% Ejecutado': `${((p.ejecutado / p.monto) * 100).toFixed(1)}%`,
+        }));
+        const ws = XLSX.utils.json_to_sheet(data);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Presupuestos');
+        XLSX.writeFile(wb, 'presupuestos.xlsx');
+      }}
+    >
+      Exportar a Excel
+    </Button>
+  </Stack>
 
-            <Stack direction="row" spacing={2}>
-              <TextField label="Monto" type="number" value={nuevoMonto} onChange={(e) => setNuevoMonto(e.target.value)} />
-              <FormControl sx={{ minWidth: 200 }}>
-                <InputLabel>Proveedor</InputLabel>
-                <Select
-                  value={nuevoProveedor}
-                  onChange={(e) => setNuevoProveedor(e.target.value)}
-                >
-                  {proveedores.map((prov, index) => (
-                    <MenuItem key={index} value={prov}>{prov}</MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-              <FormControl sx={{ minWidth: 200 }}>
-                <InputLabel>Proyecto</InputLabel>
-                <Select
-                  value={nuevoProyecto}
-                  onChange={(e) => setNuevoProyecto(e.target.value)}
-                >
-                  {proyectos.map(p => (
-                    <MenuItem key={p.id} value={p.id}>{p.nombre}</MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-              <Button variant="contained" onClick={handleAgregarPresupuesto}>Agregar</Button>
-            </Stack>
+  <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} useFlexGap flexWrap="wrap">
+    <TextField
+      label="Monto"
+      type="number"
+      value={nuevoMonto}
+      onChange={(e) => setNuevoMonto(e.target.value)}
+      size="small"
+    />
+    <FormControl sx={{ minWidth: 150 }} size="small">
+      <InputLabel>Proveedor</InputLabel>
+      <Select
+        value={nuevoProveedor}
+        onChange={(e) => setNuevoProveedor(e.target.value)}
+        label="Proveedor"
+      >
+        {proveedores.map((prov, index) => (
+          <MenuItem key={index} value={prov}>{prov}</MenuItem>
+        ))}
+      </Select>
+    </FormControl>
+    <FormControl sx={{ minWidth: 150 }} size="small">
+      <InputLabel>Proyecto</InputLabel>
+      <Select
+        value={nuevoProyecto}
+        onChange={(e) => setNuevoProyecto(e.target.value)}
+        label="Proyecto"
+      >
+        {proyectos.map(p => (
+          <MenuItem key={p.id} value={p.id}>{p.nombre}</MenuItem>
+        ))}
+      </Select>
+    </FormControl>
+    <FormControl sx={{ minWidth: 150 }} size="small">
+      <InputLabel>Etapa</InputLabel>
+      <Select
+        value={nuevaEtapa}
+        onChange={(e) => setNuevaEtapa(e.target.value)}
+        label="Etapa"
+      >
+        <MenuItem value="">(Ninguna)</MenuItem>
+        {etapas.map((etapa, idx) => (
+          <MenuItem key={idx} value={etapa}>{etapa}</MenuItem>
+        ))}
+      </Select>
+    </FormControl>
+
+    <Button variant="contained" onClick={handleAgregarPresupuesto} size="small">Agregar</Button>
+  </Stack>
+
+  <TextField
+    label="Buscar proveedor, etapa o proyecto"
+    variant="outlined"
+    value={searchTerm}
+    onChange={(e) => setSearchTerm(e.target.value)}
+    size="small"
+    fullWidth
+  />
+</Stack>
 
             <Paper>
+
+
               <Table>
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Código</TableCell>
-                    <TableCell>Fecha inicio</TableCell>
-                    <TableCell>Fecha fin</TableCell>
-                    <TableCell>Monto</TableCell>
-                    <TableCell>Proveedor</TableCell>
-                    <TableCell>Proyecto</TableCell>
-                    <TableCell>Gastado</TableCell>
-                    <TableCell>Acciones</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {presupuestos.map(p => (
-                    <TableRow key={p.codigo}>
-                      <TableCell>{p.codigo}</TableCell>
-                      <TableCell>
-                        {editing[p.codigo] ? (
-                          <TextField
-                            type="date"
-                            value={formatFechaInput(p.fechaInicio)}
-                            onChange={(e) => {
-                              const val = e.target.value;
-                              setPresupuestos(prev =>
-                                prev.map(x => x.codigo === p.codigo ? { ...x, fechaInicio: parseFechaInput(val) } : x)
-                              );
-                            }}
-                          />
-                        ) : (
-                          formatTimestamp(p.fechaInicio)
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {editing[p.codigo] ? (
-                          <TextField
-                            type="date"
-                            value={formatFechaInput(p.fechaFin)}
-                            onChange={(e) => {
-                              const val = e.target.value;
-                              setPresupuestos(prev =>
-                                prev.map(x => x.codigo === p.codigo ? { ...x, fechaFin: parseFechaInput(val) } : x)
-                              );
-                            }}
-                          />
-                        ) : (
-                          formatTimestamp(p.fechaFin)
-                        )}
-                      </TableCell>
+              <TableHead>
+  <TableRow>
+    {[
+      { label: 'Código', field: 'codigo' },
+      { label: 'Fecha inicio', field: 'fechaInicio' },
+      { label: 'Monto', field: 'monto' },
+      { label: 'Proveedor', field: 'proveedor' },
+      { label: 'Etapa', field: 'etapa' },
+      { label: 'Proyecto', field: 'proyecto_id' },
+      { label: 'Gastado', field: 'ejecutado' },
+      { label: '% Ejecutado', field: 'ejecutado' }, // sin sorting
+      { label: 'Acciones' },
+    ].map(({ label, field }) => (
+      <TableCell
+        key={label}
+        onClick={() => field && handleSort(field)}
+        sx={{ cursor: field ? 'pointer' : 'default' }}
+      >
+        {label}
+        {orderBy === field &&
+          (orderDirection === 'asc' ? <ArrowUpwardIcon fontSize="inherit" /> : <ArrowDownwardIcon fontSize="inherit" />)}
+      </TableCell>
+    ))}
+  </TableRow>
+</TableHead>
 
+<TableBody>
+  {sortedPresupuestos.map(p => {
+    const porcentaje = p.monto ? (p.ejecutado / p.monto) * 100 : 0;
+    const esSobreejecucion = p.ejecutado > p.monto;
 
-                      <TableCell>
-                        {editing[p.codigo] ? (
-                          <TextField
-                            type="number"
-                            value={p.monto}
-                            onChange={(e) => {
-                              const val = parseFloat(e.target.value);
-                              setPresupuestos(prev => prev.map(x => x.codigo === p.codigo ? { ...x, monto: val } : x));
-                            }}
-                          />
-                        ) : (
-                          `$${p.monto}`
-                        )}
-                      </TableCell>
-                      <TableCell>{p.proveedor || '-'}</TableCell>
-                      <TableCell>{proyectos.find(pr => pr.id === p.proyecto_id)?.nombre || '-'}</TableCell>
-                      <TableCell>$ {p.ejecutado || 0}</TableCell>
-                      <TableCell>
-                        {editing[p.codigo] ? (
-                          <IconButton onClick={() => handleGuardar(p.codigo)}><Save /></IconButton>
-                        ) : (
-                          <IconButton onClick={() => setEditing(prev => ({ ...prev, [p.codigo]: true }))}><Edit /></IconButton>
-                        )}
-                        <IconButton onClick={() => handleEliminar(p.codigo)}><Delete /></IconButton>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
+    return (
+      <TableRow
+        key={p.codigo}
+        sx={esSobreejecucion ? { backgroundColor: '#ffe0e0' } : {}}
+      >
+        <TableCell>{p.codigo}</TableCell>
+        <TableCell>{formatTimestamp(p.fechaInicio)}</TableCell>
+        <TableCell>{formatCurrency(p.monto)}</TableCell>
+        <TableCell>{p.proveedor || '-'}</TableCell>
+        <TableCell>{p.etapa || '-'}</TableCell>
+        <TableCell>{proyectos.find(pr => pr.id === p.proyecto_id)?.nombre || '-'}</TableCell>
+        <TableCell>{formatCurrency(p.ejecutado || 0)}</TableCell>
+        <TableCell>
+          <Stack spacing={0.5}>
+            <Typography variant="caption" color={esSobreejecucion ? 'error' : 'text.primary'}>
+              {porcentaje.toFixed(1)}%
+            </Typography>
+            <LinearProgress
+              variant="determinate"
+              value={Math.min(porcentaje, 100)}
+              color={esSobreejecucion ? 'error' : 'primary'}
+              sx={{ height: 8, borderRadius: 2 }}
+            />
+          </Stack>
+        </TableCell>
+        <TableCell>
+          <IconButton onClick={() => handleGuardar(p.codigo)}><Save /></IconButton>
+          <IconButton onClick={() => setEditing(prev => ({ ...prev, [p.codigo]: true }))}><Edit /></IconButton>
+          <IconButton onClick={() => setDeleteDialog({ open: true, codigo: p.codigo })}>
+  <Delete />
+</IconButton>
+          <IconButton onClick={() => handleRecalcularPresupuesto(p.id)}><Autorenew /></IconButton>
+        </TableCell>
+      </TableRow>
+    );
+  })}
+</TableBody>
+
               </Table>
             </Paper>
-          </Stack>
+          
         </Container>
         <Snackbar open={alert.open} autoHideDuration={6000} onClose={() => setAlert({ ...alert, open: false })}>
           <Alert severity={alert.severity}>{alert.message}</Alert>
         </Snackbar>
+        <Dialog
+  open={deleteDialog.open}
+  onClose={() => setDeleteDialog({ open: false, codigo: null })}
+>
+  <DialogTitle>Confirmar eliminación</DialogTitle>
+  <DialogContent>
+    <DialogContentText>
+      ¿Estás seguro de que querés eliminar este presupuesto? Esta acción no se puede deshacer.
+    </DialogContentText>
+  </DialogContent>
+  <DialogActions>
+    <Button onClick={() => setDeleteDialog({ open: false, codigo: null })}>Cancelar</Button>
+    <Button
+      color="error"
+      onClick={async () => {
+        await handleEliminar(deleteDialog.codigo);
+        setDeleteDialog({ open: false, codigo: null });
+      }}
+    >
+      Eliminar
+    </Button>
+  </DialogActions>
+</Dialog>
+
       </Box>
     </>
   );

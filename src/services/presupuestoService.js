@@ -61,6 +61,29 @@ const PresupuestoService = {
       throw error;
     }
   },
+    /**
+   * Recalcula el ejecutado de un presupuesto por código
+   * @param {number} codigo - Código del presupuesto
+   * @param {string} empresaId - ID de la empresa
+   * @returns {Promise<Object>} - Presupuesto actualizado
+   */
+    recalcularPresupuesto: async (id, empresaId) => {
+      try {
+        const response = await api.post(`/presupuesto/${id}/recalcular`, {
+          empresa_id: empresaId,
+        });
+        if (response.status === 200) {
+          console.log('✅ Presupuesto recalculado con éxito');
+          return response.data;
+        } else {
+          throw new Error('Error al recalcular presupuesto');
+        }
+      } catch (error) {
+        console.error('❌ Error al recalcular presupuesto:', error);
+        throw error;
+      }
+    },
+    
 
   /**
    * Elimina un presupuesto por código
