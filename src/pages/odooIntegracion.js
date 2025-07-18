@@ -40,6 +40,8 @@ const OdooIntegrationPage = () => {
   const [mostrarOpciones, setMostrarOpciones] = useState(false);
   const [filtroActivo, setFiltroActivo] = useState('todos'); // 'todos' | 'activos' | 'inactivos'
 
+  const [nombresPersonalizados, setNombresPersonalizados] = useState({});
+  const [nombresOriginales, setNombresOriginales] = useState({});
 
 
   const handlePaginaSiguiente = () => {
@@ -265,12 +267,24 @@ const OdooIntegrationPage = () => {
       ['productos', 'proveedores', 'taxes', 'diarios', 'cuentas', 'tipos_documento'].forEach((tipo) => {
         nuevasActivaciones[tipo] = {};
         nuevosAlias[tipo] = {};
-  
+      
         datos[tipo]?.forEach((item) => {
-          nuevasActivaciones[tipo][item.id] = item.activo || false; // Si viene el flag de activación
-          nuevosAlias[tipo][item.id] = item.aliases || []; // Si viene una lista de alias
+          nuevasActivaciones[tipo][item.id] = item.activo || false;
+          nuevosAlias[tipo][item.id] = item.aliases || [];
         });
+      
+        if (tipo === 'diarios') {
+          const nombres = {};
+          const originales = {};
+          datos[tipo].forEach((item) => {
+            nombres[item.id] = item.nombrePersonalizado || '';
+            originales[item.id] = item.nombrePersonalizado || '';
+          });
+          setNombresPersonalizados(nombres);
+          setNombresOriginales(originales);
+        }
       });
+      
   
       setDatosImportados(datos);
       setActivaciones(nuevasActivaciones);
@@ -369,6 +383,44 @@ const renderList = (items, tipo, title, fields) => (
             >
               {activaciones[tipo]?.[item.id] ? "Activo" : "Inactivo"}
             </Button>
+            {tipo === 'diarios' && (
+  <Box sx={{ ml: 2, display: 'flex', gap: 1 }}>
+    <TextField
+      size="small"
+      label="Nombre personalizado"
+      value={nombresPersonalizados[item.id] || ''}
+      onChange={(e) =>
+        setNombresPersonalizados((prev) => ({
+          ...prev,
+          [item.id]: e.target.value,
+        }))
+      }
+    />
+    {nombresPersonalizados[item.id]?.trim() !== nombresOriginales[item.id]?.trim() && (
+      <Button
+        variant="outlined"
+        size="small"
+        onClick={async () => {
+          try {
+            const nuevoNombre = nombresPersonalizados[item.id]?.trim();
+            await OdooService.editarNombreDiario(empresaId, item.id, nuevoNombre);
+            setNombresOriginales((prev) => ({
+              ...prev,
+              [item.id]: nuevoNombre,
+            }));
+            console.log('Nombre guardado');
+          } catch (err) {
+            console.error('Error al guardar nombre personalizado:', err);
+            alert('Error al guardar el nombre personalizado');
+          }
+        }}
+      >
+        Guardar
+      </Button>
+    )}
+  </Box>
+)}
+
             {tipo !== 'diarios' && tipo !== 'cuentas' && tipo !== 'tipos_documento' && (
             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, alignItems: 'center' }}>
               {(alias[tipo]?.[item.id] || []).map((aliasItem) => (

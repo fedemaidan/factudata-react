@@ -65,6 +65,31 @@ const notaPedidoService = {
       return false;
     }
   },
+
+  subirArchivo: async (notaId, archivo) => {
+    try {
+      const formData = new FormData();
+      formData.append('archivo', archivo);
+  
+      const response = await api.post(`nota-pedido/${notaId}/archivo`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+  
+      if (response.status === 200) {
+        console.log('Archivo subido con éxito');
+        return response.data.archivo; // Devuelve el objeto { url, nombre, fecha }
+      } else {
+        console.error('Error al subir el archivo');
+        return null;
+      }
+    } catch (err) {
+      console.error('Error al subir el archivo:', err);
+      return null;
+    }
+  },
+  
 };
 
 export default notaPedidoService;

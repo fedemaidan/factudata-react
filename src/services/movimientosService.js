@@ -152,8 +152,25 @@ const movimientosService = {
       console.error('Error al subir imagen temporal a Firebase Storage:', err);
       throw err;
     }
-  }
+  },
+  recalcularEquivalenciasPorProyecto: async (proyectoId) => {
+    try {
+      const response = await api.post(`/proyecto/${proyectoId}/recalcular-equivalencias`);
+      if (response.status === 200) {
+        console.log('✅ Equivalencias recalculadas');
+        return { error: false };
+      } else {
+        console.error('❌ Error al recalcular equivalencias');
+        return { error: true };
+      }
+    } catch (err) {
+      console.error('❌ Error al recalcular equivalencias:', err);
+      return { error: true };
+    }
+  },
+  
   
 };
+
 
 export default movimientosService;

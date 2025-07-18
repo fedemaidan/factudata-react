@@ -39,6 +39,7 @@ const RevisionFacturasPage = () => {
       setIsLoading(true);
       const empresa = await getEmpresaById(empresaId);
       setEmpresa(empresa);
+      
       const proyectosData = await getProyectosByEmpresa(empresa);
 
       const movimientosPendientes = [];
@@ -115,7 +116,7 @@ const RevisionFacturasPage = () => {
               </FormControl>
               <Autocomplete
                 freeSolo
-                options={empresa?.proveedores?.map(p => p.nombre) || []}
+                options={empresa?.proveedores_data?.map(p => p.nombre) || []}
                 getOptionLabel={(option) => option || ''}
                 value={filtroProveedor}
                 onInputChange={(event, newInputValue) => setFiltroProveedor(newInputValue)}
@@ -159,7 +160,6 @@ const RevisionFacturasPage = () => {
                         <TableCell>Cuenta</TableCell>
                         <TableCell>Tipo</TableCell>
                         <TableCell>Monto</TableCell>
-                        <TableCell>Advertencia</TableCell>
                         <TableCell>Acciones</TableCell>
                       </TableRow>
                     </TableHead>
@@ -177,14 +177,6 @@ const RevisionFacturasPage = () => {
                           </TableCell>
                           <TableCell>{m.type === 'ingreso' ? 'Ingreso' : 'Egreso'}</TableCell>
                           <TableCell>{formatCurrency(m.total)}</TableCell>
-                          <TableCell>
-                            {m.fecha_factura &&
-                            new Date() - new Date(m.fecha_factura) > 7 * 86400000 ? (
-                              <Chip label="¡+7 días sin factura!" color="error" size="small" />
-                            ) : (
-                              '-'
-                            )}
-                          </TableCell>
                           <TableCell>
                             <Stack spacing={1} direction="column">
                               <Button

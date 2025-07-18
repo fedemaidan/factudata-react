@@ -88,7 +88,6 @@ export const CuentasTable = ({ cuentas, expandedCuentaId, setExpandedCuentaId, o
                     </TableHead>
                     <TableBody>
                       {(cuenta.cuotas || []).map((cuota, idx) => (
-                        console.log(cuota),
                         <CuotaRowWithActions
                             key={cuota.id || idx}
                             cuota={cuota}
