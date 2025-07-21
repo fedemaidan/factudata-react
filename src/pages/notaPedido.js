@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Box,
   Button,
@@ -41,9 +41,12 @@ import { useCallback } from 'react';
 import { getProyectosByEmpresa } from 'src/services/proyectosService';
 import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
 import { formatTimestamp } from 'src/utils/formatters';
-
+import { Timestamp } from 'firebase/firestore';
+import { Router } from 'react-router-dom';
+import { useRouter } from 'next/router';
 
 const NotaPedidoPage = () => {
+  const router = useRouter();
   const { user } = useAuthContext();
   const [notas, setNotas] = useState([]);
   const [filteredNotas, setFilteredNotas] = useState([]);
@@ -59,7 +62,17 @@ const NotaPedidoPage = () => {
   const [proyectos, setProyectos] = useState([]);
   const [notasEstados, setNotasEstados] = useState([]);
   const [sortConfig, setSortConfig] = useState({ key: 'fechaCreacion', direction: 'desc' });
+  const [comentariosDialogNota, setComentariosDialogNota] = useState(null);
+  const [nuevoComentario, setNuevoComentario] = useState('');
+  const nuevoComentarioRef = useRef();
 
+const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
+
+  const [comentariosCargando, setComentariosCargando] = useState(false);
+  const [comentarioEditandoIdx, setComentarioEditandoIdx] = useState(null);
+  const [comentarioEditadoTexto, setComentarioEditadoTexto] = useState('');
+
+  
 
   const [formData, setFormData] = useState({
     descripcion: '', proyecto_id: '', estado: '', owner: '', creador: '', proveedor: ''
@@ -92,6 +105,49 @@ const NotaPedidoPage = () => {
       key,
       direction: prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc',
     }));
+  };
+
+  
+  const handleGuardarComentarioEditado = async (idx) => {
+    if (!comentarioEditadoTexto.trim() || !comentariosDialogNota) return;
+  
+    const comentariosActualizados = [...comentariosDialogNota.comentarios];
+    comentariosActualizados[idx].texto = comentarioEditadoTexto.trim();
+  
+    const notaActualizada = { ...comentariosDialogNota, comentarios: comentariosActualizados };
+    try {
+      await notaPedidoService.updateNota(comentariosDialogNota.id, notaActualizada);
+      setNotas((prev) =>
+        prev.map((n) => (n.id === comentariosDialogNota.id ? notaActualizada : n))
+      );
+      setComentariosDialogNota(notaActualizada);
+      setComentarioEditandoIdx(null);
+      setComentarioEditadoTexto('');
+      setAlert({ open: true, message: 'Comentario editado', severity: 'success' });
+    } catch (error) {
+      console.error('Error al editar comentario:', error);
+      setAlert({ open: true, message: 'Error al editar comentario', severity: 'error' });
+    }
+  };
+
+  const handleEliminarComentario = async (idx) => {
+    if (!comentariosDialogNota) return;
+  
+    const comentariosActualizados = [...comentariosDialogNota.comentarios];
+    comentariosActualizados.splice(idx, 1);
+  
+    const notaActualizada = { ...comentariosDialogNota, comentarios: comentariosActualizados };
+    try {
+      await notaPedidoService.updateNota(comentariosDialogNota.id, notaActualizada);
+      setNotas((prev) =>
+        prev.map((n) => (n.id === comentariosDialogNota.id ? notaActualizada : n))
+      );
+      setComentariosDialogNota(notaActualizada);
+      setAlert({ open: true, message: 'Comentario eliminado', severity: 'success' });
+    } catch (error) {
+      console.error('Error al eliminar comentario:', error);
+      setAlert({ open: true, message: 'Error al eliminar comentario', severity: 'error' });
+    }
   };
 
   
@@ -172,6 +228,38 @@ const NotaPedidoPage = () => {
     }
   }, [user]);
   
+  const handleAgregarComentario = async () => {
+    const texto = nuevoComentarioRef.current.value.trim();
+    if (!comentariosDialogNota || !texto) return;
+  
+    const nuevo = {
+      texto,
+      autor: `${user.firstName} ${user.lastName}`,
+      fecha: Timestamp.fromDate(new Date()),
+    };
+  
+    const comentariosActualizados = [...(comentariosDialogNota.comentarios || []), nuevo];
+    const notaActualizada = { ...comentariosDialogNota, comentarios: comentariosActualizados };
+  
+    try {
+      setComentariosCargando(true);
+      await notaPedidoService.updateNota(comentariosDialogNota.id, notaActualizada);
+  
+      setNotas((prev) =>
+        prev.map((n) => (n.id === comentariosDialogNota.id ? notaActualizada : n))
+      );
+      setComentariosDialogNota(notaActualizada);
+      nuevoComentarioRef.current.value = ''; // limpiás el input
+      setAlert({ open: true, message: 'Comentario agregado con éxito', severity: 'success' });
+    } catch (error) {
+      console.error('Error al guardar comentario:', error);
+      setAlert({ open: true, message: 'Error al agregar comentario', severity: 'error' });
+    } finally {
+      setComentariosCargando(false);
+    }
+  };
+  
+
   const fetchNotas = useCallback(async () => {
     try {
       const notasData = await notaPedidoService.getNotasByEmpresa(user.empresa.id);
@@ -602,6 +690,12 @@ const NotaPedidoPage = () => {
                       >
                         Eliminar
                       </Button>
+                      <Button
+  variant="text"
+  onClick={() => setComentariosDialogNota(nota)}
+>
+  Ver comentarios ({nota.comentarios?.length || 0})
+</Button>
 
                     </TableCell>
 
@@ -790,6 +884,154 @@ const NotaPedidoPage = () => {
       Eliminar
     </Button>
   </DialogActions>
+</Dialog>
+<Dialog
+  open={!!comentariosDialogNota}
+  onClose={() => setComentariosDialogNota(null)}
+  maxWidth="sm"
+  fullWidth
+>
+  <DialogTitle>Comentarios de la Nota {comentariosDialogNota?.codigo}</DialogTitle>
+  <DialogContent>
+  {comentariosDialogNota?.comentarios?.length > 0 ? (
+    <Stack spacing={2}>
+      {comentariosDialogNota.comentarios.map((comentario, idx) => (
+  <Box key={idx} sx={{ p: 1, borderBottom: '1px solid #ddd' }}>
+    <Typography variant="body2">
+      <strong>{formatTimestamp(comentario.fecha)}</strong> 
+    </Typography>
+      {
+        comentario.texto && <Typography variant="body1" sx={{ whiteSpace: 'pre-line' }}>{comentario.autor}: {comentario.texto}</Typography>
+      }
+
+    {comentarioEditandoIdx === idx ? (
+      <>
+        <TextField
+          fullWidth
+          multiline
+          value={comentarioEditadoTexto}
+          onChange={(e) => setComentarioEditadoTexto(e.target.value)}
+          rows={2}
+          sx={{ mt: 1 }}
+        />
+        <Stack direction="row" spacing={1} mt={1}>
+          <Button
+            variant="contained"
+            size="small"
+            onClick={() => handleGuardarComentarioEditado(idx)}
+          >
+            Guardar
+          </Button>
+          <Button
+            size="small"
+            onClick={() => {
+              setComentarioEditandoIdx(null);
+              setComentarioEditadoTexto('');
+            }}
+          >
+            Cancelar
+          </Button>
+        </Stack>
+      </>
+    ) : (
+      <>
+         <Stack direction="row" spacing={1} mt={1}>
+         {comentario.texto &&  <Button size="small" onClick={() => {
+            setComentarioEditandoIdx(idx);
+            setComentarioEditadoTexto(comentario.texto);
+          }}>
+            Editar
+          </Button>}
+          {
+          comentario.url && <Button size="small" variant='contained' onClick={() => window.open(comentario.url, '_blank')}>Ver archivo</Button>
+        }
+          <Button size="small" color="error" onClick={() => handleEliminarComentario(idx)}>
+            Eliminar
+          </Button>
+        </Stack>
+      </>
+    )}
+  </Box>
+))}
+
+    </Stack>
+  ) : (
+    <Typography variant="body2">No hay comentarios aún.</Typography>
+  )}
+
+<Box mt={3}>
+  <TextField
+    label="Nuevo comentario"
+    multiline
+    rows={3}
+    fullWidth
+    // value={nuevoComentario}
+    // onChange={(e) => setNuevoComentario(e.target.value)}
+    inputRef={nuevoComentarioRef}
+
+  />
+
+
+<Button
+  variant="contained"
+  onClick={handleAgregarComentario}
+  sx={{ mt: 2 }}
+  // disabled={!nuevoComentarioRef.current?.value?.trim()}
+>
+  {comentariosCargando ? 'Guardando...' : 'Agregar comentario'}
+</Button>
+
+
+
+  <Stack direction="row" spacing={2} alignItems="center" mt={2}>
+    <Button
+      variant="outlined"
+      component="label"
+    >
+      Seleccionar archivo
+      <input
+        type="file"
+        hidden
+        onChange={(e) => setArchivoSeleccionado(e.target.files[0])}
+      />
+    </Button>
+    <Typography variant="body2">
+      {archivoSeleccionado?.name || 'Ningún archivo seleccionado'}
+    </Typography>
+  </Stack>
+
+  <Button
+    variant="contained"
+    onClick={async () => {
+      if (!comentariosDialogNota || !archivoSeleccionado) return;
+      try {
+        const nota = await notaPedidoService.subirArchivo(comentariosDialogNota.id, archivoSeleccionado);
+        if (nota) {
+          setNotas(notas.map((n) => (n.id === nota.id ? nota : n)));
+          setComentariosDialogNota(nota);
+          setAlert({ open: true, message: 'Archivo subido con éxito', severity: 'success' });
+        } else {
+          setAlert({ open: true, message: 'Error al subir archivo', severity: 'error' });
+        }
+        setArchivoSeleccionado(null); // reset
+      } catch (error) {
+        console.error('Error subiendo archivo:', error);
+        setAlert({ open: true, message: 'Error al subir archivo', severity: 'error' });
+      }
+    }}
+    disabled={!archivoSeleccionado}
+    sx={{ mt: 1 }}
+  >
+    Subir archivo
+  </Button>
+</Box>
+
+</DialogContent>
+
+<DialogActions>
+  <Button onClick={() => setComentariosDialogNota(null)}>Cerrar</Button>
+</DialogActions>
+
 </Dialog>
 
         <Dialog open={openFilters} onClose={() => setOpenFilters(false)} maxWidth="sm" fullWidth>

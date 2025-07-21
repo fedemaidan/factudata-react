@@ -1,4 +1,4 @@
-import { collection, doc, addDoc, getDoc, updateDoc,limit,  query, where, getDocs, orderBy, serverTimestamp, Timestamp} from 'firebase/firestore';
+import { collection, doc, addDoc, getDoc, updateDoc,limit,  query, where, getDocs, orderBy, serverTimestamp, Timestamp, getDocsFromServer} from 'firebase/firestore';
 import { db, storage } from 'src/config/firebase';
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { uploadFile, deleteFacturaByFilename } from './facturasService'; // Importa el servicio de facturas para subir los archivos
@@ -264,20 +264,16 @@ const ticketService = {
   getMovimientosForProyecto: async (proyectoId, moneda) => {
     try {
       const q = query(collection(db, 'movimientos'), where('proyecto_id', '==', proyectoId), where('moneda', '==', moneda), orderBy('fecha_factura', 'desc')  );
-      const querySnapshot = await getDocs(q);
+      const querySnapshot = await getDocsFromServer(q);
 
       const movimientos = [];
       querySnapshot.forEach((doc) => {
-        // Agregar cada ticket a la lista
-        const mov = {
-          id: doc.id,
-          ...doc.data(),
-        };
-        movimientos.push(mov);
-      
+          const mov = {
+            id: doc.id,
+            ...doc.data(),
+          };
+          movimientos.push(mov);
       });
-
-      console.log("movimientossssssss",movimientos)
       
       return movimientos;
     } catch (err) {

@@ -7,6 +7,11 @@ import { useRouter } from 'next/router';
 import { AdminBasico } from 'src/sections/empresa/adminBasico';
 import { ProyectosDetails } from 'src/sections/empresa/proyectosDetails';
 import { getEmpresaById } from 'src/services/empresaService';
+import { ProveedoresDetails } from 'src/sections/empresa/proveedoresDetails';
+import { CategoriasDetails } from 'src/sections/empresa/categoriasDetails';
+import { EtapasDetails } from 'src/sections/empresa/etapasDetails';
+import { MediosPagoDetails } from 'src/sections/empresa/mediosPagoDetails';
+import { ImpuestosDetails } from 'src/sections/empresa/impuestosDetails';
 
 const ConfiguracionBasicaPage = () => {
   const { user } = useAuthContext();
@@ -40,10 +45,20 @@ const ConfiguracionBasicaPage = () => {
             <Tabs value={currentTab} onChange={handleTabChange}>
               <Tab label="Usuarios" value="usuarios" />
               <Tab label="Proyectos" value="proyectos" />
+              <Tab label="Proveedores" value="proveedores" />
+              <Tab label="Categorias" value="categorias" />
+              <Tab label="Etapas" value="etapas" />
+              <Tab label="Medios de pago" value="medios_pago" />
+              <Tab label="Impuestos" value="impuestos" />
             </Tabs>
 
             {currentTab === 'usuarios' && <AdminBasico empresa={empresa} />}
             {currentTab === 'proyectos' && <ProyectosDetails empresa={empresa} />}
+            {currentTab === 'proveedores' && <ProveedoresDetails empresa={empresa} />}
+            {currentTab === 'categorias' && <CategoriasDetails empresa={empresa} />}
+            {currentTab === 'etapas' && <EtapasDetails empresa={empresa} />} 
+            {currentTab === 'medios_pago' && <MediosPagoDetails empresa={empresa} />}
+            {currentTab === 'impuestos' && <ImpuestosDetails empresa={empresa} />}
           </Stack>
         </Container>
       </Box>

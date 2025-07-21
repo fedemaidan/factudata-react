@@ -1,4 +1,3 @@
-// pages/MovementFormPage.js
 import Head from 'next/head';
 import {
   Box,

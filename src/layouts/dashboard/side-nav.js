@@ -48,40 +48,40 @@ export const SideNav = (props) => {
       
       const empresa = await getEmpresaDetailsFromUser(user)
 
-      if (user.email == "nico@mail.com") {
-          const productosElement = {
-            title: 'Productos',
-            path: '/productos',
-            icon: (
-              <SvgIcon fontSize="small">
-                <DashboardIcon />
-              </SvgIcon>
-            )
-          }
+      // if (user.email == "nico@mail.com") {
+      //     const productosElement = {
+      //       title: 'Productos',
+      //       path: '/productos',
+      //       icon: (
+      //         <SvgIcon fontSize="small">
+      //           <DashboardIcon />
+      //         </SvgIcon>
+      //       )
+      //     }
 
-          const ofertasElement = {
-            title: 'Ofertas',
-            path: '/ofertas',
-            icon: (
-              <SvgIcon fontSize="small">
-                <DashboardIcon />
-              </SvgIcon>
-            )
-          }
+      //     const ofertasElement = {
+      //       title: 'Ofertas',
+      //       path: '/ofertas',
+      //       icon: (
+      //         <SvgIcon fontSize="small">
+      //           <DashboardIcon />
+      //         </SvgIcon>
+      //       )
+      //     }
 
-          const principiosActivosElement = {
-            title: 'Principios Activos',
-            path: '/principiosActivos',
-            icon: (
-              <SvgIcon fontSize="small">
-                <DashboardIcon />
-              </SvgIcon>
-            )
-          }
+      //     const principiosActivosElement = {
+      //       title: 'Principios Activos',
+      //       path: '/principiosActivos',
+      //       icon: (
+      //         <SvgIcon fontSize="small">
+      //           <DashboardIcon />
+      //         </SvgIcon>
+      //       )
+      //     }
 
-          setItems([productosElement, ofertasElement, principiosActivosElement])
-      }
-      else if (user.email == "comunelliluciana@gmail.com") {
+      //     setItems([productosElement, ofertasElement, principiosActivosElement])
+      // }
+      if (user.email == "comunelliluciana@gmail.com") {
         const onboardingPage = {
           title: 'Materiales',
           path: '/materiales',
@@ -145,7 +145,29 @@ export const SideNav = (props) => {
                 </SvgIcon>
               )
             })
+
         }
+
+        if (permisosUsuario.includes('VER_CUENTAS_PENDIENTES')) {
+          newItems.push({
+            title: "Cuentas pendientes (solo admin)",
+            path: 'cuentasPendientes?empresaId=' + empresa.id,
+            icon: (
+              <SvgIcon fontSize="small">
+                <CogIcon />
+              </SvgIcon>
+            )})
+            }
+        if (permisosUsuario.includes('VER_UNIDADES')) {
+            newItems.push({
+              title: "Unidades (solo admin)",
+              path: 'unidadesTable?empresaId=' + empresa.id,
+              icon: (
+                <SvgIcon fontSize="small">
+                  <CogIcon />
+                </SvgIcon>
+              )})
+          }
 
         if (permisosUsuario.includes('ADMIN_USUARIOS')) {
           newItems.push({
@@ -158,6 +180,16 @@ export const SideNav = (props) => {
             )
           })
       }
+
+      newItems.push({
+        title: 'Presupuestos',
+        path: '/presupuestos',
+        icon: (
+          <SvgIcon fontSize="small">
+            <NoteAltIcon />
+          </SvgIcon>
+        )
+      })
 
         if (permisosUsuario.includes('VER_NOTAS_DE_PEDIDO')) {
           newItems.push({
@@ -196,18 +228,20 @@ export const SideNav = (props) => {
           })
         }
         
-        if (permisosUsuario.includes('VER_CAJAS')) {
-
-          newItems.push({
-            title: 'Ver cajas chicas',
-            path: '/perfilesEmpresa',
-            icon: (
-              <SvgIcon fontSize="small">
-                <AttachMoneyIcon />
-              </SvgIcon>
-            )
-          })
         
+
+        if (permisosUsuario.includes('VER_CAJAS')) {
+          if (permisosUsuario.includes('VER_MI_CAJA_CHICA')) {
+            newItems.push({
+              title: 'Ver cajas chicas',
+              path: '/perfilesEmpresa',
+              icon: (
+                <SvgIcon fontSize="small">
+                  <AttachMoneyIcon />
+                </SvgIcon>
+              )
+            })
+          }
           
           const vistaGeneralElement = {
             title: 'Vista 7 días',
@@ -250,18 +284,18 @@ export const SideNav = (props) => {
           
           newItems = [...newItems, ...cajasProyectoItems]; 
         }
-
-        const odooIntegration = {
-          title: 'Integración con Odoo',
-          path: '/odooIntegracion?empresaId=' + empresa.id,
-          icon: (
-            <SvgIcon fontSize="small">
-              <NoteAltIcon />
-            </SvgIcon>
-          )
+        if (permisosUsuario.includes('INTEGRACION_ODOO')) {
+          const odooIntegration = {
+            title: 'Integración con Odoo',
+            path: '/odooIntegracion?empresaId=' + empresa.id,
+            icon: (
+              <SvgIcon fontSize="small">
+                <NoteAltIcon />
+              </SvgIcon>
+            )
+          }
+          newItems.push(odooIntegration)
         }
-        
-        newItems.push(odooIntegration)
         setItems(newItems)
       }
     };

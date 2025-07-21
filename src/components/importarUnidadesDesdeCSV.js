@@ -96,9 +96,15 @@ export default function ImportarUnidadesDesdeCSV({ onImport, proyectos }) {
       </FormControl>
 
       <Stack direction="row" spacing={2} alignItems="center">
-        <input type="file" accept=".csv" onChange={handleArchivo} />
-        <Button variant="outlined" onClick={descargarTemplate}>Descargar template</Button>
-      </Stack>
+  <Button variant="contained" component="label">
+    Seleccionar archivo
+    <input hidden type="file" accept=".csv" onChange={handleArchivo} />
+  </Button>
+  <Button variant="outlined" onClick={descargarTemplate}>
+    📥 Descargar template
+  </Button>
+</Stack>
+
 
       {unidadesPreview.length > 0 && (
         <>

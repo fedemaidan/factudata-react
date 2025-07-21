@@ -115,7 +115,7 @@ const handleSort = (field) => {
   }
 };
 
-const sortedPresupuestos = [...presupuestos].sort((a, b) => {
+const sortedPresupuestos = [...filteredPresupuestos].sort((a, b) => {
   const valA = a[orderBy] || '';
   const valB = b[orderBy] || '';
   if (typeof valA === 'number' && typeof valB === 'number') {
@@ -162,7 +162,7 @@ const sortedPresupuestos = [...presupuestos].sort((a, b) => {
         setProyectos(proyectosUsuario);
         setEmpresaId(empresa.id);
         setProveedores(empresa.proveedores || []);
-        const etapas = empresa.etapas.map( etapa => etapa.nombre);
+        const etapas = empresa.etapas ? empresa.etapas.map( etapa => etapa.nombre) : [];
         setEtapas(etapas || []);
 
         const {presupuestos, success} = await presupuestoService.listarPresupuestos(empresa.id);
@@ -170,6 +170,7 @@ const sortedPresupuestos = [...presupuestos].sort((a, b) => {
         setFilteredPresupuestos(presupuestos);
 
       } catch (err) {
+        console.log(err)
         setAlert({ open: true, message: 'Error al cargar presupuestos.', severity: 'error' });
       }
     };
@@ -352,7 +353,8 @@ const sortedPresupuestos = [...presupuestos].sort((a, b) => {
       { label: 'Proveedor', field: 'proveedor' },
       { label: 'Etapa', field: 'etapa' },
       { label: 'Proyecto', field: 'proyecto_id' },
-      { label: 'Gastado', field: 'ejecutado' },
+      { label: 'Ejecutado', field: 'ejecutado' },
+      { label: 'Disponible', field: 'ejecutado' },
       { label: '% Ejecutado', field: 'ejecutado' }, // sin sorting
       { label: 'Acciones' },
     ].map(({ label, field }) => (
@@ -380,12 +382,53 @@ const sortedPresupuestos = [...presupuestos].sort((a, b) => {
         sx={esSobreejecucion ? { backgroundColor: '#ffe0e0' } : {}}
       >
         <TableCell>{p.codigo}</TableCell>
-        <TableCell>{formatTimestamp(p.fechaInicio)}</TableCell>
-        <TableCell>{formatCurrency(p.monto)}</TableCell>
+        <TableCell>
+  {editing[p.codigo] ? (
+    <TextField
+      type="date"
+      value={formatFechaInput(p.fechaInicio)}
+      size="small"
+      onChange={(e) => {
+        const val = e.target.value;
+        setPresupuestos(prev =>
+          prev.map(x =>
+            x.codigo === p.codigo
+              ? { ...x, fechaInicio: parseFechaInput(val) }
+              : x
+          )
+        );
+      }}
+    />
+  ) : (
+    formatFechaInput(p.fechaInicio)
+  )}
+</TableCell>
+
+        <TableCell>
+  {editing[p.codigo] ? (
+    <TextField
+      type="number"
+      value={p.monto}
+      size="small"
+      onChange={(e) => {
+        const val = parseFloat(e.target.value);
+        setPresupuestos(prev =>
+          prev.map(x =>
+            x.codigo === p.codigo ? { ...x, monto: val } : x
+          )
+        );
+      }}
+    />
+  ) : (
+    formatCurrency(p.monto)
+  )}
+</TableCell>
+
         <TableCell>{p.proveedor || '-'}</TableCell>
         <TableCell>{p.etapa || '-'}</TableCell>
         <TableCell>{proyectos.find(pr => pr.id === p.proyecto_id)?.nombre || '-'}</TableCell>
         <TableCell>{formatCurrency(p.ejecutado || 0)}</TableCell>
+        <TableCell>{formatCurrency(p.monto - p.ejecutado || p.monto)}</TableCell>
         <TableCell>
           <Stack spacing={0.5}>
             <Typography variant="caption" color={esSobreejecucion ? 'error' : 'text.primary'}>
