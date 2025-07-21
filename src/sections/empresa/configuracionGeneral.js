@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuthContext } from 'src/contexts/auth-context';
 import { Button, Checkbox, CircularProgress, FormControl, InputLabel, ListItemText, MenuItem, Select, TextField, Snackbar, Alert, Typography, Grid } from '@mui/material';
 import { Autocomplete } from '@mui/material';
+import { actualizarSheetsDesdeBaseEmpresa } from 'src/services/proyectosService';
 
 export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission }) => {
   
@@ -57,6 +58,8 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
   const [razonSocial, setRazonSocial] = useState(empresa.razon_social || '');
 const [cuit, setCuit] = useState(empresa.cuit || '');
 const [domicilioFiscal, setDomicilioFiscal] = useState(empresa.domicilio_fiscal || '');
+const [carpetaEmpresaRef, setCarpetaEmpresaRef] = useState(empresa.carpetaEmpresaRef || '');
+const [isRegenerandoSheets, setIsRegenerandoSheets] = useState(false);
 
 
 
@@ -138,6 +141,35 @@ const [domicilioFiscal, setDomicilioFiscal] = useState(empresa.domicilio_fiscal 
 };
 
 
+  const handleRegenerarSheets = async () => {
+    if (!empresa?.id) return;
+
+    setIsRegenerandoSheets(true);
+    try {
+      const resultado = await actualizarSheetsDesdeBaseEmpresa(empresa.id);
+      if (resultado.success) {
+        setSnackbarInfo({
+          message: 'Sheets regenerados correctamente.',
+          severity: 'success'
+        });
+      } else {
+        setSnackbarInfo({
+          message: 'Ocurrió un error al regenerar los sheets.',
+          severity: 'error'
+        });
+      }
+    } catch (error) {
+      console.error('Error en handleRegenerarSheets:', error);
+      setSnackbarInfo({
+        message: 'Error inesperado al regenerar los sheets.',
+        severity: 'error'
+      });
+    } finally {
+      setSnackbarOpen(true);
+      setIsRegenerandoSheets(false);
+    }
+  };
+
 
   const handleSaveConfig = async () => {
     setIsLoading(true);
@@ -157,6 +189,7 @@ const [domicilioFiscal, setDomicilioFiscal] = useState(empresa.domicilio_fiscal 
       razon_social: razonSocial,
       cuit,
       domicilio_fiscal: domicilioFiscal,
+      carpetaEmpresaRef: carpetaEmpresaRef,
 
     };
     
@@ -356,6 +389,29 @@ const [domicilioFiscal, setDomicilioFiscal] = useState(empresa.domicilio_fiscal 
           error={hasPermissionError}
           helperText={hasPermissionError ? "El google sheet no está configurado para que podamos editarlo. Asegurate que el id esté bien escrito y de darle permisos de edición a firebase-adminsdk-xts1d@factudata-3afdf.iam.gserviceaccount.com." : ""}
       />
+
+<Typography variant="h6" sx={{ mt: 4 }}>Gestionar Google Sheets</Typography>
+
+<TextField
+  label="ID de carpeta de Drive"
+  value={carpetaEmpresaRef}
+  onChange={(e) => setCarpetaEmpresaRef(e.target.value)}
+  fullWidth
+  sx={{ mt: 2 }}
+  helperText="Ejemplo: 1a2B3cD4eFgHiJKLmNopQRStuvWxYzZ123"
+/>
+
+<Button
+  onClick={handleRegenerarSheets}
+  variant="outlined"
+  color="secondary"
+  sx={{ mt: 2, mb: 2 }}
+  disabled={isRegenerandoSheets}
+>
+  {isRegenerandoSheets ? <CircularProgress size={24} /> : "Regenerar Sheets"}
+</Button>
+
+
       <Button onClick={handleSaveConfig} variant="contained" color="primary" disabled={isLoading}>
         {isLoading ? <CircularProgress size={24} /> : "Guardar Configuración"}
       </Button>

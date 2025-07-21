@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Box,
   Button,
@@ -42,8 +42,11 @@ import { getProyectosByEmpresa } from 'src/services/proyectosService';
 import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
 import { formatTimestamp } from 'src/utils/formatters';
 import { Timestamp } from 'firebase/firestore';
+import { Router } from 'react-router-dom';
+import { useRouter } from 'next/router';
 
 const NotaPedidoPage = () => {
+  const router = useRouter();
   const { user } = useAuthContext();
   const [notas, setNotas] = useState([]);
   const [filteredNotas, setFilteredNotas] = useState([]);
@@ -61,6 +64,8 @@ const NotaPedidoPage = () => {
   const [sortConfig, setSortConfig] = useState({ key: 'fechaCreacion', direction: 'desc' });
   const [comentariosDialogNota, setComentariosDialogNota] = useState(null);
   const [nuevoComentario, setNuevoComentario] = useState('');
+  const nuevoComentarioRef = useRef();
+
 const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
 
   const [comentariosCargando, setComentariosCargando] = useState(false);
@@ -224,13 +229,15 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
   }, [user]);
   
   const handleAgregarComentario = async () => {
-    if (!comentariosDialogNota || !nuevoComentario.trim()) return;
+    const texto = nuevoComentarioRef.current.value.trim();
+    if (!comentariosDialogNota || !texto) return;
   
     const nuevo = {
-      texto: nuevoComentario.trim(),
+      texto,
       autor: `${user.firstName} ${user.lastName}`,
       fecha: Timestamp.fromDate(new Date()),
     };
+  
     const comentariosActualizados = [...(comentariosDialogNota.comentarios || []), nuevo];
     const notaActualizada = { ...comentariosDialogNota, comentarios: comentariosActualizados };
   
@@ -242,7 +249,7 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
         prev.map((n) => (n.id === comentariosDialogNota.id ? notaActualizada : n))
       );
       setComentariosDialogNota(notaActualizada);
-      setNuevoComentario('');
+      nuevoComentarioRef.current.value = ''; // limpiás el input
       setAlert({ open: true, message: 'Comentario agregado con éxito', severity: 'success' });
     } catch (error) {
       console.error('Error al guardar comentario:', error);
@@ -252,7 +259,6 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
     }
   };
   
-
 
   const fetchNotas = useCallback(async () => {
     try {
@@ -892,8 +898,11 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
       {comentariosDialogNota.comentarios.map((comentario, idx) => (
   <Box key={idx} sx={{ p: 1, borderBottom: '1px solid #ddd' }}>
     <Typography variant="body2">
-      <strong>{comentario.autor || 'Sin autor'}</strong> – {formatTimestamp(comentario.fecha)}
+      <strong>{formatTimestamp(comentario.fecha)}</strong> 
     </Typography>
+      {
+        comentario.texto && <Typography variant="body1" sx={{ whiteSpace: 'pre-line' }}>{comentario.autor}: {comentario.texto}</Typography>
+      }
 
     {comentarioEditandoIdx === idx ? (
       <>
@@ -926,14 +935,16 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
       </>
     ) : (
       <>
-        <Typography variant="body1" sx={{ whiteSpace: 'pre-line' }}>{comentario.texto}</Typography>
-        <Stack direction="row" spacing={1} mt={1}>
-          <Button size="small" onClick={() => {
+         <Stack direction="row" spacing={1} mt={1}>
+         {comentario.texto &&  <Button size="small" onClick={() => {
             setComentarioEditandoIdx(idx);
             setComentarioEditadoTexto(comentario.texto);
           }}>
             Editar
-          </Button>
+          </Button>}
+          {
+          comentario.url && <Button size="small" variant='contained' onClick={() => window.open(comentario.url, '_blank')}>Ver archivo</Button>
+        }
           <Button size="small" color="error" onClick={() => handleEliminarComentario(idx)}>
             Eliminar
           </Button>
@@ -954,19 +965,22 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
     multiline
     rows={3}
     fullWidth
-    value={nuevoComentario}
-    onChange={(e) => setNuevoComentario(e.target.value)}
+    // value={nuevoComentario}
+    // onChange={(e) => setNuevoComentario(e.target.value)}
+    inputRef={nuevoComentarioRef}
+
   />
 
 
-  <Button
-    variant="contained"
-    onClick={handleAgregarComentario}
-    sx={{ mt: 2 }}
-    disabled={comentariosCargando || !nuevoComentario.trim()}
-  >
-    {comentariosCargando ? 'Guardando...' : 'Agregar comentario'}
-  </Button>
+<Button
+  variant="contained"
+  onClick={handleAgregarComentario}
+  sx={{ mt: 2 }}
+  // disabled={!nuevoComentarioRef.current?.value?.trim()}
+>
+  {comentariosCargando ? 'Guardando...' : 'Agregar comentario'}
+</Button>
+
 
 
   <Stack direction="row" spacing={2} alignItems="center" mt={2}>
@@ -991,8 +1005,10 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
     onClick={async () => {
       if (!comentariosDialogNota || !archivoSeleccionado) return;
       try {
-        const archivoSubido = await notaPedidoService.subirArchivo(comentariosDialogNota.id, archivoSeleccionado);
-        if (archivoSubido) {
+        const nota = await notaPedidoService.subirArchivo(comentariosDialogNota.id, archivoSeleccionado);
+        if (nota) {
+          setNotas(notas.map((n) => (n.id === nota.id ? nota : n)));
+          setComentariosDialogNota(nota);
           setAlert({ open: true, message: 'Archivo subido con éxito', severity: 'success' });
         } else {
           setAlert({ open: true, message: 'Error al subir archivo', severity: 'error' });

@@ -14,6 +14,7 @@ import { formatCurrency, formatTimestamp } from 'src/utils/formatters';
 import { CuentasResumen } from 'src/components/cuentasResumen';
 import { CuentasTable } from 'src/components/cuentasTable';
 import { CuotasPendientesTable } from 'src/components/cuotasPendientesTable';
+import { ProyeccionFinanciera } from 'src/components/proyeccionFinanciera';
 
 const CuentasPendientesPage = () => {
     const router = useRouter();
@@ -100,18 +101,26 @@ const CuentasPendientesPage = () => {
     <Box component="main" sx={{ flexGrow: 1, py: 4 }}>
       <Container maxWidth="xl">
         <Typography variant="h5" sx={{ mb: 2 }}>Gestión de Cuentas Pendientes</Typography>
-        <Box sx={{ mb: 2 }}>
-        <Button onClick={() => setMostrarResumen(!mostrarResumen)} size="small">
+        {/* <Box sx={{ mb: 2 }}> */}
+        {/* <Button onClick={() => setMostrarResumen(!mostrarResumen)} size="small">
             {mostrarResumen ? 'Ocultar resumen' : 'Mostrar resumen'}
         </Button>
 
         {mostrarResumen && <CuentasResumen cuentas={cuentas} />}
-        </Box>
+        </Box> */}
 
         <Tabs value={tabActiva} onChange={handleChangeTab}>
+          <Tab label="Proyección" value="proyeccion" />
           <Tab label="Cuentas" value="cuentas" />
           <Tab label="Cuotas Pendientes" value="cuotas" />
+          
+
         </Tabs>
+
+        {tabActiva === 'proyeccion' && (
+          <ProyeccionFinanciera cuotas={cuotasPendientes} />
+        )}
+
 
         {loading && <LinearProgress sx={{ my: 2 }} />}
         {tabActiva === 'cuentas' && (

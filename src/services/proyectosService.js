@@ -160,6 +160,32 @@ export const recargarProyecto = async (idProyecto) => {
   }
 }
 
+/**
+ * Actualiza todos los sheets de los proyectos de una empresa en base a la configuración actual de la empresa.
+ * @param {string} empresaId - ID de la empresa.
+ * @param {string|null} proyectoId - (opcional) ID de un proyecto específico a actualizar. Si es null, actualiza todos.
+ * @returns {Promise<{ success: boolean, detalles?: any }>} - Resultado de la operación.
+ */
+export const actualizarSheetsDesdeBaseEmpresa = async (empresaId, proyectoId = null) => {
+  try {
+    const response = await api.post('/proyecto/empresa/actualizar-base', {
+      empresaId,
+      proyectoId
+    });
+
+    if (response.status === 200) {
+      console.log('Proyectos actualizados con éxito:', response.data.detalles);
+      return { success: true, detalles: response.data.detalles };
+    } else {
+      console.error('Error en la respuesta:', response.data);
+      return { success: false };
+    }
+  } catch (err) {
+    console.error('Error al actualizar los proyectos con la base de la empresa:', err);
+    return { success: false, error: err.message };
+  }
+};
+
 export const hasPermission = async (fileId) => {
   try {
     const response = await api.get(`permisosDrive/${fileId}`);

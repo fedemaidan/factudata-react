@@ -206,7 +206,7 @@ const [unidadBaseMultiple, setUnidadBaseMultiple] = useState({
       <Button variant="outlined" onClick={() => setMostrarAcciones(prev => !prev)}>
   {mostrarAcciones ? 'Ocultar acciones' : 'Mostrar acciones'}
 </Button>
-<Collapse in={mostrarAcciones}>
+
 <Typography variant="h6" gutterBottom>
     Filtros
   </Typography>
@@ -233,6 +233,9 @@ const [unidadBaseMultiple, setUnidadBaseMultiple] = useState({
 
         <TextField label="Lote" value={filtroLote} onChange={e => setFiltroLote(e.target.value)} />
         <TextField label="Edificio" value={filtroEdificio} onChange={e => setFiltroEdificio(e.target.value)} />
+        </Box>
+        <Collapse in={mostrarAcciones}>
+        <Box >
         <Box mt={3}>
   <Typography variant="h6" gutterBottom>
     Formas de agregar unidades
