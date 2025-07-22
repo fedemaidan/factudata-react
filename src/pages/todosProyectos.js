@@ -312,32 +312,29 @@ const handleImportCsv = async () => {
   
   const exportAfipExcel = () => {
     const rows = movimientosFiltrados.map((mov) => {
-
-      // dame un mapper que mappee el tipo que viene del movimiento con el tipo que espera afip
       const camposAfip = {
         'FACTURA A': '1 - FACTURAS A',
         'FACTURA B': '6 - FACTURAS B',
         'FACTURA C': '11 - FACTURAS C',
       };
-
+  
       const iva = mov.impuestos?.find(i => i.nombre.includes('IVA'))?.monto || 0;
-      const otrosTributos = mov.impuestos?.filter(i => !i.nombre.includes('IVA')).reduce((acc, i) => acc + (i.monto || 0), 0) || 0;
-      
-      const proveedoresData = empresa.proveedores_data || [];
-      console.log('Proveedores Data:', proveedoresData);
-
-      const proveedor = proveedoresData.find(p => p.id === mov.id_proveedor);
-      const punto_venta = mov.numero_factura?.split('-')[0] || '';
+      const otrosTributos = mov.impuestos?.filter(i => !i.nombre.includes('IVA'))
+        .reduce((acc, i) => acc + (i.monto || 0), 0) || 0;
+  
+      const proveedor = (empresa.proveedores_data || []).find(p => p.id === mov.id_proveedor);
+      const punto_venta  = mov.numero_factura?.split('-')[0] || '';
       const numero_desde = mov.numero_factura?.split('-')[1] || '';
+  
       return {
         'Fecha': formatTimestamp(mov.fecha_factura),
-        'Tipo': camposAfip[mov.tipo_factura] || '', // deberías mapearlo a los códigos AFIP si los tenés
-        'Punto de Venta': parseInt(punto_venta) || '', // si tenés este dato
-        'Número Desde': parseInt(numero_desde) || '', // o separalo en 'desde' y 'hasta'
+        'Tipo': camposAfip[mov.tipo_factura] || '',
+        'Punto de Venta': parseInt(punto_venta) || '',
+        'Número Desde': parseInt(numero_desde) || '',
         'Número Hasta': '',
         'Cód. Autorización': '',
-        'Tipo Doc. Emisor': 'CUIT', // hardcodeado si no se guarda
-        'Nro. Doc. Emisor': proveedor?.cuit || '', // si lo tenés
+        'Tipo Doc. Emisor': 'CUIT',
+        'Nro. Doc. Emisor': proveedor?.cuit || '',
         'Denominación Emisor': proveedor?.razon_social || mov.nombre_proveedor || '',
         'Tipo Cambio': 1,
         'Moneda': mov.moneda === 'USD' ? 'U$S' : '$',
@@ -350,13 +347,28 @@ const handleImportCsv = async () => {
       };
     });
   
-    const worksheet = XLSX.utils.json_to_sheet(rows);
+    if (!rows.length) return;
+  
+    const headers = Object.keys(rows[0]);
+  
+    // AoA = Array of Arrays
+    const aoa = [
+      [],                  // Fila 1 vacía
+      headers,             // Fila 2: títulos
+      ...rows.map(r => headers.map(h => r[h] ?? '')) // Datos desde fila 3
+    ];
+  
+    const worksheet = XLSX.utils.aoa_to_sheet(aoa);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, 'AFIP Comprobantes');
+  
     const buffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
     const blob = new Blob([buffer], { type: 'application/octet-stream' });
-    saveAs(blob, 'Mis Comprobantes Recibidos - CUIT '+empresa?.cuit+'.xlsx');
-  };  
+    saveAs(blob, `Mis Comprobantes Recibidos - CUIT ${empresa?.cuit}.xlsx`);
+  };
+  
+  
+  
   
   const exportToCSV = () => {
     const camposExportables = {
