@@ -115,9 +115,23 @@ const MovementFormPage = () => {
       url_imagen: null,
       tags_extra: [],
       caja_chica: false,
-      medio_pago: ''
+      medio_pago: '',
+      impuestos: []
     },
     validationSchema: Yup.object({}),
+    validate: (values) => {
+          const errors = {};
+          const subtotal  = Number(values.subtotal) || 0;
+          const impTotal  = (values.impuestos || []).reduce((a, i) => a + (Number(i.monto) || 0), 0);
+          const total     = Number(values.total) || 0;
+          if (values.impuestos.length > 0 || values.subtotal > 0) {
+            if (Math.abs((subtotal + impTotal) - total) > 0.01) {
+              errors.total = `Subtotal (${subtotal.toFixed(2)}) + Impuestos (${impTotal.toFixed(2)}) ≠ Total (${total.toFixed(2)})`;
+            }
+          }
+          return errors;
+        },
+      
     onSubmit: async (values) => {
       setIsLoading(true);
       try {
@@ -129,6 +143,7 @@ const MovementFormPage = () => {
           user_phone: user.phone,
           tags_extra: values.tags_extra || [],
           url_imagen: movimiento?.url_imagen,
+          impuestos: values.impuestos || []
         };
         const result = isEditMode
           ? await movimientosService.updateMovimiento(movimientoId, { ...movimiento, ...payload })
@@ -159,7 +174,7 @@ const MovementFormPage = () => {
         const data = await movimientosService.getMovimientoById(movimientoId);
         data.fecha_factura = formatTimestamp(data.fecha_factura);
         setMovimiento(data);
-        formik.setValues({ ...data, tags_extra: data.tags_extra || [], caja_chica: data.caja_chica ?? false });
+        formik.setValues({ ...data, tags_extra: data.tags_extra || [], caja_chica: data.caja_chica ?? false, impuestos: data.impuestos || [] });
         const cat = cates.find(c => c.name === data.categoria);
         setCategoriaSeleccionada(cat);
       }

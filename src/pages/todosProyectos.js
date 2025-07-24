@@ -350,12 +350,16 @@ const handleImportCsv = async () => {
     if (!rows.length) return;
   
     const headers = Object.keys(rows[0]);
+    const fileTitle = `Mis Comprobantes Recibidos - CUIT ${empresa?.cuit}`;
   
-    // AoA = Array of Arrays
+    // Primera fila “vacía” pero con la columna I (índice 8) seteada
+    const firstRow = new Array(Math.max(headers.length, 9)).fill('');
+    firstRow[8] = fileTitle; // Columna I
+  
     const aoa = [
-      [],                  // Fila 1 vacía
-      headers,             // Fila 2: títulos
-      ...rows.map(r => headers.map(h => r[h] ?? '')) // Datos desde fila 3
+      firstRow,                           // Fila 1
+      headers,                            // Fila 2: títulos
+      ...rows.map(r => headers.map(h => r[h] ?? '')) // Datos
     ];
   
     const worksheet = XLSX.utils.aoa_to_sheet(aoa);
@@ -364,7 +368,7 @@ const handleImportCsv = async () => {
   
     const buffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
     const blob = new Blob([buffer], { type: 'application/octet-stream' });
-    saveAs(blob, `Mis Comprobantes Recibidos - CUIT ${empresa?.cuit}.xlsx`);
+    saveAs(blob, `${fileTitle}.xlsx`);
   };
   
   
