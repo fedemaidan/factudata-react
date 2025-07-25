@@ -488,8 +488,8 @@ const PresupuestosPage = () => {
                       <TableCell>{p.proveedor || '-'}</TableCell>
                       <TableCell>{p.etapa || '-'}</TableCell>
                       <TableCell>{proyectos.find(pr => pr.id === p.proyecto_id)?.nombre || '-'}</TableCell>
-                      <TableCell>{p.categoria || <em>(General)</em>}</TableCell>
-                      <TableCell>{p.subcategoria || <em>(General)</em>}</TableCell>
+                      <TableCell>{p.categoria ||'-'}</TableCell>
+                      <TableCell>{p.subcategoria || '-'}</TableCell>
                       <TableCell>{formatCurrency(p.ejecutado || 0)}</TableCell>
                       <TableCell>{formatCurrency(p.monto - p.ejecutado || p.monto)}</TableCell>
                       <TableCell>
