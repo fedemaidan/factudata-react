@@ -3,9 +3,6 @@ import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import Head from 'next/head';
 import { Box, Container, Stack, Chip, Typography, TextField, InputAdornment, Paper, Card, CardContent, Button, Select, MenuItem, FormControl, InputLabel, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, useMediaQuery, IconButton, Fab, Menu, Table, TableBody, TableCell, TableHead, TableRow, MenuItem as MenuOption, Divider } from '@mui/material';
 import { useTheme } from '@mui/material/styles';
-import SearchIcon from '@mui/icons-material/Search';
-import AddCircle from '@mui/icons-material/AddCircle';
-import GridOnIcon from '@mui/icons-material/GridOn';
 import FilterListIcon from '@mui/icons-material/FilterList';
 import AddCircleIcon from '@mui/icons-material/AddCircle';
 import RefreshIcon from '@mui/icons-material/Refresh';
@@ -23,6 +20,39 @@ import { useAuthContext } from 'src/contexts/auth-context';
 import { getEmpresaDetailsFromUser, updateEmpresaDetails } from 'src/services/empresaService'; 
 import { getProyectosByEmpresa } from 'src/services/proyectosService';
 import { formatTimestamp } from 'src/utils/formatters';
+import { useMovimientosFilters } from 'src/hooks/useMovimientosFilters';
+import { FilterBarCajaProyecto } from 'src/components/FilterBarCajaProyecto';
+
+
+const TotalesFiltrados = ({ t, fmt, moneda }) => {
+  const up = moneda.toUpperCase();
+  const ingreso = t[up]?.ingreso ?? 0;
+  const egreso  = t[up]?.egreso  ?? 0;
+  const neto    = ingreso - egreso;
+
+  return (
+    <Box sx={{ bgcolor: 'action.hover', p: 2, borderRadius: 1, mb: 2 }}>
+      <Typography variant="subtitle2" sx={{ mb: 1 }}>
+        Totales filtrados ({up})
+      </Typography>
+
+      <Stack direction="row" spacing={2} flexWrap="wrap">
+        <Typography sx={{ color: 'success.main', fontWeight: 600 }}>
+          + {fmt(up, ingreso)}
+        </Typography>
+        <Typography sx={{ color: 'error.main', fontWeight: 600 }}>
+          - {fmt(up, egreso)}
+        </Typography>
+        <Typography
+          sx={{ color: neto >= 0 ? 'success.main' : 'error.main', fontWeight: 700 }}
+        >
+          Neto: {fmt(up, neto)}
+        </Typography>
+      </Stack>
+    </Box>
+  );
+};
+
 
 
 const ProyectoMovimientosPage = () => {
@@ -39,8 +69,6 @@ const ProyectoMovimientosPage = () => {
   const [deletingElement, setDeletingElement] = useState(null);
   const [openDialog, setOpenDialog] = useState(false);
   const [movimientoAEliminar, setMovimientoAEliminar] = useState(null);
-  const [filtroDias, setFiltroDias] = useState('730');
-  const [filtroObs, setFiltroObs] = useState('');
   const [alert, setAlert] = useState({
     open: false,
     message: '',
@@ -65,6 +93,20 @@ const ProyectoMovimientosPage = () => {
   const [anchorCajaEl, setAnchorCajaEl] = useState(null);
   const [cajaMenuIndex, setCajaMenuIndex] = useState(null);
   
+  const {
+    filters,
+    setFilters,
+    options,
+    movimientosFiltrados,
+    totales
+  } = useMovimientosFilters({
+    empresaId: empresa?.id,
+    proyectoId,
+    movimientos,
+    movimientosUSD,
+    cajaSeleccionada
+  });
+
   const handleOpenCajaMenu = (event, index) => {
     setAnchorCajaEl(event.currentTarget);
     setCajaMenuIndex(index);
@@ -258,62 +300,62 @@ const ProyectoMovimientosPage = () => {
     }, 0);
   }, [movimientosUSD]);
 
+  const onSelectCaja = (caja) => {
+    setCajaSeleccionada(caja);
+    setFilters((f) => ({ ...f, caja }));
+  };
+  
   // const movimientosFiltrados = useMemo(() => {
   //   const hoy = new Date();
-  //   const filtrados = movimientos.filter((mov) => {
+  
+  //   const baseMovimientos = cajaSeleccionada?.moneda === 'USD' ? movimientosUSD : movimientos;
+  
+  //   return baseMovimientos.filter((mov) => {
   //     const fechaMovimiento = new Date(formatTimestamp(mov.fecha_factura));
   //     const diferenciaDias = (hoy - fechaMovimiento) / (1000 * 60 * 60 * 24);
-  //     mov.observacion = mov.observacion ? mov.observacion : "";
-  //     return diferenciaDias <= filtroDias && (mov.observacion.toLowerCase().includes(filtroObs.toLowerCase()));
-  //   });
+  //     mov.observacion = mov.observacion || "";
+  
+  //     const matchMedioPago = cajaSeleccionada?.medio_pago
+  //       ? mov.medio_pago === cajaSeleccionada.medio_pago
+  //       : true;
+  
+  //     return diferenciaDias <= filtroDias &&
+  //            mov.observacion.toLowerCase().includes(filtroObs.toLowerCase()) &&
+  //            matchMedioPago;
+  //   }).sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
+  // }, [movimientos, movimientosUSD, filtroDias, filtroObs, cajaSeleccionada]);
+  
+  const totalesDetallados = useMemo(() => {
+    const base = {
+      ARS: { ingreso: 0, egreso: 0 },
+      USD: { ingreso: 0, egreso: 0 },
+    };
+  
+    movimientosFiltrados.forEach((m) => {
+      const moneda = (m.moneda || 'ARS').toUpperCase();
+      const tipo = m.type === 'ingreso' ? 'ingreso' : 'egreso';
+      if (!base[moneda]) base[moneda] = { ingreso: 0, egreso: 0 };
+      base[moneda][tipo] += m.total || 0;
+    });
+  
+    return base;
+  }, [movimientosFiltrados]);
 
-  //   filtrados.sort((a, b) => {
-  //     const fechaA = new Date(a.fecha);
-  //     const fechaB = new Date(b.fecha);
-  //     return fechaB - fechaA;
-  //   });
+  const formatByCurrency = (currency, amount) => {
+    const cur = currency === 'USD' ? 'USD' : 'ARS';
+    return amount?.toLocaleString('es-AR', {
+      style: 'currency',
+      currency: cur,
+      minimumFractionDigits: 2
+    }) ?? (cur === 'USD' ? 'US$ 0,00' : '$ 0,00');
+  };
 
-  //   return filtrados;
-  // }, [movimientos, filtroDias, filtroObs]);
+  const columnsCount = 11 // Código, Fecha, Tipo, Total, Categoria, Proveedor, Observación, TC, USD BLUE, (Estado opc.), Acciones
+  + (empresa?.comprobante_info?.subcategoria ? 1 : 0)
+  + (empresa?.comprobante_info?.medio_pago ? 1 : 0)
+  + (empresa?.con_estados ? 1 : 0);
 
-  // const movimientosFiltradosUSD = useMemo(() => {
-  //   const hoy = new Date();
-  //   const filtrados = movimientosUSD.filter((mov) => {
-  //     const fechaMovimiento = new Date(formatTimestamp(mov.fecha_factura));
-  //     const diferenciaDias = (hoy - fechaMovimiento) / (1000 * 60 * 60 * 24);
-  //     mov.observacion = mov.observacion ? mov.observacion : "";
-  //     return diferenciaDias <= filtroDias && (mov.observacion.toLowerCase().includes(filtroObs.toLowerCase()));
-  //   });
 
-  //   filtrados.sort((a, b) => {
-  //     const fechaA = new Date(a.fecha);
-  //     const fechaB = new Date(b.fecha);
-  //     return fechaB - fechaA;
-  //   });
-
-  //   return filtrados;
-  // }, [movimientosUSD, filtroDias, filtroObs]);
-  const movimientosFiltrados = useMemo(() => {
-    const hoy = new Date();
-  
-    const baseMovimientos = cajaSeleccionada?.moneda === 'USD' ? movimientosUSD : movimientos;
-  
-    return baseMovimientos.filter((mov) => {
-      const fechaMovimiento = new Date(formatTimestamp(mov.fecha_factura));
-      const diferenciaDias = (hoy - fechaMovimiento) / (1000 * 60 * 60 * 24);
-      mov.observacion = mov.observacion || "";
-  
-      const matchMedioPago = cajaSeleccionada?.medio_pago
-        ? mov.medio_pago === cajaSeleccionada.medio_pago
-        : true;
-  
-      return diferenciaDias <= filtroDias &&
-             mov.observacion.toLowerCase().includes(filtroObs.toLowerCase()) &&
-             matchMedioPago;
-    }).sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
-  }, [movimientos, movimientosUSD, filtroDias, filtroObs, cajaSeleccionada]);
-  
-  
   const calcularTotalParaCaja = (caja) => {
     const baseMovimientos = caja.moneda === 'USD' ? movimientosUSD : movimientos;
   
@@ -435,7 +477,7 @@ const ProyectoMovimientosPage = () => {
     <Button
       fullWidth
       variant={cajaSeleccionada?.nombre === caja.nombre ? "contained" : "outlined"}
-      onClick={() => setCajaSeleccionada(caja)}
+      onClick={() => onSelectCaja(caja)}
       sx={{ justifyContent: 'space-between', pl: 2, pr: 5 }}
     >
       <Typography>{caja.nombre}</Typography>
@@ -492,66 +534,27 @@ const ProyectoMovimientosPage = () => {
   </DialogActions>
 </Dialog>
 
-            {filtrosActivos && (
-              <Stack direction="row" spacing={2} alignItems="center">
-                <FormControl>
-                  <InputLabel>Filtrar por días</InputLabel>
-                  <Select
-                    value={filtroDias}
-                    onChange={(e) => setFiltroDias(e.target.value)}
-                    label="Filtrar por días"
-                  >
-                    <MenuItem value="15">Últimos 15 días</MenuItem>
-                    <MenuItem value="30">Últimos 30 días</MenuItem>
-                    <MenuItem value="60">Últimos 60 días</MenuItem>
-                    <MenuItem value="90">Últimos 90 días</MenuItem>
-                    <MenuItem value="365">Último año</MenuItem>
-                    <MenuItem value="730">Últimos 2 años</MenuItem>
-                    <MenuItem value="999999999999999">Sin filtro</MenuItem>
-                  </Select>
-                </FormControl>
-                <TextField
-                  label="Buscar por Observación"
-                  variant="outlined"
-                  onChange={(e) => setFiltroObs(e.target.value)}
-                  InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <SearchIcon />
-                      </InputAdornment>
-                    ),
-                  }}
-                />
-                
-                {empresa?.solo_dolar &&  
-                <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                  <input
-                    type="checkbox"
-                    checked={showPesos}
-                    onChange={(e) => setShowPesos(e.target.checked)}
-                    style={{ marginRight: '8px' }}
-                  />
-                  <Typography>Mostrar pesos</Typography>
-                </Box> }
-                {empresa?.solo_dolar &&  
-                <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                  <input
-                    type="checkbox"
-                    checked={showDolar}
-                    onChange={(e) => setShowDolar(e.target.checked)}
-                    style={{ marginRight: '8px' }}
-                  />
-                  <Typography>Mostrar dólares</Typography>
-                </Box> }
-              </Stack>
-            )}
+{filtrosActivos && (
+  <FilterBarCajaProyecto
+    filters={filters}
+    setFilters={setFilters}
+    options={options}
+    onRefresh={handleRefresh}
+  />
+)}
             <Paper>
               <Snackbar open={alert.open} autoHideDuration={6000} onClose={handleCloseAlert}>
                 <Alert onClose={handleCloseAlert} severity={alert.severity} sx={{ width: '100%' }}>
                   {alert.message}
                 </Alert>
               </Snackbar>
-              
+              <Stack spacing={1}>
+              <TotalesFiltrados
+  t={totalesDetallados}
+  fmt={formatByCurrency}
+  moneda={cajaSeleccionada?.moneda || 'ARS'}
+/>
+              </Stack>
                 {isMobile ? (
                   <Stack spacing={2}>
                     {movimientosFiltrados.map((mov, index) => (
@@ -587,6 +590,7 @@ const ProyectoMovimientosPage = () => {
                         </CardContent>
                       </Card>
                     ))}
+                    
                   </Stack>
                 ) : (
                   <Table>
