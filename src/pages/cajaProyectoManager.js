@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
+import React, { useState, useEffect } from "react";
+import { Layout as DashboardLayout } from "src/layouts/dashboard/layout";
 import {
   Box,
   Typography,
@@ -12,13 +12,13 @@ import {
   Divider,
   Grid,
   Collapse,
-  Chip
-} from '@mui/material';
-import { Add, Edit, Delete, ExpandMore, ExpandLess } from '@mui/icons-material';
-import { getProyectosByEmpresa, updateProyecto } from 'src/services/proyectosService';
-import { useRouter } from 'next/router';
-import { getEmpresaById } from 'src/services/empresaService';
-import { formatCurrency } from 'src/utils/formatters';
+  Chip,
+} from "@mui/material";
+import { Delete, ExpandMore, ExpandLess } from "@mui/icons-material";
+import { getProyectosByEmpresa, updateProyecto } from "src/services/proyectosService";
+import { useRouter } from "next/router";
+import { getEmpresaById } from "src/services/empresaService";
+import { formatCurrency } from "src/utils/formatters";
 
 export const CajaProyectoManager = () => {
   const router = useRouter();
@@ -27,7 +27,12 @@ export const CajaProyectoManager = () => {
   const [empresa, setEmpresa] = useState(null);
   const [proyectos, setProyectos] = useState([]);
   const [expandedProyectoId, setExpandedProyectoId] = useState(null);
-  const [nuevoSubproyecto, setNuevoSubproyecto] = useState({ nombre: '', valor: '', estado: '', meses: '' });
+  const [nuevoSubproyecto, setNuevoSubproyecto] = useState({
+    nombre: "",
+    valor: "",
+    estado: "",
+    meses: "",
+  });
 
   useEffect(() => {
     const fetchData = async () => {
@@ -43,18 +48,18 @@ export const CajaProyectoManager = () => {
   }, [empresaId]);
 
   const handleAgregarSubproyecto = async (proyectoId) => {
-    const proyecto = proyectos.find(p => p.id === proyectoId);
+    const proyecto = proyectos.find((p) => p.id === proyectoId);
     const nuevos = [...(proyecto.subproyectos || []), nuevoSubproyecto];
     console.log(nuevos, "nuevos subproyectos");
     await updateProyecto(proyectoId, { subproyectos: nuevos });
-    
+
     // setNuevoSubproyecto({ nombre: '', valor: '', estado: '', meses: '' });
     const proyectosActualizados = await getProyectosByEmpresa(empresa);
     setProyectos(proyectosActualizados);
   };
 
   const handleEliminarSubproyecto = async (proyectoId, index) => {
-    const proyecto = proyectos.find(p => p.id === proyectoId);
+    const proyecto = proyectos.find((p) => p.id === proyectoId);
     const nuevos = proyecto.subproyectos.filter((_, i) => i !== index);
     await updateProyecto(proyectoId, { subproyectos: nuevos });
     const proyectosActualizados = await getProyectosByEmpresa(empresa);
@@ -62,22 +67,29 @@ export const CajaProyectoManager = () => {
   };
 
   const calcularTotales = (proyecto) => {
-    const acumuladoEstimado = proyecto.subproyectos?.reduce((acc, sp) => acc + (Number(sp.valor) || 0), 0) || 0;
-    const acumuladoVenta = proyecto.subproyectos?.filter(sp => sp.estado === 'Vendido')
-      .reduce((acc, sp) => acc + (Number(sp.valor) || 0), 0) || 0;
+    const acumuladoEstimado =
+      proyecto.subproyectos?.reduce((acc, sp) => acc + (Number(sp.valor) || 0), 0) || 0;
+    const acumuladoVenta =
+      proyecto.subproyectos
+        ?.filter((sp) => sp.estado === "Vendido")
+        .reduce((acc, sp) => acc + (Number(sp.valor) || 0), 0) || 0;
     return { acumuladoEstimado, acumuladoVenta };
   };
 
   const toggleExpand = (proyectoId) => {
-    setExpandedProyectoId(prev => (prev === proyectoId ? null : proyectoId));
+    setExpandedProyectoId((prev) => (prev === proyectoId ? null : proyectoId));
   };
 
   const getEstadoChipColor = (estado) => {
     switch (estado?.toLowerCase()) {
-      case 'vendido': return 'success';
-      case 'disponible': return 'info';
-      case 'alquilado': return 'warning';
-      default: return 'default';
+      case "vendido":
+        return "success";
+      case "disponible":
+        return "info";
+      case "alquilado":
+        return "warning";
+      default:
+        return "default";
     }
   };
 
@@ -95,7 +107,9 @@ export const CajaProyectoManager = () => {
           <Card key={proyecto.id} sx={{ mb: 3 }}>
             <CardHeader
               title={proyecto.nombre}
-              subheader={`Estimado: ${formatCurrency(acumuladoEstimado)} | Vendido: ${formatCurrency(acumuladoVenta)}`}
+              subheader={`Estimado: ${formatCurrency(
+                acumuladoEstimado
+              )} | Vendido: ${formatCurrency(acumuladoVenta)}`}
               action={
                 <IconButton onClick={() => toggleExpand(proyecto.id)}>
                   {isExpanded ? <ExpandLess /> : <ExpandMore />}
@@ -104,54 +118,119 @@ export const CajaProyectoManager = () => {
             />
             <Collapse in={isExpanded} timeout="auto" unmountOnExit>
               <CardContent>
-              <Box mb={2}>
-  
-  {(() => {
-    const agrupados = {};
+                <Box mb={2}>
+                  {(() => {
+                    const agrupados = {};
 
-    proyecto.subproyectos?.forEach((sp, index) => {
-      const path = (sp.path || ['Sin grupo']).join(' / ');
-      if (!agrupados[path]) agrupados[path] = [];
-      agrupados[path].push({ ...sp, index });
-    });
+                    proyecto.subproyectos?.forEach((sp, index) => {
+                      const path = (sp.path || ["Sin grupo"]).join(" / ");
+                      if (!agrupados[path]) agrupados[path] = [];
+                      agrupados[path].push({ ...sp, index });
+                    });
 
-    return Object.entries(agrupados).map(([grupo, items]) => {
-      const totalEstimado = items.reduce((acc, sp) => acc + (parseFloat(sp.valor) || 0), 0);
-      const totalVendido = items
-        .filter(sp => sp.estado?.toLowerCase() === 'vendido')
-        .reduce((acc, sp) => acc + (parseFloat(sp.valor) || 0), 0);
+                    return Object.entries(agrupados).map(([grupo, items]) => {
+                      const totalEstimado = items.reduce(
+                        (acc, sp) => acc + (parseFloat(sp.valor) || 0),
+                        0
+                      );
+                      const totalVendido = items
+                        .filter((sp) => sp.estado?.toLowerCase() === "vendido")
+                        .reduce((acc, sp) => acc + (parseFloat(sp.valor) || 0), 0);
 
-      return (
-        <Box key={grupo} ml={2} mb={2}>
-          <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mt: 1 }}>
-            {grupo} – Estimado: {formatCurrency(totalEstimado)} | Vendido: {formatCurrency(totalVendido)}
-          </Typography>
-          {items.map(({ nombre, valor, estado, meses, index }) => (
-            <Box key={index} display="flex" alignItems="center" justifyContent="space-between" my={0.5}>
-              <Box display="flex" alignItems="center" gap={1}>
-                <Typography>{nombre} - {formatCurrency(parseFloat(valor))}</Typography>
-                <Chip label={estado} color={getEstadoChipColor(estado)} size="small" />
-                {estado?.toLowerCase() === 'alquilado' && <Typography>({meses} meses)</Typography>}
-              </Box>
-              <IconButton onClick={() => handleEliminarSubproyecto(proyecto.id, index)}><Delete /></IconButton>
-            </Box>
-          ))}
-        </Box>
-      );
-    });
-  })()}
-</Box>
-
+                      return (
+                        <Box key={grupo} ml={2} mb={2}>
+                          <Typography variant="subtitle2" sx={{ fontWeight: "bold", mt: 1 }}>
+                            {grupo} – Estimado: {formatCurrency(totalEstimado)} | Vendido:{" "}
+                            {formatCurrency(totalVendido)}
+                          </Typography>
+                          {items.map(({ nombre, valor, estado, meses, index }) => (
+                            <Box
+                              key={index}
+                              display="flex"
+                              alignItems="center"
+                              justifyContent="space-between"
+                              my={0.5}
+                            >
+                              <Box display="flex" alignItems="center" gap={1}>
+                                <Typography>
+                                  {nombre} - {formatCurrency(parseFloat(valor))}
+                                </Typography>
+                                <Chip
+                                  label={estado}
+                                  color={getEstadoChipColor(estado)}
+                                  size="small"
+                                />
+                                {estado?.toLowerCase() === "alquilado" && (
+                                  <Typography>({meses} meses)</Typography>
+                                )}
+                              </Box>
+                              <IconButton
+                                onClick={() => handleEliminarSubproyecto(proyecto.id, index)}
+                              >
+                                <Delete />
+                              </IconButton>
+                            </Box>
+                          ))}
+                        </Box>
+                      );
+                    });
+                  })()}
+                </Box>
 
                 <Divider />
                 <Box mt={2}>
                   <Typography variant="subtitle1">Agregar Subproyecto</Typography>
                   <Grid container spacing={2} mt={1}>
-                    <Grid item xs={3}><TextField label="Nombre" value={nuevoSubproyecto.nombre} onChange={(e) => setNuevoSubproyecto({ ...nuevoSubproyecto, nombre: e.target.value })} fullWidth /></Grid>
-                    <Grid item xs={2}><TextField label="Valor" type="number" value={nuevoSubproyecto.valor} onChange={(e) => setNuevoSubproyecto({ ...nuevoSubproyecto, valor: e.target.value })} fullWidth /></Grid>
-                    <Grid item xs={3}><TextField label="Estado" value={nuevoSubproyecto.estado} onChange={(e) => setNuevoSubproyecto({ ...nuevoSubproyecto, estado: e.target.value })} fullWidth /></Grid>
-                    <Grid item xs={2}><TextField label="Meses" type="number" value={nuevoSubproyecto.meses} onChange={(e) => setNuevoSubproyecto({ ...nuevoSubproyecto, meses: e.target.value })} fullWidth /></Grid>
-                    <Grid item xs={2}><Button variant="contained" onClick={() => handleAgregarSubproyecto(proyecto.id)}>Agregar</Button></Grid>
+                    <Grid item xs={3}>
+                      <TextField
+                        label="Nombre"
+                        value={nuevoSubproyecto.nombre}
+                        onChange={(e) =>
+                          setNuevoSubproyecto({ ...nuevoSubproyecto, nombre: e.target.value })
+                        }
+                        fullWidth
+                      />
+                    </Grid>
+                    <Grid item xs={2}>
+                      <TextField
+                        label="Valor"
+                        type="number"
+                        value={nuevoSubproyecto.valor}
+                        onChange={(e) =>
+                          setNuevoSubproyecto({ ...nuevoSubproyecto, valor: e.target.value })
+                        }
+                        fullWidth
+                      />
+                    </Grid>
+                    <Grid item xs={3}>
+                      <TextField
+                        label="Estado"
+                        value={nuevoSubproyecto.estado}
+                        onChange={(e) =>
+                          setNuevoSubproyecto({ ...nuevoSubproyecto, estado: e.target.value })
+                        }
+                        fullWidth
+                      />
+                    </Grid>
+                    <Grid item xs={2}>
+                      <TextField
+                        label="Meses"
+                        type="number"
+                        value={nuevoSubproyecto.meses}
+                        onChange={(e) =>
+                          setNuevoSubproyecto({ ...nuevoSubproyecto, meses: e.target.value })
+                        }
+                        fullWidth
+                      />
+                    </Grid>
+                    <Grid item xs={2}>
+                      <Button
+                        variant="contained"
+                        onClick={() => handleAgregarSubproyecto(proyecto.id)}
+                      >
+                        Agregar
+                      </Button>
+                    </Grid>
                   </Grid>
                 </Box>
               </CardContent>
@@ -163,10 +242,6 @@ export const CajaProyectoManager = () => {
   );
 };
 
-CajaProyectoManager.getLayout = (page) => (
-  <DashboardLayout>
-    {page}
-  </DashboardLayout>
-);
+CajaProyectoManager.getLayout = (page) => <DashboardLayout>{page}</DashboardLayout>;
 
 export default CajaProyectoManager;

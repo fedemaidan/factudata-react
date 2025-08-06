@@ -74,8 +74,8 @@ export const SideNav = (props) => {
       } else if (user.email == "martin.bejarano@sorbydata.com") {
         const onboardingPage = [
           {
-            title: "Celulandia",
-            path: "/comprobantesCelulandia",
+            title: "Comprobantes",
+            path: "/celulandia/comprobantes",
             icon: (
               <SvgIcon fontSize="small">
                 <DashboardIcon />
@@ -83,11 +83,29 @@ export const SideNav = (props) => {
             ),
           },
           {
-            title: "Clientes",
-            path: "/clientesCelulandia",
+            title: "Entregas",
+            path: "/celulandia/entregas",
+            icon: (
+              <SvgIcon fontSize="small">
+                <DashboardIcon />
+              </SvgIcon>
+            ),
+          },
+          {
+            title: "Cuenta Corriente",
+            path: "/celulandia/clientes",
             icon: (
               <SvgIcon fontSize="small">
                 <PeopleIcon />
+              </SvgIcon>
+            ),
+          },
+          {
+            title: "Pagos",
+            path: "/celulandia/pagos",
+            icon: (
+              <SvgIcon fontSize="small">
+                <AttachMoneyIcon />
               </SvgIcon>
             ),
           },

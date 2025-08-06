@@ -1,26 +1,25 @@
 {
-  "extends": "next/core-web-vitals",
-  "parser": "@babel/eslint-parser",
+  "env": {
+    "browser": true,
+    "es2021": true,
+    "node": true
+  },
+  "extends": ["eslint:recommended", "plugin:react/recommended", "plugin:react-hooks/recommended"],
   "parserOptions": {
-    "ecmaVersion": 2020,
-    "sourceType": "module",
     "ecmaFeatures": {
       "jsx": true
     },
-    "requireConfigFile": false,
-    "babelOptions": {
-      "presets": ["next/babel"]
-    }
+    "ecmaVersion": 12,
+    "sourceType": "module"
   },
+  "plugins": ["react", "react-hooks"],
   "settings": {
     "react": {
       "version": "detect"
     }
   },
   "rules": {
-    "@next/next/no-img-element": "off",
-    "jsx-a11y/alt-text": "off",
     "react/display-name": "off",
-    "react/jsx-max-props-per-line": ["off"]
+    "react/prop-types": "off"
   }
 }

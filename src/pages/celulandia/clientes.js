@@ -1,4 +1,5 @@
-import { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useCallback } from "react";
+import { useRouter } from "next/router";
 import { Layout as DashboardLayout } from "src/layouts/dashboard/layout";
 import Head from "next/head";
 import {
@@ -21,17 +22,14 @@ import celulandiaService from "src/services/celulandiaService";
 import { formatCurrency } from "src/utils/formatters";
 
 const ClientesCelulandiaPage = () => {
+  const router = useRouter();
   const [clientes, setClientes] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [busqueda, setBusqueda] = useState("");
   const [ordenCampo, setOrdenCampo] = useState("cliente");
   const [ordenDireccion, setOrdenDireccion] = useState("asc");
 
-  useEffect(() => {
-    fetchData();
-  }, []);
-
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     setIsLoading(true);
     try {
       const data = await celulandiaService.getClientesTotales();
@@ -42,7 +40,11 @@ const ClientesCelulandiaPage = () => {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   const formatearMonto = (monto) => {
     if (monto === undefined || monto === null) return "-";
@@ -104,10 +106,14 @@ const ClientesCelulandiaPage = () => {
 
   const clientesAMostrar = clientesOrdenados;
 
+  const handleRowClick = (cliente) => {
+    router.push(`/clientes/${cliente}`);
+  };
+
   return (
     <>
       <Head>
-        <title>Clientes Celulandia | FactuData</title>
+        <title>Clientes Celulandia</title>
       </Head>
       <Box
         component="main"
@@ -215,7 +221,16 @@ const ClientesCelulandiaPage = () => {
                     </TableHead>
                     <TableBody>
                       {clientesAMostrar.map((cliente, index) => (
-                        <TableRow key={index}>
+                        <TableRow
+                          key={index}
+                          onClick={() => handleRowClick(cliente.cliente)}
+                          sx={{
+                            cursor: "pointer",
+                            "&:hover": {
+                              backgroundColor: "action.hover",
+                            },
+                          }}
+                        >
                           <TableCell sx={{ fontWeight: "medium" }}>{cliente.cliente}</TableCell>
                           <TableCell>{formatearMonto(cliente.ARS)}</TableCell>
                           <TableCell>{formatearMonto(cliente["USD BLUE"])}</TableCell>

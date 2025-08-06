@@ -130,6 +130,18 @@ const celulandiaService = {
     }
   },
 
+  // Obtener movimientos por cliente
+  getMovimientosByCliente: async (cliente) => {
+    try {
+      await delay(300);
+      const movimientos = mockData.movimientos.filter((m) => m.cliente === cliente);
+      return movimientos;
+    } catch (err) {
+      console.error("Error al obtener movimientos por cliente:", err);
+      return [];
+    }
+  },
+
   // Obtener estadísticas básicas
   getEstadisticas: async () => {
     try {
