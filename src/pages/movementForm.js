@@ -18,15 +18,8 @@ import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import movimientosService from 'src/services/movimientosService';
 import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
 import { useAuthContext } from 'src/contexts/auth-context';
-import { Timestamp } from 'firebase/firestore';
-import { formatTimestamp } from 'src/utils/formatters';
+import { dateToTimestamp, formatTimestamp } from 'src/utils/formatters';
 import MovementFields from 'src/components/movementFields';
-
-const dateToTimestamp = (dateString) => {
-  if (!dateString) return null;
-  const [year, month, day] = dateString.split('-').map(Number);
-  return Timestamp.fromDate(new Date(year, month - 1, day, 13, 30));
-};
 
 const MovementFormPage = () => {
   const { user } = useAuthContext();

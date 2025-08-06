@@ -104,6 +104,33 @@ const AcopioService = {
     }
   },
   
+  extraerCompraInit: async (archivo, archivo_url) => {
+    try {
+      const formData = new FormData();
+      if (archivo) formData.append('archivo', archivo);
+      if (archivo_url) formData.append('archivo_url', archivo_url);
+  
+      const response = await api.post(`/acopio/compra/extraer/init`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+  
+      return response.data.taskId;
+    } catch (error) {
+      console.error('❌ Error al iniciar extracción asincrónica:', error);
+      throw error;
+    }
+  },
+  
+  consultarEstadoExtraccion: async (taskId) => {
+    try {
+      const response = await api.get(`/acopio/compra/extraer/status/${taskId}`);
+      return response.data;
+    } catch (error) {
+      console.error('❌ Error al consultar estado de extracción:', error);
+      throw error;
+    }
+  },
+  
 
   /**
    * Obtiene la lista de acopios de una empresa

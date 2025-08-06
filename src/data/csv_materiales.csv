@@ -1,0 +1,4 @@
+etapa,nombre,cantidad,unidad,precio_estimado
+Estructura,Hormigón,100,m3,100000
+Estructura,Hierro,50,kg,50000
+Terminaciones,Pintura,200,lts,30000

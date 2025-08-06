@@ -53,13 +53,7 @@ const handlers = {
         const router = useRouter();
         router.push("/materiales")
       }
-    } else {
-      if (user.proyectos.length == 1) {
-        const router = useRouter();
-        router.push("/cajaProyecto")
-    }      
-
-    }
+    } 
     return newState;
   },
   [HANDLERS.SIGN_OUT]: (state) => {

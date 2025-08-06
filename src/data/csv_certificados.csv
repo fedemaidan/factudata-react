@@ -1,0 +1,7 @@
+etapa,descripcion,responsable,comienza,fin,completado
+Movimiento de suelo,Excavación de terreno,Excavaciones S.A.,2025-08-01,2025-08-03,100
+Movimiento de suelo,Relleno y compactación,Suelos Argentinos,2025-08-04,2025-08-06,100
+Cimientos,Encofrado de zapatas,Hormiconstru,2025-08-07,2025-08-10,50
+Cimientos,Colado de hormigón,Hormiconstru,2025-08-11,2025-08-13,0
+Mampostería,Levantamiento de muros,Albañilería Norte,2025-08-14,2025-08-18,0
+Mampostería,Aperturas y dinteles,Albañilería Norte,2025-08-19,2025-08-21,0

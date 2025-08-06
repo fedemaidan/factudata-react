@@ -1,3 +1,5 @@
+import { Timestamp } from 'firebase/firestore';
+
 const formatTimestamp = (timestamp) => {
   if (!timestamp) return '';
 
@@ -40,4 +42,10 @@ const formatTimestamp = (timestamp) => {
   };
   
 
-export {formatTimestamp, formatCurrency, toDateFromFirestore};
+  const dateToTimestamp = (dateString) => {
+    if (!dateString) return null;
+    const [year, month, day] = dateString.split('-').map(Number);
+    return Timestamp.fromDate(new Date(year, month - 1, day, 13, 30));
+  };
+
+export {formatTimestamp, formatCurrency, toDateFromFirestore, dateToTimestamp};

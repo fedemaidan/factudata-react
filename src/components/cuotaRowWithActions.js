@@ -5,7 +5,7 @@ import {
 } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
-import { formatCurrency, formatTimestamp } from 'src/utils/formatters';
+import { dateToTimestamp, formatCurrency, formatTimestamp } from 'src/utils/formatters';
 import CuentasPendientesService from 'src/services/cuentasPendientesService';
 import ConversorMonedaService from 'src/services/conversorMonedasService';
 import debounce from 'lodash/debounce';
@@ -17,7 +17,8 @@ export const CuotaRowWithActions = ({ cuota, cuentaId, onActualizar }) => {
   const [fechaEditada, setFechaEditada] = useState(formatTimestamp(cuota.fecha_vencimiento));
   const [openPago, setOpenPago] = useState(false);
   const [montoConvertido, setMontoConvertido] = useState(null);
-const [loadingConversion, setLoadingConversion] = useState(false);
+    const [loadingConversion, setLoadingConversion] = useState(false);
+    const [guardando, setGuardando] = useState(false);
 
   const [pago, setPago] = useState({
     monto: cuota.moneda_nominal == 'CAC' ? 0 : cuota.monto_nominal,
@@ -58,16 +59,26 @@ const [loadingConversion, setLoadingConversion] = useState(false);
 
   const handleGuardar = async () => {
     try {
+      setGuardando(true);
+      const fechaConHora = dateToTimestamp(fechaEditada)
+      cuota.fecha_vencimiento = "actualizando";
+      cuota.monto_nominal = parseFloat(montoEditado);
       await CuentasPendientesService.editarCuota(cuentaId, cuota.id, {
         monto_nominal: parseFloat(montoEditado),
-        fecha_vencimiento: new Date(fechaEditada)
+        fecha_vencimiento: fechaConHora,
       });
+
+      setGuardando(false);
+      
       setOpen(false);
-      onActualizar?.();
+      // Luego refrescás si querés asegurar consistencia completa
+      onActualizar?.(); 
     } catch (err) {
       console.error('Error actualizando cuota:', err);
     }
   };
+  
+  
 
   const handleEliminar = async () => {
     const confirmar = confirm('¿Estás seguro de que querés eliminar esta cuota?');
@@ -84,7 +95,7 @@ const [loadingConversion, setLoadingConversion] = useState(false);
     <TableRow>
       <TableCell>{cuota.numero ?? '-'}</TableCell>
       <TableCell>{formatCurrency(cuota.monto_nominal)}</TableCell>
-      <TableCell>{formatTimestamp(cuota.fecha_vencimiento)}</TableCell>
+      <TableCell>{cuota.fecha_vencimiento == 'actualizando' ? "Actualizando.." : formatTimestamp(cuota.fecha_vencimiento)}</TableCell>
       <TableCell>
         <Chip
           label={cuota.tipo === 'a_cobrar' ? 'A cobrar' : 'A pagar'}
@@ -254,7 +265,14 @@ const [loadingConversion, setLoadingConversion] = useState(false);
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpen(false)}>Cancelar</Button>
-          <Button variant="contained" onClick={handleGuardar}>Guardar</Button>
+          <Button
+              variant="contained"
+              disabled={guardando}
+              onClick={handleGuardar}
+            >
+              {guardando ? 'Guardando...' : 'Guardar'}
+            </Button>
+
         </DialogActions>
       </Dialog>
     </TableRow>

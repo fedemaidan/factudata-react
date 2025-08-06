@@ -45,7 +45,8 @@ const [unidadBaseMultiple, setUnidadBaseMultiple] = useState({
   edificio: '',
   piso: '',
   tipificacion: '',
-  m2: '',
+  m2_cubierta: '',
+  m2_comunes: '',
   cocheras: '',
   camas: '',
   valor_uf: '',
@@ -387,7 +388,10 @@ const [unidadBaseMultiple, setUnidadBaseMultiple] = useState({
     <TableCell>Proyecto</TableCell>
     <TableCell>Lote</TableCell>
     <TableCell>Edificio</TableCell>
-    <TableCell>Tipificación (m²)</TableCell>
+    <TableCell>Tipificación</TableCell>
+    <TableCell>m² Cubiertos</TableCell>
+    <TableCell>m² Comunes</TableCell>
+    <TableCell>m² Totales</TableCell>
     <TableCell>Cocheras / Camas</TableCell>
     <TableCell>Valor UF</TableCell>
     <TableCell>Valor cochera</TableCell>
@@ -419,7 +423,10 @@ const [unidadBaseMultiple, setUnidadBaseMultiple] = useState({
       <TableCell>{sp.proyecto}</TableCell>
       <TableCell>{sp.lote}</TableCell>
       <TableCell>{sp.edificio}</TableCell>
-      <TableCell>{`${sp.tipificacion || ''} (${sp.m2 || 0} m²)`}</TableCell>
+      <TableCell>{sp.tipificacion}</TableCell>
+      <TableCell>{sp.m2_cubierta || 0}</TableCell>
+      <TableCell>{sp.m2_comunes || 0}</TableCell>
+      <TableCell>{(parseFloat(sp.m2_cubierta || 0) + parseFloat(sp.m2_comunes || 0))}</TableCell>
       <TableCell>{`${sp.cocheras || 0} / ${sp.camas || 0}`}</TableCell>
       <TableCell>{formatCurrency(sp.valor_uf)}</TableCell>
       <TableCell>{formatCurrency(sp.valor_cochera)}</TableCell>
@@ -499,7 +506,8 @@ const [unidadBaseMultiple, setUnidadBaseMultiple] = useState({
   <TextField label="Edificio" value={unidadBaseMultiple.edificio} onChange={e => setUnidadBaseMultiple(prev => ({ ...prev, edificio: e.target.value }))} fullWidth />
   <TextField label="Piso" value={unidadBaseMultiple.piso} onChange={e => setUnidadBaseMultiple(prev => ({ ...prev, piso: e.target.value }))} fullWidth />
   <TextField label="Tipificación" value={unidadBaseMultiple.tipificacion} onChange={e => setUnidadBaseMultiple(prev => ({ ...prev, tipificacion: e.target.value }))} fullWidth />
-  <TextField label="m²" type="number" value={unidadBaseMultiple.m2} onChange={e => setUnidadBaseMultiple(prev => ({ ...prev, m2: e.target.value }))} fullWidth />
+  <TextField label="m² Cubiertos" type="number" value={unidadBaseMultiple.m2_cubierta} onChange={e => setUnidadBaseMultiple(prev => ({ ...prev, m2_cubierta: e.target.value }))} fullWidth />
+  <TextField label="m² Comunes" type="number" value={unidadBaseMultiple.m2_comunes} onChange={e => setUnidadBaseMultiple(prev => ({ ...prev, m2_comunes: e.target.value }))} fullWidth />
   <TextField label="Cocheras" type="number" value={unidadBaseMultiple.cocheras} onChange={e => setUnidadBaseMultiple(prev => ({ ...prev, cocheras: e.target.value }))} fullWidth />
   <TextField label="Camas" type="number" value={unidadBaseMultiple.camas} onChange={e => setUnidadBaseMultiple(prev => ({ ...prev, camas: e.target.value }))} fullWidth />
   <TextField label="Valor UF" type="number" value={unidadBaseMultiple.valor_uf} onChange={e => setUnidadBaseMultiple(prev => ({ ...prev, valor_uf: e.target.value }))} fullWidth />

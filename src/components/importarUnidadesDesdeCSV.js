@@ -1,13 +1,14 @@
-// src/components/ImportarUnidadesDesdeCSV.jsx
 import React, { useState } from 'react';
 import Papa from 'papaparse';
 import { Button, Box, Typography, FormControl, InputLabel, Select, MenuItem, Stack } from '@mui/material';
 import { calcularTotalUF, calcularRentabilidad } from 'src/utils/unidadUtils';
 
 const encabezadoTemplate = [
-  'Nombre', 'Lote', 'Edificio', 'Piso', 'Tipificacion', 'M2', 'Cocheras', 'Camas',
+  'Nombre', 'Lote', 'Edificio', 'Piso', 'Tipificacion',
+  'M2Cubierta', 'M2Comunes', 'Cocheras', 'Camas',
   'ValorUF', 'ValorCochera', 'AlquilerMensual', 'Estado'
 ];
+
 
 export default function ImportarUnidadesDesdeCSV({ onImport, proyectos }) {
   const [archivo, setArchivo] = useState(null);
@@ -34,7 +35,8 @@ export default function ImportarUnidadesDesdeCSV({ onImport, proyectos }) {
             edificio: row.Edificio || '',
             piso: row.Piso || '',
             tipificacion: row.Tipificacion || '',
-            m2: row.M2 || '',
+            m2_cubierta: parseFloat(row.M2Cubierta || 0),
+            m2_comunes: parseFloat(row.M2Comunes || 0),
             cocheras: row.Cocheras || 0,
             camas: row.Camas || 0,
             valor_uf: parseFloat(row.ValorUF || 0),
