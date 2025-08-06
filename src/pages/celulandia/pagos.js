@@ -6,59 +6,66 @@ import { Container } from "@mui/material";
 import DataTable from "src/components/celulandia/DataTable";
 import TableActions from "src/components/celulandia/TableActions";
 import { formatearCampo } from "src/utils/celulandia/formatearCampo";
-
 import EditarModal from "src/components/celulandia/EditarModal";
 import HistorialModal from "src/components/celulandia/HistorialModal";
 import AgregarModal from "src/components/AgregarModal";
 
 // Mock data para ejemplo
-const mockClientes = [
+const mockPagos = [
   {
     id: 1,
-    cliente: "Juan Pérez",
-    descuento: 15,
-    ccActivas: ["USD BLUE", "USD OFICIAL"],
+    fecha: "2025-01-15",
+    hora: "14:30",
+    concepto: "Pago de servicios",
+    cuentaOrigen: "Banco Galicia",
+    monto: 25000,
+    moneda: "ARS",
     usuario: "admin@celulandia.com",
   },
   {
     id: 2,
-    cliente: "María González",
-    descuento: 10,
-    ccActivas: ["USD BLUE"],
+    fecha: "2025-01-14",
+    hora: "16:45",
+    concepto: "Transferencia a proveedor",
+    cuentaOrigen: "Banco Santander",
+    monto: 75000,
+    moneda: "ARS",
     usuario: "operador@celulandia.com",
   },
   {
     id: 3,
-    cliente: "Roberto Silva",
-    descuento: 20,
-    ccActivas: ["USD BLUE", "USD OFICIAL", "ARS"],
+    fecha: "2025-01-13",
+    hora: "09:15",
+    concepto: "Pago de impuestos",
+    cuentaOrigen: "Banco Nación",
+    monto: 50000,
+    moneda: "ARS",
     usuario: "admin@celulandia.com",
   },
   {
     id: 4,
-    cliente: "Ana Martínez",
-    descuento: 5,
-    ccActivas: ["USD OFICIAL"],
+    fecha: "2025-01-12",
+    hora: "11:20",
+    concepto: "Compra de materiales",
+    cuentaOrigen: "Banco Galicia",
+    monto: 120000,
+    moneda: "ARS",
     usuario: "operador@celulandia.com",
   },
   {
     id: 5,
-    cliente: "Carlos López",
-    descuento: 25,
-    ccActivas: ["USD BLUE"],
+    fecha: "2025-01-11",
+    hora: "15:30",
+    concepto: "Pago de alquiler",
+    cuentaOrigen: "Banco Santander",
+    monto: 180000,
+    moneda: "ARS",
     usuario: "admin@celulandia.com",
-  },
-  {
-    id: 6,
-    cliente: "Laura Fernández",
-    descuento: 0,
-    ccActivas: ["USD BLUE", "USD OFICIAL"],
-    usuario: "operador@celulandia.com",
   },
 ];
 
-const ClientesCelulandiaPage = () => {
-  const [clientes, setClientes] = useState([]);
+const PagosCelulandiaPage = () => {
+  const [pagos, setPagos] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [editarModalOpen, setEditarModalOpen] = useState(false);
   const [historialModalOpen, setHistorialModalOpen] = useState(false);
@@ -69,15 +76,18 @@ const ClientesCelulandiaPage = () => {
   useEffect(() => {
     // Simular carga de datos
     setTimeout(() => {
-      setClientes(mockClientes);
+      setPagos(mockPagos);
       setIsLoading(false);
     }, 1000);
   }, []);
 
   const columns = [
-    { key: "cliente", label: "Cliente", sortable: true },
-    { key: "descuento", label: "Descuento", sortable: false },
-    { key: "ccActivas", label: "CC Activas", sortable: false },
+    { key: "fecha", label: "Fecha", sortable: true },
+    { key: "hora", label: "Hora", sortable: false },
+    { key: "concepto", label: "Concepto", sortable: false },
+    { key: "cuentaOrigen", label: "Cuenta Origen", sortable: false },
+    { key: "monto", label: "Monto", sortable: true },
+    { key: "moneda", label: "Moneda", sortable: false },
     {
       key: "acciones",
       label: "Acciones",
@@ -99,23 +109,24 @@ const ClientesCelulandiaPage = () => {
   ];
 
   const formatters = {
-    descuento: (value) => `${value}%`,
-    ccActivas: (value) => formatearCampo("ccActivas", value),
+    fecha: (value) => formatearCampo("fecha", value),
+    monto: (value) => formatearCampo("montoEnviado", value),
+    moneda: (value) => formatearCampo("monedaDePago", value),
   };
 
-  const searchFields = ["cliente", "descuento", "ccActivas", "usuario"];
+  const searchFields = ["fecha", "hora", "concepto", "cuentaOrigen", "monto", "moneda", "usuario"];
 
   const handleSaveEdit = (id, updatedData) => {
-    // Encontrar el cliente original antes de la edición
-    const clienteOriginal = clientes.find((cliente) => cliente.id === id);
+    // Encontrar el pago original antes de la edición
+    const pagoOriginal = pagos.find((pago) => pago.id === id);
 
     // Detectar qué campos cambiaron
     const cambios = [];
     Object.keys(updatedData).forEach((campo) => {
-      if (clienteOriginal[campo] !== updatedData[campo]) {
+      if (pagoOriginal[campo] !== updatedData[campo]) {
         cambios.push({
           campo,
-          valorAnterior: clienteOriginal[campo],
+          valorAnterior: pagoOriginal[campo],
           valorNuevo: updatedData[campo],
         });
       }
@@ -128,7 +139,7 @@ const ClientesCelulandiaPage = () => {
         fecha: new Date().toISOString(),
         usuario: "Martin Sorby",
         cambios: cambios,
-        cliente: clienteOriginal.cliente,
+        pago: pagoOriginal.concepto,
       };
 
       setHistorialCambios((prev) => ({
@@ -137,32 +148,31 @@ const ClientesCelulandiaPage = () => {
       }));
     }
 
-    // Actualizar el cliente
-    setClientes((prevClientes) =>
-      prevClientes.map((cliente) => (cliente.id === id ? { ...cliente, ...updatedData } : cliente))
+    // Actualizar el pago
+    setPagos((prevPagos) =>
+      prevPagos.map((pago) => (pago.id === id ? { ...pago, ...updatedData } : pago))
     );
   };
 
   const handleSaveNew = (newData) => {
-    // Agregar el nuevo cliente a la lista
-    setClientes((prevClientes) => [...prevClientes, newData]);
+    // Agregar el nuevo pago a la lista
+    setPagos((prevPagos) => [...prevPagos, newData]);
   };
 
   return (
     <>
       <Head>
-        <title>Clientes Celulandia</title>
+        <title>Pagos Celulandia</title>
       </Head>
       <Container maxWidth="xl">
         <DataTable
-          title="Clientes Celulandia"
-          data={clientes}
+          title="Pagos Celulandia"
+          data={pagos}
           isLoading={isLoading}
           columns={columns}
           searchFields={searchFields}
           formatters={formatters}
           onAdd={() => setAgregarModalOpen(true)}
-          dateFilterOptions={[]} // Sin filtro de fecha
         />
       </Container>
 
@@ -187,6 +197,6 @@ const ClientesCelulandiaPage = () => {
   );
 };
 
-ClientesCelulandiaPage.getLayout = (page) => <DashboardLayout>{page}</DashboardLayout>;
+PagosCelulandiaPage.getLayout = (page) => <DashboardLayout>{page}</DashboardLayout>;
 
-export default ClientesCelulandiaPage;
+export default PagosCelulandiaPage;

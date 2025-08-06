@@ -33,8 +33,8 @@ import celulandiaService from "src/services/celulandiaService";
 import { formatCurrency } from "src/utils/formatters";
 import { formatearCampo } from "src/utils/celulandia/formatearCampo";
 import { filtrarPorFecha, filtrarPorBusqueda } from "src/utils/celulandia/filtros";
-import EditarModal from "src/components/EditarModal";
-import HistorialModal from "src/components/HistorialModal";
+import EditarModal from "src/components/celulandia/EditarModal";
+import HistorialModal from "src/components/celulandia/HistorialModal";
 
 const ClienteCelulandiaCCPage = () => {
   const router = useRouter();

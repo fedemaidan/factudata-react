@@ -92,8 +92,17 @@ export const SideNav = (props) => {
             ),
           },
           {
+            title: "Pagos",
+            path: "/celulandia/pagos",
+            icon: (
+              <SvgIcon fontSize="small">
+                <AttachMoneyIcon />
+              </SvgIcon>
+            ),
+          },
+          {
             title: "Cuenta Corriente",
-            path: "/celulandia/clientes",
+            path: "/celulandia/cuentaCorriente",
             icon: (
               <SvgIcon fontSize="small">
                 <PeopleIcon />
@@ -101,11 +110,11 @@ export const SideNav = (props) => {
             ),
           },
           {
-            title: "Pagos",
-            path: "/celulandia/pagos",
+            title: "Clientes",
+            path: "/celulandia/clientes",
             icon: (
               <SvgIcon fontSize="small">
-                <AttachMoneyIcon />
+                <PeopleIcon />
               </SvgIcon>
             ),
           },

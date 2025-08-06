@@ -3,13 +3,13 @@ import { Layout as DashboardLayout } from "src/layouts/dashboard/layout";
 import Head from "next/head";
 import { Container, Button } from "@mui/material";
 
-import DataTable from "src/components/DataTable";
-import TableActions from "src/components/TableActions";
+import DataTable from "src/components/celulandia/DataTable";
+import TableActions from "src/components/celulandia/TableActions";
 import celulandiaService from "src/services/celulandiaService";
 import { formatearCampo } from "src/utils/celulandia/formatearCampo";
-import ComprobanteModal from "src/components/ComprobanteModal";
-import EditarModal from "src/components/EditarModal";
-import HistorialModal from "src/components/HistorialModal";
+import ComprobanteModal from "src/components/celulandia/ComprobanteModal";
+import EditarModal from "src/components/celulandia/EditarModal";
+import HistorialModal from "src/components/celulandia/HistorialModal";
 import AgregarModal from "src/components/AgregarModal";
 
 const ComprobantesCelulandiaPage = () => {

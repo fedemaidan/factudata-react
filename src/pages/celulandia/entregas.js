@@ -3,12 +3,12 @@ import { Layout as DashboardLayout } from "src/layouts/dashboard/layout";
 import Head from "next/head";
 import { Container } from "@mui/material";
 
-import DataTable from "src/components/DataTable";
-import TableActions from "src/components/TableActions";
+import DataTable from "src/components/celulandia/DataTable";
+import TableActions from "src/components/celulandia/TableActions";
 import { formatearCampo } from "src/utils/celulandia/formatearCampo";
 
-import EditarModal from "src/components/EditarModal";
-import HistorialModal from "src/components/HistorialModal";
+import EditarModal from "src/components/celulandia/EditarModal";
+import HistorialModal from "src/components/celulandia/HistorialModal";
 import AgregarModal from "src/components/AgregarModal";
 
 // Mock data para ejemplo

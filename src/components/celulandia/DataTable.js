@@ -70,12 +70,13 @@ const DataTable = ({
       const inicioDia = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate());
 
       switch (filtroFecha) {
-        case "hoy":
+        case "hoy": {
           filtered = filtered.filter((item) => {
             const itemDate = new Date(item.fecha);
             return itemDate >= inicioDia;
           });
           break;
+        }
         case "estaSemana": {
           const inicioSemana = new Date(inicioDia);
           inicioSemana.setDate(inicioDia.getDate() - inicioDia.getDay());
@@ -188,22 +189,24 @@ const DataTable = ({
             }}
           />
 
-          <FormControl sx={{ minWidth: 200 }} variant="filled">
-            <InputLabel id="filtro-fecha-label">Filtrar por fecha</InputLabel>
-            <Select
-              labelId="filtro-fecha-label"
-              id="filtro-fecha-select"
-              value={filtroFecha}
-              label="Filtrar por fecha"
-              onChange={(e) => setFiltroFecha(e.target.value)}
-            >
-              {dateFilterOptions.map((option) => (
-                <MenuItem key={option.value} value={option.value}>
-                  {option.label}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
+          {dateFilterOptions.length > 0 && (
+            <FormControl sx={{ minWidth: 200 }} variant="filled">
+              <InputLabel id="filtro-fecha-label">Filtrar por fecha</InputLabel>
+              <Select
+                labelId="filtro-fecha-label"
+                id="filtro-fecha-select"
+                value={filtroFecha}
+                label="Filtrar por fecha"
+                onChange={(e) => setFiltroFecha(e.target.value)}
+              >
+                {dateFilterOptions.map((option) => (
+                  <MenuItem key={option.value} value={option.value}>
+                    {option.label}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          )}
 
           {onAdd && (
             <Button

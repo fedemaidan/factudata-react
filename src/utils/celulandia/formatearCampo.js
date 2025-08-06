@@ -126,6 +126,55 @@ export const formatearCampo = (campo, valor) => {
       );
     }
 
+    case "ccActivas": {
+      const ccStyles = {
+        ARS: {
+          backgroundColor: "#E3F2FD",
+          color: "#1565C0",
+        },
+        "USD BLUE": {
+          backgroundColor: "#aadcac",
+          color: "#1B5E20",
+        },
+        "USD OFICIAL": {
+          backgroundColor: "#C8E6C9",
+          color: "#33691E",
+        },
+      };
+
+      if (Array.isArray(valor)) {
+        const ccOrdenadas = [...valor].sort();
+        return (
+          <div style={{ display: "flex", gap: "4px", flexWrap: "wrap" }}>
+            {ccOrdenadas.map((cc, index) => {
+              const ccStyle = ccStyles[cc] || {
+                backgroundColor: "#F5F5F5",
+                color: "#424242",
+              };
+              return (
+                <Chip
+                  key={index}
+                  label={cc}
+                  size="small"
+                  sx={{
+                    backgroundColor: ccStyle.backgroundColor,
+                    color: ccStyle.color,
+                    fontWeight: "bold",
+                    fontSize: "0.7rem",
+                    height: "20px",
+                    "& .MuiChip-label": {
+                      fontWeight: "bold",
+                    },
+                  }}
+                />
+              );
+            })}
+          </div>
+        );
+      }
+      return valor;
+    }
+
     case "estado": {
       const estadoStyles = {
         CONFIRMADO: {
