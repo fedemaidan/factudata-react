@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Table, TableHead, TableRow, TableCell, TableBody,
   Button, Collapse, Box, Typography, Chip
@@ -7,8 +7,40 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import { formatCurrency, formatTimestamp } from 'src/utils/formatters';
 import { CuotaRowWithActions } from './cuotaRowWithActions';
+import CuentasPendientesService from 'src/services/cuentasPendientesService';
 
-export const CuentasTable = ({ cuentas, expandedCuentaId, setExpandedCuentaId, onEliminar, fetchCuentas }) => (
+export const CuentasTable = ({
+  cuentas,
+  expandedCuentaId,
+  setExpandedCuentaId,
+  onEliminar,
+  fetchCuentas,
+  setCuentas
+}) => {
+  const [cargandoId, setCargandoId] = useState(null);
+
+  const handleToggleDetalle = async (cuenta) => {
+    console.log(cuenta)
+    const esExpandida = expandedCuentaId === cuenta.id;
+
+    if (esExpandida) {
+      setExpandedCuentaId(null);
+      return;
+    }
+
+    if (!cuenta.cuotas) {
+      setCargandoId(cuenta.id);
+      const {cuenta: cuentaActualizada, cuotas} = await CuentasPendientesService.obtenerCuenta(cuenta.id);
+      
+      setCuentas(prev =>
+        prev.map(c => c.id === cuenta.id ? { ...c, cuotas } : c)
+      );
+      setCargandoId(null);
+    }
+
+    setExpandedCuentaId(cuenta.id);
+  };
+  return (
   <Table>
     <TableHead>
       <TableRow>
@@ -49,7 +81,7 @@ export const CuentasTable = ({ cuentas, expandedCuentaId, setExpandedCuentaId, o
             <TableCell>{cuenta.fecha_creacion ? formatTimestamp(cuenta.fecha_creacion) : '-'}</TableCell>
             <TableCell>
               <Button
-                onClick={() => setExpandedCuentaId((prev) => (prev === cuenta.id ? null : cuenta.id))}
+              onClick={() => handleToggleDetalle(cuenta)}
                 startIcon={expandedCuentaId === cuenta.id ? <ExpandLessIcon /> : <ExpandMoreIcon />}
               >
                 {expandedCuentaId === cuenta.id ? 'Ocultar' : 'Ver Detalle'}
@@ -87,15 +119,21 @@ export const CuentasTable = ({ cuentas, expandedCuentaId, setExpandedCuentaId, o
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {(cuenta.cuotas || []).map((cuota, idx) => (
-                        <CuotaRowWithActions
-                            key={cuota.id || idx}
-                            cuota={cuota}
-                            cuentaId={cuenta.id}
-                            onActualizar={fetchCuentas}
-                        />
-                        ))}
-                    </TableBody>
+                          {cargandoId === cuenta.id ? (
+                            <TableRow>
+                              <TableCell colSpan={7}>Cargando cuotas...</TableCell>
+                            </TableRow>
+                          ) : (
+                            (cuenta.cuotas || []).map((cuota, idx) => (
+                              <CuotaRowWithActions
+                                key={cuota.id || idx}
+                                cuota={cuota}
+                                cuentaId={cuenta.id}
+                                onActualizar={fetchCuentas}
+                              />
+                            ))
+                          )}
+                        </TableBody>
                   </Table>
                 </Box>
               </Collapse>
@@ -104,5 +142,4 @@ export const CuentasTable = ({ cuentas, expandedCuentaId, setExpandedCuentaId, o
         </React.Fragment>
       ))}
     </TableBody>
-  </Table>
-);
+  </Table>)};

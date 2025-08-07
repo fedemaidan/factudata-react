@@ -15,6 +15,7 @@ import { CuentasResumen } from 'src/components/cuentasResumen';
 import { CuentasTable } from 'src/components/cuentasTable';
 import { CuotasPendientesTable } from 'src/components/cuotasPendientesTable';
 import { ProyeccionFinanciera } from 'src/components/proyeccionFinanciera';
+import FormularioCuentaNueva from 'src/components/formularioCuentaNueva';
 
 const CuentasPendientesPage = () => {
     const router = useRouter();
@@ -40,26 +41,32 @@ const CuentasPendientesPage = () => {
     proyecto_id: '',
     proyecto_nombre: '',
     subproyecto_id: '',
-    subproyecto_nombre: ''
+    subproyecto_nombre: '',
+    fecha_primera_cuota: new Date().toISOString().substring(0, 10)
   });
   
 
   const handleChangeTab = (_, value) => setTabActiva(value);
 
-  const fetchCuentas = useCallback(async () => {
+
+  const fetchCuentas = useCallback(async (conCuotas = true) => {
+    if (!empresaId) return;
     setLoading(true);
     try {
-        const empresa = await getEmpresaById(empresaId);
-        setProyectos(await getProyectosByEmpresa(empresa));
-      const data = await CuentasPendientesService.listarCuentasPorEmpresa(empresaId);
-      console.log(data)
+      if (tabActiva === 'cuentas') {
+        conCuotas = false; 
+      }
+      const empresa = await getEmpresaById(empresaId);
+      setProyectos(await getProyectosByEmpresa(empresa));
+      const data = await CuentasPendientesService.listarCuentasPorEmpresa(empresaId, conCuotas);
       setCuentas(data);
     } catch (e) {
       console.error('Error al cargar cuentas:', e);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [empresaId]);
+  
 
   const cuotasPendientes = cuentas.flatMap(c => (c.cuotas || []).map(q => ({
         ...q,
@@ -79,6 +86,8 @@ const CuentasPendientesPage = () => {
   const handleCrearCuenta = async () => {
     try {
         nuevaCuenta.empresa_id = empresaId; // Asegurarse de que la empresa_id esté definida
+        nuevaCuenta.fecha_primera_cuota = new Date(nuevaCuenta.fecha_primera_cuota);
+        
       await CuentasPendientesService.crearCuentaPendiente(nuevaCuenta);
       setDialogoAbierto(false);
       setNuevaCuenta({
@@ -101,13 +110,6 @@ const CuentasPendientesPage = () => {
     <Box component="main" sx={{ flexGrow: 1, py: 4 }}>
       <Container maxWidth="xl">
         <Typography variant="h5" sx={{ mb: 2 }}>Gestión de Cuentas Pendientes</Typography>
-        {/* <Box sx={{ mb: 2 }}> */}
-        {/* <Button onClick={() => setMostrarResumen(!mostrarResumen)} size="small">
-            {mostrarResumen ? 'Ocultar resumen' : 'Mostrar resumen'}
-        </Button>
-
-        {mostrarResumen && <CuentasResumen cuentas={cuentas} />}
-        </Box> */}
 
         <Tabs value={tabActiva} onChange={handleChangeTab}>
           <Tab label="Proyección" value="proyeccion" />
@@ -134,6 +136,7 @@ const CuentasPendientesPage = () => {
                 setExpandedCuentaId={setExpandedCuentaId}
                 onEliminar={CuentasPendientesService.eliminarCuenta}
                 fetchCuentas={fetchCuentas}
+                setCuentas={setCuentas}
                 />
             </>
             )}
@@ -142,152 +145,15 @@ const CuentasPendientesPage = () => {
                 <CuotasPendientesTable cuotas={cuotasPendientes} />
             )}
 
-        <Dialog open={dialogoAbierto} onClose={() => setDialogoAbierto(false)}>
-          <DialogTitle>Nueva Cuenta Pendiente</DialogTitle>
-          <DialogContent>
-          <FormControl fullWidth margin="dense">
-            <InputLabel>Proyecto</InputLabel>
-            <Select
-              value={nuevaCuenta.proyecto_id}
-              label="Proyecto"
-              onChange={(e) => {
-                const proyectoSeleccionado = proyectos.find(p => p.id === e.target.value);
-                setNuevaCuenta({
-                  ...nuevaCuenta,
-                  proyecto_id: e.target.value,
-                  proyecto_nombre: proyectoSeleccionado?.nombre || '',
-                  subproyecto_id: '',
-                  subproyecto_nombre: ''
-                });
-              }}
-            >
-              {proyectos.map((p) => (
-                <MenuItem key={p.id} value={p.id}>{p.nombre}</MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-
-          {nuevaCuenta.proyecto_id && (
-            <FormControl fullWidth margin="dense">
-              <InputLabel>Subproyecto</InputLabel>
-              <Select
-                value={nuevaCuenta.subproyecto_id}
-                label="Subproyecto"
-                onChange={(e) => {
-                  const sub = proyectos.find(p => p.id === nuevaCuenta.proyecto_id)?.subproyectos?.find(s => s.id === e.target.value);
-                  setNuevaCuenta({
-                    ...nuevaCuenta,
-                    subproyecto_id: e.target.value,
-                    subproyecto_nombre: sub?.nombre || ''
-                  });
-                }}
-              >
-                {proyectos
-                  .find(p => p.id === nuevaCuenta.proyecto_id)
-                  ?.subproyectos?.map((sub) => (
-                    <MenuItem key={sub.id} value={sub.id}>{sub.nombre}</MenuItem>
-                  ))}
-              </Select>
-            </FormControl>
-          )}
-
-          <FormControl fullWidth margin="dense">
-            <InputLabel>Tipo</InputLabel>
-            <Select
-                value={nuevaCuenta.tipo || ''}
-                label="Tipo"
-                onChange={(e) => setNuevaCuenta({ ...nuevaCuenta, tipo: e.target.value })}
-            >
-                <MenuItem value="a_pagar">A pagar</MenuItem>
-                <MenuItem value="a_cobrar">A cobrar</MenuItem>
-            </Select>
-            </FormControl>
-
-            <TextField
-            margin="dense"
-            fullWidth
-            label="Descripción"
-            value={nuevaCuenta.descripcion}
-            onChange={(e) => setNuevaCuenta({ ...nuevaCuenta, descripcion: e.target.value })}
-            />
-
-            <TextField
-            margin="dense"
-            fullWidth
-            label="Monto total"
-            type="number"
-            value={nuevaCuenta.monto_total}
-            onChange={(e) => setNuevaCuenta({ ...nuevaCuenta, monto_total: parseFloat(e.target.value) })}
-            />
-
-            <FormControl fullWidth margin="dense">
-            <InputLabel>Moneda</InputLabel>
-            <Select
-                value={nuevaCuenta.moneda_nominal || 'ARS'}
-                label="Moneda"
-                onChange={(e) => setNuevaCuenta({ ...nuevaCuenta, moneda_nominal: e.target.value })}
-            >
-                <MenuItem value="ARS">ARS</MenuItem>
-                <MenuItem value="USD">USD</MenuItem>
-            </Select>
-            </FormControl>
-
-            <TextField
-            margin="dense"
-            fullWidth
-            label="Proveedor o Cliente"
-            value={nuevaCuenta.proveedor_o_cliente}
-            onChange={(e) => setNuevaCuenta({ ...nuevaCuenta, proveedor_o_cliente: e.target.value })}
-            />
-
-            <FormControl fullWidth margin="dense">
-            <InputLabel>Unidad de Indexación</InputLabel>
-            <Select
-                value={nuevaCuenta.unidad_indexacion || ''}
-                label="Unidad de Indexación"
-                onChange={(e) => setNuevaCuenta({ ...nuevaCuenta, unidad_indexacion: e.target.value })}
-            >
-                <MenuItem value="">Ninguna</MenuItem>
-                <MenuItem value="UVA">UVA</MenuItem>
-                <MenuItem value="CER">CER</MenuItem>
-                <MenuItem value="CAC">CAC</MenuItem>
-                <MenuItem value="IPC">IPC</MenuItem>
-            </Select>
-            </FormControl>
-
-            {nuevaCuenta.unidad_indexacion && (
-            <FormControl fullWidth margin="dense">
-                <InputLabel>Frecuencia de Indexación</InputLabel>
-                <Select
-                value={nuevaCuenta.frecuencia_indexacion || ''}
-                label="Frecuencia"
-                onChange={(e) => setNuevaCuenta({ ...nuevaCuenta, frecuencia_indexacion: e.target.value })}
-                >
-                <MenuItem value="diaria">Diaria</MenuItem>
-                <MenuItem value="mensual">Mensual</MenuItem>
-                <MenuItem value="trimestral">Trimestral</MenuItem>
-                <MenuItem value="semestral">Semestral</MenuItem>
-                <MenuItem value="anual">Anual</MenuItem>
-                </Select>
-            </FormControl>
-            )}
-
-<TextField
-  margin="dense"
-  fullWidth
-  label="Cantidad de Cuotas"
-  type="number"
-  value={nuevaCuenta.cantidad_cuotas}
-  onChange={(e) => setNuevaCuenta({ ...nuevaCuenta, cantidad_cuotas: parseInt(e.target.value) || 1 })}
+<FormularioCuentaNueva
+  abierta={dialogoAbierto}
+  onCerrar={() => setDialogoAbierto(false)}
+  onCrear={handleCrearCuenta}
+  nuevaCuenta={nuevaCuenta}
+  setNuevaCuenta={setNuevaCuenta}
+  proyectos={proyectos}
 />
 
-
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={() => setDialogoAbierto(false)}>Cancelar</Button>
-            <Button onClick={handleCrearCuenta} variant="contained">Crear</Button>
-          </DialogActions>
-        </Dialog>
       </Container>
     </Box>
   );

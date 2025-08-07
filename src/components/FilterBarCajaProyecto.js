@@ -21,15 +21,39 @@ const defaultFilters = {
   ordenarPor: 'fecha_factura',
   ordenarDir: 'desc',
   caja: null,
+  estado: [],
 };
-
 
 export const FilterBarCajaProyecto = ({
   filters,
   setFilters,
   options,
   onRefresh,
+  empresa, 
 }) => {
+
+  const DEFINICION_FILTROS = [
+    { name: 'observacion', label: 'Observación', type: 'text', visibleIf: () => true },
+    { name: 'palabras', label: 'Palabras sueltas', type: 'text', visibleIf: () => true },
+    { name: 'tipo', label: 'Tipo', type: 'selectMultiple', options: ['ingreso', 'egreso'], visibleIf: () => true },
+    { name: 'moneda', label: 'Moneda', type: 'selectMultiple', optionsKey: 'monedas', visibleIf: () => true },
+    { name: 'proveedores', label: 'Proveedor', type: 'selectMultiple', optionsKey: 'proveedores', visibleIf: (empresa) => empresa?.proveedores?.length > 0 },
+    { name: 'categorias', label: 'Categoría', type: 'selectMultiple', optionsKey: 'categorias', visibleIf: (empresa) => empresa?.categorias?.length > 0 },
+    { name: 'subcategorias', label: 'Subcategoría', type: 'selectMultiple', optionsKey: 'subcategorias', visibleIf: (empresa) => empresa?.comprobante_info?.subcategoria },
+    { name: 'medioPago', label: 'Medio de pago', type: 'selectMultiple', optionsKey: 'mediosPago', visibleIf: (empresa) => empresa?.comprobante_info?.medio_pago },
+    { name: 'estado', label: 'Estado', type: 'selectMultiple', options: ['Pendiente', 'Pagado'], visibleIf: (empresa) => empresa?.con_estados },
+    { name: 'montoMin', label: 'Monto mínimo', type: 'number', visibleIf: () => true },
+    { name: 'montoMax', label: 'Monto máximo', type: 'number', visibleIf: () => true },
+  ];
+  
+  function getFiltrosVisibles(empresa) {
+    return DEFINICION_FILTROS.filter((f) => {
+      if (!f.visibleIf) return true;
+      return f.visibleIf(empresa);
+    });
+  }
+
+  
   const set = (k, v) => setFilters((f) => ({ ...f, [k]: v }));
 
   return (
@@ -56,107 +80,79 @@ export const FilterBarCajaProyecto = ({
         />
       </Stack>
 
+      {getFiltrosVisibles(empresa).map((filtro) => {
+  const value = filters[filtro.name];
+
+  // campo de texto
+  if (filtro.type === 'text') {
+    return (
       <TextField
-        label="Observación"
-        value={filters.observacion}
-        onChange={(e) => set('observacion', e.target.value)}
+        key={filtro.name}
+        label={filtro.label}
+        value={value}
+        onChange={(e) => set(filtro.name, e.target.value)}
         sx={{ minWidth: 200 }}
       />
+    );
+  }
 
-      <TextField
-        label="Palabras sueltas"
-        value={filters.palabras}
-        onChange={(e) => set('palabras', e.target.value)}
-        sx={{ minWidth: 200 }}
-      />
-
-      <FormControl sx={{ minWidth: 180 }}>
-        <InputLabel>Tipo</InputLabel>
+  // select múltiple
+  if (filtro.type === 'selectMultiple') {
+    const selectOptions = filtro.options || options[filtro.optionsKey] || [];
+    return (
+      <FormControl sx={{ minWidth: 200 }} key={filtro.name}>
+        <InputLabel>{filtro.label}</InputLabel>
         <Select
           multiple
-          value={filters.tipo}
-          onChange={(e) => set('tipo', e.target.value)}
-          label="Tipo"
+          value={value}
+          onChange={(e) => set(filtro.name, e.target.value)}
+          label={filtro.label}
         >
-          <MenuItem value="ingreso">Ingreso</MenuItem>
-          <MenuItem value="egreso">Egreso</MenuItem>
-        </Select>
-      </FormControl>
-
-      <FormControl sx={{ minWidth: 180 }}>
-        <InputLabel>Moneda</InputLabel>
-        <Select
-          multiple
-          value={filters.moneda}
-          onChange={(e) => set('moneda', e.target.value)}
-          label="Moneda"
-        >
-          {(options?.monedas ?? []).map((m) => <MenuItem key={m} value={m}>{m}</MenuItem>)}
-        </Select>
-      </FormControl>
-       <FormControl sx={{ minWidth: 200 }}>
-        <InputLabel>Proveedor</InputLabel>
-        <Select
-          multiple
-          value={filters.proveedores}
-          onChange={(e) => set('proveedores', e.target.value)}
-          label="Proveedor"
-        >
-          {(options?.proveedores ?? []).map((p) => (
-            <MenuItem key={p} value={p}>{p}</MenuItem>
+          {selectOptions.map((opt) => (
+            <MenuItem key={opt} value={opt}>{opt}</MenuItem>
           ))}
         </Select>
       </FormControl>
-      <FormControl sx={{ minWidth: 200 }}>
-        <InputLabel>Categoría</InputLabel>
+    );
+  }
+
+  // select simple
+  if (filtro.type === 'select') {
+    const selectOptions = filtro.options || options[filtro.optionsKey] || [];
+
+    return (
+      <FormControl sx={{ minWidth: 160 }} key={filtro.name}>
+        <InputLabel>{filtro.label}</InputLabel>
         <Select
-          multiple
-          value={filters.categorias}
-          onChange={(e) => set('categorias', e.target.value)}
-          label="Categoría"
+          value={value}
+          onChange={(e) => set(filtro.name, e.target.value)}
+          label={filtro.label}
         >
-          {options.categorias.map((c) => <MenuItem key={c} value={c}>{c}</MenuItem>)}
+          <MenuItem value="">Todos</MenuItem>
+          {selectOptions.map((opt) => (
+            <MenuItem key={opt} value={opt}>{opt}</MenuItem>
+          ))}
         </Select>
       </FormControl>
+    );
+  }
 
-      <FormControl sx={{ minWidth: 200 }}>
-        <InputLabel>Subcategoría</InputLabel>
-        <Select
-          multiple
-          value={filters.subcategorias}
-          onChange={(e) => set('subcategorias', e.target.value)}
-          label="Subcategoría"
-        >
-          {options.subcategorias.map((s) => <MenuItem key={s} value={s}>{s}</MenuItem>)}
-        </Select>
-      </FormControl>
-
-      <FormControl sx={{ minWidth: 200 }}>
-        <InputLabel>Medio de pago</InputLabel>
-        <Select
-          multiple
-          value={filters.medioPago}
-          onChange={(e) => set('medioPago', e.target.value)}
-          label="Medio de pago"
-        >
-          {options.mediosPago.map((m) => <MenuItem key={m} value={m}>{m}</MenuItem>)}
-        </Select>
-      </FormControl>
-
+  // number
+  if (filtro.type === 'number') {
+    return (
       <TextField
-        label="Monto mínimo"
+        key={filtro.name}
         type="number"
-        value={filters.montoMin}
-        onChange={(e) => set('montoMin', e.target.value)}
+        label={filtro.label}
+        value={value}
+        onChange={(e) => set(filtro.name, e.target.value)}
         sx={{ width: 120 }}
       />
-      <TextField
-        label="Monto máximo"
-        type="number"
-        value={filters.montoMax}
-        onChange={(e) => set('montoMax', e.target.value)}
-        sx={{ width: 120 }}
-      />
+    );
+  }
+
+  return null;
+})}
 
       <Button variant="outlined" onClick={() => setFilters(prev => ({ ...prev, ...defaultFilters }))}>
         Limpiar

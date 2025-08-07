@@ -117,9 +117,9 @@ const CuentasPendientesService = {
     }
   },
 
-  listarCuentasPorEmpresa: async (empresaId) => {
+  listarCuentasPorEmpresa: async (empresaId, conCuotas = true) => {
     try {
-      const response = await api.get(`/cuenta_pendiente/empresa/${empresaId}`);
+      const response = await api.get(`/cuenta_pendiente/empresa/${empresaId}/?con_cuotas=${conCuotas}`);
       console.log('✅ Cuentas obtenidas:', response);
       return response.data;
     } catch (error) {

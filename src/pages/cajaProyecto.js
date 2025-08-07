@@ -36,7 +36,7 @@ const TotalesFiltrados = ({ t, fmt, moneda }) => {
         Totales filtrados ({up})
       </Typography>
 
-      <Stack direction="row" spacing={2} flexWrap="wrap">
+      <Stack direction="row" spacing={1} flexWrap="wrap">
         <Typography sx={{ color: 'success.main', fontWeight: 600 }}>
           + {fmt(up, ingreso)}
         </Typography>
@@ -86,6 +86,7 @@ const ProyectoMovimientosPage = () => {
   const [showCrearCaja, setShowCrearCaja] = useState(false);
   const [nombreCaja, setNombreCaja] = useState('');
   const [monedaCaja, setMonedaCaja] = useState('ARS');
+  const [estadoCaja, setEstadoCaja] = useState('');
   const [medioPagoCaja, setMedioPagoCaja] = useState('Efectivo');
   const [editandoCaja, setEditandoCaja] = useState(null); // null o index de la caja
   const [cajaSeleccionada, setCajaSeleccionada] = useState(null);
@@ -305,26 +306,6 @@ const ProyectoMovimientosPage = () => {
     setFilters((f) => ({ ...f, caja }));
   };
   
-  // const movimientosFiltrados = useMemo(() => {
-  //   const hoy = new Date();
-  
-  //   const baseMovimientos = cajaSeleccionada?.moneda === 'USD' ? movimientosUSD : movimientos;
-  
-  //   return baseMovimientos.filter((mov) => {
-  //     const fechaMovimiento = new Date(formatTimestamp(mov.fecha_factura));
-  //     const diferenciaDias = (hoy - fechaMovimiento) / (1000 * 60 * 60 * 24);
-  //     mov.observacion = mov.observacion || "";
-  
-  //     const matchMedioPago = cajaSeleccionada?.medio_pago
-  //       ? mov.medio_pago === cajaSeleccionada.medio_pago
-  //       : true;
-  
-  //     return diferenciaDias <= filtroDias &&
-  //            mov.observacion.toLowerCase().includes(filtroObs.toLowerCase()) &&
-  //            matchMedioPago;
-  //   }).sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
-  // }, [movimientos, movimientosUSD, filtroDias, filtroObs, cajaSeleccionada]);
-  
   const totalesDetallados = useMemo(() => {
     const base = {
       ARS: { ingreso: 0, egreso: 0 },
@@ -378,8 +359,10 @@ const ProyectoMovimientosPage = () => {
     const nuevaCaja = {
       nombre: nombreCaja,
       moneda: monedaCaja,
-      medio_pago: medioPagoCaja
+      medio_pago: medioPagoCaja,
+      estado: estadoCaja 
     };
+    
   
     const nuevasCajas = [...cajasVirtuales];
   
@@ -394,6 +377,7 @@ const ProyectoMovimientosPage = () => {
     setNombreCaja('');
     setMonedaCaja('ARS');
     setMedioPagoCaja('Efectivo');
+    setEstadoCaja('');
     setEditandoCaja(null);
     await updateEmpresaDetails(empresa.id, { cajas_virtuales: nuevasCajas });
   };
@@ -456,22 +440,6 @@ const ProyectoMovimientosPage = () => {
             <Typography variant="h6">{proyecto?.nombre}</Typography>
             
             <Stack direction="row" spacing={2}>
-            {/* {!empresa?.solo_dolar &&  <Button
-                variant={tablaActiva === 'ARS' ? "contained" : "outlined"}
-                color="primary"
-                onClick={() => setTablaActiva('ARS')}
-                sx={{ flexGrow: 1, py: 2 }}
-              >
-                Caja en Pesos: {saldoTotalCaja > 0 ? formatCurrency(saldoTotalCaja) : "(" + formatCurrency(saldoTotalCaja) + ")"}
-              </Button>}
-              <Button
-                variant={tablaActiva === 'USD' ? "contained" : "outlined"}
-                color="primary"
-                onClick={() => setTablaActiva('USD')}
-                sx={{ flexGrow: 1, py: 2 }}
-              >
-                Caja en Dólares: US {saldoTotalCajaUSD > 0 ? formatCurrency(saldoTotalCajaUSD) : "(" + formatCurrency(saldoTotalCajaUSD) + ")"}{}
-              </Button> */}
        {cajasVirtuales.map((caja, index) => (
   <Box key={index} sx={{ position: 'relative', width: '100%', mb: 1 }}>
     <Button
@@ -527,6 +495,16 @@ const ProyectoMovimientosPage = () => {
         ))}
       </Select>
     </FormControl>
+    {empresa?.con_estados && (
+      <FormControl fullWidth sx={{ mt: 2 }}>
+        <InputLabel>Estado</InputLabel>
+        <Select value={estadoCaja} onChange={(e) => setEstadoCaja(e.target.value)}>
+          <MenuItem value="">Todos</MenuItem>
+          <MenuItem value="Pendiente">Pendiente</MenuItem>
+          <MenuItem value="Pagado">Pagado</MenuItem>
+        </Select>
+      </FormControl>
+    )}
   </DialogContent>
   <DialogActions>
     <Button onClick={() => setShowCrearCaja(false)}>Cancelar</Button>
@@ -540,6 +518,7 @@ const ProyectoMovimientosPage = () => {
     setFilters={setFilters}
     options={options}
     onRefresh={handleRefresh}
+    empresa={empresa}
   />
 )}
             <Paper>
@@ -550,10 +529,10 @@ const ProyectoMovimientosPage = () => {
               </Snackbar>
               <Stack spacing={1}>
               <TotalesFiltrados
-  t={totalesDetallados}
-  fmt={formatByCurrency}
-  moneda={cajaSeleccionada?.moneda || 'ARS'}
-/>
+                    t={totalesDetallados}
+                    fmt={formatByCurrency}
+                    moneda={cajaSeleccionada?.moneda || 'ARS'}
+                  />
               </Stack>
                 {isMobile ? (
                   <Stack spacing={2}>
@@ -597,7 +576,8 @@ const ProyectoMovimientosPage = () => {
                     <TableHead>
                       <TableRow>
                         <TableCell>Código</TableCell>
-                        <TableCell>Fecha</TableCell>
+                        <TableCell>Fecha factura</TableCell>
+                        <TableCell>Fecha creación</TableCell>
                         <TableCell>Tipo</TableCell>
                         <TableCell>Total</TableCell>
                         <TableCell>Categoria</TableCell>
@@ -616,6 +596,7 @@ const ProyectoMovimientosPage = () => {
                         <TableRow key={index}>
                           <TableCell>{mov.codigo_operacion}</TableCell>
                           <TableCell>{formatTimestamp(mov.fecha_factura)}</TableCell>
+                          <TableCell>{formatTimestamp(mov.fecha_creacion)}</TableCell>
                           <TableCell>
                             <Chip
                               label={mov.type === "ingreso" ? "Ingreso" : "Egreso"}

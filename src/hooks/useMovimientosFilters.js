@@ -49,7 +49,29 @@ export function useMovimientosFilters({ empresaId, proyectoId, movimientos, movi
         }
         if (parsed.fechaDesde) parsed.fechaDesde = new Date(parsed.fechaDesde);
         if (parsed.fechaHasta) parsed.fechaHasta = new Date(parsed.fechaHasta);
-        setFilters({ ...defaultFilters, ...parsed });
+
+        const corregido = { ...defaultFilters, ...parsed };
+
+        // Forzar que los campos multiple sean arrays
+        [
+          'tipo',
+          'moneda',
+          'proveedores',
+          'categorias',
+          'subcategorias',
+          'medioPago',
+          'estado',
+          'etapa',
+          'cuentaInterna',
+          'tagsExtra'
+        ].forEach((campo) => {
+          if (!Array.isArray(corregido[campo])) {
+            corregido[campo] = [];
+          }
+        });
+
+        setFilters(corregido);
+
       } catch (e) {
         console.warn('No pude parsear filtros guardados', e);
       }
@@ -73,7 +95,7 @@ export function useMovimientosFilters({ empresaId, proyectoId, movimientos, movi
     const base = [...(movimientos || []), ...(movimientosUSD || [])];
 
     const uniq = (arr) => [...new Set(arr.filter(Boolean))];
-
+    
     return {
       categorias: uniq(base.map(m => m.categoria)),
       subcategorias: uniq(base.map(m => m.subcategoria)),
@@ -81,6 +103,7 @@ export function useMovimientosFilters({ empresaId, proyectoId, movimientos, movi
       monedas: uniq(base.map(m => m.moneda)),
       mediosPago: uniq(base.map(m => m.medio_pago)),
       etapas: uniq(base.map(m => m.etapa)),
+      estados: uniq(base.map(m => m.estado)),
       cuentasInternas: uniq(base.map(m => m.cuenta_interna)),
       tags: uniq(base.flatMap(m => Array.isArray(m.tags_extra) ? m.tags_extra : [])),
       tipos: ['ingreso', 'egreso'],
@@ -97,8 +120,8 @@ export function useMovimientosFilters({ empresaId, proyectoId, movimientos, movi
 
     const {
       fechaDesde, fechaHasta, palabras, observacion, categorias, subcategorias,
-      proveedores, medioPago, tipo, moneda, etapa, cuentaInterna, tagsExtra,
-      montoMin, montoMax, ordenarPor, ordenarDir,
+      proveedores, medioPago, tipo, moneda, etapa, cuentaInterna, estado, tagsExtra,
+      montoMin, montoMax, ordenarPor, ordenarDir
     } = filters;
 
     // helper para convertir lo que venga (Date, string, Firestore Timestamp) a Date nativo
@@ -155,6 +178,11 @@ const insideRange = (mov, fechaDesde, fechaHasta) => {
       return monedaOk && medioOk;
     };
 
+    const matchEstado = (mov) => {
+      if (!filters.estado || filters.estado.length === 0) return true;
+      return filters.estado.includes(mov.estado);
+    }
+    
     const res = base.filter(mov => {
       return insideRange(mov, fechaDesde, fechaHasta)
         && match(mov.categoria, categorias)
@@ -169,6 +197,7 @@ const insideRange = (mov, fechaDesde, fechaHasta) => {
         && matchMonto(mov.total)
         && matchText(mov.observacion, observacion)
         && matchText(Object.values(mov).join(' '), palabras)
+        && matchEstado(mov)
         && matchCaja(mov);
     });
 
