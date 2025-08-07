@@ -18,6 +18,7 @@ import {
   Autocomplete
 } from '@mui/material';
 import { Add, Delete } from '@mui/icons-material';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import AcopioService from 'src/services/acopioService';
 import { updateEmpresaDetails, getEmpresaById } from 'src/services/empresaService'; 
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
@@ -40,6 +41,9 @@ const CrearAcopioPage = () => {
   const [editando, setEditando] = useState(false);
   const [archivoCompra, setArchivoCompra] = useState(null);
   const [cargandoArchivo, setCargandoArchivo] = useState(false);
+  const [estadoExtraccion, setEstadoExtraccion] = useState('inicial'); 
+  const [progreso, setProgreso] = useState(0); // entre 0 y 100
+  const [maxIntentos, setMaxIntentos] = useState(60); // duración total
   
   
   useEffect(() => {
@@ -71,31 +75,70 @@ const CrearAcopioPage = () => {
       cargarDatos();
     }
   }, [empresaId, acopioId]);
+
   const manejarExtraccionDeCompra = async () => {
     if (!archivoCompra) return;
+  
     try {
       setCargandoArchivo(true);
-      const nuevosMateriales = await AcopioService.extraerDatosCompraDesdeArchivo(archivoCompra, null);
+      setEstadoExtraccion('procesando');
+      setProgreso(0);
+      setMaxIntentos(60); // 60 intentos * 5s = 5 minutos
   
-      if (nuevosMateriales && nuevosMateriales.length > 0) {
-        const nuevosProductos = [...productos, ...nuevosMateriales];
-        setProductos(nuevosProductos);
-        const nuevoTotal = nuevosProductos.reduce(
-          (sum, p) => sum + (p.valorUnitario * p.cantidad),
-          0
-        );
-        setValorTotal(nuevoTotal);
-        setAlert({ open: true, message: 'Materiales extraídos con éxito.', severity: 'success' });
-      } else {
-        setAlert({ open: true, message: 'No se detectaron materiales.', severity: 'info' });
-      }
+      const taskId = await AcopioService.extraerCompraInit(archivoCompra, null);
+  
+      let intentos = 0;
+      const intervalo = 5000;
+  
+      const intervaloId = setInterval(async () => {
+        try {
+          intentos++;
+          setProgreso(Math.min((intentos / maxIntentos) * 100, 100));
+  
+          const { status, materiales, error } = await AcopioService.consultarEstadoExtraccion(taskId);
+  
+          if (status === 'procesando') return;
+  
+          clearInterval(intervaloId);
+  
+          if (status === 'completado' && materiales?.length > 0) {
+            const nuevosProductos = [...productos, ...materiales];
+            setProductos(nuevosProductos);
+            const nuevoTotal = nuevosProductos.reduce(
+              (sum, p) => sum + (p.valorUnitario * p.cantidad), 0);
+            setValorTotal(nuevoTotal);
+            setEstadoExtraccion('completado');
+            setAlert({ open: true, message: 'Materiales extraídos con éxito.', severity: 'success' });
+          } else {
+            setEstadoExtraccion('fallido');
+            setAlert({ open: true, message: error || 'No se detectaron materiales.', severity: 'info' });
+          }
+          setCargandoArchivo(false);
+        } catch (err) {
+          clearInterval(intervaloId);
+          console.error('Error al consultar estado:', err);
+          setEstadoExtraccion('fallido');
+          setAlert({ open: true, message: 'Fallo la extracción. Podés reintentar.', severity: 'error' });
+          setCargandoArchivo(false);
+        }
+  
+        if (intentos >= maxIntentos) {
+          clearInterval(intervaloId);
+          setEstadoExtraccion('fallido');
+          setAlert({ open: true, message: 'Se superó el tiempo de espera', severity: 'error' });
+          setCargandoArchivo(false);
+        }
+      }, intervalo);
+  
     } catch (error) {
-      console.error('Error al extraer datos de compra:', error);
-      setAlert({ open: true, message: 'Error al extraer materiales.', severity: 'error' });
-    } finally {
+      console.error('Error al iniciar extracción:', error);
+      setEstadoExtraccion('fallido');
+      setAlert({ open: true, message: 'No se pudo iniciar la extracción.', severity: 'error' });
       setCargandoArchivo(false);
     }
   };
+  
+  
   
   const guardarAcopio = async () => {
     try {
@@ -135,6 +178,14 @@ const CrearAcopioPage = () => {
   return (
     <Box component="main" sx={{ flexGrow: 1, py: 8 }}>
       <Container maxWidth="md">
+      <Button
+        startIcon={<ArrowBackIcon />}
+        onClick={() => router.push(`/acopios?empresaId=${empresaId}`)}
+        variant="text"
+        sx={{ mb: 1 }}
+      >
+        Volver a la lista
+      </Button>
       <Typography variant="h5" gutterBottom>
         {editando ? 'Editar Acopio' : 'Crear nuevo Acopio'}
       </Typography>
@@ -170,6 +221,48 @@ const CrearAcopioPage = () => {
             >
               {cargandoArchivo ? 'Procesando...' : 'Extraer materiales'}
             </Button>
+            
+            {estadoExtraccion === 'fallido' && (
+              <Alert severity="error" sx={{ mt: 1 }}>
+                No se pudo extraer los materiales. Verificá tu conexión o reintentá más tarde.
+                <Button size="small" onClick={manejarExtraccionDeCompra} sx={{ ml: 1 }}>
+                  Reintentar
+                </Button>
+              </Alert>
+            )}
+            
+            {estadoExtraccion === 'completado' && (
+              <Alert severity="success" sx={{ mt: 1 }}>
+                Materiales extraídos correctamente.
+              </Alert>
+            )}
+
+          {estadoExtraccion === 'procesando' && (
+            <Alert severity="info" sx={{ mt: 2, display: 'flex', alignItems: 'center' }}>
+              <Box sx={{ width: '100%' }}>
+                <Typography variant="body2" gutterBottom>
+                  Procesando archivo… esto puede tardar unos minutos.
+                </Typography>
+                <Box sx={{ width: '100%', mt: 1 }}>
+                  <Box sx={{ height: 10, backgroundColor: '#f0f0f0', borderRadius: 5 }}>
+                    <Box
+                      sx={{
+                        height: 10,
+                        width: `${progreso}%`,
+                        backgroundColor: '#1976d2',
+                        borderRadius: 5,
+                        transition: 'width 0.5s ease-in-out'
+                      }}
+                    />
+                  </Box>
+                  <Typography variant="caption" color="textSecondary">
+                    {Math.floor(progreso)}% completado
+                  </Typography>
+                </Box>
+              </Box>
+            </Alert>
+          )}
+
           </Stack>
 
 

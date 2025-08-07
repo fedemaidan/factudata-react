@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
+import Papa from 'papaparse'; // ya deberías tenerlo instalado
 import Head from 'next/head';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
@@ -7,6 +8,7 @@ import TableViewIcon from '@mui/icons-material/TableView';
 import InsertDriveFileIcon from '@mui/icons-material/InsertDriveFile';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import TablePagination from '@mui/material/TablePagination';
+import movimientosService from 'src/services/movimientosService';
 import {
   Box,
   Button,
@@ -53,6 +55,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { Tooltip } from '@mui/material';
 import { ColumnSelector } from 'src/components/columnSelector';
+import { match } from 'assert';
 
 
 const TodosProyectosPage = () => {
@@ -62,6 +65,10 @@ const TodosProyectosPage = () => {
   const [empresa, setEmpresa] = useState(null);
   const [movimientos, setMovimientos] = useState([]);
   const [tableHeadArray, setTableHeadArray] = useState([]);
+  const [categoriasUnicas, setCategoriasUnicas] = useState([]);
+  const [proveedoresUnicos, setProveedoresUnicos] = useState([]);
+  const [etapasUnicas, setEtapasUnicas] = useState([]);
+  const [mediosPagoUnicos, setMediosPagoUnicos] = useState([]);
   // Estados de Filtros existentes
   const [filtroProyecto, setFiltroProyecto] = useState([]);
   const [filtroCategoria, setFiltroCategoria] = useState([]);
@@ -81,7 +88,10 @@ const TodosProyectosPage = () => {
     return null;
   });
   const [open, setOpen] = useState(false);
-
+  const [csvFile, setCsvFile] = useState(null);
+  const [openImportDialog, setOpenImportDialog] = useState(false);
+  const [importLoading, setImportLoading] = useState(false);
+  
 
 const [filtroFechaDesde, setFiltroFechaDesde] = useState(subDays(new Date(), 7));
 const [filtroFechaHasta, setFiltroFechaHasta] = useState(new Date());
@@ -98,7 +108,7 @@ const [rowsPerPage, setRowsPerPage] = useState(10); // Filas por página
 const [anchorElExport, setAnchorElExport] = useState(null);
 const handleExportClick = (event) => setAnchorElExport(event.currentTarget);
 const handleExportClose = () => setAnchorElExport(null);
-
+const [filtroEtapa, setFiltroEtapa] = useState([]);
 
   const [alert, setAlert] = useState({ open: false, message: '', severity: 'info' });
   const [isLoading, setIsLoading] = useState(false);
@@ -132,6 +142,7 @@ const handleExportClose = () => setAnchorElExport(null);
   function getTableHeadArray(empresa) {
     const head_array = [
       ['codigo_operacion', 'Código'],
+      ['fecha_creacion', 'Fecha creacion'],
       ['fecha_factura', 'Fecha'],
       ['proyectoNombre', 'Proyecto'],
       ['categoria', 'Categoría']]
@@ -158,6 +169,7 @@ const handleExportClose = () => setAnchorElExport(null);
 
     head_array.push(
       ['nombre_proveedor', 'Proveedor'],
+      ['etapa', 'Etapa'],
       ['observacion', 'Observación'],
       ['type', 'Tipo'],
       ['moneda', 'Moneda'])
@@ -175,10 +187,67 @@ const handleExportClose = () => setAnchorElExport(null);
     return head_array;
   }
 
+const handleImportCsv = async () => {
+  if (!csvFile) return;
+  setImportLoading(true);
+
+  Papa.parse(csvFile, {
+    header: true,
+    skipEmptyLines: true,
+    complete: async function (results) {
+      const rows = results.data;
+
+      const errores = [];
+
+      for (let i = 0; i < rows.length; i++) {
+        const { id, ...campos } = rows[i];
+
+        try {
+          if (!id) throw new Error('Falta ID en la fila');
+
+          const camposNormalizados = {};
+          for (const key in campos) {
+            const value = campos[key];
+            if (value === '') continue; // no actualizar campos vacíos
+            if (!isNaN(value) && value.trim() !== '') {
+              camposNormalizados[key] = Number(value);
+            } else {
+              camposNormalizados[key] = value;
+            }
+          }
+
+          await movimientosService.updateMovimiento(id, camposNormalizados);
+        } catch (err) {
+          console.error(err);
+          errores.push({ fila: i + 2, error: err.message }); // +2 porque hay encabezado
+        }
+      }
+
+      setImportLoading(false);
+      setOpenImportDialog(false);
+      fetchData(); // refrescá los datos
+      setAlert({
+        open: true,
+        severity: errores.length === 0 ? 'success' : 'warning',
+        message: errores.length === 0
+          ? 'Importación exitosa'
+          : `Algunos movimientos fallaron (${errores.length})`,
+      });
+    },
+    error: function (err) {
+      console.error(err);
+      setAlert({ open: true, severity: 'error', message: 'Error al leer CSV' });
+      setImportLoading(false);
+    },
+  });
+};
+
+
   function formatearCampo(campo, valor) {
     if (valor === undefined || valor === null) return '-';
     switch (campo) {
       case 'fecha_factura':
+      case 'fecha_creacion':
         return formatTimestamp(valor); // ya tenés esta función
   
       case 'total':
@@ -243,32 +312,29 @@ const handleExportClose = () => setAnchorElExport(null);
   
   const exportAfipExcel = () => {
     const rows = movimientosFiltrados.map((mov) => {
-
-      // dame un mapper que mappee el tipo que viene del movimiento con el tipo que espera afip
       const camposAfip = {
-        'FACTURA A': '001 – FACTURAS A',
-        'FACTURA B': '006 – FACTURAS B',
-        'FACTURA C': '011 – FACTURAS C',
+        'FACTURA A': '1 - FACTURAS A',
+        'FACTURA B': '6 - FACTURAS B',
+        'FACTURA C': '11 - FACTURAS C',
       };
-
+  
       const iva = mov.impuestos?.find(i => i.nombre.includes('IVA'))?.monto || 0;
-      const otrosTributos = mov.impuestos?.filter(i => !i.nombre.includes('IVA')).reduce((acc, i) => acc + (i.monto || 0), 0) || 0;
-      
-      const proveedoresData = empresa.proveedores_data || [];
-      console.log('Proveedores Data:', proveedoresData);
-
-      const proveedor = proveedoresData.find(p => p.id === mov.id_proveedor);
-      const punto_venta = mov.numero_factura?.split('-')[0] || '';
+      const otrosTributos = mov.impuestos?.filter(i => !i.nombre.includes('IVA'))
+        .reduce((acc, i) => acc + (i.monto || 0), 0) || 0;
+  
+      const proveedor = (empresa.proveedores_data || []).find(p => p.id === mov.id_proveedor);
+      const punto_venta  = mov.numero_factura?.split('-')[0] || '';
       const numero_desde = mov.numero_factura?.split('-')[1] || '';
+  
       return {
         'Fecha': formatTimestamp(mov.fecha_factura),
-        'Tipo': camposAfip[mov.tipo_factura] || '', // deberías mapearlo a los códigos AFIP si los tenés
-        'Punto de Venta': parseInt(punto_venta) || '', // si tenés este dato
-        'Número Desde': parseInt(numero_desde) || '', // o separalo en 'desde' y 'hasta'
+        'Tipo': camposAfip[mov.tipo_factura] || '',
+        'Punto de Venta': parseInt(punto_venta) || '',
+        'Número Desde': parseInt(numero_desde) || '',
         'Número Hasta': '',
         'Cód. Autorización': '',
-        'Tipo Doc. Emisor': 'CUIT', // hardcodeado si no se guarda
-        'Nro. Doc. Emisor': proveedor?.cuit || '', // si lo tenés
+        'Tipo Doc. Emisor': 'CUIT',
+        'Nro. Doc. Emisor': proveedor?.cuit || '',
         'Denominación Emisor': proveedor?.razon_social || mov.nombre_proveedor || '',
         'Tipo Cambio': 1,
         'Moneda': mov.moneda === 'USD' ? 'U$S' : '$',
@@ -281,16 +347,36 @@ const handleExportClose = () => setAnchorElExport(null);
       };
     });
   
-    const worksheet = XLSX.utils.json_to_sheet(rows);
+    if (!rows.length) return;
+  
+    const headers = Object.keys(rows[0]);
+    const fileTitle = `Mis Comprobantes Recibidos - CUIT ${empresa?.cuit}`;
+  
+    // Primera fila “vacía” pero con la columna I (índice 8) seteada
+    const firstRow = new Array(Math.max(headers.length, 9)).fill('');
+    firstRow[8] = fileTitle; // Columna I
+  
+    const aoa = [
+      firstRow,                           // Fila 1
+      headers,                            // Fila 2: títulos
+      ...rows.map(r => headers.map(h => r[h] ?? '')) // Datos
+    ];
+  
+    const worksheet = XLSX.utils.aoa_to_sheet(aoa);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, 'AFIP Comprobantes');
+  
     const buffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
     const blob = new Blob([buffer], { type: 'application/octet-stream' });
-    saveAs(blob, 'comprobantes_afip.xlsx');
-  };  
+    saveAs(blob, `${fileTitle}.xlsx`);
+  };
+  
+  
+  
   
   const exportToCSV = () => {
     const camposExportables = {
+      'id': 'id', 
       ...camposBase,
       ...Object.fromEntries(
         Object.entries(camposOpcionales).filter(
@@ -401,6 +487,8 @@ const handleExportClose = () => setAnchorElExport(null);
       const matchTipo = filtroTipo.length === 0 || filtroTipo.includes(mov.type);
       const matchMontoMin = filtroMontoMin ? mov.total >= parseFloat(filtroMontoMin) : true;
       const matchMontoMax = filtroMontoMax ? mov.total <= parseFloat(filtroMontoMax) : true;
+      const matchEtapa = filtroEtapa.length === 0 || filtroEtapa.includes(mov.etapa);
+
       const matchObservacion = filtroObservacion
         ? mov.observacion?.toLowerCase().includes(filtroObservacion.toLowerCase())
         : true;
@@ -442,7 +530,8 @@ const handleExportClose = () => setAnchorElExport(null);
         matchMedioPago &&
         matchTagsExtra &&
         matchPalabrasSueltas &&
-        matchCuentaInterna
+        matchCuentaInterna &&
+        matchEtapa
       );
     });
     
@@ -471,7 +560,7 @@ const handleExportClose = () => setAnchorElExport(null);
         : String(bVal).localeCompare(String(aVal));
     });
   }, [
-    movimientos, filtroProyecto, filtroCategoria, filtroSubcategoria, filtroProveedor,
+    movimientos, filtroProyecto, filtroCategoria, filtroSubcategoria, filtroProveedor,filtroEtapa,
     filtroMontoMin, filtroMontoMax, filtroObservacion, filtroMoneda, filtroTipo,
     ordenCampo, ordenDireccion, filtroMedioPago, filtroTagsExtra, filtroPalabrasSueltas, filtroCuentaInterna
   ]);
@@ -491,21 +580,21 @@ const handleExportClose = () => setAnchorElExport(null);
     }, { ars: 0, usd: 0 });
   }, [movimientosFiltrados]);
 
-  const categoriasUnicas = useMemo(() => {
-    return [...new Set(movimientos.map(m => m.categoria).filter(Boolean))];
-  }, [movimientos]);
   
   const subcategoriasUnicas = useMemo(() => {
     return [...new Set(movimientos.map(m => m.subcategoria).filter(Boolean))];
   }, [movimientos]);
   
-  const proveedoresUnicos = useMemo(() => {
-    return [...new Set(movimientos.map(m => m.nombre_proveedor).filter(Boolean))];
-  }, [movimientos]);
+  
   
   useEffect(() => {
     if (empresa) {
       let todas = getTableHeadArray(empresa);
+      setCategoriasUnicas(empresa?.categorias.map((cat) => cat.name));
+      setMediosPagoUnicos(empresa?.medios_pago || []);
+      setProveedoresUnicos(empresa?.proveedores_data?.map(p => p.nombre) || empresa?.proveedores)
+      setEtapasUnicas(empresa?.etapas?.map(e => e.nombre) || []);
+      
       todas = todas.filter(([key]) => key !== 'acciones');
   
       let porDefecto = columnasVisibles || {};
@@ -663,6 +752,20 @@ const handleExportClose = () => setAnchorElExport(null);
               </FormControl>
               
               <FormControl sx={{ minWidth: 200 }}>
+                <InputLabel>Etapa</InputLabel>
+                <Select
+                  multiple
+                  value={filtroEtapa}
+                  onChange={(e) => setFiltroEtapa(e.target.value)}
+                  label="Etapa"
+                >
+                  {(etapasUnicas || []).map((etapa, i) => (
+                    <MenuItem key={i} value={etapa}>{etapa}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+
+              <FormControl sx={{ minWidth: 200 }}>
                 <InputLabel>Moneda</InputLabel>
                 <Select
                   multiple
@@ -701,7 +804,7 @@ const handleExportClose = () => setAnchorElExport(null);
                   onChange={(e) => setFiltroMedioPago(e.target.value)}
                   label="Medio de pago"
                 >
-                  {[...new Set(movimientos.map(m => m.medio_pago).filter(Boolean))].map((medio, i) => (
+                  {mediosPagoUnicos.map((medio, i) => (
                     <MenuItem key={i} value={medio}>{medio}</MenuItem>
                   ))}
                 </Select>
@@ -738,14 +841,13 @@ const handleExportClose = () => setAnchorElExport(null);
                   onChange={(e) => setFiltroCuentaInterna(e.target.value)}
                   label="Cuenta Interna"
                 >
-                  {[...new Set(movimientos.map(m => m.cuenta_interna).filter(Boolean))].map((cuenta, i) => (
+                  {["Cuenta A", "Cuenta B"].map((cuenta, i) => (
                     <MenuItem key={i} value={cuenta}>{cuenta}</MenuItem>
                   ))}
                 </Select>
               </FormControl>
 
 
-              {/* NUEVO: Filtro de rango de fechas */}
               <Stack direction="row" spacing={1} alignItems="center">
                 <DatePicker
                   selected={filtroFechaDesde}
@@ -770,6 +872,11 @@ const handleExportClose = () => setAnchorElExport(null);
               <Button variant="contained" onClick={fetchData}>Actualizar</Button>
               <Stack direction="row" spacing={2} justifyContent="space-between" alignItems="center">
                 <div>
+                {user.admin && 
+                <Button variant="contained" color="secondary" onClick={() => setOpenImportDialog(true)}>
+                    Importar CSV
+                  </Button>
+                }
                   <Button
                     variant="outlined"
                     onClick={handleExportClick}
@@ -910,6 +1017,27 @@ const handleExportClose = () => setAnchorElExport(null);
               </>
             )}
           </Stack>
+          <Dialog open={openImportDialog} onClose={() => setOpenImportDialog(false)} maxWidth="sm" fullWidth>
+  <DialogTitle>Importar CSV para actualizar movimientos</DialogTitle>
+  <DialogContent>
+    <input
+      type="file"
+      accept=".csv"
+      onChange={(e) => setCsvFile(e.target.files?.[0] || null)}
+    />
+  </DialogContent>
+  <DialogActions>
+    <Button onClick={() => setOpenImportDialog(false)}>Cancelar</Button>
+    <Button
+      variant="contained"
+      disabled={!csvFile || importLoading}
+      onClick={handleImportCsv}
+    >
+      {importLoading ? 'Importando...' : 'Importar'}
+    </Button>
+  </DialogActions>
+</Dialog>
+
         </Container>
       </Box>
     </>

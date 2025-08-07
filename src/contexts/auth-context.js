@@ -53,13 +53,7 @@ const handlers = {
         const router = useRouter();
         router.push("/materiales")
       }
-    } else {
-      if (user.proyectos.length == 1) {
-        const router = useRouter();
-        router.push("/cajaProyecto")
-    }      
-
-    }
+    } 
     return newState;
   },
   [HANDLERS.SIGN_OUT]: (state) => {
@@ -172,8 +166,12 @@ export const AuthProvider = (props) => {
   };
 
   const signUp = async (email, password) => {
+   
+    console.log(auth, email, password)
     const response = await createUserWithEmailAndPassword(auth, email, password);
+    console.log("SignUp response:", response);
     
+
     const user = {
       user_id: response.user.uid,
       id: '',

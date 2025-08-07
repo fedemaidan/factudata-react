@@ -41,7 +41,14 @@ const CuentasPendientesService = {
    * Registra un pago (parcial o total) sobre una cuota
    * @param {string} cuentaId
    * @param {string} cuotaId
-   * @param {Object} pagoData
+   * @param {Object} pagoData 
+   *  *  {
+   *       monto: valor del pago,
+   *       moneda_pago: moneda del pago,
+   *       fecha: fecha del pago (opcional, por defecto es ahora),
+   *       monto_real: monto real del pago (opcional, si no se pasa se usa el monto),
+   *       moneda_real: moneda real del pago (opcional, si no se pasa se usa la moneda del pago),
+   *  }
    * @returns {Promise<Object>}
    */
   registrarPago: async (cuentaId, cuotaId, pagoData) => {
@@ -110,9 +117,9 @@ const CuentasPendientesService = {
     }
   },
 
-  listarCuentasPorEmpresa: async (empresaId) => {
+  listarCuentasPorEmpresa: async (empresaId, conCuotas = true) => {
     try {
-      const response = await api.get(`/cuenta_pendiente/empresa/${empresaId}`);
+      const response = await api.get(`/cuenta_pendiente/empresa/${empresaId}/?con_cuotas=${conCuotas}`);
       console.log('✅ Cuentas obtenidas:', response);
       return response.data;
     } catch (error) {

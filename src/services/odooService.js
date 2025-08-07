@@ -182,6 +182,26 @@ const OdooService = {
       return [];
     }
   },
+  /**
+   * Edita el nombre personalizado de un diario contable de Odoo
+   * @param {string} empresaId - ID de la empresa
+   * @param {number} id - ID del diario
+   * @param {string} nombrePersonalizado - Nuevo nombre a asignar
+   * @returns {Promise<boolean>}
+   */
+  editarNombreDiario: async (empresaId, id, nombrePersonalizado) => {
+    try {
+      const response = await api.put(`odoo/diarios/nombre`, {
+        empresaId,
+        id,
+        nombrePersonalizado,
+      });
+      return response.status === 200;
+    } catch (err) {
+      console.error(`Error al editar nombre del diario ${id}:`, err);
+      return false;
+    }
+  },
 
   
 };

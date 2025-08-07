@@ -1,5 +1,5 @@
 // src/components/MovementFields.js
-import React from 'react';
+import React, { useCallback } from 'react';
 import {
   TextField,
   FormControl,
@@ -11,12 +11,16 @@ import {
   Button,
   Paper
 } from '@mui/material';
+import ImpuestosEditor from './impuestosEditor';
+import { Alert } from '@mui/material';
 
 const DEFINICION_CAMPOS = [
+  { name: 'numero_factura', label: 'Número de Factura', type: 'text', visibleIf: (info) => info.numero_factura },
   { name: 'fecha_factura', label: 'Fecha de la Factura', type: 'date' },
   { name: 'type', label: 'Tipo', type: 'select', options: ['egreso', 'ingreso'] },
   { name: 'total', label: 'Total', type: 'number' },
   { name: 'subtotal', label: 'Subtotal', type: 'number' },
+  { name: 'impuestos', label: 'Impuestos', type: 'impuestos' },
   { name: 'total_original', label: 'Total Original', type: 'number', visibleIf: (info) => info.total_original },
   { name: 'moneda', label: 'Moneda', type: 'select', options: ['ARS', 'USD'] },
   { name: 'nombre_proveedor', label: 'Proveedor', type: 'autocomplete', optionsKey: 'proveedores', visibleIf: (info) => info.proveedor },
@@ -26,7 +30,6 @@ const DEFINICION_CAMPOS = [
   { name: 'estado', label: 'Estado', type: 'select', options: ['Pendiente', 'Pagado'], visibleIf: (_, empresa) => empresa?.con_estados },
   { name: 'medio_pago', label: 'Medio de Pago', type: 'select', optionsKey: 'mediosPago', visibleIf: (info) => info.medio_pago },
   { name: 'tipo_factura', label: 'Tipo de Factura', type: 'select', options: ['Factura A', 'Factura B', 'Factura C', 'No definido'], visibleIf: (info) => info.tipo_factura },
-  { name: 'numero_factura', label: 'Número de Factura', type: 'text', visibleIf: (info) => info.numero_factura },
   { name: 'cuenta_interna', label: 'Cuenta Interna', type: 'select', optionsKey: 'cuentasInternas', visibleIf: (info) => info.cuenta_interna },
   { name: 'etapa', label: 'Etapa', type: 'autocomplete', optionsKey: 'etapas', visibleIf: (info) => info.etapa },
   { name: 'caja_chica', label: 'Caja Chica', type: 'boolean' },
@@ -49,7 +52,7 @@ const MovementFields = ({ formik, comprobante_info, empresa, etapas, proveedores
       case 'tagsExtra': return tagsExtra;
       case 'mediosPago': return mediosPago;
       case 'etapas': return etapas.map(e => e.nombre);
-      case 'cuentasInternas': return empresa?.cuentas_internas || [];
+      case 'cuentasInternas': return ["Cuenta A", "Cuenta B"];
       default: return [];
     }
   }
@@ -150,11 +153,26 @@ const MovementFields = ({ formik, comprobante_info, empresa, etapas, proveedores
           );
         }
 
+        if (campo.type === 'impuestos') {
+          return (
+            <Box key={campo.name} sx={{ mt: 2 }}>
+              <ImpuestosEditor
+                formik={formik}
+                impuestosDisponibles={(empresa?.impuestos_data || []).filter(i => i.activo)}
+                subtotal={formik.values.subtotal}
+              />
+              {formik.errors.total && (
+                <Alert severity="error" sx={{ mt: 2 }}>
+                  {formik.errors.total}
+                </Alert>
+              )}
+              </Box>)
+        }
         return null;
       })}
 
       <Box sx={{ py: 2 }}>
-        <Button color="primary" variant="contained" type="submit" disabled={isLoading} fullWidth>
+        <Button color="primary" variant="contained" type="submit" disabled={isLoading || Boolean(formik.errors.total)} fullWidth>
           {isLoading ? 'Guardando...' : isEditMode ? 'Guardar Cambios' : 'Agregar Movimiento'}
         </Button>
         <Button

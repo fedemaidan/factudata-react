@@ -1,3 +1,5 @@
+import { Timestamp } from 'firebase/firestore';
+
 const formatTimestamp = (timestamp) => {
   if (!timestamp) return "";
 
@@ -47,11 +49,21 @@ const formatCurrency = (amount, digits = 0) => {
   });
 };
 
-const toDateFromFirestore = (timestamp) => {
-  if (!timestamp) return null;
-  const seconds = timestamp.seconds ?? timestamp._seconds;
-  if (seconds === undefined) return null;
-  return new Date(seconds * 1000);
+
+  const toDateFromFirestore = (timestamp) => {
+    if (!timestamp) return null;
+    const seconds = timestamp.seconds ?? timestamp._seconds;
+    if (seconds === undefined) return null;
+    return new Date(seconds * 1000);
+  };
+  
+
+  const dateToTimestamp = (dateString) => {
+    if (!dateString) return null;
+    const [year, month, day] = dateString.split('-').map(Number);
+    return Timestamp.fromDate(new Date(year, month - 1, day, 13, 30));
+  };
+
+export {formatTimestamp, formatCurrency, toDateFromFirestore, 
 };
 
-export { formatTimestamp, formatCurrency, toDateFromFirestore };

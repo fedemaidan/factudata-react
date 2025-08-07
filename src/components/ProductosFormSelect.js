@@ -8,10 +8,13 @@ import {
   TableCell,
   TableHead,
   TableRow,
-  MenuItem
+  MenuItem,
+  Tooltip
 } from '@mui/material';
 import { Add, Delete } from '@mui/icons-material';
 import AcopioService from 'src/services/acopioService';
+import { Autocomplete } from '@mui/material';
+import { formatCurrency } from 'src/utils/formatters';
 
 const ProductosFormSelect = ({ productos, setProductos, valorTotal, setValorTotal, acopioId }) => {
   const [opcionesMateriales, setOpcionesMateriales] = useState([]);
@@ -84,21 +87,25 @@ const ProductosFormSelect = ({ productos, setProductos, valorTotal, setValorTota
         <TableBody>
           {productos.map((prod, index) => (
             <TableRow key={index}>
-              <TableCell>
-                <TextField
-                  select
-                  value={prod.codigo}
-                  onChange={(e) => actualizarProducto(index, 'codigo', e.target.value)}
+                <TableCell sx={{ width: '80%' }}>
+                <Autocomplete
+                  value={opcionesMateriales.find(opt => opt.codigo === prod.codigo) || null}
+                  onChange={(event, newValue) => {
+                    if (newValue) {
+                      actualizarProducto(index, 'codigo', newValue.codigo);
+                    }
+                  }}
+                  options={opcionesMateriales}
+                  getOptionLabel={(option) =>
+                    option.codigo + ' - ' + option.descripcion
+                  }
+                  renderInput={(params) => <TextField {...params} label="Material" fullWidth />}
                   fullWidth
-                >
-                  {opcionesMateriales.map((mat) => (
-                    <MenuItem key={mat.codigo} value={mat.codigo}>
-                      {mat.codigo} - {mat.descripcion}
-                    </MenuItem>
-                  ))}
-                </TextField>
+                  isOptionEqualToValue={(option, value) => option.codigo === value.codigo}
+                />
               </TableCell>
-              <TableCell>
+
+              <TableCell sx={{ width: '5%' }}>
                 <TextField
                   type="number"
                   value={prod.cantidad}
@@ -106,15 +113,13 @@ const ProductosFormSelect = ({ productos, setProductos, valorTotal, setValorTota
                   fullWidth
                 />
               </TableCell>
-              <TableCell>
-                <TextField
-                  type="number"
-                  value={prod.valorUnitario}
-                  fullWidth
-                  disabled
-                />
+              <TableCell sx={{ width: '13%' }}>
+               <Tooltip title={`Total: ${formatCurrency(prod.valorUnitario * prod.cantidad)}`} arrow>
+                  {formatCurrency(prod.valorUnitario)}
+                </Tooltip>
               </TableCell>
-              <TableCell>
+              <TableCell sx={{ width: '2%' }}>
+
                 <IconButton onClick={() => eliminarProducto(index)}>
                   <Delete />
                 </IconButton>

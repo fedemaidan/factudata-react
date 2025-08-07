@@ -20,6 +20,8 @@ import AcopioService from 'src/services/acopioService';
 import ProductosFormSelect from 'src/components/ProductosFormSelect';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import CloseIcon from '@mui/icons-material/Close';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+
 
 const GestionRemitoPage = () => {
   const router = useRouter();
@@ -173,6 +175,13 @@ const GestionRemitoPage = () => {
         </Typography>
 
         <Box display="flex" justifyContent="flex-end" mb={2} gap={1}>
+          <Button
+              variant="text"
+              startIcon={<ArrowBackIcon />}
+              onClick={() => router.push(`/movimientosAcopio?acopioId=${acopioId || ''}`)}
+            >
+              Volver a resumen del acopio
+            </Button>
           <Button onClick={() => setShowArchivo(!showArchivo)} variant="outlined" size="small">
             {showArchivo ? 'Ocultar archivo' : 'Mostrar archivo'}
           </Button>
@@ -180,7 +189,7 @@ const GestionRemitoPage = () => {
             {showFormulario ? 'Ocultar formulario' : 'Mostrar formulario'}
           </Button>
         </Box>
-
+        
         <Grid container spacing={4}>
           {showArchivo && (
             <Grid item xs={12} md={getGridColumnSize()}>

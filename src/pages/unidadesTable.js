@@ -45,7 +45,8 @@ const [unidadBaseMultiple, setUnidadBaseMultiple] = useState({
   edificio: '',
   piso: '',
   tipificacion: '',
-  m2: '',
+  m2_cubierta: '',
+  m2_comunes: '',
   cocheras: '',
   camas: '',
   valor_uf: '',
@@ -84,6 +85,55 @@ const [unidadBaseMultiple, setUnidadBaseMultiple] = useState({
   });
   
   
+  const handleCambioEstado = async (e) => {
+    const nuevoEstado = e.target.value;
+    setLoading(true);
+    const nuevosProyectos = await Promise.all(
+      proyectos.map(async (proyecto) => {
+        const nuevosSub = (proyecto.subproyectos || []).map(sp => {
+          if (seleccionadas.includes(sp.nombre)) {
+            return { ...sp, estado: nuevoEstado };
+          }
+          return sp;
+        });
+        await updateProyecto(proyecto.id, { ...proyecto, subproyectos: nuevosSub });
+        return proyecto;
+      })
+    );
+    const empresaData = await getEmpresaById(empresaId);
+    const proyectosData = await getProyectosByEmpresa(empresaData);
+    setProyectos(proyectosData);
+    const todosSubproyectos = proyectosData.flatMap(p =>
+      (p.subproyectos || []).map(sp => ({ ...sp, proyecto: p.nombre, proyectoId: p.id }))
+    );
+    setSubproyectos(todosSubproyectos);
+    setSeleccionadas([]);
+    setLoading(false);
+  }
+  
+  const handleEliminarSeleccionadas = async () => {
+    const confirm = window.confirm(`¿Eliminar ${seleccionadas.length} unidad(es)?`);
+    if (!confirm) return;
+    setLoading(true);
+    const nuevosProyectos = await Promise.all(
+      proyectos.map(async (proyecto) => {
+        const nuevosSub = (proyecto.subproyectos || []).filter(sp => !seleccionadas.includes(sp.nombre));
+        if (nuevosSub.length !== (proyecto.subproyectos || []).length) {
+          await updateProyecto(proyecto.id, { ...proyecto, subproyectos: nuevosSub });
+        }
+        return proyecto;
+      })
+    );
+    const empresaData = await getEmpresaById(empresaId);
+    const proyectosData = await getProyectosByEmpresa(empresaData);
+    setProyectos(proyectosData);
+    const todosSubproyectos = proyectosData.flatMap(p =>
+      (p.subproyectos || []).map(sp => ({ ...sp, proyecto: p.nombre, proyectoId: p.id }))
+    );
+    setSubproyectos(todosSubproyectos);
+    setSeleccionadas([]);
+    setLoading(false);
+  }
 
   const handleGuardar = async () => {
     if (!unidadBaseMultiple?.proyectoId) return alert("Seleccioná un proyecto para continuar");
@@ -157,7 +207,10 @@ const [unidadBaseMultiple, setUnidadBaseMultiple] = useState({
       <Button variant="outlined" onClick={() => setMostrarAcciones(prev => !prev)}>
   {mostrarAcciones ? 'Ocultar acciones' : 'Mostrar acciones'}
 </Button>
-<Collapse in={mostrarAcciones}>
+
+<Typography variant="h6" gutterBottom>
+    Filtros
+  </Typography>
       <Box display="flex" gap={2} flexWrap="wrap" mb={2}>
         <TextField label="Buscar por nombre/tipificación" value={filtro} onChange={e => setFiltro(e.target.value)} />
         <FormControl sx={{ minWidth: 160 }}>
@@ -181,96 +234,127 @@ const [unidadBaseMultiple, setUnidadBaseMultiple] = useState({
 
         <TextField label="Lote" value={filtroLote} onChange={e => setFiltroLote(e.target.value)} />
         <TextField label="Edificio" value={filtroEdificio} onChange={e => setFiltroEdificio(e.target.value)} />
-        <Button variant="contained" onClick={handleAgregar} startIcon={<Add />}>Agregar una unidad</Button>
-        <Button variant="outlined" onClick={handleAgregarMultiples}>Agregar múltiples</Button>
-        <ImportarUnidadesDesdeCSV
-  proyectos={proyectos}
-  onImport={async (nuevasUnidades) => {
-    if (!nuevasUnidades.length) return;
+        </Box>
+        <Collapse in={mostrarAcciones}>
+        <Box >
+        <Box mt={3}>
+  <Typography variant="h6" gutterBottom>
+    Formas de agregar unidades
+  </Typography>
+  <Typography variant="body2" color="text.secondary" gutterBottom>
+    Elegí cómo cargar nuevas unidades: una por una, varias iguales o desde un archivo CSV.
+  </Typography>
 
-    const { proyectoId } = nuevasUnidades[0];
-    console.log(`Importando ${nuevasUnidades.length} unidades al proyecto ${proyectoId}`);
-    try {
-      const proyecto = await getProyectoById(proyectoId);
-      proyecto.subproyectos = proyecto.subproyectos || [];
-      proyecto.subproyectos = proyecto.subproyectos.concat(nuevasUnidades)
-          
-      await updateProyecto(proyectoId, proyecto);
-      alert('Unidades importadas con éxito');
-      router.reload(); // o volver a cargar los datos si usás useEffect
-    } catch (error) {
-      console.error(error);
-      alert('Ocurrió un error al importar las unidades');
-    }
-  }}
-/>
-
-        <Button
-  variant="outlined"
-  color="error"
-  disabled={seleccionadas.length === 0}
-  onClick={async () => {
-    const confirm = window.confirm(`¿Eliminar ${seleccionadas.length} unidad(es)?`);
-    if (!confirm) return;
-    setLoading(true);
-    const nuevosProyectos = await Promise.all(
-      proyectos.map(async (proyecto) => {
-        const nuevosSub = (proyecto.subproyectos || []).filter(sp => !seleccionadas.includes(sp.nombre));
-        if (nuevosSub.length !== (proyecto.subproyectos || []).length) {
-          await updateProyecto(proyecto.id, { ...proyecto, subproyectos: nuevosSub });
-        }
-        return proyecto;
-      })
-    );
-    const empresaData = await getEmpresaById(empresaId);
-    const proyectosData = await getProyectosByEmpresa(empresaData);
-    setProyectos(proyectosData);
-    const todosSubproyectos = proyectosData.flatMap(p =>
-      (p.subproyectos || []).map(sp => ({ ...sp, proyecto: p.nombre, proyectoId: p.id }))
-    );
-    setSubproyectos(todosSubproyectos);
-    setSeleccionadas([]);
-    setLoading(false);
-  }}
->
-  Eliminar seleccionadas
-</Button>
-<FormControl sx={{ minWidth: 160 }}>
-  <InputLabel>Cambiar estado</InputLabel>
-  <Select
-    value=""
-    disabled={seleccionadas.length === 0}
-    onChange={async (e) => {
-      const nuevoEstado = e.target.value;
-      setLoading(true);
-      const nuevosProyectos = await Promise.all(
-        proyectos.map(async (proyecto) => {
-          const nuevosSub = (proyecto.subproyectos || []).map(sp => {
-            if (seleccionadas.includes(sp.nombre)) {
-              return { ...sp, estado: nuevoEstado };
-            }
-            return sp;
-          });
-          await updateProyecto(proyecto.id, { ...proyecto, subproyectos: nuevosSub });
-          return proyecto;
-        })
-      );
-      const empresaData = await getEmpresaById(empresaId);
-      const proyectosData = await getProyectosByEmpresa(empresaData);
-      setProyectos(proyectosData);
-      const todosSubproyectos = proyectosData.flatMap(p =>
-        (p.subproyectos || []).map(sp => ({ ...sp, proyecto: p.nombre, proyectoId: p.id }))
-      );
-      setSubproyectos(todosSubproyectos);
-      setSeleccionadas([]);
-      setLoading(false);
+  <Box display="flex" gap={3} mt={2} flexWrap="wrap">
+  <Box
+    onClick={handleAgregar}
+    sx={{
+      cursor: 'pointer',
+      border: '2px solid #7C3AED',
+      borderRadius: 2,
+      p: 3,
+      width: 240,
+      bgcolor: '#7C3AED',
+      color: 'white',
+      '&:hover': { bgcolor: '#6D28D9' },
     }}
   >
-    <MenuItem value="disponible">Disponible</MenuItem>
-    <MenuItem value="vendido">Vendido</MenuItem>
-    <MenuItem value="alquilado">Alquilado</MenuItem>
-  </Select>
-</FormControl>
+    <Typography variant="subtitle1" fontWeight="bold">
+      ➕ Agregar una unidad
+    </Typography>
+    <Typography variant="body2">
+      Para cargar manualmente una sola unidad.
+    </Typography>
+  </Box>
+
+  <Box
+    onClick={handleAgregarMultiples}
+    sx={{
+      cursor: 'pointer',
+      border: '1px solid #C4B5FD',
+      borderRadius: 2,
+      p: 3,
+      width: 240,
+      '&:hover': { bgcolor: '#F3F4F6' },
+    }}
+  >
+    <Typography variant="subtitle1" fontWeight="bold" color="primary">
+      📦 Agregar múltiples unidades
+    </Typography>
+    <Typography variant="body2">
+      Ideal para unidades iguales con distintos nombres.
+    </Typography>
+  </Box>
+
+  <Box
+    sx={{
+      border: '1px solid #C4B5FD',
+      borderRadius: 2,
+      p: 3,
+      width: 320,
+      '&:hover': { bgcolor: '#F3F4F6' },
+    }}
+  >
+    <Typography variant="subtitle1" fontWeight="bold">
+      📄 Importar desde archivo CSV
+    </Typography>
+    <Typography variant="body2" mb={1}>
+      Usá un archivo Excel con varias unidades.
+    </Typography>
+    <ImportarUnidadesDesdeCSV
+        proyectos={proyectos}
+        onImport={async (nuevasUnidades) => {
+          if (!nuevasUnidades.length) return;
+
+          const { proyectoId } = nuevasUnidades[0];
+          try {
+            const proyecto = await getProyectoById(proyectoId);
+            proyecto.subproyectos = proyecto.subproyectos || [];
+            proyecto.subproyectos = proyecto.subproyectos.concat(nuevasUnidades);
+
+            await updateProyecto(proyectoId, proyecto);
+            alert('Unidades importadas con éxito');
+            router.reload();
+          } catch (error) {
+            console.error(error);
+            alert('Ocurrió un error al importar las unidades');
+          }
+        }}
+      />
+  </Box>
+</Box>
+
+</Box>
+
+<Box mt={3} display="flex" gap={2} alignItems="center" flexWrap="wrap">
+  <Typography variant="subtitle1" fontWeight="medium">
+    Acciones sobre unidades seleccionadas:
+  </Typography>
+
+  <Button
+    variant="outlined"
+    color="error"
+    disabled={seleccionadas.length === 0}
+    onClick={handleEliminarSeleccionadas} // tu función actual
+  >
+    🗑️ Eliminar seleccionadas
+  </Button>
+
+  <FormControl sx={{ minWidth: 180 }} disabled={seleccionadas.length === 0}>
+    <InputLabel>Cambiar estado</InputLabel>
+    <Select
+      value=""
+      onChange={handleCambioEstado} // tu lógica actual
+      label="Cambiar estado"
+    >
+      <MenuItem value="disponible">Disponible</MenuItem>
+      <MenuItem value="vendido">Vendido</MenuItem>
+      <MenuItem value="alquilado">Alquilado</MenuItem>
+    </Select>
+  </FormControl>
+
+</Box>
+
 
         </Box>
         </Collapse>
@@ -304,7 +388,10 @@ const [unidadBaseMultiple, setUnidadBaseMultiple] = useState({
     <TableCell>Proyecto</TableCell>
     <TableCell>Lote</TableCell>
     <TableCell>Edificio</TableCell>
-    <TableCell>Tipificación (m²)</TableCell>
+    <TableCell>Tipificación</TableCell>
+    <TableCell>m² Cubiertos</TableCell>
+    <TableCell>m² Comunes</TableCell>
+    <TableCell>m² Totales</TableCell>
     <TableCell>Cocheras / Camas</TableCell>
     <TableCell>Valor UF</TableCell>
     <TableCell>Valor cochera</TableCell>
@@ -336,7 +423,10 @@ const [unidadBaseMultiple, setUnidadBaseMultiple] = useState({
       <TableCell>{sp.proyecto}</TableCell>
       <TableCell>{sp.lote}</TableCell>
       <TableCell>{sp.edificio}</TableCell>
-      <TableCell>{`${sp.tipificacion || ''} (${sp.m2 || 0} m²)`}</TableCell>
+      <TableCell>{sp.tipificacion}</TableCell>
+      <TableCell>{sp.m2_cubierta || 0}</TableCell>
+      <TableCell>{sp.m2_comunes || 0}</TableCell>
+      <TableCell>{(parseFloat(sp.m2_cubierta || 0) + parseFloat(sp.m2_comunes || 0))}</TableCell>
       <TableCell>{`${sp.cocheras || 0} / ${sp.camas || 0}`}</TableCell>
       <TableCell>{formatCurrency(sp.valor_uf)}</TableCell>
       <TableCell>{formatCurrency(sp.valor_cochera)}</TableCell>
@@ -416,7 +506,8 @@ const [unidadBaseMultiple, setUnidadBaseMultiple] = useState({
   <TextField label="Edificio" value={unidadBaseMultiple.edificio} onChange={e => setUnidadBaseMultiple(prev => ({ ...prev, edificio: e.target.value }))} fullWidth />
   <TextField label="Piso" value={unidadBaseMultiple.piso} onChange={e => setUnidadBaseMultiple(prev => ({ ...prev, piso: e.target.value }))} fullWidth />
   <TextField label="Tipificación" value={unidadBaseMultiple.tipificacion} onChange={e => setUnidadBaseMultiple(prev => ({ ...prev, tipificacion: e.target.value }))} fullWidth />
-  <TextField label="m²" type="number" value={unidadBaseMultiple.m2} onChange={e => setUnidadBaseMultiple(prev => ({ ...prev, m2: e.target.value }))} fullWidth />
+  <TextField label="m² Cubiertos" type="number" value={unidadBaseMultiple.m2_cubierta} onChange={e => setUnidadBaseMultiple(prev => ({ ...prev, m2_cubierta: e.target.value }))} fullWidth />
+  <TextField label="m² Comunes" type="number" value={unidadBaseMultiple.m2_comunes} onChange={e => setUnidadBaseMultiple(prev => ({ ...prev, m2_comunes: e.target.value }))} fullWidth />
   <TextField label="Cocheras" type="number" value={unidadBaseMultiple.cocheras} onChange={e => setUnidadBaseMultiple(prev => ({ ...prev, cocheras: e.target.value }))} fullWidth />
   <TextField label="Camas" type="number" value={unidadBaseMultiple.camas} onChange={e => setUnidadBaseMultiple(prev => ({ ...prev, camas: e.target.value }))} fullWidth />
   <TextField label="Valor UF" type="number" value={unidadBaseMultiple.valor_uf} onChange={e => setUnidadBaseMultiple(prev => ({ ...prev, valor_uf: e.target.value }))} fullWidth />

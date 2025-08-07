@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuthContext } from 'src/contexts/auth-context';
 import { Button, Checkbox, CircularProgress, FormControl, InputLabel, ListItemText, MenuItem, Select, TextField, Snackbar, Alert, Typography, Grid } from '@mui/material';
 import { Autocomplete } from '@mui/material';
+import { actualizarSheetsDesdeBaseEmpresa } from 'src/services/proyectosService';
 
 export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission }) => {
   
@@ -54,7 +55,12 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
     empresa.notas_estados || ["Pendiente", "En proceso", "Completa"]
   );
   const [tagsExtra, setTagsExtra] = useState(empresa.tags_extra || []);
-  const [cuentasInternas, setCuentasInternas] = useState(empresa.cuentas_internas || []);
+  const [razonSocial, setRazonSocial] = useState(empresa.razon_social || '');
+const [cuit, setCuit] = useState(empresa.cuit || '');
+const [domicilioFiscal, setDomicilioFiscal] = useState(empresa.domicilio_fiscal || '');
+const [carpetaEmpresaRef, setCarpetaEmpresaRef] = useState(empresa.carpetaEmpresaRef || '');
+const [isRegenerandoSheets, setIsRegenerandoSheets] = useState(false);
+
 
 
   const handleTagsExtraChange = (event, newValue) => {
@@ -87,7 +93,8 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
     "AJUSTAR_CAJAS", "TRANSFERIR_ENTRE_CAJAS", "CREAR_NUEVO_PROYECTO", 
     "VENDER_DOLARES", "VALIDAR_CODIGO", "CONFIRMAR_PAGOS_PENDIENTES", "VER_DRIVE", "CREAR_NOTA_PEDIDO", "MODIFICAR_NOTA_PEDIDO", "ELIMINAR_NOTA_PEDIDO",
     "VER_NOTAS_DE_PEDIDO", "GESTIONAR_MOVIMIENTO", "CREAR_INGRESO_CAJA_CHICA", "VER_MI_CAJA_CHICA", "LISTAR_MOVIMIENTOS",
-    "ADMIN_USUARIOS", "CREAR_ACOPIO", "CREAR_PRESUPUESTO", "VER_PRESUPUESTOS", "MODIFICAR_PRESUPUESTO", "ELIMINAR_PRESUPUESTO", "VER_ACOPIO"
+    "ADMIN_USUARIOS", "CREAR_ACOPIO", "CREAR_PRESUPUESTO", "VER_PRESUPUESTOS", "MODIFICAR_PRESUPUESTO", "ELIMINAR_PRESUPUESTO", "VER_ACOPIO", "INTEGRACION_ODOO",
+    "VER_CUENTAS_PENDIENTES", "VER_UNIDADES"
   ];
 
   const dolarAjuste = [
@@ -134,6 +141,35 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
 };
 
 
+  const handleRegenerarSheets = async () => {
+    if (!empresa?.id) return;
+
+    setIsRegenerandoSheets(true);
+    try {
+      const resultado = await actualizarSheetsDesdeBaseEmpresa(empresa.id);
+      if (resultado.success) {
+        setSnackbarInfo({
+          message: 'Sheets regenerados correctamente.',
+          severity: 'success'
+        });
+      } else {
+        setSnackbarInfo({
+          message: 'Ocurrió un error al regenerar los sheets.',
+          severity: 'error'
+        });
+      }
+    } catch (error) {
+      console.error('Error en handleRegenerarSheets:', error);
+      setSnackbarInfo({
+        message: 'Error inesperado al regenerar los sheets.',
+        severity: 'error'
+      });
+    } finally {
+      setSnackbarOpen(true);
+      setIsRegenerandoSheets(false);
+    }
+  };
+
 
   const handleSaveConfig = async () => {
     setIsLoading(true);
@@ -150,7 +186,11 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
       notas_estados: notasEstados,
       tags_extra: tagsExtra,
       ingreso_info: ingresoInfo,
-      cuentas_internas: cuentasInternas, 
+      razon_social: razonSocial,
+      cuit,
+      domicilio_fiscal: domicilioFiscal,
+      carpetaEmpresaRef: carpetaEmpresaRef,
+
     };
     
     try {
@@ -264,6 +304,32 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
         <MenuItem value="Logistica">Logística</MenuItem>
         <MenuItem value="Rinde gastos">Rinde Gastos</MenuItem>
       </TextField>
+      <Typography variant="h6" sx={{ mt: 4 }}>Datos fiscales de la empresa</Typography>
+
+<TextField
+  label="Razón Social"
+  value={razonSocial}
+  onChange={(e) => setRazonSocial(e.target.value)}
+  fullWidth
+  sx={{ mt: 2 }}
+/>
+
+<TextField
+  label="CUIT"
+  value={cuit}
+  onChange={(e) => setCuit(e.target.value)}
+  fullWidth
+  sx={{ mt: 2 }}
+/>
+
+<TextField
+  label="Domicilio Fiscal"
+  value={domicilioFiscal}
+  onChange={(e) => setDomicilioFiscal(e.target.value)}
+  fullWidth
+  sx={{ mt: 2 }}
+/>
+
       <TextField
       select
       label="Dólar de Ajuste"
@@ -298,18 +364,6 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
         )}
       />
 
-      <Autocomplete
-        multiple
-        options={[]} // podés dejarlo vacío para permitir cuentas libres
-        value={cuentasInternas}
-        onChange={(event, newValue) => setCuentasInternas(newValue)}
-        freeSolo
-        renderInput={(params) => (
-          <TextField {...params} label="Cuentas Internas" variant="outlined" fullWidth />
-        )}
-      />
-
-
 
     <FormControl sx={{ mt: 2 }}>
   <Checkbox
@@ -335,6 +389,29 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
           error={hasPermissionError}
           helperText={hasPermissionError ? "El google sheet no está configurado para que podamos editarlo. Asegurate que el id esté bien escrito y de darle permisos de edición a firebase-adminsdk-xts1d@factudata-3afdf.iam.gserviceaccount.com." : ""}
       />
+
+<Typography variant="h6" sx={{ mt: 4 }}>Gestionar Google Sheets</Typography>
+
+<TextField
+  label="ID de carpeta de Drive"
+  value={carpetaEmpresaRef}
+  onChange={(e) => setCarpetaEmpresaRef(e.target.value)}
+  fullWidth
+  sx={{ mt: 2 }}
+  helperText="Ejemplo: 1a2B3cD4eFgHiJKLmNopQRStuvWxYzZ123"
+/>
+
+<Button
+  onClick={handleRegenerarSheets}
+  variant="outlined"
+  color="secondary"
+  sx={{ mt: 2, mb: 2 }}
+  disabled={isRegenerandoSheets}
+>
+  {isRegenerandoSheets ? <CircularProgress size={24} /> : "Regenerar Sheets"}
+</Button>
+
+
       <Button onClick={handleSaveConfig} variant="contained" color="primary" disabled={isLoading}>
         {isLoading ? <CircularProgress size={24} /> : "Guardar Configuración"}
       </Button>

@@ -29,6 +29,7 @@ import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import AcopioService from 'src/services/acopioService';
 import RemitosTable from 'src/components/remitosTable';
 import MaterialesTable from 'src/components/materialesTable';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 
 
 const MovimientosAcopioPage = () => {
@@ -215,8 +216,18 @@ const porcentajeDisponible = (1 - (acopio?.valor_desacopio / acopio?.valor_acopi
   
   
   return (
-    <Box component="main" sx={{ flexGrow: 1, py: 8 }}>
+    <Box component="main">
       <Container maxWidth="xl">
+      <Box sx={{ mt: 2 }}>
+          <Button
+            variant="text"
+            startIcon={<ArrowBackIcon />}
+            onClick={() => router.push(`/acopios?empresaId=${acopio?.empresaId || ''}`)}
+          >
+            Volver a la lista de acopios
+          </Button>
+        </Box>
+
         <Tabs value={tabActiva} onChange={handleChangeTab}>
           <Tab label="Info Acopio" value="acopio" />
           <Tab label="Remitos" value="remitos" />

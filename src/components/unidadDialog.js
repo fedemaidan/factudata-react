@@ -54,7 +54,15 @@ export default function UnidadDialog({ unidad, onClose, onChange, onSave, proyec
         <TextField label="Edificio" value={unidad.edificio || ''} onChange={e => onChange('edificio', e.target.value)} fullWidth />
         <TextField label="Piso" value={unidad.piso || ''} onChange={e => onChange('piso', e.target.value)} fullWidth />
         <TextField label="Tipificación" value={unidad.tipificacion || ''} onChange={e => onChange('tipificacion', e.target.value)} fullWidth />
-        <TextField label="m²" type="number" value={unidad.m2 || ''} onChange={e => onChange('m2', e.target.value)} fullWidth />
+        <TextField label="m² Cubiertos" type="number" value={unidad.m2_cubierta || ''} onChange={e => onChange('m2_cubierta', e.target.value)} fullWidth />
+        <TextField label="m² Comunes" type="number" value={unidad.m2_comunes || ''} onChange={e => onChange('m2_comunes', e.target.value)} fullWidth />
+        <TextField
+          label="m² Totales"
+          value={(parseFloat(unidad.m2_cubierta || 0) + parseFloat(unidad.m2_comunes || 0)).toFixed(2)}
+          fullWidth
+          InputProps={{ readOnly: true }}
+          variant="filled"
+        />
         <TextField label="Cocheras" type="number" value={unidad.cocheras || ''} onChange={e => onChange('cocheras', e.target.value)} fullWidth />
         <TextField label="Camas" type="number" value={unidad.camas || ''} onChange={e => onChange('camas', e.target.value)} fullWidth />
         <TextField label="Valor UF" type="number" value={unidad.valor_uf || ''} onChange={e => onChange('valor_uf', e.target.value)} fullWidth />
