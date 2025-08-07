@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Dialog,
   DialogTitle,
@@ -14,22 +14,29 @@ import {
   MenuItem,
   Grid,
 } from "@mui/material";
+import clientesService from "src/services/celulandia/clientesService";
 
 const AgregarModal = ({ open, onClose, onSave }) => {
+  const [clientes, setClientes] = useState([]);
   const [formData, setFormData] = useState({
-    numeroComprobante: "",
-    fecha: new Date().toISOString().split("T")[0], // Fecha actual
-    hora: new Date().toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" }),
     cliente: "",
     cuentaDestino: "ENSHOP SRL",
-    montoEnviado: "",
     monedaDePago: "ARS",
+    montoEnviado: "",
+    tipoDeCambio: "1",
     CC: "ARS",
     montoCC: "",
-    tipoDeCambio: "1",
-    estado: "PENDIENTE",
     usuario: "Martin Sorby",
   });
+
+  console.log("clientes", clientes);
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  const fetchData = async () => {
+    const { data } = await clientesService.getAllClientes();
+  };
 
   const handleInputChange = (field, value) => {
     setFormData((prev) => ({
@@ -91,43 +98,10 @@ const AgregarModal = ({ open, onClose, onSave }) => {
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
-                label="Número de Comprobante *"
-                value={formData.numeroComprobante}
-                onChange={(e) => handleInputChange("numeroComprobante", e.target.value)}
-                margin="normal"
-                required
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
                 label="Cliente *"
                 value={formData.cliente}
                 onChange={(e) => handleInputChange("cliente", e.target.value)}
                 margin="normal"
-                required
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Fecha *"
-                type="date"
-                value={formData.fecha}
-                onChange={(e) => handleInputChange("fecha", e.target.value)}
-                margin="normal"
-                InputLabelProps={{ shrink: true }}
-                required
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Hora *"
-                value={formData.hora}
-                onChange={(e) => handleInputChange("hora", e.target.value)}
-                margin="normal"
-                placeholder="HH:MM"
                 required
               />
             </Grid>
@@ -196,18 +170,15 @@ const AgregarModal = ({ open, onClose, onSave }) => {
               />
             </Grid>
             <Grid item xs={12} sm={6}>
-              <FormControl fullWidth margin="normal">
-                <InputLabel>Estado *</InputLabel>
-                <Select
-                  value={formData.estado}
-                  label="Estado *"
-                  onChange={(e) => handleInputChange("estado", e.target.value)}
-                  required
-                >
-                  <MenuItem value="CONFIRMADO">CONFIRMADO</MenuItem>
-                  <MenuItem value="PENDIENTE">PENDIENTE</MenuItem>
-                </Select>
-              </FormControl>
+              <TextField
+                fullWidth
+                label="Monto CC"
+                type="number"
+                value={formData.montoCC}
+                disabled={true}
+                onChange={(e) => handleInputChange("montoCC", e.target.value)}
+                margin="normal"
+              />
             </Grid>
             <Grid item xs={12} sm={6}>
               <TextField

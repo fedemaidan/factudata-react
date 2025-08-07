@@ -1,18 +1,15 @@
-import mockData from "./celulandiaData.json";
+import mockData from "../celulandiaData.json";
+import axiosCelulandia from "src/services/axiosCelulandia";
 
 // Simular delay de red
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-const celulandiaService = {
+const movimientosService = {
   // Obtener todos los movimientos
   getAllMovimientos: async () => {
-    try {
-      await delay(500); // Simular delay de red
-      return mockData.movimientos;
-    } catch (err) {
-      console.error("Error al obtener los movimientos:", err);
-      return [];
-    }
+    const response = await axiosCelulandia.get("/movimientos?populate=caja");
+    console.log("response.data", response.data);
+    return response.data;
   },
 
   // Obtener un movimiento por ID
@@ -27,21 +24,10 @@ const celulandiaService = {
     }
   },
 
-  // Crear un nuevo movimiento
   createMovimiento: async (movimientoData) => {
     try {
-      await delay(400);
-      const newMovimiento = {
-        id: Math.max(...mockData.movimientos.map((m) => m.id)) + 1,
-        ...movimientoData,
-        fecha: new Date().toISOString().split("T")[0],
-        hora: new Date().toTimeString().split(" ")[0],
-      };
-
-      // En un caso real, aquí se haría la llamada al backend
-      // mockData.movimientos.push(newMovimiento);
-
-      return newMovimiento;
+      const response = await axiosCelulandia.post("/movimientos", { movimientoData });
+      return response.data;
     } catch (err) {
       console.error("Error al crear el movimiento:", err);
       return null;
@@ -220,4 +206,4 @@ const celulandiaService = {
   },
 };
 
-export default celulandiaService;
+export default movimientosService;

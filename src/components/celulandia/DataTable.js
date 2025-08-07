@@ -151,6 +151,36 @@ const DataTable = ({
     return value;
   };
 
+  // Función para renderizar el contenido de una celda de manera segura
+  const renderCellContent = (item, column) => {
+    if (column.render) {
+      const renderedContent = column.render(item);
+      // Asegurar que el contenido sea un ReactNode válido
+      if (renderedContent === null || renderedContent === undefined) {
+        return "-";
+      }
+      return renderedContent;
+    }
+
+    const value = item[column.key];
+    if (value === null || value === undefined) {
+      return "-";
+    }
+
+    const formattedValue = formatValue(value, column.key);
+    if (formattedValue === null || formattedValue === undefined) {
+      return "-";
+    }
+
+    return formattedValue;
+  };
+
+  // Función para obtener una key única para cada fila
+  const getRowKey = (item, index) => {
+    // Usar _id si está disponible, sino id, sino el índice
+    return item._id || item.id || `row-${index}`;
+  };
+
   return (
     <Box
       component="main"
@@ -265,13 +295,11 @@ const DataTable = ({
                 </TableRow>
               </TableHead>
               <TableBody>
-                {dataOrdenados.map((item) => (
-                  <TableRow key={item.id}>
+                {dataOrdenados.map((item, index) => (
+                  <TableRow key={getRowKey(item, index)}>
                     {columns.map((column) => (
-                      <TableCell key={column.key}>
-                        {column.render
-                          ? column.render(item)
-                          : formatValue(item[column.key], column.key)}
+                      <TableCell key={`${getRowKey(item, index)}-${column.key}`}>
+                        {renderCellContent(item, column)}
                       </TableCell>
                     ))}
                   </TableRow>

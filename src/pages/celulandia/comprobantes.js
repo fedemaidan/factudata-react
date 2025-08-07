@@ -5,12 +5,13 @@ import { Container, Button } from "@mui/material";
 
 import DataTable from "src/components/celulandia/DataTable";
 import TableActions from "src/components/celulandia/TableActions";
-import celulandiaService from "src/services/celulandiaService";
+import movimientosService from "src/services/celulandia/movimientosService";
 import { formatearCampo } from "src/utils/celulandia/formatearCampo";
 import ComprobanteModal from "src/components/celulandia/ComprobanteModal";
 import EditarModal from "src/components/celulandia/EditarModal";
 import HistorialModal from "src/components/celulandia/HistorialModal";
 import AgregarModal from "src/components/AgregarModal";
+import { parseMovimientos } from "src/utils/celulandia/movimientos/parseMovimientos";
 
 const ComprobantesCelulandiaPage = () => {
   const [movimientos, setMovimientos] = useState([]);
@@ -25,133 +26,14 @@ const ComprobantesCelulandiaPage = () => {
 
   useEffect(() => {
     fetchData();
-
-    // Agregar algunos datos de ejemplo al historial para demostración
-    const historialEjemplo = {
-      1: [
-        {
-          id: Date.now() - 1000,
-          fecha: new Date(Date.now() - 86400000).toISOString(), // Hace 1 día
-          usuario: "admin@celulandia.com",
-          cambios: [
-            {
-              campo: "montoEnviado",
-              valorAnterior: 45000,
-              valorNuevo: 50000,
-            },
-            {
-              campo: "estado",
-              valorAnterior: "PENDIENTE",
-              valorNuevo: "CONFIRMADO",
-            },
-          ],
-          comprobante: "COMP-001-2025",
-        },
-      ],
-      2: [
-        {
-          id: Date.now() - 2000,
-          fecha: new Date(Date.now() - 172800000).toISOString(), // Hace 2 días
-          usuario: "operador@celulandia.com",
-          cambios: [
-            {
-              campo: "cliente",
-              valorAnterior: "María González",
-              valorNuevo: "María González López",
-            },
-          ],
-          comprobante: "COMP-002-2025",
-        },
-        {
-          id: Date.now() - 3000,
-          fecha: new Date(Date.now() - 3600000).toISOString(), // Hace 1 hora
-          usuario: "admin@celulandia.com",
-          cambios: [
-            {
-              campo: "montoEnviado",
-              valorAnterior: 950,
-              valorNuevo: 1000,
-            },
-            {
-              campo: "tipoDeCambio",
-              valorAnterior: 800,
-              valorNuevo: 850,
-            },
-          ],
-          comprobante: "COMP-002-2025",
-        },
-      ],
-      3: [
-        {
-          id: Date.now() - 4000,
-          fecha: new Date(Date.now() - 43200000).toISOString(), // Hace 12 horas
-          usuario: "operador@celulandia.com",
-          cambios: [
-            {
-              campo: "montoEnviado",
-              valorAnterior: 700,
-              valorNuevo: 750,
-            },
-            {
-              campo: "CC",
-              valorAnterior: "USD OFICIAL",
-              valorNuevo: "USD BLUE",
-            },
-          ],
-          comprobante: "COMP-003-2025",
-        },
-      ],
-      4: [
-        {
-          id: Date.now() - 5000,
-          fecha: new Date(Date.now() - 7200000).toISOString(), // Hace 2 horas
-          usuario: "admin@celulandia.com",
-          cambios: [
-            {
-              campo: "estado",
-              valorAnterior: "PENDIENTE",
-              valorNuevo: "CONFIRMADO",
-            },
-            {
-              campo: "montoEnviado",
-              valorAnterior: 70000,
-              valorNuevo: 75000,
-            },
-          ],
-          comprobante: "COMP-004-2025",
-        },
-      ],
-      5: [
-        {
-          id: Date.now() - 6000,
-          fecha: new Date(Date.now() - 1800000).toISOString(), // Hace 30 minutos
-          usuario: "operador@celulandia.com",
-          cambios: [
-            {
-              campo: "cliente",
-              valorAnterior: "Roberto Silva",
-              valorNuevo: "Roberto Silva Martínez",
-            },
-            {
-              campo: "montoEnviado",
-              valorAnterior: 1800,
-              valorNuevo: 2000,
-            },
-          ],
-          comprobante: "COMP-005-2025",
-        },
-      ],
-    };
-
-    setHistorialCambios(historialEjemplo);
   }, []);
 
   const fetchData = async () => {
     setIsLoading(true);
     try {
-      const data = await celulandiaService.getAllMovimientos();
+      const { data } = await movimientosService.getAllMovimientos();
       console.log("Datos cargados:", data);
-      setMovimientos(data);
+      setMovimientos(parseMovimientos(data));
     } catch (error) {
       console.error("Error al cargar movimientos:", error);
     } finally {
@@ -165,28 +47,27 @@ const ComprobantesCelulandiaPage = () => {
   };
 
   const columns = [
-    { key: "numeroComprobante", label: "Comprobante", sortable: false },
-    { key: "fecha", label: "Fecha", sortable: true },
-    { key: "hora", label: "Hora", sortable: false },
+    { key: "numeroFactura", label: "Comprobante", sortable: false },
+    { key: "horaCreacion", label: "Hora", sortable: false },
     { key: "cliente", label: "Cliente", sortable: false },
-    { key: "cuentaDestino", label: "Cuenta Destino", sortable: false },
-    { key: "montoEnviado", label: "Monto Enviado", sortable: false },
-    { key: "monedaDePago", label: "Moneda", sortable: false },
-    { key: "CC", label: "CC", sortable: false },
-    { key: "montoCC", label: "Monto CC", sortable: false },
-    { key: "tipoDeCambio", label: "Tipo Cambio", sortable: false },
+    { key: "cuentaCorriente", label: "Cuenta Destino", sortable: false },
+    { key: "total", label: "Monto Enviado", sortable: false },
+    { key: "moneda", label: "Moneda", sortable: false },
+    { key: "clienteId", label: "CC", sortable: false },
+    { key: "fechaCobro", label: "Monto CC", sortable: false },
+    { key: "tipoFactura", label: "Tipo Cambio", sortable: false },
     { key: "estado", label: "Estado", sortable: false },
     {
-      key: "imagen",
+      key: "urlImagen",
       label: "Imagen",
       sortable: false,
       render: (item) =>
-        item.imagen ? (
+        item.urlImagen ? (
           <Button
             size="small"
             variant="outlined"
             onClick={() => {
-              setImagenModal(item.imagen);
+              setImagenModal(item.urlImagen);
               setModalOpen(true);
             }}
           >
@@ -196,7 +77,7 @@ const ComprobantesCelulandiaPage = () => {
           "-"
         ),
     },
-    { key: "usuario", label: "Usuario", sortable: false },
+    { key: "nombreUsuario", label: "Usuario", sortable: false },
     {
       key: "acciones",
       label: "Acciones",
@@ -218,34 +99,53 @@ const ComprobantesCelulandiaPage = () => {
   ];
 
   const formatters = {
-    fecha: (value) => formatearCampo("fecha", value),
-    cuentaDestino: (value) => formatearCampo("cuentaDestino", value),
-    montoEnviado: (value) => formatearCampo("montoEnviado", value),
-    monedaDePago: (value) => formatearCampo("monedaDePago", value),
-    CC: (value) => formatearCampo("CC", value),
-    montoCC: (value) => formatearCampo("montoCC", value),
-    tipoDeCambio: (value) => formatearCampo("tipoDeCambio", value),
+    fechaFactura: (value) => formatearCampo("fecha", value),
+    fechaCreacion: (value) => formatearCampo("fecha", value),
+    horaCreacion: (value) => formatearCampo("hora", value),
+    cuentaCorriente: (value) => formatearCampo("cuentaDestino", value),
+    total: (value) => {
+      if (value && typeof value === "object") {
+        // Si es un objeto con diferentes monedas, mostrar el valor en ARS
+        if (value.ars) {
+          return formatearCampo("montoEnviado", value.ars);
+        }
+        // Si no hay ars, mostrar el primer valor disponible
+        const firstValue = Object.values(value)[0];
+        return formatearCampo("montoEnviado", firstValue);
+      }
+      return formatearCampo("montoEnviado", value);
+    },
+    moneda: (value) => formatearCampo("monedaDePago", value),
+    clienteId: (value) => formatearCampo("CC", value),
+    fechaCobro: (value) => formatearCampo("montoCC", value),
+    tipoFactura: (value) => formatearCampo("tipoDeCambio", value),
     estado: (value) => formatearCampo("estado", value),
+    cliente: (value) => {
+      if (value && typeof value === "object" && value.nombre) {
+        return value.nombre;
+      }
+      return value || "-";
+    },
   };
 
   const searchFields = [
-    "numeroComprobante",
-    "fecha",
-    "hora",
-    "cliente",
-    "cuentaDestino",
-    "montoEnviado",
-    "monedaDePago",
-    "CC",
-    "montoCC",
-    "tipoDeCambio",
+    "numeroFactura",
+    "fechaCreacion",
+    "horaCreacion",
+    "nombreCliente",
+    "",
+    "total",
+    "moneda",
+    "clienteId",
+    "fechaCobro",
+    "tipoFactura",
     "estado",
-    "usuario",
+    "nombreUsuario",
   ];
 
   const handleSaveEdit = (id, updatedData) => {
     // Encontrar el movimiento original antes de la edición
-    const movimientoOriginal = movimientos.find((mov) => mov.id === id);
+    const movimientoOriginal = movimientos.find((mov) => mov._id === id || mov.id === id);
 
     // Detectar qué campos cambiaron
     const cambios = [];
@@ -266,24 +166,31 @@ const ComprobantesCelulandiaPage = () => {
         fecha: new Date().toISOString(),
         usuario: "Martin Sorby",
         cambios: cambios,
-        comprobante: movimientoOriginal.numeroComprobante,
+        comprobante: movimientoOriginal.numeroFactura,
       };
 
+      const itemId = movimientoOriginal._id || movimientoOriginal.id;
       setHistorialCambios((prev) => ({
         ...prev,
-        [id]: [...(prev[id] || []), registroCambio],
+        [itemId]: [...(prev[itemId] || []), registroCambio],
       }));
     }
 
     // Actualizar el movimiento
     setMovimientos((prevMovimientos) =>
-      prevMovimientos.map((mov) => (mov.id === id ? { ...mov, ...updatedData } : mov))
+      prevMovimientos.map((mov) =>
+        mov._id === id || mov.id === id ? { ...mov, ...updatedData } : mov
+      )
     );
   };
 
   const handleSaveNew = (newData) => {
-    // Agregar el nuevo movimiento a la lista
-    setMovimientos((prevMovimientos) => [...prevMovimientos, newData]);
+    // Agregar el nuevo movimiento a la lista con un ID temporal si no lo tiene
+    const newDataWithId = {
+      ...newData,
+      _id: newData._id || `temp-${Date.now()}`,
+    };
+    setMovimientos((prevMovimientos) => [...prevMovimientos, newDataWithId]);
   };
 
   return (
@@ -314,7 +221,7 @@ const ComprobantesCelulandiaPage = () => {
         open={historialModalOpen}
         onClose={() => setHistorialModalOpen(false)}
         data={selectedData}
-        historial={selectedData ? historialCambios[selectedData.id] || [] : []}
+        historial={selectedData ? historialCambios[selectedData._id || selectedData.id] || [] : []}
       />
       <AgregarModal
         open={agregarModalOpen}

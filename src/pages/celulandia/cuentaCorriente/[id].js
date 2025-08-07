@@ -29,7 +29,7 @@ import HistoryIcon from "@mui/icons-material/History";
 import Divider from "@mui/material/Divider";
 import ClearIcon from "@mui/icons-material/Clear";
 
-import celulandiaService from "src/services/celulandiaService";
+import celulandiaService from "src/services/celulandia/movimientosService";
 import { formatCurrency } from "src/utils/formatters";
 import { formatearCampo } from "src/utils/celulandia/formatearCampo";
 import { filtrarPorFecha, filtrarPorBusqueda } from "src/utils/celulandia/filtros";

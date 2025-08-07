@@ -18,7 +18,7 @@ import {
 } from "@mui/material";
 import Divider from "@mui/material/Divider";
 
-import celulandiaService from "src/services/celulandiaService";
+import celulandiaService from "src/services/celulandia/movimientosService";
 import { formatCurrency } from "src/utils/formatters";
 
 const CuentaCorrienteCelulandiaPage = () => {
