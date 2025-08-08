@@ -16,7 +16,7 @@ import {
 } from "@mui/material";
 import { formatCurrency } from "src/utils/formatters";
 
-const HistorialModal = ({ open, onClose, data, historial }) => {
+const HistorialModal = ({ open, onClose, data, historial = {} }) => {
   // Función para formatear el valor de un campo
   const formatearValor = (campo, valor) => {
     if (valor === null || valor === undefined || valor === "") {

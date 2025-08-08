@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import {
   Dialog,
   DialogTitle,
@@ -16,50 +16,15 @@ import {
 } from "@mui/material";
 
 const EditarModal = ({ open, onClose, data, onSave }) => {
+  console.log(data);
   const [formData, setFormData] = useState({
-    numeroComprobante: "",
-    fecha: "",
-    hora: "",
-    cliente: "",
-    cuentaDestino: "",
-    montoEnviado: "",
-    monedaDePago: "",
-    CC: "",
-    montoCC: "",
-    tipoDeCambio: "",
-    estado: "",
-    usuario: "",
+    cliente: data?.cliente?.nombre,
+    cuentaDestino: data?.cuentaDestino,
+    montoEnviado: data?.montoEnviado,
+    monedaDePago: data?.moneda,
+    CC: data?.cuentaCorriente,
+    estado: data?.estado,
   });
-
-  // Función para limpiar el formato de moneda y convertir a string para el input
-  const limpiarFormatoMoneda = (valor) => {
-    if (!valor) return "";
-    // Si es un string, remover símbolos de moneda y separadores de miles
-    if (typeof valor === "string") {
-      return valor.replace(/[^\d.,]/g, "").replace(",", ".");
-    }
-    // Si es un número, convertirlo a string
-    return valor.toString();
-  };
-
-  useEffect(() => {
-    if (data) {
-      setFormData({
-        numeroComprobante: data.numeroComprobante || "",
-        fecha: data.fecha || "",
-        hora: data.hora || "",
-        cliente: data.cliente || "",
-        cuentaDestino: data.cuentaDestino || "",
-        montoEnviado: limpiarFormatoMoneda(data.montoEnviado),
-        monedaDePago: data.monedaDePago || "",
-        CC: data.CC || "",
-        montoCC: limpiarFormatoMoneda(data.montoCC),
-        tipoDeCambio: data.tipoDeCambio || "",
-        estado: data.estado || "",
-        usuario: data.usuario || "",
-      });
-    }
-  }, [data]);
 
   const handleInputChange = (field, value) => {
     setFormData((prev) => ({
@@ -86,18 +51,13 @@ const EditarModal = ({ open, onClose, data, onSave }) => {
     // Restaurar datos originales
     if (data) {
       setFormData({
-        numeroComprobante: data.numeroComprobante || "",
-        fecha: data.fecha || "",
-        hora: data.hora || "",
-        cliente: data.cliente || "",
-        cuentaDestino: data.cuentaDestino || "",
-        montoEnviado: limpiarFormatoMoneda(data.montoEnviado),
-        monedaDePago: data.monedaDePago || "",
-        CC: data.CC || "",
-        montoCC: limpiarFormatoMoneda(data.montoCC),
-        tipoDeCambio: data.tipoDeCambio || "",
-        estado: data.estado || "",
-        usuario: data.usuario || "",
+        cliente: data.cliente.nombre,
+        cuentaDestino: data.cuentaDestino,
+        montoEnviado: data.montoEnviado,
+        monedaDePago: data.moneda,
+        CC: data.cuentaCorriente,
+        estado: data.estado,
+        tipoDeCambio: data.tipoDeCambio,
       });
     }
     onClose();
@@ -116,44 +76,15 @@ const EditarModal = ({ open, onClose, data, onSave }) => {
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
-                label="Número de Comprobante"
-                value={formData.numeroComprobante}
-                onChange={(e) => handleInputChange("numeroComprobante", e.target.value)}
-                margin="normal"
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
                 label="Cliente"
+                variant="standard"
                 value={formData.cliente}
                 onChange={(e) => handleInputChange("cliente", e.target.value)}
                 margin="normal"
               />
             </Grid>
             <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Fecha"
-                type="date"
-                value={formData.fecha}
-                onChange={(e) => handleInputChange("fecha", e.target.value)}
-                margin="normal"
-                InputLabelProps={{ shrink: true }}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Hora"
-                value={formData.hora}
-                onChange={(e) => handleInputChange("hora", e.target.value)}
-                margin="normal"
-                placeholder="HH:MM"
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <FormControl fullWidth margin="normal">
+              <FormControl fullWidth variant="standard" margin="normal">
                 <InputLabel>Cuenta Destino</InputLabel>
                 <Select
                   value={formData.cuentaDestino}
@@ -168,6 +99,7 @@ const EditarModal = ({ open, onClose, data, onSave }) => {
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
+                variant="standard"
                 label="Monto"
                 type="number"
                 value={formData.montoEnviado}
@@ -176,7 +108,7 @@ const EditarModal = ({ open, onClose, data, onSave }) => {
               />
             </Grid>
             <Grid item xs={12} sm={6}>
-              <FormControl fullWidth margin="normal">
+              <FormControl fullWidth variant="standard" margin="normal">
                 <InputLabel>Moneda de Pago</InputLabel>
                 <Select
                   value={formData.monedaDePago}
@@ -189,7 +121,7 @@ const EditarModal = ({ open, onClose, data, onSave }) => {
               </FormControl>
             </Grid>
             <Grid item xs={12} sm={6}>
-              <FormControl fullWidth margin="normal">
+              <FormControl fullWidth variant="standard" margin="normal">
                 <InputLabel>Cuenta Corriente</InputLabel>
                 <Select
                   value={formData.CC}
@@ -203,17 +135,7 @@ const EditarModal = ({ open, onClose, data, onSave }) => {
               </FormControl>
             </Grid>
             <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Tipo de Cambio"
-                type="number"
-                value={formData.tipoDeCambio}
-                onChange={(e) => handleInputChange("tipoDeCambio", e.target.value)}
-                margin="normal"
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <FormControl fullWidth margin="normal">
+              <FormControl fullWidth variant="standard" margin="normal">
                 <InputLabel>Estado</InputLabel>
                 <Select
                   value={formData.estado}
@@ -224,15 +146,6 @@ const EditarModal = ({ open, onClose, data, onSave }) => {
                   <MenuItem value="PENDIENTE">PENDIENTE</MenuItem>
                 </Select>
               </FormControl>
-            </Grid>
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="Usuario"
-                value={formData.usuario}
-                onChange={(e) => handleInputChange("usuario", e.target.value)}
-                margin="normal"
-              />
             </Grid>
           </Grid>
         </Box>

@@ -26,7 +26,7 @@ const movimientosService = {
 
   createMovimiento: async (movimientoData) => {
     try {
-      const response = await axiosCelulandia.post("/movimientos", { movimientoData });
+      const response = await axiosCelulandia.post("/movimientos", movimientoData);
       return response.data;
     } catch (err) {
       console.error("Error al crear el movimiento:", err);

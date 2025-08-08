@@ -8,7 +8,7 @@ import TableActions from "src/components/celulandia/TableActions";
 import { formatearCampo } from "src/utils/celulandia/formatearCampo";
 import EditarModal from "src/components/celulandia/EditarModal";
 import HistorialModal from "src/components/celulandia/HistorialModal";
-import AgregarModal from "src/components/AgregarModal";
+import AgregarModal from "src/components/celulandia/AgregarModal";
 
 // Mock data para ejemplo
 const mockPagos = [

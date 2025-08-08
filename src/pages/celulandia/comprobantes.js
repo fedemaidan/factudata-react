@@ -10,8 +10,8 @@ import { formatearCampo } from "src/utils/celulandia/formatearCampo";
 import ComprobanteModal from "src/components/celulandia/ComprobanteModal";
 import EditarModal from "src/components/celulandia/EditarModal";
 import HistorialModal from "src/components/celulandia/HistorialModal";
-import AgregarModal from "src/components/AgregarModal";
-import { parseMovimientos } from "src/utils/celulandia/movimientos/parseMovimientos";
+import AgregarModal from "src/components/celulandia/AgregarModal";
+import { parseMovimiento } from "src/utils/celulandia/movimientos/parseMovimientos";
 
 const ComprobantesCelulandiaPage = () => {
   const [movimientos, setMovimientos] = useState([]);
@@ -22,7 +22,6 @@ const ComprobantesCelulandiaPage = () => {
   const [historialModalOpen, setHistorialModalOpen] = useState(false);
   const [agregarModalOpen, setAgregarModalOpen] = useState(false);
   const [selectedData, setSelectedData] = useState(null);
-  const [historialCambios, setHistorialCambios] = useState({});
 
   useEffect(() => {
     fetchData();
@@ -32,8 +31,7 @@ const ComprobantesCelulandiaPage = () => {
     setIsLoading(true);
     try {
       const { data } = await movimientosService.getAllMovimientos();
-      console.log("Datos cargados:", data);
-      setMovimientos(parseMovimientos(data));
+      setMovimientos(data.map(parseMovimiento));
     } catch (error) {
       console.error("Error al cargar movimientos:", error);
     } finally {
@@ -48,14 +46,15 @@ const ComprobantesCelulandiaPage = () => {
 
   const columns = [
     { key: "numeroFactura", label: "Comprobante", sortable: false },
-    { key: "horaCreacion", label: "Hora", sortable: false },
+    { key: "fechaCreacion", label: "Fecha", sortable: true },
+    { key: "horaCreacion", label: "Hora", sortable: true },
     { key: "cliente", label: "Cliente", sortable: false },
-    { key: "cuentaCorriente", label: "Cuenta Destino", sortable: false },
-    { key: "total", label: "Monto Enviado", sortable: false },
+    { key: "cuentaDestino", label: "Cuenta Destino", sortable: false },
+    { key: "montoEnviado", label: "Monto Enviado", sortable: false },
     { key: "moneda", label: "Moneda", sortable: false },
-    { key: "clienteId", label: "CC", sortable: false },
-    { key: "fechaCobro", label: "Monto CC", sortable: false },
-    { key: "tipoFactura", label: "Tipo Cambio", sortable: false },
+    { key: "montoCC", label: "Monto CC", sortable: false },
+    { key: "cuentaCorriente", label: "CC", sortable: false },
+    { key: "tipoDeCambio", label: "Tipo Cambio", sortable: false },
     { key: "estado", label: "Estado", sortable: false },
     {
       key: "urlImagen",
@@ -99,26 +98,14 @@ const ComprobantesCelulandiaPage = () => {
   ];
 
   const formatters = {
-    fechaFactura: (value) => formatearCampo("fecha", value),
     fechaCreacion: (value) => formatearCampo("fecha", value),
     horaCreacion: (value) => formatearCampo("hora", value),
-    cuentaCorriente: (value) => formatearCampo("cuentaDestino", value),
-    total: (value) => {
-      if (value && typeof value === "object") {
-        // Si es un objeto con diferentes monedas, mostrar el valor en ARS
-        if (value.ars) {
-          return formatearCampo("montoEnviado", value.ars);
-        }
-        // Si no hay ars, mostrar el primer valor disponible
-        const firstValue = Object.values(value)[0];
-        return formatearCampo("montoEnviado", firstValue);
-      }
-      return formatearCampo("montoEnviado", value);
-    },
+    cuentaDestino: (value) => formatearCampo("cuentaDestino", value),
     moneda: (value) => formatearCampo("monedaDePago", value),
-    clienteId: (value) => formatearCampo("CC", value),
-    fechaCobro: (value) => formatearCampo("montoCC", value),
-    tipoFactura: (value) => formatearCampo("tipoDeCambio", value),
+    montoEnviado: (value) => formatearCampo("montoEnviado", value),
+    cuentaCorriente: (value) => formatearCampo("CC", value),
+    montoCC: (value) => formatearCampo("montoCC", value),
+    tipoDeCambio: (value) => formatearCampo("tipoDeCambio", value),
     estado: (value) => formatearCampo("estado", value),
     cliente: (value) => {
       if (value && typeof value === "object" && value.nombre) {
@@ -133,8 +120,7 @@ const ComprobantesCelulandiaPage = () => {
     "fechaCreacion",
     "horaCreacion",
     "nombreCliente",
-    "",
-    "total",
+    "cuentaDestino",
     "moneda",
     "clienteId",
     "fechaCobro",
@@ -145,38 +131,8 @@ const ComprobantesCelulandiaPage = () => {
 
   const handleSaveEdit = (id, updatedData) => {
     // Encontrar el movimiento original antes de la edición
-    const movimientoOriginal = movimientos.find((mov) => mov._id === id || mov.id === id);
+    //const movimientoOriginal = movimientos.find((mov) => mov._id === id || mov.id === id);
 
-    // Detectar qué campos cambiaron
-    const cambios = [];
-    Object.keys(updatedData).forEach((campo) => {
-      if (movimientoOriginal[campo] !== updatedData[campo]) {
-        cambios.push({
-          campo,
-          valorAnterior: movimientoOriginal[campo],
-          valorNuevo: updatedData[campo],
-        });
-      }
-    });
-
-    // Solo registrar cambios si hay modificaciones
-    if (cambios.length > 0) {
-      const registroCambio = {
-        id: Date.now(), // ID único para el registro
-        fecha: new Date().toISOString(),
-        usuario: "Martin Sorby",
-        cambios: cambios,
-        comprobante: movimientoOriginal.numeroFactura,
-      };
-
-      const itemId = movimientoOriginal._id || movimientoOriginal.id;
-      setHistorialCambios((prev) => ({
-        ...prev,
-        [itemId]: [...(prev[itemId] || []), registroCambio],
-      }));
-    }
-
-    // Actualizar el movimiento
     setMovimientos((prevMovimientos) =>
       prevMovimientos.map((mov) =>
         mov._id === id || mov.id === id ? { ...mov, ...updatedData } : mov
@@ -185,12 +141,7 @@ const ComprobantesCelulandiaPage = () => {
   };
 
   const handleSaveNew = (newData) => {
-    // Agregar el nuevo movimiento a la lista con un ID temporal si no lo tiene
-    const newDataWithId = {
-      ...newData,
-      _id: newData._id || `temp-${Date.now()}`,
-    };
-    setMovimientos((prevMovimientos) => [...prevMovimientos, newDataWithId]);
+    setMovimientos((prevMovimientos) => [...prevMovimientos, parseMovimiento(newData)]);
   };
 
   return (
@@ -207,6 +158,7 @@ const ComprobantesCelulandiaPage = () => {
           searchFields={searchFields}
           formatters={formatters}
           onAdd={() => setAgregarModalOpen(true)}
+          dateField="fechaCreacion"
         />
       </Container>
 
@@ -221,7 +173,6 @@ const ComprobantesCelulandiaPage = () => {
         open={historialModalOpen}
         onClose={() => setHistorialModalOpen(false)}
         data={selectedData}
-        historial={selectedData ? historialCambios[selectedData._id || selectedData.id] || [] : []}
       />
       <AgregarModal
         open={agregarModalOpen}
