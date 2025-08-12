@@ -18,7 +18,7 @@ import {
 } from "@mui/material";
 import Divider from "@mui/material/Divider";
 
-import celulandiaService from "src/services/celulandia/movimientosService";
+import movimientosService from "src/services/celulandia/movimientosService";
 import { formatCurrency } from "src/utils/formatters";
 
 const CuentaCorrienteCelulandiaPage = () => {
@@ -32,11 +32,17 @@ const CuentaCorrienteCelulandiaPage = () => {
   const fetchData = useCallback(async () => {
     setIsLoading(true);
     try {
-      const data = await celulandiaService.getClientesTotales();
-      console.log("Datos de clientes cargados:", data);
-      setClientes(data);
+      const response = await movimientosService.getClientesTotales();
+      if (response.success) {
+        console.log("Datos de clientes cargados:", response.data);
+        setClientes(response.data);
+      } else {
+        console.error("Error al cargar clientes:", response.error);
+        setClientes([]);
+      }
     } catch (error) {
       console.error("Error al cargar clientes:", error);
+      setClientes([]);
     } finally {
       setIsLoading(false);
     }
@@ -50,7 +56,7 @@ const CuentaCorrienteCelulandiaPage = () => {
     if (monto === undefined || monto === null) return "-";
 
     const isNegativo = monto < 0;
-    const montoFormateado = formatCurrency(Math.abs(monto));
+    const montoFormateado = formatCurrency(Math.round(monto));
 
     return (
       <Typography
@@ -107,7 +113,7 @@ const CuentaCorrienteCelulandiaPage = () => {
   const clientesAMostrar = clientesOrdenados;
 
   const handleRowClick = (cliente) => {
-    router.push(`/celulandia/cuentaCorriente/${cliente}`);
+    router.push(`/celulandia/cuentaCorriente/${cliente._id}`);
   };
 
   return (
@@ -223,7 +229,7 @@ const CuentaCorrienteCelulandiaPage = () => {
                       {clientesAMostrar.map((cliente, index) => (
                         <TableRow
                           key={index}
-                          onClick={() => handleRowClick(cliente.cliente)}
+                          onClick={() => handleRowClick(cliente)}
                           sx={{
                             cursor: "pointer",
                             "&:hover": {

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Layout as DashboardLayout } from "src/layouts/dashboard/layout";
 import Head from "next/head";
-import { Container, Button } from "@mui/material";
+import { Container } from "@mui/material";
 
 import DataTable from "src/components/celulandia/DataTable";
 import TableActions from "src/components/celulandia/TableActions";
@@ -45,7 +45,6 @@ const ComprobantesCelulandiaPage = () => {
   };
 
   const columns = [
-    { key: "numeroFactura", label: "Comprobante", sortable: false },
     { key: "fechaCreacion", label: "Fecha", sortable: true },
     { key: "horaCreacion", label: "Hora", sortable: true },
     { key: "cliente", label: "Cliente", sortable: false },
@@ -56,27 +55,6 @@ const ComprobantesCelulandiaPage = () => {
     { key: "cuentaCorriente", label: "CC", sortable: false },
     { key: "tipoDeCambio", label: "Tipo Cambio", sortable: false },
     { key: "estado", label: "Estado", sortable: false },
-    {
-      key: "urlImagen",
-      label: "Imagen",
-      sortable: false,
-      render: (item) =>
-        item.urlImagen ? (
-          <Button
-            size="small"
-            variant="outlined"
-            onClick={() => {
-              setImagenModal(item.urlImagen);
-              setModalOpen(true);
-            }}
-          >
-            Ver
-          </Button>
-        ) : (
-          "-"
-        ),
-    },
-    { key: "nombreUsuario", label: "Usuario", sortable: false },
     {
       key: "acciones",
       label: "Acciones",
@@ -91,6 +69,10 @@ const ComprobantesCelulandiaPage = () => {
           onViewHistory={(item) => {
             setSelectedData(item);
             setHistorialModalOpen(true);
+          }}
+          onViewImage={(urlImagen) => {
+            setImagenModal(urlImagen);
+            setModalOpen(true);
           }}
         />
       ),
@@ -143,6 +125,10 @@ const ComprobantesCelulandiaPage = () => {
   const handleSaveNew = (newData) => {
     setMovimientos((prevMovimientos) => [...prevMovimientos, parseMovimiento(newData)]);
   };
+
+  if (isLoading) {
+    return <div>Cargando...</div>;
+  }
 
   return (
     <>

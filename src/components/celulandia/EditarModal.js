@@ -5,7 +5,6 @@ import {
   DialogContent,
   DialogActions,
   Button,
-  Typography,
   Box,
   TextField,
   FormControl,
@@ -13,107 +12,215 @@ import {
   Select,
   MenuItem,
   Grid,
+  Autocomplete,
+  CircularProgress,
 } from "@mui/material";
+import { useMovimientoForm } from "src/hooks/useMovimientoForm";
+import movimientosService from "src/services/celulandia/movimientosService";
+import { getUser } from "src/utils/celulandia/currentUser";
 
 const EditarModal = ({ open, onClose, data, onSave }) => {
-  console.log(data);
-  const [formData, setFormData] = useState({
-    cliente: data?.cliente?.nombre,
-    cuentaDestino: data?.cuentaDestino,
-    montoEnviado: data?.montoEnviado,
-    monedaDePago: data?.moneda,
-    CC: data?.cuentaCorriente,
-    estado: data?.estado,
-  });
+  const [isSaving, setIsSaving] = useState(false);
+  console.log("data", data);
 
-  const handleInputChange = (field, value) => {
-    setFormData((prev) => ({
-      ...prev,
-      [field]: value,
-    }));
-  };
+  const {
+    formData,
+    setFormData,
+    clientes,
+    cajas,
+    tipoDeCambio,
+    tipoDeCambioManual,
+    isLoading,
+    clienteSeleccionado,
+    getCCOptions,
+    getTipoDeCambio,
+    handleTipoDeCambioChange,
+    handleMontoEnviado,
+    handleInputChange,
+    handleClienteChange,
+  } = useMovimientoForm(data);
 
-  const handleSave = () => {
-    if (onSave && data) {
-      // Convertir montos a números antes de guardar
+  const handleSave = async () => {
+    if (!formData.cliente || !formData.montoEnviado || !formData.cuentaDestino) {
+      alert("Por favor complete todos los campos requeridos");
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      let clienteData;
+      let clienteId;
+
+      if (clienteSeleccionado) {
+        clienteData = {
+          nombre: clienteSeleccionado.nombre,
+          ccActivas: clienteSeleccionado.ccActivas,
+          descuento: clienteSeleccionado.descuento,
+        };
+        clienteId = clienteSeleccionado._id;
+      } else {
+        clienteData = {
+          nombre: formData.cliente,
+        };
+        clienteId = null;
+      }
+
+      const cajaId = cajas.find((caja) => caja.nombre === formData.cuentaDestino)?._id;
+      const tipoDeCambioCalculado = getTipoDeCambio(formData.monedaDePago, formData.CC);
+
       const datosParaGuardar = {
-        ...formData,
+        clienteId: clienteId || null,
+        cliente: clienteData,
+        cuentaCorriente: formData.CC,
+        moneda: formData.monedaDePago,
+        tipoFactura: "transferencia",
+        caja: cajaId,
+        nombreUsuario: getUser(),
+        tipoDeCambio: tipoDeCambioCalculado,
+        estado: formData.estado,
         montoEnviado: parseFloat(formData.montoEnviado) || 0,
         montoCC: parseFloat(formData.montoCC) || 0,
-        tipoDeCambio: parseFloat(formData.tipoDeCambio) || 0,
       };
-      onSave(data.id, datosParaGuardar);
+
+      // Solo enviar los campos que cambiaron
+      const camposModificados = {};
+      Object.keys(datosParaGuardar).forEach((key) => {
+        if (key === "cliente") {
+          if (datosParaGuardar[key].nombre !== data.cliente?.nombre) {
+            camposModificados[key] = datosParaGuardar[key];
+          }
+        } else if (key === "caja") {
+          if (datosParaGuardar[key] !== data.caja?._id) {
+            camposModificados[key] = datosParaGuardar[key];
+          }
+        } else if (key === "clienteId") {
+          if (datosParaGuardar[key] !== data.cliente?._id) {
+            camposModificados[key] = datosParaGuardar[key];
+          }
+        } else {
+          if (datosParaGuardar[key] !== data[key]) {
+            camposModificados[key] = datosParaGuardar[key];
+          }
+        }
+      });
+
+      // Solo hacer la llamada si hay campos modificados
+      if (Object.keys(camposModificados).length === 0) {
+        alert("No hay cambios para guardar");
+        onClose();
+        return;
+      }
+
+      console.log("Campos modificados:", camposModificados);
+      const result = await movimientosService.updateMovimiento(data._id, camposModificados);
+
+      if (result.success) {
+        onSave(data.id, result.data);
+        onClose();
+      } else {
+        alert(result.error || "Error al actualizar el movimiento");
+      }
+    } catch (error) {
+      console.error("Error al actualizar movimiento:", error);
+      alert("Error al actualizar el movimiento. Por favor, intente nuevamente.");
+    } finally {
+      setIsSaving(false);
     }
-    onClose();
   };
 
   const handleCancel = () => {
     // Restaurar datos originales
     if (data) {
       setFormData({
-        cliente: data.cliente.nombre,
-        cuentaDestino: data.cuentaDestino,
-        montoEnviado: data.montoEnviado,
-        monedaDePago: data.moneda,
-        CC: data.cuentaCorriente,
-        estado: data.estado,
-        tipoDeCambio: data.tipoDeCambio,
+        cliente: data.cliente?.nombre || "",
+        cuentaDestino: data.cuentaDestino || "ENSHOP SRL",
+        montoEnviado: data.montoEnviado || "",
+        monedaDePago: data.moneda || "ARS",
+        CC: data.cuentaCorriente || "ARS",
+        estado: data.estado || "CONFIRMADO",
+        montoCC: data.montoCC || "",
+        usuario: getUser(),
       });
     }
     onClose();
   };
 
+  if (isLoading) {
+    return (
+      <Dialog open={open} onClose={handleCancel} maxWidth="md" fullWidth>
+        <DialogContent>
+          <Box display="flex" justifyContent="center" alignItems="center" sx={{ py: 4 }}>
+            <CircularProgress />
+          </Box>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
   return (
     <Dialog open={open} onClose={handleCancel} maxWidth="md" fullWidth>
-      <DialogTitle>
-        <Typography variant="h6" sx={{ fontWeight: 600 }}>
-          Editar Comprobante
-        </Typography>
-      </DialogTitle>
+      <DialogTitle>Editar Comprobante</DialogTitle>
       <DialogContent>
         <Box sx={{ py: 2 }}>
           <Grid container spacing={2}>
             <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Cliente"
-                variant="standard"
+              <Autocomplete
+                freeSolo
+                options={Array.isArray(clientes) ? clientes : []}
+                getOptionLabel={(option) => (typeof option === "string" ? option : option.nombre)}
                 value={formData.cliente}
-                onChange={(e) => handleInputChange("cliente", e.target.value)}
-                margin="normal"
+                onChange={handleClienteChange}
+                renderInput={(params) => (
+                  <TextField {...params} label="Cliente *" margin="normal" required fullWidth />
+                )}
+                loading={isLoading}
+                ListboxProps={{
+                  style: { maxHeight: 200, overflow: "auto" },
+                }}
+                filterOptions={(options, { inputValue }) => {
+                  const filtered = options.filter((option) =>
+                    option.nombre.toLowerCase().includes(inputValue.toLowerCase())
+                  );
+                  return filtered.slice(0, 50);
+                }}
               />
             </Grid>
             <Grid item xs={12} sm={6}>
-              <FormControl fullWidth variant="standard" margin="normal">
-                <InputLabel>Cuenta Destino</InputLabel>
+              <FormControl fullWidth margin="normal">
+                <InputLabel>Cuenta Destino *</InputLabel>
                 <Select
                   value={formData.cuentaDestino}
-                  label="Cuenta Destino"
+                  label="Cuenta Destino *"
                   onChange={(e) => handleInputChange("cuentaDestino", e.target.value)}
+                  required
                 >
-                  <MenuItem value="ENSHOP SRL">ENSHOP SRL</MenuItem>
-                  <MenuItem value="FINANCIERA">FINANCIERA</MenuItem>
+                  {cajas?.map((caja) => (
+                    <MenuItem key={caja._id} value={caja.nombre}>
+                      {caja.nombre}
+                    </MenuItem>
+                  ))}
                 </Select>
               </FormControl>
             </Grid>
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
-                variant="standard"
-                label="Monto"
+                label="Monto *"
                 type="number"
                 value={formData.montoEnviado}
-                onChange={(e) => handleInputChange("montoEnviado", e.target.value)}
+                onChange={(e) => handleMontoEnviado(e.target.value)}
                 margin="normal"
+                required
               />
             </Grid>
             <Grid item xs={12} sm={6}>
-              <FormControl fullWidth variant="standard" margin="normal">
-                <InputLabel>Moneda de Pago</InputLabel>
+              <FormControl fullWidth margin="normal">
+                <InputLabel>Moneda de Pago *</InputLabel>
                 <Select
                   value={formData.monedaDePago}
-                  label="Moneda de Pago"
+                  label="Moneda de Pago *"
                   onChange={(e) => handleInputChange("monedaDePago", e.target.value)}
+                  required
                 >
                   <MenuItem value="ARS">ARS</MenuItem>
                   <MenuItem value="USD">USD</MenuItem>
@@ -121,21 +228,69 @@ const EditarModal = ({ open, onClose, data, onSave }) => {
               </FormControl>
             </Grid>
             <Grid item xs={12} sm={6}>
-              <FormControl fullWidth variant="standard" margin="normal">
-                <InputLabel>Cuenta Corriente</InputLabel>
+              <TextField
+                fullWidth
+                label="Monto CC"
+                type="number"
+                value={formData.montoCC}
+                disabled={true}
+                margin="normal"
+                helperText="Calculado automáticamente"
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <FormControl fullWidth margin="normal">
+                <InputLabel>Cuenta Corriente *</InputLabel>
                 <Select
                   value={formData.CC}
-                  label="Cuenta Corriente"
+                  label="Cuenta Corriente *"
                   onChange={(e) => handleInputChange("CC", e.target.value)}
+                  required
                 >
-                  <MenuItem value="ARS">ARS</MenuItem>
-                  <MenuItem value="USD BLUE">USD BLUE</MenuItem>
-                  <MenuItem value="USD OFICIAL">USD OFICIAL</MenuItem>
+                  {getCCOptions().map((option) => (
+                    <MenuItem key={option} value={option}>
+                      {option}
+                    </MenuItem>
+                  ))}
                 </Select>
               </FormControl>
             </Grid>
             <Grid item xs={12} sm={6}>
-              <FormControl fullWidth variant="standard" margin="normal">
+              <TextField
+                fullWidth
+                label="Tipo de Cambio"
+                type="number"
+                value={getTipoDeCambio(formData.monedaDePago, formData.CC)}
+                disabled={
+                  (formData.monedaDePago === "ARS" && formData.CC === "ARS") ||
+                  (formData.monedaDePago === "USD" && formData.CC === "USD BLUE") ||
+                  (formData.monedaDePago === "USD" && formData.CC === "USD OFICIAL")
+                }
+                onChange={(e) => handleTipoDeCambioChange(e.target.value)}
+                margin="normal"
+                helperText={
+                  (formData.monedaDePago === "ARS" && formData.CC === "ARS") ||
+                  (formData.monedaDePago === "USD" && formData.CC === "USD BLUE") ||
+                  (formData.monedaDePago === "USD" && formData.CC === "USD OFICIAL")
+                    ? "No aplica"
+                    : tipoDeCambioManual !== null
+                    ? "Valor personalizado"
+                    : tipoDeCambio.ultimaActualizacion
+                    ? `Última actualización: ${new Date(
+                        tipoDeCambio.ultimaActualizacion
+                      ).toLocaleString("es-AR", {
+                        year: "numeric",
+                        month: "2-digit",
+                        day: "2-digit",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}`
+                    : "Valor automático"
+                }
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <FormControl fullWidth margin="normal">
                 <InputLabel>Estado</InputLabel>
                 <Select
                   value={formData.estado}
@@ -147,15 +302,31 @@ const EditarModal = ({ open, onClose, data, onSave }) => {
                 </Select>
               </FormControl>
             </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Usuario"
+                value={formData.usuario}
+                onChange={(e) => handleInputChange("usuario", e.target.value)}
+                margin="normal"
+                disabled
+              />
+            </Grid>
           </Grid>
         </Box>
       </DialogContent>
       <DialogActions>
-        <Button onClick={handleCancel} color="inherit">
+        <Button onClick={handleCancel} color="inherit" disabled={isSaving}>
           Cancelar
         </Button>
-        <Button onClick={handleSave} color="primary" variant="contained">
-          Guardar
+        <Button
+          onClick={handleSave}
+          color="primary"
+          variant="contained"
+          disabled={isSaving || isLoading}
+          startIcon={isSaving ? <CircularProgress size={16} /> : null}
+        >
+          {isSaving ? "Guardando..." : "Guardar"}
         </Button>
       </DialogActions>
     </Dialog>

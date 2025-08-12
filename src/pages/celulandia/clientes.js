@@ -2,60 +2,16 @@ import React, { useState, useEffect } from "react";
 import { Layout as DashboardLayout } from "src/layouts/dashboard/layout";
 import Head from "next/head";
 import { Container } from "@mui/material";
+import { Chip, Box, Typography } from "@mui/material";
 
 import DataTable from "src/components/celulandia/DataTable";
 import TableActions from "src/components/celulandia/TableActions";
 import { formatearCampo } from "src/utils/celulandia/formatearCampo";
 
-import EditarModal from "src/components/celulandia/EditarModal";
 import HistorialModal from "src/components/celulandia/HistorialModal";
-import AgregarModal from "src/components/celulandia/AgregarModal";
-
-// Mock data para ejemplo
-const mockClientes = [
-  {
-    id: 1,
-    cliente: "Juan Pérez",
-    descuento: 15,
-    ccActivas: ["USD BLUE", "USD OFICIAL"],
-    usuario: "admin@celulandia.com",
-  },
-  {
-    id: 2,
-    cliente: "María González",
-    descuento: 10,
-    ccActivas: ["USD BLUE"],
-    usuario: "operador@celulandia.com",
-  },
-  {
-    id: 3,
-    cliente: "Roberto Silva",
-    descuento: 20,
-    ccActivas: ["USD BLUE", "USD OFICIAL", "ARS"],
-    usuario: "admin@celulandia.com",
-  },
-  {
-    id: 4,
-    cliente: "Ana Martínez",
-    descuento: 5,
-    ccActivas: ["USD OFICIAL"],
-    usuario: "operador@celulandia.com",
-  },
-  {
-    id: 5,
-    cliente: "Carlos López",
-    descuento: 25,
-    ccActivas: ["USD BLUE"],
-    usuario: "admin@celulandia.com",
-  },
-  {
-    id: 6,
-    cliente: "Laura Fernández",
-    descuento: 0,
-    ccActivas: ["USD BLUE", "USD OFICIAL"],
-    usuario: "operador@celulandia.com",
-  },
-];
+import AgregarClienteModal from "src/components/celulandia/AgregarClienteModal";
+import EditarClienteModal from "src/components/celulandia/EditarClienteModal";
+import clientesService from "src/services/celulandia/clientesService";
 
 const ClientesCelulandiaPage = () => {
   const [clientes, setClientes] = useState([]);
@@ -64,18 +20,59 @@ const ClientesCelulandiaPage = () => {
   const [historialModalOpen, setHistorialModalOpen] = useState(false);
   const [agregarModalOpen, setAgregarModalOpen] = useState(false);
   const [selectedData, setSelectedData] = useState(null);
-  const [historialCambios, setHistorialCambios] = useState({});
 
   useEffect(() => {
-    // Simular carga de datos
-    setTimeout(() => {
-      setClientes(mockClientes);
+    const fetchClientes = async () => {
+      const clientes = await clientesService.getAllClientes();
+      setClientes(clientes.data);
       setIsLoading(false);
-    }, 1000);
+    };
+    fetchClientes();
   }, []);
 
+  const clienteHistorialConfig = {
+    title: "Historial del Cliente",
+    entityName: "cliente",
+    fieldNames: {
+      nombre: "Nombre del Cliente",
+      descuento: "Descuento",
+      ccActivas: "Cuentas Corrientes Activas",
+    },
+    formatters: {
+      descuento: (valor) => `${(valor * 100).toFixed(0)}%`,
+    },
+    renderSpecialField: {
+      ccActivas: (valor) => {
+        if (!Array.isArray(valor)) {
+          return <Typography variant="body2">{valor}</Typography>;
+        }
+
+        return (
+          <Box sx={{ display: "flex", gap: 0.5, flexWrap: "wrap" }}>
+            {valor.map((cc, index) => (
+              <Chip
+                key={index}
+                label={cc}
+                size="small"
+                sx={{
+                  backgroundColor:
+                    cc === "USD BLUE" ? "#aadcac" : cc === "USD OFICIAL" ? "#C8E6C9" : "#E3F2FD",
+                  color:
+                    cc === "USD BLUE" ? "#1B5E20" : cc === "USD OFICIAL" ? "#33691E" : "#1565C0",
+                  fontWeight: "bold",
+                  fontSize: "0.7rem",
+                  height: "20px",
+                }}
+              />
+            ))}
+          </Box>
+        );
+      },
+    },
+  };
+
   const columns = [
-    { key: "cliente", label: "Cliente", sortable: true },
+    { key: "nombre", label: "Cliente", sortable: true },
     { key: "descuento", label: "Descuento", sortable: false },
     { key: "ccActivas", label: "CC Activas", sortable: false },
     {
@@ -99,52 +96,19 @@ const ClientesCelulandiaPage = () => {
   ];
 
   const formatters = {
-    descuento: (value) => `${value}%`,
+    descuento: (value) => `${(value * 100).toFixed(0)}%`,
     ccActivas: (value) => formatearCampo("ccActivas", value),
   };
 
-  const searchFields = ["cliente", "descuento", "ccActivas", "usuario"];
+  const searchFields = ["nombre", "descuento", "ccActivas", "usuario"];
 
   const handleSaveEdit = (id, updatedData) => {
-    // Encontrar el cliente original antes de la edición
-    const clienteOriginal = clientes.find((cliente) => cliente.id === id);
-
-    // Detectar qué campos cambiaron
-    const cambios = [];
-    Object.keys(updatedData).forEach((campo) => {
-      if (clienteOriginal[campo] !== updatedData[campo]) {
-        cambios.push({
-          campo,
-          valorAnterior: clienteOriginal[campo],
-          valorNuevo: updatedData[campo],
-        });
-      }
-    });
-
-    // Solo registrar cambios si hay modificaciones
-    if (cambios.length > 0) {
-      const registroCambio = {
-        id: Date.now(),
-        fecha: new Date().toISOString(),
-        usuario: "Martin Sorby",
-        cambios: cambios,
-        cliente: clienteOriginal.cliente,
-      };
-
-      setHistorialCambios((prev) => ({
-        ...prev,
-        [id]: [...(prev[id] || []), registroCambio],
-      }));
-    }
-
-    // Actualizar el cliente
     setClientes((prevClientes) =>
-      prevClientes.map((cliente) => (cliente.id === id ? { ...cliente, ...updatedData } : cliente))
+      prevClientes.map((cliente) => (cliente._id === id ? updatedData : cliente))
     );
   };
 
   const handleSaveNew = (newData) => {
-    // Agregar el nuevo cliente a la lista
     setClientes((prevClientes) => [...prevClientes, newData]);
   };
 
@@ -166,7 +130,7 @@ const ClientesCelulandiaPage = () => {
         />
       </Container>
 
-      <EditarModal
+      <EditarClienteModal
         open={editarModalOpen}
         onClose={() => setEditarModalOpen(false)}
         data={selectedData}
@@ -176,9 +140,10 @@ const ClientesCelulandiaPage = () => {
         open={historialModalOpen}
         onClose={() => setHistorialModalOpen(false)}
         data={selectedData}
-        historial={selectedData ? historialCambios[selectedData.id] || [] : []}
+        loadHistorialFunction={clientesService.getClienteLogs}
+        {...clienteHistorialConfig}
       />
-      <AgregarModal
+      <AgregarClienteModal
         open={agregarModalOpen}
         onClose={() => setAgregarModalOpen(false)}
         onSave={handleSaveNew}

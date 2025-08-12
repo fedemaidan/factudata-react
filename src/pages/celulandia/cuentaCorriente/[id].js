@@ -29,18 +29,21 @@ import HistoryIcon from "@mui/icons-material/History";
 import Divider from "@mui/material/Divider";
 import ClearIcon from "@mui/icons-material/Clear";
 
-import celulandiaService from "src/services/celulandia/movimientosService";
+import movimientosService from "src/services/celulandia/movimientosService";
+import clientesService from "src/services/celulandia/clientesService";
 import { formatCurrency } from "src/utils/formatters";
 import { formatearCampo } from "src/utils/celulandia/formatearCampo";
 import { filtrarPorFecha, filtrarPorBusqueda } from "src/utils/celulandia/filtros";
 import EditarModal from "src/components/celulandia/EditarModal";
 import HistorialModal from "src/components/celulandia/HistorialModal";
+import { parseMovimiento } from "src/utils/celulandia/movimientos/parseMovimientos";
 
 const ClienteCelulandiaCCPage = () => {
   const router = useRouter();
   const { id } = router.query;
 
   const [movimientos, setMovimientos] = useState([]);
+  const [cliente, setCliente] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [busqueda, setBusqueda] = useState("");
   const [filtroFecha, setFiltroFecha] = useState("todos");
@@ -51,18 +54,28 @@ const ClienteCelulandiaCCPage = () => {
   const [historialModalOpen, setHistorialModalOpen] = useState(false);
   const [selectedData, setSelectedData] = useState(null);
 
+  console.log(movimientos);
   const fetchData = useCallback(async () => {
+    if (!id) return;
+
     setIsLoading(true);
     try {
-      const data = await celulandiaService.getMovimientosByCliente(id);
-      console.log("Datos del cliente cargados:", data);
-      setMovimientos(data);
+      const clienteResponse = await clientesService.getClienteById(id);
+      if (clienteResponse.success) {
+        setCliente(clienteResponse.data);
+      }
+
+      const movimientosData = await movimientosService.getMovimientosByCliente(id);
+      const movimientosParseados = movimientosData.data.map(parseMovimiento);
+      setMovimientos(movimientosParseados);
     } catch (error) {
       console.error("Error al cargar movimientos del cliente:", error);
     } finally {
       setIsLoading(false);
     }
   }, [id]);
+
+  console.log(movimientos);
 
   useEffect(() => {
     if (id) {
@@ -71,9 +84,7 @@ const ClienteCelulandiaCCPage = () => {
   }, [id, fetchData]);
 
   const movimientosFiltrados = useMemo(() => {
-    console.log("Filtrando movimientos:", movimientos.length);
-
-    let movimientosFiltrados = movimientos.filter((mov) => mov.CC === cuentaCorriente);
+    let movimientosFiltrados = movimientos.filter((mov) => mov.cuentaCorriente === cuentaCorriente);
 
     movimientosFiltrados = filtrarPorFecha(movimientosFiltrados, filtroFecha);
 
@@ -120,8 +131,12 @@ const ClienteCelulandiaCCPage = () => {
     };
 
     movimientos.forEach((mov) => {
-      if (Object.prototype.hasOwnProperty.call(saldos, mov.CC)) {
-        saldos[mov.CC] += mov.montoCC;
+      if (Object.prototype.hasOwnProperty.call(saldos, mov.cuentaCorriente)) {
+        if (mov.type === "INGRESO") {
+          saldos[mov.cuentaCorriente] += mov.montoCC;
+        } else {
+          saldos[mov.cuentaCorriente] -= mov.montoCC;
+        }
       }
     });
 
@@ -145,7 +160,7 @@ const ClienteCelulandiaCCPage = () => {
   return (
     <>
       <Head>
-        <title>Cuenta Corriente - {id}</title>
+        <title>Cuenta Corriente - {cliente?.nombre || id}</title>
       </Head>
       <Box
         component="main"
@@ -180,7 +195,7 @@ const ClienteCelulandiaCCPage = () => {
                   Cuenta Corriente
                 </Typography>
                 <Typography variant="h6" color="text.secondary" sx={{ fontWeight: 400 }}>
-                  Cliente: {id}
+                  Cliente: {cliente?.nombre || id}
                 </Typography>
               </Stack>
             </Stack>
