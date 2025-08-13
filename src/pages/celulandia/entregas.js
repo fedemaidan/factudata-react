@@ -7,88 +7,113 @@ import DataTable from "src/components/celulandia/DataTable";
 import TableActions from "src/components/celulandia/TableActions";
 import { formatearCampo } from "src/utils/celulandia/formatearCampo";
 
-import EditarModal from "src/components/celulandia/EditarModal";
+import EditarEntregaModal from "src/components/celulandia/EditarEntregaModal";
+import AgregarEntregaModal from "src/components/celulandia/AgregarEntregaModal";
 import HistorialModal from "src/components/celulandia/HistorialModal";
-import AgregarModal from "src/components/celulandia/AgregarModal";
-
-// Mock data para ejemplo
-const mockEntregas = [
-  {
-    id: 1,
-    numeroEntrega: "ENT-001-2025",
-    fecha: "2025-01-15",
-    hora: "14:30",
-    cliente: "Juan Pérez",
-    montoEnviado: 50000,
-    moneda: "ARS",
-    CC: "USD BLUE",
-    montoCC: 100,
-    tipoDeCambio: 500,
-    estado: "PENDIENTE",
-    usuario: "admin@celulandia.com",
-    imagen: "https://via.placeholder.com/150",
-  },
-  {
-    id: 2,
-    numeroEntrega: "ENT-002-2025",
-    fecha: "2025-01-14",
-    hora: "16:45",
-    cliente: "María González",
-    montoEnviado: 75000,
-    moneda: "ARS",
-    CC: "USD OFICIAL",
-    montoCC: 150,
-    tipoDeCambio: 500,
-    estado: "CONFIRMADO",
-    usuario: "operador@celulandia.com",
-    imagen: null,
-  },
-  {
-    id: 3,
-    numeroEntrega: "ENT-003-2025",
-    fecha: "2025-01-13",
-    hora: "09:15",
-    cliente: "Roberto Silva",
-    montoEnviado: 25000,
-    moneda: "ARS",
-    CC: "USD BLUE",
-    montoCC: 50,
-    tipoDeCambio: 500,
-    estado: "PENDIENTE",
-    usuario: "admin@celulandia.com",
-    imagen: "https://via.placeholder.com/150",
-  },
-];
+import cuentasPendientesService from "src/services/celulandia/cuentasPendientesService";
+import clientesService from "src/services/celulandia/clientesService";
+import dolarService from "src/services/celulandia/dolarService";
 
 const EntregasCelulandiaPage = () => {
   const [entregas, setEntregas] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [editarModalOpen, setEditarModalOpen] = useState(false);
-  const [historialModalOpen, setHistorialModalOpen] = useState(false);
   const [agregarModalOpen, setAgregarModalOpen] = useState(false);
+  const [historialModalOpen, setHistorialModalOpen] = useState(false);
   const [selectedData, setSelectedData] = useState(null);
-  const [historialCambios, setHistorialCambios] = useState({});
+  const [clientes, setClientes] = useState([]);
+  const [tipoDeCambio, setTipoDeCambio] = useState({});
+
+  // Configuración del historial para entregas
+  const entregaHistorialConfig = {
+    title: "Historial de la Entrega",
+    entityName: "entrega",
+    fieldNames: {
+      descripcion: "Descripción",
+      fechaCuenta: "Fecha de Cuenta",
+      proveedorOCliente: "Cliente",
+      descuentoAplicado: "Descuento Aplicado",
+      subTotal: "Sub Total",
+      montoTotal: "Monto Total",
+      moneda: "Moneda",
+      cc: "Cuenta Corriente",
+      usuario: "Usuario",
+    },
+    formatters: {
+      fechaCuenta: (valor) => new Date(valor).toLocaleDateString("es-AR"),
+      descuentoAplicado: (valor) => `${Math.round(((valor ?? 1) - 1) * -100)}%`,
+      subTotal: (valor) => {
+        if (typeof valor === "object") {
+          return `ARS: $${valor.ars || 0} | USD Of: $${valor.usdOficial || 0} | USD Blue: $${
+            valor.usdBlue || 0
+          }`;
+        }
+        return valor;
+      },
+      montoTotal: (valor) => {
+        if (typeof valor === "object") {
+          return `ARS: $${valor.ars || 0} | USD Of: $${valor.usdOficial || 0} | USD Blue: $${
+            valor.usdBlue || 0
+          }`;
+        }
+        return valor;
+      },
+    },
+  };
 
   useEffect(() => {
-    // Simular carga de datos
-    setTimeout(() => {
-      setEntregas(mockEntregas);
-      setIsLoading(false);
-    }, 1000);
+    const fetchAll = async () => {
+      setIsLoading(true);
+      try {
+        const [cuentasResp, clientesResp, tcResp] = await Promise.all([
+          cuentasPendientesService.getAll(),
+          clientesService.getAllClientes(),
+          dolarService.getTipoDeCambio(),
+        ]);
+
+        const cuentas = cuentasResp?.data || [];
+        setEntregas(
+          cuentas.map((c) => ({
+            _id: c._id,
+            proveedorOCliente: c.proveedorOCliente,
+            descripcion: c.descripcion,
+            fecha: c.fechaCuenta,
+            horaCreacion:
+              typeof c.horaCreacion === "number"
+                ? new Date(c.horaCreacion).toLocaleTimeString("es-AR", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })
+                : c.horaCreacion || "-",
+            moneda: c.moneda,
+            CC: c.cc,
+            descuentoAplicado: c.descuentoAplicado,
+            montoEnviado: c.subTotal?.ars || 0,
+            montoCC: c.montoTotal?.ars || 0,
+          }))
+        );
+        const clientesArray = Array.isArray(clientesResp) ? clientesResp : clientesResp?.data || [];
+        setClientes(clientesArray);
+        setTipoDeCambio(tcResp);
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchAll();
   }, []);
 
   const columns = [
-    { key: "numeroEntrega", label: "Número de Entrega", sortable: false },
     { key: "fecha", label: "Fecha", sortable: true },
-    { key: "hora", label: "Hora", sortable: false },
-    { key: "cliente", label: "Cliente", sortable: false },
-    { key: "montoEnviado", label: "Monto Enviado", sortable: true },
+    { key: "horaCreacion", label: "Hora", sortable: false },
+    { key: "proveedorOCliente", label: "Cliente", sortable: true },
+    { key: "descripcion", label: "Descripción", sortable: false },
+    { key: "montoEnviado", label: "Monto", sortable: true },
     { key: "moneda", label: "Moneda", sortable: false },
     { key: "CC", label: "CC", sortable: false },
+    { key: "descuentoAplicado", label: "Descuento", sortable: false },
     { key: "montoCC", label: "Monto CC", sortable: false },
-    { key: "tipoDeCambio", label: "Tipo Cambio", sortable: false },
-    { key: "estado", label: "Estado", sortable: false },
-    { key: "usuario", label: "Usuario", sortable: false },
     {
       key: "acciones",
       label: "Acciones",
@@ -111,12 +136,12 @@ const EntregasCelulandiaPage = () => {
 
   const formatters = {
     fecha: (value) => formatearCampo("fecha", value),
+    horaCreacion: (value) => formatearCampo("hora", value),
     montoEnviado: (value) => formatearCampo("montoEnviado", value),
     moneda: (value) => formatearCampo("monedaDePago", value),
     CC: (value) => formatearCampo("CC", value),
     montoCC: (value) => formatearCampo("montoCC", value),
-    tipoDeCambio: (value) => formatearCampo("tipoDeCambio", value),
-    estado: (value) => formatearCampo("estado", value),
+    descuentoAplicado: (value) => `${Math.round(((value ?? 1) - 1) * -100)}%`,
   };
 
   const searchFields = [
@@ -133,57 +158,47 @@ const EntregasCelulandiaPage = () => {
     "usuario",
   ];
 
-  const handleSaveEdit = (id, updatedData) => {
-    // Encontrar la entrega original antes de la edición
-    const entregaOriginal = entregas.find((ent) => ent.id === id);
-
-    // Detectar qué campos cambiaron
-    const cambios = [];
-    Object.keys(updatedData).forEach((campo) => {
-      if (entregaOriginal[campo] !== updatedData[campo]) {
-        cambios.push({
-          campo,
-          valorAnterior: entregaOriginal[campo],
-          valorNuevo: updatedData[campo],
-        });
-      }
-    });
-
-    // Solo registrar cambios si hay modificaciones
-    if (cambios.length > 0) {
-      const registroCambio = {
-        id: Date.now(),
-        fecha: new Date().toISOString(),
-        usuario: "Martin Sorby",
-        cambios: cambios,
-        entrega: entregaOriginal.numeroEntrega,
-      };
-
-      setHistorialCambios((prev) => ({
-        ...prev,
-        [id]: [...(prev[id] || []), registroCambio],
-      }));
+  const refetch = async () => {
+    try {
+      const cuentasResp = await cuentasPendientesService.getAll();
+      const cuentas = cuentasResp?.data || [];
+      setEntregas(
+        cuentas.map((c) => ({
+          _id: c._id,
+          proveedorOCliente: c.proveedorOCliente,
+          descripcion: c.descripcion,
+          fecha: c.fechaCuenta,
+          horaCreacion:
+            typeof c.horaCreacion === "number"
+              ? new Date(c.horaCreacion).toLocaleTimeString("es-AR", {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })
+              : c.horaCreacion || "-",
+          moneda: c.moneda,
+          CC: c.cc,
+          descuentoAplicado: c.descuentoAplicado,
+          montoEnviado: c.subTotal?.ars || 0,
+          montoCC: c.montoTotal?.ars || 0,
+        }))
+      );
+    } catch (e) {
+      console.error(e);
     }
-
-    // Actualizar la entrega
-    setEntregas((prevEntregas) =>
-      prevEntregas.map((ent) => (ent.id === id ? { ...ent, ...updatedData } : ent))
-    );
   };
 
-  const handleSaveNew = (newData) => {
-    // Agregar la nueva entrega a la lista
-    setEntregas((prevEntregas) => [...prevEntregas, newData]);
+  const handleSaved = async () => {
+    await refetch();
   };
 
   return (
     <>
       <Head>
-        <title>Entregas Celulandia</title>
+        <title>Entregas</title>
       </Head>
       <Container maxWidth="xl">
         <DataTable
-          title="Entregas Celulandia"
+          title="Entregas"
           data={entregas}
           isLoading={isLoading}
           columns={columns}
@@ -193,22 +208,27 @@ const EntregasCelulandiaPage = () => {
         />
       </Container>
 
-      <EditarModal
+      <EditarEntregaModal
         open={editarModalOpen}
         onClose={() => setEditarModalOpen(false)}
         data={selectedData}
-        onSave={handleSaveEdit}
+        onSaved={handleSaved}
+        clientes={clientes}
+        tipoDeCambio={tipoDeCambio}
+      />
+      <AgregarEntregaModal
+        open={agregarModalOpen}
+        onClose={() => setAgregarModalOpen(false)}
+        onSaved={handleSaved}
+        clientes={clientes}
+        tipoDeCambio={tipoDeCambio}
       />
       <HistorialModal
         open={historialModalOpen}
         onClose={() => setHistorialModalOpen(false)}
         data={selectedData}
-        historial={selectedData ? historialCambios[selectedData.id] || [] : []}
-      />
-      <AgregarModal
-        open={agregarModalOpen}
-        onClose={() => setAgregarModalOpen(false)}
-        onSave={handleSaveNew}
+        loadHistorialFunction={cuentasPendientesService.getLogs}
+        {...entregaHistorialConfig}
       />
     </>
   );

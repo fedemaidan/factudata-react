@@ -19,18 +19,14 @@ import { useMovimientoForm } from "src/hooks/useMovimientoForm";
 import movimientosService from "src/services/celulandia/movimientosService";
 import { getUser } from "src/utils/celulandia/currentUser";
 
-const EditarModal = ({ open, onClose, data, onSave }) => {
+const EditarModal = ({ open, onClose, data, onSave, clientes, tipoDeCambio, cajas }) => {
   const [isSaving, setIsSaving] = useState(false);
   console.log("data", data);
 
   const {
     formData,
     setFormData,
-    clientes,
-    cajas,
-    tipoDeCambio,
     tipoDeCambioManual,
-    isLoading,
     clienteSeleccionado,
     getCCOptions,
     getTipoDeCambio,
@@ -38,7 +34,7 @@ const EditarModal = ({ open, onClose, data, onSave }) => {
     handleMontoEnviado,
     handleInputChange,
     handleClienteChange,
-  } = useMovimientoForm(data);
+  } = useMovimientoForm(data, { clientes, tipoDeCambio, cajas });
 
   const handleSave = async () => {
     if (!formData.cliente || !formData.montoEnviado || !formData.cuentaDestino) {
@@ -112,10 +108,14 @@ const EditarModal = ({ open, onClose, data, onSave }) => {
       }
 
       console.log("Campos modificados:", camposModificados);
-      const result = await movimientosService.updateMovimiento(data._id, camposModificados);
+      const result = await movimientosService.updateMovimiento(
+        data._id,
+        camposModificados,
+        getUser()
+      );
 
       if (result.success) {
-        onSave(data.id, result.data);
+        onSave();
         onClose();
       } else {
         alert(result.error || "Error al actualizar el movimiento");
@@ -145,18 +145,6 @@ const EditarModal = ({ open, onClose, data, onSave }) => {
     onClose();
   };
 
-  if (isLoading) {
-    return (
-      <Dialog open={open} onClose={handleCancel} maxWidth="md" fullWidth>
-        <DialogContent>
-          <Box display="flex" justifyContent="center" alignItems="center" sx={{ py: 4 }}>
-            <CircularProgress />
-          </Box>
-        </DialogContent>
-      </Dialog>
-    );
-  }
-
   return (
     <Dialog open={open} onClose={handleCancel} maxWidth="md" fullWidth>
       <DialogTitle>Editar Comprobante</DialogTitle>
@@ -173,7 +161,6 @@ const EditarModal = ({ open, onClose, data, onSave }) => {
                 renderInput={(params) => (
                   <TextField {...params} label="Cliente *" margin="normal" required fullWidth />
                 )}
-                loading={isLoading}
                 ListboxProps={{
                   style: { maxHeight: 200, overflow: "auto" },
                 }}
@@ -323,7 +310,7 @@ const EditarModal = ({ open, onClose, data, onSave }) => {
           onClick={handleSave}
           color="primary"
           variant="contained"
-          disabled={isSaving || isLoading}
+          disabled={isSaving}
           startIcon={isSaving ? <CircularProgress size={16} /> : null}
         >
           {isSaving ? "Guardando..." : "Guardar"}

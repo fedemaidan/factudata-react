@@ -31,6 +31,8 @@ import ClearIcon from "@mui/icons-material/Clear";
 
 import movimientosService from "src/services/celulandia/movimientosService";
 import clientesService from "src/services/celulandia/clientesService";
+import dolarService from "src/services/celulandia/dolarService";
+import cajasService from "src/services/celulandia/cajasService";
 import { formatCurrency } from "src/utils/formatters";
 import { formatearCampo } from "src/utils/celulandia/formatearCampo";
 import { filtrarPorFecha, filtrarPorBusqueda } from "src/utils/celulandia/filtros";
@@ -54,22 +56,58 @@ const ClienteCelulandiaCCPage = () => {
   const [historialModalOpen, setHistorialModalOpen] = useState(false);
   const [selectedData, setSelectedData] = useState(null);
 
-  console.log(movimientos);
+  // Nuevos estados para los datos compartidos
+  const [clientes, setClientes] = useState([]);
+  const [tipoDeCambio, setTipoDeCambio] = useState({
+    ultimaActualizacion: "",
+    oficial: null,
+    blue: null,
+    current: 1,
+  });
+  const [cajas, setCajas] = useState([]);
+
   const fetchData = useCallback(async () => {
     if (!id) return;
 
     setIsLoading(true);
     try {
-      const clienteResponse = await clientesService.getClienteById(id);
+      const [
+        clienteResponse,
+        movimientosData,
+        clientesResponse,
+        tipoDeCambioResponse,
+        cajasResponse,
+      ] = await Promise.all([
+        clientesService.getClienteById(id),
+        movimientosService.getMovimientosByCliente(id),
+        clientesService.getAllClientes(),
+        dolarService.getTipoDeCambio(),
+        cajasService.getAllCajas(),
+      ]);
+
       if (clienteResponse.success) {
         setCliente(clienteResponse.data);
       }
 
-      const movimientosData = await movimientosService.getMovimientosByCliente(id);
       const movimientosParseados = movimientosData.data.map(parseMovimiento);
       setMovimientos(movimientosParseados);
+
+      // Procesar clientes
+      const clientesArray = Array.isArray(clientesResponse)
+        ? clientesResponse
+        : clientesResponse?.data || [];
+      setClientes(clientesArray);
+
+      // Procesar tipo de cambio
+      setTipoDeCambio({
+        ...tipoDeCambioResponse,
+        current: tipoDeCambioResponse?.current || 1,
+      });
+
+      // Procesar cajas
+      setCajas(cajasResponse.data);
     } catch (error) {
-      console.error("Error al cargar movimientos del cliente:", error);
+      console.error("Error al cargar datos:", error);
     } finally {
       setIsLoading(false);
     }
@@ -399,6 +437,9 @@ const ClienteCelulandiaCCPage = () => {
         onClose={() => setEditarModalOpen(false)}
         data={selectedData}
         onSave={handleSaveEdit}
+        clientes={clientes}
+        tipoDeCambio={tipoDeCambio}
+        cajas={cajas}
       />
       <HistorialModal
         open={historialModalOpen}

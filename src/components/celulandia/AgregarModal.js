@@ -20,16 +20,12 @@ import { useMovimientoForm } from "src/hooks/useMovimientoForm";
 import movimientosService from "src/services/celulandia/movimientosService";
 import { getUser } from "src/utils/celulandia/currentUser";
 
-const AgregarModal = ({ open, onClose, onSave }) => {
+const AgregarModal = ({ open, onClose, onSave, clientes, tipoDeCambio, cajas }) => {
   const [isSaving, setIsSaving] = useState(false);
 
   const {
     formData,
-    clientes,
-    cajas,
-    tipoDeCambio,
     tipoDeCambioManual,
-    isLoading,
     clienteSeleccionado,
     getCCOptions,
     getTipoDeCambio,
@@ -38,7 +34,7 @@ const AgregarModal = ({ open, onClose, onSave }) => {
     handleInputChange,
     handleClienteChange,
     resetForm,
-  } = useMovimientoForm();
+  } = useMovimientoForm(null, { clientes, tipoDeCambio, cajas });
 
   const handleSave = async () => {
     if (!formData.cliente || !formData.montoEnviado || !formData.cuentaDestino) {
@@ -103,18 +99,6 @@ const AgregarModal = ({ open, onClose, onSave }) => {
     onClose();
   };
 
-  if (isLoading) {
-    return (
-      <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth>
-        <DialogContent>
-          <Box display="flex" justifyContent="center" alignItems="center" sx={{ py: 4 }}>
-            <CircularProgress />
-          </Box>
-        </DialogContent>
-      </Dialog>
-    );
-  }
-
   return (
     <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth>
       <DialogTitle>
@@ -137,7 +121,6 @@ const AgregarModal = ({ open, onClose, onSave }) => {
                 renderInput={(params) => (
                   <TextField {...params} label="Cliente *" margin="normal" required fullWidth />
                 )}
-                loading={isLoading}
                 ListboxProps={{
                   style: { maxHeight: 200, overflow: "auto" },
                 }}
@@ -274,7 +257,7 @@ const AgregarModal = ({ open, onClose, onSave }) => {
           onClick={handleSave}
           color="primary"
           variant="contained"
-          disabled={isSaving || isLoading}
+          disabled={isSaving}
           startIcon={isSaving ? <CircularProgress size={16} /> : null}
         >
           {isSaving ? "Agregando..." : "Agregar"}

@@ -23,9 +23,14 @@ const ClientesCelulandiaPage = () => {
 
   useEffect(() => {
     const fetchClientes = async () => {
-      const clientes = await clientesService.getAllClientes();
-      setClientes(clientes.data);
-      setIsLoading(false);
+      try {
+        const clientes = await clientesService.getAllClientes();
+        setClientes(clientes.data);
+      } catch (error) {
+        console.error("Error al cargar clientes:", error);
+      } finally {
+        setIsLoading(false);
+      }
     };
     fetchClientes();
   }, []);
@@ -115,11 +120,11 @@ const ClientesCelulandiaPage = () => {
   return (
     <>
       <Head>
-        <title>Clientes Celulandia</title>
+        <title>Clientes</title>
       </Head>
       <Container maxWidth="xl">
         <DataTable
-          title="Clientes Celulandia"
+          title="Clientes"
           data={clientes}
           isLoading={isLoading}
           columns={columns}

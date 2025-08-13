@@ -1,13 +1,18 @@
 import axiosCelulandia from "src/services/axiosCelulandia";
 
 const movimientosService = {
-  getAllMovimientos: async () => {
-    const response = await axiosCelulandia.get("/movimientos?populate=caja");
+  getAllMovimientos: async (query = {}) => {
+    const response = await axiosCelulandia.get("/movimientos", { params: query });
     return response.data;
   },
 
   getMovimientoById: async (id) => {
     const response = await axiosCelulandia.get(`/movimientos/${id}`);
+    return response.data;
+  },
+
+  getMovimientoLogs: async (id) => {
+    const response = await axiosCelulandia.get(`/movimientos/${id}/logs`);
     return response.data;
   },
 
@@ -26,8 +31,11 @@ const movimientosService = {
     return response.data;
   },
 
-  updateMovimiento: async (id, movimientoData) => {
-    const response = await axiosCelulandia.put(`/movimientos/${id}`, movimientoData);
+  updateMovimiento: async (id, movimientoData, nombreUsuario) => {
+    const response = await axiosCelulandia.put(`/movimientos/${id}`, {
+      ...movimientoData,
+      nombreUsuario,
+    });
     return response.data;
   },
 

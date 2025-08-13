@@ -5,64 +5,14 @@ import { Container } from "@mui/material";
 
 import DataTable from "src/components/celulandia/DataTable";
 import TableActions from "src/components/celulandia/TableActions";
-import { formatearCampo } from "src/utils/celulandia/formatearCampo";
-import EditarModal from "src/components/celulandia/EditarModal";
-import HistorialModal from "src/components/celulandia/HistorialModal";
-import AgregarModal from "src/components/celulandia/AgregarModal";
+import movimientosService from "src/services/celulandia/movimientosService";
 
-// Mock data para ejemplo
-const mockPagos = [
-  {
-    id: 1,
-    fecha: "2025-01-15",
-    hora: "14:30",
-    concepto: "Pago de servicios",
-    cuentaOrigen: "Banco Galicia",
-    monto: 25000,
-    moneda: "ARS",
-    usuario: "admin@celulandia.com",
-  },
-  {
-    id: 2,
-    fecha: "2025-01-14",
-    hora: "16:45",
-    concepto: "Transferencia a proveedor",
-    cuentaOrigen: "Banco Santander",
-    monto: 75000,
-    moneda: "ARS",
-    usuario: "operador@celulandia.com",
-  },
-  {
-    id: 3,
-    fecha: "2025-01-13",
-    hora: "09:15",
-    concepto: "Pago de impuestos",
-    cuentaOrigen: "Banco Nación",
-    monto: 50000,
-    moneda: "ARS",
-    usuario: "admin@celulandia.com",
-  },
-  {
-    id: 4,
-    fecha: "2025-01-12",
-    hora: "11:20",
-    concepto: "Compra de materiales",
-    cuentaOrigen: "Banco Galicia",
-    monto: 120000,
-    moneda: "ARS",
-    usuario: "operador@celulandia.com",
-  },
-  {
-    id: 5,
-    fecha: "2025-01-11",
-    hora: "15:30",
-    concepto: "Pago de alquiler",
-    cuentaOrigen: "Banco Santander",
-    monto: 180000,
-    moneda: "ARS",
-    usuario: "admin@celulandia.com",
-  },
-];
+import cajasService from "src/services/celulandia/cajasService";
+import { formatearCampo } from "src/utils/celulandia/formatearCampo";
+import HistorialModal from "src/components/celulandia/HistorialModal";
+import { parseMovimiento } from "src/utils/celulandia/movimientos/parseMovimientos";
+import EditarPagoModal from "src/components/celulandia/EditarPagoModal";
+import AgregarPagoModal from "src/components/celulandia/AgregarPagoModal";
 
 const PagosCelulandiaPage = () => {
   const [pagos, setPagos] = useState([]);
@@ -71,22 +21,61 @@ const PagosCelulandiaPage = () => {
   const [historialModalOpen, setHistorialModalOpen] = useState(false);
   const [agregarModalOpen, setAgregarModalOpen] = useState(false);
   const [selectedData, setSelectedData] = useState(null);
-  const [historialCambios, setHistorialCambios] = useState({});
+
+  const [cajas, setCajas] = useState([]);
+
+  const movimientoHistorialConfig = {
+    title: "Historial del Pago",
+    entityName: "pago",
+    fieldNames: {
+      tipoDeCambio: "Tipo de Cambio",
+      estado: "Estado",
+      caja: "Cuenta de Origen",
+      cliente: "Cliente",
+      cuentaCorriente: "Cuenta Corriente",
+      moneda: "Moneda",
+      numeroFactura: "Número de Factura",
+      fechaFactura: "Fecha de Factura",
+      nombreUsuario: "Usuario",
+      concepto: "Concepto",
+    },
+    formatters: {
+      tipoDeCambio: (valor) => `$${valor}`,
+      fechaFactura: (valor) => new Date(valor).toLocaleDateString("es-AR"),
+      fechaCreacion: (valor) => new Date(valor).toLocaleDateString("es-AR"),
+      cliente: (valor) => (typeof valor === "object" ? valor?.nombre || "N/A" : valor),
+      caja: (valor) => (typeof valor === "object" ? valor?.nombre || "N/A" : valor),
+    },
+  };
 
   useEffect(() => {
-    // Simular carga de datos
-    setTimeout(() => {
-      setPagos(mockPagos);
-      setIsLoading(false);
-    }, 1000);
+    fetchData();
   }, []);
 
+  const fetchData = async () => {
+    setIsLoading(true);
+    try {
+      const [movimientosResponse, cajasResponse] = await Promise.all([
+        movimientosService.getAllMovimientos({ type: "EGRESO", populate: "caja" }),
+        cajasService.getAllCajas(),
+      ]);
+
+      setPagos(movimientosResponse.data.map(parseMovimiento));
+      setCajas(cajasResponse.data);
+    } catch (error) {
+      console.error("Error al cargar datos:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  console.log(pagos);
+
   const columns = [
-    { key: "fecha", label: "Fecha", sortable: true },
-    { key: "hora", label: "Hora", sortable: false },
+    { key: "fechaCreacion", label: "Fecha", sortable: true },
+    { key: "horaCreacion", label: "Hora", sortable: true },
     { key: "concepto", label: "Concepto", sortable: false },
-    { key: "cuentaOrigen", label: "Cuenta Origen", sortable: false },
-    { key: "monto", label: "Monto", sortable: true },
+    { key: "cuentaDestino", label: "Cuenta Origen", sortable: false },
+    { key: "montoEnviado", label: "Monto", sortable: false },
     { key: "moneda", label: "Moneda", sortable: false },
     {
       key: "acciones",
@@ -109,89 +98,71 @@ const PagosCelulandiaPage = () => {
   ];
 
   const formatters = {
-    fecha: (value) => formatearCampo("fecha", value),
-    monto: (value) => formatearCampo("montoEnviado", value),
+    fechaCreacion: (value) => formatearCampo("fecha", value),
+    horaCreacion: (value) => formatearCampo("hora", value),
+    cuentaDestino: (value) => formatearCampo("cuentaDestino", value),
     moneda: (value) => formatearCampo("monedaDePago", value),
+    montoEnviado: (value) => formatearCampo("montoEnviado", value),
   };
 
-  const searchFields = ["fecha", "hora", "concepto", "cuentaOrigen", "monto", "moneda", "usuario"];
+  const searchFields = [
+    "fechaCreacion",
+    "horaCreacion",
+    "concepto",
+    "cuentaDestino",
+    "moneda",
+    "nombreUsuario",
+  ];
 
-  const handleSaveEdit = (id, updatedData) => {
-    // Encontrar el pago original antes de la edición
-    const pagoOriginal = pagos.find((pago) => pago.id === id);
-
-    // Detectar qué campos cambiaron
-    const cambios = [];
-    Object.keys(updatedData).forEach((campo) => {
-      if (pagoOriginal[campo] !== updatedData[campo]) {
-        cambios.push({
-          campo,
-          valorAnterior: pagoOriginal[campo],
-          valorNuevo: updatedData[campo],
-        });
-      }
-    });
-
-    // Solo registrar cambios si hay modificaciones
-    if (cambios.length > 0) {
-      const registroCambio = {
-        id: Date.now(),
-        fecha: new Date().toISOString(),
-        usuario: "Martin Sorby",
-        cambios: cambios,
-        pago: pagoOriginal.concepto,
-      };
-
-      setHistorialCambios((prev) => ({
-        ...prev,
-        [id]: [...(prev[id] || []), registroCambio],
-      }));
+  const refetchPagos = async () => {
+    try {
+      const { data } = await movimientosService.getAllMovimientos({
+        type: "EGRESO",
+        populate: "caja",
+      });
+      setPagos(data.map(parseMovimiento));
+    } catch (error) {
+      console.error("Error al recargar pagos:", error);
     }
-
-    // Actualizar el pago
-    setPagos((prevPagos) =>
-      prevPagos.map((pago) => (pago.id === id ? { ...pago, ...updatedData } : pago))
-    );
-  };
-
-  const handleSaveNew = (newData) => {
-    // Agregar el nuevo pago a la lista
-    setPagos((prevPagos) => [...prevPagos, newData]);
   };
 
   return (
     <>
       <Head>
-        <title>Pagos Celulandia</title>
+        <title>Pagos</title>
       </Head>
       <Container maxWidth="xl">
         <DataTable
-          title="Pagos Celulandia"
+          title="Pagos"
           data={pagos}
           isLoading={isLoading}
           columns={columns}
           searchFields={searchFields}
           formatters={formatters}
           onAdd={() => setAgregarModalOpen(true)}
+          dateField="fechaCreacion"
         />
       </Container>
 
-      <EditarModal
+      <EditarPagoModal
         open={editarModalOpen}
         onClose={() => setEditarModalOpen(false)}
         data={selectedData}
-        onSave={handleSaveEdit}
+        onSave={refetchPagos}
+        cajas={cajas}
       />
       <HistorialModal
         open={historialModalOpen}
         onClose={() => setHistorialModalOpen(false)}
         data={selectedData}
-        historial={selectedData ? historialCambios[selectedData.id] || [] : []}
+        loadHistorialFunction={movimientosService.getMovimientoLogs}
+        {...movimientoHistorialConfig}
       />
-      <AgregarModal
+      <AgregarPagoModal
         open={agregarModalOpen}
         onClose={() => setAgregarModalOpen(false)}
-        onSave={handleSaveNew}
+        onSave={refetchPagos}
+        cajas={cajas}
       />
     </>
   );

@@ -12,6 +12,9 @@ import EditarModal from "src/components/celulandia/EditarModal";
 import HistorialModal from "src/components/celulandia/HistorialModal";
 import AgregarModal from "src/components/celulandia/AgregarModal";
 import { parseMovimiento } from "src/utils/celulandia/movimientos/parseMovimientos";
+import clientesService from "src/services/celulandia/clientesService";
+import dolarService from "src/services/celulandia/dolarService";
+import cajasService from "src/services/celulandia/cajasService";
 
 const ComprobantesCelulandiaPage = () => {
   const [movimientos, setMovimientos] = useState([]);
@@ -23,6 +26,39 @@ const ComprobantesCelulandiaPage = () => {
   const [agregarModalOpen, setAgregarModalOpen] = useState(false);
   const [selectedData, setSelectedData] = useState(null);
 
+  // Nuevos estados para los datos compartidos
+  const [clientes, setClientes] = useState([]);
+  const [tipoDeCambio, setTipoDeCambio] = useState({
+    ultimaActualizacion: "",
+    oficial: null,
+    blue: null,
+    current: 1,
+  });
+  const [cajas, setCajas] = useState([]);
+
+  const movimientoHistorialConfig = {
+    title: "Historial del Comprobante",
+    entityName: "comprobante",
+    fieldNames: {
+      tipoDeCambio: "Tipo de Cambio",
+      estado: "Estado",
+      caja: "Cuenta de Destino",
+      cliente: "Cliente",
+      cuentaCorriente: "Cuenta Corriente",
+      moneda: "Moneda",
+      numeroFactura: "Número de Factura",
+      fechaFactura: "Fecha de Factura",
+      nombreUsuario: "Usuario",
+    },
+    formatters: {
+      tipoDeCambio: (valor) => `$${valor}`,
+      fechaFactura: (valor) => new Date(valor).toLocaleDateString("es-AR"),
+      fechaCreacion: (valor) => new Date(valor).toLocaleDateString("es-AR"),
+      cliente: (valor) => (typeof valor === "object" ? valor?.nombre || "N/A" : valor),
+      caja: (valor) => (typeof valor === "object" ? valor?.nombre || "N/A" : valor),
+    },
+  };
+
   useEffect(() => {
     fetchData();
   }, []);
@@ -30,10 +66,29 @@ const ComprobantesCelulandiaPage = () => {
   const fetchData = async () => {
     setIsLoading(true);
     try {
-      const { data } = await movimientosService.getAllMovimientos();
-      setMovimientos(data.map(parseMovimiento));
+      const [movimientosResponse, clientesResponse, tipoDeCambioResponse, cajasResponse] =
+        await Promise.all([
+          movimientosService.getAllMovimientos({ type: "INGRESO" }),
+          clientesService.getAllClientes(),
+          dolarService.getTipoDeCambio(),
+          cajasService.getAllCajas(),
+        ]);
+
+      setMovimientos(movimientosResponse.data.map(parseMovimiento));
+
+      const clientesArray = Array.isArray(clientesResponse)
+        ? clientesResponse
+        : clientesResponse?.data || [];
+      setClientes(clientesArray);
+
+      setTipoDeCambio({
+        ...tipoDeCambioResponse,
+        current: tipoDeCambioResponse?.current || 1,
+      });
+
+      setCajas(cajasResponse.data);
     } catch (error) {
-      console.error("Error al cargar movimientos:", error);
+      console.error("Error al cargar datos:", error);
     } finally {
       setIsLoading(false);
     }
@@ -111,15 +166,22 @@ const ComprobantesCelulandiaPage = () => {
     "nombreUsuario",
   ];
 
-  const handleSaveEdit = (id, updatedData) => {
-    // Encontrar el movimiento original antes de la edición
-    //const movimientoOriginal = movimientos.find((mov) => mov._id === id || mov.id === id);
+  const handleSaveEdit = async () => {
+    try {
+      await refetchMovimientos();
+    } catch (error) {
+      console.error("Error al actualizar movimientos:", error);
+      await refetchMovimientos();
+    }
+  };
 
-    setMovimientos((prevMovimientos) =>
-      prevMovimientos.map((mov) =>
-        mov._id === id || mov.id === id ? { ...mov, ...updatedData } : mov
-      )
-    );
+  const refetchMovimientos = async () => {
+    try {
+      const { data } = await movimientosService.getAllMovimientos();
+      setMovimientos(data.map(parseMovimiento));
+    } catch (error) {
+      console.error("Error al recargar movimientos:", error);
+    }
   };
 
   const handleSaveNew = (newData) => {
@@ -133,11 +195,11 @@ const ComprobantesCelulandiaPage = () => {
   return (
     <>
       <Head>
-        <title>Movimientos Celulandia</title>
+        <title>Movimientos</title>
       </Head>
       <Container maxWidth="xl">
         <DataTable
-          title="Comprobantes Celulandia"
+          title="Comprobantes"
           data={movimientos}
           isLoading={isLoading}
           columns={columns}
@@ -154,16 +216,24 @@ const ComprobantesCelulandiaPage = () => {
         onClose={() => setEditarModalOpen(false)}
         data={selectedData}
         onSave={handleSaveEdit}
+        clientes={clientes}
+        tipoDeCambio={tipoDeCambio}
+        cajas={cajas}
       />
       <HistorialModal
         open={historialModalOpen}
         onClose={() => setHistorialModalOpen(false)}
         data={selectedData}
+        loadHistorialFunction={movimientosService.getMovimientoLogs}
+        {...movimientoHistorialConfig}
       />
       <AgregarModal
         open={agregarModalOpen}
         onClose={() => setAgregarModalOpen(false)}
         onSave={handleSaveNew}
+        clientes={clientes}
+        tipoDeCambio={tipoDeCambio}
+        cajas={cajas}
       />
     </>
   );
