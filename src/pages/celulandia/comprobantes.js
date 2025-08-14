@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Layout as DashboardLayout } from "src/layouts/dashboard/layout";
 import Head from "next/head";
-import { Container, Button } from "@mui/material";
+import { Container } from "@mui/material";
 
 import DataTable from "src/components/celulandia/DataTable";
 import TableActions from "src/components/celulandia/TableActions";
@@ -10,8 +10,11 @@ import { formatearCampo } from "src/utils/celulandia/formatearCampo";
 import ComprobanteModal from "src/components/celulandia/ComprobanteModal";
 import EditarModal from "src/components/celulandia/EditarModal";
 import HistorialModal from "src/components/celulandia/HistorialModal";
-import AgregarModal from "src/components/AgregarModal";
-import { parseMovimientos } from "src/utils/celulandia/movimientos/parseMovimientos";
+import AgregarModal from "src/components/celulandia/AgregarModal";
+import { parseMovimiento } from "src/utils/celulandia/movimientos/parseMovimientos";
+import clientesService from "src/services/celulandia/clientesService";
+import dolarService from "src/services/celulandia/dolarService";
+import cajasService from "src/services/celulandia/cajasService";
 
 const ComprobantesCelulandiaPage = () => {
   const [movimientos, setMovimientos] = useState([]);
@@ -22,8 +25,41 @@ const ComprobantesCelulandiaPage = () => {
   const [historialModalOpen, setHistorialModalOpen] = useState(false);
   const [agregarModalOpen, setAgregarModalOpen] = useState(false);
   const [selectedData, setSelectedData] = useState(null);
-  const [historialCambios, setHistorialCambios] = useState({});
 
+  // Nuevos estados para los datos compartidos
+  const [clientes, setClientes] = useState([]);
+  const [tipoDeCambio, setTipoDeCambio] = useState({
+    ultimaActualizacion: "",
+    oficial: null,
+    blue: null,
+    current: 1,
+  });
+  const [cajas, setCajas] = useState([]);
+
+  const movimientoHistorialConfig = {
+    title: "Historial del Comprobante",
+    entityName: "comprobante",
+    fieldNames: {
+      tipoDeCambio: "Tipo de Cambio",
+      estado: "Estado",
+      caja: "Cuenta de Destino",
+      cliente: "Cliente",
+      cuentaCorriente: "Cuenta Corriente",
+      moneda: "Moneda",
+      numeroFactura: "Número de Factura",
+      fechaFactura: "Fecha de Factura",
+      nombreUsuario: "Usuario",
+    },
+    formatters: {
+      tipoDeCambio: (valor) => `$${valor}`,
+      fechaFactura: (valor) => new Date(valor).toLocaleDateString("es-AR"),
+      fechaCreacion: (valor) => new Date(valor).toLocaleDateString("es-AR"),
+      cliente: (valor) => (typeof valor === "object" ? valor?.nombre || "N/A" : valor),
+      caja: (valor) => (typeof valor === "object" ? valor?.nombre || "N/A" : valor),
+    },
+  };
+
+  console.log("movimientos", movimientos);
   useEffect(() => {
     fetchData();
   }, []);
@@ -31,11 +67,29 @@ const ComprobantesCelulandiaPage = () => {
   const fetchData = async () => {
     setIsLoading(true);
     try {
-      const { data } = await movimientosService.getAllMovimientos();
-      console.log("Datos cargados:", data);
-      setMovimientos(parseMovimientos(data));
+      const [movimientosResponse, clientesResponse, tipoDeCambioResponse, cajasResponse] =
+        await Promise.all([
+          movimientosService.getAllMovimientos({ type: "INGRESO", populate: "caja" }),
+          clientesService.getAllClientes(),
+          dolarService.getTipoDeCambio(),
+          cajasService.getAllCajas(),
+        ]);
+
+      console.log("movimientosResponse", movimientosResponse);
+      setMovimientos(movimientosResponse.data.map(parseMovimiento));
+      const clientesArray = Array.isArray(clientesResponse)
+        ? clientesResponse
+        : clientesResponse?.data || [];
+      setClientes(clientesArray);
+
+      setTipoDeCambio({
+        ...tipoDeCambioResponse,
+        current: tipoDeCambioResponse?.current || 1,
+      });
+
+      setCajas(cajasResponse.data);
     } catch (error) {
-      console.error("Error al cargar movimientos:", error);
+      console.error("Error al cargar datos:", error);
     } finally {
       setIsLoading(false);
     }
@@ -47,37 +101,16 @@ const ComprobantesCelulandiaPage = () => {
   };
 
   const columns = [
-    { key: "numeroFactura", label: "Comprobante", sortable: false },
-    { key: "horaCreacion", label: "Hora", sortable: false },
+    { key: "fechaCreacion", label: "Fecha", sortable: true },
+    { key: "horaCreacion", label: "Hora", sortable: true },
     { key: "cliente", label: "Cliente", sortable: false },
-    { key: "cuentaCorriente", label: "Cuenta Destino", sortable: false },
-    { key: "total", label: "Monto Enviado", sortable: false },
+    { key: "cuentaDestino", label: "Cuenta Destino", sortable: false },
+    { key: "montoEnviado", label: "Monto Enviado", sortable: false },
     { key: "moneda", label: "Moneda", sortable: false },
-    { key: "clienteId", label: "CC", sortable: false },
-    { key: "fechaCobro", label: "Monto CC", sortable: false },
-    { key: "tipoFactura", label: "Tipo Cambio", sortable: false },
+    { key: "montoCC", label: "Monto CC", sortable: false },
+    { key: "cuentaCorriente", label: "CC", sortable: false },
+    { key: "tipoDeCambio", label: "Tipo Cambio", sortable: false },
     { key: "estado", label: "Estado", sortable: false },
-    {
-      key: "urlImagen",
-      label: "Imagen",
-      sortable: false,
-      render: (item) =>
-        item.urlImagen ? (
-          <Button
-            size="small"
-            variant="outlined"
-            onClick={() => {
-              setImagenModal(item.urlImagen);
-              setModalOpen(true);
-            }}
-          >
-            Ver
-          </Button>
-        ) : (
-          "-"
-        ),
-    },
-    { key: "nombreUsuario", label: "Usuario", sortable: false },
     {
       key: "acciones",
       label: "Acciones",
@@ -93,32 +126,24 @@ const ComprobantesCelulandiaPage = () => {
             setSelectedData(item);
             setHistorialModalOpen(true);
           }}
+          onViewImage={(urlImagen) => {
+            setImagenModal(urlImagen);
+            setModalOpen(true);
+          }}
         />
       ),
     },
   ];
 
   const formatters = {
-    fechaFactura: (value) => formatearCampo("fecha", value),
     fechaCreacion: (value) => formatearCampo("fecha", value),
     horaCreacion: (value) => formatearCampo("hora", value),
-    cuentaCorriente: (value) => formatearCampo("cuentaDestino", value),
-    total: (value) => {
-      if (value && typeof value === "object") {
-        // Si es un objeto con diferentes monedas, mostrar el valor en ARS
-        if (value.ars) {
-          return formatearCampo("montoEnviado", value.ars);
-        }
-        // Si no hay ars, mostrar el primer valor disponible
-        const firstValue = Object.values(value)[0];
-        return formatearCampo("montoEnviado", firstValue);
-      }
-      return formatearCampo("montoEnviado", value);
-    },
+    cuentaDestino: (value) => formatearCampo("cuentaDestino", value),
     moneda: (value) => formatearCampo("monedaDePago", value),
-    clienteId: (value) => formatearCampo("CC", value),
-    fechaCobro: (value) => formatearCampo("montoCC", value),
-    tipoFactura: (value) => formatearCampo("tipoDeCambio", value),
+    montoEnviado: (value) => formatearCampo("montoEnviado", value),
+    cuentaCorriente: (value) => formatearCampo("CC", value),
+    montoCC: (value) => formatearCampo("montoCC", value),
+    tipoDeCambio: (value) => formatearCampo("tipoDeCambio", value),
     estado: (value) => formatearCampo("estado", value),
     cliente: (value) => {
       if (value && typeof value === "object" && value.nombre) {
@@ -133,8 +158,7 @@ const ComprobantesCelulandiaPage = () => {
     "fechaCreacion",
     "horaCreacion",
     "nombreCliente",
-    "",
-    "total",
+    "cuentaDestino",
     "moneda",
     "clienteId",
     "fechaCobro",
@@ -143,70 +167,50 @@ const ComprobantesCelulandiaPage = () => {
     "nombreUsuario",
   ];
 
-  const handleSaveEdit = (id, updatedData) => {
-    // Encontrar el movimiento original antes de la edición
-    const movimientoOriginal = movimientos.find((mov) => mov._id === id || mov.id === id);
-
-    // Detectar qué campos cambiaron
-    const cambios = [];
-    Object.keys(updatedData).forEach((campo) => {
-      if (movimientoOriginal[campo] !== updatedData[campo]) {
-        cambios.push({
-          campo,
-          valorAnterior: movimientoOriginal[campo],
-          valorNuevo: updatedData[campo],
-        });
-      }
-    });
-
-    // Solo registrar cambios si hay modificaciones
-    if (cambios.length > 0) {
-      const registroCambio = {
-        id: Date.now(), // ID único para el registro
-        fecha: new Date().toISOString(),
-        usuario: "Martin Sorby",
-        cambios: cambios,
-        comprobante: movimientoOriginal.numeroFactura,
-      };
-
-      const itemId = movimientoOriginal._id || movimientoOriginal.id;
-      setHistorialCambios((prev) => ({
-        ...prev,
-        [itemId]: [...(prev[itemId] || []), registroCambio],
-      }));
+  const handleSaveEdit = async () => {
+    try {
+      await refetchMovimientos();
+    } catch (error) {
+      console.error("Error al actualizar movimientos:", error);
+      await refetchMovimientos();
     }
+  };
 
-    // Actualizar el movimiento
-    setMovimientos((prevMovimientos) =>
-      prevMovimientos.map((mov) =>
-        mov._id === id || mov.id === id ? { ...mov, ...updatedData } : mov
-      )
-    );
+  const refetchMovimientos = async () => {
+    try {
+      const { data } = await movimientosService.getAllMovimientos({
+        type: "INGRESO",
+        populate: "caja",
+      });
+      setMovimientos(data.map(parseMovimiento));
+    } catch (error) {
+      console.error("Error al recargar movimientos:", error);
+    }
   };
 
   const handleSaveNew = (newData) => {
-    // Agregar el nuevo movimiento a la lista con un ID temporal si no lo tiene
-    const newDataWithId = {
-      ...newData,
-      _id: newData._id || `temp-${Date.now()}`,
-    };
-    setMovimientos((prevMovimientos) => [...prevMovimientos, newDataWithId]);
+    setMovimientos((prevMovimientos) => [...prevMovimientos, parseMovimiento(newData)]);
   };
+
+  if (isLoading) {
+    return <div>Cargando...</div>;
+  }
 
   return (
     <>
       <Head>
-        <title>Movimientos Celulandia</title>
+        <title>Movimientos</title>
       </Head>
       <Container maxWidth="xl">
         <DataTable
-          title="Comprobantes Celulandia"
+          title="Comprobantes"
           data={movimientos}
           isLoading={isLoading}
           columns={columns}
           searchFields={searchFields}
           formatters={formatters}
           onAdd={() => setAgregarModalOpen(true)}
+          dateField="fechaCreacion"
         />
       </Container>
 
@@ -216,17 +220,24 @@ const ComprobantesCelulandiaPage = () => {
         onClose={() => setEditarModalOpen(false)}
         data={selectedData}
         onSave={handleSaveEdit}
+        clientes={clientes}
+        tipoDeCambio={tipoDeCambio}
+        cajas={cajas}
       />
       <HistorialModal
         open={historialModalOpen}
         onClose={() => setHistorialModalOpen(false)}
         data={selectedData}
-        historial={selectedData ? historialCambios[selectedData._id || selectedData.id] || [] : []}
+        loadHistorialFunction={movimientosService.getMovimientoLogs}
+        {...movimientoHistorialConfig}
       />
       <AgregarModal
         open={agregarModalOpen}
         onClose={() => setAgregarModalOpen(false)}
         onSave={handleSaveNew}
+        clientes={clientes}
+        tipoDeCambio={tipoDeCambio}
+        cajas={cajas}
       />
     </>
   );

@@ -1,9 +1,10 @@
 import React from "react";
-import { Stack, IconButton } from "@mui/material";
+import { Stack, IconButton, Button } from "@mui/material";
 import EditIcon from "@mui/icons-material/Edit";
 import HistoryIcon from "@mui/icons-material/History";
+import ImageIcon from "@mui/icons-material/Image";
 
-const TableActions = ({ item, onEdit, onViewHistory }) => {
+const TableActions = ({ item, onEdit, onViewHistory, onViewImage }) => {
   return (
     <Stack direction="row" spacing={1}>
       {onEdit && (
@@ -43,6 +44,25 @@ const TableActions = ({ item, onEdit, onViewHistory }) => {
         >
           <HistoryIcon fontSize="small" />
         </IconButton>
+      )}
+      {onViewImage && item.urlImagen && (
+        <Button
+          size="small"
+          variant="outlined"
+          startIcon={<ImageIcon />}
+          onClick={(e) => {
+            e.stopPropagation();
+            onViewImage(item.urlImagen);
+          }}
+          sx={{
+            minWidth: "auto",
+            px: 1,
+            py: 0.5,
+            fontSize: "0.75rem",
+          }}
+        >
+          Ver
+        </Button>
       )}
     </Stack>
   );

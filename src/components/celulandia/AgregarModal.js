@@ -5,6 +5,7 @@ import {
   DialogContent,
   DialogActions,
   Button,
+  Typography,
   Box,
   TextField,
   FormControl,
@@ -19,13 +20,11 @@ import { useMovimientoForm } from "src/hooks/useMovimientoForm";
 import movimientosService from "src/services/celulandia/movimientosService";
 import { getUser } from "src/utils/celulandia/currentUser";
 
-const EditarModal = ({ open, onClose, data, onSave, clientes, tipoDeCambio, cajas }) => {
+const AgregarModal = ({ open, onClose, onSave, clientes, tipoDeCambio, cajas }) => {
   const [isSaving, setIsSaving] = useState(false);
-  console.log("data", data);
 
   const {
     formData,
-    setFormData,
     tipoDeCambioManual,
     clienteSeleccionado,
     getCCOptions,
@@ -34,7 +33,8 @@ const EditarModal = ({ open, onClose, data, onSave, clientes, tipoDeCambio, caja
     handleMontoEnviado,
     handleInputChange,
     handleClienteChange,
-  } = useMovimientoForm(data, { clientes, tipoDeCambio, cajas });
+    resetForm,
+  } = useMovimientoForm(null, { clientes, tipoDeCambio, cajas });
 
   const handleSave = async () => {
     if (!formData.cliente || !formData.montoEnviado || !formData.cuentaDestino) {
@@ -64,90 +64,50 @@ const EditarModal = ({ open, onClose, data, onSave, clientes, tipoDeCambio, caja
       const cajaId = cajas.find((caja) => caja.nombre === formData.cuentaDestino)?._id;
       const tipoDeCambioCalculado = getTipoDeCambio(formData.monedaDePago, formData.CC);
 
-      const datosParaGuardar = {
-        clienteId: clienteId || null,
-        cliente: clienteData,
-        cuentaCorriente: formData.CC,
-        moneda: formData.monedaDePago,
-        tipoFactura: "transferencia",
-        caja: cajaId,
-        nombreUsuario: getUser(),
-        tipoDeCambio: tipoDeCambioCalculado,
-        estado: formData.estado,
-        montoEnviado: parseFloat(formData.montoEnviado) || 0,
-        montoCC: parseFloat(formData.montoCC) || 0,
-      };
-
-      // Solo enviar los campos que cambiaron
-      const camposModificados = {};
-      Object.keys(datosParaGuardar).forEach((key) => {
-        if (key === "cliente") {
-          if (datosParaGuardar[key].nombre !== data.cliente?.nombre) {
-            camposModificados[key] = datosParaGuardar[key];
-          }
-        } else if (key === "caja") {
-          if (datosParaGuardar[key] !== data.caja?._id) {
-            camposModificados[key] = datosParaGuardar[key];
-          }
-        } else if (key === "clienteId") {
-          if (datosParaGuardar[key] !== data.cliente?._id) {
-            camposModificados[key] = datosParaGuardar[key];
-          }
-        } else {
-          if (datosParaGuardar[key] !== data[key]) {
-            camposModificados[key] = datosParaGuardar[key];
-          }
-        }
+      const result = await movimientosService.createMovimiento({
+        movimiento: {
+          type: "INGRESO",
+          clienteId: clienteId || null,
+          cliente: clienteData,
+          cuentaCorriente: formData.CC,
+          moneda: formData.monedaDePago,
+          tipoFactura: "transferencia",
+          caja: cajaId,
+          nombreUsuario: getUser(),
+          tipoDeCambio: tipoDeCambioCalculado,
+          estado: "CONFIRMADO",
+        },
+        montoEnviado: formData.montoEnviado,
       });
 
-      // Solo hacer la llamada si hay campos modificados
-      if (Object.keys(camposModificados).length === 0) {
-        alert("No hay cambios para guardar");
-        onClose();
-        return;
-      }
-
-      console.log("Campos modificados:", camposModificados);
-      const result = await movimientosService.updateMovimiento(
-        data._id,
-        camposModificados,
-        getUser()
-      );
-
       if (result.success) {
-        onSave();
-        onClose();
+        onSave(result.data);
+        handleClose();
       } else {
-        alert(result.error || "Error al actualizar el movimiento");
+        alert(result.error || "Error al crear el movimiento");
       }
     } catch (error) {
-      console.error("Error al actualizar movimiento:", error);
-      alert("Error al actualizar el movimiento. Por favor, intente nuevamente.");
+      console.error("Error al crear movimiento:", error);
+      alert("Error al crear el movimiento. Por favor, intente nuevamente.");
     } finally {
       setIsSaving(false);
     }
   };
 
-  const handleCancel = () => {
-    // Restaurar datos originales
-    if (data) {
-      setFormData({
-        cliente: data.cliente?.nombre || "",
-        cuentaDestino: data.cuentaDestino || "ENSHOP SRL",
-        montoEnviado: data.montoEnviado || "",
-        monedaDePago: data.moneda || "ARS",
-        CC: data.cuentaCorriente || "ARS",
-        estado: data.estado || "CONFIRMADO",
-        montoCC: data.montoCC || "",
-        usuario: getUser(),
-      });
-    }
+  const handleClose = () => {
+    resetForm();
     onClose();
   };
 
   return (
-    <Dialog open={open} onClose={handleCancel} maxWidth="md" fullWidth>
-      <DialogTitle>Editar Comprobante</DialogTitle>
+    <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth>
+      <DialogTitle>
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+          <Typography variant="h6" sx={{ fontWeight: 600 }}>
+            Nuevo Comprobante
+          </Typography>
+        </Box>
+      </DialogTitle>
       <DialogContent>
         <Box sx={{ py: 2 }}>
           <Grid container spacing={2}>
@@ -157,7 +117,9 @@ const EditarModal = ({ open, onClose, data, onSave, clientes, tipoDeCambio, caja
                 options={Array.isArray(clientes) ? clientes : []}
                 getOptionLabel={(option) => (typeof option === "string" ? option : option.nombre)}
                 value={formData.cliente}
+                inputValue={formData.cliente || ""}
                 onChange={handleClienteChange}
+                onInputChange={(_, newInputValue) => handleInputChange("cliente", newInputValue)}
                 renderInput={(params) => (
                   <TextField {...params} label="Cliente *" margin="normal" required fullWidth />
                 )}
@@ -277,19 +239,6 @@ const EditarModal = ({ open, onClose, data, onSave, clientes, tipoDeCambio, caja
               />
             </Grid>
             <Grid item xs={12} sm={6}>
-              <FormControl fullWidth margin="normal">
-                <InputLabel>Estado</InputLabel>
-                <Select
-                  value={formData.estado}
-                  label="Estado"
-                  onChange={(e) => handleInputChange("estado", e.target.value)}
-                >
-                  <MenuItem value="CONFIRMADO">CONFIRMADO</MenuItem>
-                  <MenuItem value="PENDIENTE">PENDIENTE</MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
                 label="Usuario"
@@ -303,7 +252,7 @@ const EditarModal = ({ open, onClose, data, onSave, clientes, tipoDeCambio, caja
         </Box>
       </DialogContent>
       <DialogActions>
-        <Button onClick={handleCancel} color="inherit" disabled={isSaving}>
+        <Button onClick={handleClose} color="inherit" disabled={isSaving}>
           Cancelar
         </Button>
         <Button
@@ -313,11 +262,11 @@ const EditarModal = ({ open, onClose, data, onSave, clientes, tipoDeCambio, caja
           disabled={isSaving}
           startIcon={isSaving ? <CircularProgress size={16} /> : null}
         >
-          {isSaving ? "Guardando..." : "Guardar"}
+          {isSaving ? "Agregando..." : "Agregar"}
         </Button>
       </DialogActions>
     </Dialog>
   );
 };
 
-export default EditarModal;
+export default AgregarModal;

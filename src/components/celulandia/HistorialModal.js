@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import {
   Dialog,
   DialogTitle,
@@ -13,27 +13,68 @@ import {
   Divider,
   Stack,
   Grid,
+  CircularProgress,
 } from "@mui/material";
-import { formatCurrency } from "src/utils/formatters";
 
-const HistorialModal = ({ open, onClose, data, historial }) => {
+const HistorialModal = ({
+  open,
+  onClose,
+  data,
+  title = "Historial",
+  entityName = "entidad",
+  loadHistorialFunction,
+  formatters = {},
+  fieldNames = {},
+  renderSpecialField = null,
+}) => {
+  const [historial, setHistorial] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
+
+  // Cargar historial cuando se abre el modal
+  useEffect(() => {
+    if (open && data?._id && loadHistorialFunction) {
+      loadHistorial();
+    }
+  }, [open, data, loadHistorialFunction]);
+
+  const loadHistorial = async () => {
+    if (!data?._id || !loadHistorialFunction) return;
+
+    setIsLoading(true);
+    try {
+      const result = await loadHistorialFunction(data._id);
+      if (result.success) {
+        setHistorial(result.data || []);
+      } else {
+        console.error("Error al cargar historial:", result.error);
+        setHistorial([]);
+      }
+    } catch (error) {
+      console.error("Error al cargar historial:", error);
+      setHistorial([]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   // Función para formatear el valor de un campo
   const formatearValor = (campo, valor) => {
     if (valor === null || valor === undefined || valor === "") {
       return "-";
     }
 
-    // Usar las funciones de formateo existentes para campos específicos
-    if (campo === "montoEnviado" || campo === "montoCC") {
-      return formatCurrency(valor);
+    // Usar formateadores personalizados si existen
+    if (formatters[campo]) {
+      return formatters[campo](valor);
     }
 
-    if (campo === "fecha") {
+    // Formateo por defecto
+    if (campo === "fechaActualizacion" || campo === "fecha") {
       return new Date(valor).toLocaleDateString("es-AR");
     }
 
-    if (campo === "tipoDeCambio") {
-      return valor.toLocaleString();
+    if (Array.isArray(valor)) {
+      return valor.join(", ");
     }
 
     return valor.toString();
@@ -41,21 +82,7 @@ const HistorialModal = ({ open, onClose, data, historial }) => {
 
   // Función para obtener el nombre legible del campo
   const obtenerNombreCampo = (campo) => {
-    const nombres = {
-      numeroComprobante: "Número de Comprobante",
-      fecha: "Fecha",
-      hora: "Hora",
-      cliente: "Cliente",
-      cuentaDestino: "Cuenta Destino",
-      montoEnviado: "Monto Enviado",
-      monedaDePago: "Moneda de Pago",
-      CC: "Cuenta Corriente",
-      montoCC: "Monto CC",
-      tipoDeCambio: "Tipo de Cambio",
-      estado: "Estado",
-      usuario: "Usuario",
-    };
-    return nombres[campo] || campo;
+    return fieldNames[campo] || campo;
   };
 
   // Función para formatear fecha y hora
@@ -70,26 +97,41 @@ const HistorialModal = ({ open, onClose, data, historial }) => {
     };
   };
 
+  // Función para renderizar campos especiales
+  const renderFieldValue = (campo, valor) => {
+    if (renderSpecialField && renderSpecialField[campo]) {
+      return renderSpecialField[campo](valor);
+    }
+
+    return <Typography variant="body2">{formatearValor(campo, valor)}</Typography>;
+  };
+
   return (
     <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth>
       <DialogTitle>
         <Typography variant="h6" sx={{ fontWeight: 600 }}>
-          Historial del Comprobante
+          {title}
         </Typography>
         {data && (
           <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-            Comprobante: {data.numeroComprobante}
+            {entityName}: {data.nombre || data.numeroComprobante || data._id}
           </Typography>
         )}
       </DialogTitle>
       <DialogContent>
         <Box sx={{ py: 2 }}>
-          {historial && historial.length > 0 ? (
+          {isLoading ? (
+            <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}>
+              <CircularProgress />
+            </Box>
+          ) : historial && historial.length > 0 ? (
             <Stack spacing={2}>
               {historial.map((registro, index) => {
-                const { fecha, hora } = formatearFechaHora(registro.fecha);
+                const { fecha, hora } = formatearFechaHora(
+                  registro.fechaActualizacion || registro.fecha
+                );
                 return (
-                  <Card key={registro.id} variant="outlined">
+                  <Card key={index} variant="outlined">
                     <CardContent>
                       <Stack spacing={2}>
                         {/* Header del registro */}
@@ -123,39 +165,37 @@ const HistorialModal = ({ open, onClose, data, historial }) => {
 
                         <Divider />
 
-                        {/* Lista de cambios */}
+                        {/* Detalle del cambio */}
                         <Stack spacing={1}>
                           <Typography variant="subtitle2" color="text.secondary">
-                            Campos modificados:
+                            Campo modificado:
                           </Typography>
-                          {registro.cambios.map((cambio, cambioIndex) => (
-                            <Box key={cambioIndex} sx={{ pl: 2 }}>
-                              <Grid container spacing={2} alignItems="center">
-                                <Grid item xs={12} sm={3}>
-                                  <Typography variant="body2" fontWeight="medium">
-                                    {obtenerNombreCampo(cambio.campo)}:
-                                  </Typography>
-                                </Grid>
-                                <Grid item xs={12} sm={4}>
-                                  <Typography variant="body2" color="error">
-                                    <strong>Antes:</strong>{" "}
-                                    {formatearValor(cambio.campo, cambio.valorAnterior)}
-                                  </Typography>
-                                </Grid>
-                                <Grid item xs={12} sm={1}>
-                                  <Typography variant="body2" color="text.secondary">
-                                    →
-                                  </Typography>
-                                </Grid>
-                                <Grid item xs={12} sm={4}>
-                                  <Typography variant="body2" color="success.main">
-                                    <strong>Después:</strong>{" "}
-                                    {formatearValor(cambio.campo, cambio.valorNuevo)}
-                                  </Typography>
-                                </Grid>
+                          <Box sx={{ pl: 2 }}>
+                            <Grid container spacing={2} alignItems="center">
+                              <Grid item xs={12} sm={3}>
+                                <Typography variant="body2" fontWeight="medium">
+                                  {obtenerNombreCampo(registro.campo)}:
+                                </Typography>
                               </Grid>
-                            </Box>
-                          ))}
+                              <Grid item xs={12} sm={4}>
+                                <Typography variant="body2" color="error">
+                                  <strong>Antes:</strong>
+                                </Typography>
+                                {renderFieldValue(registro.campo, registro.valorAnterior)}
+                              </Grid>
+                              <Grid item xs={12} sm={1}>
+                                <Typography variant="body2" color="text.secondary">
+                                  →
+                                </Typography>
+                              </Grid>
+                              <Grid item xs={12} sm={4}>
+                                <Typography variant="body2" color="success.main">
+                                  <strong>Después:</strong>
+                                </Typography>
+                                {renderFieldValue(registro.campo, registro.valorNuevo)}
+                              </Grid>
+                            </Grid>
+                          </Box>
                         </Stack>
                       </Stack>
                     </CardContent>
@@ -166,10 +206,10 @@ const HistorialModal = ({ open, onClose, data, historial }) => {
           ) : (
             <Box sx={{ textAlign: "center", py: 4 }}>
               <Typography variant="body1" color="text.secondary">
-                No hay historial de cambios para este comprobante.
+                No hay historial de cambios para este {entityName}.
               </Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                Los cambios se registrarán automáticamente cuando se edite el comprobante.
+                Los cambios se registrarán automáticamente cuando se edite el {entityName}.
               </Typography>
             </Box>
           )}

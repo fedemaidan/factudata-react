@@ -1,6 +1,6 @@
 import React from "react";
 import { Chip } from "@mui/material";
-import { formatCurrency } from "src/utils/formatters";
+import { formatCurrency } from "src/utils/formatters"; // Comentado para usar función propia
 
 export const formatearCampo = (campo, valor) => {
   if (valor === undefined || valor === null) return "-";
@@ -25,13 +25,37 @@ export const formatearCampo = (campo, valor) => {
       return formatCurrency(valor);
 
     case "tipoDeCambio":
-      return valor.toLocaleString();
+      return formatCurrency(valor);
 
     case "cuentaDestino": {
       const cuentaStyles = {
         "ENSHOP SRL": {
           backgroundColor: "#E8EAF6",
           color: "#3F51B5",
+        },
+        "ASOCIACION CONSULTURA MUTUAL": {
+          backgroundColor: "#F3E5F5",
+          color: "#7B1FA2",
+        },
+        EZE: {
+          backgroundColor: "#E0F7FA",
+          color: "#006064",
+        },
+        NICO: {
+          backgroundColor: "#FFF8E1",
+          color: "#FF6F00",
+        },
+        CHEQUE: {
+          backgroundColor: "#FFFDE7",
+          color: "#F57F17",
+        },
+        ECHEQ: {
+          backgroundColor: "#F1F8E9",
+          color: "#2E7D32",
+        },
+        EFECTIVO: {
+          backgroundColor: "#E8F5E9",
+          color: "#1B5E20",
         },
       };
       const cuentaStyle = cuentaStyles[valor] || {
