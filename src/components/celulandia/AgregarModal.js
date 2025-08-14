@@ -117,7 +117,9 @@ const AgregarModal = ({ open, onClose, onSave, clientes, tipoDeCambio, cajas }) 
                 options={Array.isArray(clientes) ? clientes : []}
                 getOptionLabel={(option) => (typeof option === "string" ? option : option.nombre)}
                 value={formData.cliente}
+                inputValue={formData.cliente || ""}
                 onChange={handleClienteChange}
+                onInputChange={(_, newInputValue) => handleInputChange("cliente", newInputValue)}
                 renderInput={(params) => (
                   <TextField {...params} label="Cliente *" margin="normal" required fullWidth />
                 )}

@@ -73,24 +73,21 @@ const EntregasCelulandiaPage = () => {
 
         const cuentas = cuentasResp?.data || [];
         setEntregas(
-          cuentas.map((c) => ({
-            _id: c._id,
-            proveedorOCliente: c.proveedorOCliente,
-            descripcion: c.descripcion,
-            fecha: c.fechaCuenta,
-            horaCreacion:
-              typeof c.horaCreacion === "number"
-                ? new Date(c.horaCreacion).toLocaleTimeString("es-AR", {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })
-                : c.horaCreacion || "-",
-            moneda: c.moneda,
-            CC: c.cc,
-            descuentoAplicado: c.descuentoAplicado,
-            montoEnviado: c.subTotal?.ars || 0,
-            montoCC: c.montoTotal?.ars || 0,
-          }))
+          cuentas.map((c) => {
+            const fecha = new Date(c.fechaCreacion);
+            return {
+              _id: c._id,
+              proveedorOCliente: c.proveedorOCliente,
+              descripcion: c.descripcion,
+              fecha: c.fechaCuenta,
+              horaCreacion: fecha?.toTimeString().split(" ")[0] || "-",
+              moneda: c.moneda,
+              CC: c.cc,
+              descuentoAplicado: c.descuentoAplicado,
+              montoEnviado: c.subTotal?.ars || 0,
+              montoCC: c.montoTotal?.ars || 0,
+            };
+          })
         );
         const clientesArray = Array.isArray(clientesResp) ? clientesResp : clientesResp?.data || [];
         setClientes(clientesArray);
@@ -163,24 +160,21 @@ const EntregasCelulandiaPage = () => {
       const cuentasResp = await cuentasPendientesService.getAll();
       const cuentas = cuentasResp?.data || [];
       setEntregas(
-        cuentas.map((c) => ({
-          _id: c._id,
-          proveedorOCliente: c.proveedorOCliente,
-          descripcion: c.descripcion,
-          fecha: c.fechaCuenta,
-          horaCreacion:
-            typeof c.horaCreacion === "number"
-              ? new Date(c.horaCreacion).toLocaleTimeString("es-AR", {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })
-              : c.horaCreacion || "-",
-          moneda: c.moneda,
-          CC: c.cc,
-          descuentoAplicado: c.descuentoAplicado,
-          montoEnviado: c.subTotal?.ars || 0,
-          montoCC: c.montoTotal?.ars || 0,
-        }))
+        cuentas.map((c) => {
+          const fecha = new Date(c.fechaCreacion);
+          return {
+            _id: c._id,
+            proveedorOCliente: c.proveedorOCliente,
+            descripcion: c.descripcion,
+            fecha: c.fechaCuenta,
+            horaCreacion: fecha?.toTimeString().split(" ")[0] || "-",
+            moneda: c.moneda,
+            CC: c.cc,
+            descuentoAplicado: c.descuentoAplicado,
+            montoEnviado: c.subTotal?.ars || 0,
+            montoCC: c.montoTotal?.ars || 0,
+          };
+        })
       );
     } catch (e) {
       console.error(e);

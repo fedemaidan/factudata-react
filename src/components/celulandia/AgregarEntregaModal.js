@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Dialog,
   DialogTitle,
@@ -17,107 +17,95 @@ import {
 } from "@mui/material";
 import cuentasPendientesService from "src/services/celulandia/cuentasPendientesService";
 import { getUser } from "src/utils/celulandia/currentUser";
+import { useMovimientoForm } from "src/hooks/useMovimientoForm";
 
 const AgregarEntregaModal = ({ open, onClose, onSaved, clientes = [], tipoDeCambio }) => {
   const [isSaving, setIsSaving] = useState(false);
+  const [descuentoPorcentaje, setDescuentoPorcentaje] = useState("");
 
-  const [formData, setFormData] = useState({
-    proveedorOCliente: "",
-    descripcion: "",
-    montoEnviado: "",
-    moneda: "ARS",
-    cc: "ARS",
-    descuentoAplicado: 1,
-  });
+  const {
+    formData,
+    clienteSeleccionado,
+    getCCOptions,
+    handleMontoEnviado,
+    handleInputChange,
+    handleClienteChange,
+    resetForm,
+  } = useMovimientoForm(null, { clientes, tipoDeCambio });
 
-  const getTipoDeCambio = (moneda, cc) => {
-    if ((moneda === "ARS" && cc === "ARS") || (moneda === "USD" && cc !== "ARS")) {
-      return 1;
+  // Convertir porcentaje a factor: 5% -> 0.95, 10% -> 0.90
+  const factorDescuento = 1 - (parseFloat(descuentoPorcentaje) || 0) / 100;
+
+  const montoCCConDescuento = Math.round((parseFloat(formData.montoCC) || 0) * factorDescuento);
+
+  useEffect(() => {
+    if (clienteSeleccionado && clienteSeleccionado.descuento !== undefined) {
+      const porcentajeCliente = (clienteSeleccionado.descuento || 0) * 100;
+      setDescuentoPorcentaje(porcentajeCliente.toString());
+    } else {
+      setDescuentoPorcentaje("");
     }
-    if (moneda === "ARS" && cc === "USD OFICIAL")
-      return tipoDeCambio?.oficial?.venta || tipoDeCambio?.oficial || 1;
-    if (moneda === "ARS" && cc === "USD BLUE")
-      return tipoDeCambio?.blue?.venta || tipoDeCambio?.blue || 1;
-    if (moneda === "USD" && cc === "ARS")
-      return tipoDeCambio?.blue?.venta || tipoDeCambio?.blue || 1;
-    return 1;
-  };
-
-  const montoCC = useMemo(() => {
-    const monto = parseFloat(formData.montoEnviado) || 0;
-    const tc = getTipoDeCambio(formData.moneda, formData.cc);
-    let base = monto;
-    if (
-      formData.moneda === "ARS" &&
-      (formData.cc === "USD OFICIAL" || formData.cc === "USD BLUE")
-    ) {
-      base = monto / tc;
-    } else if (formData.moneda === "USD" && formData.cc === "ARS") {
-      base = monto * tc;
-    }
-    const factor = parseFloat(formData.descuentoAplicado) || 1;
-    return Math.round(base * factor);
-  }, [
-    getTipoDeCambio,
-    formData.montoEnviado,
-    formData.moneda,
-    formData.cc,
-    formData.descuentoAplicado,
-  ]);
-
-  const handleInput = (field, value) => {
-    setFormData((prev) => ({ ...prev, [field]: value }));
-  };
+  }, [clienteSeleccionado]);
 
   const handleSave = async () => {
-    if (!formData.proveedorOCliente || !formData.montoEnviado) {
+    if (!formData.cliente || !formData.montoEnviado) {
       alert("Completá los campos requeridos");
       return;
     }
     setIsSaving(true);
     try {
       const monto = parseFloat(formData.montoEnviado) || 0;
-      const tc = getTipoDeCambio(formData.moneda, formData.cc);
-      // subTotal y montoTotal según schema (guardamos en las 3 monedas)
+
+      // Determinar el tipo de cambio que se va a usar para los cálculos
+      let tipoDeCambioFinal;
+
+      // Para subTotal se usa el tipo de cambio según la moneda de pago
+      if (formData.monedaDePago === "USD") {
+        tipoDeCambioFinal = tipoDeCambio?.oficial?.venta || tipoDeCambio?.oficial || 1;
+      } else {
+        // Si es ARS, usamos el tipo de cambio de la cuenta corriente para conversión
+        if (formData.CC === "USD BLUE") {
+          tipoDeCambioFinal = tipoDeCambio?.blue?.venta || tipoDeCambio?.blue || 1;
+        } else {
+          tipoDeCambioFinal = tipoDeCambio?.oficial?.venta || tipoDeCambio?.oficial || 1;
+        }
+      }
+
       const subTotal = {
-        ars:
-          formData.moneda === "ARS"
-            ? monto
-            : Math.round(monto * (tipoDeCambio?.oficial?.venta || tipoDeCambio?.oficial || 1)),
-        usdOficial:
-          formData.moneda === "USD"
-            ? monto
-            : Math.round(monto / (tipoDeCambio?.oficial?.venta || tipoDeCambio?.oficial || 1)),
-        usdBlue:
-          formData.moneda === "USD"
-            ? monto
-            : Math.round(monto / (tipoDeCambio?.blue?.venta || tipoDeCambio?.blue || 1)),
+        ars: -(formData.monedaDePago === "ARS" ? monto : Math.round(monto * tipoDeCambioFinal)),
+        usdOficial: -(formData.monedaDePago === "USD"
+          ? monto
+          : Math.round(monto / tipoDeCambioFinal)),
+        usdBlue: -(formData.monedaDePago === "USD"
+          ? monto
+          : Math.round(monto / (tipoDeCambio?.blue?.venta || tipoDeCambio?.blue || 1))),
       };
+
       const montoTotal = {
-        ars:
-          formData.cc === "ARS"
-            ? montoCC
-            : Math.round(montoCC * (tipoDeCambio?.oficial?.venta || tipoDeCambio?.oficial || 1)),
-        usdOficial:
-          formData.cc === "USD OFICIAL"
-            ? montoCC
-            : Math.round(montoCC / (tipoDeCambio?.oficial?.venta || tipoDeCambio?.oficial || 1)),
-        usdBlue:
-          formData.cc === "USD BLUE"
-            ? montoCC
-            : Math.round(montoCC / (tipoDeCambio?.blue?.venta || tipoDeCambio?.blue || 1)),
+        ars: -(formData.CC === "ARS"
+          ? montoCCConDescuento
+          : Math.round(montoCCConDescuento * tipoDeCambioFinal)),
+        usdOficial: -(formData.CC === "USD OFICIAL"
+          ? montoCCConDescuento
+          : Math.round(montoCCConDescuento / tipoDeCambioFinal)),
+        usdBlue: -(formData.CC === "USD BLUE"
+          ? montoCCConDescuento
+          : Math.round(
+              montoCCConDescuento / (tipoDeCambio?.blue?.venta || tipoDeCambio?.blue || 1)
+            )),
       };
 
       const payload = {
-        descripcion: formData.descripcion,
-        proveedorOCliente: formData.proveedorOCliente,
+        descripcion: formData.concepto,
+        proveedorOCliente: formData.cliente,
         fechaCuenta: new Date(),
         fechaCreacion: new Date(),
-        descuentoAplicado: parseFloat(formData.descuentoAplicado) || 1,
+        descuentoAplicado: factorDescuento,
         subTotal,
         montoTotal,
-        moneda: formData.moneda,
-        cc: formData.cc,
+        moneda: formData.monedaDePago,
+        cc: formData.CC,
+        tipoDeCambio: tipoDeCambioFinal,
         usuario: getUser(),
       };
 
@@ -137,14 +125,8 @@ const AgregarEntregaModal = ({ open, onClose, onSaved, clientes = [], tipoDeCamb
   };
 
   const handleClose = () => {
-    setFormData({
-      proveedorOCliente: "",
-      descripcion: "",
-      montoEnviado: "",
-      moneda: "ARS",
-      cc: "ARS",
-      descuentoAplicado: 1,
-    });
+    setDescuentoPorcentaje("");
+    resetForm();
     onClose();
   };
 
@@ -159,13 +141,10 @@ const AgregarEntregaModal = ({ open, onClose, onSaved, clientes = [], tipoDeCamb
                 freeSolo
                 options={Array.isArray(clientes) ? clientes : []}
                 getOptionLabel={(option) => (typeof option === "string" ? option : option.nombre)}
-                value={formData.proveedorOCliente}
-                onChange={(_, val) =>
-                  handleInput(
-                    "proveedorOCliente",
-                    typeof val === "string" ? val : val?.nombre || ""
-                  )
-                }
+                value={formData.cliente}
+                inputValue={formData.cliente || ""}
+                onInputChange={(_, newInputValue) => handleInputChange("cliente", newInputValue)}
+                onChange={handleClienteChange}
                 renderInput={(params) => (
                   <TextField {...params} label="Cliente *" margin="normal" required fullWidth />
                 )}
@@ -175,66 +154,81 @@ const AgregarEntregaModal = ({ open, onClose, onSaved, clientes = [], tipoDeCamb
               <TextField
                 fullWidth
                 label="Descripción"
-                value={formData.descripcion}
-                onChange={(e) => handleInput("descripcion", e.target.value)}
+                value={formData.concepto || ""}
+                onChange={(e) => handleInputChange("concepto", e.target.value)}
                 margin="normal"
               />
             </Grid>
-            <Grid item xs={12} sm={4}>
+
+            <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
                 label="Monto *"
                 type="number"
                 value={formData.montoEnviado}
-                onChange={(e) => handleInput("montoEnviado", e.target.value)}
+                onChange={(e) => handleMontoEnviado(e.target.value)}
                 margin="normal"
                 required
               />
             </Grid>
-            <Grid item xs={12} sm={4}>
+            <Grid item xs={12} sm={6}>
               <FormControl fullWidth margin="normal">
                 <InputLabel>Moneda *</InputLabel>
                 <Select
-                  value={formData.moneda}
+                  value={formData.monedaDePago}
                   label="Moneda *"
-                  onChange={(e) => handleInput("moneda", e.target.value)}
+                  onChange={(e) => handleInputChange("monedaDePago", e.target.value)}
                 >
                   <MenuItem value="ARS">ARS</MenuItem>
                   <MenuItem value="USD">USD</MenuItem>
                 </Select>
               </FormControl>
             </Grid>
-            <Grid item xs={12} sm={4}>
-              <FormControl fullWidth margin="normal">
-                <InputLabel>Cuenta Corriente *</InputLabel>
-                <Select
-                  value={formData.cc}
-                  label="Cuenta Corriente *"
-                  onChange={(e) => handleInput("cc", e.target.value)}
-                >
-                  <MenuItem value="ARS">ARS</MenuItem>
-                  <MenuItem value="USD BLUE">USD BLUE</MenuItem>
-                  <MenuItem value="USD OFICIAL">USD OFICIAL</MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Descuento (factor)"
-                type="number"
-                value={formData.descuentoAplicado}
-                onChange={(e) => handleInput("descuentoAplicado", e.target.value)}
-                margin="normal"
-                helperText="Ej: 1 = sin descuento, 0.95 = 5% desc."
-              />
-            </Grid>
+
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
                 label="Monto CC"
                 type="number"
-                value={montoCC}
+                value={montoCCConDescuento}
+                margin="normal"
+                disabled
+                helperText="Calculado automáticamente con descuento"
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <FormControl fullWidth margin="normal">
+                <InputLabel>Cuenta Corriente *</InputLabel>
+                <Select
+                  value={formData.CC}
+                  label="Cuenta Corriente *"
+                  onChange={(e) => handleInputChange("CC", e.target.value)}
+                >
+                  {getCCOptions().map((option) => (
+                    <MenuItem key={option} value={option}>
+                      {option}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Descuento (%)"
+                type="number"
+                value={descuentoPorcentaje}
+                onChange={(e) => setDescuentoPorcentaje(e.target.value)}
+                margin="normal"
+                inputProps={{ min: 0, max: 100 }}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Usuario"
+                value={formData.usuario}
                 margin="normal"
                 disabled
               />

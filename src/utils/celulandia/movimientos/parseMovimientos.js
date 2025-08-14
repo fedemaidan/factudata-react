@@ -45,8 +45,8 @@ export const parseMovimiento = (movimiento) => {
     montoCC: Math.round(montoCC),
     fechaCreacion,
     horaCreacion,
-    nombreCliente: movimiento.cliente.nombre,
-    ccActivasCliente: movimiento.cliente.ccActivas,
-    cuentaDestino: movimiento.caja.nombre,
+    nombreCliente: movimiento.cliente?.nombre || "Sin cliente",
+    ccActivasCliente: movimiento.cliente?.ccActivas || [],
+    cuentaDestino: movimiento.caja?.nombre || "Sin caja",
   };
 };

@@ -59,6 +59,7 @@ const ComprobantesCelulandiaPage = () => {
     },
   };
 
+  console.log("movimientos", movimientos);
   useEffect(() => {
     fetchData();
   }, []);
@@ -68,14 +69,14 @@ const ComprobantesCelulandiaPage = () => {
     try {
       const [movimientosResponse, clientesResponse, tipoDeCambioResponse, cajasResponse] =
         await Promise.all([
-          movimientosService.getAllMovimientos({ type: "INGRESO" }),
+          movimientosService.getAllMovimientos({ type: "INGRESO", populate: "caja" }),
           clientesService.getAllClientes(),
           dolarService.getTipoDeCambio(),
           cajasService.getAllCajas(),
         ]);
 
+      console.log("movimientosResponse", movimientosResponse);
       setMovimientos(movimientosResponse.data.map(parseMovimiento));
-
       const clientesArray = Array.isArray(clientesResponse)
         ? clientesResponse
         : clientesResponse?.data || [];
@@ -177,7 +178,10 @@ const ComprobantesCelulandiaPage = () => {
 
   const refetchMovimientos = async () => {
     try {
-      const { data } = await movimientosService.getAllMovimientos();
+      const { data } = await movimientosService.getAllMovimientos({
+        type: "INGRESO",
+        populate: "caja",
+      });
       setMovimientos(data.map(parseMovimiento));
     } catch (error) {
       console.error("Error al recargar movimientos:", error);
