@@ -103,6 +103,7 @@ const AgregarEntregaModal = ({ open, onClose, onSaved, clientes = [], tipoDeCamb
         descuentoAplicado: factorDescuento,
         subTotal,
         montoTotal,
+        empresaId: "celulandia",
         moneda: formData.monedaDePago,
         cc: formData.CC,
         tipoDeCambio: tipoDeCambioFinal,

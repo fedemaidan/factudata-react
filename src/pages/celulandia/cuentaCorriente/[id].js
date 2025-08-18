@@ -112,7 +112,8 @@ const ClienteCelulandiaCCPage = () => {
       if (clienteResponse.success) {
         setCliente(clienteResponse.data);
       }
-
+      console.log("movimientosData", movimientosData.data);
+      console.log("cuentasPendientesResponse", cuentasPendientesResponse.data);
       const movimientosParseados = movimientosData.data
         .filter((m) => m.type === "INGRESO")
         .map(parseMovimiento);
@@ -424,122 +425,136 @@ const ClienteCelulandiaCCPage = () => {
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {movimientosAMostrar.map((mov) => (
-                        <TableRow key={mov.id}>
-                          <TableCell>{mov.numeroComprobante}</TableCell>
-                          <TableCell>{formatearCampo("fecha", mov.fecha)}</TableCell>
-                          <TableCell>{mov.hora}</TableCell>
-                          <TableCell>{formatearMonto(mov.montoCC)}</TableCell>
-                          <TableCell>{formatearCampo("tipoDeCambio", mov.tipoDeCambio)}</TableCell>
-                          <TableCell>{formatearMonto(mov.montoEnviado)}</TableCell>
-                          <TableCell>{formatearCampo("monedaDePago", mov.monedaDePago)}</TableCell>
-                          <TableCell>
-                            <Stack direction="row" spacing={1}>
-                              <IconButton
-                                size="small"
-                                color="primary"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setSelectedData(mov);
-                                  if (mov.origen === "cuentaPendiente") {
-                                    setEditarEntregaModalOpen(true);
-                                  } else {
-                                    setEditarModalOpen(true);
-                                  }
-                                }}
-                                sx={{
-                                  backgroundColor: "primary.main",
-                                  color: "white",
-                                  "&:hover": {
-                                    backgroundColor: "primary.dark",
-                                  },
-                                }}
-                              >
-                                <EditIcon fontSize="small" />
-                              </IconButton>
-                              <IconButton
-                                size="small"
-                                color="secondary"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setSelectedData(mov);
-                                  if (mov.origen === "cuentaPendiente") {
-                                    setHistorialConfig({
-                                      title: "Historial de la Entrega",
-                                      entityName: "entrega",
-                                      fieldNames: {
-                                        descripcion: "Descripción",
-                                        fechaCuenta: "Fecha de Cuenta",
-                                        proveedorOCliente: "Cliente",
-                                        descuentoAplicado: "Descuento Aplicado",
-                                        subTotal: "Sub Total",
-                                        montoTotal: "Monto Total",
-                                        moneda: "Moneda",
-                                        cc: "Cuenta Corriente",
-                                        usuario: "Usuario",
-                                      },
-                                      formatters: {
-                                        fechaCuenta: (valor) =>
-                                          new Date(valor).toLocaleDateString("es-AR"),
-                                        descuentoAplicado: (valor) =>
-                                          `${Math.round(((valor ?? 1) - 1) * -100)}%`,
-                                      },
-                                    });
-                                    setHistorialLoader(() => cuentasPendientesService.getLogs);
-                                  } else {
-                                    setHistorialConfig({
-                                      title: "Historial del Comprobante",
-                                      entityName: "comprobante",
-                                      fieldNames: {
-                                        tipoDeCambio: "Tipo de Cambio",
-                                        estado: "Estado",
-                                        caja: "Cuenta de Destino",
-                                        cliente: "Cliente",
-                                        cuentaCorriente: "Cuenta Corriente",
-                                        moneda: "Moneda",
-                                        tipoFactura: "Tipo de Comprobante",
-                                        urlImagen: "Imagen",
-                                        numeroFactura: "Número de Factura",
-                                        fechaFactura: "Fecha de Factura",
-                                        fechaCreacion: "Fecha de Creación",
-                                        userPhone: "Teléfono Usuario",
-                                        nombreUsuario: "Usuario",
-                                        concepto: "Concepto",
-                                      },
-                                      formatters: {
-                                        tipoDeCambio: (valor) => `$${valor}`,
-                                        fechaFactura: (valor) =>
-                                          new Date(valor).toLocaleDateString("es-AR"),
-                                        fechaCreacion: (valor) =>
-                                          new Date(valor).toLocaleDateString("es-AR"),
-                                        cliente: (valor) =>
-                                          typeof valor === "object"
-                                            ? valor?.nombre || "N/A"
-                                            : valor,
-                                        caja: (valor) =>
-                                          typeof valor === "object"
-                                            ? valor?.nombre || "N/A"
-                                            : valor,
-                                      },
-                                    });
-                                    setHistorialLoader(() => movimientosService.getMovimientoLogs);
-                                  }
-                                  setHistorialModalOpen(true);
-                                }}
-                                sx={{
-                                  backgroundColor: "secondary.main",
-                                  color: "white",
-                                  "&:hover": {
-                                    backgroundColor: "secondary.dark",
-                                  },
-                                }}
-                              >
-                                <HistoryIcon fontSize="small" />
-                              </IconButton>
-                            </Stack>
-                          </TableCell>
-                        </TableRow>
-                      ))}
+                      {[...movimientosAMostrar]
+                        .sort((a, b) => {
+                          const fechaA = new Date(a.fechaFactura || a.fecha);
+                          const fechaB = new Date(b.fechaFactura || b.fecha);
+                          return fechaA - fechaB;
+                        })
+                        .map((mov) => (
+                          <TableRow key={mov.id}>
+                            <TableCell>{mov.numeroComprobante}</TableCell>
+                            <TableCell>
+                              {formatearCampo("fecha", mov.fechaFactura || mov.fecha)}
+                            </TableCell>
+                            <TableCell>{mov.hora}</TableCell>
+                            <TableCell>{formatearMonto(mov.montoCC)}</TableCell>
+                            <TableCell>
+                              {formatearCampo("tipoDeCambio", mov.tipoDeCambio)}
+                            </TableCell>
+                            <TableCell>{formatearMonto(mov.montoEnviado)}</TableCell>
+                            <TableCell>
+                              {formatearCampo("monedaDePago", mov.monedaDePago)}
+                            </TableCell>
+                            <TableCell>
+                              <Stack direction="row" spacing={1}>
+                                <IconButton
+                                  size="small"
+                                  color="primary"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelectedData(mov);
+                                    if (mov.origen === "cuentaPendiente") {
+                                      setEditarEntregaModalOpen(true);
+                                    } else {
+                                      setEditarModalOpen(true);
+                                    }
+                                  }}
+                                  sx={{
+                                    backgroundColor: "primary.main",
+                                    color: "white",
+                                    "&:hover": {
+                                      backgroundColor: "primary.dark",
+                                    },
+                                  }}
+                                >
+                                  <EditIcon fontSize="small" />
+                                </IconButton>
+                                <IconButton
+                                  size="small"
+                                  color="secondary"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelectedData(mov);
+                                    if (mov.origen === "cuentaPendiente") {
+                                      setHistorialConfig({
+                                        title: "Historial de la Entrega",
+                                        entityName: "entrega",
+                                        fieldNames: {
+                                          descripcion: "Descripción",
+                                          fechaCuenta: "Fecha de Cuenta",
+                                          proveedorOCliente: "Cliente",
+                                          descuentoAplicado: "Descuento Aplicado",
+                                          subTotal: "Sub Total",
+                                          montoTotal: "Monto Total",
+                                          moneda: "Moneda",
+                                          cc: "Cuenta Corriente",
+                                          usuario: "Usuario",
+                                        },
+                                        formatters: {
+                                          fechaCuenta: (valor) =>
+                                            new Date(valor).toLocaleDateString("es-AR"),
+                                          descuentoAplicado: (valor) =>
+                                            `${Math.round(((valor ?? 1) - 1) * -100)}%`,
+                                        },
+                                      });
+                                      setHistorialLoader(() => cuentasPendientesService.getLogs);
+                                    } else {
+                                      setHistorialConfig({
+                                        title: "Historial del Comprobante",
+                                        entityName: "comprobante",
+                                        fieldNames: {
+                                          tipoDeCambio: "Tipo de Cambio",
+                                          estado: "Estado",
+                                          caja: "Cuenta de Destino",
+                                          cliente: "Cliente",
+                                          cuentaCorriente: "Cuenta Corriente",
+                                          moneda: "Moneda",
+                                          tipoFactura: "Tipo de Comprobante",
+                                          urlImagen: "Imagen",
+                                          numeroFactura: "Número de Factura",
+                                          fechaFactura: "Fecha de Factura",
+                                          fechaCreacion: "Fecha de Creación",
+                                          userPhone: "Teléfono Usuario",
+                                          nombreUsuario: "Usuario",
+                                          concepto: "Concepto",
+                                        },
+                                        formatters: {
+                                          tipoDeCambio: (valor) => `$${valor}`,
+                                          fechaFactura: (valor) =>
+                                            new Date(valor).toLocaleDateString("es-AR"),
+                                          fechaCreacion: (valor) =>
+                                            new Date(valor).toLocaleDateString("es-AR"),
+                                          cliente: (valor) =>
+                                            typeof valor === "object"
+                                              ? valor?.nombre || "N/A"
+                                              : valor,
+                                          caja: (valor) =>
+                                            typeof valor === "object"
+                                              ? valor?.nombre || "N/A"
+                                              : valor,
+                                        },
+                                      });
+                                      setHistorialLoader(
+                                        () => movimientosService.getMovimientoLogs
+                                      );
+                                    }
+                                    setHistorialModalOpen(true);
+                                  }}
+                                  sx={{
+                                    backgroundColor: "secondary.main",
+                                    color: "white",
+                                    "&:hover": {
+                                      backgroundColor: "secondary.dark",
+                                    },
+                                  }}
+                                >
+                                  <HistoryIcon fontSize="small" />
+                                </IconButton>
+                              </Stack>
+                            </TableCell>
+                          </TableRow>
+                        ))}
                     </TableBody>
                   </Table>
                 </Paper>

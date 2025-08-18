@@ -58,6 +58,7 @@ const AgregarPagoModal = ({ open, onClose, onSave, cajas }) => {
           tipoDeCambio: 1,
           estado: "CONFIRMADO",
           concepto: formData.concepto || "",
+          empresaId: "celulandia",
         },
         montoEnviado: formData.montoEnviado,
       };

@@ -44,35 +44,33 @@ export const SideNav = (props) => {
   const [empresa, setEmpresa] = useState(null);
   const [showProyectos, setShowProyectos] = useState(true);
 
-
   const paperSx = {
     backgroundColor: "neutral.800",
     color: "common.white",
     width,
     overflowX: "hidden",
     // reglas globales para los items (funciona con MUI ListItemButton / tu SideNavItem)
-    '& .MuiListItemButton-root': {
+    "& .MuiListItemButton-root": {
       minHeight: 44,
       px: collapsed ? 0 : 1.5,
-      justifyContent: collapsed ? 'center' : 'flex-start',
+      justifyContent: collapsed ? "center" : "flex-start",
       borderRadius: 1,
     },
-    '& .MuiListItemIcon-root': {
+    "& .MuiListItemIcon-root": {
       minWidth: 0,
       mr: collapsed ? 0 : 1.5,
-      justifyContent: 'center',
+      justifyContent: "center",
     },
-    '& .MuiListItemText-root': {
-      display: collapsed ? 'none' : 'block',
+    "& .MuiListItemText-root": {
+      display: collapsed ? "none" : "block",
     },
     // subheaders y separadores más compactos
-    '& .MuiListSubheader-root': {
-      display: collapsed ? 'none' : 'block',
-      lineHeight: 1.2
-    }
+    "& .MuiListSubheader-root": {
+      display: collapsed ? "none" : "block",
+      lineHeight: 1.2,
+    },
   };
 
-  
   const getPermisosVisibles = (empresaAcciones, permisosOcultos = []) =>
     (empresaAcciones || []).filter((accion) => !(permisosOcultos || []).includes(accion));
 
@@ -82,31 +80,83 @@ export const SideNav = (props) => {
       setEmpresa(emp || null);
 
       // Casos especiales (tu lógica original)
-      if (user?.email === "fede.maidan@gmail.com") {
+      if (user?.email === "martin.bejarano@sorbydata.com") {
         const onboardingPage = [
-          { title: "Comprobantes", path: "/celulandia/comprobantes", icon: <SvgIcon fontSize="small"><DashboardIcon /></SvgIcon> },
-          { title: "Entregas", path: "/celulandia/entregas", icon: <SvgIcon fontSize="small"><DashboardIcon /></SvgIcon> },
-          { title: "Pagos", path: "/celulandia/pagos", icon: <SvgIcon fontSize="small"><AttachMoneyIcon /></SvgIcon> },
-          { title: "Cuenta Corriente", path: "/celulandia/cuentaCorriente", icon: <SvgIcon fontSize="small"><PeopleIcon /></SvgIcon> },
-          { title: "Clientes", path: "/celulandia/clientes", icon: <SvgIcon fontSize="small"><PeopleIcon /></SvgIcon> },
+          {
+            title: "Comprobantes",
+            path: "/celulandia/comprobantes",
+            icon: (
+              <SvgIcon fontSize="small">
+                <DashboardIcon />
+              </SvgIcon>
+            ),
+          },
+          {
+            title: "Entregas",
+            path: "/celulandia/entregas",
+            icon: (
+              <SvgIcon fontSize="small">
+                <DashboardIcon />
+              </SvgIcon>
+            ),
+          },
+          {
+            title: "Pagos",
+            path: "/celulandia/pagos",
+            icon: (
+              <SvgIcon fontSize="small">
+                <AttachMoneyIcon />
+              </SvgIcon>
+            ),
+          },
+          {
+            title: "Cuenta Corriente",
+            path: "/celulandia/cuentaCorriente",
+            icon: (
+              <SvgIcon fontSize="small">
+                <PeopleIcon />
+              </SvgIcon>
+            ),
+          },
+          {
+            title: "Clientes",
+            path: "/celulandia/clientes",
+            icon: (
+              <SvgIcon fontSize="small">
+                <PeopleIcon />
+              </SvgIcon>
+            ),
+          },
         ];
         setItems(onboardingPage);
         setProyectos([]);
         return;
       } else if (!emp) {
-        setItems([{
-          title: "Onboarding",
-          path: "/onboarding",
-          icon: <SvgIcon fontSize="small"><DashboardIcon /></SvgIcon>
-        }]);
+        setItems([
+          {
+            title: "Onboarding",
+            path: "/onboarding",
+            icon: (
+              <SvgIcon fontSize="small">
+                <DashboardIcon />
+              </SvgIcon>
+            ),
+          },
+        ]);
         setProyectos([]);
         return;
       } else if (emp?.tipo === "Logistica") {
-        setItems([{
-          title: "Hojas de ruta",
-          path: "/hojasDeRuta?empresaId=" + emp.id,
-          icon: <SvgIcon fontSize="small"><DashboardIcon /></SvgIcon>
-        }]);
+        setItems([
+          {
+            title: "Hojas de ruta",
+            path: "/hojasDeRuta?empresaId=" + emp.id,
+            icon: (
+              <SvgIcon fontSize="small">
+                <DashboardIcon />
+              </SvgIcon>
+            ),
+          },
+        ]);
         setProyectos([]);
         return;
       }
@@ -117,7 +167,11 @@ export const SideNav = (props) => {
         {
           title: "Cuenta",
           path: "account",
-          icon: <SvgIcon fontSize="small"><PeopleIcon /></SvgIcon>,
+          icon: (
+            <SvgIcon fontSize="small">
+              <PeopleIcon />
+            </SvgIcon>
+          ),
         },
       ];
 
@@ -125,7 +179,11 @@ export const SideNav = (props) => {
         baseItems.push({
           title: "Configurar " + emp.nombre,
           path: "empresa?empresaId=" + emp.id,
-          icon: <SvgIcon fontSize="small"><SettingsIcon /></SvgIcon>,
+          icon: (
+            <SvgIcon fontSize="small">
+              <SettingsIcon />
+            </SvgIcon>
+          ),
         });
       }
 
@@ -133,7 +191,11 @@ export const SideNav = (props) => {
         baseItems.push({
           title: "Cuentas pendientes (solo admin)",
           path: "cuentasPendientes?empresaId=" + emp.id,
-          icon: <SvgIcon fontSize="small"><SettingsIcon /></SvgIcon>,
+          icon: (
+            <SvgIcon fontSize="small">
+              <SettingsIcon />
+            </SvgIcon>
+          ),
         });
       }
 
@@ -141,21 +203,33 @@ export const SideNav = (props) => {
         baseItems.push({
           title: "Unidades (solo admin)",
           path: "unidadesTable?empresaId=" + emp.id,
-          icon: <SvgIcon fontSize="small"><SettingsIcon /></SvgIcon>,
+          icon: (
+            <SvgIcon fontSize="small">
+              <SettingsIcon />
+            </SvgIcon>
+          ),
         });
       }
 
       baseItems.push({
         title: "Presupuestos",
         path: "/presupuestos",
-        icon: <SvgIcon fontSize="small"><NoteAltIcon /></SvgIcon>,
+        icon: (
+          <SvgIcon fontSize="small">
+            <NoteAltIcon />
+          </SvgIcon>
+        ),
       });
 
       if (permisosUsuario.includes("VER_NOTAS_DE_PEDIDO")) {
         baseItems.push({
           title: "Notas de pedido",
           path: "/notaPedido",
-          icon: <SvgIcon fontSize="small"><NoteAltIcon /></SvgIcon>,
+          icon: (
+            <SvgIcon fontSize="small">
+              <NoteAltIcon />
+            </SvgIcon>
+          ),
         });
       }
 
@@ -163,7 +237,11 @@ export const SideNav = (props) => {
         baseItems.push({
           title: "Acopio",
           path: "/acopios?empresaId=" + emp.id,
-          icon: <SvgIcon fontSize="small"><InventoryIcon /></SvgIcon>,
+          icon: (
+            <SvgIcon fontSize="small">
+              <InventoryIcon />
+            </SvgIcon>
+          ),
         });
       }
 
@@ -171,7 +249,11 @@ export const SideNav = (props) => {
         baseItems.push({
           title: "Caja Chica",
           path: "/cajaChica",
-          icon: <SvgIcon fontSize="small"><AttachMoneyIcon /></SvgIcon>,
+          icon: (
+            <SvgIcon fontSize="small">
+              <AttachMoneyIcon />
+            </SvgIcon>
+          ),
         });
       }
 
@@ -179,17 +261,29 @@ export const SideNav = (props) => {
         const vista7 = {
           title: "Vista 7 días",
           path: "/resumenMovimientos?empresaId=" + emp.id,
-          icon: <SvgIcon fontSize="small"><DashboardIcon /></SvgIcon>,
+          icon: (
+            <SvgIcon fontSize="small">
+              <DashboardIcon />
+            </SvgIcon>
+          ),
         };
         const todos = {
           title: "Todos los movimientos",
           path: "/todosProyectos?empresaId=" + emp.id,
-          icon: <SvgIcon fontSize="small"><DashboardIcon /></SvgIcon>,
+          icon: (
+            <SvgIcon fontSize="small">
+              <DashboardIcon />
+            </SvgIcon>
+          ),
         };
         const revision = {
           title: "Revision de facturas",
           path: "/revisionFacturas?empresaId=" + emp.id,
-          icon: <SvgIcon fontSize="small"><DashboardIcon /></SvgIcon>,
+          icon: (
+            <SvgIcon fontSize="small">
+              <DashboardIcon />
+            </SvgIcon>
+          ),
         };
         baseItems = [vista7, todos, revision, ...baseItems];
 
@@ -205,7 +299,11 @@ export const SideNav = (props) => {
         baseItems.push({
           title: "Integración con Odoo",
           path: "/odooIntegracion?empresaId=" + emp.id,
-          icon: <SvgIcon fontSize="small"><NoteAltIcon /></SvgIcon>,
+          icon: (
+            <SvgIcon fontSize="small">
+              <NoteAltIcon />
+            </SvgIcon>
+          ),
         });
       }
 
@@ -271,13 +369,21 @@ export const SideNav = (props) => {
             {proyectos.length > 0 && (
               <>
                 {!collapsed && (
-                  <ListSubheader component="div" disableSticky sx={{ color: "neutral.400", pl: 1, display: 'flex', alignItems: 'center' }}>
+                  <ListSubheader
+                    component="div"
+                    disableSticky
+                    sx={{ color: "neutral.400", pl: 1, display: "flex", alignItems: "center" }}
+                  >
                     <IconButton
                       size="small"
                       onClick={() => setShowProyectos((v) => !v)}
                       sx={{ mr: 0.5 }}
                     >
-                      {showProyectos ? <ExpandMoreIcon fontSize="small" /> : <ChevronRightIcon fontSize="small" />}
+                      {showProyectos ? (
+                        <ExpandMoreIcon fontSize="small" />
+                      ) : (
+                        <ChevronRightIcon fontSize="small" />
+                      )}
                     </IconButton>
                     Proyectos
                   </ListSubheader>
@@ -292,7 +398,10 @@ export const SideNav = (props) => {
                           title={proy.nombre}
                           path={`cajaProyecto?proyectoId=${proy.id}`}
                           icon={
-                            <SvgIcon fontSize="small" sx={{ color: proy.activo ? "success.main" : "text.disabled" }}>
+                            <SvgIcon
+                              fontSize="small"
+                              sx={{ color: proy.activo ? "success.main" : "text.disabled" }}
+                            >
                               <StoreIcon />
                             </SvgIcon>
                           }
@@ -326,16 +435,10 @@ export const SideNav = (props) => {
       </Box>
     </Scrollbar>
   );
-  
+
   if (lgUp) {
     return (
-      <Drawer
-        anchor="left"
-        onClose={onClose}
-        open
-        variant="permanent"
-        PaperProps={{ sx: paperSx }}
-      >
+      <Drawer anchor="left" onClose={onClose} open variant="permanent" PaperProps={{ sx: paperSx }}>
         {content}
       </Drawer>
     );
@@ -360,5 +463,5 @@ SideNav.propTypes = {
   open: PropTypes.bool,
   collapsed: PropTypes.bool,
   onToggleCollapsed: PropTypes.func,
-  width: PropTypes.number
+  width: PropTypes.number,
 };
