@@ -204,10 +204,6 @@ const ComprobantesCelulandiaPage = () => {
     setMovimientos((prevMovimientos) => [...prevMovimientos, parseMovimiento(newData)]);
   };
 
-  if (isLoading) {
-    return <div>Cargando...</div>;
-  }
-
   return (
     <>
       <Head>

@@ -266,11 +266,7 @@ const DataTable = ({
           )}
         </Stack>
 
-        {isLoading ? (
-          <Box display="flex" justifyContent="center" alignItems="center" sx={{ minHeight: 200 }}>
-            <CircularProgress />
-          </Box>
-        ) : (
+        <Box position="relative">
           <Paper>
             <Table
               stickyHeader
@@ -314,7 +310,23 @@ const DataTable = ({
               </TableBody>
             </Table>
           </Paper>
-        )}
+          {isLoading && (
+            <Box
+              position="absolute"
+              top={0}
+              left={0}
+              right={0}
+              bottom={0}
+              display="flex"
+              justifyContent="center"
+              alignItems="center"
+              bgcolor="rgba(255,255,255,0.6)"
+              zIndex={1}
+            >
+              <CircularProgress />
+            </Box>
+          )}
+        </Box>
       </Stack>
       {total && onPageChange && (
         <Stack alignItems="center" mt={2}>
