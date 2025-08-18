@@ -64,6 +64,6 @@ const formatCurrency = (amount, digits = 0) => {
     return Timestamp.fromDate(new Date(year, month - 1, day, 13, 30));
   };
 
-export {formatTimestamp, formatCurrency, toDateFromFirestore, 
+export {formatTimestamp, formatCurrency, toDateFromFirestore, dateToTimestamp
 };
 

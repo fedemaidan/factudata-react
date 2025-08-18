@@ -39,7 +39,7 @@
     "lodash.debounce": "^4.0.8",
     "next": "13.1.6",
     "nprogress": "0.2.0",
-    "papaparse": "^5.5.2",
+    "papaparse": "^5.5.3",
     "pdfjs-dist": "^2.10.377",
     "prop-types": "15.8.1",
     "react": "18.2.0",

@@ -1,20 +1,25 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { styled } from '@mui/material/styles';
 import { withAuthGuard } from 'src/hocs/with-auth-guard';
 import { SideNav } from './side-nav';
 import { TopNav } from './top-nav';
 
-const SIDE_NAV_WIDTH = 280;
+const NAV_WIDTH_EXPANDED = 280;
+const NAV_WIDTH_COLLAPSED = 72;
 
-const LayoutRoot = styled('div')(({ theme }) => ({
+const LayoutRoot = styled('div', {
+  shouldForwardProp: (prop) => prop !== 'navwidth'
+})(({ theme, navwidth }) => ({
   display: 'flex',
   flex: '1 1 auto',
   maxWidth: '100%',
+  // aplicá padding también en md/xl si querés
   [theme.breakpoints.up('lg')]: {
-    paddingLeft: SIDE_NAV_WIDTH
+    paddingLeft: Number(navwidth) || NAV_WIDTH_EXPANDED
   }
 }));
+
 
 const LayoutContainer = styled('div')({
   display: 'flex',
@@ -26,36 +31,49 @@ const LayoutContainer = styled('div')({
 export const Layout = withAuthGuard((props) => {
   const { children } = props;
   const pathname = usePathname();
-  const [openNav, setOpenNav] = useState(false);
+  const [openNav, setOpenNav] = useState(false); // mobile
+  const [collapsed, setCollapsed] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return localStorage.getItem('sorby_nav_collapsed') === '1';
+  });
 
-  const handlePathnameChange = useCallback(
-    () => {
-      if (openNav) {
-        setOpenNav(false);
-      }
-    },
-    [openNav]
-  );
+  const handlePathnameChange = useCallback(() => {
+    if (openNav) setOpenNav(false);
+  }, [openNav]);
 
-  useEffect(
-    () => {
-      handlePathnameChange();
-    },
+  useEffect(() => {
+    handlePathnameChange();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [pathname]
+  }, [pathname]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('sorby_nav_collapsed', collapsed ? '1' : '0');
+    }
+  }, [collapsed]);
+
+  const navWidth = useMemo(
+    () => (collapsed ? NAV_WIDTH_COLLAPSED : NAV_WIDTH_EXPANDED),
+    [collapsed]
   );
 
   return (
     <>
-      <TopNav onNavOpen={() => setOpenNav(true)} />
+      {/* Opcional: pasá estos props al TopNav si querés un botón de colapso en el header */}
+      <TopNav
+        onNavOpen={() => setOpenNav(true)}
+        onToggleNav={() => setCollapsed((v) => !v)}
+        collapsed={collapsed}
+      />
       <SideNav
         onClose={() => setOpenNav(false)}
         open={openNav}
+        collapsed={collapsed}
+        onToggleCollapsed={() => setCollapsed((v) => !v)}
+        width={navWidth}
       />
-      <LayoutRoot>
-        <LayoutContainer>
-          {children}
-        </LayoutContainer>
+      <LayoutRoot navwidth={navWidth}>
+        <LayoutContainer>{children}</LayoutContainer>
       </LayoutRoot>
     </>
   );

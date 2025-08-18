@@ -1,81 +1,58 @@
 import React from 'react';
-import {
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
-  Typography,
-  Box,
-  Stack
-} from '@mui/material';
+import { Accordion, AccordionDetails, AccordionSummary, Box, Chip, LinearProgress, Stack, Typography } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-
-import CertificadosTable from './CertificadosTable';
 import MaterialesTable from './MaterialesTable';
-import PresupuestosTable from './PresupuestosTable';
+import CertificadosTable from './CertificadosTable';
+import { avanceCertificadosPct, avanceEtapaPct, avanceMaterialesPct, ejecutadoEtapa, numberFmt, planTotalEtapa } from 'src/utils/planobra';
 
-const calcularAvanceCertificados = (certificados) => {
-  if (!certificados || certificados.length === 0) return 0;
-  const total = certificados.reduce((acc, c) => acc + (c.porcentaje_certificado ?? 0), 0);
-  return Math.round(total / certificados.length);
-};
-
-const calcularCompletitud = (items) => {
-  if (!items || items.length === 0) return 0;
-  const completados = items.filter(item => item.completado || item.realizado || item.certificado).length;
-  return Math.round((completados / items.length) * 100);
-};
-
-const EtapaAccordion = ({
-  etapa,
-  mostrarResumen,
-  mostrarMateriales,
-  mostrarCertificados,
-  mostrarPresupuestos
-}) => {
-  const avanceCertificados = calcularAvanceCertificados(etapa.certificados);
-  const avanceMateriales = calcularCompletitud(etapa.materiales);
-  const avancePresupuestos = calcularCompletitud(etapa.presupuestos);
+const EtapaAccordion = ({ etapa, vista, onChangeEtapa }) => {
+  const pctM = avanceMaterialesPct(etapa.materiales || []);
+  const pctC = avanceCertificadosPct(etapa.certificados || []);
+  const pctT = avanceEtapaPct(etapa.materiales || [], etapa.certificados || []);
+  const plan$ = planTotalEtapa(etapa.materiales || [], etapa.certificados || []);
+  const ejec$ = ejecutadoEtapa(etapa.materiales || [], etapa.certificados || []);
 
   return (
     <Accordion>
       <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-        <Stack direction="column">
+        <Stack spacing={0.5} sx={{ width: '100%' }}>
           <Typography variant="subtitle1">{etapa.nombre}</Typography>
-          {mostrarResumen && (
-            <Typography variant="body2" color="text.secondary">
-              {mostrarCertificados && `Certificados: ${avanceCertificados}%  `}
-              {mostrarMateriales && `| Materiales: ${avanceMateriales}%  `}
-              {mostrarPresupuestos && `| Presupuestos: ${avancePresupuestos}%`}
+          <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
+            <Chip size="small" label={`Mtrl ${pctM}%`} />
+            <Chip size="small" label={`Cert ${pctC}%`} />
+            <Chip size="small" color="primary" label={`Total ${pctT}%`} />
+            <Typography variant="caption" sx={{ ml: 1 }}>
+              Plan {numberFmt(plan$)} • Ejec {numberFmt(ejec$)}
             </Typography>
-          )}
+          </Box>
+          <LinearProgress variant="determinate" value={pctT} sx={{ mt: 0.5 }} />
         </Stack>
       </AccordionSummary>
       <AccordionDetails>
-        <Box>
-          {mostrarCertificados && (
-            <CertificadosTable
-            certificados={etapa.certificados || []}
-            onActualizarCertificado={(index, nuevoPorcentaje) => {
-              etapa.certificados[index].porcentaje_certificado = nuevoPorcentaje;
-              // 🔁 Esto fuerza que se recalcule la completitud si es necesario
-              etapa.completitudCertificados = etapa.certificados.reduce(
-                (acc, c) => acc + (c.porcentaje_certificado ?? 0),
-                0
-              ) / etapa.certificados.length;
-          
-              // 🔁 Si estás levantando estado en PlanObraPage, deberías llamar una función como setEtapas acá.
+        {vista !== 'certificados' && (
+          <MaterialesTable
+            materiales={etapa.materiales || []}
+            onEditRow={(rowIndex, patch) => {
+              onChangeEtapa((prev) => {
+                const materiales = [...(prev.materiales || [])];
+                materiales[rowIndex] = { ...materiales[rowIndex], ...patch };
+                return { ...prev, materiales };
+              });
             }}
           />
-          
-          
-          )}
-          {mostrarMateriales && (
-            <MaterialesTable materiales={etapa.materiales || []} />
-          )}
-          {mostrarPresupuestos && (
-            <PresupuestosTable presupuestos={etapa.presupuestos || []} />
-          )}
-        </Box>
+        )}
+        {vista !== 'materiales' && (
+          <CertificadosTable
+            certificados={etapa.certificados || []}
+            onActualizarCertificado={(index, nuevoPorcentaje) => {
+              onChangeEtapa((prev) => {
+                const certificados = [...(prev.certificados || [])];
+                certificados[index] = { ...certificados[index], porcentaje_certificado: nuevoPorcentaje };
+                return { ...prev, certificados };
+              });
+            }}
+          />
+        )}
       </AccordionDetails>
     </Accordion>
   );

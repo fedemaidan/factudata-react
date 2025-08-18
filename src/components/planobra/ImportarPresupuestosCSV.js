@@ -39,7 +39,7 @@ const ImportarPresupuestosCSV = ({ onImport }) => {
 
   return (
     <Button variant="outlined" component="label">
-      Importar presupuestos CSV
+      Importar presupuestos
       <input type="file" hidden accept=".csv" onChange={handleFileChange} />
     </Button>
   );

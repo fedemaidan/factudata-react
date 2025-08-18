@@ -49,13 +49,10 @@ const CuentasPendientesPage = () => {
   const handleChangeTab = (_, value) => setTabActiva(value);
 
 
-  const fetchCuentas = useCallback(async (conCuotas = true) => {
+  const fetchCuentas = useCallback(async (conCuotas = tabActiva !== 'cuentas') => {
     if (!empresaId) return;
     setLoading(true);
     try {
-      if (tabActiva === 'cuentas') {
-        conCuotas = false; 
-      }
       const empresa = await getEmpresaById(empresaId);
       setProyectos(await getProyectosByEmpresa(empresa));
       const data = await CuentasPendientesService.listarCuentasPorEmpresa(empresaId, conCuotas);
@@ -65,7 +62,7 @@ const CuentasPendientesPage = () => {
     } finally {
       setLoading(false);
     }
-  }, [empresaId]);
+  }, [empresaId, tabActiva]);
   
 
   const cuotasPendientes = cuentas.flatMap(c => (c.cuotas || []).map(q => ({
