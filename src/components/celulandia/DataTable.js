@@ -39,10 +39,11 @@ const DataTable = ({
   ],
   formatters = {},
   filters = {},
+  dateField = "fecha",
 }) => {
   const [busqueda, setBusqueda] = useState("");
   const [filtroFecha, setFiltroFecha] = useState("todos");
-  const [ordenCampo, setOrdenCampo] = useState("fecha");
+  const [ordenCampo, setOrdenCampo] = useState(dateField);
   const [ordenDireccion, setOrdenDireccion] = useState("desc");
 
   const handleSort = (campo) => {
@@ -72,7 +73,7 @@ const DataTable = ({
       switch (filtroFecha) {
         case "hoy": {
           filtered = filtered.filter((item) => {
-            const itemDate = new Date(item.fecha);
+            const itemDate = new Date(item[dateField]);
             return itemDate >= inicioDia;
           });
           break;
@@ -81,7 +82,7 @@ const DataTable = ({
           const inicioSemana = new Date(inicioDia);
           inicioSemana.setDate(inicioDia.getDate() - inicioDia.getDay());
           filtered = filtered.filter((item) => {
-            const itemDate = new Date(item.fecha);
+            const itemDate = new Date(item[dateField]);
             return itemDate >= inicioSemana;
           });
           break;
@@ -89,7 +90,7 @@ const DataTable = ({
         case "esteMes": {
           const inicioMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
           filtered = filtered.filter((item) => {
-            const itemDate = new Date(item.fecha);
+            const itemDate = new Date(item[dateField]);
             return itemDate >= inicioMes;
           });
           break;
@@ -97,7 +98,7 @@ const DataTable = ({
         case "esteAño": {
           const inicioAño = new Date(hoy.getFullYear(), 0, 1);
           filtered = filtered.filter((item) => {
-            const itemDate = new Date(item.fecha);
+            const itemDate = new Date(item[dateField]);
             return itemDate >= inicioAño;
           });
           break;
@@ -131,7 +132,7 @@ const DataTable = ({
       let aVal = a[ordenCampo];
       let bVal = b[ordenCampo];
 
-      if (ordenCampo === "fecha") {
+      if (ordenCampo === dateField) {
         aVal = new Date(aVal);
         bVal = new Date(bVal);
       }

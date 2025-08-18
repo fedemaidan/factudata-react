@@ -29,18 +29,25 @@ import HistoryIcon from "@mui/icons-material/History";
 import Divider from "@mui/material/Divider";
 import ClearIcon from "@mui/icons-material/Clear";
 
-import celulandiaService from "src/services/celulandia/movimientosService";
+import movimientosService from "src/services/celulandia/movimientosService";
+import clientesService from "src/services/celulandia/clientesService";
+import dolarService from "src/services/celulandia/dolarService";
+import cajasService from "src/services/celulandia/cajasService";
+import cuentasPendientesService from "src/services/celulandia/cuentasPendientesService";
 import { formatCurrency } from "src/utils/formatters";
 import { formatearCampo } from "src/utils/celulandia/formatearCampo";
 import { filtrarPorFecha, filtrarPorBusqueda } from "src/utils/celulandia/filtros";
 import EditarModal from "src/components/celulandia/EditarModal";
+import EditarEntregaModal from "src/components/celulandia/EditarEntregaModal";
 import HistorialModal from "src/components/celulandia/HistorialModal";
+import { parseMovimiento } from "src/utils/celulandia/movimientos/parseMovimientos";
 
 const ClienteCelulandiaCCPage = () => {
   const router = useRouter();
   const { id } = router.query;
 
   const [movimientos, setMovimientos] = useState([]);
+  const [cliente, setCliente] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [busqueda, setBusqueda] = useState("");
   const [filtroFecha, setFiltroFecha] = useState("todos");
@@ -50,19 +57,134 @@ const ClienteCelulandiaCCPage = () => {
   const [editarModalOpen, setEditarModalOpen] = useState(false);
   const [historialModalOpen, setHistorialModalOpen] = useState(false);
   const [selectedData, setSelectedData] = useState(null);
+  const [historialConfig, setHistorialConfig] = useState(null);
+  const [historialLoader, setHistorialLoader] = useState(null);
+  const [editarEntregaModalOpen, setEditarEntregaModalOpen] = useState(false);
+
+  // Nuevos estados para los datos compartidos
+  const [clientes, setClientes] = useState([]);
+  const [tipoDeCambio, setTipoDeCambio] = useState({
+    ultimaActualizacion: "",
+    oficial: null,
+    blue: null,
+    current: 1,
+  });
+  const [cajas, setCajas] = useState([]);
+
+  const formatearMonto = (monto) => {
+    if (monto === undefined || monto === null) return "-";
+    const isNegativo = monto < 0;
+    const montoFormateado = formatCurrency(Math.round(monto));
+    return (
+      <Typography
+        component="span"
+        sx={{
+          color: isNegativo ? "error.main" : "text.primary",
+          fontWeight: isNegativo ? "bold" : "normal",
+        }}
+      >
+        {isNegativo ? `-${montoFormateado}` : montoFormateado}
+      </Typography>
+    );
+  };
 
   const fetchData = useCallback(async () => {
+    if (!id) return;
+
     setIsLoading(true);
     try {
-      const data = await celulandiaService.getMovimientosByCliente(id);
-      console.log("Datos del cliente cargados:", data);
-      setMovimientos(data);
+      const [
+        clienteResponse,
+        movimientosData,
+        clientesResponse,
+        tipoDeCambioResponse,
+        cajasResponse,
+        cuentasPendientesResponse,
+      ] = await Promise.all([
+        clientesService.getClienteById(id),
+        movimientosService.getMovimientosByCliente(id),
+        clientesService.getAllClientes(),
+        dolarService.getTipoDeCambio(),
+        cajasService.getAllCajas(),
+        cuentasPendientesService.getAll(),
+      ]);
+
+      if (clienteResponse.success) {
+        setCliente(clienteResponse.data);
+      }
+
+      const movimientosParseados = movimientosData.data
+        .filter((m) => m.type === "INGRESO")
+        .map(parseMovimiento);
+
+      // Mapear cuentas pendientes de este cliente por nombre
+      const nombreCliente = (clienteResponse?.data?.nombre || "").toString().trim().toLowerCase();
+      const cuentasRespData = Array.isArray(cuentasPendientesResponse?.data)
+        ? cuentasPendientesResponse.data
+        : cuentasPendientesResponse?.data || [];
+      const cuentasCliente = (cuentasRespData || []).filter(
+        (c) => (c?.proveedorOCliente || "").toString().trim().toLowerCase() === nombreCliente
+      );
+
+      const parseCuentaPendiente = (c) => {
+        const fecha = new Date(c.fechaCreacion);
+        const hora = fecha?.toTimeString().split(" ")[0] || "-";
+        const cc = c.cc;
+        let montoCC = 0;
+        if (cc === "ARS") montoCC = Number(c?.montoTotal?.ars || 0);
+        else if (cc === "USD BLUE") montoCC = Number(c?.montoTotal?.usdBlue || 0);
+        else if (cc === "USD OFICIAL") montoCC = Number(c?.montoTotal?.usdOficial || 0);
+
+        return {
+          // Campos para la tabla
+          id: c._id,
+          _id: c._id,
+          origen: "cuentaPendiente",
+          numeroComprobante: c.descripcion || "-",
+          fecha: c.fechaCuenta,
+          hora,
+          montoCC,
+          tipoDeCambio: c.tipoDeCambio || 1,
+          montoEnviado: Number(c?.subTotal?.ars || 0),
+          monedaDePago: c.moneda,
+          cuentaDestino: c.cc,
+          estado: "-",
+          type: "EGRESO",
+          cuentaCorriente: c.cc,
+          // Campos esperados por EditarEntregaModal
+          proveedorOCliente: c.proveedorOCliente,
+          descripcion: c.descripcion,
+          CC: c.cc,
+          descuentoAplicado: c.descuentoAplicado,
+        };
+      };
+
+      const cuentasParseadas = cuentasCliente.map(parseCuentaPendiente);
+
+      setMovimientos([...movimientosParseados, ...cuentasParseadas]);
+
+      // Procesar clientes
+      const clientesArray = Array.isArray(clientesResponse)
+        ? clientesResponse
+        : clientesResponse?.data || [];
+      setClientes(clientesArray);
+
+      // Procesar tipo de cambio
+      setTipoDeCambio({
+        ...tipoDeCambioResponse,
+        current: tipoDeCambioResponse?.current || 1,
+      });
+
+      // Procesar cajas
+      setCajas(cajasResponse.data);
     } catch (error) {
-      console.error("Error al cargar movimientos del cliente:", error);
+      console.error("Error al cargar datos:", error);
     } finally {
       setIsLoading(false);
     }
   }, [id]);
+
+  console.log(movimientos);
 
   useEffect(() => {
     if (id) {
@@ -71,9 +193,7 @@ const ClienteCelulandiaCCPage = () => {
   }, [id, fetchData]);
 
   const movimientosFiltrados = useMemo(() => {
-    console.log("Filtrando movimientos:", movimientos.length);
-
-    let movimientosFiltrados = movimientos.filter((mov) => mov.CC === cuentaCorriente);
+    let movimientosFiltrados = movimientos.filter((mov) => mov.cuentaCorriente === cuentaCorriente);
 
     movimientosFiltrados = filtrarPorFecha(movimientosFiltrados, filtroFecha);
 
@@ -85,7 +205,6 @@ const ClienteCelulandiaCCPage = () => {
       "monedaDePago",
       "montoCC",
       "tipoDeCambio",
-      "estado",
     ];
     movimientosFiltrados = filtrarPorBusqueda(movimientosFiltrados, busqueda, camposBusqueda);
 
@@ -120,8 +239,12 @@ const ClienteCelulandiaCCPage = () => {
     };
 
     movimientos.forEach((mov) => {
-      if (Object.prototype.hasOwnProperty.call(saldos, mov.CC)) {
-        saldos[mov.CC] += mov.montoCC;
+      if (Object.prototype.hasOwnProperty.call(saldos, mov.cuentaCorriente)) {
+        if (mov.type === "INGRESO") {
+          saldos[mov.cuentaCorriente] += mov.montoCC;
+        } else {
+          saldos[mov.cuentaCorriente] -= mov.montoCC;
+        }
       }
     });
 
@@ -145,7 +268,7 @@ const ClienteCelulandiaCCPage = () => {
   return (
     <>
       <Head>
-        <title>Cuenta Corriente - {id}</title>
+        <title>Cuenta Corriente - {cliente?.nombre || id}</title>
       </Head>
       <Box
         component="main"
@@ -180,7 +303,7 @@ const ClienteCelulandiaCCPage = () => {
                   Cuenta Corriente
                 </Typography>
                 <Typography variant="h6" color="text.secondary" sx={{ fontWeight: 400 }}>
-                  Cliente: {id}
+                  Cliente: {cliente?.nombre || id}
                 </Typography>
               </Stack>
             </Stack>
@@ -297,8 +420,6 @@ const ClienteCelulandiaCCPage = () => {
                         <TableCell sx={{ fontWeight: "bold" }}>TC</TableCell>
                         <TableCell sx={{ fontWeight: "bold" }}>Monto Original</TableCell>
                         <TableCell sx={{ fontWeight: "bold" }}>Moneda Original</TableCell>
-                        <TableCell sx={{ fontWeight: "bold" }}>Cuenta de Destino</TableCell>
-                        <TableCell sx={{ fontWeight: "bold" }}>Estado</TableCell>
                         <TableCell sx={{ fontWeight: "bold" }}>Acciones</TableCell>
                       </TableRow>
                     </TableHead>
@@ -308,14 +429,10 @@ const ClienteCelulandiaCCPage = () => {
                           <TableCell>{mov.numeroComprobante}</TableCell>
                           <TableCell>{formatearCampo("fecha", mov.fecha)}</TableCell>
                           <TableCell>{mov.hora}</TableCell>
-                          <TableCell>{formatearCampo("montoCC", mov.montoCC)}</TableCell>
+                          <TableCell>{formatearMonto(mov.montoCC)}</TableCell>
                           <TableCell>{formatearCampo("tipoDeCambio", mov.tipoDeCambio)}</TableCell>
-                          <TableCell>{formatearCampo("montoEnviado", mov.montoEnviado)}</TableCell>
+                          <TableCell>{formatearMonto(mov.montoEnviado)}</TableCell>
                           <TableCell>{formatearCampo("monedaDePago", mov.monedaDePago)}</TableCell>
-                          <TableCell>
-                            {formatearCampo("cuentaDestino", mov.cuentaDestino)}
-                          </TableCell>
-                          <TableCell>{formatearCampo("estado", mov.estado)}</TableCell>
                           <TableCell>
                             <Stack direction="row" spacing={1}>
                               <IconButton
@@ -324,7 +441,11 @@ const ClienteCelulandiaCCPage = () => {
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   setSelectedData(mov);
-                                  setEditarModalOpen(true);
+                                  if (mov.origen === "cuentaPendiente") {
+                                    setEditarEntregaModalOpen(true);
+                                  } else {
+                                    setEditarModalOpen(true);
+                                  }
                                 }}
                                 sx={{
                                   backgroundColor: "primary.main",
@@ -342,6 +463,67 @@ const ClienteCelulandiaCCPage = () => {
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   setSelectedData(mov);
+                                  if (mov.origen === "cuentaPendiente") {
+                                    setHistorialConfig({
+                                      title: "Historial de la Entrega",
+                                      entityName: "entrega",
+                                      fieldNames: {
+                                        descripcion: "Descripción",
+                                        fechaCuenta: "Fecha de Cuenta",
+                                        proveedorOCliente: "Cliente",
+                                        descuentoAplicado: "Descuento Aplicado",
+                                        subTotal: "Sub Total",
+                                        montoTotal: "Monto Total",
+                                        moneda: "Moneda",
+                                        cc: "Cuenta Corriente",
+                                        usuario: "Usuario",
+                                      },
+                                      formatters: {
+                                        fechaCuenta: (valor) =>
+                                          new Date(valor).toLocaleDateString("es-AR"),
+                                        descuentoAplicado: (valor) =>
+                                          `${Math.round(((valor ?? 1) - 1) * -100)}%`,
+                                      },
+                                    });
+                                    setHistorialLoader(() => cuentasPendientesService.getLogs);
+                                  } else {
+                                    setHistorialConfig({
+                                      title: "Historial del Comprobante",
+                                      entityName: "comprobante",
+                                      fieldNames: {
+                                        tipoDeCambio: "Tipo de Cambio",
+                                        estado: "Estado",
+                                        caja: "Cuenta de Destino",
+                                        cliente: "Cliente",
+                                        cuentaCorriente: "Cuenta Corriente",
+                                        moneda: "Moneda",
+                                        tipoFactura: "Tipo de Comprobante",
+                                        urlImagen: "Imagen",
+                                        numeroFactura: "Número de Factura",
+                                        fechaFactura: "Fecha de Factura",
+                                        fechaCreacion: "Fecha de Creación",
+                                        userPhone: "Teléfono Usuario",
+                                        nombreUsuario: "Usuario",
+                                        concepto: "Concepto",
+                                      },
+                                      formatters: {
+                                        tipoDeCambio: (valor) => `$${valor}`,
+                                        fechaFactura: (valor) =>
+                                          new Date(valor).toLocaleDateString("es-AR"),
+                                        fechaCreacion: (valor) =>
+                                          new Date(valor).toLocaleDateString("es-AR"),
+                                        cliente: (valor) =>
+                                          typeof valor === "object"
+                                            ? valor?.nombre || "N/A"
+                                            : valor,
+                                        caja: (valor) =>
+                                          typeof valor === "object"
+                                            ? valor?.nombre || "N/A"
+                                            : valor,
+                                      },
+                                    });
+                                    setHistorialLoader(() => movimientosService.getMovimientoLogs);
+                                  }
                                   setHistorialModalOpen(true);
                                 }}
                                 sx={{
@@ -384,11 +566,24 @@ const ClienteCelulandiaCCPage = () => {
         onClose={() => setEditarModalOpen(false)}
         data={selectedData}
         onSave={handleSaveEdit}
+        clientes={clientes}
+        tipoDeCambio={tipoDeCambio}
+        cajas={cajas}
+      />
+      <EditarEntregaModal
+        open={editarEntregaModalOpen}
+        onClose={() => setEditarEntregaModalOpen(false)}
+        data={selectedData}
+        onSaved={fetchData}
+        clientes={clientes}
+        tipoDeCambio={tipoDeCambio}
       />
       <HistorialModal
         open={historialModalOpen}
         onClose={() => setHistorialModalOpen(false)}
         data={selectedData}
+        loadHistorialFunction={historialLoader}
+        {...(historialConfig || {})}
       />
     </>
   );
