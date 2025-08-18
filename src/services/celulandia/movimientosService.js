@@ -1,10 +1,17 @@
 import axiosCelulandia from "src/services/axiosCelulandia";
 
 const movimientosService = {
-  getAllMovimientos: async (query = {}) => {
-    const response = await axiosCelulandia.get("/movimientos", { params: query });
+  // getAllMovimientos: async (query = {}) => {
+  //   const response = await axiosCelulandia.get("/movimientos", { params: query });
+  //   return response.data;
+  // },
+
+  getAllMovimientos: async ({ type, populate, limit = 20, offset = 0 }) => {
+    const response = await axiosCelulandia.get("/movimientos", {
+      params: { type, populate, limit, offset },
+    });
     return response.data;
-  },
+  },  
 
   getMovimientoById: async (id) => {
     const response = await axiosCelulandia.get(`/movimientos/${id}`);

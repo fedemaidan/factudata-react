@@ -22,6 +22,8 @@ import {
 import Divider from "@mui/material/Divider";
 import ClearIcon from "@mui/icons-material/Clear";
 import AddIcon from "@mui/icons-material/Add";
+import Pagination from "@mui/material/Pagination";
+
 
 const DataTable = ({
   title,
@@ -40,6 +42,10 @@ const DataTable = ({
   formatters = {},
   filters = {},
   dateField = "fecha",
+  total,
+  currentPage,
+  rowsPerPage,
+  onPageChange,
 }) => {
   const [busqueda, setBusqueda] = useState("");
   const [filtroFecha, setFiltroFecha] = useState("todos");
@@ -310,6 +316,16 @@ const DataTable = ({
           </Paper>
         )}
       </Stack>
+      {total && onPageChange && (
+        <Stack alignItems="center" mt={2}>
+          <Pagination
+            count={Math.ceil(total / rowsPerPage)}
+            page={currentPage}
+            onChange={(event, value) => onPageChange(value)}
+            color="primary"
+          />
+        </Stack>
+      )}
     </Box>
   );
 };

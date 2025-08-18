@@ -25,7 +25,10 @@ const ComprobantesCelulandiaPage = () => {
   const [historialModalOpen, setHistorialModalOpen] = useState(false);
   const [agregarModalOpen, setAgregarModalOpen] = useState(false);
   const [selectedData, setSelectedData] = useState(null);
-
+  const [paginaActual, setPaginaActual] = useState(1);
+  const [totalMovimientos, setTotalMovimientos] = useState(0);
+  const [limitePorPagina] = useState(20);
+  
   // Nuevos estados para los datos compartidos
   const [clientes, setClientes] = useState([]);
   const [tipoDeCambio, setTipoDeCambio] = useState({
@@ -61,32 +64,40 @@ const ComprobantesCelulandiaPage = () => {
 
   console.log("movimientos", movimientos);
   useEffect(() => {
-    fetchData();
-  }, []);
+    fetchData(paginaActual);
+  }, [paginaActual]);  
 
-  const fetchData = async () => {
+  const fetchData = async (pagina = 1) => {
     setIsLoading(true);
     try {
+      const offset = (pagina - 1) * limitePorPagina;
       const [movimientosResponse, clientesResponse, tipoDeCambioResponse, cajasResponse] =
         await Promise.all([
-          movimientosService.getAllMovimientos({ type: "INGRESO", populate: "caja" }),
+          movimientosService.getAllMovimientos({
+            type: "INGRESO",
+            populate: "caja",
+            limit: limitePorPagina,
+            offset,
+          }),
           clientesService.getAllClientes(),
           dolarService.getTipoDeCambio(),
           cajasService.getAllCajas(),
         ]);
-
-      console.log("movimientosResponse", movimientosResponse);
+  
       setMovimientos(movimientosResponse.data.map(parseMovimiento));
+      setTotalMovimientos(movimientosResponse.total || 0);
+      setPaginaActual(pagina);
+  
       const clientesArray = Array.isArray(clientesResponse)
         ? clientesResponse
         : clientesResponse?.data || [];
       setClientes(clientesArray);
-
+  
       setTipoDeCambio({
         ...tipoDeCambioResponse,
         current: tipoDeCambioResponse?.current || 1,
       });
-
+  
       setCajas(cajasResponse.data);
     } catch (error) {
       console.error("Error al cargar datos:", error);
@@ -94,6 +105,7 @@ const ComprobantesCelulandiaPage = () => {
       setIsLoading(false);
     }
   };
+  
 
   const handleCloseModal = () => {
     setModalOpen(false);
@@ -211,6 +223,10 @@ const ComprobantesCelulandiaPage = () => {
           formatters={formatters}
           onAdd={() => setAgregarModalOpen(true)}
           dateField="fechaCreacion"
+          total={totalMovimientos}
+          currentPage={paginaActual}
+          onPageChange={(nuevaPagina) => setPaginaActual(nuevaPagina)}
+          rowsPerPage={limitePorPagina}
         />
       </Container>
 
