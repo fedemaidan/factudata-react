@@ -80,7 +80,7 @@ export const SideNav = (props) => {
       setEmpresa(emp || null);
 
       // Casos especiales (tu lógica original)
-      if (user?.email === "martin.bejarano@sorbydata.com") {
+      if (user?.celulandia) {
         const onboardingPage = [
           {
             title: "Comprobantes",
