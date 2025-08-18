@@ -33,6 +33,7 @@ const CuentaCorrienteCelulandiaPage = () => {
     setIsLoading(true);
     try {
       const response = await movimientosService.getClientesTotales();
+      console.log("response", response);
       if (response.success) {
         console.log("Datos de clientes cargados:", response.data);
         setClientes(response.data);
@@ -71,6 +72,31 @@ const CuentaCorrienteCelulandiaPage = () => {
     );
   };
 
+  const formatearFecha = (fecha) => {
+    if (!fecha) return "Sin movimientos";
+
+    const fechaObj = new Date(fecha);
+    const ahora = new Date();
+    const diferenciaDias = Math.floor((ahora - fechaObj) / (1000 * 60 * 60 * 24));
+
+    if (diferenciaDias === 0) {
+      return "Hoy";
+    } else if (diferenciaDias === 1) {
+      return "Ayer";
+    } else if (diferenciaDias < 7) {
+      return `Hace ${diferenciaDias} días`;
+    } else if (diferenciaDias < 30) {
+      const semanas = Math.floor(diferenciaDias / 7);
+      return `Hace ${semanas} semana${semanas > 1 ? "s" : ""}`;
+    } else if (diferenciaDias < 365) {
+      const meses = Math.floor(diferenciaDias / 30);
+      return `Hace ${meses} mes${meses > 1 ? "es" : ""}`;
+    } else {
+      const años = Math.floor(diferenciaDias / 365);
+      return `Hace ${años} año${años > 1 ? "s" : ""}`;
+    }
+  };
+
   const clientesFiltrados = useMemo(() => {
     console.log("Filtrando clientes:", clientes.length);
     if (!busqueda.trim()) {
@@ -100,6 +126,12 @@ const CuentaCorrienteCelulandiaPage = () => {
       if (ordenCampo === "ARS" || ordenCampo === "USD BLUE" || ordenCampo === "USD OFICIAL") {
         aVal = Number(aVal) || 0;
         bVal = Number(bVal) || 0;
+      }
+
+      // Para fechas, convertimos a timestamp para ordenar
+      if (ordenCampo === "fechaUltimoMovimiento") {
+        aVal = aVal ? new Date(aVal).getTime() : 0;
+        bVal = bVal ? new Date(bVal).getTime() : 0;
       }
 
       if (ordenDireccion === "asc") {
@@ -223,6 +255,24 @@ const CuentaCorrienteCelulandiaPage = () => {
                               : " ▼"
                             : ""}
                         </TableCell>
+                        <TableCell
+                          onClick={() => {
+                            if (ordenCampo === "fechaUltimoMovimiento") {
+                              setOrdenDireccion(ordenDireccion === "asc" ? "desc" : "asc");
+                            } else {
+                              setOrdenCampo("fechaUltimoMovimiento");
+                              setOrdenDireccion("desc");
+                            }
+                          }}
+                          sx={{ cursor: "pointer", fontWeight: "bold" }}
+                        >
+                          Último Movimiento
+                          {ordenCampo === "fechaUltimoMovimiento"
+                            ? ordenDireccion === "asc"
+                              ? " ▲"
+                              : " ▼"
+                            : ""}
+                        </TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
@@ -241,6 +291,7 @@ const CuentaCorrienteCelulandiaPage = () => {
                           <TableCell>{formatearMonto(cliente.ARS)}</TableCell>
                           <TableCell>{formatearMonto(cliente["USD BLUE"])}</TableCell>
                           <TableCell>{formatearMonto(cliente["USD OFICIAL"])}</TableCell>
+                          <TableCell>{formatearFecha(cliente.fechaUltimoMovimiento)}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
