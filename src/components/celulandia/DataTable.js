@@ -46,20 +46,21 @@ const DataTable = ({
   currentPage,
   rowsPerPage,
   onPageChange,
+  sortField = "fechaFactura",
+  sortDirection = "desc",
+  onSortChange,
 }) => {
   const [busqueda, setBusqueda] = useState("");
   const [filtroFecha, setFiltroFecha] = useState("todos");
-  const [ordenCampo, setOrdenCampo] = useState(dateField);
-  const [ordenDireccion, setOrdenDireccion] = useState("desc");
+  const ordenCampo = sortField;
+  const ordenDireccion = sortDirection;
+
 
   const handleSort = (campo) => {
-    if (ordenCampo === campo) {
-      setOrdenDireccion(ordenDireccion === "asc" ? "desc" : "asc");
-    } else {
-      setOrdenCampo(campo);
-      setOrdenDireccion("asc");
+    if (onSortChange) {
+      onSortChange(campo);
     }
-  };
+  };  
 
   const getSortIcon = (campo) => {
     if (ordenCampo === campo) {

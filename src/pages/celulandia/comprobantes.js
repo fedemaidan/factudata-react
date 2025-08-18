@@ -28,7 +28,9 @@ const ComprobantesCelulandiaPage = () => {
   const [paginaActual, setPaginaActual] = useState(1);
   const [totalMovimientos, setTotalMovimientos] = useState(0);
   const [limitePorPagina] = useState(20);
-  
+  const [sortField, setSortField] = useState("fechaFactura");
+  const [sortDirection, setSortDirection] = useState("desc");
+
   // Nuevos estados para los datos compartidos
   const [clientes, setClientes] = useState([]);
   const [tipoDeCambio, setTipoDeCambio] = useState({
@@ -78,6 +80,8 @@ const ComprobantesCelulandiaPage = () => {
             populate: "caja",
             limit: limitePorPagina,
             offset,
+            sortField,
+            sortDirection,
           }),
           clientesService.getAllClientes(),
           dolarService.getTipoDeCambio(),
@@ -115,14 +119,14 @@ const ComprobantesCelulandiaPage = () => {
   const columns = [
     { key: "fechaCreacion", label: "Fecha", sortable: true },
     { key: "horaCreacion", label: "Hora", sortable: true },
-    { key: "cliente", label: "Cliente", sortable: false },
-    { key: "cuentaDestino", label: "Cuenta Destino", sortable: false },
-    { key: "montoEnviado", label: "Monto Enviado", sortable: false },
-    { key: "moneda", label: "Moneda", sortable: false },
-    { key: "montoCC", label: "Monto CC", sortable: false },
-    { key: "cuentaCorriente", label: "CC", sortable: false },
-    { key: "tipoDeCambio", label: "Tipo Cambio", sortable: false },
-    { key: "estado", label: "Estado", sortable: false },
+    { key: "cliente", label: "Cliente", sortable: true },
+    { key: "cuentaDestino", label: "Cuenta Destino", sortable: true },
+    { key: "montoEnviado", label: "Monto Enviado", sortable: true },
+    { key: "moneda", label: "Moneda", sortable: true },
+    { key: "montoCC", label: "Monto CC", sortable: true },
+    { key: "cuentaCorriente", label: "CC", sortable: true },
+    { key: "tipoDeCambio", label: "Tipo Cambio", sortable: true },
+    { key: "estado", label: "Estado", sortable: true },
     {
       key: "acciones",
       label: "Acciones",
@@ -188,6 +192,17 @@ const ComprobantesCelulandiaPage = () => {
     }
   };
 
+  const handleSortChange = (campo) => {
+    if (sortField === campo) {
+      setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
+    } else {
+      setSortField(campo);
+      setSortDirection("asc");
+    }
+  
+    setPaginaActual(1);
+  };  
+
   const refetchMovimientos = async () => {
     try {
       const { data } = await movimientosService.getAllMovimientos({
@@ -223,6 +238,9 @@ const ComprobantesCelulandiaPage = () => {
           currentPage={paginaActual}
           onPageChange={(nuevaPagina) => setPaginaActual(nuevaPagina)}
           rowsPerPage={limitePorPagina}
+          sortField={sortField}
+          sortDirection={sortDirection}
+          onSortChange={handleSortChange}
         />
       </Container>
 
