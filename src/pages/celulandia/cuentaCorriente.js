@@ -73,7 +73,7 @@ const CuentaCorrienteCelulandiaPage = () => {
   };
 
   const formatearFecha = (fecha) => {
-    if (!fecha) return "Sin movimientos";
+    if (!fecha) return "Sin pagos";
 
     const fechaObj = new Date(fecha);
     const ahora = new Date();
@@ -129,7 +129,7 @@ const CuentaCorrienteCelulandiaPage = () => {
       }
 
       // Para fechas, convertimos a timestamp para ordenar
-      if (ordenCampo === "fechaUltimoMovimiento") {
+      if (ordenCampo === "fechaUltimoPago") {
         aVal = aVal ? new Date(aVal).getTime() : 0;
         bVal = bVal ? new Date(bVal).getTime() : 0;
       }
@@ -257,17 +257,17 @@ const CuentaCorrienteCelulandiaPage = () => {
                         </TableCell>
                         <TableCell
                           onClick={() => {
-                            if (ordenCampo === "fechaUltimoMovimiento") {
+                            if (ordenCampo === "fechaUltimoPago") {
                               setOrdenDireccion(ordenDireccion === "asc" ? "desc" : "asc");
                             } else {
-                              setOrdenCampo("fechaUltimoMovimiento");
+                              setOrdenCampo("fechaUltimoPago");
                               setOrdenDireccion("desc");
                             }
                           }}
                           sx={{ cursor: "pointer", fontWeight: "bold" }}
                         >
-                          Último Movimiento
-                          {ordenCampo === "fechaUltimoMovimiento"
+                          Último Pago
+                          {ordenCampo === "fechaUltimoPago"
                             ? ordenDireccion === "asc"
                               ? " ▲"
                               : " ▼"
@@ -291,7 +291,7 @@ const CuentaCorrienteCelulandiaPage = () => {
                           <TableCell>{formatearMonto(cliente.ARS)}</TableCell>
                           <TableCell>{formatearMonto(cliente["USD BLUE"])}</TableCell>
                           <TableCell>{formatearMonto(cliente["USD OFICIAL"])}</TableCell>
-                          <TableCell>{formatearFecha(cliente.fechaUltimoMovimiento)}</TableCell>
+                          <TableCell>{formatearFecha(cliente.fechaUltimoPago)}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>

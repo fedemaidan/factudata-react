@@ -28,6 +28,7 @@ export const formatearCampo = (campo, valor) => {
       return formatCurrency(valor);
 
     case "cuentaDestino": {
+      console.log("valor", valor);
       const cuentaStyles = {
         "ENSHOP SRL": {
           backgroundColor: "#E8EAF6",

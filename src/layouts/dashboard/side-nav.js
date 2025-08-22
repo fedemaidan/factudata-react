@@ -32,6 +32,7 @@ import MenuOpenIcon from "@mui/icons-material/MenuOpen";
 import MenuIcon from "@mui/icons-material/Menu";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import { AccountBalanceWallet, Checklist, LocalAtm } from "@mui/icons-material";
 
 export const SideNav = (props) => {
   const { open, onClose, collapsed = false, onToggleCollapsed, width = 280 } = props;
@@ -105,7 +106,16 @@ export const SideNav = (props) => {
             path: "/celulandia/pagos",
             icon: (
               <SvgIcon fontSize="small">
-                <AttachMoneyIcon />
+                <DashboardIcon />
+              </SvgIcon>
+            ),
+          },
+          {
+            title: "Conciliación bancaria",
+            path: "/celulandia/conciliacionBancaria",
+            icon: (
+              <SvgIcon fontSize="small">
+                <Checklist />
               </SvgIcon>
             ),
           },
@@ -124,6 +134,34 @@ export const SideNav = (props) => {
             icon: (
               <SvgIcon fontSize="small">
                 <PeopleIcon />
+              </SvgIcon>
+            ),
+          },
+          {
+            title: "Cheques",
+            path: "/celulandia/cheques",
+            icon: (
+              <SvgIcon fontSize="small">
+                <AttachMoneyIcon />
+              </SvgIcon>
+            ),
+          },
+          {
+            title: "Arqueo de caja",
+            path: "/celulandia/arqueoCaja",
+            icon: (
+              <SvgIcon fontSize="small">
+                <LocalAtm />
+              </SvgIcon>
+            ),
+          },
+
+          {
+            title: "Eze y Nico",
+            path: "/celulandia/ezeNico",
+            icon: (
+              <SvgIcon fontSize="small">
+                <AccountBalanceWallet />
               </SvgIcon>
             ),
           },
