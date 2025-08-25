@@ -15,6 +15,7 @@ import {
   Tabs,
   Tab,
   TableSortLabel,
+  TablePagination,
 } from "@mui/material";
 import dayjs from "dayjs";
 import Divider from "@mui/material/Divider";
@@ -30,6 +31,8 @@ const ArqueoCajaPage = () => {
   const [diario, setDiario] = useState([]);
   const [sortFieldDiario, setSortFieldDiario] = useState("fecha");
   const [sortDirectionDiario, setSortDirectionDiario] = useState("desc");
+  const [pageDiario, setPageDiario] = useState(0);
+  const [rowsPerPageDiario, setRowsPerPageDiario] = useState(10);
 
   const handleSortChangeDiario = (campo) => {
     if (sortFieldDiario === campo) {
@@ -108,20 +111,16 @@ const ArqueoCajaPage = () => {
     fetchData();
   }, []);
 
-  // Ordenamiento para tabla diario
   const sortedDiario = useMemo(() => {
     const sorted = [...diario];
     sorted.sort((a, b) => {
       let aVal = a[sortFieldDiario];
       let bVal = b[sortFieldDiario];
 
-      // Manejo especial para fechas
       if (sortFieldDiario === "fecha") {
         aVal = new Date(aVal || 0);
         bVal = new Date(bVal || 0);
-      }
-      // Manejo especial para números
-      else if (sortFieldDiario === "totalARS" || sortFieldDiario === "totalUSD") {
+      } else if (sortFieldDiario === "totalARS" || sortFieldDiario === "totalUSD") {
         aVal = parseFloat(aVal || 0);
         bVal = parseFloat(bVal || 0);
       }
@@ -132,6 +131,12 @@ const ArqueoCajaPage = () => {
     });
     return sorted;
   }, [diario, sortFieldDiario, sortDirectionDiario]);
+
+  const paginatedDiario = useMemo(() => {
+    const startIndex = pageDiario * rowsPerPageDiario;
+    const endIndex = startIndex + rowsPerPageDiario;
+    return sortedDiario.slice(startIndex, endIndex);
+  }, [sortedDiario, pageDiario, rowsPerPageDiario]);
 
   return (
     <>
@@ -200,19 +205,43 @@ const ArqueoCajaPage = () => {
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {sortedDiario.map((row) => (
+                    {paginatedDiario.map((row) => (
                       <TableRow key={row.fecha}>
                         <TableCell>{dayjs(row.fecha).format("DD/MM/YYYY")}</TableCell>
                         <TableCell align="right">
-                          {Math.round(row.totalARS || 0).toLocaleString("es-AR")}
+                          <Typography
+                            color={(row.totalARS || 0) < 0 ? "error.main" : "text.primary"}
+                          >
+                            {Math.round(row.totalARS || 0).toLocaleString("es-AR")}
+                          </Typography>
                         </TableCell>
                         <TableCell align="right">
-                          {Math.round(row.totalUSD || 0).toLocaleString("es-AR")}
+                          <Typography
+                            color={(row.totalUSD || 0) < 0 ? "error.main" : "text.primary"}
+                          >
+                            {Math.round(row.totalUSD || 0).toLocaleString("es-AR")}
+                          </Typography>
                         </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
                 </Table>
+                <TablePagination
+                  component="div"
+                  count={sortedDiario.length}
+                  page={pageDiario}
+                  onPageChange={(event, newPage) => setPageDiario(newPage)}
+                  rowsPerPage={rowsPerPageDiario}
+                  onRowsPerPageChange={(event) => {
+                    setRowsPerPageDiario(parseInt(event.target.value, 10));
+                    setPageDiario(0);
+                  }}
+                  rowsPerPageOptions={[5, 10, 25, 50]}
+                  labelRowsPerPage="Filas por página:"
+                  labelDisplayedRows={({ from, to, count }) =>
+                    `${from}-${to} de ${count !== -1 ? count : `más de ${to}`}`
+                  }
+                />
               </Paper>
             )}
           </Stack>

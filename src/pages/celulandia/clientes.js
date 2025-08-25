@@ -20,6 +20,10 @@ const ClientesCelulandiaPage = () => {
   const [historialModalOpen, setHistorialModalOpen] = useState(false);
   const [agregarModalOpen, setAgregarModalOpen] = useState(false);
   const [selectedData, setSelectedData] = useState(null);
+  const [paginaActual, setPaginaActual] = useState(1);
+  const [limitePorPagina] = useState(20);
+  const [sortField, setSortField] = useState("nombre");
+  const [sortDirection, setSortDirection] = useState("asc");
 
   useEffect(() => {
     const fetchClientes = async () => {
@@ -78,7 +82,7 @@ const ClientesCelulandiaPage = () => {
 
   const columns = [
     { key: "nombre", label: "Cliente", sortable: true },
-    { key: "descuento", label: "Descuento", sortable: false },
+    { key: "descuento", label: "Descuento", sortable: true },
     { key: "ccActivas", label: "CC Activas", sortable: false },
     {
       key: "acciones",
@@ -117,6 +121,16 @@ const ClientesCelulandiaPage = () => {
     setClientes((prevClientes) => [...prevClientes, newData]);
   };
 
+  const handleSortChange = (campo) => {
+    if (sortField === campo) {
+      setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
+    } else {
+      setSortField(campo);
+      setSortDirection("asc");
+    }
+    setPaginaActual(1); // Reset a primera página al cambiar orden
+  };
+
   return (
     <>
       <Head>
@@ -131,7 +145,15 @@ const ClientesCelulandiaPage = () => {
           searchFields={searchFields}
           formatters={formatters}
           onAdd={() => setAgregarModalOpen(true)}
-          dateFilterOptions={[]} // Sin filtro de fecha
+          dateFilterOptions={[]}
+          total={clientes.length}
+          currentPage={paginaActual}
+          onPageChange={(nuevaPagina) => setPaginaActual(nuevaPagina)}
+          rowsPerPage={limitePorPagina}
+          sortField={sortField}
+          sortDirection={sortDirection}
+          onSortChange={handleSortChange}
+          serverSide={false}
         />
       </Container>
 

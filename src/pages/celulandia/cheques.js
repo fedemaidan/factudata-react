@@ -117,7 +117,7 @@ const ChequesCelulandiaPage = () => {
   };
 
   const columns = [
-    { key: "fechaCreacion", label: "Fecha", sortable: true },
+    { key: "fechaFactura", label: "Fecha", sortable: true },
     { key: "horaCreacion", label: "Hora", sortable: true },
     { key: "cliente", label: "Cliente", sortable: true },
     { key: "cuentaDestino", label: "Cuenta Destino", sortable: true },
@@ -153,7 +153,7 @@ const ChequesCelulandiaPage = () => {
   ];
 
   const formatters = {
-    fechaCreacion: (value) => formatearCampo("fecha", value),
+    fechaFactura: (value) => formatearCampo("fecha", value),
     horaCreacion: (value) => formatearCampo("hora", value),
     cuentaDestino: (value) => formatearCampo("cuentaDestino", value),
     moneda: (value) => formatearCampo("monedaDePago", value),
@@ -173,7 +173,7 @@ const ChequesCelulandiaPage = () => {
 
   const searchFields = [
     "numeroFactura",
-    "fechaCreacion",
+    "fechaFactura",
     "horaCreacion",
     "nombreCliente",
     "cuentaDestino",
@@ -239,7 +239,7 @@ const ChequesCelulandiaPage = () => {
           searchFields={searchFields}
           formatters={formatters}
           onAdd={() => setAgregarModalOpen(true)}
-          dateField="fechaCreacion"
+          dateField="fechaFactura"
           total={totalMovimientos}
           currentPage={paginaActual}
           onPageChange={(nuevaPagina) => setPaginaActual(nuevaPagina)}

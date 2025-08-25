@@ -23,6 +23,11 @@ const EntregasCelulandiaPage = () => {
   const [selectedData, setSelectedData] = useState(null);
   const [clientes, setClientes] = useState([]);
   const [tipoDeCambio, setTipoDeCambio] = useState({});
+  const [paginaActual, setPaginaActual] = useState(1);
+  const [totalEntregas, setTotalEntregas] = useState(0);
+  const [limitePorPagina] = useState(20);
+  const [sortField, setSortField] = useState("fecha");
+  const [sortDirection, setSortDirection] = useState("desc");
 
   // Configuración del historial para entregas
   const entregaHistorialConfig = {
@@ -62,44 +67,53 @@ const EntregasCelulandiaPage = () => {
   };
 
   useEffect(() => {
-    const fetchAll = async () => {
-      setIsLoading(true);
-      try {
-        const [cuentasResp, clientesResp, tcResp] = await Promise.all([
-          cuentasPendientesService.getAll(),
-          clientesService.getAllClientes(),
-          dolarService.getTipoDeCambio(),
-        ]);
+    fetchData(paginaActual);
+  }, [paginaActual, sortField, sortDirection]);
 
-        const cuentas = cuentasResp?.data || [];
-        setEntregas(
-          cuentas.map((c) => {
-            const fecha = new Date(c.fechaCreacion);
-            return {
-              _id: c._id,
-              proveedorOCliente: c.proveedorOCliente,
-              descripcion: c.descripcion,
-              fecha: c.fechaCuenta,
-              horaCreacion: fecha?.toTimeString().split(" ")[0] || "-",
-              moneda: c.moneda,
-              CC: c.cc,
-              descuentoAplicado: c.descuentoAplicado,
-              montoEnviado: c.subTotal?.ars || 0,
-              montoCC: c.montoTotal?.ars || 0,
-            };
-          })
-        );
-        const clientesArray = Array.isArray(clientesResp) ? clientesResp : clientesResp?.data || [];
-        setClientes(clientesArray);
-        setTipoDeCambio(tcResp);
-      } catch (e) {
-        console.error(e);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    fetchAll();
-  }, []);
+  const fetchData = async (pagina = 1) => {
+    setIsLoading(true);
+    try {
+      const offset = (pagina - 1) * limitePorPagina;
+      const [cuentasResp, clientesResp, tcResp] = await Promise.all([
+        cuentasPendientesService.getAll({
+          limit: limitePorPagina,
+          offset,
+          sortField: sortField === "fecha" ? "fechaCuenta" : sortField,
+          sortDirection,
+        }),
+        clientesService.getAllClientes(),
+        dolarService.getTipoDeCambio(),
+      ]);
+
+      const cuentas = cuentasResp?.data || [];
+      setTotalEntregas(cuentasResp?.total || 0);
+      setPaginaActual(pagina);
+
+      setEntregas(
+        cuentas.map((c) => {
+          return {
+            _id: c._id,
+            proveedorOCliente: c.proveedorOCliente,
+            descripcion: c.descripcion,
+            fecha: c.fechaCuenta,
+            horaCreacion: c.fechaCuenta?.split("T").slice(1, 2).join(":") || "-",
+            moneda: c.moneda,
+            CC: c.cc,
+            descuentoAplicado: c.descuentoAplicado,
+            montoEnviado: c.subTotal?.ars || 0,
+            montoCC: c.montoTotal?.ars || 0,
+          };
+        })
+      );
+      const clientesArray = Array.isArray(clientesResp) ? clientesResp : clientesResp?.data || [];
+      setClientes(clientesArray);
+      setTipoDeCambio(tcResp);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const columns = [
     { key: "fecha", label: "Fecha", sortable: true },
@@ -156,29 +170,17 @@ const EntregasCelulandiaPage = () => {
   ];
 
   const refetch = async () => {
-    try {
-      const cuentasResp = await cuentasPendientesService.getAll();
-      const cuentas = cuentasResp?.data || [];
-      setEntregas(
-        cuentas.map((c) => {
-          const fecha = new Date(c.fechaCreacion);
-          return {
-            _id: c._id,
-            proveedorOCliente: c.proveedorOCliente,
-            descripcion: c.descripcion,
-            fecha: c.fechaCuenta,
-            horaCreacion: fecha?.toTimeString().split(" ")[0] || "-",
-            moneda: c.moneda,
-            CC: c.cc,
-            descuentoAplicado: c.descuentoAplicado,
-            montoEnviado: c.subTotal?.ars || 0,
-            montoCC: c.montoTotal?.ars || 0,
-          };
-        })
-      );
-    } catch (e) {
-      console.error(e);
+    await fetchData(paginaActual);
+  };
+
+  const handleSortChange = (campo) => {
+    if (sortField === campo) {
+      setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
+    } else {
+      setSortField(campo);
+      setSortDirection("asc");
     }
+    setPaginaActual(1);
   };
 
   const handleSaved = async () => {
@@ -198,6 +200,16 @@ const EntregasCelulandiaPage = () => {
           columns={columns}
           searchFields={searchFields}
           formatters={formatters}
+          showSearch={false}
+          dateField="fecha"
+          total={totalEntregas}
+          currentPage={paginaActual}
+          onPageChange={(nuevaPagina) => setPaginaActual(nuevaPagina)}
+          rowsPerPage={limitePorPagina}
+          sortField={sortField}
+          sortDirection={sortDirection}
+          onSortChange={handleSortChange}
+          serverSide={true}
           onAdd={() => setAgregarModalOpen(true)}
         />
       </Container>

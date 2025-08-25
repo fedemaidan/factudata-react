@@ -54,6 +54,8 @@ export const parseMovimiento = (movimiento) => {
     montoCC: Math.round(montoCC),
     fechaCreacion,
     horaCreacion,
+    fechaFactura,
+    horaFactura,
     nombreCliente: movimiento.cliente?.nombre || "Sin cliente",
     ccActivasCliente: movimiento.cliente?.ccActivas || [],
     cuentaDestino: movimiento.caja?.nombre || "Sin caja",

@@ -28,7 +28,7 @@ const ComprobantesCelulandiaPage = () => {
   const [paginaActual, setPaginaActual] = useState(1);
   const [totalMovimientos, setTotalMovimientos] = useState(0);
   const [limitePorPagina] = useState(20);
-  const [sortField, setSortField] = useState("fechaCreacion");
+  const [sortField, setSortField] = useState("fechaFactura");
   const [sortDirection, setSortDirection] = useState("desc");
 
   // Nuevos estados para los datos compartidos
@@ -115,8 +115,8 @@ const ComprobantesCelulandiaPage = () => {
   };
 
   const columns = [
-    { key: "fechaCreacion", label: "Fecha", sortable: true },
-    { key: "horaCreacion", label: "Hora", sortable: true },
+    { key: "fechaFactura", label: "Fecha", sortable: true },
+    { key: "horaFactura", label: "Hora", sortable: true },
     { key: "cliente", label: "Cliente", sortable: true },
     { key: "cuentaDestino", label: "Cuenta Destino", sortable: true },
     { key: "montoEnviado", label: "Monto Enviado", sortable: true },
@@ -150,8 +150,8 @@ const ComprobantesCelulandiaPage = () => {
   ];
 
   const formatters = {
-    fechaCreacion: (value) => formatearCampo("fecha", value),
-    horaCreacion: (value) => formatearCampo("hora", value),
+    fechaFactura: (value) => formatearCampo("fecha", value),
+    horaFactura: (value) => formatearCampo("hora", value),
     cuentaDestino: (value) => formatearCampo("cuentaDestino", value),
     moneda: (value) => formatearCampo("monedaDePago", value),
     montoEnviado: (value) => formatearCampo("montoEnviado", value),
@@ -169,8 +169,8 @@ const ComprobantesCelulandiaPage = () => {
 
   const searchFields = [
     "numeroFactura",
-    "fechaCreacion",
-    "horaCreacion",
+    "fechaFactura",
+    "horaFactura",
     "nombreCliente",
     "cuentaDestino",
     "moneda",
@@ -231,7 +231,7 @@ const ComprobantesCelulandiaPage = () => {
           searchFields={searchFields}
           formatters={formatters}
           onAdd={() => setAgregarModalOpen(true)}
-          dateField="fechaCreacion"
+          dateField="fechaFactura"
           total={totalMovimientos}
           currentPage={paginaActual}
           onPageChange={(nuevaPagina) => setPaginaActual(nuevaPagina)}

@@ -17,6 +17,7 @@ import {
   CircularProgress,
   Typography,
   TableSortLabel,
+  TablePagination,
 } from "@mui/material";
 import { formatearCampo } from "src/utils/celulandia/formatearCampo";
 import { formatCurrency } from "src/utils/formatters";
@@ -39,6 +40,8 @@ const DataTabTable = ({
   const [currentOption, setCurrentOption] = useState(defaultOption || options?.[0]?.value || "");
   const [sortField, setSortField] = useState("fecha");
   const [sortDirection, setSortDirection] = useState("desc");
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(10);
 
   const handleSortChange = (campo) => {
     if (sortField === campo) {
@@ -144,6 +147,16 @@ const DataTabTable = ({
     });
     return map;
   }, [sortedAndFilteredItems, options]);
+
+  const paginatedGrouped = useMemo(() => {
+    const map = new Map();
+    for (const [key, items] of grouped.entries()) {
+      const startIndex = page * rowsPerPage;
+      const endIndex = startIndex + rowsPerPage;
+      map.set(key, items.slice(startIndex, endIndex));
+    }
+    return map;
+  }, [grouped, page, rowsPerPage]);
 
   const totals = useMemo(() => {
     const res = new Map();
@@ -258,7 +271,7 @@ const DataTabTable = ({
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {(grouped.get(opt.value) || []).map((row) => (
+                  {(paginatedGrouped.get(opt.value) || []).map((row) => (
                     <TableRow key={row.id}>
                       <TableCell>{formatearCampo("fecha", row.fecha)}</TableCell>
                       <TableCell>{row.cliente}</TableCell>
@@ -271,6 +284,22 @@ const DataTabTable = ({
                   ))}
                 </TableBody>
               </Table>
+              <TablePagination
+                component="div"
+                count={grouped.get(opt.value)?.length || 0}
+                page={page}
+                onPageChange={(event, newPage) => setPage(newPage)}
+                rowsPerPage={rowsPerPage}
+                onRowsPerPageChange={(event) => {
+                  setRowsPerPage(parseInt(event.target.value, 10));
+                  setPage(0);
+                }}
+                rowsPerPageOptions={[5, 10, 25, 50]}
+                labelRowsPerPage="Filas por página:"
+                labelDisplayedRows={({ from, to, count }) =>
+                  `${from}-${to} de ${count !== -1 ? count : `más de ${to}`}`
+                }
+              />
             </Box>
           )}
         </div>

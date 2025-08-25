@@ -57,7 +57,7 @@ const CuentaCorrienteCelulandiaPage = () => {
     if (monto === undefined || monto === null) return "-";
 
     const isNegativo = monto < 0;
-    const montoFormateado = formatCurrency(Math.round(monto));
+    const montoFormateado = formatCurrency(Math.round(Math.abs(monto)));
 
     return (
       <Typography
@@ -188,7 +188,17 @@ const CuentaCorrienteCelulandiaPage = () => {
             ) : (
               <>
                 <Paper>
-                  <Table>
+                  <Table
+                    sx={{
+                      "& .MuiTableCell-root": {
+                        fontSize: "0.8rem",
+                      },
+                      "& .MuiTableHead-root .MuiTableCell-root": {
+                        fontSize: "0.7rem",
+                        fontWeight: "bold",
+                      },
+                    }}
+                  >
                     <TableHead>
                       <TableRow>
                         <TableCell
@@ -200,7 +210,7 @@ const CuentaCorrienteCelulandiaPage = () => {
                               setOrdenDireccion("asc");
                             }
                           }}
-                          sx={{ cursor: "pointer", fontWeight: "bold" }}
+                          sx={{ cursor: "pointer" }}
                         >
                           Cliente
                           {ordenCampo === "cliente" ? (ordenDireccion === "asc" ? " ▲" : " ▼") : ""}
@@ -214,7 +224,7 @@ const CuentaCorrienteCelulandiaPage = () => {
                               setOrdenDireccion("asc");
                             }
                           }}
-                          sx={{ cursor: "pointer", fontWeight: "bold" }}
+                          sx={{ cursor: "pointer" }}
                         >
                           ARS
                           {ordenCampo === "ARS" ? (ordenDireccion === "asc" ? " ▲" : " ▼") : ""}
@@ -228,7 +238,7 @@ const CuentaCorrienteCelulandiaPage = () => {
                               setOrdenDireccion("asc");
                             }
                           }}
-                          sx={{ cursor: "pointer", fontWeight: "bold" }}
+                          sx={{ cursor: "pointer" }}
                         >
                           USD BLUE
                           {ordenCampo === "USD BLUE"
@@ -246,7 +256,7 @@ const CuentaCorrienteCelulandiaPage = () => {
                               setOrdenDireccion("asc");
                             }
                           }}
-                          sx={{ cursor: "pointer", fontWeight: "bold" }}
+                          sx={{ cursor: "pointer" }}
                         >
                           USD OFICIAL
                           {ordenCampo === "USD OFICIAL"
@@ -264,7 +274,7 @@ const CuentaCorrienteCelulandiaPage = () => {
                               setOrdenDireccion("desc");
                             }
                           }}
-                          sx={{ cursor: "pointer", fontWeight: "bold" }}
+                          sx={{ cursor: "pointer" }}
                         >
                           Último Pago
                           {ordenCampo === "fechaUltimoPago"
@@ -287,7 +297,7 @@ const CuentaCorrienteCelulandiaPage = () => {
                             },
                           }}
                         >
-                          <TableCell sx={{ fontWeight: "medium" }}>{cliente.cliente}</TableCell>
+                          <TableCell>{cliente.cliente}</TableCell>
                           <TableCell>{formatearMonto(cliente.ARS)}</TableCell>
                           <TableCell>{formatearMonto(cliente["USD BLUE"])}</TableCell>
                           <TableCell>{formatearMonto(cliente["USD OFICIAL"])}</TableCell>

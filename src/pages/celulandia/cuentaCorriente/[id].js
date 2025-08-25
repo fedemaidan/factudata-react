@@ -108,7 +108,7 @@ const ClienteCelulandiaCCPage = () => {
         clientesService.getAllClientes(),
         dolarService.getTipoDeCambio(),
         cajasService.getAllCajas(),
-        cuentasPendientesService.getAll(),
+        cuentasPendientesService.getByClienteId(id),
       ]);
 
       if (clienteResponse.success) {
@@ -120,18 +120,16 @@ const ClienteCelulandiaCCPage = () => {
         .filter((m) => m.type === "INGRESO")
         .map(parseMovimiento);
 
-      // Mapear cuentas pendientes de este cliente por nombre
-      const nombreCliente = (clienteResponse?.data?.nombre || "").toString().trim().toLowerCase();
+      // Las cuentas pendientes ya vienen filtradas por cliente desde el backend
       const cuentasRespData = Array.isArray(cuentasPendientesResponse?.data)
         ? cuentasPendientesResponse.data
         : cuentasPendientesResponse?.data || [];
-      const cuentasCliente = (cuentasRespData || []).filter(
-        (c) => (c?.proveedorOCliente || "").toString().trim().toLowerCase() === nombreCliente
-      );
+      const cuentasCliente = cuentasRespData || [];
 
       const parseCuentaPendiente = (c) => {
-        const fecha = new Date(c.fechaCreacion);
-        const hora = fecha?.toTimeString().split(" ")[0] || "-";
+        const fechaCuentaCompleta = new Date(c.fechaCuenta);
+        const fecha = fechaCuentaCompleta.toISOString().split("T")[0]; // YYYY-MM-DD
+        const hora = fechaCuentaCompleta.toTimeString().split(" ")[0]; // HH:MM:SS
         const cc = c.cc;
         let montoCC = 0;
         if (cc === "ARS") montoCC = Number(c?.montoTotal?.ars || 0);

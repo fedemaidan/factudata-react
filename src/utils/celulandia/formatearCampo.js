@@ -34,7 +34,7 @@ export const formatearCampo = (campo, valor) => {
           backgroundColor: "#E8EAF6",
           color: "#3F51B5",
         },
-        "ASOCIACION CONSULTURA MUTUAL": {
+        "ASOCIACION CONSULTORA MUTUAL": {
           backgroundColor: "#F3E5F5",
           color: "#7B1FA2",
         },
