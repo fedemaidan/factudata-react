@@ -99,6 +99,7 @@ const AgregarClienteModal = ({ open, onClose, onSave }) => {
 
     setIsLoading(true);
     try {
+      formData.nombre = formData.nombre.trim().toUpperCase();
       const result = await clientesService.createCliente(formData);
 
       if (result.success) {

@@ -18,12 +18,18 @@ import {
   FormControl,
   InputLabel,
   Button,
+  TableContainer,
 } from "@mui/material";
 import Divider from "@mui/material/Divider";
 import ClearIcon from "@mui/icons-material/Clear";
 import AddIcon from "@mui/icons-material/Add";
 import Pagination from "@mui/material/Pagination";
-
+import TableSortLabel from "@mui/material/TableSortLabel";
+import { alpha } from "@mui/material/styles";
+import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
+import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
+import { DatePicker } from "@mui/x-date-pickers/DatePicker";
+import dayjs from "dayjs";
 
 const DataTable = ({
   title,
@@ -49,18 +55,22 @@ const DataTable = ({
   sortField = "fechaFactura",
   sortDirection = "desc",
   onSortChange,
+  showSearch = true,
+  showDateFilterOptions = true,
+  showDatePicker = false,
+  serverSide = false,
 }) => {
   const [busqueda, setBusqueda] = useState("");
   const [filtroFecha, setFiltroFecha] = useState("todos");
+  const [selectedDate, setSelectedDate] = useState(null);
   const ordenCampo = sortField;
   const ordenDireccion = sortDirection;
-
 
   const handleSort = (campo) => {
     if (onSortChange) {
       onSortChange(campo);
     }
-  };  
+  };
 
   const getSortIcon = (campo) => {
     if (ordenCampo === campo) {
@@ -72,8 +82,8 @@ const DataTable = ({
   const dataFiltrados = useMemo(() => {
     let filtered = [...data];
 
-    // Filtro por fecha
-    if (filtroFecha !== "todos") {
+    // Filtro por fecha (opciones predefinidas)
+    if (!showDatePicker && filtroFecha !== "todos") {
       const hoy = new Date();
       const inicioDia = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate());
 
@@ -113,8 +123,19 @@ const DataTable = ({
       }
     }
 
+    // Filtro por datepicker (día específico)
+    if (showDatePicker && selectedDate) {
+      const targetDay = dayjs(selectedDate).startOf("day");
+      filtered = filtered.filter((item) => {
+        const val = item[dateField];
+        if (!val) return false;
+        const d = dayjs(val);
+        return d.isValid() && d.isSame(targetDay, "day");
+      });
+    }
+
     // Filtro por búsqueda
-    if (busqueda.trim()) {
+    if (showSearch && busqueda.trim()) {
       const searchTerm = busqueda.toLowerCase();
       filtered = filtered.filter((item) => {
         return searchFields.some((field) => {
@@ -135,6 +156,9 @@ const DataTable = ({
   }, [data, busqueda, filtroFecha, filters, searchFields]);
 
   const dataOrdenados = useMemo(() => {
+    if (serverSide) {
+      return dataFiltrados;
+    }
     return [...dataFiltrados].sort((a, b) => {
       let aVal = a[ordenCampo];
       let bVal = b[ordenCampo];
@@ -150,7 +174,7 @@ const DataTable = ({
         return aVal < bVal ? 1 : -1;
       }
     });
-  }, [dataFiltrados, ordenCampo, ordenDireccion]);
+  }, [serverSide, dataFiltrados, ordenCampo, ordenDireccion, dateField]);
 
   const formatValue = (value, field) => {
     if (formatters[field]) {
@@ -189,6 +213,32 @@ const DataTable = ({
     return item._id || item.id || `row-${index}`;
   };
 
+  // Función para manejar click en fila
+  const handleRowClick = (event, item) => {
+    // Si el click es en un checkbox, no hacer nada (se maneja por separado)
+    if (event.target.type === "checkbox") {
+      return;
+    }
+
+    // Si la columna tiene un render personalizado (como botones), no seleccionar
+    const targetCell = event.target.closest("td");
+    if (targetCell) {
+      const columnIndex = Array.from(targetCell.parentNode.children).indexOf(targetCell);
+      const column = columns[columnIndex];
+
+      // Si es la columna de selección o tiene render personalizado, no hacer nada
+      if (column?.key === "seleccionar" || (column?.render && column.key !== "seleccionar")) {
+        return;
+      }
+    }
+
+    // Buscar si la fila tiene una función de toggle (para selección)
+    const selectColumn = columns.find((col) => col.key === "seleccionar");
+    if (selectColumn && selectColumn.onRowClick) {
+      selectColumn.onRowClick(item);
+    }
+  };
+
   return (
     <Box
       component="main"
@@ -206,28 +256,30 @@ const DataTable = ({
         <Divider />
 
         <Stack direction="row" spacing={2} alignItems="center">
-          <TextField
-            label="Buscar"
-            value={busqueda}
-            onChange={(e) => setBusqueda(e.target.value)}
-            sx={{ minWidth: 300 }}
-            InputProps={{
-              endAdornment: busqueda.length > 0 && (
-                <InputAdornment position="end">
-                  <IconButton
-                    onClick={() => setBusqueda("")}
-                    edge="end"
-                    size="small"
-                    sx={{ color: "text.secondary" }}
-                  >
-                    <ClearIcon />
-                  </IconButton>
-                </InputAdornment>
-              ),
-            }}
-          />
+          {showSearch && (
+            <TextField
+              label="Buscar"
+              value={busqueda}
+              onChange={(e) => setBusqueda(e.target.value)}
+              sx={{ minWidth: 300 }}
+              InputProps={{
+                endAdornment: busqueda.length > 0 && (
+                  <InputAdornment position="end">
+                    <IconButton
+                      onClick={() => setBusqueda("")}
+                      edge="end"
+                      size="small"
+                      sx={{ color: "text.secondary" }}
+                    >
+                      <ClearIcon />
+                    </IconButton>
+                  </InputAdornment>
+                ),
+              }}
+            />
+          )}
 
-          {dateFilterOptions.length > 0 && (
+          {showDateFilterOptions && !showDatePicker && dateFilterOptions.length > 0 && (
             <FormControl sx={{ minWidth: 200 }} variant="filled">
               <InputLabel id="filtro-fecha-label">Filtrar por fecha</InputLabel>
               <Select
@@ -244,6 +296,17 @@ const DataTable = ({
                 ))}
               </Select>
             </FormControl>
+          )}
+
+          {showDatePicker && (
+            <LocalizationProvider dateAdapter={AdapterDayjs}>
+              <DatePicker
+                label="Seleccionar fecha"
+                value={selectedDate}
+                onChange={(newValue) => setSelectedDate(newValue)}
+                format="DD/MM/YYYY"
+              />
+            </LocalizationProvider>
           )}
 
           {onAdd && (
@@ -268,48 +331,90 @@ const DataTable = ({
         </Stack>
 
         <Box position="relative">
-          <Paper>
-            <Table
-              stickyHeader
-              sx={{
-                "& .MuiTableCell-root": {
-                  borderRight: "none !important",
-                  borderLeft: "none !important",
-                },
-                "& .MuiTableHead-root .MuiTableCell-root": {
-                  borderBottom: "1px solid rgba(224, 224, 224, 1)",
-                },
-              }}
-            >
-              <TableHead>
-                <TableRow>
-                  {columns.map((column) => (
-                    <TableCell
-                      key={column.key}
-                      onClick={column.sortable ? () => handleSort(column.key) : undefined}
-                      sx={{
-                        fontWeight: "bold",
-                        cursor: column.sortable ? "pointer" : "default",
-                      }}
-                    >
-                      {column.label}
-                      {column.sortable && getSortIcon(column.key)}
-                    </TableCell>
-                  ))}
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {dataOrdenados.map((item, index) => (
-                  <TableRow key={getRowKey(item, index)}>
+          <Paper sx={{ width: "100%", mb: 2 }}>
+            <TableContainer>
+              <Table
+                stickyHeader
+                sx={{
+                  minWidth: 750,
+                  "& .MuiTableCell-root": {
+                    borderRight: "none !important",
+                    borderLeft: "none !important",
+                    fontSize: "0.8rem",
+                  },
+                  "& .MuiTableHead-root .MuiTableCell-root": {
+                    borderBottom: "1px solid rgba(224, 224, 224, 1)",
+                    fontSize: "0.7rem",
+                    fontWeight: "bold",
+                  },
+                }}
+              >
+                <TableHead>
+                  <TableRow>
                     {columns.map((column) => (
-                      <TableCell key={`${getRowKey(item, index)}-${column.key}`}>
-                        {renderCellContent(item, column)}
+                      <TableCell
+                        key={column.key}
+                        padding={column.key === "seleccionar" ? "checkbox" : "normal"}
+                        sx={{
+                          cursor: column.sortable ? "pointer" : "default",
+                        }}
+                      >
+                        {column.sortable ? (
+                          <TableSortLabel
+                            active={ordenCampo === column.key}
+                            direction={ordenCampo === column.key ? ordenDireccion : "asc"}
+                            onClick={() => handleSort(column.key)}
+                          >
+                            {column.label}
+                          </TableSortLabel>
+                        ) : (
+                          column.label
+                        )}
                       </TableCell>
                     ))}
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHead>
+                <TableBody>
+                  {dataOrdenados.map((item, index) => {
+                    const selectColumn = columns.find((col) => col.key === "seleccionar");
+                    const isSelected = selectColumn?.render?.(item)?.props?.checked || false;
+
+                    return (
+                      <TableRow
+                        key={getRowKey(item, index)}
+                        hover
+                        onClick={(event) => handleRowClick(event, item)}
+                        role="checkbox"
+                        aria-checked={isSelected}
+                        tabIndex={-1}
+                        selected={isSelected}
+                        sx={{
+                          cursor: "pointer",
+                          "&:hover": {
+                            backgroundColor: alpha("#1976d2", 0.04),
+                          },
+                          ...(isSelected && {
+                            backgroundColor: alpha("#1976d2", 0.08),
+                            "&:hover": {
+                              backgroundColor: alpha("#1976d2", 0.12),
+                            },
+                          }),
+                        }}
+                      >
+                        {columns.map((column) => (
+                          <TableCell
+                            key={`${getRowKey(item, index)}-${column.key}`}
+                            padding={column.key === "seleccionar" ? "checkbox" : "normal"}
+                          >
+                            {renderCellContent(item, column)}
+                          </TableCell>
+                        ))}
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </TableContainer>
           </Paper>
           {isLoading && (
             <Box

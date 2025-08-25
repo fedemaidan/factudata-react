@@ -21,6 +21,12 @@ const PagosCelulandiaPage = () => {
   const [historialModalOpen, setHistorialModalOpen] = useState(false);
   const [agregarModalOpen, setAgregarModalOpen] = useState(false);
   const [selectedData, setSelectedData] = useState(null);
+  // Estados para paginación y ordenación del servidor
+  const [paginaActual, setPaginaActual] = useState(1);
+  const [totalPagos, setTotalPagos] = useState(0);
+  const [limitePorPagina] = useState(20);
+  const [sortField, setSortField] = useState("fechaFactura");
+  const [sortDirection, setSortDirection] = useState("desc");
 
   const [cajas, setCajas] = useState([]);
 
@@ -49,18 +55,28 @@ const PagosCelulandiaPage = () => {
   };
 
   useEffect(() => {
-    fetchData();
-  }, []);
+    fetchData(paginaActual);
+  }, [paginaActual, sortField, sortDirection]);
 
-  const fetchData = async () => {
+  const fetchData = async (pagina = 1) => {
     setIsLoading(true);
     try {
+      const offset = (pagina - 1) * limitePorPagina;
       const [movimientosResponse, cajasResponse] = await Promise.all([
-        movimientosService.getAllMovimientos({ type: "EGRESO", populate: "caja" }),
+        movimientosService.getAllMovimientos({
+          type: "EGRESO",
+          populate: "caja",
+          limit: limitePorPagina,
+          offset,
+          sortField,
+          sortDirection,
+        }),
         cajasService.getAllCajas(),
       ]);
 
       setPagos(movimientosResponse.data.map(parseMovimiento));
+      setTotalPagos(movimientosResponse.total || 0);
+      setPaginaActual(pagina);
       setCajas(cajasResponse.data);
     } catch (error) {
       console.error("Error al cargar datos:", error);
@@ -71,8 +87,8 @@ const PagosCelulandiaPage = () => {
   console.log(pagos);
 
   const columns = [
-    { key: "fechaCreacion", label: "Fecha", sortable: true },
-    { key: "horaCreacion", label: "Hora", sortable: true },
+    { key: "fechaFactura", label: "Fecha", sortable: true },
+    { key: "horaFactura", label: "Hora", sortable: true },
     { key: "concepto", label: "Concepto", sortable: false },
     { key: "cuentaDestino", label: "Cuenta Origen", sortable: false },
     { key: "montoEnviado", label: "Monto", sortable: false },
@@ -98,21 +114,32 @@ const PagosCelulandiaPage = () => {
   ];
 
   const formatters = {
-    fechaCreacion: (value) => formatearCampo("fecha", value),
-    horaCreacion: (value) => formatearCampo("hora", value),
+    fechaFactura: (value) => formatearCampo("fecha", value),
+    horaFactura: (value) => formatearCampo("hora", value),
     cuentaDestino: (value) => formatearCampo("cuentaDestino", value),
     moneda: (value) => formatearCampo("monedaDePago", value),
     montoEnviado: (value) => formatearCampo("montoEnviado", value),
   };
 
   const searchFields = [
-    "fechaCreacion",
-    "horaCreacion",
+    "fechaFactura",
+    "horaFactura",
     "concepto",
     "cuentaDestino",
     "moneda",
     "nombreUsuario",
   ];
+
+  const handleSortChange = (campo) => {
+    if (sortField === campo) {
+      setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
+    } else {
+      setSortField(campo);
+      setSortDirection("asc");
+    }
+
+    setPaginaActual(1); // Reset a primera página al cambiar orden
+  };
 
   const refetchPagos = async () => {
     try {
@@ -140,7 +167,16 @@ const PagosCelulandiaPage = () => {
           searchFields={searchFields}
           formatters={formatters}
           onAdd={() => setAgregarModalOpen(true)}
-          dateField="fechaCreacion"
+          dateField="fechaFactura"
+          total={totalPagos}
+          currentPage={paginaActual}
+          onPageChange={(nuevaPagina) => setPaginaActual(nuevaPagina)}
+          rowsPerPage={limitePorPagina}
+          sortField={sortField}
+          sortDirection={sortDirection}
+          onSortChange={handleSortChange}
+          showSearch={false}
+          serverSide={true}
         />
       </Container>
 

@@ -1,8 +1,16 @@
 import axiosCelulandia from "src/services/axiosCelulandia";
 
 const cuentasPendientesService = {
-  getAll: async () => {
-    const response = await axiosCelulandia.get("/cuentas-pendientes");
+  getAll: async ({ populate, limit = 20, offset = 0, sortField, sortDirection } = {}) => {
+    const response = await axiosCelulandia.get("/cuentas-pendientes", {
+      params: {
+        populate,
+        limit,
+        offset,
+        sortField,
+        sortDirection,
+      },
+    });
     return response.data;
   },
 
@@ -31,6 +39,11 @@ const cuentasPendientesService = {
 
   remove: async (id) => {
     const response = await axiosCelulandia.delete(`/cuentas-pendientes/${id}`);
+    return response.data;
+  },
+
+  getByClienteId: async (clienteId) => {
+    const response = await axiosCelulandia.get(`/cuentas-pendientes/cliente/${clienteId}`);
     return response.data;
   },
 };

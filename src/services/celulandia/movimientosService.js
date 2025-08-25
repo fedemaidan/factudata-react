@@ -6,12 +6,34 @@ const movimientosService = {
   //   return response.data;
   // },
 
-  getAllMovimientos: async ({ type, populate, limit = 20, offset = 0 }) => {
+  getAllMovimientos: async ({
+    type,
+    populate,
+    limit = 20,
+    offset = 0,
+    sortField,
+    sortDirection,
+    tipoFactura,
+    clienteNombre,
+    cajaNombre,
+    estado,
+  }) => {
     const response = await axiosCelulandia.get("/movimientos", {
-      params: { type, populate, limit, offset },
+      params: {
+        type,
+        populate,
+        limit,
+        offset,
+        sortField,
+        sortDirection,
+        tipoFactura,
+        clienteNombre,
+        cajaNombre,
+        estado,
+      },
     });
     return response.data;
-  },  
+  },
 
   getMovimientoById: async (id) => {
     const response = await axiosCelulandia.get(`/movimientos/${id}`);
@@ -63,6 +85,13 @@ const movimientosService = {
 
   getEstadisticas: async () => {
     const response = await axiosCelulandia.get("/movimientos/estadisticas");
+    return response.data;
+  },
+
+  getArqueoDiario: async ({ type, cajaNombre, moneda } = {}) => {
+    const response = await axiosCelulandia.get("/movimientos/arqueo/diario", {
+      params: { type, cajaNombre, moneda },
+    });
     return response.data;
   },
 };

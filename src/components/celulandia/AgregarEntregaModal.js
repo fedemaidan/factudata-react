@@ -27,6 +27,9 @@ const AgregarEntregaModal = ({ open, onClose, onSaved, clientes = [], tipoDeCamb
     formData,
     clienteSeleccionado,
     getCCOptions,
+    getTipoDeCambio,
+    tipoDeCambioManual,
+    handleTipoDeCambioChange,
     handleMontoEnviado,
     handleInputChange,
     handleClienteChange,
@@ -35,8 +38,8 @@ const AgregarEntregaModal = ({ open, onClose, onSaved, clientes = [], tipoDeCamb
 
   // Convertir porcentaje a factor: 5% -> 0.95, 10% -> 0.90
   const factorDescuento = 1 - (parseFloat(descuentoPorcentaje) || 0) / 100;
-
-  const montoCCConDescuento = Math.round((parseFloat(formData.montoCC) || 0) * factorDescuento);
+  const subtotalEntrega = Math.round(parseFloat(formData.montoCC) || 0);
+  const totalEntrega = Math.round(subtotalEntrega * factorDescuento);
 
   useEffect(() => {
     if (clienteSeleccionado && clienteSeleccionado.descuento !== undefined) {
@@ -54,46 +57,52 @@ const AgregarEntregaModal = ({ open, onClose, onSaved, clientes = [], tipoDeCamb
     }
     setIsSaving(true);
     try {
-      const monto = parseFloat(formData.montoEnviado) || 0;
+      const tcOficial = tipoDeCambio?.oficial?.venta || tipoDeCambio?.oficial || 1;
+      const tcBlue = tipoDeCambio?.blue?.venta || tipoDeCambio?.blue || 1;
 
-      // Determinar el tipo de cambio que se va a usar para los cálculos
-      let tipoDeCambioFinal;
-
-      // Para subTotal se usa el tipo de cambio según la moneda de pago
-      if (formData.monedaDePago === "USD") {
-        tipoDeCambioFinal = tipoDeCambio?.oficial?.venta || tipoDeCambio?.oficial || 1;
-      } else {
-        // Si es ARS, usamos el tipo de cambio de la cuenta corriente para conversión
-        if (formData.CC === "USD BLUE") {
-          tipoDeCambioFinal = tipoDeCambio?.blue?.venta || tipoDeCambio?.blue || 1;
-        } else {
-          tipoDeCambioFinal = tipoDeCambio?.oficial?.venta || tipoDeCambio?.oficial || 1;
-        }
+      // Subtotal basado en el monto CC calculado por el hook (como en AgregarModal)
+      let subTotal = { ars: 0, usdOficial: 0, usdBlue: 0 };
+      if (formData.CC === "ARS") {
+        subTotal = {
+          ars: -subtotalEntrega,
+          usdOficial: -Math.round(subtotalEntrega / tcOficial),
+          usdBlue: -Math.round(subtotalEntrega / tcBlue),
+        };
+      } else if (formData.CC === "USD OFICIAL") {
+        subTotal = {
+          ars: -Math.round(subtotalEntrega * tcOficial),
+          usdOficial: -subtotalEntrega,
+          usdBlue: -subtotalEntrega,
+        };
+      } else if (formData.CC === "USD BLUE") {
+        subTotal = {
+          ars: -Math.round(subtotalEntrega * tcBlue),
+          usdOficial: -subtotalEntrega,
+          usdBlue: -subtotalEntrega,
+        };
       }
 
-      const subTotal = {
-        ars: -(formData.monedaDePago === "ARS" ? monto : Math.round(monto * tipoDeCambioFinal)),
-        usdOficial: -(formData.monedaDePago === "USD"
-          ? monto
-          : Math.round(monto / tipoDeCambioFinal)),
-        usdBlue: -(formData.monedaDePago === "USD"
-          ? monto
-          : Math.round(monto / (tipoDeCambio?.blue?.venta || tipoDeCambio?.blue || 1))),
-      };
-
-      const montoTotal = {
-        ars: -(formData.CC === "ARS"
-          ? montoCCConDescuento
-          : Math.round(montoCCConDescuento * tipoDeCambioFinal)),
-        usdOficial: -(formData.CC === "USD OFICIAL"
-          ? montoCCConDescuento
-          : Math.round(montoCCConDescuento / tipoDeCambioFinal)),
-        usdBlue: -(formData.CC === "USD BLUE"
-          ? montoCCConDescuento
-          : Math.round(
-              montoCCConDescuento / (tipoDeCambio?.blue?.venta || tipoDeCambio?.blue || 1)
-            )),
-      };
+      // Total con descuento aplicado
+      let montoTotal = { ars: 0, usdOficial: 0, usdBlue: 0 };
+      if (formData.CC === "ARS") {
+        montoTotal = {
+          ars: -totalEntrega,
+          usdOficial: -Math.round(totalEntrega / tcOficial),
+          usdBlue: -Math.round(totalEntrega / tcBlue),
+        };
+      } else if (formData.CC === "USD OFICIAL") {
+        montoTotal = {
+          ars: -Math.round(totalEntrega * tcOficial),
+          usdOficial: -totalEntrega,
+          usdBlue: -totalEntrega,
+        };
+      } else if (formData.CC === "USD BLUE") {
+        montoTotal = {
+          ars: -Math.round(totalEntrega * tcBlue),
+          usdOficial: -totalEntrega,
+          usdBlue: -totalEntrega,
+        };
+      }
 
       const payload = {
         descripcion: formData.concepto,
@@ -106,7 +115,7 @@ const AgregarEntregaModal = ({ open, onClose, onSaved, clientes = [], tipoDeCamb
         empresaId: "celulandia",
         moneda: formData.monedaDePago,
         cc: formData.CC,
-        tipoDeCambio: tipoDeCambioFinal,
+        tipoDeCambio: getTipoDeCambio(formData.monedaDePago, formData.CC),
         usuario: getUser(),
       };
 
@@ -189,12 +198,12 @@ const AgregarEntregaModal = ({ open, onClose, onSaved, clientes = [], tipoDeCamb
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
-                label="Monto CC"
+                label="Subtotal (sin descuento)"
                 type="number"
-                value={montoCCConDescuento}
+                value={subtotalEntrega}
                 margin="normal"
                 disabled
-                helperText="Calculado automáticamente con descuento"
+                helperText="Calculado automáticamente"
               />
             </Grid>
             <Grid item xs={12} sm={6}>
@@ -217,6 +226,18 @@ const AgregarEntregaModal = ({ open, onClose, onSaved, clientes = [], tipoDeCamb
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
+                label="Total (con descuento)"
+                type="number"
+                value={totalEntrega}
+                margin="normal"
+                disabled
+                helperText="Subtotal con descuento aplicado"
+              />
+            </Grid>
+
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
                 label="Descuento (%)"
                 type="number"
                 value={descuentoPorcentaje}
@@ -232,6 +253,41 @@ const AgregarEntregaModal = ({ open, onClose, onSaved, clientes = [], tipoDeCamb
                 value={formData.usuario}
                 margin="normal"
                 disabled
+              />
+            </Grid>
+
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Tipo de Cambio"
+                type="number"
+                value={getTipoDeCambio(formData.monedaDePago, formData.CC)}
+                disabled={
+                  (formData.monedaDePago === "ARS" && formData.CC === "ARS") ||
+                  (formData.monedaDePago === "USD" && formData.CC === "USD BLUE") ||
+                  (formData.monedaDePago === "USD" && formData.CC === "USD OFICIAL")
+                }
+                onChange={(e) => handleTipoDeCambioChange(e.target.value)}
+                margin="normal"
+                helperText={
+                  (formData.monedaDePago === "ARS" && formData.CC === "ARS") ||
+                  (formData.monedaDePago === "USD" && formData.CC === "USD BLUE") ||
+                  (formData.monedaDePago === "USD" && formData.CC === "USD OFICIAL")
+                    ? "No aplica"
+                    : tipoDeCambioManual !== null
+                    ? "Valor personalizado"
+                    : tipoDeCambio?.ultimaActualizacion
+                    ? `Última actualización: ${new Date(
+                        tipoDeCambio.ultimaActualizacion
+                      ).toLocaleString("es-AR", {
+                        year: "numeric",
+                        month: "2-digit",
+                        day: "2-digit",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}`
+                    : "Valor automático"
+                }
               />
             </Grid>
           </Grid>
