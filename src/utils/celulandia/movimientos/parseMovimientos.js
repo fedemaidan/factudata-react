@@ -32,10 +32,19 @@ export const parseMovimiento = (movimiento) => {
   let fechaCreacion = null;
   let horaCreacion = null;
 
-  if (movimiento.fechaCreacion) {
+  if (movimiento?.fechaCreacion) {
     const fecha = new Date(movimiento.fechaCreacion);
     fechaCreacion = fecha.toISOString().split("T")[0];
     horaCreacion = fecha.toTimeString().split(" ")[0];
+  }
+
+  let fechaFactura = null;
+  let horaFactura = null;
+
+  if (movimiento?.fechaFactura) {
+    const fecha = new Date(movimiento.fechaFactura);
+    fechaFactura = fecha.toISOString().split("T")[0];
+    horaFactura = fecha.toTimeString().split(" ")[0];
   }
 
   return {
@@ -45,6 +54,8 @@ export const parseMovimiento = (movimiento) => {
     montoCC: Math.round(montoCC),
     fechaCreacion,
     horaCreacion,
+    fechaFactura,
+    horaFactura,
     nombreCliente: movimiento.cliente?.nombre || "Sin cliente",
     ccActivasCliente: movimiento.cliente?.ccActivas || [],
     cuentaDestino: movimiento.caja?.nombre || "Sin caja",

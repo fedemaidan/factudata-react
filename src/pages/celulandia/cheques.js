@@ -8,15 +8,15 @@ import TableActions from "src/components/celulandia/TableActions";
 import movimientosService from "src/services/celulandia/movimientosService";
 import { formatearCampo } from "src/utils/celulandia/formatearCampo";
 import ComprobanteModal from "src/components/celulandia/ComprobanteModal";
-import EditarModal from "src/components/celulandia/EditarModal";
+import EditarChequeModal from "src/components/celulandia/EditarChequeModal";
 import HistorialModal from "src/components/celulandia/HistorialModal";
-import AgregarModal from "src/components/celulandia/AgregarModal";
+import AgregarChequeModal from "src/components/celulandia/AgregarChequeModal";
 import { parseMovimiento } from "src/utils/celulandia/movimientos/parseMovimientos";
 import clientesService from "src/services/celulandia/clientesService";
 import dolarService from "src/services/celulandia/dolarService";
 import cajasService from "src/services/celulandia/cajasService";
 
-const ComprobantesCelulandiaPage = () => {
+const ChequesCelulandiaPage = () => {
   const [movimientos, setMovimientos] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
@@ -31,7 +31,6 @@ const ComprobantesCelulandiaPage = () => {
   const [sortField, setSortField] = useState("fechaFactura");
   const [sortDirection, setSortDirection] = useState("desc");
 
-  // Nuevos estados para los datos compartidos
   const [clientes, setClientes] = useState([]);
   const [tipoDeCambio, setTipoDeCambio] = useState({
     ultimaActualizacion: "",
@@ -42,8 +41,8 @@ const ComprobantesCelulandiaPage = () => {
   const [cajas, setCajas] = useState([]);
 
   const movimientoHistorialConfig = {
-    title: "Historial del Comprobante",
-    entityName: "comprobante",
+    title: "Historial del Cheque",
+    entityName: "cheque",
     fieldNames: {
       tipoDeCambio: "Tipo de Cambio",
       estado: "Estado",
@@ -51,13 +50,15 @@ const ComprobantesCelulandiaPage = () => {
       cliente: "Cliente",
       cuentaCorriente: "Cuenta Corriente",
       moneda: "Moneda",
-      numeroFactura: "Número de Factura",
-      fechaFactura: "Fecha de Factura",
+      numeroFactura: "Número",
+      fechaFactura: "Fecha de Emisión",
+      fechaCobro: "Fecha de Cobro",
       nombreUsuario: "Usuario",
     },
     formatters: {
       tipoDeCambio: (valor) => `$${valor}`,
       fechaFactura: (valor) => new Date(valor).toLocaleDateString("es-AR"),
+      fechaCobro: (valor) => (valor ? new Date(valor).toLocaleDateString("es-AR") : "-"),
       fechaCreacion: (valor) => new Date(valor).toLocaleDateString("es-AR"),
       cliente: (valor) => (typeof valor === "object" ? valor?.nombre || "N/A" : valor),
       caja: (valor) => (typeof valor === "object" ? valor?.nombre || "N/A" : valor),
@@ -81,6 +82,7 @@ const ComprobantesCelulandiaPage = () => {
             offset,
             sortField,
             sortDirection,
+            tipoFactura: "cheque",
           }),
           clientesService.getAllClientes(),
           dolarService.getTipoDeCambio(),
@@ -116,7 +118,7 @@ const ComprobantesCelulandiaPage = () => {
 
   const columns = [
     { key: "fechaFactura", label: "Fecha", sortable: true },
-    { key: "horaFactura", label: "Hora", sortable: true },
+    { key: "horaCreacion", label: "Hora", sortable: true },
     { key: "cliente", label: "Cliente", sortable: true },
     { key: "cuentaDestino", label: "Cuenta Destino", sortable: true },
     { key: "montoEnviado", label: "Monto Enviado", sortable: true },
@@ -125,6 +127,7 @@ const ComprobantesCelulandiaPage = () => {
     { key: "cuentaCorriente", label: "CC", sortable: true },
     { key: "tipoDeCambio", label: "Tipo Cambio", sortable: true },
     { key: "estado", label: "Estado", sortable: true },
+    { key: "fechaCobro", label: "Fecha Cobro", sortable: true },
     {
       key: "acciones",
       label: "Acciones",
@@ -151,7 +154,7 @@ const ComprobantesCelulandiaPage = () => {
 
   const formatters = {
     fechaFactura: (value) => formatearCampo("fecha", value),
-    horaFactura: (value) => formatearCampo("hora", value),
+    horaCreacion: (value) => formatearCampo("hora", value),
     cuentaDestino: (value) => formatearCampo("cuentaDestino", value),
     moneda: (value) => formatearCampo("monedaDePago", value),
     montoEnviado: (value) => formatearCampo("montoEnviado", value),
@@ -159,6 +162,7 @@ const ComprobantesCelulandiaPage = () => {
     montoCC: (value) => formatearCampo("montoCC", value),
     tipoDeCambio: (value) => formatearCampo("tipoDeCambio", value),
     estado: (value) => formatearCampo("estado", value),
+    fechaCobro: (value) => (value ? new Date(value).toLocaleDateString("es-AR") : "-"),
     cliente: (value) => {
       if (value && typeof value === "object" && value.nombre) {
         return value.nombre;
@@ -170,7 +174,7 @@ const ComprobantesCelulandiaPage = () => {
   const searchFields = [
     "numeroFactura",
     "fechaFactura",
-    "horaFactura",
+    "horaCreacion",
     "nombreCliente",
     "cuentaDestino",
     "moneda",
@@ -203,10 +207,14 @@ const ComprobantesCelulandiaPage = () => {
 
   const refetchMovimientos = async () => {
     try {
-      const { data } = await movimientosService.getAllMovimientos({
+      const response = await movimientosService.getAllMovimientos({
         type: "INGRESO",
         populate: "caja",
+        sortField,
+        sortDirection,
+        tipoFactura: "cheque",
       });
+      const { data } = response;
       setMovimientos(data.map(parseMovimiento));
     } catch (error) {
       console.error("Error al recargar movimientos:", error);
@@ -220,11 +228,11 @@ const ComprobantesCelulandiaPage = () => {
   return (
     <>
       <Head>
-        <title>Movimientos</title>
+        <title>Cheques</title>
       </Head>
       <Container maxWidth="xl">
         <DataTable
-          title="Comprobantes"
+          title="Cheques"
           data={movimientos}
           isLoading={isLoading}
           columns={columns}
@@ -239,13 +247,11 @@ const ComprobantesCelulandiaPage = () => {
           sortField={sortField}
           sortDirection={sortDirection}
           onSortChange={handleSortChange}
-          showSearch={false}
-          serverSide={true}
         />
       </Container>
 
       <ComprobanteModal open={modalOpen} onClose={handleCloseModal} imagenUrl={imagenModal} />
-      <EditarModal
+      <EditarChequeModal
         open={editarModalOpen}
         onClose={() => setEditarModalOpen(false)}
         data={selectedData}
@@ -261,7 +267,7 @@ const ComprobantesCelulandiaPage = () => {
         loadHistorialFunction={movimientosService.getMovimientoLogs}
         {...movimientoHistorialConfig}
       />
-      <AgregarModal
+      <AgregarChequeModal
         open={agregarModalOpen}
         onClose={() => setAgregarModalOpen(false)}
         onSave={handleSaveNew}
@@ -273,6 +279,6 @@ const ComprobantesCelulandiaPage = () => {
   );
 };
 
-ComprobantesCelulandiaPage.getLayout = (page) => <DashboardLayout>{page}</DashboardLayout>;
+ChequesCelulandiaPage.getLayout = (page) => <DashboardLayout>{page}</DashboardLayout>;
 
-export default ComprobantesCelulandiaPage;
+export default ChequesCelulandiaPage;

@@ -21,7 +21,18 @@ import { getUser } from "src/utils/celulandia/currentUser";
 const EditarPagoModal = ({ open, onClose, data, onSave, cajas }) => {
   const [isSaving, setIsSaving] = useState(false);
 
-  const { formData, handleMontoEnviado, handleInputChange } = useMovimientoForm(data, null);
+  // Procesar data para mostrar montos en positivo
+  const processedData = data
+    ? {
+        ...data,
+        montoEnviado: data.total?.ars ? Math.abs(data.total.ars).toString() : "0",
+      }
+    : null;
+
+  const { formData, handleMontoEnviado, handleInputChange } = useMovimientoForm(
+    processedData,
+    null
+  );
 
   const handleSave = async () => {
     if (!formData.cuentaDestino || !formData.montoEnviado) {
@@ -32,6 +43,8 @@ const EditarPagoModal = ({ open, onClose, data, onSave, cajas }) => {
     setIsSaving(true);
     try {
       const cajaId = cajas.find((caja) => caja.nombre === formData.cuentaDestino)?._id;
+      const monto = parseFloat(formData.montoEnviado) || 0;
+
       const datosParaGuardar = {
         cliente: data?.cliente || { nombre: "PAGO" },
         cuentaCorriente: "ARS",
@@ -40,8 +53,13 @@ const EditarPagoModal = ({ open, onClose, data, onSave, cajas }) => {
         caja: cajaId,
         nombreUsuario: getUser(),
         tipoDeCambio: 1,
-        montoEnviado: parseFloat(formData.montoEnviado) || 0,
         concepto: formData.concepto || data?.concepto || "",
+        // Convertir monto a negativo para backend (como en EditarEntregaModal)
+        total: {
+          ars: -(formData.monedaDePago === "ARS" ? monto : monto),
+          usdOficial: -(formData.monedaDePago === "USD" ? monto : monto),
+          usdBlue: -(formData.monedaDePago === "USD" ? monto : monto),
+        },
       };
 
       // Enviar solo cambios
@@ -49,6 +67,11 @@ const EditarPagoModal = ({ open, onClose, data, onSave, cajas }) => {
       Object.keys(datosParaGuardar).forEach((key) => {
         if (key === "caja") {
           if (datosParaGuardar[key] !== data?.caja?._id) {
+            camposModificados[key] = datosParaGuardar[key];
+          }
+        } else if (key === "total") {
+          // Comparar total objeto por objeto
+          if (JSON.stringify(datosParaGuardar[key]) !== JSON.stringify(data?.[key])) {
             camposModificados[key] = datosParaGuardar[key];
           }
         } else if (datosParaGuardar[key] !== data?.[key]) {

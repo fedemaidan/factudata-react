@@ -33,6 +33,7 @@ const CuentaCorrienteCelulandiaPage = () => {
     setIsLoading(true);
     try {
       const response = await movimientosService.getClientesTotales();
+      console.log("response", response);
       if (response.success) {
         console.log("Datos de clientes cargados:", response.data);
         setClientes(response.data);
@@ -56,7 +57,7 @@ const CuentaCorrienteCelulandiaPage = () => {
     if (monto === undefined || monto === null) return "-";
 
     const isNegativo = monto < 0;
-    const montoFormateado = formatCurrency(Math.round(monto));
+    const montoFormateado = formatCurrency(Math.round(Math.abs(monto)));
 
     return (
       <Typography
@@ -69,6 +70,31 @@ const CuentaCorrienteCelulandiaPage = () => {
         {isNegativo ? `-${montoFormateado}` : montoFormateado}
       </Typography>
     );
+  };
+
+  const formatearFecha = (fecha) => {
+    if (!fecha) return "Sin pagos";
+
+    const fechaObj = new Date(fecha);
+    const ahora = new Date();
+    const diferenciaDias = Math.floor((ahora - fechaObj) / (1000 * 60 * 60 * 24));
+
+    if (diferenciaDias === 0) {
+      return "Hoy";
+    } else if (diferenciaDias === 1) {
+      return "Ayer";
+    } else if (diferenciaDias < 7) {
+      return `Hace ${diferenciaDias} días`;
+    } else if (diferenciaDias < 30) {
+      const semanas = Math.floor(diferenciaDias / 7);
+      return `Hace ${semanas} semana${semanas > 1 ? "s" : ""}`;
+    } else if (diferenciaDias < 365) {
+      const meses = Math.floor(diferenciaDias / 30);
+      return `Hace ${meses} mes${meses > 1 ? "es" : ""}`;
+    } else {
+      const años = Math.floor(diferenciaDias / 365);
+      return `Hace ${años} año${años > 1 ? "s" : ""}`;
+    }
   };
 
   const clientesFiltrados = useMemo(() => {
@@ -100,6 +126,12 @@ const CuentaCorrienteCelulandiaPage = () => {
       if (ordenCampo === "ARS" || ordenCampo === "USD BLUE" || ordenCampo === "USD OFICIAL") {
         aVal = Number(aVal) || 0;
         bVal = Number(bVal) || 0;
+      }
+
+      // Para fechas, convertimos a timestamp para ordenar
+      if (ordenCampo === "fechaUltimoPago") {
+        aVal = aVal ? new Date(aVal).getTime() : 0;
+        bVal = bVal ? new Date(bVal).getTime() : 0;
       }
 
       if (ordenDireccion === "asc") {
@@ -156,7 +188,17 @@ const CuentaCorrienteCelulandiaPage = () => {
             ) : (
               <>
                 <Paper>
-                  <Table>
+                  <Table
+                    sx={{
+                      "& .MuiTableCell-root": {
+                        fontSize: "0.8rem",
+                      },
+                      "& .MuiTableHead-root .MuiTableCell-root": {
+                        fontSize: "0.7rem",
+                        fontWeight: "bold",
+                      },
+                    }}
+                  >
                     <TableHead>
                       <TableRow>
                         <TableCell
@@ -168,7 +210,7 @@ const CuentaCorrienteCelulandiaPage = () => {
                               setOrdenDireccion("asc");
                             }
                           }}
-                          sx={{ cursor: "pointer", fontWeight: "bold" }}
+                          sx={{ cursor: "pointer" }}
                         >
                           Cliente
                           {ordenCampo === "cliente" ? (ordenDireccion === "asc" ? " ▲" : " ▼") : ""}
@@ -182,7 +224,7 @@ const CuentaCorrienteCelulandiaPage = () => {
                               setOrdenDireccion("asc");
                             }
                           }}
-                          sx={{ cursor: "pointer", fontWeight: "bold" }}
+                          sx={{ cursor: "pointer" }}
                         >
                           ARS
                           {ordenCampo === "ARS" ? (ordenDireccion === "asc" ? " ▲" : " ▼") : ""}
@@ -196,7 +238,7 @@ const CuentaCorrienteCelulandiaPage = () => {
                               setOrdenDireccion("asc");
                             }
                           }}
-                          sx={{ cursor: "pointer", fontWeight: "bold" }}
+                          sx={{ cursor: "pointer" }}
                         >
                           USD BLUE
                           {ordenCampo === "USD BLUE"
@@ -214,10 +256,28 @@ const CuentaCorrienteCelulandiaPage = () => {
                               setOrdenDireccion("asc");
                             }
                           }}
-                          sx={{ cursor: "pointer", fontWeight: "bold" }}
+                          sx={{ cursor: "pointer" }}
                         >
                           USD OFICIAL
                           {ordenCampo === "USD OFICIAL"
+                            ? ordenDireccion === "asc"
+                              ? " ▲"
+                              : " ▼"
+                            : ""}
+                        </TableCell>
+                        <TableCell
+                          onClick={() => {
+                            if (ordenCampo === "fechaUltimoPago") {
+                              setOrdenDireccion(ordenDireccion === "asc" ? "desc" : "asc");
+                            } else {
+                              setOrdenCampo("fechaUltimoPago");
+                              setOrdenDireccion("desc");
+                            }
+                          }}
+                          sx={{ cursor: "pointer" }}
+                        >
+                          Último Pago
+                          {ordenCampo === "fechaUltimoPago"
                             ? ordenDireccion === "asc"
                               ? " ▲"
                               : " ▼"
@@ -237,10 +297,11 @@ const CuentaCorrienteCelulandiaPage = () => {
                             },
                           }}
                         >
-                          <TableCell sx={{ fontWeight: "medium" }}>{cliente.cliente}</TableCell>
+                          <TableCell>{cliente.cliente}</TableCell>
                           <TableCell>{formatearMonto(cliente.ARS)}</TableCell>
                           <TableCell>{formatearMonto(cliente["USD BLUE"])}</TableCell>
                           <TableCell>{formatearMonto(cliente["USD OFICIAL"])}</TableCell>
+                          <TableCell>{formatearFecha(cliente.fechaUltimoPago)}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
