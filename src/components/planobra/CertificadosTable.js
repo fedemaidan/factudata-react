@@ -4,8 +4,9 @@ import EditIcon from '@mui/icons-material/Edit';
 import CheckIcon from '@mui/icons-material/Check';
 import CloseIcon from '@mui/icons-material/Close';
 import { numberFmt } from 'src/utils/planobra';
+import DeleteIcon from '@mui/icons-material/Delete';
 
-const CertificadosTable = ({ certificados, onActualizarCertificado }) => {
+const CertificadosTable = ({ certificados, onActualizarCertificado, onRequestEdit, onRequestDelete  }) => {
   const [editIdx, setEditIdx] = useState(null);
   const [temp, setTemp] = useState(0);
 
@@ -25,6 +26,7 @@ const CertificadosTable = ({ certificados, onActualizarCertificado }) => {
             <TableCell>Fin</TableCell>
             <TableCell>% Certificado</TableCell>
             <TableCell>$ Certificado</TableCell>
+            <TableCell align="right">Acciones</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
@@ -55,6 +57,10 @@ const CertificadosTable = ({ certificados, onActualizarCertificado }) => {
                   <LinearProgress variant="determinate" value={c.porcentaje_certificado ?? 0} sx={{ mt: 1 }} />
                 </TableCell>
                 <TableCell>{numberFmt(val$)}</TableCell>
+                <TableCell align="right">
+                  <IconButton size="small" onClick={() => onRequestEdit?.(i)}><EditIcon fontSize="small" /></IconButton>
+                  <IconButton size="small" color="error" onClick={() => onRequestDelete?.(i)}><DeleteIcon fontSize="small" /></IconButton>
+                </TableCell>
               </TableRow>
             );
           })}

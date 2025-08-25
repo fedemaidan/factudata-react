@@ -288,11 +288,15 @@ const ticketService = {
       // Armamos la query para los movimientos de caja chica
       let movsQuery = query(
         queryRef,
-        where('caja_chica', '==', true),
-        where('id_user', '==', user.id),
-        where('moneda', '==', moneda),
-        orderBy('codigo_operacion', 'desc')
+        where("caja_chica", "==", true),
+        or(
+          where("id_user", "==", user.id),
+          where("user_phone", "==", user.phone)
+        ),
+        where("moneda", "==", moneda),
+        orderBy("codigo_operacion", "desc")
       );
+      
   
       const movsSnapshot = await getDocs(movsQuery);
       const movimientos = [];
