@@ -13,6 +13,7 @@ import HistorialModal from "src/components/celulandia/HistorialModal";
 import { parseMovimiento } from "src/utils/celulandia/movimientos/parseMovimientos";
 import EditarPagoModal from "src/components/celulandia/EditarPagoModal";
 import AgregarPagoModal from "src/components/celulandia/AgregarPagoModal";
+import ConfirmarEliminacionModal from "src/components/celulandia/ConfirmarEliminacionModal";
 
 const PagosCelulandiaPage = () => {
   const [pagos, setPagos] = useState([]);
@@ -20,7 +21,9 @@ const PagosCelulandiaPage = () => {
   const [editarModalOpen, setEditarModalOpen] = useState(false);
   const [historialModalOpen, setHistorialModalOpen] = useState(false);
   const [agregarModalOpen, setAgregarModalOpen] = useState(false);
+  const [confirmarEliminacionOpen, setConfirmarEliminacionOpen] = useState(false);
   const [selectedData, setSelectedData] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   // Estados para paginación y ordenación del servidor
   const [paginaActual, setPaginaActual] = useState(1);
   const [totalPagos, setTotalPagos] = useState(0);
@@ -115,6 +118,7 @@ const PagosCelulandiaPage = () => {
           sortDirection,
           fechaInicio,
           fechaFin,
+          includeInactive: true, // Incluir registros inactivos para mostrarlos tachados
         }),
         cajasService.getAllCajas(),
       ]);
@@ -153,17 +157,18 @@ const PagosCelulandiaPage = () => {
             setSelectedData(item);
             setHistorialModalOpen(true);
           }}
+          onDelete={handleDelete}
         />
       ),
     },
   ];
 
   const formatters = {
-    fechaFactura: (value) => formatearCampo("fecha", value),
-    horaFactura: (value) => formatearCampo("hora", value),
-    cuentaDestino: (value) => formatearCampo("cuentaDestino", value),
-    moneda: (value) => formatearCampo("monedaDePago", value),
-    montoEnviado: (value) => formatearCampo("montoEnviado", value),
+    fechaFactura: (value, item) => formatearCampo("fecha", value, item),
+    horaFactura: (value, item) => formatearCampo("hora", value, item),
+    cuentaDestino: (value, item) => formatearCampo("cuentaDestino", value, item),
+    moneda: (value, item) => formatearCampo("monedaDePago", value, item),
+    montoEnviado: (value, item) => formatearCampo("montoEnviado", value, item),
   };
 
   const searchFields = [
@@ -192,6 +197,33 @@ const PagosCelulandiaPage = () => {
       await fetchData(paginaActual);
     } catch (error) {
       console.error("Error al recargar pagos:", error);
+    }
+  };
+
+  const handleDelete = async (item) => {
+    setSelectedData(item);
+    setConfirmarEliminacionOpen(true);
+  };
+
+  const confirmarEliminacion = async () => {
+    if (!selectedData) return;
+
+    setIsDeleting(true);
+    try {
+      await movimientosService.deleteMovimiento(selectedData._id, "Usuario Sistema");
+
+      // Actualizar el estado local para mostrar el cambio visual inmediato
+      setPagos((prevPagos) =>
+        prevPagos.map((pago) => (pago._id === selectedData._id ? { ...pago, active: false } : pago))
+      );
+
+      setConfirmarEliminacionOpen(false);
+      setSelectedData(null);
+    } catch (error) {
+      console.error("Error al eliminar pago:", error);
+      alert("Error al eliminar pago");
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -246,6 +278,18 @@ const PagosCelulandiaPage = () => {
         onClose={() => setAgregarModalOpen(false)}
         onSave={refetchPagos}
         cajas={cajas}
+      />
+      <ConfirmarEliminacionModal
+        open={confirmarEliminacionOpen}
+        onClose={() => {
+          setConfirmarEliminacionOpen(false);
+          setSelectedData(null);
+        }}
+        onConfirm={confirmarEliminacion}
+        loading={isDeleting}
+        title="Eliminar Pago"
+        message="¿Estás seguro que deseas eliminar este pago?"
+        itemName={selectedData ? `Pago ${selectedData.concepto || selectedData._id}` : ""}
       />
     </>
   );

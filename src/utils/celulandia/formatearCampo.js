@@ -2,30 +2,47 @@ import React from "react";
 import { Chip } from "@mui/material";
 import { formatCurrency } from "src/utils/formatters"; // Comentado para usar función propia
 
-export const formatearCampo = (campo, valor) => {
+// Función auxiliar para aplicar estilo tachado si el item no está activo
+const aplicarEstiloTachado = (valor, item) => {
+  if (item && item.active === false) {
+    return <span style={{ textDecoration: "line-through" }}>{valor}</span>;
+  }
+  return valor;
+};
+
+export const formatearCampo = (campo, valor, item = null) => {
   if (valor === undefined || valor === null) return "-";
 
   switch (campo) {
     case "fecha":
-      return new Date(valor).toLocaleDateString("es-AR");
+      const fechaFormateada = new Date(valor).toLocaleDateString("es-AR");
+      return aplicarEstiloTachado(fechaFormateada, item);
 
     case "hora":
+      let horaFormateada;
       if (valor && typeof valor === "string") {
         const horaParts = valor.split(":");
         if (horaParts.length >= 2) {
-          return `${horaParts[0]}:${horaParts[1]}`;
+          horaFormateada = `${horaParts[0]}:${horaParts[1]}`;
+        } else {
+          horaFormateada = valor;
         }
+      } else {
+        horaFormateada = valor;
       }
-      return valor;
+      return aplicarEstiloTachado(horaFormateada, item);
 
     case "montoEnviado":
-      return formatCurrency(valor);
+      const montoEnviadoFormateado = formatCurrency(valor);
+      return aplicarEstiloTachado(montoEnviadoFormateado, item);
 
     case "montoCC":
-      return formatCurrency(valor);
+      const montoCCFormateado = formatCurrency(valor);
+      return aplicarEstiloTachado(montoCCFormateado, item);
 
     case "tipoDeCambio":
-      return formatCurrency(valor);
+      const tipoCambioFormateado = formatCurrency(valor);
+      return aplicarEstiloTachado(tipoCambioFormateado, item);
 
     case "cuentaDestino": {
       const cuentaStyles = {
@@ -62,7 +79,7 @@ export const formatearCampo = (campo, valor) => {
         backgroundColor: "#F3E5F5",
         color: "#7B1FA2",
       };
-      return (
+      const chip = (
         <Chip
           label={valor}
           size="small"
@@ -78,6 +95,7 @@ export const formatearCampo = (campo, valor) => {
           }}
         />
       );
+      return aplicarEstiloTachado(chip, item);
     }
 
     case "monedaDePago": {
@@ -95,7 +113,7 @@ export const formatearCampo = (campo, valor) => {
         backgroundColor: "#F5F5F5",
         color: "#424242",
       };
-      return (
+      const chip = (
         <Chip
           label={valor}
           size="small"
@@ -111,6 +129,7 @@ export const formatearCampo = (campo, valor) => {
           }}
         />
       );
+      return aplicarEstiloTachado(chip, item);
     }
 
     case "CC": {
@@ -132,7 +151,7 @@ export const formatearCampo = (campo, valor) => {
         backgroundColor: "#F5F5F5",
         color: "#424242",
       };
-      return (
+      const chip = (
         <Chip
           label={valor}
           size="small"
@@ -148,6 +167,7 @@ export const formatearCampo = (campo, valor) => {
           }}
         />
       );
+      return aplicarEstiloTachado(chip, item);
     }
 
     case "ccActivas": {
@@ -168,7 +188,7 @@ export const formatearCampo = (campo, valor) => {
 
       if (Array.isArray(valor)) {
         const ccOrdenadas = [...valor].sort();
-        return (
+        const chips = (
           <div style={{ display: "flex", gap: "4px", flexWrap: "wrap" }}>
             {ccOrdenadas.map((cc, index) => {
               const ccStyle = ccStyles[cc] || {
@@ -195,8 +215,9 @@ export const formatearCampo = (campo, valor) => {
             })}
           </div>
         );
+        return aplicarEstiloTachado(chips, item);
       }
-      return valor;
+      return aplicarEstiloTachado(valor, item);
     }
 
     case "estado": {
@@ -210,7 +231,7 @@ export const formatearCampo = (campo, valor) => {
         backgroundColor: "#FFF3E0",
         color: "#E65100",
       };
-      return (
+      const chip = (
         <Chip
           label={valor}
           size="small"
@@ -226,12 +247,14 @@ export const formatearCampo = (campo, valor) => {
           }}
         />
       );
+      return aplicarEstiloTachado(chip, item);
     }
 
     case "imagen":
-      return valor ? "Ver imagen" : "-";
+      const imagenFormateada = valor ? "Ver imagen" : "-";
+      return aplicarEstiloTachado(imagenFormateada, item);
 
     default:
-      return valor;
+      return aplicarEstiloTachado(valor, item);
   }
 };

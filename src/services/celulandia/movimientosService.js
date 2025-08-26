@@ -15,6 +15,7 @@ const movimientosService = {
     fecha,
     fechaInicio,
     fechaFin,
+    includeInactive = false,
   }) => {
     const response = await axiosCelulandia.get("/movimientos", {
       params: {
@@ -31,6 +32,7 @@ const movimientosService = {
         fecha,
         fechaInicio,
         fechaFin,
+        includeInactive,
       },
     });
     return response.data;

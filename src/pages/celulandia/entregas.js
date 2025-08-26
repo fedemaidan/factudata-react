@@ -10,6 +10,7 @@ import { formatearCampo } from "src/utils/celulandia/formatearCampo";
 import EditarEntregaModal from "src/components/celulandia/EditarEntregaModal";
 import AgregarEntregaModal from "src/components/celulandia/AgregarEntregaModal";
 import HistorialModal from "src/components/celulandia/HistorialModal";
+import ConfirmarEliminacionModal from "src/components/celulandia/ConfirmarEliminacionModal";
 import cuentasPendientesService from "src/services/celulandia/cuentasPendientesService";
 import clientesService from "src/services/celulandia/clientesService";
 import dolarService from "src/services/celulandia/dolarService";
@@ -20,7 +21,9 @@ const EntregasCelulandiaPage = () => {
   const [editarModalOpen, setEditarModalOpen] = useState(false);
   const [agregarModalOpen, setAgregarModalOpen] = useState(false);
   const [historialModalOpen, setHistorialModalOpen] = useState(false);
+  const [confirmarEliminacionOpen, setConfirmarEliminacionOpen] = useState(false);
   const [selectedData, setSelectedData] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [clientes, setClientes] = useState([]);
   const [tipoDeCambio, setTipoDeCambio] = useState({});
   const [paginaActual, setPaginaActual] = useState(1);
@@ -125,6 +128,7 @@ const EntregasCelulandiaPage = () => {
           sortDirection,
           fechaInicio,
           fechaFin,
+          includeInactive: true, // Incluir registros inactivos para mostrarlos tachados
         }),
         clientesService.getAllClientes(),
         dolarService.getTipoDeCambio(),
@@ -147,6 +151,7 @@ const EntregasCelulandiaPage = () => {
             descuentoAplicado: c.descuentoAplicado,
             montoEnviado: c.subTotal?.ars || 0,
             montoCC: c.montoTotal?.ars || 0,
+            active: c.active, // Agregar el campo active
           };
         })
       );
@@ -185,19 +190,25 @@ const EntregasCelulandiaPage = () => {
             setSelectedData(item);
             setHistorialModalOpen(true);
           }}
+          onDelete={handleDelete}
         />
       ),
     },
   ];
 
   const formatters = {
-    fecha: (value) => formatearCampo("fecha", value),
-    horaCreacion: (value) => formatearCampo("hora", value),
-    montoEnviado: (value) => formatearCampo("montoEnviado", value),
-    moneda: (value) => formatearCampo("monedaDePago", value),
-    CC: (value) => formatearCampo("CC", value),
-    montoCC: (value) => formatearCampo("montoCC", value),
-    descuentoAplicado: (value) => `${Math.round(((value ?? 1) - 1) * -100)}%`,
+    fecha: (value, item) => formatearCampo("fecha", value, item),
+    horaCreacion: (value, item) => formatearCampo("hora", value, item),
+    proveedorOCliente: (value, item) => formatearCampo("default", value, item),
+    descripcion: (value, item) => formatearCampo("default", value, item),
+    montoEnviado: (value, item) => formatearCampo("montoEnviado", value, item),
+    moneda: (value, item) => formatearCampo("monedaDePago", value, item),
+    CC: (value, item) => formatearCampo("CC", value, item),
+    montoCC: (value, item) => formatearCampo("montoCC", value, item),
+    descuentoAplicado: (value, item) => {
+      const formattedValue = `${Math.round(((value ?? 1) - 1) * -100)}%`;
+      return formatearCampo("default", formattedValue, item);
+    },
   };
 
   const searchFields = [
@@ -230,6 +241,35 @@ const EntregasCelulandiaPage = () => {
 
   const handleSaved = async () => {
     await refetch();
+  };
+
+  const handleDelete = async (item) => {
+    setSelectedData(item);
+    setConfirmarEliminacionOpen(true);
+  };
+
+  const confirmarEliminacion = async () => {
+    if (!selectedData) return;
+
+    setIsDeleting(true);
+    try {
+      await cuentasPendientesService.deleteCuentaPendiente(selectedData._id, "Usuario Sistema");
+
+      // Actualizar el estado local para mostrar el cambio visual inmediato
+      setEntregas((prevEntregas) =>
+        prevEntregas.map((entrega) =>
+          entrega._id === selectedData._id ? { ...entrega, active: false } : entrega
+        )
+      );
+
+      setConfirmarEliminacionOpen(false);
+      setSelectedData(null);
+    } catch (error) {
+      console.error("Error al eliminar entrega:", error);
+      alert("Error al eliminar entrega");
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   return (
@@ -285,6 +325,18 @@ const EntregasCelulandiaPage = () => {
         data={selectedData}
         loadHistorialFunction={cuentasPendientesService.getLogs}
         {...entregaHistorialConfig}
+      />
+      <ConfirmarEliminacionModal
+        open={confirmarEliminacionOpen}
+        onClose={() => {
+          setConfirmarEliminacionOpen(false);
+          setSelectedData(null);
+        }}
+        onConfirm={confirmarEliminacion}
+        loading={isDeleting}
+        title="Eliminar Entrega"
+        message="¿Estás seguro que deseas eliminar esta entrega?"
+        itemName={selectedData ? `Entrega ${selectedData.descripcion || selectedData._id}` : ""}
       />
     </>
   );

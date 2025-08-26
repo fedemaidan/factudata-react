@@ -232,20 +232,23 @@ const ComprobantesCelulandiaPage = () => {
   ];
 
   const formatters = {
-    fechaFactura: (value) => formatearCampo("fecha", value),
-    horaFactura: (value) => formatearCampo("hora", value),
-    cuentaDestino: (value) => formatearCampo("cuentaDestino", value),
-    moneda: (value) => formatearCampo("monedaDePago", value),
-    montoEnviado: (value) => formatearCampo("montoEnviado", value),
-    cuentaCorriente: (value) => formatearCampo("CC", value),
-    montoCC: (value) => formatearCampo("montoCC", value),
-    tipoDeCambio: (value) => formatearCampo("tipoDeCambio", value),
-    estado: (value) => formatearCampo("estado", value),
-    cliente: (value) => {
+    fechaFactura: (value, item) => formatearCampo("fecha", value, item),
+    horaFactura: (value, item) => formatearCampo("hora", value, item),
+    cuentaDestino: (value, item) => formatearCampo("cuentaDestino", value, item),
+    moneda: (value, item) => formatearCampo("monedaDePago", value, item),
+    montoEnviado: (value, item) => formatearCampo("montoEnviado", value, item),
+    cuentaCorriente: (value, item) => formatearCampo("CC", value, item),
+    montoCC: (value, item) => formatearCampo("montoCC", value, item),
+    tipoDeCambio: (value, item) => formatearCampo("tipoDeCambio", value, item),
+    estado: (value, item) => formatearCampo("estado", value, item),
+    cliente: (value, item) => {
+      let clienteValue;
       if (value && typeof value === "object" && value.nombre) {
-        return value.nombre;
+        clienteValue = value.nombre;
+      } else {
+        clienteValue = value || "-";
       }
-      return value || "-";
+      return formatearCampo("default", clienteValue, item);
     },
   };
 
