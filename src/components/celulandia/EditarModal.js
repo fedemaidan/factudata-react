@@ -21,7 +21,6 @@ import { getUser } from "src/utils/celulandia/currentUser";
 
 const EditarModal = ({ open, onClose, data, onSave, clientes, tipoDeCambio, cajas }) => {
   const [isSaving, setIsSaving] = useState(false);
-  console.log("data", data);
 
   const {
     formData,
@@ -78,20 +77,31 @@ const EditarModal = ({ open, onClose, data, onSave, clientes, tipoDeCambio, caja
         montoCC: parseFloat(formData.montoCC) || 0,
       };
 
-      // Solo enviar los campos que cambiaron
       const camposModificados = {};
+
       Object.keys(datosParaGuardar).forEach((key) => {
         if (key === "cliente") {
-          if (datosParaGuardar[key].nombre !== data.cliente?.nombre) {
-            camposModificados[key] = datosParaGuardar[key];
+          const nombreNuevo = datosParaGuardar[key].nombre;
+          const nombreOriginal = data.cliente?.nombre;
+
+          if (nombreNuevo !== nombreOriginal) {
+            // Si cambió el nombre del cliente, enviar solo el nombre
+            // El backend se encargará de buscar el cliente
+            camposModificados.clienteNombre = nombreNuevo;
           }
         } else if (key === "caja") {
           if (datosParaGuardar[key] !== data.caja?._id) {
             camposModificados[key] = datosParaGuardar[key];
           }
         } else if (key === "clienteId") {
-          if (datosParaGuardar[key] !== data.cliente?._id) {
-            camposModificados[key] = datosParaGuardar[key];
+          // No enviar clienteId directamente, se manejará en el backend
+          // basado en clienteNombre
+        } else if (key === "montoEnviado") {
+          // Comparar montos como números
+          const montoNuevo = parseFloat(datosParaGuardar[key]) || 0;
+          const montoOriginal = parseFloat(data.montoEnviado) || 0;
+          if (montoNuevo !== montoOriginal) {
+            camposModificados.montoEnviado = montoNuevo;
           }
         } else {
           if (datosParaGuardar[key] !== data[key]) {
@@ -106,8 +116,6 @@ const EditarModal = ({ open, onClose, data, onSave, clientes, tipoDeCambio, caja
         onClose();
         return;
       }
-
-      console.log("Campos modificados:", camposModificados);
       const result = await movimientosService.updateMovimiento(
         data._id,
         camposModificados,
@@ -157,7 +165,11 @@ const EditarModal = ({ open, onClose, data, onSave, clientes, tipoDeCambio, caja
                 options={Array.isArray(clientes) ? clientes : []}
                 getOptionLabel={(option) => (typeof option === "string" ? option : option.nombre)}
                 value={formData.cliente}
+                inputValue={formData.cliente || ""}
                 onChange={handleClienteChange}
+                onInputChange={(_, newInputValue) => {
+                  handleInputChange("cliente", newInputValue);
+                }}
                 renderInput={(params) => (
                   <TextField {...params} label="Cliente *" margin="normal" required fullWidth />
                 )}

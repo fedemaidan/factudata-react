@@ -1,7 +1,15 @@
 import axiosCelulandia from "src/services/axiosCelulandia";
 
 const cuentasPendientesService = {
-  getAll: async ({ populate, limit = 20, offset = 0, sortField, sortDirection } = {}) => {
+  getAll: async ({
+    populate,
+    limit = 20,
+    offset = 0,
+    sortField,
+    sortDirection,
+    fechaInicio,
+    fechaFin,
+  } = {}) => {
     const response = await axiosCelulandia.get("/cuentas-pendientes", {
       params: {
         populate,
@@ -9,6 +17,8 @@ const cuentasPendientesService = {
         offset,
         sortField,
         sortDirection,
+        fechaInicio,
+        fechaFin,
       },
     });
     return response.data;

@@ -59,6 +59,7 @@ const AgregarPagoModal = ({ open, onClose, onSave, cajas }) => {
           estado: "CONFIRMADO",
           concepto: formData.concepto || "",
           empresaId: "celulandia",
+          fechaFactura: new Date(),
         },
         montoEnviado: formData.montoEnviado,
       };

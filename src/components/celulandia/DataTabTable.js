@@ -33,10 +33,12 @@ const DataTabTable = ({
   showSearch = true,
   showDateFilterOptions = true,
   showDatePicker = false,
+  selectedDate = null,
+  onDateChange = null,
 }) => {
   const [busqueda, setBusqueda] = useState("");
   const [filtroFecha, setFiltroFecha] = useState("todos");
-  const [selectedDate, setSelectedDate] = useState(null);
+  const [internalSelectedDate, setInternalSelectedDate] = useState(null);
   const [currentOption, setCurrentOption] = useState(defaultOption || options?.[0]?.value || "");
   const [sortField, setSortField] = useState("fecha");
   const [sortDirection, setSortDirection] = useState("desc");
@@ -86,9 +88,10 @@ const DataTabTable = ({
     if (showDateFilterOptions) {
       rows = applyDateFilter(rows, filtroFecha);
     }
-    // Filtro por DatePicker (día específico)
-    if (showDatePicker && selectedDate) {
-      const targetDay = dayjs(selectedDate).startOf("day");
+    // Filtro por DatePicker (día específico) - solo si no hay callback externo
+    if (showDatePicker && !onDateChange && (selectedDate || internalSelectedDate)) {
+      const dateToUse = selectedDate || internalSelectedDate;
+      const targetDay = dayjs(dateToUse).startOf("day");
       rows = rows.filter((it) => {
         const val = it.fecha;
         if (!val) return false;
@@ -210,8 +213,14 @@ const DataTabTable = ({
               <LocalizationProvider dateAdapter={AdapterDayjs}>
                 <DatePicker
                   label="Seleccionar fecha"
-                  value={selectedDate}
-                  onChange={(newValue) => setSelectedDate(newValue)}
+                  value={onDateChange ? selectedDate : internalSelectedDate}
+                  onChange={(newValue) => {
+                    if (onDateChange) {
+                      onDateChange(newValue);
+                    } else {
+                      setInternalSelectedDate(newValue);
+                    }
+                  }}
                   format="DD/MM/YYYY"
                 />
               </LocalizationProvider>
