@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { Layout as DashboardLayout } from "src/layouts/dashboard/layout";
 import Head from "next/head";
 import { Container } from "@mui/material";
@@ -34,29 +34,60 @@ const PagosCelulandiaPage = () => {
 
   const [cajas, setCajas] = useState([]);
 
-  const movimientoHistorialConfig = {
-    title: "Historial del Pago",
-    entityName: "pago",
-    fieldNames: {
-      tipoDeCambio: "Tipo de Cambio",
-      estado: "Estado",
-      caja: "Cuenta de Origen",
-      cliente: "Cliente",
-      cuentaCorriente: "Cuenta Corriente",
-      moneda: "Moneda",
-      numeroFactura: "Número de Factura",
-      fechaFactura: "Fecha de Factura",
-      nombreUsuario: "Usuario",
-      concepto: "Concepto",
-    },
-    formatters: {
-      tipoDeCambio: (valor) => `$${valor}`,
-      fechaFactura: (valor) => new Date(valor).toLocaleDateString("es-AR"),
-      fechaCreacion: (valor) => new Date(valor).toLocaleDateString("es-AR"),
-      cliente: (valor) => (typeof valor === "object" ? valor?.nombre || "N/A" : valor),
-      caja: (valor) => (typeof valor === "object" ? valor?.nombre || "N/A" : valor),
-    },
-  };
+  const movimientoHistorialConfig = useMemo(
+    () => ({
+      title: "Historial del Pago",
+      entityName: "pago",
+      fieldNames: {
+        tipoDeCambio: "Tipo de Cambio",
+        estado: "Estado",
+        caja: "Cuenta de Origen",
+        cliente: "Cliente",
+        cuentaCorriente: "Cuenta Corriente",
+        moneda: "Moneda",
+        numeroFactura: "Número de Factura",
+        fechaFactura: "Fecha de Factura",
+        nombreUsuario: "Usuario",
+        concepto: "Concepto",
+      },
+      formatters: {
+        tipoDeCambio: (valor) => `$${valor}`,
+        fechaFactura: (valor) => new Date(valor).toLocaleDateString("es-AR"),
+        fechaCreacion: (valor) => new Date(valor).toLocaleDateString("es-AR"),
+        cliente: (valor) => {
+          if (typeof valor === "object" && valor?.nombre) {
+            return valor.nombre;
+          }
+          if (typeof valor === "string") {
+            return valor;
+          }
+          return "N/A";
+        },
+        caja: (valor) => {
+          if (typeof valor === "object" && valor?.nombre) {
+            return valor.nombre;
+          }
+          if (typeof valor === "string" && cajas.length > 0) {
+            const caja = cajas.find((c) => c._id === valor);
+            return caja ? caja.nombre : `ID: ${valor}`;
+          }
+          return valor || "N/A";
+        },
+        total: (valor, item) => {
+          if (typeof valor === "object" && valor.ars !== undefined) {
+            if (item?.moneda === "USD") {
+              const usdValue = valor.usdBlue || valor.usdOficial || 0;
+              return `USD: $${Math.abs(usdValue).toFixed(2)}`;
+            } else {
+              return `ARS: $${Math.abs(valor.ars).toFixed(2)}`;
+            }
+          }
+          return valor || "N/A";
+        },
+      },
+    }),
+    [cajas]
+  );
 
   // Función para calcular las fechas según el filtro seleccionado
   const calcularFechasFiltro = (filtro) => {
