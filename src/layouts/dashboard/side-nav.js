@@ -79,9 +79,9 @@ export const SideNav = (props) => {
     const fetchProyectosData = async () => {
       const emp = await getEmpresaDetailsFromUser(user);
       setEmpresa(emp || null);
-
+      
       // Casos especiales (tu lógica original)
-      if (user?.celulandia) {
+      if (emp?.nombre == "Celulandia") {
         const onboardingPage = [
           {
             title: "Comprobantes",
