@@ -30,6 +30,7 @@ const ChequesCelulandiaPage = () => {
   const [limitePorPagina] = useState(20);
   const [sortField, setSortField] = useState("fechaFactura");
   const [sortDirection, setSortDirection] = useState("desc");
+  const [filtroCaja, setFiltroCaja] = useState("ambas");
 
   const [clientes, setClientes] = useState([]);
   const [tipoDeCambio, setTipoDeCambio] = useState({
@@ -67,12 +68,16 @@ const ChequesCelulandiaPage = () => {
 
   useEffect(() => {
     fetchData(paginaActual);
-  }, [paginaActual, sortField, sortDirection]);
+  }, [paginaActual, sortField, sortDirection, filtroCaja]);
 
   const fetchData = async (pagina = 1) => {
     setIsLoading(true);
     try {
       const offset = (pagina - 1) * limitePorPagina;
+
+      // Siempre enviar el filtro de caja al backend
+      const cajaFilter = filtroCaja;
+
       const [movimientosResponse, clientesResponse, tipoDeCambioResponse, cajasResponse] =
         await Promise.all([
           movimientosService.getAllMovimientos({
@@ -83,6 +88,7 @@ const ChequesCelulandiaPage = () => {
             sortField,
             sortDirection,
             tipoFactura: "cheque",
+            cajaNombre: cajaFilter,
           }),
           clientesService.getAllClientes(),
           dolarService.getTipoDeCambio(),
@@ -171,19 +177,21 @@ const ChequesCelulandiaPage = () => {
     },
   };
 
-  const searchFields = [
-    "numeroFactura",
-    "fechaFactura",
-    "horaCreacion",
-    "nombreCliente",
-    "cuentaDestino",
-    "moneda",
-    "clienteId",
-    "fechaCobro",
-    "tipoFactura",
-    "estado",
-    "nombreUsuario",
-  ];
+  // Configuración del filtro por caja
+  const selectFilterConfig = {
+    label: "Filtrar por Caja",
+    field: "cuentaDestino",
+    options: [
+      { value: "ambas", label: "CHEQUE y ECHEQ" },
+      { value: "CHEQUE", label: "Solo CHEQUE" },
+      { value: "ECHEQ", label: "Solo ECHEQ" },
+    ],
+    defaultValue: "ambas",
+    onChange: (value) => {
+      setFiltroCaja(value);
+      setPaginaActual(1); // Resetear a la primera página
+    },
+  };
 
   const handleSaveEdit = async () => {
     try {
@@ -207,12 +215,14 @@ const ChequesCelulandiaPage = () => {
 
   const refetchMovimientos = async () => {
     try {
+      // Usar directamente el filtro actual
       const response = await movimientosService.getAllMovimientos({
         type: "INGRESO",
         populate: "caja",
         sortField,
         sortDirection,
         tipoFactura: "cheque",
+        cajaNombre: filtroCaja,
       });
       const { data } = response;
       setMovimientos(data.map(parseMovimiento));
@@ -236,7 +246,7 @@ const ChequesCelulandiaPage = () => {
           data={movimientos}
           isLoading={isLoading}
           columns={columns}
-          searchFields={searchFields}
+          searchFields={[]} // Sin campos de búsqueda
           formatters={formatters}
           onAdd={() => setAgregarModalOpen(true)}
           dateField="fechaFactura"
@@ -247,6 +257,11 @@ const ChequesCelulandiaPage = () => {
           sortField={sortField}
           sortDirection={sortDirection}
           onSortChange={handleSortChange}
+          showSearch={false} // Ocultar el campo de búsqueda
+          selectFilter={selectFilterConfig} // Agregar el filtro por select
+          serverSide={true} // Habilitar modo servidor para filtros
+          showRefreshButton={true}
+          onRefresh={refetchMovimientos}
         />
       </Container>
 

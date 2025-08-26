@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Layout as DashboardLayout } from "src/layouts/dashboard/layout";
 import Head from "next/head";
 import { Container } from "@mui/material";
@@ -25,19 +25,30 @@ const ClientesCelulandiaPage = () => {
   const [sortField, setSortField] = useState("nombre");
   const [sortDirection, setSortDirection] = useState("asc");
 
-  useEffect(() => {
-    const fetchClientes = async () => {
-      try {
-        const clientes = await clientesService.getAllClientes();
-        setClientes(clientes.data);
-      } catch (error) {
-        console.error("Error al cargar clientes:", error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    fetchClientes();
+  const fetchClientes = useCallback(async () => {
+    try {
+      const clientes = await clientesService.getAllClientes();
+      setClientes(clientes.data);
+    } catch (error) {
+      console.error("Error al cargar clientes:", error);
+    } finally {
+      setIsLoading(false);
+    }
   }, []);
+
+  // Función para refetch de clientes
+  const refetchClientes = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      await fetchClientes();
+    } catch (error) {
+      console.error("Error al actualizar clientes:", error);
+    }
+  }, [fetchClientes]);
+
+  useEffect(() => {
+    fetchClientes();
+  }, [fetchClientes]);
 
   const clienteHistorialConfig = {
     title: "Historial del Cliente",
@@ -154,6 +165,8 @@ const ClientesCelulandiaPage = () => {
           sortDirection={sortDirection}
           onSortChange={handleSortChange}
           serverSide={false}
+          showRefreshButton={true}
+          onRefresh={refetchClientes}
         />
       </Container>
 

@@ -100,8 +100,25 @@ const EditarModal = ({ open, onClose, data, onSave, clientes, tipoDeCambio, caja
           // Comparar montos como números
           const montoNuevo = parseFloat(datosParaGuardar[key]) || 0;
           const montoOriginal = parseFloat(data.montoEnviado) || 0;
+
           if (montoNuevo !== montoOriginal) {
             camposModificados.montoEnviado = montoNuevo;
+
+            // Si cambió el monto, también enviar el tipo de cambio recalculado
+            const tipoDeCambioOriginal = data.tipoDeCambio || 1;
+            const tipoDeCambioNuevo = datosParaGuardar.tipoDeCambio;
+
+            if (tipoDeCambioNuevo !== tipoDeCambioOriginal) {
+              camposModificados.tipoDeCambio = tipoDeCambioNuevo;
+            }
+          }
+        } else if (key === "tipoDeCambio") {
+          // Detectar cambios en tipo de cambio independientemente del monto
+          const tipoDeCambioOriginal = data.tipoDeCambio || 1;
+          const tipoDeCambioNuevo = datosParaGuardar[key];
+
+          if (tipoDeCambioNuevo !== tipoDeCambioOriginal) {
+            camposModificados.tipoDeCambio = tipoDeCambioNuevo;
           }
         } else {
           if (datosParaGuardar[key] !== data[key]) {
@@ -116,6 +133,7 @@ const EditarModal = ({ open, onClose, data, onSave, clientes, tipoDeCambio, caja
         onClose();
         return;
       }
+
       const result = await movimientosService.updateMovimiento(
         data._id,
         camposModificados,

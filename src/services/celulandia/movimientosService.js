@@ -15,6 +15,7 @@ const movimientosService = {
     fecha,
     fechaInicio,
     fechaFin,
+    includeInactive = false,
   }) => {
     const response = await axiosCelulandia.get("/movimientos", {
       params: {
@@ -31,6 +32,7 @@ const movimientosService = {
         fecha,
         fechaInicio,
         fechaFin,
+        includeInactive,
       },
     });
     return response.data;
@@ -69,8 +71,10 @@ const movimientosService = {
     return response.data;
   },
 
-  deleteMovimiento: async (id) => {
-    const response = await axiosCelulandia.delete(`/movimientos/${id}`);
+  deleteMovimiento: async (id, nombreUsuario) => {
+    const response = await axiosCelulandia.delete(`/movimientos/${id}`, {
+      data: { nombreUsuario },
+    });
     return response.data;
   },
 

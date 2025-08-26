@@ -15,8 +15,11 @@ import {
   TableHead,
   TableRow,
   CircularProgress,
+  IconButton,
+  Tooltip,
 } from "@mui/material";
 import Divider from "@mui/material/Divider";
+import RefreshIcon from "@mui/icons-material/Refresh";
 
 import movimientosService from "src/services/celulandia/movimientosService";
 import { formatCurrency } from "src/utils/formatters";
@@ -25,6 +28,7 @@ const CuentaCorrienteCelulandiaPage = () => {
   const router = useRouter();
   const [clientes, setClientes] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [busqueda, setBusqueda] = useState("");
   const [ordenCampo, setOrdenCampo] = useState("cliente");
   const [ordenDireccion, setOrdenDireccion] = useState("asc");
@@ -48,6 +52,18 @@ const CuentaCorrienteCelulandiaPage = () => {
       setIsLoading(false);
     }
   }, []);
+
+  // Función para manejar la actualización
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await fetchData();
+    } catch (error) {
+      console.error("Error al actualizar datos:", error);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   useEffect(() => {
     fetchData();
@@ -169,12 +185,41 @@ const CuentaCorrienteCelulandiaPage = () => {
             </Stack>
             <Divider />
 
-            <TextField
-              label="Buscar cliente"
-              value={busqueda}
-              onChange={(e) => setBusqueda(e.target.value)}
-              sx={{ maxWidth: 400 }}
-            />
+            <Stack direction="row" spacing={2} alignItems="center">
+              <TextField
+                label="Buscar cliente"
+                value={busqueda}
+                onChange={(e) => setBusqueda(e.target.value)}
+                sx={{ maxWidth: 400 }}
+              />
+
+              {/* Botón de actualización */}
+              <Tooltip title="Actualizar datos">
+                <IconButton
+                  onClick={handleRefresh}
+                  disabled={isRefreshing}
+                  sx={{
+                    borderRadius: 2,
+                    px: 1,
+                    py: 1,
+                    boxShadow: 1,
+                    "&:hover": {
+                      boxShadow: 2,
+                    },
+                  }}
+                >
+                  <RefreshIcon
+                    sx={{
+                      animation: isRefreshing ? "spin 1s linear infinite" : "none",
+                      "@keyframes spin": {
+                        "0%": { transform: "rotate(0deg)" },
+                        "100%": { transform: "rotate(360deg)" },
+                      },
+                    }}
+                  />
+                </IconButton>
+              </Tooltip>
+            </Stack>
 
             {isLoading ? (
               <Box

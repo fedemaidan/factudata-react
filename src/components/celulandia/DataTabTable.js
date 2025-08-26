@@ -18,13 +18,17 @@ import {
   Typography,
   TableSortLabel,
   TablePagination,
+  IconButton,
+  Tooltip,
 } from "@mui/material";
+import RefreshIcon from "@mui/icons-material/Refresh";
 import { formatearCampo } from "src/utils/celulandia/formatearCampo";
 import { formatCurrency } from "src/utils/formatters";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import dayjs from "dayjs";
+
 const DataTabTable = ({
   items = [],
   isLoading = false,
@@ -35,6 +39,8 @@ const DataTabTable = ({
   showDatePicker = false,
   selectedDate = null,
   onDateChange = null,
+  onRefresh = null,
+  showRefreshButton = false,
 }) => {
   const [busqueda, setBusqueda] = useState("");
   const [filtroFecha, setFiltroFecha] = useState("todos");
@@ -44,6 +50,7 @@ const DataTabTable = ({
   const [sortDirection, setSortDirection] = useState("desc");
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const handleSortChange = (campo) => {
     if (sortField === campo) {
@@ -51,6 +58,20 @@ const DataTabTable = ({
     } else {
       setSortField(campo);
       setSortDirection("asc");
+    }
+  };
+
+  // Función para manejar la actualización
+  const handleRefresh = async () => {
+    if (!onRefresh) return;
+
+    setIsRefreshing(true);
+    try {
+      await onRefresh();
+    } catch (error) {
+      console.error("Error al actualizar datos:", error);
+    } finally {
+      setIsRefreshing(false);
     }
   };
 
@@ -140,6 +161,7 @@ const DataTabTable = ({
     showDateFilterOptions,
     showDatePicker,
   ]);
+
   const grouped = useMemo(() => {
     const map = new Map();
     options.forEach((opt) => map.set(opt.value, []));
@@ -224,6 +246,35 @@ const DataTabTable = ({
                   format="DD/MM/YYYY"
                 />
               </LocalizationProvider>
+            )}
+
+            {/* Botón de actualización */}
+            {showRefreshButton && onRefresh && (
+              <Tooltip title="Actualizar datos">
+                <IconButton
+                  onClick={handleRefresh}
+                  disabled={isRefreshing}
+                  sx={{
+                    borderRadius: 2,
+                    px: 1,
+                    py: 1,
+                    boxShadow: 1,
+                    "&:hover": {
+                      boxShadow: 2,
+                    },
+                  }}
+                >
+                  <RefreshIcon
+                    sx={{
+                      animation: isRefreshing ? "spin 1s linear infinite" : "none",
+                      "@keyframes spin": {
+                        "0%": { transform: "rotate(0deg)" },
+                        "100%": { transform: "rotate(360deg)" },
+                      },
+                    }}
+                  />
+                </IconButton>
+              </Tooltip>
             )}
           </Stack>
 

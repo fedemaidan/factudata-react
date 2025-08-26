@@ -22,6 +22,7 @@ import { useMovimientoForm } from "src/hooks/useMovimientoForm";
 const AgregarEntregaModal = ({ open, onClose, onSaved, clientes = [], tipoDeCambio }) => {
   const [isSaving, setIsSaving] = useState(false);
   const [descuentoPorcentaje, setDescuentoPorcentaje] = useState("");
+  const [fechaEntrega, setFechaEntrega] = useState("");
 
   const {
     formData,
@@ -88,7 +89,7 @@ const AgregarEntregaModal = ({ open, onClose, onSaved, clientes = [], tipoDeCamb
         montoTotal = {
           ars: -totalEntrega,
           usdOficial: -Math.round(totalEntrega / tcOficial),
-          usdBlue: -Math.round(totalEntrega / tcBlue),
+          usdBlue: -totalEntrega,
         };
       } else if (formData.CC === "USD OFICIAL") {
         montoTotal = {
@@ -104,10 +105,25 @@ const AgregarEntregaModal = ({ open, onClose, onSaved, clientes = [], tipoDeCamb
         };
       }
 
+      // Crear fecha completa con hora por defecto (12:00) si se especificó fecha
+      let fechaCuentaCompleta = new Date();
+      if (fechaEntrega) {
+        const [year, month, day] = fechaEntrega.split("-");
+        fechaCuentaCompleta = new Date(
+          parseInt(year),
+          parseInt(month) - 1, // Los meses en JS van de 0 a 11
+          parseInt(day),
+          12, // hora por defecto: 12:00
+          0, // minuto por defecto: 00
+          0, // segundos
+          0 // milisegundos
+        );
+      }
+
       const payload = {
         descripcion: formData.concepto,
         proveedorOCliente: formData.cliente,
-        fechaCuenta: new Date(),
+        fechaCuenta: fechaCuentaCompleta,
         fechaCreacion: new Date(),
         descuentoAplicado: factorDescuento,
         subTotal,
@@ -136,6 +152,7 @@ const AgregarEntregaModal = ({ open, onClose, onSaved, clientes = [], tipoDeCamb
 
   const handleClose = () => {
     setDescuentoPorcentaje("");
+    setFechaEntrega("");
     resetForm();
     onClose();
   };
@@ -146,6 +163,7 @@ const AgregarEntregaModal = ({ open, onClose, onSaved, clientes = [], tipoDeCamb
       <DialogContent>
         <Box sx={{ py: 2 }}>
           <Grid container spacing={2}>
+            {/* Fila 1: Cliente - Descripción */}
             <Grid item xs={12} sm={6}>
               <Autocomplete
                 freeSolo
@@ -170,6 +188,21 @@ const AgregarEntregaModal = ({ open, onClose, onSaved, clientes = [], tipoDeCamb
               />
             </Grid>
 
+            {/* Fila 2: Fecha de Entrega - Monto */}
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Fecha de Entrega"
+                type="date"
+                value={fechaEntrega}
+                onChange={(e) => setFechaEntrega(e.target.value)}
+                margin="normal"
+                InputLabelProps={{
+                  shrink: true,
+                }}
+                helperText="Opcional"
+              />
+            </Grid>
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
@@ -181,6 +214,8 @@ const AgregarEntregaModal = ({ open, onClose, onSaved, clientes = [], tipoDeCamb
                 required
               />
             </Grid>
+
+            {/* Fila 3: Moneda - Cuenta Corriente */}
             <Grid item xs={12} sm={6}>
               <FormControl fullWidth margin="normal">
                 <InputLabel>Moneda *</InputLabel>
@@ -193,18 +228,6 @@ const AgregarEntregaModal = ({ open, onClose, onSaved, clientes = [], tipoDeCamb
                   <MenuItem value="USD">USD</MenuItem>
                 </Select>
               </FormControl>
-            </Grid>
-
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Subtotal (sin descuento)"
-                type="number"
-                value={subtotalEntrega}
-                margin="normal"
-                disabled
-                helperText="Calculado automáticamente"
-              />
             </Grid>
             <Grid item xs={12} sm={6}>
               <FormControl fullWidth margin="normal">
@@ -223,6 +246,38 @@ const AgregarEntregaModal = ({ open, onClose, onSaved, clientes = [], tipoDeCamb
               </FormControl>
             </Grid>
 
+            {/* Fila 4: Cuenta Corriente - Subtotal */}
+            <Grid item xs={12} sm={6}>
+              <FormControl fullWidth margin="normal">
+                <InputLabel>Cuenta Corriente *</InputLabel>
+                <Select
+                  value={formData.CC}
+                  label="Cuenta Corriente *"
+                  onChange={(e) => handleInputChange("CC", e.target.value)}
+                >
+                  {getCCOptions().map((option) => (
+                    <MenuItem key={option} value={option}>
+                      {option}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+
+            {/* Fila 4: Subtotal - Total con Descuento */}
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Subtotal (sin descuento)"
+                type="number"
+                value={subtotalEntrega}
+                margin="normal"
+                disabled
+                helperText="Calculado automáticamente"
+              />
+            </Grid>
+
+            {/* Fila 5: Total con Descuento - Descuento */}
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
@@ -234,7 +289,6 @@ const AgregarEntregaModal = ({ open, onClose, onSaved, clientes = [], tipoDeCamb
                 helperText="Con el descuento aplicado"
               />
             </Grid>
-
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
@@ -246,6 +300,8 @@ const AgregarEntregaModal = ({ open, onClose, onSaved, clientes = [], tipoDeCamb
                 inputProps={{ min: 0, max: 100 }}
               />
             </Grid>
+
+            {/* Fila 6: Usuario - Tipo de Cambio */}
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
@@ -255,7 +311,6 @@ const AgregarEntregaModal = ({ open, onClose, onSaved, clientes = [], tipoDeCamb
                 disabled
               />
             </Grid>
-
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth

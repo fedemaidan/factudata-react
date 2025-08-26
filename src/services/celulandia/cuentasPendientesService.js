@@ -9,6 +9,7 @@ const cuentasPendientesService = {
     sortDirection,
     fechaInicio,
     fechaFin,
+    includeInactive = false,
   } = {}) => {
     const response = await axiosCelulandia.get("/cuentas-pendientes", {
       params: {
@@ -19,6 +20,7 @@ const cuentasPendientesService = {
         sortDirection,
         fechaInicio,
         fechaFin,
+        includeInactive,
       },
     });
     return response.data;
@@ -49,6 +51,13 @@ const cuentasPendientesService = {
 
   remove: async (id) => {
     const response = await axiosCelulandia.delete(`/cuentas-pendientes/${id}`);
+    return response.data;
+  },
+
+  deleteCuentaPendiente: async (id, usuario) => {
+    const response = await axiosCelulandia.put(`/cuentas-pendientes/${id}/delete`, {
+      usuario,
+    });
     return response.data;
   },
 

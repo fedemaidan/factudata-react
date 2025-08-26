@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { Layout as DashboardLayout } from "src/layouts/dashboard/layout";
 import Head from "next/head";
 import {
@@ -49,7 +49,7 @@ const ArqueoCajaPage = () => {
 
   console.log("diario", diario);
 
-  const fetchData = async (fecha = null) => {
+  const fetchData = useCallback(async (fecha = null) => {
     setIsLoading(true);
     try {
       const params = {
@@ -94,7 +94,16 @@ const ArqueoCajaPage = () => {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
+
+  // Función para refetch del arqueo
+  const refetchArqueo = useCallback(async () => {
+    try {
+      await fetchData(selectedDate);
+    } catch (error) {
+      console.error("Error al actualizar arqueo:", error);
+    }
+  }, [fetchData, selectedDate]);
 
   // Handler para cambio de fecha
   const handleDateChange = (newDate) => {
@@ -106,7 +115,7 @@ const ArqueoCajaPage = () => {
 
   useEffect(() => {
     fetchData(selectedDate);
-  }, []);
+  }, [fetchData, selectedDate]);
 
   const sortedDiario = useMemo(() => {
     const sorted = [...diario];
@@ -166,6 +175,8 @@ const ArqueoCajaPage = () => {
                 showDatePicker={true}
                 selectedDate={selectedDate}
                 onDateChange={handleDateChange}
+                showRefreshButton={true}
+                onRefresh={refetchArqueo}
               />
             )}
 

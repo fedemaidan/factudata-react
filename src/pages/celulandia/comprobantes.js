@@ -11,6 +11,7 @@ import ComprobanteModal from "src/components/celulandia/ComprobanteModal";
 import EditarModal from "src/components/celulandia/EditarModal";
 import HistorialModal from "src/components/celulandia/HistorialModal";
 import AgregarModal from "src/components/celulandia/AgregarModal";
+import ConfirmarEliminacionModal from "src/components/celulandia/ConfirmarEliminacionModal";
 import { parseMovimiento } from "src/utils/celulandia/movimientos/parseMovimientos";
 import clientesService from "src/services/celulandia/clientesService";
 import dolarService from "src/services/celulandia/dolarService";
@@ -24,7 +25,9 @@ const ComprobantesCelulandiaPage = () => {
   const [editarModalOpen, setEditarModalOpen] = useState(false);
   const [historialModalOpen, setHistorialModalOpen] = useState(false);
   const [agregarModalOpen, setAgregarModalOpen] = useState(false);
+  const [confirmarEliminacionOpen, setConfirmarEliminacionOpen] = useState(false);
   const [selectedData, setSelectedData] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [paginaActual, setPaginaActual] = useState(1);
   const [totalMovimientos, setTotalMovimientos] = useState(0);
   const [limitePorPagina] = useState(20);
@@ -56,6 +59,8 @@ const ComprobantesCelulandiaPage = () => {
         numeroFactura: "Número de Factura",
         fechaFactura: "Fecha de Factura",
         nombreUsuario: "Usuario",
+        total: "Monto Total",
+        montoEnviado: "Monto Enviado",
       },
       formatters: {
         tipoDeCambio: (valor) => `$${valor}`,
@@ -71,23 +76,31 @@ const ComprobantesCelulandiaPage = () => {
           return "N/A";
         },
         caja: (valor) => {
-          // Si es un objeto, usar el nombre
           if (typeof valor === "object" && valor?.nombre) {
             return valor.nombre;
           }
-          // Si es un string (ID), buscar en la lista de cajas
           if (typeof valor === "string" && cajas.length > 0) {
             const caja = cajas.find((c) => c._id === valor);
             return caja ? caja.nombre : `ID: ${valor}`;
           }
           return valor || "N/A";
         },
+        total: (valor) => {
+          if (typeof valor === "object" && valor.ars !== undefined) {
+            return `ARS: $${valor.ars?.toFixed(2) || 0} | USD Blue: $${
+              valor.usdBlue?.toFixed(2) || 0
+            } | USD Oficial: $${valor.usdOficial?.toFixed(2) || 0}`;
+          }
+          return valor || "N/A";
+        },
+        montoEnviado: (valor) => {
+          return `$${parseFloat(valor || 0).toFixed(2)}`;
+        },
       },
     }),
     [cajas]
-  ); // Re-crear cuando cambien las cajas
+  );
 
-  // Función para calcular las fechas según el filtro seleccionado
   const calcularFechasFiltro = (filtro) => {
     const hoy = new Date();
     const inicioHoy = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate());
@@ -148,6 +161,7 @@ const ComprobantesCelulandiaPage = () => {
             sortDirection,
             fechaInicio,
             fechaFin,
+            includeInactive: true,
           }),
           clientesService.getAllClientes(),
           dolarService.getTipoDeCambio(),
@@ -211,26 +225,30 @@ const ComprobantesCelulandiaPage = () => {
             setImagenModal(urlImagen);
             setModalOpen(true);
           }}
+          onDelete={handleDelete}
         />
       ),
     },
   ];
 
   const formatters = {
-    fechaFactura: (value) => formatearCampo("fecha", value),
-    horaFactura: (value) => formatearCampo("hora", value),
-    cuentaDestino: (value) => formatearCampo("cuentaDestino", value),
-    moneda: (value) => formatearCampo("monedaDePago", value),
-    montoEnviado: (value) => formatearCampo("montoEnviado", value),
-    cuentaCorriente: (value) => formatearCampo("CC", value),
-    montoCC: (value) => formatearCampo("montoCC", value),
-    tipoDeCambio: (value) => formatearCampo("tipoDeCambio", value),
-    estado: (value) => formatearCampo("estado", value),
-    cliente: (value) => {
+    fechaFactura: (value, item) => formatearCampo("fecha", value, item),
+    horaFactura: (value, item) => formatearCampo("hora", value, item),
+    cuentaDestino: (value, item) => formatearCampo("cuentaDestino", value, item),
+    moneda: (value, item) => formatearCampo("monedaDePago", value, item),
+    montoEnviado: (value, item) => formatearCampo("montoEnviado", value, item),
+    cuentaCorriente: (value, item) => formatearCampo("CC", value, item),
+    montoCC: (value, item) => formatearCampo("montoCC", value, item),
+    tipoDeCambio: (value, item) => formatearCampo("tipoDeCambio", value, item),
+    estado: (value, item) => formatearCampo("estado", value, item),
+    cliente: (value, item) => {
+      let clienteValue;
       if (value && typeof value === "object" && value.nombre) {
-        return value.nombre;
+        clienteValue = value.nombre;
+      } else {
+        clienteValue = value || "-";
       }
-      return value || "-";
+      return formatearCampo("default", clienteValue, item);
     },
   };
 
@@ -288,11 +306,37 @@ const ComprobantesCelulandiaPage = () => {
     }
   };
 
+  const handleDelete = async (item) => {
+    setSelectedData(item);
+    setConfirmarEliminacionOpen(true);
+  };
+
+  const confirmarEliminacion = async () => {
+    if (!selectedData) return;
+
+    setIsDeleting(true);
+    try {
+      await movimientosService.deleteMovimiento(selectedData._id, "Usuario Sistema");
+
+      // Actualizar el estado local para mostrar el cambio visual inmediato
+      setMovimientos((prevMovimientos) =>
+        prevMovimientos.map((mov) =>
+          mov._id === selectedData._id ? { ...mov, active: false } : mov
+        )
+      );
+
+      setConfirmarEliminacionOpen(false);
+      setSelectedData(null);
+    } catch (error) {
+      console.error("Error al eliminar comprobante:", error);
+      alert("Error al eliminar comprobante");
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   return (
     <>
-      <Head>
-        <title>Movimientos</title>
-      </Head>
       <Container maxWidth="xl">
         <DataTable
           title="Comprobantes"
@@ -317,6 +361,8 @@ const ComprobantesCelulandiaPage = () => {
             setFiltroFecha(nuevoFiltro);
             setPaginaActual(1); // Resetear a la primera página
           }}
+          showRefreshButton={true}
+          onRefresh={refetchMovimientos}
         />
       </Container>
 
@@ -344,6 +390,20 @@ const ComprobantesCelulandiaPage = () => {
         clientes={clientes}
         tipoDeCambio={tipoDeCambio}
         cajas={cajas}
+      />
+      <ConfirmarEliminacionModal
+        open={confirmarEliminacionOpen}
+        onClose={() => {
+          setConfirmarEliminacionOpen(false);
+          setSelectedData(null);
+        }}
+        onConfirm={confirmarEliminacion}
+        loading={isDeleting}
+        title="Eliminar Comprobante"
+        message="¿Estás seguro que deseas eliminar este comprobante?"
+        itemName={
+          selectedData ? `Comprobante ${selectedData.numeroFactura || selectedData._id}` : ""
+        }
       />
     </>
   );

@@ -25,12 +25,14 @@ const EditarEntregaModal = ({ open, onClose, data, onSaved, clientes = [], tipoD
   const [descuentoPorcentaje, setDescuentoPorcentaje] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [initialData, setInitialData] = useState(null);
+  const [fechaEntrega, setFechaEntrega] = useState("");
 
   // Resetear loading cuando se abre el modal
   useEffect(() => {
     if (open) {
       setIsLoading(true);
       setInitialData(null);
+      setFechaEntrega("");
     }
   }, [open]);
 
@@ -57,6 +59,13 @@ const EditarEntregaModal = ({ open, onClose, data, onSaved, clientes = [], tipoD
           ? ((1 - data.descuentoAplicado) * 100).toString()
           : "0"
       );
+
+      // Establecer fecha de entrega si existe
+      if (data.fecha) {
+        const fecha = new Date(data.fecha);
+        setFechaEntrega(fecha.toISOString().split("T")[0]);
+      }
+
       setInitialData(processedData);
       setIsLoading(false);
     }
@@ -103,6 +112,38 @@ const EditarEntregaModal = ({ open, onClose, data, onSaved, clientes = [], tipoD
         moneda: formData.monedaDePago,
         cc: formData.CC,
       };
+
+      // Agregar fecha de entrega si se modificó
+      if (fechaEntrega) {
+        let fechaEntregaDate = new Date();
+        if (data.fecha && new Date(data.fecha).toISOString().split("T")[0] !== fechaEntrega) {
+          // Crear fecha completa con hora por defecto (12:00)
+          const [year, month, day] = fechaEntrega.split("-");
+          fechaEntregaDate = new Date(
+            parseInt(year),
+            parseInt(month) - 1, // Los meses en JS van de 0 a 11
+            parseInt(day),
+            12, // hora por defecto: 12:00
+            0, // minuto por defecto: 00
+            0, // segundos
+            0 // milisegundos
+          );
+          datosParaGuardar.fechaCuenta = fechaEntregaDate;
+        } else if (!data.fecha && fechaEntrega) {
+          // Crear fecha completa con hora por defecto (12:00)
+          const [year, month, day] = fechaEntrega.split("-");
+          fechaEntregaDate = new Date(
+            parseInt(year),
+            parseInt(month) - 1, // Los meses en JS van de 0 a 11
+            parseInt(day),
+            12, // hora por defecto: 12:00
+            0, // minuto por defecto: 00
+            0, // segundos
+            0 // milisegundos
+          );
+          datosParaGuardar.fechaCuenta = fechaEntregaDate;
+        }
+      }
 
       if (didChangeDescuento) {
         datosParaGuardar.descuentoAplicado = factorDescuento;
@@ -161,6 +202,17 @@ const EditarEntregaModal = ({ open, onClose, data, onSaved, clientes = [], tipoD
       Object.keys(datosParaGuardar).forEach((key) => {
         if (key === "subTotal" || key === "montoTotal") {
           if (JSON.stringify(datosParaGuardar[key]) !== JSON.stringify(data[key])) {
+            camposModificados[key] = datosParaGuardar[key];
+          }
+        } else if (key === "fechaCuenta") {
+          // Comparar fechas para fechaCuenta
+          const fechaOriginal = data.fecha
+            ? new Date(data.fecha).toISOString().split("T")[0]
+            : null;
+          const fechaNueva = datosParaGuardar[key]
+            ? new Date(datosParaGuardar[key]).toISOString().split("T")[0]
+            : null;
+          if (fechaOriginal !== fechaNueva) {
             camposModificados[key] = datosParaGuardar[key];
           }
         } else {
@@ -259,6 +311,33 @@ const EditarEntregaModal = ({ open, onClose, data, onSaved, clientes = [], tipoD
               />
             </Grid>
 
+            {/* Fila 2: Fecha de Entrega - Monto */}
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Fecha de Entrega"
+                type="date"
+                value={fechaEntrega}
+                onChange={(e) => setFechaEntrega(e.target.value)}
+                margin="normal"
+                InputLabelProps={{
+                  shrink: true,
+                }}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Monto *"
+                type="number"
+                value={formData.montoEnviado}
+                onChange={(e) => handleMontoEnviado(e.target.value)}
+                margin="normal"
+                required
+              />
+            </Grid>
+
+            {/* Fila 3: Monto - Moneda */}
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
@@ -284,18 +363,7 @@ const EditarEntregaModal = ({ open, onClose, data, onSaved, clientes = [], tipoD
               </FormControl>
             </Grid>
 
-            {/* Fila 3: Monto CC - Cuenta Corriente */}
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Subtotal (sin descuento)"
-                type="number"
-                value={subtotalEntrega}
-                margin="normal"
-                disabled
-                helperText="Calculado automáticamente"
-              />
-            </Grid>
+            {/* Fila 4: Cuenta Corriente - Subtotal */}
             <Grid item xs={12} sm={6}>
               <FormControl fullWidth margin="normal">
                 <InputLabel>Cuenta Corriente *</InputLabel>
@@ -312,7 +380,19 @@ const EditarEntregaModal = ({ open, onClose, data, onSaved, clientes = [], tipoD
                 </Select>
               </FormControl>
             </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Subtotal (sin descuento)"
+                type="number"
+                value={subtotalEntrega}
+                margin="normal"
+                disabled
+                helperText="Calculado automáticamente"
+              />
+            </Grid>
 
+            {/* Fila 5: Total con Descuento - Descuento */}
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
@@ -324,7 +404,6 @@ const EditarEntregaModal = ({ open, onClose, data, onSaved, clientes = [], tipoD
                 helperText="Subtotal con descuento aplicado"
               />
             </Grid>
-
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
@@ -336,6 +415,8 @@ const EditarEntregaModal = ({ open, onClose, data, onSaved, clientes = [], tipoD
                 inputProps={{ min: 0, max: 100 }}
               />
             </Grid>
+
+            {/* Fila 6: Usuario - Tipo de Cambio */}
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
@@ -345,7 +426,6 @@ const EditarEntregaModal = ({ open, onClose, data, onSaved, clientes = [], tipoD
                 disabled
               />
             </Grid>
-
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth

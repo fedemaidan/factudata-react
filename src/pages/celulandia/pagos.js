@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { Layout as DashboardLayout } from "src/layouts/dashboard/layout";
 import Head from "next/head";
 import { Container } from "@mui/material";
@@ -13,6 +13,7 @@ import HistorialModal from "src/components/celulandia/HistorialModal";
 import { parseMovimiento } from "src/utils/celulandia/movimientos/parseMovimientos";
 import EditarPagoModal from "src/components/celulandia/EditarPagoModal";
 import AgregarPagoModal from "src/components/celulandia/AgregarPagoModal";
+import ConfirmarEliminacionModal from "src/components/celulandia/ConfirmarEliminacionModal";
 
 const PagosCelulandiaPage = () => {
   const [pagos, setPagos] = useState([]);
@@ -20,7 +21,9 @@ const PagosCelulandiaPage = () => {
   const [editarModalOpen, setEditarModalOpen] = useState(false);
   const [historialModalOpen, setHistorialModalOpen] = useState(false);
   const [agregarModalOpen, setAgregarModalOpen] = useState(false);
+  const [confirmarEliminacionOpen, setConfirmarEliminacionOpen] = useState(false);
   const [selectedData, setSelectedData] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   // Estados para paginación y ordenación del servidor
   const [paginaActual, setPaginaActual] = useState(1);
   const [totalPagos, setTotalPagos] = useState(0);
@@ -31,29 +34,60 @@ const PagosCelulandiaPage = () => {
 
   const [cajas, setCajas] = useState([]);
 
-  const movimientoHistorialConfig = {
-    title: "Historial del Pago",
-    entityName: "pago",
-    fieldNames: {
-      tipoDeCambio: "Tipo de Cambio",
-      estado: "Estado",
-      caja: "Cuenta de Origen",
-      cliente: "Cliente",
-      cuentaCorriente: "Cuenta Corriente",
-      moneda: "Moneda",
-      numeroFactura: "Número de Factura",
-      fechaFactura: "Fecha de Factura",
-      nombreUsuario: "Usuario",
-      concepto: "Concepto",
-    },
-    formatters: {
-      tipoDeCambio: (valor) => `$${valor}`,
-      fechaFactura: (valor) => new Date(valor).toLocaleDateString("es-AR"),
-      fechaCreacion: (valor) => new Date(valor).toLocaleDateString("es-AR"),
-      cliente: (valor) => (typeof valor === "object" ? valor?.nombre || "N/A" : valor),
-      caja: (valor) => (typeof valor === "object" ? valor?.nombre || "N/A" : valor),
-    },
-  };
+  const movimientoHistorialConfig = useMemo(
+    () => ({
+      title: "Historial del Pago",
+      entityName: "pago",
+      fieldNames: {
+        tipoDeCambio: "Tipo de Cambio",
+        estado: "Estado",
+        caja: "Cuenta de Origen",
+        cliente: "Cliente",
+        cuentaCorriente: "Cuenta Corriente",
+        moneda: "Moneda",
+        numeroFactura: "Número de Factura",
+        fechaFactura: "Fecha de Factura",
+        nombreUsuario: "Usuario",
+        concepto: "Concepto",
+      },
+      formatters: {
+        tipoDeCambio: (valor) => `$${valor}`,
+        fechaFactura: (valor) => new Date(valor).toLocaleDateString("es-AR"),
+        fechaCreacion: (valor) => new Date(valor).toLocaleDateString("es-AR"),
+        cliente: (valor) => {
+          if (typeof valor === "object" && valor?.nombre) {
+            return valor.nombre;
+          }
+          if (typeof valor === "string") {
+            return valor;
+          }
+          return "N/A";
+        },
+        caja: (valor) => {
+          if (typeof valor === "object" && valor?.nombre) {
+            return valor.nombre;
+          }
+          if (typeof valor === "string" && cajas.length > 0) {
+            const caja = cajas.find((c) => c._id === valor);
+            return caja ? caja.nombre : `ID: ${valor}`;
+          }
+          return valor || "N/A";
+        },
+        total: (valor, item) => {
+          if (typeof valor === "object" && valor.ars !== undefined) {
+            if (item?.moneda === "USD") {
+              const usdValue = valor.usdBlue || valor.usdOficial || 0;
+              return `USD: $${Math.abs(usdValue).toFixed(2)}`;
+            } else {
+              return `ARS: $${Math.abs(valor.ars).toFixed(2)}`;
+            }
+          }
+          return valor || "N/A";
+        },
+      },
+    }),
+    [cajas]
+  );
 
   // Función para calcular las fechas según el filtro seleccionado
   const calcularFechasFiltro = (filtro) => {
@@ -115,6 +149,7 @@ const PagosCelulandiaPage = () => {
           sortDirection,
           fechaInicio,
           fechaFin,
+          includeInactive: true, // Incluir registros inactivos para mostrarlos tachados
         }),
         cajasService.getAllCajas(),
       ]);
@@ -153,17 +188,18 @@ const PagosCelulandiaPage = () => {
             setSelectedData(item);
             setHistorialModalOpen(true);
           }}
+          onDelete={handleDelete}
         />
       ),
     },
   ];
 
   const formatters = {
-    fechaFactura: (value) => formatearCampo("fecha", value),
-    horaFactura: (value) => formatearCampo("hora", value),
-    cuentaDestino: (value) => formatearCampo("cuentaDestino", value),
-    moneda: (value) => formatearCampo("monedaDePago", value),
-    montoEnviado: (value) => formatearCampo("montoEnviado", value),
+    fechaFactura: (value, item) => formatearCampo("fecha", value, item),
+    horaFactura: (value, item) => formatearCampo("hora", value, item),
+    cuentaDestino: (value, item) => formatearCampo("cuentaDestino", value, item),
+    moneda: (value, item) => formatearCampo("monedaDePago", value, item),
+    montoEnviado: (value, item) => formatearCampo("montoEnviado", value, item),
   };
 
   const searchFields = [
@@ -192,6 +228,33 @@ const PagosCelulandiaPage = () => {
       await fetchData(paginaActual);
     } catch (error) {
       console.error("Error al recargar pagos:", error);
+    }
+  };
+
+  const handleDelete = async (item) => {
+    setSelectedData(item);
+    setConfirmarEliminacionOpen(true);
+  };
+
+  const confirmarEliminacion = async () => {
+    if (!selectedData) return;
+
+    setIsDeleting(true);
+    try {
+      await movimientosService.deleteMovimiento(selectedData._id, "Usuario Sistema");
+
+      // Actualizar el estado local para mostrar el cambio visual inmediato
+      setPagos((prevPagos) =>
+        prevPagos.map((pago) => (pago._id === selectedData._id ? { ...pago, active: false } : pago))
+      );
+
+      setConfirmarEliminacionOpen(false);
+      setSelectedData(null);
+    } catch (error) {
+      console.error("Error al eliminar pago:", error);
+      alert("Error al eliminar pago");
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -224,6 +287,8 @@ const PagosCelulandiaPage = () => {
             setFiltroFecha(nuevoFiltro);
             setPaginaActual(1); // Resetear a la primera página
           }}
+          showRefreshButton={true}
+          onRefresh={refetchPagos}
         />
       </Container>
 
@@ -246,6 +311,18 @@ const PagosCelulandiaPage = () => {
         onClose={() => setAgregarModalOpen(false)}
         onSave={refetchPagos}
         cajas={cajas}
+      />
+      <ConfirmarEliminacionModal
+        open={confirmarEliminacionOpen}
+        onClose={() => {
+          setConfirmarEliminacionOpen(false);
+          setSelectedData(null);
+        }}
+        onConfirm={confirmarEliminacion}
+        loading={isDeleting}
+        title="Eliminar Pago"
+        message="¿Estás seguro que deseas eliminar este pago?"
+        itemName={selectedData ? `Pago ${selectedData.concepto || selectedData._id}` : ""}
       />
     </>
   );
