@@ -3,8 +3,9 @@ import { Stack, IconButton, Button } from "@mui/material";
 import EditIcon from "@mui/icons-material/Edit";
 import HistoryIcon from "@mui/icons-material/History";
 import ImageIcon from "@mui/icons-material/Image";
+import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 
-const TableActions = ({ item, onEdit, onViewHistory, onViewImage }) => {
+const TableActions = ({ item, onEdit, onViewHistory, onViewImage, onDelete }) => {
   return (
     <Stack direction="row" spacing={1}>
       {onEdit && (
@@ -43,6 +44,25 @@ const TableActions = ({ item, onEdit, onViewHistory, onViewImage }) => {
           }}
         >
           <HistoryIcon fontSize="small" />
+        </IconButton>
+      )}
+      {onDelete && (
+        <IconButton
+          size="small"
+          color="error"
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete(item);
+          }}
+          sx={{
+            backgroundColor: "error.main",
+            color: "white",
+            "&:hover": {
+              backgroundColor: "error.dark",
+            },
+          }}
+        >
+          <DeleteOutlineIcon fontSize="small" />
         </IconButton>
       )}
       {onViewImage && item.urlImagen && (

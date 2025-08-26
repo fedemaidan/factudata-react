@@ -69,8 +69,10 @@ const movimientosService = {
     return response.data;
   },
 
-  deleteMovimiento: async (id) => {
-    const response = await axiosCelulandia.delete(`/movimientos/${id}`);
+  deleteMovimiento: async (id, nombreUsuario) => {
+    const response = await axiosCelulandia.delete(`/movimientos/${id}`, {
+      data: { nombreUsuario },
+    });
     return response.data;
   },
 

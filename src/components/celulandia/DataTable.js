@@ -422,6 +422,11 @@ const DataTable = ({
                           <TableCell
                             key={`${getRowKey(item, index)}-${column.key}`}
                             padding={column.key === "seleccionar" ? "checkbox" : "normal"}
+                            sx={{
+                              textDecoration: item.active === false ? "line-through" : "none",
+                              opacity: item.active === false ? 0.6 : 1,
+                              color: item.active === false ? "text.disabled" : "text.primary",
+                            }}
                           >
                             {renderCellContent(item, column)}
                           </TableCell>

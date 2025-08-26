@@ -91,13 +91,16 @@ export const useMovimientoForm = (initialData = null, externalData = null) => {
     }
 
     if (monedaDePago === "ARS" && CC === "USD OFICIAL") {
-      return tipoDeCambio.oficial || 1;
+      const tc = tipoDeCambio.oficial || 1;
+      return tc;
     }
     if (monedaDePago === "ARS" && CC === "USD BLUE") {
-      return tipoDeCambio.blue || 1;
+      const tc = tipoDeCambio.blue || 1;
+      return tc;
     }
     if (monedaDePago === "USD" && CC === "ARS") {
-      return tipoDeCambio.blue || 1;
+      const tc = tipoDeCambio.blue || 1;
+      return tc;
     }
 
     return 1;
@@ -115,11 +118,13 @@ export const useMovimientoForm = (initialData = null, externalData = null) => {
     }
 
     if (monedaDePago === "ARS" && (CC === "USD OFICIAL" || CC === "USD BLUE")) {
-      return montoEnviado / tc;
+      const resultado = montoEnviado / tc;
+      return resultado;
     }
 
     if (monedaDePago === "USD" && CC === "ARS") {
-      return montoEnviado * tc;
+      const resultado = montoEnviado * tc;
+      return resultado;
     }
 
     return montoEnviado;
@@ -127,30 +132,52 @@ export const useMovimientoForm = (initialData = null, externalData = null) => {
 
   const handleTipoDeCambioChange = (value) => {
     if (value > 0) {
-      setTipoDeCambioManual(parseFloat(value));
+      const tipoDeCambioManual = parseFloat(value);
+      setTipoDeCambioManual(tipoDeCambioManual);
     }
 
     if (formData.montoEnviado) {
-      const newMontoCC = calcularMontoCC(
-        parseFloat(formData.montoEnviado) || 0,
-        formData.monedaDePago,
-        formData.CC
-      );
+      const tipoDeCambioActual =
+        value > 0 ? parseFloat(value) : getTipoDeCambio(formData.monedaDePago, formData.CC);
+
+      let newMontoCC;
+      if (
+        (formData.monedaDePago === "ARS" && formData.CC === "ARS") ||
+        (formData.monedaDePago === "USD" && formData.CC === "USD BLUE") ||
+        (formData.monedaDePago === "USD" && formData.CC === "USD OFICIAL")
+      ) {
+        newMontoCC = parseFloat(formData.montoEnviado) || 0;
+      } else if (
+        formData.monedaDePago === "ARS" &&
+        (formData.CC === "USD OFICIAL" || formData.CC === "USD BLUE")
+      ) {
+        newMontoCC = (parseFloat(formData.montoEnviado) || 0) / tipoDeCambioActual;
+      } else if (formData.monedaDePago === "USD" && formData.CC === "ARS") {
+        newMontoCC = (parseFloat(formData.montoEnviado) || 0) * tipoDeCambioActual;
+      } else {
+        newMontoCC = parseFloat(formData.montoEnviado) || 0;
+      }
+
+      const newMontoCCRedondeado = Math.round(newMontoCC);
+
       setFormData((prev) => ({
         ...prev,
-        montoCC: Math.round(newMontoCC),
+        montoCC: newMontoCCRedondeado,
       }));
     }
   };
 
   const handleMontoEnviado = (value) => {
     const monto = parseFloat(value) || 0;
+
     const montoCC = calcularMontoCC(monto, formData.monedaDePago, formData.CC);
+
+    const montoCCRedondeado = Math.round(montoCC);
 
     setFormData((prev) => ({
       ...prev,
       montoEnviado: value,
-      montoCC: Math.round(montoCC),
+      montoCC: montoCCRedondeado,
     }));
   };
 
