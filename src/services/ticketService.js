@@ -1,4 +1,4 @@
-import { collection, doc, addDoc, getDoc, updateDoc,limit,  query, where, getDocs, orderBy, serverTimestamp, Timestamp, getDocsFromServer} from 'firebase/firestore';
+import { collection, doc, addDoc, getDoc, updateDoc, limit,  query, where, getDocs, orderBy, serverTimestamp, Timestamp, getDocsFromServer, or, and} from 'firebase/firestore';
 import { db, storage } from 'src/config/firebase';
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { uploadFile, deleteFacturaByFilename } from './facturasService'; // Importa el servicio de facturas para subir los archivos
@@ -286,13 +286,20 @@ const ticketService = {
       let queryRef = collection(db, 'movimientos');
   
       // Armamos la query para los movimientos de caja chica
-      let movsQuery = query(
+      const movsQuery = query(
         queryRef,
-        where('caja_chica', '==', true),
-        where('id_user', '==', user.id),
-        where('moneda', '==', moneda),
-        orderBy('codigo_operacion', 'desc')
+        and(
+          where("caja_chica", "==", true),
+          where("moneda", "==", moneda),
+          or(
+            where("id_user", "==", user.id),
+            where("user_phone", "==", user.phone)
+          )
+        ),
+        orderBy("codigo_operacion", "desc")
       );
+      
+      
   
       const movsSnapshot = await getDocs(movsQuery);
       const movimientos = [];

@@ -1,8 +1,11 @@
 import React from 'react';
 import { Box, LinearProgress, Table, TableBody, TableCell, TableHead, TableRow, TextField, Typography } from '@mui/material';
 import { numberFmt } from 'src/utils/planobra';
+import { IconButton } from '@mui/material';
+import EditIcon from '@mui/icons-material/Edit';
+import DeleteIcon from '@mui/icons-material/Delete';
 
-const MaterialesTable = ({ materiales, onEditRow }) => {
+const MaterialesTable = ({ materiales, onEditRow, onRequestEdit, onRequestDelete }) => {
   return (
     <>
       <Typography variant="subtitle2" sx={{ mt: 2 }}>📦 Materiales</Typography>
@@ -15,6 +18,7 @@ const MaterialesTable = ({ materiales, onEditRow }) => {
             <TableCell>Usado (cant × $)</TableCell>
             <TableCell>% Avance</TableCell>
             <TableCell>SKU / Aliases</TableCell>
+            <TableCell align="right">Acciones</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
@@ -44,6 +48,10 @@ const MaterialesTable = ({ materiales, onEditRow }) => {
                 </TableCell>
                 <TableCell>
                   {m.sku || '-'} {m.aliases?.length ? `• ${m.aliases.join(', ')}` : ''}
+                </TableCell>
+                <TableCell align="right">
+                  <IconButton size="small" onClick={() => onRequestEdit?.(i)}><EditIcon fontSize="small" /></IconButton>
+                  <IconButton size="small" color="error" onClick={() => onRequestDelete?.(i)}><DeleteIcon fontSize="small" /></IconButton>
                 </TableCell>
               </TableRow>
             );

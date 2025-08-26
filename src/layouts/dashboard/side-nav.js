@@ -79,9 +79,9 @@ export const SideNav = (props) => {
     const fetchProyectosData = async () => {
       const emp = await getEmpresaDetailsFromUser(user);
       setEmpresa(emp || null);
-
+      
       // Casos especiales (tu lógica original)
-      if (user?.celulandia) {
+      if (emp?.nombre == "Celulandia") {
         const onboardingPage = [
           {
             title: "Comprobantes",
@@ -225,6 +225,18 @@ export const SideNav = (props) => {
         });
       }
 
+      if (permisosUsuario.includes('ADMIN_USUARIOS')) {
+        baseItems.push({
+          title: "Administrar" + emp.nombre,
+          path: "configuracionBasica/?empresaId=" + emp.id,
+          icon: (
+            <SvgIcon fontSize="small">
+              <SettingsIcon />
+            </SvgIcon>
+          ),
+        });
+      }
+
       if (permisosUsuario.includes("VER_CUENTAS_PENDIENTES")) {
         baseItems.push({
           title: "Cuentas pendientes (solo admin)",
@@ -296,6 +308,17 @@ export const SideNav = (props) => {
       }
 
       if (permisosUsuario.includes("VER_CAJAS")) {
+        if (permisosUsuario.includes('VER_MI_CAJA_CHICA')) {
+          baseItems.push({
+            title: 'Ver cajas chicas',
+            path: '/perfilesEmpresa',
+            icon: (
+              <SvgIcon fontSize="small">
+                <AttachMoneyIcon />
+              </SvgIcon>
+            )
+          })
+        }
         const vista7 = {
           title: "Vista 7 días",
           path: "/resumenMovimientos?empresaId=" + emp.id,
@@ -323,6 +346,7 @@ export const SideNav = (props) => {
             </SvgIcon>
           ),
         };
+        
         baseItems = [vista7, todos, revision, ...baseItems];
 
         // proyectos activos
