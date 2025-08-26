@@ -116,6 +116,7 @@ const [filtroEtapa, setFiltroEtapa] = useState([]);
   const camposBase = {
     codigo_operacion: 'Código',
     proyecto: 'Proyecto',
+    nombre_proveedor: 'Proveedor',
     fecha_factura: 'Fecha',
     total: 'Monto',
     moneda: 'Moneda',
@@ -370,9 +371,6 @@ const handleImportCsv = async () => {
     const blob = new Blob([buffer], { type: 'application/octet-stream' });
     saveAs(blob, `${fileTitle}.xlsx`);
   };
-  
-  
-  
   
   const exportToCSV = () => {
     const camposExportables = {
