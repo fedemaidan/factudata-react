@@ -48,10 +48,15 @@ const handlers = {
     };
     window.localStorage.setItem('MY_APP_STATE', JSON.stringify(newState));
     window.localStorage.setItem('authToken', user.token);
+    
     if (!user.empresa) {
       if (user.email == "comunelliluciana@gmail.com") {
         const router = useRouter();
         router.push("/materiales")
+      }
+      if (user.celulandia) {
+        const router = useRouter();
+        router.push("/celulandia/comprobantes")
       }
     } 
     return newState;
