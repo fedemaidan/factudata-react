@@ -114,8 +114,6 @@ const ClienteCelulandiaCCPage = () => {
       if (clienteResponse.success) {
         setCliente(clienteResponse.data);
       }
-      console.log("movimientosData", movimientosData.data);
-      console.log("cuentasPendientesResponse", cuentasPendientesResponse.data);
       const movimientosParseados = movimientosData.data
         .filter((m) => m.type === "INGRESO")
         .map(parseMovimiento);
@@ -300,6 +298,8 @@ const ClienteCelulandiaCCPage = () => {
                   { label: "USD OFICIAL", value: "USD OFICIAL" },
                 ]}
                 defaultOption={"ARS"}
+                showRefreshButton={true}
+                onRefresh={fetchData}
               />
             )}
           </Stack>

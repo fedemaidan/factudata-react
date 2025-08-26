@@ -19,10 +19,12 @@ import {
   InputLabel,
   Button,
   TableContainer,
+  Tooltip,
 } from "@mui/material";
 import Divider from "@mui/material/Divider";
 import ClearIcon from "@mui/icons-material/Clear";
 import AddIcon from "@mui/icons-material/Add";
+import RefreshIcon from "@mui/icons-material/Refresh";
 import Pagination from "@mui/material/Pagination";
 import TableSortLabel from "@mui/material/TableSortLabel";
 import { alpha } from "@mui/material/styles";
@@ -61,10 +63,15 @@ const DataTable = ({
   serverSide = false,
   filtroFecha: externalFiltroFecha,
   onFiltroFechaChange,
+  selectFilter = null,
+  onRefresh = null, // Nuevo parámetro para función de actualización
+  showRefreshButton = false, // Nuevo parámetro para mostrar/ocultar botón
 }) => {
   const [busqueda, setBusqueda] = useState("");
   const [filtroFecha, setFiltroFecha] = useState("todos");
   const [selectedDate, setSelectedDate] = useState(null);
+  const [selectFilterValue, setSelectFilterValue] = useState(selectFilter?.defaultValue || "todos");
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Usar filtro externo si está en modo serverSide
   const currentFiltroFecha =
@@ -83,6 +90,20 @@ const DataTable = ({
       return ordenDireccion === "asc" ? " ▲" : " ▼";
     }
     return "";
+  };
+
+  // Función para manejar la actualización
+  const handleRefresh = async () => {
+    if (!onRefresh) return;
+
+    setIsRefreshing(true);
+    try {
+      await onRefresh();
+    } catch (error) {
+      console.error("Error al actualizar datos:", error);
+    } finally {
+      setIsRefreshing(false);
+    }
   };
 
   const dataFiltrados = useMemo(() => {
@@ -156,6 +177,18 @@ const DataTable = ({
       });
     }
 
+    // Filtro por select
+    if (selectFilter && selectFilterValue !== "todos") {
+      filtered = filtered.filter((item) => {
+        const value = item[selectFilter.field];
+        if (selectFilterValue === "ambas") {
+          // Si se selecciona "ambas", mostrar todos los que tengan caja
+          return value && (value.nombre === "CHEQUE" || value.nombre === "ECHEQ");
+        }
+        return value && value.nombre === selectFilterValue;
+      });
+    }
+
     // Aplicar filtros adicionales
     Object.keys(filters).forEach((key) => {
       if (filters[key] && filters[key] !== "todos") {
@@ -164,7 +197,7 @@ const DataTable = ({
     });
 
     return filtered;
-  }, [data, busqueda, filtroFecha, filters, searchFields]);
+  }, [data, busqueda, filtroFecha, filters, searchFields, selectFilter, selectFilterValue]);
 
   const dataOrdenados = useMemo(() => {
     if (serverSide) {
@@ -250,6 +283,17 @@ const DataTable = ({
     }
   };
 
+  // Función para manejar cambio en el filtro por select
+  const handleSelectFilterChange = (event) => {
+    const newValue = event.target.value;
+    setSelectFilterValue(newValue);
+
+    // Si es serverSide y hay callback, llamarlo
+    if (serverSide && selectFilter?.onChange) {
+      selectFilter.onChange(newValue);
+    }
+  };
+
   return (
     <Box
       component="main"
@@ -290,6 +334,26 @@ const DataTable = ({
             />
           )}
 
+          {/* Filtro por select */}
+          {selectFilter && (
+            <FormControl sx={{ minWidth: 200 }} variant="filled">
+              <InputLabel id="select-filter-label">{selectFilter.label}</InputLabel>
+              <Select
+                labelId="select-filter-label"
+                id="select-filter-select"
+                value={selectFilterValue}
+                label={selectFilter.label}
+                onChange={handleSelectFilterChange}
+              >
+                {selectFilter.options.map((option) => (
+                  <MenuItem key={option.value} value={option.value}>
+                    {option.label}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          )}
+
           {showDateFilterOptions && !showDatePicker && dateFilterOptions.length > 0 && (
             <FormControl sx={{ minWidth: 200 }} variant="filled">
               <InputLabel id="filtro-fecha-label">Filtrar por fecha</InputLabel>
@@ -324,6 +388,34 @@ const DataTable = ({
                 format="DD/MM/YYYY"
               />
             </LocalizationProvider>
+          )}
+
+          {showRefreshButton && onRefresh && (
+            <Tooltip title="Actualizar datos">
+              <IconButton
+                onClick={handleRefresh}
+                disabled={isRefreshing}
+                sx={{
+                  borderRadius: 2,
+                  px: 1,
+                  py: 1,
+                  boxShadow: 1,
+                  "&:hover": {
+                    boxShadow: 2,
+                  },
+                }}
+              >
+                <RefreshIcon
+                  sx={{
+                    animation: isRefreshing ? "spin 1s linear infinite" : "none",
+                    "@keyframes spin": {
+                      "0%": { transform: "rotate(0deg)" },
+                      "100%": { transform: "rotate(360deg)" },
+                    },
+                  }}
+                />
+              </IconButton>
+            </Tooltip>
           )}
 
           {onAdd && (

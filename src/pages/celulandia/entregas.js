@@ -301,6 +301,8 @@ const EntregasCelulandiaPage = () => {
             setPaginaActual(1); // Resetear a la primera página
           }}
           onAdd={() => setAgregarModalOpen(true)}
+          showRefreshButton={true}
+          onRefresh={refetch}
         />
       </Container>
 

@@ -256,6 +256,8 @@ const PagosCelulandiaPage = () => {
             setFiltroFecha(nuevoFiltro);
             setPaginaActual(1); // Resetear a la primera página
           }}
+          showRefreshButton={true}
+          onRefresh={refetchPagos}
         />
       </Container>
 

@@ -339,6 +339,7 @@ const ComprobantesCelulandiaPage = () => {
     <>
       <Container maxWidth="xl">
         <DataTable
+          title="Comprobantes"
           data={movimientos}
           isLoading={isLoading}
           columns={columns}
@@ -360,6 +361,8 @@ const ComprobantesCelulandiaPage = () => {
             setFiltroFecha(nuevoFiltro);
             setPaginaActual(1); // Resetear a la primera página
           }}
+          showRefreshButton={true}
+          onRefresh={refetchMovimientos}
         />
       </Container>
 
