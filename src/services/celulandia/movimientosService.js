@@ -1,11 +1,6 @@
 import axiosCelulandia from "src/services/axiosCelulandia";
 
 const movimientosService = {
-  // getAllMovimientos: async (query = {}) => {
-  //   const response = await axiosCelulandia.get("/movimientos", { params: query });
-  //   return response.data;
-  // },
-
   getAllMovimientos: async ({
     type,
     populate,
@@ -17,6 +12,9 @@ const movimientosService = {
     clienteNombre,
     cajaNombre,
     estado,
+    fecha,
+    fechaInicio,
+    fechaFin,
   }) => {
     const response = await axiosCelulandia.get("/movimientos", {
       params: {
@@ -30,6 +28,9 @@ const movimientosService = {
         clienteNombre,
         cajaNombre,
         estado,
+        fecha,
+        fechaInicio,
+        fechaFin,
       },
     });
     return response.data;

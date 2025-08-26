@@ -28,6 +28,7 @@ const EntregasCelulandiaPage = () => {
   const [limitePorPagina] = useState(20);
   const [sortField, setSortField] = useState("fecha");
   const [sortDirection, setSortDirection] = useState("desc");
+  const [filtroFecha, setFiltroFecha] = useState("todos");
 
   // Configuración del historial para entregas
   const entregaHistorialConfig = {
@@ -66,20 +67,64 @@ const EntregasCelulandiaPage = () => {
     },
   };
 
+  // Función para calcular las fechas según el filtro seleccionado
+  const calcularFechasFiltro = (filtro) => {
+    const hoy = new Date();
+    const inicioHoy = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate());
+
+    switch (filtro) {
+      case "hoy":
+        return {
+          fechaInicio: inicioHoy.toISOString().split("T")[0],
+          fechaFin: inicioHoy.toISOString().split("T")[0],
+        };
+      case "estaSemana": {
+        const inicioSemana = new Date(inicioHoy);
+        inicioSemana.setDate(inicioHoy.getDate() - inicioHoy.getDay());
+        return {
+          fechaInicio: inicioSemana.toISOString().split("T")[0],
+          fechaFin: inicioHoy.toISOString().split("T")[0],
+        };
+      }
+      case "esteMes": {
+        const inicioMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+        return {
+          fechaInicio: inicioMes.toISOString().split("T")[0],
+          fechaFin: inicioHoy.toISOString().split("T")[0],
+        };
+      }
+      case "esteAño": {
+        const inicioAño = new Date(hoy.getFullYear(), 0, 1);
+        return {
+          fechaInicio: inicioAño.toISOString().split("T")[0],
+          fechaFin: inicioHoy.toISOString().split("T")[0],
+        };
+      }
+      default:
+        return { fechaInicio: null, fechaFin: null };
+    }
+  };
+
   useEffect(() => {
     fetchData(paginaActual);
-  }, [paginaActual, sortField, sortDirection]);
+  }, [paginaActual, sortField, sortDirection, filtroFecha]);
 
   const fetchData = async (pagina = 1) => {
     setIsLoading(true);
     try {
       const offset = (pagina - 1) * limitePorPagina;
+      const { fechaInicio, fechaFin } = calcularFechasFiltro(filtroFecha);
+
+      console.log(`Filtro aplicado en entregas: ${filtroFecha}`, { fechaInicio, fechaFin });
+
       const [cuentasResp, clientesResp, tcResp] = await Promise.all([
         cuentasPendientesService.getAll({
           limit: limitePorPagina,
           offset,
           sortField: sortField === "fecha" ? "fechaCuenta" : sortField,
           sortDirection,
+          fechaInicio,
+          fechaFin,
         }),
         clientesService.getAllClientes(),
         dolarService.getTipoDeCambio(),
@@ -210,6 +255,11 @@ const EntregasCelulandiaPage = () => {
           sortDirection={sortDirection}
           onSortChange={handleSortChange}
           serverSide={true}
+          filtroFecha={filtroFecha}
+          onFiltroFechaChange={(nuevoFiltro) => {
+            setFiltroFecha(nuevoFiltro);
+            setPaginaActual(1); // Resetear a la primera página
+          }}
           onAdd={() => setAgregarModalOpen(true)}
         />
       </Container>

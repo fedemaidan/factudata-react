@@ -21,7 +21,6 @@ import dayjs from "dayjs";
 import Divider from "@mui/material/Divider";
 
 import movimientosService from "src/services/celulandia/movimientosService";
-import cuentasPendientesService from "src/services/celulandia/cuentasPendientesService";
 import DataTabTable from "src/components/celulandia/DataTabTable";
 
 const ArqueoCajaPage = () => {
@@ -33,6 +32,7 @@ const ArqueoCajaPage = () => {
   const [sortDirectionDiario, setSortDirectionDiario] = useState("desc");
   const [pageDiario, setPageDiario] = useState(0);
   const [rowsPerPageDiario, setRowsPerPageDiario] = useState(10);
+  const [selectedDate, setSelectedDate] = useState(dayjs()); // Fecha actual por defecto
 
   const handleSortChangeDiario = (campo) => {
     if (sortFieldDiario === campo) {
@@ -49,66 +49,63 @@ const ArqueoCajaPage = () => {
 
   console.log("diario", diario);
 
-  useEffect(() => {
-    const fetchData = async () => {
-      setIsLoading(true);
-      try {
-        const [movsResp, cuentasResp] = await Promise.all([
-          movimientosService.getAllMovimientos({ populate: "caja", cajaNombre: "EFECTIVO" }),
-          cuentasPendientesService.getAll(),
-        ]);
-        const movimientos = movsResp?.data || [];
+  const fetchData = async (fecha = null) => {
+    setIsLoading(true);
+    try {
+      const params = {
+        cajaNombre: "EFECTIVO",
+        limit: 1000,
+      };
 
-        const cuentas = Array.isArray(cuentasResp?.data)
-          ? cuentasResp.data
-          : cuentasResp?.data || [];
-
-        const parsedMovs = movimientos.map((m) => ({
-          id: m._id,
-          fecha: m.fechaFactura || m.fechaCreacion,
-          cliente: m?.cliente?.nombre || "-",
-          group: m.moneda,
-          monto:
-            m.moneda === "ARS"
-              ? Math.round(m?.total?.ars || 0)
-              : Math.round(
-                  m.cuentaCorriente === "USD BLUE"
-                    ? m?.total?.usdBlue || 0
-                    : m?.total?.usdOficial || 0
-                ),
-        }));
-
-        const parsedCuentas = cuentas
-          .filter((c) => c && (c.moneda === "ARS" || c.moneda === "USD"))
-          .map((c) => ({
-            id: c._id,
-            fecha: c.fechaCuenta || c.fechaCreacion,
-            cliente: c.proveedorOCliente || "-",
-            group: c.moneda,
-            monto:
-              c.moneda === "ARS"
-                ? -Math.round(Math.abs(c?.montoTotal?.ars || 0))
-                : -Math.round(
-                    c.cc === "USD BLUE"
-                      ? Math.abs(c?.montoTotal?.usdBlue || 0)
-                      : Math.abs(c?.montoTotal?.usdOficial || 0)
-                  ),
-          }));
-
-        setItems([...parsedMovs, ...parsedCuentas]);
-
-        const arqueo = await movimientosService.getArqueoDiario({ cajaNombre: "EFECTIVO" });
-        setDiario(arqueo?.data || []);
-      } catch (err) {
-        console.error("Error cargando datos de arqueo:", err);
-        setItems([]);
-        setDiario([]);
-      } finally {
-        setIsLoading(false);
+      // Agregar filtro de fecha si se proporciona
+      if (fecha) {
+        // Asegurar que enviamos la fecha en formato local sin zona horaria
+        const fechaLocal = fecha.format("YYYY-MM-DD");
+        params.fecha = fechaLocal;
+        console.log("Enviando fecha al backend:", fechaLocal);
       }
-    };
 
-    fetchData();
+      const movsResp = await movimientosService.getAllMovimientos(params);
+      const movimientos = movsResp?.data || [];
+
+      const parsedMovs = movimientos.map((m) => ({
+        id: m._id,
+        fecha: m.fechaFactura || m.fechaCreacion,
+        cliente: m?.cliente?.nombre || "-",
+        group: m.moneda,
+        monto:
+          m.moneda === "ARS"
+            ? Math.round(m?.total?.ars || 0)
+            : Math.round(
+                m.cuentaCorriente === "USD BLUE"
+                  ? m?.total?.usdBlue || 0
+                  : m?.total?.usdOficial || 0
+              ),
+      }));
+
+      setItems(parsedMovs);
+
+      const arqueo = await movimientosService.getArqueoDiario({ cajaNombre: "EFECTIVO" });
+      setDiario(arqueo?.data || []);
+    } catch (err) {
+      console.error("Error cargando datos de arqueo:", err);
+      setItems([]);
+      setDiario([]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Handler para cambio de fecha
+  const handleDateChange = (newDate) => {
+    setSelectedDate(newDate);
+    if (newDate) {
+      fetchData(newDate);
+    }
+  };
+
+  useEffect(() => {
+    fetchData(selectedDate);
   }, []);
 
   const sortedDiario = useMemo(() => {
@@ -167,6 +164,8 @@ const ArqueoCajaPage = () => {
                 showSearch={false}
                 showDateFilterOptions={false}
                 showDatePicker={true}
+                selectedDate={selectedDate}
+                onDateChange={handleDateChange}
               />
             )}
 

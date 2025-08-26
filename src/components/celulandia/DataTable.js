@@ -59,10 +59,16 @@ const DataTable = ({
   showDateFilterOptions = true,
   showDatePicker = false,
   serverSide = false,
+  filtroFecha: externalFiltroFecha,
+  onFiltroFechaChange,
 }) => {
   const [busqueda, setBusqueda] = useState("");
   const [filtroFecha, setFiltroFecha] = useState("todos");
   const [selectedDate, setSelectedDate] = useState(null);
+
+  // Usar filtro externo si está en modo serverSide
+  const currentFiltroFecha =
+    serverSide && externalFiltroFecha !== undefined ? externalFiltroFecha : filtroFecha;
   const ordenCampo = sortField;
   const ordenDireccion = sortDirection;
 
@@ -82,12 +88,17 @@ const DataTable = ({
   const dataFiltrados = useMemo(() => {
     let filtered = [...data];
 
-    // Filtro por fecha (opciones predefinidas)
-    if (!showDatePicker && filtroFecha !== "todos") {
+    // En modo serverSide, no filtrar en frontend - los datos ya vienen filtrados del backend
+    if (serverSide) {
+      return filtered;
+    }
+
+    // Filtro por fecha (opciones predefinidas) - solo en modo cliente
+    if (!showDatePicker && currentFiltroFecha !== "todos") {
       const hoy = new Date();
       const inicioDia = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate());
 
-      switch (filtroFecha) {
+      switch (currentFiltroFecha) {
         case "hoy": {
           filtered = filtered.filter((item) => {
             const itemDate = new Date(item[dateField]);
@@ -285,9 +296,15 @@ const DataTable = ({
               <Select
                 labelId="filtro-fecha-label"
                 id="filtro-fecha-select"
-                value={filtroFecha}
+                value={currentFiltroFecha}
                 label="Filtrar por fecha"
-                onChange={(e) => setFiltroFecha(e.target.value)}
+                onChange={(e) => {
+                  if (serverSide && onFiltroFechaChange) {
+                    onFiltroFechaChange(e.target.value);
+                  } else {
+                    setFiltroFecha(e.target.value);
+                  }
+                }}
               >
                 {dateFilterOptions.map((option) => (
                   <MenuItem key={option.value} value={option.value}>

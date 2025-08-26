@@ -27,6 +27,7 @@ const PagosCelulandiaPage = () => {
   const [limitePorPagina] = useState(20);
   const [sortField, setSortField] = useState("fechaFactura");
   const [sortDirection, setSortDirection] = useState("desc");
+  const [filtroFecha, setFiltroFecha] = useState("todos");
 
   const [cajas, setCajas] = useState([]);
 
@@ -54,14 +55,56 @@ const PagosCelulandiaPage = () => {
     },
   };
 
+  // Función para calcular las fechas según el filtro seleccionado
+  const calcularFechasFiltro = (filtro) => {
+    const hoy = new Date();
+    const inicioHoy = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate());
+
+    switch (filtro) {
+      case "hoy":
+        return {
+          fechaInicio: inicioHoy.toISOString().split("T")[0],
+          fechaFin: inicioHoy.toISOString().split("T")[0],
+        };
+      case "estaSemana": {
+        const inicioSemana = new Date(inicioHoy);
+        inicioSemana.setDate(inicioHoy.getDate() - inicioHoy.getDay());
+        return {
+          fechaInicio: inicioSemana.toISOString().split("T")[0],
+          fechaFin: inicioHoy.toISOString().split("T")[0],
+        };
+      }
+      case "esteMes": {
+        const inicioMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+        return {
+          fechaInicio: inicioMes.toISOString().split("T")[0],
+          fechaFin: inicioHoy.toISOString().split("T")[0],
+        };
+      }
+      case "esteAño": {
+        const inicioAño = new Date(hoy.getFullYear(), 0, 1);
+        return {
+          fechaInicio: inicioAño.toISOString().split("T")[0],
+          fechaFin: inicioHoy.toISOString().split("T")[0],
+        };
+      }
+      default:
+        return { fechaInicio: null, fechaFin: null };
+    }
+  };
+
   useEffect(() => {
     fetchData(paginaActual);
-  }, [paginaActual, sortField, sortDirection]);
+  }, [paginaActual, sortField, sortDirection, filtroFecha]);
 
   const fetchData = async (pagina = 1) => {
     setIsLoading(true);
     try {
       const offset = (pagina - 1) * limitePorPagina;
+      const { fechaInicio, fechaFin } = calcularFechasFiltro(filtroFecha);
+
+      console.log(`Filtro aplicado en pagos: ${filtroFecha}`, { fechaInicio, fechaFin });
+
       const [movimientosResponse, cajasResponse] = await Promise.all([
         movimientosService.getAllMovimientos({
           type: "EGRESO",
@@ -70,6 +113,8 @@ const PagosCelulandiaPage = () => {
           offset,
           sortField,
           sortDirection,
+          fechaInicio,
+          fechaFin,
         }),
         cajasService.getAllCajas(),
       ]);
@@ -143,11 +188,8 @@ const PagosCelulandiaPage = () => {
 
   const refetchPagos = async () => {
     try {
-      const { data } = await movimientosService.getAllMovimientos({
-        type: "EGRESO",
-        populate: "caja",
-      });
-      setPagos(data.map(parseMovimiento));
+      // Usar fetchData para respetar filtros, paginación y ordenamiento actuales
+      await fetchData(paginaActual);
     } catch (error) {
       console.error("Error al recargar pagos:", error);
     }
@@ -177,6 +219,11 @@ const PagosCelulandiaPage = () => {
           onSortChange={handleSortChange}
           showSearch={false}
           serverSide={true}
+          filtroFecha={filtroFecha}
+          onFiltroFechaChange={(nuevoFiltro) => {
+            setFiltroFecha(nuevoFiltro);
+            setPaginaActual(1); // Resetear a la primera página
+          }}
         />
       </Container>
 

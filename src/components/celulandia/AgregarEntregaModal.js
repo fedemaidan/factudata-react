@@ -231,7 +231,7 @@ const AgregarEntregaModal = ({ open, onClose, onSaved, clientes = [], tipoDeCamb
                 value={totalEntrega}
                 margin="normal"
                 disabled
-                helperText="Subtotal con descuento aplicado"
+                helperText="Con el descuento aplicado"
               />
             </Grid>
 

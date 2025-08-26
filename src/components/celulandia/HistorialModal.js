@@ -108,12 +108,10 @@ const HistorialModal = ({
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth>
-      <DialogTitle>
-        <Typography variant="h6" sx={{ fontWeight: 600 }}>
-          {title}
-        </Typography>
+      <DialogTitle sx={{ fontWeight: 600 }}>
+        {title}
         {data && (
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1, display: "block" }}>
             {entityName}: {data.nombre || data.numeroComprobante || data._id}
           </Typography>
         )}

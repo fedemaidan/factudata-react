@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { Layout as DashboardLayout } from "src/layouts/dashboard/layout";
 import Head from "next/head";
 import { Container } from "@mui/material";
@@ -30,6 +30,7 @@ const ComprobantesCelulandiaPage = () => {
   const [limitePorPagina] = useState(20);
   const [sortField, setSortField] = useState("fechaFactura");
   const [sortDirection, setSortDirection] = useState("desc");
+  const [filtroFecha, setFiltroFecha] = useState("todos");
 
   // Nuevos estados para los datos compartidos
   const [clientes, setClientes] = useState([]);
@@ -41,37 +42,101 @@ const ComprobantesCelulandiaPage = () => {
   });
   const [cajas, setCajas] = useState([]);
 
-  const movimientoHistorialConfig = {
-    title: "Historial del Comprobante",
-    entityName: "comprobante",
-    fieldNames: {
-      tipoDeCambio: "Tipo de Cambio",
-      estado: "Estado",
-      caja: "Cuenta de Destino",
-      cliente: "Cliente",
-      cuentaCorriente: "Cuenta Corriente",
-      moneda: "Moneda",
-      numeroFactura: "Número de Factura",
-      fechaFactura: "Fecha de Factura",
-      nombreUsuario: "Usuario",
-    },
-    formatters: {
-      tipoDeCambio: (valor) => `$${valor}`,
-      fechaFactura: (valor) => new Date(valor).toLocaleDateString("es-AR"),
-      fechaCreacion: (valor) => new Date(valor).toLocaleDateString("es-AR"),
-      cliente: (valor) => (typeof valor === "object" ? valor?.nombre || "N/A" : valor),
-      caja: (valor) => (typeof valor === "object" ? valor?.nombre || "N/A" : valor),
-    },
+  const movimientoHistorialConfig = useMemo(
+    () => ({
+      title: "Historial del Comprobante",
+      entityName: "comprobante",
+      fieldNames: {
+        tipoDeCambio: "Tipo de Cambio",
+        estado: "Estado",
+        caja: "Cuenta de Destino",
+        cliente: "Cliente",
+        cuentaCorriente: "Cuenta Corriente",
+        moneda: "Moneda",
+        numeroFactura: "Número de Factura",
+        fechaFactura: "Fecha de Factura",
+        nombreUsuario: "Usuario",
+      },
+      formatters: {
+        tipoDeCambio: (valor) => `$${valor}`,
+        fechaFactura: (valor) => new Date(valor).toLocaleDateString("es-AR"),
+        fechaCreacion: (valor) => new Date(valor).toLocaleDateString("es-AR"),
+        cliente: (valor) => {
+          if (typeof valor === "object" && valor?.nombre) {
+            return valor.nombre;
+          }
+          if (typeof valor === "string") {
+            return valor;
+          }
+          return "N/A";
+        },
+        caja: (valor) => {
+          // Si es un objeto, usar el nombre
+          if (typeof valor === "object" && valor?.nombre) {
+            return valor.nombre;
+          }
+          // Si es un string (ID), buscar en la lista de cajas
+          if (typeof valor === "string" && cajas.length > 0) {
+            const caja = cajas.find((c) => c._id === valor);
+            return caja ? caja.nombre : `ID: ${valor}`;
+          }
+          return valor || "N/A";
+        },
+      },
+    }),
+    [cajas]
+  ); // Re-crear cuando cambien las cajas
+
+  // Función para calcular las fechas según el filtro seleccionado
+  const calcularFechasFiltro = (filtro) => {
+    const hoy = new Date();
+    const inicioHoy = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate());
+
+    switch (filtro) {
+      case "hoy":
+        return {
+          fechaInicio: inicioHoy.toISOString().split("T")[0],
+          fechaFin: inicioHoy.toISOString().split("T")[0],
+        };
+      case "estaSemana": {
+        const inicioSemana = new Date(inicioHoy);
+        inicioSemana.setDate(inicioHoy.getDate() - inicioHoy.getDay());
+        return {
+          fechaInicio: inicioSemana.toISOString().split("T")[0],
+          fechaFin: inicioHoy.toISOString().split("T")[0],
+        };
+      }
+      case "esteMes": {
+        const inicioMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+        return {
+          fechaInicio: inicioMes.toISOString().split("T")[0],
+          fechaFin: inicioHoy.toISOString().split("T")[0],
+        };
+      }
+      case "esteAño": {
+        const inicioAño = new Date(hoy.getFullYear(), 0, 1);
+        return {
+          fechaInicio: inicioAño.toISOString().split("T")[0],
+          fechaFin: inicioHoy.toISOString().split("T")[0],
+        };
+      }
+      default:
+        return { fechaInicio: null, fechaFin: null };
+    }
   };
 
   useEffect(() => {
     fetchData(paginaActual);
-  }, [paginaActual, sortField, sortDirection]);
+  }, [paginaActual, sortField, sortDirection, filtroFecha]);
 
   const fetchData = async (pagina = 1) => {
     setIsLoading(true);
     try {
       const offset = (pagina - 1) * limitePorPagina;
+      const { fechaInicio, fechaFin } = calcularFechasFiltro(filtroFecha);
+
+      console.log(`Filtro aplicado: ${filtroFecha}`, { fechaInicio, fechaFin });
+
       const [movimientosResponse, clientesResponse, tipoDeCambioResponse, cajasResponse] =
         await Promise.all([
           movimientosService.getAllMovimientos({
@@ -81,6 +146,8 @@ const ComprobantesCelulandiaPage = () => {
             offset,
             sortField,
             sortDirection,
+            fechaInicio,
+            fechaFin,
           }),
           clientesService.getAllClientes(),
           dolarService.getTipoDeCambio(),
@@ -203,18 +270,22 @@ const ComprobantesCelulandiaPage = () => {
 
   const refetchMovimientos = async () => {
     try {
-      const { data } = await movimientosService.getAllMovimientos({
-        type: "INGRESO",
-        populate: "caja",
-      });
-      setMovimientos(data.map(parseMovimiento));
+      // Usar fetchData para respetar filtros, paginación y ordenamiento actuales
+      await fetchData(paginaActual);
     } catch (error) {
       console.error("Error al recargar movimientos:", error);
     }
   };
 
-  const handleSaveNew = (newData) => {
-    setMovimientos((prevMovimientos) => [...prevMovimientos, parseMovimiento(newData)]);
+  const handleSaveNew = async (newData) => {
+    try {
+      // Hacer refetch completo para mantener sincronización con paginación y filtros
+      await fetchData(paginaActual);
+    } catch (error) {
+      console.error("Error al recargar datos después de agregar:", error);
+      // Fallback: agregar localmente si el refetch falla
+      setMovimientos((prevMovimientos) => [...prevMovimientos, parseMovimiento(newData)]);
+    }
   };
 
   return (
@@ -241,6 +312,11 @@ const ComprobantesCelulandiaPage = () => {
           onSortChange={handleSortChange}
           showSearch={false}
           serverSide={true}
+          filtroFecha={filtroFecha}
+          onFiltroFechaChange={(nuevoFiltro) => {
+            setFiltroFecha(nuevoFiltro);
+            setPaginaActual(1); // Resetear a la primera página
+          }}
         />
       </Container>
 
