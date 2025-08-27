@@ -42,6 +42,7 @@ import EditarModal from "src/components/celulandia/EditarModal";
 import EditarEntregaModal from "src/components/celulandia/EditarEntregaModal";
 import HistorialModal from "src/components/celulandia/HistorialModal";
 import { parseMovimiento } from "src/utils/celulandia/movimientos/parseMovimientos";
+import { parseCuentaPendiente } from "src/utils/celulandia/cuentasPendientes/parseCuentasPendientes";
 
 const ClienteCelulandiaCCPage = () => {
   const router = useRouter();
@@ -118,57 +119,20 @@ const ClienteCelulandiaCCPage = () => {
         .filter((m) => m.type === "INGRESO")
         .map(parseMovimiento);
 
-      // Las cuentas pendientes ya vienen filtradas por cliente desde el backend
       const cuentasRespData = Array.isArray(cuentasPendientesResponse?.data)
         ? cuentasPendientesResponse.data
         : cuentasPendientesResponse?.data || [];
       const cuentasCliente = cuentasRespData || [];
 
-      const parseCuentaPendiente = (c) => {
-        const fechaCuentaCompleta = new Date(c.fechaCuenta);
-        const fecha = fechaCuentaCompleta.toISOString().split("T")[0]; // YYYY-MM-DD
-        const hora = fechaCuentaCompleta.toTimeString().split(" ")[0]; // HH:MM:SS
-        const cc = c.cc;
-        let montoCC = 0;
-        if (cc === "ARS") montoCC = Number(c?.montoTotal?.ars || 0);
-        else if (cc === "USD BLUE") montoCC = Number(c?.montoTotal?.usdBlue || 0);
-        else if (cc === "USD OFICIAL") montoCC = Number(c?.montoTotal?.usdOficial || 0);
-
-        return {
-          // Campos para la tabla
-          id: c._id,
-          _id: c._id,
-          origen: "cuentaPendiente",
-          numeroComprobante: c.descripcion || "-",
-          fecha: c.fechaCuenta,
-          hora,
-          montoCC,
-          tipoDeCambio: c.tipoDeCambio || 1,
-          montoEnviado: Number(c?.subTotal?.ars || 0),
-          monedaDePago: c.moneda,
-          cuentaDestino: c.cc,
-          estado: "-",
-          type: "EGRESO",
-          cuentaCorriente: c.cc,
-          // Campos esperados por EditarEntregaModal
-          proveedorOCliente: c.proveedorOCliente,
-          descripcion: c.descripcion,
-          CC: c.cc,
-          descuentoAplicado: c.descuentoAplicado,
-        };
-      };
-
       const cuentasParseadas = cuentasCliente.map(parseCuentaPendiente);
 
       setMovimientos([...movimientosParseados, ...cuentasParseadas]);
 
-      // Procesar clientes
       const clientesArray = Array.isArray(clientesResponse)
         ? clientesResponse
         : clientesResponse?.data || [];
       setClientes(clientesArray);
 
-      // Procesar tipo de cambio
       setTipoDeCambio({
         ...tipoDeCambioResponse,
         current: tipoDeCambioResponse?.current || 1,
@@ -199,6 +163,10 @@ const ClienteCelulandiaCCPage = () => {
       cliente: m.nombreCliente || m.proveedorOCliente || m.cliente?.nombre || m.cliente || "-",
       group: m.cuentaCorriente || m.CC || m.cc,
       monto: Math.round(m.montoCC || 0),
+      tipoDeCambio: m.tipoDeCambio || 1,
+      descuentoAplicado: m.descuentoAplicado,
+      montoOriginal: Math.round(m.montoEnviado),
+      monedaOriginal: m.moneda || m.monedaDePago,
     }));
   }, [movimientos]);
 

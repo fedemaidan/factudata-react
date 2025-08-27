@@ -328,6 +328,20 @@ const DataTabTable = ({
                         Monto ({opt.label})
                       </TableSortLabel>
                     </TableCell>
+                    <TableCell sx={{ fontWeight: "bold" }}>Tipo de Cambio</TableCell>
+                    <TableCell sx={{ fontWeight: "bold" }}>Descuento</TableCell>
+                    <TableCell sx={{ fontWeight: "bold" }}>
+                      Monto Original (sin descuento)
+                    </TableCell>
+                    <TableCell sx={{ fontWeight: "bold", cursor: "pointer" }}>
+                      <TableSortLabel
+                        active={sortField === "monedaOriginal"}
+                        direction={sortField === "monedaOriginal" ? sortDirection : "asc"}
+                        onClick={() => handleSortChange("monedaOriginal")}
+                      >
+                        Moneda Original
+                      </TableSortLabel>
+                    </TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -340,6 +354,20 @@ const DataTabTable = ({
                           {formatCurrency(Math.round(row.monto || 0))}
                         </Typography>
                       </TableCell>
+                      <TableCell>{formatearCampo("tipoDeCambio", row.tipoDeCambio)}</TableCell>
+                      <TableCell>
+                        {row.descuentoAplicado !== undefined && row.descuentoAplicado !== null
+                          ? `${Math.round(((row.descuentoAplicado ?? 1) - 1) * -100)}%`
+                          : "-"}
+                      </TableCell>
+                      <TableCell>
+                        <Typography
+                          color={(row.montoOriginal || 0) < 0 ? "error.main" : "text.primary"}
+                        >
+                          {formatCurrency(Math.round(row.montoOriginal || 0))}
+                        </Typography>
+                      </TableCell>
+                      <TableCell>{formatearCampo("monedaDePago", row.monedaOriginal)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
