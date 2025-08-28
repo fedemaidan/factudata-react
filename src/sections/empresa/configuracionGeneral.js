@@ -97,6 +97,12 @@ const [isRegenerandoSheets, setIsRegenerandoSheets] = useState(false);
     "VER_CUENTAS_PENDIENTES", "VER_UNIDADES"
   ];
 
+  const celulandiaAcciones = [
+    "CELULANDIA_COMPROBANTES", "CELULANDIA_CLIENTES", "CELULANDIA_ENTREGAS", "CELULANDIA_PAGOS", "CELULANDIA_CONCILIACION", "CELULANDIA_CUENTA_CORRIENTE", "CELULANDIA_CHEQUES", "CELULANDIA_ARQUEO_CAJA", "CELULANDIA_EZE_NICO"
+  ]
+
+  opcionesAcciones.push(...celulandiaAcciones);
+
   const dolarAjuste = [
     "MANUAL",
     "OFICIAL_COMPRA",

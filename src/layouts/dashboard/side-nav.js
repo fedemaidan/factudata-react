@@ -80,96 +80,7 @@ export const SideNav = (props) => {
       const emp = await getEmpresaDetailsFromUser(user);
       setEmpresa(emp || null);
       
-      // Casos especiales (tu lógica original)
-      if (emp?.nombre == "Celulandia") {
-        const onboardingPage = [
-          {
-            title: "Comprobantes",
-            path: "/celulandia/comprobantes",
-            icon: (
-              <SvgIcon fontSize="small">
-                <DashboardIcon />
-              </SvgIcon>
-            ),
-          },
-          {
-            title: "Entregas",
-            path: "/celulandia/entregas",
-            icon: (
-              <SvgIcon fontSize="small">
-                <DashboardIcon />
-              </SvgIcon>
-            ),
-          },
-          {
-            title: "Pagos",
-            path: "/celulandia/pagos",
-            icon: (
-              <SvgIcon fontSize="small">
-                <DashboardIcon />
-              </SvgIcon>
-            ),
-          },
-          {
-            title: "Conciliación bancaria",
-            path: "/celulandia/conciliacionBancaria",
-            icon: (
-              <SvgIcon fontSize="small">
-                <Checklist />
-              </SvgIcon>
-            ),
-          },
-          {
-            title: "Cuenta Corriente",
-            path: "/celulandia/cuentaCorriente",
-            icon: (
-              <SvgIcon fontSize="small">
-                <PeopleIcon />
-              </SvgIcon>
-            ),
-          },
-          {
-            title: "Clientes",
-            path: "/celulandia/clientes",
-            icon: (
-              <SvgIcon fontSize="small">
-                <PeopleIcon />
-              </SvgIcon>
-            ),
-          },
-          {
-            title: "Cheques",
-            path: "/celulandia/cheques",
-            icon: (
-              <SvgIcon fontSize="small">
-                <AttachMoneyIcon />
-              </SvgIcon>
-            ),
-          },
-          {
-            title: "Arqueo de caja",
-            path: "/celulandia/arqueoCaja",
-            icon: (
-              <SvgIcon fontSize="small">
-                <LocalAtm />
-              </SvgIcon>
-            ),
-          },
-
-          {
-            title: "Eze y Nico",
-            path: "/celulandia/ezeNico",
-            icon: (
-              <SvgIcon fontSize="small">
-                <AccountBalanceWallet />
-              </SvgIcon>
-            ),
-          },
-        ];
-        setItems(onboardingPage);
-        setProyectos([]);
-        return;
-      } else if (!emp) {
+      if (!emp) {
         setItems([
           {
             title: "Onboarding",
@@ -213,6 +124,114 @@ export const SideNav = (props) => {
         },
       ];
 
+      if (permisosUsuario.includes("CELULANDIA_COMPROBANTES")) {
+        baseItems.push({
+          title: "Comprobantes",
+          path: "/celulandia/comprobantes",
+          icon: (
+            <SvgIcon fontSize="small">
+              <DashboardIcon />
+            </SvgIcon>
+          ),
+        });
+      }
+
+      if (permisosUsuario.includes("CELULANDIA_ENTREGAS")) {
+        baseItems.push({
+          title: "Entregas",
+          path: "/celulandia/entregas",
+          icon: (
+            <SvgIcon fontSize="small">
+              <DashboardIcon />
+            </SvgIcon>
+          ),
+        });
+      }
+
+      if (permisosUsuario.includes("CELULANDIA_PAGOS")) {
+        baseItems.push({
+          title: "Pagos",
+          path: "/celulandia/pagos",
+          icon: (
+            <SvgIcon fontSize="small">
+              <DashboardIcon />
+            </SvgIcon>
+          ),
+        });
+      }
+
+      if (permisosUsuario.includes("CELULANDIA_CONCILIACION")) {
+        baseItems.push({
+          title: "Conciliación bancaria",
+          path: "/celulandia/conciliacionBancaria",
+          icon: (
+            <SvgIcon fontSize="small">
+              <Checklist />
+            </SvgIcon>
+          ),
+        });
+      }
+
+      if (permisosUsuario.includes("CELULANDIA_CUENTA_CORRIENTE")) {
+        baseItems.push({
+          title: "Cuenta Corriente",
+          path: "/celulandia/cuentaCorriente",
+          icon: (
+            <SvgIcon fontSize="small">
+              <PeopleIcon />
+            </SvgIcon>
+          ),
+        });
+      }
+
+      if (permisosUsuario.includes("CELULANDIA_CLIENTES")) {
+        baseItems.push({
+          title: "Clientes",
+          path: "/celulandia/clientes",
+          icon: (
+            <SvgIcon fontSize="small">
+              <PeopleIcon />
+            </SvgIcon>
+          ),
+        });
+      }
+
+      if (permisosUsuario.includes("CELULANDIA_CHEQUES")) {
+        baseItems.push({
+          title: "Cheques",
+          path: "/celulandia/cheques",
+          icon: (
+            <SvgIcon fontSize="small">
+              <AttachMoneyIcon />
+            </SvgIcon>
+          ),
+        });
+      }
+
+      if (permisosUsuario.includes("CELULANDIA_ARQUEO_CAJA")) {
+        baseItems.push({
+          title: "Arqueo de caja",
+          path: "/celulandia/arqueoCaja",
+          icon: (
+            <SvgIcon fontSize="small">
+              <LocalAtm />
+            </SvgIcon>
+          ),
+        });
+      }
+
+      if (permisosUsuario.includes("CELULANDIA_EZE_NICO")) {
+        baseItems.push({
+          title: "Eze y Nico",
+          path: "/celulandia/ezeNico",
+          icon: (
+            <SvgIcon fontSize="small">
+              <AccountBalanceWallet />
+            </SvgIcon>
+          ),
+        });
+      }
+
       if (user?.admin) {
         baseItems.push({
           title: "Configurar " + emp.nombre,
@@ -228,7 +247,7 @@ export const SideNav = (props) => {
       if (permisosUsuario.includes('ADMIN_USUARIOS')) {
         baseItems.push({
           title: "Administrar" + emp.nombre,
-          path: "configuracionBasica/?empresaId=" + emp.id,
+          path: "/configuracionBasica/?empresaId=" + emp.id,
           icon: (
             <SvgIcon fontSize="small">
               <SettingsIcon />
@@ -260,16 +279,6 @@ export const SideNav = (props) => {
           ),
         });
       }
-
-      baseItems.push({
-        title: "Presupuestos",
-        path: "/presupuestos",
-        icon: (
-          <SvgIcon fontSize="small">
-            <NoteAltIcon />
-          </SvgIcon>
-        ),
-      });
 
       if (permisosUsuario.includes("VER_NOTAS_DE_PEDIDO")) {
         baseItems.push({
@@ -319,6 +328,17 @@ export const SideNav = (props) => {
             )
           })
         }
+
+        baseItems.push({
+          title: "Presupuestos",
+          path: "/presupuestos",
+          icon: (
+            <SvgIcon fontSize="small">
+              <NoteAltIcon />
+            </SvgIcon>
+          ),
+        });
+
         const vista7 = {
           title: "Vista 7 días",
           path: "/resumenMovimientos?empresaId=" + emp.id,
