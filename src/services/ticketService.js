@@ -291,10 +291,7 @@ const ticketService = {
         and(
           where("caja_chica", "==", true),
           where("moneda", "==", moneda),
-          or(
-            where("id_user", "==", user.id),
-            where("user_phone", "==", user.phone)
-          )
+          where("user_phone", "==", user.phone),
         ),
         orderBy("codigo_operacion", "desc")
       );

@@ -133,14 +133,15 @@ const MovementFormPage = () => {
           fecha_factura: dateToTimestamp(values.fecha_factura),
           proyecto: proyectoName,
           proyecto_id: proyectoId,
-          user_phone: user.phone,
           tags_extra: values.tags_extra || [],
           url_imagen: movimiento?.url_imagen,
           impuestos: values.impuestos || []
         };
+    
+
         const result = isEditMode
           ? await movimientosService.updateMovimiento(movimientoId, { ...movimiento, ...payload })
-          : await movimientosService.addMovimiento(payload);
+          : await movimientosService.addMovimiento({...payload, user_phone: user.phone });
         if (result.error) throw new Error('Error al agregar o editar el movimiento');
         setAlert({ open: true, message: 'Movimiento guardado con éxito!', severity: 'success' });
         router.push(lastPageUrl);
