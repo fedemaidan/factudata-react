@@ -25,7 +25,7 @@ const EditarPagoModal = ({ open, onClose, data, onSave, cajas }) => {
   const processedData = data
     ? {
         ...data,
-        montoEnviado: data.total?.ars ? Math.abs(data.total.ars).toString() : "0",
+        montoEnviado: data.total?.ars ? -data.total.ars : "0",
       }
     : null;
 
