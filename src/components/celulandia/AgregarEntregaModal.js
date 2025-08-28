@@ -138,6 +138,7 @@ const AgregarEntregaModal = ({ open, onClose, onSaved, clientes = [], tipoDeCamb
       const result = await cuentasPendientesService.create(payload);
       if (result.success) {
         onSaved && onSaved(result.data);
+        resetForm();
         onClose();
       } else {
         alert(result.error || "Error al crear la entrega");
