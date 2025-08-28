@@ -7,7 +7,7 @@ export const parseMovimiento = (movimiento) => {
     case "USD BLUE":
       montoCC = movimiento.total.usdBlue;
       break;
-    case "USD OFFICIAL":
+    case "USD OFICIAL":
       montoCC = movimiento.total.usdOficial;
       break;
   }
@@ -21,7 +21,7 @@ export const parseMovimiento = (movimiento) => {
     case "USD":
       if (movimiento.cuentaCorriente === "USD BLUE") {
         montoEnviado = movimiento.total.usdBlue;
-      } else if (movimiento.cuentaCorriente === "USD OFFICIAL") {
+      } else if (movimiento.cuentaCorriente === "USD OFICIAL") {
         montoEnviado = movimiento.total.usdOficial;
       } else if (movimiento.cuentaCorriente === "ARS") {
         montoEnviado = movimiento.total.usdBlue;
@@ -59,5 +59,6 @@ export const parseMovimiento = (movimiento) => {
     nombreCliente: movimiento.cliente?.nombre || "Sin cliente",
     ccActivasCliente: movimiento.cliente?.ccActivas || [],
     cuentaDestino: movimiento.caja?.nombre || "Sin caja",
+    fechaCreacion,
   };
 };

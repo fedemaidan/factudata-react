@@ -99,6 +99,11 @@ const movimientosService = {
     });
     return response.data;
   },
+
+  getArqueoTotalGeneral: async () => {
+    const response = await axiosCelulandia.get("/movimientos/arqueo/total-general");
+    return response.data;
+  },
 };
 
 export default movimientosService;

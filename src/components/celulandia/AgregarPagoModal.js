@@ -61,7 +61,7 @@ const AgregarPagoModal = ({ open, onClose, onSave, cajas }) => {
           empresaId: "celulandia",
           fechaFactura: new Date(),
         },
-        montoEnviado: formData.montoEnviado,
+        montoEnviado: -1 * formData.montoEnviado,
       };
 
       const result = await movimientosService.createMovimiento(payload);
@@ -129,6 +129,11 @@ const AgregarPagoModal = ({ open, onClose, onSave, cajas }) => {
                 label="Monto *"
                 type="number"
                 value={formData.montoEnviado}
+                helperText={
+                  formData.montoEnviado < 0
+                    ? "Recuerde que el monto se multiplicará por -1 antes de enviar"
+                    : ""
+                }
                 onChange={(e) => handleMontoEnviado(e.target.value)}
                 margin="normal"
                 required

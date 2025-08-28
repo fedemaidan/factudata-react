@@ -212,6 +212,11 @@ const AgregarEntregaModal = ({ open, onClose, onSaved, clientes = [], tipoDeCamb
                 onChange={(e) => handleMontoEnviado(e.target.value)}
                 margin="normal"
                 required
+                helperText={
+                  formData.montoEnviado < 0
+                    ? "Recuerde que el monto se multiplicará por -1 antes de enviar"
+                    : ""
+                }
               />
             </Grid>
 
