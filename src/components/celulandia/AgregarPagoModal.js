@@ -31,6 +31,7 @@ const initialPagoData = {
 
 const AgregarPagoModal = ({ open, onClose, onSave, cajas }) => {
   const [isSaving, setIsSaving] = useState(false);
+  const [cuentaDestino, setCuentaDestino] = useState("");
 
   const { formData, handleMontoEnviado, handleInputChange, resetForm } = useMovimientoForm(
     initialPagoData,
@@ -44,7 +45,11 @@ const AgregarPagoModal = ({ open, onClose, onSave, cajas }) => {
     }
 
     setIsSaving(true);
+    let movimientoOrigen = null;
+    let movimientoDestino = null;
+
     try {
+      // 1. Crear el movimiento origen (EGRESO)
       const cajaId = cajas.find((caja) => caja.nombre === formData.cuentaDestino)?._id;
       const payload = {
         movimiento: {
@@ -59,22 +64,63 @@ const AgregarPagoModal = ({ open, onClose, onSave, cajas }) => {
           estado: "CONFIRMADO",
           concepto: formData.concepto || "",
           empresaId: "celulandia",
-          fechaFactura: new Date(),
         },
         montoEnviado: -1 * formData.montoEnviado,
       };
 
       const result = await movimientosService.createMovimiento(payload);
 
-      if (result.success) {
-        onSave(result.data);
-        handleClose();
-      } else {
-        alert(result.error || "Error al crear el pago");
+      if (!result.success) {
+        throw new Error(`Error al crear movimiento origen: ${result.error}`);
       }
+
+      movimientoOrigen = result.data;
+
+      // 2. Si hay cuenta destino, crear el movimiento destino (INGRESO)
+      if (cuentaDestino !== "") {
+        const payloadDestino = {
+          movimiento: {
+            type: "INGRESO",
+            cliente: { nombre: formData.concepto || "PAGO" },
+            cuentaCorriente: "ARS",
+            moneda: formData.monedaDePago,
+            tipoFactura: "transferencia",
+            caja: cuentaDestino,
+            nombreUsuario: getUser(),
+            tipoDeCambio: 1,
+            estado: "CONFIRMADO",
+            concepto: formData.concepto || "",
+            empresaId: "celulandia",
+          },
+          montoEnviado: formData.montoEnviado,
+        };
+
+        const resultDestino = await movimientosService.createMovimiento(payloadDestino);
+
+        if (!resultDestino.success) {
+          throw new Error(`Error al crear movimiento destino: ${resultDestino.error}`);
+        }
+
+        movimientoDestino = resultDestino.data;
+      }
+
+      // 3. Si llegamos aquí, ambos movimientos se crearon exitosamente
+      onSave(movimientoOrigen, movimientoDestino);
+      handleClose();
     } catch (error) {
       console.error("Error al crear pago:", error);
-      alert("Error al crear el pago. Por favor, intente nuevamente.");
+
+      // 4. Rollback: Si falló el segundo movimiento, eliminar el primero
+      if (movimientoOrigen && !movimientoDestino && cuentaDestino !== "") {
+        try {
+          await movimientosService.deleteMovimiento(movimientoOrigen._id, getUser());
+          console.log("Rollback: Movimiento origen eliminado");
+        } catch (rollbackError) {
+          console.error("Error en rollback:", rollbackError);
+        }
+      }
+
+      alert(`Error al crear el pago: ${error.message}`);
     } finally {
       setIsSaving(false);
     }
@@ -82,6 +128,7 @@ const AgregarPagoModal = ({ open, onClose, onSave, cajas }) => {
 
   const handleClose = () => {
     resetForm();
+    setCuentaDestino(""); // Resetear cuenta destino
     onClose();
   };
 
@@ -120,6 +167,24 @@ const AgregarPagoModal = ({ open, onClose, onSave, cajas }) => {
                       {caja.nombre}
                     </MenuItem>
                   ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <FormControl fullWidth margin="normal">
+                <InputLabel>Cuenta Destino</InputLabel>
+                <Select
+                  value={cuentaDestino}
+                  label="Cuenta Destino"
+                  onChange={(e) => setCuentaDestino(e.target.value)}
+                >
+                  {cajas
+                    ?.filter((caja) => caja.nombre === "EZE" || caja.nombre === "NICO")
+                    .map((caja) => (
+                      <MenuItem key={caja._id} value={caja._id}>
+                        {caja.nombre}
+                      </MenuItem>
+                    ))}
                 </Select>
               </FormControl>
             </Grid>

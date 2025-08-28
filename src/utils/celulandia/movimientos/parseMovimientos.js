@@ -1,3 +1,5 @@
+import { getFechaArgentina, getHoraArgentina } from "../fechas";
+
 export const parseMovimiento = (movimiento) => {
   let montoCC = 0;
   switch (movimiento.cuentaCorriente) {
@@ -29,22 +31,15 @@ export const parseMovimiento = (movimiento) => {
       break;
   }
 
-  let fechaCreacion = null;
+  let fechaFactura = null;
   let horaCreacion = null;
 
-  if (movimiento?.fechaCreacion) {
-    const fecha = new Date(movimiento.fechaCreacion);
-    fechaCreacion = fecha.toISOString().split("T")[0];
-    horaCreacion = fecha.toTimeString().split(" ")[0];
+  if (movimiento?.fechaFactura) {
+    fechaFactura = getFechaArgentina(movimiento.fechaFactura);
   }
 
-  let fechaFactura = null;
-  let horaFactura = null;
-
-  if (movimiento?.fechaFactura) {
-    const fecha = new Date(movimiento.fechaFactura);
-    fechaFactura = fecha.toISOString().split("T")[0];
-    horaFactura = fecha.toTimeString().split(" ")[0];
+  if (movimiento?.fechaCreacion) {
+    horaCreacion = getHoraArgentina(movimiento.fechaCreacion);
   }
 
   return {
@@ -52,13 +47,11 @@ export const parseMovimiento = (movimiento) => {
     montoEnviado,
     tipoDeCambio: Math.round(movimiento.tipoDeCambio),
     montoCC: Math.round(montoCC),
-    fechaCreacion,
-    horaCreacion,
+    fechaCreacion: movimiento.fechaCreacion,
     fechaFactura,
-    horaFactura,
+    horaCreacion,
     nombreCliente: movimiento.cliente?.nombre || "Sin cliente",
     ccActivasCliente: movimiento.cliente?.ccActivas || [],
     cuentaDestino: movimiento.caja?.nombre || "Sin caja",
-    fechaCreacion,
   };
 };

@@ -14,6 +14,7 @@ import ConfirmarEliminacionModal from "src/components/celulandia/ConfirmarElimin
 import cuentasPendientesService from "src/services/celulandia/cuentasPendientesService";
 import clientesService from "src/services/celulandia/clientesService";
 import dolarService from "src/services/celulandia/dolarService";
+import { getFechaArgentina, getHoraArgentina } from "src/utils/celulandia/fechas";
 
 const EntregasCelulandiaPage = () => {
   const [entregas, setEntregas] = useState([]);
@@ -49,7 +50,7 @@ const EntregasCelulandiaPage = () => {
       usuario: "Usuario",
     },
     formatters: {
-      fechaCuenta: (valor) => new Date(valor).toLocaleDateString("es-AR"),
+      fechaCuenta: (valor) => getFechaArgentina(valor),
       descuentoAplicado: (valor) => `${Math.round(((valor ?? 1) - 1) * -100)}%`,
       subTotal: (valor) => {
         if (typeof valor === "object") {
@@ -145,7 +146,7 @@ const EntregasCelulandiaPage = () => {
             proveedorOCliente: c.proveedorOCliente,
             descripcion: c.descripcion,
             fecha: c.fechaCuenta,
-            horaCreacion: c.fechaCuenta?.split("T").slice(1, 2).join(":") || "-",
+            horaCreacion: getHoraArgentina(c.fechaCreacion),
             moneda: c.moneda,
             CC: c.cc,
             descuentoAplicado: c.descuentoAplicado,
@@ -197,8 +198,8 @@ const EntregasCelulandiaPage = () => {
   ];
 
   const formatters = {
-    fecha: (value, item) => formatearCampo("fecha", value, item),
-    horaCreacion: (value, item) => formatearCampo("hora", value, item),
+    fecha: (value, item) => getFechaArgentina(value),
+    horaCreacion: (value, item) => value,
     proveedorOCliente: (value, item) => formatearCampo("default", value, item),
     descripcion: (value, item) => formatearCampo("default", value, item),
     montoEnviado: (value, item) => formatearCampo("montoEnviado", value, item),

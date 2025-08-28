@@ -16,6 +16,9 @@ import {
   Tab,
   TableSortLabel,
   TablePagination,
+  Grid,
+  Card,
+  CardContent,
 } from "@mui/material";
 import dayjs from "dayjs";
 import Divider from "@mui/material/Divider";
@@ -28,6 +31,7 @@ const ArqueoCajaPage = () => {
   const [items, setItems] = useState([]);
   const [activeTab, setActiveTab] = useState(0);
   const [diario, setDiario] = useState([]);
+  const [arqueoTotalGeneral, setArqueoTotalGeneral] = useState(null);
   const [sortFieldDiario, setSortFieldDiario] = useState("fecha");
   const [sortDirectionDiario, setSortDirectionDiario] = useState("desc");
   const [pageDiario, setPageDiario] = useState(0);
@@ -57,16 +61,18 @@ const ArqueoCajaPage = () => {
         limit: 1000,
       };
 
-      // Agregar filtro de fecha si se proporciona
       if (fecha) {
-        // Asegurar que enviamos la fecha en formato local sin zona horaria
         const fechaLocal = fecha.format("YYYY-MM-DD");
         params.fecha = fechaLocal;
         console.log("Enviando fecha al backend:", fechaLocal);
       }
 
       const movsResp = await movimientosService.getAllMovimientos(params);
+      const arqueoTotalGeneralResp = await movimientosService.getArqueoTotalGeneral();
       const movimientos = movsResp?.data || [];
+
+      // Guardar el arqueo total general
+      setArqueoTotalGeneral(arqueoTotalGeneralResp?.data || null);
 
       const parsedMovs = movimientos.map((m) => ({
         id: m._id,
@@ -91,6 +97,7 @@ const ArqueoCajaPage = () => {
       console.error("Error cargando datos de arqueo:", err);
       setItems([]);
       setDiario([]);
+      setArqueoTotalGeneral(null);
     } finally {
       setIsLoading(false);
     }
@@ -158,7 +165,6 @@ const ArqueoCajaPage = () => {
               </Stack>
             </Stack>
             <Divider />
-
             <Tabs value={activeTab} onChange={(e, v) => setActiveTab(v)}>
               <Tab label="Detalle" />
               <Tab label="Totales por día" />

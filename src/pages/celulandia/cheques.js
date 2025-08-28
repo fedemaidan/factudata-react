@@ -7,6 +7,7 @@ import DataTable from "src/components/celulandia/DataTable";
 import TableActions from "src/components/celulandia/TableActions";
 import movimientosService from "src/services/celulandia/movimientosService";
 import { formatearCampo } from "src/utils/celulandia/formatearCampo";
+import { getFechaArgentina } from "src/utils/celulandia/fechas";
 import ComprobanteModal from "src/components/celulandia/ComprobanteModal";
 import EditarChequeModal from "src/components/celulandia/EditarChequeModal";
 import HistorialModal from "src/components/celulandia/HistorialModal";
@@ -58,9 +59,9 @@ const ChequesCelulandiaPage = () => {
     },
     formatters: {
       tipoDeCambio: (valor) => `$${valor}`,
-      fechaFactura: (valor) => new Date(valor).toLocaleDateString("es-AR"),
-      fechaCobro: (valor) => (valor ? new Date(valor).toLocaleDateString("es-AR") : "-"),
-      fechaCreacion: (valor) => new Date(valor).toLocaleDateString("es-AR"),
+      fechaFactura: (valor) => getFechaArgentina(valor),
+      fechaCobro: (valor) => (valor ? getFechaArgentina(valor) : "-"),
+      fechaCreacion: (valor) => getFechaArgentina(valor),
       cliente: (valor) => (typeof valor === "object" ? valor?.nombre || "N/A" : valor),
       caja: (valor) => (typeof valor === "object" ? valor?.nombre || "N/A" : valor),
     },
@@ -159,7 +160,7 @@ const ChequesCelulandiaPage = () => {
   ];
 
   const formatters = {
-    fechaFactura: (value) => formatearCampo("fecha", value),
+    fechaFactura: (value) => getFechaArgentina(value),
     horaCreacion: (value) => formatearCampo("hora", value),
     cuentaDestino: (value) => formatearCampo("cuentaDestino", value),
     moneda: (value) => formatearCampo("monedaDePago", value),
@@ -168,7 +169,7 @@ const ChequesCelulandiaPage = () => {
     montoCC: (value) => formatearCampo("montoCC", value),
     tipoDeCambio: (value) => formatearCampo("tipoDeCambio", value),
     estado: (value) => formatearCampo("estado", value),
-    fechaCobro: (value) => (value ? new Date(value).toLocaleDateString("es-AR") : "-"),
+    fechaCobro: (value) => (value ? getFechaArgentina(value) : "-"),
     cliente: (value) => {
       if (value && typeof value === "object" && value.nombre) {
         return value.nombre;

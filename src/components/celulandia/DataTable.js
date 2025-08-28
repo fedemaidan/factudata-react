@@ -466,6 +466,16 @@ const DataTable = ({
                         padding={column.key === "seleccionar" ? "checkbox" : "normal"}
                         sx={{
                           cursor: column.sortable ? "pointer" : "default",
+                          // Reducir padding para columnas de fecha y hora en el header
+                          ...(column.key.includes("fecha") || column.key.includes("hora")
+                            ? {
+                                padding: "8px 4px",
+                                minWidth: "80px",
+                                maxWidth: "100px",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                              }
+                            : {}),
                         }}
                       >
                         {column.sortable ? (
@@ -518,6 +528,17 @@ const DataTable = ({
                               textDecoration: item.active === false ? "line-through" : "none",
                               opacity: item.active === false ? 0.6 : 1,
                               color: item.active === false ? "text.disabled" : "text.primary",
+                              // Reducir padding para columnas de fecha y hora
+                              ...(column.key.includes("fecha") || column.key.includes("hora")
+                                ? {
+                                    padding: "8px 4px",
+                                    minWidth: "80px",
+                                    maxWidth: "100px",
+                                    whiteSpace: "nowrap",
+                                    overflow: "hidden",
+                                    textOverflow: "ellipsis",
+                                  }
+                                : {}),
                             }}
                           >
                             {renderCellContent(item, column)}

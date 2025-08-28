@@ -76,7 +76,6 @@ const AgregarModal = ({ open, onClose, onSave, clientes, tipoDeCambio, cajas }) 
           nombreUsuario: getUser(),
           tipoDeCambio: tipoDeCambioCalculado,
           estado: "CONFIRMADO",
-          fechaFactura: new Date(),
         },
         montoEnviado: formData.montoEnviado,
       });

@@ -9,6 +9,7 @@ import movimientosService from "src/services/celulandia/movimientosService";
 
 import cajasService from "src/services/celulandia/cajasService";
 import { formatearCampo } from "src/utils/celulandia/formatearCampo";
+import { getFechaArgentina } from "src/utils/celulandia/fechas";
 import HistorialModal from "src/components/celulandia/HistorialModal";
 import { parseMovimiento } from "src/utils/celulandia/movimientos/parseMovimientos";
 import EditarPagoModal from "src/components/celulandia/EditarPagoModal";
@@ -52,8 +53,8 @@ const PagosCelulandiaPage = () => {
       },
       formatters: {
         tipoDeCambio: (valor) => `$${valor}`,
-        fechaFactura: (valor) => new Date(valor).toLocaleDateString("es-AR"),
-        fechaCreacion: (valor) => new Date(valor).toLocaleDateString("es-AR"),
+        fechaFactura: (valor) => getFechaArgentina(valor),
+        fechaCreacion: (valor) => getFechaArgentina(valor),
         cliente: (valor) => {
           if (typeof valor === "object" && valor?.nombre) {
             return valor.nombre;
@@ -168,7 +169,7 @@ const PagosCelulandiaPage = () => {
 
   const columns = [
     { key: "fechaFactura", label: "Fecha", sortable: true },
-    { key: "horaFactura", label: "Hora", sortable: true },
+    { key: "horaCreacion", label: "Hora", sortable: true },
     { key: "concepto", label: "Concepto", sortable: false },
     { key: "cuentaDestino", label: "Cuenta Origen", sortable: false },
     { key: "montoEnviado", label: "Monto", sortable: false },
@@ -195,8 +196,8 @@ const PagosCelulandiaPage = () => {
   ];
 
   const formatters = {
-    fechaFactura: (value, item) => formatearCampo("fecha", value, item),
-    horaFactura: (value, item) => formatearCampo("hora", value, item),
+    fechaFactura: (value, item) => getFechaArgentina(value),
+    horaCreacion: (value, item) => formatearCampo("hora", value, item),
     cuentaDestino: (value, item) => formatearCampo("cuentaDestino", value, item),
     moneda: (value, item) => formatearCampo("monedaDePago", value, item),
     montoEnviado: (value, item) => formatearCampo("montoEnviado", value, item),
@@ -204,7 +205,7 @@ const PagosCelulandiaPage = () => {
 
   const searchFields = [
     "fechaFactura",
-    "horaFactura",
+    "horaCreacion",
     "concepto",
     "cuentaDestino",
     "moneda",
