@@ -20,6 +20,8 @@ import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
 import { useAuthContext } from 'src/contexts/auth-context';
 import { dateToTimestamp, formatTimestamp } from 'src/utils/formatters';
 import MovementFields from 'src/components/movementFields';
+import { getProyectosFromUser } from 'src/services/proyectosService';
+import profileService from 'src/services/profileService';
 
 const MovementFormPage = () => {
   const { user } = useAuthContext();
@@ -42,6 +44,7 @@ const MovementFormPage = () => {
   const [alert, setAlert] = useState({ open: false, message: '', severity: 'info' });
   const [mediosPago, setMediosPago] = useState(['Efectivo', 'Transferencia', 'Tarjeta', 'Mercado Pago', 'Cheque']);
   const [urlTemporal, setUrlTemporal] = useState(null);
+  const [createdUser, setCreatedUser] = useState(null);
 
   const handleCloseAlert = () => setAlert({ ...alert, open: false });
 
@@ -168,6 +171,8 @@ const MovementFormPage = () => {
         const data = await movimientosService.getMovimientoById(movimientoId);
         data.fecha_factura = formatTimestamp(data.fecha_factura);
         setMovimiento(data);
+        const created_user = await profileService.getProfileByPhone(data.user_phone);
+        setCreatedUser(created_user);
         formik.setValues({ ...data, tags_extra: data.tags_extra || [], caja_chica: data.caja_chica ?? false, impuestos: data.impuestos || [] });
         const cat = cates.find(c => c.name === data.categoria);
         setCategoriaSeleccionada(cat);
@@ -186,6 +191,7 @@ const MovementFormPage = () => {
       <Head><title>{isEditMode ? 'Editar Movimiento' : 'Agregar Movimiento'}</title></Head>
       <Container maxWidth="xl">
         <Typography variant="h4" sx={{ mb: 3 }}>{isEditMode ? `Editar Movimiento (${movimiento?.codigo_operacion})` : 'Agregar Movimiento'}</Typography>
+        {isEditMode ? `Creado por: ${createdUser?.firstName} ${createdUser?.lastName}` : ''}
         {isInitialLoading ? (
           <Box display="flex" justifyContent="center" alignItems="center" minHeight="60vh">
             <CircularProgress />

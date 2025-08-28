@@ -28,6 +28,29 @@ const profileService = {
     }
   },
 
+  getProfileByPhone: async (phone) => {
+    try {
+      const profilesCollection = collection(db, 'profile');
+      const q = query(profilesCollection, where('phone', '==', phone));
+      const querySnapshot = await getDocs(q);
+
+      if (querySnapshot.empty) {
+        return null;
+      }
+
+      const profileDoc = querySnapshot.docs[0];
+      const profileData = profileDoc.data();
+
+      return {
+        id: profileDoc.id,
+        ...profileData
+      }
+    } catch (err) {
+      console.error(err);
+      return [];
+    }
+  },
+
   getProfileByEmpresa: async (empresaId) => {
     try {
       const empresaDocRef = doc(db, 'empresas', empresaId);
