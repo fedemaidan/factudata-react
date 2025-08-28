@@ -25,13 +25,20 @@ import Divider from "@mui/material/Divider";
 
 import movimientosService from "src/services/celulandia/movimientosService";
 import DataTabTable from "src/components/celulandia/DataTabTable";
+import { formatearCampo } from "src/utils/celulandia/formatearCampo";
 
 const ArqueoCajaPage = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [items, setItems] = useState([]);
   const [activeTab, setActiveTab] = useState(0);
   const [diario, setDiario] = useState([]);
-  const [arqueoTotalGeneral, setArqueoTotalGeneral] = useState(null);
+  const [arqueoTotalGeneral, setArqueoTotalGeneral] = useState({
+    totalARS: 0,
+    totalUSD: 0,
+    totalMovimientos: 0,
+  });
+  console.log("arqueoTotalGeneral", arqueoTotalGeneral);
+
   const [sortFieldDiario, setSortFieldDiario] = useState("fecha");
   const [sortDirectionDiario, setSortDirectionDiario] = useState("desc");
   const [pageDiario, setPageDiario] = useState(0);
@@ -69,10 +76,9 @@ const ArqueoCajaPage = () => {
 
       const movsResp = await movimientosService.getAllMovimientos(params);
       const arqueoTotalGeneralResp = await movimientosService.getArqueoTotalGeneral();
-      const movimientos = movsResp?.data || [];
+      const movimientos = movsResp?.data;
 
-      // Guardar el arqueo total general
-      setArqueoTotalGeneral(arqueoTotalGeneralResp?.data || null);
+      setArqueoTotalGeneral(arqueoTotalGeneralResp.data);
 
       const parsedMovs = movimientos.map((m) => ({
         id: m._id,
@@ -161,7 +167,10 @@ const ArqueoCajaPage = () => {
           <Stack spacing={3}>
             <Stack direction="row" justifyContent="space-between" spacing={4}>
               <Stack spacing={1}>
-                <Typography variant="h4">Arqueo de Caja</Typography>
+                <Typography variant="h5">
+                  TOTAL ARS: {formatearCampo("montoEnviado", arqueoTotalGeneral?.totalARS)} - TOTAL
+                  USD: {formatearCampo("montoEnviado", arqueoTotalGeneral?.totalUSD)}
+                </Typography>
               </Stack>
             </Stack>
             <Divider />
