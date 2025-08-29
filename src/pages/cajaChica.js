@@ -22,7 +22,7 @@ const formatCurrency = (amount) => {
 };
 
 const CajaChicaPage = () => {
-    const router = useRouter();
+  const router = useRouter();
   const { user } = useAuthContext();
   const { userId } = router.query;
   const [movimientos, setMovimientos] = useState([]);
