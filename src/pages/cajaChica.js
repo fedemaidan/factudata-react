@@ -213,7 +213,7 @@ const CajaChicaPage = () => {
                             <Button
                               color="primary"
                               startIcon={<EditIcon />}
-                              onClick={() => router.push('/movimiento?movimientoId=' + mov.id + '&lastPageUrl=/cajaChica&lastPageName=Caja Chica')}
+                              onClick={() => router.push('/movementForm?movimientoId=' + mov.id + '&lastPageUrl=/cajaChica&lastPageName=Caja Chica')}
                             >
                               Ver / Editar
                             </Button>
