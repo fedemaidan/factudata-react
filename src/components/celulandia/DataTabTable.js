@@ -22,6 +22,8 @@ import {
   Tooltip,
 } from "@mui/material";
 import RefreshIcon from "@mui/icons-material/Refresh";
+import FileDownloadIcon from "@mui/icons-material/FileDownload";
+import * as XLSX from "xlsx";
 import { formatearCampo } from "src/utils/celulandia/formatearCampo";
 import { formatCurrency } from "src/utils/formatters";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
@@ -61,10 +63,8 @@ const DataTabTable = ({
     }
   };
 
-  // Función para manejar la actualización
   const handleRefresh = async () => {
     if (!onRefresh) return;
-
     setIsRefreshing(true);
     try {
       await onRefresh();
@@ -99,17 +99,15 @@ const DataTabTable = ({
   const sortedAndFilteredItems = useMemo(() => {
     let rows = items;
 
-    // Filtros
     if (showSearch && busqueda.trim()) {
       const q = busqueda.toLowerCase();
       rows = rows.filter((r) =>
-        [r.cliente, r.monto?.toString()].some((v) => v && v.toLowerCase().includes(q))
+        [r.cliente, r.monto?.toString()].some((v) => v && String(v).toLowerCase().includes(q))
       );
     }
     if (showDateFilterOptions) {
       rows = applyDateFilter(rows, filtroFecha);
     }
-    // Filtro por DatePicker (día específico) - solo si no hay callback externo
     if (showDatePicker && !onDateChange && (selectedDate || internalSelectedDate)) {
       const dateToUse = selectedDate || internalSelectedDate;
       const targetDay = dayjs(dateToUse).startOf("day");
@@ -121,24 +119,18 @@ const DataTabTable = ({
       });
     }
 
-    // Ordenamiento
     if (sortField) {
-      rows.sort((a, b) => {
+      rows = [...rows].sort((a, b) => {
         let aVal = a[sortField];
         let bVal = b[sortField];
 
-        // Manejo especial para fechas
         if (sortField === "fecha") {
           aVal = new Date(aVal || 0);
           bVal = new Date(bVal || 0);
-        }
-        // Manejo especial para números
-        else if (sortField === "monto") {
+        } else if (sortField === "monto") {
           aVal = parseFloat(aVal || 0);
           bVal = parseFloat(bVal || 0);
-        }
-        // Manejo para strings
-        else if (typeof aVal === "string" && typeof bVal === "string") {
+        } else if (typeof aVal === "string" && typeof bVal === "string") {
           aVal = aVal.toLowerCase();
           bVal = bVal.toLowerCase();
         }
@@ -191,6 +183,37 @@ const DataTabTable = ({
     }
     return res;
   }, [grouped]);
+
+  // ===== Exportar a Excel (pestaña actual) =====
+  const handleExportExcel = () => {
+    const currentRows = grouped.get(currentOption) || [];
+    const monedaLabel = options.find((o) => o.value === currentOption)?.label || "";
+
+    // Mapeo de filas con los mismos valores visibles de la tabla
+    const data = currentRows.map((row) => {
+      const descuento =
+        row.descuentoAplicado !== undefined && row.descuentoAplicado !== null
+          ? `${Math.round(((row.descuentoAplicado ?? 1) - 1) * -100)}%`
+          : "-";
+
+      return {
+        "Fecha": formatearCampo("fecha", row.fecha),
+        "Cliente": row.cliente ?? "",
+        [`Monto (${monedaLabel})`]: formatCurrency(Math.round(row.monto || 0)),
+        "Tipo de Cambio": formatearCampo("tipoDeCambio", row.tipoDeCambio),
+        "Descuento": descuento,
+        "Monto Original (sin descuento)": formatCurrency(Math.round(row.montoOriginal || 0)),
+        "Moneda Original": formatearCampo("monedaDePago", row.monedaOriginal),
+      };
+    });
+
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, monedaLabel || "Datos");
+
+    const filename = `reporte_${monedaLabel || "datos"}_${dayjs().format("YYYY-MM-DD_HHmm")}.xlsx`;
+    XLSX.writeFile(wb, filename);
+  };
 
   if (isLoading) {
     return (
@@ -248,7 +271,6 @@ const DataTabTable = ({
               </LocalizationProvider>
             )}
 
-            {/* Botón de actualización */}
             {showRefreshButton && onRefresh && (
               <Tooltip title="Actualizar datos">
                 <IconButton
@@ -259,9 +281,7 @@ const DataTabTable = ({
                     px: 1,
                     py: 1,
                     boxShadow: 1,
-                    "&:hover": {
-                      boxShadow: 2,
-                    },
+                    "&:hover": { boxShadow: 2 },
                   }}
                 >
                   <RefreshIcon
@@ -279,12 +299,25 @@ const DataTabTable = ({
           </Stack>
 
           <Stack direction="row" spacing={2} sx={{ flexGrow: 1, justifyContent: "flex-end" }}>
+            {/* Botón Exportar Excel (pestaña actual) */}
+            <Button
+              variant="outlined"
+              startIcon={<FileDownloadIcon />}
+              onClick={handleExportExcel}
+              sx={{ py: 2, minWidth: 180 }}
+            >
+              Exportar Excel
+            </Button>
+
             {options.map((opt) => (
               <Button
                 key={opt.value}
                 variant={currentOption === opt.value ? "contained" : "outlined"}
                 color="primary"
-                onClick={() => setCurrentOption(opt.value)}
+                onClick={() => {
+                  setCurrentOption(opt.value);
+                  setPage(0);
+                }}
                 sx={{ py: 2, minWidth: 160 }}
               >
                 {opt.label}: {formatCurrency(Math.round(totals.get(opt.value) || 0))}
