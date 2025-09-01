@@ -17,6 +17,8 @@ import {
   OutlinedInput,
   FormHelperText,
   CircularProgress,
+  Snackbar,
+  Alert,
 } from "@mui/material";
 import clientesService from "src/services/celulandia/clientesService";
 import { getUser } from "src/utils/celulandia/currentUser";
@@ -35,6 +37,11 @@ const MenuProps = {
 const ccOptions = ["ARS", "USD BLUE", "USD OFICIAL"];
 
 const AgregarClienteModal = ({ open, onClose, onSave }) => {
+  const [alert, setAlert] = useState({
+    open: false,
+    message: "",
+    severity: "error",
+  });
   const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({
     nombre: "",
@@ -108,13 +115,22 @@ const AgregarClienteModal = ({ open, onClose, onSave }) => {
         onSave(data);
         handleClose();
       } else {
-        alert(error || "Error al crear el cliente");
+        setAlert({
+          ...alert,
+          open: true,
+          message: error || "Error al crear el cliente",
+          severity: "error",
+        });
       }
     } catch (error) {
       console.error(error);
-      alert(
-        error.response.data.error || "Error al crear el cliente. Por favor, intente nuevamente."
-      );
+      setAlert({
+        ...alert,
+        open: true,
+        message:
+          error.response.data.error || "Error al crear el cliente. Por favor, intente nuevamente.",
+        severity: "error",
+      });
     } finally {
       setIsLoading(false);
     }
@@ -131,8 +147,20 @@ const AgregarClienteModal = ({ open, onClose, onSave }) => {
     onClose();
   };
 
+  const handleCloseAlert = (event, reason) => {
+    if (reason === "clickaway") {
+      return;
+    }
+    setAlert({ ...alert, open: false });
+  };
+
   return (
     <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth>
+      <Snackbar open={alert.open} autoHideDuration={6000} onClose={handleCloseAlert}>
+        <Alert onClose={handleCloseAlert} severity={alert.severity} sx={{ width: "100%" }}>
+          {alert.message}
+        </Alert>
+      </Snackbar>
       <DialogTitle>
         <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
           <Typography variant="h6" sx={{ fontWeight: 600 }}>
