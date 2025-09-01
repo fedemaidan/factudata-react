@@ -15,6 +15,7 @@ import cuentasPendientesService from "src/services/celulandia/cuentasPendientesS
 import clientesService from "src/services/celulandia/clientesService";
 import dolarService from "src/services/celulandia/dolarService";
 import { getFechaArgentina, getHoraArgentina } from "src/utils/celulandia/fechas";
+import { getCuentaPendienteHistorialConfig } from "src/utils/celulandia/historial";
 
 const EntregasCelulandiaPage = () => {
   const [entregas, setEntregas] = useState([]);
@@ -35,41 +36,7 @@ const EntregasCelulandiaPage = () => {
   const [filtroFecha, setFiltroFecha] = useState("todos");
 
   // Configuración del historial para entregas
-  const entregaHistorialConfig = {
-    title: "Historial de la Entrega",
-    entityName: "entrega",
-    fieldNames: {
-      descripcion: "Descripción",
-      fechaCuenta: "Fecha de Cuenta",
-      proveedorOCliente: "Cliente",
-      descuentoAplicado: "Descuento Aplicado",
-      subTotal: "Sub Total",
-      montoTotal: "Monto Total",
-      moneda: "Moneda",
-      cc: "Cuenta Corriente",
-      usuario: "Usuario",
-    },
-    formatters: {
-      fechaCuenta: (valor) => getFechaArgentina(valor),
-      descuentoAplicado: (valor) => `${Math.round(((valor ?? 1) - 1) * -100)}%`,
-      subTotal: (valor) => {
-        if (typeof valor === "object") {
-          return `ARS: $${valor.ars || 0} | USD Of: $${valor.usdOficial || 0} | USD Blue: $${
-            valor.usdBlue || 0
-          }`;
-        }
-        return valor;
-      },
-      montoTotal: (valor) => {
-        if (typeof valor === "object") {
-          return `ARS: $${valor.ars || 0} | USD Of: $${valor.usdOficial || 0} | USD Blue: $${
-            valor.usdBlue || 0
-          }`;
-        }
-        return valor;
-      },
-    },
-  };
+  const entregaHistorialConfig = getCuentaPendienteHistorialConfig();
 
   // Función para calcular las fechas según el filtro seleccionado
   const calcularFechasFiltro = (filtro) => {

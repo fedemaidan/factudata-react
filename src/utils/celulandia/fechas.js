@@ -78,21 +78,39 @@ export const getFechaHoraArgentina = (fecha) => {
   });
 };
 
-export const getFechaActualArgentina = () => {
-  return new Date().toLocaleString("en-US", {
-    timeZone: "America/Argentina/Buenos_Aires",
-  });
-};
+export const calcularFechasFiltro = (filtro) => {
+  const hoy = new Date();
+  const inicioHoy = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate());
 
-export const convertirUTCaArgentina = (fechaUTC) => {
-  if (!fechaUTC) return null;
-
-  const fecha = new Date(fechaUTC);
-  const fechaArgentina = new Date(
-    fecha.toLocaleString("en-US", {
-      timeZone: "America/Argentina/Buenos_Aires",
-    })
-  );
-
-  return fechaArgentina;
+  switch (filtro) {
+    case "hoy":
+      return {
+        fechaInicio: inicioHoy.toISOString().split("T")[0],
+        fechaFin: inicioHoy.toISOString().split("T")[0],
+      };
+    case "estaSemana": {
+      const inicioSemana = new Date(inicioHoy);
+      inicioSemana.setDate(inicioHoy.getDate() - inicioHoy.getDay());
+      return {
+        fechaInicio: inicioSemana.toISOString().split("T")[0],
+        fechaFin: inicioHoy.toISOString().split("T")[0],
+      };
+    }
+    case "esteMes": {
+      const inicioMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+      return {
+        fechaInicio: inicioMes.toISOString().split("T")[0],
+        fechaFin: inicioHoy.toISOString().split("T")[0],
+      };
+    }
+    case "esteAño": {
+      const inicioAño = new Date(hoy.getFullYear(), 0, 1);
+      return {
+        fechaInicio: inicioAño.toISOString().split("T")[0],
+        fechaFin: inicioHoy.toISOString().split("T")[0],
+      };
+    }
+    default:
+      return { fechaInicio: null, fechaFin: null };
+  }
 };

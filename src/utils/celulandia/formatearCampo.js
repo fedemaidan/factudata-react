@@ -15,7 +15,23 @@ export const formatearCampo = (campo, valor, item = null) => {
 
   switch (campo) {
     case "fecha":
-      const fechaFormateada = new Date(valor).toLocaleDateString("es-AR");
+      let fechaFormateada;
+      // Si ya está en formato DD/M/YYYY, usarlo tal como está
+      if (typeof valor === "string" && /^\d{1,2}\/\d{1,2}\/\d{4}$/.test(valor)) {
+        fechaFormateada = valor;
+      } else {
+        // Si es una fecha ISO o Date, convertirla
+        try {
+          const date = new Date(valor);
+          if (isNaN(date.getTime())) {
+            fechaFormateada = valor; // Retornar el valor original si no se puede parsear
+          } else {
+            fechaFormateada = date.toLocaleDateString("es-AR");
+          }
+        } catch (error) {
+          fechaFormateada = valor; // Retornar el valor original en caso de error
+        }
+      }
       return aplicarEstiloTachado(fechaFormateada, item);
 
     case "hora":

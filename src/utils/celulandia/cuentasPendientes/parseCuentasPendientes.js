@@ -1,3 +1,5 @@
+import { getFechaArgentina } from "../fechas";
+
 export const parseCuentaPendiente = (c) => {
   const fechaCuentaCompleta = new Date(c.fechaCuenta);
   const fecha = fechaCuentaCompleta.toISOString().split("T")[0]; // YYYY-MM-DD
@@ -24,7 +26,7 @@ export const parseCuentaPendiente = (c) => {
     _id: c._id,
     origen: "cuentaPendiente",
     numeroComprobante: c.descripcion || "-",
-    fecha: c.fechaCuenta,
+    fecha: getFechaArgentina(c.fechaCuenta),
     hora,
     montoCC,
     tipoDeCambio: c.tipoDeCambio || 1,
@@ -39,5 +41,6 @@ export const parseCuentaPendiente = (c) => {
     descripcion: c.descripcion,
     CC: c.cc,
     descuentoAplicado: c.descuentoAplicado,
+    type: "cuentaPendiente",
   };
 };

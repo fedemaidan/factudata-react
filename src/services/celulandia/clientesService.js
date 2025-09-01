@@ -11,6 +11,13 @@ const clientesService = {
     return response.data;
   },
 
+  getClienteCCById: async (id, options = {}) => {
+    const response = await axiosCelulandia.get(`/clientes/${id}/cuenta-corriente`, {
+      params: options,
+    });
+    return response.data;
+  },
+
   getClienteLogs: async (id) => {
     const response = await axiosCelulandia.get(`/clientes/${id}/logs`);
     return response.data;

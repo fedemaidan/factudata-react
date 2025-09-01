@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   Dialog,
   DialogTitle,
@@ -19,8 +19,15 @@ import cuentasPendientesService from "src/services/celulandia/cuentasPendientesS
 import { getUser } from "src/utils/celulandia/currentUser";
 import { useMovimientoForm } from "src/hooks/useMovimientoForm";
 
+const toNumber = (v) => {
+  if (v === null || v === undefined) return 0;
+  if (typeof v === "number") return v;
+  const clean = String(v).replace(",", ".").trim();
+  const n = Number(clean);
+  return Number.isFinite(n) ? n : 0;
+};
+
 const EditarEntregaModal = ({ open, onClose, data, onSaved, clientes = [], tipoDeCambio }) => {
-  console.log(data);
   const [isSaving, setIsSaving] = useState(false);
   const [descuentoPorcentaje, setDescuentoPorcentaje] = useState("");
   const [isLoading, setIsLoading] = useState(true);
@@ -45,22 +52,21 @@ const EditarEntregaModal = ({ open, onClose, data, onSaved, clientes = [], tipoD
         cuentaDestino: "ENSHOP SRL",
         monedaDePago: data.moneda || "ARS",
         moneda: data.moneda || "ARS",
-        montoEnviado: Math.abs(data.montoEnviado || 0).toString(), // Convertir a positivo
+        montoEnviado: Math.abs(data.montoEnviado || 0).toString(),
         CC: data.CC || "ARS",
-
         cuentaCorriente: data.CC || "ARS",
-        montoCC: Math.abs(data.montoCC || 0).toString(), // Convertir a positivo
+        montoCC: Math.abs(data.montoCC || 0).toString(),
         estado: "CONFIRMADO",
         concepto: data.descripcion || "",
         usuario: getUser(),
       };
+
       setDescuentoPorcentaje(
         typeof data.descuentoAplicado === "number"
           ? ((1 - data.descuentoAplicado) * 100).toString()
           : "0"
       );
 
-      // Establecer fecha de entrega si existe
       if (data.fecha) {
         const fecha = new Date(data.fecha);
         setFechaEntrega(fecha.toISOString().split("T")[0]);
@@ -82,9 +88,20 @@ const EditarEntregaModal = ({ open, onClose, data, onSaved, clientes = [], tipoD
     handleClienteChange,
   } = useMovimientoForm(initialData, { clientes, tipoDeCambio });
 
-  const factorDescuento = 1 - (parseFloat(descuentoPorcentaje) || 0) / 100;
-  const subtotalEntrega = Math.round(parseFloat(formData.montoCC) || 0);
-  const montoCCConDescuento = Math.round(subtotalEntrega * factorDescuento);
+  // Cálculos reactivos SIN redondear antes de tiempo (y soportando coma decimal)
+  const { factorDescuento, subtotalEntregaRedondeado, montoCCConDescuentoRedondeado } =
+    useMemo(() => {
+      const subtotalSinRedondear = toNumber(formData.montoCC);
+      const pct = toNumber(descuentoPorcentaje);
+      const factor = 1 - pct / 100;
+      const totalConDescSinRedondear = subtotalSinRedondear * factor;
+
+      return {
+        factorDescuento: factor,
+        subtotalEntregaRedondeado: Math.round(subtotalSinRedondear),
+        montoCCConDescuentoRedondeado: Math.round(totalConDescSinRedondear),
+      };
+    }, [formData.montoCC, descuentoPorcentaje]);
 
   const handleSave = async () => {
     if (!formData.cliente || !formData.montoEnviado) {
@@ -117,29 +134,27 @@ const EditarEntregaModal = ({ open, onClose, data, onSaved, clientes = [], tipoD
       if (fechaEntrega) {
         let fechaEntregaDate = new Date();
         if (data.fecha && new Date(data.fecha).toISOString().split("T")[0] !== fechaEntrega) {
-          // Crear fecha completa con hora por defecto (12:00)
           const [year, month, day] = fechaEntrega.split("-");
           fechaEntregaDate = new Date(
             parseInt(year),
-            parseInt(month) - 1, // Los meses en JS van de 0 a 11
+            parseInt(month) - 1,
             parseInt(day),
-            12, // hora por defecto: 12:00
-            0, // minuto por defecto: 00
-            0, // segundos
-            0 // milisegundos
+            12,
+            0,
+            0,
+            0
           );
           datosParaGuardar.fechaCuenta = fechaEntregaDate;
         } else if (!data.fecha && fechaEntrega) {
-          // Crear fecha completa con hora por defecto (12:00)
           const [year, month, day] = fechaEntrega.split("-");
           fechaEntregaDate = new Date(
             parseInt(year),
-            parseInt(month) - 1, // Los meses en JS van de 0 a 11
+            parseInt(month) - 1,
             parseInt(day),
-            12, // hora por defecto: 12:00
-            0, // minuto por defecto: 00
-            0, // segundos
-            0 // milisegundos
+            12,
+            0,
+            0,
+            0
           );
           datosParaGuardar.fechaCuenta = fechaEntregaDate;
         }
@@ -149,55 +164,59 @@ const EditarEntregaModal = ({ open, onClose, data, onSaved, clientes = [], tipoD
         datosParaGuardar.descuentoAplicado = factorDescuento;
       }
 
+      // Recalcular totales si corresponde (usando las versiones redondeadas de pantalla)
       if (cambiosAfectanTotales) {
         const tcOficial = tipoDeCambio?.oficial?.venta || tipoDeCambio?.oficial || 1;
         const tcBlue = tipoDeCambio?.blue?.venta || tipoDeCambio?.blue || 1;
 
+        // Subtotal (sin descuento)
         let subTotal = { ars: 0, usdOficial: 0, usdBlue: 0 };
         if (formData.CC === "ARS") {
           subTotal = {
-            ars: -subtotalEntrega,
-            usdOficial: -Math.round(subtotalEntrega / tcOficial),
-            usdBlue: -Math.round(subtotalEntrega / tcBlue),
+            ars: -subtotalEntregaRedondeado,
+            usdOficial: -Math.round(subtotalEntregaRedondeado / tcOficial),
+            usdBlue: -Math.round(subtotalEntregaRedondeado / tcBlue),
           };
         } else if (formData.CC === "USD OFICIAL") {
           subTotal = {
-            ars: -Math.round(subtotalEntrega * tcOficial),
-            usdOficial: -subtotalEntrega,
-            usdBlue: -subtotalEntrega,
+            ars: -Math.round(subtotalEntregaRedondeado * tcOficial),
+            usdOficial: -subtotalEntregaRedondeado,
+            usdBlue: -subtotalEntregaRedondeado,
           };
         } else if (formData.CC === "USD BLUE") {
           subTotal = {
-            ars: -Math.round(subtotalEntrega * tcBlue),
-            usdOficial: -subtotalEntrega,
-            usdBlue: -subtotalEntrega,
+            ars: -Math.round(subtotalEntregaRedondeado * tcBlue),
+            usdOficial: -subtotalEntregaRedondeado,
+            usdBlue: -subtotalEntregaRedondeado,
           };
         }
 
+        // Total con descuento aplicado
         let montoTotal = { ars: 0, usdOficial: 0, usdBlue: 0 };
         if (formData.CC === "ARS") {
           montoTotal = {
-            ars: -montoCCConDescuento,
-            usdOficial: -Math.round(montoCCConDescuento / tcOficial),
-            usdBlue: -Math.round(montoCCConDescuento / tcBlue),
+            ars: -montoCCConDescuentoRedondeado,
+            usdOficial: -Math.round(montoCCConDescuentoRedondeado / tcOficial),
+            usdBlue: -Math.round(montoCCConDescuentoRedondeado / tcBlue),
           };
         } else if (formData.CC === "USD OFICIAL") {
           montoTotal = {
-            ars: -Math.round(montoCCConDescuento * tcOficial),
-            usdOficial: -montoCCConDescuento,
-            usdBlue: -montoCCConDescuento,
+            ars: -Math.round(montoCCConDescuentoRedondeado * tcOficial),
+            usdOficial: -montoCCConDescuentoRedondeado,
+            usdBlue: -montoCCConDescuentoRedondeado,
           };
         } else if (formData.CC === "USD BLUE") {
           montoTotal = {
-            ars: -Math.round(montoCCConDescuento * tcBlue),
-            usdOficial: -montoCCConDescuento,
-            usdBlue: -montoCCConDescuento,
+            ars: -Math.round(montoCCConDescuentoRedondeado * tcBlue),
+            usdOficial: -montoCCConDescuentoRedondeado,
+            usdBlue: -montoCCConDescuentoRedondeado,
           };
         }
 
         datosParaGuardar = { ...datosParaGuardar, subTotal, montoTotal };
       }
 
+      // Detectar cambios reales contra `data`
       const camposModificados = {};
       Object.keys(datosParaGuardar).forEach((key) => {
         if (key === "subTotal" || key === "montoTotal") {
@@ -205,7 +224,6 @@ const EditarEntregaModal = ({ open, onClose, data, onSaved, clientes = [], tipoD
             camposModificados[key] = datosParaGuardar[key];
           }
         } else if (key === "fechaCuenta") {
-          // Comparar fechas para fechaCuenta
           const fechaOriginal = data.fecha
             ? new Date(data.fecha).toISOString().split("T")[0]
             : null;
@@ -232,7 +250,6 @@ const EditarEntregaModal = ({ open, onClose, data, onSaved, clientes = [], tipoD
         return;
       }
 
-      console.log("Campos modificados:", camposModificados);
       const result = await cuentasPendientesService.update(data._id, camposModificados, getUser());
       if (result.success) {
         onSaved && onSaved(result.data);
@@ -337,18 +354,7 @@ const EditarEntregaModal = ({ open, onClose, data, onSaved, clientes = [], tipoD
               />
             </Grid>
 
-            {/* Fila 3: Monto - Moneda */}
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Monto *"
-                type="number"
-                value={formData.montoEnviado}
-                onChange={(e) => handleMontoEnviado(e.target.value)}
-                margin="normal"
-                required
-              />
-            </Grid>
+            {/* Fila 3: Moneda */}
             <Grid item xs={12} sm={6}>
               <FormControl fullWidth margin="normal">
                 <InputLabel>Moneda *</InputLabel>
@@ -385,7 +391,7 @@ const EditarEntregaModal = ({ open, onClose, data, onSaved, clientes = [], tipoD
                 fullWidth
                 label="Subtotal (sin descuento)"
                 type="number"
-                value={subtotalEntrega}
+                value={subtotalEntregaRedondeado}
                 margin="normal"
                 disabled
                 helperText="Calculado automáticamente"
@@ -398,7 +404,7 @@ const EditarEntregaModal = ({ open, onClose, data, onSaved, clientes = [], tipoD
                 fullWidth
                 label="Total (con descuento)"
                 type="number"
-                value={montoCCConDescuento}
+                value={montoCCConDescuentoRedondeado}
                 margin="normal"
                 disabled
                 helperText="Subtotal con descuento aplicado"
@@ -408,11 +414,12 @@ const EditarEntregaModal = ({ open, onClose, data, onSaved, clientes = [], tipoD
               <TextField
                 fullWidth
                 label="Descuento (%)"
-                type="number"
+                type="text"
                 value={descuentoPorcentaje}
                 onChange={(e) => setDescuentoPorcentaje(e.target.value)}
                 margin="normal"
-                inputProps={{ min: 0, max: 100 }}
+                inputProps={{ inputMode: "decimal" }}
+                helperText="Acepta coma o punto como separador decimal"
               />
             </Grid>
 

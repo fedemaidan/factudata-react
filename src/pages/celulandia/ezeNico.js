@@ -11,6 +11,7 @@ import {
   Select,
   MenuItem,
   Divider,
+  Typography,
 } from "@mui/material";
 import dayjs from "dayjs";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
@@ -18,6 +19,7 @@ import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import DataTable from "src/components/celulandia/DataTable";
 import movimientosService from "src/services/celulandia/movimientosService";
+import { formatearCampo } from "src/utils/celulandia/formatearCampo";
 
 const mapMovimientoToRow = (m) => {
   const fecha = m.fechaFactura || m.fechaCreacion;
@@ -66,6 +68,16 @@ const EzeNicoPage = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [ezeRows, setEzeRows] = useState([]);
   const [nicoRows, setNicoRows] = useState([]);
+  const [totales, setTotales] = useState({
+    eze: {
+      sumaARS: 0,
+      sumaUSD: 0,
+    },
+    nico: {
+      sumaARS: 0,
+      sumaUSD: 0,
+    },
+  });
 
   const [sortFieldEze, setSortFieldEze] = useState("fecha");
   const [sortDirEze, setSortDirEze] = useState("desc");
@@ -85,20 +97,34 @@ const EzeNicoPage = () => {
           movimientosService.getAllMovimientos({
             populate: "cliente",
             cajaNombre: "EZE",
-            limit: 200,
+            limit: 1000,
+            totalMoneda: true,
           }),
           movimientosService.getAllMovimientos({
             populate: "cliente",
             cajaNombre: "NICO",
-            limit: 200,
+            limit: 1000,
+            totalMoneda: true,
           }),
         ]);
 
+        const { sumaARS: ezeSumaARS, sumaUSD: ezeSumaUSD } = ezeResp;
+        const { sumaARS: nicoSumaARS, sumaUSD: nicoSumaUSD } = nicoResp;
         const ezeData = Array.isArray(ezeResp?.data) ? ezeResp.data : ezeResp?.data || [];
         const nicoData = Array.isArray(nicoResp?.data) ? nicoResp.data : nicoResp?.data || [];
 
         setEzeRows(ezeData.map(mapMovimientoToRow));
         setNicoRows(nicoData.map(mapMovimientoToRow));
+        setTotales({
+          eze: {
+            sumaARS: ezeSumaARS,
+            sumaUSD: ezeSumaUSD,
+          },
+          nico: {
+            sumaARS: nicoSumaARS,
+            sumaUSD: nicoSumaUSD,
+          },
+        });
       } catch (err) {
         console.error("Error cargando movimientos EZE/NICO:", err);
         setEzeRows([]);
@@ -211,7 +237,20 @@ const EzeNicoPage = () => {
       </Head>
       <Box component="main" sx={{ flexGrow: 1, py: 2 }}>
         <Container maxWidth="xl">
-          <Stack>
+          <Stack spacing={1}>
+            <Stack direction="row" justifyContent="space-between" spacing={4}>
+              <Stack spacing={1}>
+                <Typography variant="h5">
+                  TOTAL EZE ARS: {formatearCampo("montoEnviado", totales?.eze?.sumaARS)} - TOTAL EZE
+                  USD: {formatearCampo("montoEnviado", totales?.eze?.sumaUSD)}
+                </Typography>
+                <Typography variant="h5">
+                  TOTAL NICO ARS: {formatearCampo("montoEnviado", totales?.nico?.sumaARS)} - TOTAL
+                  NICO USD: {formatearCampo("montoEnviado", totales?.nico?.sumaUSD)}
+                </Typography>
+              </Stack>
+            </Stack>
+            <Divider />
             <Stack direction="row" justifyContent="space-between">
               <Stack direction="row" spacing={2} alignItems="center" sx={{ width: "100%" }}>
                 <FormControl sx={{ minWidth: 220 }} variant="filled">

@@ -1,13 +1,12 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { Layout as DashboardLayout } from "src/layouts/dashboard/layout";
-import Head from "next/head";
 import { Container } from "@mui/material";
 
 import DataTable from "src/components/celulandia/DataTable";
 import TableActions from "src/components/celulandia/TableActions";
 import movimientosService from "src/services/celulandia/movimientosService";
 import { formatearCampo } from "src/utils/celulandia/formatearCampo";
-import { getFechaArgentina } from "src/utils/celulandia/fechas";
+import { getFechaArgentina, calcularFechasFiltro } from "src/utils/celulandia/fechas";
 import ComprobanteModal from "src/components/celulandia/ComprobanteModal";
 import EditarModal from "src/components/celulandia/EditarModal";
 import HistorialModal from "src/components/celulandia/HistorialModal";
@@ -17,6 +16,7 @@ import { parseMovimiento } from "src/utils/celulandia/movimientos/parseMovimient
 import clientesService from "src/services/celulandia/clientesService";
 import dolarService from "src/services/celulandia/dolarService";
 import cajasService from "src/services/celulandia/cajasService";
+import { getMovimientoHistorialConfig } from "src/utils/celulandia/historial";
 
 const ComprobantesCelulandiaPage = () => {
   const [movimientos, setMovimientos] = useState([]);
@@ -46,98 +46,7 @@ const ComprobantesCelulandiaPage = () => {
   });
   const [cajas, setCajas] = useState([]);
 
-  const movimientoHistorialConfig = useMemo(
-    () => ({
-      title: "Historial del Comprobante",
-      entityName: "comprobante",
-      fieldNames: {
-        tipoDeCambio: "Tipo de Cambio",
-        estado: "Estado",
-        caja: "Cuenta de Destino",
-        cliente: "Cliente",
-        cuentaCorriente: "Cuenta Corriente",
-        moneda: "Moneda",
-        numeroFactura: "Número de Factura",
-        fechaFactura: "Fecha de Factura",
-        nombreUsuario: "Usuario",
-        total: "Monto Total",
-        montoEnviado: "Monto Enviado",
-      },
-      formatters: {
-        tipoDeCambio: (valor) => `$${valor}`,
-        fechaFactura: (valor) => getFechaArgentina(valor),
-        fechaCreacion: (valor) => getFechaArgentina(valor),
-        cliente: (valor) => {
-          if (typeof valor === "object" && valor?.nombre) {
-            return valor.nombre;
-          }
-          if (typeof valor === "string") {
-            return valor;
-          }
-          return "N/A";
-        },
-        caja: (valor) => {
-          if (typeof valor === "object" && valor?.nombre) {
-            return valor.nombre;
-          }
-          if (typeof valor === "string" && cajas.length > 0) {
-            const caja = cajas.find((c) => c._id === valor);
-            return caja ? caja.nombre : `ID: ${valor}`;
-          }
-          return valor || "N/A";
-        },
-        total: (valor) => {
-          if (typeof valor === "object" && valor.ars !== undefined) {
-            return `ARS: $${valor.ars?.toFixed(2) || 0} | USD Blue: $${
-              valor.usdBlue?.toFixed(2) || 0
-            } | USD Oficial: $${valor.usdOficial?.toFixed(2) || 0}`;
-          }
-          return valor || "N/A";
-        },
-        montoEnviado: (valor) => {
-          return `$${parseFloat(valor || 0).toFixed(2)}`;
-        },
-      },
-    }),
-    [cajas]
-  );
-
-  const calcularFechasFiltro = (filtro) => {
-    const hoy = new Date();
-    const inicioHoy = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate());
-
-    switch (filtro) {
-      case "hoy":
-        return {
-          fechaInicio: inicioHoy.toISOString().split("T")[0],
-          fechaFin: inicioHoy.toISOString().split("T")[0],
-        };
-      case "estaSemana": {
-        const inicioSemana = new Date(inicioHoy);
-        inicioSemana.setDate(inicioHoy.getDate() - inicioHoy.getDay());
-        return {
-          fechaInicio: inicioSemana.toISOString().split("T")[0],
-          fechaFin: inicioHoy.toISOString().split("T")[0],
-        };
-      }
-      case "esteMes": {
-        const inicioMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
-        return {
-          fechaInicio: inicioMes.toISOString().split("T")[0],
-          fechaFin: inicioHoy.toISOString().split("T")[0],
-        };
-      }
-      case "esteAño": {
-        const inicioAño = new Date(hoy.getFullYear(), 0, 1);
-        return {
-          fechaInicio: inicioAño.toISOString().split("T")[0],
-          fechaFin: inicioHoy.toISOString().split("T")[0],
-        };
-      }
-      default:
-        return { fechaInicio: null, fechaFin: null };
-    }
-  };
+  const movimientoHistorialConfig = useMemo(() => getMovimientoHistorialConfig(cajas), [cajas]);
 
   useEffect(() => {
     fetchData(paginaActual);
@@ -148,8 +57,6 @@ const ComprobantesCelulandiaPage = () => {
     try {
       const offset = (pagina - 1) * limitePorPagina;
       const { fechaInicio, fechaFin } = calcularFechasFiltro(filtroFecha);
-
-      console.log(`Filtro aplicado: ${filtroFecha}`, { fechaInicio, fechaFin });
 
       const [movimientosResponse, clientesResponse, tipoDeCambioResponse, cajasResponse] =
         await Promise.all([

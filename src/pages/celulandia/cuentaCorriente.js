@@ -37,9 +37,7 @@ const CuentaCorrienteCelulandiaPage = () => {
     setIsLoading(true);
     try {
       const response = await movimientosService.getClientesTotales();
-      console.log("response", response);
       if (response.success) {
-        console.log("Datos de clientes cargados:", response.data);
         setClientes(response.data);
       } else {
         console.error("Error al cargar clientes:", response.error);
@@ -114,7 +112,6 @@ const CuentaCorrienteCelulandiaPage = () => {
   };
 
   const clientesFiltrados = useMemo(() => {
-    console.log("Filtrando clientes:", clientes.length);
     if (!busqueda.trim()) {
       return clientes;
     }

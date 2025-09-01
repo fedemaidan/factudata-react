@@ -16,6 +16,7 @@ const movimientosService = {
     fechaInicio,
     fechaFin,
     includeInactive = false,
+    totalMoneda = false,
   }) => {
     const response = await axiosCelulandia.get("/movimientos", {
       params: {
@@ -33,6 +34,7 @@ const movimientosService = {
         fechaInicio,
         fechaFin,
         includeInactive,
+        totalMoneda,
       },
     });
     return response.data;
@@ -50,6 +52,57 @@ const movimientosService = {
 
   getMovimientosByCliente: async (clienteId) => {
     const response = await axiosCelulandia.get(`/movimientos/cliente/${clienteId}`);
+    return response.data;
+  },
+
+  getMovimientosByClienteWithPagination: async ({
+    clienteId,
+    limit = 20,
+    offset = 0,
+    sortField,
+    sortDirection,
+    fechaInicio,
+    fechaFin,
+    includeInactive = false,
+  }) => {
+    const response = await axiosCelulandia.get(`/movimientos/cliente/${clienteId}`, {
+      params: {
+        limit,
+        offset,
+        sortField,
+        sortDirection,
+        fechaInicio,
+        fechaFin,
+        includeInactive,
+      },
+    });
+    return response.data;
+  },
+
+  getClienteCuentaCorriente: async ({
+    clienteId,
+    limit = 20,
+    offset = 0,
+    sortField,
+    sortDirection,
+    fechaInicio,
+    fechaFin,
+    includeInactive = false,
+  }) => {
+    const response = await axiosCelulandia.get(
+      `/movimientos/cliente/${clienteId}/cuenta-corriente`,
+      {
+        params: {
+          limit,
+          offset,
+          sortField,
+          sortDirection,
+          fechaInicio,
+          fechaFin,
+          includeInactive,
+        },
+      }
+    );
     return response.data;
   },
 

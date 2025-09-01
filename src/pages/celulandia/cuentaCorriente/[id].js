@@ -2,47 +2,28 @@ import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { useRouter } from "next/router";
 import { Layout as DashboardLayout } from "src/layouts/dashboard/layout";
 import Head from "next/head";
-import {
-  Box,
-  Container,
-  Stack,
-  Typography,
-  TextField,
-  Paper,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableRow,
-  CircularProgress,
-  IconButton,
-  InputAdornment,
-  Select,
-  MenuItem,
-  FormControl,
-  InputLabel,
-  Button,
-} from "@mui/material";
+import { Box, Container, Stack, Typography, CircularProgress, Button } from "@mui/material";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
-import EditIcon from "@mui/icons-material/Edit";
-import HistoryIcon from "@mui/icons-material/History";
 import Divider from "@mui/material/Divider";
-import ClearIcon from "@mui/icons-material/Clear";
 
 import movimientosService from "src/services/celulandia/movimientosService";
 import clientesService from "src/services/celulandia/clientesService";
 import dolarService from "src/services/celulandia/dolarService";
 import cajasService from "src/services/celulandia/cajasService";
 import cuentasPendientesService from "src/services/celulandia/cuentasPendientesService";
-import { formatCurrency } from "src/utils/formatters";
 import DataTabTable from "src/components/celulandia/DataTabTable";
-import { formatearCampo } from "src/utils/celulandia/formatearCampo";
-import { filtrarPorFecha, filtrarPorBusqueda } from "src/utils/celulandia/filtros";
 import EditarModal from "src/components/celulandia/EditarModal";
 import EditarEntregaModal from "src/components/celulandia/EditarEntregaModal";
 import HistorialModal from "src/components/celulandia/HistorialModal";
+import ConfirmarEliminacionModal from "src/components/celulandia/ConfirmarEliminacionModal";
 import { parseMovimiento } from "src/utils/celulandia/movimientos/parseMovimientos";
 import { parseCuentaPendiente } from "src/utils/celulandia/cuentasPendientes/parseCuentasPendientes";
+import { calcularFechasFiltro } from "src/utils/celulandia/fechas";
+import {
+  getMovimientoHistorialConfig,
+  getCuentaPendienteHistorialConfig,
+} from "src/utils/celulandia/historial";
+import { getUser } from "src/utils/celulandia/currentUser";
 
 const ClienteCelulandiaCCPage = () => {
   const router = useRouter();
@@ -51,19 +32,25 @@ const ClienteCelulandiaCCPage = () => {
   const [movimientos, setMovimientos] = useState([]);
   const [cliente, setCliente] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [busqueda, setBusqueda] = useState("");
-  const [filtroFecha, setFiltroFecha] = useState("todos");
-  const [cuentaCorriente, setCuentaCorriente] = useState("ARS");
-  const [ordenCampo, setOrdenCampo] = useState("fecha");
-  const [ordenDireccion, setOrdenDireccion] = useState("desc");
+
+  // UI / Modales
   const [editarModalOpen, setEditarModalOpen] = useState(false);
+  const [editarEntregaModalOpen, setEditarEntregaModalOpen] = useState(false);
   const [historialModalOpen, setHistorialModalOpen] = useState(false);
-  const [selectedData, setSelectedData] = useState(null);
+  const [confirmarEliminacionOpen, setConfirmarEliminacionOpen] = useState(false);
+
+  // Selección
+  const [selectedData, setSelectedData] = useState(null); // documento original
+  const [selectedItemType, setSelectedItemType] = useState(null); // "movimiento" | "cuentaPendiente"
   const [historialConfig, setHistorialConfig] = useState(null);
   const [historialLoader, setHistorialLoader] = useState(null);
-  const [editarEntregaModalOpen, setEditarEntregaModalOpen] = useState(false);
 
-  // Nuevos estados para los datos compartidos
+  // Tabs / filtros / orden
+  const [grupoActual, setGrupoActual] = useState("ARS");
+  const [filtroFecha, setFiltroFecha] = useState("todos");
+  const [sortDirection, setSortDirection] = useState("desc"); // solo por fecha
+
+  // Otros datos compartidos
   const [clientes, setClientes] = useState([]);
   const [tipoDeCambio, setTipoDeCambio] = useState({
     ultimaActualizacion: "",
@@ -72,62 +59,36 @@ const ClienteCelulandiaCCPage = () => {
     current: 1,
   });
   const [cajas, setCajas] = useState([]);
-
-  console.log("movimientos", movimientos);
-  const formatearMonto = (monto) => {
-    if (monto === undefined || monto === null) return "-";
-    const isNegativo = monto < 0;
-    const montoFormateado = formatCurrency(Math.round(monto));
-    return (
-      <Typography
-        component="span"
-        sx={{
-          color: isNegativo ? "error.main" : "text.primary",
-          fontWeight: isNegativo ? "bold" : "normal",
-        }}
-      >
-        {isNegativo ? `-${montoFormateado}` : montoFormateado}
-      </Typography>
-    );
-  };
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const fetchData = useCallback(async () => {
     if (!id) return;
 
     setIsLoading(true);
     try {
+      const { fechaInicio, fechaFin } = calcularFechasFiltro(filtroFecha); // hoy no se usa en el backend
+
       const [
         clienteResponse,
         movimientosData,
+        cuentasPendientesResponse,
         clientesResponse,
         tipoDeCambioResponse,
         cajasResponse,
-        cuentasPendientesResponse,
       ] = await Promise.all([
         clientesService.getClienteById(id),
         movimientosService.getMovimientosByCliente(id),
+        cuentasPendientesService.getByClienteId(id),
         clientesService.getAllClientes(),
         dolarService.getTipoDeCambio(),
         cajasService.getAllCajas(),
-        cuentasPendientesService.getByClienteId(id),
       ]);
 
-      if (clienteResponse.success) {
+      if (clienteResponse?.success) {
         setCliente(clienteResponse.data);
       }
-      const movimientosParseados = movimientosData.data
-        .filter((m) => m.type === "INGRESO")
-        .map(parseMovimiento);
 
-      const cuentasRespData = Array.isArray(cuentasPendientesResponse?.data)
-        ? cuentasPendientesResponse.data
-        : cuentasPendientesResponse?.data || [];
-      const cuentasCliente = cuentasRespData || [];
-
-      const cuentasParseadas = cuentasCliente.map(parseCuentaPendiente);
-
-      setMovimientos([...movimientosParseados, ...cuentasParseadas]);
-
+      // Normalizar arrays de respuestas
       const clientesArray = Array.isArray(clientesResponse)
         ? clientesResponse
         : clientesResponse?.data || [];
@@ -138,84 +99,143 @@ const ClienteCelulandiaCCPage = () => {
         current: tipoDeCambioResponse?.current || 1,
       });
 
-      // Procesar cajas
-      setCajas(cajasResponse.data);
+      setCajas(cajasResponse?.data || []);
+
+      // Parsear movimientos (solo INGRESO según tu filtro) y marcar itemType
+      const movimientosParseados = (movimientosData?.data || [])
+        .filter((m) => m.type === "INGRESO")
+        .map((m) => ({ ...parseMovimiento(m), itemType: "movimiento" }));
+
+      // Parsear cuentas pendientes y marcar itemType
+      const cuentasRespData = Array.isArray(cuentasPendientesResponse?.data)
+        ? cuentasPendientesResponse.data
+        : cuentasPendientesResponse?.data || [];
+      const cuentasParseadas = (cuentasRespData || []).map((m) => ({
+        ...parseCuentaPendiente(m),
+        itemType: "cuentaPendiente",
+      }));
+
+      // Unificar en un solo arreglo
+      setMovimientos([...movimientosParseados, ...cuentasParseadas]);
     } catch (error) {
       console.error("Error al cargar datos:", error);
     } finally {
       setIsLoading(false);
     }
-  }, [id]);
-
-  console.log(movimientos);
+  }, [id, filtroFecha]);
 
   useEffect(() => {
-    if (id) {
-      fetchData();
-    }
+    if (id) fetchData();
   }, [id, fetchData]);
 
-  // Adaptar a formato de DataTabTable: tabs por Cuenta Corriente (ARS / USD BLUE / USD OFICIAL)
   const itemsDataTab = useMemo(() => {
-    return movimientos.map((m) => ({
-      id: m.id || m._id,
-      fecha: m.fechaFactura || m.fecha,
-      cliente: m.nombreCliente || m.proveedorOCliente || m.cliente?.nombre || m.cliente || "-",
-      group: m.cuentaCorriente || m.CC || m.cc,
-      monto: Math.round(m.montoCC || 0),
-      tipoDeCambio: m.tipoDeCambio || 1,
-      descuentoAplicado: m.descuentoAplicado,
-      montoOriginal: Math.round(m.montoEnviado),
-      monedaOriginal: m.moneda || m.monedaDePago,
-    }));
-  }, [movimientos]);
+    return movimientos.map((m) => {
+      const isMov = m.itemType === "movimiento";
+      const fecha =
+        (isMov ? m.fechaFactura ?? m.fecha : m.fechaCuenta ?? m.fecha) ?? m.fechaCreacion ?? null;
 
-  const saldosPorCC = useMemo(() => {
-    const saldos = {
-      ARS: 0,
-      "USD BLUE": 0,
-      "USD OFICIAL": 0,
-    };
-
-    movimientos.forEach((mov) => {
-      if (Object.prototype.hasOwnProperty.call(saldos, mov.cuentaCorriente)) {
-        if (mov.type === "INGRESO") {
-          saldos[mov.cuentaCorriente] += mov.montoCC;
-        } else {
-          saldos[mov.cuentaCorriente] -= mov.montoCC;
-        }
-      }
+      return {
+        id: m.id || m._id,
+        fecha,
+        cliente: m.nombreCliente || m.proveedorOCliente || m.cliente?.nombre || "-",
+        group: m.cuentaCorriente || m.CC || m.cc,
+        monto: Math.round(m.montoCC || 0),
+        tipoDeCambio: m.tipoDeCambio || 1,
+        descuentoAplicado: m.descuentoAplicado,
+        montoOriginal: Math.round(m.montoEnviado || 0),
+        monedaOriginal: m.moneda || m.monedaDePago,
+        itemType: m.itemType,
+        originalData: m,
+      };
     });
-
-    return saldos;
   }, [movimientos]);
 
-  const handleVolver = () => {
-    router.back();
+  const handleVolver = () => router.back();
+
+  const handleFiltroFechaChange = (nuevoFiltro) => {
+    setFiltroFecha(nuevoFiltro);
+  };
+
+  // Solo permitimos cambiar dirección de orden por fecha
+  const handleSortChange = (campo) => {
+    if (campo !== "fecha") return;
+    setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
   };
 
   const handleSaveEdit = (id, updatedData) => {
     setMovimientos((prevMovimientos) =>
-      prevMovimientos.map((mov) => (mov.id === id ? { ...mov, ...updatedData } : mov))
+      prevMovimientos.map((mov) =>
+        mov.id === id || mov._id === id ? { ...mov, ...updatedData } : mov
+      )
     );
   };
 
-  if (!id) {
-    return <div>Cargando...</div>;
-  }
+  const handleEdit = (item) => {
+    setSelectedData(item.originalData);
+    setSelectedItemType(item.itemType);
+    if (item.itemType === "movimiento") {
+      setEditarModalOpen(true);
+    } else {
+      setEditarEntregaModalOpen(true);
+    }
+  };
+
+  const handleViewHistory = (item) => {
+    setSelectedData(item.originalData);
+    setSelectedItemType(item.itemType);
+    if (item.itemType === "movimiento") {
+      setHistorialConfig(getMovimientoHistorialConfig(cajas));
+      setHistorialLoader(movimientosService.getMovimientoLogs);
+    } else {
+      setHistorialConfig(getCuentaPendienteHistorialConfig());
+      setHistorialLoader(cuentasPendientesService.getLogs);
+    }
+    setHistorialModalOpen(true);
+  };
+
+  const handleDelete = (item) => {
+    setSelectedData(item.originalData);
+    setSelectedItemType(item.itemType);
+    setConfirmarEliminacionOpen(true);
+  };
+
+  const confirmarEliminacion = async () => {
+    if (!selectedData) return;
+
+    setIsDeleting(true);
+    try {
+      if (selectedItemType === "movimiento") {
+        await movimientosService.deleteMovimiento(selectedData._id, getUser());
+      } else {
+        await cuentasPendientesService.deleteCuentaPendiente(selectedData._id, getUser());
+      }
+
+      // Marcamos inactive en memoria
+      setMovimientos((prevMovimientos) =>
+        prevMovimientos.map((mov) =>
+          mov._id === selectedData._id ? { ...mov, active: false } : mov
+        )
+      );
+
+      setConfirmarEliminacionOpen(false);
+      setSelectedData(null);
+      setSelectedItemType(null);
+    } catch (error) {
+      console.error("Error al eliminar:", error);
+      alert("Error al eliminar el elemento");
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  if (!id) return <div>Cargando...</div>;
 
   return (
     <>
       <Head>
         <title>Cuenta Corriente - {cliente?.nombre || id}</title>
       </Head>
-      <Box
-        component="main"
-        sx={{
-          flexGrow: 1,
-          py: 2,
-        }}
-      >
+      <Box component="main" sx={{ flexGrow: 1, py: 2 }}>
         <Container maxWidth="xl">
           <Stack spacing={3}>
             <Stack spacing={2}>
@@ -226,10 +246,7 @@ const ClienteCelulandiaCCPage = () => {
                 sx={{
                   alignSelf: "flex-start",
                   color: "text.secondary",
-                  "&:hover": {
-                    backgroundColor: "action.hover",
-                    color: "primary.main",
-                  },
+                  "&:hover": { backgroundColor: "action.hover", color: "primary.main" },
                   transition: "all 0.2s ease-in-out",
                   fontWeight: 500,
                 }}
@@ -246,6 +263,7 @@ const ClienteCelulandiaCCPage = () => {
                 </Typography>
               </Stack>
             </Stack>
+
             <Divider />
 
             {isLoading ? (
@@ -265,14 +283,29 @@ const ClienteCelulandiaCCPage = () => {
                   { label: "USD BLUE", value: "USD BLUE" },
                   { label: "USD OFICIAL", value: "USD OFICIAL" },
                 ]}
-                defaultOption={"ARS"}
+                defaultOption="ARS"
+                currentOption={grupoActual}
+                onOptionChange={(newGroup) => setGrupoActual(newGroup)}
                 showRefreshButton={true}
                 onRefresh={fetchData}
+                // Solo orden por fecha (frontend)
+                sortField="fecha"
+                sortDirection={sortDirection}
+                onSortChange={handleSortChange}
+                // Filtro de fecha (frontend)
+                filtroFecha={filtroFecha}
+                onFiltroFechaChange={handleFiltroFechaChange}
+                // Acciones
+                onEdit={handleEdit}
+                onViewHistory={handleViewHistory}
+                onDelete={handleDelete}
               />
             )}
           </Stack>
         </Container>
       </Box>
+
+      {/* Modales */}
       <EditarModal
         open={editarModalOpen}
         onClose={() => setEditarModalOpen(false)}
@@ -282,20 +315,39 @@ const ClienteCelulandiaCCPage = () => {
         tipoDeCambio={tipoDeCambio}
         cajas={cajas}
       />
-      <EditarEntregaModal
+      {/* <EditarEntregaModal
         open={editarEntregaModalOpen}
         onClose={() => setEditarEntregaModalOpen(false)}
         data={selectedData}
         onSaved={fetchData}
         clientes={clientes}
         tipoDeCambio={tipoDeCambio}
-      />
+      /> */}
       <HistorialModal
         open={historialModalOpen}
         onClose={() => setHistorialModalOpen(false)}
         data={selectedData}
         loadHistorialFunction={historialLoader}
         {...(historialConfig || {})}
+      />
+      <ConfirmarEliminacionModal
+        open={confirmarEliminacionOpen}
+        onClose={() => {
+          setConfirmarEliminacionOpen(false);
+          setSelectedData(null);
+          setSelectedItemType(null);
+        }}
+        onConfirm={confirmarEliminacion}
+        loading={isDeleting}
+        title="Eliminar Elemento"
+        message="¿Estás seguro que deseas eliminar este elemento?"
+        itemName={
+          selectedData
+            ? selectedItemType === "movimiento"
+              ? `Comprobante ${selectedData.numeroFactura || selectedData._id}`
+              : `Entrega ${selectedData.descripcion || selectedData._id}`
+            : ""
+        }
       />
     </>
   );

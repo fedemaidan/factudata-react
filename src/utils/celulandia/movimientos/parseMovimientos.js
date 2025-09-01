@@ -53,5 +53,7 @@ export const parseMovimiento = (movimiento) => {
     nombreCliente: movimiento.cliente?.nombre || "Sin cliente",
     ccActivasCliente: movimiento.cliente?.ccActivas || [],
     cuentaDestino: movimiento.caja?.nombre || "Sin caja",
+    type: "movimiento",
+    fecha: fechaFactura,
   };
 };

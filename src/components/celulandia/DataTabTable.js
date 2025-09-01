@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import {
   Box,
   Paper,
@@ -23,6 +23,10 @@ import {
 } from "@mui/material";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import FileDownloadIcon from "@mui/icons-material/FileDownload";
+import EditIcon from "@mui/icons-material/Edit";
+import HistoryIcon from "@mui/icons-material/History";
+import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
+
 import * as XLSX from "xlsx";
 import { formatearCampo } from "src/utils/celulandia/formatearCampo";
 import { formatCurrency } from "src/utils/formatters";
@@ -36,6 +40,7 @@ const DataTabTable = ({
   isLoading = false,
   options = [],
   defaultOption,
+  currentOption: controlledOption, // <-- control externo opcional
   showSearch = true,
   showDateFilterOptions = true,
   showDatePicker = false,
@@ -43,23 +48,88 @@ const DataTabTable = ({
   onDateChange = null,
   onRefresh = null,
   showRefreshButton = false,
+  // Acciones
+  onEdit = null,
+  onViewHistory = null,
+  onDelete = null,
+  // Paginación server-side (opcional). Si no las pasás, usa client-side.
+  total = 0,
+  currentPage = 1,
+  rowsPerPage = 1000,
+  onPageChange = null,
+  sortField = "fecha",
+  sortDirection = "desc",
+  onSortChange = null,
+  filtroFecha = "todos",
+  onFiltroFechaChange = null,
+  onOptionChange = null,
 }) => {
   const [busqueda, setBusqueda] = useState("");
-  const [filtroFecha, setFiltroFecha] = useState("todos");
+  const [internalFiltroFecha, setInternalFiltroFecha] = useState(filtroFecha);
   const [internalSelectedDate, setInternalSelectedDate] = useState(null);
-  const [currentOption, setCurrentOption] = useState(defaultOption || options?.[0]?.value || "");
-  const [sortField, setSortField] = useState("fecha");
-  const [sortDirection, setSortDirection] = useState("desc");
+
+  // Estado interno de tab (si no es controlado desde el padre)
+  const [currentOption, setCurrentOption] = useState(
+    controlledOption ?? defaultOption ?? options?.[0]?.value ?? ""
+  );
+  useEffect(() => {
+    if (controlledOption !== undefined && controlledOption !== null) {
+      setCurrentOption(controlledOption);
+    }
+  }, [controlledOption]);
+
+  const [internalSortDirection, setInternalSortDirection] = useState(sortDirection);
+  useEffect(() => setInternalSortDirection(sortDirection), [sortDirection]);
+
   const [page, setPage] = useState(0);
-  const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [internalRowsPerPage, setInternalRowsPerPage] = useState(rowsPerPage);
+
   const [isRefreshing, setIsRefreshing] = useState(false);
 
+  const finalSortField = "fecha"; // <-- forzado a 'fecha'
+  const finalSortDirection = onSortChange ? sortDirection : internalSortDirection;
+  const finalFiltroFecha = onFiltroFechaChange ? filtroFecha : internalFiltroFecha;
+  const finalRowsPerPage = onPageChange ? rowsPerPage : internalRowsPerPage;
+  const finalPage = onPageChange ? currentPage - 1 : page;
+
   const handleSortChange = (campo) => {
-    if (sortField === campo) {
-      setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
+    if (campo !== "fecha") return; // solo permitimos ordenar por fecha
+    if (onSortChange) {
+      onSortChange("fecha");
     } else {
-      setSortField(campo);
-      setSortDirection("asc");
+      setInternalSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
+    }
+  };
+
+  const handleFiltroFechaChange = (nuevo) => {
+    if (onFiltroFechaChange) onFiltroFechaChange(nuevo);
+    else setInternalFiltroFecha(nuevo);
+  };
+
+  const handleOptionChange = (newOption) => {
+    // actualizamos SIEMPRE el estado interno para ver el cambio ya
+    setCurrentOption(newOption);
+    if (onPageChange) {
+      onPageChange(1);
+    } else {
+      setPage(0);
+    }
+    // notificamos al padre si quiere escuchar
+    onOptionChange?.(newOption);
+  };
+
+  const handlePageChange = (event, newPage) => {
+    if (onPageChange) onPageChange(newPage + 1);
+    else setPage(newPage);
+  };
+
+  const handleRowsPerPageChange = (event) => {
+    const newRowsPerPage = parseInt(event.target.value, 10);
+    if (onPageChange) {
+      // si es server-side, el padre decide
+    } else {
+      setInternalRowsPerPage(newRowsPerPage);
+      setPage(0);
     }
   };
 
@@ -93,7 +163,7 @@ const DataTabTable = ({
       start.setMonth(0, 1);
       start.setHours(0, 0, 0, 0);
     }
-    return rows.filter((r) => new Date(r.fecha) >= start);
+    return rows.filter((r) => r.fecha && new Date(r.fecha) >= start);
   };
 
   const sortedAndFilteredItems = useMemo(() => {
@@ -105,9 +175,11 @@ const DataTabTable = ({
         [r.cliente, r.monto?.toString()].some((v) => v && String(v).toLowerCase().includes(q))
       );
     }
+
     if (showDateFilterOptions) {
-      rows = applyDateFilter(rows, filtroFecha);
+      rows = applyDateFilter(rows, finalFiltroFecha);
     }
+
     if (showDatePicker && !onDateChange && (selectedDate || internalSelectedDate)) {
       const dateToUse = selectedDate || internalSelectedDate;
       const targetDay = dayjs(dateToUse).startOf("day");
@@ -119,39 +191,28 @@ const DataTabTable = ({
       });
     }
 
-    if (sortField) {
-      rows = [...rows].sort((a, b) => {
-        let aVal = a[sortField];
-        let bVal = b[sortField];
-
-        if (sortField === "fecha") {
-          aVal = new Date(aVal || 0);
-          bVal = new Date(bVal || 0);
-        } else if (sortField === "monto") {
-          aVal = parseFloat(aVal || 0);
-          bVal = parseFloat(bVal || 0);
-        } else if (typeof aVal === "string" && typeof bVal === "string") {
-          aVal = aVal.toLowerCase();
-          bVal = bVal.toLowerCase();
-        }
-
-        if (aVal < bVal) return sortDirection === "asc" ? -1 : 1;
-        if (aVal > bVal) return sortDirection === "asc" ? 1 : -1;
-        return 0;
-      });
-    }
+    // Ordenar SIEMPRE por fecha (asc/desc)
+    rows = [...rows].sort((a, b) => {
+      const aVal = new Date(a?.[finalSortField] || 0).getTime();
+      const bVal = new Date(b?.[finalSortField] || 0).getTime();
+      if (aVal < bVal) return finalSortDirection === "asc" ? -1 : 1;
+      if (aVal > bVal) return finalSortDirection === "asc" ? 1 : -1;
+      return 0;
+    });
 
     return rows;
   }, [
     items,
     busqueda,
-    filtroFecha,
+    finalFiltroFecha,
     selectedDate,
-    sortField,
-    sortDirection,
+    finalSortField,
+    finalSortDirection,
     showSearch,
     showDateFilterOptions,
     showDatePicker,
+    internalSelectedDate,
+    onDateChange,
   ]);
 
   const grouped = useMemo(() => {
@@ -167,13 +228,13 @@ const DataTabTable = ({
 
   const paginatedGrouped = useMemo(() => {
     const map = new Map();
-    for (const [key, items] of grouped.entries()) {
-      const startIndex = page * rowsPerPage;
-      const endIndex = startIndex + rowsPerPage;
-      map.set(key, items.slice(startIndex, endIndex));
+    for (const [key, itemsArr] of grouped.entries()) {
+      const startIndex = finalPage * finalRowsPerPage;
+      const endIndex = startIndex + finalRowsPerPage;
+      map.set(key, itemsArr.slice(startIndex, endIndex));
     }
     return map;
-  }, [grouped, page, rowsPerPage]);
+  }, [grouped, finalPage, finalRowsPerPage]);
 
   const totals = useMemo(() => {
     const res = new Map();
@@ -184,12 +245,11 @@ const DataTabTable = ({
     return res;
   }, [grouped]);
 
-  // ===== Exportar a Excel (pestaña actual) =====
+  // Exportar a Excel (pestaña actual)
   const handleExportExcel = () => {
     const currentRows = grouped.get(currentOption) || [];
     const monedaLabel = options.find((o) => o.value === currentOption)?.label || "";
 
-    // Mapeo de filas con los mismos valores visibles de la tabla
     const data = currentRows.map((row) => {
       const descuento =
         row.descuentoAplicado !== undefined && row.descuentoAplicado !== null
@@ -197,11 +257,11 @@ const DataTabTable = ({
           : "-";
 
       return {
-        "Fecha": formatearCampo("fecha", row.fecha),
-        "Cliente": row.cliente ?? "",
+        Fecha: formatearCampo("fecha", row.fecha),
+        Cliente: row.cliente ?? "",
         [`Monto (${monedaLabel})`]: formatCurrency(Math.round(row.monto || 0)),
         "Tipo de Cambio": formatearCampo("tipoDeCambio", row.tipoDeCambio),
-        "Descuento": descuento,
+        Descuento: descuento,
         "Monto Original (sin descuento)": formatCurrency(Math.round(row.montoOriginal || 0)),
         "Moneda Original": formatearCampo("monedaDePago", row.monedaOriginal),
       };
@@ -210,7 +270,6 @@ const DataTabTable = ({
     const ws = XLSX.utils.json_to_sheet(data);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, monedaLabel || "Datos");
-
     const filename = `reporte_${monedaLabel || "datos"}_${dayjs().format("YYYY-MM-DD_HHmm")}.xlsx`;
     XLSX.writeFile(wb, filename);
   };
@@ -236,15 +295,16 @@ const DataTabTable = ({
                 sx={{ minWidth: 300 }}
               />
             )}
+
             {showDateFilterOptions && (
               <FormControl sx={{ minWidth: 200 }} variant="filled">
                 <InputLabel id="filtro-fecha-label">Filtrar por fecha</InputLabel>
                 <Select
                   labelId="filtro-fecha-label"
                   id="filtro-fecha-select"
-                  value={filtroFecha}
+                  value={finalFiltroFecha}
                   label="Filtrar por fecha"
-                  onChange={(e) => setFiltroFecha(e.target.value)}
+                  onChange={(e) => handleFiltroFechaChange(e.target.value)}
                 >
                   <MenuItem value="todos">Todos</MenuItem>
                   <MenuItem value="hoy">Hoy</MenuItem>
@@ -254,17 +314,15 @@ const DataTabTable = ({
                 </Select>
               </FormControl>
             )}
+
             {showDatePicker && (
               <LocalizationProvider dateAdapter={AdapterDayjs}>
                 <DatePicker
                   label="Seleccionar fecha"
                   value={onDateChange ? selectedDate : internalSelectedDate}
                   onChange={(newValue) => {
-                    if (onDateChange) {
-                      onDateChange(newValue);
-                    } else {
-                      setInternalSelectedDate(newValue);
-                    }
+                    if (onDateChange) onDateChange(newValue);
+                    else setInternalSelectedDate(newValue);
                   }}
                   format="DD/MM/YYYY"
                 />
@@ -299,7 +357,6 @@ const DataTabTable = ({
           </Stack>
 
           <Stack direction="row" spacing={2} sx={{ flexGrow: 1, justifyContent: "flex-end" }}>
-            {/* Botón Exportar Excel (pestaña actual) */}
             <Button
               variant="outlined"
               startIcon={<FileDownloadIcon />}
@@ -314,10 +371,7 @@ const DataTabTable = ({
                 key={opt.value}
                 variant={currentOption === opt.value ? "contained" : "outlined"}
                 color="primary"
-                onClick={() => {
-                  setCurrentOption(opt.value);
-                  setPage(0);
-                }}
+                onClick={() => handleOptionChange(opt.value)}
                 sx={{ py: 2, minWidth: 160 }}
               >
                 {opt.label}: {formatCurrency(Math.round(totals.get(opt.value) || 0))}
@@ -336,45 +390,29 @@ const DataTabTable = ({
                   <TableRow>
                     <TableCell sx={{ fontWeight: "bold", cursor: "pointer" }}>
                       <TableSortLabel
-                        active={sortField === "fecha"}
-                        direction={sortField === "fecha" ? sortDirection : "asc"}
+                        active={true} // siempre ordenamos por fecha
+                        direction={finalSortDirection}
                         onClick={() => handleSortChange("fecha")}
                       >
                         Fecha
                       </TableSortLabel>
                     </TableCell>
-                    <TableCell sx={{ fontWeight: "bold", cursor: "pointer" }}>
-                      <TableSortLabel
-                        active={sortField === "cliente"}
-                        direction={sortField === "cliente" ? sortDirection : "asc"}
-                        onClick={() => handleSortChange("cliente")}
-                      >
-                        Cliente
-                      </TableSortLabel>
-                    </TableCell>
-                    <TableCell sx={{ fontWeight: "bold", cursor: "pointer" }}>
-                      <TableSortLabel
-                        active={sortField === "monto"}
-                        direction={sortField === "monto" ? sortDirection : "asc"}
-                        onClick={() => handleSortChange("monto")}
-                      >
-                        Monto ({opt.label})
-                      </TableSortLabel>
-                    </TableCell>
+
+                    {/* Sin orden en el resto de columnas */}
+                    <TableCell sx={{ fontWeight: "bold" }}>Cliente</TableCell>
+                    <TableCell sx={{ fontWeight: "bold" }}>Monto ({opt.label})</TableCell>
                     <TableCell sx={{ fontWeight: "bold" }}>Tipo de Cambio</TableCell>
                     <TableCell sx={{ fontWeight: "bold" }}>Descuento</TableCell>
                     <TableCell sx={{ fontWeight: "bold" }}>
                       Monto Original (sin descuento)
                     </TableCell>
-                    <TableCell sx={{ fontWeight: "bold", cursor: "pointer" }}>
-                      <TableSortLabel
-                        active={sortField === "monedaOriginal"}
-                        direction={sortField === "monedaOriginal" ? sortDirection : "asc"}
-                        onClick={() => handleSortChange("monedaOriginal")}
-                      >
-                        Moneda Original
-                      </TableSortLabel>
-                    </TableCell>
+                    <TableCell sx={{ fontWeight: "bold" }}>Moneda Original</TableCell>
+
+                    {(onEdit || onViewHistory || onDelete) && (
+                      <TableCell sx={{ fontWeight: "bold", textAlign: "center" }}>
+                        Acciones
+                      </TableCell>
+                    )}
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -401,21 +439,68 @@ const DataTabTable = ({
                         </Typography>
                       </TableCell>
                       <TableCell>{formatearCampo("monedaDePago", row.monedaOriginal)}</TableCell>
+
+                      {(onEdit || onViewHistory || onDelete) && (
+                        <TableCell sx={{ textAlign: "center" }}>
+                          <Stack direction="row" spacing={1} justifyContent="center">
+                            {onEdit && (
+                              <IconButton
+                                size="small"
+                                color="primary"
+                                onClick={() => onEdit(row)}
+                                sx={{
+                                  backgroundColor: "primary.main",
+                                  color: "white",
+                                  "&:hover": { backgroundColor: "primary.dark" },
+                                }}
+                              >
+                                <EditIcon fontSize="small" />
+                              </IconButton>
+                            )}
+                            {onViewHistory && (
+                              <IconButton
+                                size="small"
+                                color="secondary"
+                                onClick={() => onViewHistory(row)}
+                                sx={{
+                                  backgroundColor: "secondary.main",
+                                  color: "white",
+                                  "&:hover": { backgroundColor: "secondary.dark" },
+                                }}
+                              >
+                                <HistoryIcon fontSize="small" />
+                              </IconButton>
+                            )}
+                            {onDelete && (
+                              <IconButton
+                                size="small"
+                                color="error"
+                                onClick={() => onDelete(row)}
+                                sx={{
+                                  backgroundColor: "error.main",
+                                  color: "white",
+                                  "&:hover": { backgroundColor: "error.dark" },
+                                }}
+                              >
+                                <DeleteOutlineIcon fontSize="small" />
+                              </IconButton>
+                            )}
+                          </Stack>
+                        </TableCell>
+                      )}
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
+
               <TablePagination
                 component="div"
-                count={grouped.get(opt.value)?.length || 0}
-                page={page}
-                onPageChange={(event, newPage) => setPage(newPage)}
-                rowsPerPage={rowsPerPage}
-                onRowsPerPageChange={(event) => {
-                  setRowsPerPage(parseInt(event.target.value, 10));
-                  setPage(0);
-                }}
-                rowsPerPageOptions={[5, 10, 25, 50]}
+                count={onPageChange ? total : grouped.get(opt.value)?.length || 0}
+                page={finalPage}
+                onPageChange={handlePageChange}
+                rowsPerPage={finalRowsPerPage}
+                onRowsPerPageChange={handleRowsPerPageChange}
+                rowsPerPageOptions={onPageChange ? [finalRowsPerPage] : [1000]}
                 labelRowsPerPage="Filas por página:"
                 labelDisplayedRows={({ from, to, count }) =>
                   `${from}-${to} de ${count !== -1 ? count : `más de ${to}`}`
