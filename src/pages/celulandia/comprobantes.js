@@ -115,6 +115,7 @@ const ComprobantesCelulandiaPage = () => {
     { key: "cuentaCorriente", label: "CC", sortable: true },
     { key: "tipoDeCambio", label: "Tipo Cambio", sortable: true },
     { key: "estado", label: "Estado", sortable: true },
+    { key: "nombreUsuario", label: "Usuario", sortable: true },
     {
       key: "acciones",
       label: "Acciones",
@@ -144,6 +145,7 @@ const ComprobantesCelulandiaPage = () => {
     fechaFactura: (value, item) => getFechaArgentina(value),
     fechaCreacion: (value, item) => getFechaArgentina(value),
     horaCreacion: (value, item) => formatearCampo("hora", value, item),
+    nombreUsuario: (value, item) => formatearCampo("default", value, item),
     cuentaDestino: (value, item) => formatearCampo("cuentaDestino", value, item),
     moneda: (value, item) => formatearCampo("monedaDePago", value, item),
     montoEnviado: (value, item) => formatearCampo("montoEnviado", value, item),

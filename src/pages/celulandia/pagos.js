@@ -174,6 +174,7 @@ const PagosCelulandiaPage = () => {
     { key: "cuentaDestino", label: "Cuenta Origen", sortable: false },
     { key: "montoEnviado", label: "Monto", sortable: false },
     { key: "moneda", label: "Moneda", sortable: false },
+    { key: "nombreUsuario", label: "Usuario", sortable: true },
     {
       key: "acciones",
       label: "Acciones",
@@ -201,6 +202,7 @@ const PagosCelulandiaPage = () => {
     cuentaDestino: (value, item) => formatearCampo("cuentaDestino", value, item),
     moneda: (value, item) => formatearCampo("monedaDePago", value, item),
     montoEnviado: (value, item) => formatearCampo("montoEnviado", value, item),
+    nombreUsuario: (value, item) => formatearCampo("default", value, item),
   };
 
   const searchFields = [

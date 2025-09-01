@@ -120,6 +120,7 @@ const EntregasCelulandiaPage = () => {
             montoEnviado: c.subTotal?.ars || 0,
             montoCC: c.montoTotal?.ars || 0,
             active: c.active, // Agregar el campo active
+            usuario: c.usuario,
           };
         })
       );
@@ -143,6 +144,7 @@ const EntregasCelulandiaPage = () => {
     { key: "CC", label: "CC", sortable: false },
     { key: "descuentoAplicado", label: "Descuento", sortable: false },
     { key: "montoCC", label: "Monto CC", sortable: false },
+    { key: "usuario", label: "Usuario", sortable: true },
     {
       key: "acciones",
       label: "Acciones",
@@ -173,6 +175,7 @@ const EntregasCelulandiaPage = () => {
     moneda: (value, item) => formatearCampo("monedaDePago", value, item),
     CC: (value, item) => formatearCampo("CC", value, item),
     montoCC: (value, item) => formatearCampo("montoCC", value, item),
+    usuario: (value, item) => formatearCampo("default", value, item),
     descuentoAplicado: (value, item) => {
       const formattedValue = `${Math.round(((value ?? 1) - 1) * -100)}%`;
       return formatearCampo("default", formattedValue, item);
