@@ -28,6 +28,12 @@ const ResumenMovimientosPage = () => {
     const [allMovimientos, setAllMovimientos] = useState([]);
 
     useEffect(() => {
+
+        if (user.celulandia) {
+            const router = useRouter();
+            router.push("/celulandia/comprobantes")
+        }
+
         const fetchAllMovimientos = async () => {
             let empresa;
             if (!empresaId) {
