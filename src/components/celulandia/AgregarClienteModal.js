@@ -101,16 +101,20 @@ const AgregarClienteModal = ({ open, onClose, onSave }) => {
     try {
       formData.nombre = formData.nombre.trim().toUpperCase();
       const result = await clientesService.createCliente(formData);
+      console.log("result", result);
+      const { data, success, error } = result;
 
-      if (result.success) {
-        onSave(result.data);
+      if (success) {
+        onSave(data);
         handleClose();
       } else {
-        alert(result.error || "Error al crear el cliente");
+        alert(error || "Error al crear el cliente");
       }
     } catch (error) {
-      console.error("Error al crear cliente:", error);
-      alert("Error al crear el cliente. Por favor, intente nuevamente.");
+      console.error(error);
+      alert(
+        error.response.data.error || "Error al crear el cliente. Por favor, intente nuevamente."
+      );
     } finally {
       setIsLoading(false);
     }
