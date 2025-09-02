@@ -20,6 +20,7 @@ import {
   getHoraArgentina,
 } from "src/utils/celulandia/fechas";
 import { getCuentaPendienteHistorialConfig } from "src/utils/celulandia/historial";
+import { parseCuentaPendiente } from "src/utils/celulandia/cuentasPendientes/parseCuentasPendientes";
 
 const EntregasCelulandiaPage = () => {
   const [entregas, setEntregas] = useState([]);
@@ -70,24 +71,7 @@ const EntregasCelulandiaPage = () => {
       setTotalEntregas(cuentasResp?.total || 0);
       setPaginaActual(pagina);
 
-      setEntregas(
-        cuentas.map((c) => {
-          return {
-            _id: c._id,
-            descripcion: c.descripcion,
-            fecha: c.fechaCuenta,
-            horaCreacion: getHoraArgentina(c.fechaCreacion),
-            moneda: c.moneda,
-            CC: c.cc,
-            descuentoAplicado: c.descuentoAplicado,
-            montoEnviado: c.subTotal?.ars || 0,
-            montoCC: c.montoTotal?.ars || 0,
-            active: c.active,
-            usuario: c.usuario,
-            clienteNombre: c.cliente?.nombre,
-          };
-        })
-      );
+      setEntregas(cuentas.map(parseCuentaPendiente));
       const clientesArray = Array.isArray(clientesResp) ? clientesResp : clientesResp?.data || [];
       setClientes(clientesArray);
       setTipoDeCambio(tcResp);

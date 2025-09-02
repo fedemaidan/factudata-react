@@ -28,6 +28,7 @@ export const parseCuentaPendiente = (c) => {
     origen: "cuentaPendiente",
     numeroComprobante: c.descripcion || "-",
     fecha: getFechaArgentina(c.fechaCuenta),
+    horaCreacion: getHoraArgentina(c.fechaCreacion),
     fechaCuenta: getFechaArgentina(c.fechaCuenta), // Mantener la fecha original para EditarEntregaModal
     hora,
     montoCC,
@@ -37,6 +38,7 @@ export const parseCuentaPendiente = (c) => {
     cuentaDestino: c.cc,
     estado: "-",
     type: "EGRESO",
+    usuario: c.usuario,
     cuentaCorriente: c.cc,
     // Campos esperados por EditarEntregaModal
     clienteNombre: c.cliente?.nombre,
