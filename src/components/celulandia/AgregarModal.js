@@ -27,10 +27,12 @@ const AgregarModal = ({ open, onClose, onSave, clientes, tipoDeCambio, cajas }) 
     formData,
     tipoDeCambioManual,
     clienteSeleccionado,
+    montoFormateado,
     getCCOptions,
     getTipoDeCambio,
     handleTipoDeCambioChange,
     handleMontoEnviado,
+    handleMontoChange,
     handleInputChange,
     handleClienteChange,
     resetForm,
@@ -155,11 +157,11 @@ const AgregarModal = ({ open, onClose, onSave, clientes, tipoDeCambio, cajas }) 
               <TextField
                 fullWidth
                 label="Monto *"
-                type="number"
-                value={formData.montoEnviado}
-                onChange={(e) => handleMontoEnviado(e.target.value)}
+                value={montoFormateado}
+                onChange={(e) => handleMontoChange(e.target.value)}
                 margin="normal"
                 required
+                helperText=""
               />
             </Grid>
             <Grid item xs={12} sm={6}>

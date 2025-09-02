@@ -13,17 +13,16 @@ import cajasService from "src/services/celulandia/cajasService";
 import cuentasPendientesService from "src/services/celulandia/cuentasPendientesService";
 import DataTabTable from "src/components/celulandia/DataTabTable";
 import EditarModal from "src/components/celulandia/EditarModal";
-import EditarEntregaModal from "src/components/celulandia/EditarEntregaModal";
 import HistorialModal from "src/components/celulandia/HistorialModal";
 import ConfirmarEliminacionModal from "src/components/celulandia/ConfirmarEliminacionModal";
 import { parseMovimiento } from "src/utils/celulandia/movimientos/parseMovimientos";
 import { parseCuentaPendiente } from "src/utils/celulandia/cuentasPendientes/parseCuentasPendientes";
-import { calcularFechasFiltro } from "src/utils/celulandia/fechas";
 import {
   getMovimientoHistorialConfig,
   getCuentaPendienteHistorialConfig,
 } from "src/utils/celulandia/historial";
 import { getUser } from "src/utils/celulandia/currentUser";
+import EditarEntregaModal from "src/components/celulandia/EditarEntregaModal";
 
 const ClienteCelulandiaCCPage = () => {
   const router = useRouter();
@@ -33,24 +32,20 @@ const ClienteCelulandiaCCPage = () => {
   const [cliente, setCliente] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // UI / Modales
   const [editarModalOpen, setEditarModalOpen] = useState(false);
   const [editarEntregaModalOpen, setEditarEntregaModalOpen] = useState(false);
   const [historialModalOpen, setHistorialModalOpen] = useState(false);
   const [confirmarEliminacionOpen, setConfirmarEliminacionOpen] = useState(false);
 
-  // Selección
-  const [selectedData, setSelectedData] = useState(null); // documento original
+  const [selectedData, setSelectedData] = useState(null);
   const [selectedItemType, setSelectedItemType] = useState(null); // "movimiento" | "cuentaPendiente"
   const [historialConfig, setHistorialConfig] = useState(null);
   const [historialLoader, setHistorialLoader] = useState(null);
 
-  // Tabs / filtros / orden
   const [grupoActual, setGrupoActual] = useState("ARS");
   const [filtroFecha, setFiltroFecha] = useState("todos");
-  const [sortDirection, setSortDirection] = useState("desc"); // solo por fecha
+  const [sortDirection, setSortDirection] = useState("desc");
 
-  // Otros datos compartidos
   const [clientes, setClientes] = useState([]);
   const [tipoDeCambio, setTipoDeCambio] = useState({
     ultimaActualizacion: "",
@@ -66,8 +61,6 @@ const ClienteCelulandiaCCPage = () => {
 
     setIsLoading(true);
     try {
-      const { fechaInicio, fechaFin } = calcularFechasFiltro(filtroFecha); // hoy no se usa en el backend
-
       const [
         clienteResponse,
         movimientosData,
@@ -78,7 +71,7 @@ const ClienteCelulandiaCCPage = () => {
       ] = await Promise.all([
         clientesService.getClienteById(id),
         movimientosService.getMovimientosByCliente(id),
-        cuentasPendientesService.getByClienteId(id),
+        cuentasPendientesService.getByClienteId(id, "cliente"),
         clientesService.getAllClientes(),
         dolarService.getTipoDeCambio(),
         cajasService.getAllCajas(),
@@ -87,8 +80,6 @@ const ClienteCelulandiaCCPage = () => {
       if (clienteResponse?.success) {
         setCliente(clienteResponse.data);
       }
-
-      // Normalizar arrays de respuestas
       const clientesArray = Array.isArray(clientesResponse)
         ? clientesResponse
         : clientesResponse?.data || [];
@@ -101,12 +92,10 @@ const ClienteCelulandiaCCPage = () => {
 
       setCajas(cajasResponse?.data || []);
 
-      // Parsear movimientos (solo INGRESO según tu filtro) y marcar itemType
       const movimientosParseados = (movimientosData?.data || [])
         .filter((m) => m.type === "INGRESO")
         .map((m) => ({ ...parseMovimiento(m), itemType: "movimiento" }));
 
-      // Parsear cuentas pendientes y marcar itemType
       const cuentasRespData = Array.isArray(cuentasPendientesResponse?.data)
         ? cuentasPendientesResponse.data
         : cuentasPendientesResponse?.data || [];
@@ -115,7 +104,6 @@ const ClienteCelulandiaCCPage = () => {
         itemType: "cuentaPendiente",
       }));
 
-      // Unificar en un solo arreglo
       setMovimientos([...movimientosParseados, ...cuentasParseadas]);
     } catch (error) {
       console.error("Error al cargar datos:", error);
@@ -137,7 +125,7 @@ const ClienteCelulandiaCCPage = () => {
       return {
         id: m.id || m._id,
         fecha,
-        cliente: m.nombreCliente || m.proveedorOCliente || m.cliente?.nombre || "-",
+        cliente: m?.nombreCliente || m?.clienteNombre || m.cliente?.nombre || "-",
         group: m.cuentaCorriente || m.CC || m.cc,
         monto: Math.round(m.montoCC || 0),
         tipoDeCambio: m.tipoDeCambio || 1,
@@ -315,14 +303,14 @@ const ClienteCelulandiaCCPage = () => {
         tipoDeCambio={tipoDeCambio}
         cajas={cajas}
       />
-      {/* <EditarEntregaModal
+      <EditarEntregaModal
         open={editarEntregaModalOpen}
         onClose={() => setEditarEntregaModalOpen(false)}
         data={selectedData}
         onSaved={fetchData}
         clientes={clientes}
         tipoDeCambio={tipoDeCambio}
-      /> */}
+      />
       <HistorialModal
         open={historialModalOpen}
         onClose={() => setHistorialModalOpen(false)}

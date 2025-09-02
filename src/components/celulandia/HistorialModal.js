@@ -36,7 +36,7 @@ const HistorialModal = ({
       loadHistorial();
     }
   }, [open, data, loadHistorialFunction]);
-
+  console.log("historial", historial);
   const loadHistorial = async () => {
     if (!data?._id || !loadHistorialFunction) return;
 
@@ -44,7 +44,9 @@ const HistorialModal = ({
     try {
       const result = await loadHistorialFunction(data._id);
       if (result.success) {
-        setHistorial(result.data || []);
+        setHistorial(
+          (result.data || []).filter((registro) => registro.campo !== "proveedorOCliente")
+        );
       } else {
         console.error("Error al cargar historial:", result.error);
         setHistorial([]);

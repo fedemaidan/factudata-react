@@ -61,8 +61,12 @@ const cuentasPendientesService = {
     return response.data;
   },
 
-  getByClienteId: async (clienteId) => {
-    const response = await axiosCelulandia.get(`/cuentas-pendientes/cliente/${clienteId}`);
+  getByClienteId: async (clienteId, populate) => {
+    const response = await axiosCelulandia.get(`/cuentas-pendientes/cliente/${clienteId}`, {
+      params: {
+        populate,
+      },
+    });
     return response.data;
   },
 

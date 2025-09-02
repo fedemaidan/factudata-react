@@ -33,10 +33,14 @@ const AgregarPagoModal = ({ open, onClose, onSave, cajas }) => {
   const [isSaving, setIsSaving] = useState(false);
   const [cuentaDestino, setCuentaDestino] = useState("");
 
-  const { formData, handleMontoEnviado, handleInputChange, resetForm } = useMovimientoForm(
-    initialPagoData,
-    null
-  );
+  const {
+    formData,
+    montoFormateado,
+    handleMontoEnviado,
+    handleMontoChange,
+    handleInputChange,
+    resetForm,
+  } = useMovimientoForm(initialPagoData, null);
 
   const handleSave = async () => {
     if (!formData.cuentaDestino || !formData.montoEnviado) {
@@ -192,14 +196,13 @@ const AgregarPagoModal = ({ open, onClose, onSave, cajas }) => {
               <TextField
                 fullWidth
                 label="Monto *"
-                type="number"
-                value={formData.montoEnviado}
+                value={montoFormateado}
                 helperText={
                   formData.montoEnviado < 0
                     ? "Recuerde que el monto se multiplicará por -1 antes de enviar"
                     : ""
                 }
-                onChange={(e) => handleMontoEnviado(e.target.value)}
+                onChange={(e) => handleMontoChange(e.target.value)}
                 margin="normal"
                 required
               />

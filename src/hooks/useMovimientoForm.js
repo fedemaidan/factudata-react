@@ -2,6 +2,19 @@
 import { useState, useEffect } from "react";
 import { getUser } from "src/utils/celulandia/currentUser";
 
+// Función para formatear número con separadores de miles
+const formatNumberWithThousands = (value) => {
+  if (!value) return "";
+  const numericValue = value.replace(/[^\d.]/g, "");
+  return numericValue.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+};
+
+// Función para remover separadores de miles y obtener el valor numérico
+const parseNumberFromFormatted = (formattedValue) => {
+  if (!formattedValue) return "";
+  return formattedValue.replace(/\./g, "");
+};
+
 export const useMovimientoForm = (initialData = null, externalData = null) => {
   const {
     clientes = [],
@@ -17,6 +30,7 @@ export const useMovimientoForm = (initialData = null, externalData = null) => {
   });
   const [tipoDeCambioManual, setTipoDeCambioManual] = useState(null);
   const [clienteSeleccionado, setClienteSeleccionado] = useState(null);
+  const [montoFormateado, setMontoFormateado] = useState("");
 
   const [formData, setFormData] = useState({
     cliente: initialData?.cliente?.nombre || "",
@@ -50,6 +64,11 @@ export const useMovimientoForm = (initialData = null, externalData = null) => {
         concepto: initialData.concepto || "",
         usuario: getUser(),
       });
+
+      if (initialData.montoEnviado) {
+        const formattedValue = formatNumberWithThousands(initialData.montoEnviado.toString());
+        setMontoFormateado(formattedValue);
+      }
     }
   }, [initialData?._id]);
 
@@ -181,6 +200,15 @@ export const useMovimientoForm = (initialData = null, externalData = null) => {
     }));
   };
 
+  // Función para manejar el cambio del monto con formato
+  const handleMontoChange = (value) => {
+    const numericValue = parseNumberFromFormatted(value);
+    const formattedValue = formatNumberWithThousands(numericValue);
+
+    setMontoFormateado(formattedValue);
+    handleMontoEnviado(numericValue);
+  };
+
   const handleInputChange = (field, value) => {
     setFormData((prev) => {
       const newFormData = {
@@ -249,6 +277,7 @@ export const useMovimientoForm = (initialData = null, externalData = null) => {
     });
     setTipoDeCambioManual(null);
     setClienteSeleccionado(null);
+    setMontoFormateado("");
   };
 
   return {
@@ -259,10 +288,12 @@ export const useMovimientoForm = (initialData = null, externalData = null) => {
     tipoDeCambio,
     tipoDeCambioManual,
     clienteSeleccionado,
+    montoFormateado,
     getCCOptions,
     getTipoDeCambio,
     handleTipoDeCambioChange,
     handleMontoEnviado,
+    handleMontoChange,
     handleInputChange,
     handleClienteChange,
     resetForm,

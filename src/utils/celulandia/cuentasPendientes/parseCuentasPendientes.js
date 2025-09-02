@@ -1,6 +1,7 @@
 import { getFechaArgentina } from "../fechas";
 
 export const parseCuentaPendiente = (c) => {
+  console.log("c", c);
   const fechaCuentaCompleta = new Date(c.fechaCuenta);
   const fecha = fechaCuentaCompleta.toISOString().split("T")[0]; // YYYY-MM-DD
   const hora = fechaCuentaCompleta.toTimeString().split(" ")[0]; // HH:MM:SS
@@ -27,6 +28,7 @@ export const parseCuentaPendiente = (c) => {
     origen: "cuentaPendiente",
     numeroComprobante: c.descripcion || "-",
     fecha: getFechaArgentina(c.fechaCuenta),
+    fechaCuenta: getFechaArgentina(c.fechaCuenta), // Mantener la fecha original para EditarEntregaModal
     hora,
     montoCC,
     tipoDeCambio: c.tipoDeCambio || 1,
@@ -37,10 +39,11 @@ export const parseCuentaPendiente = (c) => {
     type: "EGRESO",
     cuentaCorriente: c.cc,
     // Campos esperados por EditarEntregaModal
-    proveedorOCliente: c.proveedorOCliente,
+    clienteNombre: c.cliente?.nombre,
     descripcion: c.descripcion,
     CC: c.cc,
     descuentoAplicado: c.descuentoAplicado,
+    cliente: c.cliente,
     type: "cuentaPendiente",
   };
 };

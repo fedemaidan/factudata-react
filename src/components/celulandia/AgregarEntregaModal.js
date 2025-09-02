@@ -27,11 +27,13 @@ const AgregarEntregaModal = ({ open, onClose, onSaved, clientes = [], tipoDeCamb
   const {
     formData,
     clienteSeleccionado,
+    montoFormateado,
     getCCOptions,
     getTipoDeCambio,
     tipoDeCambioManual,
     handleTipoDeCambioChange,
     handleMontoEnviado,
+    handleMontoChange,
     handleInputChange,
     handleClienteChange,
     resetForm,
@@ -120,6 +122,8 @@ const AgregarEntregaModal = ({ open, onClose, onSaved, clientes = [], tipoDeCamb
         );
       }
 
+      const clienteId = clientes.find((c) => c.nombre === formData.cliente)?._id;
+
       const payload = {
         descripcion: formData.concepto,
         proveedorOCliente: formData.cliente,
@@ -131,6 +135,7 @@ const AgregarEntregaModal = ({ open, onClose, onSaved, clientes = [], tipoDeCamb
         empresaId: "celulandia",
         moneda: formData.monedaDePago,
         cc: formData.CC,
+        cliente: clienteId,
         tipoDeCambio: getTipoDeCambio(formData.monedaDePago, formData.CC),
         usuario: getUser(),
       };
@@ -208,9 +213,8 @@ const AgregarEntregaModal = ({ open, onClose, onSaved, clientes = [], tipoDeCamb
               <TextField
                 fullWidth
                 label="Monto *"
-                type="number"
-                value={formData.montoEnviado}
-                onChange={(e) => handleMontoEnviado(e.target.value)}
+                value={montoFormateado}
+                onChange={(e) => handleMontoChange(e.target.value)}
                 margin="normal"
                 required
                 helperText={

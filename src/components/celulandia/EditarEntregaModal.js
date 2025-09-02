@@ -27,6 +27,11 @@ const toNumber = (v) => {
   return Number.isFinite(n) ? n : 0;
 };
 
+const formatNumberWithThousands = (value) => {
+  if (!value || value === 0) return "0";
+  return value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+};
+
 const EditarEntregaModal = ({ open, onClose, data, onSaved, clientes = [], tipoDeCambio }) => {
   const [isSaving, setIsSaving] = useState(false);
   const [descuentoPorcentaje, setDescuentoPorcentaje] = useState("");
@@ -34,7 +39,6 @@ const EditarEntregaModal = ({ open, onClose, data, onSaved, clientes = [], tipoD
   const [initialData, setInitialData] = useState(null);
   const [fechaEntrega, setFechaEntrega] = useState("");
 
-  // Resetear loading cuando se abre el modal
   useEffect(() => {
     if (open) {
       setIsLoading(true);
@@ -43,12 +47,11 @@ const EditarEntregaModal = ({ open, onClose, data, onSaved, clientes = [], tipoD
     }
   }, [open]);
 
-  // Procesar datos iniciales cuando están disponibles
   useEffect(() => {
     if (data && Object.keys(data).length > 0 && open) {
       const processedData = {
         _id: data._id,
-        cliente: { nombre: data.proveedorOCliente || "" },
+        cliente: { nombre: data.cliente || data.clienteNombre || "" },
         cuentaDestino: "ENSHOP SRL",
         monedaDePago: data.moneda || "ARS",
         moneda: data.moneda || "ARS",
@@ -63,12 +66,12 @@ const EditarEntregaModal = ({ open, onClose, data, onSaved, clientes = [], tipoD
 
       setDescuentoPorcentaje(
         typeof data.descuentoAplicado === "number"
-          ? ((1 - data.descuentoAplicado) * 100).toString()
+          ? Math.round((1 - data.descuentoAplicado) * 100).toString()
           : "0"
       );
 
-      if (data.fecha) {
-        const fecha = new Date(data.fecha);
+      if (data.fechaCuenta || data.fecha) {
+        const fecha = new Date(data.fechaCuenta || data.fecha);
         setFechaEntrega(fecha.toISOString().split("T")[0]);
       }
 
@@ -79,16 +82,17 @@ const EditarEntregaModal = ({ open, onClose, data, onSaved, clientes = [], tipoD
 
   const {
     formData,
+    clienteSeleccionado,
+    montoFormateado,
     getCCOptions,
     getTipoDeCambio,
     tipoDeCambioManual,
     handleTipoDeCambioChange,
-    handleMontoEnviado,
+    handleMontoChange,
     handleInputChange,
     handleClienteChange,
   } = useMovimientoForm(initialData, { clientes, tipoDeCambio });
 
-  // Cálculos reactivos SIN redondear antes de tiempo (y soportando coma decimal)
   const { factorDescuento, subtotalEntregaRedondeado, montoCCConDescuentoRedondeado } =
     useMemo(() => {
       const subtotalSinRedondear = toNumber(formData.montoCC);
@@ -128,12 +132,16 @@ const EditarEntregaModal = ({ open, onClose, data, onSaved, clientes = [], tipoD
         proveedorOCliente: formData.cliente,
         moneda: formData.monedaDePago,
         cc: formData.CC,
+        cliente: clienteSeleccionado?._id,
       };
 
       // Agregar fecha de entrega si se modificó
       if (fechaEntrega) {
         let fechaEntregaDate = new Date();
-        if (data.fecha && new Date(data.fecha).toISOString().split("T")[0] !== fechaEntrega) {
+        if (
+          (data.fechaCuenta || data.fecha) &&
+          new Date(data.fechaCuenta || data.fecha).toISOString().split("T")[0] !== fechaEntrega
+        ) {
           const [year, month, day] = fechaEntrega.split("-");
           fechaEntregaDate = new Date(
             parseInt(year),
@@ -145,7 +153,7 @@ const EditarEntregaModal = ({ open, onClose, data, onSaved, clientes = [], tipoD
             0
           );
           datosParaGuardar.fechaCuenta = fechaEntregaDate;
-        } else if (!data.fecha && fechaEntrega) {
+        } else if (!(data.fechaCuenta || data.fecha) && fechaEntrega) {
           const [year, month, day] = fechaEntrega.split("-");
           fechaEntregaDate = new Date(
             parseInt(year),
@@ -224,13 +232,20 @@ const EditarEntregaModal = ({ open, onClose, data, onSaved, clientes = [], tipoD
             camposModificados[key] = datosParaGuardar[key];
           }
         } else if (key === "fechaCuenta") {
-          const fechaOriginal = data.fecha
-            ? new Date(data.fecha).toISOString().split("T")[0]
-            : null;
+          const fechaOriginal =
+            data.fechaCuenta || data.fecha
+              ? new Date(data.fechaCuenta || data.fecha).toISOString().split("T")[0]
+              : null;
           const fechaNueva = datosParaGuardar[key]
             ? new Date(datosParaGuardar[key]).toISOString().split("T")[0]
             : null;
           if (fechaOriginal !== fechaNueva) {
+            camposModificados[key] = datosParaGuardar[key];
+          }
+        } else if (key === "cliente") {
+          // Comparar el ID del cliente actual con el nuevo
+          const clienteOriginal = data.cliente?._id || data.cliente || null;
+          if (clienteOriginal !== datosParaGuardar[key]) {
             camposModificados[key] = datosParaGuardar[key];
           }
         } else {
@@ -346,11 +361,11 @@ const EditarEntregaModal = ({ open, onClose, data, onSaved, clientes = [], tipoD
               <TextField
                 fullWidth
                 label="Monto *"
-                type="number"
-                value={formData.montoEnviado}
-                onChange={(e) => handleMontoEnviado(e.target.value)}
+                value={montoFormateado}
+                onChange={(e) => handleMontoChange(e.target.value)}
                 margin="normal"
                 required
+                helperText=""
               />
             </Grid>
 
@@ -390,8 +405,7 @@ const EditarEntregaModal = ({ open, onClose, data, onSaved, clientes = [], tipoD
               <TextField
                 fullWidth
                 label="Subtotal (sin descuento)"
-                type="number"
-                value={subtotalEntregaRedondeado}
+                value={formatNumberWithThousands(subtotalEntregaRedondeado)}
                 margin="normal"
                 disabled
                 helperText="Calculado automáticamente"
@@ -403,8 +417,7 @@ const EditarEntregaModal = ({ open, onClose, data, onSaved, clientes = [], tipoD
               <TextField
                 fullWidth
                 label="Total (con descuento)"
-                type="number"
-                value={montoCCConDescuentoRedondeado}
+                value={formatNumberWithThousands(montoCCConDescuentoRedondeado)}
                 margin="normal"
                 disabled
                 helperText="Subtotal con descuento aplicado"

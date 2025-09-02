@@ -1,12 +1,13 @@
 import { getFechaArgentina } from "../fechas";
 
-export const getCuentaPendienteHistorialConfig = () => ({
+export const getCuentaPendienteHistorialConfig = (clientes = []) => ({
   title: "Historial de la Entrega",
   entityName: "entrega",
   fieldNames: {
     descripcion: "Descripción",
     fechaCuenta: "Fecha de Cuenta",
-    proveedorOCliente: "Cliente",
+    cliente: "Cliente",
+    clienteNombre: "Cliente",
     descuentoAplicado: "Descuento Aplicado",
     subTotal: "Sub Total",
     montoTotal: "Monto Total",
@@ -32,6 +33,19 @@ export const getCuentaPendienteHistorialConfig = () => ({
         }`;
       }
       return valor;
+    },
+    cliente: (valor) => {
+      if (typeof valor === "object" && valor?.nombre) {
+        return valor.nombre;
+      }
+      if (typeof valor === "string" && clientes.length > 0) {
+        const cliente = clientes.find((c) => c._id === valor);
+        return cliente ? cliente.nombre : `ID: ${valor}`;
+      }
+      if (typeof valor === "string") {
+        return valor;
+      }
+      return "N/A";
     },
   },
 });

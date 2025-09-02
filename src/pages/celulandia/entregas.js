@@ -14,7 +14,11 @@ import ConfirmarEliminacionModal from "src/components/celulandia/ConfirmarElimin
 import cuentasPendientesService from "src/services/celulandia/cuentasPendientesService";
 import clientesService from "src/services/celulandia/clientesService";
 import dolarService from "src/services/celulandia/dolarService";
-import { getFechaArgentina, getHoraArgentina } from "src/utils/celulandia/fechas";
+import {
+  calcularFechasFiltro,
+  getFechaArgentina,
+  getHoraArgentina,
+} from "src/utils/celulandia/fechas";
 import { getCuentaPendienteHistorialConfig } from "src/utils/celulandia/historial";
 
 const EntregasCelulandiaPage = () => {
@@ -35,46 +39,7 @@ const EntregasCelulandiaPage = () => {
   const [sortDirection, setSortDirection] = useState("desc");
   const [filtroFecha, setFiltroFecha] = useState("todos");
 
-  // Configuración del historial para entregas
-  const entregaHistorialConfig = getCuentaPendienteHistorialConfig();
-
-  // Función para calcular las fechas según el filtro seleccionado
-  const calcularFechasFiltro = (filtro) => {
-    const hoy = new Date();
-    const inicioHoy = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate());
-
-    switch (filtro) {
-      case "hoy":
-        return {
-          fechaInicio: inicioHoy.toISOString().split("T")[0],
-          fechaFin: inicioHoy.toISOString().split("T")[0],
-        };
-      case "estaSemana": {
-        const inicioSemana = new Date(inicioHoy);
-        inicioSemana.setDate(inicioHoy.getDate() - inicioHoy.getDay());
-        return {
-          fechaInicio: inicioSemana.toISOString().split("T")[0],
-          fechaFin: inicioHoy.toISOString().split("T")[0],
-        };
-      }
-      case "esteMes": {
-        const inicioMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
-        return {
-          fechaInicio: inicioMes.toISOString().split("T")[0],
-          fechaFin: inicioHoy.toISOString().split("T")[0],
-        };
-      }
-      case "esteAño": {
-        const inicioAño = new Date(hoy.getFullYear(), 0, 1);
-        return {
-          fechaInicio: inicioAño.toISOString().split("T")[0],
-          fechaFin: inicioHoy.toISOString().split("T")[0],
-        };
-      }
-      default:
-        return { fechaInicio: null, fechaFin: null };
-    }
-  };
+  const [entregaHistorialConfig, setEntregaHistorialConfig] = useState(null);
 
   useEffect(() => {
     fetchData(paginaActual);
@@ -86,17 +51,16 @@ const EntregasCelulandiaPage = () => {
       const offset = (pagina - 1) * limitePorPagina;
       const { fechaInicio, fechaFin } = calcularFechasFiltro(filtroFecha);
 
-      console.log(`Filtro aplicado en entregas: ${filtroFecha}`, { fechaInicio, fechaFin });
-
       const [cuentasResp, clientesResp, tcResp] = await Promise.all([
         cuentasPendientesService.getAll({
+          populate: "cliente",
           limit: limitePorPagina,
           offset,
           sortField: sortField === "fecha" ? "fechaCuenta" : sortField,
           sortDirection,
           fechaInicio,
           fechaFin,
-          includeInactive: true, // Incluir registros inactivos para mostrarlos tachados
+          includeInactive: true,
         }),
         clientesService.getAllClientes(),
         dolarService.getTipoDeCambio(),
@@ -110,7 +74,6 @@ const EntregasCelulandiaPage = () => {
         cuentas.map((c) => {
           return {
             _id: c._id,
-            proveedorOCliente: c.proveedorOCliente,
             descripcion: c.descripcion,
             fecha: c.fechaCuenta,
             horaCreacion: getHoraArgentina(c.fechaCreacion),
@@ -119,14 +82,18 @@ const EntregasCelulandiaPage = () => {
             descuentoAplicado: c.descuentoAplicado,
             montoEnviado: c.subTotal?.ars || 0,
             montoCC: c.montoTotal?.ars || 0,
-            active: c.active, // Agregar el campo active
+            active: c.active,
             usuario: c.usuario,
+            clienteNombre: c.cliente?.nombre,
           };
         })
       );
       const clientesArray = Array.isArray(clientesResp) ? clientesResp : clientesResp?.data || [];
       setClientes(clientesArray);
       setTipoDeCambio(tcResp);
+
+      // Actualizar configuración del historial con la lista de clientes
+      setEntregaHistorialConfig(getCuentaPendienteHistorialConfig(clientesArray));
     } catch (e) {
       console.error(e);
     } finally {
@@ -137,9 +104,9 @@ const EntregasCelulandiaPage = () => {
   const columns = [
     { key: "fecha", label: "Fecha", sortable: true },
     { key: "horaCreacion", label: "Hora", sortable: false },
-    { key: "proveedorOCliente", label: "Cliente", sortable: true },
+    { key: "clienteNombre", label: "Cliente", sortable: false },
     { key: "descripcion", label: "Descripción", sortable: false },
-    { key: "montoEnviado", label: "Monto", sortable: true },
+    { key: "montoEnviado", label: "Monto", sortable: false },
     { key: "moneda", label: "Moneda", sortable: false },
     { key: "CC", label: "CC", sortable: false },
     { key: "descuentoAplicado", label: "Descuento", sortable: false },
@@ -169,7 +136,6 @@ const EntregasCelulandiaPage = () => {
   const formatters = {
     fecha: (value, item) => getFechaArgentina(value),
     horaCreacion: (value, item) => value,
-    proveedorOCliente: (value, item) => formatearCampo("default", value, item),
     descripcion: (value, item) => formatearCampo("default", value, item),
     montoEnviado: (value, item) => formatearCampo("montoEnviado", value, item),
     moneda: (value, item) => formatearCampo("monedaDePago", value, item),
@@ -186,7 +152,6 @@ const EntregasCelulandiaPage = () => {
     "numeroEntrega",
     "fecha",
     "hora",
-    "cliente",
     "montoEnviado",
     "moneda",
     "CC",
@@ -226,7 +191,6 @@ const EntregasCelulandiaPage = () => {
     try {
       await cuentasPendientesService.deleteCuentaPendiente(selectedData._id, "Usuario Sistema");
 
-      // Actualizar el estado local para mostrar el cambio visual inmediato
       setEntregas((prevEntregas) =>
         prevEntregas.map((entrega) =>
           entrega._id === selectedData._id ? { ...entrega, active: false } : entrega
@@ -269,7 +233,7 @@ const EntregasCelulandiaPage = () => {
           filtroFecha={filtroFecha}
           onFiltroFechaChange={(nuevoFiltro) => {
             setFiltroFecha(nuevoFiltro);
-            setPaginaActual(1); // Resetear a la primera página
+            setPaginaActual(1);
           }}
           onAdd={() => setAgregarModalOpen(true)}
           showRefreshButton={true}
@@ -277,14 +241,14 @@ const EntregasCelulandiaPage = () => {
         />
       </Container>
 
-      {/* <EditarEntregaModal
+      <EditarEntregaModal
         open={editarModalOpen}
         onClose={() => setEditarModalOpen(false)}
         data={selectedData}
         onSaved={handleSaved}
         clientes={clientes}
         tipoDeCambio={tipoDeCambio}
-      /> */}
+      />
       <AgregarEntregaModal
         open={agregarModalOpen}
         onClose={() => setAgregarModalOpen(false)}
@@ -292,13 +256,15 @@ const EntregasCelulandiaPage = () => {
         clientes={clientes}
         tipoDeCambio={tipoDeCambio}
       />
-      <HistorialModal
-        open={historialModalOpen}
-        onClose={() => setHistorialModalOpen(false)}
-        data={selectedData}
-        loadHistorialFunction={cuentasPendientesService.getLogs}
-        {...entregaHistorialConfig}
-      />
+      {entregaHistorialConfig && (
+        <HistorialModal
+          open={historialModalOpen}
+          onClose={() => setHistorialModalOpen(false)}
+          data={selectedData}
+          loadHistorialFunction={cuentasPendientesService.getLogs}
+          {...entregaHistorialConfig}
+        />
+      )}
       <ConfirmarEliminacionModal
         open={confirmarEliminacionOpen}
         onClose={() => {
