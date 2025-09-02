@@ -303,14 +303,14 @@ const ClienteCelulandiaCCPage = () => {
         tipoDeCambio={tipoDeCambio}
         cajas={cajas}
       />
-      <EditarEntregaModal
+      {/* <EditarEntregaModal
         open={editarEntregaModalOpen}
         onClose={() => setEditarEntregaModalOpen(false)}
         data={selectedData}
         onSaved={fetchData}
         clientes={clientes}
         tipoDeCambio={tipoDeCambio}
-      />
+      /> */}
       <HistorialModal
         open={historialModalOpen}
         onClose={() => setHistorialModalOpen(false)}

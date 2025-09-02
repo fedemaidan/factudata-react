@@ -241,14 +241,14 @@ const EntregasCelulandiaPage = () => {
         />
       </Container>
 
-      <EditarEntregaModal
+      {/* <EditarEntregaModal
         open={editarModalOpen}
         onClose={() => setEditarModalOpen(false)}
         data={selectedData}
         onSaved={handleSaved}
         clientes={clientes}
         tipoDeCambio={tipoDeCambio}
-      />
+      /> */}
       <AgregarEntregaModal
         open={agregarModalOpen}
         onClose={() => setAgregarModalOpen(false)}

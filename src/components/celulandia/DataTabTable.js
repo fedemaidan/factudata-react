@@ -417,7 +417,11 @@ const DataTabTable = ({
                 </TableHead>
                 <TableBody>
                   {(paginatedGrouped.get(opt.value) || []).map((row) => (
-                    <TableRow key={row.id}>
+                    <TableRow
+                      key={row.id}
+                      onClick={() => console.log(row)}
+                      sx={{ cursor: "pointer" }}
+                    >
                       <TableCell>{formatearCampo("fecha", row.fecha)}</TableCell>
                       <TableCell>{row.cliente}</TableCell>
                       <TableCell>
