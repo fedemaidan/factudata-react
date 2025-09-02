@@ -69,7 +69,7 @@ const ComprobantesCelulandiaPage = () => {
             sortDirection,
             fechaInicio,
             fechaFin,
-            includeInactive: true,
+            //includeInactive: true,
           }),
           clientesService.getAllClientes(),
           dolarService.getTipoDeCambio(),

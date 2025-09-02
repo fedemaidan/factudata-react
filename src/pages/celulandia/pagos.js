@@ -150,7 +150,7 @@ const PagosCelulandiaPage = () => {
           sortDirection,
           fechaInicio,
           fechaFin,
-          includeInactive: true, // Incluir registros inactivos para mostrarlos tachados
+          //includeInactive: true, // Incluir registros inactivos para mostrarlos tachados
         }),
         cajasService.getAllCajas(),
       ]);
