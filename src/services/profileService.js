@@ -150,15 +150,17 @@ const profileService = {
   updateProfile: async (profileId, profileData) => {
     try {
       const docRef = doc(db, 'profile', profileId);
-      console.log(profileData, profileId)
-      const proyectosRefs = Array.isArray(profileData.proyectos)
-        ? profileData.proyectos.map(id => doc(db, 'proyectos', id))
-        : [];
-  
-      const data = {
-        ...profileData,
-        proyectos: proyectosRefs
-      };
+      let data = { ...profileData };
+
+      if (profileData.proyectos) {
+        const proyectosRefs = Array.isArray(profileData.proyectos)
+          ? profileData.proyectos.map(id => doc(db, 'proyectos', id))
+          : [];
+          data = {
+            ...profileData,
+            proyectos: proyectosRefs
+          };
+      }
   
       await updateDoc(docRef, data);
       return true;
