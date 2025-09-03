@@ -20,7 +20,8 @@ const emptyForm = {
   mensaje: '',
   proxEvent: '',
   tiempo: 0,
-  tipo: 'mensaje'
+  tipo: 'mensaje',
+  promt_assistant: '' // ✅ nuevo campo
 };
 
 const FollowUpConfig = () => {
@@ -64,7 +65,8 @@ const FollowUpConfig = () => {
       r.id.toLowerCase().includes(qq) ||
       (r.mensaje || '').toLowerCase().includes(qq) ||
       (r.proxEvent || '').toLowerCase().includes(qq) ||
-      (r.tipo || '').toLowerCase().includes(qq)
+      (r.tipo || '').toLowerCase().includes(qq) ||
+      (r.promt_assistant || '').toLowerCase().includes(qq)
     );
   }, [rows, q]);
 
@@ -81,7 +83,8 @@ const FollowUpConfig = () => {
       mensaje: row.mensaje ?? '',
       proxEvent: row.proxEvent ?? '',
       tiempo: Number(row.tiempo ?? 0),
-      tipo: row.tipo ?? 'mensaje'
+      tipo: row.tipo ?? 'mensaje',
+      promt_assistant: row.promt_assistant ?? '' // ✅ cargar valor existente
     });
     setOpenForm(true);
   };
@@ -106,7 +109,8 @@ const FollowUpConfig = () => {
         mensaje: form.mensaje,
         proxEvent: form.proxEvent || '',
         tiempo: Number(form.tiempo) || 0,
-        tipo: form.tipo || 'mensaje'
+        tipo: form.tipo || 'mensaje',
+        promt_assistant: form.promt_assistant || '' // ✅ enviar al backend
       };
       if (isEdit) {
         await FollowUpConfigService.actualizar(form.id, payload);
@@ -180,6 +184,7 @@ const FollowUpConfig = () => {
                     <TableCell>proxEvent</TableCell>
                     <TableCell>tiempo (min)</TableCell>
                     <TableCell>tipo</TableCell>
+                    <TableCell>IA promt</TableCell>
                     <TableCell align="right">Acciones</TableCell>
                   </TableRow>
                 </TableHead>
@@ -187,7 +192,7 @@ const FollowUpConfig = () => {
                   {filtered.map((row) => (
                     <TableRow key={row.id} hover>
                       <TableCell>{row.id}</TableCell>
-                      <TableCell sx={{ maxWidth: 420 }}>
+                      <TableCell sx={{ maxWidth: 320 }}>
                         <Tooltip title={row.mensaje || ''}>
                           <Typography variant="body2" noWrap>
                             {row.mensaje || <em>(vacío)</em>}
@@ -198,6 +203,13 @@ const FollowUpConfig = () => {
                       <TableCell>{typeof row.tiempo === 'number' ? row.tiempo : (row.tiempo ?? '')}</TableCell>
                       <TableCell>
                         <Chip size="small" label={row.tipo || 'mensaje'} />
+                      </TableCell>
+                      <TableCell sx={{ maxWidth: 320 }}>
+                        <Tooltip title={row.promt_assistant || ''}>
+                          <Typography variant="body2" noWrap>
+                            {row.promt_assistant || <em>(—)</em>}
+                          </Typography>
+                        </Tooltip>
                       </TableCell>
                       <TableCell align="right">
                         <IconButton color="primary" onClick={() => handleOpenEdit(row)} aria-label="Editar">
@@ -211,7 +223,7 @@ const FollowUpConfig = () => {
                   ))}
                   {!loading && filtered.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={6}>
+                      <TableCell colSpan={7}>
                         <Typography variant="body2">Sin resultados.</Typography>
                       </TableCell>
                     </TableRow>
@@ -285,6 +297,17 @@ const FollowUpConfig = () => {
                   <MenuItem value="funcion">funcion</MenuItem>
                 </Select>
               </FormControl>
+
+              {/* ✅ Guion IA para retomar lead (se guarda en promt_assistant) */}
+              <TextField
+                label="IA Promt"
+                placeholder="p. ej.: Escribí como asesor cordial, retoma la conversación, pedí disponibilidad…"
+                multiline
+                minRows={2}
+                value={form.promt_assistant}
+                onChange={(e) => setForm({ ...form, promt_assistant: e.target.value })}
+                helperText="Se guarda como promt_assistant y lo usará la función del asistente."
+              />
             </Stack>
           </DialogContent>
           <DialogActions>
