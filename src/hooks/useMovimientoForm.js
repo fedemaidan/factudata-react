@@ -75,7 +75,8 @@ export const useMovimientoForm = (initialData = null, externalData = null) => {
   useEffect(() => {
     if (initialData?.cliente?.nombre && clientes.length > 0 && !clienteSeleccionado) {
       const clienteExistente = clientes.find(
-        (c) => c.nombre.trim().toUpperCase() === initialData.cliente.nombre.trim().toUpperCase()
+        (c) =>
+          c?.nombre?.trim()?.toUpperCase() === initialData?.cliente?.nombre?.trim()?.toUpperCase()
       );
       if (clienteExistente) {
         setClienteSeleccionado(clienteExistente);
