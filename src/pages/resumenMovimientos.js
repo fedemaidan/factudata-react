@@ -30,7 +30,6 @@ const ResumenMovimientosPage = () => {
     useEffect(() => {
 
         if (user.celulandia) {
-            const router = useRouter();
             router.push("/celulandia/comprobantes")
         }
 
