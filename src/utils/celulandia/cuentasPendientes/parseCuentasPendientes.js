@@ -21,14 +21,16 @@ export const parseCuentaPendiente = (c) => {
       break;
   }
 
+  console.log("c", c);
+
   return {
     id: c._id,
     _id: c._id,
     origen: "cuentaPendiente",
     numeroComprobante: c.descripcion || "-",
-    fecha: getFechaArgentina(c.fechaCuenta),
+    fecha: c.fechaCuenta,
     horaCreacion: getHoraArgentina(c.fechaCreacion),
-    fechaCuenta: getFechaArgentina(c.fechaCuenta), // Mantener la fecha original para EditarEntregaModal
+    fechaCuenta: c.fechaCuenta, // Mantener la fecha original para EditarEntregaModal
     hora,
     montoCC,
     tipoDeCambio: c.tipoDeCambio || 1,

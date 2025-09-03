@@ -208,21 +208,38 @@ const EditarEntregaModal = ({ open, onClose, data, onSaved, clientes = [], tipoD
         let subTotal = { ars: 0, usdOficial: 0, usdBlue: 0 };
         if (formData.CC === "ARS") {
           subTotal = {
-            ars: -subtotalEntregaRedondeado,
-            usdOficial: -Math.round(subtotalEntregaRedondeado / tcOficial),
-            usdBlue: -Math.round(subtotalEntregaRedondeado / tcBlue),
+            ars:
+              formData.monedaDePago === "ARS" ? -formData.montoEnviado : -subtotalEntregaRedondeado,
+            usdOficial:
+              formData.monedaDePago === "USD"
+                ? -formData.montoEnviado
+                : -Math.round(subtotalEntregaRedondeado / tcOficial),
+            usdBlue:
+              formData.monedaDePago === "USD"
+                ? -formData.montoEnviado
+                : -Math.round(subtotalEntregaRedondeado / tcBlue),
           };
         } else if (formData.CC === "USD OFICIAL") {
           subTotal = {
-            ars: -Math.round(subtotalEntregaRedondeado * tcOficial),
-            usdOficial: -subtotalEntregaRedondeado,
-            usdBlue: -subtotalEntregaRedondeado,
+            ars:
+              formData.monedaDePago === "ARS"
+                ? -formData.montoEnviado
+                : -Math.round(subtotalEntregaRedondeado * tcOficial),
+            usdOficial:
+              formData.monedaDePago === "USD" ? -formData.montoEnviado : -subtotalEntregaRedondeado,
+            usdBlue:
+              formData.monedaDePago === "USD" ? -formData.montoEnviado : -subtotalEntregaRedondeado,
           };
         } else if (formData.CC === "USD BLUE") {
           subTotal = {
-            ars: -Math.round(subtotalEntregaRedondeado * tcBlue),
-            usdOficial: -subtotalEntregaRedondeado,
-            usdBlue: -subtotalEntregaRedondeado,
+            ars:
+              formData.monedaDePago === "ARS"
+                ? -formData.montoEnviado
+                : -Math.round(subtotalEntregaRedondeado * tcBlue),
+            usdOficial:
+              formData.monedaDePago === "USD" ? -formData.montoEnviado : -subtotalEntregaRedondeado,
+            usdBlue:
+              formData.monedaDePago === "USD" ? -formData.montoEnviado : -subtotalEntregaRedondeado,
           };
         }
 

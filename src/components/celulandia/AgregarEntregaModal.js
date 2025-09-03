@@ -72,21 +72,33 @@ const AgregarEntregaModal = ({ open, onClose, onSaved, clientes = [], tipoDeCamb
       let subTotal = { ars: 0, usdOficial: 0, usdBlue: 0 };
       if (formData.CC === "ARS") {
         subTotal = {
-          ars: -subtotalEntrega,
-          usdOficial: -Math.round(subtotalEntrega / tcOficial),
-          usdBlue: -Math.round(subtotalEntrega / tcBlue),
+          ars: formData.monedaDePago === "ARS" ? formData.montoEnviado : -subtotalEntrega,
+          usdOficial:
+            formData.monedaDePago === "USD"
+              ? formData.montoEnviado
+              : -Math.round(subtotalEntrega / tcOficial),
+          usdBlue:
+            formData.monedaDePago === "USD"
+              ? formData.montoEnviado
+              : -Math.round(subtotalEntrega / tcBlue),
         };
       } else if (formData.CC === "USD OFICIAL") {
         subTotal = {
-          ars: -Math.round(subtotalEntrega * tcOficial),
-          usdOficial: -subtotalEntrega,
-          usdBlue: -subtotalEntrega,
+          ars:
+            formData.monedaDePago === "ARS"
+              ? formData.montoEnviado
+              : -Math.round(subtotalEntrega * tcOficial),
+          usdOficial: formData.monedaDePago === "USD" ? formData.montoEnviado : -subtotalEntrega,
+          usdBlue: formData.monedaDePago === "USD" ? formData.montoEnviado : -subtotalEntrega,
         };
       } else if (formData.CC === "USD BLUE") {
         subTotal = {
-          ars: -Math.round(subtotalEntrega * tcBlue),
-          usdOficial: -subtotalEntrega,
-          usdBlue: -subtotalEntrega,
+          ars:
+            formData.monedaDePago === "ARS"
+              ? formData.montoEnviado
+              : -Math.round(subtotalEntrega * tcBlue),
+          usdOficial: formData.monedaDePago === "USD" ? formData.montoEnviado : -subtotalEntrega,
+          usdBlue: formData.monedaDePago === "USD" ? formData.montoEnviado : -subtotalEntrega,
         };
       }
 

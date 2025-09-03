@@ -29,6 +29,7 @@ const cuentasPendientesService = {
         usuario,
       },
     });
+    console.log("response1", response.data);
     return response.data;
   },
 
