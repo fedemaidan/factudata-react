@@ -40,7 +40,7 @@ export const parseCuentaPendiente = (c) => {
     usuario: c.usuario,
     cuentaCorriente: c.cc,
     // Campos esperados por EditarEntregaModal
-    clienteNombre: c.cliente?.nombre,
+    clienteNombre: c.cliente?.nombre || c.proveedorOCliente,
     descripcion: c.descripcion,
     CC: c.cc,
     descuentoAplicado: c.descuentoAplicado,
