@@ -127,7 +127,9 @@ const AgregarEntregaModal = ({ open, onClose, onSaved, clientes = [], tipoDeCamb
         );
       }
 
-      const clienteId = clientes.find((c) => c.nombre === formData.cliente)?._id;
+      const clienteId = clientes.find(
+        (c) => c.nombre.trim().toUpperCase() === formData.cliente.trim().toUpperCase()
+      )?._id;
 
       const payload = {
         descripcion: formData.concepto,
