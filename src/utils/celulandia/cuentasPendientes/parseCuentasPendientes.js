@@ -1,7 +1,6 @@
 import { getFechaArgentina, getHoraArgentina } from "../fechas";
 
 export const parseCuentaPendiente = (c) => {
-  console.log("c", c);
   const fechaCuentaCompleta = new Date(c.fechaCuenta);
   const fecha = fechaCuentaCompleta.toISOString().split("T")[0]; // YYYY-MM-DD
   const hora = fechaCuentaCompleta.toTimeString().split(" ")[0]; // HH:MM:SS
@@ -46,6 +45,8 @@ export const parseCuentaPendiente = (c) => {
     CC: c.cc,
     descuentoAplicado: c.descuentoAplicado,
     cliente: c.cliente,
+    subTotal: c.subTotal,
+    montoTotal: c.montoTotal,
     type: "cuentaPendiente",
   };
 };

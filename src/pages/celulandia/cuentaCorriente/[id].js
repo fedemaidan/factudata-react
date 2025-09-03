@@ -198,16 +198,11 @@ const ClienteCelulandiaCCPage = () => {
         await cuentasPendientesService.deleteCuentaPendiente(selectedData._id, getUser());
       }
 
-      // Marcamos inactive en memoria
-      setMovimientos((prevMovimientos) =>
-        prevMovimientos.map((mov) =>
-          mov._id === selectedData._id ? { ...mov, active: false } : mov
-        )
-      );
-
       setConfirmarEliminacionOpen(false);
       setSelectedData(null);
       setSelectedItemType(null);
+
+      await fetchData();
     } catch (error) {
       console.error("Error al eliminar:", error);
       alert("Error al eliminar el elemento");
@@ -303,14 +298,14 @@ const ClienteCelulandiaCCPage = () => {
         tipoDeCambio={tipoDeCambio}
         cajas={cajas}
       />
-      {/* <EditarEntregaModal
+      <EditarEntregaModal
         open={editarEntregaModalOpen}
         onClose={() => setEditarEntregaModalOpen(false)}
         data={selectedData}
         onSaved={fetchData}
         clientes={clientes}
         tipoDeCambio={tipoDeCambio}
-      /> */}
+      />
       <HistorialModal
         open={historialModalOpen}
         onClose={() => setHistorialModalOpen(false)}
@@ -324,6 +319,8 @@ const ClienteCelulandiaCCPage = () => {
           setConfirmarEliminacionOpen(false);
           setSelectedData(null);
           setSelectedItemType(null);
+
+          fetchData();
         }}
         onConfirm={confirmarEliminacion}
         loading={isDeleting}

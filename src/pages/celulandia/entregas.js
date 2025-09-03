@@ -92,7 +92,7 @@ const EntregasCelulandiaPage = () => {
     { key: "clienteNombre", label: "Cliente", sortable: false },
     { key: "descripcion", label: "Descripción", sortable: false },
     { key: "montoEnviado", label: "Monto", sortable: true },
-    { key: "moneda", label: "Moneda", sortable: false },
+    { key: "monedaDePago", label: "Moneda", sortable: false },
     { key: "CC", label: "CC", sortable: true },
     { key: "descuentoAplicado", label: "Descuento", sortable: false },
     { key: "montoCC", label: "Monto CC", sortable: false },
@@ -123,7 +123,7 @@ const EntregasCelulandiaPage = () => {
     horaCreacion: (value, item) => value,
     descripcion: (value, item) => formatearCampo("default", value, item),
     montoEnviado: (value, item) => formatearCampo("montoEnviado", value, item),
-    moneda: (value, item) => formatearCampo("monedaDePago", value, item),
+    monedaDePago: (value, item) => formatearCampo("monedaDePago", value, item),
     CC: (value, item) => formatearCampo("CC", value, item),
     montoCC: (value, item) => formatearCampo("montoCC", value, item),
     usuario: (value, item) => formatearCampo("default", value, item),
@@ -225,15 +225,15 @@ const EntregasCelulandiaPage = () => {
           onRefresh={refetch}
         />
       </Container>
-      {/* 
-      <EditarEntregaModalV2
+
+      <EditarEntregaModal
         open={editarModalOpen}
         onClose={() => setEditarModalOpen(false)}
         data={selectedData}
         onSaved={handleSaved}
         clientes={clientes}
         tipoDeCambio={tipoDeCambio}
-      /> */}
+      />
       <AgregarEntregaModal
         open={agregarModalOpen}
         onClose={() => setAgregarModalOpen(false)}

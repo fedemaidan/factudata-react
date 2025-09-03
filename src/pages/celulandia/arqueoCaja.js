@@ -37,7 +37,6 @@ const ArqueoCajaPage = () => {
     totalUSD: 0,
     totalMovimientos: 0,
   });
-  console.log("arqueoTotalGeneral", arqueoTotalGeneral);
 
   const [sortFieldDiario, setSortFieldDiario] = useState("fecha");
   const [sortDirectionDiario, setSortDirectionDiario] = useState("desc");
@@ -98,6 +97,10 @@ const ArqueoCajaPage = () => {
       setItems(parsedMovs);
 
       const arqueo = await movimientosService.getArqueoDiario({ cajaNombre: "EFECTIVO" });
+
+      console.log("arqueo", arqueo);
+      console.log("arqueoTotalGeneral", arqueoTotalGeneral);
+
       setDiario(arqueo?.data || []);
     } catch (err) {
       console.error("Error cargando datos de arqueo:", err);

@@ -19,12 +19,16 @@ import cuentasPendientesService from "src/services/celulandia/cuentasPendientesS
 import { getUser } from "src/utils/celulandia/currentUser";
 import { useMovimientoForm } from "src/hooks/useMovimientoForm";
 
+const formatNumberWithThousands = (value) => {
+  if (!value || value === 0) return "0";
+  return value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+};
+
 const AgregarEntregaModal = ({ open, onClose, onSaved, clientes = [], tipoDeCambio }) => {
   const [isSaving, setIsSaving] = useState(false);
   const [descuentoPorcentaje, setDescuentoPorcentaje] = useState("");
   const [fechaEntrega, setFechaEntrega] = useState("");
 
-  console.log("tipoDeCambio", tipoDeCambio);
   const {
     formData,
     clienteSeleccionado,
@@ -264,8 +268,7 @@ const AgregarEntregaModal = ({ open, onClose, onSaved, clientes = [], tipoDeCamb
               <TextField
                 fullWidth
                 label="Subtotal (sin descuento)"
-                type="number"
-                value={subtotalEntrega}
+                value={formatNumberWithThousands(subtotalEntrega.toString())}
                 margin="normal"
                 disabled
                 helperText="Calculado automáticamente"
@@ -277,8 +280,7 @@ const AgregarEntregaModal = ({ open, onClose, onSaved, clientes = [], tipoDeCamb
               <TextField
                 fullWidth
                 label="Total (con descuento)"
-                type="number"
-                value={totalEntrega}
+                value={formatNumberWithThousands(totalEntrega.toString())}
                 margin="normal"
                 disabled
                 helperText="Con el descuento aplicado"

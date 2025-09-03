@@ -36,7 +36,6 @@ const HistorialModal = ({
       loadHistorial();
     }
   }, [open, data, loadHistorialFunction]);
-  console.log("historial", historial);
   const loadHistorial = async () => {
     if (!data?._id || !loadHistorialFunction) return;
 
