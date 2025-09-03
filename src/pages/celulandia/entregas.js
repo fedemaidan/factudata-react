@@ -95,7 +95,7 @@ const EntregasCelulandiaPage = () => {
     { key: "monedaDePago", label: "Moneda", sortable: false },
     { key: "CC", label: "CC", sortable: true },
     { key: "descuentoAplicado", label: "Descuento", sortable: false },
-    { key: "montoCC", label: "Monto CC", sortable: false },
+    { key: "montoCC", label: "Monto CC", sortable: true },
     { key: "usuario", label: "Usuario", sortable: true },
     {
       key: "acciones",
