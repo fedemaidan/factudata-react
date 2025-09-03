@@ -21,6 +21,7 @@ import {
 } from "src/utils/celulandia/fechas";
 import { getCuentaPendienteHistorialConfig } from "src/utils/celulandia/historial";
 import { parseCuentaPendiente } from "src/utils/celulandia/cuentasPendientes/parseCuentasPendientes";
+import { EditarEntregaModalV2 } from "src/components/celulandia/EditarEntregaModalV2";
 
 const EntregasCelulandiaPage = () => {
   const [entregas, setEntregas] = useState([]);
@@ -224,8 +225,8 @@ const EntregasCelulandiaPage = () => {
           onRefresh={refetch}
         />
       </Container>
-
-      {/* <EditarEntregaModal
+      {/* 
+      <EditarEntregaModalV2
         open={editarModalOpen}
         onClose={() => setEditarModalOpen(false)}
         data={selectedData}

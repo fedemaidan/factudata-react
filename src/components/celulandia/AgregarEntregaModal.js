@@ -24,6 +24,7 @@ const AgregarEntregaModal = ({ open, onClose, onSaved, clientes = [], tipoDeCamb
   const [descuentoPorcentaje, setDescuentoPorcentaje] = useState("");
   const [fechaEntrega, setFechaEntrega] = useState("");
 
+  console.log("tipoDeCambio", tipoDeCambio);
   const {
     formData,
     clienteSeleccionado,
@@ -236,22 +237,6 @@ const AgregarEntregaModal = ({ open, onClose, onSaved, clientes = [], tipoDeCamb
                 >
                   <MenuItem value="ARS">ARS</MenuItem>
                   <MenuItem value="USD">USD</MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <FormControl fullWidth margin="normal">
-                <InputLabel>Cuenta Corriente *</InputLabel>
-                <Select
-                  value={formData.CC}
-                  label="Cuenta Corriente *"
-                  onChange={(e) => handleInputChange("CC", e.target.value)}
-                >
-                  {getCCOptions().map((option) => (
-                    <MenuItem key={option} value={option}>
-                      {option}
-                    </MenuItem>
-                  ))}
                 </Select>
               </FormControl>
             </Grid>

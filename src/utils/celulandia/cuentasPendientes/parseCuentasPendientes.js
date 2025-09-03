@@ -1,4 +1,4 @@
-import { getFechaArgentina } from "../fechas";
+import { getFechaArgentina, getHoraArgentina } from "../fechas";
 
 export const parseCuentaPendiente = (c) => {
   console.log("c", c);
