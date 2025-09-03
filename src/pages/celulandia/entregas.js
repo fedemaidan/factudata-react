@@ -32,20 +32,30 @@ const EntregasCelulandiaPage = () => {
   const [confirmarEliminacionOpen, setConfirmarEliminacionOpen] = useState(false);
   const [selectedData, setSelectedData] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
+
   const [clientes, setClientes] = useState([]);
   const [tipoDeCambio, setTipoDeCambio] = useState({});
+
   const [paginaActual, setPaginaActual] = useState(1);
   const [totalEntregas, setTotalEntregas] = useState(0);
   const [limitePorPagina] = useState(20);
+
   const [sortField, setSortField] = useState("fecha");
   const [sortDirection, setSortDirection] = useState("desc");
   const [filtroFecha, setFiltroFecha] = useState("todos");
+
+  // NUEVOS: filtros server-side
+  const [filtroMoneda, setFiltroMoneda] = useState(""); // "" = sin seleccionar
+  const [filtroCC, setFiltroCC] = useState(""); // "" = sin seleccionar
+  const [filtroUsuario, setFiltroUsuario] = useState(""); // "" = sin seleccionar
+  const [usuariosOptions, setUsuariosOptions] = useState([{ value: "", label: "(todos)" }]);
 
   const [entregaHistorialConfig, setEntregaHistorialConfig] = useState(null);
 
   useEffect(() => {
     fetchData(paginaActual);
-  }, [paginaActual, sortField, sortDirection, filtroFecha]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paginaActual, sortField, sortDirection, filtroFecha, filtroMoneda, filtroCC, filtroUsuario]);
 
   const fetchData = async (pagina = 1) => {
     setIsLoading(true);
@@ -62,7 +72,9 @@ const EntregasCelulandiaPage = () => {
           sortDirection,
           fechaInicio,
           fechaFin,
-          //includeInactive: true,
+          ...(filtroMoneda ? { moneda: filtroMoneda } : {}),
+          ...(filtroCC ? { cc: filtroCC } : {}),
+          ...(filtroUsuario ? { usuario: filtroUsuario } : {}),
         }),
         clientesService.getAllClientes(),
         dolarService.getTipoDeCambio(),
@@ -73,6 +85,22 @@ const EntregasCelulandiaPage = () => {
       setPaginaActual(pagina);
 
       setEntregas(cuentas.map(parseCuentaPendiente));
+
+      const uniqueUsers = Array.from(
+        new Set([
+          "ezequielszejman@gmail.com",
+          "matias_kat14@hotmail.com",
+          "lidnicolas@gmail.com",
+          "ventas@celulandiaweb.com.ar",
+          "info@celulandiaweb.com.ar",
+          "Sistema",
+        ])
+      ).sort();
+      setUsuariosOptions([
+        { value: "", label: "(todos)" },
+        ...uniqueUsers.map((u) => ({ value: u, label: u })),
+      ]);
+
       const clientesArray = Array.isArray(clientesResp) ? clientesResp : clientesResp?.data || [];
       setClientes(clientesArray);
       setTipoDeCambio(tcResp);
@@ -223,6 +251,48 @@ const EntregasCelulandiaPage = () => {
           onAdd={() => setAgregarModalOpen(true)}
           showRefreshButton={true}
           onRefresh={refetch}
+          // NUEVO: múltiples selects server-side
+          multipleSelectFilters={[
+            {
+              key: "moneda",
+              label: "Moneda",
+              value: filtroMoneda,
+              options: [
+                { value: "", label: "(todas)" },
+                { value: "ARS", label: "ARS" },
+                { value: "USD", label: "USD" },
+              ],
+              onChange: (v) => {
+                setFiltroMoneda(v);
+                setPaginaActual(1);
+              },
+            },
+            {
+              key: "cc",
+              label: "CC",
+              value: filtroCC,
+              options: [
+                { value: "", label: "(todas)" },
+                { value: "ARS", label: "ARS" },
+                { value: "USD OFICIAL", label: "USD OFICIAL" },
+                { value: "USD BLUE", label: "USD BLUE" },
+              ],
+              onChange: (v) => {
+                setFiltroCC(v);
+                setPaginaActual(1);
+              },
+            },
+            {
+              key: "usuario",
+              label: "Usuario",
+              value: filtroUsuario,
+              options: usuariosOptions,
+              onChange: (v) => {
+                setFiltroUsuario(v);
+                setPaginaActual(1);
+              },
+            },
+          ]}
         />
       </Container>
 

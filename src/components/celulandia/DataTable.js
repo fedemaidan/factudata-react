@@ -63,39 +63,38 @@ const DataTable = ({
   serverSide = false,
   filtroFecha: externalFiltroFecha,
   onFiltroFechaChange,
+  // soporte legacy para un solo select
   selectFilter = null,
-  onRefresh = null, // Nuevo parámetro para función de actualización
-  showRefreshButton = false, // Nuevo parámetro para mostrar/ocultar botón
+  // NUEVO: múltiples selects server-side o client-side
+  multipleSelectFilters = [],
+  onRefresh = null,
+  showRefreshButton = false,
 }) => {
   const [busqueda, setBusqueda] = useState("");
   const [filtroFecha, setFiltroFecha] = useState("todos");
   const [selectedDate, setSelectedDate] = useState(null);
+
+  // estado local para select único (legacy)
   const [selectFilterValue, setSelectFilterValue] = useState(selectFilter?.defaultValue || "todos");
+
+  // estado local para múltiples selects en modo client-side
+  const [localMultiSelects, setLocalMultiSelects] = useState(
+    multipleSelectFilters.reduce((acc, f) => ({ ...acc, [f.key]: f.value ?? "" }), {})
+  );
+
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // Usar filtro externo si está en modo serverSide
   const currentFiltroFecha =
     serverSide && externalFiltroFecha !== undefined ? externalFiltroFecha : filtroFecha;
   const ordenCampo = sortField;
   const ordenDireccion = sortDirection;
 
   const handleSort = (campo) => {
-    if (onSortChange) {
-      onSortChange(campo);
-    }
+    if (onSortChange) onSortChange(campo);
   };
 
-  const getSortIcon = (campo) => {
-    if (ordenCampo === campo) {
-      return ordenDireccion === "asc" ? " ▲" : " ▼";
-    }
-    return "";
-  };
-
-  // Función para manejar la actualización
   const handleRefresh = async () => {
     if (!onRefresh) return;
-
     setIsRefreshing(true);
     try {
       await onRefresh();
@@ -106,15 +105,24 @@ const DataTable = ({
     }
   };
 
+  // Manejador para múltiples selects
+  const handleMultiSelectChange = (key, value, onChange) => {
+    if (serverSide && typeof onChange === "function") {
+      onChange(value);
+    } else {
+      setLocalMultiSelects((prev) => ({ ...prev, [key]: value }));
+    }
+  };
+
   const dataFiltrados = useMemo(() => {
     let filtered = [...data];
 
-    // En modo serverSide, no filtrar en frontend - los datos ya vienen filtrados del backend
     if (serverSide) {
+      // En server-side no filtramos acá (ya viene filtrado)
       return filtered;
     }
 
-    // Filtro por fecha (opciones predefinidas) - solo en modo cliente
+    // Filtros por fecha (cliente)
     if (!showDatePicker && currentFiltroFecha !== "todos") {
       const hoy = new Date();
       const inicioDia = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate());
@@ -155,7 +163,6 @@ const DataTable = ({
       }
     }
 
-    // Filtro por datepicker (día específico)
     if (showDatePicker && selectedDate) {
       const targetDay = dayjs(selectedDate).startOf("day");
       filtered = filtered.filter((item) => {
@@ -166,30 +173,39 @@ const DataTable = ({
       });
     }
 
-    // Filtro por búsqueda
+    // Búsqueda
     if (showSearch && busqueda.trim()) {
       const searchTerm = busqueda.toLowerCase();
-      filtered = filtered.filter((item) => {
-        return searchFields.some((field) => {
+      filtered = filtered.filter((item) =>
+        searchFields.some((field) => {
           const value = item[field];
           return value && value.toString().toLowerCase().includes(searchTerm);
-        });
-      });
+        })
+      );
     }
 
-    // Filtro por select
+    // Select único (legacy)
     if (selectFilter && selectFilterValue !== "todos") {
       filtered = filtered.filter((item) => {
         const value = item[selectFilter.field];
         if (selectFilterValue === "ambas") {
-          // Si se selecciona "ambas", mostrar todos los que tengan caja
           return value && (value.nombre === "CHEQUE" || value.nombre === "ECHEQ");
         }
         return value && value.nombre === selectFilterValue;
       });
     }
 
-    // Aplicar filtros adicionales
+    // Múltiples selects en client-side (cuando no es serverSide)
+    if (!serverSide && multipleSelectFilters.length > 0) {
+      for (const f of multipleSelectFilters) {
+        const val = localMultiSelects[f.key] ?? "";
+        if (val !== "" && val !== "todos") {
+          filtered = filtered.filter((item) => (item?.[f.key] ?? "") === val);
+        }
+      }
+    }
+
+    // Filtros adicionales
     Object.keys(filters).forEach((key) => {
       if (filters[key] && filters[key] !== "todos") {
         filtered = filtered.filter((item) => item[key] === filters[key]);
@@ -197,12 +213,25 @@ const DataTable = ({
     });
 
     return filtered;
-  }, [data, busqueda, filtroFecha, filters, searchFields, selectFilter, selectFilterValue]);
+  }, [
+    data,
+    busqueda,
+    filtroFecha,
+    filters,
+    searchFields,
+    selectFilter,
+    selectFilterValue,
+    serverSide,
+    multipleSelectFilters,
+    localMultiSelects,
+    selectedDate,
+    showDatePicker,
+    currentFiltroFecha,
+    dateField,
+  ]);
 
   const dataOrdenados = useMemo(() => {
-    if (serverSide) {
-      return dataFiltrados;
-    }
+    if (serverSide) return dataFiltrados;
     return [...dataFiltrados].sort((a, b) => {
       let aVal = a[ordenCampo];
       let bVal = b[ordenCampo];
@@ -222,86 +251,56 @@ const DataTable = ({
 
   const formatValue = (value, field) => {
     if (formatters[field]) {
+      // Nota: si tus formatters esperan (value, item), ajusta el llamado desde renderCellContent
       return formatters[field](value);
     }
     return value;
   };
 
-  // Función para renderizar el contenido de una celda de manera segura
   const renderCellContent = (item, column) => {
     if (column.render) {
       const renderedContent = column.render(item);
-      // Asegurar que el contenido sea un ReactNode válido
-      if (renderedContent === null || renderedContent === undefined) {
-        return "-";
-      }
+      if (renderedContent === null || renderedContent === undefined) return "-";
       return renderedContent;
     }
 
     const value = item[column.key];
-    if (value === null || value === undefined) {
-      return "-";
-    }
+    if (value === null || value === undefined) return "-";
 
     const formattedValue = formatValue(value, column.key);
-    if (formattedValue === null || formattedValue === undefined) {
-      return "-";
-    }
+    if (formattedValue === null || formattedValue === undefined) return "-";
 
     return formattedValue;
   };
 
-  // Función para obtener una key única para cada fila
-  const getRowKey = (item, index) => {
-    // Usar _id si está disponible, sino id, sino el índice
-    return item._id || item.id || `row-${index}`;
-  };
+  const getRowKey = (item, index) => item._id || item.id || `row-${index}`;
 
-  // Función para manejar click en fila
   const handleRowClick = (event, item) => {
-    // Si el click es en un checkbox, no hacer nada (se maneja por separado)
-    if (event.target.type === "checkbox") {
-      return;
-    }
+    if (event.target.type === "checkbox") return;
 
-    // Si la columna tiene un render personalizado (como botones), no seleccionar
     const targetCell = event.target.closest("td");
     if (targetCell) {
       const columnIndex = Array.from(targetCell.parentNode.children).indexOf(targetCell);
       const column = columns[columnIndex];
-
-      // Si es la columna de selección o tiene render personalizado, no hacer nada
-      if (column?.key === "seleccionar" || (column?.render && column.key !== "seleccionar")) {
-        return;
-      }
+      if (column?.key === "seleccionar" || (column?.render && column.key !== "seleccionar")) return;
     }
 
-    // Buscar si la fila tiene una función de toggle (para selección)
     const selectColumn = columns.find((col) => col.key === "seleccionar");
     if (selectColumn && selectColumn.onRowClick) {
       selectColumn.onRowClick(item);
     }
   };
 
-  // Función para manejar cambio en el filtro por select
   const handleSelectFilterChange = (event) => {
     const newValue = event.target.value;
     setSelectFilterValue(newValue);
-
-    // Si es serverSide y hay callback, llamarlo
     if (serverSide && selectFilter?.onChange) {
       selectFilter.onChange(newValue);
     }
   };
 
   return (
-    <Box
-      component="main"
-      sx={{
-        flexGrow: 1,
-        py: 2,
-      }}
-    >
+    <Box component="main" sx={{ flexGrow: 1, py: 2 }}>
       <Stack spacing={3}>
         <Stack direction="row" justifyContent="space-between" spacing={4}>
           <Stack spacing={1}>
@@ -310,13 +309,13 @@ const DataTable = ({
         </Stack>
         <Divider />
 
-        <Stack direction="row" spacing={2} alignItems="center">
+        <Stack direction="row" spacing={2} alignItems="center" flexWrap="wrap">
           {showSearch && (
             <TextField
               label="Buscar"
               value={busqueda}
               onChange={(e) => setBusqueda(e.target.value)}
-              sx={{ minWidth: 300 }}
+              sx={{ minWidth: 280 }}
               InputProps={{
                 endAdornment: busqueda.length > 0 && (
                   <InputAdornment position="end">
@@ -334,7 +333,7 @@ const DataTable = ({
             />
           )}
 
-          {/* Filtro por select */}
+          {/* Select único (compatibilidad) */}
           {selectFilter && (
             <FormControl sx={{ minWidth: 200 }} variant="filled">
               <InputLabel id="select-filter-label">{selectFilter.label}</InputLabel>
@@ -353,6 +352,26 @@ const DataTable = ({
               </Select>
             </FormControl>
           )}
+
+          {/* NUEVO: múltiples selects */}
+          {multipleSelectFilters.map((f) => (
+            <FormControl key={f.key} sx={{ minWidth: 200 }} variant="filled">
+              <InputLabel id={`msf-${f.key}-label`}>{f.label}</InputLabel>
+              <Select
+                labelId={`msf-${f.key}-label`}
+                id={`msf-${f.key}-select`}
+                value={serverSide ? f.value ?? "" : localMultiSelects[f.key] ?? ""}
+                label={f.label}
+                onChange={(e) => handleMultiSelectChange(f.key, e.target.value, f.onChange)}
+              >
+                {(f.options || []).map((option) => (
+                  <MenuItem key={`${f.key}-${option.value}`} value={option.value}>
+                    {option.label}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          ))}
 
           {showDateFilterOptions && !showDatePicker && dateFilterOptions.length > 0 && (
             <FormControl sx={{ minWidth: 200 }} variant="filled">
@@ -400,9 +419,7 @@ const DataTable = ({
                   px: 1,
                   py: 1,
                   boxShadow: 1,
-                  "&:hover": {
-                    boxShadow: 2,
-                  },
+                  "&:hover": { boxShadow: 2 },
                 }}
               >
                 <RefreshIcon
@@ -429,9 +446,7 @@ const DataTable = ({
                 px: 3,
                 py: 1,
                 boxShadow: 2,
-                "&:hover": {
-                  boxShadow: 4,
-                },
+                "&:hover": { boxShadow: 4 },
               }}
             >
               Agregar
@@ -466,7 +481,6 @@ const DataTable = ({
                         padding={column.key === "seleccionar" ? "checkbox" : "normal"}
                         sx={{
                           cursor: column.sortable ? "pointer" : "default",
-                          // Reducir padding para columnas de fecha y hora en el header
                           ...(column.key.includes("fecha") || column.key.includes("hora")
                             ? {
                                 padding: "8px 4px",
@@ -509,14 +523,10 @@ const DataTable = ({
                         selected={isSelected}
                         sx={{
                           cursor: "pointer",
-                          "&:hover": {
-                            backgroundColor: alpha("#1976d2", 0.04),
-                          },
+                          "&:hover": { backgroundColor: alpha("#1976d2", 0.04) },
                           ...(isSelected && {
                             backgroundColor: alpha("#1976d2", 0.08),
-                            "&:hover": {
-                              backgroundColor: alpha("#1976d2", 0.12),
-                            },
+                            "&:hover": { backgroundColor: alpha("#1976d2", 0.12) },
                           }),
                         }}
                       >
@@ -528,7 +538,6 @@ const DataTable = ({
                               textDecoration: item.active === false ? "line-through" : "none",
                               opacity: item.active === false ? 0.6 : 1,
                               color: item.active === false ? "text.disabled" : "text.primary",
-                              // Reducir padding para columnas de fecha y hora
                               ...(column.key.includes("fecha") || column.key.includes("hora")
                                 ? {
                                     padding: "8px 4px",
@@ -569,6 +578,7 @@ const DataTable = ({
           )}
         </Box>
       </Stack>
+
       {total && onPageChange && (
         <Stack alignItems="center" mt={2}>
           <Pagination
