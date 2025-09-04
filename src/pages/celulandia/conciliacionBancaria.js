@@ -50,8 +50,8 @@ const ConciliacionBancariaPage = () => {
         const pm = parseMovimiento(m);
         return {
           _id: pm._id,
-          fecha: pm.fechaCreacion || pm.fechaFactura,
-          hora: pm.horaCreacion || pm.horaFactura,
+          fecha: pm.fechaFactura || pm.fechaCreacion,
+          hora: pm.horaFactura,
           cliente: pm.cliente?.nombre || pm.nombreCliente || "-",
           cuentaDestino: pm.cuentaDestino || pm.caja?.nombre || "-",
           montoEnviado: pm.montoEnviado || 0,
@@ -174,6 +174,10 @@ const ConciliacionBancariaPage = () => {
     setPaginaActual(1);
   };
 
+  const refetch = async () => {
+    await fetchData(paginaActual);
+  };
+
   return (
     <>
       <Head>
@@ -213,6 +217,8 @@ const ConciliacionBancariaPage = () => {
             sortField={sortField}
             sortDirection={sortDirection}
             onSortChange={handleSortChange}
+            showRefreshButton={true}
+            onRefresh={refetch}
           />
         </Box>
       </Container>

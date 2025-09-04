@@ -119,9 +119,9 @@ const ClienteCelulandiaCCPage = () => {
   const itemsDataTab = useMemo(() => {
     return movimientos.map((m) => {
       const isMov = m.itemType === "movimiento";
-      const fecha =
-        (isMov ? m.fechaFactura ?? m.fecha : m.fechaCuenta ?? m.fecha) ?? m.fechaCreacion ?? null;
+      const fecha = isMov ? m.fecha : m.fechaCuenta;
 
+      console.log("fecha", isMov, fecha);
       return {
         id: m.id || m._id,
         fecha,
@@ -137,6 +137,15 @@ const ClienteCelulandiaCCPage = () => {
       };
     });
   }, [movimientos]);
+
+  const itemsOrdenados = useMemo(() => {
+    const factor = sortDirection === "asc" ? 1 : -1;
+    return [...itemsDataTab].sort((a, b) => {
+      const ta = a?.fecha ? new Date(a.fecha).getTime() : 0; // fallback si falta fecha
+      const tb = b?.fecha ? new Date(b.fecha).getTime() : 0;
+      return (ta - tb) * factor;
+    });
+  }, [itemsDataTab, sortDirection]);
 
   const handleVolver = () => router.back();
 
@@ -260,7 +269,7 @@ const ClienteCelulandiaCCPage = () => {
               </Box>
             ) : (
               <DataTabTable
-                items={itemsDataTab}
+                items={itemsOrdenados}
                 options={[
                   { label: "ARS", value: "ARS" },
                   { label: "USD BLUE", value: "USD BLUE" },

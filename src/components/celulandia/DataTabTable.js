@@ -191,14 +191,29 @@ const DataTabTable = ({
       });
     }
 
-    // Ordenar SIEMPRE por fecha (asc/desc)
-    rows = [...rows].sort((a, b) => {
-      const aVal = new Date(a?.[finalSortField] || 0).getTime();
-      const bVal = new Date(b?.[finalSortField] || 0).getTime();
-      if (aVal < bVal) return finalSortDirection === "asc" ? -1 : 1;
-      if (aVal > bVal) return finalSortDirection === "asc" ? 1 : -1;
-      return 0;
-    });
+    // Si el padre controla el sort (onSortChange), NO re-ordenamos acá.
+    if (!onSortChange) {
+      rows = [...rows].sort((a, b) => {
+        // Manejar fechas de manera más robusta
+        let aVal = a?.fecha;
+        let bVal = b?.fecha;
+
+        // Convertir a Date objects
+        aVal = aVal ? new Date(aVal) : new Date(0);
+        bVal = bVal ? new Date(bVal) : new Date(0);
+
+        // Verificar si las fechas son válidas
+        if (isNaN(aVal.getTime())) aVal = new Date(0);
+        if (isNaN(bVal.getTime())) bVal = new Date(0);
+
+        const aTime = aVal.getTime();
+        const bTime = bVal.getTime();
+
+        if (aTime < bTime) return finalSortDirection === "asc" ? -1 : 1;
+        if (aTime > bTime) return finalSortDirection === "asc" ? 1 : -1;
+        return 0;
+      });
+    }
 
     return rows;
   }, [

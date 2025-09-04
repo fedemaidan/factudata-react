@@ -32,10 +32,15 @@ export const parseMovimiento = (movimiento) => {
   }
 
   let fechaFactura = null;
+  let horaFactura = null;
   let horaCreacion = null;
+  let fechaFacturaISO = null;
 
   if (movimiento?.fechaFactura) {
+    console.log("fechaFactura", movimiento.fechaFactura);
     fechaFactura = getFechaArgentina(movimiento.fechaFactura);
+    fechaFacturaISO = movimiento.fechaFactura;
+    horaFactura = movimiento.fechaFactura.split("T")[1].split(":").slice(0, 2).join(":");
   }
 
   if (movimiento?.fechaCreacion) {
@@ -49,11 +54,12 @@ export const parseMovimiento = (movimiento) => {
     montoCC: Math.round(montoCC),
     fechaCreacion: movimiento.fechaCreacion,
     fechaFactura,
+    horaFactura,
     horaCreacion,
     nombreCliente: movimiento.cliente?.nombre || "Sin cliente",
     ccActivasCliente: movimiento.cliente?.ccActivas || [],
     cuentaDestino: movimiento.caja?.nombre || "Sin caja",
     type: "movimiento",
-    fecha: fechaFactura,
+    fecha: fechaFacturaISO,
   };
 };
