@@ -34,7 +34,7 @@ export const useMovimientoForm = (initialData = null, externalData = null) => {
 
   const [formData, setFormData] = useState({
     cliente: initialData?.cliente?.nombre || "",
-    cuentaDestino: initialData?.cuentaDestino || "ENSHOP SRL",
+    cuentaDestino: initialData?.cuentaDestino || "EFECTIVO",
     monedaDePago: initialData?.moneda || "ARS",
     montoEnviado: initialData?.montoEnviado || "",
     CC: initialData?.cuentaCorriente || "ARS",
@@ -55,7 +55,7 @@ export const useMovimientoForm = (initialData = null, externalData = null) => {
     if (initialData && Object.keys(initialData).length > 0) {
       setFormData({
         cliente: initialData.cliente?.nombre || "",
-        cuentaDestino: initialData.cuentaDestino || "ENSHOP SRL",
+        cuentaDestino: initialData.cuentaDestino || "EFECTIVO",
         monedaDePago: initialData.moneda || "ARS",
         montoEnviado: initialData.montoEnviado || "",
         CC: initialData.cuentaCorriente || "ARS",
@@ -267,7 +267,7 @@ export const useMovimientoForm = (initialData = null, externalData = null) => {
   const resetForm = () => {
     setFormData({
       cliente: "",
-      cuentaDestino: "ENSHOP SRL",
+      cuentaDestino: "EFECTIVO",
       montoEnviado: "",
       monedaDePago: "ARS",
       CC: "ARS",
