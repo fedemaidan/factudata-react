@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from "react";
+import React, { useMemo, useState, useEffect, useCallback, memo } from "react";
 import {
   Box,
   Paper,
@@ -26,6 +26,7 @@ import FileDownloadIcon from "@mui/icons-material/FileDownload";
 import EditIcon from "@mui/icons-material/Edit";
 import HistoryIcon from "@mui/icons-material/History";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
+import ImageIcon from "@mui/icons-material/Image";
 
 import * as XLSX from "xlsx";
 import { formatearCampo } from "src/utils/celulandia/formatearCampo";
@@ -52,6 +53,7 @@ const DataTabTable = ({
   onEdit = null,
   onViewHistory = null,
   onDelete = null,
+  onViewImage = null,
   // Paginación server-side (opcional). Si no las pasás, usa client-side.
   total = 0,
   currentPage = 1,
@@ -92,48 +94,63 @@ const DataTabTable = ({
   const finalRowsPerPage = onPageChange ? rowsPerPage : internalRowsPerPage;
   const finalPage = onPageChange ? currentPage - 1 : page;
 
-  const handleSortChange = (campo) => {
-    if (campo !== "fecha") return; // solo permitimos ordenar por fecha
-    if (onSortChange) {
-      onSortChange("fecha");
-    } else {
-      setInternalSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
-    }
-  };
+  const handleSortChange = useCallback(
+    (campo) => {
+      if (campo !== "fecha") return; // solo permitimos ordenar por fecha
+      if (onSortChange) {
+        onSortChange("fecha");
+      } else {
+        setInternalSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
+      }
+    },
+    [onSortChange]
+  );
 
-  const handleFiltroFechaChange = (nuevo) => {
-    if (onFiltroFechaChange) onFiltroFechaChange(nuevo);
-    else setInternalFiltroFecha(nuevo);
-  };
+  const handleFiltroFechaChange = useCallback(
+    (nuevo) => {
+      if (onFiltroFechaChange) onFiltroFechaChange(nuevo);
+      else setInternalFiltroFecha(nuevo);
+    },
+    [onFiltroFechaChange]
+  );
 
-  const handleOptionChange = (newOption) => {
-    // actualizamos SIEMPRE el estado interno para ver el cambio ya
-    setCurrentOption(newOption);
-    if (onPageChange) {
-      onPageChange(1);
-    } else {
-      setPage(0);
-    }
-    // notificamos al padre si quiere escuchar
-    onOptionChange?.(newOption);
-  };
+  const handleOptionChange = useCallback(
+    (newOption) => {
+      // actualizamos SIEMPRE el estado interno para ver el cambio ya
+      setCurrentOption(newOption);
+      if (onPageChange) {
+        onPageChange(1);
+      } else {
+        setPage(0);
+      }
+      // notificamos al padre si quiere escuchar
+      onOptionChange?.(newOption);
+    },
+    [onPageChange, onOptionChange]
+  );
 
-  const handlePageChange = (event, newPage) => {
-    if (onPageChange) onPageChange(newPage + 1);
-    else setPage(newPage);
-  };
+  const handlePageChange = useCallback(
+    (event, newPage) => {
+      if (onPageChange) onPageChange(newPage + 1);
+      else setPage(newPage);
+    },
+    [onPageChange]
+  );
 
-  const handleRowsPerPageChange = (event) => {
-    const newRowsPerPage = parseInt(event.target.value, 10);
-    if (onPageChange) {
-      // si es server-side, el padre decide
-    } else {
-      setInternalRowsPerPage(newRowsPerPage);
-      setPage(0);
-    }
-  };
+  const handleRowsPerPageChange = useCallback(
+    (event) => {
+      const newRowsPerPage = parseInt(event.target.value, 10);
+      if (onPageChange) {
+        // si es server-side, el padre decide
+      } else {
+        setInternalRowsPerPage(newRowsPerPage);
+        setPage(0);
+      }
+    },
+    [onPageChange]
+  );
 
-  const handleRefresh = async () => {
+  const handleRefresh = useCallback(async () => {
     if (!onRefresh) return;
     setIsRefreshing(true);
     try {
@@ -143,9 +160,9 @@ const DataTabTable = ({
     } finally {
       setIsRefreshing(false);
     }
-  };
+  }, [onRefresh]);
 
-  const applyDateFilter = (rows, filtro) => {
+  const applyDateFilter = useCallback((rows, filtro) => {
     if (filtro === "todos") return rows;
     const now = new Date();
     const start = new Date(now);
@@ -164,9 +181,11 @@ const DataTabTable = ({
       start.setHours(0, 0, 0, 0);
     }
     return rows.filter((r) => r.fecha && new Date(r.fecha) >= start);
-  };
+  }, []);
 
   const sortedAndFilteredItems = useMemo(() => {
+    if (!items.length) return [];
+
     let rows = items;
 
     if (showSearch && busqueda.trim()) {
@@ -228,6 +247,8 @@ const DataTabTable = ({
     showDatePicker,
     internalSelectedDate,
     onDateChange,
+    applyDateFilter,
+    onSortChange,
   ]);
 
   const grouped = useMemo(() => {
@@ -423,7 +444,7 @@ const DataTabTable = ({
                     </TableCell>
                     <TableCell sx={{ fontWeight: "bold" }}>Moneda Original</TableCell>
 
-                    {(onEdit || onViewHistory || onDelete) && (
+                    {(onEdit || onViewHistory || onDelete || onViewImage) && (
                       <TableCell sx={{ fontWeight: "bold", textAlign: "center" }}>
                         Acciones
                       </TableCell>
@@ -459,9 +480,9 @@ const DataTabTable = ({
                       </TableCell>
                       <TableCell>{formatearCampo("monedaDePago", row.monedaOriginal)}</TableCell>
 
-                      {(onEdit || onViewHistory || onDelete) && (
+                      {(onEdit || onViewHistory || onDelete || onViewImage) && (
                         <TableCell sx={{ textAlign: "center" }}>
-                          <Stack direction="row" spacing={1} justifyContent="center">
+                          <Stack direction="row" spacing={1} justifyContent="start">
                             {onEdit && (
                               <IconButton
                                 size="small"
@@ -504,6 +525,21 @@ const DataTabTable = ({
                                 <DeleteOutlineIcon fontSize="small" />
                               </IconButton>
                             )}
+                            {onViewImage && row.urlImagen && (
+                              <IconButton
+                                size="small"
+                                color="info"
+                                onClick={() => onViewImage(row.urlImagen)}
+                                sx={{
+                                  backgroundColor: "info.main",
+                                  color: "white",
+                                  "&:hover": { backgroundColor: "info.dark" },
+                                }}
+                                title="Ver imagen"
+                              >
+                                <ImageIcon fontSize="small" />
+                              </IconButton>
+                            )}
                           </Stack>
                         </TableCell>
                       )}
@@ -533,4 +569,4 @@ const DataTabTable = ({
   );
 };
 
-export default DataTabTable;
+export default memo(DataTabTable);

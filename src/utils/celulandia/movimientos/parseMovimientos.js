@@ -56,6 +56,7 @@ export const parseMovimiento = (movimiento) => {
     fechaFactura,
     horaFactura,
     horaCreacion,
+    urlImagen: movimiento.urlImagen,
     nombreCliente: movimiento.cliente?.nombre || "Sin cliente",
     ccActivasCliente: movimiento.cliente?.ccActivas || [],
     cuentaDestino: movimiento.caja?.nombre || "Sin caja",

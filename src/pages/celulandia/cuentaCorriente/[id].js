@@ -15,6 +15,7 @@ import DataTabTable from "src/components/celulandia/DataTabTable";
 import EditarModal from "src/components/celulandia/EditarModal";
 import HistorialModal from "src/components/celulandia/HistorialModal";
 import ConfirmarEliminacionModal from "src/components/celulandia/ConfirmarEliminacionModal";
+import ComprobanteModal from "src/components/celulandia/ComprobanteModal";
 import { parseMovimiento } from "src/utils/celulandia/movimientos/parseMovimientos";
 import { parseCuentaPendiente } from "src/utils/celulandia/cuentasPendientes/parseCuentasPendientes";
 import {
@@ -36,6 +37,8 @@ const ClienteCelulandiaCCPage = () => {
   const [editarEntregaModalOpen, setEditarEntregaModalOpen] = useState(false);
   const [historialModalOpen, setHistorialModalOpen] = useState(false);
   const [confirmarEliminacionOpen, setConfirmarEliminacionOpen] = useState(false);
+  const [imagenModalOpen, setImagenModalOpen] = useState(false);
+  const [imagenModal, setImagenModal] = useState("");
 
   const [selectedData, setSelectedData] = useState(null);
   const [selectedItemType, setSelectedItemType] = useState(null); // "movimiento" | "cuentaPendiente"
@@ -110,18 +113,19 @@ const ClienteCelulandiaCCPage = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [id, filtroFecha]);
+  }, [id]);
 
   useEffect(() => {
     if (id) fetchData();
   }, [id, fetchData]);
 
   const itemsDataTab = useMemo(() => {
+    if (!movimientos.length) return [];
+
     return movimientos.map((m) => {
       const isMov = m.itemType === "movimiento";
       const fecha = isMov ? m.fecha : m.fechaCuenta;
 
-      console.log("fecha", isMov, fecha);
       return {
         id: m.id || m._id,
         fecha,
@@ -132,6 +136,7 @@ const ClienteCelulandiaCCPage = () => {
         descuentoAplicado: m.descuentoAplicado,
         montoOriginal: Math.round(m.montoEnviado || 0),
         monedaOriginal: m.moneda || m.monedaDePago,
+        urlImagen: isMov ? m?.urlImagen : null,
         itemType: m.itemType,
         originalData: m,
       };
@@ -139,35 +144,36 @@ const ClienteCelulandiaCCPage = () => {
   }, [movimientos]);
 
   const itemsOrdenados = useMemo(() => {
+    if (!itemsDataTab.length) return [];
+
     const factor = sortDirection === "asc" ? 1 : -1;
     return [...itemsDataTab].sort((a, b) => {
-      const ta = a?.fecha ? new Date(a.fecha).getTime() : 0; // fallback si falta fecha
+      const ta = a?.fecha ? new Date(a.fecha).getTime() : 0;
       const tb = b?.fecha ? new Date(b.fecha).getTime() : 0;
       return (ta - tb) * factor;
     });
   }, [itemsDataTab, sortDirection]);
 
-  const handleVolver = () => router.back();
+  const handleVolver = useCallback(() => router.back(), [router]);
 
-  const handleFiltroFechaChange = (nuevoFiltro) => {
+  const handleFiltroFechaChange = useCallback((nuevoFiltro) => {
     setFiltroFecha(nuevoFiltro);
-  };
+  }, []);
 
-  // Solo permitimos cambiar dirección de orden por fecha
-  const handleSortChange = (campo) => {
+  const handleSortChange = useCallback((campo) => {
     if (campo !== "fecha") return;
     setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
-  };
+  }, []);
 
-  const handleSaveEdit = (id, updatedData) => {
+  const handleSaveEdit = useCallback((id, updatedData) => {
     setMovimientos((prevMovimientos) =>
       prevMovimientos.map((mov) =>
         mov.id === id || mov._id === id ? { ...mov, ...updatedData } : mov
       )
     );
-  };
+  }, []);
 
-  const handleEdit = (item) => {
+  const handleEdit = useCallback((item) => {
     setSelectedData(item.originalData);
     setSelectedItemType(item.itemType);
     if (item.itemType === "movimiento") {
@@ -175,28 +181,41 @@ const ClienteCelulandiaCCPage = () => {
     } else {
       setEditarEntregaModalOpen(true);
     }
-  };
+  }, []);
 
-  const handleViewHistory = (item) => {
-    setSelectedData(item.originalData);
-    setSelectedItemType(item.itemType);
-    if (item.itemType === "movimiento") {
-      setHistorialConfig(getMovimientoHistorialConfig(cajas));
-      setHistorialLoader(movimientosService.getMovimientoLogs);
-    } else {
-      setHistorialConfig(getCuentaPendienteHistorialConfig());
-      setHistorialLoader(cuentasPendientesService.getLogs);
-    }
-    setHistorialModalOpen(true);
-  };
+  const handleViewHistory = useCallback(
+    (item) => {
+      setSelectedData(item.originalData);
+      setSelectedItemType(item.itemType);
+      if (item.itemType === "movimiento") {
+        setHistorialConfig(getMovimientoHistorialConfig(cajas));
+        setHistorialLoader(movimientosService.getMovimientoLogs);
+      } else {
+        setHistorialConfig(getCuentaPendienteHistorialConfig());
+        setHistorialLoader(cuentasPendientesService.getLogs);
+      }
+      setHistorialModalOpen(true);
+    },
+    [cajas]
+  );
 
-  const handleDelete = (item) => {
+  const handleDelete = useCallback((item) => {
     setSelectedData(item.originalData);
     setSelectedItemType(item.itemType);
     setConfirmarEliminacionOpen(true);
-  };
+  }, []);
 
-  const confirmarEliminacion = async () => {
+  const handleViewImage = useCallback((urlImagen) => {
+    setImagenModal(urlImagen);
+    setImagenModalOpen(true);
+  }, []);
+
+  const handleCloseImageModal = useCallback(() => {
+    setImagenModalOpen(false);
+    setImagenModal("");
+  }, []);
+
+  const confirmarEliminacion = useCallback(async () => {
     if (!selectedData) return;
 
     setIsDeleting(true);
@@ -218,7 +237,7 @@ const ClienteCelulandiaCCPage = () => {
     } finally {
       setIsDeleting(false);
     }
-  };
+  }, [selectedData, selectedItemType, fetchData]);
 
   if (!id) return <div>Cargando...</div>;
 
@@ -291,6 +310,7 @@ const ClienteCelulandiaCCPage = () => {
                 onEdit={handleEdit}
                 onViewHistory={handleViewHistory}
                 onDelete={handleDelete}
+                onViewImage={handleViewImage}
               />
             )}
           </Stack>
@@ -342,6 +362,11 @@ const ClienteCelulandiaCCPage = () => {
               : `Entrega ${selectedData.descripcion || selectedData._id}`
             : ""
         }
+      />
+      <ComprobanteModal
+        open={imagenModalOpen}
+        onClose={handleCloseImageModal}
+        imagenUrl={imagenModal}
       />
     </>
   );
