@@ -7,21 +7,21 @@ const movimientosService = {
   // Método para obtener un movimiento por su ID
   getMovimientoById: async (movimientoId) => {
     try {
-      const movimientoDocRef = doc(db, 'movimientos', movimientoId);
-      const movimientoDocSnap = await getDoc(movimientoDocRef);
+      const response = await api.get(`movimiento/${movimientoId}`);
 
-      if (movimientoDocSnap.exists()) {
-        console.log('Movimiento obtenido con éxito');
-        return {
-          id: movimientoDocSnap.id,
-          ...movimientoDocSnap.data(),
-        };
+      if (response.status === 200) {
+        const payload = response.data?.data ?? response.data;
+        if (!payload) {
+          console.error('Respuesta de API sin datos de movimiento');
+          return null;
+        }
+        return payload; // { id, ...campos }
       } else {
-        console.error('El movimiento no existe');
+        console.error('Error al obtener el movimiento (status)', response.status);
         return null;
       }
     } catch (err) {
-      console.error('Error al obtener el movimiento:', err);
+      console.error('Error al obtener el movimiento desde API:', err);
       return null;
     }
   },

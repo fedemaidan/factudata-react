@@ -1,5 +1,6 @@
 import { Timestamp } from 'firebase/firestore';
 
+
 const formatTimestamp = (timestamp) => {
   if (!timestamp) return "";
 
@@ -20,6 +21,7 @@ const formatTimestamp = (timestamp) => {
 
   return `${year}-${month}-${day}`;
 };
+
 
 const formatCurrency = (amount, digits = 0) => {
   if (amount === null || amount === undefined || amount === "") {
@@ -48,7 +50,6 @@ const formatCurrency = (amount, digits = 0) => {
     minimumFractionDigits: digits,
   });
 };
-
 
   const toDateFromFirestore = (timestamp) => {
     if (!timestamp) return null;
