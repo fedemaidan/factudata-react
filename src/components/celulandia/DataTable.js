@@ -307,9 +307,7 @@ const DataTable = ({
             <Typography variant="h4">{title}</Typography>
           </Stack>
         </Stack>
-        <Divider />
-
-        <Stack direction="row" spacing={2} alignItems="center" flexWrap="wrap">
+        <Stack direction="row" gap={1} alignItems="center" flexWrap="wrap">
           {showSearch && (
             <TextField
               label="Buscar"
@@ -353,7 +351,6 @@ const DataTable = ({
             </FormControl>
           )}
 
-          {/* NUEVO: múltiples selects */}
           {multipleSelectFilters.map((f) => (
             <FormControl key={f.key} sx={{ minWidth: 200 }} variant="filled">
               <InputLabel id={`msf-${f.key}-label`}>{f.label}</InputLabel>

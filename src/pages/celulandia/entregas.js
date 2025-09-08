@@ -45,9 +45,10 @@ const EntregasCelulandiaPage = () => {
   const [filtroFecha, setFiltroFecha] = useState("todos");
 
   // NUEVOS: filtros server-side
-  const [filtroMoneda, setFiltroMoneda] = useState(""); // "" = sin seleccionar
-  const [filtroCC, setFiltroCC] = useState(""); // "" = sin seleccionar
-  const [filtroUsuario, setFiltroUsuario] = useState(""); // "" = sin seleccionar
+  const [filtroMoneda, setFiltroMoneda] = useState("");
+  const [filtroCC, setFiltroCC] = useState("");
+  const [filtroUsuario, setFiltroUsuario] = useState("");
+  const [filtroNombreCliente, setFiltroNombreCliente] = useState("");
   const [usuariosOptions, setUsuariosOptions] = useState([{ value: "", label: "(todos)" }]);
 
   const [entregaHistorialConfig, setEntregaHistorialConfig] = useState(null);
@@ -55,7 +56,16 @@ const EntregasCelulandiaPage = () => {
   useEffect(() => {
     fetchData(paginaActual);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [paginaActual, sortField, sortDirection, filtroFecha, filtroMoneda, filtroCC, filtroUsuario]);
+  }, [
+    paginaActual,
+    sortField,
+    sortDirection,
+    filtroFecha,
+    filtroMoneda,
+    filtroCC,
+    filtroUsuario,
+    filtroNombreCliente,
+  ]);
 
   const fetchData = async (pagina = 1) => {
     setIsLoading(true);
@@ -72,9 +82,11 @@ const EntregasCelulandiaPage = () => {
           sortDirection,
           fechaInicio,
           fechaFin,
+          cliente: filtroNombreCliente,
           ...(filtroMoneda ? { moneda: filtroMoneda } : {}),
           ...(filtroCC ? { cc: filtroCC } : {}),
           ...(filtroUsuario ? { usuario: filtroUsuario } : {}),
+          ...(filtroNombreCliente ? { nombreCliente: filtroNombreCliente } : {}),
         }),
         clientesService.getAllClientes(),
         dolarService.getTipoDeCambio(),
@@ -253,6 +265,25 @@ const EntregasCelulandiaPage = () => {
           onRefresh={refetch}
           // NUEVO: múltiples selects server-side
           multipleSelectFilters={[
+            {
+              key: "nombreCliente",
+              label: "Cliente",
+              type: "autocomplete",
+              value: filtroNombreCliente,
+              options: Array.from(
+                new Set(
+                  (clientes || [])
+                    .map((c) => (c?.nombre || "").toString().trim())
+                    .filter((n) => n && n.length > 0)
+                )
+              )
+                .sort((a, b) => a.localeCompare(b))
+                .map((n) => ({ value: n, label: n })),
+              onChange: (v) => {
+                setFiltroNombreCliente(v);
+                setPaginaActual(1);
+              },
+            },
             {
               key: "moneda",
               label: "Moneda",
