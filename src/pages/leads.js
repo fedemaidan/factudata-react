@@ -1,0 +1,448 @@
+import { useEffect, useMemo, useState } from 'react';
+import Head from 'next/head';
+import {
+  Box, Container, Dialog, DialogActions, DialogContent, DialogTitle,
+  IconButton, Paper, Snackbar, Alert, Stack, Table, TableBody, TableCell, TableHead,
+  TableRow, TextField, Typography, MenuItem, Select, InputLabel, FormControl,
+  InputAdornment, Link as MuiLink, Button
+} from '@mui/material';
+import EditIcon from '@mui/icons-material/Edit';
+import DeleteIcon from '@mui/icons-material/Delete';
+import SearchIcon from '@mui/icons-material/Search';
+import LaunchIcon from '@mui/icons-material/Launch';
+
+import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
+import LeadsService from 'src/services/leadsService';
+
+const emptyForm = {
+  id: '',
+  notionId: '',
+  nombre: '',
+  phone: '',
+  rubro: '',
+  saludoInicial: '',
+  utm_campaign: '',
+  fbp: '',
+  ip: '',
+  userAgent: '',
+  status_sum: 'BOT',
+  quiere_reunion: false,
+  seguirFollowUP: false,
+  proximo_mensaje: '',
+  proximo_mensaje_vencimiento: '',
+  createdAt: '',
+  updatedAt: '',
+  notionUrl: null,
+};
+
+function docId(row) {
+  return row?.id || row?.notionId || row?.phone || '';
+}
+
+// YYYY-MM-DD en zona LOCAL (no UTC)
+function ymdLocal(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+// Default: última semana (incluye HOY como to, y from = hoy-6)
+function getDefaultWeekFilter() {
+  const today = new Date();
+  const to = ymdLocal(today);
+  const fromDate = new Date(today);
+  fromDate.setDate(today.getDate() - 6);
+  const from = ymdLocal(fromDate);
+  return { field: 'created', mode: 'range', on: '', from, to };
+}
+
+const LeadsPage = () => {
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  // búsqueda rápida
+  const [q, setQ] = useState('');
+
+  // alertas
+  const [alert, setAlert] = useState({ open: false, message: '', severity: 'info' });
+  const closeAlert = () => setAlert(prev => ({ ...prev, open: false }));
+
+  // modal edición
+  const [openForm, setOpenForm] = useState(false);
+  const [isEdit, setIsEdit] = useState(false);
+  const [form, setForm] = useState(emptyForm);
+
+  // modal eliminar
+  const [openDelete, setOpenDelete] = useState(false);
+  const [toDelete, setToDelete] = useState(null);
+
+  // --- Filtros por fecha/campo ---
+  const [filters, setFilters] = useState(getDefaultWeekFilter());
+
+  // Utilidad: pedir al backend con un conjunto de filtros
+  const fetchBy = async (flt) => {
+    setLoading(true);
+    try {
+      const { field, mode, on, from, to } = flt;
+      const params = { field };
+      if (mode === 'on' && on) params.on = on;
+      if (mode === 'range') {
+        if (from) params.from = from;
+        if (to)   params.to   = to;
+      }
+      const data = await LeadsService.listar(params);
+      data.sort(
+        (a, b) =>
+          new Date(b.updatedAt || b.createdAt || 0) -
+          new Date(a.updatedAt || a.createdAt || 0)
+      );
+      setRows(data);
+    } catch (e) {
+      console.error(e);
+      setAlert({ open: true, message: 'Error al cargar leads', severity: 'error' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Al montar: cargar por defecto última semana (createdAt)
+  useEffect(() => {
+    const def = getDefaultWeekFilter();
+    setFilters(def);
+    fetchBy(def);
+  }, []);
+
+  const applyFilters = async () => {
+    await fetchBy(filters);
+  };
+
+  const clearFilters = async () => {
+    const def = getDefaultWeekFilter();
+    setFilters(def);
+    await fetchBy(def); // vuelve al default de 7 días
+  };
+
+  const filtered = useMemo(() => {
+    if (!q) return rows;
+    const qq = q.toLowerCase();
+    return rows.filter(r => {
+      const values = [
+        docId(r),
+        r?.nombre,
+        r?.phone,
+        r?.utm_campaign
+      ].map(x => (x || '').toString().toLowerCase());
+      return values.some(v => v.includes(qq));
+    });
+  }, [rows, q]);
+
+  const handleOpenEdit = (row) => {
+    setIsEdit(true);
+    setForm({ ...emptyForm, ...row, id: docId(row) });
+    setOpenForm(true);
+  };
+
+  const validate = () => {
+    if (!form.nombre?.trim()) return 'El nombre es requerido.';
+    return null;
+  };
+
+  const save = async () => {
+    const err = validate();
+    if (err) {
+      setAlert({ open: true, message: err, severity: 'warning' });
+      return;
+    }
+    try {
+      const payload = {
+        nombre: form.nombre || '',
+        rubro: form.rubro || '',
+        saludoInicial: form.saludoInicial || '',
+        utm_campaign: form.utm_campaign || '',
+        status_sum: form.status_sum || 'BOT',
+        quiere_reunion: !!form.quiere_reunion,
+        seguirFollowUP: !!form.seguirFollowUP,
+        proximo_mensaje: form.proximo_mensaje || '',
+        proximo_mensaje_vencimiento: form.proximo_mensaje_vencimiento || '',
+      };
+      const idForUpdate = form.id; // usar docId consistente
+      await LeadsService.actualizar(idForUpdate, payload);
+      setAlert({ open: true, message: 'Lead actualizado', severity: 'success' });
+      setOpenForm(false);
+      await fetchBy(filters); // refresca respetando el filtro actual
+    } catch (e) {
+      console.error(e);
+      setAlert({ open: true, message: 'Error guardando el lead', severity: 'error' });
+    }
+  };
+
+  const confirmDelete = (row) => {
+    setToDelete(docId(row));
+    setOpenDelete(true);
+  };
+
+  const remove = async () => {
+    if (!toDelete) return;
+    try {
+      await LeadsService.eliminar(toDelete);
+      setAlert({ open: true, message: 'Lead eliminado', severity: 'success' });
+      setOpenDelete(false);
+      setToDelete(null);
+      await fetchBy(filters); // refresca respetando el filtro actual
+    } catch (e) {
+      console.error(e);
+      setAlert({ open: true, message: 'Error eliminando lead', severity: 'error' });
+    }
+  };
+
+  return (
+    <>
+      <Head><title>Leads</title></Head>
+      <Box component="main" sx={{ flexGrow: 1, py: 8 }}>
+        <Container maxWidth="xl">
+          <Stack spacing={3}>
+            <Stack direction="row" justifyContent="space-between" alignItems="center">
+              <Typography variant="h4">Leads</Typography>
+            </Stack>
+
+            {/* búsqueda rápida */}
+            <TextField
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Buscar por Teléfono / Nombre / UTM…"
+              InputProps={{ startAdornment: (<InputAdornment position="start"><SearchIcon /></InputAdornment>) }}
+            />
+
+            {/* filtros por fecha/campo */}
+            <Paper sx={{ p: 2 }}>
+              <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems={{ xs: 'stretch', md: 'flex-end' }}>
+                <FormControl sx={{ minWidth: 160 }}>
+                  <InputLabel id="field-label">Campo</InputLabel>
+                  <Select
+                    labelId="field-label"
+                    label="Campo"
+                    value={filters.field}
+                    onChange={(e) => setFilters(prev => ({ ...prev, field: e.target.value }))}
+                  >
+                    <MenuItem value="created">Creado (createdAt)</MenuItem>
+                    <MenuItem value="updated">Actualizado (updatedAt)</MenuItem>
+                  </Select>
+                </FormControl>
+
+                <FormControl sx={{ minWidth: 140 }}>
+                  <InputLabel id="mode-label">Modo</InputLabel>
+                  <Select
+                    labelId="mode-label"
+                    label="Modo"
+                    value={filters.mode}
+                    onChange={(e) => setFilters(prev => ({ ...prev, mode: e.target.value }))}
+                  >
+                    <MenuItem value="on">Un día</MenuItem>
+                    <MenuItem value="range">Rango</MenuItem>
+                  </Select>
+                </FormControl>
+
+                {filters.mode === 'on' ? (
+                  <TextField
+                    label="Día"
+                    type="date"
+                    InputLabelProps={{ shrink: true }}
+                    value={filters.on}
+                    onChange={(e) => setFilters(prev => ({ ...prev, on: e.target.value }))}
+                    sx={{ minWidth: 200 }}
+                  />
+                ) : (
+                  <>
+                    <TextField
+                      label="Desde"
+                      type="date"
+                      InputLabelProps={{ shrink: true }}
+                      value={filters.from}
+                      onChange={(e) => setFilters(prev => ({ ...prev, from: e.target.value }))}
+                      sx={{ minWidth: 200 }}
+                    />
+                    <TextField
+                      label="Hasta"
+                      type="date"
+                      InputLabelProps={{ shrink: true }}
+                      value={filters.to}
+                      onChange={(e) => setFilters(prev => ({ ...prev, to: e.target.value }))}
+                      sx={{ minWidth: 200 }}
+                    />
+                  </>
+                )}
+
+                <Button variant="contained" onClick={applyFilters} disabled={loading}>
+                  Filtrar
+                </Button>
+                <Button onClick={clearFilters} disabled={loading}>
+                  Limpiar
+                </Button>
+              </Stack>
+            </Paper>
+
+            {/* tabla */}
+            <Paper>
+              <Table>
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Teléfono</TableCell>
+                    <TableCell>Nombre</TableCell>
+                    <TableCell>UTM Campaign</TableCell>
+                    <TableCell>Notion</TableCell>
+                    <TableCell align="right">Acciones</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {filtered.map((row) => {
+                    const id = docId(row);
+                    const notionUrl = row?.notionUrl || (row?.notionId ? `https://www.notion.so/${row.notionId}` : null);
+                    return (
+                      <TableRow key={id} hover>
+                        <TableCell>{row.phone || <em>(—)</em>}</TableCell>
+                        <TableCell>{row.nombre || <em>(sin nombre)</em>}</TableCell>
+                        <TableCell>{row.utm_campaign || <em>(—)</em>}</TableCell>
+                        <TableCell>
+                          {row?.notionId ? (
+                            <MuiLink href={notionUrl} target="_blank" rel="noopener noreferrer" underline="hover">
+                              {row.notionId}
+                              <LaunchIcon fontSize="small" sx={{ ml: 0.5, verticalAlign: 'middle' }} />
+                            </MuiLink>
+                          ) : <em>(—)</em>}
+                        </TableCell>
+                        <TableCell align="right">
+                          <IconButton color="primary" onClick={() => handleOpenEdit(row)} aria-label="Editar">
+                            <EditIcon />
+                          </IconButton>
+                          <IconButton color="error" onClick={() => confirmDelete(row)} aria-label="Eliminar">
+                            <DeleteIcon />
+                          </IconButton>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                  {!loading && filtered.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={5}>
+                        <Typography variant="body2">Sin resultados.</Typography>
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </Paper>
+          </Stack>
+        </Container>
+
+        {/* alertas */}
+        <Snackbar open={alert.open} autoHideDuration={3500} onClose={closeAlert}>
+          <Alert onClose={closeAlert} severity={alert.severity} sx={{ width: '100%' }}>
+            {alert.message}
+          </Alert>
+        </Snackbar>
+
+        {/* Editar */}
+        <Dialog open={openForm} onClose={() => setOpenForm(false)} fullWidth maxWidth="md">
+          <DialogTitle>Editar lead</DialogTitle>
+          <DialogContent>
+            <Stack spacing={2} sx={{ mt: 1 }}>
+              <TextField label="ID (docId)" value={form.id} disabled />
+              <TextField label="notionId" value={form.notionId} disabled />
+
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+                <TextField fullWidth label="Nombre" value={form.nombre}
+                           onChange={(e) => setForm({ ...form, nombre: e.target.value })} />
+                <TextField fullWidth label="Phone" value={form.phone}
+                           onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+              </Stack>
+
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+                <TextField fullWidth label="Rubro" value={form.rubro}
+                           onChange={(e) => setForm({ ...form, rubro: e.target.value })} />
+                <FormControl fullWidth>
+                  <InputLabel id="estado-label">Estado (status_sum)</InputLabel>
+                  <Select labelId="estado-label" label="Estado (status_sum)"
+                          value={form.status_sum} onChange={(e) => setForm({ ...form, status_sum: e.target.value })}>
+                    <MenuItem value="BOT">BOT</MenuItem>
+                    <MenuItem value="HUMANO">HUMANO</MenuItem>
+                    <MenuItem value="CERRADO">CERRADO</MenuItem>
+                    <MenuItem value="DESCARTADO">DESCARTADO</MenuItem>
+                  </Select>
+                </FormControl>
+              </Stack>
+
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+                <FormControl fullWidth>
+                  <InputLabel id="reunion-label">¿Quiere reunión?</InputLabel>
+                  <Select labelId="reunion-label" label="¿Quiere reunión?"
+                          value={form.quiere_reunion ? '1' : '0'}
+                          onChange={(e) => setForm({ ...form, quiere_reunion: e.target.value === '1' })}>
+                    <MenuItem value="1">Sí</MenuItem>
+                    <MenuItem value="0">No</MenuItem>
+                  </Select>
+                </FormControl>
+                <FormControl fullWidth>
+                  <InputLabel id="seguirfu-label">¿Seguir FollowUp?</InputLabel>
+                  <Select labelId="seguirfu-label" label="¿Seguir FollowUp?"
+                          value={form.seguirFollowUP ? '1' : '0'}
+                          onChange={(e) => setForm({ ...form, seguirFollowUP: e.target.value === '1' })}>
+                    <MenuItem value="1">Sí</MenuItem>
+                    <MenuItem value="0">No</MenuItem>
+                  </Select>
+                </FormControl>
+              </Stack>
+
+              <TextField
+                label="Próximo mensaje"
+                multiline minRows={2}
+                value={form.proximo_mensaje}
+                onChange={(e) => setForm({ ...form, proximo_mensaje: e.target.value })}
+              />
+              <TextField
+                label="Vencimiento del próximo mensaje"
+                type="datetime-local"
+                value={form.proximo_mensaje_vencimiento}
+                onChange={(e) => setForm({ ...form, proximo_mensaje_vencimiento: e.target.value })}
+                InputLabelProps={{ shrink: true }}
+              />
+
+              <TextField label="Saludo inicial" value={form.saludoInicial}
+                         onChange={(e) => setForm({ ...form, saludoInicial: e.target.value })} />
+              <TextField label="UTM Campaign" value={form.utm_campaign}
+                         onChange={(e) => setForm({ ...form, utm_campaign: e.target.value })} />
+
+              {/* Técnicos solo lectura */}
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+                <TextField fullWidth label="IP" value={form.ip || ''} disabled />
+                <TextField fullWidth label="FBP" value={form.fbp || ''} disabled />
+              </Stack>
+              <TextField label="User Agent" value={form.userAgent || ''} disabled multiline minRows={2} />
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+                <TextField fullWidth label="createdAt" value={form.createdAt || ''} disabled />
+                <TextField fullWidth label="updatedAt" value={form.updatedAt || ''} disabled />
+              </Stack>
+            </Stack>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setOpenForm(false)}>Cancelar</Button>
+            <Button variant="contained" onClick={save}>Guardar cambios</Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* Eliminar */}
+        <Dialog open={openDelete} onClose={() => setOpenDelete(false)}>
+          <DialogTitle>Eliminar lead</DialogTitle>
+          <DialogContent>¿Seguro que querés eliminar <strong>{toDelete}</strong>?</DialogContent>
+          <DialogActions>
+            <Button onClick={() => setOpenDelete(false)}>Cancelar</Button>
+            <Button color="error" variant="contained" onClick={remove}>Eliminar</Button>
+          </DialogActions>
+        </Dialog>
+      </Box>
+    </>
+  );
+};
+
+LeadsPage.getLayout = (page) => <DashboardLayout>{page}</DashboardLayout>;
+export default LeadsPage;
