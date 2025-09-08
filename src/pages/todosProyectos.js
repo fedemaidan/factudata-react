@@ -328,7 +328,7 @@ const handleImportCsv = async () => {
       const numero_desde = mov.numero_factura?.split('-')[1] || '';
   
       return {
-        'Fecha': formatTimestamp(mov.fecha_factura),
+        'Fecha': formatTimestamp(mov.fecha_factura,'DIA/MES/ANO') || '',
         'Tipo': camposAfip[mov.tipo_factura] || '',
         'Punto de Venta': parseInt(punto_venta) || '',
         'Número Desde': parseInt(numero_desde) || '',
