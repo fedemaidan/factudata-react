@@ -1,4 +1,4 @@
-import api from './axiosV2';
+import api from './axiosConfig';
 
 export async function getPlanObra(proyectoId, opts = {}) {
   try {
@@ -13,6 +13,7 @@ export async function getPlanObra(proyectoId, opts = {}) {
 
 export async function upsertPlanObra(proyectoId, payload, opts = {}) {
   const { signal } = opts;
-  const { data } = await api.post(`/plan-obra/${encodeURIComponent(proyectoId)}`, payload, { signal });
+  payload.proyecto_id = proyectoId; // forzar
+  const { data } = await api.post(`/plan-obra/`, payload, { signal });
   return data;
 }
