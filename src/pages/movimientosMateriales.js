@@ -15,11 +15,24 @@ import RefreshIcon from '@mui/icons-material/Refresh';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import SearchIcon from '@mui/icons-material/Search';
+import PreviewIcon from '@mui/icons-material/Preview';
+
 
 import MovimientoMaterialService from 'src/services/movimientoMaterialService';
 import { getProyectosByEmpresa } from 'src/services/proyectosService';
 import { getEmpresaById, getEmpresaDetailsFromUser } from 'src/services/empresaService';
 import { dateToTimestamp, formatTimestamp } from 'src/utils/formatters';
+
+// arriba del componente (o dentro, antes del useState)
+const toISO = (d) => d.toISOString().slice(0, 10);
+
+// hoy
+const _today = new Date();
+_today.setHours(23, 59, 59, 59);
+// hace 6 días (incluye hoy => 7 días)
+const _lastWeekStart = new Date();
+_lastWeekStart.setDate(_today.getDate() - 6);
+
 
 const MovimientoDialog = ({ open, onClose, initial, onSubmit, empresaId, proyectos }) => {
   const [form, setForm] = useState(() => initial || {
@@ -139,16 +152,16 @@ const MaterialMovimientosPage = () => {
   const [rows, setRows] = useState([]);
   const [cursor, setCursor] = useState(undefined);
 
-  // Filtros: empresa_id viene de query y no se puede cambiar
   const [filters, setFilters] = useState({
-    empresa_id: empresaId,
-    proyecto_id: '',
-    tipo: '',
-    descripcionPrefix: '',
-    desde: '',
-    hasta: '',
-    limit: 50
-  });
+  empresa_id: empresaId,
+  proyecto_id: '',
+  tipo: '',
+  descripcionPrefix: '',
+  // DEFAULT: última semana
+  desde: toISO(_lastWeekStart),
+  hasta: toISO(_today),
+  limit: 50
+});
 
   // UI
   const [loading, setLoading] = useState(false);
@@ -393,11 +406,11 @@ const MaterialMovimientosPage = () => {
                           {m.observacion && <Typography variant="body2">Obs: {m.observacion}</Typography>}
 
                           <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
+                            <Button size="small" startIcon={<PreviewIcon />}  onClick={() => router.push("movementForm/?movimientoId="+(m.movimiento_compra_id || m.movimiento_venta_id))}>
+                            </Button>
                             <Button size="small" startIcon={<EditIcon />} onClick={() => { setEditing(m); setOpenDialog(true); }}>
-                              Editar
                             </Button>
                             <Button size="small" color="error" startIcon={<DeleteIcon />} onClick={() => setDeleteId(m.id)}>
-                              Eliminar
                             </Button>
                           </Stack>
                         </Paper>
@@ -449,12 +462,12 @@ const MaterialMovimientosPage = () => {
                               </TableCell>
 
                               <TableCell>
-                                <Button size="small" startIcon={<EditIcon />} onClick={() => { setEditing(m); setOpenDialog(true); }}>
-                                  Editar
-                                </Button>
-                                <Button size="small" color="error" startIcon={<DeleteIcon />} onClick={() => setDeleteId(m.id)}>
-                                  Eliminar
-                                </Button>
+                              <Button size="small" startIcon={<PreviewIcon />}  onClick={() => router.push("movementForm/?movimientoId="+(m.movimiento_compra_id || m.movimiento_venta_id))}>
+                              </Button>
+                              <Button size="small" startIcon={<EditIcon />} onClick={() => { setEditing(m); setOpenDialog(true); }}>
+                              </Button>
+                              <Button size="small" color="error" startIcon={<DeleteIcon />} onClick={() => setDeleteId(m.id)}>
+                              </Button>
                               </TableCell>
                             </TableRow>
                           ))}

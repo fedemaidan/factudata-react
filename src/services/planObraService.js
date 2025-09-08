@@ -1,4 +1,4 @@
-import api from './axiosV2';
+import api from './axiosConfig';
 
 export async function getPlanObra(proyectoId, opts = {}) {
   try {
