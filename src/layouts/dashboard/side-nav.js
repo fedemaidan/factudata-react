@@ -80,6 +80,9 @@ export const SideNav = (props) => {
   useEffect(() => {
     const fetchProyectosData = async () => {
       const emp = await getEmpresaDetailsFromUser(user);
+      if (emp.cuenta_suspendida) {
+        return;
+      }
       setEmpresa(emp || null);
       
       if (!emp) {
@@ -112,6 +115,7 @@ export const SideNav = (props) => {
         return;
       }
 
+      
       // Empresa estándar
       const permisosUsuario = getPermisosVisibles(emp.acciones || [], user?.permisosOcultos || []);
       let baseItems = [
@@ -233,6 +237,8 @@ export const SideNav = (props) => {
           ),
         });
       }
+
+
 
       if (user?.admin) {
         baseItems.push({
@@ -383,6 +389,7 @@ export const SideNav = (props) => {
         
         baseItems = [vista7, todos, revision, ...baseItems];
 
+
         // proyectos activos
         let proys = await getProyectosFromUser(user);
         proys = (proys || []).filter((p) => p.activo);
@@ -411,7 +418,7 @@ export const SideNav = (props) => {
 
       setItems(baseItems);
     };
-
+    
     fetchProyectosData();
   }, [user]);
 
