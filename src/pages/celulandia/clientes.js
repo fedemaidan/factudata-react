@@ -12,6 +12,7 @@ import HistorialModal from "src/components/celulandia/HistorialModal";
 import AgregarClienteModal from "src/components/celulandia/AgregarClienteModal";
 import EditarClienteModal from "src/components/celulandia/EditarClienteModal";
 import clientesService from "src/services/celulandia/clientesService";
+import ConfirmarEliminacionModal from "src/components/celulandia/ConfirmarEliminacionModal";
 
 const ClientesCelulandiaPage = () => {
   const [clientes, setClientes] = useState([]);
@@ -20,6 +21,8 @@ const ClientesCelulandiaPage = () => {
   const [historialModalOpen, setHistorialModalOpen] = useState(false);
   const [agregarModalOpen, setAgregarModalOpen] = useState(false);
   const [selectedData, setSelectedData] = useState(null);
+  const [confirmarEliminacionOpen, setConfirmarEliminacionOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [paginaActual, setPaginaActual] = useState(1);
   const [limitePorPagina] = useState(20);
   const [sortField, setSortField] = useState("nombre");
@@ -110,6 +113,10 @@ const ClientesCelulandiaPage = () => {
             setSelectedData(item);
             setHistorialModalOpen(true);
           }}
+          onDelete={(item) => {
+            setSelectedData(item);
+            setConfirmarEliminacionOpen(true);
+          }}
         />
       ),
     },
@@ -187,6 +194,33 @@ const ClientesCelulandiaPage = () => {
         open={agregarModalOpen}
         onClose={() => setAgregarModalOpen(false)}
         onSave={handleSaveNew}
+      />
+
+      <ConfirmarEliminacionModal
+        open={confirmarEliminacionOpen}
+        onClose={() => {
+          setConfirmarEliminacionOpen(false);
+          setSelectedData(null);
+        }}
+        onConfirm={async () => {
+          if (!selectedData) return;
+          setIsDeleting(true);
+          try {
+            await clientesService.deleteCliente(selectedData._id);
+            setClientes((prev) => prev.filter((c) => c._id !== selectedData._id));
+            setConfirmarEliminacionOpen(false);
+            setSelectedData(null);
+          } catch (error) {
+            console.error("Error al eliminar cliente:", error);
+            alert("Error al eliminar cliente");
+          } finally {
+            setIsDeleting(false);
+          }
+        }}
+        loading={isDeleting}
+        title="Eliminar Cliente"
+        message="¿Estás seguro que deseas eliminar este cliente?"
+        itemName={selectedData ? `Cliente ${selectedData.nombre || selectedData._id}` : ""}
       />
     </>
   );
