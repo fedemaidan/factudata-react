@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import {
   Box,
   Stack,
@@ -69,10 +69,13 @@ const DataTable = ({
   multipleSelectFilters = [],
   onRefresh = null,
   showRefreshButton = false,
+  onSearchDebounced,
+  searchDebounceMs = 500,
 }) => {
   const [busqueda, setBusqueda] = useState("");
   const [filtroFecha, setFiltroFecha] = useState("todos");
   const [selectedDate, setSelectedDate] = useState(null);
+  const [debouncedTerm, setDebouncedTerm] = useState("");
 
   // estado local para select único (legacy)
   const [selectFilterValue, setSelectFilterValue] = useState(selectFilter?.defaultValue || "todos");
@@ -104,6 +107,18 @@ const DataTable = ({
       setIsRefreshing(false);
     }
   };
+
+  // Debounce simple para el campo de búsqueda (cuando se entregue onSearchDebounced)
+  useEffect(() => {
+    if (!onSearchDebounced) return;
+    const id = setTimeout(() => setDebouncedTerm(busqueda.trim()), searchDebounceMs);
+    return () => clearTimeout(id);
+  }, [busqueda, onSearchDebounced, searchDebounceMs]);
+
+  useEffect(() => {
+    if (!onSearchDebounced) return;
+    onSearchDebounced(debouncedTerm);
+  }, [debouncedTerm, onSearchDebounced]);
 
   // Manejador para múltiples selects
   const handleMultiSelectChange = (key, value, onChange) => {

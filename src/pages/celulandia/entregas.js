@@ -22,6 +22,8 @@ import {
 import { getCuentaPendienteHistorialConfig } from "src/utils/celulandia/historial";
 import { parseCuentaPendiente } from "src/utils/celulandia/cuentasPendientes/parseCuentasPendientes";
 import { EditarEntregaModalV2 } from "src/components/celulandia/EditarEntregaModalV2";
+import axios from "axios";
+import useDebouncedValue from "src/hooks/useDebouncedValue";
 
 const EntregasCelulandiaPage = () => {
   const [entregas, setEntregas] = useState([]);
@@ -43,6 +45,8 @@ const EntregasCelulandiaPage = () => {
   const [sortField, setSortField] = useState("fecha");
   const [sortDirection, setSortDirection] = useState("desc");
   const [filtroFecha, setFiltroFecha] = useState("todos");
+  const [busquedaTexto, setBusquedaTexto] = useState("");
+  const debouncedBusqueda = useDebouncedValue(busquedaTexto, 500);
 
   // NUEVOS: filtros server-side
   const [filtroMoneda, setFiltroMoneda] = useState("");
@@ -66,6 +70,25 @@ const EntregasCelulandiaPage = () => {
     filtroUsuario,
     filtroNombreCliente,
   ]);
+
+  // Cuando hay texto de búsqueda, hacer request al endpoint /search y renderizar resultados rápidos
+  useEffect(() => {
+    const doSearch = async () => {
+      if (!debouncedBusqueda) return;
+      try {
+        const { data } = await axios.get(`http://localhost:3002/api/cuentas-pendientes/search`, {
+          params: { text: debouncedBusqueda },
+        });
+        const rows = (data?.data || []).map(parseCuentaPendiente);
+        setEntregas(rows);
+        setTotalEntregas(rows.length || 0);
+        setPaginaActual(1);
+      } catch (e) {
+        console.error("Error en búsqueda:", e);
+      }
+    };
+    doSearch();
+  }, [debouncedBusqueda]);
 
   const fetchData = async (pagina = 1) => {
     setIsLoading(true);
@@ -245,7 +268,8 @@ const EntregasCelulandiaPage = () => {
           columns={columns}
           searchFields={searchFields}
           formatters={formatters}
-          showSearch={false}
+          showSearch={true}
+          onSearchDebounced={setBusquedaTexto}
           dateField="fecha"
           total={totalEntregas}
           currentPage={paginaActual}

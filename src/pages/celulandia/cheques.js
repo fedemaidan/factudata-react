@@ -12,10 +12,12 @@ import ComprobanteModal from "src/components/celulandia/ComprobanteModal";
 import EditarChequeModal from "src/components/celulandia/EditarChequeModal";
 import HistorialModal from "src/components/celulandia/HistorialModal";
 import AgregarChequeModal from "src/components/celulandia/AgregarChequeModal";
+import ConfirmarEliminacionModal from "src/components/celulandia/ConfirmarEliminacionModal";
 import { parseMovimiento } from "src/utils/celulandia/movimientos/parseMovimientos";
 import clientesService from "src/services/celulandia/clientesService";
 import dolarService from "src/services/celulandia/dolarService";
 import cajasService from "src/services/celulandia/cajasService";
+import { getUser } from "src/utils/celulandia/currentUser";
 
 const ChequesCelulandiaPage = () => {
   const [movimientos, setMovimientos] = useState([]);
@@ -26,6 +28,8 @@ const ChequesCelulandiaPage = () => {
   const [historialModalOpen, setHistorialModalOpen] = useState(false);
   const [agregarModalOpen, setAgregarModalOpen] = useState(false);
   const [selectedData, setSelectedData] = useState(null);
+  const [confirmarEliminacionOpen, setConfirmarEliminacionOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [paginaActual, setPaginaActual] = useState(1);
   const [totalMovimientos, setTotalMovimientos] = useState(0);
   const [limitePorPagina] = useState(20);
@@ -154,6 +158,10 @@ const ChequesCelulandiaPage = () => {
             setImagenModal(urlImagen);
             setModalOpen(true);
           }}
+          onDelete={(item) => {
+            setSelectedData(item);
+            setConfirmarEliminacionOpen(true);
+          }}
         />
       ),
     },
@@ -236,6 +244,29 @@ const ChequesCelulandiaPage = () => {
     setMovimientos((prevMovimientos) => [...prevMovimientos, parseMovimiento(newData)]);
   };
 
+  const handleDelete = (item) => {
+    setSelectedData(item);
+    setConfirmarEliminacionOpen(true);
+  };
+
+  const confirmarEliminacion = async () => {
+    if (!selectedData) return;
+    setIsDeleting(true);
+    try {
+      await movimientosService.deleteMovimiento(selectedData._id, getUser());
+      setMovimientos((prev) =>
+        prev.map((mov) => (mov._id === selectedData._id ? { ...mov, active: false } : mov))
+      );
+      setConfirmarEliminacionOpen(false);
+      setSelectedData(null);
+    } catch (error) {
+      console.error("Error al eliminar cheque:", error);
+      alert("Error al eliminar cheque");
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   return (
     <>
       <Head>
@@ -290,6 +321,19 @@ const ChequesCelulandiaPage = () => {
         clientes={clientes}
         tipoDeCambio={tipoDeCambio}
         cajas={cajas}
+      />
+
+      <ConfirmarEliminacionModal
+        open={confirmarEliminacionOpen}
+        onClose={() => {
+          setConfirmarEliminacionOpen(false);
+          setSelectedData(null);
+        }}
+        onConfirm={confirmarEliminacion}
+        loading={isDeleting}
+        title="Eliminar Cheque"
+        message="¿Estás seguro que deseas eliminar este cheque?"
+        itemName={selectedData ? `Cheque ${selectedData.numeroFactura || selectedData._id}` : ""}
       />
     </>
   );
