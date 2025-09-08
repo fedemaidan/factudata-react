@@ -83,7 +83,8 @@ export function usePlanObra(
         return;
       }
 
-      setData(plan);
+      setData(plan.data);
+      console.log(plan, plan.data, "dataaaaa")
       setStatus('success');
     } catch (err) {
       if (!mountedRef.current || myReq !== reqIdRef.current) return;

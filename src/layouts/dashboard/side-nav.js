@@ -42,6 +42,8 @@ export const SideNav = (props) => {
 
   const [items, setItems] = useState([]);
   const [proyectos, setProyectos] = useState([]);
+  const [proyectosPlanObra, setProyectosPlanObra] = useState([]);
+  
   const [empresa, setEmpresa] = useState(null);
   const [showProyectos, setShowProyectos] = useState(true);
 
@@ -258,7 +260,7 @@ export const SideNav = (props) => {
 
       if (permisosUsuario.includes("VER_CUENTAS_PENDIENTES")) {
         baseItems.push({
-          title: "Cuentas pendientes (solo admin)",
+          title: "Cuentas pendientes",
           path: "cuentasPendientes?empresaId=" + emp.id,
           icon: (
             <SvgIcon fontSize="small">
@@ -270,8 +272,20 @@ export const SideNav = (props) => {
 
       if (permisosUsuario.includes("VER_UNIDADES")) {
         baseItems.push({
-          title: "Unidades (solo admin)",
+          title: "Unidades",
           path: "unidadesTable?empresaId=" + emp.id,
+          icon: (
+            <SvgIcon fontSize="small">
+              <SettingsIcon />
+            </SvgIcon>
+          ),
+        });
+      }
+
+      if (permisosUsuario.includes("GESTIONAR_MATERIALES")) {
+        baseItems.push({
+          title: "Movimientos de material",
+          path: "movimientosMateriales/?empresaId=" + emp.id,
           icon: (
             <SvgIcon fontSize="small">
               <SettingsIcon />
@@ -377,6 +391,12 @@ export const SideNav = (props) => {
         setProyectos([]);
       }
 
+      if (permisosUsuario.includes("GESTIONAR_PLAN_DE_OBRA")) {
+        let proys = await getProyectosFromUser(user);
+        proys = (proys || []).filter((p) => p.activo);
+        setProyectosPlanObra(proys);
+      }
+
       if (permisosUsuario.includes("INTEGRACION_ODOO")) {
         baseItems.push({
           title: "Integración con Odoo",
@@ -467,7 +487,7 @@ export const SideNav = (props) => {
                         <ChevronRightIcon fontSize="small" />
                       )}
                     </IconButton>
-                    Proyectos
+                    Cajas de proyectos
                   </ListSubheader>
                 )}
                 <Box sx={{ px: collapsed ? 0 : 0.5 }}>
@@ -479,6 +499,60 @@ export const SideNav = (props) => {
                           key={proy.id}
                           title={proy.nombre}
                           path={`cajaProyecto?proyectoId=${proy.id}`}
+                          icon={
+                            <SvgIcon
+                              fontSize="small"
+                              sx={{ color: proy.activo ? "success.main" : "text.disabled" }}
+                            >
+                              <StoreIcon />
+                            </SvgIcon>
+                          }
+                        />
+                      );
+                      return collapsed ? (
+                        <Tooltip key={proy.id} title={proy.nombre} placement="right">
+                          <span>{el}</span>
+                        </Tooltip>
+                      ) : (
+                        el
+                      );
+                    })}
+                  </Collapse>
+                </Box>
+              </>
+            )}
+
+            {proyectosPlanObra.length > 0 && (
+              <>
+                {!collapsed && (
+                  <ListSubheader
+                    component="div"
+                    disableSticky
+                    sx={{ color: "neutral.400", pl: 1, display: "flex", alignItems: "center" }}
+                  >
+                    <IconButton
+                      size="small"
+                      onClick={() => setShowProyectos((v) => !v)}
+                      sx={{ mr: 0.5 }}
+                    >
+                      {showProyectos ? (
+                        <ExpandMoreIcon fontSize="small" />
+                      ) : (
+                        <ChevronRightIcon fontSize="small" />
+                      )}
+                    </IconButton>
+                    Plan de obras
+                  </ListSubheader>
+                )}
+                <Box sx={{ px: collapsed ? 0 : 0.5 }}>
+                  <Collapse in={showProyectos || collapsed}>
+                    {proyectosPlanObra.map((proy) => {
+                      const el = (
+                        <SideNavItem
+                          compact={collapsed}
+                          key={proy.id}
+                          title={proy.nombre}
+                          path={`planobra?proyectoId=${proy.id}`}
                           icon={
                             <SvgIcon
                               fontSize="small"

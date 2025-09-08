@@ -44,6 +44,7 @@ const PlanObraPage = () => {
   const openSnack = (msg) => setSnack({ open: true, msg });
 
   useEffect(() => {
+    console.log(data)
     if (data?.etapas) setEtapas(data.etapas);
   }, [data]);
 
