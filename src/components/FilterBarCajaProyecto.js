@@ -21,7 +21,7 @@ const defaultFilters = {
   ordenarPor: 'fecha_factura',
   ordenarDir: 'desc',
   caja: null,
-  estado: [],
+  estados: [],
 };
 
 export const FilterBarCajaProyecto = ({
@@ -43,7 +43,8 @@ export const FilterBarCajaProyecto = ({
     { name: 'categorias', label: 'Categoría', type: 'selectMultiple', optionsKey: 'categorias', visibleIf: (empresa) => empresa?.categorias?.length > 0 },
     { name: 'subcategorias', label: 'Subcategoría', type: 'selectMultiple', optionsKey: 'subcategorias', visibleIf: (empresa) => empresa?.comprobante_info?.subcategoria },
     { name: 'medioPago', label: 'Medio de pago', type: 'selectMultiple', optionsKey: 'mediosPago', visibleIf: (empresa) => empresa?.comprobante_info?.medio_pago },
-    { name: 'estado', label: 'Estado', type: 'selectMultiple', options: ['Pendiente', 'Pagado'], visibleIf: (empresa) => empresa?.con_estados },
+    { name: 'etapa', label: 'Etapa', type: 'selectMultiple', optionsKey: 'etapas', visibleIf: (empresa) => empresa?.comprobante_info?.etapa },
+    { name: 'estados', label: 'Estado', type: 'selectMultiple', options: ['Pendiente', 'Pagado'], visibleIf: (empresa) => empresa?.con_estados },
     { name: 'montoMin', label: 'Monto mínimo', type: 'number', visibleIf: () => true },
     { name: 'montoMax', label: 'Monto máximo', type: 'number', visibleIf: () => true },
   ];

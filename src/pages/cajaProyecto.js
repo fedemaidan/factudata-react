@@ -429,7 +429,9 @@ const ProyectoMovimientosPage = () => {
     handleCloseMenu();
   };
 
-
+  if (empresa?.cuenta_suspendida === true) {
+    return ("Cuenta suspendida. Contacte al administrador." )
+  }
     return (
     <>
       <Head>
@@ -584,6 +586,7 @@ const ProyectoMovimientosPage = () => {
                         <TableCell>Categoria</TableCell>
                         {empresa?.comprobante_info?.subcategoria && <TableCell>Subcategoría</TableCell>}
                         {empresa?.comprobante_info?.medio_pago && <TableCell>Medio de pago</TableCell>}
+                        {empresa?.comprobante_info?.etapa && <TableCell>Etapa</TableCell>}
                         <TableCell>Proveedor</TableCell>
                         <TableCell>Observación</TableCell>
                         <TableCell>Tipo de cambio ejecutado</TableCell>
@@ -608,6 +611,7 @@ const ProyectoMovimientosPage = () => {
                           <TableCell>{mov.categoria}</TableCell>
                           {empresa?.comprobante_info?.subcategoria && <TableCell>{mov.subcategoria}</TableCell>}
                           {empresa?.comprobante_info?.medio_pago && <TableCell>{mov.medio_pago}</TableCell>}
+                          {empresa?.comprobante_info?.etapa && <TableCell>{mov.etapa}</TableCell>}
                           <TableCell>{mov.nombre_proveedor}</TableCell>
                           <TableCell>{mov.observacion}</TableCell>
                           <TableCell>{mov.tc ? `$ ${mov.tc}` : "-"}</TableCell>
