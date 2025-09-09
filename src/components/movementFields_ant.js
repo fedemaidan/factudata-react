@@ -29,7 +29,7 @@ const DEFINICION_CAMPOS = [
   { name: 'tags_extra', label: 'Tags Extra', type: 'tags', optionsKey: 'tagsExtra', visibleIf: (info) => info.tags_extra },
   { name: 'estado', label: 'Estado', type: 'select', options: ['Pendiente', 'Pagado'], visibleIf: (_, empresa) => empresa?.con_estados },
   { name: 'medio_pago', label: 'Medio de Pago', type: 'select', optionsKey: 'mediosPago', visibleIf: (info) => info.medio_pago },
-  { name: 'tipo_factura', label: 'Tipo de Factura', type: 'select', options: ['Factura A', 'Factura B', 'Factura C', 'No definido'], visibleIf: (info) => info.tipo_factura },
+  { name: 'tipo_factura', label: 'Tipo de Factura', type: 'select', options: ['FACTURA A', 'FACTURA B', 'FACTURA C', 'No definido'], visibleIf: (info) => info.tipo_factura },
   { name: 'cuenta_interna', label: 'Cuenta Interna', type: 'select', optionsKey: 'cuentasInternas', visibleIf: (info) => info.cuenta_interna },
   { name: 'etapa', label: 'Etapa', type: 'autocomplete', optionsKey: 'etapas', visibleIf: (info) => info.etapa },
   { name: 'caja_chica', label: 'Caja Chica', type: 'boolean' },

@@ -18,7 +18,7 @@ import ImpuestosEditor from './impuestosEditor';
 // ==== Definición de campos con sección (igual que tenías) ====
 const DEFINICION_CAMPOS = [
   // BÁSICOS
-  { section: 'extras', name: 'tipo_factura', label: 'Tipo de Factura', type: 'select', options: ['Factura A', 'Factura B', 'Factura C', 'No definido'], visibleIf: (info) => info.tipo_factura },
+  { section: 'extras', name: 'tipo_factura', label: 'Tipo de Factura', type: 'select', options: ['FACTURA A', 'FACTURA B', 'FACTURA C', 'No definido'], visibleIf: (info) => info.tipo_factura },
   { section: 'basicos', name: 'numero_factura', label: 'Número de Factura', type: 'text', visibleIf: (info) => info.numero_factura },
   { section: 'basicos', name: 'fecha_factura', label: 'Fecha de la Factura', type: 'date' },
   { section: 'basicos', name: 'type', label: 'Tipo', type: 'select', options: ['egreso', 'ingreso'] },

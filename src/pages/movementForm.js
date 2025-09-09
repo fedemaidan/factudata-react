@@ -251,7 +251,7 @@ const MovementFormPage = () => {
                 {empresa?.con_estados && <Chip
                   size="small"
                   color={formik.values?.estado === 'Pagado' ? 'success' : 'warning'}
-                  label={`Pago: ${formik.values?.estado || 'Pendiente'}`}
+                  label={`${formik.values?.estado === 'Pagado' ? 'Pagado' : 'Pendiente pago'}`}
                 />}
                 {formik.values.type && <Chip size="small" color={formik.values?.etypestado === 'Ingreso' ? 'success' : 'error'} label={`${formik.values.type.toUpperCase()}`} />}
                 {formik.values.caja_chica && <Chip size="small" color="info" label='Caja chica'/>}

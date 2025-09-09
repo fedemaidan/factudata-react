@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useReducer, useRef } from 'react';
 import PropTypes from 'prop-types';
 import { auth } from "../config/firebase";
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut as firebaseSignOut, onAuthStateChanged } from "firebase/auth";
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut as firebaseSignOut, onAuthStateChanged, sendPasswordResetEmail } from "firebase/auth";
 import { collection, addDoc, getDocs, doc, query, where, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from 'src/config/firebase';
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
@@ -260,6 +260,11 @@ export const AuthProvider = (props) => {
     });
   };
 
+  const sendResetPasswordEmail = async (email) => {
+    await sendPasswordResetEmail(auth, email);
+  };
+  
+
   const updateAvatar = async (user, avatarFile) => {
     const filesFolderRef = ref(storage, `avatars/${avatarFile.name}`);
     await uploadBytes(filesFolderRef, avatarFile);
@@ -302,6 +307,7 @@ export const AuthProvider = (props) => {
         updateUser,
         updateAvatar,
         refreshUser,
+        sendResetPasswordEmail
       }}
     >
       {children}
