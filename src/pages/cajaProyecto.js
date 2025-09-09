@@ -8,6 +8,9 @@ import { useTheme } from '@mui/material/styles';
 import FilterListIcon from '@mui/icons-material/FilterList';
 import AddCircleIcon from '@mui/icons-material/AddCircle';
 import RefreshIcon from '@mui/icons-material/Refresh';
+import ImageIcon from '@mui/icons-material/Image';
+import OpenInNewIcon from '@mui/icons-material/OpenInNew';
+import CloseIcon from '@mui/icons-material/Close';
 
 import EditIcon from '@mui/icons-material/Edit';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
@@ -122,7 +125,10 @@ const ProyectoMovimientosPage = () => {
   const [prefsHydrated, setPrefsHydrated] = useState(false);
   const [savingCols, setSavingCols] = useState(false);
   const [saveMsg, setSaveMsg] = useState(null); // opcional: feedback breve
-
+  const [imgPreview, setImgPreview] = useState({ open: false, url: null });
+  const openImg = (url) => setImgPreview({ open: true, url });
+  const closeImg = () => setImgPreview({ open: false, url: null });
+  
   const [anchorCajaEl, setAnchorCajaEl] = useState(null);
   const [cajaMenuIndex, setCajaMenuIndex] = useState(null);
   // ---- Columnas visibles + modo compacto ----
@@ -963,7 +969,13 @@ const handleCloseCols = () => setAnchorColsEl(null);
             )}
 
             {visibleCols.acciones && (
-              <TableCell sx={{ ...cellBase, minWidth: COLS.acciones, textAlign: 'center' }}>
+              <TableCell sx={{ ...cellBase, minWidth: COLS.acciones, textAlign: 'center' }}>    
+                  {mov.url_imagen && <IconButton
+                    size="small"
+                    onClick={() => openImg(mov.url_imagen)}
+                  >
+                    <ImageIcon fontSize="small" />
+                  </IconButton>}
                 <IconButton
                   size="small"
                   color="primary"
@@ -1079,6 +1091,58 @@ const handleCloseCols = () => setAnchorColsEl(null);
           </Button>
         </DialogActions>
       </Dialog>
+
+
+      <Dialog open={imgPreview.open} onClose={closeImg} maxWidth="md" fullWidth>
+  <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+    Archivo adjunto
+    <Box>
+      {imgPreview.url && (
+        <IconButton
+          size="small"
+          component="a"
+          href={imgPreview.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          sx={{ mr: 1 }}
+        >
+          <OpenInNewIcon fontSize="small" />
+        </IconButton>
+      )}
+      <IconButton size="small" onClick={closeImg}>
+        <CloseIcon fontSize="small" />
+      </IconButton>
+    </Box>
+  </DialogTitle>
+  <DialogContent dividers>
+    {imgPreview.url ? (
+      imgPreview.url.toLowerCase().includes('.pdf') ? (
+        <Box sx={{ height: '70vh' }}>
+          <iframe
+            src={imgPreview.url}
+            style={{ width: '100%', height: '100%', border: 'none' }}
+            title="PDF Preview"
+          />
+        </Box>
+      ) : (
+        <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+          <Box
+            component="img"
+            src={imgPreview.url}
+            alt="Archivo"
+            sx={{ maxWidth: '100%', maxHeight: '70vh', objectFit: 'contain', borderRadius: 1 }}
+          />
+        </Box>
+      )
+    ) : (
+      <Typography variant="body2" color="text.secondary">
+        No hay archivo disponible.
+      </Typography>
+    )}
+  </DialogContent>
+</Dialog>
+
+
     </DashboardLayout>
   );
 };
