@@ -140,6 +140,7 @@ const ClienteCelulandiaCCPage = () => {
       return {
         id: m.id || m._id,
         fecha,
+        descripcion: isMov ? (m.numeroFactura || m._id) : (m.descripcion || "-"),
         cliente: m?.nombreCliente || m?.clienteNombre || m.cliente?.nombre || "-",
         group: m.cuentaCorriente || m.CC || m.cc,
         // ya no usamos "monto" para export, pero lo dejamos por compatibilidad interna

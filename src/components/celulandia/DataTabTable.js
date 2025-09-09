@@ -36,6 +36,16 @@ import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import dayjs from "dayjs";
 
+const n = (x) => (Number.isFinite(Number(x)) ? Number(x) : 0);
+const r2 = (x) => Math.round((x + Number.EPSILON) * 100) / 100;
+const getTimeSafe = (v) => {
+  if (!v) return 0;
+  const d = new Date(v);
+  if (!isNaN(d.getTime())) return d.getTime();
+  const p = dayjs(v, ["DD/MM/YYYY","D/M/YYYY","YYYY-MM-DD","YYYY/MM/DD","MM/DD/YYYY","M/D/YYYY"], true);
+  return p.isValid() ? p.valueOf() : 0;
+};
+
 const DataTabTable = ({
   items = [],
   isLoading = false,
@@ -282,52 +292,45 @@ const DataTabTable = ({
   }, [grouped]);
 
   // Exportar a Excel (pestaña actual) — con Debe/Haber/Saldo acumulado y números puros
-const handleExportExcel = () => {
-  const allRows = grouped.get(currentOption) || [];
-  const monedaLabel = options.find((o) => o.value === currentOption)?.label || "";
-
-  // Aseguramos orden por fecha ASC para que el saldo acumulado sea correcto si hace falta recalcular
-  const rowsSorted = [...allRows].sort((a, b) => {
-    const ta = a?.fecha ? new Date(a.fecha).getTime() : 0;
-    const tb = b?.fecha ? new Date(b.fecha).getTime() : 0;
-    return ta - tb;
-  });
-
-  let running = 0;
-
-  const data = rowsSorted.map((row) => {
-    // Debe/Haber: usamos los campos precalculados si vienen del padre, si no los deducimos del monto
-    const debe = (row.debe !== undefined && row.debe !== null)
-      ? Number(row.debe)
-      : (row.monto < 0 ? Math.abs(Number(row.monto || 0)) : 0);
-
-    const haber = (row.haber !== undefined && row.haber !== null)
-      ? Number(row.haber)
-      : (row.monto > 0 ? Number(row.monto || 0) : 0);
-
-    // Saldo acumulado: usamos el que venga o lo calculamos sumando el monto
-    const saldoAcumulado = (row.saldoAcumulado !== undefined && row.saldoAcumulado !== null)
-      ? Number(row.saldoAcumulado)
-      : (running = Number((running + Number(row.monto || 0)).toFixed(2)));
-
-    return {
-      Fecha: formatearCampo("fecha", row.fecha),
-      Cliente: row.cliente ?? "",
-      Debe: Number(debe || 0),                 // número puro
-      Haber: Number(haber || 0),               // número puro
-      "Saldo acumulado": Number(saldoAcumulado || 0), // número puro
-      "Tipo de cambio": Number(row.tipoDeCambio || 1), // número puro
-      "Monto original": Number(row.montoOriginal || 0), // número puro (ya recalculado si venía 0)
-      "Moneda original": row.monedaOriginal ?? "",
-    };
-  });
-
-  const ws = XLSX.utils.json_to_sheet(data);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, monedaLabel || "Datos");
-  const filename = `reporte_${monedaLabel || "datos"}_${dayjs().format("YYYY-MM-DD_HHmm")}.xlsx`;
-  XLSX.writeFile(wb, filename);
-};
+  const handleExportExcel = () => {
+    const allRows = grouped.get(currentOption) || [];
+    const monedaLabel = options.find((o) => o.value === currentOption)?.label || "";
+  
+    // Orden cronológico ASC (más viejo primero)
+    const rowsSorted = [...allRows].sort((a, b) => getTimeSafe(a.fecha) - getTimeSafe(b.fecha));
+    
+    let running = 0;
+  
+    const data = rowsSorted.map((row) => {
+      console.log(row)
+      // Derivar Debe/Haber numéricos puros
+      const monto = n(row.monto); // por si lo necesitás de referencia
+      const debe = row.debe != null ? n(row.debe) : (monto < 0 ? Math.abs(monto) : 0);
+      const haber = row.haber != null ? n(row.haber) : (monto > 0 ? monto : 0);
+  
+      // Saldo acumulado = saldo previo + (Haber - Debe)
+      running = r2(running + (haber - debe));
+  
+      return {
+        Fecha: formatearCampo("fecha", row.fecha),
+        Cliente: row.cliente ?? "",
+        "N° comprobante": String(row.descripcion || ""),
+        Debe: n(debe),
+        Haber: n(haber),
+        "Saldo acumulado": n(running),
+        "Tipo de cambio": n(row.tipoDeCambio || 1),
+        "Monto original": n(row.montoOriginal || 0), // ya recalculado si venía 0
+        "Moneda original": row.monedaOriginal ?? "",
+      };
+    });
+  
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, monedaLabel || "Datos");
+    const filename = `reporte_${monedaLabel || "datos"}_${dayjs().format("YYYY-MM-DD_HHmm")}.xlsx`;
+    XLSX.writeFile(wb, filename);
+  };
+  
 
 
   if (isLoading) {
