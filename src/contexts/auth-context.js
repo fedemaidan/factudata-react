@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useReducer, useRef } from 'react';
 import PropTypes from 'prop-types';
 import { auth } from "../config/firebase";
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut as firebaseSignOut, onAuthStateChanged, sendPasswordResetEmail } from "firebase/auth";
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut as firebaseSignOut, onAuthStateChanged, sendPasswordResetEmail, updateEmail,   reauthenticateWithCredential, EmailAuthProvider } from "firebase/auth";
 import { collection, addDoc, getDocs, doc, query, where, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from 'src/config/firebase';
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
@@ -263,6 +263,46 @@ export const AuthProvider = (props) => {
   const sendResetPasswordEmail = async (email) => {
     await sendPasswordResetEmail(auth, email);
   };
+
+  const updateUserEmail = async (userId, newEmail) => {
+    try {
+      if (!auth.currentUser) {
+        const e = new Error("No hay usuario logueado.");
+        e.code = "sorby/no-current-user";
+        throw e;
+      }
+  
+      // 1) Cambiar en Firebase Auth
+      await updateEmail(auth.currentUser, newEmail);
+  
+      // 2) Cambiar en Firestore (colección profile)
+      const userRef = doc(db, "profile", userId);
+      await updateDoc(userRef, { email: newEmail });
+  
+      // 3) Refrescar estado
+      const updatedUser = { ...state.user, email: newEmail };
+      dispatch({ type: HANDLERS.UPDATE_USER, payload: updatedUser });
+  
+      return true;
+    } catch (error) {
+      // ⚠️ NO PIERDAS EL CODE: re-lanzá el mismo error
+      // (si querés, podés adjuntar un mensaje legible sin pisar code)
+      if (!error.message) error.message = "No se pudo actualizar el email.";
+      throw error;
+    }
+  };
+  
+
+  const reauthenticateUser = async (currentPassword) => {
+    if (!auth.currentUser) throw new Error("No hay sesión activa");
+    const email = auth.currentUser.email;
+    if (!email) throw new Error("No se encontró el email actual del usuario");
+    const cred = EmailAuthProvider.credential(email, currentPassword);
+    await reauthenticateWithCredential(auth.currentUser, cred);
+  };
+  
+
+  
   
 
   const updateAvatar = async (user, avatarFile) => {
@@ -307,7 +347,9 @@ export const AuthProvider = (props) => {
         updateUser,
         updateAvatar,
         refreshUser,
-        sendResetPasswordEmail
+        sendResetPasswordEmail,
+        updateUserEmail,
+        reauthenticateUser
       }}
     >
       {children}
