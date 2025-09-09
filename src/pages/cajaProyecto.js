@@ -126,6 +126,8 @@ const ProyectoMovimientosPage = () => {
     setMonedaCaja(caja.moneda);
     setMedioPagoCaja(caja.medio_pago || '');
     setShowCrearCaja(true);
+    setEstadoCaja(caja.estado || '');
+
     handleCloseCajaMenu();
   };
   
@@ -346,7 +348,9 @@ const ProyectoMovimientosPage = () => {
         ? mov.medio_pago === caja.medio_pago
         : true;
   
-      if (!matchMedioPago) return acc;
+        const matchEstado = caja.estado ? mov.estado === caja.estado : true;
+        
+        if (!matchMedioPago || !matchEstado) return acc;
   
       if (mov.type === 'ingreso') return acc + mov.total;
       return acc - mov.total;
@@ -586,7 +590,6 @@ const ProyectoMovimientosPage = () => {
                         <TableCell>Categoria</TableCell>
                         {empresa?.comprobante_info?.subcategoria && <TableCell>Subcategoría</TableCell>}
                         {empresa?.comprobante_info?.medio_pago && <TableCell>Medio de pago</TableCell>}
-                        {empresa?.comprobante_info?.etapa && <TableCell>Etapa</TableCell>}
                         <TableCell>Proveedor</TableCell>
                         <TableCell>Observación</TableCell>
                         <TableCell>Tipo de cambio ejecutado</TableCell>
@@ -611,7 +614,6 @@ const ProyectoMovimientosPage = () => {
                           <TableCell>{mov.categoria}</TableCell>
                           {empresa?.comprobante_info?.subcategoria && <TableCell>{mov.subcategoria}</TableCell>}
                           {empresa?.comprobante_info?.medio_pago && <TableCell>{mov.medio_pago}</TableCell>}
-                          {empresa?.comprobante_info?.etapa && <TableCell>{mov.etapa}</TableCell>}
                           <TableCell>{mov.nombre_proveedor}</TableCell>
                           <TableCell>{mov.observacion}</TableCell>
                           <TableCell>{mov.tc ? `$ ${mov.tc}` : "-"}</TableCell>

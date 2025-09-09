@@ -226,7 +226,8 @@ useEffect(() => {
       if (!caja) return true;
       const monedaOk = !caja.moneda || mov.moneda === caja.moneda;
       const medioOk = !caja.medio_pago || mov.medio_pago === caja.medio_pago;
-      return monedaOk && medioOk;
+      const estadoOk = !caja.estado || mov.estado === caja.estado;
+      return monedaOk && medioOk && estadoOk;
     };
     const matchEstado = (mov) => {
       if (!filters.estados || filters.estados.length === 0) return true;
