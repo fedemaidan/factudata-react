@@ -161,6 +161,8 @@ const profileService = {
             proyectos: proyectosRefs
           };
       }
+
+      // post dar acceso a este sheet a este usuario
   
       await updateDoc(docRef, data);
       return true;

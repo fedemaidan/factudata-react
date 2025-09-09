@@ -839,7 +839,7 @@ const handleImportCsv = async () => {
                   onChange={(e) => setFiltroCuentaInterna(e.target.value)}
                   label="Cuenta Interna"
                 >
-                  {["Cuenta A", "Cuenta B"].map((cuenta, i) => (
+                  {["Cuenta A", "Cuenta B","Cuenta C"].map((cuenta, i) => (
                     <MenuItem key={i} value={cuenta}>{cuenta}</MenuItem>
                   ))}
                 </Select>

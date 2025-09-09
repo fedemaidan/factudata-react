@@ -111,6 +111,7 @@ const RevisionFacturasPage = () => {
                 >
                   <MenuItem value="Cuenta A">Cuenta A</MenuItem>
                   <MenuItem value="Cuenta B">Cuenta B</MenuItem>
+                  <MenuItem value="Cuenta C">Cuenta C</MenuItem>
                   <MenuItem value="Todas">Todas</MenuItem>
                 </Select>
               </FormControl>

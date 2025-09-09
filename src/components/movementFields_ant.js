@@ -52,7 +52,7 @@ const MovementFields = ({ formik, comprobante_info, empresa, etapas, proveedores
       case 'tagsExtra': return tagsExtra;
       case 'mediosPago': return mediosPago;
       case 'etapas': return etapas.map(e => e.nombre);
-      case 'cuentasInternas': return ["Cuenta A", "Cuenta B"];
+      case 'cuentasInternas': return ["Cuenta A", "Cuenta B", "Cuenta C"];
       default: return [];
     }
   }
