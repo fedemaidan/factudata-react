@@ -336,18 +336,19 @@ export const SideNav = (props) => {
         });
       }
 
+      if (permisosUsuario.includes('ADMIN_CAJAS_CHICAS')) {
+        baseItems.push({
+          title: 'Ver cajas chicas',
+          path: '/perfilesEmpresa',
+          icon: (
+            <SvgIcon fontSize="small">
+              <AttachMoneyIcon />
+            </SvgIcon>
+          )
+        })
+      }
+
       if (permisosUsuario.includes("VER_CAJAS")) {
-        if (permisosUsuario.includes('VER_MI_CAJA_CHICA')) {
-          baseItems.push({
-            title: 'Ver cajas chicas',
-            path: '/perfilesEmpresa',
-            icon: (
-              <SvgIcon fontSize="small">
-                <AttachMoneyIcon />
-              </SvgIcon>
-            )
-          })
-        }
 
         baseItems.push({
           title: "Presupuestos",

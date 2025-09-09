@@ -281,34 +281,54 @@ const DataTabTable = ({
     return res;
   }, [grouped]);
 
-  // Exportar a Excel (pestaña actual)
-  const handleExportExcel = () => {
-    const currentRows = grouped.get(currentOption) || [];
-    const monedaLabel = options.find((o) => o.value === currentOption)?.label || "";
+  // Exportar a Excel (pestaña actual) — con Debe/Haber/Saldo acumulado y números puros
+const handleExportExcel = () => {
+  const allRows = grouped.get(currentOption) || [];
+  const monedaLabel = options.find((o) => o.value === currentOption)?.label || "";
 
-    const data = currentRows.map((row) => {
-      const descuento =
-        row.descuentoAplicado !== undefined && row.descuentoAplicado !== null
-          ? `${Math.round(((row.descuentoAplicado ?? 1) - 1) * -100)}%`
-          : "-";
+  // Aseguramos orden por fecha ASC para que el saldo acumulado sea correcto si hace falta recalcular
+  const rowsSorted = [...allRows].sort((a, b) => {
+    const ta = a?.fecha ? new Date(a.fecha).getTime() : 0;
+    const tb = b?.fecha ? new Date(b.fecha).getTime() : 0;
+    return ta - tb;
+  });
 
-      return {
-        Fecha: formatearCampo("fecha", row.fecha),
-        Cliente: row.cliente ?? "",
-        [`Monto (${monedaLabel})`]: formatCurrency(Math.round(row.monto || 0)),
-        "Tipo de Cambio": formatearCampo("tipoDeCambio", row.tipoDeCambio),
-        Descuento: descuento,
-        "Monto Original (sin descuento)": formatCurrency(Math.round(row.montoOriginal || 0)),
-        "Moneda Original": formatearCampo("monedaDePago", row.monedaOriginal),
-      };
-    });
+  let running = 0;
 
-    const ws = XLSX.utils.json_to_sheet(data);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, monedaLabel || "Datos");
-    const filename = `reporte_${monedaLabel || "datos"}_${dayjs().format("YYYY-MM-DD_HHmm")}.xlsx`;
-    XLSX.writeFile(wb, filename);
-  };
+  const data = rowsSorted.map((row) => {
+    // Debe/Haber: usamos los campos precalculados si vienen del padre, si no los deducimos del monto
+    const debe = (row.debe !== undefined && row.debe !== null)
+      ? Number(row.debe)
+      : (row.monto < 0 ? Math.abs(Number(row.monto || 0)) : 0);
+
+    const haber = (row.haber !== undefined && row.haber !== null)
+      ? Number(row.haber)
+      : (row.monto > 0 ? Number(row.monto || 0) : 0);
+
+    // Saldo acumulado: usamos el que venga o lo calculamos sumando el monto
+    const saldoAcumulado = (row.saldoAcumulado !== undefined && row.saldoAcumulado !== null)
+      ? Number(row.saldoAcumulado)
+      : (running = Number((running + Number(row.monto || 0)).toFixed(2)));
+
+    return {
+      Fecha: formatearCampo("fecha", row.fecha),
+      Cliente: row.cliente ?? "",
+      Debe: Number(debe || 0),                 // número puro
+      Haber: Number(haber || 0),               // número puro
+      "Saldo acumulado": Number(saldoAcumulado || 0), // número puro
+      "Tipo de cambio": Number(row.tipoDeCambio || 1), // número puro
+      "Monto original": Number(row.montoOriginal || 0), // número puro (ya recalculado si venía 0)
+      "Moneda original": row.monedaOriginal ?? "",
+    };
+  });
+
+  const ws = XLSX.utils.json_to_sheet(data);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, monedaLabel || "Datos");
+  const filename = `reporte_${monedaLabel || "datos"}_${dayjs().format("YYYY-MM-DD_HHmm")}.xlsx`;
+  XLSX.writeFile(wb, filename);
+};
+
 
   if (isLoading) {
     return (
