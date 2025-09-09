@@ -60,6 +60,9 @@ const [cuit, setCuit] = useState(empresa.cuit || '');
 const [domicilioFiscal, setDomicilioFiscal] = useState(empresa.domicilio_fiscal || '');
 const [carpetaEmpresaRef, setCarpetaEmpresaRef] = useState(empresa.carpetaEmpresaRef || '');
 const [isRegenerandoSheets, setIsRegenerandoSheets] = useState(false);
+const [cuentaSuspendida, setCuentaSuspendida] = useState(
+  empresa.cuenta_suspendida || false
+);
 
 
 
@@ -196,7 +199,7 @@ const [isRegenerandoSheets, setIsRegenerandoSheets] = useState(false);
       cuit,
       domicilio_fiscal: domicilioFiscal,
       carpetaEmpresaRef: carpetaEmpresaRef,
-
+      cuenta_suspendida: cuentaSuspendida
     };
     
     try {
@@ -238,7 +241,7 @@ const [isRegenerandoSheets, setIsRegenerandoSheets] = useState(false);
             </MenuItem>
           ))}
         </Select>
-      </FormControl>
+      </FormControl> 
     }
       
       <FormControl fullWidth>
@@ -386,7 +389,13 @@ const [isRegenerandoSheets, setIsRegenerandoSheets] = useState(false);
   />
   <ListItemText primary="Solo Dólar" />
 </FormControl>
-
+<FormControl sx={{ mt: 2 }}>
+  <Checkbox
+    checked={cuentaSuspendida}
+    onChange={(e) => setCuentaSuspendida(e.target.checked)}
+  />
+  <ListItemText primary="Cuenta suspendida" />
+</FormControl>
       <TextField
           label="ID de Google Sheet Central"
           value={sheetCentral}

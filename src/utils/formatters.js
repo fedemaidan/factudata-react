@@ -1,7 +1,7 @@
 import { Timestamp } from 'firebase/firestore';
 
 
-const formatTimestamp = (timestamp) => {
+const formatTimestamp = (timestamp, formato = 'ANO-MES-DIA') => {
   if (!timestamp) return "";
 
   // Soportar tanto `seconds` como `_seconds`
@@ -18,6 +18,10 @@ const formatTimestamp = (timestamp) => {
   const year = displayDate.getFullYear();
   const month = `0${displayDate.getMonth() + 1}`.slice(-2);
   const day = `0${displayDate.getDate()}`.slice(-2);
+
+  if (formato === 'DIA/MES/ANO') {
+    return `${day}/${month}/${year}`;
+  }
 
   return `${year}-${month}-${day}`;
 };
