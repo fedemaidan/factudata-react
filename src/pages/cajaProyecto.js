@@ -571,7 +571,23 @@ const handleCloseCols = () => setAnchorColsEl(null);
   <MenuItem onClick={() => handleEditarCaja(cajaMenuIndex)}>Editar</MenuItem>
   <MenuItem onClick={() => handleEliminarCaja(cajaMenuIndex)}>Eliminar</MenuItem>
 </Menu>
+<Box sx={{ display: 'flex', gap: 1 }}>
+    <Button
+      variant="outlined"
+      size="small"
+      onClick={() => handleMenuOptionClick('filtrar')}
+    >
+      {filtrosActivos ? 'Ocultar filtros' : 'Mostrar filtros'}
+    </Button>
 
+    <Button
+      variant="outlined"
+      size="small"
+      onClick={handleOpenCols}
+    >
+      Columnas
+    </Button>
+  </Box>
             </Stack>
             <Dialog open={showCrearCaja} onClose={() => setShowCrearCaja(false)}>
   <DialogTitle>Crear vista de caja personalizada</DialogTitle>
@@ -630,27 +646,7 @@ const handleCloseCols = () => setAnchorColsEl(null);
                 </Alert>
               </Snackbar>
               <Stack spacing={1}>
-              <Stack direction="row" justifyContent="space-between" alignItems="center">
-  <Typography variant="h6">{proyecto?.nombre}</Typography>
 
-  <Box sx={{ display: 'flex', gap: 1 }}>
-    <Button
-      variant="outlined"
-      size="small"
-      onClick={() => handleMenuOptionClick('filtrar')}
-    >
-      {filtrosActivos ? 'Ocultar filtros' : 'Mostrar filtros'}
-    </Button>
-
-    <Button
-      variant="outlined"
-      size="small"
-      onClick={handleOpenCols}
-    >
-      Columnas
-    </Button>
-  </Box>
-</Stack>
 
               <TotalesFiltrados
                     t={totalesDetallados}
@@ -669,7 +665,7 @@ const handleCloseCols = () => setAnchorColsEl(null);
                           <Typography variant="body2">{mov.observacion}</Typography>
                           {mov.tc && <Typography variant="body2">Tipo de cambio: ${mov.tc}</Typography>}
                           <Typography variant="caption" color="textSecondary">
-                            {formatTimestamp(mov.fecha_factura)}
+                            {formatTimestamp(mov.fecha_factura, "DIA/MES/ANO")}
                           </Typography>
                           <Typography variant="body2" color="textSecondary">
                             Código de operación: {mov.codigo_operacion || "Ninguno"}
@@ -863,9 +859,9 @@ const handleCloseCols = () => setAnchorColsEl(null);
                 <TableCell sx={{ ...cellBase, minWidth: COLS.fecha + 40 }}>
                   {/* compacto: ambas fechas en una sola celda */}
                   <Stack direction="row" spacing={1} divider={<span>•</span>}>
-                    <Typography variant="body2">Fac: {formatTimestamp(mov.fecha_factura)}</Typography>
+                    <Typography variant="body2">Fac: {formatTimestamp(mov.fecha_factura, "DIA/MES/ANO")}</Typography>
                     <Typography variant="body2" color="text.secondary">
-                      Cre: {formatTimestamp(mov.fecha_creacion)}
+                      Cre: {formatTimestamp(mov.fecha_creacion, "DIA/MES/ANO")}
                     </Typography>
                   </Stack>
                 </TableCell>
@@ -874,12 +870,12 @@ const handleCloseCols = () => setAnchorColsEl(null);
               <>
                 {visibleCols.fechaFactura && (
                   <TableCell sx={{ ...cellBase, minWidth: COLS.fecha }}>
-                    {formatTimestamp(mov.fecha_factura)}
+                    {formatTimestamp(mov.fecha_factura, "DIA/MES/ANO")}
                   </TableCell>
                 )}
                 {visibleCols.fechaCreacion && (
                   <TableCell sx={{ ...cellBase, minWidth: COLS.fecha }}>
-                    {formatTimestamp(mov.fecha_creacion)}
+                    {formatTimestamp(mov.fecha_creacion, "DIA/MES/ANO")}
                   </TableCell>
                 )}
               </>
