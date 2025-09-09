@@ -31,8 +31,6 @@ export const FilterBarCajaProyecto = ({
   onRefresh,
   empresa, 
 }) => {
-  console.log("filters",filters)
-  console.log(options, "options")
 
   const DEFINICION_FILTROS = [
     { name: 'observacion', label: 'Observación', type: 'text', visibleIf: () => true },

@@ -29,7 +29,7 @@ const LayoutContainer = styled('div')({
 });
 
 export const Layout = withAuthGuard((props) => {
-  const { children } = props;
+  const { children, title } = props;
   const pathname = usePathname();
   const [openNav, setOpenNav] = useState(false); // mobile
   const [collapsed, setCollapsed] = useState(() => {
@@ -63,6 +63,7 @@ export const Layout = withAuthGuard((props) => {
       <TopNav
         onNavOpen={() => setOpenNav(true)}
         onToggleNav={() => setCollapsed((v) => !v)}
+        title={title || ""}
         collapsed={collapsed}
       />
       <SideNav

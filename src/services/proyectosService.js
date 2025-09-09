@@ -122,7 +122,7 @@ export const getProyectoById = async (id) => {
 export const updateProyecto = async (id, proyecto) => {
   try {
     asegurarIdsSubproyectos(proyecto); // ← agregar esta línea
-
+    console.log(proyecto, " proyecto a actualizar");
     proyecto = {
       carpetaRef: proyecto.carpetaRef ?? "",
       proyecto_default_id: proyecto.proyecto_default_id ?? "",
@@ -131,7 +131,8 @@ export const updateProyecto = async (id, proyecto) => {
       activo: proyecto.activo ?? true,
       extraSheets: proyecto.extraSheets ?? [],
       subproyectos: proyecto.subproyectos ?? [],
-      eliminado: proyecto.eliminado || false
+      eliminado: proyecto.eliminado || false,
+      ui_prefs: proyecto.ui_prefs || {}
     }
     console.log("proyecto nuevo", proyecto);
     const proyectoDocRef = doc(db, 'proyectos', id);

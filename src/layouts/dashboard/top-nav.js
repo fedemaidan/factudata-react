@@ -21,7 +21,7 @@ const SIDE_NAV_WIDTH = 280;
 const TOP_NAV_HEIGHT = 64;
 
 export const TopNav = (props) => {
-  const { onNavOpen } = props;
+  const { onNavOpen, title } = props;
   const lgUp = useMediaQuery((theme) => theme.breakpoints.up('lg'));
   const accountPopover = usePopover();
   const { user } = useAuthContext();
@@ -51,6 +51,8 @@ export const TopNav = (props) => {
           zIndex: (theme) => theme.zIndex.appBar
         }}
       >
+
+      
         <Stack
           alignItems="center"
           direction="row"
@@ -61,6 +63,7 @@ export const TopNav = (props) => {
             px: 2
           }}
         >
+          <Typography variant="h6">{title}</Typography>
           <Stack
             alignItems="center"
             direction="row-reverse"

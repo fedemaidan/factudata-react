@@ -1,7 +1,9 @@
 import { useState, useMemo, useEffect } from 'react';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import Head from 'next/head';
-import { Box, Container, Stack, Chip, Typography, TextField, InputAdornment, Paper, Card, CardContent, Button, Select, MenuItem, FormControl, InputLabel, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, useMediaQuery, IconButton, Fab, Menu, Table, TableBody, TableCell, TableHead, TableRow, MenuItem as MenuOption, Divider } from '@mui/material';
+import { Box, Container, Stack, Chip, Typography, TextField, InputAdornment, Paper, Card, CardContent, Button, Select, MenuItem, FormControl, InputLabel, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, useMediaQuery, IconButton, Fab, Menu, Table, TableBody, TableCell, TableHead, TableRow, TableContainer, Tooltip, MenuItem as MenuOption, Divider } from '@mui/material';
+import { Checkbox, ListItemIcon, ListItemText, Popover, FormControlLabel, Switch } from '@mui/material';
+
 import { useTheme } from '@mui/material/styles';
 import FilterListIcon from '@mui/icons-material/FilterList';
 import AddCircleIcon from '@mui/icons-material/AddCircle';
@@ -12,7 +14,7 @@ import MoreVertIcon from '@mui/icons-material/MoreVert';
 import DeleteIcon from '@mui/icons-material/Delete';
 import { useRouter } from 'next/router';
 import ticketService from 'src/services/ticketService';
-import { getProyectoById, recargarProyecto } from 'src/services/proyectosService';
+import { getProyectoById, recargarProyecto, updateProyecto } from 'src/services/proyectosService';
 import movimientosService from 'src/services/movimientosService';
 import Snackbar from '@mui/material/Snackbar';
 import Alert from '@mui/material/Alert';
@@ -22,6 +24,33 @@ import { getProyectosByEmpresa } from 'src/services/proyectosService';
 import { formatTimestamp } from 'src/utils/formatters';
 import { useMovimientosFilters } from 'src/hooks/useMovimientosFilters';
 import { FilterBarCajaProyecto } from 'src/components/FilterBarCajaProyecto';
+
+
+// tamaños mínimos por columna (px)
+const COLS = {
+  codigo: 120,
+  fecha: 140,
+  tipo: 120,
+  total: 160,
+  categoria: 160,
+  subcategoria: 160,
+  medioPago: 150,
+  proveedor: 220,
+  observacion: 320,
+  tc: 140,
+  usd: 160,
+  estado: 140,
+  acciones: 96,
+};
+
+// estilos comunes
+const cellBase = { py: 0.75, px: 1, whiteSpace: 'nowrap' };
+const ellipsis = (maxWidth) => ({
+  ...cellBase,
+  maxWidth,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+});
 
 
 const TotalesFiltrados = ({ t, fmt, moneda }) => {
@@ -90,10 +119,75 @@ const ProyectoMovimientosPage = () => {
   const [medioPagoCaja, setMedioPagoCaja] = useState('Efectivo');
   const [editandoCaja, setEditandoCaja] = useState(null); // null o index de la caja
   const [cajaSeleccionada, setCajaSeleccionada] = useState(null);
+  const [prefsHydrated, setPrefsHydrated] = useState(false);
+  const [savingCols, setSavingCols] = useState(false);
+  const [saveMsg, setSaveMsg] = useState(null); // opcional: feedback breve
 
   const [anchorCajaEl, setAnchorCajaEl] = useState(null);
   const [cajaMenuIndex, setCajaMenuIndex] = useState(null);
-  
+  // ---- Columnas visibles + modo compacto ----
+const [compactCols, setCompactCols] = useState(true);
+const [anchorColsEl, setAnchorColsEl] = useState(null);
+
+const handleSaveCols = async () => {
+    if (!proyecto?.id) return;
+    try {
+      setSavingCols(true);
+      await updateProyecto(proyecto.id, {
+        ...proyecto,
+        ui_prefs: {
+          ...(proyecto.ui_prefs || {}),
+          columnas: {
+            compact: compactCols,
+            visible: visibleCols,
+          },
+        },
+      });
+      setSaveMsg('Configuración guardada');
+    } catch (e) {
+      setSaveMsg('No se pudo guardar');
+    } finally {
+      setSavingCols(false);
+    }
+  };
+
+const defaultVisible = useMemo(() => ({
+  codigo: true,
+  fechas: true,            // combinado (cuando compactCols=true)
+  fechaFactura: !compactCols,
+  fechaCreacion: !compactCols,
+  tipo: !compactCols,      // en compacto, se colorea TOTAL y se oculta TIPO
+  total: true,
+  categoria: true,         // en compacto: muestra "cat / subcat"
+  subcategoria: !compactCols && !!empresa?.comprobante_info?.subcategoria,
+  medioPago: !!empresa?.comprobante_info?.medio_pago,
+  proveedor: true,
+  observacion: true,
+  tc: false,
+  usd: true,
+  estado: !!empresa?.con_estados,
+  acciones: true,
+}), [compactCols, empresa]);
+
+const [visibleCols, setVisibleCols] = useState(defaultVisible);
+
+// si todavía no hidratamos desde el proyecto, aplicamos defaults
+useEffect(() => {
+  if (!prefsHydrated) {
+    setVisibleCols(defaultVisible);
+  }
+}, [defaultVisible, prefsHydrated]);
+
+const toggleCol = (key) => {
+  setVisibleCols((v) => ({ ...v, [key]: !v[key] }));
+};
+
+// botón Columnas (al lado de filtros/título)
+const openCols = Boolean(anchorColsEl);
+const handleOpenCols = (e) => setAnchorColsEl(e.currentTarget);
+const handleCloseCols = () => setAnchorColsEl(null);
+
+
   const {
     filters,
     setFilters,
@@ -127,7 +221,6 @@ const ProyectoMovimientosPage = () => {
     setMedioPagoCaja(caja.medio_pago || '');
     setShowCrearCaja(true);
     setEstadoCaja(caja.estado || '');
-
     handleCloseCajaMenu();
   };
   
@@ -204,6 +297,20 @@ const ProyectoMovimientosPage = () => {
     setOpenDialog(false);
   };
 
+  const goToEdit = (mov) => {
+    router.push({
+      pathname: '/movementForm',
+      query: {
+        movimientoId: mov.id,
+        lastPageName: proyecto?.nombre,
+        proyectoId: proyecto?.id,
+        proyectoName: proyecto?.nombre,
+        lastPageUrl: router.asPath, // Next lo encodea
+      },
+    });
+  };
+
+  
   const handleEliminarClick = (movimientoId) => {
     setMovimientoAEliminar(movimientoId);
     setOpenDialog(true);
@@ -250,6 +357,19 @@ const ProyectoMovimientosPage = () => {
 
       const proyecto = await getProyectoById(proyectoId);
       setProyecto(proyecto);
+            // --- hidratar preferencias guardadas ---
+      const savedCols = proyecto?.ui_prefs?.columnas;
+      if (savedCols) {
+        // respetamos lo guardado
+        if (typeof savedCols.compact === 'boolean') {
+          setCompactCols(savedCols.compact);
+        }
+        if (savedCols.visible && typeof savedCols.visible === 'object') {
+          // merge con defaults actuales para no perder llaves nuevas
+          setVisibleCols((prev) => ({ ...defaultVisible, ...savedCols.visible }));
+        }
+      }
+      setPrefsHydrated(true);
       const movs = await ticketService.getMovimientosForProyecto(proyectoId, 'ARS');
       const movsUsd = await ticketService.getMovimientosForProyecto(proyectoId, 'USD');
       setMovimientos(movs);
@@ -277,32 +397,13 @@ const ProyectoMovimientosPage = () => {
     fetchData();
   }, [proyectoId, user]);
 
+  
   const formatCurrency = (amount) => {
     if (amount)
       return amount.toLocaleString('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0 });
     else
       return "$ 0";
   };
-
-  const saldoTotalCaja = useMemo(() => {
-    return movimientos.reduce((acc, mov) => {
-      if (mov.type === 'ingreso') {
-        return acc + mov.total;
-      } else {
-        return acc - mov.total;
-      }
-    }, 0);
-  }, [movimientos]);
-
-  const saldoTotalCajaUSD = useMemo(() => {
-    return movimientosUSD.reduce((acc, mov) => {
-      if (mov.type === 'ingreso') {
-        return acc + mov.total;
-      } else {
-        return acc - mov.total;
-      }
-    }, 0);
-  }, [movimientosUSD]);
 
   const onSelectCaja = (caja) => {
     setCajaSeleccionada(caja);
@@ -333,11 +434,6 @@ const ProyectoMovimientosPage = () => {
       minimumFractionDigits: 2
     }) ?? (cur === 'USD' ? 'US$ 0,00' : '$ 0,00');
   };
-
-  const columnsCount = 11 // Código, Fecha, Tipo, Total, Categoria, Proveedor, Observación, TC, USD BLUE, (Estado opc.), Acciones
-  + (empresa?.comprobante_info?.subcategoria ? 1 : 0)
-  + (empresa?.comprobante_info?.medio_pago ? 1 : 0)
-  + (empresa?.con_estados ? 1 : 0);
 
 
   const calcularTotalParaCaja = (caja) => {
@@ -437,35 +533,34 @@ const ProyectoMovimientosPage = () => {
     return ("Cuenta suspendida. Contacte al administrador." )
   }
     return (
-    <>
+    <DashboardLayout title={proyecto?.nombre || 'Proyecto'}>
       <Head>
         <title>{proyecto?.nombre}</title>
       </Head>
       <Box component="main" sx={{ flexGrow: 1, py: 8, paddingTop: 2 }}>
         <Container maxWidth="xl">
           <Stack spacing={3}>
-            <Typography variant="h6">{proyecto?.nombre}</Typography>
             
             <Stack direction="row" spacing={2}>
-       {cajasVirtuales.map((caja, index) => (
-  <Box key={index} sx={{ position: 'relative', width: '100%', mb: 1 }}>
-    <Button
-      fullWidth
-      variant={cajaSeleccionada?.nombre === caja.nombre ? "contained" : "outlined"}
-      onClick={() => onSelectCaja(caja)}
-      sx={{ justifyContent: 'space-between', pl: 2, pr: 5 }}
-    >
-      <Typography>{caja.nombre}</Typography>
-      <Typography>{formatCurrency(calcularTotalParaCaja(caja))}</Typography>
-    </Button>
-    <IconButton
-      size="small"
-      onClick={(event) => handleOpenCajaMenu(event, index)}
-      sx={{ position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)' }}
-    >
-      <MoreVertIcon fontSize="small" />
-    </IconButton>
-  </Box>
+              {cajasVirtuales.map((caja, index) => (
+                <Box key={index} sx={{ position: 'relative', width: '100%', mb: 1 }}>
+                  <Button
+                    fullWidth
+                    variant={cajaSeleccionada?.nombre === caja.nombre ? "contained" : "outlined"}
+                    onClick={() => onSelectCaja(caja)}
+                    sx={{ justifyContent: 'space-between', pl: 2, pr: 5 }}
+                  >
+              <Typography>{caja.nombre}</Typography>
+              <Typography>{formatCurrency(calcularTotalParaCaja(caja))}</Typography>
+            </Button>
+            <IconButton
+              size="small"
+              onClick={(event) => handleOpenCajaMenu(event, index)}
+              sx={{ position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)' }}
+            >
+              <MoreVertIcon fontSize="small" />
+            </IconButton>
+             </Box>
 ))}
 
 <Menu
@@ -535,6 +630,28 @@ const ProyectoMovimientosPage = () => {
                 </Alert>
               </Snackbar>
               <Stack spacing={1}>
+              <Stack direction="row" justifyContent="space-between" alignItems="center">
+  <Typography variant="h6">{proyecto?.nombre}</Typography>
+
+  <Box sx={{ display: 'flex', gap: 1 }}>
+    <Button
+      variant="outlined"
+      size="small"
+      onClick={() => handleMenuOptionClick('filtrar')}
+    >
+      {filtrosActivos ? 'Ocultar filtros' : 'Mostrar filtros'}
+    </Button>
+
+    <Button
+      variant="outlined"
+      size="small"
+      onClick={handleOpenCols}
+    >
+      Columnas
+    </Button>
+  </Box>
+</Stack>
+
               <TotalesFiltrados
                     t={totalesDetallados}
                     fmt={formatByCurrency}
@@ -561,9 +678,9 @@ const ProyectoMovimientosPage = () => {
                             <Button
                               color="primary"
                               startIcon={<EditIcon />}
-                              onClick={() => router.push(`/movementForm?movimientoId=${mov.id}&lastPageName=${proyecto.nombre}&proyectoId=${proyecto.id}&proyectoName=${proyecto.nombre}&lastPageUrl=${router.asPath}`)}
+                              onClick={() => goToEdit(mov)}
                             >
-                              Ver / Editar
+                              Ver / Editar 
                             </Button>
                             <Button
                               color="error"
@@ -579,66 +696,303 @@ const ProyectoMovimientosPage = () => {
                     
                   </Stack>
                 ) : (
-                  <Table>
-                    <TableHead>
-                      <TableRow>
-                        <TableCell>Código</TableCell>
-                        <TableCell>Fecha factura</TableCell>
-                        <TableCell>Fecha creación</TableCell>
-                        <TableCell>Tipo</TableCell>
-                        <TableCell>Total</TableCell>
-                        <TableCell>Categoria</TableCell>
-                        {empresa?.comprobante_info?.subcategoria && <TableCell>Subcategoría</TableCell>}
-                        {empresa?.comprobante_info?.medio_pago && <TableCell>Medio de pago</TableCell>}
-                        <TableCell>Proveedor</TableCell>
-                        <TableCell>Observación</TableCell>
-                        <TableCell>Tipo de cambio ejecutado</TableCell>
-                        <TableCell>Valor en USD BLUE del dia</TableCell>
-                        {empresa?.con_estados && <TableCell>Estado</TableCell>}
-                        <TableCell>Acciones</TableCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {movimientosFiltrados.map((mov, index) => (
-                        <TableRow key={index}>
-                          <TableCell>{mov.codigo_operacion}</TableCell>
-                          <TableCell>{formatTimestamp(mov.fecha_factura)}</TableCell>
-                          <TableCell>{formatTimestamp(mov.fecha_creacion)}</TableCell>
-                          <TableCell>
-                            <Chip
-                              label={mov.type === "ingreso" ? "Ingreso" : "Egreso"}
-                              color={mov.type === "ingreso" ? "success" : "error"}
-                            />
-                          </TableCell>
-                          <TableCell>{formatCurrency(mov.total)}</TableCell>
-                          <TableCell>{mov.categoria}</TableCell>
-                          {empresa?.comprobante_info?.subcategoria && <TableCell>{mov.subcategoria}</TableCell>}
-                          {empresa?.comprobante_info?.medio_pago && <TableCell>{mov.medio_pago}</TableCell>}
-                          <TableCell>{mov.nombre_proveedor}</TableCell>
-                          <TableCell>{mov.observacion}</TableCell>
-                          <TableCell>{mov.tc ? `$ ${mov.tc}` : "-"}</TableCell>
-                          <TableCell>{mov.equivalencias ? "USD" + formatCurrency(mov.equivalencias.total.usd_blue) : "-"}</TableCell>
-                          {empresa?.con_estados && <TableCell>{mov.estado ? mov.estado : ""}</TableCell>} 
-                          <TableCell>
-                            <Button
-                              color="primary"
-                              startIcon={<EditIcon />}
-                              onClick={() => router.push(`/movementForm?movimientoId=${mov.id}&lastPageName=${proyecto.nombre}&proyectoId=${proyecto.id}&proyectoName=${proyecto.nombre}&lastPageUrl=${router.asPath}`)}
-                            >
-                              Ver / Editar
-                            </Button>
-                            <Button
-                              color="error"
-                              startIcon={<DeleteIcon />}
-                              onClick={() => handleEliminarClick(mov.id)}
-                            >
-                              {deletingElement !== mov.id ? "Eliminar" : "Eliminando..."}
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                  <>
+
+<Popover
+  open={openCols}
+  anchorEl={anchorColsEl}
+  onClose={handleCloseCols}
+  anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+  transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+  PaperProps={{ sx: { p: 1, width: 280 } }}
+>
+  <Stack spacing={1.25}>
+    <FormControlLabel
+      control={<Switch size="small" checked={compactCols} onChange={(e) => setCompactCols(e.target.checked)} />}
+      label="Modo compacto"
+    />
+
+    {/* lista de columnas */}
+    <FormControlLabel control={<Checkbox size="small" checked={visibleCols.codigo}     onChange={() => toggleCol('codigo')} />}     label="Código" />
+    {compactCols ? (
+      <FormControlLabel control={<Checkbox size="small" checked={visibleCols.fechas}     onChange={() => toggleCol('fechas')} />}     label="Fechas" />
+    ) : (
+      <>
+        <FormControlLabel control={<Checkbox size="small" checked={visibleCols.fechaFactura}  onChange={() => toggleCol('fechaFactura')} />}  label="Fecha factura" />
+        <FormControlLabel control={<Checkbox size="small" checked={visibleCols.fechaCreacion} onChange={() => toggleCol('fechaCreacion')} />} label="Fecha creación" />
+      </>
+    )}
+    {!compactCols && (
+      <FormControlLabel control={<Checkbox size="small" checked={visibleCols.tipo} onChange={() => toggleCol('tipo')} />} label="Tipo" />
+    )}
+    <FormControlLabel control={<Checkbox size="small" checked={visibleCols.total}        onChange={() => toggleCol('total')} />}        label="Total" />
+    <FormControlLabel control={<Checkbox size="small" checked={visibleCols.categoria}    onChange={() => toggleCol('categoria')} />}    label={compactCols ? "Categoría / Subcat." : "Categoría"} />
+    {!compactCols && empresa?.comprobante_info?.subcategoria && (
+      <FormControlLabel control={<Checkbox size="small" checked={visibleCols.subcategoria} onChange={() => toggleCol('subcategoria')} />} label="Subcategoría" />
+    )}
+    {empresa?.comprobante_info?.medio_pago && (
+      <FormControlLabel control={<Checkbox size="small" checked={visibleCols.medioPago}   onChange={() => toggleCol('medioPago')} />}   label="Medio de pago" />
+    )}
+    <FormControlLabel control={<Checkbox size="small" checked={visibleCols.proveedor}    onChange={() => toggleCol('proveedor')} />}    label="Proveedor" />
+    <FormControlLabel control={<Checkbox size="small" checked={visibleCols.observacion}  onChange={() => toggleCol('observacion')} />}  label="Observación" />
+    <FormControlLabel control={<Checkbox size="small" checked={visibleCols.tc}           onChange={() => toggleCol('tc')} />}           label="TC ejecutado" />
+    <FormControlLabel control={<Checkbox size="small" checked={visibleCols.usd}          onChange={() => toggleCol('usd')} />}          label="USD blue" />
+    {empresa?.con_estados && (
+      <FormControlLabel control={<Checkbox size="small" checked={visibleCols.estado}      onChange={() => toggleCol('estado')} />}      label="Estado" />
+    )}
+    <FormControlLabel control={<Checkbox size="small" checked={visibleCols.acciones}     onChange={() => toggleCol('acciones')} />}     label="Acciones" />
+        <Box sx={{ display: 'flex', gap: 1, pt: 0.5 }}>
+      <Button
+        size="small"
+        variant="outlined"
+        onClick={handleCloseCols}
+        fullWidth
+      >
+        Cerrar
+      </Button>
+      <Button
+        size="small"
+        variant="contained"
+        onClick={handleSaveCols}
+        disabled={!prefsHydrated || savingCols}
+        fullWidth
+      >
+        {savingCols ? 'Guardando…' : 'Guardar configuración'}
+      </Button>
+    </Box>
+  </Stack>
+</Popover>
+
+<TableContainer
+  component={Paper}
+  sx={{ height: 'calc(100vh - 300px)', overflow: 'auto' }}
+>
+  <Table stickyHeader size="small">
+    <TableHead>
+      <TableRow>
+        {visibleCols.codigo && (
+          <TableCell sx={{ ...cellBase, minWidth: COLS.codigo, position: 'sticky', left: 0, zIndex: 2, bgcolor: 'background.paper' }}>
+            CÓDIGO
+          </TableCell>
+        )}
+
+        {compactCols ? (
+          visibleCols.fechas && (
+            <TableCell sx={{ ...cellBase, minWidth: COLS.fecha + 40 }}>
+              FECHAS
+            </TableCell>
+          )
+        ) : (
+          <>
+            {visibleCols.fechaFactura && (
+              <TableCell sx={{ ...cellBase, minWidth: COLS.fecha }}>FECHA FACTURA</TableCell>
+            )}
+            {visibleCols.fechaCreacion && (
+              <TableCell sx={{ ...cellBase, minWidth: COLS.fecha }}>FECHA CREACIÓN</TableCell>
+            )}
+          </>
+        )}
+
+        {!compactCols && visibleCols.tipo && (
+          <TableCell sx={{ ...cellBase, minWidth: COLS.tipo }}>TIPO</TableCell>
+        )}
+
+        {visibleCols.total && (
+          <TableCell sx={{ ...cellBase, minWidth: COLS.total, textAlign: 'right' }}>TOTAL</TableCell>
+        )}
+
+        {visibleCols.categoria && (
+          <TableCell sx={{ ...cellBase, minWidth: COLS.categoria }}>
+            {compactCols ? 'CATEGORÍA / SUBCAT.' : 'CATEGORÍA'}
+          </TableCell>
+        )}
+
+        {!compactCols && empresa?.comprobante_info?.subcategoria && visibleCols.subcategoria && (
+          <TableCell sx={{ ...cellBase, minWidth: COLS.subcategoria }}>SUBCATEGORÍA</TableCell>
+        )}
+
+        {empresa?.comprobante_info?.medio_pago && visibleCols.medioPago && (
+          <TableCell sx={{ ...cellBase, minWidth: COLS.medioPago }}>MEDIO DE PAGO</TableCell>
+        )}
+
+        {visibleCols.proveedor && (
+          <TableCell sx={{ ...cellBase, minWidth: COLS.proveedor }}>PROVEEDOR</TableCell>
+        )}
+
+        {visibleCols.observacion && (
+          <TableCell sx={{ ...cellBase, minWidth: COLS.observacion }}>OBSERVACIÓN</TableCell>
+        )}
+
+        {visibleCols.tc && (
+          <TableCell sx={{ ...cellBase, minWidth: COLS.tc }}>TC EJECUTADO</TableCell>
+        )}
+
+        {visibleCols.usd && (
+          <TableCell sx={{ ...cellBase, minWidth: COLS.usd }}>USD BLUE</TableCell>
+        )}
+
+        {empresa?.con_estados && visibleCols.estado && (
+          <TableCell sx={{ ...cellBase, minWidth: COLS.estado }}>ESTADO</TableCell>
+        )}
+
+        {visibleCols.acciones && (
+          <TableCell sx={{ ...cellBase, minWidth: COLS.acciones, textAlign: 'center' }}>ACCIONES</TableCell>
+        )}
+      </TableRow>
+    </TableHead>
+
+    <TableBody>
+      {movimientosFiltrados.map((mov, index) => {
+        const amountColor =
+          compactCols
+            ? (mov.type === 'ingreso' ? 'success.main' : 'error.main')
+            : 'inherit';
+
+        return (
+          <TableRow key={index} hover>
+            {visibleCols.codigo && (
+              <TableCell
+                sx={{ ...cellBase, minWidth: COLS.codigo, position: 'sticky', left: 0, zIndex: 1, bgcolor: 'background.paper' }}
+              >
+                {mov.codigo_operacion}
+              </TableCell>
+            )}
+
+            {compactCols ? (
+              visibleCols.fechas && (
+                <TableCell sx={{ ...cellBase, minWidth: COLS.fecha + 40 }}>
+                  {/* compacto: ambas fechas en una sola celda */}
+                  <Stack direction="row" spacing={1} divider={<span>•</span>}>
+                    <Typography variant="body2">Fac: {formatTimestamp(mov.fecha_factura)}</Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Cre: {formatTimestamp(mov.fecha_creacion)}
+                    </Typography>
+                  </Stack>
+                </TableCell>
+              )
+            ) : (
+              <>
+                {visibleCols.fechaFactura && (
+                  <TableCell sx={{ ...cellBase, minWidth: COLS.fecha }}>
+                    {formatTimestamp(mov.fecha_factura)}
+                  </TableCell>
+                )}
+                {visibleCols.fechaCreacion && (
+                  <TableCell sx={{ ...cellBase, minWidth: COLS.fecha }}>
+                    {formatTimestamp(mov.fecha_creacion)}
+                  </TableCell>
+                )}
+              </>
+            )}
+
+            {!compactCols && visibleCols.tipo && (
+              <TableCell sx={{ ...cellBase, minWidth: COLS.tipo }}>
+                <Chip
+                  label={mov.type === 'ingreso' ? 'Ingreso' : 'Egreso'}
+                  color={mov.type === 'ingreso' ? 'success' : 'error'}
+                  size="small"
+                />
+              </TableCell>
+            )}
+
+            {visibleCols.total && (
+              <TableCell
+                sx={{ ...cellBase, minWidth: COLS.total, textAlign: 'right', fontWeight: 700, color: amountColor }}
+              >
+                {formatCurrency(mov.total)}
+              </TableCell>
+            )}
+
+            {visibleCols.categoria && (
+              <TableCell sx={{ ...cellBase, minWidth: COLS.categoria }}>
+                {compactCols
+                  ? (
+                    <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+                      <span>{mov.categoria}</span>
+                      {empresa?.comprobante_info?.subcategoria && mov.subcategoria && (
+                        <Typography variant="caption" color="text.secondary">/ {mov.subcategoria}</Typography>
+                      )}
+                    </Stack>
+                  )
+                  : mov.categoria}
+              </TableCell>
+            )}
+
+            {!compactCols && empresa?.comprobante_info?.subcategoria && visibleCols.subcategoria && (
+              <TableCell sx={{ ...cellBase, minWidth: COLS.subcategoria }}>
+                {mov.subcategoria}
+              </TableCell>
+            )}
+
+            {empresa?.comprobante_info?.medio_pago && visibleCols.medioPago && (
+              <TableCell sx={{ ...cellBase, minWidth: COLS.medioPago }}>
+                <Chip size="small" label={mov.medio_pago || '-'} />
+              </TableCell>
+            )}
+
+            {visibleCols.proveedor && (
+              <TableCell sx={ellipsis(COLS.proveedor)}>
+                <Tooltip title={mov.nombre_proveedor || ''}>
+                  <span>{mov.nombre_proveedor}</span>
+                </Tooltip>
+              </TableCell>
+            )}
+
+            {visibleCols.observacion && (
+              <TableCell sx={ellipsis(COLS.observacion)}>
+                <Tooltip title={mov.observacion || ''}>
+                  <span>{mov.observacion}</span>
+                </Tooltip>
+              </TableCell>
+            )}
+
+            {visibleCols.tc && (
+              <TableCell sx={{ ...cellBase, minWidth: COLS.tc }}>
+                {mov.tc ? `$ ${mov.tc}` : '-'}
+              </TableCell>
+            )}
+
+            {visibleCols.usd && (
+              <TableCell sx={{ ...cellBase, minWidth: COLS.usd }}>
+                {mov.equivalencias
+                  ? `US$ ${mov.equivalencias.total.usd_blue?.toLocaleString('es-AR', { minimumFractionDigits: 2 })}`
+                  : '-'}
+              </TableCell>
+            )}
+
+            {empresa?.con_estados && visibleCols.estado && (
+              <TableCell sx={{ ...cellBase, minWidth: COLS.estado }}>
+                {mov.estado ? <Chip size="small" label={mov.estado} /> : ''}
+              </TableCell>
+            )}
+
+            {visibleCols.acciones && (
+              <TableCell sx={{ ...cellBase, minWidth: COLS.acciones, textAlign: 'center' }}>
+                <IconButton
+                  size="small"
+                  color="primary"
+                  onClick={() => goToEdit(mov)}
+                >
+                  <EditIcon fontSize="small" />
+                </IconButton>
+                <IconButton
+                  size="small"
+                  color="error"
+                  onClick={() => handleEliminarClick(mov.id)}
+                  disabled={deletingElement === mov.id}
+                >
+                  <DeleteIcon fontSize="small" />
+                </IconButton>
+              </TableCell>
+            )}
+          </TableRow>
+        );
+      })}
+    </TableBody>
+  </Table>
+</TableContainer>
+
+</>
                 )}
             </Paper>
           </Stack>
@@ -729,14 +1083,8 @@ const ProyectoMovimientosPage = () => {
           </Button>
         </DialogActions>
       </Dialog>
-    </>
+    </DashboardLayout>
   );
 };
-
-ProyectoMovimientosPage.getLayout = (page) => (
-  <DashboardLayout>
-    {page}
-  </DashboardLayout>
-);
 
 export default ProyectoMovimientosPage;
