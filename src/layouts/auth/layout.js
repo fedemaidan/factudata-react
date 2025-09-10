@@ -94,7 +94,7 @@ export const Layout = (props) => {
               sx={{ mb: 3 }}
               variant="subtitle1"
             >
-              Una herramienta basada en IA para ayudarte en la gestión contable
+              Una herramienta basada en IA para ayudarte en gestionar tu constructora
             </Typography>
             <img
               alt=""
