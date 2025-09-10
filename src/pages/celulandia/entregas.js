@@ -256,13 +256,10 @@ const EntregasCelulandiaPage = () => {
   };
 
   return (
-    <>
-      <Head>
-        <title>Entregas</title>
-      </Head>
+    <DashboardLayout title="Entregas">
+      <Head>Entregas</Head>
       <Container maxWidth="xl">
         <DataTable
-          title="Entregas"
           data={entregas}
           isLoading={isLoading}
           columns={columns}
@@ -387,10 +384,8 @@ const EntregasCelulandiaPage = () => {
         message="¿Estás seguro que deseas eliminar esta entrega?"
         itemName={selectedData ? `Entrega ${selectedData.descripcion || selectedData._id}` : ""}
       />
-    </>
+    </DashboardLayout>
   );
 };
-
-EntregasCelulandiaPage.getLayout = (page) => <DashboardLayout>{page}</DashboardLayout>;
 
 export default EntregasCelulandiaPage;

@@ -142,7 +142,7 @@ const CuentaCorrienteCelulandiaPage = () => {
       }
 
       // Para fechas, convertimos a timestamp para ordenar
-      if (ordenCampo === "fechaUltimoPago") {
+      if (ordenCampo === "fechaUltimoPago" || ordenCampo === "fechaUltimaEntrega") {
         aVal = aVal ? new Date(aVal).getTime() : 0;
         bVal = bVal ? new Date(bVal).getTime() : 0;
       }
@@ -162,7 +162,7 @@ const CuentaCorrienteCelulandiaPage = () => {
   };
 
   return (
-    <>
+    <DashboardLayout title="Cuenta Corriente">
       <Head>
         <title>Cuenta Corriente</title>
       </Head>
@@ -174,14 +174,7 @@ const CuentaCorrienteCelulandiaPage = () => {
         }}
       >
         <Container maxWidth="xl">
-          <Stack spacing={3}>
-            <Stack direction="row" justifyContent="space-between" spacing={4}>
-              <Stack spacing={1}>
-                <Typography variant="h4">Cuenta Corriente</Typography>
-              </Stack>
-            </Stack>
-            <Divider />
-
+          <Stack>
             <Stack direction="row" spacing={2} alignItems="center">
               <TextField
                 label="Buscar cliente"
@@ -309,6 +302,24 @@ const CuentaCorrienteCelulandiaPage = () => {
                         </TableCell>
                         <TableCell
                           onClick={() => {
+                            if (ordenCampo === "fechaUltimaEntrega") {
+                              setOrdenDireccion(ordenDireccion === "asc" ? "desc" : "asc");
+                            } else {
+                              setOrdenCampo("fechaUltimaEntrega");
+                              setOrdenDireccion("desc");
+                            }
+                          }}
+                          sx={{ cursor: "pointer" }}
+                        >
+                          Última Entrega
+                          {ordenCampo === "fechaUltimaEntrega"
+                            ? ordenDireccion === "asc"
+                              ? " ▲"
+                              : " ▼"
+                            : ""}
+                        </TableCell>
+                        <TableCell
+                          onClick={() => {
                             if (ordenCampo === "fechaUltimoPago") {
                               setOrdenDireccion(ordenDireccion === "asc" ? "desc" : "asc");
                             } else {
@@ -343,6 +354,7 @@ const CuentaCorrienteCelulandiaPage = () => {
                           <TableCell>{formatearMonto(cliente.ARS)}</TableCell>
                           <TableCell>{formatearMonto(cliente["USD BLUE"])}</TableCell>
                           <TableCell>{formatearMonto(cliente["USD OFICIAL"])}</TableCell>
+                          <TableCell>{formatearFecha(cliente.fechaUltimaEntrega)}</TableCell>
                           <TableCell>{formatearFecha(cliente.fechaUltimoPago)}</TableCell>
                         </TableRow>
                       ))}
@@ -367,10 +379,8 @@ const CuentaCorrienteCelulandiaPage = () => {
           </Stack>
         </Container>
       </Box>
-    </>
+    </DashboardLayout>
   );
 };
-
-CuentaCorrienteCelulandiaPage.getLayout = (page) => <DashboardLayout>{page}</DashboardLayout>;
 
 export default CuentaCorrienteCelulandiaPage;

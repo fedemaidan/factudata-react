@@ -35,6 +35,7 @@ import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import dayjs from "dayjs";
+import agregarSaldoCalculado from "src/utils/celulandia/agregarSaldoCalculado";
 
 const n = (x) => (Number.isFinite(Number(x)) ? Number(x) : 0);
 const r2 = (x) => Math.round((x + Number.EPSILON) * 100) / 100;
@@ -42,7 +43,11 @@ const getTimeSafe = (v) => {
   if (!v) return 0;
   const d = new Date(v);
   if (!isNaN(d.getTime())) return d.getTime();
-  const p = dayjs(v, ["DD/MM/YYYY","D/M/YYYY","YYYY-MM-DD","YYYY/MM/DD","MM/DD/YYYY","M/D/YYYY"], true);
+  const p = dayjs(
+    v,
+    ["DD/MM/YYYY", "D/M/YYYY", "YYYY-MM-DD", "YYYY/MM/DD", "MM/DD/YYYY", "M/D/YYYY"],
+    true
+  );
   return p.isValid() ? p.valueOf() : 0;
 };
 
@@ -75,6 +80,7 @@ const DataTabTable = ({
   filtroFecha = "todos",
   onFiltroFechaChange = null,
   onOptionChange = null,
+  showSaldoColumn = false,
 }) => {
   const [busqueda, setBusqueda] = useState("");
   const [internalFiltroFecha, setInternalFiltroFecha] = useState(filtroFecha);
@@ -272,15 +278,36 @@ const DataTabTable = ({
     return map;
   }, [sortedAndFilteredItems, options]);
 
-  const paginatedGrouped = useMemo(() => {
+  // Recalcular Debe/Haber/Saldo por grupo según la pestaña (CC) y en orden cronológico ASC
+  const groupedWithSaldo = useMemo(() => {
     const map = new Map();
     for (const [key, itemsArr] of grouped.entries()) {
+      const asc = [...itemsArr].sort((a, b) => getTimeSafe(a.fecha) - getTimeSafe(b.fecha));
+      const computedAsc = agregarSaldoCalculado(asc);
+      const byId = new Map(computedAsc.map((it) => [it.id, it]));
+      const merged = itemsArr.map((it) => {
+        const comp = byId.get(it.id) || {};
+        return {
+          ...it,
+          debe: comp.debe ?? it.debe,
+          haber: comp.haber ?? it.haber,
+          saldoAcumulado: comp.saldoAcumulado ?? it.saldoAcumulado,
+        };
+      });
+      map.set(key, merged);
+    }
+    return map;
+  }, [grouped]);
+
+  const paginatedGrouped = useMemo(() => {
+    const map = new Map();
+    for (const [key, itemsArr] of groupedWithSaldo.entries()) {
       const startIndex = finalPage * finalRowsPerPage;
       const endIndex = startIndex + finalRowsPerPage;
       map.set(key, itemsArr.slice(startIndex, endIndex));
     }
     return map;
-  }, [grouped, finalPage, finalRowsPerPage]);
+  }, [groupedWithSaldo, finalPage, finalRowsPerPage]);
 
   const totals = useMemo(() => {
     const res = new Map();
@@ -293,24 +320,25 @@ const DataTabTable = ({
 
   // Exportar a Excel (pestaña actual) — con Debe/Haber/Saldo acumulado y números puros
   const handleExportExcel = () => {
-    const allRows = grouped.get(currentOption) || [];
+    const allRows = groupedWithSaldo.get(currentOption) || [];
     const monedaLabel = options.find((o) => o.value === currentOption)?.label || "";
-  
+
     // Orden cronológico ASC (más viejo primero)
     const rowsSorted = [...allRows].sort((a, b) => getTimeSafe(a.fecha) - getTimeSafe(b.fecha));
-    
+
     let running = 0;
-  
+
     const data = rowsSorted.map((row) => {
-      console.log(row)
-      // Derivar Debe/Haber numéricos puros
-      const monto = n(row.monto); // por si lo necesitás de referencia
-      const debe = row.debe != null ? n(row.debe) : (monto < 0 ? Math.abs(monto) : 0);
-      const haber = row.haber != null ? n(row.haber) : (monto > 0 ? monto : 0);
-  
+      console.log(row);
+      // Derivar Debe/Haber numéricos puros desde montoCC si existe (según CC seleccionada)
+      const raw = row.montoCC != null ? row.montoCC : row.monto;
+      const monto = n(raw);
+      const debe = row.debe != null ? n(row.debe) : monto < 0 ? Math.abs(monto) : 0;
+      const haber = row.haber != null ? n(row.haber) : monto > 0 ? monto : 0;
+
       // Saldo acumulado = saldo previo + (Haber - Debe)
       running = r2(running + (haber - debe));
-  
+
       return {
         Fecha: formatearCampo("fecha", row.fecha),
         Cliente: row.cliente ?? "",
@@ -323,15 +351,13 @@ const DataTabTable = ({
         "Moneda original": row.monedaOriginal ?? "",
       };
     });
-  
+
     const ws = XLSX.utils.json_to_sheet(data);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, monedaLabel || "Datos");
     const filename = `reporte_${monedaLabel || "datos"}_${dayjs().format("YYYY-MM-DD_HHmm")}.xlsx`;
     XLSX.writeFile(wb, filename);
   };
-  
-
 
   if (isLoading) {
     return (
@@ -343,9 +369,9 @@ const DataTabTable = ({
 
   return (
     <Paper>
-      <Stack spacing={2} sx={{ p: 2 }}>
-        <Stack direction="row" spacing={2} alignItems="center" justifyContent="space-between">
-          <Stack direction="row" spacing={2} alignItems="center">
+      <Stack sx={{ pb: 2 }}>
+        <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
+          <Stack direction="row" spacing={1} alignItems="center">
             {showSearch && (
               <TextField
                 label="Buscar"
@@ -443,7 +469,7 @@ const DataTabTable = ({
       {options.map((opt) => (
         <div key={opt.value} role="tabpanel" hidden={currentOption !== opt.value}>
           {currentOption === opt.value && (
-            <Box sx={{ pt: 1 }}>
+            <Box>
               <Table>
                 <TableHead>
                   <TableRow>
@@ -466,6 +492,7 @@ const DataTabTable = ({
                       Monto Original (sin descuento)
                     </TableCell>
                     <TableCell sx={{ fontWeight: "bold" }}>Moneda Original</TableCell>
+                    {showSaldoColumn && <TableCell sx={{ fontWeight: "bold" }}>Saldo</TableCell>}
 
                     {(onEdit || onViewHistory || onDelete || onViewImage) && (
                       <TableCell sx={{ fontWeight: "bold", textAlign: "center" }}>
@@ -502,6 +529,15 @@ const DataTabTable = ({
                         </Typography>
                       </TableCell>
                       <TableCell>{formatearCampo("monedaDePago", row.monedaOriginal)}</TableCell>
+                      {showSaldoColumn && (
+                        <TableCell>
+                          <Typography
+                            color={(row.saldoAcumulado || 0) < 0 ? "error.main" : "text.primary"}
+                          >
+                            {formatCurrency(Math.round(row.saldoAcumulado || 0))}
+                          </Typography>
+                        </TableCell>
+                      )}
 
                       {(onEdit || onViewHistory || onDelete || onViewImage) && (
                         <TableCell sx={{ textAlign: "center" }}>

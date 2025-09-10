@@ -150,13 +150,12 @@ const ClientesCelulandiaPage = () => {
   };
 
   return (
-    <>
+    <DashboardLayout title="Clientes">
       <Head>
         <title>Clientes</title>
       </Head>
       <Container maxWidth="xl">
         <DataTable
-          title="Clientes"
           data={clientes}
           isLoading={isLoading}
           columns={columns}
@@ -222,10 +221,8 @@ const ClientesCelulandiaPage = () => {
         message="¿Estás seguro que deseas eliminar este cliente?"
         itemName={selectedData ? `Cliente ${selectedData.nombre || selectedData._id}` : ""}
       />
-    </>
+    </DashboardLayout>
   );
 };
-
-ClientesCelulandiaPage.getLayout = (page) => <DashboardLayout>{page}</DashboardLayout>;
 
 export default ClientesCelulandiaPage;

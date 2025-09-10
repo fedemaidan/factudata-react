@@ -268,13 +268,12 @@ const ChequesCelulandiaPage = () => {
   };
 
   return (
-    <>
+    <DashboardLayout title="Cheques">
       <Head>
         <title>Cheques</title>
       </Head>
       <Container maxWidth="xl">
         <DataTable
-          title="Cheques"
           data={movimientos}
           isLoading={isLoading}
           columns={columns}
@@ -335,10 +334,8 @@ const ChequesCelulandiaPage = () => {
         message="¿Estás seguro que deseas eliminar este cheque?"
         itemName={selectedData ? `Cheque ${selectedData.numeroFactura || selectedData._id}` : ""}
       />
-    </>
+    </DashboardLayout>
   );
 };
-
-ChequesCelulandiaPage.getLayout = (page) => <DashboardLayout>{page}</DashboardLayout>;
 
 export default ChequesCelulandiaPage;
