@@ -144,6 +144,8 @@ const [anchorColsEl, setAnchorColsEl] = useState(null);
 // --- helpers de scroll horizontal ---
 const scrollRef = useRef(null);      // contenedor principal con overflow
 const topScrollRef = useRef(null);   // barra superior "fantasma"
+const tableRef = useRef(null);
+
 const [atEdges, setAtEdges] = useState({ left: true, right: false });
 const [atStart, setAtStart] = useState(true);
 const [atEnd, setAtEnd] = useState(true);
@@ -166,45 +168,50 @@ const handleChangeRowsPerPage = (evt) => {
   setPage(0);
 };
 
+const getMax = () => {
+  const cont = scrollRef.current;
+  const table = tableRef.current;
+  if (!cont || !table) return 0;
+  return Math.max(0, table.scrollWidth - cont.clientWidth);
+};
 
 useEffect(() => {
-  const el = scrollRef.current;
-  const top = topScrollRef.current;
-  if (!el || !top) return;
+  const cont = scrollRef.current;
+  const table = tableRef.current;
+  const top   = topScrollRef.current;
+  if (!cont || !table || !top) return;
 
-  // según donde esté el scroll horizontal
-  const updateEdges = () => {
-    const max = el.scrollWidth - el.clientWidth;
-    setAtStart(el.scrollLeft <= 0);
-    setAtEnd(el.scrollLeft >= max - 1);
-    setTopWidth(el.scrollWidth); // actualiza ancho de barra superior
-    top.scrollLeft = el.scrollLeft; // sincroniza top
+  const compute = () => {
+    // Forzamos overflow real arriba
+    setTopWidth(Math.max(table.scrollWidth, cont.clientWidth + 32));
+
+    const max = getMax();
+    const sl  = cont.scrollLeft;
+
+    setAtStart(sl <= 0);
+    setAtEnd(sl >= max - 1 || max <= 0);
+
+    if (top.scrollLeft !== sl) top.scrollLeft = sl;
   };
 
-  const syncFromTop = () => {
-    el.scrollLeft = top.scrollLeft;
-    updateEdges();
-  };
+  const onContScroll = () => compute();
 
-  el.addEventListener('scroll', updateEdges, { passive: true });
-  top.addEventListener('scroll', syncFromTop, { passive: true });
+  cont.addEventListener('scroll', onContScroll, { passive: true });
 
-  // observar cambios de tamaño (columnas, viewport, etc.)
-  const ro = new ResizeObserver(() => {
-    setTopWidth(el.scrollWidth);
-    updateEdges();
-  });
-  ro.observe(el);
+  const roCont  = new ResizeObserver(compute);
+  const roTable = new ResizeObserver(compute);
+  roCont.observe(cont);
+  roTable.observe(table);
 
-  // inicial
-  requestAnimationFrame(updateEdges);
-
+  requestAnimationFrame(compute);
   return () => {
-    el.removeEventListener('scroll', updateEdges);
-    top.removeEventListener('scroll', syncFromTop);
-    ro.disconnect();
+    cont.removeEventListener('scroll', onContScroll);
+    roCont.disconnect();
+    roTable.disconnect();
   };
 }, []);
+
+
 
 const handleTopScroll = () => {
   if (!topScrollRef.current || !scrollRef.current) return;
@@ -212,17 +219,23 @@ const handleTopScroll = () => {
 };
 
 const scrollByStep = (dir) => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const max   = el.scrollWidth - el.clientWidth;      // límite derecho
-    const step  = Math.max(240, Math.round(el.clientWidth * 0.8));
-    const next  = dir === 'left'
-      ? Math.max(0, el.scrollLeft - step)               // clamp a 0
-      : Math.min(max, el.scrollLeft + step);            // clamp a max
-  
-    el.scrollTo({ left: next, behavior: 'smooth' });
-  };
+  const el = scrollRef.current;
+  const table = tableRef.current;
+  if (!el || !table) return;
 
+  const max  = getMax();  // <- unificado
+  const step = Math.max(240, Math.round(el.clientWidth * 0.8));
+  let next   = dir === 'left'
+    ? Math.max(0, el.scrollLeft - step)
+    : Math.min(max, el.scrollLeft + step);
+
+  // Snap a los extremos si quedamos muy cerca
+  const snap = 16;
+  if (dir === 'right' && max - next < snap) next = max;
+  if (dir === 'left'  && next < snap)       next = 0;
+
+  el.scrollTo({ left: next, behavior: 'smooth' });
+};
 
 const handleSaveCols = async () => {
     if (!proyecto?.id) return;
@@ -407,6 +420,8 @@ const handleCloseCols = () => setAnchorColsEl(null);
     setMovimientoAEliminar(movimientoId);
     setOpenDialog(true);
   };
+  
+  
 
   const handleRefresh = async () => {
     if (!proyectoId) return;
@@ -488,7 +503,6 @@ const handleCloseCols = () => setAnchorColsEl(null);
 
     fetchData();
   }, [proyectoId, user]);
-
   
   const formatCurrency = (amount) => {
     if (amount)
@@ -628,8 +642,8 @@ const handleCloseCols = () => setAnchorColsEl(null);
     }
     handleCloseMenu();
   };
-
-
+  
+  
 // si cambian los filtros y la página quedó fuera de rango, volvemos a 0
 useEffect(() => {
   const maxPage = Math.max(0, Math.ceil(totalRows / rowsPerPage) - 1);
@@ -871,19 +885,54 @@ useEffect(() => {
 
 {/* ===== Scrollbar superior sincronizada ===== */}
 <Box sx={{ position: 'relative', mb: 0.5 }}>
-  <Box
-    ref={topScrollRef}
-    sx={{
-      overflowX: 'auto',
-      overflowY: 'hidden',
-      height: 10,
-      bgcolor: 'transparent',
-      '&::-webkit-scrollbar': { height: 8 },
-      '&::-webkit-scrollbar-thumb': { borderRadius: 8, backgroundColor: 'rgba(0,0,0,0.25)' },
-    }}
-  >
-    <Box sx={{ width: topWidth }} />
-  </Box>
+<Box
+  ref={topScrollRef}
+  onScroll={(e) => {
+    const cont = scrollRef.current;
+    if (!cont) return;
+    cont.scrollLeft = e.currentTarget.scrollLeft;
+
+    const max = getMax();
+    const sl  = cont.scrollLeft;
+    setAtStart(sl <= 0);
+    setAtEnd(sl >= max - 1 || max <= 0);
+  }}
+
+  sx={{
+    width: '100%',
+    overflowX: 'scroll',   // siempre visible
+    overflowY: 'hidden',
+    height: 14,
+
+    // mismo look que TableContainer, pero MÁS OSCURO y SIEMPRE visible
+    '&::-webkit-scrollbar': { height: 10 },
+    '&::-webkit-scrollbar-track': {
+      backgroundColor: (t) =>
+        t.palette.mode === 'dark' ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.12)',
+      borderRadius: 8,
+    },
+    '&::-webkit-scrollbar-thumb': {
+      borderRadius: 8,
+      backgroundColor: (t) =>
+        t.palette.mode === 'dark' ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.45)',
+    },
+    '&::-webkit-scrollbar-thumb:hover': {
+      backgroundColor: (t) =>
+        t.palette.mode === 'dark' ? 'rgba(255,255,255,0.75)' : 'rgba(0,0,0,0.65)',
+    },
+
+    // Firefox
+    scrollbarWidth: 'thin',
+    scrollbarColor: (t) =>
+      t.palette.mode === 'dark'
+        ? 'rgba(255,255,255,0.55) rgba(255,255,255,0.18)'
+        : 'rgba(0,0,0,0.45) rgba(0,0,0,0.12)',
+  }}
+>
+<Box sx={{ width: topWidth || '120%' , height: 1 }} />
+</Box>
+
+
 </Box>
 
 
@@ -1002,7 +1051,7 @@ useEffect(() => {
     '&::-webkit-scrollbar-thumb': { background: 'rgba(0,0,0,0.25)', borderRadius: 8 },
   }}
 >
-  <Table stickyHeader size="small">
+  <Table ref={tableRef} stickyHeader size="small">
     <TableHead>
       <TableRow>
         {visibleCols.codigo && (
