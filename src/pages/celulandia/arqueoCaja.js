@@ -161,22 +161,19 @@ const ArqueoCajaPage = () => {
   }, [sortedDiario, pageDiario, rowsPerPageDiario]);
 
   return (
-    <>
+    <DashboardLayout
+      title={`                  TOTAL ARS: ${formatearCampo(
+        "montoEnviado",
+        arqueoTotalGeneral?.totalARS
+      )} - TOTAL
+                  USD: ${formatearCampo("montoEnviado", arqueoTotalGeneral?.totalUSD)}`}
+    >
       <Head>
         <title>Arqueo de Caja</title>
       </Head>
-      <Box component="main" sx={{ flexGrow: 1, py: 2 }}>
+      <Box component="main" sx={{ flexGrow: 1, pb: 2 }}>
         <Container maxWidth="xl">
-          <Stack spacing={3}>
-            <Stack direction="row" justifyContent="space-between" spacing={4}>
-              <Stack spacing={1}>
-                <Typography variant="h5">
-                  TOTAL ARS: {formatearCampo("montoEnviado", arqueoTotalGeneral?.totalARS)} - TOTAL
-                  USD: {formatearCampo("montoEnviado", arqueoTotalGeneral?.totalUSD)}
-                </Typography>
-              </Stack>
-            </Stack>
-            <Divider />
+          <Stack>
             <Tabs value={activeTab} onChange={(e, v) => setActiveTab(v)}>
               <Tab label="Detalle" />
               <Tab label="Totales por día" />
@@ -275,10 +272,7 @@ const ArqueoCajaPage = () => {
           </Stack>
         </Container>
       </Box>
-    </>
+    </DashboardLayout>
   );
 };
-
-ArqueoCajaPage.getLayout = (page) => <DashboardLayout>{page}</DashboardLayout>;
-
 export default ArqueoCajaPage;

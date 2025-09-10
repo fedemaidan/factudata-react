@@ -142,7 +142,7 @@ const CuentaCorrienteCelulandiaPage = () => {
       }
 
       // Para fechas, convertimos a timestamp para ordenar
-      if (ordenCampo === "fechaUltimoPago") {
+      if (ordenCampo === "fechaUltimoPago" || ordenCampo === "fechaUltimaEntrega") {
         aVal = aVal ? new Date(aVal).getTime() : 0;
         bVal = bVal ? new Date(bVal).getTime() : 0;
       }
@@ -309,6 +309,24 @@ const CuentaCorrienteCelulandiaPage = () => {
                         </TableCell>
                         <TableCell
                           onClick={() => {
+                            if (ordenCampo === "fechaUltimaEntrega") {
+                              setOrdenDireccion(ordenDireccion === "asc" ? "desc" : "asc");
+                            } else {
+                              setOrdenCampo("fechaUltimaEntrega");
+                              setOrdenDireccion("desc");
+                            }
+                          }}
+                          sx={{ cursor: "pointer" }}
+                        >
+                          Última Entrega
+                          {ordenCampo === "fechaUltimaEntrega"
+                            ? ordenDireccion === "asc"
+                              ? " ▲"
+                              : " ▼"
+                            : ""}
+                        </TableCell>
+                        <TableCell
+                          onClick={() => {
                             if (ordenCampo === "fechaUltimoPago") {
                               setOrdenDireccion(ordenDireccion === "asc" ? "desc" : "asc");
                             } else {
@@ -343,6 +361,7 @@ const CuentaCorrienteCelulandiaPage = () => {
                           <TableCell>{formatearMonto(cliente.ARS)}</TableCell>
                           <TableCell>{formatearMonto(cliente["USD BLUE"])}</TableCell>
                           <TableCell>{formatearMonto(cliente["USD OFICIAL"])}</TableCell>
+                          <TableCell>{formatearFecha(cliente.fechaUltimaEntrega)}</TableCell>
                           <TableCell>{formatearFecha(cliente.fechaUltimoPago)}</TableCell>
                         </TableRow>
                       ))}

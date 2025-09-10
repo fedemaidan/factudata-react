@@ -315,14 +315,14 @@ const DataTable = ({
   };
 
   return (
-    <Box component="main" sx={{ flexGrow: 1, py: 2 }}>
-      <Stack spacing={3}>
+    <Box component="main" sx={{ flexGrow: 1, pb: 2 }}>
+      <Stack spacing={1}>
         <Stack direction="row" justifyContent="space-between" spacing={4}>
           <Stack spacing={1}>
             <Typography variant="h4">{title}</Typography>
           </Stack>
         </Stack>
-        <Stack direction="row" gap={1} alignItems="center" flexWrap="wrap">
+        <Stack direction="row" sx={{ margin: 0, gap: 1 }} alignItems="center" flexWrap="wrap">
           {showSearch && (
             <TextField
               label="Buscar"

@@ -17,6 +17,7 @@ import clientesService from "src/services/celulandia/clientesService";
 import dolarService from "src/services/celulandia/dolarService";
 import cajasService from "src/services/celulandia/cajasService";
 import { getMovimientoHistorialConfig } from "src/utils/celulandia/historial";
+import Head from "next/head";
 
 const ComprobantesCelulandiaPage = () => {
   const [movimientos, setMovimientos] = useState([]);
@@ -248,10 +249,10 @@ const ComprobantesCelulandiaPage = () => {
   };
 
   return (
-    <>
+    <DashboardLayout title="Comprobantes">
+      <Head>Comprobantes</Head>
       <Container maxWidth="xl">
         <DataTable
-          title="Comprobantes"
           data={movimientos}
           isLoading={isLoading}
           columns={columns}
@@ -317,10 +318,8 @@ const ComprobantesCelulandiaPage = () => {
           selectedData ? `Comprobante ${selectedData.numeroFactura || selectedData._id}` : ""
         }
       />
-    </>
+    </DashboardLayout>
   );
 };
-
-ComprobantesCelulandiaPage.getLayout = (page) => <DashboardLayout>{page}</DashboardLayout>;
 
 export default ComprobantesCelulandiaPage;

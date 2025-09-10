@@ -262,13 +262,12 @@ const PagosCelulandiaPage = () => {
   };
 
   return (
-    <>
+    <DashboardLayout title="Pagos">
       <Head>
         <title>Pagos</title>
       </Head>
       <Container maxWidth="xl">
         <DataTable
-          title="Pagos"
           data={pagos}
           isLoading={isLoading}
           columns={columns}
@@ -327,10 +326,8 @@ const PagosCelulandiaPage = () => {
         message="¿Estás seguro que deseas eliminar este pago?"
         itemName={selectedData ? `Pago ${selectedData.concepto || selectedData._id}` : ""}
       />
-    </>
+    </DashboardLayout>
   );
 };
-
-PagosCelulandiaPage.getLayout = (page) => <DashboardLayout>{page}</DashboardLayout>;
 
 export default PagosCelulandiaPage;

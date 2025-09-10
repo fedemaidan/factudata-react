@@ -26,7 +26,7 @@ import { getUser } from "src/utils/celulandia/currentUser";
 import EditarEntregaModal from "src/components/celulandia/EditarEntregaModal";
 
 // helpers numéricos simples
-const toNumber = (v) => Number.isFinite(Number(v)) ? Number(v) : 0;
+const toNumber = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
 const round2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
 
 const ClienteCelulandiaCCPage = () => {
@@ -125,22 +125,21 @@ const ClienteCelulandiaCCPage = () => {
 
   const itemsDataTab = useMemo(() => {
     if (!movimientos.length) return [];
-  
+
     return movimientos.map((m) => {
       const isMov = m.itemType === "movimiento";
       const fecha = isMov ? m.fecha : m.fechaCuenta;
-  
+
       const monto = round2(toNumber(m.montoCC || 0)); // base en CC
       const tipoDeCambio = toNumber(m.tipoDeCambio || 1);
       const montoOriginalBase = round2(toNumber(m.montoEnviado || 0));
-      const montoOriginal = montoOriginalBase === 0
-        ? round2(monto * tipoDeCambio)
-        : montoOriginalBase;
-  
+      const montoOriginal =
+        montoOriginalBase === 0 ? round2(monto * tipoDeCambio) : montoOriginalBase;
+
       return {
         id: m.id || m._id,
         fecha,
-        descripcion: isMov ? (m.numeroFactura || m._id) : (m.descripcion || "-"),
+        descripcion: isMov ? m.numeroFactura || m._id : m.descripcion || "-",
         cliente: m?.nombreCliente || m?.clienteNombre || m.cliente?.nombre || "-",
         group: m.cuentaCorriente || m.CC || m.cc,
         // ya no usamos "monto" para export, pero lo dejamos por compatibilidad interna
@@ -156,7 +155,6 @@ const ClienteCelulandiaCCPage = () => {
     });
   }, [movimientos]);
 
-  
   // const itemsDataTab = useMemo(() => {
   //   if (!movimientos.length) return [];
 
@@ -193,31 +191,30 @@ const ClienteCelulandiaCCPage = () => {
   // }, [itemsDataTab, sortDirection]);
   const itemsOrdenados = useMemo(() => {
     if (!itemsDataTab.length) return [];
-  
+
     const factor = sortDirection === "asc" ? 1 : -1;
     const ordenados = [...itemsDataTab].sort((a, b) => {
       const ta = a?.fecha ? new Date(a.fecha).getTime() : 0;
       const tb = b?.fecha ? new Date(b.fecha).getTime() : 0;
       return (ta - tb) * factor;
     });
-  
+
     // saldo acumulado (suma algebraica del monto)
     let acumulado = 0;
     return ordenados.map((it) => {
       const debe = it.monto < 0 ? Math.abs(it.monto) : 0;
       const haber = it.monto > 0 ? it.monto : 0;
       acumulado = round2(acumulado + it.monto);
-  
+
       return {
         ...it,
-        debe: round2(debe),         // número puro
-        haber: round2(haber),       // número puro
-        saldoAcumulado: acumulado,  // número puro
+        debe: round2(debe), // número puro
+        haber: round2(haber), // número puro
+        saldoAcumulado: acumulado, // número puro
         // si querés ocultar "monto" en la tabla/export, podés quitar esta propiedad o ignorarla en las columnas
       };
     });
   }, [itemsDataTab, sortDirection]);
-  
 
   const handleVolver = useCallback(() => router.back(), [router]);
 
