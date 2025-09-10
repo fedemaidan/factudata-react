@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuthContext } from 'src/contexts/auth-context';
-import { Button, Checkbox, CircularProgress, FormControl, InputLabel, ListItemText, MenuItem, Select, TextField, Snackbar, Alert, Typography, Grid } from '@mui/material';
+import { Button, Checkbox, CircularProgress, FormControl, InputLabel, ListItemText, MenuItem, Select, TextField, Snackbar, Alert, Typography, Grid, Chip } from '@mui/material';
+
 import { Autocomplete } from '@mui/material';
 import { actualizarSheetsDesdeBaseEmpresa } from 'src/services/proyectosService';
 
@@ -63,6 +64,55 @@ const [isRegenerandoSheets, setIsRegenerandoSheets] = useState(false);
 const [cuentaSuspendida, setCuentaSuspendida] = useState(
   empresa.cuenta_suspendida || false
 );
+// ----- Cuentas y defaults -----
+const empresaTieneCuentas = Array.isArray(empresa.cuentas) && empresa.cuentas.length > 0;
+const initialCuentas = empresaTieneCuentas ? empresa.cuentas : ['Cuenta A', 'Cuenta B', 'Cuenta C'];
+
+// Regla: si NO hay campo cuentas en la empresa, defaults: texto = Cuenta B, imagen/pdf = Cuenta A
+const initialDefaultTexto = empresa.cuenta_default_texto ?? (empresaTieneCuentas ? initialCuentas[0] : 'Cuenta B');
+const initialDefaultFactura = empresa.cuenta_default_factura ?? (empresaTieneCuentas ? initialCuentas[0] : 'Cuenta A');
+
+const [cuentas, setCuentas] = useState(initialCuentas);
+const [nuevaCuenta, setNuevaCuenta] = useState('');
+const [cuentaDefaultTexto, setCuentaDefaultTexto] = useState(initialDefaultTexto);
+const [cuentaDefaultFactura, setcuentaDefaultFactura] = useState(initialDefaultFactura);
+
+// Si cambia la empresa por props, recalcular todo
+useEffect(() => {
+  const has = Array.isArray(empresa.cuentas) && empresa.cuentas.length > 0;
+  const nextCuentas = has ? empresa.cuentas : ['Cuenta A', 'Cuenta B', 'Cuenta C'];
+  setCuentas(nextCuentas);
+  setCuentaDefaultTexto(empresa.cuenta_default_texto ?? (has ? nextCuentas[0] : 'Cuenta B'));
+  setcuentaDefaultFactura(empresa.cuenta_default_factura ?? (has ? nextCuentas[0] : 'Cuenta A'));
+}, [empresa]);
+
+// Si borran una cuenta que estaba como default, reasignamos
+useEffect(() => {
+  if (!cuentas.includes(cuentaDefaultTexto)) {
+    setCuentaDefaultTexto(cuentas.includes('Cuenta B') ? 'Cuenta B' : cuentas[0]);
+  }
+  if (!cuentas.includes(cuentaDefaultFactura)) {
+    setcuentaDefaultFactura(cuentas.includes('Cuenta A') ? 'Cuenta A' : cuentas[0]);
+  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [cuentas]);
+
+const addCuenta = () => {
+  const name = (nuevaCuenta || '').trim();
+  if (!name) return;
+  if (cuentas.includes(name)) {
+    setSnackbarInfo({ message: 'Esa cuenta ya existe.', severity: 'warning' });
+    setSnackbarOpen(true);
+    return;
+  }
+  setCuentas([...cuentas, name]);
+  setNuevaCuenta('');
+};
+
+const removeCuenta = (name) => {
+  setCuentas(cuentas.filter((c) => c !== name));
+};
+
 
 
 
@@ -199,7 +249,11 @@ const [cuentaSuspendida, setCuentaSuspendida] = useState(
       cuit,
       domicilio_fiscal: domicilioFiscal,
       carpetaEmpresaRef: carpetaEmpresaRef,
-      cuenta_suspendida: cuentaSuspendida
+      cuenta_suspendida: cuentaSuspendida,
+      cuentas: cuentas,
+      cuenta_default_texto: cuentaDefaultTexto,
+      cuenta_default_factura: cuentaDefaultFactura
+
     };
     
     try {
@@ -313,6 +367,62 @@ const [cuentaSuspendida, setCuentaSuspendida] = useState(
         <MenuItem value="Logistica">Logística</MenuItem>
         <MenuItem value="Rinde gastos">Rinde Gastos</MenuItem>
       </TextField>
+      <Typography variant="h6" sx={{ mt: 4 }}>Cuentas de la empresa</Typography>
+
+<Grid container spacing={2} sx={{ mt: 1 }}>
+  <Grid item xs={12}>
+    {cuentas.map((c) => (
+      <Chip
+        key={c}
+        label={c}
+        onDelete={() => removeCuenta(c)}
+        sx={{ mr: 1, mb: 1 }}
+      />
+    ))}
+  </Grid>
+
+  <Grid item xs={12} md={8}>
+    <TextField
+      label="Nueva cuenta"
+      value={nuevaCuenta}
+      onChange={(e) => setNuevaCuenta(e.target.value)}
+      onKeyDown={(e) => e.key === 'Enter' && addCuenta()}
+      fullWidth
+    />
+  </Grid>
+  <Grid item xs={12} md={4} display="flex" alignItems="center">
+    <Button variant="outlined" onClick={addCuenta}>Agregar</Button>
+  </Grid>
+
+  <Grid item xs={12} md={6}>
+    <TextField
+      select
+      label="Cuenta default para texto"
+      value={cuentaDefaultTexto}
+      onChange={(e) => setCuentaDefaultTexto(e.target.value)}
+      fullWidth
+    >
+      {cuentas.map((c) => (
+        <MenuItem key={c} value={c}>{c}</MenuItem>
+      ))}
+    </TextField>
+  </Grid>
+
+  <Grid item xs={12} md={6}>
+    <TextField
+      select
+      label="Cuenta default para imagen/pdf"
+      value={cuentaDefaultFactura}
+      onChange={(e) => setcuentaDefaultFactura(e.target.value)}
+      fullWidth
+    >
+      {cuentas.map((c) => (
+        <MenuItem key={c} value={c}>{c}</MenuItem>
+      ))}
+    </TextField>
+  </Grid>
+</Grid>
+
       <Typography variant="h6" sx={{ mt: 4 }}>Datos fiscales de la empresa</Typography>
 
 <TextField
