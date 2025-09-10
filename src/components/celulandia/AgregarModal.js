@@ -22,6 +22,7 @@ import { getUser } from "src/utils/celulandia/currentUser";
 
 const AgregarModal = ({ open, onClose, onSave, clientes, tipoDeCambio, cajas }) => {
   const [isSaving, setIsSaving] = useState(false);
+  const [fechaCobro, setFechaCobro] = useState("");
 
   const {
     formData,
@@ -73,11 +74,20 @@ const AgregarModal = ({ open, onClose, onSave, clientes, tipoDeCambio, cajas }) 
           cliente: clienteData,
           cuentaCorriente: formData.CC,
           moneda: formData.monedaDePago,
-          tipoFactura: "transferencia",
+          tipoFactura:
+            formData.cuentaDestino === "CHEQUE" || formData.cuentaDestino === "ECHEQ"
+              ? "cheque"
+              : "transferencia",
           caja: cajaId,
           nombreUsuario: getUser(),
           tipoDeCambio: tipoDeCambioCalculado,
           estado: "CONFIRMADO",
+          fechaCobro:
+            formData.cuentaDestino === "CHEQUE" || formData.cuentaDestino === "ECHEQ"
+              ? fechaCobro
+                ? new Date(`${fechaCobro}T00:00:00`)
+                : null
+              : null,
         },
         montoEnviado: formData.montoEnviado,
       });
@@ -98,6 +108,7 @@ const AgregarModal = ({ open, onClose, onSave, clientes, tipoDeCambio, cajas }) 
 
   const handleClose = () => {
     resetForm();
+    setFechaCobro("");
     onClose();
   };
 
@@ -153,6 +164,19 @@ const AgregarModal = ({ open, onClose, onSave, clientes, tipoDeCambio, cajas }) 
                 </Select>
               </FormControl>
             </Grid>
+            {(formData.cuentaDestino === "CHEQUE" || formData.cuentaDestino === "ECHEQ") && (
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  label="Fecha de Cobro"
+                  type="date"
+                  value={fechaCobro}
+                  onChange={(e) => setFechaCobro(e.target.value)}
+                  margin="normal"
+                  InputLabelProps={{ shrink: true }}
+                />
+              </Grid>
+            )}
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
@@ -182,8 +206,14 @@ const AgregarModal = ({ open, onClose, onSave, clientes, tipoDeCambio, cajas }) 
               <TextField
                 fullWidth
                 label="Monto CC"
-                type="number"
-                value={formData.montoCC}
+                type="text"
+                value={
+                  formData.montoCC !== "" &&
+                  formData.montoCC !== null &&
+                  formData.montoCC !== undefined
+                    ? Math.round(Number(formData.montoCC) || 0).toLocaleString("es-AR")
+                    : ""
+                }
                 disabled={true}
                 margin="normal"
                 helperText="Calculado automáticamente"
