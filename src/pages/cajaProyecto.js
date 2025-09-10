@@ -6,7 +6,7 @@ import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import Head from 'next/head';
-import { Box, Container, Stack, Chip, Typography, TextField, InputAdornment, Paper, Card, CardContent, Button, Select, MenuItem, FormControl, InputLabel, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, useMediaQuery, IconButton, Menu, Table, TableBody, TableCell, TableHead, TableRow, TableContainer, Tooltip, MenuItem as MenuOption, Divider } from '@mui/material';
+import { Box, Container, Stack, Chip, Typography, TextField, InputAdornment, Paper, Card, CardContent, Button, Select, MenuItem, FormControl, InputLabel, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, useMediaQuery, IconButton, Menu, Table, TableBody, TableCell, TableHead, TableRow, TableContainer, Tooltip, MenuItem as MenuOption, Divider, TablePagination } from '@mui/material';
 
 import { Checkbox, Popover, FormControlLabel, Switch } from '@mui/material';
 
@@ -149,14 +149,23 @@ const [atStart, setAtStart] = useState(true);
 const [atEnd, setAtEnd] = useState(true);
 const [coachOpen, setCoachOpen] = useState(true); // se muestra en cada mount
 const [topWidth, setTopWidth] = useState(0);
+// --- paginación ---
+const [page, setPage] = useState(0);           // página actual (0-based)
+const [rowsPerPage, setRowsPerPage] = useState(25);  // filas por página
 
-const recalcEdges = () => {
-  const el = scrollRef.current;
-  if (!el) return;
-  const { scrollLeft, scrollWidth, clientWidth } = el;
-  setAtStart(scrollLeft <= 0);
-  setAtEnd(scrollLeft + clientWidth >= scrollWidth - 1);
+// handlers
+const handleChangePage = (_evt, newPage) => {
+  setPage(newPage);
+  // opcional: scrollear al tope de la tabla
+  scrollRef.current?.scrollTo?.({ top: 0 });
 };
+
+const handleChangeRowsPerPage = (evt) => {
+  const value = parseInt(evt.target.value, 10);
+  setRowsPerPage(value);
+  setPage(0);
+};
+
 
 useEffect(() => {
   const el = scrollRef.current;
@@ -355,10 +364,7 @@ const handleCloseCols = () => setAnchorColsEl(null);
     handleCloseMenu();
   };
 
-  const handleAccionesActivas = () => {
-    setAccionesActivas(!accionesActivas);
-    handleCloseMenu();
-  };
+  
 
   const eliminarMovimiento = async () => {
     setDeletingElement(movimientoAEliminar);
@@ -569,6 +575,14 @@ const handleCloseCols = () => setAnchorColsEl(null);
     await updateEmpresaDetails(empresa.id, { cajas_virtuales: nuevasCajas });
   };
   
+  const totalRows = movimientosFiltrados.length;
+  
+  const paginatedMovs = useMemo(() => {
+    const start = page * rowsPerPage;
+    const end = Math.min(totalRows, start + rowsPerPage);
+    return movimientosFiltrados.slice(start, end);
+  }, [movimientosFiltrados, page, rowsPerPage, totalRows]);
+  
   const handleRecalcularEquivalencias = async () => {
     if (!proyectoId) return;
     setAlert({
@@ -614,6 +628,14 @@ const handleCloseCols = () => setAnchorColsEl(null);
     }
     handleCloseMenu();
   };
+
+
+// si cambian los filtros y la página quedó fuera de rango, volvemos a 0
+useEffect(() => {
+  const maxPage = Math.max(0, Math.ceil(totalRows / rowsPerPage) - 1);
+  if (page > maxPage) setPage(0);
+}, [totalRows, rowsPerPage]); // intencional: no incluimos 'page' para evitar loop
+
 
   if (empresa?.cuenta_suspendida === true) {
     return ("Cuenta suspendida. Contacte al administrador." )
@@ -744,7 +766,7 @@ const handleCloseCols = () => setAnchorColsEl(null);
               </Stack>
                 {isMobile ? (
                   <Stack spacing={2}>
-                    {movimientosFiltrados.map((mov, index) => (
+                    {paginatedMovs.map((mov, index) => (
                       <Card key={index}>
                         <CardContent>
                           <Typography variant="h6" color={mov.type === "ingreso" ? "green" : "red"}>
@@ -1069,7 +1091,7 @@ const handleCloseCols = () => setAnchorColsEl(null);
     </TableHead>
 
     <TableBody>
-      {movimientosFiltrados.map((mov, index) => {
+      {paginatedMovs.map((mov, index) => {
         const amountColor =
           compactCols
             ? (mov.type === 'ingreso' ? 'success.main' : 'error.main')
@@ -1233,6 +1255,16 @@ const handleCloseCols = () => setAnchorColsEl(null);
     </TableBody>
   </Table>
 </TableContainer>
+<TablePagination
+      component="div"
+      rowsPerPageOptions={[10, 25, 50, 100]}
+      count={totalRows}
+      rowsPerPage={rowsPerPage}
+      page={page}
+      onPageChange={handleChangePage}
+      onRowsPerPageChange={handleChangeRowsPerPage}
+      labelRowsPerPage="Filas por página"
+    />
 </Box>
 </>
                 )}
