@@ -46,12 +46,15 @@ const ComprobantesCelulandiaPage = () => {
     current: 1,
   });
   const [cajas, setCajas] = useState([]);
+  const [selectedCajaNombre, setSelectedCajaNombre] = useState(""); // "" => Todas
+  const [filtroUsuario, setFiltroUsuario] = useState("");
+  const [usuariosOptions, setUsuariosOptions] = useState([{ value: "", label: "(todos)" }]);
 
   const movimientoHistorialConfig = useMemo(() => getMovimientoHistorialConfig(cajas), [cajas]);
 
   useEffect(() => {
     fetchData(paginaActual);
-  }, [paginaActual, sortField, sortDirection, filtroFecha]);
+  }, [paginaActual, sortField, sortDirection, filtroFecha, selectedCajaNombre, filtroUsuario]);
 
   const fetchData = async (pagina = 1) => {
     setIsLoading(true);
@@ -68,6 +71,8 @@ const ComprobantesCelulandiaPage = () => {
             offset,
             sortField,
             sortDirection,
+            cajaNombre: selectedCajaNombre || undefined,
+            nombreUsuario: filtroUsuario || undefined,
             fechaInicio,
             fechaFin,
             //includeInactive: true,
@@ -92,6 +97,22 @@ const ComprobantesCelulandiaPage = () => {
       });
 
       setCajas(cajasResponse.data);
+
+      // Opciones de usuarios (simple, como en entregas)
+      const uniqueUsers = Array.from(
+        new Set([
+          "ezequielszejman@gmail.com",
+          "matias_kat14@hotmail.com",
+          "lidnicolas@gmail.com",
+          "ventas@celulandiaweb.com.ar",
+          "info@celulandiaweb.com.ar",
+          "Sistema",
+        ])
+      ).sort();
+      setUsuariosOptions([
+        { value: "", label: "(todos)" },
+        ...uniqueUsers.map((u) => ({ value: u, label: u })),
+      ]);
     } catch (error) {
       console.error("Error al cargar datos:", error);
     } finally {
@@ -259,6 +280,35 @@ const ComprobantesCelulandiaPage = () => {
           searchFields={searchFields}
           formatters={formatters}
           showClienteListedChip={true}
+          serverSide={true}
+          multipleSelectFilters={[
+            {
+              key: "cajaNombre",
+              label: "Cuenta destino",
+              value: selectedCajaNombre,
+              options: [
+                { value: "", label: "Todas" },
+                ...(Array.isArray(cajas) ? cajas : []).map((caja) => ({
+                  value: caja?.nombre || "",
+                  label: caja?.nombre || "-",
+                })),
+              ],
+              onChange: (val) => {
+                setSelectedCajaNombre(val);
+                setPaginaActual(1);
+              },
+            },
+            {
+              key: "nombreUsuario",
+              label: "Usuario",
+              value: filtroUsuario,
+              options: usuariosOptions,
+              onChange: (val) => {
+                setFiltroUsuario(val);
+                setPaginaActual(1);
+              },
+            },
+          ]}
           onAdd={() => setAgregarModalOpen(true)}
           dateField="fechaFactura"
           total={totalMovimientos}
@@ -269,7 +319,6 @@ const ComprobantesCelulandiaPage = () => {
           sortDirection={sortDirection}
           onSortChange={handleSortChange}
           showSearch={false}
-          serverSide={true}
           filtroFecha={filtroFecha}
           onFiltroFechaChange={(nuevoFiltro) => {
             setFiltroFecha(nuevoFiltro);
