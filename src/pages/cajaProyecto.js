@@ -1,8 +1,14 @@
 import { useState, useMemo, useEffect } from 'react';
+import { useRef } from 'react';
+import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
+import ChevronRightIcon from '@mui/icons-material/ChevronRight';
+import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
+
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import Head from 'next/head';
-import { Box, Container, Stack, Chip, Typography, TextField, InputAdornment, Paper, Card, CardContent, Button, Select, MenuItem, FormControl, InputLabel, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, useMediaQuery, IconButton, Fab, Menu, Table, TableBody, TableCell, TableHead, TableRow, TableContainer, Tooltip, MenuItem as MenuOption, Divider } from '@mui/material';
-import { Checkbox, ListItemIcon, ListItemText, Popover, FormControlLabel, Switch } from '@mui/material';
+import { Box, Container, Stack, Chip, Typography, TextField, InputAdornment, Paper, Card, CardContent, Button, Select, MenuItem, FormControl, InputLabel, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, useMediaQuery, IconButton, Menu, Table, TableBody, TableCell, TableHead, TableRow, TableContainer, Tooltip, MenuItem as MenuOption, Divider } from '@mui/material';
+
+import { Checkbox, Popover, FormControlLabel, Switch } from '@mui/material';
 
 import { useTheme } from '@mui/material/styles';
 import FilterListIcon from '@mui/icons-material/FilterList';
@@ -39,8 +45,8 @@ const COLS = {
   subcategoria: 160,
   medioPago: 150,
   proveedor: 220,
-  observacion: 320,
-  tc: 140,
+  observacion: 160,
+  tc: 120,
   usd: 160,
   estado: 140,
   acciones: 96,
@@ -134,6 +140,80 @@ const ProyectoMovimientosPage = () => {
   // ---- Columnas visibles + modo compacto ----
 const [compactCols, setCompactCols] = useState(true);
 const [anchorColsEl, setAnchorColsEl] = useState(null);
+
+// --- helpers de scroll horizontal ---
+const scrollRef = useRef(null);      // contenedor principal con overflow
+const topScrollRef = useRef(null);   // barra superior "fantasma"
+const [atEdges, setAtEdges] = useState({ left: true, right: false });
+const [atStart, setAtStart] = useState(true);
+const [atEnd, setAtEnd] = useState(true);
+const [coachOpen, setCoachOpen] = useState(true); // se muestra en cada mount
+const [topWidth, setTopWidth] = useState(0);
+
+const recalcEdges = () => {
+  const el = scrollRef.current;
+  if (!el) return;
+  const { scrollLeft, scrollWidth, clientWidth } = el;
+  setAtStart(scrollLeft <= 0);
+  setAtEnd(scrollLeft + clientWidth >= scrollWidth - 1);
+};
+
+useEffect(() => {
+  const el = scrollRef.current;
+  const top = topScrollRef.current;
+  if (!el || !top) return;
+
+  // según donde esté el scroll horizontal
+  const updateEdges = () => {
+    const max = el.scrollWidth - el.clientWidth;
+    setAtStart(el.scrollLeft <= 0);
+    setAtEnd(el.scrollLeft >= max - 1);
+    setTopWidth(el.scrollWidth); // actualiza ancho de barra superior
+    top.scrollLeft = el.scrollLeft; // sincroniza top
+  };
+
+  const syncFromTop = () => {
+    el.scrollLeft = top.scrollLeft;
+    updateEdges();
+  };
+
+  el.addEventListener('scroll', updateEdges, { passive: true });
+  top.addEventListener('scroll', syncFromTop, { passive: true });
+
+  // observar cambios de tamaño (columnas, viewport, etc.)
+  const ro = new ResizeObserver(() => {
+    setTopWidth(el.scrollWidth);
+    updateEdges();
+  });
+  ro.observe(el);
+
+  // inicial
+  requestAnimationFrame(updateEdges);
+
+  return () => {
+    el.removeEventListener('scroll', updateEdges);
+    top.removeEventListener('scroll', syncFromTop);
+    ro.disconnect();
+  };
+}, []);
+
+const handleTopScroll = () => {
+  if (!topScrollRef.current || !scrollRef.current) return;
+  scrollRef.current.scrollLeft = topScrollRef.current.scrollLeft;
+};
+
+const scrollByStep = (dir) => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const max   = el.scrollWidth - el.clientWidth;      // límite derecho
+    const step  = Math.max(240, Math.round(el.clientWidth * 0.8));
+    const next  = dir === 'left'
+      ? Math.max(0, el.scrollLeft - step)               // clamp a 0
+      : Math.min(max, el.scrollLeft + step);            // clamp a max
+  
+    el.scrollTo({ left: next, behavior: 'smooth' });
+  };
+
 
 const handleSaveCols = async () => {
     if (!proyecto?.id) return;
@@ -578,22 +658,24 @@ const handleCloseCols = () => setAnchorColsEl(null);
   <MenuItem onClick={() => handleEliminarCaja(cajaMenuIndex)}>Eliminar</MenuItem>
 </Menu>
 <Box sx={{ display: 'flex', gap: 1 }}>
-    <Button
-      variant="outlined"
-      size="small"
-      onClick={() => handleMenuOptionClick('filtrar')}
-    >
-      {filtrosActivos ? 'Ocultar filtros' : 'Mostrar filtros'}
-    </Button>
+  <Button
+    variant="outlined"
+    size="small"
+    startIcon={<MoreVertIcon />}
+    onClick={handleOpenMenu}   // abre el mismo menú de acciones
+  >
+    Acciones
+  </Button>
 
-    <Button
-      variant="outlined"
-      size="small"
-      onClick={handleOpenCols}
-    >
-      Columnas
-    </Button>
-  </Box>
+  <Button
+    variant="outlined"
+    size="small"
+    onClick={handleOpenCols}
+  >
+    Columnas
+  </Button>
+</Box>
+
             </Stack>
             <Dialog open={showCrearCaja} onClose={() => setShowCrearCaja(false)}>
   <DialogTitle>Crear vista de caja personalizada</DialogTitle>
@@ -765,9 +847,138 @@ const handleCloseCols = () => setAnchorColsEl(null);
   </Stack>
 </Popover>
 
+{/* ===== Scrollbar superior sincronizada ===== */}
+<Box sx={{ position: 'relative', mb: 0.5 }}>
+  <Box
+    ref={topScrollRef}
+    sx={{
+      overflowX: 'auto',
+      overflowY: 'hidden',
+      height: 10,
+      bgcolor: 'transparent',
+      '&::-webkit-scrollbar': { height: 8 },
+      '&::-webkit-scrollbar-thumb': { borderRadius: 8, backgroundColor: 'rgba(0,0,0,0.25)' },
+    }}
+  >
+    <Box sx={{ width: topWidth }} />
+  </Box>
+</Box>
+
+
+{/* ===== Wrapper con fades y flechas ===== */}
+<Box sx={{ position: 'relative' }}>
+  {/* Fades laterales */}
+  {!atStart && (
+    <Box
+      sx={{
+        pointerEvents: 'none',
+        position: 'absolute',
+        left: 0,
+        top: 0,
+        bottom: 0,
+        width: 28,
+        zIndex: 3,
+        background:
+          'linear-gradient(to right, rgba(0,0,0,0.10), rgba(0,0,0,0.06), rgba(0,0,0,0.0))',
+        borderTopLeftRadius: 4,
+        borderBottomLeftRadius: 4,
+      }}
+    />
+  )}
+  {!atEnd && (
+    <Box
+      sx={{
+        pointerEvents: 'none',
+        position: 'absolute',
+        right: 0,
+        top: 0,
+        bottom: 0,
+        width: 28,
+        zIndex: 3,
+        background:
+          'linear-gradient(to left, rgba(0,0,0,0.10), rgba(0,0,0,0.06), rgba(0,0,0,0.0))',
+        borderTopRightRadius: 4,
+        borderBottomRightRadius: 4,
+      }}
+    />
+  )}
+
+  {/* Flechas */}
+  {!atStart && (
+    <IconButton
+      size="small"
+      onClick={() => scrollByStep('left')}
+      sx={{
+        position: 'absolute',
+        left: 4,
+        top: '50%',
+        transform: 'translateY(-50%)',
+        zIndex: 4,
+        bgcolor: 'background.paper',
+        boxShadow: 1,
+        '&:hover': { bgcolor: 'background.paper' },
+      }}
+    >
+      <ChevronLeftIcon fontSize="small" />
+    </IconButton>
+  )}
+  {!atEnd && (
+    <IconButton
+      size="small"
+      onClick={() => scrollByStep('right')}
+      sx={{
+        position: 'absolute',
+        right: 4,
+        top: '50%',
+        transform: 'translateY(-50%)',
+        zIndex: 4,
+        bgcolor: 'background.paper',
+        boxShadow: 1,
+        '&:hover': { bgcolor: 'background.paper' },
+      }}
+    >
+      <ChevronRightIcon fontSize="small" />
+    </IconButton>
+  )}
+
+  {/* Coachmark: se muestra siempre al entrar (no persiste) */}
+  <Tooltip
+    open={coachOpen && !isMobile}
+    onClose={() => setCoachOpen(false)}
+    arrow
+    placement="top"
+    title="Deslizá → para ver más columnas"
+  >
+    <Box
+      onMouseEnter={() => setCoachOpen(false)}
+      sx={{
+        position: 'absolute',
+        right: 40,
+        top: -30,
+        color: 'text.secondary',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 0.5,
+        zIndex: 5,
+      }}
+    >
+      <InfoOutlinedIcon fontSize="small" />
+      <Typography variant="caption">Deslizá →</Typography>
+    </Box>
+  </Tooltip>
+
+
 <TableContainer
   component={Paper}
-  sx={{ height: 'calc(100vh - 300px)', overflow: 'auto' }}
+  ref={scrollRef}
+  sx={{
+    height: 'calc(100vh - 300px)',
+    overflowX: 'auto',
+    overflowY: 'auto',
+    pr: 0, // espacio real lo aporta la barra
+    '&::-webkit-scrollbar': { height: 10 },                // “barra siempre visible” en WebKit
+    '&::-webkit-scrollbar-thumb': { background: 'rgba(0,0,0,0.25)', borderRadius: 8 },
+  }}
 >
   <Table stickyHeader size="small">
     <TableHead>
@@ -837,9 +1048,23 @@ const handleCloseCols = () => setAnchorColsEl(null);
           <TableCell sx={{ ...cellBase, minWidth: COLS.estado }}>ESTADO</TableCell>
         )}
 
-        {visibleCols.acciones && (
-          <TableCell sx={{ ...cellBase, minWidth: COLS.acciones, textAlign: 'center' }}>ACCIONES</TableCell>
-        )}
+{visibleCols.acciones && (
+  <TableCell
+    sx={{
+      ...cellBase,
+      minWidth: COLS.acciones,
+      textAlign: 'center',
+      position: 'sticky',
+      right: 0,
+      zIndex: 2,
+      bgcolor: 'background.paper',
+      boxShadow: 'inset 8px 0 8px -8px rgba(0,0,0,0.15)',
+    }}
+  >
+    ACCIONES
+  </TableCell>
+)}
+
       </TableRow>
     </TableHead>
 
@@ -969,7 +1194,16 @@ const handleCloseCols = () => setAnchorColsEl(null);
             )}
 
             {visibleCols.acciones && (
-              <TableCell sx={{ ...cellBase, minWidth: COLS.acciones, textAlign: 'center' }}>    
+              <TableCell sx={{
+                ...cellBase,
+                minWidth: COLS.acciones,
+                textAlign: 'center',
+                position: 'sticky',
+                right: 0,
+                zIndex: 1,
+                bgcolor: 'background.paper',
+                boxShadow: 'inset 8px 0 8px -8px rgba(0,0,0,0.12)',
+              }}>    
                   {mov.url_imagen && <IconButton
                     size="small"
                     onClick={() => openImg(mov.url_imagen)}
@@ -999,32 +1233,12 @@ const handleCloseCols = () => setAnchorColsEl(null);
     </TableBody>
   </Table>
 </TableContainer>
-
+</Box>
 </>
                 )}
             </Paper>
           </Stack>
         </Container>
-        {isMobile ? (
-            <Fab
-              color="primary"
-              aria-label="more"
-              onClick={handleOpenMenu}
-              sx={{ position: 'fixed', bottom: 16, right: 16 }}
-            >
-              <MoreVertIcon />
-            </Fab>
-          ) : (
-            <Button
-              variant="contained"
-              color="primary"
-              onClick={handleOpenMenu}
-              sx={{ position: 'fixed', bottom: 16, right: 16 }}
-              startIcon={<MoreVertIcon />}
-            >
-              Menu de acciones y filtros
-            </Button>
-          )}
 
 <Menu
   anchorEl={anchorEl}
