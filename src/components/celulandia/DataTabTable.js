@@ -278,15 +278,36 @@ const DataTabTable = ({
     return map;
   }, [sortedAndFilteredItems, options]);
 
-  const paginatedGrouped = useMemo(() => {
+  // Recalcular Debe/Haber/Saldo por grupo según la pestaña (CC) y en orden cronológico ASC
+  const groupedWithSaldo = useMemo(() => {
     const map = new Map();
     for (const [key, itemsArr] of grouped.entries()) {
+      const asc = [...itemsArr].sort((a, b) => getTimeSafe(a.fecha) - getTimeSafe(b.fecha));
+      const computedAsc = agregarSaldoCalculado(asc);
+      const byId = new Map(computedAsc.map((it) => [it.id, it]));
+      const merged = itemsArr.map((it) => {
+        const comp = byId.get(it.id) || {};
+        return {
+          ...it,
+          debe: comp.debe ?? it.debe,
+          haber: comp.haber ?? it.haber,
+          saldoAcumulado: comp.saldoAcumulado ?? it.saldoAcumulado,
+        };
+      });
+      map.set(key, merged);
+    }
+    return map;
+  }, [grouped]);
+
+  const paginatedGrouped = useMemo(() => {
+    const map = new Map();
+    for (const [key, itemsArr] of groupedWithSaldo.entries()) {
       const startIndex = finalPage * finalRowsPerPage;
       const endIndex = startIndex + finalRowsPerPage;
       map.set(key, itemsArr.slice(startIndex, endIndex));
     }
     return map;
-  }, [grouped, finalPage, finalRowsPerPage]);
+  }, [groupedWithSaldo, finalPage, finalRowsPerPage]);
 
   const totals = useMemo(() => {
     const res = new Map();
@@ -299,7 +320,7 @@ const DataTabTable = ({
 
   // Exportar a Excel (pestaña actual) — con Debe/Haber/Saldo acumulado y números puros
   const handleExportExcel = () => {
-    const allRows = grouped.get(currentOption) || [];
+    const allRows = groupedWithSaldo.get(currentOption) || [];
     const monedaLabel = options.find((o) => o.value === currentOption)?.label || "";
 
     // Orden cronológico ASC (más viejo primero)
@@ -309,8 +330,9 @@ const DataTabTable = ({
 
     const data = rowsSorted.map((row) => {
       console.log(row);
-      // Derivar Debe/Haber numéricos puros
-      const monto = n(row.monto); // por si lo necesitás de referencia
+      // Derivar Debe/Haber numéricos puros desde montoCC si existe (según CC seleccionada)
+      const raw = row.montoCC != null ? row.montoCC : row.monto;
+      const monto = n(raw);
       const debe = row.debe != null ? n(row.debe) : monto < 0 ? Math.abs(monto) : 0;
       const haber = row.haber != null ? n(row.haber) : monto > 0 ? monto : 0;
 

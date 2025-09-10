@@ -143,8 +143,8 @@ const ClienteCelulandiaCCPage = () => {
         descripcion: isMov ? m.numeroFactura || m._id : m.descripcion || "-",
         cliente: m?.nombreCliente || m?.clienteNombre || m.cliente?.nombre || "-",
         group: m.cuentaCorriente || m.CC || m.cc,
-        // ya no usamos "monto" para export, pero lo dejamos por compatibilidad interna
         monto,
+        montoCC: monto,
         tipoDeCambio,
         descuentoAplicado: m.descuentoAplicado,
         montoOriginal,
@@ -200,8 +200,8 @@ const ClienteCelulandiaCCPage = () => {
       return (ta - tb) * factor;
     });
 
-    // aplicar el cálculo EXACTO en el orden cronológico global
-    return agregarSaldoCalculado(ordenados);
+    // El cálculo de saldo ahora se realiza por grupo (pestaña) dentro de DataTabTable
+    return ordenados;
   }, [itemsDataTab, sortDirection]);
 
   const handleVolver = useCallback(() => router.back(), [router]);

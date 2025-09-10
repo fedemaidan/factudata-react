@@ -26,7 +26,8 @@ export function agregarSaldoCalculado(items = []) {
 
   let running = 0;
   for (const row of rowsSorted) {
-    const monto = n(row?.monto);
+    const baseMonto = row?.montoCC != null ? row.montoCC : row?.monto;
+    const monto = n(baseMonto);
     const debe = row?.debe != null ? n(row.debe) : monto < 0 ? Math.abs(monto) : 0;
     const haber = row?.haber != null ? n(row.haber) : monto > 0 ? monto : 0;
 
