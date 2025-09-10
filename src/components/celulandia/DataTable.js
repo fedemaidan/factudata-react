@@ -20,6 +20,7 @@ import {
   Button,
   TableContainer,
   Tooltip,
+  Chip,
 } from "@mui/material";
 import Divider from "@mui/material/Divider";
 import ClearIcon from "@mui/icons-material/Clear";
@@ -71,6 +72,8 @@ const DataTable = ({
   showRefreshButton = false,
   onSearchDebounced,
   searchDebounceMs = 500,
+  // Mostrar un chip sutil en la columna "cliente" cuando el item tiene clienteId
+  showClienteListedChip = false,
 }) => {
   const [busqueda, setBusqueda] = useState("");
   const [filtroFecha, setFiltroFecha] = useState("todos");
@@ -264,10 +267,9 @@ const DataTable = ({
     });
   }, [serverSide, dataFiltrados, ordenCampo, ordenDireccion, dateField]);
 
-  const formatValue = (value, field) => {
+  const formatValue = (value, field, item) => {
     if (formatters[field]) {
-      // Nota: si tus formatters esperan (value, item), ajusta el llamado desde renderCellContent
-      return formatters[field](value);
+      return formatters[field](value, item);
     }
     return value;
   };
@@ -282,7 +284,23 @@ const DataTable = ({
     const value = item[column.key];
     if (value === null || value === undefined) return "-";
 
-    const formattedValue = formatValue(value, column.key);
+    if (column.key === "cliente" && showClienteListedChip) {
+      const hasClienteId = Boolean(item?.clienteId || item?.cliente?._id);
+      const formattedValue = formatValue(value, column.key, item);
+      if (hasClienteId) {
+        return (
+          <Chip
+            label={formattedValue ?? "-"}
+            size="small"
+            variant="outlined"
+            sx={{ height: 22, fontSize: 12 }}
+          />
+        );
+      }
+      return formattedValue ?? "-";
+    }
+
+    const formattedValue = formatValue(value, column.key, item);
     if (formattedValue === null || formattedValue === undefined) return "-";
 
     return formattedValue;
