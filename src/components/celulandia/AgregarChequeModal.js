@@ -23,19 +23,23 @@ import { getUser } from "src/utils/celulandia/currentUser";
 const AgregarChequeModal = ({ open, onClose, onSave, clientes, tipoDeCambio, cajas }) => {
   const [isSaving, setIsSaving] = useState(false);
   const [fechaCobro, setFechaCobro] = useState("");
+  const [descripcion, setDescripcion] = useState("");
 
   const {
     formData,
+    setFormData,
     tipoDeCambioManual,
     clienteSeleccionado,
+    montoFormateado,
     getCCOptions,
     getTipoDeCambio,
     handleTipoDeCambioChange,
     handleMontoEnviado,
+    handleMontoChange,
     handleInputChange,
     handleClienteChange,
     resetForm,
-  } = useMovimientoForm(null, { clientes, tipoDeCambio, cajas });
+  } = useMovimientoForm({ cuentaDestino: "CHEQUE" }, { clientes, tipoDeCambio, cajas });
 
   const handleSave = async () => {
     if (!formData.cliente || !formData.montoEnviado || !formData.cuentaDestino) {
@@ -77,6 +81,7 @@ const AgregarChequeModal = ({ open, onClose, onSave, clientes, tipoDeCambio, caj
           nombreUsuario: getUser(),
           tipoDeCambio: tipoDeCambioCalculado,
           estado: "CONFIRMADO",
+          concepto: descripcion || null,
           fechaCobro: fechaCobro ? new Date(`${fechaCobro}T00:00:00`) : null,
         },
         montoEnviado: formData.montoEnviado,
@@ -99,6 +104,9 @@ const AgregarChequeModal = ({ open, onClose, onSave, clientes, tipoDeCambio, caj
   const handleClose = () => {
     resetForm();
     setFechaCobro("");
+    setDescripcion("");
+    // Volver a dejar por defecto la cuenta destino en CHEQUE después de resetear
+    setFormData((prev) => ({ ...prev, cuentaDestino: "CHEQUE" }));
     onClose();
   };
 
@@ -146,23 +154,34 @@ const AgregarChequeModal = ({ open, onClose, onSave, clientes, tipoDeCambio, caj
                   onChange={(e) => handleInputChange("cuentaDestino", e.target.value)}
                   required
                 >
-                  {cajas?.map((caja) => (
-                    <MenuItem key={caja._id} value={caja.nombre}>
-                      {caja.nombre}
-                    </MenuItem>
-                  ))}
+                  {cajas
+                    ?.filter((caja) => ["CHEQUE", "ECHEQ"].includes(caja.nombre))
+                    .map((caja) => (
+                      <MenuItem key={caja._id} value={caja.nombre}>
+                        {caja.nombre}
+                      </MenuItem>
+                    ))}
                 </Select>
               </FormControl>
             </Grid>
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
+                label="Descripción"
+                value={descripcion}
+                onChange={(e) => setDescripcion(e.target.value)}
+                margin="normal"
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
                 label="Monto *"
-                type="number"
-                value={formData.montoEnviado}
-                onChange={(e) => handleMontoEnviado(e.target.value)}
+                value={montoFormateado}
+                onChange={(e) => handleMontoChange(e.target.value)}
                 margin="normal"
                 required
+                inputMode="numeric"
               />
             </Grid>
             <Grid item xs={12} sm={6}>
@@ -183,8 +202,14 @@ const AgregarChequeModal = ({ open, onClose, onSave, clientes, tipoDeCambio, caj
               <TextField
                 fullWidth
                 label="Monto CC"
-                type="number"
-                value={formData.montoCC}
+                type="text"
+                value={
+                  formData.montoCC !== "" &&
+                  formData.montoCC !== null &&
+                  formData.montoCC !== undefined
+                    ? Math.round(Number(formData.montoCC) || 0).toLocaleString("es-AR")
+                    : ""
+                }
                 disabled={true}
                 margin="normal"
                 helperText="Calculado automáticamente"

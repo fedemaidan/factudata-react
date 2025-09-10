@@ -489,6 +489,7 @@ const DataTable = ({
             <TableContainer>
               <Table
                 stickyHeader
+                size="small"
                 sx={{
                   minWidth: 750,
                   "& .MuiTableCell-root": {
@@ -513,7 +514,6 @@ const DataTable = ({
                           cursor: column.sortable ? "pointer" : "default",
                           ...(column.key.includes("fecha") || column.key.includes("hora")
                             ? {
-                                padding: "8px 4px",
                                 minWidth: "80px",
                                 maxWidth: "100px",
                                 overflow: "hidden",
@@ -570,7 +570,6 @@ const DataTable = ({
                               color: item.active === false ? "text.disabled" : "text.primary",
                               ...(column.key.includes("fecha") || column.key.includes("hora")
                                 ? {
-                                    padding: "8px 4px",
                                     minWidth: "80px",
                                     maxWidth: "100px",
                                     whiteSpace: "nowrap",

@@ -130,6 +130,7 @@ const ChequesCelulandiaPage = () => {
   const columns = [
     { key: "fechaFactura", label: "Fecha", sortable: true },
     { key: "horaCreacion", label: "Hora", sortable: true },
+    { key: "concepto", label: "Descripción", sortable: false },
     { key: "cliente", label: "Cliente", sortable: true },
     { key: "cuentaDestino", label: "Cuenta Destino", sortable: true },
     { key: "montoEnviado", label: "Monto Enviado", sortable: true },
@@ -170,6 +171,7 @@ const ChequesCelulandiaPage = () => {
   const formatters = {
     fechaFactura: (value) => getFechaArgentina(value),
     horaCreacion: (value) => formatearCampo("hora", value),
+    concepto: (value) => formatearCampo("default", value || "-"),
     cuentaDestino: (value) => formatearCampo("cuentaDestino", value),
     moneda: (value) => formatearCampo("monedaDePago", value),
     montoEnviado: (value) => formatearCampo("montoEnviado", value),
@@ -240,8 +242,13 @@ const ChequesCelulandiaPage = () => {
     }
   };
 
-  const handleSaveNew = (newData) => {
-    setMovimientos((prevMovimientos) => [...prevMovimientos, parseMovimiento(newData)]);
+  const handleSaveNew = async (newData) => {
+    try {
+      await fetchData(paginaActual);
+    } catch (error) {
+      console.error("Error al recargar datos después de agregar cheque:", error);
+      setMovimientos((prevMovimientos) => [...prevMovimientos, parseMovimiento(newData)]);
+    }
   };
 
   const handleDelete = (item) => {
