@@ -495,11 +495,11 @@ const DataTable = ({
                   "& .MuiTableCell-root": {
                     borderRight: "none !important",
                     borderLeft: "none !important",
-                    fontSize: "0.8rem",
+                    fontSize: "0.75rem",
                   },
                   "& .MuiTableHead-root .MuiTableCell-root": {
                     borderBottom: "1px solid rgba(224, 224, 224, 1)",
-                    fontSize: "0.7rem",
+                    fontSize: "0.65rem",
                     fontWeight: "bold",
                   },
                 }}

@@ -1,9 +1,14 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { Layout as DashboardLayout } from "src/layouts/dashboard/layout";
-import { Container } from "@mui/material";
+import { Container, IconButton, Menu, MenuItem, ListItemIcon, ListItemText } from "@mui/material";
 
 import DataTable from "src/components/celulandia/DataTable";
-import TableActions from "src/components/celulandia/TableActions";
+// Reemplazamos TableActions por un menú compacto de 3 puntitos
+import MoreVertIcon from "@mui/icons-material/MoreVert";
+import EditIcon from "@mui/icons-material/Edit";
+import HistoryIcon from "@mui/icons-material/History";
+import ImageIcon from "@mui/icons-material/Image";
+import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import movimientosService from "src/services/celulandia/movimientosService";
 import { formatearCampo } from "src/utils/celulandia/formatearCampo";
 import { getFechaArgentina, calcularFechasFiltro } from "src/utils/celulandia/fechas";
@@ -32,7 +37,7 @@ const ComprobantesCelulandiaPage = () => {
   const [isDeleting, setIsDeleting] = useState(false);
   const [paginaActual, setPaginaActual] = useState(1);
   const [totalMovimientos, setTotalMovimientos] = useState(0);
-  const [limitePorPagina] = useState(20);
+  const [limitePorPagina] = useState(50);
   const [sortField, setSortField] = useState("fechaCreacion");
   const [sortDirection, setSortDirection] = useState("desc");
   const [filtroFecha, setFiltroFecha] = useState("todos");
@@ -135,6 +140,79 @@ const ComprobantesCelulandiaPage = () => {
     setImagenModal("");
   };
 
+  const RowActions = ({ item }) => {
+    const [anchorEl, setAnchorEl] = useState(null);
+    const open = Boolean(anchorEl);
+    const handleOpen = (event) => setAnchorEl(event.currentTarget);
+    const handleClose = () => setAnchorEl(null);
+
+    return (
+      <>
+        <IconButton size="small" onClick={handleOpen} sx={{ p: 0.5 }}>
+          <MoreVertIcon fontSize="small" />
+        </IconButton>
+        <Menu
+          anchorEl={anchorEl}
+          open={open}
+          onClose={handleClose}
+          anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+          transformOrigin={{ vertical: "top", horizontal: "right" }}
+          MenuListProps={{ dense: true }}
+        >
+          <MenuItem
+            onClick={() => {
+              setSelectedData(item);
+              setEditarModalOpen(true);
+              handleClose();
+            }}
+          >
+            <ListItemIcon>
+              <EditIcon fontSize="small" />
+            </ListItemIcon>
+            <ListItemText primary="Editar" />
+          </MenuItem>
+          <MenuItem
+            onClick={() => {
+              setSelectedData(item);
+              setHistorialModalOpen(true);
+              handleClose();
+            }}
+          >
+            <ListItemIcon>
+              <HistoryIcon fontSize="small" />
+            </ListItemIcon>
+            <ListItemText primary="Historial" />
+          </MenuItem>
+          {item?.urlImagen && (
+            <MenuItem
+              onClick={() => {
+                setImagenModal(item.urlImagen);
+                setModalOpen(true);
+                handleClose();
+              }}
+            >
+              <ListItemIcon>
+                <ImageIcon fontSize="small" />
+              </ListItemIcon>
+              <ListItemText primary="Ver imagen" />
+            </MenuItem>
+          )}
+          <MenuItem
+            onClick={() => {
+              handleDelete(item);
+              handleClose();
+            }}
+          >
+            <ListItemIcon>
+              <DeleteOutlineIcon fontSize="small" />
+            </ListItemIcon>
+            <ListItemText primary="Eliminar" />
+          </MenuItem>
+        </Menu>
+      </>
+    );
+  };
+
   const columns = [
     { key: "fechaCreacion", label: "Fecha Creación", sortable: true },
     { key: "horaCreacion", label: "Hora Creación", sortable: true },
@@ -150,26 +228,9 @@ const ComprobantesCelulandiaPage = () => {
     { key: "nombreUsuario", label: "Usuario", sortable: true },
     {
       key: "acciones",
-      label: "Acciones",
+      label: "",
       sortable: false,
-      render: (item) => (
-        <TableActions
-          item={item}
-          onEdit={(item) => {
-            setSelectedData(item);
-            setEditarModalOpen(true);
-          }}
-          onViewHistory={(item) => {
-            setSelectedData(item);
-            setHistorialModalOpen(true);
-          }}
-          onViewImage={(urlImagen) => {
-            setImagenModal(urlImagen);
-            setModalOpen(true);
-          }}
-          onDelete={handleDelete}
-        />
-      ),
+      render: (item) => <RowActions item={item} />,
     },
   ];
 
@@ -177,7 +238,7 @@ const ComprobantesCelulandiaPage = () => {
     fechaFactura: (value, item) => getFechaArgentina(value),
     fechaCreacion: (value, item) => getFechaArgentina(value),
     horaCreacion: (value, item) => formatearCampo("hora", value, item),
-    nombreUsuario: (value, item) => formatearCampo("default", value, item),
+    nombreUsuario: (value, item) => formatearCampo("nombreUsuario", value, item),
     cuentaDestino: (value, item) => formatearCampo("cuentaDestino", value, item),
     moneda: (value, item) => formatearCampo("monedaDePago", value, item),
     montoEnviado: (value, item) => formatearCampo("montoEnviado", value, item),
