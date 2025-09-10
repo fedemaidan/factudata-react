@@ -174,7 +174,7 @@ const CuentaCorrienteCelulandiaPage = () => {
         }}
       >
         <Container maxWidth="xl">
-          <Stack>
+          <Stack spacing={1}>
             <Stack direction="row" spacing={2} alignItems="center">
               <TextField
                 label="Buscar cliente"

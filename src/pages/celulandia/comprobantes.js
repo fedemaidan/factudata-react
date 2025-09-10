@@ -258,6 +258,7 @@ const ComprobantesCelulandiaPage = () => {
           columns={columns}
           searchFields={searchFields}
           formatters={formatters}
+          showClienteListedChip={true}
           onAdd={() => setAgregarModalOpen(true)}
           dateField="fechaFactura"
           total={totalMovimientos}
