@@ -24,6 +24,7 @@ import {
 } from "src/utils/celulandia/historial";
 import { getUser } from "src/utils/celulandia/currentUser";
 import EditarEntregaModal from "src/components/celulandia/EditarEntregaModal";
+import agregarSaldoCalculado from "src/utils/celulandia/agregarSaldoCalculado";
 
 // helpers numéricos simples
 const toNumber = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
@@ -199,21 +200,8 @@ const ClienteCelulandiaCCPage = () => {
       return (ta - tb) * factor;
     });
 
-    // saldo acumulado (suma algebraica del monto)
-    let acumulado = 0;
-    return ordenados.map((it) => {
-      const debe = it.monto < 0 ? Math.abs(it.monto) : 0;
-      const haber = it.monto > 0 ? it.monto : 0;
-      acumulado = round2(acumulado + it.monto);
-
-      return {
-        ...it,
-        debe: round2(debe), // número puro
-        haber: round2(haber), // número puro
-        saldoAcumulado: acumulado, // número puro
-        // si querés ocultar "monto" en la tabla/export, podés quitar esta propiedad o ignorarla en las columnas
-      };
-    });
+    // aplicar el cálculo EXACTO en el orden cronológico global
+    return agregarSaldoCalculado(ordenados);
   }, [itemsDataTab, sortDirection]);
 
   const handleVolver = useCallback(() => router.back(), [router]);
@@ -304,40 +292,24 @@ const ClienteCelulandiaCCPage = () => {
   if (!id) return <div>Cargando...</div>;
 
   return (
-    <>
-      <Head>
-        <title>Cuenta Corriente - {cliente?.nombre || id}</title>
-      </Head>
-      <Box component="main" sx={{ flexGrow: 1, py: 2 }}>
+    <DashboardLayout title={`Cuenta Corriente - ${cliente?.nombre || id}`}>
+      <Box component="main" sx={{ flexGrow: 1, pb: 2 }}>
         <Container maxWidth="xl">
-          <Stack spacing={3}>
-            <Stack spacing={2}>
-              <Button
-                variant="text"
-                startIcon={<ArrowBackIcon />}
-                onClick={handleVolver}
-                sx={{
-                  alignSelf: "flex-start",
-                  color: "text.secondary",
-                  "&:hover": { backgroundColor: "action.hover", color: "primary.main" },
-                  transition: "all 0.2s ease-in-out",
-                  fontWeight: 500,
-                }}
-              >
-                Volver
-              </Button>
-
-              <Stack spacing={1}>
-                <Typography variant="h4" sx={{ fontWeight: 600 }}>
-                  Cuenta Corriente
-                </Typography>
-                <Typography variant="h6" color="text.secondary" sx={{ fontWeight: 400 }}>
-                  Cliente: {cliente?.nombre || id}
-                </Typography>
-              </Stack>
-            </Stack>
-
-            <Divider />
+          <Stack>
+            <Button
+              variant="text"
+              startIcon={<ArrowBackIcon />}
+              onClick={handleVolver}
+              sx={{
+                alignSelf: "flex-start",
+                color: "text.secondary",
+                "&:hover": { backgroundColor: "action.hover", color: "primary.main" },
+                transition: "all 0.2s ease-in-out",
+                fontWeight: 500,
+              }}
+            >
+              Volver
+            </Button>
 
             {isLoading ? (
               <Box
@@ -368,6 +340,7 @@ const ClienteCelulandiaCCPage = () => {
                 // Filtro de fecha (frontend)
                 filtroFecha={filtroFecha}
                 onFiltroFechaChange={handleFiltroFechaChange}
+                showSaldoColumn={true}
                 // Acciones
                 onEdit={handleEdit}
                 onViewHistory={handleViewHistory}
@@ -430,10 +403,8 @@ const ClienteCelulandiaCCPage = () => {
         onClose={handleCloseImageModal}
         imagenUrl={imagenModal}
       />
-    </>
+    </DashboardLayout>
   );
 };
-
-ClienteCelulandiaCCPage.getLayout = (page) => <DashboardLayout>{page}</DashboardLayout>;
 
 export default ClienteCelulandiaCCPage;

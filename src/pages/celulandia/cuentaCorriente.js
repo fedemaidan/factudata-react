@@ -162,7 +162,7 @@ const CuentaCorrienteCelulandiaPage = () => {
   };
 
   return (
-    <>
+    <DashboardLayout title="Cuenta Corriente">
       <Head>
         <title>Cuenta Corriente</title>
       </Head>
@@ -174,14 +174,7 @@ const CuentaCorrienteCelulandiaPage = () => {
         }}
       >
         <Container maxWidth="xl">
-          <Stack spacing={3}>
-            <Stack direction="row" justifyContent="space-between" spacing={4}>
-              <Stack spacing={1}>
-                <Typography variant="h4">Cuenta Corriente</Typography>
-              </Stack>
-            </Stack>
-            <Divider />
-
+          <Stack>
             <Stack direction="row" spacing={2} alignItems="center">
               <TextField
                 label="Buscar cliente"
@@ -386,10 +379,8 @@ const CuentaCorrienteCelulandiaPage = () => {
           </Stack>
         </Container>
       </Box>
-    </>
+    </DashboardLayout>
   );
 };
-
-CuentaCorrienteCelulandiaPage.getLayout = (page) => <DashboardLayout>{page}</DashboardLayout>;
 
 export default CuentaCorrienteCelulandiaPage;
