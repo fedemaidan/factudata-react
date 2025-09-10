@@ -1,5 +1,29 @@
-import React, { useEffect, useState } from 'react';
-import { Box, Container, Typography, CircularProgress, Snackbar, Alert, TextField, Button, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, Checkbox, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, IconButton, LinearProgress } from '@mui/material';
+import React, { useEffect, useState, useMemo } from 'react';
+import {
+  Box,
+  Container,
+  Typography,
+  CircularProgress,
+  Snackbar,
+  Alert,
+  TextField,
+  Button,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle,
+  Checkbox,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  IconButton,
+  LinearProgress,
+  TablePagination
+} from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import Head from 'next/head';
 import Link from 'next/link';
@@ -28,6 +52,20 @@ const EmpresasListPage = () => {
     proyectos: '',
   });
 
+  // --- Paginación ---
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(25);
+
+  const paginatedEmpresas = useMemo(() => {
+    const start = page * rowsPerPage;
+    return filteredEmpresas.slice(start, start + rowsPerPage);
+  }, [filteredEmpresas, page, rowsPerPage]);
+
+  const currentPageIds = useMemo(
+    () => paginatedEmpresas.map((emp) => emp.id),
+    [paginatedEmpresas]
+  );
+
   useEffect(() => {
     async function fetchEmpresas() {
       try {
@@ -49,9 +87,7 @@ const EmpresasListPage = () => {
   }, []);
 
   const handleCloseAlert = (event, reason) => {
-    if (reason === 'clickaway') {
-      return;
-    }
+    if (reason === 'clickaway') return;
     setAlert({ ...alert, open: false });
   };
 
@@ -89,7 +125,7 @@ const EmpresasListPage = () => {
     for (let i = 0; i < selectedEmpresas.length; i++) {
       const empresaId = selectedEmpresas[i];
       setDeleteProgress(`Eliminando empresa ${i + 1} de ${selectedEmpresas.length}`);
-      
+
       await deleteEmpresa(empresaId);
       setEmpresas((prevEmpresas) => prevEmpresas.filter((empresa) => empresa.id !== empresaId));
       setFilteredEmpresas((prevFiltered) => prevFiltered.filter((empresa) => empresa.id !== empresaId));
@@ -116,7 +152,15 @@ const EmpresasListPage = () => {
     });
 
     setFilteredEmpresas(filtered);
+    setPage(0); // reset de página cuando cambian filtros/dataset
   }, [filters, empresas]);
+
+  // Clamp de página si queda fuera de rango al cambiar filtros o rowsPerPage
+  useEffect(() => {
+    if (page > 0 && page * rowsPerPage >= filteredEmpresas.length) {
+      setPage(0);
+    }
+  }, [filteredEmpresas.length, page, rowsPerPage]);
 
   return (
     <>
@@ -160,51 +204,83 @@ const EmpresasListPage = () => {
           {isLoading ? (
             <CircularProgress />
           ) : (
-            <TableContainer>
-              <Table>
-                <TableHead>
-                  <TableRow>
-                    <TableCell padding="checkbox">
-                      <Checkbox
-                        indeterminate={selectedEmpresas.length > 0 && selectedEmpresas.length < filteredEmpresas.length}
-                        checked={filteredEmpresas.length > 0 && selectedEmpresas.length === filteredEmpresas.length}
-                        onChange={(e) => setSelectedEmpresas(e.target.checked ? filteredEmpresas.map((emp) => emp.id) : [])}
-                      />
-                    </TableCell>
-                    <TableCell>Nombre</TableCell>
-                    <TableCell>Tipo</TableCell>
-                    <TableCell>Cantidad de Proyectos</TableCell>
-                    <TableCell align="right">Acciones</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {filteredEmpresas.map((empresa) => (
-                    <TableRow key={empresa.id} hover>
+            <>
+              <TableContainer>
+                <Table>
+                  <TableHead>
+                    <TableRow>
                       <TableCell padding="checkbox">
                         <Checkbox
-                          checked={selectedEmpresas.includes(empresa.id)}
-                          onChange={() => handleCheckboxChange(empresa.id)}
+                          indeterminate={
+                            currentPageIds.some((id) => selectedEmpresas.includes(id)) &&
+                            !currentPageIds.every((id) => selectedEmpresas.includes(id))
+                          }
+                          checked={
+                            currentPageIds.length > 0 &&
+                            currentPageIds.every((id) => selectedEmpresas.includes(id))
+                          }
+                          onChange={(e) =>
+                            setSelectedEmpresas((prev) =>
+                              e.target.checked
+                                ? Array.from(new Set([...prev, ...currentPageIds])) // selecciona la página
+                                : prev.filter((id) => !currentPageIds.includes(id)) // deselecciona la página
+                            )
+                          }
                         />
                       </TableCell>
-                      <TableCell>
-                        <Link href={`/empresa/?empresaId=${empresa.id}`} passHref>
-                          <Typography variant="body1" component="a" sx={{ textDecoration: 'underline', color: 'primary.main' }}>
-                            {empresa.nombre}
-                          </Typography>
-                        </Link>
-                      </TableCell>
-                      <TableCell>{empresa.tipo}</TableCell>
-                      <TableCell>{empresa.proyectosIds?.length || 0}</TableCell>
-                      <TableCell align="right">
-                        <IconButton color="secondary" onClick={() => handleCheckboxChange(empresa.id)}>
-                          <DeleteIcon />
-                        </IconButton>
-                      </TableCell>
+                      <TableCell>Nombre</TableCell>
+                      <TableCell>Tipo</TableCell>
+                      <TableCell>Cantidad de Proyectos</TableCell>
+                      <TableCell align="right">Acciones</TableCell>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
+                  </TableHead>
+                  <TableBody>
+                    {paginatedEmpresas.map((empresa) => (
+                      <TableRow key={empresa.id} hover>
+                        <TableCell padding="checkbox">
+                          <Checkbox
+                            checked={selectedEmpresas.includes(empresa.id)}
+                            onChange={() => handleCheckboxChange(empresa.id)}
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Link href={`/empresa/?empresaId=${empresa.id}`} passHref>
+                            <Typography
+                              variant="body1"
+                              component="a"
+                              sx={{ textDecoration: 'underline', color: 'primary.main' }}
+                            >
+                              {empresa.nombre}
+                            </Typography>
+                          </Link>
+                        </TableCell>
+                        <TableCell>{empresa.tipo}</TableCell>
+                        <TableCell>{empresa.proyectosIds?.length || 0}</TableCell>
+                        <TableCell align="right">
+                          <IconButton color="secondary" onClick={() => handleCheckboxChange(empresa.id)}>
+                            <DeleteIcon />
+                          </IconButton>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+
+              <TablePagination
+                component="div"
+                count={filteredEmpresas.length}
+                page={page}
+                onPageChange={(e, newPage) => setPage(newPage)}
+                rowsPerPage={rowsPerPage}
+                onRowsPerPageChange={(e) => {
+                  setRowsPerPage(parseInt(e.target.value, 10));
+                  setPage(0);
+                }}
+                rowsPerPageOptions={[10, 25, 50, 100]}
+                labelRowsPerPage="Filas por página"
+              />
+            </>
           )}
 
           <Button
