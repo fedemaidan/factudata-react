@@ -38,10 +38,12 @@ const EditarChequeModal = ({ open, onClose, data, onSave, clientes, tipoDeCambio
     setFormData,
     tipoDeCambioManual,
     clienteSeleccionado,
+    montoFormateado,
     getCCOptions,
     getTipoDeCambio,
     handleTipoDeCambioChange,
     handleMontoEnviado,
+    handleMontoChange,
     handleInputChange,
     handleClienteChange,
   } = useMovimientoForm(data, { clientes, tipoDeCambio, cajas });
@@ -90,6 +92,7 @@ const EditarChequeModal = ({ open, onClose, data, onSave, clientes, tipoDeCambio
         estado: formData.estado,
         montoEnviado: parseFloat(formData.montoEnviado) || 0,
         montoCC: parseFloat(formData.montoCC) || 0,
+        concepto: formData.concepto || null,
         fechaCobro: fechaCobro ? new Date(`${fechaCobro}T00:00:00`) : null,
       };
 
@@ -210,11 +213,20 @@ const EditarChequeModal = ({ open, onClose, data, onSave, clientes, tipoDeCambio
               <TextField
                 fullWidth
                 label="Monto *"
-                type="number"
-                value={formData.montoEnviado}
-                onChange={(e) => handleMontoEnviado(e.target.value)}
+                value={montoFormateado}
+                onChange={(e) => handleMontoChange(e.target.value)}
                 margin="normal"
+                inputMode="numeric"
                 required
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Descripción"
+                value={formData.concepto || ""}
+                onChange={(e) => handleInputChange("concepto", e.target.value)}
+                margin="normal"
               />
             </Grid>
             <Grid item xs={12} sm={6}>
@@ -235,8 +247,14 @@ const EditarChequeModal = ({ open, onClose, data, onSave, clientes, tipoDeCambio
               <TextField
                 fullWidth
                 label="Monto CC"
-                type="number"
-                value={formData.montoCC}
+                type="text"
+                value={
+                  formData.montoCC !== "" &&
+                  formData.montoCC !== null &&
+                  formData.montoCC !== undefined
+                    ? Math.round(Number(formData.montoCC) || 0).toLocaleString("es-AR")
+                    : ""
+                }
                 disabled={true}
                 margin="normal"
                 helperText="Calculado automáticamente"
