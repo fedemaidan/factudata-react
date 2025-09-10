@@ -148,7 +148,7 @@ const tableRef = useRef(null);
 
 const [atEdges, setAtEdges] = useState({ left: true, right: false });
 const [atStart, setAtStart] = useState(true);
-const [atEnd, setAtEnd] = useState(true);
+const [atEnd, setAtEnd] = useState(false);
 const [coachOpen, setCoachOpen] = useState(true); // se muestra en cada mount
 const [topWidth, setTopWidth] = useState(0);
 // --- paginación ---
@@ -169,11 +169,11 @@ const handleChangeRowsPerPage = (evt) => {
 };
 
 const getMax = () => {
-  const cont = scrollRef.current;
-  const table = tableRef.current;
-  if (!cont || !table) return 0;
-  return Math.max(0, table.scrollWidth - cont.clientWidth);
+  const el = scrollRef.current; // el que realmente scrollea
+  if (!el) return 0;
+  return Math.max(0, el.scrollWidth - el.clientWidth);
 };
+
 
 useEffect(() => {
   const cont = scrollRef.current;
@@ -956,7 +956,7 @@ useEffect(() => {
       }}
     />
   )}
-  {!atEnd && (
+  
     <Box
       sx={{
         pointerEvents: 'none',
@@ -972,7 +972,7 @@ useEffect(() => {
         borderBottomRightRadius: 4,
       }}
     />
-  )}
+  
 
   {/* Flechas */}
   {!atStart && (
