@@ -49,21 +49,12 @@ const ComprobantesCelulandiaPage = () => {
   const [selectedCajaNombre, setSelectedCajaNombre] = useState(""); // "" => Todas
   const [filtroUsuario, setFiltroUsuario] = useState("");
   const [usuariosOptions, setUsuariosOptions] = useState([{ value: "", label: "(todos)" }]);
-  const [filtroEstado, setFiltroEstado] = useState("");
 
   const movimientoHistorialConfig = useMemo(() => getMovimientoHistorialConfig(cajas), [cajas]);
 
   useEffect(() => {
     fetchData(paginaActual);
-  }, [
-    paginaActual,
-    sortField,
-    sortDirection,
-    filtroFecha,
-    selectedCajaNombre,
-    filtroUsuario,
-    filtroEstado,
-  ]);
+  }, [paginaActual, sortField, sortDirection, filtroFecha, selectedCajaNombre, filtroUsuario]);
 
   const fetchData = async (pagina = 1) => {
     setIsLoading(true);
@@ -82,7 +73,6 @@ const ComprobantesCelulandiaPage = () => {
             sortDirection,
             cajaNombre: selectedCajaNombre || undefined,
             nombreUsuario: filtroUsuario || undefined,
-            estado: filtroEstado || undefined,
             fechaInicio,
             fechaFin,
             //includeInactive: true,
@@ -305,23 +295,6 @@ const ComprobantesCelulandiaPage = () => {
               ],
               onChange: (val) => {
                 setSelectedCajaNombre(val);
-                setPaginaActual(1);
-              },
-            },
-            {
-              key: "estado",
-              label: "Estado",
-              value: filtroEstado,
-              options: [
-                { value: "", label: "(todos)" },
-                { value: "PENDIENTE", label: "PENDIENTE" },
-                { value: "CONFIRMADO", label: "CONFIRMADO" },
-                { value: "REVISAR MONTO", label: "REVISAR MONTO" },
-                { value: "PENDIENTE A COBRAR", label: "PENDIENTE A COBRAR" },
-                { value: "COBRADO", label: "COBRADO" },
-              ],
-              onChange: (val) => {
-                setFiltroEstado(val);
                 setPaginaActual(1);
               },
             },
