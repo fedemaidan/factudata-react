@@ -39,6 +39,9 @@ const RevisionFacturasPage = () => {
       setIsLoading(true);
       const empresa = await getEmpresaById(empresaId);
       setEmpresa(empresa);
+      if (empresa.cuentas){
+        setFiltroCuenta(empresa.cuentas[0]);
+      }
       
       const proyectosData = await getProyectosByEmpresa(empresa);
 
@@ -109,9 +112,9 @@ const RevisionFacturasPage = () => {
                   onChange={(e) => setFiltroCuenta(e.target.value)}
                   label="Cuenta"
                 >
-                  <MenuItem value="Cuenta A">Cuenta A</MenuItem>
-                  <MenuItem value="Cuenta B">Cuenta B</MenuItem>
-                  <MenuItem value="Cuenta C">Cuenta C</MenuItem>
+                  {(empresa?.cuentas || ["Cuenta A", "Cuenta B", "Cuenta C"]).map((cuenta) => (
+                    <MenuItem key={cuenta} value={cuenta}>{cuenta}</MenuItem>
+                  ))}
                   <MenuItem value="Todas">Todas</MenuItem>
                 </Select>
               </FormControl>

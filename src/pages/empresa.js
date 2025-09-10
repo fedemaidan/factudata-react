@@ -15,6 +15,7 @@ import { useAuthContext } from 'src/contexts/auth-context';
 import { useRouter } from 'next/router';
 import { PermisosUsuarios } from 'src/sections/empresa/PermisosUsuarios';
 import { EtapasDetails } from 'src/sections/empresa/etapasDetails';
+import { SubEmpresasDetails } from 'src/sections/empresa/subEmpresasDetails';
 
 
 const EmpresaPage = () => {
@@ -29,6 +30,7 @@ const EmpresaPage = () => {
 
   const tabs = [
     // { value: 'telefonos', label: 'Números de Teléfono' },
+    { value: 'sub_empresas', label: 'SubEmpresas' },
     { value: 'proyectos', label: 'Proyectos' },
     { value: 'categorias', label: 'Categorías' },
     { value: 'proveedores', label: 'Proveedores' },
@@ -132,6 +134,7 @@ const EmpresaPage = () => {
                 </Tabs>
               </>
             )}
+            {currentTab === 'sub_empresas' && <SubEmpresasDetails empresa={empresa}/>}
             {currentTab === 'usuarios' && <UsuariosDetails empresa={empresa}/>}
              {currentTab === 'proyectos' && <ProyectosDetails empresa={empresa}/>} 
             {currentTab === 'categorias' && <CategoriasDetails empresa={empresa}/>}
@@ -141,7 +144,6 @@ const EmpresaPage = () => {
             {currentTab === 'permisos' && <PermisosUsuarios empresa={empresa} />}
             {currentTab === 'medios_pago' && <MediosPagoDetails empresa={empresa} />}
             {currentTab === 'impuestos' && <ImpuestosDetails empresa={empresa} />}
-
           </Stack>
         </Container>
       </Box>
