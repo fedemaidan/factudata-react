@@ -993,7 +993,7 @@ useEffect(() => {
       <ChevronLeftIcon fontSize="small" />
     </IconButton>
   )}
-  {!atEnd && (
+  
     <IconButton
       size="small"
       onClick={() => scrollByStep('right')}
@@ -1010,7 +1010,7 @@ useEffect(() => {
     >
       <ChevronRightIcon fontSize="small" />
     </IconButton>
-  )}
+  
 
   {/* Coachmark: se muestra siempre al entrar (no persiste) */}
   <Tooltip
@@ -1022,6 +1022,7 @@ useEffect(() => {
   >
     <Box
       onMouseEnter={() => setCoachOpen(false)}
+      onClick={() => scrollByStep('right')}
       sx={{
         position: 'absolute',
         right: 40,
