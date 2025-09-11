@@ -4,7 +4,7 @@ import Head from "next/head";
 import { Container } from "@mui/material";
 
 import DataTable from "src/components/celulandia/DataTable";
-import TableActions from "src/components/celulandia/TableActions";
+import RowActions from "src/components/celulandia/RowActions";
 import movimientosService from "src/services/celulandia/movimientosService";
 
 import cajasService from "src/services/celulandia/cajasService";
@@ -25,7 +25,6 @@ const PagosCelulandiaPage = () => {
   const [confirmarEliminacionOpen, setConfirmarEliminacionOpen] = useState(false);
   const [selectedData, setSelectedData] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
-  // Estados para paginación y ordenación del servidor
   const [paginaActual, setPaginaActual] = useState(1);
   const [totalPagos, setTotalPagos] = useState(0);
   const [limitePorPagina] = useState(20);
@@ -168,8 +167,19 @@ const PagosCelulandiaPage = () => {
   console.log(pagos);
 
   const columns = [
-    { key: "fechaFactura", label: "Fecha", sortable: true },
-    { key: "horaCreacion", label: "Hora", sortable: true },
+    {
+      key: "fechaHora",
+      label: "Fecha y Hora",
+      sortable: true,
+      render: (item) => (
+        <div>
+          <div>{getFechaArgentina(item.fechaFactura)}</div>
+          <div style={{ fontSize: "0.75rem", color: "#666" }}>
+            {formatearCampo("hora", item.horaCreacion)}
+          </div>
+        </div>
+      ),
+    },
     { key: "concepto", label: "Concepto", sortable: false },
     { key: "cuentaDestino", label: "Cuenta Origen", sortable: false },
     { key: "montoEnviado", label: "Monto", sortable: false },
@@ -177,10 +187,10 @@ const PagosCelulandiaPage = () => {
     { key: "nombreUsuario", label: "Usuario", sortable: true },
     {
       key: "acciones",
-      label: "Acciones",
+      label: "",
       sortable: false,
       render: (item) => (
-        <TableActions
+        <RowActions
           item={item}
           onEdit={(item) => {
             setSelectedData(item);
@@ -191,6 +201,7 @@ const PagosCelulandiaPage = () => {
             setHistorialModalOpen(true);
           }}
           onDelete={handleDelete}
+          showImage={false}
         />
       ),
     },
@@ -215,10 +226,13 @@ const PagosCelulandiaPage = () => {
   ];
 
   const handleSortChange = (campo) => {
-    if (sortField === campo) {
+    // Si se hace click en la columna combinada "fechaHora", ordenar por "fechaFactura"
+    const actualSortField = campo === "fechaHora" ? "fechaFactura" : campo;
+
+    if (sortField === actualSortField) {
       setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
     } else {
-      setSortField(campo);
+      setSortField(actualSortField);
       setSortDirection("asc");
     }
 

@@ -21,8 +21,6 @@ export const parseCuentaPendiente = (c) => {
       break;
   }
 
-  console.log("c", c);
-
   return {
     id: c._id,
     _id: c._id,

@@ -149,6 +149,10 @@ const ClienteCelulandiaCCPage = () => {
         descuentoAplicado: m.descuentoAplicado,
         montoOriginal,
         monedaOriginal: m.moneda || m.monedaDePago,
+        montoYMonedaOriginal: {
+          monto: montoOriginal,
+          moneda: m.moneda || m.monedaDePago || "ARS",
+        },
         urlImagen: isMov ? m?.urlImagen : null,
         itemType: m.itemType,
         originalData: m,

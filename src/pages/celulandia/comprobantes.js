@@ -3,7 +3,7 @@ import { Layout as DashboardLayout } from "src/layouts/dashboard/layout";
 import { Container } from "@mui/material";
 
 import DataTable from "src/components/celulandia/DataTable";
-import TableActions from "src/components/celulandia/TableActions";
+import RowActions from "src/components/celulandia/RowActions";
 import movimientosService from "src/services/celulandia/movimientosService";
 import { formatearCampo } from "src/utils/celulandia/formatearCampo";
 import { getFechaArgentina, calcularFechasFiltro } from "src/utils/celulandia/fechas";
@@ -32,7 +32,7 @@ const ComprobantesCelulandiaPage = () => {
   const [isDeleting, setIsDeleting] = useState(false);
   const [paginaActual, setPaginaActual] = useState(1);
   const [totalMovimientos, setTotalMovimientos] = useState(0);
-  const [limitePorPagina] = useState(20);
+  const [limitePorPagina] = useState(50);
   const [sortField, setSortField] = useState("fechaCreacion");
   const [sortDirection, setSortDirection] = useState("desc");
   const [filtroFecha, setFiltroFecha] = useState("todos");
@@ -49,12 +49,21 @@ const ComprobantesCelulandiaPage = () => {
   const [selectedCajaNombre, setSelectedCajaNombre] = useState(""); // "" => Todas
   const [filtroUsuario, setFiltroUsuario] = useState("");
   const [usuariosOptions, setUsuariosOptions] = useState([{ value: "", label: "(todos)" }]);
+  const [filtroNombreCliente, setFiltroNombreCliente] = useState("");
 
   const movimientoHistorialConfig = useMemo(() => getMovimientoHistorialConfig(cajas), [cajas]);
 
   useEffect(() => {
     fetchData(paginaActual);
-  }, [paginaActual, sortField, sortDirection, filtroFecha, selectedCajaNombre, filtroUsuario]);
+  }, [
+    paginaActual,
+    sortField,
+    sortDirection,
+    filtroFecha,
+    selectedCajaNombre,
+    filtroUsuario,
+    filtroNombreCliente,
+  ]);
 
   const fetchData = async (pagina = 1) => {
     setIsLoading(true);
@@ -73,6 +82,7 @@ const ComprobantesCelulandiaPage = () => {
             sortDirection,
             cajaNombre: selectedCajaNombre || undefined,
             nombreUsuario: filtroUsuario || undefined,
+            ...(filtroNombreCliente ? { clienteNombre: filtroNombreCliente } : {}),
             fechaInicio,
             fechaFin,
             //includeInactive: true,
@@ -126,13 +136,33 @@ const ComprobantesCelulandiaPage = () => {
   };
 
   const columns = [
-    { key: "fechaCreacion", label: "Fecha Creación", sortable: true },
-    { key: "horaCreacion", label: "Hora Creación", sortable: true },
+    {
+      key: "fechaHoraCreacion",
+      label: "Fecha y Hora Creación",
+      sortable: true,
+      render: (item) => (
+        <div>
+          <div>{getFechaArgentina(item.fechaCreacion)}</div>
+          <div style={{ fontSize: "0.75rem", color: "#666" }}>
+            {formatearCampo("hora", item.horaCreacion)}
+          </div>
+        </div>
+      ),
+    },
     { key: "fechaFactura", label: "Fecha Factura", sortable: true },
     { key: "cliente", label: "Cliente", sortable: true },
-    { key: "cuentaDestino", label: "Cuenta Destino", sortable: true },
-    { key: "montoEnviado", label: "Monto Enviado", sortable: true },
-    { key: "moneda", label: "Moneda", sortable: true },
+    {
+      key: "cuentaDestino",
+      label: "Cuenta Destino",
+      sortable: true,
+      sx: {
+        maxWidth: "185px",
+        whiteSpace: "nowrap",
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+      },
+    },
+    { key: "montoYMoneda", label: "Monto Enviado", sortable: true },
     { key: "montoCC", label: "Monto CC", sortable: true },
     { key: "cuentaCorriente", label: "CC", sortable: true },
     { key: "tipoDeCambio", label: "Tipo Cambio", sortable: true },
@@ -140,10 +170,10 @@ const ComprobantesCelulandiaPage = () => {
     { key: "nombreUsuario", label: "Usuario", sortable: true },
     {
       key: "acciones",
-      label: "Acciones",
+      label: "",
       sortable: false,
       render: (item) => (
-        <TableActions
+        <RowActions
           item={item}
           onEdit={(item) => {
             setSelectedData(item);
@@ -158,6 +188,7 @@ const ComprobantesCelulandiaPage = () => {
             setModalOpen(true);
           }}
           onDelete={handleDelete}
+          showImage={true}
         />
       ),
     },
@@ -167,10 +198,9 @@ const ComprobantesCelulandiaPage = () => {
     fechaFactura: (value, item) => getFechaArgentina(value),
     fechaCreacion: (value, item) => getFechaArgentina(value),
     horaCreacion: (value, item) => formatearCampo("hora", value, item),
-    nombreUsuario: (value, item) => formatearCampo("default", value, item),
+    nombreUsuario: (value, item) => formatearCampo("nombreUsuario", value, item),
     cuentaDestino: (value, item) => formatearCampo("cuentaDestino", value, item),
-    moneda: (value, item) => formatearCampo("monedaDePago", value, item),
-    montoEnviado: (value, item) => formatearCampo("montoEnviado", value, item),
+    montoYMoneda: (value, item) => formatearCampo("montoYMoneda", value, item),
     cuentaCorriente: (value, item) => formatearCampo("CC", value, item),
     montoCC: (value, item) => formatearCampo("montoCC", value, item),
     tipoDeCambio: (value, item) => formatearCampo("tipoDeCambio", value, item),
@@ -210,10 +240,19 @@ const ComprobantesCelulandiaPage = () => {
   };
 
   const handleSortChange = (campo) => {
-    if (sortField === campo) {
+    // Si se hace click en la columna combinada "fechaHoraCreacion", ordenar por "fechaCreacion"
+    // Si se hace click en la columna combinada "montoYMoneda", ordenar por "montoEnviado"
+    let actualSortField = campo;
+    if (campo === "fechaHoraCreacion") {
+      actualSortField = "fechaCreacion";
+    } else if (campo === "montoYMoneda") {
+      actualSortField = "montoEnviado";
+    }
+
+    if (sortField === actualSortField) {
       setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
     } else {
-      setSortField(campo);
+      setSortField(actualSortField);
       setSortDirection("asc");
     }
 
@@ -282,6 +321,25 @@ const ComprobantesCelulandiaPage = () => {
           showClienteListedChip={true}
           serverSide={true}
           multipleSelectFilters={[
+            {
+              key: "nombreCliente",
+              label: "Cliente",
+              type: "autocomplete",
+              value: filtroNombreCliente,
+              options: Array.from(
+                new Set(
+                  (clientes || [])
+                    .map((c) => (c?.nombre || "").toString().trim())
+                    .filter((n) => n && n.length > 0)
+                )
+              )
+                .sort((a, b) => a.localeCompare(b))
+                .map((n) => ({ value: n, label: n })),
+              onChange: (v) => {
+                setFiltroNombreCliente(v);
+                setPaginaActual(1);
+              },
+            },
             {
               key: "cajaNombre",
               label: "Cuenta destino",

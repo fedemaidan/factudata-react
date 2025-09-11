@@ -23,14 +23,11 @@ import {
 } from "@mui/material";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import FileDownloadIcon from "@mui/icons-material/FileDownload";
-import EditIcon from "@mui/icons-material/Edit";
-import HistoryIcon from "@mui/icons-material/History";
-import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
-import ImageIcon from "@mui/icons-material/Image";
 
 import * as XLSX from "xlsx";
 import { formatearCampo } from "src/utils/celulandia/formatearCampo";
 import { formatCurrency } from "src/utils/formatters";
+import RowActions from "src/components/celulandia/RowActions";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
@@ -347,8 +344,8 @@ const DataTabTable = ({
         Haber: n(haber),
         "Saldo acumulado": n(running),
         "Tipo de cambio": n(row.tipoDeCambio || 1),
-        "Monto original": n(row.montoOriginal || 0), // ya recalculado si venía 0
-        "Moneda original": row.monedaOriginal ?? "",
+        "Monto original": n(row.montoYMonedaOriginal?.monto || row.montoOriginal || 0),
+        "Moneda original": row.montoYMonedaOriginal?.moneda || row.monedaOriginal || "",
       };
     });
 
@@ -470,7 +467,20 @@ const DataTabTable = ({
         <div key={opt.value} role="tabpanel" hidden={currentOption !== opt.value}>
           {currentOption === opt.value && (
             <Box>
-              <Table>
+              <Table
+                size="small"
+                sx={{
+                  "& .MuiTableCell-root": {
+                    fontSize: "0.75rem",
+                    padding: "5px 8px",
+                  },
+                  "& .MuiTableHead-root .MuiTableCell-root": {
+                    fontSize: "0.65rem",
+                    fontWeight: "bold",
+                    padding: "5px 8px",
+                  },
+                }}
+              >
                 <TableHead>
                   <TableRow>
                     <TableCell sx={{ fontWeight: "bold", cursor: "pointer" }}>
@@ -486,18 +496,13 @@ const DataTabTable = ({
                     {/* Sin orden en el resto de columnas */}
                     <TableCell sx={{ fontWeight: "bold" }}>Cliente</TableCell>
                     <TableCell sx={{ fontWeight: "bold" }}>Monto ({opt.label})</TableCell>
-                    <TableCell sx={{ fontWeight: "bold" }}>Tipo de Cambio</TableCell>
+                    <TableCell sx={{ fontWeight: "bold" }}>TC</TableCell>
                     <TableCell sx={{ fontWeight: "bold" }}>Descuento</TableCell>
-                    <TableCell sx={{ fontWeight: "bold" }}>
-                      Monto Original (sin descuento)
-                    </TableCell>
-                    <TableCell sx={{ fontWeight: "bold" }}>Moneda Original</TableCell>
+                    <TableCell sx={{ fontWeight: "bold" }}>Monto Original</TableCell>
                     {showSaldoColumn && <TableCell sx={{ fontWeight: "bold" }}>Saldo</TableCell>}
 
                     {(onEdit || onViewHistory || onDelete || onViewImage) && (
-                      <TableCell sx={{ fontWeight: "bold", textAlign: "center" }}>
-                        Acciones
-                      </TableCell>
+                      <TableCell sx={{ fontWeight: "bold", textAlign: "center" }}></TableCell>
                     )}
                   </TableRow>
                 </TableHead>
@@ -511,7 +516,10 @@ const DataTabTable = ({
                       <TableCell>{formatearCampo("fecha", row.fecha)}</TableCell>
                       <TableCell>{row.cliente}</TableCell>
                       <TableCell>
-                        <Typography color={(row.monto || 0) < 0 ? "error.main" : "text.primary"}>
+                        <Typography
+                          color={(row.monto || 0) < 0 ? "error.main" : "text.primary"}
+                          sx={{ fontSize: "0.75rem" }}
+                        >
                           {formatCurrency(Math.round(row.monto || 0))}
                         </Typography>
                       </TableCell>
@@ -522,17 +530,13 @@ const DataTabTable = ({
                           : "-"}
                       </TableCell>
                       <TableCell>
-                        <Typography
-                          color={(row.montoOriginal || 0) < 0 ? "error.main" : "text.primary"}
-                        >
-                          {formatCurrency(Math.round(row.montoOriginal || 0))}
-                        </Typography>
+                        {formatearCampo("montoYMoneda", row.montoYMonedaOriginal, row)}
                       </TableCell>
-                      <TableCell>{formatearCampo("monedaDePago", row.monedaOriginal)}</TableCell>
                       {showSaldoColumn && (
                         <TableCell>
                           <Typography
                             color={(row.saldoAcumulado || 0) < 0 ? "error.main" : "text.primary"}
+                            sx={{ fontSize: "0.75rem" }}
                           >
                             {formatCurrency(Math.round(row.saldoAcumulado || 0))}
                           </Typography>
@@ -541,65 +545,14 @@ const DataTabTable = ({
 
                       {(onEdit || onViewHistory || onDelete || onViewImage) && (
                         <TableCell sx={{ textAlign: "center" }}>
-                          <Stack direction="row" spacing={1} justifyContent="start">
-                            {onEdit && (
-                              <IconButton
-                                size="small"
-                                color="primary"
-                                onClick={() => onEdit(row)}
-                                sx={{
-                                  backgroundColor: "primary.main",
-                                  color: "white",
-                                  "&:hover": { backgroundColor: "primary.dark" },
-                                }}
-                              >
-                                <EditIcon fontSize="small" />
-                              </IconButton>
-                            )}
-                            {onViewHistory && (
-                              <IconButton
-                                size="small"
-                                color="secondary"
-                                onClick={() => onViewHistory(row)}
-                                sx={{
-                                  backgroundColor: "secondary.main",
-                                  color: "white",
-                                  "&:hover": { backgroundColor: "secondary.dark" },
-                                }}
-                              >
-                                <HistoryIcon fontSize="small" />
-                              </IconButton>
-                            )}
-                            {onDelete && (
-                              <IconButton
-                                size="small"
-                                color="error"
-                                onClick={() => onDelete(row)}
-                                sx={{
-                                  backgroundColor: "error.main",
-                                  color: "white",
-                                  "&:hover": { backgroundColor: "error.dark" },
-                                }}
-                              >
-                                <DeleteOutlineIcon fontSize="small" />
-                              </IconButton>
-                            )}
-                            {onViewImage && row.urlImagen && (
-                              <IconButton
-                                size="small"
-                                color="info"
-                                onClick={() => onViewImage(row.urlImagen)}
-                                sx={{
-                                  backgroundColor: "info.main",
-                                  color: "white",
-                                  "&:hover": { backgroundColor: "info.dark" },
-                                }}
-                                title="Ver imagen"
-                              >
-                                <ImageIcon fontSize="small" />
-                              </IconButton>
-                            )}
-                          </Stack>
+                          <RowActions
+                            item={row}
+                            onEdit={onEdit}
+                            onViewHistory={onViewHistory}
+                            onDelete={onDelete}
+                            onViewImage={onViewImage}
+                            showImage={Boolean(onViewImage)}
+                          />
                         </TableCell>
                       )}
                     </TableRow>

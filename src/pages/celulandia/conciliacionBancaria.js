@@ -179,7 +179,7 @@ const ConciliacionBancariaPage = () => {
   };
 
   return (
-    <>
+    <DashboardLayout title="Conciliación Bancaria">
       <Head>
         <title>Conciliación Bancaria</title>
       </Head>
@@ -191,7 +191,6 @@ const ConciliacionBancariaPage = () => {
           justifyContent="space-between"
           sx={{ mb: 1 }}
         >
-          <Typography variant="h4">Conciliación Bancaria</Typography>
           <Button
             variant="contained"
             color="primary"
@@ -227,10 +226,8 @@ const ConciliacionBancariaPage = () => {
         onClose={() => setModalOpen(false)}
         imagenUrl={imagenModal}
       />
-    </>
+    </DashboardLayout>
   );
 };
-
-ConciliacionBancariaPage.getLayout = (page) => <DashboardLayout>{page}</DashboardLayout>;
 
 export default ConciliacionBancariaPage;

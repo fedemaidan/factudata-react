@@ -111,7 +111,6 @@ const DataTable = ({
     }
   };
 
-  // Debounce simple para el campo de búsqueda (cuando se entregue onSearchDebounced)
   useEffect(() => {
     if (!onSearchDebounced) return;
     const id = setTimeout(() => setDebouncedTerm(busqueda.trim()), searchDebounceMs);
@@ -123,7 +122,6 @@ const DataTable = ({
     onSearchDebounced(debouncedTerm);
   }, [debouncedTerm, onSearchDebounced]);
 
-  // Manejador para múltiples selects
   const handleMultiSelectChange = (key, value, onChange) => {
     if (serverSide && typeof onChange === "function") {
       onChange(value);
@@ -136,7 +134,6 @@ const DataTable = ({
     let filtered = [...data];
 
     if (serverSide) {
-      // En server-side no filtramos acá (ya viene filtrado)
       return filtered;
     }
 
@@ -334,19 +331,15 @@ const DataTable = ({
 
   return (
     <Box component="main" sx={{ flexGrow: 1, pb: 2 }}>
-      <Stack spacing={1}>
-        <Stack direction="row" justifyContent="space-between" spacing={4}>
-          <Stack spacing={1}>
-            <Typography variant="h4">{title}</Typography>
-          </Stack>
-        </Stack>
+      <Stack spacing={1} marginTop={0}>
         <Stack direction="row" sx={{ margin: 0, gap: 1 }} alignItems="center" flexWrap="wrap">
           {showSearch && (
             <TextField
               label="Buscar"
+              size="small"
               value={busqueda}
               onChange={(e) => setBusqueda(e.target.value)}
-              sx={{ minWidth: 280 }}
+              sx={{ width: 200 }}
               InputProps={{
                 endAdornment: busqueda.length > 0 && (
                   <InputAdornment position="end">
@@ -366,9 +359,12 @@ const DataTable = ({
 
           {/* Select único (compatibilidad) */}
           {selectFilter && (
-            <FormControl sx={{ minWidth: 200 }} variant="filled">
-              <InputLabel id="select-filter-label">{selectFilter.label}</InputLabel>
+            <FormControl size="small" sx={{ width: 150 }} variant="filled">
+              <InputLabel size="small" id="select-filter-label">
+                {selectFilter.label}
+              </InputLabel>
               <Select
+                size="small"
                 labelId="select-filter-label"
                 id="select-filter-select"
                 value={selectFilterValue}
@@ -385,9 +381,12 @@ const DataTable = ({
           )}
 
           {multipleSelectFilters.map((f) => (
-            <FormControl key={f.key} sx={{ minWidth: 200 }} variant="filled">
-              <InputLabel id={`msf-${f.key}-label`}>{f.label}</InputLabel>
+            <FormControl size="small" key={f.key} sx={{ width: 150 }} variant="filled">
+              <InputLabel size="small" id={`msf-${f.key}-label`}>
+                {f.label}
+              </InputLabel>
               <Select
+                size="small"
                 labelId={`msf-${f.key}-label`}
                 id={`msf-${f.key}-select`}
                 value={serverSide ? f.value ?? "" : localMultiSelects[f.key] ?? ""}
@@ -404,9 +403,12 @@ const DataTable = ({
           ))}
 
           {showDateFilterOptions && !showDatePicker && dateFilterOptions.length > 0 && (
-            <FormControl sx={{ minWidth: 200 }} variant="filled">
-              <InputLabel id="filtro-fecha-label">Filtrar por fecha</InputLabel>
+            <FormControl size="small" sx={{ width: 200 }} variant="filled">
+              <InputLabel size="small" id="filtro-fecha-label">
+                Filtrar por fecha
+              </InputLabel>
               <Select
+                size="small"
                 labelId="filtro-fecha-label"
                 id="filtro-fecha-select"
                 value={currentFiltroFecha}
@@ -442,6 +444,7 @@ const DataTable = ({
           {showRefreshButton && onRefresh && (
             <Tooltip title="Actualizar datos">
               <IconButton
+                size="small"
                 onClick={handleRefresh}
                 disabled={isRefreshing}
                 sx={{
@@ -467,6 +470,7 @@ const DataTable = ({
 
           {onAdd && (
             <Button
+              size="small"
               variant="contained"
               color="primary"
               startIcon={<AddIcon />}
@@ -495,12 +499,14 @@ const DataTable = ({
                   "& .MuiTableCell-root": {
                     borderRight: "none !important",
                     borderLeft: "none !important",
-                    fontSize: "0.8rem",
+                    fontSize: "0.75rem",
+                    padding: "5px 8px",
                   },
                   "& .MuiTableHead-root .MuiTableCell-root": {
                     borderBottom: "1px solid rgba(224, 224, 224, 1)",
-                    fontSize: "0.7rem",
+                    fontSize: "0.65rem",
                     fontWeight: "bold",
+                    padding: "5px 8px",
                   },
                 }}
               >
@@ -520,6 +526,7 @@ const DataTable = ({
                                 textOverflow: "ellipsis",
                               }
                             : {}),
+                          ...(column.sx || {}),
                         }}
                       >
                         {column.sortable ? (
@@ -577,6 +584,7 @@ const DataTable = ({
                                     textOverflow: "ellipsis",
                                   }
                                 : {}),
+                              ...(column.sx || {}),
                             }}
                           >
                             {renderCellContent(item, column)}
