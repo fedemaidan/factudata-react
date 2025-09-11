@@ -502,7 +502,16 @@ const DataTabTable = ({
                       </TableCell>
                       <TableCell>{row.descripcion || "-"}</TableCell>
                       <TableCell>
-                        {formatearCampo("montoYMoneda", row.montoYMonedaOriginal, row)}
+                        {formatearCampo(
+                          "montoYMoneda",
+                          (row.descuentoAplicado <= 1 ||
+                            row.descuentoAplicado === null ||
+                            row.descuentoAplicado === "-") &&
+                            !row.itemType === "movimiento"
+                            ? -row.montoYMonedaOriginal
+                            : row.montoYMonedaOriginal,
+                          row
+                        )}
                       </TableCell>
                       <TableCell>
                         {row.descuentoAplicado !== undefined && row.descuentoAplicado !== null
