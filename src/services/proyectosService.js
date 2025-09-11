@@ -186,6 +186,7 @@ export const actualizarSheetsDesdeBaseEmpresa = async (empresaId, proyectoId = n
   }
 };
 
+
 export const hasPermission = async (fileId) => {
   try {
     const response = await api.get(`permisosDrive/${fileId}`);
@@ -335,6 +336,16 @@ export const subirCSVProyecto = async (proyectoId, archivo, proyectoNombre) => {
   } catch (err) {
     console.error('Error al subir el archivo CSV:', err);
     throw err;
+  }
+};
+
+export const otorgarPermisosDriveProyecto = async (proyectoId) => {
+  try {
+    const resp = await api.post('/proyecto/otorgarPermiso', { proyectoId });
+    return resp.status === 200;
+  } catch (e) {
+    console.error('otorgarPermisosDriveProyecto error:', e);
+    return false;
   }
 };
 

@@ -34,7 +34,7 @@ import * as Yup from 'yup';
 import EditIcon from '@mui/icons-material/Edit';
 import SaveIcon from '@mui/icons-material/Save';
 import AddCircleIcon from '@mui/icons-material/AddCircle';
-import { getProyectosByEmpresa, hasPermission, updateProyecto, crearProyecto, subirCSVProyecto } from 'src/services/proyectosService';
+import { getProyectosByEmpresa, hasPermission, updateProyecto, crearProyecto, subirCSVProyecto, otorgarPermisosDriveProyecto  } from 'src/services/proyectosService';
 
 export const ProyectosDetails = ({ empresa }) => {
   const [isLoading, setIsLoading] = useState(false);
@@ -52,6 +52,7 @@ export const ProyectosDetails = ({ empresa }) => {
   const [uploadProjectName, setUploadProjectName] = useState('');
   const [sheetsPermissions, setSheetsPermissions] = useState({});
   const [proyectoAEliminar, setProyectoAEliminar] = useState(null);
+  const [restableciendoId, setRestableciendoId] = useState(null);
 
   const handleSnackbarClose = () => {
     setSnackbarOpen(false);
@@ -288,8 +289,6 @@ export const ProyectosDetails = ({ empresa }) => {
     }
   };
   
-  
-  
   const handleRemoveExtraSheet = (sheetId) => {
     formik.setFieldValue(
       'extraSheets',
@@ -297,6 +296,21 @@ export const ProyectosDetails = ({ empresa }) => {
     );
   };
   
+  const handleRestablecerPermisos = async (proyectoId) => {
+  try {
+    setRestableciendoId(proyectoId);
+    const ok = await otorgarPermisosDriveProyecto(proyectoId);
+    setSnackbarMessage(ok ? 'todo ok' : 'Hubo un problema al restablecer los permisos');
+    setSnackbarSeverity(ok ? 'success' : 'error');
+  } catch (e) {
+    console.error(e);
+    setSnackbarMessage('Error al restablecer los permisos');
+    setSnackbarSeverity('error');
+  } finally {
+    setRestableciendoId(null);
+    setSnackbarOpen(true);
+  }
+};
 
   return (
     <>
@@ -401,6 +415,15 @@ export const ProyectosDetails = ({ empresa }) => {
     >
       Eliminar
     </Button>
+    <Button
+  variant="outlined"
+  size="small"
+  sx={{ ml: 2 }}
+  onClick={() => handleRestablecerPermisos(proyecto.id)}
+  disabled={restableciendoId === proyecto.id}
+>
+  {restableciendoId === proyecto.id ? 'Procesando…' : 'Restablecer permisos'}
+</Button>
   </label>
   {selectedFile && uploadProjectId === proyecto.id && (
     <Button
