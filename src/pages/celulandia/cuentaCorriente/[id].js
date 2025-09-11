@@ -51,7 +51,7 @@ const ClienteCelulandiaCCPage = () => {
   const [historialLoader, setHistorialLoader] = useState(null);
 
   const [grupoActual, setGrupoActual] = useState("ARS");
-  const [filtroFecha, setFiltroFecha] = useState("todos");
+  // const [filtroFecha, setFiltroFecha] = useState("todos"); // comentado: filtro por fecha deshabilitado en esta vista
   const [sortDirection, setSortDirection] = useState("desc");
 
   const [clientes, setClientes] = useState([]);
@@ -206,9 +206,9 @@ const ClienteCelulandiaCCPage = () => {
 
   const handleVolver = useCallback(() => router.back(), [router]);
 
-  const handleFiltroFechaChange = useCallback((nuevoFiltro) => {
-    setFiltroFecha(nuevoFiltro);
-  }, []);
+  // const handleFiltroFechaChange = useCallback((nuevoFiltro) => {
+  //   setFiltroFecha(nuevoFiltro);
+  // }, []);
 
   const handleSortChange = useCallback((campo) => {
     if (campo !== "fecha") return;
@@ -337,9 +337,12 @@ const ClienteCelulandiaCCPage = () => {
                 sortField="fecha"
                 sortDirection={sortDirection}
                 onSortChange={handleSortChange}
-                // Filtro de fecha (frontend)
-                filtroFecha={filtroFecha}
-                onFiltroFechaChange={handleFiltroFechaChange}
+                // Filtro de fecha (frontend) — comentado
+                // filtroFecha={filtroFecha}
+                // onFiltroFechaChange={handleFiltroFechaChange}
+                // Deshabilitar búsqueda y filtro de fecha en esta vista
+                showSearch={false}
+                showDateFilterOptions={false}
                 showSaldoColumn={true}
                 // Acciones
                 onEdit={handleEdit}
