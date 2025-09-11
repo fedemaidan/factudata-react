@@ -507,7 +507,7 @@ const DataTabTable = ({
                           (row.descuentoAplicado <= 1 ||
                             row.descuentoAplicado === null ||
                             row.descuentoAplicado === "-") &&
-                            !row.itemType === "movimiento"
+                            row.itemType != "movimiento"
                             ? -row.montoYMonedaOriginal
                             : row.montoYMonedaOriginal,
                           row
