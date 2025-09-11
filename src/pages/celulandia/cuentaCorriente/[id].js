@@ -141,7 +141,7 @@ const ClienteCelulandiaCCPage = () => {
       return {
         id: m.id || m._id,
         fecha,
-        descripcion: isMov ? m.numeroFactura || m._id : m.descripcion || "-",
+        descripcion: isMov ? "-" : m.descripcion || "-",
         cliente: m?.nombreCliente || m?.clienteNombre || m.cliente?.nombre || "-",
         group: m.cuentaCorriente || m.CC || m.cc,
         monto,
@@ -168,7 +168,6 @@ const ClienteCelulandiaCCPage = () => {
     );
     return ordenados;
   }, [itemsDataTab, sortDirection]);
-  
 
   const handleVolver = useCallback(() => router.back(), [router]);
 

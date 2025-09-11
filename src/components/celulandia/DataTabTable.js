@@ -199,9 +199,9 @@ const DataTabTable = ({
 
   const sortedAndFilteredItems = useMemo(() => {
     if (!items.length) return [];
-  
+
     let rows = items;
-  
+
     if (showSearch && busqueda.trim()) {
       const q = busqueda.toLowerCase();
       rows = rows.filter((r) =>
@@ -210,11 +210,11 @@ const DataTabTable = ({
         )
       );
     }
-  
+
     if (showDateFilterOptions) {
       rows = applyDateFilter(rows, finalFiltroFecha);
     }
-  
+
     if (showDatePicker && !onDateChange && (selectedDate || internalSelectedDate)) {
       const dateToUse = selectedDate || internalSelectedDate;
       const targetDay = dayjs(dateToUse).startOf("day");
@@ -225,14 +225,12 @@ const DataTabTable = ({
         return d.isValid() && d.isSame(targetDay, "day");
       });
     }
-  
+
     // Orden interno SOLO si el padre no controla el sort
     if (!onSortChange) {
-      rows = [...rows].sort(
-        finalSortDirection === "asc" ? ascByOrderKey : descByOrderKey
-      );
+      rows = [...rows].sort(finalSortDirection === "asc" ? ascByOrderKey : descByOrderKey);
     }
-  
+
     return rows;
   }, [
     items,
@@ -248,7 +246,6 @@ const DataTabTable = ({
     applyDateFilter,
     onSortChange,
   ]);
-  
 
   const grouped = useMemo(() => {
     const map = new Map();
@@ -326,12 +323,17 @@ const DataTabTable = ({
         Fecha: formatearCampo("fecha", row.fecha),
         Cliente: row.cliente ?? "",
         "N° comprobante": String(row.descripcion || ""),
+        "Monto original": n(row.montoYMonedaOriginal?.monto || row.montoOriginal || 0),
+        "Moneda original": row.montoYMonedaOriginal?.moneda || row.monedaOriginal || "",
+        "Tipo de cambio": n(row.tipoDeCambio || 1),
+        Descuento: String(
+          (row.descuentoAplicado != null
+            ? `${Math.round(((row.descuentoAplicado ?? 1) - 1) * -100)}%`
+            : "-") || "-"
+        ),
         Debe: n(debe),
         Haber: n(haber),
         "Saldo acumulado": n(running),
-        "Tipo de cambio": n(row.tipoDeCambio || 1),
-        "Monto original": n(row.montoYMonedaOriginal?.monto || row.montoOriginal || 0),
-        "Moneda original": row.montoYMonedaOriginal?.moneda || row.monedaOriginal || "",
       };
     });
 
@@ -480,10 +482,10 @@ const DataTabTable = ({
                     </TableCell>
 
                     {/* Sin orden en el resto de columnas */}
-                    <TableCell sx={{ fontWeight: "bold" }}>Cliente</TableCell>
+                    <TableCell sx={{ fontWeight: "bold" }}>Descripción</TableCell>
                     <TableCell sx={{ fontWeight: "bold" }}>Monto ({opt.label})</TableCell>
-                    <TableCell sx={{ fontWeight: "bold" }}>TC</TableCell>
                     <TableCell sx={{ fontWeight: "bold" }}>Descuento</TableCell>
+                    <TableCell sx={{ fontWeight: "bold" }}>TC</TableCell>
                     <TableCell sx={{ fontWeight: "bold" }}>Monto Original</TableCell>
                     {showSaldoColumn && <TableCell sx={{ fontWeight: "bold" }}>Saldo</TableCell>}
 
@@ -494,12 +496,20 @@ const DataTabTable = ({
                 </TableHead>
                 <TableBody>
                   {(paginatedGrouped.get(opt.value) || []).map((row) => (
-                    <TableRow
-                      key={row.id}
-                      sx={{ cursor: "pointer" }}
-                    >
-                      <TableCell onClick={() => console.log(row)}>{formatearCampo("fecha", row.fecha)}</TableCell>
-                      <TableCell>{row.cliente}</TableCell>
+                    <TableRow key={row.id} sx={{ cursor: "pointer" }}>
+                      <TableCell onClick={() => console.log(row)}>
+                        {formatearCampo("fecha", row.fecha)}
+                      </TableCell>
+                      <TableCell>{row.descripcion || "-"}</TableCell>
+                      <TableCell>
+                        {formatearCampo("montoYMoneda", row.montoYMonedaOriginal, row)}
+                      </TableCell>
+                      <TableCell>
+                        {row.descuentoAplicado !== undefined && row.descuentoAplicado !== null
+                          ? `${Math.round(((row.descuentoAplicado ?? 1) - 1) * -100)}%`
+                          : "-"}
+                      </TableCell>
+                      <TableCell>{formatearCampo("tipoDeCambio", row.tipoDeCambio)}</TableCell>
                       <TableCell>
                         <Typography
                           color={(row.monto || 0) < 0 ? "error.main" : "text.primary"}
@@ -507,15 +517,6 @@ const DataTabTable = ({
                         >
                           {formatCurrency(Math.round(row.monto || 0))}
                         </Typography>
-                      </TableCell>
-                      <TableCell>{formatearCampo("tipoDeCambio", row.tipoDeCambio)}</TableCell>
-                      <TableCell>
-                        {row.descuentoAplicado !== undefined && row.descuentoAplicado !== null
-                          ? `${Math.round(((row.descuentoAplicado ?? 1) - 1) * -100)}%`
-                          : "-"}
-                      </TableCell>
-                      <TableCell>
-                        {formatearCampo("montoYMoneda", row.montoYMonedaOriginal, row)}
                       </TableCell>
                       {showSaldoColumn && (
                         <TableCell>

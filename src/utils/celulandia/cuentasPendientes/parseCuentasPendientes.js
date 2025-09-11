@@ -26,6 +26,7 @@ export const parseCuentaPendiente = (c) => {
     _id: c._id,
     origen: "cuentaPendiente",
     numeroComprobante: c.descripcion || "-",
+    descripcion: c.descripcion || "-",
     fecha: c.fechaCuenta,
     horaCreacion: getHoraArgentina(c.fechaCreacion),
     fechaCuenta: c.fechaCuenta, // Mantener la fecha original para EditarEntregaModal

@@ -51,6 +51,7 @@ export const parseMovimiento = (movimiento) => {
     montoEnviado,
     tipoDeCambio: Math.round(movimiento.tipoDeCambio),
     montoCC: Math.round(montoCC),
+    descripcion: "-",
     montoYMoneda: {
       monto: montoEnviado,
       moneda: movimiento.moneda || "ARS",
