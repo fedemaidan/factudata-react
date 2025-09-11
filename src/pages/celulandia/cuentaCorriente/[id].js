@@ -25,6 +25,7 @@ import {
 import { getUser } from "src/utils/celulandia/currentUser";
 import EditarEntregaModal from "src/components/celulandia/EditarEntregaModal";
 import agregarSaldoCalculado from "src/utils/celulandia/agregarSaldoCalculado";
+import { ascByOrderKey, descByOrderKey } from "src/utils/dateOrder";
 
 // helpers numéricos simples
 const toNumber = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
@@ -160,53 +161,14 @@ const ClienteCelulandiaCCPage = () => {
     });
   }, [movimientos]);
 
-  // const itemsDataTab = useMemo(() => {
-  //   if (!movimientos.length) return [];
-
-  //   return movimientos.map((m) => {
-  //     const isMov = m.itemType === "movimiento";
-  //     const fecha = isMov ? m.fecha : m.fechaCuenta;
-
-  //     return {
-  //       id: m.id || m._id,
-  //       fecha,
-  //       cliente: m?.nombreCliente || m?.clienteNombre || m.cliente?.nombre || "-",
-  //       group: m.cuentaCorriente || m.CC || m.cc,
-  //       monto: Math.round(m.montoCC || 0),
-  //       tipoDeCambio: m.tipoDeCambio || 1,
-  //       descuentoAplicado: m.descuentoAplicado,
-  //       montoOriginal: Math.round(m.montoEnviado || 0),
-  //       monedaOriginal: m.moneda || m.monedaDePago,
-  //       urlImagen: isMov ? m?.urlImagen : null,
-  //       itemType: m.itemType,
-  //       originalData: m,
-  //     };
-  //   });
-  // }, [movimientos]);
-
-  // const itemsOrdenados = useMemo(() => {
-  //   if (!itemsDataTab.length) return [];
-
-  //   const factor = sortDirection === "asc" ? 1 : -1;
-  //   return [...itemsDataTab].sort((a, b) => {
-  //     const ta = a?.fecha ? new Date(a.fecha).getTime() : 0;
-  //     const tb = b?.fecha ? new Date(b.fecha).getTime() : 0;
-  //     return (ta - tb) * factor;
-  //   });
-  // }, [itemsDataTab, sortDirection]);
   const itemsOrdenados = useMemo(() => {
     if (!itemsDataTab.length) return [];
-
-    const factor = sortDirection === "asc" ? 1 : -1;
-    const ordenados = [...itemsDataTab].sort((a, b) => {
-      const ta = a?.fecha ? new Date(a.fecha).getTime() : 0;
-      const tb = b?.fecha ? new Date(b.fecha).getTime() : 0;
-      return (ta - tb) * factor;
-    });
-
-    // El cálculo de saldo ahora se realiza por grupo (pestaña) dentro de DataTabTable
+    const ordenados = [...itemsDataTab].sort(
+      sortDirection === "desc" ? descByOrderKey : ascByOrderKey
+    );
     return ordenados;
   }, [itemsDataTab, sortDirection]);
+  
 
   const handleVolver = useCallback(() => router.back(), [router]);
 

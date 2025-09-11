@@ -23,6 +23,7 @@ import {
 } from "@mui/material";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import FileDownloadIcon from "@mui/icons-material/FileDownload";
+import { ascByOrderKey, descByOrderKey } from "src/utils/dateOrder";
 
 import * as XLSX from "xlsx";
 import { formatearCampo } from "src/utils/celulandia/formatearCampo";
@@ -198,20 +199,22 @@ const DataTabTable = ({
 
   const sortedAndFilteredItems = useMemo(() => {
     if (!items.length) return [];
-
+  
     let rows = items;
-
+  
     if (showSearch && busqueda.trim()) {
       const q = busqueda.toLowerCase();
       rows = rows.filter((r) =>
-        [r.cliente, r.monto?.toString()].some((v) => v && String(v).toLowerCase().includes(q))
+        [r.cliente, r.monto && String(r.monto)].some(
+          (v) => v && String(v).toLowerCase().includes(q)
+        )
       );
     }
-
+  
     if (showDateFilterOptions) {
       rows = applyDateFilter(rows, finalFiltroFecha);
     }
-
+  
     if (showDatePicker && !onDateChange && (selectedDate || internalSelectedDate)) {
       const dateToUse = selectedDate || internalSelectedDate;
       const targetDay = dayjs(dateToUse).startOf("day");
@@ -222,38 +225,20 @@ const DataTabTable = ({
         return d.isValid() && d.isSame(targetDay, "day");
       });
     }
-
-    // Si el padre controla el sort (onSortChange), NO re-ordenamos acá.
+  
+    // Orden interno SOLO si el padre no controla el sort
     if (!onSortChange) {
-      rows = [...rows].sort((a, b) => {
-        // Manejar fechas de manera más robusta
-        let aVal = a?.fecha;
-        let bVal = b?.fecha;
-
-        // Convertir a Date objects
-        aVal = aVal ? new Date(aVal) : new Date(0);
-        bVal = bVal ? new Date(bVal) : new Date(0);
-
-        // Verificar si las fechas son válidas
-        if (isNaN(aVal.getTime())) aVal = new Date(0);
-        if (isNaN(bVal.getTime())) bVal = new Date(0);
-
-        const aTime = aVal.getTime();
-        const bTime = bVal.getTime();
-
-        if (aTime < bTime) return finalSortDirection === "asc" ? -1 : 1;
-        if (aTime > bTime) return finalSortDirection === "asc" ? 1 : -1;
-        return 0;
-      });
+      rows = [...rows].sort(
+        finalSortDirection === "asc" ? ascByOrderKey : descByOrderKey
+      );
     }
-
+  
     return rows;
   }, [
     items,
     busqueda,
     finalFiltroFecha,
     selectedDate,
-    finalSortField,
     finalSortDirection,
     showSearch,
     showDateFilterOptions,
@@ -263,6 +248,7 @@ const DataTabTable = ({
     applyDateFilter,
     onSortChange,
   ]);
+  
 
   const grouped = useMemo(() => {
     const map = new Map();
@@ -279,8 +265,8 @@ const DataTabTable = ({
   const groupedWithSaldo = useMemo(() => {
     const map = new Map();
     for (const [key, itemsArr] of grouped.entries()) {
-      const asc = [...itemsArr].sort((a, b) => getTimeSafe(a.fecha) - getTimeSafe(b.fecha));
-      const computedAsc = agregarSaldoCalculado(asc);
+      // const asc = [...itemsArr].sort((a, b) => getTimeSafe(a.fecha) - getTimeSafe(b.fecha));
+      const computedAsc = agregarSaldoCalculado(itemsArr);
       const byId = new Map(computedAsc.map((it) => [it.id, it]));
       const merged = itemsArr.map((it) => {
         const comp = byId.get(it.id) || {};
@@ -510,10 +496,9 @@ const DataTabTable = ({
                   {(paginatedGrouped.get(opt.value) || []).map((row) => (
                     <TableRow
                       key={row.id}
-                      onClick={() => console.log(row)}
                       sx={{ cursor: "pointer" }}
                     >
-                      <TableCell>{formatearCampo("fecha", row.fecha)}</TableCell>
+                      <TableCell onClick={() => console.log(row)}>{formatearCampo("fecha", row.fecha)}</TableCell>
                       <TableCell>{row.cliente}</TableCell>
                       <TableCell>
                         <Typography
