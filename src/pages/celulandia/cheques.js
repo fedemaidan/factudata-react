@@ -4,7 +4,7 @@ import Head from "next/head";
 import { Container } from "@mui/material";
 
 import DataTable from "src/components/celulandia/DataTable";
-import TableActions from "src/components/celulandia/TableActions";
+import RowActions from "src/components/celulandia/RowActions";
 import movimientosService from "src/services/celulandia/movimientosService";
 import { formatearCampo } from "src/utils/celulandia/formatearCampo";
 import { getFechaArgentina } from "src/utils/celulandia/fechas";
@@ -128,8 +128,19 @@ const ChequesCelulandiaPage = () => {
   };
 
   const columns = [
-    { key: "fechaFactura", label: "Fecha", sortable: true },
-    { key: "horaCreacion", label: "Hora", sortable: true },
+    {
+      key: "fechaHora",
+      label: "Fecha y Hora",
+      sortable: true,
+      render: (item) => (
+        <div>
+          <div>{getFechaArgentina(item.fechaFactura)}</div>
+          <div style={{ fontSize: "0.75rem", color: "#666" }}>
+            {formatearCampo("hora", item.horaCreacion)}
+          </div>
+        </div>
+      ),
+    },
     { key: "concepto", label: "Descripción", sortable: false },
     { key: "cliente", label: "Cliente", sortable: true },
     { key: "cuentaDestino", label: "Cuenta Destino", sortable: true },
@@ -142,10 +153,10 @@ const ChequesCelulandiaPage = () => {
     { key: "fechaCobro", label: "Fecha Cobro", sortable: true },
     {
       key: "acciones",
-      label: "Acciones",
+      label: "",
       sortable: false,
       render: (item) => (
-        <TableActions
+        <RowActions
           item={item}
           onEdit={(item) => {
             setSelectedData(item);
@@ -163,6 +174,7 @@ const ChequesCelulandiaPage = () => {
             setSelectedData(item);
             setConfirmarEliminacionOpen(true);
           }}
+          showImage={true}
         />
       ),
     },
@@ -214,10 +226,13 @@ const ChequesCelulandiaPage = () => {
   };
 
   const handleSortChange = (campo) => {
-    if (sortField === campo) {
+    // Si se hace click en la columna combinada "fechaHora", ordenar por "fechaFactura"
+    const actualSortField = campo === "fechaHora" ? "fechaFactura" : campo;
+
+    if (sortField === actualSortField) {
       setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
     } else {
-      setSortField(campo);
+      setSortField(actualSortField);
       setSortDirection("asc");
     }
 

@@ -37,7 +37,6 @@ export const parseMovimiento = (movimiento) => {
   let fechaFacturaISO = null;
 
   if (movimiento?.fechaFactura) {
-    console.log("fechaFactura", movimiento.fechaFactura);
     fechaFactura = getFechaArgentina(movimiento.fechaFactura);
     fechaFacturaISO = movimiento.fechaFactura;
     horaFactura = movimiento.fechaFactura.split("T")[1].split(":").slice(0, 2).join(":");
@@ -52,6 +51,14 @@ export const parseMovimiento = (movimiento) => {
     montoEnviado,
     tipoDeCambio: Math.round(movimiento.tipoDeCambio),
     montoCC: Math.round(montoCC),
+    montoYMoneda: {
+      monto: montoEnviado,
+      moneda: movimiento.moneda || "ARS",
+    },
+    montoYMonedaOriginal: {
+      monto: montoEnviado,
+      moneda: movimiento.moneda || "ARS",
+    },
     fechaCreacion: movimiento.fechaCreacion,
     fechaFactura,
     horaFactura,

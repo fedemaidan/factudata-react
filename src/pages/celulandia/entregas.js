@@ -4,7 +4,7 @@ import Head from "next/head";
 import { Container } from "@mui/material";
 
 import DataTable from "src/components/celulandia/DataTable";
-import TableActions from "src/components/celulandia/TableActions";
+import RowActions from "src/components/celulandia/RowActions";
 import { formatearCampo } from "src/utils/celulandia/formatearCampo";
 
 import EditarEntregaModal from "src/components/celulandia/EditarEntregaModal";
@@ -40,7 +40,7 @@ const EntregasCelulandiaPage = () => {
 
   const [paginaActual, setPaginaActual] = useState(1);
   const [totalEntregas, setTotalEntregas] = useState(0);
-  const [limitePorPagina] = useState(20);
+  const [limitePorPagina] = useState(75);
 
   const [sortField, setSortField] = useState("fecha");
   const [sortDirection, setSortDirection] = useState("desc");
@@ -150,8 +150,17 @@ const EntregasCelulandiaPage = () => {
   };
 
   const columns = [
-    { key: "fecha", label: "Fecha", sortable: true },
-    { key: "horaCreacion", label: "Hora", sortable: false },
+    {
+      key: "fechaHora",
+      label: "Fecha y Hora",
+      sortable: true,
+      render: (item) => (
+        <div>
+          <div>{getFechaArgentina(item.fecha)}</div>
+          <div style={{ fontSize: "0.75rem", color: "#666" }}>{item.horaCreacion}</div>
+        </div>
+      ),
+    },
     { key: "clienteNombre", label: "Cliente", sortable: false },
     { key: "descripcion", label: "Descripción", sortable: false },
     { key: "montoEnviado", label: "Monto", sortable: true },
@@ -162,10 +171,10 @@ const EntregasCelulandiaPage = () => {
     { key: "usuario", label: "Usuario", sortable: true },
     {
       key: "acciones",
-      label: "Acciones",
+      label: "",
       sortable: false,
       render: (item) => (
-        <TableActions
+        <RowActions
           item={item}
           onEdit={(item) => {
             setSelectedData(item);
@@ -176,6 +185,7 @@ const EntregasCelulandiaPage = () => {
             setHistorialModalOpen(true);
           }}
           onDelete={handleDelete}
+          showImage={false}
         />
       ),
     },
@@ -189,7 +199,7 @@ const EntregasCelulandiaPage = () => {
     monedaDePago: (value, item) => formatearCampo("monedaDePago", value, item),
     CC: (value, item) => formatearCampo("CC", value, item),
     montoCC: (value, item) => formatearCampo("montoCC", value, item),
-    usuario: (value, item) => formatearCampo("default", value, item),
+    usuario: (value, item) => formatearCampo("nombreUsuario", value, item),
     descuentoAplicado: (value, item) => {
       const formattedValue = `${Math.round(((value ?? 1) - 1) * -100)}%`;
       return formatearCampo("default", formattedValue, item);
@@ -214,10 +224,13 @@ const EntregasCelulandiaPage = () => {
   };
 
   const handleSortChange = (campo) => {
-    if (sortField === campo) {
+    // Si se hace click en la columna combinada "fechaHora", ordenar por "fecha"
+    const actualSortField = campo === "fechaHora" ? "fecha" : campo;
+
+    if (sortField === actualSortField) {
       setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
     } else {
-      setSortField(campo);
+      setSortField(actualSortField);
       setSortDirection("asc");
     }
     setPaginaActual(1);

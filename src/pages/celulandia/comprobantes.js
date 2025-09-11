@@ -1,14 +1,9 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { Layout as DashboardLayout } from "src/layouts/dashboard/layout";
-import { Container, IconButton, Menu, MenuItem, ListItemIcon, ListItemText } from "@mui/material";
+import { Container } from "@mui/material";
 
 import DataTable from "src/components/celulandia/DataTable";
-// Reemplazamos TableActions por un menú compacto de 3 puntitos
-import MoreVertIcon from "@mui/icons-material/MoreVert";
-import EditIcon from "@mui/icons-material/Edit";
-import HistoryIcon from "@mui/icons-material/History";
-import ImageIcon from "@mui/icons-material/Image";
-import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
+import RowActions from "src/components/celulandia/RowActions";
 import movimientosService from "src/services/celulandia/movimientosService";
 import { formatearCampo } from "src/utils/celulandia/formatearCampo";
 import { getFechaArgentina, calcularFechasFiltro } from "src/utils/celulandia/fechas";
@@ -54,12 +49,21 @@ const ComprobantesCelulandiaPage = () => {
   const [selectedCajaNombre, setSelectedCajaNombre] = useState(""); // "" => Todas
   const [filtroUsuario, setFiltroUsuario] = useState("");
   const [usuariosOptions, setUsuariosOptions] = useState([{ value: "", label: "(todos)" }]);
+  const [filtroNombreCliente, setFiltroNombreCliente] = useState("");
 
   const movimientoHistorialConfig = useMemo(() => getMovimientoHistorialConfig(cajas), [cajas]);
 
   useEffect(() => {
     fetchData(paginaActual);
-  }, [paginaActual, sortField, sortDirection, filtroFecha, selectedCajaNombre, filtroUsuario]);
+  }, [
+    paginaActual,
+    sortField,
+    sortDirection,
+    filtroFecha,
+    selectedCajaNombre,
+    filtroUsuario,
+    filtroNombreCliente,
+  ]);
 
   const fetchData = async (pagina = 1) => {
     setIsLoading(true);
@@ -78,6 +82,7 @@ const ComprobantesCelulandiaPage = () => {
             sortDirection,
             cajaNombre: selectedCajaNombre || undefined,
             nombreUsuario: filtroUsuario || undefined,
+            ...(filtroNombreCliente ? { clienteNombre: filtroNombreCliente } : {}),
             fechaInicio,
             fechaFin,
             //includeInactive: true,
@@ -130,87 +135,34 @@ const ComprobantesCelulandiaPage = () => {
     setImagenModal("");
   };
 
-  const RowActions = ({ item }) => {
-    const [anchorEl, setAnchorEl] = useState(null);
-    const open = Boolean(anchorEl);
-    const handleOpen = (event) => setAnchorEl(event.currentTarget);
-    const handleClose = () => setAnchorEl(null);
-
-    return (
-      <>
-        <IconButton size="small" onClick={handleOpen} sx={{ p: 0.5 }}>
-          <MoreVertIcon fontSize="small" />
-        </IconButton>
-        <Menu
-          anchorEl={anchorEl}
-          open={open}
-          onClose={handleClose}
-          anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
-          transformOrigin={{ vertical: "top", horizontal: "right" }}
-          MenuListProps={{ dense: true }}
-        >
-          <MenuItem
-            onClick={() => {
-              setSelectedData(item);
-              setEditarModalOpen(true);
-              handleClose();
-            }}
-          >
-            <ListItemIcon>
-              <EditIcon fontSize="small" />
-            </ListItemIcon>
-            <ListItemText primary="Editar" />
-          </MenuItem>
-          <MenuItem
-            onClick={() => {
-              setSelectedData(item);
-              setHistorialModalOpen(true);
-              handleClose();
-            }}
-          >
-            <ListItemIcon>
-              <HistoryIcon fontSize="small" />
-            </ListItemIcon>
-            <ListItemText primary="Historial" />
-          </MenuItem>
-          {item?.urlImagen && (
-            <MenuItem
-              onClick={() => {
-                setImagenModal(item.urlImagen);
-                setModalOpen(true);
-                handleClose();
-              }}
-            >
-              <ListItemIcon>
-                <ImageIcon fontSize="small" />
-              </ListItemIcon>
-              <ListItemText primary="Ver imagen" />
-            </MenuItem>
-          )}
-          <MenuItem
-            onClick={() => {
-              handleDelete(item);
-              handleClose();
-            }}
-          >
-            <ListItemIcon>
-              <DeleteOutlineIcon fontSize="small" />
-            </ListItemIcon>
-            <ListItemText primary="Eliminar" />
-          </MenuItem>
-        </Menu>
-      </>
-    );
-  };
-
   const columns = [
-    { key: "fechaCreacion", label: "Fecha Creación", sortable: true },
-    { key: "horaCreacion", label: "Hora Creación", sortable: true },
+    {
+      key: "fechaHoraCreacion",
+      label: "Fecha y Hora Creación",
+      sortable: true,
+      render: (item) => (
+        <div>
+          <div>{getFechaArgentina(item.fechaCreacion)}</div>
+          <div style={{ fontSize: "0.75rem", color: "#666" }}>
+            {formatearCampo("hora", item.horaCreacion)}
+          </div>
+        </div>
+      ),
+    },
     { key: "fechaFactura", label: "Fecha Factura", sortable: true },
     { key: "cliente", label: "Cliente", sortable: true },
-    { key: "cuentaDestino", label: "Cuenta Destino", sortable: true },
-    { key: "montoEnviado", label: "Monto Enviado", sortable: true },
-    { key: "moneda", label: "Moneda", sortable: true },
+    {
+      key: "cuentaDestino",
+      label: "Cuenta Destino",
+      sortable: true,
+      sx: {
+        maxWidth: "185px",
+        whiteSpace: "nowrap",
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+      },
+    },
+    { key: "montoYMoneda", label: "Monto Enviado", sortable: true },
     { key: "montoCC", label: "Monto CC", sortable: true },
     { key: "cuentaCorriente", label: "CC", sortable: true },
     { key: "tipoDeCambio", label: "Tipo Cambio", sortable: true },
@@ -220,7 +172,25 @@ const ComprobantesCelulandiaPage = () => {
       key: "acciones",
       label: "",
       sortable: false,
-      render: (item) => <RowActions item={item} />,
+      render: (item) => (
+        <RowActions
+          item={item}
+          onEdit={(item) => {
+            setSelectedData(item);
+            setEditarModalOpen(true);
+          }}
+          onViewHistory={(item) => {
+            setSelectedData(item);
+            setHistorialModalOpen(true);
+          }}
+          onViewImage={(urlImagen) => {
+            setImagenModal(urlImagen);
+            setModalOpen(true);
+          }}
+          onDelete={handleDelete}
+          showImage={true}
+        />
+      ),
     },
   ];
 
@@ -230,8 +200,7 @@ const ComprobantesCelulandiaPage = () => {
     horaCreacion: (value, item) => formatearCampo("hora", value, item),
     nombreUsuario: (value, item) => formatearCampo("nombreUsuario", value, item),
     cuentaDestino: (value, item) => formatearCampo("cuentaDestino", value, item),
-    moneda: (value, item) => formatearCampo("monedaDePago", value, item),
-    montoEnviado: (value, item) => formatearCampo("montoEnviado", value, item),
+    montoYMoneda: (value, item) => formatearCampo("montoYMoneda", value, item),
     cuentaCorriente: (value, item) => formatearCampo("CC", value, item),
     montoCC: (value, item) => formatearCampo("montoCC", value, item),
     tipoDeCambio: (value, item) => formatearCampo("tipoDeCambio", value, item),
@@ -271,10 +240,19 @@ const ComprobantesCelulandiaPage = () => {
   };
 
   const handleSortChange = (campo) => {
-    if (sortField === campo) {
+    // Si se hace click en la columna combinada "fechaHoraCreacion", ordenar por "fechaCreacion"
+    // Si se hace click en la columna combinada "montoYMoneda", ordenar por "montoEnviado"
+    let actualSortField = campo;
+    if (campo === "fechaHoraCreacion") {
+      actualSortField = "fechaCreacion";
+    } else if (campo === "montoYMoneda") {
+      actualSortField = "montoEnviado";
+    }
+
+    if (sortField === actualSortField) {
       setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
     } else {
-      setSortField(campo);
+      setSortField(actualSortField);
       setSortDirection("asc");
     }
 
@@ -343,6 +321,25 @@ const ComprobantesCelulandiaPage = () => {
           showClienteListedChip={true}
           serverSide={true}
           multipleSelectFilters={[
+            {
+              key: "nombreCliente",
+              label: "Cliente",
+              type: "autocomplete",
+              value: filtroNombreCliente,
+              options: Array.from(
+                new Set(
+                  (clientes || [])
+                    .map((c) => (c?.nombre || "").toString().trim())
+                    .filter((n) => n && n.length > 0)
+                )
+              )
+                .sort((a, b) => a.localeCompare(b))
+                .map((n) => ({ value: n, label: n })),
+              onChange: (v) => {
+                setFiltroNombreCliente(v);
+                setPaginaActual(1);
+              },
+            },
             {
               key: "cajaNombre",
               label: "Cuenta destino",

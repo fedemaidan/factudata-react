@@ -275,6 +275,32 @@ export const formatearCampo = (campo, valor, item = null) => {
       return aplicarEstiloTachado(valor, item);
     }
 
+    case "montoYMoneda": {
+      if (!valor || !item) return aplicarEstiloTachado("-", item);
+
+      const monto = valor.monto || 0;
+      const moneda = valor.moneda || "ARS";
+
+      const montoFormateado = formatCurrency(monto);
+
+      const contenido = (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "4px",
+            whiteSpace: "nowrap",
+            flexWrap: "nowrap",
+          }}
+        >
+          <span>{montoFormateado}</span>
+          <span>{moneda}</span>
+        </div>
+      );
+
+      return aplicarEstiloTachado(contenido, item);
+    }
+
     case "imagen":
       const imagenFormateada = valor ? "Ver imagen" : "-";
       return aplicarEstiloTachado(imagenFormateada, item);
