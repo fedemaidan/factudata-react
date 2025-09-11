@@ -483,10 +483,10 @@ const DataTabTable = ({
 
                     {/* Sin orden en el resto de columnas */}
                     <TableCell sx={{ fontWeight: "bold" }}>Descripción</TableCell>
-                    <TableCell sx={{ fontWeight: "bold" }}>Monto ({opt.label})</TableCell>
+                    <TableCell sx={{ fontWeight: "bold" }}>Monto Original</TableCell>
                     <TableCell sx={{ fontWeight: "bold" }}>Descuento</TableCell>
                     <TableCell sx={{ fontWeight: "bold" }}>TC</TableCell>
-                    <TableCell sx={{ fontWeight: "bold" }}>Monto Original</TableCell>
+                    <TableCell sx={{ fontWeight: "bold" }}>Monto ({opt.label})</TableCell>
                     {showSaldoColumn && <TableCell sx={{ fontWeight: "bold" }}>Saldo</TableCell>}
 
                     {(onEdit || onViewHistory || onDelete || onViewImage) && (
