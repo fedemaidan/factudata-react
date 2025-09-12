@@ -292,11 +292,7 @@ const EditarEntregaModal = ({ open, onClose, data, onSaved, clientes = [], tipoD
                   value={selectedOption}
                   inputValue={clienteInput}
                   onInputChange={(_, newInput) => setClienteInput(newInput || "")}
-                  onChange={(_, newValue) => {
-                    // solo seteamos si eligió una opción válida
-                    const label = newValue ? newValue.label : "";
-                    handleChange("cliente", label);
-                  }}
+                  onChange={handleClienteChange}   
                   isOptionEqualToValue={(option, value) => option.id === value.id}
                   getOptionLabel={(option) => option?.label || ""}
                   renderInput={(params) => (

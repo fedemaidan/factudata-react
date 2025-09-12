@@ -234,10 +234,7 @@ const AgregarEntregaModal = ({ open, onClose, onSaved, clientes = [], tipoDeCamb
                   value={selectedOption}
                   inputValue={clienteInput}
                   onInputChange={(_, newInput) => setClienteInput(newInput || "")}
-                  onChange={(_, newValue) => {
-                    // Solo se setea si eligió una opción válida
-                    handleInputChange("cliente", newValue ? newValue.label : "");
-                  }}
+                  onChange={handleClienteChange}   
                   isOptionEqualToValue={(option, value) => option.id === value.id}
                   getOptionLabel={(option) => option?.label || ""}
                   renderInput={(params) => (
