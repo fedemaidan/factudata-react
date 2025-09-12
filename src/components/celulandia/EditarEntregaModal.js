@@ -88,16 +88,27 @@ const EditarEntregaModal = ({ open, onClose, data, onSaved, clientes = [], tipoD
 
   const tipoDeCambioGuardado = data?.tipoDeCambio || 1;
 
-  const { tc, subtotalSinDescuentoRedondeado, totalConDescuentoRedondeado } = calcularMovimientoV2({
-    montoEnviado: formData.montoEnviado,
-    monedaDePago: formData.monedaDePago,
-    cuentaCorriente: formData.CC,
-    tipoDeCambioManual,
-    tipoDeCambio,
-    aplicarDescuento: toNumber(descuentoPorcentaje) > 0,
-    descuentoPercent: descuentoPorcentaje,
-    signo: 1,
-  });
+  const { tc, subtotalSinDescuentoRedondeado, totalConDescuentoRedondeado } = useMemo(
+    () =>
+      calcularMovimientoV2({
+        montoEnviado: formData.montoEnviado,
+        monedaDePago: formData.monedaDePago,
+        cuentaCorriente: formData.CC,
+        tipoDeCambioManual,
+        tipoDeCambio,
+        aplicarDescuento: toNumber(descuentoPorcentaje) > 0,
+        descuentoPercent: descuentoPorcentaje,
+        signo: 1,
+      }),
+    [
+      formData.montoEnviado,
+      formData.monedaDePago,
+      formData.CC,
+      tipoDeCambioManual,
+      tipoDeCambio,
+      descuentoPorcentaje,
+    ]
+  );
 
   const factorDescuento = (() => {
     const pct = toNumber(descuentoPorcentaje);
