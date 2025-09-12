@@ -26,6 +26,7 @@ import Divider from "@mui/material/Divider";
 import movimientosService from "src/services/celulandia/movimientosService";
 import DataTabTable from "src/components/celulandia/DataTabTable";
 import { formatearCampo } from "src/utils/celulandia/formatearCampo";
+import DataTabTableV2 from "src/components/celulandia/DataTabTableV2";
 
 const ArqueoCajaPage = () => {
   const [isLoading, setIsLoading] = useState(true);
@@ -180,7 +181,7 @@ const ArqueoCajaPage = () => {
             </Tabs>
 
             {activeTab === 0 && (
-              <DataTabTable
+              <DataTabTableV2
                 items={items}
                 isLoading={isLoading}
                 options={options}
@@ -231,7 +232,7 @@ const ArqueoCajaPage = () => {
                   </TableHead>
                   <TableBody>
                     {paginatedDiario.map((row) => (
-                      <TableRow key={row.fecha}>
+                      <TableRow key={row.fecha} onClick={() => console.log("row", row)}>
                         <TableCell>{dayjs(row.fecha).format("DD/MM/YYYY")}</TableCell>
                         <TableCell align="right">
                           <Typography
