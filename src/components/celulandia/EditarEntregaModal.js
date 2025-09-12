@@ -26,6 +26,20 @@ const EditarEntregaModal = ({ open, onClose, data, onSaved, clientes = [], tipoD
   const [isLoading, setIsLoading] = useState(true);
   const [initialData, setInitialData] = useState(null);
 
+  // Normalizar opciones de clientes para Autocomplete
+  const clienteOptions = useMemo(
+    () =>
+      (Array.isArray(clientes) ? clientes : []).map((c) =>
+        typeof c === "string"
+          ? { id: c, label: c }
+          : { id: c._id || c.nombre, label: c.nombre, ...c }
+      ),
+    [clientes]
+  );
+
+  // texto escrito en el input del Autocomplete (controlado)
+  const [clienteInput, setClienteInput] = useState("");
+
   useEffect(() => {
     if (open) {
       setIsLoading(true);
@@ -43,7 +57,7 @@ const EditarEntregaModal = ({ open, onClose, data, onSaved, clientes = [], tipoD
     if (data && Object.keys(data).length > 0 && open) {
       const processedData = {
         _id: data._id,
-        cliente: { nombre: data.cliente || data.clienteNombre || "" },
+        cliente: { nombre: data.cliente?.nombre || data.cliente || data.clienteNombre || "" },
         cuentaDestino: "ENSHOP SRL",
         monedaDePago: data.moneda || data.monedaDePago,
         moneda: data.moneda || data.monedaDePago,
@@ -57,7 +71,6 @@ const EditarEntregaModal = ({ open, onClose, data, onSaved, clientes = [], tipoD
         subTotal: data.subTotal,
         montoTotal: data.montoTotal,
       };
-
       setInitialData(processedData);
       setIsLoading(false);
     }
@@ -69,12 +82,19 @@ const EditarEntregaModal = ({ open, onClose, data, onSaved, clientes = [], tipoD
     getCCOptions,
     clienteSeleccionado,
     tipoDeCambioManual,
-    calculos,
   } = useMovimientoFormV2(initialData, { clientes, tipoDeCambio });
+
+  // Sincronizar el input visible con el valor del form
+  useEffect(() => {
+    const labelActual =
+      typeof formData?.cliente === "string"
+        ? formData.cliente
+        : formData?.cliente?.nombre || "";
+    setClienteInput(labelActual || "");
+  }, [formData?.cliente]);
 
   const tipoDeCambioGuardado = data?.tipoDeCambio || 1;
 
-  // Cálculo para pantalla con descuento según input
   const { tc, subtotalSinDescuentoRedondeado, totalConDescuentoRedondeado } = calcularMovimientoV2({
     montoEnviado: formData.montoEnviado,
     monedaDePago: formData.monedaDePago,
@@ -85,21 +105,48 @@ const EditarEntregaModal = ({ open, onClose, data, onSaved, clientes = [], tipoD
     descuentoPercent: descuentoPorcentaje,
     signo: 1,
   });
+
   const factorDescuento = (() => {
     const pct = toNumber(descuentoPorcentaje);
     return 1 - pct / 100;
   })();
 
+  // Helpers de validación estricta del Autocomplete
+  const labelDeForm = useMemo(
+    () =>
+      typeof formData?.cliente === "string"
+        ? formData.cliente
+        : formData?.cliente?.nombre || "",
+    [formData?.cliente]
+  );
+
+  const matchesOption = (text) =>
+    !!clienteOptions.find(
+      (o) => (o.label || "").trim().toUpperCase() === (text || "").trim().toUpperCase()
+    );
+
+  const selectedOption =
+    clienteOptions.find(
+      (o) => (o.label || "").trim().toUpperCase() === (labelDeForm || "").trim().toUpperCase()
+    ) || null;
+
+  const invalidCliente = clienteInput !== "" && !matchesOption(clienteInput);
+
   const handleSave = async () => {
-    if (!formData.cliente || !formData.montoEnviado) {
+    // Validar cliente elegido de la lista
+    if (!labelDeForm || !matchesOption(labelDeForm)) {
+      alert("Seleccioná un cliente válido de la lista.");
+      return;
+    }
+    if (!formData.montoEnviado) {
       alert("Completá los campos requeridos");
       return;
     }
+
     setIsSaving(true);
     try {
       const monto = parseFloat(formData.montoEnviado) || 0;
 
-      // Detectar si cambiaron inputs que afectan los totales
       const originalMontoAbs = Math.abs(data.montoEnviado || 0);
       const didChangeMonto = originalMontoAbs !== monto;
       const didChangeMoneda = (data.moneda || "ARS") !== formData.monedaDePago;
@@ -112,9 +159,10 @@ const EditarEntregaModal = ({ open, onClose, data, onSaved, clientes = [], tipoD
 
       let datosParaGuardar = {
         descripcion: formData.concepto,
-        proveedorOCliente: formData.cliente,
+        proveedorOCliente: labelDeForm,
         moneda: formData.monedaDePago,
         cc: formData.CC,
+        // ID del cliente desde el hook (coincidirá porque forzamos selección válida)
         cliente: clienteSeleccionado?._id,
       };
 
@@ -122,7 +170,6 @@ const EditarEntregaModal = ({ open, onClose, data, onSaved, clientes = [], tipoD
         datosParaGuardar.descuentoAplicado = factorDescuento;
       }
 
-      // Recalcular totales si corresponde (usando cálculo único centralizado)
       if (cambiosAfectanTotales) {
         const {
           subTotal,
@@ -153,7 +200,7 @@ const EditarEntregaModal = ({ open, onClose, data, onSaved, clientes = [], tipoD
         };
       }
 
-      // Detectar cambios reales contra `data`
+      // Detectar cambios reales vs data original
       const camposModificados = {};
       Object.keys(datosParaGuardar).forEach((key) => {
         if (key === "subTotal" || key === "montoTotal") {
@@ -161,17 +208,16 @@ const EditarEntregaModal = ({ open, onClose, data, onSaved, clientes = [], tipoD
             camposModificados[key] = datosParaGuardar[key];
           }
         } else if (key === "cliente") {
-          // Comparar el ID del cliente actual con el nuevo
           const clienteOriginal = data.cliente?._id || data.cliente || null;
           if (clienteOriginal !== datosParaGuardar[key]) {
             camposModificados[key] = datosParaGuardar[key];
           }
+        } else if (key === "cc") {
+          if (datosParaGuardar[key] !== (data.CC ?? data.cc)) {
+            camposModificados[key] = datosParaGuardar[key];
+          }
         } else {
-          if (key === "cc") {
-            if (datosParaGuardar[key] !== (data.CC ?? data.cc)) {
-              camposModificados[key] = datosParaGuardar[key];
-            }
-          } else if (datosParaGuardar[key] !== data[key]) {
+          if (datosParaGuardar[key] !== data[key]) {
             camposModificados[key] = datosParaGuardar[key];
           }
         }
@@ -240,17 +286,45 @@ const EditarEntregaModal = ({ open, onClose, data, onSaved, clientes = [], tipoD
           <Grid container spacing={2}>
             {/* Fila 1: Cliente - Descripción */}
             <Grid item xs={12} sm={6}>
-              <Autocomplete
-                freeSolo
-                options={Array.isArray(clientes) ? clientes : []}
-                getOptionLabel={(option) => (typeof option === "string" ? option : option.nombre)}
-                value={formData.cliente}
-                onChange={(_, value) => handleChange("cliente", value)}
-                renderInput={(params) => (
-                  <TextField {...params} label="Cliente *" margin="normal" required fullWidth />
-                )}
-              />
+              <FormControl fullWidth margin="normal" required>
+                <Autocomplete
+                  options={clienteOptions}
+                  value={selectedOption}
+                  inputValue={clienteInput}
+                  onInputChange={(_, newInput) => setClienteInput(newInput || "")}
+                  onChange={(_, newValue) => {
+                    // solo seteamos si eligió una opción válida
+                    const label = newValue ? newValue.label : "";
+                    handleChange("cliente", label);
+                  }}
+                  isOptionEqualToValue={(option, value) => option.id === value.id}
+                  getOptionLabel={(option) => option?.label || ""}
+                  renderInput={(params) => (
+                    <TextField
+                      {...params}
+                      label="Cliente *"
+                      required
+                      error={invalidCliente}
+                      helperText={
+                        invalidCliente ? "Debés seleccionar un cliente de la lista" : undefined
+                      }
+                      onBlur={() => {
+                        // limpiar si lo escrito no coincide con ninguna opción
+                        if (!matchesOption(clienteInput)) {
+                          setClienteInput("");
+                          handleChange("cliente", "");
+                        }
+                      }}
+                    />
+                  )}
+                  freeSolo={false}
+                  selectOnFocus
+                  clearOnBlur={false}
+                  handleHomeEndKeys
+                />
+              </FormControl>
             </Grid>
+
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
@@ -270,7 +344,6 @@ const EditarEntregaModal = ({ open, onClose, data, onSaved, clientes = [], tipoD
                 onChange={(e) => handleChange("montoEnviado", e.target.value)}
                 margin="normal"
                 required
-                helperText=""
               />
             </Grid>
 
@@ -342,13 +415,7 @@ const EditarEntregaModal = ({ open, onClose, data, onSaved, clientes = [], tipoD
 
             {/* Fila 6: Usuario - Tipo de Cambio */}
             <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Usuario"
-                value={formData.usuario}
-                margin="normal"
-                disabled
-              />
+              <TextField fullWidth label="Usuario" value={formData.usuario} margin="normal" disabled />
             </Grid>
             <Grid item xs={12} sm={6}>
               <TextField
