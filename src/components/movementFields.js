@@ -39,6 +39,8 @@ const DEFINICION_CAMPOS = [
   { section: 'pago', name: 'medio_pago', label: 'Medio de Pago', type: 'select', optionsKey: 'mediosPago', visibleIf: (info) => info.medio_pago },
   { section: 'pago', name: 'estado', label: 'Estado', type: 'select', options: ['Pendiente', 'Pagado'], visibleIf: (_, empresa) => empresa?.con_estados },
   { section: 'pago', name: 'caja_chica', label: 'Caja Chica', type: 'boolean' },
+  { section: 'pago', name: 'empresa_facturacion', label: 'Empresa de facturación', type: 'select', optionsKey: 'subempresas' },
+  { section: 'pago', name: 'fecha_pago', label: 'Fecha de pago', type: 'date' },
 
   // IMPUESTOS
   { section: 'impuestos', name: 'impuestos', label: 'Impuestos', type: 'impuestos' },
@@ -88,6 +90,14 @@ const MovementFields = ({
       case 'subcategorias': return categoriaSeleccionada?.subcategorias || [];
       case 'tagsExtra': return tagsExtra || [];
       case 'mediosPago': return mediosPago || [];
+      case 'subempresas': {
+        const list = empresa?.subempresas || empresa?.sub_empresas || [];
+        // Acepta array de strings o de objetos (usa nombre / razon_social)
+        return list.map((s) => {
+          if (typeof s === 'string') return s;
+          return s?.nombre || s?.razon_social || s?.name || '';
+        }).filter(Boolean);
+      }
       case 'etapas': return (etapas || []).map(e => e.nombre);
       case 'cuentasInternas': return empresa.cuentas || ['Cuenta A', 'Cuenta B', 'Cuenta C'];
       default: return [];

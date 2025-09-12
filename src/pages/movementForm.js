@@ -155,7 +155,9 @@ const MovementFormPage = () => {
       medio_pago: '',
       observacion: '',
       impuestos: [],
-      materiales: []
+      materiales: [],
+      empresa_facturacion: '',
+      fecha_pago: ''
     },
     validationSchema: Yup.object({}),
     validate: (values) => {
@@ -166,6 +168,7 @@ const MovementFormPage = () => {
       const payload = {
         ...values,
         fecha_factura: dateToTimestamp(values.fecha_factura),
+        fecha_pago: values.fecha_pago ? dateToTimestamp(values.fecha_pago) : null,
         proyecto: proyectoName,
         proyecto_id: proyectoId,
         tags_extra: values.tags_extra || [],
@@ -206,6 +209,7 @@ const MovementFormPage = () => {
       if (isEditMode) {
         const data = await movimientosService.getMovimientoById(movimientoId);
         data.fecha_factura = formatTimestamp(data.fecha_factura);
+        if (data.fecha_pago) data.fecha_pago = formatTimestamp(data.fecha_pago);
         setMovimiento(data);
         const created_user = await profileService.getProfileByPhone(data.user_phone);
         setCreatedUser(created_user);
@@ -213,6 +217,7 @@ const MovementFormPage = () => {
           ...formik.values,
           ...data,
           fecha_factura: data.fecha_factura,
+          fecha_pago: data.fecha_pago || '',
           tags_extra: data.tags_extra || [],
           caja_chica: data.caja_chica ?? false,
           impuestos: data.impuestos || [],
@@ -518,6 +523,8 @@ const MovementFormPage = () => {
       { key: 'numero_factura',   label: 'N° Factura' },
       { key: 'tipo_factura',     label: 'Tipo de Factura' },
       { key: 'medio_pago',       label: 'Medio de Pago' },
+      { key: 'empresa_facturacion', label: 'Empresa de facturación' },
+      { key: 'fecha_pago',          label: 'Fecha de pago' },
       { key: 'moneda',           label: 'Moneda' },
       { key: 'subtotal',         label: 'Subtotal', format: (v)=>formatCurrency(v,2) },
       { key: 'total_original',   label: 'Total Original', format: (v)=>formatCurrency(v,2) },
