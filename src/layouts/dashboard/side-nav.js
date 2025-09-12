@@ -14,6 +14,7 @@ import {
   Collapse,
   ListSubheader,
   SvgIcon,
+  Button,
 } from "@mui/material";
 import { Logo } from "src/components/logo";
 import { Scrollbar } from "src/components/scrollbar";
@@ -584,8 +585,6 @@ export const SideNav = (props) => {
             )}
           </Stack>
         </Box>
-
-        {/* Footer minimal: sin imagen promocional */}
         <Divider sx={{ borderColor: "neutral.700" }} />
         {!collapsed && (
           <Box sx={{ p: 1.5, display: "flex", alignItems: "center", gap: 1 }}>
@@ -595,6 +594,16 @@ export const SideNav = (props) => {
             </Typography>
           </Box>
         )}
+        {/* Footer minimal: sin imagen promocional */}
+        <Divider sx={{ borderColor: "neutral.700" }} />
+        {!collapsed && (
+          <Button sx={{ p: 1.5, display: "flex", alignItems: "center", gap: 1 }} onClick={() => window.location.reload(true)}>
+            Forzar refrescar
+          </Button>
+        )}
+
+
+        
       </Box>
     </Scrollbar>
   );
