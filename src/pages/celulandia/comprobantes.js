@@ -18,6 +18,7 @@ import dolarService from "src/services/celulandia/dolarService";
 import cajasService from "src/services/celulandia/cajasService";
 import { getMovimientoHistorialConfig } from "src/utils/celulandia/historial";
 import Head from "next/head";
+import useDebouncedValue from "src/hooks/useDebouncedValue";
 
 const ComprobantesCelulandiaPage = () => {
   const [movimientos, setMovimientos] = useState([]);
@@ -36,6 +37,8 @@ const ComprobantesCelulandiaPage = () => {
   const [sortField, setSortField] = useState("fechaCreacion");
   const [sortDirection, setSortDirection] = useState("desc");
   const [filtroFecha, setFiltroFecha] = useState("todos");
+  const [busquedaTexto, setBusquedaTexto] = useState("");
+  const debouncedBusqueda = useDebouncedValue(busquedaTexto, 500);
 
   // Nuevos estados para los datos compartidos
   const [clientes, setClientes] = useState([]);
@@ -63,7 +66,13 @@ const ComprobantesCelulandiaPage = () => {
     selectedCajaNombre,
     filtroUsuario,
     filtroNombreCliente,
+    debouncedBusqueda,
   ]);
+
+  // Al cambiar el término de búsqueda, resetear a página 1
+  useEffect(() => {
+    setPaginaActual(1);
+  }, [debouncedBusqueda]);
 
   const fetchData = async (pagina = 1) => {
     setIsLoading(true);
@@ -85,6 +94,7 @@ const ComprobantesCelulandiaPage = () => {
             ...(filtroNombreCliente ? { clienteNombre: filtroNombreCliente } : {}),
             fechaInicio,
             fechaFin,
+            text: debouncedBusqueda || undefined,
             //includeInactive: true,
           }),
           clientesService.getAllClientes(),
@@ -320,6 +330,8 @@ const ComprobantesCelulandiaPage = () => {
           formatters={formatters}
           showClienteListedChip={true}
           serverSide={true}
+          showSearch={true}
+          onSearchDebounced={setBusquedaTexto}
           multipleSelectFilters={[
             {
               key: "nombreCliente",
@@ -376,7 +388,6 @@ const ComprobantesCelulandiaPage = () => {
           sortField={sortField}
           sortDirection={sortDirection}
           onSortChange={handleSortChange}
-          showSearch={false}
           filtroFecha={filtroFecha}
           onFiltroFechaChange={(nuevoFiltro) => {
             setFiltroFecha(nuevoFiltro);

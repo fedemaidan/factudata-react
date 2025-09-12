@@ -18,6 +18,7 @@ const movimientosService = {
     fechaFin,
     includeInactive = false,
     totalMoneda = false,
+    text,
   }) => {
     const response = await axiosCelulandia.get("/movimientos", {
       params: {
@@ -37,6 +38,16 @@ const movimientosService = {
         fechaFin,
         includeInactive,
         totalMoneda,
+        text,
+      },
+    });
+    return response.data;
+  },
+
+  searchMovimientos: async (q) => {
+    const response = await axiosCelulandia.get(`/movimientos/search`, {
+      params: {
+        q,
       },
     });
     return response.data;
