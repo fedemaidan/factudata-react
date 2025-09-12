@@ -76,20 +76,13 @@ const EditarEntregaModal = ({ open, onClose, data, onSaved, clientes = [], tipoD
     }
   }, [data, open]);
 
-  const {
-    formData,
-    handleChange,
-    getCCOptions,
-    clienteSeleccionado,
-    tipoDeCambioManual,
-  } = useMovimientoFormV2(initialData, { clientes, tipoDeCambio });
+  const { formData, handleChange, getCCOptions, clienteSeleccionado, tipoDeCambioManual } =
+    useMovimientoFormV2(initialData, { clientes, tipoDeCambio });
 
   // Sincronizar el input visible con el valor del form
   useEffect(() => {
     const labelActual =
-      typeof formData?.cliente === "string"
-        ? formData.cliente
-        : formData?.cliente?.nombre || "";
+      typeof formData?.cliente === "string" ? formData.cliente : formData?.cliente?.nombre || "";
     setClienteInput(labelActual || "");
   }, [formData?.cliente]);
 
@@ -114,9 +107,7 @@ const EditarEntregaModal = ({ open, onClose, data, onSaved, clientes = [], tipoD
   // Helpers de validación estricta del Autocomplete
   const labelDeForm = useMemo(
     () =>
-      typeof formData?.cliente === "string"
-        ? formData.cliente
-        : formData?.cliente?.nombre || "",
+      typeof formData?.cliente === "string" ? formData.cliente : formData?.cliente?.nombre || "",
     [formData?.cliente]
   );
 
@@ -292,7 +283,11 @@ const EditarEntregaModal = ({ open, onClose, data, onSaved, clientes = [], tipoD
                   value={selectedOption}
                   inputValue={clienteInput}
                   onInputChange={(_, newInput) => setClienteInput(newInput || "")}
-                  onChange={handleClienteChange}   
+                  onChange={(_, newOption) => {
+                    const label = newOption?.label || "";
+                    setClienteInput(label);
+                    handleChange("cliente", label);
+                  }}
                   isOptionEqualToValue={(option, value) => option.id === value.id}
                   getOptionLabel={(option) => option?.label || ""}
                   renderInput={(params) => (
@@ -411,7 +406,13 @@ const EditarEntregaModal = ({ open, onClose, data, onSaved, clientes = [], tipoD
 
             {/* Fila 6: Usuario - Tipo de Cambio */}
             <Grid item xs={12} sm={6}>
-              <TextField fullWidth label="Usuario" value={formData.usuario} margin="normal" disabled />
+              <TextField
+                fullWidth
+                label="Usuario"
+                value={formData.usuario}
+                margin="normal"
+                disabled
+              />
             </Grid>
             <Grid item xs={12} sm={6}>
               <TextField
