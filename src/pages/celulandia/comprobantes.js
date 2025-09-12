@@ -18,7 +18,6 @@ import dolarService from "src/services/celulandia/dolarService";
 import cajasService from "src/services/celulandia/cajasService";
 import { getMovimientoHistorialConfig } from "src/utils/celulandia/historial";
 import Head from "next/head";
-import axios from "axios";
 import useDebouncedValue from "src/hooks/useDebouncedValue";
 
 const ComprobantesCelulandiaPage = () => {
@@ -67,22 +66,12 @@ const ComprobantesCelulandiaPage = () => {
     selectedCajaNombre,
     filtroUsuario,
     filtroNombreCliente,
+    debouncedBusqueda,
   ]);
 
+  // Al cambiar el término de búsqueda, resetear a página 1
   useEffect(() => {
-    const doSearch = async () => {
-      if (!debouncedBusqueda) return;
-      try {
-        const response = await movimientosService.searchMovimientos({ text: debouncedBusqueda });
-        const rows = (response?.data || []).map(parseMovimiento);
-        setMovimientos(rows);
-        setTotalMovimientos(rows.length || 0);
-        setPaginaActual(1);
-      } catch (e) {
-        console.error("Error en búsqueda:", e);
-      }
-    };
-    doSearch();
+    setPaginaActual(1);
   }, [debouncedBusqueda]);
 
   const fetchData = async (pagina = 1) => {
@@ -105,6 +94,7 @@ const ComprobantesCelulandiaPage = () => {
             ...(filtroNombreCliente ? { clienteNombre: filtroNombreCliente } : {}),
             fechaInicio,
             fechaFin,
+            text: debouncedBusqueda || undefined,
             //includeInactive: true,
           }),
           clientesService.getAllClientes(),
