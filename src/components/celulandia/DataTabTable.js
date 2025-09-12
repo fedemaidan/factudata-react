@@ -497,11 +497,15 @@ const DataTabTable = ({
                 <TableBody>
                   {(paginatedGrouped.get(opt.value) || []).map((row) => (
                     <TableRow key={row.id} sx={{ cursor: "pointer" }}>
-                      <TableCell onClick={() => console.log(row)}>
+                      <TableCell onClick={() => console.log("row", row)}>
                         {formatearCampo("fecha", row.fecha)}
                       </TableCell>
                       <TableCell>{row.descripcion || "-"}</TableCell>
-                      <TableCell>
+                      <TableCell
+                        sx={{
+                          color: (row.montoOriginal || 0) < 0 ? "error.main" : "text.primary",
+                        }}
+                      >
                         {formatearCampo("montoYMoneda", row.montoYMonedaOriginal, row)}
                       </TableCell>
                       <TableCell>

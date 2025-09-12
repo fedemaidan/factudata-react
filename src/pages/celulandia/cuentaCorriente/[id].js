@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useCallback } from "react";
+import React, { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/router";
 import { Layout as DashboardLayout } from "src/layouts/dashboard/layout";
 import Head from "next/head";
@@ -52,6 +52,7 @@ const ClienteCelulandiaCCPage = () => {
   const [historialLoader, setHistorialLoader] = useState(null);
 
   const [grupoActual, setGrupoActual] = useState("ARS");
+  const initialGroupSetRef = useRef(false);
   // const [filtroFecha, setFiltroFecha] = useState("todos"); // comentado: filtro por fecha deshabilitado en esta vista
   const [sortDirection, setSortDirection] = useState("desc");
 
@@ -135,8 +136,12 @@ const ClienteCelulandiaCCPage = () => {
       const monto = round2(toNumber(m.montoCC || 0)); // base en CC
       const tipoDeCambio = toNumber(m.tipoDeCambio || 1);
       const montoOriginalBase = round2(toNumber(m.montoEnviado || 0));
-      const montoOriginal =
-        montoOriginalBase === 0 ? round2(monto * tipoDeCambio) : montoOriginalBase;
+      const montoOriginalAbs =
+        montoOriginalBase !== 0
+          ? Math.abs(montoOriginalBase)
+          : Math.abs(round2(monto * tipoDeCambio));
+
+      const shouldNegate = m.descuentoAplicado <= 1 && !isMov;
 
       return {
         id: m.id || m._id,
@@ -148,10 +153,10 @@ const ClienteCelulandiaCCPage = () => {
         montoCC: monto,
         tipoDeCambio,
         descuentoAplicado: m.descuentoAplicado,
-        montoOriginal,
+        montoOriginal: shouldNegate ? -montoOriginalAbs : montoOriginalAbs,
         monedaOriginal: m.moneda || m.monedaDePago,
         montoYMonedaOriginal: {
-          monto: montoOriginal,
+          monto: shouldNegate ? -montoOriginalAbs : montoOriginalAbs,
           moneda: m.moneda || m.monedaDePago || "ARS",
         },
         urlImagen: isMov ? m?.urlImagen : null,
@@ -168,6 +173,26 @@ const ClienteCelulandiaCCPage = () => {
     );
     return ordenados;
   }, [itemsDataTab, sortDirection]);
+
+  // Setear grupo inicial según primer total != 0 en orden preferido
+  useEffect(() => {
+    if (initialGroupSetRef.current) return;
+    if (!itemsOrdenados.length) return;
+
+    const preferredOrder = ["ARS", "USD BLUE", "USD OFICIAL"];
+    const totalsByGroup = itemsOrdenados.reduce((acc, it) => {
+      const key = it.group;
+      const current = acc[key] || 0;
+      acc[key] = current + (Number.isFinite(Number(it.monto)) ? Number(it.monto) : 0);
+      return acc;
+    }, {});
+
+    const firstNonZero = preferredOrder.find((g) => (totalsByGroup[g] || 0) !== 0);
+    if (firstNonZero && firstNonZero !== grupoActual) {
+      setGrupoActual(firstNonZero);
+    }
+    initialGroupSetRef.current = true;
+  }, [itemsOrdenados, grupoActual]);
 
   const handleVolver = useCallback(() => router.back(), [router]);
 

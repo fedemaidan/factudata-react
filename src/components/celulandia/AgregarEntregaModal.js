@@ -12,7 +12,6 @@ import {
   Select,
   MenuItem,
   Grid,
-  Autocomplete,
   CircularProgress,
 } from "@mui/material";
 import cuentasPendientesService from "src/services/celulandia/cuentasPendientesService";
@@ -190,18 +189,24 @@ const AgregarEntregaModal = ({ open, onClose, onSaved, clientes = [], tipoDeCamb
           <Grid container spacing={2}>
             {/* Fila 1: Cliente - Descripción */}
             <Grid item xs={12} sm={6}>
-              <Autocomplete
-                freeSolo
-                options={Array.isArray(clientes) ? clientes : []}
-                getOptionLabel={(option) => (typeof option === "string" ? option : option.nombre)}
-                value={formData.cliente}
-                inputValue={formData.cliente || ""}
-                onInputChange={(_, newInputValue) => handleInputChange("cliente", newInputValue)}
-                onChange={handleClienteChange}
-                renderInput={(params) => (
-                  <TextField {...params} label="Cliente *" margin="normal" required fullWidth />
-                )}
-              />
+              <FormControl fullWidth margin="normal" required>
+                <InputLabel>Cliente *</InputLabel>
+                <Select
+                  value={formData.cliente || ""}
+                  label="Cliente *"
+                  onChange={(e) => handleInputChange("cliente", e.target.value)}
+                >
+                  {(Array.isArray(clientes) ? clientes : []).map((c) => {
+                    const key = typeof c === "string" ? c : c._id || c.nombre;
+                    const name = typeof c === "string" ? c : c.nombre;
+                    return (
+                      <MenuItem key={key} value={name}>
+                        {name}
+                      </MenuItem>
+                    );
+                  })}
+                </Select>
+              </FormControl>
             </Grid>
             <Grid item xs={12} sm={6}>
               <TextField
