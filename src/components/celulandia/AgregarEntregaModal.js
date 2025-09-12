@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   Dialog,
   DialogTitle,
@@ -14,13 +14,14 @@ import {
   Grid,
   CircularProgress,
 } from "@mui/material";
+import { Autocomplete } from "@mui/material";
 import cuentasPendientesService from "src/services/celulandia/cuentasPendientesService";
 import { getUser } from "src/utils/celulandia/currentUser";
 import { useMovimientoForm } from "src/hooks/useMovimientoForm";
 
 const formatNumberWithThousands = (value) => {
   if (!value || value === 0) return "0";
-  return value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  return value.toString().replace(/\B((?=(\d{3})+(?!\d)))/g, ".");
 };
 
 const AgregarEntregaModal = ({ open, onClose, onSaved, clientes = [], tipoDeCambio }) => {
@@ -28,6 +29,21 @@ const AgregarEntregaModal = ({ open, onClose, onSaved, clientes = [], tipoDeCamb
   const [descuentoPorcentaje, setDescuentoPorcentaje] = useState("");
   const [fechaEntrega, setFechaEntrega] = useState("");
 
+  // Opciones normalizadas para el Autocomplete
+  const clienteOptions = useMemo(
+    () =>
+      (Array.isArray(clientes) ? clientes : []).map((c) =>
+        typeof c === "string"
+          ? { id: c, label: c }
+          : { id: c._id || c.nombre, label: c.nombre, ...c }
+      ),
+    [clientes]
+  );
+
+  // Estado de input visible en el Autocomplete (controlado para validar)
+  const [clienteInput, setClienteInput] = useState("");
+
+  // Hook original
   const {
     formData,
     clienteSeleccionado,
@@ -43,11 +59,17 @@ const AgregarEntregaModal = ({ open, onClose, onSaved, clientes = [], tipoDeCamb
     resetForm,
   } = useMovimientoForm(null, { clientes, tipoDeCambio });
 
-  // Convertir porcentaje a factor: 5% -> 0.95, 10% -> 0.90
+  // Calcular totales
   const factorDescuento = 1 - (parseFloat(descuentoPorcentaje) || 0) / 100;
   const subtotalEntrega = Math.round(parseFloat(formData.montoCC) || 0);
   const totalEntrega = Math.round(subtotalEntrega * factorDescuento);
 
+  // Mantener el input del Autocomplete sincronizado con el formData.cliente
+  useEffect(() => {
+    setClienteInput(formData.cliente || "");
+  }, [formData.cliente]);
+
+  // Si el cliente seleccionado tiene descuento, precargar
   useEffect(() => {
     if (clienteSeleccionado && clienteSeleccionado.descuento !== undefined) {
       const porcentajeCliente = (clienteSeleccionado.descuento || 0) * 100;
@@ -57,17 +79,35 @@ const AgregarEntregaModal = ({ open, onClose, onSaved, clientes = [], tipoDeCamb
     }
   }, [clienteSeleccionado]);
 
+  // Validación estricta: ¿lo escrito coincide con una opción?
+  const matchesOption = (text) =>
+    !!clienteOptions.find(
+      (o) => (o.label || "").trim().toUpperCase() === (text || "").trim().toUpperCase()
+    );
+
+  const selectedOption =
+    clienteOptions.find(
+      (o) => (o.label || "").trim().toUpperCase() === (formData.cliente || "").trim().toUpperCase()
+    ) || null;
+
+  const invalidCliente = clienteInput !== "" && !matchesOption(clienteInput);
+
   const handleSave = async () => {
-    if (!formData.cliente || !formData.montoEnviado) {
+    // Validar que el cliente sea una de las opciones
+    if (!formData.cliente || !matchesOption(formData.cliente)) {
+      alert("Seleccioná un cliente válido de la lista.");
+      return;
+    }
+    if (!formData.montoEnviado) {
       alert("Completá los campos requeridos");
       return;
     }
+
     setIsSaving(true);
     try {
       const tcOficial = tipoDeCambio?.oficial?.venta || tipoDeCambio?.oficial || 1;
       const tcBlue = tipoDeCambio?.blue?.venta || tipoDeCambio?.blue || 1;
 
-      // Subtotal basado en el monto CC calculado por el hook (como en AgregarModal)
       let subTotal = { ars: 0, usdOficial: 0, usdBlue: 0 };
       if (formData.CC === "ARS") {
         subTotal = {
@@ -101,7 +141,6 @@ const AgregarEntregaModal = ({ open, onClose, onSaved, clientes = [], tipoDeCamb
         };
       }
 
-      // Total con descuento aplicado
       let montoTotal = { ars: 0, usdOficial: 0, usdBlue: 0 };
       if (formData.CC === "ARS") {
         montoTotal = {
@@ -123,24 +162,24 @@ const AgregarEntregaModal = ({ open, onClose, onSaved, clientes = [], tipoDeCamb
         };
       }
 
-      // Crear fecha completa con hora por defecto (12:00) si se especificó fecha
       let fechaCuentaCompleta = new Date();
       if (fechaEntrega) {
         const [year, month, day] = fechaEntrega.split("-");
         fechaCuentaCompleta = new Date(
           parseInt(year),
-          parseInt(month) - 1, // Los meses en JS van de 0 a 11
+          parseInt(month) - 1,
           parseInt(day),
-          12, // hora por defecto: 12:00
-          0, // minuto por defecto: 00
-          0, // segundos
-          0 // milisegundos
+          12,
+          0,
+          0,
+          0
         );
       }
 
-      const clienteId = clientes.find(
-        (c) => c.nombre.trim().toUpperCase() === formData.cliente.trim().toUpperCase()
-      )?._id;
+      const clienteId =
+        clienteOptions.find(
+          (o) => o.label.trim().toUpperCase() === formData.cliente.trim().toUpperCase()
+        )?.id || null;
 
       const payload = {
         descripcion: formData.concepto,
@@ -190,24 +229,45 @@ const AgregarEntregaModal = ({ open, onClose, onSaved, clientes = [], tipoDeCamb
             {/* Fila 1: Cliente - Descripción */}
             <Grid item xs={12} sm={6}>
               <FormControl fullWidth margin="normal" required>
-                <InputLabel>Cliente *</InputLabel>
-                <Select
-                  value={formData.cliente || ""}
-                  label="Cliente *"
-                  onChange={(e) => handleInputChange("cliente", e.target.value)}
-                >
-                  {(Array.isArray(clientes) ? clientes : []).map((c) => {
-                    const key = typeof c === "string" ? c : c._id || c.nombre;
-                    const name = typeof c === "string" ? c : c.nombre;
-                    return (
-                      <MenuItem key={key} value={name}>
-                        {name}
-                      </MenuItem>
-                    );
-                  })}
-                </Select>
+                <Autocomplete
+                  options={clienteOptions}
+                  value={selectedOption}
+                  inputValue={clienteInput}
+                  onInputChange={(_, newInput) => setClienteInput(newInput || "")}
+                  onChange={(_, newValue) => {
+                    // Solo se setea si eligió una opción válida
+                    handleInputChange("cliente", newValue ? newValue.label : "");
+                  }}
+                  isOptionEqualToValue={(option, value) => option.id === value.id}
+                  getOptionLabel={(option) => option?.label || ""}
+                  renderInput={(params) => (
+                    <TextField
+                      {...params}
+                      label="Cliente *"
+                      required
+                      error={invalidCliente}
+                      helperText={
+                        invalidCliente ? "Debés seleccionar un cliente de la lista" : undefined
+                      }
+                      onBlur={() => {
+                        // Si lo escrito no coincide con ninguna opción, limpiar
+                        if (!matchesOption(clienteInput)) {
+                          setClienteInput("");
+                          handleInputChange("cliente", "");
+                        }
+                      }}
+                    />
+                  )}
+                  // Evitar que se creen valores libres
+                  freeSolo={false}
+                  // Mejor UX: selecciona opción al presionar Enter si hay una resaltada
+                  selectOnFocus
+                  clearOnBlur={false}
+                  handleHomeEndKeys
+                />
               </FormControl>
             </Grid>
+
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
@@ -227,9 +287,7 @@ const AgregarEntregaModal = ({ open, onClose, onSaved, clientes = [], tipoDeCamb
                 value={fechaEntrega}
                 onChange={(e) => setFechaEntrega(e.target.value)}
                 margin="normal"
-                InputLabelProps={{
-                  shrink: true,
-                }}
+                InputLabelProps={{ shrink: true }}
                 helperText="Opcional"
               />
             </Grid>
@@ -319,13 +377,7 @@ const AgregarEntregaModal = ({ open, onClose, onSaved, clientes = [], tipoDeCamb
 
             {/* Fila 6: Usuario - Tipo de Cambio */}
             <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Usuario"
-                value={formData.usuario}
-                margin="normal"
-                disabled
-              />
+              <TextField fullWidth label="Usuario" value={formData.usuario} margin="normal" disabled />
             </Grid>
             <Grid item xs={12} sm={6}>
               <TextField
