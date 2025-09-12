@@ -4,7 +4,8 @@ import { useRouter } from 'next/router';
 import {
   Box, Button, Chip, Container, Dialog, DialogActions, DialogContent, DialogTitle,
   IconButton, Paper, Snackbar, Alert, Stack, Table, TableBody, TableCell, TableHead,
-  TableRow, TextField, Tooltip, Typography, MenuItem, Select, InputLabel, FormControl
+  TableRow, TextField, Tooltip, Typography, MenuItem, Select, InputLabel, FormControl,
+  Checkbox, FormControlLabel
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
@@ -21,7 +22,8 @@ const emptyForm = {
   proxEvent: '',
   tiempo: 0,
   tipo: 'mensaje',
-  promt_assistant: '' // ✅ nuevo campo
+  promt_assistant: '',
+  respetar_horario: false,            // ✅ nuevo campo
 };
 
 const FollowUpConfig = () => {
@@ -84,7 +86,8 @@ const FollowUpConfig = () => {
       proxEvent: row.proxEvent ?? '',
       tiempo: Number(row.tiempo ?? 0),
       tipo: row.tipo ?? 'mensaje',
-      promt_assistant: row.promt_assistant ?? '' // ✅ cargar valor existente
+      promt_assistant: row.promt_assistant ?? '',
+      respetar_horario: Boolean(row.respetar_horario) // ✅ cargar valor existente
     });
     setOpenForm(true);
   };
@@ -110,7 +113,8 @@ const FollowUpConfig = () => {
         proxEvent: form.proxEvent || '',
         tiempo: Number(form.tiempo) || 0,
         tipo: form.tipo || 'mensaje',
-        promt_assistant: form.promt_assistant || '' // ✅ enviar al backend
+        promt_assistant: form.promt_assistant || '',
+        respetar_horario: Boolean(form.respetar_horario), // ✅ enviar como boolean
       };
       if (isEdit) {
         await FollowUpConfigService.actualizar(form.id, payload);
@@ -184,7 +188,8 @@ const FollowUpConfig = () => {
                     <TableCell>proxEvent</TableCell>
                     <TableCell>tiempo (min)</TableCell>
                     <TableCell>tipo</TableCell>
-                    <TableCell>IA promt</TableCell>
+                    <TableCell>IA Promt</TableCell>
+                    <TableCell>Resp. horario</TableCell> {/* ✅ nueva columna */}
                     <TableCell align="right">Acciones</TableCell>
                   </TableRow>
                 </TableHead>
@@ -211,6 +216,13 @@ const FollowUpConfig = () => {
                           </Typography>
                         </Tooltip>
                       </TableCell>
+                      <TableCell>
+                        <Chip
+                          size="small"
+                          label={row.respetar_horario ? 'Sí' : 'No'}
+                          color={row.respetar_horario ? 'success' : 'default'}
+                        />
+                      </TableCell>
                       <TableCell align="right">
                         <IconButton color="primary" onClick={() => handleOpenEdit(row)} aria-label="Editar">
                           <EditIcon />
@@ -223,7 +235,7 @@ const FollowUpConfig = () => {
                   ))}
                   {!loading && filtered.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={7}>
+                      <TableCell colSpan={8}>
                         <Typography variant="body2">Sin resultados.</Typography>
                       </TableCell>
                     </TableRow>
@@ -260,7 +272,6 @@ const FollowUpConfig = () => {
                 onChange={(e) => setForm({ ...form, mensaje: e.target.value })}
               />
 
-              {/* proxEvent como selector de IDs existentes (sin texto libre) */}
               <FormControl>
                 <InputLabel id="proxEvent-label">proxEvent (opcional)</InputLabel>
                 <Select
@@ -284,7 +295,6 @@ const FollowUpConfig = () => {
                 onChange={(e) => setForm({ ...form, tiempo: e.target.value })}
               />
 
-              {/* tipo como combo */}
               <FormControl>
                 <InputLabel id="tipo-label">tipo</InputLabel>
                 <Select
@@ -298,7 +308,6 @@ const FollowUpConfig = () => {
                 </Select>
               </FormControl>
 
-              {/* ✅ Guion IA para retomar lead (se guarda en promt_assistant) */}
               <TextField
                 label="IA Promt"
                 placeholder="p. ej.: Escribí como asesor cordial, retoma la conversación, pedí disponibilidad…"
@@ -307,6 +316,17 @@ const FollowUpConfig = () => {
                 value={form.promt_assistant}
                 onChange={(e) => setForm({ ...form, promt_assistant: e.target.value })}
                 helperText="Se guarda como promt_assistant y lo usará la función del asistente."
+              />
+
+              {/* ✅ Checkbox respetar horario */}
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={Boolean(form.respetar_horario)}
+                    onChange={(e) => setForm({ ...form, respetar_horario: e.target.checked })}
+                  />
+                }
+                label="Respetar horario de trabajo"
               />
             </Stack>
           </DialogContent>
