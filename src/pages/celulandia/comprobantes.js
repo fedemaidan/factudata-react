@@ -18,6 +18,8 @@ import dolarService from "src/services/celulandia/dolarService";
 import cajasService from "src/services/celulandia/cajasService";
 import { getMovimientoHistorialConfig } from "src/utils/celulandia/historial";
 import Head from "next/head";
+import axios from "axios";
+import useDebouncedValue from "src/hooks/useDebouncedValue";
 
 const ComprobantesCelulandiaPage = () => {
   const [movimientos, setMovimientos] = useState([]);
@@ -36,6 +38,8 @@ const ComprobantesCelulandiaPage = () => {
   const [sortField, setSortField] = useState("fechaCreacion");
   const [sortDirection, setSortDirection] = useState("desc");
   const [filtroFecha, setFiltroFecha] = useState("todos");
+  const [busquedaTexto, setBusquedaTexto] = useState("");
+  const debouncedBusqueda = useDebouncedValue(busquedaTexto, 500);
 
   // Nuevos estados para los datos compartidos
   const [clientes, setClientes] = useState([]);
@@ -64,6 +68,22 @@ const ComprobantesCelulandiaPage = () => {
     filtroUsuario,
     filtroNombreCliente,
   ]);
+
+  useEffect(() => {
+    const doSearch = async () => {
+      if (!debouncedBusqueda) return;
+      try {
+        const response = await movimientosService.searchMovimientos({ text: debouncedBusqueda });
+        const rows = (response?.data || []).map(parseMovimiento);
+        setMovimientos(rows);
+        setTotalMovimientos(rows.length || 0);
+        setPaginaActual(1);
+      } catch (e) {
+        console.error("Error en búsqueda:", e);
+      }
+    };
+    doSearch();
+  }, [debouncedBusqueda]);
 
   const fetchData = async (pagina = 1) => {
     setIsLoading(true);
@@ -320,6 +340,8 @@ const ComprobantesCelulandiaPage = () => {
           formatters={formatters}
           showClienteListedChip={true}
           serverSide={true}
+          showSearch={true}
+          onSearchDebounced={setBusquedaTexto}
           multipleSelectFilters={[
             {
               key: "nombreCliente",
@@ -376,7 +398,6 @@ const ComprobantesCelulandiaPage = () => {
           sortField={sortField}
           sortDirection={sortDirection}
           onSortChange={handleSortChange}
-          showSearch={false}
           filtroFecha={filtroFecha}
           onFiltroFechaChange={(nuevoFiltro) => {
             setFiltroFecha(nuevoFiltro);

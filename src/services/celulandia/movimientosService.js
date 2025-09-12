@@ -42,6 +42,15 @@ const movimientosService = {
     return response.data;
   },
 
+  searchMovimientos: async (q) => {
+    const response = await axiosCelulandia.get(`/movimientos/search`, {
+      params: {
+        q,
+      },
+    });
+    return response.data;
+  },
+
   getMovimientoById: async (id) => {
     const response = await axiosCelulandia.get(`/movimientos/${id}`);
     return response.data;
