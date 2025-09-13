@@ -7,7 +7,8 @@ const PERSIST_KEYS = [
   'fechaDesde','fechaHasta','palabras','observacion',
   'categorias','subcategorias','proveedores','medioPago',
   'tipo','moneda','etapa','estados','cuentaInterna','tagsExtra',
-  'montoMin','montoMax','ordenarPor','ordenDir','caja', '_dayKey'
+  'montoMin','montoMax','ordenarPor','ordenDir','caja', '_dayKey',
+  'empresaFacturacion','fechaPagoDesde','fechaPagoHasta'
 ];
 
 const pickPersistable = (f) => {
@@ -45,6 +46,9 @@ const defaultFilters = {
   montoMax: '',
   ordenarPor: 'fecha_factura',
   ordenarDir: 'desc',
+  empresaFacturacion: [],   // select múltiple
+  fechaPagoDesde: null,     // Date
+  fechaPagoHasta: null,     // Date
   caja: null, // { moneda, medio_pago }
 };
 
@@ -181,6 +185,7 @@ useEffect(() => {
       estados: uniq(base.map(m => m.estado)),
       cuentasInternas: uniq(base.map(m => m.cuenta_interna)),
       tags: uniq(base.flatMap(m => Array.isArray(m.tags_extra) ? m.tags_extra : [])),
+      empresasFacturacion: uniq(base.map(m => m.empresa_facturacion)),
       tipos: ['ingreso', 'egreso'],
     };
   }, [movimientos, movimientosUSD]);
@@ -199,6 +204,20 @@ useEffect(() => {
     return true;
   };
 
+  const insideRangePago = (mov, fechaDesde, fechaHasta) => {
+    const dt = toJsDate(mov.fecha_pago);
+    if (!fechaDesde && !fechaHasta) return true;
+    if (!dt) return false; // si filtrás por pago y el mov no tiene fecha_pago, no matchea
+    if (fechaDesde && dt < fechaDesde) return false;
+    if (fechaHasta) {
+      const end = new Date(fechaHasta);
+      end.setHours(23, 59, 59, 999);
+      if (dt > end) return false;
+    }
+    return true;
+  };
+  
+
   // Filtrado
   const movimientosFiltrados = useMemo(() => {
     const base =
@@ -209,7 +228,7 @@ useEffect(() => {
     const {
       fechaDesde, fechaHasta, palabras, observacion, categorias, subcategorias,
       proveedores, medioPago, tipo, moneda, etapa, cuentaInterna, estado, tagsExtra,
-      montoMin, montoMax, ordenarPor, ordenarDir
+      montoMin, montoMax, ordenarPor, ordenarDir, empresaFacturacion, fechaPagoDesde, fechaPagoHasta
     } = filters;
 
     const match = (value, arr) => arr.length === 0 || arr.includes(value);
@@ -236,6 +255,7 @@ useEffect(() => {
 
     const res = base.filter(mov =>
       insideRange(mov, fechaDesde, fechaHasta)
+      && insideRangePago(mov, fechaPagoDesde, fechaPagoHasta)               // 🔹 NUEVO
       && match(mov.categoria, categorias)
       && match(mov.subcategoria, subcategorias)
       && match(mov.nombre_proveedor, proveedores)
@@ -250,7 +270,9 @@ useEffect(() => {
       && matchText(Object.values(mov).join(' '), palabras)
       && matchEstado(mov)
       && matchCaja(mov)
+      && (empresaFacturacion.length === 0 || empresaFacturacion.includes(mov.empresa_facturacion)) // 🔹 NUEVO
     );
+    
 
     if (!ordenarPor) return res;
 

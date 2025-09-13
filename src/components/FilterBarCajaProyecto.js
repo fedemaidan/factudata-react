@@ -22,6 +22,9 @@ const defaultFilters = {
   ordenarDir: 'desc',
   caja: null,
   estados: [],
+  empresaFacturacion: [],
+  fechaPagoDesde: null,
+  fechaPagoHasta: null,
 };
 
 export const FilterBarCajaProyecto = ({
@@ -45,6 +48,7 @@ export const FilterBarCajaProyecto = ({
     { name: 'estados', label: 'Estado', type: 'selectMultiple', options: ['Pendiente', 'Pagado'], visibleIf: (empresa) => empresa?.con_estados },
     { name: 'montoMin', label: 'Monto mínimo', type: 'number', visibleIf: () => true },
     { name: 'montoMax', label: 'Monto máximo', type: 'number', visibleIf: () => true },
+    { name: 'empresaFacturacion', label: 'Empresa facturación', type: 'selectMultiple', optionsKey: 'empresasFacturacion', visibleIf: () => empresa?.comprobante_info?.empresa_facturacion },
   ];
   
   function getFiltrosVisibles(empresa) {
@@ -80,6 +84,29 @@ export const FilterBarCajaProyecto = ({
           dateFormat="dd/MM/yyyy"
         />
       </Stack>
+
+      {empresa?.comprobante_info?.fecha_pago && <Stack direction="row" spacing={1} alignItems="center">
+          <DatePicker
+            selected={filters.fechaPagoDesde}
+            onChange={(date) => set('fechaPagoDesde', date)}
+            selectsStart
+            startDate={filters.fechaPagoDesde}
+            endDate={filters.fechaPagoHasta}
+            placeholderText="Pago desde"
+            dateFormat="dd/MM/yyyy"
+          />
+          <DatePicker
+            selected={filters.fechaPagoHasta}
+            onChange={(date) => set('fechaPagoHasta', date)}
+            selectsEnd
+            startDate={filters.fechaPagoDesde}
+            endDate={filters.fechaPagoHasta}
+            minDate={filters.fechaPagoDesde}
+            placeholderText="Pago hasta"
+            dateFormat="dd/MM/yyyy"
+          />
+        </Stack>
+      }
 
       {getFiltrosVisibles(empresa).map((filtro) => {
   const value = filters[filtro.name];

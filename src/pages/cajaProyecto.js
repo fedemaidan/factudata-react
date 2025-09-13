@@ -49,6 +49,8 @@ const COLS = {
   tc: 120,
   usd: 160,
   estado: 140,
+  empresaFacturacion: 200,
+  fechaPago: 140,
   acciones: 96,
 };
 
@@ -275,6 +277,8 @@ const defaultVisible = useMemo(() => ({
   usd: true,
   estado: !!empresa?.con_estados,
   acciones: true,
+  empresaFacturacion: false,
+  fechaPago: false,
 }), [compactCols, empresa]);
 
 const [visibleCols, setVisibleCols] = useState(defaultVisible);
@@ -860,6 +864,8 @@ useEffect(() => {
     {empresa?.con_estados && (
       <FormControlLabel control={<Checkbox size="small" checked={visibleCols.estado}      onChange={() => toggleCol('estado')} />}      label="Estado" />
     )}
+    <FormControlLabel control={<Checkbox size="small" checked={visibleCols.empresaFacturacion} onChange={() => toggleCol('empresaFacturacion')} />} label="Empresa facturación" />
+    <FormControlLabel control={<Checkbox size="small" checked={visibleCols.fechaPago} onChange={() => toggleCol('fechaPago')} />} label="Fecha de pago" />
     <FormControlLabel control={<Checkbox size="small" checked={visibleCols.acciones}     onChange={() => toggleCol('acciones')} />}     label="Acciones" />
         <Box sx={{ display: 'flex', gap: 1, pt: 0.5 }}>
       <Button
@@ -1119,6 +1125,14 @@ useEffect(() => {
         {empresa?.con_estados && visibleCols.estado && (
           <TableCell sx={{ ...cellBase, minWidth: COLS.estado }}>ESTADO</TableCell>
         )}
+        {visibleCols.empresaFacturacion && (
+          <TableCell sx={{ ...cellBase, minWidth: COLS.empresaFacturacion }}>EMPRESA FACTURACIÓN</TableCell>
+        )}
+
+        {visibleCols.fechaPago && (
+          <TableCell sx={{ ...cellBase, minWidth: COLS.fechaPago }}>FECHA PAGO</TableCell>
+        )}
+
 
 {visibleCols.acciones && (
   <TableCell
@@ -1264,6 +1278,19 @@ useEffect(() => {
                 {mov.estado ? <Chip size="small" label={mov.estado} /> : ''}
               </TableCell>
             )}
+
+            {visibleCols.empresaFacturacion && (
+              <TableCell sx={{ ...cellBase, minWidth: COLS.empresaFacturacion }}>
+                {mov.empresa_facturacion || '—'}
+              </TableCell>
+            )}
+
+            {visibleCols.fechaPago && (
+              <TableCell sx={{ ...cellBase, minWidth: COLS.fechaPago }}>
+                {mov.fecha_pago ? formatTimestamp(mov.fecha_pago, "DIA/MES/ANO") : '—'}
+              </TableCell>
+            )}
+
 
             {visibleCols.acciones && (
               <TableCell sx={{

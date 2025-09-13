@@ -24,6 +24,8 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
     subtotal: false,
     cuenta_interna: false,
     etapa: false,
+    empresa_facturacion: false,
+    fecha_pago: false,
   }
   const ingreso_info_default = {
     observacion: true,
