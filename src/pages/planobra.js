@@ -20,10 +20,15 @@ const PlanObraPage = () => {
   const { proyectoId } = router.query;
 
   // Hook centralizado (ya lee datos del proyecto internamente si no existe plan)
-  const { data, status, error, notFound, refresh, savePlan, createEmptyPlan, createFromEmpresa, proyectoInfo } =
-    usePlanObra(proyectoId, { defaultMoneda: 'ARS' });
-
-  // Estado local para edición en memoria
+  const {
+       data, status, error, notFound, refresh, savePlan, createEmptyPlan, createFromEmpresa, proyectoInfo,
+       addEtapa, updateEtapaByIndex, deleteEtapaByIndex,
+       addMaterialToEtapa, updateMaterialInEtapa, deleteMaterialInEtapa,
+       addCertificadoToEtapa, updateCertificadoInEtapa, deleteCertificadoInEtapa,
+       recalcular
+     } = usePlanObra(proyectoId, { defaultMoneda: 'ARS' });
+  
+    // Estado local para edición en memoria
   const [etapas, setEtapas] = useState([]);
   const [vista, setVista] = useState('todo');
   const [search, setSearch] = useState('');
@@ -44,7 +49,6 @@ const PlanObraPage = () => {
   const openSnack = (msg) => setSnack({ open: true, msg });
 
   useEffect(() => {
-    console.log(data)
     if (data?.etapas) setEtapas(data.etapas);
   }, [data]);
 
@@ -70,33 +74,21 @@ const PlanObraPage = () => {
       title: 'Eliminar etapa',
       content: `¿Eliminar la etapa "${etapas[idx]?.nombre}"?`,
       onConfirm: async () => {
-        const next = etapas.filter((_, i) => i !== idx);
-        setEtapas(next);
-        setConfirm({ open: false });
-        await savePlan({
-          proyectoId: String(proyectoId || data?.proyectoId || 'P-001'),
-          nombreProyecto: proyectoNombre,
-          moneda,
-          etapas: next
-        });
+        const updatedPlan = await deleteEtapaByIndex(idx);
++       setConfirm({ open: false });
++       setEtapas(updatedPlan.etapas || []);
       }
     });
 
   const saveEtapaDialog = async (payload) => {
     setDlgEtapa({ open: false, index: null, initial: null });
-    let next = [];
     if (dlgEtapa.index == null) {
-      next = [...etapas, { nombre: payload.nombre || 'Sin nombre', materiales: [], certificados: [], _id: genId() }];
-    } else {
-      next = etapas.map((e, i) => (i === dlgEtapa.index ? { ...e, nombre: payload.nombre } : e));
-    }
-    setEtapas(next);
-    await savePlan({
-      proyectoId: String(proyectoId || data?.proyectoId || 'P-001'),
-      nombreProyecto: proyectoNombre,
-      moneda,
-      etapas: next
-    });
+           const updatedPlan = await addEtapa({ nombre: payload?.nombre || 'Sin nombre' });
+           setEtapas(updatedPlan.etapas || []);
+         } else {
+           const updatedPlan = await updateEtapaByIndex(dlgEtapa.index, { nombre: payload?.nombre });
+           setEtapas(updatedPlan.etapas || []);
+         }
   };
 
   // Materiales
@@ -108,37 +100,21 @@ const PlanObraPage = () => {
       title: 'Eliminar material',
       content: `¿Eliminar "${etapas[etapaIdx]?.materiales[index]?.nombre}"?`,
       onConfirm: async () => {
-        const next = etapas.map((e, i) => {
-          if (i !== etapaIdx) return e;
-          return { ...e, materiales: e.materiales.filter((_, j) => j !== index) };
-        });
-        setEtapas(next);
+        const updatedPlan = await deleteMaterialInEtapa(etapaIdx, index);
         setConfirm({ open: false });
-        await savePlan({
-          proyectoId: String(proyectoId || data?.proyectoId || 'P-001'),
-          nombreProyecto: proyectoNombre,
-          moneda,
-          etapas: next
-        });
+        setEtapas(updatedPlan.etapas || []);
       }
     });
 
   const saveMaterialDialog = async (payload) => {
     setDlgMat({ open: false, etapaIdx: null, index: null, initial: null });
-    const next = etapas.map((e, i) => {
-      if (i !== dlgMat.etapaIdx) return e;
-      const materiales = [...(e.materiales || [])];
-      if (dlgMat.index == null) materiales.push({ ...payload, _id: genId() });
-      else materiales[dlgMat.index] = { ...materiales[dlgMat.index], ...payload };
-      return { ...e, materiales };
-    });
-    setEtapas(next);
-    await savePlan({
-      proyectoId: String(proyectoId || data?.proyectoId || 'P-001'),
-      nombreProyecto: proyectoNombre,
-      moneda,
-      etapas: next
-    });
+    let updatedPlan;
+   if (dlgMat.index == null) {
+     updatedPlan = await addMaterialToEtapa(dlgMat.etapaIdx, payload);
+   } else {
+     updatedPlan = await updateMaterialInEtapa(dlgMat.etapaIdx, dlgMat.index, payload);
+   }
+   setEtapas(updatedPlan.etapas || []);
   };
 
   // Certificados
@@ -150,37 +126,23 @@ const PlanObraPage = () => {
       title: 'Eliminar certificado',
       content: `¿Eliminar "${etapas[etapaIdx]?.certificados[index]?.descripcion}"?`,
       onConfirm: async () => {
-        const next = etapas.map((e, i) => {
-          if (i !== etapaIdx) return e;
-          return { ...e, certificados: e.certificados.filter((_, j) => j !== index) };
-        });
-        setEtapas(next);
-        setConfirm({ open: false });
-        await savePlan({
-          proyectoId: String(proyectoId || data?.proyectoId || 'P-001'),
-          nombreProyecto: proyectoNombre,
-          moneda,
-          etapas: next
-        });
+        const updatedPlan = await deleteCertificadoInEtapa(etapaIdx, index);
+       setConfirm({ open: false });
+       setEtapas(updatedPlan.etapas || []);
+
       }
     });
 
   const saveCertificadoDialog = async (payload) => {
     setDlgCert({ open: false, etapaIdx: null, index: null, initial: null });
-    const next = etapas.map((e, i) => {
-      if (i !== dlgCert.etapaIdx) return e;
-      const certificados = [...(e.certificados || [])];
-      if (dlgCert.index == null) certificados.push({ ...payload, _id: genId() });
-      else certificados[dlgCert.index] = { ...certificados[dlgCert.index], ...payload };
-      return { ...e, certificados };
-    });
-    setEtapas(next);
-    await savePlan({
-      proyectoId: String(proyectoId || data?.proyectoId || 'P-001'),
-      nombreProyecto: proyectoNombre,
-      moneda,
-      etapas: next
-    });
+    let updatedPlan;
+    if (dlgCert.index == null) {
+      updatedPlan = await addCertificadoToEtapa(dlgCert.etapaIdx, payload);
+    } else {
+      updatedPlan = await updateCertificadoInEtapa(dlgCert.etapaIdx, dlgCert.index, payload);
+    }
+    setEtapas(updatedPlan.etapas || []);
+
   };
 
   // Importador CSV
@@ -197,12 +159,15 @@ const PlanObraPage = () => {
     openSnack('Importación aplicada');
 
     try {
-      await savePlan({
+      const plan = await savePlan({
         proyectoId: String(proyectoId || data?.proyectoId || 'P-001'),
         nombreProyecto: proyectoNombre || 'Proyecto',
         moneda,
         etapas: merged
       });
+      
+      if (plan?.etapas) setEtapas(plan.etapas);
+
     } catch (e) {
       console.error('Error guardando plan:', e);
     }

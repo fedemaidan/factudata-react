@@ -1,36 +1,48 @@
 // src/hooks/usePlanObra.js
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { getPlanObra, upsertPlanObra } from 'src/services/planObraService';
+import {
+  getPlanObra,
+  upsertPlanObra,
+  addEtapa as svcAddEtapa,
+  updateEtapa as svcUpdateEtapa,
+  deleteEtapa as svcDeleteEtapa,
+  addMaterial as svcAddMaterial,
+  updateMaterial as svcUpdateMaterial,
+  deleteMaterial as svcDeleteMaterial,
+  addCertificado as svcAddCertificado,
+  updateCertificado as svcUpdateCertificado,
+  deleteCertificado as svcDeleteCertificado,
+  recalcularPlan as svcRecalcular,
+} from 'src/services/planObraService';
 import { getEmpresaById } from 'src/services/empresaService';
 import { getProyectoById } from 'src/services/proyectosService';
 
+
+ const toPlain = (maybeWrapper) =>
+   maybeWrapper && maybeWrapper.ok === undefined && maybeWrapper.data === undefined
+     ? maybeWrapper                              // ya es plan
+     : (maybeWrapper?.data ?? maybeWrapper); 
+
 export function usePlanObra(
   proyectoIdInput,
-  {
-    // defaults si el proyecto no provee algo
-    defaultMoneda = 'ARS',
-    bootstrapFromEmpresa = false // si querés autoinicializar desde empresa apenas no exista
-  } = {}
+  { defaultMoneda = 'ARS', bootstrapFromEmpresa = false } = {}
 ) {
   const proyectoId = Array.isArray(proyectoIdInput) ? proyectoIdInput[0] : proyectoIdInput;
 
-  const [data, setData] = useState(null);
-  const [status, setStatus] = useState('idle');   // 'idle' | 'loading' | 'success' | 'error'
+  const [data, setData] = useState(null); // acá guardamos el plan completo
+  const [status, setStatus] = useState('idle');
   const [error, setError] = useState(null);
   const [notFound, setNotFound] = useState(false);
-
-  // Datos del proyecto (para bootstrap)
-  const [proyectoInfo, setProyectoInfo] = useState(null); // { nombre, moneda, empresaId, ... }
+  const [proyectoInfo, setProyectoInfo] = useState(null);
 
   const mountedRef = useRef(true);
-  const reqIdRef = useRef(0);
-
+  const reqIdRef = useRef(0);      
+  const mutReqIdRef = useRef(0); 
   useEffect(() => {
     mountedRef.current = true;
     return () => { mountedRef.current = false; };
   }, []);
 
-  // reset al cambiar proyecto
   useEffect(() => {
     setData(null);
     setError(null);
@@ -43,22 +55,82 @@ export function usePlanObra(
     if (!proyectoId) return null;
     try {
       const p = await getProyectoById(proyectoId);
-      // Ajustá los nombres de campos según tu servicio real
-      // Ejemplo asume: { id, nombre, moneda, empresaId }
       const info = {
         nombre: p?.nombre || 'Proyecto',
         moneda: p?.moneda || defaultMoneda,
-        empresaId: p?.empresaId || p?.empresa?.id || p?.empresa?._id || null
+        empresaId: p?.empresaId || p?.empresa?.id || p?.empresa?._id || null,
       };
       setProyectoInfo(info);
       return info;
-    } catch (e) {
-      // si el servicio falla, seguimos con defaults
+    } catch {
       const info = { nombre: 'Proyecto', moneda: defaultMoneda, empresaId: null };
       setProyectoInfo(info);
       return info;
     }
   }, [proyectoId, defaultMoneda]);
+
+
+
+  const savePlan = useCallback(async (payload) => {
+    if (!proyectoId) throw new Error('proyectoId requerido');
+  
+    const myMut = ++mutReqIdRef.current;   // invalida respuestas viejas
+    setStatus('loading');
+    setError(null);
+  
+    try {
+      // 👉 upsertPlanObra ahora retorna directamente el plan (objeto)
+      const plan = toPlain(await upsertPlanObra(proyectoId, payload));
+  
+      // si desmontó o llegó una mutación más nueva, no pises estado
+      if (!mountedRef.current || myMut !== mutReqIdRef.current) return plan;
+  
+      // invalido fetches en vuelo más viejos para evitar carreras
+      reqIdRef.current = mutReqIdRef.current;
+  
+      setData(plan);        // 🔑 guardamos el plan, NO un wrapper
+      setNotFound(false);
+      setStatus('success');
+      return plan;
+    } catch (err) {
+      if (!mountedRef.current) throw err;
+      setError(err);
+      setStatus('error');
+      throw err;
+    }
+  }, [proyectoId]);
+  
+
+  const createEmptyPlan = useCallback(async () => {
+    const info = proyectoInfo || (await fetchProyectoInfo());
+    const payload = {
+      proyectoId: String(proyectoId),
+      nombreProyecto: info?.nombre || 'Proyecto',
+      moneda: info?.moneda || defaultMoneda,
+      etapas: [],
+    };
+    return savePlan(payload);
+  }, [proyectoId, proyectoInfo, fetchProyectoInfo, defaultMoneda, savePlan]);
+
+  const createFromEmpresaInternal = useCallback(async () => {
+    const info = proyectoInfo || (await fetchProyectoInfo());
+    if (!info?.empresaId) return createEmptyPlan();
+    const empresa = await getEmpresaById(info.empresaId);
+    const etapasEmpresa = (empresa?.etapas || []).map(e => ({
+      nombre: e.nombre,
+      materiales: e.materiales || [],
+      certificados: e.certificados || [],
+    }));
+    const payload = {
+      proyectoId: String(proyectoId),
+      nombreProyecto: info?.nombre || 'Proyecto',
+      moneda: info?.moneda || defaultMoneda,
+      etapas: etapasEmpresa,
+    };
+    return savePlan(payload);
+  }, [proyectoId, proyectoInfo, fetchProyectoInfo, defaultMoneda, savePlan, createEmptyPlan]);
+
+  const createFromEmpresa = useCallback(async () => createFromEmpresaInternal(), [createFromEmpresaInternal]);
 
   const fetchPlan = useCallback(async () => {
     if (!proyectoId) return;
@@ -67,100 +139,138 @@ export function usePlanObra(
     setError(null);
 
     try {
-      const plan = await getPlanObra(proyectoId); // devuelve null si 404 (ver service)
+      const planResp = await getPlanObra(proyectoId);
       if (!mountedRef.current || myReq !== reqIdRef.current) return;
 
-      if (!plan) {
+      if (!planResp) {
         setNotFound(true);
-        setStatus('success'); // mostramos CTA
-        // precargamos info del proyecto para el CTA
+        setStatus('success');
         await fetchProyectoInfo();
-
-        // Si querés bootstrap automático (opcional):
-        if (bootstrapFromEmpresa) {
-          await createFromEmpresaInternal();
-        }
+        if (bootstrapFromEmpresa) await createFromEmpresaInternal();
         return;
       }
 
-      setData(plan.data);
-      console.log(plan, plan.data, "dataaaaa")
+      setData(toPlain(planResp));                
       setStatus('success');
     } catch (err) {
       if (!mountedRef.current || myReq !== reqIdRef.current) return;
       setError(err);
       setStatus('error');
     }
-  }, [proyectoId, bootstrapFromEmpresa, fetchProyectoInfo]);
+  }, [proyectoId, bootstrapFromEmpresa, fetchProyectoInfo, createFromEmpresaInternal]);
 
   useEffect(() => { fetchPlan(); }, [fetchPlan]);
+  // =========================
+  // Métodos granulares (usan planId del plan cargado)
+  // =========================
+  const getPlanId = () => data?._id || data?.id; // ajustá según tu backend
 
-  const savePlan = useCallback(async (payload) => {
+  const mutateSetData = (updated) => {
+    // ‘updated’ puede venir como plan completo desde el backend (recomendado)
+    // o podés combinar localmente: acá asumo que el controller devuelve el plan actualizado.
+    setData(updated);
+  };
+
+  const addEtapa = useCallback(async (etapa) => {
+    const planId = getPlanId();
+    if (!planId) throw new Error('planId no disponible');
+    const updated = await svcAddEtapa(planId, etapa);
+    mutateSetData(updated);
+    return updated;
+  }, [data]);
+
+  const updateEtapaByIndex = useCallback(async (etapaIndex, parcial) => {
+    const planId = getPlanId();
+    if (!planId) throw new Error('planId no disponible');
+    const updated = await svcUpdateEtapa(planId, etapaIndex, parcial);
+    mutateSetData(updated);
+    return updated;
+  }, [data]);
+
+  const deleteEtapaByIndex = useCallback(async (etapaIndex) => {
+    const planId = getPlanId();
+    if (!planId) throw new Error('planId no disponible');
+    const updated = await svcDeleteEtapa(planId, etapaIndex);
+    mutateSetData(updated);
+    return updated;
+  }, [data]);
+
+  const addMaterialToEtapa = useCallback(async (etapaIndex, material) => {
+    const planId = getPlanId();
+    if (!planId) throw new Error('planId no disponible');
+    const updated = await svcAddMaterial(planId, etapaIndex, material);
+    mutateSetData(updated);
+    return updated;
+  }, [data]);
+
+  const updateMaterialInEtapa = useCallback(async (etapaIndex, materialIndex, parcial) => {
+    const planId = getPlanId();
+    if (!planId) throw new Error('planId no disponible');
+    const updated = await svcUpdateMaterial(planId, etapaIndex, materialIndex, parcial);
+    mutateSetData(updated);
+    return updated;
+  }, [data]);
+
+  const deleteMaterialInEtapa = useCallback(async (etapaIndex, materialIndex) => {
+    const planId = getPlanId();
+    if (!planId) throw new Error('planId no disponible');
+    const updated = await svcDeleteMaterial(planId, etapaIndex, materialIndex);
+    mutateSetData(updated);
+    return updated;
+  }, [data]);
+
+  const addCertificadoToEtapa = useCallback(async (etapaIndex, cert) => {
+    const planId = getPlanId();
+    if (!planId) throw new Error('planId no disponible');
+    const updated = await svcAddCertificado(planId, etapaIndex, cert);
+    mutateSetData(updated);
+    return updated;
+  }, [data]);
+
+  const updateCertificadoInEtapa = useCallback(async (etapaIndex, certIndex, parcial) => {
+    const planId = getPlanId();
+    if (!planId) throw new Error('planId no disponible');
+    const updated = await svcUpdateCertificado(planId, etapaIndex, certIndex, parcial);
+    mutateSetData(updated);
+    return updated;
+  }, [data]);
+
+  const deleteCertificadoInEtapa = useCallback(async (etapaIndex, certIndex) => {
+    const planId = getPlanId();
+    if (!planId) throw new Error('planId no disponible');
+    const updated = await svcDeleteCertificado(planId, etapaIndex, certIndex);
+    mutateSetData(updated);
+    return updated;
+  }, [data]);
+
+  const recalcular = useCallback(async () => {
     if (!proyectoId) throw new Error('proyectoId requerido');
-    setStatus('loading');
-    setError(null);
-    try {
-      const res = await upsertPlanObra(proyectoId, payload);
-      if (!mountedRef.current) return res;
-      setData(res);
-      setNotFound(false);
-      setStatus('success');
-      return res;
-    } catch (err) {
-      if (!mountedRef.current) throw err;
-      setError(err);
-      setStatus('error');
-      throw err;
-    }
+    const r = await svcRecalcular(proyectoId);
+    // si tu backend devuelve plan/caches, podés opcionalmente refrescar
+    return r;
   }, [proyectoId]);
-
-  // Crear plan vacío usando datos del proyecto
-  const createEmptyPlan = useCallback(async () => {
-    const info = proyectoInfo || (await fetchProyectoInfo());
-    const payload = {
-      proyectoId: String(proyectoId),
-      nombreProyecto: info?.nombre || 'Proyecto',
-      moneda: info?.moneda || defaultMoneda,
-      etapas: []
-    };
-    return savePlan(payload);
-  }, [proyectoId, proyectoInfo, fetchProyectoInfo, defaultMoneda, savePlan]);
-
-  // Crear plan copiando etapas de la empresa del proyecto
-  const createFromEmpresaInternal = useCallback(async () => {
-    const info = proyectoInfo || (await fetchProyectoInfo());
-    if (!info?.empresaId) {
-      // si no hay empresa en el proyecto, creamos vacío
-      return createEmptyPlan();
-    }
-    const empresa = await getEmpresaById(info.empresaId);
-    const etapasEmpresa = (empresa?.etapas || []).map(e => ({
-      nombre: e.nombre,
-      materiales: e.materiales || [],
-      certificados: e.certificados || []
-    }));
-    const payload = {
-      proyectoId: String(proyectoId),
-      nombreProyecto: info?.nombre || 'Proyecto',
-      moneda: info?.moneda || defaultMoneda,
-      etapas: etapasEmpresa
-    };
-    return savePlan(payload);
-  }, [proyectoId, proyectoInfo, fetchProyectoInfo, defaultMoneda, savePlan, createEmptyPlan]);
-
-  const createFromEmpresa = useCallback(async () => {
-    return createFromEmpresaInternal();
-  }, [createFromEmpresaInternal]);
 
   return {
     data,
     status,
     error,
     notFound,
-    proyectoInfo,          // nombre/moneda/empresaId del proyecto
+    proyectoInfo,
     refresh: fetchPlan,
+    // viejo
     savePlan,
     createEmptyPlan,
-    createFromEmpresa
+    createFromEmpresa,
+    // nuevo granular
+    addEtapa,
+    updateEtapaByIndex,
+    deleteEtapaByIndex,
+    addMaterialToEtapa,
+    updateMaterialInEtapa,
+    deleteMaterialInEtapa,
+    addCertificadoToEtapa,
+    updateCertificadoInEtapa,
+    deleteCertificadoInEtapa,
+    recalcular,
   };
 }
