@@ -1,84 +1,128 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   Dialog, DialogTitle, DialogContent, DialogActions,
-  Stack, TextField, Button, MenuItem, FormControl, InputLabel, Select, Typography
+  Stack, TextField, Button, FormControl, InputLabel, Select, MenuItem, Typography
 } from '@mui/material';
 import AsignacionMaterialService from 'src/services/asignacionMaterialService';
 import { getPlanObra } from 'src/services/planObraService';
-import { getProyectosByEmpresa, getProyectoById } from 'src/services/proyectosService';
+
+const S = (v) => (v == null ? '' : String(v).trim());
+const norm = (s) => S(s).toLowerCase().replace(/\s+/g, ' ').trim();
+const fuzzyIncludes = (hay, needle) => {
+  const H = norm(hay), N = norm(needle);
+  if (!H || !N) return false;
+  if (H.includes(N)) return true;
+  const toks = N.split(' ').filter(t => t.length >= 3);
+  const hits = toks.filter(t => H.includes(t)).length;
+  return hits >= Math.max(1, Math.ceil(toks.length * 0.6));
+};
 
 export default function AssignToPlanDialog({
   open,
   onClose,
-  proyectos = [],  // lista de proyectos { id, nombre, empresa_id, ... }
-  movimiento,          // movimiento de materiales (un item de /movimientos-materiales) { id, empresa_id, proyecto_id, descripcion, cantidad, ... }
+  proyectos = [],        // [{ id, nombre }]
+  movimiento,            // { id, proyecto_id, descripcion, cantidad, ... }
   empresaId,
-  presetProyectoId,    // opcional: si venís desde una pantalla que ya conoce el proyecto
-  usuarioId,           // opcional
+  presetProyectoId = '', // << importante
+  presetCantidad,
+  usuarioId,
 }) {
   const [loading, setLoading] = useState(false);
   const [plan, setPlan] = useState(null);
+
   const [form, setForm] = useState({
-    proyecto_id: presetProyectoId || movimiento?.proyecto_id || '',
+    proyecto_id: S(presetProyectoId || movimiento?.proyecto_id || ''),
     etapa_id: '',
     material_id: '',
-    cantidad_asignada: movimiento?.cantidad || '',
+    cantidad_asignada:
+      presetCantidad != null ? Number(presetCantidad) : (Number(movimiento?.cantidad) || ''),
     monto_asignado: '',
   });
 
-  const etapaOptions = useMemo(() => plan?.etapas || [], [plan]);
+  const etapaOptions = useMemo(
+    () => (Array.isArray(plan?.etapas) ? plan.etapas : []),
+    [plan]
+  );
+
   const materialOptions = useMemo(() => {
-    const e = etapaOptions.find(x => x.id === form.etapa_id);
-    console.log(e?.materiales);
-    return e?.materiales || [];
+    const e = etapaOptions.find(x => S(x?.id) === S(form.etapa_id));
+    return Array.isArray(e?.materiales) ? e.materiales : [];
   }, [form.etapa_id, etapaOptions]);
 
+  // Reset cuando abre
   useEffect(() => {
-    if (open) {
-      setForm({
-        proyecto_id: presetProyectoId || movimiento?.proyecto_id || '',
-        etapa_id: '',
-        material_id: '',
-        cantidad_asignada: movimiento?.cantidad || '',
-        monto_asignado: '',
-      });
-      setPlan(null);
-    }
-  }, [open]);
+    if (!open) return;
+    setPlan(null);
+    setForm({
+      proyecto_id: S(presetProyectoId || movimiento?.proyecto_id || ''),
+      etapa_id: '',
+      material_id: '',
+      cantidad_asignada:
+        presetCantidad != null ? Number(presetCantidad) : (Number(movimiento?.cantidad) || ''),
+      monto_asignado: '',
+    });
+  }, [open, presetProyectoId, movimiento?.proyecto_id, movimiento?.cantidad, presetCantidad]);
 
-  // Si hay proyecto, cargar plan
+  // Cargar plan del proyecto
   useEffect(() => {
     (async () => {
       if (!open) return;
-      console.log(movimiento)
-      if (!form.proyecto_id) { setPlan(null); return; }
+      if (!S(form.proyecto_id)) { setPlan(null); return; }
       try {
-        const planResp = await getPlanObra(form.proyecto_id);
-        setPlan(planResp?.data || planResp || null); // según tu wrapper
+        const resp = await getPlanObra(S(form.proyecto_id));
+        setPlan(resp?.data || resp || null);
       } catch {
         setPlan(null);
       }
     })();
   }, [open, form.proyecto_id]);
 
-  const handleChange = (k, v) => setForm((s) => ({ ...s, [k]: v }));
+  // Autopick etapa/material por descripción del movimiento
+  useEffect(() => {
+    if (!open || !plan || !movimiento?.descripcion) return;
+    if (S(form.etapa_id) && S(form.material_id)) return; // ya elegido
+
+    const desc = movimiento.descripcion;
+    let found = null;
+
+    for (const e of etapaOptions) {
+      for (const m of (e.materiales || [])) {
+        const nombreMat = m.nombre || m.descripcion || '';
+        if (fuzzyIncludes(nombreMat, desc)) {
+          found = { etapa_id: S(e.id), material_id: S(m.id) };
+          break;
+        }
+      }
+      if (found) break;
+    }
+
+    if (found) {
+      setForm(f => ({
+        ...f,
+        etapa_id: f.etapa_id || found.etapa_id,
+        material_id: f.material_id || found.material_id,
+      }));
+    }
+  }, [open, plan, etapaOptions, movimiento?.descripcion, form.etapa_id, form.material_id]);
+
+  const handleChange = (k, v) => setForm(s => ({ ...s, [k]: v }));
 
   const handleSubmit = async () => {
-    if (!plan || !form.etapa_id || !form.material_id) return;
+    if (!plan || !S(form.proyecto_id) || !S(form.etapa_id) || !S(form.material_id)) return;
     setLoading(true);
     try {
-      const response = await AsignacionMaterialService.create({
+      const res = await AsignacionMaterialService.create({
         plan_id: plan.id || plan._id,
-        etapa_id: form.etapa_id,
-        material_id: form.material_id,
-        movimiento_material_id: movimiento.id, // clave de la conciliación
+        etapa_id: S(form.etapa_id),
+        material_id: S(form.material_id),
+        movimiento_material_id: movimiento.id,
         cantidad_asignada: Number(form.cantidad_asignada) || 0,
         monto_asignado: form.monto_asignado === '' ? undefined : Number(form.monto_asignado),
         usuario_id: usuarioId
       });
-      onClose?.({ ok: response?.ok, data: response?.data, error: response?.error });
+      onClose?.({ ok: res?.ok ?? true, data: res });
     } catch (e) {
-      onClose?.({ ok: false, error: e?.message || e });
+      onClose?.({ ok: false, error: e?.message || 'No se pudo crear la asignación' });
     } finally {
       setLoading(false);
     }
@@ -93,44 +137,47 @@ export default function AssignToPlanDialog({
             Movimiento: <b>{movimiento?.descripcion}</b> — Cant.: <b>{movimiento?.cantidad}</b> — Tipo: <b>{movimiento?.tipo}</b>
           </Typography>
 
+          {/* Proyecto */}
           <FormControl fullWidth>
             <InputLabel>Proyecto</InputLabel>
             <Select
               label="Proyecto"
-              value={form.proyecto_id}
-              onChange={(e) => handleChange('proyecto_id', e.target.value)}
+              value={S(form.proyecto_id)}
+              onChange={(e) => handleChange('proyecto_id', S(e.target.value))}
             >
               <MenuItem value=""><em>Seleccionar…</em></MenuItem>
               {proyectos.map(p => (
-                <MenuItem key={p.id} value={p.id}>{p.nombre}</MenuItem>
+                <MenuItem key={S(p.id)} value={S(p.id)}>{p.nombre}</MenuItem>
               ))}
             </Select>
           </FormControl>
 
+          {/* Etapa */}
           <FormControl fullWidth disabled={!plan}>
             <InputLabel>Etapa</InputLabel>
             <Select
               label="Etapa"
-              value={form.etapa_id}
-              onChange={(e) => handleChange('etapa_id', e.target.value)}
+              value={S(form.etapa_id)}
+              onChange={(e) => handleChange('etapa_id', S(e.target.value))}
             >
               <MenuItem value=""><em>Seleccionar…</em></MenuItem>
               {etapaOptions.map(e => (
-                <MenuItem key={e.id} value={e.id}>{e.nombre}</MenuItem>
+                <MenuItem key={S(e.id)} value={S(e.id)}>{e.nombre}</MenuItem>
               ))}
             </Select>
           </FormControl>
 
-          <FormControl fullWidth disabled={!form.etapa_id}>
+          {/* Material */}
+          <FormControl fullWidth disabled={!S(form.etapa_id)}>
             <InputLabel>Material</InputLabel>
             <Select
               label="Material"
-              value={form.material_id}
-              onChange={(e) => handleChange('material_id', e.target.value)}
+              value={S(form.material_id)}
+              onChange={(e) => handleChange('material_id', S(e.target.value))}
             >
               <MenuItem value=""><em>Seleccionar…</em></MenuItem>
               {materialOptions.map(m => (
-                <MenuItem key={m.id} value={m.id}>
+                <MenuItem key={S(m.id)} value={S(m.id)}>
                   {m.nombre || m.descripcion || '(sin nombre)'}{m.unidad ? ` — ${m.unidad}` : ''}
                 </MenuItem>
               ))}
@@ -157,7 +204,11 @@ export default function AssignToPlanDialog({
       </DialogContent>
       <DialogActions>
         <Button onClick={() => onClose?.(null)}>Cancelar</Button>
-        <Button variant="contained" onClick={handleSubmit} disabled={loading || !form.proyecto_id || !form.etapa_id || !form.material_id}>
+        <Button
+          variant="contained"
+          onClick={handleSubmit}
+          disabled={!S(form.proyecto_id) || !S(form.etapa_id) || !S(form.material_id) || loading}
+        >
           {loading ? 'Guardando…' : 'Asignar'}
         </Button>
       </DialogActions>
