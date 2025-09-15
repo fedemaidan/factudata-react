@@ -36,6 +36,8 @@ import IconButton from '@mui/material/IconButton';
 import CloseIcon from '@mui/icons-material/Close';
 import { Tabs, Tab } from '@mui/material';
 import DocumentScannerIcon from '@mui/icons-material/DocumentScanner';
+import AssignToPlanDialog from 'src/components/planobra/AssignToPlanDialog';
+import MovimientoMaterialService from 'src/services/movimientoMaterialService';
 
 
 const MovementFormPage = () => {
@@ -66,7 +68,10 @@ const MovementFormPage = () => {
   const [tab, setTab] = useState(0);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [pendingPayload, setPendingPayload] = useState(null);
-  
+  const [mmRows, setMmRows] = useState([]);
+  const [assignOpen, setAssignOpen] = useState(false);
+  const [assignRow, setAssignRow] = useState(null);
+
   const savePayload = async (payload) => {
     try {
       const result = isEditMode
@@ -225,6 +230,13 @@ const MovementFormPage = () => {
         });
         const cat = cates.find(c => c.name === data.categoria);
         setCategoriaSeleccionada(cat);
+
+        try {
+          const mmList = await MovimientoMaterialService.listarPorCompra(movimientoId, { limit: 200 });
+          setMmRows(mmList.items || []);
+        } catch {
+          setMmRows([]);
+        }
       }
     }
     fetchData().finally(() => setIsInitialLoading(false));
@@ -496,6 +508,52 @@ const MovementFormPage = () => {
       </Box>
     )}
   </Paper>
+  <Paper sx={{ p: 2, mt: 2 }}>
+  <Stack direction="row" alignItems="center" justifyContent="space-between">
+    <Typography variant="h6">Movimientos de materiales (de esta compra)</Typography>
+  </Stack>
+
+  {mmRows.length === 0 ? (
+    <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+      No se registraron movimientos de materiales para este comprobante.
+    </Typography>
+  ) : (
+    <Stack spacing={1} sx={{ mt: 1 }}>
+      {mmRows.map((mm) => (
+        <Stack key={mm.id} direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems="center">
+          <Typography sx={{ flex: 1 }}>
+            {mm.descripcion} — {mm.tipo} — Cant: {mm.cantidad}
+          </Typography>
+          <Button
+            size="small"
+            variant="outlined"
+            onClick={() => { setAssignRow(mm); setAssignOpen(true); }}
+          >
+            Asignar a plan
+          </Button>
+        </Stack>
+      ))}
+    </Stack>
+  )}
+</Paper>
+
+<AssignToPlanDialog
+  open={assignOpen}
+  onClose={(result) => {
+    setAssignOpen(false);
+    setAssignRow(null);
+    if (result?.ok) {
+      setAlert({ open: true, message: 'Asignación creada', severity: 'success' });
+      // opcional: recargar asignaciones o recomputar caches
+    } else if (result && result.error) {
+      setAlert({ open: true, message: result.error, severity: 'error' });
+    }
+  }}
+  movimiento={assignRow}
+  empresaId={empresa?.id}
+  presetProyectoId={proyectoId}
+/>
+
 </Grid>
 
 

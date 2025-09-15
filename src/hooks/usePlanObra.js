@@ -163,85 +163,76 @@ export function usePlanObra(
   // =========================
   // Métodos granulares (usan planId del plan cargado)
   // =========================
-  const getPlanId = () => data?._id || data?.id; // ajustá según tu backend
+  const getPlanId = () => data?._id || data?.id;
 
   const mutateSetData = (updated) => {
-    // ‘updated’ puede venir como plan completo desde el backend (recomendado)
-    // o podés combinar localmente: acá asumo que el controller devuelve el plan actualizado.
     setData(updated);
   };
 
   const addEtapa = useCallback(async (etapa) => {
-    const planId = getPlanId();
-    if (!planId) throw new Error('planId no disponible');
+    const planId = getPlanId(); if (!planId) throw new Error('planId no disponible');
     const updated = await svcAddEtapa(planId, etapa);
-    mutateSetData(updated);
+    setData(updated);
+    return updated;
+  }, [data]);
+  
+  const updateEtapa = useCallback(async (etapaId, parcial) => {
+    const planId = getPlanId(); if (!planId) throw new Error('planId no disponible');
+    const updated = await svcUpdateEtapa(planId, etapaId, parcial);
+    setData(updated);
+    return updated;
+  }, [data]);
+  
+  const deleteEtapa = useCallback(async (etapaId) => {
+    const planId = getPlanId(); if (!planId) throw new Error('planId no disponible');
+    const updated = await svcDeleteEtapa(planId, etapaId);
+    setData(updated);
+    return updated;
+  }, [data]);
+  
+
+  const addMaterialToEtapa = useCallback(async (etapaId, material) => {
+    const planId = getPlanId(); if (!planId) throw new Error('planId no disponible');
+    const updated = await svcAddMaterial(planId, etapaId, material);
+    setData(updated);
+    return updated;
+  }, [data]);
+  
+  const updateMaterialInEtapa = useCallback(async (etapaId, materialId, parcial) => {
+    const planId = getPlanId(); if (!planId) throw new Error('planId no disponible');
+    const updated = await svcUpdateMaterial(planId, etapaId, materialId, parcial);
+    setData(updated);
+    return updated;
+  }, [data]);
+  
+  const deleteMaterialInEtapa = useCallback(async (etapaId, materialId) => {
+    const planId = getPlanId(); if (!planId) throw new Error('planId no disponible');
+    const updated = await svcDeleteMaterial(planId, etapaId, materialId);
+    setData(updated);
     return updated;
   }, [data]);
 
-  const updateEtapaByIndex = useCallback(async (etapaIndex, parcial) => {
-    const planId = getPlanId();
-    if (!planId) throw new Error('planId no disponible');
-    const updated = await svcUpdateEtapa(planId, etapaIndex, parcial);
-    mutateSetData(updated);
+  const addCertificadoToEtapa = useCallback(async (etapaId, cert) => {
+    const planId = getPlanId(); if (!planId) throw new Error('planId no disponible');
+    const updated = await svcAddCertificado(planId, etapaId, cert);
+    setData(updated);
     return updated;
   }, [data]);
-
-  const deleteEtapaByIndex = useCallback(async (etapaIndex) => {
-    const planId = getPlanId();
-    if (!planId) throw new Error('planId no disponible');
-    const updated = await svcDeleteEtapa(planId, etapaIndex);
-    mutateSetData(updated);
+  
+  const updateCertificadoInEtapa = useCallback(async (etapaId, certId, parcial) => {
+    const planId = getPlanId(); if (!planId) throw new Error('planId no disponible');
+    const updated = await svcUpdateCertificado(planId, etapaId, certId, parcial);
+    setData(updated);
     return updated;
   }, [data]);
-
-  const addMaterialToEtapa = useCallback(async (etapaIndex, material) => {
-    const planId = getPlanId();
-    if (!planId) throw new Error('planId no disponible');
-    const updated = await svcAddMaterial(planId, etapaIndex, material);
-    mutateSetData(updated);
+  
+  const deleteCertificadoInEtapa = useCallback(async (etapaId, certId) => {
+    const planId = getPlanId(); if (!planId) throw new Error('planId no disponible');
+    const updated = await svcDeleteCertificado(planId, etapaId, certId);
+    setData(updated);
     return updated;
   }, [data]);
-
-  const updateMaterialInEtapa = useCallback(async (etapaIndex, materialIndex, parcial) => {
-    const planId = getPlanId();
-    if (!planId) throw new Error('planId no disponible');
-    const updated = await svcUpdateMaterial(planId, etapaIndex, materialIndex, parcial);
-    mutateSetData(updated);
-    return updated;
-  }, [data]);
-
-  const deleteMaterialInEtapa = useCallback(async (etapaIndex, materialIndex) => {
-    const planId = getPlanId();
-    if (!planId) throw new Error('planId no disponible');
-    const updated = await svcDeleteMaterial(planId, etapaIndex, materialIndex);
-    mutateSetData(updated);
-    return updated;
-  }, [data]);
-
-  const addCertificadoToEtapa = useCallback(async (etapaIndex, cert) => {
-    const planId = getPlanId();
-    if (!planId) throw new Error('planId no disponible');
-    const updated = await svcAddCertificado(planId, etapaIndex, cert);
-    mutateSetData(updated);
-    return updated;
-  }, [data]);
-
-  const updateCertificadoInEtapa = useCallback(async (etapaIndex, certIndex, parcial) => {
-    const planId = getPlanId();
-    if (!planId) throw new Error('planId no disponible');
-    const updated = await svcUpdateCertificado(planId, etapaIndex, certIndex, parcial);
-    mutateSetData(updated);
-    return updated;
-  }, [data]);
-
-  const deleteCertificadoInEtapa = useCallback(async (etapaIndex, certIndex) => {
-    const planId = getPlanId();
-    if (!planId) throw new Error('planId no disponible');
-    const updated = await svcDeleteCertificado(planId, etapaIndex, certIndex);
-    mutateSetData(updated);
-    return updated;
-  }, [data]);
+  
 
   const recalcular = useCallback(async () => {
     if (!proyectoId) throw new Error('proyectoId requerido');
@@ -251,26 +242,12 @@ export function usePlanObra(
   }, [proyectoId]);
 
   return {
-    data,
-    status,
-    error,
-    notFound,
-    proyectoInfo,
-    refresh: fetchPlan,
-    // viejo
-    savePlan,
-    createEmptyPlan,
-    createFromEmpresa,
-    // nuevo granular
-    addEtapa,
-    updateEtapaByIndex,
-    deleteEtapaByIndex,
-    addMaterialToEtapa,
-    updateMaterialInEtapa,
-    deleteMaterialInEtapa,
-    addCertificadoToEtapa,
-    updateCertificadoInEtapa,
-    deleteCertificadoInEtapa,
+    data, status, error, notFound, proyectoInfo, refresh: fetchPlan,
+    savePlan, createEmptyPlan, createFromEmpresa,
+    addEtapa, updateEtapa, deleteEtapa,
+    addMaterialToEtapa, updateMaterialInEtapa, deleteMaterialInEtapa,
+    addCertificadoToEtapa, updateCertificadoInEtapa, deleteCertificadoInEtapa,
     recalcular,
   };
+  
 }
