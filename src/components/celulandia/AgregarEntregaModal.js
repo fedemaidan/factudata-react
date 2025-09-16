@@ -192,9 +192,13 @@ const AgregarEntregaModal = ({ open, onClose, onSaved, clientes = [], tipoDeCamb
         empresaId: "celulandia",
         moneda: formData.monedaDePago,
         cc: formData.CC,
+        estado: "CONFIRMADO",
         cliente: clienteId,
         tipoDeCambio: getTipoDeCambio(formData.monedaDePago, formData.CC),
         usuario: getUser(),
+        camposBusqueda: `${formData.cliente} ${formData.CC} ${formData.monedaDePago} ${
+          formData.montoEnviado
+        } CONFIRMADO ${getUser()} ${getTipoDeCambio(formData.monedaDePago, formData.CC)}`,
       };
 
       const result = await cuentasPendientesService.create(payload);
@@ -234,7 +238,7 @@ const AgregarEntregaModal = ({ open, onClose, onSaved, clientes = [], tipoDeCamb
                   value={selectedOption}
                   inputValue={clienteInput}
                   onInputChange={(_, newInput) => setClienteInput(newInput || "")}
-                  onChange={handleClienteChange}   
+                  onChange={handleClienteChange}
                   isOptionEqualToValue={(option, value) => option.id === value.id}
                   getOptionLabel={(option) => option?.label || ""}
                   renderInput={(params) => (
@@ -374,7 +378,13 @@ const AgregarEntregaModal = ({ open, onClose, onSaved, clientes = [], tipoDeCamb
 
             {/* Fila 6: Usuario - Tipo de Cambio */}
             <Grid item xs={12} sm={6}>
-              <TextField fullWidth label="Usuario" value={formData.usuario} margin="normal" disabled />
+              <TextField
+                fullWidth
+                label="Usuario"
+                value={formData.usuario}
+                margin="normal"
+                disabled
+              />
             </Grid>
             <Grid item xs={12} sm={6}>
               <TextField

@@ -70,6 +70,7 @@ export const parseMovimiento = (movimiento) => {
     ccActivasCliente: movimiento?.cliente?.ccActivas || [],
     cuentaDestino: movimiento.caja?.nombre || "Sin caja",
     type: "movimiento",
+    camposBusqueda: movimiento?.camposBusqueda,
     fecha: fechaFacturaISO,
   };
 };
