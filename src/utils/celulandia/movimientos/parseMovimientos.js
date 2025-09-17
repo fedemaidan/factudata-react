@@ -42,9 +42,10 @@ export const parseMovimiento = (movimiento) => {
     horaFactura = movimiento.fechaFactura.split("T")[1].split(":").slice(0, 2).join(":");
   }
 
-  if (movimiento?.fechaCreacion) {
-    horaCreacion = getHoraArgentina(movimiento.fechaCreacion);
-  }
+  // if (movimiento?.fechaCreacion) {
+  //   horaCreacion = getHoraArgentina(movimiento.fechaCreacion);
+  // }
+  horaCreacion = movimiento.fechaCreacion.split("T")[1].split(":").slice(0, 2).join(":");
 
   return {
     ...movimiento,
@@ -70,6 +71,7 @@ export const parseMovimiento = (movimiento) => {
     ccActivasCliente: movimiento?.cliente?.ccActivas || [],
     cuentaDestino: movimiento.caja?.nombre || "Sin caja",
     type: "movimiento",
+    camposBusqueda: movimiento?.camposBusqueda,
     fecha: fechaFacturaISO,
   };
 };

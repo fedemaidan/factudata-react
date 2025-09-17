@@ -22,7 +22,6 @@ import {
 import { getCuentaPendienteHistorialConfig } from "src/utils/celulandia/historial";
 import { parseCuentaPendiente } from "src/utils/celulandia/cuentasPendientes/parseCuentasPendientes";
 import { EditarEntregaModalV2 } from "src/components/celulandia/EditarEntregaModalV2";
-import axios from "axios";
 import useDebouncedValue from "src/hooks/useDebouncedValue";
 
 const EntregasCelulandiaPage = () => {
@@ -69,25 +68,12 @@ const EntregasCelulandiaPage = () => {
     filtroCC,
     filtroUsuario,
     filtroNombreCliente,
+    debouncedBusqueda,
   ]);
 
-  // Cuando hay texto de búsqueda, hacer request al endpoint /search y renderizar resultados rápidos
+  // Al cambiar el término de búsqueda, resetear a página 1
   useEffect(() => {
-    const doSearch = async () => {
-      if (!debouncedBusqueda) return;
-      try {
-        const { data } = await axios.get(`http://localhost:3002/api/cuentas-pendientes/search`, {
-          params: { text: debouncedBusqueda },
-        });
-        const rows = (data?.data || []).map(parseCuentaPendiente);
-        setEntregas(rows);
-        setTotalEntregas(rows.length || 0);
-        setPaginaActual(1);
-      } catch (e) {
-        console.error("Error en búsqueda:", e);
-      }
-    };
-    doSearch();
+    setPaginaActual(1);
   }, [debouncedBusqueda]);
 
   const fetchData = async (pagina = 1) => {
@@ -110,6 +96,7 @@ const EntregasCelulandiaPage = () => {
           ...(filtroCC ? { cc: filtroCC } : {}),
           ...(filtroUsuario ? { usuario: filtroUsuario } : {}),
           ...(filtroNombreCliente ? { nombreCliente: filtroNombreCliente } : {}),
+          text: debouncedBusqueda || undefined,
         }),
         clientesService.getAllClientes(),
         dolarService.getTipoDeCambio(),

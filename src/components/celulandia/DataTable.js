@@ -306,6 +306,7 @@ const DataTable = ({
   const getRowKey = (item, index) => item._id || item.id || `row-${index}`;
 
   const handleRowClick = (event, item) => {
+    console.log("item", item);
     if (event.target.type === "checkbox") return;
 
     const targetCell = event.target.closest("td");

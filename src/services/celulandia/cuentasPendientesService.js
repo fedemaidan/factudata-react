@@ -14,6 +14,7 @@ const cuentasPendientesService = {
     cc,
     usuario,
     cliente,
+    text,
   } = {}) => {
     const response = await axiosCelulandia.get("/cuentas-pendientes", {
       params: {
@@ -29,9 +30,9 @@ const cuentasPendientesService = {
         cc,
         usuario,
         nombreCliente: cliente,
+        text,
       },
     });
-    console.log("response1", response.data);
     return response.data;
   },
 

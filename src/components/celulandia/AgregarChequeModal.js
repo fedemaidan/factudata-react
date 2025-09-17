@@ -83,6 +83,9 @@ const AgregarChequeModal = ({ open, onClose, onSave, clientes, tipoDeCambio, caj
           estado: "CONFIRMADO",
           concepto: descripcion || null,
           fechaCobro: fechaCobro ? new Date(`${fechaCobro}T00:00:00`) : null,
+          camposBusqueda: `${formData.cliente} ${formData.cuentaDestino} ${formData.CC} ${
+            formData.monedaDePago
+          } ${formData.montoEnviado} CONFIRMADO ${getUser()} ${tipoDeCambioCalculado}`,
         },
         montoEnviado: formData.montoEnviado,
       });
