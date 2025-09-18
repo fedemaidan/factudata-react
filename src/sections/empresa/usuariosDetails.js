@@ -10,8 +10,7 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import { useFormik } from 'formik';
 import * as Yup from 'yup';
 import { getProyectosByEmpresa, getProyectosFromUser } from 'src/services/proyectosService';
-import { doc } from 'firebase/firestore';
-import { db } from 'src/config/firebase';
+const normalizePhone = (phone) => (phone || '').toString().replace(/[^\d]/g, '');
 
 function reemplazarUndefined(obj) {
   if (Array.isArray(obj)) {
@@ -91,8 +90,20 @@ export const UsuariosDetails = ({ empresa }) => {
     onSubmit: async (values, { resetForm }) => {
       setIsLoading(true);
       values = reemplazarUndefined(values);
+      let existeDuplicado;
       try {
-        ;
+        const phoneTrim = (values.phone || '').trim();
+    const phoneNorm = normalizePhone(phoneTrim);
+
+    existeDuplicado = await profileService.getProfileByPhone(phoneNorm) != null;
+
+    if (existeDuplicado) {
+      setSnackbarMessage('Ya existe un usuario con ese WhatsApp.');
+      setSnackbarSeverity('error');
+      setSnackbarOpen(true);
+      setIsLoading(false);
+      return;
+    }
         if (editingUsuario) {
           const updatedUsuario = { ...values };
           const updatedUsuarios = usuarios.map((user) =>
@@ -105,7 +116,7 @@ export const UsuariosDetails = ({ empresa }) => {
         } else {
           const newUsuario = {
             email: values.email.trim(),
-            phone: values.phone.trim(),
+            phone: phoneTrim,                 
             firstName: values.firstName,
             lastName: values.lastName,
             proyectos: values.proyectos,
@@ -126,7 +137,8 @@ export const UsuariosDetails = ({ empresa }) => {
       } finally {
         setSnackbarOpen(true);
         resetForm();
-        setIsDialogOpen(false);
+        if (!existeDuplicado)
+          setIsDialogOpen(false);
         setIsLoading(false);
         setEditingUsuario(null);
       }
@@ -227,7 +239,7 @@ export const UsuariosDetails = ({ empresa }) => {
                     <TableCell>{usuario.confirmed ? "Sí" : "No"}</TableCell>
                     <TableCell>
                       {usuario.proyectosData.map(project => (
-                        <Typography key={project.id}>{project.nombre}</Typography>
+                        <Typography key={project?.id}>{project?.nombre}</Typography>
                       ))}
                     </TableCell>
                     <TableCell>{usuario.default_caja_chica ? "Si" : (usuario.default_caja_chica == false ? "No": "No definido")}</TableCell>
@@ -309,7 +321,7 @@ export const UsuariosDetails = ({ empresa }) => {
                 }).join(', ')}
               >
                 {proyectos.map((project) => (
-                  <MenuItem key={project.id} value={project.id}>
+                  <MenuItem key={project?.id} value={project?.id}>
                     {project.nombre}
                   </MenuItem>
                 ))}
