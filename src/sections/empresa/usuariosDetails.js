@@ -136,9 +136,12 @@ export const UsuariosDetails = ({ empresa }) => {
         setSnackbarSeverity('error');
       } finally {
         setSnackbarOpen(true);
-        resetForm();
-        if (!existeDuplicado)
+        
+        if (!existeDuplicado) {
+          resetForm();
           setIsDialogOpen(false);
+        }
+          
         setIsLoading(false);
         setEditingUsuario(null);
       }
