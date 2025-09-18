@@ -83,6 +83,11 @@ const MovementFormPage = () => {
         router.replace({ pathname: router.pathname, query: { ...router.query, movimientoId: result.id } });
       }
 
+      if (result?.data?.movimiento?.id) {
+        // si recién se crea, redirigimos al mismo form con el id para habilitar asignaciones
+        router.replace({ pathname: router.pathname, query: { ...router.query, movimientoId: result?.data?.movimiento?.id } });
+      }
+
       if (result.error) throw new Error('Error al agregar o editar el movimiento');
       setAlert({ open: true, message: 'Movimiento guardado con éxito!', severity: 'success' });
     } catch (err) {
