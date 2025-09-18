@@ -56,7 +56,7 @@ export const UsuariosDetails = ({ empresa }) => {
         prof.proyectosData = await getProyectosFromUser(prof);
         return prof;
       }));
-      console.log(profiles)
+      
       setUsuarios(profilesWithProjects);
       setIsLoading(false);
     };
@@ -104,8 +104,8 @@ export const UsuariosDetails = ({ empresa }) => {
           setSnackbarMessage('Usuario actualizado con éxito');
         } else {
           const newUsuario = {
-            email: values.email,
-            phone: values.phone,
+            email: values.email.trim(),
+            phone: values.phone.trim(),
             firstName: values.firstName,
             lastName: values.lastName,
             proyectos: values.proyectos,
