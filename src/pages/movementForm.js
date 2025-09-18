@@ -151,6 +151,24 @@ const MovementFormPage = () => {
     }
   };
 
+  const creatorLabel =
+  createdUser?.firstName ? createdUser?.firstName + " " +  createdUser?.lastName :
+  createdUser?.alias ||
+  createdUser?.email ||
+  createdUser?.phone ||
+  movimiento?.user_phone ||
+  '-';
+
+const createdAtStr = (() => {
+  if (!movimiento?.fecha_creacion) return '';
+  try {
+    return formatTimestamp(movimiento?.fecha_creacion); // ya lo estás importando arriba
+  } catch {
+    return typeof movimiento?.fecha_creacion === 'string' ? t : new Date(movimiento?.fecha_creacion).toLocaleString();
+  }
+})();
+
+
   const formik = useFormik({
     initialValues: {
       fecha_factura: '',
@@ -736,7 +754,6 @@ function syncMaterialesWithMovs(currentMateriales = [], mmRows = [], { proyecto_
   movimiento={assignRow}
   empresaId={empresa?.id}
   proyectos={proyectos}
-  // ✅ prioridad: fila seleccionada → filtro de pantalla → vacío
   presetProyectoId={assignRow?.proyecto_id}
 />
 
@@ -755,6 +772,8 @@ function syncMaterialesWithMovs(currentMateriales = [], mmRows = [], { proyecto_
                       const yesNo = (b) => (b ? 'Sí' : 'No');
 
                       const summaryConfig = [
+                        { key: '__creator',     label: 'Creador',         render: () => (<Typography variant="body2">{creatorLabel}</Typography>) },
+                        { key: '__created_at',  label: 'Fecha de creación', render: () => (<Typography variant="body2">{createdAtStr || '—'}</Typography>) },
                         { key: 'nombre_proveedor', label: 'Proveedor' },
                         { key: 'fecha_factura',    label: 'Fecha' },
                         { key: 'type',             label: 'Tipo', format: (v) => (v ? v.toUpperCase() : '-') },
