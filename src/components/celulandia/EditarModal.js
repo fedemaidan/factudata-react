@@ -41,6 +41,16 @@ const EditarModal = ({ open, onClose, data, onSave, clientes, tipoDeCambio, caja
     setMontoDisplay(formatNumberWithThousands(formData.montoEnviado || 0));
   }, [formData.montoEnviado]);
 
+  const tipoDeCambioGuardado = data?.tipoDeCambio || 1;
+  useEffect(() => {
+    if (open && data) {
+      const saved = Number(tipoDeCambioGuardado);
+      if (saved > 0) {
+        handleTipoDeCambioChange(saved);
+      }
+    }
+  }, [open, data]);
+
   const handleSave = async () => {
     if (!formData.cliente || !formData.montoEnviado || !formData.cuentaDestino) {
       alert("Por favor complete todos los campos requeridos");
@@ -67,7 +77,12 @@ const EditarModal = ({ open, onClose, data, onSave, clientes, tipoDeCambio, caja
       }
 
       const cajaId = cajas.find((caja) => caja.nombre === formData.cuentaDestino)?._id;
-      const tipoDeCambioCalculado = getTipoDeCambio(formData.monedaDePago, formData.CC);
+      const tipoDeCambioCalculado =
+        tipoDeCambioManual !== null
+          ? parseFloat(tipoDeCambioManual)
+          : toNumber(tipoDeCambioGuardado) > 0
+          ? toNumber(tipoDeCambioGuardado)
+          : getTipoDeCambio(formData.monedaDePago, formData.CC);
 
       const datosParaGuardar = {
         clienteId: clienteId || null,
@@ -79,6 +94,7 @@ const EditarModal = ({ open, onClose, data, onSave, clientes, tipoDeCambio, caja
         nombreUsuario: getUser(),
         tipoDeCambio: tipoDeCambioCalculado,
         estado: formData.estado,
+        descripcion: (formData.descripcion || "").trim(),
         montoEnviado: parseFloat(formData.montoEnviado) || 0,
         montoCC: parseFloat(formData.montoCC) || 0,
       };
@@ -295,7 +311,13 @@ const EditarModal = ({ open, onClose, data, onSave, clientes, tipoDeCambio, caja
                 fullWidth
                 label="Tipo de Cambio"
                 type="number"
-                value={getTipoDeCambio(formData.monedaDePago, formData.CC)}
+                value={
+                  tipoDeCambioManual !== null
+                    ? tipoDeCambioManual
+                    : toNumber(tipoDeCambioGuardado) > 0
+                    ? tipoDeCambioGuardado
+                    : getTipoDeCambio(formData.monedaDePago, formData.CC)
+                }
                 disabled={
                   (formData.monedaDePago === "ARS" && formData.CC === "ARS") ||
                   (formData.monedaDePago === "USD" && formData.CC === "USD BLUE") ||
@@ -303,25 +325,18 @@ const EditarModal = ({ open, onClose, data, onSave, clientes, tipoDeCambio, caja
                 }
                 onChange={(e) => handleTipoDeCambioChange(e.target.value)}
                 margin="normal"
-                helperText={
-                  (formData.monedaDePago === "ARS" && formData.CC === "ARS") ||
-                  (formData.monedaDePago === "USD" && formData.CC === "USD BLUE") ||
-                  (formData.monedaDePago === "USD" && formData.CC === "USD OFICIAL")
-                    ? "No aplica"
-                    : tipoDeCambioManual !== null
-                    ? "Valor personalizado"
-                    : tipoDeCambio.ultimaActualizacion
-                    ? `Última actualización: ${new Date(
-                        tipoDeCambio.ultimaActualizacion
-                      ).toLocaleString("es-AR", {
-                        year: "numeric",
-                        month: "2-digit",
-                        day: "2-digit",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}`
-                    : "Valor automático"
-                }
+              />
+            </Grid>
+
+            {/* Descripción (opcional) */}
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Descripción"
+                value={formData.descripcion || ""}
+                onChange={(e) => handleInputChange("descripcion", e.target.value)}
+                margin="normal"
+                placeholder="(opcional)"
               />
             </Grid>
             <Grid item xs={12} sm={6}>

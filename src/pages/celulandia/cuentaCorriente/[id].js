@@ -146,7 +146,7 @@ const ClienteCelulandiaCCPage = () => {
       return {
         id: m.id || m._id,
         fecha,
-        descripcion: isMov ? "-" : m.descripcion || "-",
+        descripcion: m.descripcion || "-",
         cliente: m?.nombreCliente || m?.clienteNombre || m.cliente?.nombre || "-",
         group: m.cuentaCorriente || m.CC || m.cc,
         monto,

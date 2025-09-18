@@ -73,5 +73,6 @@ export const parseMovimiento = (movimiento) => {
     type: "movimiento",
     camposBusqueda: movimiento?.camposBusqueda,
     fecha: fechaFacturaISO,
+    descripcion: movimiento?.descripcion || "-",
   };
 };
