@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import {
   Dialog,
   DialogTitle,
@@ -18,9 +18,11 @@ import {
 import { useMovimientoForm } from "src/hooks/useMovimientoForm";
 import movimientosService from "src/services/celulandia/movimientosService";
 import { getUser } from "src/utils/celulandia/currentUser";
+import { toNumber, formatNumberWithThousands } from "src/utils/celulandia/separacionMiles";
 
 const EditarModal = ({ open, onClose, data, onSave, clientes, tipoDeCambio, cajas }) => {
   const [isSaving, setIsSaving] = useState(false);
+  const [montoDisplay, setMontoDisplay] = useState("");
 
   const {
     formData,
@@ -34,6 +36,10 @@ const EditarModal = ({ open, onClose, data, onSave, clientes, tipoDeCambio, caja
     handleInputChange,
     handleClienteChange,
   } = useMovimientoForm(data, { clientes, tipoDeCambio, cajas });
+
+  useEffect(() => {
+    setMontoDisplay(formatNumberWithThousands(formData.montoEnviado || 0));
+  }, [formData.montoEnviado]);
 
   const handleSave = async () => {
     if (!formData.cliente || !formData.montoEnviado || !formData.cuentaDestino) {
@@ -141,7 +147,8 @@ const EditarModal = ({ open, onClose, data, onSave, clientes, tipoDeCambio, caja
       );
 
       if (result.success) {
-        onSave();
+        // pedir refetch al padre
+        await onSave();
         onClose();
       } else {
         alert(result.error || "Error al actualizar el movimiento");
@@ -223,9 +230,21 @@ const EditarModal = ({ open, onClose, data, onSave, clientes, tipoDeCambio, caja
               <TextField
                 fullWidth
                 label="Monto *"
-                type="number"
-                value={formData.montoEnviado}
-                onChange={(e) => handleMontoEnviado(e.target.value)}
+                value={montoDisplay}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setMontoDisplay(v);
+                  // Convertir el valor con separadores a número para el form
+                  const cleanValue = v.replace(/\./g, "").replace(/,/g, ".");
+                  const num = toNumber(cleanValue);
+                  handleMontoEnviado(String(num));
+                }}
+                onBlur={() => {
+                  // Re-formatear al perder foco
+                  const num = toNumber(montoDisplay.replace(/\./g, "").replace(/,/g, "."));
+                  setMontoDisplay(formatNumberWithThousands(num));
+                }}
+                inputMode="decimal"
                 margin="normal"
                 required
               />
@@ -248,8 +267,7 @@ const EditarModal = ({ open, onClose, data, onSave, clientes, tipoDeCambio, caja
               <TextField
                 fullWidth
                 label="Monto CC"
-                type="number"
-                value={formData.montoCC}
+                value={formatNumberWithThousands(formData.montoCC || 0)}
                 disabled={true}
                 margin="normal"
                 helperText="Calculado automáticamente"

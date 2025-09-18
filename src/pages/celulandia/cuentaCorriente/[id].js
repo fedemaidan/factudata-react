@@ -231,7 +231,7 @@ const ClienteCelulandiaCCPage = () => {
         setHistorialConfig(getMovimientoHistorialConfig(cajas));
         setHistorialLoader(movimientosService.getMovimientoLogs);
       } else {
-        setHistorialConfig(getCuentaPendienteHistorialConfig());
+        setHistorialConfig(getCuentaPendienteHistorialConfig(clientes));
         setHistorialLoader(cuentasPendientesService.getLogs);
       }
       setHistorialModalOpen(true);
@@ -350,7 +350,7 @@ const ClienteCelulandiaCCPage = () => {
         open={editarModalOpen}
         onClose={() => setEditarModalOpen(false)}
         data={selectedData}
-        onSave={handleSaveEdit}
+        onSave={fetchData}
         clientes={clientes}
         tipoDeCambio={tipoDeCambio}
         cajas={cajas}
@@ -367,8 +367,14 @@ const ClienteCelulandiaCCPage = () => {
         open={historialModalOpen}
         onClose={() => setHistorialModalOpen(false)}
         data={selectedData}
-        loadHistorialFunction={historialLoader}
-        {...(historialConfig || {})}
+        loadHistorialFunction={
+          selectedItemType === "movimiento"
+            ? movimientosService.getMovimientoLogs
+            : cuentasPendientesService.getLogs
+        }
+        {...(selectedItemType === "movimiento"
+          ? getMovimientoHistorialConfig(cajas)
+          : getCuentaPendienteHistorialConfig(clientes))}
       />
       <ConfirmarEliminacionModal
         open={confirmarEliminacionOpen}

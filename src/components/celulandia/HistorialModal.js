@@ -32,16 +32,17 @@ const HistorialModal = ({
 
   // Cargar historial cuando se abre el modal
   useEffect(() => {
-    if (open && data?._id && loadHistorialFunction) {
+    if (open && (data?._id || data?.id) && typeof loadHistorialFunction === "function") {
       loadHistorial();
     }
   }, [open, data, loadHistorialFunction]);
   const loadHistorial = async () => {
-    if (!data?._id || !loadHistorialFunction) return;
+    const targetId = data?._id || data?.id;
+    if (!targetId || typeof loadHistorialFunction !== "function") return;
 
     setIsLoading(true);
     try {
-      const result = await loadHistorialFunction(data._id);
+      const result = await loadHistorialFunction(targetId);
       if (result.success) {
         setHistorial(
           (result.data || []).filter((registro) => registro.campo !== "proveedorOCliente")
@@ -113,7 +114,7 @@ const HistorialModal = ({
         {title}
         {data && (
           <Typography variant="body2" color="text.secondary" sx={{ mt: 1, display: "block" }}>
-            {entityName}: {data.nombre || data.numeroComprobante || data._id}
+            {entityName}: {data.nombre || data.numeroComprobante || data._id || data.id}
           </Typography>
         )}
       </DialogTitle>
