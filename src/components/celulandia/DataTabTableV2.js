@@ -470,7 +470,7 @@ const DataTabTableV2 = ({
         <div key={opt.value} role="tabpanel" hidden={currentOption !== opt.value}>
           {currentOption === opt.value && (
             <Box>
-              <Table>
+              <Table sx={{ "& .MuiTableCell-root": { fontSize: "0.75rem", padding: "5px 8px" } }}>
                 <TableHead>
                   <TableRow>
                     <TableCell sx={{ fontWeight: "bold", cursor: "pointer" }}>
@@ -486,12 +486,6 @@ const DataTabTableV2 = ({
                     {/* Sin orden en el resto de columnas */}
                     <TableCell sx={{ fontWeight: "bold" }}>Cliente</TableCell>
                     <TableCell sx={{ fontWeight: "bold" }}>Monto ({opt.label})</TableCell>
-                    <TableCell sx={{ fontWeight: "bold" }}>Tipo de Cambio</TableCell>
-                    <TableCell sx={{ fontWeight: "bold" }}>Descuento</TableCell>
-                    <TableCell sx={{ fontWeight: "bold" }}>
-                      Monto Original (sin descuento)
-                    </TableCell>
-                    <TableCell sx={{ fontWeight: "bold" }}>Moneda Original</TableCell>
                     {showSaldoColumn && <TableCell sx={{ fontWeight: "bold" }}>Saldo</TableCell>}
 
                     {(onEdit || onViewHistory || onDelete || onViewImage) && (
@@ -508,30 +502,22 @@ const DataTabTableV2 = ({
                       onClick={() => console.log(row)}
                       sx={{ cursor: "pointer" }}
                     >
-                      <TableCell>{formatearCampo("fecha", row.fecha)}</TableCell>
-                      <TableCell>{row.cliente}</TableCell>
+                      <TableCell sx={{ fontSize: "0.75rem" }}>
+                        {formatearCampo("fecha", row.fecha)}
+                      </TableCell>
+                      <TableCell sx={{ fontSize: "0.75rem" }}>{row.cliente}</TableCell>
                       <TableCell>
-                        <Typography color={(row.monto || 0) < 0 ? "error.main" : "text.primary"}>
+                        <Typography
+                          sx={{ fontSize: "0.75rem" }}
+                          color={(row.monto || 0) < 0 ? "error.main" : "text.primary"}
+                        >
                           {formatCurrency(Math.round(row.monto || 0))}
                         </Typography>
                       </TableCell>
-                      <TableCell>{formatearCampo("tipoDeCambio", row.tipoDeCambio)}</TableCell>
-                      <TableCell>
-                        {row.descuentoAplicado !== undefined && row.descuentoAplicado !== null
-                          ? `${Math.round(((row.descuentoAplicado ?? 1) - 1) * -100)}%`
-                          : "-"}
-                      </TableCell>
-                      <TableCell>
-                        <Typography
-                          color={(row.montoOriginal || 0) < 0 ? "error.main" : "text.primary"}
-                        >
-                          {formatCurrency(Math.round(row.montoOriginal || 0))}
-                        </Typography>
-                      </TableCell>
-                      <TableCell>{formatearCampo("monedaDePago", row.monedaOriginal)}</TableCell>
                       {showSaldoColumn && (
                         <TableCell>
                           <Typography
+                            sx={{ fontSize: "0.75rem" }}
                             color={(row.saldoAcumulado || 0) < 0 ? "error.main" : "text.primary"}
                           >
                             {formatCurrency(Math.round(row.saldoAcumulado || 0))}

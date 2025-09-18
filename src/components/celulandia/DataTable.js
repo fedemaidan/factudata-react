@@ -501,13 +501,13 @@ const DataTable = ({
                     borderRight: "none !important",
                     borderLeft: "none !important",
                     fontSize: "0.75rem",
-                    padding: "5px 8px",
+                    padding: "5px 0px",
                   },
                   "& .MuiTableHead-root .MuiTableCell-root": {
                     borderBottom: "1px solid rgba(224, 224, 224, 1)",
                     fontSize: "0.65rem",
                     fontWeight: "bold",
-                    padding: "5px 8px",
+                    padding: "5px 2px",
                   },
                 }}
               >

@@ -42,7 +42,7 @@ const ArqueoCajaPage = () => {
   const [sortFieldDiario, setSortFieldDiario] = useState("fecha");
   const [sortDirectionDiario, setSortDirectionDiario] = useState("desc");
   const [pageDiario, setPageDiario] = useState(0);
-  const [rowsPerPageDiario, setRowsPerPageDiario] = useState(10);
+  const [rowsPerPageDiario, setRowsPerPageDiario] = useState(100);
   const [selectedDate, setSelectedDate] = useState(dayjs()); // Fecha actual por defecto
 
   const handleSortChangeDiario = (campo) => {
@@ -57,8 +57,6 @@ const ArqueoCajaPage = () => {
     { label: "ARS", value: "ARS" },
     { label: "USD", value: "USD" },
   ];
-
-  console.log("diario", diario);
 
   const fetchData = useCallback(async (fecha = null) => {
     setIsLoading(true);
@@ -198,10 +196,20 @@ const ArqueoCajaPage = () => {
 
             {activeTab === 1 && (
               <Paper sx={{ mt: 2 }}>
-                <Table size="small">
+                <Table
+                  size="small"
+                  sx={{ "& .MuiTableCell-root": { fontSize: "0.75rem", padding: "5px 8px" } }}
+                >
                   <TableHead>
                     <TableRow>
-                      <TableCell sx={{ fontWeight: "bold", cursor: "pointer" }}>
+                      <TableCell
+                        sx={{
+                          fontWeight: "bold",
+                          cursor: "pointer",
+                          fontSize: "0.65rem",
+                          padding: "5px 8px",
+                        }}
+                      >
                         <TableSortLabel
                           active={sortFieldDiario === "fecha"}
                           direction={sortFieldDiario === "fecha" ? sortDirectionDiario : "asc"}
@@ -210,7 +218,15 @@ const ArqueoCajaPage = () => {
                           Fecha
                         </TableSortLabel>
                       </TableCell>
-                      <TableCell align="right" sx={{ fontWeight: "bold", cursor: "pointer" }}>
+                      <TableCell
+                        align="right"
+                        sx={{
+                          fontWeight: "bold",
+                          cursor: "pointer",
+                          fontSize: "0.65rem",
+                          padding: "5px 8px",
+                        }}
+                      >
                         <TableSortLabel
                           active={sortFieldDiario === "totalARS"}
                           direction={sortFieldDiario === "totalARS" ? sortDirectionDiario : "asc"}
@@ -219,7 +235,15 @@ const ArqueoCajaPage = () => {
                           Total ARS
                         </TableSortLabel>
                       </TableCell>
-                      <TableCell align="right" sx={{ fontWeight: "bold", cursor: "pointer" }}>
+                      <TableCell
+                        align="right"
+                        sx={{
+                          fontWeight: "bold",
+                          cursor: "pointer",
+                          fontSize: "0.65rem",
+                          padding: "5px 8px",
+                        }}
+                      >
                         <TableSortLabel
                           active={sortFieldDiario === "totalUSD"}
                           direction={sortFieldDiario === "totalUSD" ? sortDirectionDiario : "asc"}
@@ -232,20 +256,32 @@ const ArqueoCajaPage = () => {
                   </TableHead>
                   <TableBody>
                     {paginatedDiario.map((row) => (
-                      <TableRow key={row.fecha} onClick={() => console.log("row", row)}>
-                        <TableCell>{dayjs(row.fecha).format("DD/MM/YYYY")}</TableCell>
+                      <TableRow
+                        key={row.fecha}
+                        onClick={() => console.log("row", row)}
+                        sx={{ "& .MuiTableCell-root": { fontSize: "0.75rem", padding: "5px 8px" } }}
+                      >
+                        <TableCell sx={{ fontSize: "0.75rem" }}>
+                          {dayjs(row.fecha).format("DD/MM/YYYY")}
+                        </TableCell>
                         <TableCell align="right">
                           <Typography
+                            sx={{ fontSize: "0.75rem" }}
                             color={(row.totalARS || 0) < 0 ? "error.main" : "text.primary"}
                           >
-                            {Math.round(row.totalARS || 0).toLocaleString("es-AR")}
+                            {`${row.totalARS < 0 ? "-" : ""}$${Math.abs(
+                              Math.round(row.totalARS || 0)
+                            ).toLocaleString("es-AR")}`}
                           </Typography>
                         </TableCell>
                         <TableCell align="right">
                           <Typography
+                            sx={{ fontSize: "0.75rem" }}
                             color={(row.totalUSD || 0) < 0 ? "error.main" : "text.primary"}
                           >
-                            {Math.round(row.totalUSD || 0).toLocaleString("es-AR")}
+                            {`${row.totalUSD < 0 ? "-" : ""}$${Math.abs(
+                              Math.round(row.totalUSD || 0)
+                            ).toLocaleString("es-AR")}`}
                           </Typography>
                         </TableCell>
                       </TableRow>
@@ -262,7 +298,7 @@ const ArqueoCajaPage = () => {
                     setRowsPerPageDiario(parseInt(event.target.value, 10));
                     setPageDiario(0);
                   }}
-                  rowsPerPageOptions={[5, 10, 25, 50]}
+                  rowsPerPageOptions={[5, 10, 25, 50, 100]}
                   labelRowsPerPage="Filas por página:"
                   labelDisplayedRows={({ from, to, count }) =>
                     `${from}-${to} de ${count !== -1 ? count : `más de ${to}`}`
