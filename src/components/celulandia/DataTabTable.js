@@ -309,14 +309,10 @@ const DataTabTable = ({
     let running = 0;
 
     const data = rowsSorted.map((row) => {
-      console.log(row);
-      // Derivar Debe/Haber numéricos puros desde montoCC si existe (según CC seleccionada)
       const raw = row.montoCC != null ? row.montoCC : row.monto;
       const monto = n(raw);
       const debe = row.debe != null ? n(row.debe) : monto < 0 ? Math.abs(monto) : 0;
       const haber = row.haber != null ? n(row.haber) : monto > 0 ? monto : 0;
-
-      // Saldo acumulado = saldo previo + (Haber - Debe)
       running = r2(running + (haber - debe));
 
       return {
@@ -326,19 +322,71 @@ const DataTabTable = ({
         "Monto original": n(row.montoYMonedaOriginal?.monto || row.montoOriginal || 0),
         "Moneda original": row.montoYMonedaOriginal?.moneda || row.monedaOriginal || "",
         "Tipo de cambio": n(row.tipoDeCambio || 1),
-        Descuento: String(
-          (row.descuentoAplicado != null
+        Descuento:
+          row.descuentoAplicado != null
             ? `${Math.round(((row.descuentoAplicado ?? 1) - 1) * -100)}%`
-            : "-") || "-"
-        ),
+            : "-",
         Debe: n(debe),
         Haber: n(haber),
         "Saldo acumulado": n(running),
       };
     });
 
-    const ws = XLSX.utils.json_to_sheet(data);
+    // --- Crear hoja y libro
+    const headers = Object.keys(data[0] || {});
+    const ws = XLSX.utils.json_to_sheet(data, { header: headers });
     const wb = XLSX.utils.book_new();
+
+    // --- 1) Auto-fit de anchos por contenido (para que nada quede “cortado”)
+    const prettyNum = (v, dec = 2) =>
+      typeof v === "number"
+        ? v.toLocaleString("en-US", { minimumFractionDigits: dec, maximumFractionDigits: dec })
+        : String(v ?? "");
+
+    const decimalsFor = (header) => (header === "Tipo de cambio" ? 4 : 2); // más precisión para tipo de cambio
+
+    const colWidths = headers.map((h) => {
+      const maxLen = Math.max(
+        String(h).length,
+        ...data.map((row) => {
+          const v = row[h];
+          if (typeof v === "number") return prettyNum(v, decimalsFor(h)).length;
+          return String(v ?? "").length;
+        })
+      );
+      // límites razonables: mínimo 10, máximo 40 'caracteres'
+      return { wch: Math.min(Math.max(maxLen + 2, 10), 40) };
+    });
+    ws["!cols"] = colWidths;
+
+    // --- 2) Formatos numéricos (miles/decimales) por columna
+    //     Se aplican por celda con la propiedad 'z'
+    const currencyCols = new Set(["Monto original", "Debe", "Haber", "Saldo acumulado"]);
+    const rateCols = new Set(["Tipo de cambio"]);
+    const percentCols = new Set(["Descuento"]);
+
+    // Rango de la hoja para iterar celdas
+    const range = XLSX.utils.decode_range(
+      ws["!ref"] || `A1:${XLSX.utils.encode_col(headers.length - 1)}${data.length + 1}`
+    );
+
+    headers.forEach((h, colIdx) => {
+      let numFmt = null;
+      if (currencyCols.has(h)) numFmt = "#,##0";
+      else if (rateCols.has(h)) numFmt = "#,##0";
+      else if (percentCols.has(h)) numFmt = "0%";
+      for (let r = 1; r <= data.length; r++) {
+        const addr = XLSX.utils.encode_cell({ c: colIdx, r });
+        const cell = ws[addr];
+        if (cell && typeof cell.v === "number") {
+          cell.z = numFmt;
+        }
+      }
+    });
+
+    // (Opcional) Congelar fila de encabezado:
+    // ws['!freeze'] = { xSplit: 0, ySplit: 1 };
+
     XLSX.utils.book_append_sheet(wb, ws, monedaLabel || "Datos");
     const filename = `reporte_${monedaLabel || "datos"}_${dayjs().format("YYYY-MM-DD_HHmm")}.xlsx`;
     XLSX.writeFile(wb, filename);
