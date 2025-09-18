@@ -26,6 +26,8 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
     etapa: false,
     empresa_facturacion: false,
     fecha_pago: false,
+    obra: false,
+    cliente: false,
   }
   const ingreso_info_default = {
     observacion: true,
