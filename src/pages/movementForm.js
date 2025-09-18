@@ -57,6 +57,10 @@ const MovementFormPage = () => {
   const [tab, setTab] = useState(0);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [pendingPayload, setPendingPayload] = useState(null);
+  // arriba con otros useState
+  const [obrasEmpresa, setObrasEmpresa] = useState([]);
+  const [obrasOptions, setObrasOptions] = useState([]);
+  const [clientesOptions, setClientesOptions] = useState([]);
 
   // MM (movimientos de materiales) visibles en la sección inferior
   const [mmRows, setMmRows] = useState([]);
@@ -191,7 +195,9 @@ const createdAtStr = (() => {
       empresa_facturacion: '',
       fecha_pago: '',
       // <<< opcional: guardar “etapa” de la compra (string)
-      etapa: ''
+      etapa: '',
+      obra: '',
+      cliente: ''
     },
     validationSchema: Yup.object({}),
     validate: () => ({}),
@@ -205,7 +211,9 @@ const createdAtStr = (() => {
         proyecto_id: proyectoId,
         tags_extra: values.tags_extra || [],
         url_imagen: movimiento?.url_imagen ?? values.url_imagen,
-        impuestos: values.impuestos || []
+        impuestos: values.impuestos || [],
+        obra: values.obra || '',         // <-- NUEVO
+        cliente: values.cliente || ''    // <-- NUEVO
       };
 
       const subtotal  = Number(values.subtotal) || 0;
@@ -248,6 +256,11 @@ const createdAtStr = (() => {
       setTagsExtra(empresa.tags_extra || []);
       setMediosPago(empresa.medios_pago?.length ? empresa.medios_pago : mediosPago);
 
+      const obras = Array.isArray(empresa.obras) ? empresa.obras : [];
+      setObrasEmpresa(obras);
+      setObrasOptions(obras.map(o => o.nombre).filter(Boolean));
+      setClientesOptions([...new Set(obras.map(o => o.cliente).filter(Boolean))]);
+
       if (isEditMode) {
         const data = await movimientosService.getMovimientoById(movimientoId);
         data.fecha_factura = formatTimestamp(data.fecha_factura);
@@ -264,7 +277,9 @@ const createdAtStr = (() => {
           caja_chica: data.caja_chica ?? false,
           impuestos: data.impuestos || [],
           materiales: data.materiales || [],
-          etapa: data.etapa || '' // si la compra guarda una etapa textual
+          etapa: data.etapa || '',
+          obra: data.obra || '',         // <-- NUEVO
+          cliente: data.cliente || ''    // <-- NUEVO
         });
         await fetchMmList();
       }
@@ -272,7 +287,15 @@ const createdAtStr = (() => {
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [movimientoId]);
-
+  
+  useEffect(() => {
+    if (!formik.values.obra) return;
+    const o = obrasEmpresa.find(x => x.nombre === formik.values.obra);
+    if (o?.cliente && formik.values.cliente !== o.cliente) {
+      formik.setFieldValue('cliente', o.cliente);
+    }
+  }, [formik.values.obra, obrasEmpresa]); 
+  
   // Selección de categoría
   useEffect(() => {
     const cat = categorias.find(c => c.name === formik.values.categoria);
@@ -549,6 +572,8 @@ function syncMaterialesWithMovs(currentMateriales = [], mmRows = [], { proyecto_
                         lastPageUrl={lastPageUrl}
                         lastPageName={lastPageName}
                         movimiento={movimiento}
+                        obrasOptions={obrasOptions}
+                        clientesOptions={clientesOptions}
                       />
                     </form>
                   </Box>
@@ -796,6 +821,8 @@ function syncMaterialesWithMovs(currentMateriales = [], mmRows = [], { proyecto_
                         { key: 'caja_chica',       label: 'Caja Chica', format: yesNo },
                         { key: 'cuenta_interna',   label: 'Cuenta Interna' },
                         { key: 'etapa',            label: 'Etapa' },
+                        { key: 'obra',    label: 'Obra' },
+                        { key: 'cliente', label: 'Cliente' },
                         { key: 'tags_extra',       label: 'Tags',
                           render: () =>
                             Array.isArray(V.tags_extra) && V.tags_extra.length > 0 ? (
