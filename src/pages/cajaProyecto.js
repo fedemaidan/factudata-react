@@ -606,7 +606,8 @@ const handleCloseCols = () => setAnchorColsEl(null);
          const matchMedioPago = caja.medio_pago ? mov.medio_pago === caja.medio_pago : true;
          const matchEstado    = caja.estado ? mov.estado === caja.estado : true;
          const matchType      = caja.type ? mov.type === caja.type : true;
-         if (!matchMedioPago || !matchEstado || !matchType) return acc;
+         const matchMoneda      = caja.moneda ? mov.moneda === caja.moneda : true;
+         if (!matchMedioPago || !matchEstado || !matchType || !matchMoneda) return acc;
      
          // valor según equivalencia
          let val;
