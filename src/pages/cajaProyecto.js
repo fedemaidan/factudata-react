@@ -151,6 +151,7 @@ const ProyectoMovimientosPage = () => {
   const [cajasVirtuales, setCajasVirtuales] = useState([
     { nombre: 'Caja en Pesos', moneda: 'ARS', medio_pago: "" , equivalencia: 'none', type: '' },
     { nombre: 'Caja en Dólares', moneda: 'USD', medio_pago: "" , equivalencia: 'none', type: '' },
+    { nombre: 'Gastos en', moneda: 'ARS', medio_pago: "" , equivalencia: 'use_blue', type: 'egreso' },
   ]);  
   const [showCrearCaja, setShowCrearCaja] = useState(false);
   const [nombreCaja, setNombreCaja] = useState('');
