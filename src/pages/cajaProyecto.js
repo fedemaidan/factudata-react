@@ -881,7 +881,8 @@ useEffect(() => {
                   t={totalesDetallados}f
                   fmt={formatByCurrency}
                   moneda={cajaSeleccionada?.moneda || 'ARS'}
-                  showUsdBlue={Boolean(visibleCols.usd)}
+                  // showUsdBlue={Boolean(visibleCols.usd)}
+                  showUsdBlue={false}
                   usdBlue={totalesUsdBlue}
                 />
 
