@@ -141,17 +141,6 @@ export const SideNav = (props) => {
           ),
         });
       }
-      if (permisosUsuario.includes("CELULANDIA_PROYECCIONES")) {
-        baseItems.push({
-          title: "Proyecciones",
-          path: "/celulandia/proyecciones",
-          icon: (
-            <SvgIcon fontSize="small">
-              <InventoryIcon />
-            </SvgIcon>
-          ),
-        });
-      }
 
       if (permisosUsuario.includes("CELULANDIA_ENTREGAS")) {
         baseItems.push({
@@ -244,6 +233,18 @@ export const SideNav = (props) => {
           icon: (
             <SvgIcon fontSize="small">
               <AccountBalanceWallet />
+            </SvgIcon>
+          ),
+        });
+      }
+
+      if (permisosUsuario.includes("CELULANDIA_PROYECCIONES")) {
+        baseItems.push({
+          title: "Proyecciones",
+          path: "/celulandia/proyecciones",
+          icon: (
+            <SvgIcon fontSize="small">
+              <InventoryIcon />
             </SvgIcon>
           ),
         });
