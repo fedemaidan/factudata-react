@@ -40,6 +40,11 @@ const DataTable = ({
   isLoading,
   columns,
   onAdd,
+  addButtonLabel = "Agregar",
+  AddModalComponent = null,
+  addModalProps = {},
+  onAddSuccess,
+  additionalButtons = [], // Array de objetos { label, onClick, icon, variant, color, sx }
   searchFields = [],
   dateFilterOptions = [
     { value: "todos", label: "Todos" },
@@ -89,6 +94,7 @@ const DataTable = ({
   );
 
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isAddOpen, setIsAddOpen] = useState(false);
 
   const currentFiltroFecha =
     serverSide && externalFiltroFecha !== undefined ? externalFiltroFecha : filtroFecha;
@@ -109,6 +115,26 @@ const DataTable = ({
     } finally {
       setIsRefreshing(false);
     }
+  };
+
+  const handleOpenAdd = () => {
+    if (onAdd) {
+      onAdd();
+      return;
+    }
+    if (AddModalComponent) setIsAddOpen(true);
+  };
+
+  const handleCloseAdd = () => setIsAddOpen(false);
+
+  const handleAddCreated = (...args) => {
+    if (typeof addModalProps?.onCreated === "function") {
+      addModalProps.onCreated(...args);
+    }
+    if (typeof onAddSuccess === "function") {
+      onAddSuccess(...args);
+    }
+    setIsAddOpen(false);
   };
 
   useEffect(() => {
@@ -309,12 +335,9 @@ const DataTable = ({
     console.log("item", item);
     if (event.target.type === "checkbox") return;
 
-    const targetCell = event.target.closest("td");
-    if (targetCell) {
-      const columnIndex = Array.from(targetCell.parentNode.children).indexOf(targetCell);
-      const column = columns[columnIndex];
-      if (column?.key === "seleccionar" || (column?.render && column.key !== "seleccionar")) return;
-    }
+    // Verificar si el click fue en un botón o elemento interactivo
+    const targetElement = event.target.closest("button, a");
+    if (targetElement) return; // No navegar si se hizo click en un botón o link
 
     const selectColumn = columns.find((col) => col.key === "seleccionar");
     if (selectColumn && selectColumn.onRowClick) {
@@ -469,13 +492,36 @@ const DataTable = ({
             </Tooltip>
           )}
 
-          {onAdd && (
+          {/* Botones adicionales */}
+          {additionalButtons.map((btn, idx) => (
+            <Button
+              key={`additional-btn-${idx}`}
+              size="small"
+              variant={btn.variant || "contained"}
+              color={btn.color || "primary"}
+              startIcon={btn.icon}
+              onClick={btn.onClick}
+              sx={{
+                borderRadius: 2,
+                px: 3,
+                py: 1,
+                boxShadow: 2,
+                "&:hover": { boxShadow: 4 },
+                ...btn.sx,
+              }}
+            >
+              {btn.label}
+            </Button>
+          ))}
+
+          {/* Botón agregar por defecto */}
+          {(onAdd || AddModalComponent) && (
             <Button
               size="small"
               variant="contained"
               color="primary"
               startIcon={<AddIcon />}
-              onClick={onAdd}
+              onClick={handleOpenAdd}
               sx={{
                 borderRadius: 2,
                 px: 3,
@@ -484,7 +530,7 @@ const DataTable = ({
                 "&:hover": { boxShadow: 4 },
               }}
             >
-              Agregar
+              {addButtonLabel}
             </Button>
           )}
         </Stack>
@@ -501,7 +547,7 @@ const DataTable = ({
                     borderRight: "none !important",
                     borderLeft: "none !important",
                     fontSize: "0.75rem",
-                    padding: "5px 0px",
+                    padding: "5px 2px",
                   },
                   "& .MuiTableHead-root .MuiTableCell-root": {
                     borderBottom: "1px solid rgba(224, 224, 224, 1)",
@@ -626,6 +672,15 @@ const DataTable = ({
             color="primary"
           />
         </Stack>
+      )}
+
+      {AddModalComponent && (
+        <AddModalComponent
+          open={isAddOpen}
+          onClose={handleCloseAdd}
+          onCreated={handleAddCreated}
+          {...addModalProps}
+        />
       )}
     </Box>
   );
