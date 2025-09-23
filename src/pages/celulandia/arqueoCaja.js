@@ -31,6 +31,7 @@ import DataTabTableV2 from "src/components/celulandia/DataTabTableV2";
 const ArqueoCajaPage = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [items, setItems] = useState([]);
+  const [totalItems, setTotalItems] = useState(0);
   const [activeTab, setActiveTab] = useState(0);
   const [diario, setDiario] = useState([]);
   const [arqueoTotalGeneral, setArqueoTotalGeneral] = useState({
@@ -38,12 +39,22 @@ const ArqueoCajaPage = () => {
     totalUSD: 0,
     totalMovimientos: 0,
   });
+  const [externalTotalsMap, setExternalTotalsMap] = useState(null);
 
   const [sortFieldDiario, setSortFieldDiario] = useState("fecha");
   const [sortDirectionDiario, setSortDirectionDiario] = useState("desc");
   const [pageDiario, setPageDiario] = useState(0);
   const [rowsPerPageDiario, setRowsPerPageDiario] = useState(100);
-  const [selectedDate, setSelectedDate] = useState(dayjs()); // Fecha actual por defecto
+  // Rango de fechas (server-side). Por defecto vacío => trae todo
+  const [dateFrom, setDateFrom] = useState(null);
+  const [dateTo, setDateTo] = useState(null);
+
+  // Paginación y ordenación server-side
+  const [serverPage, setServerPage] = useState(1); // 1-based
+  const [serverRowsPerPage, setServerRowsPerPage] = useState(50);
+  const [currentOption, setCurrentOption] = useState("ARS");
+  const [sortField, setSortField] = useState("fecha");
+  const [sortDir, setSortDir] = useState("desc");
 
   const handleSortChangeDiario = (campo) => {
     if (sortFieldDiario === campo) {
@@ -58,25 +69,54 @@ const ArqueoCajaPage = () => {
     { label: "USD", value: "USD" },
   ];
 
-  const fetchData = useCallback(async (fecha = null) => {
+  const fetchData = useCallback(async () => {
     setIsLoading(true);
     try {
       const params = {
         cajaNombre: "EFECTIVO",
-        limit: 1000,
+        limit: serverRowsPerPage,
+        offset: (serverPage - 1) * serverRowsPerPage,
+        sortField: sortField,
+        sortDirection: sortDir,
       };
 
-      if (fecha) {
-        const fechaLocal = fecha.format("YYYY-MM-DD");
-        params.fecha = fechaLocal;
-        console.log("Enviando fecha al backend:", fechaLocal);
+      if (dateFrom) {
+        params.fechaInicio = dayjs(dateFrom).format("YYYY-MM-DD");
+      }
+      if (dateTo) {
+        params.fechaFin = dayjs(dateTo).format("YYYY-MM-DD");
       }
 
       const movsResp = await movimientosService.getAllMovimientos(params);
-      const arqueoTotalGeneralResp = await movimientosService.getArqueoTotalGeneral();
-      const movimientos = movsResp?.data;
+      // Traer totales general y (si hay rango) filtrado por fecha
+      const totalResp = await movimientosService.getArqueoTotalGeneralFiltrado({
+        fechaInicio: dateFrom ? dayjs(dateFrom).format("YYYY-MM-DD") : undefined,
+        fechaFin: dateTo ? dayjs(dateTo).format("YYYY-MM-DD") : undefined,
+        cajaNombre: "EFECTIVO",
+      });
+      const movimientos = movsResp?.data || [];
 
-      setArqueoTotalGeneral(arqueoTotalGeneralResp.data);
+      // Si backend devuelve ambos totales, preferirlos
+      if (totalResp?.data) {
+        const { general, filtrado } = totalResp.data;
+        const useTotals = filtrado || general;
+        const totalARS = Math.round(useTotals?.totalARS || 0);
+        const totalUSD = Math.round(useTotals?.totalUSD || 0);
+        setArqueoTotalGeneral({
+          totalARS,
+          totalUSD,
+          totalMovimientos: useTotals?.totalMovimientos || 0,
+        });
+        setExternalTotalsMap(
+          new Map([
+            ["ARS", totalARS],
+            ["USD", totalUSD],
+          ])
+        );
+      } else {
+        setExternalTotalsMap(null);
+      }
+      setTotalItems(movsResp?.total || 0);
 
       const parsedMovs = movimientos.map((m) => ({
         id: m._id,
@@ -109,28 +149,27 @@ const ArqueoCajaPage = () => {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [currentOption, serverRowsPerPage, serverPage, sortField, sortDir, dateFrom, dateTo]);
 
   // Función para refetch del arqueo
   const refetchArqueo = useCallback(async () => {
     try {
-      await fetchData(selectedDate);
+      await fetchData();
     } catch (error) {
       console.error("Error al actualizar arqueo:", error);
     }
-  }, [fetchData, selectedDate]);
+  }, [fetchData]);
 
-  // Handler para cambio de fecha
-  const handleDateChange = (newDate) => {
-    setSelectedDate(newDate);
-    if (newDate) {
-      fetchData(newDate);
-    }
+  // Handler para cambio de rango de fechas (desde/hasta)
+  const handleDateRangeChange = (from, to) => {
+    setDateFrom(from);
+    setDateTo(to);
+    setServerPage(1);
   };
 
   useEffect(() => {
-    fetchData(selectedDate);
-  }, [fetchData, selectedDate]);
+    fetchData();
+  }, [fetchData]);
 
   const sortedDiario = useMemo(() => {
     const sorted = [...diario];
@@ -184,13 +223,37 @@ const ArqueoCajaPage = () => {
                 isLoading={isLoading}
                 options={options}
                 defaultOption="ARS"
+                currentOption={currentOption}
+                onOptionChange={(opt) => {
+                  setCurrentOption(opt);
+                  setServerPage(1);
+                }}
                 showSearch={false}
                 showDateFilterOptions={false}
-                showDatePicker={true}
-                selectedDate={selectedDate}
-                onDateChange={handleDateChange}
+                showDatePicker={false}
+                showDateRange={true}
+                dateFrom={dateFrom}
+                dateTo={dateTo}
+                onDateRangeChange={handleDateRangeChange}
                 showRefreshButton={true}
                 onRefresh={refetchArqueo}
+                // Server-side pagination/sort
+                total={totalItems}
+                currentPage={serverPage}
+                rowsPerPage={serverRowsPerPage}
+                onPageChange={(newPage) => setServerPage(newPage)}
+                sortField={sortField}
+                sortDirection={sortDir}
+                onSortChange={(field, direction) => {
+                  setSortField(field);
+                  setSortDir(direction);
+                  setServerPage(1);
+                }}
+                onRowsPerPageChange={(rpp) => {
+                  setServerRowsPerPage(rpp);
+                  setServerPage(1);
+                }}
+                externalTotals={externalTotalsMap}
               />
             )}
 

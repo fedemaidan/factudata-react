@@ -11,6 +11,7 @@ const movimientosService = {
     tipoFactura,
     clienteNombre,
     cajaNombre,
+    moneda,
     nombreUsuario,
     estado,
     fecha,
@@ -31,6 +32,7 @@ const movimientosService = {
         tipoFactura,
         clienteNombre,
         cajaNombre,
+        moneda,
         nombreUsuario,
         estado,
         fecha,
@@ -168,6 +170,12 @@ const movimientosService = {
 
   getArqueoTotalGeneral: async () => {
     const response = await axiosCelulandia.get("/movimientos/arqueo/total-general");
+    return response.data;
+  },
+  getArqueoTotalGeneralFiltrado: async ({ fechaInicio, fechaFin, cajaNombre } = {}) => {
+    const response = await axiosCelulandia.get("/movimientos/arqueo/total-general", {
+      params: { fechaInicio, fechaFin, cajaNombre },
+    });
     return response.data;
   },
 };

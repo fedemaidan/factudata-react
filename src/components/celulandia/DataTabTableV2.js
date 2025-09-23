@@ -62,6 +62,10 @@ const DataTabTableV2 = ({
   showDatePicker = false,
   selectedDate = null,
   onDateChange = null,
+  showDateRange = false,
+  dateFrom = null,
+  dateTo = null,
+  onDateRangeChange = null,
   onRefresh = null,
   showRefreshButton = false,
   // Acciones
@@ -79,8 +83,11 @@ const DataTabTableV2 = ({
   onSortChange = null,
   filtroFecha = "todos",
   onFiltroFechaChange = null,
+  onRowsPerPageChange = null,
   onOptionChange = null,
   showSaldoColumn = false,
+  // Totales provistos por el servidor (opcional)
+  externalTotals = null,
 }) => {
   const [busqueda, setBusqueda] = useState("");
   const [internalFiltroFecha, setInternalFiltroFecha] = useState(filtroFecha);
@@ -114,12 +121,13 @@ const DataTabTableV2 = ({
     (campo) => {
       if (campo !== "fecha") return; // solo permitimos ordenar por fecha
       if (onSortChange) {
-        onSortChange("fecha");
+        const next = finalSortDirection === "asc" ? "desc" : "asc";
+        onSortChange("fecha", next);
       } else {
         setInternalSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
       }
     },
-    [onSortChange]
+    [onSortChange, finalSortDirection]
   );
 
   const handleFiltroFechaChange = useCallback(
@@ -157,13 +165,13 @@ const DataTabTableV2 = ({
     (event) => {
       const newRowsPerPage = parseInt(event.target.value, 10);
       if (onPageChange) {
-        // si es server-side, el padre decide
+        onRowsPerPageChange && onRowsPerPageChange(newRowsPerPage);
       } else {
         setInternalRowsPerPage(newRowsPerPage);
         setPage(0);
       }
     },
-    [onPageChange]
+    [onPageChange, onRowsPerPageChange]
   );
 
   const handleRefresh = useCallback(async () => {
@@ -318,6 +326,16 @@ const DataTabTableV2 = ({
     return res;
   }, [grouped]);
 
+  const displayTotals = useMemo(() => {
+    if (externalTotals && typeof externalTotals.get === "function") return externalTotals;
+    if (externalTotals && typeof externalTotals === "object") {
+      const m = new Map();
+      Object.entries(externalTotals).forEach(([k, v]) => m.set(k, v));
+      return m;
+    }
+    return totals;
+  }, [externalTotals, totals]);
+
   // Exportar a Excel (pestaña actual) — con Debe/Haber/Saldo acumulado y números puros
   const handleExportExcel = () => {
     const allRows = groupedWithSaldo.get(currentOption) || [];
@@ -414,6 +432,30 @@ const DataTabTableV2 = ({
               </LocalizationProvider>
             )}
 
+            {showDateRange && (
+              <LocalizationProvider dateAdapter={AdapterDayjs}>
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <DatePicker
+                    label="Desde"
+                    value={dateFrom}
+                    onChange={(v) => onDateRangeChange && onDateRangeChange(v, dateTo)}
+                    format="DD/MM/YYYY"
+                  />
+                  <DatePicker
+                    label="Hasta"
+                    value={dateTo}
+                    onChange={(v) => onDateRangeChange && onDateRangeChange(dateFrom, v)}
+                    format="DD/MM/YYYY"
+                  />
+                  {onDateRangeChange && (
+                    <Button variant="text" onClick={() => onDateRangeChange(null, null)}>
+                      Limpiar
+                    </Button>
+                  )}
+                </Stack>
+              </LocalizationProvider>
+            )}
+
             {showRefreshButton && onRefresh && (
               <Tooltip title="Actualizar datos">
                 <IconButton
@@ -459,7 +501,7 @@ const DataTabTableV2 = ({
                 onClick={() => handleOptionChange(opt.value)}
                 sx={{ py: 2, minWidth: 160 }}
               >
-                {opt.label}: {formatCurrency(Math.round(totals.get(opt.value) || 0))}
+                {opt.label}: {formatCurrency(Math.round(displayTotals.get(opt.value) || 0))}
               </Button>
             ))}
           </Stack>
@@ -600,7 +642,7 @@ const DataTabTableV2 = ({
                 onPageChange={handlePageChange}
                 rowsPerPage={finalRowsPerPage}
                 onRowsPerPageChange={handleRowsPerPageChange}
-                rowsPerPageOptions={onPageChange ? [finalRowsPerPage] : [1000]}
+                rowsPerPageOptions={onPageChange ? [25, 50, 100, 200] : [1000]}
                 labelRowsPerPage="Filas por página:"
                 labelDisplayedRows={({ from, to, count }) =>
                   `${from}-${to} de ${count !== -1 ? count : `más de ${to}`}`
