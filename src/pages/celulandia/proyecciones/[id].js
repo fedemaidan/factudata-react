@@ -1,8 +1,15 @@
 import { useRouter } from "next/router";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { Layout as DashboardLayout } from "src/layouts/dashboard/layout";
-import { Container, Typography, Box, Stack, Button } from "@mui/material";
-import ArrowBackIcon from "@mui/icons-material/ArrowBack";
+import {
+  Container,
+  Typography,
+  Box,
+  Stack,
+  Button,
+  Checkbox,
+  CircularProgress,
+} from "@mui/material";
 import Head from "next/head";
 import DataTable from "src/components/celulandia/DataTable";
 import proyeccionService from "src/services/celulandia/proyeccionService";
@@ -15,9 +22,11 @@ export default function ProyeccionDetailPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [paginaActual, setPaginaActual] = useState(1);
   const [total, setTotal] = useState(0);
-  const [limitePorPagina] = useState(1000);
+  const [limitePorPagina] = useState(500);
   const [sortField, setSortField] = useState("codigo");
   const [sortDirection, setSortDirection] = useState("asc");
+  const [selectedKeys, setSelectedKeys] = useState(new Set());
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -38,6 +47,7 @@ export default function ProyeccionDetailPage() {
       setProductosProyeccion(proyeccionResponse.data || proyeccionResponse?.data?.data || []);
       setTotal(proyeccionResponse.total || proyeccionResponse?.data?.total || 0);
       setPaginaActual(pagina);
+      setSelectedKeys(new Set());
     } catch (error) {
       console.error("Error al cargar datos:", error);
     } finally {
@@ -57,7 +67,53 @@ export default function ProyeccionDetailPage() {
 
   const handleVolver = useCallback(() => router.back(), [router]);
 
+  const allVisibleKeys = useMemo(
+    () => new Set(productosProyeccion.map((i) => i._id)),
+    [productosProyeccion]
+  );
+  const allSelected = useMemo(
+    () =>
+      productosProyeccion.length > 0 && productosProyeccion.every((i) => selectedKeys.has(i._id)),
+    [productosProyeccion, selectedKeys]
+  );
+  const someSelected = useMemo(
+    () => productosProyeccion.some((i) => selectedKeys.has(i._id)) && !allSelected,
+    [productosProyeccion, selectedKeys, allSelected]
+  );
+
+  const toggleSelectAll = () => {
+    setSelectedKeys((prev) => {
+      const next = new Set(prev);
+      if (allSelected) {
+        productosProyeccion.forEach((i) => next.delete(i._id));
+      } else {
+        productosProyeccion.forEach((i) => next.add(i._id));
+      }
+      return next;
+    });
+  };
+
+  const toggleRow = (id) => {
+    setSelectedKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
   const columns = [
+    {
+      key: "seleccionar",
+      label: (
+        <Checkbox indeterminate={someSelected} checked={allSelected} onChange={toggleSelectAll} />
+      ),
+      sortable: false,
+      render: (item) => (
+        <Checkbox checked={selectedKeys.has(item._id)} onChange={() => toggleRow(item._id)} />
+      ),
+      onRowClick: (item) => toggleRow(item._id),
+    },
     {
       key: "codigo",
       label: "Código",
@@ -132,42 +188,62 @@ export default function ProyeccionDetailPage() {
       </Head>
       <Box component="main" sx={{ flexGrow: 1, pb: 2 }}>
         <Container maxWidth="xl">
-          <Stack>
+          <Stack
+            spacing={2}
+            direction="row"
+            alignItems="center"
+            justifyContent="space-between"
+            sx={{ mb: 1 }}
+          >
+            <div />
             <Button
-              variant="text"
-              startIcon={<ArrowBackIcon />}
-              onClick={handleVolver}
-              sx={{
-                alignSelf: "flex-start",
-                color: "text.secondary",
-                "&:hover": { backgroundColor: "action.hover", color: "primary.main" },
-                transition: "all 0.2s ease-in-out",
-                fontWeight: 500,
-                mb: 2,
+              variant="contained"
+              color="error"
+              disabled={selectedKeys.size === 0 || isDeleting}
+              onClick={async () => {
+                if (selectedKeys.size === 0) return;
+                setIsDeleting(true);
+                try {
+                  const selected = productosProyeccion.filter((p) => selectedKeys.has(p._id));
+                  const codigos = Array.from(
+                    new Set(selected.map((p) => p.codigo).filter(Boolean))
+                  );
+                  const ids = Array.from(selectedKeys);
+                  await proyeccionService.eliminarProductosYAgregarIgnorar({ ids, codigos });
+                  setSelectedKeys(new Set());
+                  await fetchData(paginaActual);
+                } catch (e) {
+                  console.error("Error eliminando/ignorando productos:", e);
+                } finally {
+                  setIsDeleting(false);
+                }
               }}
+              startIcon={isDeleting ? <CircularProgress size={16} color="inherit" /> : null}
             >
-              Volver
+              {isDeleting ? "Eliminando..." : `Eliminar seleccionados (${selectedKeys.size})`}
             </Button>
-
-            <DataTable
-              data={productosProyeccion}
-              isLoading={isLoading}
-              columns={columns}
-              showSearch={false}
-              showDateFilterOptions={false}
-              showDatePicker={false}
-              showRefreshButton={false}
-              searchFields={["codigo", "descripcion"]}
-              serverSide={true}
-              total={total}
-              currentPage={paginaActual}
-              onPageChange={(nuevaPagina) => setPaginaActual(nuevaPagina)}
-              rowsPerPage={limitePorPagina}
-              sortField={sortField}
-              sortDirection={sortDirection}
-              onSortChange={handleSortChange}
-            />
           </Stack>
+
+          <DataTable
+            data={productosProyeccion}
+            isLoading={isLoading}
+            columns={columns}
+            showSearch={false}
+            showDateFilterOptions={false}
+            showDatePicker={false}
+            showRefreshButton={false}
+            searchFields={["codigo", "descripcion"]}
+            serverSide={true}
+            total={total}
+            currentPage={paginaActual}
+            onPageChange={(nuevaPagina) => setPaginaActual(nuevaPagina)}
+            rowsPerPage={limitePorPagina}
+            sortField={sortField}
+            sortDirection={sortDirection}
+            onSortChange={handleSortChange}
+            showBackButton={true}
+            onBack={handleVolver}
+          />
         </Container>
       </Box>
     </DashboardLayout>

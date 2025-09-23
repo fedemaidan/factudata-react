@@ -26,6 +26,7 @@ import Divider from "@mui/material/Divider";
 import ClearIcon from "@mui/icons-material/Clear";
 import AddIcon from "@mui/icons-material/Add";
 import RefreshIcon from "@mui/icons-material/Refresh";
+import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import Pagination from "@mui/material/Pagination";
 import TableSortLabel from "@mui/material/TableSortLabel";
 import { alpha } from "@mui/material/styles";
@@ -79,6 +80,10 @@ const DataTable = ({
   searchDebounceMs = 500,
   // Mostrar un chip sutil en la columna "cliente" cuando el item tiene clienteId
   showClienteListedChip = false,
+  // Botón volver
+  showBackButton = false,
+  onBack = null,
+  backButtonLabel = "Volver",
 }) => {
   const [busqueda, setBusqueda] = useState("");
   const [filtroFecha, setFiltroFecha] = useState("todos");
@@ -356,6 +361,24 @@ const DataTable = ({
   return (
     <Box component="main" sx={{ flexGrow: 1, pb: 2 }}>
       <Stack spacing={1} marginTop={0}>
+        {showBackButton && onBack && (
+          <Button
+            variant="text"
+            startIcon={<ArrowBackIcon />}
+            onClick={onBack}
+            sx={{
+              alignSelf: "flex-start",
+              color: "text.secondary",
+              "&:hover": { backgroundColor: "action.hover", color: "primary.main" },
+              transition: "all 0.2s ease-in-out",
+              fontWeight: 500,
+              mb: 1,
+            }}
+          >
+            {backButtonLabel}
+          </Button>
+        )}
+
         <Stack direction="row" sx={{ margin: 0, gap: 1 }} alignItems="center" flexWrap="wrap">
           {showSearch && (
             <TextField

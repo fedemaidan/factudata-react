@@ -53,6 +53,22 @@ const proyeccionService = {
     return response.data;
   },
 
+  eliminarProductosYAgregarIgnorar: async ({ ids, codigos }) => {
+    // 1) Agregar a ignorados (por códigos)
+    if (Array.isArray(codigos) && codigos.length > 0) {
+      await axiosCelulandia.post("/proyeccion/ignorar", { codigos });
+    }
+
+    // 2) Eliminar productos de proyección (por ids) — se llama por cada id
+    if (Array.isArray(ids) && ids.length > 0) {
+      await Promise.all(
+        ids.map((id) => axiosCelulandia.delete("/proyeccion/producto", { data: { id } }))
+      );
+    }
+
+    return { success: true };
+  },
+
   getProductosIgnorados: async () => {
     const response = await axiosCelulandia.get("/proyeccion/ignorar");
     const payload = response?.data;
