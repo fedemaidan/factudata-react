@@ -185,13 +185,13 @@ const AgregarProyeccionModal = ({ open, onClose, onCreated }) => {
           <LocalizationProvider dateAdapter={AdapterDayjs}>
             <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
               <DatePicker
-                label="Fecha inicio"
+                label="Fecha inicio (Opcional)"
                 value={fechaInicio}
                 onChange={setFechaInicio}
                 format="DD/MM/YYYY"
               />
               <DatePicker
-                label="Fecha fin"
+                label="Fecha fin (Opcional)"
                 value={fechaFin}
                 onChange={setFechaFin}
                 format="DD/MM/YYYY"
