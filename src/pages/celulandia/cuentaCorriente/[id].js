@@ -146,7 +146,8 @@ const ClienteCelulandiaCCPage = () => {
       return {
         id: m.id || m._id,
         fecha,
-        descripcion: m.descripcion || "-",
+        descripcion:
+          m.concepto && m.concepto !== "-" ? m.concepto : m.descripcion ? m.descripcion : "-",
         cliente: m?.nombreCliente || m?.clienteNombre || m.cliente?.nombre || "-",
         group: m.cuentaCorriente || m.CC || m.cc,
         monto,
