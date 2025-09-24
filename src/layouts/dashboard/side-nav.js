@@ -260,6 +260,16 @@ export const SideNav = (props) => {
             </SvgIcon>
           ),
         });
+
+        baseItems.push({
+          title: "Conversaciones",
+          path: "/conversaciones",
+          icon: (
+            <SvgIcon fontSize="small">
+              <DashboardIcon />
+            </SvgIcon>
+          ),
+        });
       }
 
       if (user?.admin) {
