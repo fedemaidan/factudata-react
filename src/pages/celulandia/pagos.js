@@ -161,7 +161,8 @@ const PagosCelulandiaPage = () => {
       setTotalPagos(movimientosResponse.total || 0);
       setPaginaActual(pagina);
       setCajas(cajasResponse.data);
-      setCategorias(empresaResponse.categorias);
+      const cates = empresaResponse?.categorias || [];
+      setCategorias(cates);
     } catch (error) {
       console.error("Error al cargar datos:", error);
     } finally {
