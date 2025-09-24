@@ -9,6 +9,10 @@ import {
   Button,
   Checkbox,
   CircularProgress,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
 } from "@mui/material";
 import Head from "next/head";
 import DataTable from "src/components/celulandia/DataTable";
@@ -27,6 +31,8 @@ export default function ProyeccionDetailPage() {
   const [sortDirection, setSortDirection] = useState("asc");
   const [selectedKeys, setSelectedKeys] = useState(new Set());
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isConfirmOpen, setIsConfirmOpen] = useState(false);
+  const [itemsToDelete, setItemsToDelete] = useState([]);
 
   useEffect(() => {
     if (!id) return;
@@ -100,6 +106,32 @@ export default function ProyeccionDetailPage() {
       else next.add(id);
       return next;
     });
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!itemsToDelete || itemsToDelete.length === 0) {
+      setIsConfirmOpen(false);
+      return;
+    }
+    setIsDeleting(true);
+    try {
+      const ids = itemsToDelete.map((p) => p._id).filter(Boolean);
+      const codigos = Array.from(new Set(itemsToDelete.map((p) => p.codigo).filter(Boolean)));
+      await proyeccionService.eliminarProductosYAgregarIgnorar({ ids, codigos });
+      setSelectedKeys(new Set());
+      setItemsToDelete([]);
+      setIsConfirmOpen(false);
+      await fetchData(paginaActual);
+    } catch (e) {
+      console.error("Error eliminando/ignorando productos:", e);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const handleCancelDelete = () => {
+    setItemsToDelete([]);
+    setIsConfirmOpen(false);
   };
 
   const columns = [
@@ -200,23 +232,11 @@ export default function ProyeccionDetailPage() {
               variant="contained"
               color="error"
               disabled={selectedKeys.size === 0 || isDeleting}
-              onClick={async () => {
+              onClick={() => {
                 if (selectedKeys.size === 0) return;
-                setIsDeleting(true);
-                try {
-                  const selected = productosProyeccion.filter((p) => selectedKeys.has(p._id));
-                  const codigos = Array.from(
-                    new Set(selected.map((p) => p.codigo).filter(Boolean))
-                  );
-                  const ids = Array.from(selectedKeys);
-                  await proyeccionService.eliminarProductosYAgregarIgnorar({ ids, codigos });
-                  setSelectedKeys(new Set());
-                  await fetchData(paginaActual);
-                } catch (e) {
-                  console.error("Error eliminando/ignorando productos:", e);
-                } finally {
-                  setIsDeleting(false);
-                }
+                const selected = productosProyeccion.filter((p) => selectedKeys.has(p._id));
+                setItemsToDelete(selected);
+                setIsConfirmOpen(true);
               }}
               startIcon={isDeleting ? <CircularProgress size={16} color="inherit" /> : null}
             >
@@ -246,6 +266,44 @@ export default function ProyeccionDetailPage() {
           />
         </Container>
       </Box>
+
+      <Dialog open={isConfirmOpen} onClose={isDeleting ? undefined : handleCancelDelete} fullWidth>
+        <DialogTitle>Confirmar eliminación</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" sx={{ mb: 1 }}>
+            {`¿Seguro que deseas eliminar ${itemsToDelete.length} producto(s) de la proyección?`}
+          </Typography>
+          {itemsToDelete.length > 0 && (
+            <Box sx={{ maxHeight: 200, overflow: "auto", mt: 1 }}>
+              {itemsToDelete.slice(0, 15).map((p) => (
+                <Typography key={p._id} variant="caption" display="block">
+                  {p.codigo ? `${p.codigo} - ` : ""}
+                  {p.descripcion || "Sin descripción"}
+                </Typography>
+              ))}
+              {itemsToDelete.length > 15 && (
+                <Typography variant="caption" color="text.secondary">
+                  {`… y ${itemsToDelete.length - 15} más`}
+                </Typography>
+              )}
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCancelDelete} disabled={isDeleting}>
+            Cancelar
+          </Button>
+          <Button
+            onClick={handleConfirmDelete}
+            color="error"
+            variant="contained"
+            disabled={isDeleting}
+            startIcon={isDeleting ? <CircularProgress size={16} color="inherit" /> : null}
+          >
+            {isDeleting ? "Eliminando…" : "Eliminar"}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </DashboardLayout>
   );
 }

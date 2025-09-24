@@ -250,6 +250,18 @@ export const SideNav = (props) => {
         });
       }
 
+      if (permisosUsuario.includes("CELULANDIA_RESUMEN")) {
+        baseItems.push({
+          title: "Resumen",
+          path: "/celulandia/resumen",
+          icon: (
+            <SvgIcon fontSize="small">
+              <DashboardIcon />
+            </SvgIcon>
+          ),
+        });
+      }
+
       if (user?.admin) {
         baseItems.push({
           title: "Configurar " + emp.nombre,

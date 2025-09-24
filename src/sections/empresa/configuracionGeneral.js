@@ -205,6 +205,7 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
     "CELULANDIA_ARQUEO_CAJA",
     "CELULANDIA_EZE_NICO",
     "CELULANDIA_PROYECCIONES",
+    "CELULANDIA_RESUMEN",
   ];
 
   opcionesAcciones.push(...celulandiaAcciones);
