@@ -1,6 +1,9 @@
 import { Box, Paper, Typography } from "@mui/material";
+import { useState } from "react";
+import ImageModal from "./ImageModal";
 
 export default function MessageBubble({ message, isMine }) {
+  const [open, setOpen] = useState(false);
   const text = message?.mensaje || "";
   const date = message?.fechaMensaje ? new Date(message.fechaMensaje) : null;
   const pad = (n) => String(n).padStart(2, "0");
@@ -9,6 +12,9 @@ export default function MessageBubble({ message, isMine }) {
     ? `${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${date.getFullYear()}`
     : "";
   const timeStr = date ? `${pad(date.getHours())}:${pad(date.getMinutes())}` : "";
+
+  const handleOpen = () => setOpen(true);
+  const handleClose = () => setOpen(false);
 
   return (
     <Box display="flex" justifyContent={isMine ? "flex-end" : "flex-start"} px={2} py={0.5}>
@@ -21,6 +27,23 @@ export default function MessageBubble({ message, isMine }) {
           borderRadius: 2,
         }}
       >
+        {message.urlImagen ? (
+          <Box mb={text ? 1 : 0}>
+            <img
+              src={message.urlImagen}
+              alt="mensaje-imagen"
+              style={{
+                display: "block",
+                width: "min(420px, 100%)",
+                height: "auto",
+                maxHeight: "220px",
+                borderRadius: 8,
+                cursor: "pointer",
+              }}
+              onClick={handleOpen}
+            />
+          </Box>
+        ) : null}
         <Typography variant="body2" whiteSpace="pre-wrap">
           {text}
         </Typography>
@@ -36,6 +59,9 @@ export default function MessageBubble({ message, isMine }) {
             </Typography>
           ) : null}
         </Box>
+        {message.urlImagen ? (
+          <ImageModal open={open} src={message.urlImagen} onClose={handleClose} />
+        ) : null}
       </Paper>
     </Box>
   );
