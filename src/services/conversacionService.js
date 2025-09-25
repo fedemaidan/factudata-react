@@ -47,7 +47,9 @@ let mockMessagesByConversation = {
       emisor: "X",
       receptor: "@5491111111111@whatsapp.com",
       flowData: {},
-      mensaje: "Todo bien, ¿y vos?",
+      mensaje: null,
+      urlAudio:
+        "gs://factudata-3afdf.appspot.com/ejemplos-documentos-whatsapp/audio_1758815698376.ogg",
       fechaMensaje: new Date(Date.now() - 1000 * 60 * 5).toISOString(),
     },
   ],
@@ -71,6 +73,19 @@ let mockMessagesByConversation = {
       flowData: {},
       mensaje: "¿Tienen stock?",
       fechaMensaje: new Date(Date.now() - 1000 * 60 * 40).toISOString(),
+    },
+    {
+      id: "m5",
+      conversationId: "c3",
+      emisor: "X",
+      receptor: "@Lid",
+      flowData: {},
+      mensaje: "",
+      tipoMensaje: "audio",
+      urlAudio:
+        "https://firebasestorage.googleapis.com/v0/b/factudata-3afdf.appspot.com/o/ejemplos-documentos-whatsapp%2Faudio_1758815698376.ogg?alt=media&token=025ae5b6-4ace-450f-b81f-8b9656b7fac9",
+      duracionAudio: 3,
+      fechaMensaje: new Date(Date.now() - 1000 * 60 * 35).toISOString(),
     },
   ],
 };

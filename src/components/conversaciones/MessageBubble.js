@@ -1,6 +1,7 @@
 import { Box, Paper, Typography } from "@mui/material";
 import { useState } from "react";
 import ImageModal from "./ImageModal";
+import AudioPlayer from "./AudioPlayer";
 
 export default function MessageBubble({ message, isMine }) {
   const [open, setOpen] = useState(false);
@@ -44,9 +45,22 @@ export default function MessageBubble({ message, isMine }) {
             />
           </Box>
         ) : null}
-        <Typography variant="body2" whiteSpace="pre-wrap">
-          {text}
-        </Typography>
+
+        {message.tipoMensaje === "audio" && message.urlAudio ? (
+          <Box mb={text ? 1 : 0}>
+            <AudioPlayer
+              src={message.urlAudio}
+              duration={message.duracionAudio || 0}
+              isMine={isMine}
+            />
+          </Box>
+        ) : null}
+
+        {text ? (
+          <Typography variant="body2" whiteSpace="pre-wrap">
+            {text}
+          </Typography>
+        ) : null}
         <Box mt={0.5} display="flex" justifyContent="flex-end" gap={1}>
           {dateStr ? (
             <Typography variant="caption" color="text.secondary">
