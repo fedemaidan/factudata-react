@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef } from "react";
-import { Box, Divider, Typography } from "@mui/material";
+import { Box, Divider, Typography, IconButton } from "@mui/material";
+import MenuIcon from "@mui/icons-material/Menu";
 import MessageBubble from "./MessageBubble";
 
-export default function ChatWindow({ messages, myNumber = "X", title }) {
+export default function ChatWindow({ messages, myNumber = "X", title, onOpenList }) {
   const bottomRef = useRef(null);
   const items = useMemo(() => messages || [], [messages]);
 
@@ -12,8 +13,17 @@ export default function ChatWindow({ messages, myNumber = "X", title }) {
 
   return (
     <Box display="flex" flexDirection="column" height="100%">
-      <Box px={2} py={1}>
-        <Typography variant="subtitle1" fontWeight={600}>
+      <Box px={1} py={1} display="flex" alignItems="center" gap={1}>
+        {onOpenList ? (
+          <IconButton
+            onClick={onOpenList}
+            aria-label="Abrir conversaciones"
+            sx={{ display: { xs: "inline-flex", md: "none" } }}
+          >
+            <MenuIcon />
+          </IconButton>
+        ) : null}
+        <Typography variant="subtitle1" fontWeight={600} noWrap>
           {title}
         </Typography>
       </Box>

@@ -38,7 +38,14 @@ export default function MessageInput({ onSend }) {
         multiline
         maxRows={4}
       />
-      <IconButton color="primary" onClick={handleSend} aria-label="Enviar">
+      <IconButton
+        color="primary"
+        onClick={handleSend}
+        aria-label="Enviar"
+        sx={{
+          alignSelf: { xs: "flex-end", md: "center" },
+        }}
+      >
         <SendIcon />
       </IconButton>
     </Box>
