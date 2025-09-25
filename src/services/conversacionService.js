@@ -47,9 +47,10 @@ let mockMessagesByConversation = {
       emisor: "X",
       receptor: "@5491111111111@whatsapp.com",
       flowData: {},
-      mensaje: null,
-      urlAudio:
-        "gs://factudata-3afdf.appspot.com/ejemplos-documentos-whatsapp/audio_1758815698376.ogg",
+      mensaje: "aaa",
+      urlAudio: null,
+      urlVideo:
+        "https://firebasestorage.googleapis.com/v0/b/factudata-3afdf.appspot.com/o/ejemplos-documentos-whatsapp%2FWhatsApp%20Video%202025-09-25%20at%2012.18.07.mp4?alt=media&token=82bf1ac5-a7ed-4c27-915f-18c81ca1031e",
       fechaMensaje: new Date(Date.now() - 1000 * 60 * 5).toISOString(),
     },
   ],

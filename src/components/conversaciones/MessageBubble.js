@@ -1,10 +1,11 @@
 import { Box, Paper, Typography } from "@mui/material";
 import { useState } from "react";
-import ImageModal from "./ImageModal";
+import MediaModal from "./MediaModal";
 import AudioPlayer from "./AudioPlayer";
 
 export default function MessageBubble({ message, isMine }) {
   const [open, setOpen] = useState(false);
+  const [mediaType, setMediaType] = useState("image");
   const text = message?.mensaje || "";
   const date = message?.fechaMensaje ? new Date(message.fechaMensaje) : null;
   const pad = (n) => String(n).padStart(2, "0");
@@ -14,7 +15,10 @@ export default function MessageBubble({ message, isMine }) {
     : "";
   const timeStr = date ? `${pad(date.getHours())}:${pad(date.getMinutes())}` : "";
 
-  const handleOpen = () => setOpen(true);
+  const handleOpen = (type = "image") => {
+    setMediaType(type);
+    setOpen(true);
+  };
   const handleClose = () => setOpen(false);
 
   return (
@@ -41,8 +45,54 @@ export default function MessageBubble({ message, isMine }) {
                 borderRadius: 8,
                 cursor: "pointer",
               }}
-              onClick={handleOpen}
+              onClick={() => handleOpen("image")}
             />
+          </Box>
+        ) : null}
+
+        {message.urlVideo ? (
+          <Box mb={text ? 1 : 0} position="relative">
+            <video
+              src={message.urlVideo}
+              style={{
+                display: "block",
+                width: "min(420px, 100%)",
+                height: "auto",
+                maxHeight: "220px",
+                borderRadius: 8,
+                cursor: "pointer",
+              }}
+              onClick={() => handleOpen("video")}
+              preload="metadata"
+            />
+            <Box
+              position="absolute"
+              top="50%"
+              left="50%"
+              sx={{
+                transform: "translate(-50%, -50%)",
+                bgcolor: "rgba(0, 0, 0, 0.6)",
+                borderRadius: "50%",
+                width: 48,
+                height: 48,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                cursor: "pointer",
+              }}
+              onClick={() => handleOpen("video")}
+            >
+              <Box
+                sx={{
+                  width: 0,
+                  height: 0,
+                  borderLeft: "12px solid white",
+                  borderTop: "8px solid transparent",
+                  borderBottom: "8px solid transparent",
+                  marginLeft: "4px",
+                }}
+              />
+            </Box>
           </Box>
         ) : null}
 
@@ -73,8 +123,13 @@ export default function MessageBubble({ message, isMine }) {
             </Typography>
           ) : null}
         </Box>
-        {message.urlImagen ? (
-          <ImageModal open={open} src={message.urlImagen} onClose={handleClose} />
+        {message.urlImagen || message.urlVideo ? (
+          <MediaModal
+            open={open}
+            src={message.urlImagen || message.urlVideo}
+            type={mediaType}
+            onClose={handleClose}
+          />
         ) : null}
       </Paper>
     </Box>
