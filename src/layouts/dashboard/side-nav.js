@@ -39,7 +39,7 @@ export const SideNav = (props) => {
   const { open, onClose, collapsed = false, onToggleCollapsed, width = 280 } = props;
   const pathname = usePathname();
   const lgUp = useMediaQuery((theme) => theme.breakpoints.up("lg"));
-  const { user } = useAuthContext();
+  const { user, isSpying } = useAuthContext();
 
   const [items, setItems] = useState([]);
   const [proyectos, setProyectos] = useState([]);
@@ -49,7 +49,7 @@ export const SideNav = (props) => {
   const [showProyectos, setShowProyectos] = useState(true);
 
   const paperSx = {
-    backgroundColor: "neutral.800",
+    backgroundColor: isSpying() ? "neutral.600" : "neutral.800",
     color: "common.white",
     width,
     overflowX: "hidden",
@@ -81,7 +81,7 @@ export const SideNav = (props) => {
   useEffect(() => {
     const fetchProyectosData = async () => {
       const emp = await getEmpresaDetailsFromUser(user);
-      if (emp.cuenta_suspendida) {
+      if (emp?.cuenta_suspendida) {
         return;
       }
       setEmpresa(emp || null);
