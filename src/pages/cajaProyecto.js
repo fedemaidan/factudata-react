@@ -50,6 +50,7 @@ const COLS = {
   observacion: 160,
   tc: 120,
   usd: 160,
+  mep: 160,
   estado: 140,
   empresaFacturacion: 200,
   fechaPago: 140,
@@ -194,6 +195,7 @@ const [rowsPerPage, setRowsPerPage] = useState(25);  // filas por página
    none:        { out: null,        path: null },                          // usa mov.total
    usd_blue:    { out: 'USD',       path: (e) => e?.total?.usd_blue },
    usd_oficial: { out: 'USD',       path: (e) => e?.total?.usd_oficial },  // si lo tenés
+   usd_mep_medio: { out: 'USD',     path: (e) => e?.total?.usd_mep_medio },  // si lo tenés
    ars_oficial: { out: 'ARS',       path: (e) => e?.total?.ars_oficial },
    cac:         { out: 'ARS',       path: (e) => e?.total?.cac },          // ej. si calculás CAC a ARS
  };
@@ -308,11 +310,12 @@ const handleSaveCols = async () => {
     subcategoria: !compactCols && !!empresa?.comprobante_info?.subcategoria,
     medioPago: !!empresa?.comprobante_info?.medio_pago,
     proveedor: true,
-    obra: true,        // <-- NUEVO
-    cliente: true,     // <-- NUEVO
+    obra: false,        // <-- NUEVO
+    cliente: false,     // <-- NUEVO
     observacion: true,
     tc: false,
     usd: true,
+    mep: false, // activala en true si querés que venga visible por defecto
     estado: !!empresa?.con_estados,
     acciones: true,
     empresaFacturacion: false,
@@ -424,7 +427,10 @@ const handleCloseCols = () => setAnchorColsEl(null);
 
    const formatCajaAmount = (caja, amount) => {
        const meta = EQUIV_META[caja.equivalencia || 'none'] || EQUIV_META.none;
-       const out = meta.out || (caja.moneda || 'ARS');
+       const out = (caja.equivalencia && caja.equivalencia !== 'none')
+           ? (meta.out || 'ARS')
+           : (caja.moneda || 'ARS');
+
        return (amount ?? 0).toLocaleString('es-AR', {
          style: 'currency',
          currency: out.toUpperCase() === 'USD' ? 'USD' : 'ARS',
@@ -602,26 +608,28 @@ const handleCloseCols = () => setAnchorColsEl(null);
        const allMovs = [...movimientos, ...movimientosUSD];
        const meta = EQUIV_META[caja.equivalencia || 'none'] || EQUIV_META.none;
      
+       const mergeMonedas = (caja.equivalencia && caja.equivalencia !== 'none');
+
        return allMovs.reduce((acc, mov) => {
          const matchMedioPago = caja.medio_pago ? mov.medio_pago === caja.medio_pago : true;
          const matchEstado    = caja.estado ? mov.estado === caja.estado : true;
          const matchType      = caja.type ? mov.type === caja.type : true;
-         const matchMoneda      = caja.moneda ? mov.moneda === caja.moneda : true;
+         const matchMoneda    = mergeMonedas ? true : (caja.moneda ? mov.moneda === caja.moneda : true);
          if (!matchMedioPago || !matchEstado || !matchType || !matchMoneda) return acc;
      
          // valor según equivalencia
          let val;
          if (meta.path) {
            const equivVal = meta.path(mov.equivalencias);
-           // fallback razonable: si no hay equivalencia y la moneda destino coincide con la del mov, usar total
            if (typeof equivVal === 'number') {
-             val = equivVal;
-           } else if (meta.out && mov.moneda?.toUpperCase() === meta.out.toUpperCase()) {
-             val = mov.total || 0;
-           } else {
-             // como último recurso, usá el total nativo para no “perder” el movimiento
-             val = mov.total || 0;
-           }
+              val = equivVal;
+            } else if (meta.out && mov.moneda?.toUpperCase() === meta.out.toUpperCase()) {
+              // si la moneda del mov ya coincide con la moneda objetivo (p.ej. USD → USD MEP),
+              // usamos el total nativo como último recurso
+              val = mov.total || 0;
+            } else {
+              val = mov.total || 0;
+            }
          } else {
            // sin equivalencia → monto nativo
            val = mov.total || 0;
@@ -637,7 +645,7 @@ const handleCloseCols = () => setAnchorColsEl(null);
   const handleGuardarCaja = async () => {
     const nuevaCaja = {
       nombre: nombreCaja,
-      moneda: monedaCaja,
+      moneda: monedaCaja || '', 
       medio_pago: medioPagoCaja,
       estado: estadoCaja,
       equivalencia: equivalenciaCaja || 'none',
@@ -806,6 +814,7 @@ useEffect(() => {
     <FormControl fullWidth sx={{ mt: 2 }}>
       <InputLabel>Moneda</InputLabel>
       <Select value={monedaCaja} onChange={(e) => setMonedaCaja(e.target.value)}>
+        <MenuItem value="">Todas</MenuItem>
         <MenuItem value="ARS">Pesos</MenuItem>
         <MenuItem value="USD">Dólares</MenuItem>
       </Select>
@@ -851,6 +860,7 @@ useEffect(() => {
         <MenuItem value="none">Moneda original</MenuItem>
         <MenuItem value="usd_blue">USD blue</MenuItem>
         <MenuItem value="usd_oficial">USD oficial</MenuItem>
+        <MenuItem value="usd_mep_medio">USD mep (medio)</MenuItem>
       </Select>
     </FormControl>
 
@@ -880,7 +890,7 @@ useEffect(() => {
 
 
               <TotalesFiltrados
-                  t={totalesDetallados}f
+                  t={totalesDetallados}
                   fmt={formatByCurrency}
                   moneda={cajaSeleccionada?.moneda || 'ARS'}
                   // showUsdBlue={Boolean(visibleCols.usd)}
@@ -972,6 +982,7 @@ useEffect(() => {
     <FormControlLabel control={<Checkbox size="small" checked={visibleCols.observacion}  onChange={() => toggleCol('observacion')} />}  label="Observación" />
     <FormControlLabel control={<Checkbox size="small" checked={visibleCols.tc}           onChange={() => toggleCol('tc')} />}           label="TC ejecutado" />
     <FormControlLabel control={<Checkbox size="small" checked={visibleCols.usd}          onChange={() => toggleCol('usd')} />}          label="USD blue" />
+    <FormControlLabel control={<Checkbox size="small" checked={visibleCols.mep} onChange={() => toggleCol('mep')} />} label="USD MEP" />
     {empresa?.con_estados && (
       <FormControlLabel control={<Checkbox size="small" checked={visibleCols.estado}      onChange={() => toggleCol('estado')} />}      label="Estado" />
     )}
@@ -1240,7 +1251,9 @@ useEffect(() => {
         {visibleCols.usd && (
           <TableCell sx={{ ...cellBase, minWidth: COLS.usd }}>USD BLUE</TableCell>
         )}
-
+        {visibleCols.mep && (
+          <TableCell sx={{ ...cellBase, minWidth: COLS.mep }}>USD MEP</TableCell>
+        )}
         {empresa?.con_estados && visibleCols.estado && (
           <TableCell sx={{ ...cellBase, minWidth: COLS.estado }}>ESTADO</TableCell>
         )}
@@ -1407,6 +1420,13 @@ useEffect(() => {
                   : '-'}
               </TableCell>
             )}
+            {visibleCols.mep && (
+              <TableCell sx={{ ...cellBase, minWidth: COLS.mep }}>
+                {mov.equivalencias
+                  ? `US$ ${mov.equivalencias.total.usd_mep_medio?.toLocaleString('es-AR', { minimumFractionDigits: 2 })}`
+                  : '-'}
+              </TableCell>
+             )}
 
             {empresa?.con_estados && visibleCols.estado && (
               <TableCell sx={{ ...cellBase, minWidth: COLS.estado }}>
