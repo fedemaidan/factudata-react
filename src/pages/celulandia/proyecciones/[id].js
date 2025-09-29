@@ -87,7 +87,6 @@ export default function ProyeccionDetailPage() {
       const tagsSrv = payload.tagsDisponibles || payload?.data?.tagsDisponibles || [];
       setTagsDisponibles(["Todos", ...Array.from(new Set(tagsSrv)).sort()]);
       setPaginaActual(pagina);
-      setSelectedKeys(new Set());
     } catch (error) {
       console.error("Error al cargar datos:", error);
     } finally {
@@ -504,6 +503,7 @@ export default function ProyeccionDetailPage() {
                   tag: finalTag,
                   persist: tagPersist,
                 });
+                setSelectedKeys(new Set());
                 setIsTagOpen(false);
                 await fetchData(paginaActual);
               } catch (e) {
