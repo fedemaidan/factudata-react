@@ -31,6 +31,7 @@ import DataTabTableV2 from "src/components/celulandia/DataTabTableV2";
 const ArqueoCajaPage = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [items, setItems] = useState([]);
+  const [totalItems, setTotalItems] = useState(0);
   const [activeTab, setActiveTab] = useState(0);
   const [diario, setDiario] = useState([]);
   const [arqueoTotalGeneral, setArqueoTotalGeneral] = useState({
@@ -38,12 +39,22 @@ const ArqueoCajaPage = () => {
     totalUSD: 0,
     totalMovimientos: 0,
   });
+  const [externalTotalsMap, setExternalTotalsMap] = useState(null);
 
   const [sortFieldDiario, setSortFieldDiario] = useState("fecha");
   const [sortDirectionDiario, setSortDirectionDiario] = useState("desc");
   const [pageDiario, setPageDiario] = useState(0);
-  const [rowsPerPageDiario, setRowsPerPageDiario] = useState(10);
-  const [selectedDate, setSelectedDate] = useState(dayjs()); // Fecha actual por defecto
+  const [rowsPerPageDiario, setRowsPerPageDiario] = useState(100);
+  // Rango de fechas (server-side). Por defecto vacío => trae todo
+  const [dateFrom, setDateFrom] = useState(null);
+  const [dateTo, setDateTo] = useState(null);
+
+  // Paginación y ordenación server-side
+  const [serverPage, setServerPage] = useState(1); // 1-based
+  const [serverRowsPerPage, setServerRowsPerPage] = useState(50);
+  const [currentOption, setCurrentOption] = useState("ARS");
+  const [sortField, setSortField] = useState("fecha");
+  const [sortDir, setSortDir] = useState("desc");
 
   const handleSortChangeDiario = (campo) => {
     if (sortFieldDiario === campo) {
@@ -58,27 +69,54 @@ const ArqueoCajaPage = () => {
     { label: "USD", value: "USD" },
   ];
 
-  console.log("diario", diario);
-
-  const fetchData = useCallback(async (fecha = null) => {
+  const fetchData = useCallback(async () => {
     setIsLoading(true);
     try {
       const params = {
         cajaNombre: "EFECTIVO",
-        limit: 1000,
+        limit: serverRowsPerPage,
+        offset: (serverPage - 1) * serverRowsPerPage,
+        sortField: sortField,
+        sortDirection: sortDir,
       };
 
-      if (fecha) {
-        const fechaLocal = fecha.format("YYYY-MM-DD");
-        params.fecha = fechaLocal;
-        console.log("Enviando fecha al backend:", fechaLocal);
+      if (dateFrom) {
+        params.fechaInicio = dayjs(dateFrom).format("YYYY-MM-DD");
+      }
+      if (dateTo) {
+        params.fechaFin = dayjs(dateTo).format("YYYY-MM-DD");
       }
 
       const movsResp = await movimientosService.getAllMovimientos(params);
-      const arqueoTotalGeneralResp = await movimientosService.getArqueoTotalGeneral();
-      const movimientos = movsResp?.data;
+      // Traer totales general y (si hay rango) filtrado por fecha
+      const totalResp = await movimientosService.getArqueoTotalGeneralFiltrado({
+        fechaInicio: dateFrom ? dayjs(dateFrom).format("YYYY-MM-DD") : undefined,
+        fechaFin: dateTo ? dayjs(dateTo).format("YYYY-MM-DD") : undefined,
+        cajaNombre: "EFECTIVO",
+      });
+      const movimientos = movsResp?.data || [];
 
-      setArqueoTotalGeneral(arqueoTotalGeneralResp.data);
+      // Si backend devuelve ambos totales, preferirlos
+      if (totalResp?.data) {
+        const { general, filtrado } = totalResp.data;
+        const useTotals = filtrado || general;
+        const totalARS = Math.round(useTotals?.totalARS || 0);
+        const totalUSD = Math.round(useTotals?.totalUSD || 0);
+        setArqueoTotalGeneral({
+          totalARS,
+          totalUSD,
+          totalMovimientos: useTotals?.totalMovimientos || 0,
+        });
+        setExternalTotalsMap(
+          new Map([
+            ["ARS", totalARS],
+            ["USD", totalUSD],
+          ])
+        );
+      } else {
+        setExternalTotalsMap(null);
+      }
+      setTotalItems(movsResp?.total || 0);
 
       const parsedMovs = movimientos.map((m) => ({
         id: m._id,
@@ -111,28 +149,27 @@ const ArqueoCajaPage = () => {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [currentOption, serverRowsPerPage, serverPage, sortField, sortDir, dateFrom, dateTo]);
 
   // Función para refetch del arqueo
   const refetchArqueo = useCallback(async () => {
     try {
-      await fetchData(selectedDate);
+      await fetchData();
     } catch (error) {
       console.error("Error al actualizar arqueo:", error);
     }
-  }, [fetchData, selectedDate]);
+  }, [fetchData]);
 
-  // Handler para cambio de fecha
-  const handleDateChange = (newDate) => {
-    setSelectedDate(newDate);
-    if (newDate) {
-      fetchData(newDate);
-    }
+  // Handler para cambio de rango de fechas (desde/hasta)
+  const handleDateRangeChange = (from, to) => {
+    setDateFrom(from);
+    setDateTo(to);
+    setServerPage(1);
   };
 
   useEffect(() => {
-    fetchData(selectedDate);
-  }, [fetchData, selectedDate]);
+    fetchData();
+  }, [fetchData]);
 
   const sortedDiario = useMemo(() => {
     const sorted = [...diario];
@@ -186,22 +223,56 @@ const ArqueoCajaPage = () => {
                 isLoading={isLoading}
                 options={options}
                 defaultOption="ARS"
+                currentOption={currentOption}
+                onOptionChange={(opt) => {
+                  setCurrentOption(opt);
+                  setServerPage(1);
+                }}
                 showSearch={false}
                 showDateFilterOptions={false}
-                showDatePicker={true}
-                selectedDate={selectedDate}
-                onDateChange={handleDateChange}
+                showDatePicker={false}
+                showDateRange={true}
+                dateFrom={dateFrom}
+                dateTo={dateTo}
+                onDateRangeChange={handleDateRangeChange}
                 showRefreshButton={true}
                 onRefresh={refetchArqueo}
+                // Server-side pagination/sort
+                total={totalItems}
+                currentPage={serverPage}
+                rowsPerPage={serverRowsPerPage}
+                onPageChange={(newPage) => setServerPage(newPage)}
+                sortField={sortField}
+                sortDirection={sortDir}
+                onSortChange={(field, direction) => {
+                  setSortField(field);
+                  setSortDir(direction);
+                  setServerPage(1);
+                }}
+                onRowsPerPageChange={(rpp) => {
+                  setServerRowsPerPage(rpp);
+                  setServerPage(1);
+                }}
+                externalTotals={externalTotalsMap}
               />
             )}
 
             {activeTab === 1 && (
               <Paper sx={{ mt: 2 }}>
-                <Table size="small">
+                <Table
+                  size="small"
+                  sx={{ "& .MuiTableCell-root": { fontSize: "0.75rem", padding: "5px 8px" } }}
+                >
                   <TableHead>
                     <TableRow>
-                      <TableCell sx={{ fontWeight: "bold", cursor: "pointer" }}>
+                      <TableCell
+                        sx={{
+                          fontWeight: "bold",
+                          cursor: "pointer",
+                          fontSize: "0.65rem",
+                          padding: "5px 8px",
+                        }}
+                      >
                         <TableSortLabel
                           active={sortFieldDiario === "fecha"}
                           direction={sortFieldDiario === "fecha" ? sortDirectionDiario : "asc"}
@@ -210,7 +281,15 @@ const ArqueoCajaPage = () => {
                           Fecha
                         </TableSortLabel>
                       </TableCell>
-                      <TableCell align="right" sx={{ fontWeight: "bold", cursor: "pointer" }}>
+                      <TableCell
+                        align="right"
+                        sx={{
+                          fontWeight: "bold",
+                          cursor: "pointer",
+                          fontSize: "0.65rem",
+                          padding: "5px 8px",
+                        }}
+                      >
                         <TableSortLabel
                           active={sortFieldDiario === "totalARS"}
                           direction={sortFieldDiario === "totalARS" ? sortDirectionDiario : "asc"}
@@ -219,7 +298,15 @@ const ArqueoCajaPage = () => {
                           Total ARS
                         </TableSortLabel>
                       </TableCell>
-                      <TableCell align="right" sx={{ fontWeight: "bold", cursor: "pointer" }}>
+                      <TableCell
+                        align="right"
+                        sx={{
+                          fontWeight: "bold",
+                          cursor: "pointer",
+                          fontSize: "0.65rem",
+                          padding: "5px 8px",
+                        }}
+                      >
                         <TableSortLabel
                           active={sortFieldDiario === "totalUSD"}
                           direction={sortFieldDiario === "totalUSD" ? sortDirectionDiario : "asc"}
@@ -232,20 +319,32 @@ const ArqueoCajaPage = () => {
                   </TableHead>
                   <TableBody>
                     {paginatedDiario.map((row) => (
-                      <TableRow key={row.fecha} onClick={() => console.log("row", row)}>
-                        <TableCell>{dayjs(row.fecha).format("DD/MM/YYYY")}</TableCell>
+                      <TableRow
+                        key={row.fecha}
+                        onClick={() => console.log("row", row)}
+                        sx={{ "& .MuiTableCell-root": { fontSize: "0.75rem", padding: "5px 8px" } }}
+                      >
+                        <TableCell sx={{ fontSize: "0.75rem" }}>
+                          {dayjs(row.fecha).format("DD/MM/YYYY")}
+                        </TableCell>
                         <TableCell align="right">
                           <Typography
+                            sx={{ fontSize: "0.75rem" }}
                             color={(row.totalARS || 0) < 0 ? "error.main" : "text.primary"}
                           >
-                            {Math.round(row.totalARS || 0).toLocaleString("es-AR")}
+                            {`${row.totalARS < 0 ? "-" : ""}$${Math.abs(
+                              Math.round(row.totalARS || 0)
+                            ).toLocaleString("es-AR")}`}
                           </Typography>
                         </TableCell>
                         <TableCell align="right">
                           <Typography
+                            sx={{ fontSize: "0.75rem" }}
                             color={(row.totalUSD || 0) < 0 ? "error.main" : "text.primary"}
                           >
-                            {Math.round(row.totalUSD || 0).toLocaleString("es-AR")}
+                            {`${row.totalUSD < 0 ? "-" : ""}$${Math.abs(
+                              Math.round(row.totalUSD || 0)
+                            ).toLocaleString("es-AR")}`}
                           </Typography>
                         </TableCell>
                       </TableRow>
@@ -262,7 +361,7 @@ const ArqueoCajaPage = () => {
                     setRowsPerPageDiario(parseInt(event.target.value, 10));
                     setPageDiario(0);
                   }}
-                  rowsPerPageOptions={[5, 10, 25, 50]}
+                  rowsPerPageOptions={[5, 10, 25, 50, 100]}
                   labelRowsPerPage="Filas por página:"
                   labelDisplayedRows={({ from, to, count }) =>
                     `${from}-${to} de ${count !== -1 ? count : `más de ${to}`}`

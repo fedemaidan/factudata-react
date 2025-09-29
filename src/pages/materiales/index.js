@@ -17,6 +17,8 @@ import {
 import { useRouter } from 'next/router';
 import materialService from 'src/services/materialService';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
+import AssignToPlanDialog from 'src/components/planobra/AssignToPlanDialog';
+import AsignacionMaterialService from 'src/services/asignacionMaterialService';
 
 const MaterialesPage = () => {
   const [materiales, setMateriales] = useState([]);
@@ -24,6 +26,9 @@ const MaterialesPage = () => {
   const [loading, setLoading] = useState(true);
   const [searchText, setSearchText] = useState('');
   const [alert, setAlert] = useState({ open: false, message: '', severity: 'info' });
+  const [assignOpen, setAssignOpen] = useState(false);
+  const [assignRow, setAssignRow] = useState(null);
+
 
   const router = useRouter();
 
@@ -113,13 +118,13 @@ const MaterialesPage = () => {
           </TableBody>
         </Table>
       )}
-
       <Snackbar open={alert.open} autoHideDuration={6000} onClose={handleCloseAlert}>
         <Alert onClose={handleCloseAlert} severity={alert.severity} sx={{ width: '100%' }}>
           {alert.message}
         </Alert>
       </Snackbar>
     </Container>
+  
   );
 };
 

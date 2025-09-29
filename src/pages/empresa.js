@@ -16,6 +16,7 @@ import { useRouter } from 'next/router';
 import { PermisosUsuarios } from 'src/sections/empresa/PermisosUsuarios';
 import { EtapasDetails } from 'src/sections/empresa/etapasDetails';
 import { SubEmpresasDetails } from 'src/sections/empresa/subEmpresasDetails';
+import { ObrasDetails } from 'src/sections/empresa/obrasDetails';
 
 
 const EmpresaPage = () => {
@@ -39,7 +40,8 @@ const EmpresaPage = () => {
     { value: 'impuestos', label: 'Impuestos' },
     { value: 'configuracion', label: 'Configuración General' },
     { value: 'usuarios', label: 'Usuarios' },
-    { value: 'permisos', label: 'Permisos' }
+    { value: 'permisos', label: 'Permisos' },
+    { value: 'obras', label: 'Obras' },
   ];
 
   useEffect(() => {
@@ -144,6 +146,8 @@ const EmpresaPage = () => {
             {currentTab === 'permisos' && <PermisosUsuarios empresa={empresa} />}
             {currentTab === 'medios_pago' && <MediosPagoDetails empresa={empresa} />}
             {currentTab === 'impuestos' && <ImpuestosDetails empresa={empresa} />}
+            {currentTab === 'obras' && <ObrasDetails empresa={empresa} />}
+
           </Stack>
         </Container>
       </Box>

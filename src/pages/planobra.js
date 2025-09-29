@@ -22,7 +22,7 @@ const PlanObraPage = () => {
   // Hook centralizado (ya lee datos del proyecto internamente si no existe plan)
   const {
        data, status, error, notFound, refresh, savePlan, createEmptyPlan, createFromEmpresa, proyectoInfo,
-       addEtapa, updateEtapaByIndex, deleteEtapaByIndex,
+       addEtapa, updateEtapa, deleteEtapa,
        addMaterialToEtapa, updateMaterialInEtapa, deleteMaterialInEtapa,
        addCertificadoToEtapa, updateCertificadoInEtapa, deleteCertificadoInEtapa,
        recalcular
@@ -80,16 +80,18 @@ const PlanObraPage = () => {
       }
     });
 
-  const saveEtapaDialog = async (payload) => {
-    setDlgEtapa({ open: false, index: null, initial: null });
-    if (dlgEtapa.index == null) {
-           const updatedPlan = await addEtapa({ nombre: payload?.nombre || 'Sin nombre' });
-           setEtapas(updatedPlan.etapas || []);
-         } else {
-           const updatedPlan = await updateEtapaByIndex(dlgEtapa.index, { nombre: payload?.nombre });
-           setEtapas(updatedPlan.etapas || []);
-         }
-  };
+    const saveEtapaDialog = async (payload) => {
+      setDlgEtapa({ open: false, index: null, initial: null });
+      if (!dlgEtapa.initial?.id && !dlgEtapa.initial?._id) {
+        const updated = await addEtapa({ nombre: payload?.nombre || 'Sin nombre' });
+        setEtapas(updated.etapas || []);
+      } else {
+        const etapaId = dlgEtapa.initial.id || dlgEtapa.initial._id;
+        const updated = await updateEtapa(etapaId, { nombre: payload?.nombre });
+        setEtapas(updated.etapas || []);
+      }
+    };
+    
 
   // Materiales
   const onAddMaterial = (etapaIdx) => setDlgMat({ open: true, etapaIdx, index: null, initial: null });
@@ -106,16 +108,16 @@ const PlanObraPage = () => {
       }
     });
 
-  const saveMaterialDialog = async (payload) => {
-    setDlgMat({ open: false, etapaIdx: null, index: null, initial: null });
-    let updatedPlan;
-   if (dlgMat.index == null) {
-     updatedPlan = await addMaterialToEtapa(dlgMat.etapaIdx, payload);
-   } else {
-     updatedPlan = await updateMaterialInEtapa(dlgMat.etapaIdx, dlgMat.index, payload);
-   }
-   setEtapas(updatedPlan.etapas || []);
-  };
+    const saveMaterialDialog = async (payload) => {
+      const etapaId = dlgMat.etapaId;
+      const materialId = dlgMat.materialId;
+      setDlgMat({ open: false, etapaIdx: null, index: null, initial: null, etapaId: null, materialId: null });
+      const updated = materialId
+        ? await updateMaterialInEtapa(etapaId, materialId, payload)
+        : await addMaterialToEtapa(etapaId, payload);
+      setEtapas(updated.etapas || []);
+    };
+    
 
   // Certificados
   const onAddCertificado = (etapaIdx) => setDlgCert({ open: true, etapaIdx, index: null, initial: null });
@@ -133,17 +135,16 @@ const PlanObraPage = () => {
       }
     });
 
-  const saveCertificadoDialog = async (payload) => {
-    setDlgCert({ open: false, etapaIdx: null, index: null, initial: null });
-    let updatedPlan;
-    if (dlgCert.index == null) {
-      updatedPlan = await addCertificadoToEtapa(dlgCert.etapaIdx, payload);
-    } else {
-      updatedPlan = await updateCertificadoInEtapa(dlgCert.etapaIdx, dlgCert.index, payload);
-    }
-    setEtapas(updatedPlan.etapas || []);
-
-  };
+    const saveCertificadoDialog = async (payload) => {
+      const etapaId = dlgCert.etapaId;
+      const certId = dlgCert.certId;
+      setDlgCert({ open: false, etapaIdx: null, index: null, initial: null, etapaId: null, certId: null });
+      const updated = certId
+        ? await updateCertificadoInEtapa(etapaId, certId, payload)
+        : await addCertificadoToEtapa(etapaId, payload);
+      setEtapas(updated.etapas || []);
+    };
+    
 
   // Importador CSV
   const [wizardOpen, setWizardOpen] = useState(false);
@@ -154,24 +155,26 @@ const PlanObraPage = () => {
   const handleConfirmImport = async (nuevasEtapas) => {
     const prev = etapas;
     pushHist(prev);
+  
+    // Mostrá optimista si querés:
     const merged = mergeEtapasAppend(prev, nuevasEtapas);
     setEtapas(merged);
     openSnack('Importación aplicada');
-
+  
     try {
-      const plan = await savePlan({
+      const planActualizado = await savePlan({
         proyectoId: String(proyectoId || data?.proyectoId || 'P-001'),
         nombreProyecto: proyectoNombre || 'Proyecto',
         moneda,
         etapas: merged
       });
-      
-      if (plan?.etapas) setEtapas(plan.etapas);
-
+      // 👇 quedate con lo que el backend devuelva (IDs reales)
+      setEtapas(planActualizado.etapas || []);
     } catch (e) {
       console.error('Error guardando plan:', e);
     }
   };
+  
 
   // Estados de carga / error
   if (status === 'loading' && !data && !notFound) {
@@ -248,28 +251,52 @@ const PlanObraPage = () => {
         </Box>
 
         <Stack spacing={2}>
-          {filteredEtapas.map((e, idx) => (
-            <EtapaAccordion
-              key={`${e.nombre}-${idx}`}
-              etapa={e}
-              vista={vista}
-              onChangeEtapa={(updater) => {
-                setEtapas(prev => {
-                  const nuevo = JSON.parse(JSON.stringify(prev));
-                  nuevo[idx] = updater(nuevo[idx]);
-                  return nuevo;
-                });
-              }}
-              onEditEtapa={() => onEditEtapa(idx)}
-              onDeleteEtapa={() => onDeleteEtapa(idx)}
-              onAddMaterial={() => onAddMaterial(idx)}
-              onEditMaterial={(rowIdx) => onEditMaterial(idx, rowIdx)}
-              onDeleteMaterial={(rowIdx) => onDeleteMaterial(idx, rowIdx)}
-              onAddCertificado={() => onAddCertificado(idx)}
-              onEditCertificado={(rowIdx) => onEditCertificado(idx, rowIdx)}
-              onDeleteCertificado={(rowIdx) => onDeleteCertificado(idx, rowIdx)}
-            />
-          ))}
+        {filteredEtapas.map((e) => (
+  <EtapaAccordion
+    key={e.id || e._id || e.nombre}
+    etapa={e}
+    vista={vista}
+    // onChangeEtapa recibe una función updater: mantenelo igual si es solo UI local
+    onChangeEtapa={(updater) => {
+      setEtapas(prev => {
+        const i = prev.findIndex(x => (x.id||x._id) === (e.id||e._id));
+        if (i === -1) return prev;
+        const next = JSON.parse(JSON.stringify(prev));
+        next[i] = updater(next[i]);
+        return next;
+      });
+    }}
+    // Acciones por ID:
+    onEditEtapa={() => setDlgEtapa({ open: true, index: null, initial: e })}
+    onDeleteEtapa={async () => {
+      const updatedPlan = await deleteEtapa(e.id || e._id);
+      setEtapas(updatedPlan.etapas || []);
+    }}
+    onAddMaterial={() => setDlgMat({ open: true, etapaIdx: null, index: null, initial: null, etapaId: e.id || e._id })}
+    onEditMaterial={(rowIdx) => {
+      const mat = (e.materiales || [])[rowIdx];
+      setDlgMat({ open: true, etapaIdx: null, index: null, initial: mat, etapaId: e.id || e._id, materialId: mat?.id || mat?._id });
+    }}
+    onDeleteMaterial={async (rowIdx) => {
+      const mat = (e.materiales || [])[rowIdx];
+      if (!mat) return;
+      const updatedPlan = await deleteMaterialInEtapa(e.id || e._id, mat.id || mat._id);
+      setEtapas(updatedPlan.etapas || []);
+    }}
+    onAddCertificado={() => setDlgCert({ open: true, etapaIdx: null, index: null, initial: null, etapaId: e.id || e._id })}
+    onEditCertificado={(rowIdx) => {
+      const cert = (e.certificados || [])[rowIdx];
+      setDlgCert({ open: true, etapaIdx: null, index: null, initial: cert, etapaId: e.id || e._id, certId: cert?.id || cert?._id });
+    }}
+    onDeleteCertificado={async (rowIdx) => {
+      const cert = (e.certificados || [])[rowIdx];
+      if (!cert) return;
+      const updatedPlan = await deleteCertificadoInEtapa(e.id || e._id, cert.id || cert._id);
+      setEtapas(updatedPlan.etapas || []);
+    }}
+  />
+))}
+
 
           {!filteredEtapas.length && (
             <Card><CardContent>

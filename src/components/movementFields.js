@@ -21,11 +21,14 @@ const DEFINICION_CAMPOS = [
   { section: 'extras', name: 'tipo_factura', label: 'Tipo de Factura', type: 'select', options: ['FACTURA A', 'FACTURA B', 'FACTURA C', 'No definido'], visibleIf: (info) => info.tipo_factura },
   { section: 'basicos', name: 'numero_factura', label: 'Número de Factura', type: 'text', visibleIf: (info) => info.numero_factura },
   { section: 'basicos', name: 'fecha_factura', label: 'Fecha de la Factura', type: 'date' },
+  { section: 'basicos', name: 'fecha_pago', label: 'Fecha de pago', type: 'date' },
   { section: 'basicos', name: 'type', label: 'Tipo', type: 'select', options: ['egreso', 'ingreso'] },
   { section: 'basicos', name: 'nombre_proveedor', label: 'Proveedor', type: 'autocomplete', optionsKey: 'proveedores', visibleIf: (info) => info.proveedor },
   { section: 'basicos', name: 'categoria', label: 'Categoría', type: 'select', optionsKey: 'categorias', visibleIf: (info) => info.categoria },
   { section: 'basicos', name: 'subcategoria', label: 'Subcategoría', type: 'select', optionsKey: 'subcategorias', visibleIf: (info) => info.subcategoria },
-  
+  { section: 'basicos', name: 'obra',    label: 'Obra',    type: 'autocomplete', optionsKey: 'obras', visibleIf: (info) => info.obra },
+  { section: 'basicos', name: 'cliente', label: 'Cliente', type: 'autocomplete', optionsKey: 'clientes', visibleIf: (info) => info.cliente },
+
   { section: 'extras', name: 'cuenta_interna', label: 'Cuenta Interna', type: 'select', optionsKey: 'cuentasInternas', visibleIf: (info) => info.cuenta_interna },
   { section: 'extras', name: 'etapa', label: 'Etapa', type: 'autocomplete', optionsKey: 'etapas', visibleIf: (info) => info.etapa },
   
@@ -40,7 +43,6 @@ const DEFINICION_CAMPOS = [
   { section: 'pago', name: 'estado', label: 'Estado', type: 'select', options: ['Pendiente', 'Pagado'], visibleIf: (_, empresa) => empresa?.con_estados },
   { section: 'pago', name: 'caja_chica', label: 'Caja Chica', type: 'boolean' },
   { section: 'pago', name: 'empresa_facturacion', label: 'Empresa de facturación', type: 'select', optionsKey: 'subempresas' },
-  { section: 'pago', name: 'fecha_pago', label: 'Fecha de pago', type: 'date' },
 
   // IMPUESTOS
   { section: 'impuestos', name: 'impuestos', label: 'Impuestos', type: 'impuestos' },
@@ -81,8 +83,12 @@ const MovementFields = ({
   lastPageUrl,
   lastPageName,
   movimiento,
-  group = 'general' // << NUEVO: 'general' | 'montos'
+  group = 'general',
+  obrasOptions = [],
+  clientesOptions = []
 }) => {
+
+  
   function getOptionsFromContext(key) {
     switch (key) {
       case 'proveedores': return proveedores || [];
@@ -100,6 +106,8 @@ const MovementFields = ({
       }
       case 'etapas': return (etapas || []).map(e => e.nombre);
       case 'cuentasInternas': return empresa.cuentas || ['Cuenta A', 'Cuenta B', 'Cuenta C'];
+      case 'obras': return obrasOptions || [];
+      case 'clientes': return clientesOptions || [];
       default: return [];
     }
   }

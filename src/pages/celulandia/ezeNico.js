@@ -48,20 +48,23 @@ const columns = [
     label: "Fecha",
     sortable: true,
     render: (row) => (row.fecha ? dayjs(row.fecha).format("DD/MM/YYYY") : "-"),
+    sx: { padding: "5px 0px" },
   },
-  { key: "cliente", label: "Cliente", sortable: true },
   {
     key: "montoARS",
     label: "Monto ARS",
     sortable: true,
-    render: (row) => (row.montoARS != null ? row.montoARS.toLocaleString("es-AR") : "-"),
+    render: (row) => (row.montoARS != null ? `$ ${row.montoARS.toLocaleString("es-AR")}` : "-"),
+    sx: { padding: "5px 0px" },
   },
   {
     key: "montoUSD",
     label: "Monto USD",
     sortable: true,
-    render: (row) => (row.montoUSD != null ? row.montoUSD.toLocaleString("es-AR") : "-"),
+    render: (row) => (row.montoUSD != null ? `$ ${row.montoUSD.toLocaleString("es-AR")}` : "-"),
+    sx: { padding: "5px 0px" },
   },
+  { key: "cliente", label: "Cliente", sortable: true, sx: { padding: "5px 0px" } },
 ];
 
 const EzeNicoPage = () => {
@@ -299,6 +302,7 @@ const EzeNicoPage = () => {
                   columns={columns.map((c) => ({
                     ...c,
                     sortable: true,
+                    sx: { padding: "5px 8px" },
                   }))}
                   searchFields={["cliente"]}
                   dateField="fecha"
@@ -319,6 +323,7 @@ const EzeNicoPage = () => {
                   columns={columns.map((c) => ({
                     ...c,
                     sortable: true,
+                    sx: { padding: "5px 8px" },
                   }))}
                   searchFields={["cliente"]}
                   dateField="fecha"

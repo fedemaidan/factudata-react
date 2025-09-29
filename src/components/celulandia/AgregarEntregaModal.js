@@ -165,14 +165,22 @@ const AgregarEntregaModal = ({ open, onClose, onSaved, clientes = [], tipoDeCamb
       let fechaCuentaCompleta = new Date();
       if (fechaEntrega) {
         const [year, month, day] = fechaEntrega.split("-");
+        const ahora = new Date();
+
+        const fechaArgentina = new Date(
+          ahora.toLocaleString("en-US", {
+            timeZone: "America/Argentina/Buenos_Aires",
+          })
+        );
+
         fechaCuentaCompleta = new Date(
           parseInt(year),
           parseInt(month) - 1,
           parseInt(day),
-          12,
-          0,
-          0,
-          0
+          fechaArgentina.getHours(),
+          fechaArgentina.getMinutes(),
+          fechaArgentina.getSeconds(),
+          fechaArgentina.getMilliseconds()
         );
       }
 
@@ -185,7 +193,6 @@ const AgregarEntregaModal = ({ open, onClose, onSaved, clientes = [], tipoDeCamb
         descripcion: formData.concepto,
         proveedorOCliente: formData.cliente,
         fechaCuenta: fechaCuentaCompleta,
-        fechaCreacion: new Date(),
         descuentoAplicado: factorDescuento,
         subTotal,
         montoTotal,

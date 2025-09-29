@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, use } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Box,
   Button,
@@ -12,138 +12,161 @@ import {
   TableRow,
   Snackbar,
   Alert,
-  Collapse,
-  Chip,
   Tabs,
   Tab,
   Dialog,
   DialogContent,
   Paper,
   Grid,
-  LinearProgress
+  LinearProgress,
+  IconButton,
+  Tooltip,
+  Divider
 } from '@mui/material';
 import CircularProgress from '@mui/material/CircularProgress';
 import RefreshIcon from '@mui/icons-material/Refresh';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import UploadFileIcon from '@mui/icons-material/UploadFile';
+import ArrowForwardIosIcon from '@mui/icons-material/ArrowForwardIos';
+import ArrowBackIosNewIcon from '@mui/icons-material/ArrowBackIosNew';
 import { useRouter } from 'next/router';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import AcopioService from 'src/services/acopioService';
 import RemitosTable from 'src/components/remitosTable';
 import MaterialesTable from 'src/components/materialesTable';
-import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 
+/** ------------------------------
+ *  FLAGS DE FUNCIONALIDAD (configurables)
+ *  ------------------------------ */
+const ENABLE_HOJA_UPLOAD = false; // activar cuando el backend esté listo
+const ENABLE_HOJA_DELETE = false; // activar cuando el backend esté listo
 
 const MovimientosAcopioPage = () => {
   const router = useRouter();
   const { acopioId } = router.query;
+
   const [movimientos, setMovimientos] = useState([]);
   const [materialesAgrupados, setMaterialesAgrupados] = useState({});
   const [alert, setAlert] = useState({ open: false, message: '', severity: 'info' });
-  const [expanded, setExpanded] = useState(null); // Control de colapsar detalles de cada material
-  const [tabActiva, setTabActiva] = useState("acopio");
+  const [expanded, setExpanded] = useState(null);
+  const [tabActiva, setTabActiva] = useState('acopio');
+
   const [acopio, setAcopio] = useState(null);
   const [compras, setCompras] = useState([]);
   const [remitoMovimientos, setRemitoMovimientos] = useState({});
   const [loading, setLoading] = useState(false);
+
   const [remitoAEliminar, setRemitoAEliminar] = useState(null);
   const [dialogoEliminarAbierto, setDialogoEliminarAbierto] = useState(false);
   const [remitosDuplicados, setRemitosDuplicados] = useState(new Set());
 
+  // ---- Hojas del ACOPIO ----
+  const acopioFileInputRef = useRef(null);
+  const [pageIdx, setPageIdx] = useState(0);
+
+  const pages = Array.isArray(acopio?.url_image) ? acopio.url_image : [];
+  const hasAcopioPages = pages.length > 0;
+
+  const totalPages = pages.length;
+  const currentUrl = hasAcopioPages ? pages[pageIdx] : null;
+  const nextIdx = hasAcopioPages ? (pageIdx + 1) % totalPages : 0;
+  const prevIdx = hasAcopioPages ? (pageIdx - 1 + totalPages) % totalPages : 0;
+  const nextUrl = hasAcopioPages ? pages[nextIdx] : null;
+
+  const formatCurrency = (amount) =>
+    amount ? amount.toLocaleString('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0 }) : '$ 0';
+
   const fetchAcopio = useCallback(async () => {
     try {
+      if (!acopioId) return;
       setLoading(true);
       const acopioData = await AcopioService.obtenerAcopio(acopioId);
+      acopioData.tipo = acopioData.tipo || 'materiales';
       setAcopio(acopioData);
+
       const comprasData = await AcopioService.obtenerCompras(acopioId);
-      setCompras(comprasData);
+      setCompras(comprasData || []);
+      // si cambian las páginas, reseteo el índice a 0
+      setPageIdx(0);
     } catch (error) {
-      console.error("Error al obtener acopio o compras:", error);
+      console.error('Error al obtener acopio o compras:', error);
       setAlert({ open: true, message: 'Error al obtener información del acopio', severity: 'error' });
     } finally {
       setLoading(false);
     }
   }, [acopioId]);
-  
-
-  const handleChangeTab = async (event, newValue) => {
-    setTabActiva(newValue);
-    if (newValue === "remitos") fetchRemitos();
-    else if (newValue === "materiales") fetchMovimientos();
-    else if (newValue === "acopio") fetchAcopio();
-  };
-  
-  const fetchActualTab = async () => {
-    if (tabActiva === "remitos") fetchRemitos();
-    else if (tabActiva === "materiales") fetchMovimientos();
-    else if (tabActiva === "acopio") fetchAcopio();
-  };
-  
-  useEffect(() => {
-    if (acopioId) fetchAcopio();
-  }, [fetchAcopio]);
-  
-  const formatCurrency = (amount) => {
-    return amount
-      ? amount.toLocaleString('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0 })
-      : "$ 0";
-  };
 
   const [remitos, setRemitos] = useState([]);
 
-const fetchRemitos = useCallback(async () => {
-  try {
-    if (!acopioId) return;
-    setLoading(true);
-    const remitos = await AcopioService.obtenerRemitos(acopioId);
-    setRemitos(remitos);
-    setRemitosDuplicados(detectarDuplicados(remitos))
-  } catch (error) {
-    console.error('Error al obtener remitos:', error);
-    setAlert({ open: true, message: 'Error al obtener remitos', severity: 'error' });
-  } finally {
-    setLoading(false);
-  }
-}, [acopioId]);
-
-const eliminarRemito = async () => {
-  try {
-    const exito = await AcopioService.eliminarRemito(acopioId, remitoAEliminar);
-    if (exito) {
-      setAlert({ open: true, message: 'Remito eliminado con éxito', severity: 'success' });
-      await fetchRemitos();
-    } else {
-      setAlert({ open: true, message: 'No se pudo eliminar el remito', severity: 'error' });
+  const fetchRemitos = useCallback(async () => {
+    try {
+      if (!acopioId) return;
+      setLoading(true);
+      const remitosResp = await AcopioService.obtenerRemitos(acopioId);
+      setRemitos(remitosResp || []);
+      setRemitosDuplicados(detectarDuplicados(remitosResp || []));
+    } catch (error) {
+      console.error('Error al obtener remitos:', error);
+      setAlert({ open: true, message: 'Error al obtener remitos', severity: 'error' });
+    } finally {
+      setLoading(false);
     }
-  } catch (error) {
-    console.error('Error al eliminar remito:', error);
-    setAlert({ open: true, message: 'Error al eliminar remito', severity: 'error' });
-  } finally {
-    setDialogoEliminarAbierto(false);
-    setRemitoAEliminar(null);
-  }
+  }, [acopioId]);
 
-  
-};
+  const eliminarRemito = async () => {
+    try {
+      const exito = await AcopioService.eliminarRemito(acopioId, remitoAEliminar);
+      if (exito) {
+        setAlert({ open: true, message: 'Remito eliminado con éxito', severity: 'success' });
+        await fetchRemitos();
+      } else {
+        setAlert({ open: true, message: 'No se pudo eliminar el remito', severity: 'error' });
+      }
+    } catch (error) {
+      console.error('Error al eliminar remito:', error);
+      setAlert({ open: true, message: 'Error al eliminar remito', severity: 'error' });
+    } finally {
+      setDialogoEliminarAbierto(false);
+      setRemitoAEliminar(null);
+    }
+  };
 
+  useEffect(() => {
+    if (acopioId) fetchAcopio();
+  }, [fetchAcopio, acopioId]);
 
-useEffect(() => {
-  if (acopioId) fetchRemitos();
-}, [fetchRemitos]);
+  useEffect(() => {
+    if (acopioId) fetchRemitos();
+  }, [fetchRemitos, acopioId]);
 
-const porcentajeDisponible = (1 - (acopio?.valor_desacopio / acopio?.valor_acopio)) * 100;
+  const handleChangeTab = async (_e, newValue) => {
+    setTabActiva(newValue);
+    if (newValue === 'remitos') fetchRemitos();
+    else if (newValue === 'materiales') fetchMovimientos();
+    else if (newValue === 'acopio') fetchAcopio();
+  };
 
-  // Obtener los movimientos del acopio
+  const fetchActualTab = async () => {
+    if (tabActiva === 'remitos') fetchRemitos();
+    else if (tabActiva === 'materiales') fetchMovimientos();
+    else if (tabActiva === 'acopio') fetchAcopio();
+  };
+
+  // Obtener movimientos y agrupar materiales
   const fetchMovimientos = useCallback(async () => {
     try {
       if (!acopioId) return;
-      setLoading(true)
-      const { movimientos, error } = await AcopioService.obtenerMovimientos(acopioId);
+      setLoading(true);
+      const { movimientos: movs, error } = await AcopioService.obtenerMovimientos(acopioId);
       const comprasData = await AcopioService.obtenerCompras(acopioId);
-      if (error)  { console.error('Error al obtener movimientos:', error); throw new Error('Error al obtener movimientos');  }
-      const union_movimientos = [...movimientos, ...comprasData];
+      if (error) {
+        console.error('Error al obtener movimientos:', error);
+        throw new Error('Error al obtener movimientos');
+      }
+      const union_movimientos = [...(movs || []), ...(comprasData || [])];
       setMovimientos(union_movimientos);
 
-
-      // 🔥 Agrupar movimientos por material
       const agrupados = union_movimientos.reduce((acc, mov) => {
         if (!acc[mov.codigo]) {
           acc[mov.codigo] = {
@@ -157,22 +180,19 @@ const porcentajeDisponible = (1 - (acopio?.valor_desacopio / acopio?.valor_acopi
           };
         }
 
-        // Sumar cantidad y valor dependiendo del tipo de movimiento
-        if (mov.tipo === "acopio") {
+        if (mov.tipo === 'acopio') {
           acc[mov.codigo].cantidadAcopiada += mov.cantidad;
           acc[mov.codigo].valorTotalAcopiado += mov.valorOperacion || 0;
-        } else if (mov.tipo === "desacopio") {
+        } else if (mov.tipo === 'desacopio') {
           acc[mov.codigo].cantidadDesacopiada += mov.cantidad;
           acc[mov.codigo].valorTotalDesacopiado += mov.valorOperacion || 0;
         }
 
-        // Guardar los detalles del movimiento
         acc[mov.codigo].detalles.push(mov);
         return acc;
       }, {});
 
       setMaterialesAgrupados(agrupados);
-
     } catch (error) {
       console.error('Error al obtener movimientos:', error);
       setAlert({ open: true, message: 'Error al obtener los movimientos', severity: 'error' });
@@ -181,44 +201,92 @@ const porcentajeDisponible = (1 - (acopio?.valor_desacopio / acopio?.valor_acopi
     }
   }, [acopioId]);
 
-  const detectarDuplicados = (remitos) => {
-    console.log(remitos)
+  const detectarDuplicados = (lista) => {
     const duplicadosPorNumero = {};
     const duplicadosPorValorYFecha = {};
-  
-    remitos.forEach((r) => {
-      // clave por número de remito
+    lista.forEach((r) => {
       if (r.numero_remito) {
         const claveNumero = r.numero_remito.trim().toLowerCase();
         duplicadosPorNumero[claveNumero] = duplicadosPorNumero[claveNumero] || [];
         duplicadosPorNumero[claveNumero].push(r.id);
       }
-  
-      // clave por valor de operación + fecha
       const claveVF = `${r.valorOperacion}_${new Date(r.fecha).toISOString().split('T')[0]}`;
       duplicadosPorValorYFecha[claveVF] = duplicadosPorValorYFecha[claveVF] || [];
       duplicadosPorValorYFecha[claveVF].push(r.id);
     });
-  
     const duplicadosSet = new Set();
-  
     Object.values(duplicadosPorNumero).forEach((ids) => {
       if (ids.length > 1) ids.forEach((id) => duplicadosSet.add(id));
     });
-    
     Object.values(duplicadosPorValorYFecha).forEach((ids) => {
       if (ids.length > 1) ids.forEach((id) => duplicadosSet.add(id));
     });
-    console.log(duplicadosSet)
     return duplicadosSet;
   };
-  
-  
-  
+
+  const porcentajeDisponible = (1 - (acopio?.valor_desacopio / acopio?.valor_acopio || 0)) * 100;
+
+  // ----- Handlers Hojas (acopio nivel) -----
+  const handleAcopioUploadClick = () => {
+    if (!ENABLE_HOJA_UPLOAD) return;
+    acopioFileInputRef.current?.click();
+  };
+
+  const handleAcopioFilesSelected = async (e) => {
+    if (!ENABLE_HOJA_UPLOAD) return;
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    try {
+      setLoading(true);
+      await AcopioService.subirHojasAcopio(acopioId, files);
+      setAlert({ open: true, message: 'Hojas del acopio subidas correctamente', severity: 'success' });
+      await fetchAcopio(); // refresca url_image
+    } catch (err) {
+      console.error(err);
+      setAlert({ open: true, message: 'No se pudieron subir las hojas del acopio', severity: 'error' });
+    } finally {
+      e.target.value = '';
+      setLoading(false);
+    }
+  };
+
+  const handleEliminarPaginaAcopio = async (index) => {
+    if (!ENABLE_HOJA_DELETE) return;
+    try {
+      setLoading(true);
+      await AcopioService.eliminarHojaAcopio(acopioId, index);
+      setAlert({ open: true, message: 'Página eliminada', severity: 'success' });
+      // Ajusto el índice si eliminé la última
+      const wasLast = index === totalPages - 1;
+      await fetchAcopio();
+      if (wasLast) setPageIdx((p) => Math.max(0, p - 1));
+    } catch (err) {
+      console.error(err);
+      setAlert({ open: true, message: 'No se pudo eliminar la página', severity: 'error' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const goNext = () => setPageIdx((i) => (i + 1) % (totalPages || 1));
+  const goPrev = () => setPageIdx((i) => (i - 1 + (totalPages || 1)) % (totalPages || 1));
+
+  // Navegación con teclado
+  useEffect(() => {
+    const onKey = (e) => {
+      if (tabActiva !== 'hojas') return;
+      if (e.key === 'ArrowRight') goNext();
+      if (e.key === 'ArrowLeft') goPrev();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [tabActiva, totalPages]);
+
+  // Render
   return (
     <Box component="main">
       <Container maxWidth="xl">
-      <Box sx={{ mt: 2 }}>
+        <Box sx={{ mt: 2 }}>
           <Button
             variant="text"
             startIcon={<ArrowBackIcon />}
@@ -232,148 +300,334 @@ const porcentajeDisponible = (1 - (acopio?.valor_desacopio / acopio?.valor_acopi
           <Tab label="Info Acopio" value="acopio" />
           <Tab label="Remitos" value="remitos" />
           <Tab label="Materiales" value="materiales" />
+          {hasAcopioPages && <Tab label="Hojas" value="hojas" />}
         </Tabs>
+
         {loading && (
-          <Typography variant="body1" sx={{ mb: 2 }}>
+          <Stack direction="row" spacing={1} alignItems="center" sx={{ my: 2 }}>
             <CircularProgress size={20} />
-            Cargando...
-          </Typography>
+            <Typography variant="body2">Cargando...</Typography>
+          </Stack>
         )}
 
-
-        {/* Tabla de materiales agrupados */}
-        {tabActiva === "materiales" && (
+        {/* Materiales */}
+        {tabActiva === 'materiales' && (
           <MaterialesTable
             materialesAgrupados={materialesAgrupados}
             expanded={expanded}
             setExpanded={setExpanded}
           />
         )}
-        {tabActiva === "remitos" && (
+
+        {/* Remitos */}
+        {tabActiva === 'remitos' && (
           <Box>
-          <RemitosTable
-          remitos={remitos}
-          remitoMovimientos={remitoMovimientos}
-          expanded={expanded}
-          setExpanded={setExpanded}
-          router={router}
-          acopioId={acopioId}
-          remitosDuplicados={remitosDuplicados}
-          setDialogoEliminarAbierto={setDialogoEliminarAbierto}
-          setRemitoAEliminar={setRemitoAEliminar}
-        />
-        </Box>)}
-{tabActiva === "acopio" && (
-  <Box mt={3}>
-    {acopio && (
-      <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
-      <Typography variant="h6" gutterBottom>Resumen del Acopio</Typography>
-      <Grid container spacing={2}>
-        <Grid item xs={12} sm={6} md={4}>
-          <Typography variant="subtitle2">Código</Typography>
-          <Typography>{acopio.codigo}</Typography>
-        </Grid>
-        <Grid item xs={12} sm={6} md={4}>
-          <Typography variant="subtitle2">Proveedor</Typography>
-          <Typography>{acopio.proveedor}</Typography>
-        </Grid>
-        <Grid item xs={12} sm={6} md={4}>
-          <Typography variant="subtitle2">Proyecto</Typography>
-          <Typography>{acopio.proyecto_nombre}</Typography>
-        </Grid>
-        <Grid item xs={12} sm={4}>
-          <Typography variant="subtitle2">Valor Total Acopiado</Typography>
-          <Typography>{formatCurrency(acopio.valor_acopio)}</Typography>
-        </Grid>
-        <Grid item xs={12} sm={4}>
-          <Typography variant="subtitle2">Valor Total Desacopiado</Typography>
-          <Typography>{formatCurrency(acopio.valor_desacopio)}</Typography>
-        </Grid>
-        <Grid item xs={12} sm={4}>
-          <Typography variant="subtitle2">Disponible {porcentajeDisponible.toFixed(2)}%</Typography>
-          <LinearProgress variant="determinate" value={porcentajeDisponible} />
-          <Typography sx={{ fontWeight: 'bold' }}>
-            {formatCurrency(acopio.valor_acopio - acopio.valor_desacopio)}
-          </Typography>
-        </Grid>
-      </Grid>
-    </Paper>    
-    )}
+            <RemitosTable
+              remitos={remitos}
+              remitoMovimientos={remitoMovimientos}
+              expanded={expanded}
+              setExpanded={setExpanded}
+              router={router}
+              acopioId={acopioId}
+              remitosDuplicados={remitosDuplicados}
+              setDialogoEliminarAbierto={setDialogoEliminarAbierto}
+              setRemitoAEliminar={setRemitoAEliminar}
+            />
+          </Box>
+        )}
 
-    <Table>
-      <TableHead>
-        <TableRow>
-          <TableCell>Fecha</TableCell>
-          <TableCell>Código</TableCell>
-          <TableCell>Descripción</TableCell>
-          <TableCell>Cantidad</TableCell>
-          <TableCell>Valor Unitario</TableCell>
-          <TableCell>Valor Total</TableCell>
-        </TableRow>
-      </TableHead>
-      <TableBody>
-        {compras.map((mov) => (
-          <TableRow key={mov.id}>
-            <TableCell>{new Date(mov.fecha).toLocaleDateString()}</TableCell>
-            <TableCell>{mov.codigo}</TableCell>
-            <TableCell>{mov.descripcion}</TableCell>
-            <TableCell>{mov.cantidad}</TableCell>
-            <TableCell>{formatCurrency(mov.valorUnitario)}</TableCell>
-            <TableCell>{formatCurrency(mov.valorOperacion)}</TableCell>
-          </TableRow>
-        ))}
-      </TableBody>
-    </Table>
-  </Box>
-)}
+        {/* Info Acopio + compras */}
+        {tabActiva === 'acopio' && (
+          <Box mt={3}>
+            {acopio && (
+              <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
+                <Typography variant="h6" gutterBottom>Resumen del Acopio</Typography>
+                <Grid container spacing={2}>
+                  <Grid item xs={12} sm={6} md={4}>
+                    <Typography variant="subtitle2">Código</Typography>
+                    <Typography>{acopio.codigo}</Typography>
+                  </Grid>
+                  <Grid item xs={12} sm={6} md={4}>
+                    <Typography variant="subtitle2">Proveedor</Typography>
+                    <Typography>{acopio.proveedor}</Typography>
+                  </Grid>
+                  <Grid item xs={12} sm={6} md={4}>
+                    <Typography variant="subtitle2">Proyecto</Typography>
+                    <Typography>{acopio.proyecto_nombre}</Typography>
+                  </Grid>
+                  <Grid item xs={12} sm={4}>
+                    <Typography variant="subtitle2">Valor Total Acopiado</Typography>
+                    <Typography>{formatCurrency(acopio.valor_acopio)}</Typography>
+                  </Grid>
+                  <Grid item xs={12} sm={4}>
+                    <Typography variant="subtitle2">Valor Total Desacopiado</Typography>
+                    <Typography>{formatCurrency(acopio.valor_desacopio)}</Typography>
+                  </Grid>
+                  <Grid item xs={12} sm={4}>
+                    <Typography variant="subtitle2">Disponible {porcentajeDisponible.toFixed(2)}%</Typography>
+                    <LinearProgress variant="determinate" value={porcentajeDisponible} />
+                    <Typography sx={{ fontWeight: 'bold' }}>
+                      {formatCurrency((acopio.valor_acopio || 0) - (acopio.valor_desacopio || 0))}
+                    </Typography>
+                  </Grid>
+                </Grid>
+              </Paper>
+            )}
 
-{dialogoEliminarAbierto && (
-  <Dialog open={dialogoEliminarAbierto} onClose={() => setDialogoEliminarAbierto(false)}>
-    <DialogContent>
-      <Typography variant="h6" gutterBottom>
-        ¿Estás seguro de que querés eliminar este remito?
-      </Typography>
-      <Stack direction="row" spacing={2} mt={2}>
-        <Button variant="outlined" onClick={() => setDialogoEliminarAbierto(false)}>Cancelar</Button>
-        <Button variant="contained" color="error" onClick={eliminarRemito}>Eliminar</Button>
-      </Stack>
-    </DialogContent>
-  </Dialog>
-)}
+            {acopio?.tipo === 'materiales' && (
+              <Table>
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Fecha</TableCell>
+                    <TableCell>Código</TableCell>
+                    <TableCell>Descripción</TableCell>
+                    <TableCell>Cantidad</TableCell>
+                    <TableCell>Valor Unitario</TableCell>
+                    <TableCell>Valor Total</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {compras.map((mov) => (
+                    <TableRow key={mov.id}>
+                      <TableCell>{mov.fecha ? new Date(mov.fecha).toLocaleDateString() : '—'}</TableCell>
+                      <TableCell>{mov.codigo}</TableCell>
+                      <TableCell>{mov.descripcion}</TableCell>
+                      <TableCell>{mov.cantidad}</TableCell>
+                      <TableCell>{formatCurrency(mov.valorUnitario)}</TableCell>
+                      <TableCell>{formatCurrency(mov.valorOperacion)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </Box>
+        )}
 
+        {/* Hojas: VISOR FULL */}
+        {tabActiva === 'hojas' && hasAcopioPages && (
+          <Box mt={2}>
+            <Paper
+              elevation={0}
+              sx={{
+                p: { xs: 1, md: 2 },
+                borderRadius: 2,
+                border: '1px solid',
+                borderColor: 'divider',
+                position: 'relative',
+                overflow: 'hidden'
+              }}
+            >
+              {/* Barra superior del visor */}
+              <Stack
+                direction="row"
+                alignItems="center"
+                justifyContent="space-between"
+                sx={{ px: 1, py: 1 }}
+              >
+                <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                  Página {pageIdx + 1} de {totalPages}
+                </Typography>
 
-        <Snackbar open={alert.open} autoHideDuration={6000} onClose={() => setAlert({ ...alert, open: false })}>
+                <Stack direction="row" spacing={1} alignItems="center">
+                  {ENABLE_HOJA_UPLOAD && (
+                    <>
+                      <input
+                        type="file"
+                        multiple
+                        accept="image/*,application/pdf"
+                        style={{ display: 'none' }}
+                        ref={acopioFileInputRef}
+                        onChange={handleAcopioFilesSelected}
+                      />
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        startIcon={<UploadFileIcon />}
+                        onClick={handleAcopioUploadClick}
+                      >
+                        Agregar hojas
+                      </Button>
+                    </>
+                  )}
+                  {ENABLE_HOJA_DELETE && (
+                    <Tooltip title="Eliminar página actual">
+                      <span>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          color="error"
+                          startIcon={<DeleteOutlineIcon />}
+                          onClick={() => handleEliminarPaginaAcopio(pageIdx)}
+                        >
+                          Eliminar
+                        </Button>
+                      </span>
+                    </Tooltip>
+                  )}
+                </Stack>
+              </Stack>
+
+              <Divider sx={{ mb: 1 }} />
+
+              {/* Área principal full (alto de viewport) */}
+              <Box
+                sx={{
+                  position: 'relative',
+                  height: { xs: '70vh', md: '78vh' },
+                  bgcolor: 'background.default',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+              >
+                {/* Botón anterior */}
+                <IconButton
+                  onClick={goPrev}
+                  sx={{
+                    position: 'absolute',
+                    left: 8,
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    bgcolor: 'background.paper',
+                    border: '1px solid',
+                    borderColor: 'divider',
+                  }}
+                >
+                  <ArrowBackIosNewIcon />
+                </IconButton>
+
+                {/* Imagen/PDF actual en modo contain */}
+                <a href={currentUrl} target="_blank" rel="noreferrer" style={{ width: '100%', textAlign: 'center' }}>
+                  <img
+                    src={currentUrl}
+                    alt={`Acopio - Página ${pageIdx + 1}`}
+                    style={{
+                      maxWidth: '100%',
+                      maxHeight: '100%',
+                      width: '100%',
+                      height: '100%',
+                      objectFit: 'contain',
+                      display: 'block',
+                      margin: '0 auto'
+                    }}
+                    onError={(e) => { e.currentTarget.style.objectFit = 'contain'; }}
+                  />
+                </a>
+
+                {/* Botón siguiente con mini preview */}
+                <Button
+                  onClick={goNext}
+                  endIcon={<ArrowForwardIosIcon />}
+                  sx={{
+                    position: 'absolute',
+                    right: 8,
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    bgcolor: 'background.paper',
+                    border: '1px solid',
+                    borderColor: 'divider',
+                    boxShadow: 1,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 1,
+                    px: 1.5
+                  }}
+                >
+                  <Box
+                    sx={{
+                      width: 48,
+                      height: 36,
+                      borderRadius: 1,
+                      overflow: 'hidden',
+                      border: '1px solid',
+                      borderColor: 'divider',
+                      backgroundImage: `url("${nextUrl}")`,
+                      backgroundSize: 'cover',
+                      backgroundPosition: 'center'
+                    }}
+                  />
+                  <Typography variant="body2">Siguiente</Typography>
+                </Button>
+              </Box>
+
+              {/* Tira de miniaturas (opcional) */}
+              <Stack direction="row" spacing={1} sx={{ mt: 1, px: 1, pb: 1, overflowX: 'auto' }}>
+                {pages.map((u, i) => (
+                  <Box
+                    key={`thumb-${i}`}
+                    onClick={() => setPageIdx(i)}
+                    sx={{
+                      width: 80,
+                      height: 56,
+                      borderRadius: 1,
+                      border: '2px solid',
+                      borderColor: i === pageIdx ? 'primary.main' : 'divider',
+                      backgroundImage: `url("${u}")`,
+                      backgroundSize: 'cover',
+                      backgroundPosition: 'center',
+                      cursor: 'pointer',
+                      flex: '0 0 auto'
+                    }}
+                    title={`Ir a página ${i + 1}`}
+                  />
+                ))}
+              </Stack>
+            </Paper>
+          </Box>
+        )}
+
+        {/* Confirmación eliminar remito */}
+        {dialogoEliminarAbierto && (
+          <Dialog open={dialogoEliminarAbierto} onClose={() => setDialogoEliminarAbierto(false)}>
+            <DialogContent>
+              <Typography variant="h6" gutterBottom>
+                ¿Estás seguro de que querés eliminar este remito?
+              </Typography>
+              <Stack direction="row" spacing={2} mt={2}>
+                <Button variant="outlined" onClick={() => setDialogoEliminarAbierto(false)}>Cancelar</Button>
+                <Button variant="contained" color="error" onClick={eliminarRemito}>Eliminar</Button>
+              </Stack>
+            </DialogContent>
+          </Dialog>
+        )}
+
+        {/* Snackbar */}
+        <Snackbar
+          open={alert.open}
+          autoHideDuration={6000}
+          onClose={() => setAlert({ ...alert, open: false })}
+        >
           <Alert onClose={() => setAlert({ ...alert, open: false })} severity={alert.severity}>
             {alert.message}
           </Alert>
         </Snackbar>
-        <Box
-  sx={{
-    position: 'fixed',
-    bottom: 16,
-    right: 16,
-    zIndex: 10,
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 1,
-  }}
->
-  <Button
-    variant="outlined"
-    size="small"
-    startIcon={<RefreshIcon />}
-    onClick={fetchActualTab}
-    sx={{ minWidth: 'auto', px: 2 }}
-  >
-    Actualizar
-  </Button>
-</Box>
 
+        {/* Botón actualizar flotante */}
+        <Box
+          sx={{
+            position: 'fixed',
+            bottom: 16,
+            right: 16,
+            zIndex: 10,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 1
+          }}
+        >
+          <Button
+            variant="outlined"
+            size="small"
+            startIcon={<RefreshIcon />}
+            onClick={fetchActualTab}
+            sx={{ minWidth: 'auto', px: 2 }}
+          >
+            Actualizar
+          </Button>
+        </Box>
       </Container>
     </Box>
   );
 };
 
 MovimientosAcopioPage.getLayout = (page) => <DashboardLayout>{page}</DashboardLayout>;
-
 export default MovimientosAcopioPage;

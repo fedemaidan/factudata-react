@@ -27,29 +27,29 @@ import PeopleIcon from "@mui/icons-material/People";
 import StoreIcon from "@mui/icons-material/Store";
 import NoteAltIcon from "@mui/icons-material/NoteAlt";
 import AttachMoneyIcon from "@mui/icons-material/AttachMoney";
-import InventoryIcon from "@mui/icons-material/Inventory";
 import SettingsIcon from "@mui/icons-material/Settings";
 import MenuOpenIcon from "@mui/icons-material/MenuOpen";
 import MenuIcon from "@mui/icons-material/Menu";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import { AccountBalanceWallet, Checklist, LocalAtm } from "@mui/icons-material";
+import InventoryIcon from "@mui/icons-material/Inventory";
 
 export const SideNav = (props) => {
   const { open, onClose, collapsed = false, onToggleCollapsed, width = 280 } = props;
   const pathname = usePathname();
   const lgUp = useMediaQuery((theme) => theme.breakpoints.up("lg"));
-  const { user } = useAuthContext();
+  const { user, isSpying } = useAuthContext();
 
   const [items, setItems] = useState([]);
   const [proyectos, setProyectos] = useState([]);
   const [proyectosPlanObra, setProyectosPlanObra] = useState([]);
-  
+
   const [empresa, setEmpresa] = useState(null);
   const [showProyectos, setShowProyectos] = useState(true);
 
   const paperSx = {
-    backgroundColor: "neutral.800",
+    backgroundColor: isSpying() ? "neutral.600" : "neutral.800",
     color: "common.white",
     width,
     overflowX: "hidden",
@@ -81,11 +81,11 @@ export const SideNav = (props) => {
   useEffect(() => {
     const fetchProyectosData = async () => {
       const emp = await getEmpresaDetailsFromUser(user);
-      if (emp.cuenta_suspendida) {
+      if (emp?.cuenta_suspendida) {
         return;
       }
       setEmpresa(emp || null);
-      
+
       if (!emp) {
         setItems([
           {
@@ -116,7 +116,6 @@ export const SideNav = (props) => {
         return;
       }
 
-      
       // Empresa estándar
       const permisosUsuario = getPermisosVisibles(emp.acciones || [], user?.permisosOcultos || []);
       let baseItems = [
@@ -239,7 +238,29 @@ export const SideNav = (props) => {
         });
       }
 
+      if (permisosUsuario.includes("CELULANDIA_PROYECCIONES")) {
+        baseItems.push({
+          title: "Proyecciones",
+          path: "/celulandia/proyecciones",
+          icon: (
+            <SvgIcon fontSize="small">
+              <InventoryIcon />
+            </SvgIcon>
+          ),
+        });
+      }
 
+      if (permisosUsuario.includes("CELULANDIA_RESUMEN")) {
+        baseItems.push({
+          title: "Resumen",
+          path: "/celulandia/resumen",
+          icon: (
+            <SvgIcon fontSize="small">
+              <DashboardIcon />
+            </SvgIcon>
+          ),
+        });
+      }
 
       if (user?.admin) {
         baseItems.push({
@@ -253,7 +274,7 @@ export const SideNav = (props) => {
         });
       }
 
-      if (permisosUsuario.includes('ADMIN_USUARIOS')) {
+      if (permisosUsuario.includes("ADMIN_USUARIOS")) {
         baseItems.push({
           title: "Administrar" + emp.nombre,
           path: "/configuracionBasica/?empresaId=" + emp.id,
@@ -338,16 +359,16 @@ export const SideNav = (props) => {
       }
 
       if (permisosUsuario.includes("VER_CAJAS")) {
-        if (permisosUsuario.includes('VER_MI_CAJA_CHICA')) {
+        if (permisosUsuario.includes("VER_MI_CAJA_CHICA")) {
           baseItems.push({
-            title: 'Ver cajas chicas',
-            path: '/perfilesEmpresa',
+            title: "Ver cajas chicas",
+            path: "/perfilesEmpresa",
             icon: (
               <SvgIcon fontSize="small">
                 <AttachMoneyIcon />
               </SvgIcon>
-            )
-          })
+            ),
+          });
         }
 
         baseItems.push({
@@ -387,9 +408,8 @@ export const SideNav = (props) => {
             </SvgIcon>
           ),
         };
-        
-        baseItems = [vista7, todos, revision, ...baseItems];
 
+        baseItems = [vista7, todos, revision, ...baseItems];
 
         // proyectos activos
         let proys = await getProyectosFromUser(user);
@@ -419,7 +439,7 @@ export const SideNav = (props) => {
 
       setItems(baseItems);
     };
-    
+
     fetchProyectosData();
   }, [user]);
 
@@ -597,13 +617,13 @@ export const SideNav = (props) => {
         {/* Footer minimal: sin imagen promocional */}
         <Divider sx={{ borderColor: "neutral.700" }} />
         {!collapsed && (
-          <Button sx={{ p: 1.5, display: "flex", alignItems: "center", gap: 1 }} onClick={() => window.location.reload(true)}>
+          <Button
+            sx={{ p: 1.5, display: "flex", alignItems: "center", gap: 1 }}
+            onClick={() => window.location.reload(true)}
+          >
             Forzar refrescar
           </Button>
         )}
-
-
-        
       </Box>
     </Scrollbar>
   );

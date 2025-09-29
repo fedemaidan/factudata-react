@@ -146,7 +146,8 @@ const ClienteCelulandiaCCPage = () => {
       return {
         id: m.id || m._id,
         fecha,
-        descripcion: isMov ? "-" : m.descripcion || "-",
+        descripcion:
+          m.concepto && m.concepto !== "-" ? m.concepto : m.descripcion ? m.descripcion : "-",
         cliente: m?.nombreCliente || m?.clienteNombre || m.cliente?.nombre || "-",
         group: m.cuentaCorriente || m.CC || m.cc,
         monto,
@@ -231,7 +232,7 @@ const ClienteCelulandiaCCPage = () => {
         setHistorialConfig(getMovimientoHistorialConfig(cajas));
         setHistorialLoader(movimientosService.getMovimientoLogs);
       } else {
-        setHistorialConfig(getCuentaPendienteHistorialConfig());
+        setHistorialConfig(getCuentaPendienteHistorialConfig(clientes));
         setHistorialLoader(cuentasPendientesService.getLogs);
       }
       setHistorialModalOpen(true);
@@ -350,7 +351,7 @@ const ClienteCelulandiaCCPage = () => {
         open={editarModalOpen}
         onClose={() => setEditarModalOpen(false)}
         data={selectedData}
-        onSave={handleSaveEdit}
+        onSave={fetchData}
         clientes={clientes}
         tipoDeCambio={tipoDeCambio}
         cajas={cajas}
@@ -367,8 +368,14 @@ const ClienteCelulandiaCCPage = () => {
         open={historialModalOpen}
         onClose={() => setHistorialModalOpen(false)}
         data={selectedData}
-        loadHistorialFunction={historialLoader}
-        {...(historialConfig || {})}
+        loadHistorialFunction={
+          selectedItemType === "movimiento"
+            ? movimientosService.getMovimientoLogs
+            : cuentasPendientesService.getLogs
+        }
+        {...(selectedItemType === "movimiento"
+          ? getMovimientoHistorialConfig(cajas)
+          : getCuentaPendienteHistorialConfig(clientes))}
       />
       <ConfirmarEliminacionModal
         open={confirmarEliminacionOpen}

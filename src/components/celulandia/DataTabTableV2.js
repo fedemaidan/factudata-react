@@ -62,6 +62,10 @@ const DataTabTableV2 = ({
   showDatePicker = false,
   selectedDate = null,
   onDateChange = null,
+  showDateRange = false,
+  dateFrom = null,
+  dateTo = null,
+  onDateRangeChange = null,
   onRefresh = null,
   showRefreshButton = false,
   // Acciones
@@ -79,8 +83,11 @@ const DataTabTableV2 = ({
   onSortChange = null,
   filtroFecha = "todos",
   onFiltroFechaChange = null,
+  onRowsPerPageChange = null,
   onOptionChange = null,
   showSaldoColumn = false,
+  // Totales provistos por el servidor (opcional)
+  externalTotals = null,
 }) => {
   const [busqueda, setBusqueda] = useState("");
   const [internalFiltroFecha, setInternalFiltroFecha] = useState(filtroFecha);
@@ -114,12 +121,13 @@ const DataTabTableV2 = ({
     (campo) => {
       if (campo !== "fecha") return; // solo permitimos ordenar por fecha
       if (onSortChange) {
-        onSortChange("fecha");
+        const next = finalSortDirection === "asc" ? "desc" : "asc";
+        onSortChange("fecha", next);
       } else {
         setInternalSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
       }
     },
-    [onSortChange]
+    [onSortChange, finalSortDirection]
   );
 
   const handleFiltroFechaChange = useCallback(
@@ -157,13 +165,13 @@ const DataTabTableV2 = ({
     (event) => {
       const newRowsPerPage = parseInt(event.target.value, 10);
       if (onPageChange) {
-        // si es server-side, el padre decide
+        onRowsPerPageChange && onRowsPerPageChange(newRowsPerPage);
       } else {
         setInternalRowsPerPage(newRowsPerPage);
         setPage(0);
       }
     },
-    [onPageChange]
+    [onPageChange, onRowsPerPageChange]
   );
 
   const handleRefresh = useCallback(async () => {
@@ -318,6 +326,16 @@ const DataTabTableV2 = ({
     return res;
   }, [grouped]);
 
+  const displayTotals = useMemo(() => {
+    if (externalTotals && typeof externalTotals.get === "function") return externalTotals;
+    if (externalTotals && typeof externalTotals === "object") {
+      const m = new Map();
+      Object.entries(externalTotals).forEach(([k, v]) => m.set(k, v));
+      return m;
+    }
+    return totals;
+  }, [externalTotals, totals]);
+
   // Exportar a Excel (pestaña actual) — con Debe/Haber/Saldo acumulado y números puros
   const handleExportExcel = () => {
     const allRows = groupedWithSaldo.get(currentOption) || [];
@@ -414,6 +432,30 @@ const DataTabTableV2 = ({
               </LocalizationProvider>
             )}
 
+            {showDateRange && (
+              <LocalizationProvider dateAdapter={AdapterDayjs}>
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <DatePicker
+                    label="Desde"
+                    value={dateFrom}
+                    onChange={(v) => onDateRangeChange && onDateRangeChange(v, dateTo)}
+                    format="DD/MM/YYYY"
+                  />
+                  <DatePicker
+                    label="Hasta"
+                    value={dateTo}
+                    onChange={(v) => onDateRangeChange && onDateRangeChange(dateFrom, v)}
+                    format="DD/MM/YYYY"
+                  />
+                  {onDateRangeChange && (
+                    <Button variant="text" onClick={() => onDateRangeChange(null, null)}>
+                      Limpiar
+                    </Button>
+                  )}
+                </Stack>
+              </LocalizationProvider>
+            )}
+
             {showRefreshButton && onRefresh && (
               <Tooltip title="Actualizar datos">
                 <IconButton
@@ -459,7 +501,7 @@ const DataTabTableV2 = ({
                 onClick={() => handleOptionChange(opt.value)}
                 sx={{ py: 2, minWidth: 160 }}
               >
-                {opt.label}: {formatCurrency(Math.round(totals.get(opt.value) || 0))}
+                {opt.label}: {formatCurrency(Math.round(displayTotals.get(opt.value) || 0))}
               </Button>
             ))}
           </Stack>
@@ -470,7 +512,7 @@ const DataTabTableV2 = ({
         <div key={opt.value} role="tabpanel" hidden={currentOption !== opt.value}>
           {currentOption === opt.value && (
             <Box>
-              <Table>
+              <Table sx={{ "& .MuiTableCell-root": { fontSize: "0.75rem", padding: "5px 8px" } }}>
                 <TableHead>
                   <TableRow>
                     <TableCell sx={{ fontWeight: "bold", cursor: "pointer" }}>
@@ -486,12 +528,6 @@ const DataTabTableV2 = ({
                     {/* Sin orden en el resto de columnas */}
                     <TableCell sx={{ fontWeight: "bold" }}>Cliente</TableCell>
                     <TableCell sx={{ fontWeight: "bold" }}>Monto ({opt.label})</TableCell>
-                    <TableCell sx={{ fontWeight: "bold" }}>Tipo de Cambio</TableCell>
-                    <TableCell sx={{ fontWeight: "bold" }}>Descuento</TableCell>
-                    <TableCell sx={{ fontWeight: "bold" }}>
-                      Monto Original (sin descuento)
-                    </TableCell>
-                    <TableCell sx={{ fontWeight: "bold" }}>Moneda Original</TableCell>
                     {showSaldoColumn && <TableCell sx={{ fontWeight: "bold" }}>Saldo</TableCell>}
 
                     {(onEdit || onViewHistory || onDelete || onViewImage) && (
@@ -508,30 +544,22 @@ const DataTabTableV2 = ({
                       onClick={() => console.log(row)}
                       sx={{ cursor: "pointer" }}
                     >
-                      <TableCell>{formatearCampo("fecha", row.fecha)}</TableCell>
-                      <TableCell>{row.cliente}</TableCell>
+                      <TableCell sx={{ fontSize: "0.75rem" }}>
+                        {formatearCampo("fecha", row.fecha)}
+                      </TableCell>
+                      <TableCell sx={{ fontSize: "0.75rem" }}>{row.cliente}</TableCell>
                       <TableCell>
-                        <Typography color={(row.monto || 0) < 0 ? "error.main" : "text.primary"}>
+                        <Typography
+                          sx={{ fontSize: "0.75rem" }}
+                          color={(row.monto || 0) < 0 ? "error.main" : "text.primary"}
+                        >
                           {formatCurrency(Math.round(row.monto || 0))}
                         </Typography>
                       </TableCell>
-                      <TableCell>{formatearCampo("tipoDeCambio", row.tipoDeCambio)}</TableCell>
-                      <TableCell>
-                        {row.descuentoAplicado !== undefined && row.descuentoAplicado !== null
-                          ? `${Math.round(((row.descuentoAplicado ?? 1) - 1) * -100)}%`
-                          : "-"}
-                      </TableCell>
-                      <TableCell>
-                        <Typography
-                          color={(row.montoOriginal || 0) < 0 ? "error.main" : "text.primary"}
-                        >
-                          {formatCurrency(Math.round(row.montoOriginal || 0))}
-                        </Typography>
-                      </TableCell>
-                      <TableCell>{formatearCampo("monedaDePago", row.monedaOriginal)}</TableCell>
                       {showSaldoColumn && (
                         <TableCell>
                           <Typography
+                            sx={{ fontSize: "0.75rem" }}
                             color={(row.saldoAcumulado || 0) < 0 ? "error.main" : "text.primary"}
                           >
                             {formatCurrency(Math.round(row.saldoAcumulado || 0))}
@@ -614,7 +642,7 @@ const DataTabTableV2 = ({
                 onPageChange={handlePageChange}
                 rowsPerPage={finalRowsPerPage}
                 onRowsPerPageChange={handleRowsPerPageChange}
-                rowsPerPageOptions={onPageChange ? [finalRowsPerPage] : [1000]}
+                rowsPerPageOptions={onPageChange ? [25, 50, 100, 200] : [1000]}
                 labelRowsPerPage="Filas por página:"
                 labelDisplayedRows={({ from, to, count }) =>
                   `${from}-${to} de ${count !== -1 ? count : `más de ${to}`}`

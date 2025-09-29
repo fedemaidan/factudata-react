@@ -15,8 +15,11 @@ import { parseMovimiento } from "src/utils/celulandia/movimientos/parseMovimient
 import EditarPagoModal from "src/components/celulandia/EditarPagoModal";
 import AgregarPagoModal from "src/components/celulandia/AgregarPagoModal";
 import ConfirmarEliminacionModal from "src/components/celulandia/ConfirmarEliminacionModal";
+import { getEmpresaDetailsFromUser } from "src/services/empresaService";
+import { useAuthContext } from "src/contexts/auth-context";
 
 const PagosCelulandiaPage = () => {
+  const { user } = useAuthContext();
   const [pagos, setPagos] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [editarModalOpen, setEditarModalOpen] = useState(false);
@@ -31,6 +34,7 @@ const PagosCelulandiaPage = () => {
   const [sortField, setSortField] = useState("fechaFactura");
   const [sortDirection, setSortDirection] = useState("desc");
   const [filtroFecha, setFiltroFecha] = useState("todos");
+  const [categorias, setCategorias] = useState([]);
 
   const [cajas, setCajas] = useState([]);
 
@@ -137,9 +141,7 @@ const PagosCelulandiaPage = () => {
       const offset = (pagina - 1) * limitePorPagina;
       const { fechaInicio, fechaFin } = calcularFechasFiltro(filtroFecha);
 
-      console.log(`Filtro aplicado en pagos: ${filtroFecha}`, { fechaInicio, fechaFin });
-
-      const [movimientosResponse, cajasResponse] = await Promise.all([
+      const [movimientosResponse, cajasResponse, empresaResponse] = await Promise.all([
         movimientosService.getAllMovimientos({
           type: "EGRESO",
           populate: "caja",
@@ -152,19 +154,20 @@ const PagosCelulandiaPage = () => {
           //includeInactive: true, // Incluir registros inactivos para mostrarlos tachados
         }),
         cajasService.getAllCajas(),
+        getEmpresaDetailsFromUser(user),
       ]);
 
       setPagos(movimientosResponse.data.map(parseMovimiento));
       setTotalPagos(movimientosResponse.total || 0);
       setPaginaActual(pagina);
       setCajas(cajasResponse.data);
+      setCategorias(empresaResponse.categorias);
     } catch (error) {
       console.error("Error al cargar datos:", error);
     } finally {
       setIsLoading(false);
     }
   };
-  console.log(pagos);
 
   const columns = [
     {
@@ -327,6 +330,7 @@ const PagosCelulandiaPage = () => {
         onClose={() => setAgregarModalOpen(false)}
         onSave={refetchPagos}
         cajas={cajas}
+        categorias={categorias}
       />
       <ConfirmarEliminacionModal
         open={confirmarEliminacionOpen}

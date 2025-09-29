@@ -40,6 +40,8 @@ const COLS = {
   codigo: 120,
   fecha: 140,
   tipo: 120,
+  obra: 200,
+  cliente: 200,
   total: 160,
   categoria: 160,
   subcategoria: 160,
@@ -64,34 +66,61 @@ const ellipsis = (maxWidth) => ({
 });
 
 
-const TotalesFiltrados = ({ t, fmt, moneda }) => {
-  const up = moneda.toUpperCase();
+const TotalesFiltrados = ({ t, fmt, moneda, showUsdBlue = false, usdBlue = null }) => {
+  const up = (moneda || '').toUpperCase();
   const ingreso = t[up]?.ingreso ?? 0;
   const egreso  = t[up]?.egreso  ?? 0;
   const neto    = ingreso - egreso;
 
   return (
-    <Box sx={{ bgcolor: 'action.hover', p: 2, borderRadius: 1, mb: 2 }}>
-      <Typography variant="subtitle2" sx={{ mb: 1 }}>
-        Totales filtrados ({up})
-      </Typography>
+    <Stack direction="row" spacing={4} sx={{ mb: 2, flexWrap: 'wrap' }}>
+      {/* bloque ARS/moneda base */}
+      <Box sx={{ bgcolor: 'action.hover', p: 2, borderRadius: 1, flex: 1, minWidth: 260 }}>
+        <Typography variant="subtitle2" sx={{ mb: 1 }}>
+          Totales filtrados ({up})
+        </Typography>
+        <Stack direction="row" spacing={1} flexWrap="wrap">
+          <Typography sx={{ color: 'success.main', fontWeight: 600 }}>
+            + {fmt(up, ingreso)}
+          </Typography>
+          <Typography sx={{ color: 'error.main', fontWeight: 600 }}>
+            - {fmt(up, egreso)}
+          </Typography>
+          <Typography sx={{ color: neto >= 0 ? 'success.main' : 'error.main', fontWeight: 700 }}>
+            Neto: {fmt(up, neto)}
+          </Typography>
+        </Stack>
+      </Box>
 
-      <Stack direction="row" spacing={1} flexWrap="wrap">
-        <Typography sx={{ color: 'success.main', fontWeight: 600 }}>
-          + {fmt(up, ingreso)}
-        </Typography>
-        <Typography sx={{ color: 'error.main', fontWeight: 600 }}>
-          - {fmt(up, egreso)}
-        </Typography>
-        <Typography
-          sx={{ color: neto >= 0 ? 'success.main' : 'error.main', fontWeight: 700 }}
-        >
-          Neto: {fmt(up, neto)}
-        </Typography>
-      </Stack>
-    </Box>
+      {/* bloque USD blue opcional */}
+      {showUsdBlue && usdBlue && (
+        <Box sx={{ bgcolor: 'action.hover', p: 2, borderRadius: 1, flex: 1, minWidth: 260 }}>
+          <Typography variant="subtitle2" sx={{ mb: 1 }}>
+            Totales filtrados en USD blue
+          </Typography>
+          <Stack direction="row" spacing={1} flexWrap="wrap">
+            <Typography sx={{ color: 'success.main', fontWeight: 600 }}>
+              + {fmt('USD', usdBlue.ingreso)}
+            </Typography>
+            <Typography sx={{ color: 'error.main', fontWeight: 600 }}>
+              - {fmt('USD', usdBlue.egreso)}
+            </Typography>
+            <Typography
+              sx={{
+                color: (usdBlue.neto ?? 0) >= 0 ? 'success.main' : 'error.main',
+                fontWeight: 700
+              }}
+            >
+              Neto: {fmt('USD', usdBlue.neto)}
+            </Typography>
+          </Stack>
+        </Box>
+      )}
+    </Stack>
   );
 };
+
+
 
 
 
@@ -120,14 +149,16 @@ const ProyectoMovimientosPage = () => {
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [anchorEl, setAnchorEl] = useState(null);
   const [cajasVirtuales, setCajasVirtuales] = useState([
-    { nombre: 'Caja en Pesos', moneda: 'ARS', medio_pago: "" },
-    { nombre: 'Caja en Dólares', moneda: 'USD', medio_pago: "" }
+    { nombre: 'Caja en Pesos', moneda: 'ARS', medio_pago: "" , equivalencia: 'none', type: '' },
+    { nombre: 'Caja en Dólares', moneda: 'USD', medio_pago: "" , equivalencia: 'none', type: '' },
+    { nombre: 'Gastos en', moneda: 'ARS', medio_pago: "" , equivalencia: 'use_blue', type: 'egreso' },
   ]);  
   const [showCrearCaja, setShowCrearCaja] = useState(false);
   const [nombreCaja, setNombreCaja] = useState('');
   const [monedaCaja, setMonedaCaja] = useState('ARS');
   const [estadoCaja, setEstadoCaja] = useState('');
   const [medioPagoCaja, setMedioPagoCaja] = useState('Efectivo');
+  const [equivalenciaCaja, setEquivalenciaCaja] = useState('none'); // 'none' | 'usd_blue' | ...
   const [editandoCaja, setEditandoCaja] = useState(null); // null o index de la caja
   const [cajaSeleccionada, setCajaSeleccionada] = useState(null);
   const [prefsHydrated, setPrefsHydrated] = useState(false);
@@ -147,6 +178,7 @@ const [anchorColsEl, setAnchorColsEl] = useState(null);
 const scrollRef = useRef(null);      // contenedor principal con overflow
 const topScrollRef = useRef(null);   // barra superior "fantasma"
 const tableRef = useRef(null);
+const [typeCaja, setTypeCaja] = useState(''); // '' | 'ingreso' | 'egreso'
 
 const [atEdges, setAtEdges] = useState({ left: true, right: false });
 const [atStart, setAtStart] = useState(true);
@@ -156,6 +188,16 @@ const [topWidth, setTopWidth] = useState(0);
 // --- paginación ---
 const [page, setPage] = useState(0);           // página actual (0-based)
 const [rowsPerPage, setRowsPerPage] = useState(25);  // filas por página
+
+ // helper: metadatos de equivalencias (moneda objetivo y path en mov.equivalencias)
+ const EQUIV_META = {
+   none:        { out: null,        path: null },                          // usa mov.total
+   usd_blue:    { out: 'USD',       path: (e) => e?.total?.usd_blue },
+   usd_oficial: { out: 'USD',       path: (e) => e?.total?.usd_oficial },  // si lo tenés
+   ars_oficial: { out: 'ARS',       path: (e) => e?.total?.ars_oficial },
+   cac:         { out: 'ARS',       path: (e) => e?.total?.cac },          // ej. si calculás CAC a ARS
+ };
+
 
 // handlers
 const handleChangePage = (_evt, newPage) => {
@@ -214,12 +256,6 @@ useEffect(() => {
 }, []);
 
 
-
-const handleTopScroll = () => {
-  if (!topScrollRef.current || !scrollRef.current) return;
-  scrollRef.current.scrollLeft = topScrollRef.current.scrollLeft;
-};
-
 const scrollByStep = (dir) => {
   const el = scrollRef.current;
   const table = tableRef.current;
@@ -261,25 +297,28 @@ const handleSaveCols = async () => {
     }
   };
 
-const defaultVisible = useMemo(() => ({
-  codigo: true,
-  fechas: true,            // combinado (cuando compactCols=true)
-  fechaFactura: !compactCols,
-  fechaCreacion: !compactCols,
-  tipo: !compactCols,      // en compacto, se colorea TOTAL y se oculta TIPO
-  total: true,
-  categoria: true,         // en compacto: muestra "cat / subcat"
-  subcategoria: !compactCols && !!empresa?.comprobante_info?.subcategoria,
-  medioPago: !!empresa?.comprobante_info?.medio_pago,
-  proveedor: true,
-  observacion: true,
-  tc: false,
-  usd: true,
-  estado: !!empresa?.con_estados,
-  acciones: true,
-  empresaFacturacion: false,
-  fechaPago: false,
-}), [compactCols, empresa]);
+  const defaultVisible = useMemo(() => ({
+    codigo: true,
+    fechas: true,
+    fechaFactura: !compactCols,
+    fechaCreacion: !compactCols,
+    tipo: !compactCols,
+    total: true,
+    categoria: true,
+    subcategoria: !compactCols && !!empresa?.comprobante_info?.subcategoria,
+    medioPago: !!empresa?.comprobante_info?.medio_pago,
+    proveedor: true,
+    obra: true,        // <-- NUEVO
+    cliente: true,     // <-- NUEVO
+    observacion: true,
+    tc: false,
+    usd: true,
+    estado: !!empresa?.con_estados,
+    acciones: true,
+    empresaFacturacion: false,
+    fechaPago: false,
+  }), [compactCols, empresa]);
+  
 
 const [visibleCols, setVisibleCols] = useState(defaultVisible);
 
@@ -332,8 +371,10 @@ const handleCloseCols = () => setAnchorColsEl(null);
     setMonedaCaja(caja.moneda);
     setMedioPagoCaja(caja.medio_pago || '');
     setShowCrearCaja(true);
+    setTypeCaja(caja.type || '');
     setEstadoCaja(caja.estado || '');
     handleCloseCajaMenu();
+    setEquivalenciaCaja(caja.equivalencia || 'none');
   };
   
   const handleEliminarCaja = (index) => {
@@ -381,7 +422,16 @@ const handleCloseCols = () => setAnchorColsEl(null);
     handleCloseMenu();
   };
 
-  
+   const formatCajaAmount = (caja, amount) => {
+       const meta = EQUIV_META[caja.equivalencia || 'none'] || EQUIV_META.none;
+       const out = meta.out || (caja.moneda || 'ARS');
+       return (amount ?? 0).toLocaleString('es-AR', {
+         style: 'currency',
+         currency: out.toUpperCase() === 'USD' ? 'USD' : 'ARS',
+         minimumFractionDigits: 2
+       });
+     };
+    
 
   const eliminarMovimiento = async () => {
     setDeletingElement(movimientoAEliminar);
@@ -453,8 +503,8 @@ const handleCloseCols = () => setAnchorColsEl(null);
 
       const empresa = await getEmpresaDetailsFromUser(user);
       const cajasIniciales = empresa.cajas_virtuales?.length > 0 ? empresa.cajas_virtuales : [
-        { nombre: 'Caja en Pesos', moneda: 'ARS', medio_pago: "" },
-        { nombre: 'Caja en Dólares', moneda: 'USD', medio_pago: "" }
+        { nombre: 'Caja en Pesos', moneda: 'ARS', medio_pago: "" , equivalencia: 'none', type: '' },
+        { nombre: 'Caja en Dólares', moneda: 'USD', medio_pago: "" , equivalencia: 'none', type: '' },
       ];
       if (!empresa.cajas_virtuales || empresa.cajas_virtuales.length === 0) {
         await updateEmpresaDetails(empresa.id, { cajas_virtuales: cajasIniciales });
@@ -546,22 +596,40 @@ const handleCloseCols = () => setAnchorColsEl(null);
   };
 
 
-  const calcularTotalParaCaja = (caja) => {
-    const baseMovimientos = caja.moneda === 'USD' ? movimientosUSD : movimientos;
-  
-    return baseMovimientos.reduce((acc, mov) => {
-      const matchMedioPago = caja.medio_pago
-        ? mov.medio_pago === caja.medio_pago
-        : true;
-  
-        const matchEstado = caja.estado ? mov.estado === caja.estado : true;
-        
-        if (!matchMedioPago || !matchEstado) return acc;
-  
-      if (mov.type === 'ingreso') return acc + mov.total;
-      return acc - mov.total;
-    }, 0);
-  };
+   const calcularTotalParaCaja = (caja) => {
+       // Filtramos por medio de pago / estado sobre TODOS los movimientos relevantes
+       // (si querés mantener la restricción por moneda nativa de la caja, podés filtrar por mov.moneda también)
+       const allMovs = [...movimientos, ...movimientosUSD];
+       const meta = EQUIV_META[caja.equivalencia || 'none'] || EQUIV_META.none;
+     
+       return allMovs.reduce((acc, mov) => {
+         const matchMedioPago = caja.medio_pago ? mov.medio_pago === caja.medio_pago : true;
+         const matchEstado    = caja.estado ? mov.estado === caja.estado : true;
+         const matchType      = caja.type ? mov.type === caja.type : true;
+         const matchMoneda      = caja.moneda ? mov.moneda === caja.moneda : true;
+         if (!matchMedioPago || !matchEstado || !matchType || !matchMoneda) return acc;
+     
+         // valor según equivalencia
+         let val;
+         if (meta.path) {
+           const equivVal = meta.path(mov.equivalencias);
+           // fallback razonable: si no hay equivalencia y la moneda destino coincide con la del mov, usar total
+           if (typeof equivVal === 'number') {
+             val = equivVal;
+           } else if (meta.out && mov.moneda?.toUpperCase() === meta.out.toUpperCase()) {
+             val = mov.total || 0;
+           } else {
+             // como último recurso, usá el total nativo para no “perder” el movimiento
+             val = mov.total || 0;
+           }
+         } else {
+           // sin equivalencia → monto nativo
+           val = mov.total || 0;
+         }
+     
+         return acc + (mov.type === 'ingreso' ? val : -val);
+       }, 0);
+     };
   
   
 
@@ -571,7 +639,9 @@ const handleCloseCols = () => setAnchorColsEl(null);
       nombre: nombreCaja,
       moneda: monedaCaja,
       medio_pago: medioPagoCaja,
-      estado: estadoCaja 
+      estado: estadoCaja,
+      equivalencia: equivalenciaCaja || 'none',
+      type: typeCaja || '',
     };
     
   
@@ -589,6 +659,8 @@ const handleCloseCols = () => setAnchorColsEl(null);
     setMonedaCaja('ARS');
     setMedioPagoCaja('Efectivo');
     setEstadoCaja('');
+    setEquivalenciaCaja('none');
+    setTypeCaja('');
     setEditandoCaja(null);
     await updateEmpresaDetails(empresa.id, { cajas_virtuales: nuevasCajas });
   };
@@ -646,7 +718,14 @@ const handleCloseCols = () => setAnchorColsEl(null);
     }
     handleCloseMenu();
   };
-  
+  const totalesUsdBlue = useMemo(() => {
+    let ingreso = 0, egreso = 0;
+    (movimientosFiltrados || []).forEach(m => {
+      const v = Number(m?.equivalencias?.total?.usd_blue) || 0;
+      if (m.type === 'ingreso') ingreso += v; else egreso += v;
+    });
+    return { ingreso, egreso, neto: ingreso - egreso };
+  }, [movimientosFiltrados]);
   
 // si cambian los filtros y la página quedó fuera de rango, volvemos a 0
 useEffect(() => {
@@ -677,7 +756,10 @@ useEffect(() => {
                     sx={{ justifyContent: 'space-between', pl: 2, pr: 5 }}
                   >
               <Typography>{caja.nombre}</Typography>
-              <Typography>{formatCurrency(calcularTotalParaCaja(caja))}</Typography>
+              {caja.equivalencia && caja.equivalencia !== 'none' && (
+                  <Chip size="small" label={caja.equivalencia.replace('_', ' ')} sx={{ ml: 1 }} />
+                )}
+              <Typography>{formatCajaAmount(caja, calcularTotalParaCaja(caja))}</Typography>
             </Button>
             <IconButton
               size="small"
@@ -729,6 +811,14 @@ useEffect(() => {
       </Select>
     </FormControl>
     <FormControl fullWidth sx={{ mt: 2 }}>
+      <InputLabel>Tipo</InputLabel>
+      <Select value={typeCaja} label="Tipo" onChange={(e) => setTypeCaja(e.target.value)}>
+        <MenuItem value="">Todos</MenuItem>
+        <MenuItem value="ingreso">Ingresos</MenuItem>
+        <MenuItem value="egreso">Egresos</MenuItem>
+      </Select>
+    </FormControl>
+    <FormControl fullWidth sx={{ mt: 2 }}>
       <InputLabel>Medio de pago</InputLabel>
       <Select value={medioPagoCaja} onChange={(e) => setMedioPagoCaja(e.target.value)}>
       <MenuItem key="" value="">
@@ -751,6 +841,19 @@ useEffect(() => {
         </Select>
       </FormControl>
     )}
+     <FormControl fullWidth sx={{ mt: 2 }}>
+      <InputLabel>Mostrar como</InputLabel>
+      <Select
+        value={equivalenciaCaja}
+        label="Mostrar como"
+        onChange={(e) => setEquivalenciaCaja(e.target.value)}
+      >
+        <MenuItem value="none">Moneda original</MenuItem>
+        <MenuItem value="usd_blue">USD blue</MenuItem>
+        <MenuItem value="usd_oficial">USD oficial</MenuItem>
+      </Select>
+    </FormControl>
+
   </DialogContent>
   <DialogActions>
     <Button onClick={() => setShowCrearCaja(false)}>Cancelar</Button>
@@ -777,10 +880,14 @@ useEffect(() => {
 
 
               <TotalesFiltrados
-                    t={totalesDetallados}
-                    fmt={formatByCurrency}
-                    moneda={cajaSeleccionada?.moneda || 'ARS'}
-                  />
+                  t={totalesDetallados}f
+                  fmt={formatByCurrency}
+                  moneda={cajaSeleccionada?.moneda || 'ARS'}
+                  // showUsdBlue={Boolean(visibleCols.usd)}
+                  showUsdBlue={false}
+                  usdBlue={totalesUsdBlue}
+                />
+
               </Stack>
                 {isMobile ? (
                   <Stack spacing={2}>
@@ -790,6 +897,8 @@ useEffect(() => {
                           <Typography variant="h6" color={mov.type === "ingreso" ? "green" : "red"}>
                             {mov.type === "ingreso" ? `Ingreso: ${formatCurrency(mov.total)}` : `Egreso: ${formatCurrency(mov.total)}`}
                           </Typography>
+                          {mov.obra && <Typography variant="body2"><b>Obra:</b> {mov.obra}</Typography>}
+                          {mov.cliente && <Typography variant="body2"><b>Cliente:</b> {mov.cliente}</Typography>}
                           <Typography variant="body2">{mov.observacion}</Typography>
                           {mov.tc && <Typography variant="body2">Tipo de cambio: ${mov.tc}</Typography>}
                           <Typography variant="caption" color="textSecondary">
@@ -858,6 +967,8 @@ useEffect(() => {
       <FormControlLabel control={<Checkbox size="small" checked={visibleCols.medioPago}   onChange={() => toggleCol('medioPago')} />}   label="Medio de pago" />
     )}
     <FormControlLabel control={<Checkbox size="small" checked={visibleCols.proveedor}    onChange={() => toggleCol('proveedor')} />}    label="Proveedor" />
+    <FormControlLabel control={<Checkbox size="small" checked={visibleCols.obra} onChange={() => toggleCol('obra')} />} label="Obra" />
+    <FormControlLabel control={<Checkbox size="small" checked={visibleCols.cliente} onChange={() => toggleCol('cliente')} />} label="Cliente" />
     <FormControlLabel control={<Checkbox size="small" checked={visibleCols.observacion}  onChange={() => toggleCol('observacion')} />}  label="Observación" />
     <FormControlLabel control={<Checkbox size="small" checked={visibleCols.tc}           onChange={() => toggleCol('tc')} />}           label="TC ejecutado" />
     <FormControlLabel control={<Checkbox size="small" checked={visibleCols.usd}          onChange={() => toggleCol('usd')} />}          label="USD blue" />
@@ -1110,6 +1221,14 @@ useEffect(() => {
           <TableCell sx={{ ...cellBase, minWidth: COLS.proveedor }}>PROVEEDOR</TableCell>
         )}
 
+        {visibleCols.obra && (   // <-- NUEVO
+          <TableCell sx={{ ...cellBase, minWidth: COLS.obra }}>OBRA</TableCell>
+        )}
+
+        {visibleCols.cliente && ( // <-- NUEVO
+          <TableCell sx={{ ...cellBase, minWidth: COLS.cliente }}>CLIENTE</TableCell>
+        )}
+
         {visibleCols.observacion && (
           <TableCell sx={{ ...cellBase, minWidth: COLS.observacion }}>OBSERVACIÓN</TableCell>
         )}
@@ -1247,6 +1366,22 @@ useEffect(() => {
               <TableCell sx={ellipsis(COLS.proveedor)}>
                 <Tooltip title={mov.nombre_proveedor || ''}>
                   <span>{mov.nombre_proveedor}</span>
+                </Tooltip>
+              </TableCell>
+            )}
+
+            {visibleCols.obra && (  // <-- NUEVO
+              <TableCell sx={ellipsis(COLS.obra)}>
+                <Tooltip title={mov.obra || ''}>
+                  <span>{mov.obra || '—'}</span>
+                </Tooltip>
+              </TableCell>
+            )}
+
+            {visibleCols.cliente && ( // <-- NUEVO
+              <TableCell sx={ellipsis(COLS.cliente)}>
+                <Tooltip title={mov.cliente || ''}>
+                  <span>{mov.cliente || '—'}</span>
                 </Tooltip>
               </TableCell>
             )}

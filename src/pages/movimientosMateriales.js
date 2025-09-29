@@ -17,22 +17,18 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import SearchIcon from '@mui/icons-material/Search';
 import PreviewIcon from '@mui/icons-material/Preview';
 
-
 import MovimientoMaterialService from 'src/services/movimientoMaterialService';
 import { getProyectosByEmpresa } from 'src/services/proyectosService';
 import { getEmpresaById, getEmpresaDetailsFromUser } from 'src/services/empresaService';
-import { dateToTimestamp, formatTimestamp } from 'src/utils/formatters';
+import { formatTimestamp } from 'src/utils/formatters';
+import AssignToPlanDialog from 'src/components/planobra/AssignToPlanDialog';
 
-// arriba del componente (o dentro, antes del useState)
+// helper fechas → yyyy-mm-dd
 const toISO = (d) => d.toISOString().slice(0, 10);
 
-// hoy
-const _today = new Date();
-_today.setHours(23, 59, 59, 59);
-// hace 6 días (incluye hoy => 7 días)
-const _lastWeekStart = new Date();
-_lastWeekStart.setDate(_today.getDate() - 6);
-
+// rango por defecto (últimos 7 días)
+const _today = new Date(); _today.setHours(23, 59, 59, 59);
+const _lastWeekStart = new Date(); _lastWeekStart.setDate(_today.getDate() - 6);
 
 const MovimientoDialog = ({ open, onClose, initial, onSubmit, empresaId, proyectos }) => {
   const [form, setForm] = useState(() => initial || {
@@ -62,10 +58,8 @@ const MovimientoDialog = ({ open, onClose, initial, onSubmit, empresaId, proyect
       <DialogTitle>{initial?.id ? 'Editar movimiento' : 'Crear movimiento'}</DialogTitle>
       <DialogContent>
         <Stack spacing={2} sx={{ mt: 1 }}>
-          {/* empresa_id fijo, no editable */}
           <TextField label="Empresa ID" value={empresaId} disabled fullWidth />
 
-          {/* proyecto opcional: select de proyectos de la empresa */}
           <FormControl fullWidth>
             <InputLabel>Proyecto (opcional)</InputLabel>
             <Select
@@ -104,14 +98,7 @@ const MovimientoDialog = ({ open, onClose, initial, onSubmit, empresaId, proyect
               <MenuItem value="salida">Salida</MenuItem>
             </Select>
           </FormControl>
-          {/* <TextField
-            label="Fecha de movimiento"
-            type="datetime-local"
-            value={form.fecha_movimiento ? form.fecha_movimiento : ''}
-            onChange={e => handleChange('fecha_movimiento', e.target.value)}
-            InputLabelProps={{ shrink: true }}
-            fullWidth
-          /> */}
+
           <FormControlLabel
             control={
               <Checkbox
@@ -132,10 +119,7 @@ const MovimientoDialog = ({ open, onClose, initial, onSubmit, empresaId, proyect
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose}>Cancelar</Button>
-        <Button
-          variant="contained"
-          onClick={() => onSubmit({ ...form, empresa_id: empresaId })}
-        >
+        <Button variant="contained" onClick={() => onSubmit({ ...form, empresa_id: empresaId })}>
           {initial?.id ? 'Guardar' : 'Crear'}
         </Button>
       </DialogActions>
@@ -148,41 +132,45 @@ const MaterialMovimientosPage = () => {
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const router = useRouter();
   const empresaId = router.query?.empresaId ? String(router.query.empresaId) : '';
+
   // Datos
   const [rows, setRows] = useState([]);
   const [cursor, setCursor] = useState(undefined);
+  const [assignOpen, setAssignOpen] = useState(false);
+  const [assignRow, setAssignRow] = useState(null);
 
+  // Filtros (incluye asignación)
   const [filters, setFilters] = useState({
-  empresa_id: empresaId,
-  proyecto_id: '',
-  tipo: '',
-  descripcionPrefix: '',
-  // DEFAULT: última semana
-  desde: toISO(_lastWeekStart),
-  hasta: toISO(_today),
-  limit: 50
-});
+    empresa_id: empresaId,
+    proyecto_id: '',
+    tipo: '',
+    descripcionPrefix: '',
+    desde: toISO(_lastWeekStart),
+    hasta: toISO(_today),
+    limit: 50,
+    sinAsignacion: '',     // '1' para activo
+    asignadoEstado: ''     // '', 'ninguno', 'parcial', 'completo'
+  });
 
   // UI
   const [loading, setLoading] = useState(false);
   const [stock, setStock] = useState(null);
   const [alert, setAlert] = useState({ open: false, message: '', severity: 'info' });
   const [openDialog, setOpenDialog] = useState(false);
-  const [editing, setEditing] = useState(null); // movimiento actual
+  const [editing, setEditing] = useState(null);
   const [deleteId, setDeleteId] = useState(null);
 
-  // Proyectos de la empresa (para el select)
+  // Proyectos (select)
   const [proyectos, setProyectos] = useState([]);
 
-  // Mapa id → descripcion para lookup rápido
+  // Mapa id → nombre de proyecto
   const proyectoNombreById = useMemo(() => {
     const map = new Map();
     (proyectos || []).forEach(p => map.set(p.id, p.nombre));
     return (id) => (id ? map.get(id) : undefined);
   }, [proyectos]);
 
-    
-  // Sync empresaId desde query a filtros
+  // Sync empresaId de la URL → filtros
   useEffect(() => {
     if (empresaId) setFilters(f => ({ ...f, empresa_id: empresaId }));
   }, [empresaId]);
@@ -197,7 +185,6 @@ const MaterialMovimientosPage = () => {
       } else {
         empresa = await getEmpresaDetailsFromUser(user);
       }
-
       const proys = await getProyectosByEmpresa(empresa);
       setProyectos(proys || []);
     })();
@@ -209,9 +196,9 @@ const MaterialMovimientosPage = () => {
     try {
       const params = { ...filters, cursor: append ? cursor : undefined };
       const res = await MovimientoMaterialService.listar(params);
-      console.log
       setRows(prev => (append ? [...prev, ...(res.items || [])] : (res.items || [])));
       setCursor(res.nextCursor);
+
       // Stock rápido si hay filtro de descripcion
       if (filters.descripcionPrefix && filters.descripcionPrefix.length > 1) {
         const st = await MovimientoMaterialService.stock({
@@ -230,11 +217,19 @@ const MaterialMovimientosPage = () => {
     }
   };
 
+  // 🔁 Refrescar cuando cambian filtros clave (incluye asignación)
   useEffect(() => {
-    // listar cuando cambian filtros clave (empresa, proyecto, tipo, fechas)
     if (filters.empresa_id) fetchList(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters.empresa_id, filters.proyecto_id, filters.tipo, filters.desde, filters.hasta]);
+  }, [
+    filters.empresa_id,
+    filters.proyecto_id,
+    filters.tipo,
+    filters.desde,
+    filters.hasta,
+    filters.asignadoEstado,
+    filters.sinAsignacion
+  ]);
 
   const handleSearchByDescripcion = () => fetchList(false);
 
@@ -292,10 +287,8 @@ const MaterialMovimientosPage = () => {
                 {/* Filtros */}
                 <Paper sx={{ p: 2 }}>
                   <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-                    {/* empresa_id fijo, no editable */}
                     <TextField label="Empresa ID" value={empresaId} disabled fullWidth />
 
-                    {/* proyecto opcional: select poblado por la empresa */}
                     <FormControl fullWidth>
                       <InputLabel>Proyecto (opcional)</InputLabel>
                       <Select
@@ -337,6 +330,46 @@ const MaterialMovimientosPage = () => {
                       }}
                     />
 
+                    {/* Estado de asignación */}
+                    <FormControl fullWidth disabled={filters.sinAsignacion === '1'}>
+                      <InputLabel>Estado asignación</InputLabel>
+                      <Select
+                        label="Estado asignación"
+                        value={filters.asignadoEstado}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setFilters(f => ({
+                            ...f,
+                            asignadoEstado: v,
+                            // si elijo un estado específico, apago "solo no asignados"
+                            sinAsignacion: v ? '' : f.sinAsignacion
+                          }));
+                        }}
+                      >
+                        <MenuItem value=""><em>Todos</em></MenuItem>
+                        <MenuItem value="ninguno">No asignado</MenuItem>
+                        <MenuItem value="parcial">Parcial</MenuItem>
+                        <MenuItem value="completo">Completo</MenuItem>
+                      </Select>
+                    </FormControl>
+
+                    <FormControlLabel
+                      control={
+                        <Checkbox
+                          checked={filters.sinAsignacion === '1'}
+                          onChange={(e) =>
+                            setFilters(f => ({
+                              ...f,
+                              sinAsignacion: e.target.checked ? '1' : '',
+                              // si activo "solo no asignados", limpio el estado elegido
+                              asignadoEstado: e.target.checked ? '' : f.asignadoEstado
+                            }))
+                          }
+                        />
+                      }
+                      label="Sólo no asignados"
+                    />
+
                     <TextField
                       label="Desde"
                       type="date"
@@ -354,19 +387,11 @@ const MaterialMovimientosPage = () => {
                       fullWidth
                     />
 
-                    <Button
-                      variant="outlined"
-                      startIcon={<RefreshIcon />}
-                      onClick={() => fetchList(false)}
-                    >
+                    <Button variant="outlined" startIcon={<RefreshIcon />} onClick={() => fetchList(false)}>
                       Refrescar
                     </Button>
 
-                    <Button
-                      variant="contained"
-                      startIcon={<AddCircleIcon />}
-                      onClick={() => { setEditing(null); setOpenDialog(true); }}
-                    >
+                    <Button variant="contained" startIcon={<AddCircleIcon />} onClick={() => { setEditing(null); setOpenDialog(true); }}>
                       Nuevo
                     </Button>
                   </Stack>
@@ -392,6 +417,34 @@ const MaterialMovimientosPage = () => {
                               size="small"
                             />
                           </Stack>
+
+                          {/* Asignación en mobile */}
+                          {m.tipo === 'entrada' && (
+                            <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 1 }}>
+                              <Chip
+                                size="small"
+                                label={
+                                  m.asignado_estado === 'completo'
+                                    ? 'Completo'
+                                    : m.asignado_estado === 'parcial'
+                                    ? 'Parcial'
+                                    : 'No asignado'
+                                }
+                                color={
+                                  m.asignado_estado === 'completo'
+                                    ? 'success'
+                                    : m.asignado_estado === 'parcial'
+                                    ? 'warning'
+                                    : 'default'
+                                }
+                                variant={m.asignado_estado ? 'filled' : 'outlined'}
+                              />
+                              <Typography variant="body2">
+                                {(Number(m.asignado_qty) || 0)} / {(Number(m.cantidad) || 0)}
+                              </Typography>
+                            </Stack>
+                          )}
+
                           <Typography variant="body2" sx={{ mt: 0.5 }}>
                             Cantidad: <b>{m.cantidad}</b>
                           </Typography>
@@ -406,12 +459,12 @@ const MaterialMovimientosPage = () => {
                           {m.observacion && <Typography variant="body2">Obs: {m.observacion}</Typography>}
 
                           <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
-                            <Button size="small" startIcon={<PreviewIcon />}  onClick={() => router.push("movementForm/?movimientoId="+(m.movimiento_compra_id || m.movimiento_venta_id))}>
+                            <Button size="small" onClick={() => { setAssignRow(m); setAssignOpen(true); }}>
+                              Asignar
                             </Button>
-                            <Button size="small" startIcon={<EditIcon />} onClick={() => { setEditing(m); setOpenDialog(true); }}>
-                            </Button>
-                            <Button size="small" color="error" startIcon={<DeleteIcon />} onClick={() => setDeleteId(m.id)}>
-                            </Button>
+                            <Button size="small" startIcon={<PreviewIcon />} onClick={() => router.push("movementForm/?movimientoId="+(m.movimiento_compra_id || m.movimiento_venta_id))} />
+                            <Button size="small" startIcon={<EditIcon />} onClick={() => { setEditing(m); setOpenDialog(true); }} />
+                            <Button size="small" color="error" startIcon={<DeleteIcon />} onClick={() => setDeleteId(m.id)} />
                           </Stack>
                         </Paper>
                       ))}
@@ -433,6 +486,7 @@ const MaterialMovimientosPage = () => {
                             <TableCell>Fecha</TableCell>
                             <TableCell>Obs.</TableCell>
                             <TableCell>Validado</TableCell>
+                            <TableCell>Asignación</TableCell>
                             <TableCell>Acciones</TableCell>
                           </TableRow>
                         </TableHead>
@@ -449,9 +503,7 @@ const MaterialMovimientosPage = () => {
                               </TableCell>
                               <TableCell>{m.cantidad}</TableCell>
                               <TableCell>{proyectoNombreById(m.proyecto_id) || '-'}</TableCell>
-                              <TableCell>
-                                  {m.fecha_movimiento ? formatTimestamp(m.fecha_movimiento) : '-'}
-                              </TableCell>
+                              <TableCell>{m.fecha_movimiento ? formatTimestamp(m.fecha_movimiento) : '-'}</TableCell>
                               <TableCell>{m.observacion || '-'}</TableCell>
                               <TableCell>
                                 <Chip
@@ -460,14 +512,43 @@ const MaterialMovimientosPage = () => {
                                   size="small"
                                 />
                               </TableCell>
+                              <TableCell>
+                                {m.tipo === 'entrada' ? (
+                                  <Stack direction="row" spacing={1} alignItems="center">
+                                    <Chip
+                                      size="small"
+                                      label={
+                                        m.asignado_estado === 'completo'
+                                          ? 'Completo'
+                                          : m.asignado_estado === 'parcial'
+                                          ? 'Parcial'
+                                          : 'No asignado'
+                                      }
+                                      color={
+                                        m.asignado_estado === 'completo'
+                                          ? 'success'
+                                          : m.asignado_estado === 'parcial'
+                                          ? 'warning'
+                                          : 'default'
+                                      }
+                                      variant={m.asignado_estado ? 'filled' : 'outlined'}
+                                    />
+                                    <Typography variant="body2">
+                                      {(Number(m.asignado_qty) || 0)} / {(Number(m.cantidad) || 0)}
+                                    </Typography>
+                                  </Stack>
+                                ) : (
+                                  <Typography variant="body2" color="text.secondary">—</Typography>
+                                )}
+                              </TableCell>
 
                               <TableCell>
-                              <Button size="small" startIcon={<PreviewIcon />}  onClick={() => router.push("movementForm/?movimientoId="+(m.movimiento_compra_id || m.movimiento_venta_id))}>
-                              </Button>
-                              <Button size="small" startIcon={<EditIcon />} onClick={() => { setEditing(m); setOpenDialog(true); }}>
-                              </Button>
-                              <Button size="small" color="error" startIcon={<DeleteIcon />} onClick={() => setDeleteId(m.id)}>
-                              </Button>
+                                <Button size="small" onClick={() => { setAssignRow(m); setAssignOpen(true); }}>
+                                  Asignar
+                                </Button>
+                                <Button size="small" startIcon={<PreviewIcon />} onClick={() => router.push("movementForm/?movimientoId="+(m.movimiento_compra_id || m.movimiento_venta_id))} />
+                                <Button size="small" startIcon={<EditIcon />} onClick={() => { setEditing(m); setOpenDialog(true); }} />
+                                <Button size="small" color="error" startIcon={<DeleteIcon />} onClick={() => setDeleteId(m.id)} />
                               </TableCell>
                             </TableRow>
                           ))}
@@ -497,14 +578,30 @@ const MaterialMovimientosPage = () => {
                 {/* Confirmación eliminar */}
                 <Dialog open={!!deleteId} onClose={() => setDeleteId(null)}>
                   <DialogTitle>Eliminar movimiento</DialogTitle>
-                  <DialogContent>
-                    ¿Querés eliminar este movimiento?
-                  </DialogContent>
+                  <DialogContent>¿Querés eliminar este movimiento?</DialogContent>
                   <DialogActions>
                     <Button onClick={() => setDeleteId(null)}>Cancelar</Button>
                     <Button color="error" onClick={() => handleDelete(deleteId)}>Eliminar</Button>
                   </DialogActions>
                 </Dialog>
+
+                {/* Asignar a plan/etapa/material */}
+                <AssignToPlanDialog
+                  open={assignOpen}
+                  onClose={async (result) => {
+                    setAssignOpen(false);
+                    setAssignRow(null);
+                    if (result?.ok) {
+                      setAlert({ open: true, message: 'Asignación creada', severity: 'success' });
+                      await fetchList(false);
+                    } else if (result && result.error) {
+                      setAlert({ open: true, message: result.error, severity: 'error' });
+                    }
+                  }}
+                  movimiento={assignRow}
+                  empresaId={empresaId}
+                  proyectos={proyectos}
+                />
               </>
             )}
 
@@ -521,6 +618,17 @@ const MaterialMovimientosPage = () => {
         </Container>
       </Box>
     </>
+  );
+};
+
+const TotalesStock = ({ data }) => {
+  if (!data) return null;
+  return (
+    <Stack direction="row" spacing={2}>
+      <Chip label={`Entrada: ${data.entrada ?? 0}`} />
+      <Chip label={`Salida: ${data.salida ?? 0}`} />
+      <Chip label={`Neto: ${data.neto ?? 0}`} />
+    </Stack>
   );
 };
 

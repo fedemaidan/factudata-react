@@ -10,8 +10,9 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import { useFormik } from 'formik';
 import * as Yup from 'yup';
 import { getProyectosByEmpresa, getProyectosFromUser } from 'src/services/proyectosService';
-import { doc } from 'firebase/firestore';
-import { db } from 'src/config/firebase';
+import { useAuthContext } from 'src/contexts/auth-context';
+import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
+const normalizePhone = (phone) => (phone || '').toString().replace(/[^\d]/g, '');
 
 function reemplazarUndefined(obj) {
   if (Array.isArray(obj)) {
@@ -46,7 +47,11 @@ export const UsuariosDetails = ({ empresa }) => {
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
   const [snackbarSeverity, setSnackbarSeverity] = useState('success');
+  const [dupEmpresaLink, setDupEmpresaLink] = useState(null);
+  const [dupEmpresaName, setDupEmpresaName] = useState('');
 
+
+  const { user } = useAuthContext();
   useEffect(() => {
     const fetchProfiles = async () => {
       setIsLoading(true);
@@ -56,7 +61,7 @@ export const UsuariosDetails = ({ empresa }) => {
         prof.proyectosData = await getProyectosFromUser(prof);
         return prof;
       }));
-      console.log(profiles)
+      
       setUsuarios(profilesWithProjects);
       setIsLoading(false);
     };
@@ -76,7 +81,7 @@ export const UsuariosDetails = ({ empresa }) => {
       phone: editingUsuario ? editingUsuario.phone : '',
       firstName: editingUsuario ? editingUsuario.firstName : '',
       lastName: editingUsuario ? editingUsuario.lastName : '',
-      proyectos: editingUsuario ? editingUsuario.proyectosData.map(proj => proj.id) : [],
+      proyectos: editingUsuario ? editingUsuario.proyectosData.map(proj => proj?.id) : [],
       tipo_validacion_remito: editingUsuario ? editingUsuario.tipo_validacion_remito : "",
       default_caja_chica: editingUsuario ? editingUsuario.default_caja_chica : null,
       notificacion_nota_pedido: editingUsuario ? editingUsuario.notificacion_nota_pedido : false,
@@ -91,8 +96,28 @@ export const UsuariosDetails = ({ empresa }) => {
     onSubmit: async (values, { resetForm }) => {
       setIsLoading(true);
       values = reemplazarUndefined(values);
+      let existeDuplicado;
       try {
-        ;
+        const phoneTrim = (values.phone || '').trim();
+    const phoneNorm = normalizePhone(phoneTrim);
+
+    const otherProfile = await profileService.getProfileByPhone(phoneNorm);
+    existeDuplicado = otherProfile && (editingUsuario && otherProfile.id !== editingUsuario.id || !editingUsuario);
+
+    if (existeDuplicado) {
+      setSnackbarMessage('Ya existe un usuario con ese WhatsApp.');
+      setSnackbarSeverity('error');
+      setSnackbarOpen(true);
+      setIsLoading(false);
+      if (user?.admin) {
+        const empresa = await getEmpresaDetailsFromUser(otherProfile);
+        if (empresa?.id) {
+          setDupEmpresaLink(`https://admin.sorbydata.com/empresa/?empresaId=${empresa.id}`);
+          setDupEmpresaName(empresa?.nombre || '');
+        }
+      }
+      return;
+    }
         if (editingUsuario) {
           const updatedUsuario = { ...values };
           const updatedUsuarios = usuarios.map((user) =>
@@ -104,8 +129,8 @@ export const UsuariosDetails = ({ empresa }) => {
           setSnackbarMessage('Usuario actualizado con éxito');
         } else {
           const newUsuario = {
-            email: values.email,
-            phone: values.phone,
+            email: values.email.trim(),
+            phone: phoneTrim,                 
             firstName: values.firstName,
             lastName: values.lastName,
             proyectos: values.proyectos,
@@ -125,8 +150,12 @@ export const UsuariosDetails = ({ empresa }) => {
         setSnackbarSeverity('error');
       } finally {
         setSnackbarOpen(true);
-        resetForm();
-        setIsDialogOpen(false);
+        
+        if (!existeDuplicado) {
+          resetForm();
+          setIsDialogOpen(false);
+        }
+          
         setIsLoading(false);
         setEditingUsuario(null);
       }
@@ -152,7 +181,7 @@ export const UsuariosDetails = ({ empresa }) => {
       phone: usuario.phone,
       firstName: usuario.firstName,
       lastName: usuario.lastName,
-      proyectos: usuario.proyectosData.map(proj => proj.id),
+      proyectos: usuario.proyectosData.map(proj => proj?.id),
       tipo_validacion_remito: usuario.tipo_validacion_remito ?? "",
       notificacion_nota_pedido: usuario.notificacion_nota_pedido || false,
     });
@@ -190,6 +219,8 @@ export const UsuariosDetails = ({ empresa }) => {
 
   const handleSnackbarClose = () => {
     setSnackbarOpen(false);
+    setDupEmpresaLink(null);
+    setDupEmpresaName('');
   };
 
   return (
@@ -226,8 +257,10 @@ export const UsuariosDetails = ({ empresa }) => {
                     <TableCell>{"https://admin.sorbydata.com/auth/register/?code=" + usuario.confirmationCode}</TableCell>
                     <TableCell>{usuario.confirmed ? "Sí" : "No"}</TableCell>
                     <TableCell>
-                      {usuario.proyectosData.map(project => (
-                        <Typography key={project.id}>{project.nombre}</Typography>
+                      {usuario.proyectosData.filter(
+                        project => project && project.nombre
+                      ).map(project => (
+                        <Typography key={project?.id}>{project?.nombre}</Typography>
                       ))}
                     </TableCell>
                     <TableCell>{usuario.default_caja_chica ? "Si" : (usuario.default_caja_chica == false ? "No": "No definido")}</TableCell>
@@ -309,7 +342,7 @@ export const UsuariosDetails = ({ empresa }) => {
                 }).join(', ')}
               >
                 {proyectos.map((project) => (
-                  <MenuItem key={project.id} value={project.id}>
+                  <MenuItem key={project?.id} value={project?.id}>
                     {project.nombre}
                   </MenuItem>
                 ))}
@@ -388,13 +421,28 @@ export const UsuariosDetails = ({ empresa }) => {
 
       <Snackbar
         open={snackbarOpen}
-        autoHideDuration={6000}
+        autoHideDuration={dupEmpresaLink ? null : 6000}
         onClose={handleSnackbarClose}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >
-        <Alert onClose={handleSnackbarClose} severity={snackbarSeverity} sx={{ width: '100%' }}>
-          {snackbarMessage}
-        </Alert>
+         <Alert
+            onClose={handleSnackbarClose}
+            severity={snackbarSeverity}
+            sx={{ width: '100%' }}
+            action={
+              dupEmpresaLink ? (
+                <Button
+                  color="inherit"
+                  size="small"
+                  onClick={() => window.open(dupEmpresaLink, '_blank')}
+                >
+                  Ver empresa{dupEmpresaName ? ` (${dupEmpresaName})` : ''}
+                </Button>
+              ) : null
+            }
+          >
+            {snackbarMessage}
+          </Alert>
       </Snackbar>
     </div>
   );

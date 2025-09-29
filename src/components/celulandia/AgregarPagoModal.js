@@ -29,7 +29,7 @@ const initialPagoData = {
   concepto: "",
 };
 
-const AgregarPagoModal = ({ open, onClose, onSave, cajas }) => {
+const AgregarPagoModal = ({ open, onClose, onSave, cajas, categorias = [] }) => {
   const [isSaving, setIsSaving] = useState(false);
   const [cuentaDestino, setCuentaDestino] = useState("");
 
@@ -68,6 +68,7 @@ const AgregarPagoModal = ({ open, onClose, onSave, cajas }) => {
           estado: "CONFIRMADO",
           concepto: formData.concepto || "",
           empresaId: "celulandia",
+          categoria: formData.categoria,
         },
         montoEnviado: -1 * formData.montoEnviado,
       };
@@ -95,6 +96,7 @@ const AgregarPagoModal = ({ open, onClose, onSave, cajas }) => {
             estado: "CONFIRMADO",
             concepto: formData.concepto || "",
             empresaId: "celulandia",
+            categoria: formData.categoria || null,
           },
           montoEnviado: formData.montoEnviado,
         };
@@ -192,6 +194,24 @@ const AgregarPagoModal = ({ open, onClose, onSave, cajas }) => {
                 </Select>
               </FormControl>
             </Grid>
+
+            <Grid item xs={12} sm={6}>
+              <FormControl fullWidth margin="normal">
+                <InputLabel>Categoria</InputLabel>
+                <Select
+                  value={formData.categoria}
+                  label="Categoria"
+                  onChange={(e) => handleInputChange("categoria", e.target.value)}
+                >
+                  {categorias.map((categoria) => (
+                    <MenuItem key={categoria.id} value={categoria.id}>
+                      {categoria.name}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth

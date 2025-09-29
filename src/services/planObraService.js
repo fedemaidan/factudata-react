@@ -26,47 +26,59 @@ export async function upsertPlanObra(proyectoId, payload, opts = {}) {
   }
 
 // =========================
-// Endpoints granulares
+// Endpoints granulares (POR ID, no por índice)
 // =========================
+
 // Etapas
 export async function addEtapa(planId, etapa) {
-  const res = await api.post(`/plan-obra/${encodeURIComponent(planId)}/etapas`, etapa);
-  return unwrap(res); // devuelve plan actualizado o la etapa según tu service; asumo plan
+  const res = await api.post(`/plan-obra/${encodeURIComponent(planId)}/etapa`, etapa);
+  return unwrap(res);             // devuelve el PLAN actualizado
 }
-export async function updateEtapa(planId, etapaIndex, etapaParcial) {
-  const res = await api.patch(`/plan-obra/${encodeURIComponent(planId)}/etapas/${etapaIndex}`, etapaParcial);
+
+export async function updateEtapa(planId, etapaId, etapaParcial) {
+  const res = await api.patch(`/plan-obra/${encodeURIComponent(planId)}/etapa/${encodeURIComponent(etapaId)}`, etapaParcial);
   return unwrap(res);
 }
-export async function deleteEtapa(planId, etapaIndex) {
-  const res = await api.delete(`/plan-obra/${encodeURIComponent(planId)}/etapas/${etapaIndex}`);
+export async function deleteEtapa(planId, etapaId) {
+  const res = await api.delete(`/plan-obra/${encodeURIComponent(planId)}/etapa/${encodeURIComponent(etapaId)}`);
   return unwrap(res);
 }
 
 // Materiales
-export async function addMaterial(planId, etapaIndex, material) {
-  const res = await api.post(`/plan-obra/${encodeURIComponent(planId)}/etapas/${etapaIndex}/materiales`, material);
+export async function addMaterial(planId, etapaId, material) {
+  const res = await api.post(`/plan-obra/${encodeURIComponent(planId)}/etapa/${encodeURIComponent(etapaId)}/material`, material);
   return unwrap(res);
 }
-export async function updateMaterial(planId, etapaIndex, materialIndex, parcial) {
-  const res = await api.patch(`/plan-obra/${encodeURIComponent(planId)}/etapas/${etapaIndex}/materiales/${materialIndex}`, parcial);
+export async function updateMaterial(planId, etapaId, materialId, parcial) {
+  const res = await api.patch(
+    `/plan-obra/${encodeURIComponent(planId)}/etapa/${encodeURIComponent(etapaId)}/material/${encodeURIComponent(materialId)}`,
+    parcial
+  );
   return unwrap(res);
 }
-export async function deleteMaterial(planId, etapaIndex, materialIndex) {
-  const res = await api.delete(`/plan-obra/${encodeURIComponent(planId)}/etapas/${etapaIndex}/materiales/${materialIndex}`);
+export async function deleteMaterial(planId, etapaId, materialId) {
+  const res = await api.delete(
+    `/plan-obra/${encodeURIComponent(planId)}/etapa/${encodeURIComponent(etapaId)}/material/${encodeURIComponent(materialId)}`
+  );
   return unwrap(res);
 }
 
 // Certificados
-export async function addCertificado(planId, etapaIndex, certificado) {
-  const res = await api.post(`/plan-obra/${encodeURIComponent(planId)}/etapas/${etapaIndex}/certificados`, certificado);
+export async function addCertificado(planId, etapaId, cert) {
+  const res = await api.post(`/plan-obra/${encodeURIComponent(planId)}/etapa/${encodeURIComponent(etapaId)}/certificado`, cert);
   return unwrap(res);
 }
-export async function updateCertificado(planId, etapaIndex, certIndex, parcial) {
-  const res = await api.patch(`/plan-obra/${encodeURIComponent(planId)}/etapas/${etapaIndex}/certificados/${certIndex}`, parcial);
+export async function updateCertificado(planId, etapaId, certId, parcial) {
+  const res = await api.patch(
+    `/plan-obra/${encodeURIComponent(planId)}/etapa/${encodeURIComponent(etapaId)}/certificado/${encodeURIComponent(certId)}`,
+    parcial
+  );
   return unwrap(res);
 }
-export async function deleteCertificado(planId, etapaIndex, certIndex) {
-  const res = await api.delete(`/plan-obra/${encodeURIComponent(planId)}/etapas/${etapaIndex}/certificados/${certIndex}`);
+export async function deleteCertificado(planId, etapaId, certId) {
+  const res = await api.delete(
+    `/plan-obra/${encodeURIComponent(planId)}/etapa/${encodeURIComponent(etapaId)}/certificado/${encodeURIComponent(certId)}`
+  );
   return unwrap(res);
 }
 

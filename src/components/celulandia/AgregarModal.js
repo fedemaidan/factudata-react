@@ -88,22 +88,6 @@ const AgregarModal = ({ open, onClose, onSave, clientes, tipoDeCambio, cajas }) 
                 ? new Date(`${fechaCobro}T00:00:00`)
                 : null
               : null,
-          camposBusqueda:
-            clienteData.nombre +
-            " " +
-            formData.cuentaDestino +
-            " " +
-            formData.CC +
-            " " +
-            formData.monedaDePago +
-            " " +
-            formData.montoEnviado +
-            " " +
-            "CONFIRMADO" +
-            " " +
-            getUser() +
-            " " +
-            tipoDeCambioCalculado,
         },
         montoEnviado: formData.montoEnviado,
       });
