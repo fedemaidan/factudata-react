@@ -13,6 +13,13 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
+  TextField,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
+  FormControlLabel,
+  Chip,
 } from "@mui/material";
 import Head from "next/head";
 import DataTable from "src/components/celulandia/DataTable";
@@ -26,7 +33,7 @@ export default function ProyeccionDetailPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [paginaActual, setPaginaActual] = useState(1);
   const [total, setTotal] = useState(0);
-  const [limitePorPagina] = useState(500);
+  const [limitePorPagina] = useState(200);
   const [sortField, setSortField] = useState("codigo");
   const [sortDirection, setSortDirection] = useState("asc");
   const [selectedKeys, setSelectedKeys] = useState(new Set());
@@ -34,10 +41,33 @@ export default function ProyeccionDetailPage() {
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [itemsToDelete, setItemsToDelete] = useState([]);
 
+  const [isTagOpen, setIsTagOpen] = useState(false);
+  const [isTagSaving, setIsTagSaving] = useState(false);
+  const [isTagLoading, setIsTagLoading] = useState(false);
+  const [availableTags, setAvailableTags] = useState([]); // array de strings (nombres)
+  const [selectedExistingTag, setSelectedExistingTag] = useState("");
+  const [newTagName, setNewTagName] = useState("");
+  const [tagPersist, setTagPersist] = useState(false);
+  const [tagError, setTagError] = useState("");
+  const [tagFilter, setTagFilter] = useState("Todos");
+  const [tagsDisponibles, setTagsDisponibles] = useState([]);
+
+  // Genera un color pastel determinístico basado en el texto del tag
+  const getTagColor = (tag) => {
+    let hash = 0;
+    for (let i = 0; i < tag.length; i++) {
+      hash = tag.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    const h = hash % 360;
+    const s = 75 + (hash % 10);
+    const l = 85 + (hash % 5);
+    return `hsl(${h}, ${s}%, ${l}%)`;
+  };
+
   useEffect(() => {
     if (!id) return;
     fetchData(paginaActual);
-  }, [id, paginaActual, sortField, sortDirection]);
+  }, [id, paginaActual, sortField, sortDirection, tagFilter]);
 
   const fetchData = async (pagina = 1) => {
     setIsLoading(true);
@@ -48,10 +78,14 @@ export default function ProyeccionDetailPage() {
         offset,
         sortField,
         sortDirection,
+        tag: tagFilter,
       });
 
-      setProductosProyeccion(proyeccionResponse.data || proyeccionResponse?.data?.data || []);
-      setTotal(proyeccionResponse.total || proyeccionResponse?.data?.total || 0);
+      const payload = proyeccionResponse?.data ? proyeccionResponse : { data: proyeccionResponse };
+      setProductosProyeccion(payload.data || payload?.data?.data || []);
+      setTotal(payload.total || payload?.data?.total || 0);
+      const tagsSrv = payload.tagsDisponibles || payload?.data?.tagsDisponibles || [];
+      setTagsDisponibles(["Todos", ...Array.from(new Set(tagsSrv)).sort()]);
       setPaginaActual(pagina);
       setSelectedKeys(new Set());
     } catch (error) {
@@ -134,84 +168,118 @@ export default function ProyeccionDetailPage() {
     setIsConfirmOpen(false);
   };
 
-  const columns = [
-    {
-      key: "seleccionar",
-      label: (
-        <Checkbox indeterminate={someSelected} checked={allSelected} onChange={toggleSelectAll} />
-      ),
-      sortable: false,
-      render: (item) => (
-        <Checkbox checked={selectedKeys.has(item._id)} onChange={() => toggleRow(item._id)} />
-      ),
-      onRowClick: (item) => toggleRow(item._id),
-    },
-    {
-      key: "codigo",
-      label: "Código",
-      sortable: true,
-    },
-    {
-      key: "descripcion",
-      label: "Descripción",
-      sortable: true,
-    },
-    {
-      key: "cantidad",
-      label: "Stock Actual",
-      sortable: true,
-      render: (item) => {
-        const cantidad = item.cantidad;
-        const color = cantidad < 0 ? "error" : cantidad < 100 ? "warning" : "success";
-        return (
-          <Typography
-            variant="body2"
-            sx={{
-              color: `${color}.main`,
-              fontWeight: cantidad < 0 ? "bold" : "normal",
-            }}
-          >
-            {cantidad.toLocaleString()}
-          </Typography>
-        );
+  const columns = useMemo(
+    () => [
+      {
+        key: "seleccionar",
+        label: (
+          <Checkbox indeterminate={someSelected} checked={allSelected} onChange={toggleSelectAll} />
+        ),
+        sortable: false,
+        render: (item) => (
+          <Checkbox checked={selectedKeys.has(item._id)} onChange={() => toggleRow(item._id)} />
+        ),
+        onRowClick: (item) => toggleRow(item._id),
       },
-    },
-    {
-      key: "ventasPeriodo",
-      label: "Ventas Período",
-      sortable: true,
-      render: (item) => item.ventasPeriodo.toLocaleString(),
-    },
-    {
-      key: "ventasProyectadas",
-      label: "Ventas 3M",
-      sortable: true,
-      render: (item) => item.ventasProyectadas.toLocaleString(),
-    },
-    {
-      key: "diasSinStock",
-      label: "Días p/Agotar",
-      sortable: true,
-      render: (item) => {
-        const dias = item.diasSinStock;
-        let color = "success";
-        if (dias === 0) color = "error";
-        else if (dias < 30) color = "warning";
+      {
+        key: "codigo",
+        label: "Código",
+        sortable: true,
+      },
+      {
+        key: "descripcion",
+        label: "Descripción",
+        sortable: true,
+      },
+      {
+        key: "tags",
+        label: "Tags",
+        sortable: false,
+        render: (item) => {
+          const tagsValue = item?.tags;
+          let tagsArray = [];
+          if (Array.isArray(tagsValue)) tagsArray = tagsValue;
+          else if (typeof tagsValue === "string" && tagsValue.trim() !== "")
+            tagsArray = [tagsValue];
 
-        return (
-          <Typography
-            variant="body2"
-            sx={{
-              color: `${color}.main`,
-              fontWeight: dias < 30 ? "bold" : "normal",
-            }}
-          >
-            {dias === 0 ? "Agotado" : `${dias} días`}
-          </Typography>
-        );
+          if (!tagsArray || tagsArray.length === 0) return "-";
+          return (
+            <Stack direction="row" spacing={0.5} sx={{ flexWrap: "wrap" }}>
+              {tagsArray.map((t, idx) => (
+                <Chip
+                  key={`${item._id}-tag-${idx}`}
+                  label={t}
+                  size="small"
+                  sx={{
+                    backgroundColor: getTagColor(t),
+                    color: "text.primary",
+                    fontWeight: 500,
+                    "& .MuiChip-label": { px: 1 },
+                  }}
+                />
+              ))}
+            </Stack>
+          );
+        },
       },
-    },
-  ];
+      {
+        key: "cantidad",
+        label: "Stock Actual",
+        sortable: true,
+        render: (item) => {
+          const cantidad = Number(item?.cantidad ?? 0);
+          const color = cantidad < 0 ? "error" : cantidad < 100 ? "warning" : "success";
+          return (
+            <Typography
+              variant="body2"
+              sx={{
+                color: `${color}.main`,
+                fontWeight: cantidad < 0 ? "bold" : "normal",
+              }}
+            >
+              {cantidad.toLocaleString()}
+            </Typography>
+          );
+        },
+      },
+      {
+        key: "ventasPeriodo",
+        label: "Ventas Período",
+        sortable: true,
+        render: (item) => Number(item?.ventasPeriodo ?? 0).toLocaleString(),
+      },
+      {
+        key: "ventasProyectadas",
+        label: "Ventas 3M",
+        sortable: true,
+        render: (item) => Number(item?.ventasProyectadas ?? 0).toLocaleString(),
+      },
+      {
+        key: "diasSinStock",
+        label: "Días p/Agotar",
+        sortable: true,
+        render: (item) => {
+          const dias = Number(item?.diasSinStock ?? 0);
+          let color = "success";
+          if (dias === 0) color = "error";
+          else if (dias < 30) color = "warning";
+
+          return (
+            <Typography
+              variant="body2"
+              sx={{
+                color: `${color}.main`,
+                fontWeight: dias < 30 ? "bold" : "normal",
+              }}
+            >
+              {dias === 0 ? "Agotado" : `${dias} días`}
+            </Typography>
+          );
+        },
+      },
+    ],
+    [someSelected, allSelected, toggleSelectAll, selectedKeys, toggleRow]
+  );
 
   return (
     <DashboardLayout title="Detalle de Proyección">
@@ -224,10 +292,42 @@ export default function ProyeccionDetailPage() {
             spacing={2}
             direction="row"
             alignItems="center"
-            justifyContent="space-between"
+            justifyContent="end"
             sx={{ mb: 1 }}
           >
-            <div />
+            <FormControl size="small" sx={{ minWidth: 180 }}>
+              <InputLabel id="tag-filter-label">Filtrar por tag</InputLabel>
+              <Select
+                labelId="tag-filter-label"
+                id="tag-filter"
+                value={tagFilter}
+                variant="standard"
+                onChange={(e) => {
+                  setTagFilter(e.target.value);
+                  setPaginaActual(1);
+                }}
+              >
+                {tagsDisponibles.map((t) => (
+                  <MenuItem
+                    key={`tagopt-${t}`}
+                    value={t}
+                    sx={
+                      t !== "Todos"
+                        ? {
+                            backgroundColor: getTagColor(t),
+                            "&:hover": {
+                              backgroundColor: getTagColor(t),
+                              filter: "brightness(0.95)",
+                            },
+                          }
+                        : {}
+                    }
+                  >
+                    {t}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
             <Button
               variant="contained"
               color="error"
@@ -242,12 +342,39 @@ export default function ProyeccionDetailPage() {
             >
               {isDeleting ? "Eliminando..." : `Eliminar seleccionados (${selectedKeys.size})`}
             </Button>
+            <Button
+              variant="contained"
+              color="primary"
+              disabled={selectedKeys.size === 0}
+              onClick={async () => {
+                setIsTagOpen(true);
+                setSelectedExistingTag("");
+                setNewTagName("");
+                setTagPersist(false);
+                setTagError("");
+                try {
+                  setIsTagLoading(true);
+                  const tags = await proyeccionService.getTags();
+                  const nombres = Array.from(
+                    new Set((tags || []).map((t) => t?.nombre).filter(Boolean))
+                  );
+                  setAvailableTags(nombres);
+                } catch (e) {
+                  console.error(e);
+                } finally {
+                  setIsTagLoading(false);
+                }
+              }}
+            >
+              {`Agregar tag (${selectedKeys.size})`}
+            </Button>
           </Stack>
 
           <DataTable
             data={productosProyeccion}
             isLoading={isLoading}
             columns={columns}
+            rowIsSelected={(item) => selectedKeys.has(item._id)}
             showSearch={false}
             showDateFilterOptions={false}
             showDatePicker={false}
@@ -301,6 +428,96 @@ export default function ProyeccionDetailPage() {
             startIcon={isDeleting ? <CircularProgress size={16} color="inherit" /> : null}
           >
             {isDeleting ? "Eliminando…" : "Eliminar"}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={isTagOpen}
+        onClose={isTagSaving ? undefined : () => setIsTagOpen(false)}
+        fullWidth
+        TransitionProps={{ timeout: 0 }}
+      >
+        <DialogTitle>Agregar tag a seleccionados</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <Typography variant="body2" color="text.secondary">
+              Seleccionados: {selectedKeys.size}
+            </Typography>
+            <FormControl fullWidth size="small">
+              <InputLabel id="existing-tag-label">Tag existente</InputLabel>
+              <Select
+                labelId="existing-tag-label"
+                label="Tag existente"
+                value={selectedExistingTag}
+                onChange={(e) => setSelectedExistingTag(e.target.value)}
+              >
+                <MenuItem value="">
+                  <em>Ninguno</em>
+                </MenuItem>
+                {availableTags.map((t) => (
+                  <MenuItem key={t} value={t}>
+                    {t}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <Typography variant="caption" color="text.secondary">
+              O crear uno nuevo
+            </Typography>
+            <TextField
+              size="small"
+              label="Nuevo tag"
+              value={newTagName}
+              onChange={(e) => setNewTagName(e.target.value)}
+            />
+            <FormControlLabel
+              control={
+                <Checkbox checked={tagPersist} onChange={(e) => setTagPersist(e.target.checked)} />
+              }
+              label="Permanente (guardar también para proyecciones futuras)"
+            />
+            {tagError && (
+              <Typography variant="caption" color="error">
+                {tagError}
+              </Typography>
+            )}
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setIsTagOpen(false)} disabled={isTagSaving}>
+            Cancelar
+          </Button>
+          <Button
+            onClick={async () => {
+              try {
+                setTagError("");
+                const finalTag = (newTagName || selectedExistingTag || "").trim();
+                if (!finalTag) {
+                  setTagError("Elegí un tag existente o crea uno nuevo");
+                  return;
+                }
+                setIsTagSaving(true);
+                const ids = Array.from(selectedKeys);
+                await proyeccionService.agregarTagsAProductos({
+                  productosProyeccionId: ids,
+                  tag: finalTag,
+                  persist: tagPersist,
+                });
+                setIsTagOpen(false);
+                await fetchData(paginaActual);
+              } catch (e) {
+                console.error(e);
+                setTagError("Error al guardar el tag");
+              } finally {
+                setIsTagSaving(false);
+              }
+            }}
+            variant="contained"
+            disabled={isTagSaving}
+            startIcon={isTagSaving ? <CircularProgress size={16} color="inherit" /> : null}
+          >
+            {isTagSaving ? "Guardando…" : "Guardar tag"}
           </Button>
         </DialogActions>
       </Dialog>
