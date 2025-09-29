@@ -2,9 +2,9 @@ import { useEffect, useMemo, useState } from 'react';
 import Head from 'next/head';
 import {
   Box, Container, Dialog, DialogActions, DialogContent, DialogTitle,
-  IconButton, Paper, Snackbar, Alert, Stack, Table, TableBody, TableCell,
-  TableHead, TableRow, TextField, Typography, MenuItem, Select, InputLabel,
-  FormControl, InputAdornment, Link as MuiLink, Button, Chip, Tooltip
+  IconButton, Paper, Snackbar, Alert, Stack, Table, TableBody, TableCell, TableHead,
+  TableRow, TextField, Typography, MenuItem, Select, InputLabel, FormControl,
+  InputAdornment, Link as MuiLink, Button
 } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -13,6 +13,7 @@ import LaunchIcon from '@mui/icons-material/Launch';
 
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import LeadsService from 'src/services/leadsService';
+
 import * as XLSX from 'xlsx';
 
 const emptyForm = {
@@ -47,18 +48,42 @@ function ymdLocal(date) {
   return `${y}-${m}-${d}`;
 }
 
-function fmtLocal(dt) {
-  if (!dt) return '';
-  try {
-    const d = new Date(dt);
-    const date = d.toLocaleDateString();
-    const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    return `${date} ${time}`;
-  } catch {
-    return dt;
+// --- Utilidades para timestamps (string/number/Date/Firestore Timestamp) ---
+function toDateSafe(v) {
+  if (!v) return null;
+  if (v instanceof Date) return v;
+  if (typeof v === 'number') return new Date(v);
+  if (typeof v === 'string') {
+    const d = new Date(v);
+    return isNaN(d.getTime()) ? null : d;
   }
+  if (typeof v === 'object') {
+    if (typeof v.toDate === 'function') return v.toDate(); // Firestore Timestamp
+    if ('seconds' in v) {
+      const ms = v.seconds * 1000 + (v.nanoseconds || 0) / 1e6;
+      return new Date(ms);
+    }
+  }
+  return null;
+}
+function fmtDateTime(v) {
+  const d = toDateSafe(v);
+  return d ? d.toLocaleString() : '—';
 }
 
+// Para <input type="datetime-local"> requiere YYYY-MM-DDTHH:mm
+function toDatetimeLocalValue(v) {
+  const d = toDateSafe(v);
+  if (!d) return '';
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mi = String(d.getMinutes()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}T${hh}:${mi}`;
+}
+
+// Default: última semana (incluye HOY como to, y from = hoy-6)
 function getDefaultWeekFilter() {
   const today = new Date();
   const to = ymdLocal(today);
@@ -93,11 +118,11 @@ const LeadsPage = () => {
       }
       const data = await LeadsService.listar(params);
 
-      data.sort(
-        (a, b) =>
-          new Date(b.updatedAt || b.createdAt || 0) -
-          new Date(a.updatedAt || a.createdAt || 0)
-      );
+      // Ordenar por updatedAt luego createdAt (manejando múltiples formatos)
+      const ts = (r) =>
+        (toDateSafe(r.updatedAt) || toDateSafe(r.createdAt) || new Date(0)).getTime();
+      data.sort((a, b) => ts(b) - ts(a));
+
       setRows(data);
     } catch (e) {
       console.error(e);
@@ -128,13 +153,7 @@ const LeadsPage = () => {
         docId(r),
         r?.nombre,
         r?.phone,
-        r?.rubro,
-        r?.utm_campaign,
-        r?.ip,
-        r?.fbp,
-        r?.status_sum,
-        r?.proximo_mensaje,
-        r?.userAgent,
+        r?.utm_campaign
       ].map(x => (x || '').toString().toLowerCase());
       return values.some(v => v.includes(qq));
     });
@@ -142,11 +161,7 @@ const LeadsPage = () => {
 
   const handleOpenEdit = (row) => {
     setIsEdit(true);
-    setForm({
-      ...emptyForm,
-      ...row,
-      id: docId(row)
-    });
+    setForm({ ...emptyForm, ...row, id: docId(row) });
     setOpenForm(true);
   };
 
@@ -171,6 +186,8 @@ const LeadsPage = () => {
         quiere_reunion: !!form.quiere_reunion,
         seguirFollowUP: !!form.seguirFollowUP,
         proximo_mensaje: form.proximo_mensaje || '',
+        // Guardamos lo que hay en el input (YYYY-MM-DDTHH:mm).
+        // Si tu backend necesita ISO UTC, convertir aquí con new Date(value).toISOString()
         proximo_mensaje_vencimiento: form.proximo_mensaje_vencimiento || '',
       };
       const idForUpdate = form.id;
@@ -218,18 +235,18 @@ const LeadsPage = () => {
         Rubro: r?.rubro || '',
         Saludo: r?.saludoInicial || '',
         'UTM Campaign': r?.utm_campaign || '',
-        Estado: r?.status_sum || '',
+        'Estado': r?.status_sum || '',
         'Quiere reunión': r?.quiere_reunion ? 'Sí' : 'No',
         'Seguir FollowUp': r?.seguirFollowUP ? 'Sí' : 'No',
         'Próximo mensaje': r?.proximo_mensaje || '',
-        'Venc. próximo mensaje': r?.proximo_mensaje_vencimiento ? fmtLocal(r.proximo_mensaje_vencimiento) : '',
+        'Venc. próximo mensaje': r?.proximo_mensaje_vencimiento ? fmtDateTime(r.proximo_mensaje_vencimiento) : '',
         'Notion ID': r?.notionId || '',
         'Notion URL': notionUrl,
         IP: r?.ip || '',
         FBP: r?.fbp || '',
         'User Agent': r?.userAgent || '',
-        Creado: r?.createdAt ? fmtLocal(r.createdAt) : '',
-        Actualizado: r?.updatedAt ? fmtLocal(r.updatedAt) : '',
+        'Creado': r?.createdAt ? fmtDateTime(r.createdAt) : '',
+        'Actualizado': r?.updatedAt ? fmtDateTime(r.updatedAt) : '',
       };
     });
 
@@ -266,7 +283,7 @@ const LeadsPage = () => {
             <TextField
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="Buscar por Teléfono / Nombre / Rubro / UTM / IP / Estado…"
+              placeholder="Buscar por Teléfono / Nombre / UTM…"
               InputProps={{ startAdornment: (<InputAdornment position="start"><SearchIcon /></InputAdornment>) }}
             />
 
@@ -277,10 +294,8 @@ const LeadsPage = () => {
                   <Select
                     labelId="field-label"
                     value={filters.field}
-                    label="Campo"
                     onChange={(e) => setFilters(prev => ({ ...prev, field: e.target.value }))}
                   >
-                    {/* Ajustá estos values si tu API espera createdAt/updatedAt */}
                     <MenuItem value="created">Creado (createdAt)</MenuItem>
                     <MenuItem value="updated">Actualizado (updatedAt)</MenuItem>
                   </Select>
@@ -291,7 +306,6 @@ const LeadsPage = () => {
                   <Select
                     labelId="mode-label"
                     value={filters.mode}
-                    label="Modo"
                     onChange={(e) => setFilters(prev => ({ ...prev, mode: e.target.value }))}
                   >
                     <MenuItem value="on">Un día</MenuItem>
@@ -338,22 +352,14 @@ const LeadsPage = () => {
               </Stack>
             </Paper>
 
-            <Paper sx={{ overflowX: 'auto' }}>
-              <Table size="small">
+            <Paper>
+              <Table>
                 <TableHead>
                   <TableRow>
                     <TableCell>Teléfono</TableCell>
                     <TableCell>Nombre</TableCell>
-                    <TableCell>Rubro</TableCell>
-                    <TableCell>UTM</TableCell>
-                    <TableCell>Estado</TableCell>
-                    <TableCell>Quiere reunión</TableCell>
-                    <TableCell>FollowUp</TableCell>
-                    <TableCell>Próx. mensaje</TableCell>
-                    <TableCell>Vencimiento</TableCell>
+                    <TableCell>UTM Campaign</TableCell>
                     <TableCell>Notion</TableCell>
-                    <TableCell>IP</TableCell>
-                    <TableCell>FBP</TableCell>
                     <TableCell>Creado</TableCell>
                     <TableCell>Actualizado</TableCell>
                     <TableCell align="right">Acciones</TableCell>
@@ -366,30 +372,8 @@ const LeadsPage = () => {
                     return (
                       <TableRow key={id} hover>
                         <TableCell>{row.phone || <em>(—)</em>}</TableCell>
-                        <TableCell>
-                          <Tooltip title={row.saludoInicial || ''}>
-                            <span>{row.nombre || <em>(sin nombre)</em>}</span>
-                          </Tooltip>
-                        </TableCell>
-                        <TableCell>{row.rubro || <em>(—)</em>}</TableCell>
+                        <TableCell>{row.nombre || <em>(sin nombre)</em>}</TableCell>
                         <TableCell>{row.utm_campaign || <em>(—)</em>}</TableCell>
-                        <TableCell>
-                          <Chip size="small" label={row.status_sum || '—'} />
-                        </TableCell>
-                        <TableCell>
-                          <Chip size="small" label={row.quiere_reunion ? 'Sí' : 'No'} color={row.quiere_reunion ? 'success' : 'default'} />
-                        </TableCell>
-                        <TableCell>
-                          <Chip size="small" label={row.seguirFollowUP ? 'Sí' : 'No'} color={row.seguirFollowUP ? 'success' : 'default'} />
-                        </TableCell>
-                        <TableCell sx={{ maxWidth: 240 }}>
-                          <Tooltip title={row.proximo_mensaje || ''}>
-                            <Typography variant="body2" noWrap>
-                              {row.proximo_mensaje || <em>(—)</em>}
-                            </Typography>
-                          </Tooltip>
-                        </TableCell>
-                        <TableCell>{row.proximo_mensaje_vencimiento ? fmtLocal(row.proximo_mensaje_vencimiento) : <em>(—)</em>}</TableCell>
                         <TableCell>
                           {row?.notionId ? (
                             <MuiLink href={notionUrl} target="_blank" rel="noopener noreferrer" underline="hover">
@@ -398,10 +382,8 @@ const LeadsPage = () => {
                             </MuiLink>
                           ) : <em>(—)</em>}
                         </TableCell>
-                        <TableCell>{row.ip || <em>(—)</em>}</TableCell>
-                        <TableCell>{row.fbp || <em>(—)</em>}</TableCell>
-                        <TableCell>{row.createdAt ? fmtLocal(row.createdAt) : <em>(—)</em>}</TableCell>
-                        <TableCell>{row.updatedAt ? fmtLocal(row.updatedAt) : <em>(—)</em>}</TableCell>
+                        <TableCell>{fmtDateTime(row.createdAt)}</TableCell>
+                        <TableCell>{fmtDateTime(row.updatedAt)}</TableCell>
                         <TableCell align="right">
                           <IconButton color="primary" onClick={() => handleOpenEdit(row)}><EditIcon /></IconButton>
                           <IconButton color="error" onClick={() => confirmDelete(row)}><DeleteIcon /></IconButton>
@@ -411,7 +393,7 @@ const LeadsPage = () => {
                   })}
                   {!loading && filtered.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={15}>
+                      <TableCell colSpan={7}>
                         <Typography variant="body2">Sin resultados.</Typography>
                       </TableCell>
                     </TableRow>
@@ -433,54 +415,112 @@ const LeadsPage = () => {
           <DialogTitle>Editar lead</DialogTitle>
           <DialogContent>
             <Stack spacing={2} sx={{ mt: 1 }}>
+              <TextField label="ID" value={form.id} disabled />
+              <TextField label="notionId" value={form.notionId} disabled />
+
               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-                <TextField fullWidth label="ID (doc/phone/notionId)" value={form.id} disabled />
-                <TextField fullWidth label="Notion ID" value={form.notionId} disabled />
+                <TextField
+                  fullWidth
+                  label="Nombre"
+                  value={form.nombre}
+                  onChange={(e) => setForm({ ...form, nombre: e.target.value })}
+                />
+                <TextField
+                  fullWidth
+                  label="Phone"
+                  value={form.phone}
+                  onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                />
               </Stack>
 
               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-                <TextField fullWidth label="Nombre" value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} />
-                <TextField fullWidth label="Teléfono" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
-                <TextField fullWidth label="Rubro" value={form.rubro} onChange={(e) => setForm({ ...form, rubro: e.target.value })} />
+                <TextField
+                  fullWidth
+                  label="Rubro"
+                  value={form.rubro}
+                  onChange={(e) => setForm({ ...form, rubro: e.target.value })}
+                />
+                <FormControl fullWidth>
+                  <InputLabel id="estado-label">Estado (status_sum)</InputLabel>
+                  <Select
+                    labelId="estado-label"
+                    label="Estado (status_sum)"
+                    value={form.status_sum}
+                    onChange={(e) => setForm({ ...form, status_sum: e.target.value })}
+                  >
+                    <MenuItem value="BOT">BOT</MenuItem>
+                    <MenuItem value="HUMANO">HUMANO</MenuItem>
+                    <MenuItem value="CERRADO">CERRADO</MenuItem>
+                    <MenuItem value="DESCARTADO">DESCARTADO</MenuItem>
+                  </Select>
+                </FormControl>
               </Stack>
-
-              <TextField label="Saludo inicial" value={form.saludoInicial} onChange={(e) => setForm({ ...form, saludoInicial: e.target.value })} multiline minRows={2} />
 
               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-                <TextField fullWidth label="UTM Campaign" value={form.utm_campaign} onChange={(e) => setForm({ ...form, utm_campaign: e.target.value })} />
-                <TextField fullWidth label="Estado (status_sum)" value={form.status_sum} onChange={(e) => setForm({ ...form, status_sum: e.target.value })} />
+                <FormControl fullWidth>
+                  <InputLabel id="reunion-label">¿Quiere reunión?</InputLabel>
+                  <Select
+                    labelId="reunion-label"
+                    label="¿Quiere reunión?"
+                    value={form.quiere_reunion ? '1' : '0'}
+                    onChange={(e) => setForm({ ...form, quiere_reunion: e.target.value === '1' })}
+                  >
+                    <MenuItem value="1">Sí</MenuItem>
+                    <MenuItem value="0">No</MenuItem>
+                  </Select>
+                </FormControl>
+                <FormControl fullWidth>
+                  <InputLabel id="seguirfu-label">¿Seguir FollowUp?</InputLabel>
+                  <Select
+                    labelId="seguirfu-label"
+                    label="¿Seguir FollowUp?"
+                    value={form.seguirFollowUP ? '1' : '0'}
+                    onChange={(e) => setForm({ ...form, seguirFollowUP: e.target.value === '1' })}
+                  >
+                    <MenuItem value="1">Sí</MenuItem>
+                    <MenuItem value="0">No</MenuItem>
+                  </Select>
+                </FormControl>
               </Stack>
-
-              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-                <TextField fullWidth label="¿Quiere reunión? (true/false)" value={form.quiere_reunion ? 'true' : 'false'} onChange={(e) => setForm({ ...form, quiere_reunion: e.target.value === 'true' })} />
-                <TextField fullWidth label="Seguir FollowUp (true/false)" value={form.seguirFollowUP ? 'true' : 'false'} onChange={(e) => setForm({ ...form, seguirFollowUP: e.target.value === 'true' })} />
-              </Stack>
-
-              <TextField label="Próximo mensaje" value={form.proximo_mensaje} onChange={(e) => setForm({ ...form, proximo_mensaje: e.target.value })} multiline minRows={2} />
 
               <TextField
-                label="Vencimiento próximo mensaje (ISO/fecha)"
-                value={form.proximo_mensaje_vencimiento || ''}
-                onChange={(e) => setForm({ ...form, proximo_mensaje_vencimiento: e.target.value })}
-                helperText="Ej.: 2025-09-21T15:30:00"
-              />
-
-              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-                <TextField fullWidth label="IP" value={form.ip || ''} onChange={(e) => setForm({ ...form, ip: e.target.value })} />
-                <TextField fullWidth label="FBP" value={form.fbp || ''} onChange={(e) => setForm({ ...form, fbp: e.target.value })} />
-              </Stack>
-
-              <TextField
-                label="User Agent"
-                value={form.userAgent || ''}
-                onChange={(e) => setForm({ ...form, userAgent: e.target.value })}
+                label="Próximo mensaje"
                 multiline
                 minRows={2}
+                value={form.proximo_mensaje}
+                onChange={(e) => setForm({ ...form, proximo_mensaje: e.target.value })}
               />
 
+              <TextField
+                label="Vencimiento del próximo mensaje"
+                type="datetime-local"
+                value={toDatetimeLocalValue(form.proximo_mensaje_vencimiento)}
+                onChange={(e) =>
+                  setForm({ ...form, proximo_mensaje_vencimiento: e.target.value })
+                }
+                InputLabelProps={{ shrink: true }}
+              />
+
+              <TextField
+                label="Saludo inicial"
+                value={form.saludoInicial}
+                onChange={(e) => setForm({ ...form, saludoInicial: e.target.value })}
+              />
+              <TextField
+                label="UTM Campaign"
+                value={form.utm_campaign}
+                onChange={(e) => setForm({ ...form, utm_campaign: e.target.value })}
+              />
+
+              {/* Técnicos solo lectura */}
               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-                <TextField fullWidth label="Creado" value={fmtLocal(form.createdAt)} disabled />
-                <TextField fullWidth label="Actualizado" value={fmtLocal(form.updatedAt)} disabled />
+                <TextField fullWidth label="IP" value={form.ip || ''} disabled />
+                <TextField fullWidth label="FBP" value={form.fbp || ''} disabled />
+              </Stack>
+              <TextField label="User Agent" value={form.userAgent || ''} disabled multiline minRows={2} />
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+                <TextField fullWidth label="createdAt" value={fmtDateTime(form.createdAt)} disabled />
+                <TextField fullWidth label="updatedAt" value={fmtDateTime(form.updatedAt)} disabled />
               </Stack>
             </Stack>
           </DialogContent>
