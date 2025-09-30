@@ -28,24 +28,29 @@ const AcopioService = {
   },
 
   /**
-   * Cambia el estado (activo/inactivo) de un acopio
-   * @param {string} acopioId
-   * @param {boolean} activo - true = activar, false = desactivar
-   * @returns {Promise<{ok:boolean, message:string}>}
-   */
-  cambiarEstadoAcopio: async (acopioId, activo) => {
-    try {
-      const response = await api.patch(`/acopio/${acopioId}/estado`, { activo });
-      if (response.status === 200) {
-        console.log(`✅ ${response.data.message}`);
-        return response.data; // { ok: true, message: 'Acopio activado/desactivado correctamente.' }
-      }
-      throw new Error('No se pudo cambiar el estado del acopio.');
-    } catch (error) {
-      console.error('❌ Error en cambiarEstadoAcopio:', error);
-      throw error;
+ * Cambia el estado (activo/inactivo) de un acopio
+ * @param {string} acopioId
+ * @param {boolean} activo - true = activar, false = desactivar
+ * @returns {Promise<{ok:boolean, message:string}>}
+ */
+cambiarEstadoAcopio: async (acopioId, activo) => {
+  try {
+    if (!acopioId) throw new Error('Falta acopioId');
+    if (typeof activo !== 'boolean') throw new Error('El campo activo debe ser true o false');
+
+    const response = await api.put(`/acopio/${acopioId}/estado`, { activo });
+
+    if (response?.status === 200 && response.data?.ok) {
+      console.log(`✅ ${response.data.message}`);
+      return response.data; // { ok: true, message: 'Acopio activado/desactivado correctamente.' }
     }
-  },
+
+    throw new Error(response?.data?.msg || 'No se pudo cambiar el estado del acopio.');
+  } catch (error) {
+    console.error('❌ Error en cambiarEstadoAcopio:', error);
+    throw error;
+  }
+},
 
   crearRemitoConMovimientos: async (acopioId, materiales, remitoData) => {
     try {
