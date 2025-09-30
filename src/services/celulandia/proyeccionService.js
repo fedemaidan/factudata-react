@@ -15,10 +15,10 @@ const proyeccionService = {
 
   getProyeccionById: async (
     id,
-    { limit = 20, offset = 0, sortField = "codigo", sortDirection = "asc" } = {}
+    { limit = 20, offset = 0, sortField = "codigo", sortDirection = "asc", tag = "" } = {}
   ) => {
     const response = await axiosCelulandia.get(`/proyeccion/${id}`, {
-      params: { limit, offset, sortField, sortDirection },
+      params: { limit, offset, sortField, sortDirection, tag },
     });
     return response.data;
   },
@@ -73,6 +73,20 @@ const proyeccionService = {
     const response = await axiosCelulandia.get("/proyeccion/ignorar");
     const payload = response?.data;
     return Array.isArray(payload?.data) ? payload.data : [];
+  },
+
+  getTags: async () => {
+    const response = await axiosCelulandia.get("/proyeccion/tags");
+    return response?.data?.data || [];
+  },
+
+  agregarTagsAProductos: async ({ productosProyeccionId, tag, persist = false }) => {
+    const response = await axiosCelulandia.post("/proyeccion/tags", {
+      productosProyeccionId,
+      tag,
+      persist,
+    });
+    return response?.data;
   },
 };
 export default proyeccionService;

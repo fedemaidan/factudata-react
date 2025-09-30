@@ -36,7 +36,6 @@ import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import dayjs from "dayjs";
 
 const DataTable = ({
-  title,
   data,
   isLoading,
   columns,
@@ -80,10 +79,10 @@ const DataTable = ({
   searchDebounceMs = 500,
   // Mostrar un chip sutil en la columna "cliente" cuando el item tiene clienteId
   showClienteListedChip = false,
-  // Botón volver
   showBackButton = false,
   onBack = null,
   backButtonLabel = "Volver",
+  rowIsSelected,
 }) => {
   const [busqueda, setBusqueda] = useState("");
   const [filtroFecha, setFiltroFecha] = useState("todos");
@@ -337,7 +336,6 @@ const DataTable = ({
   const getRowKey = (item, index) => item._id || item.id || `row-${index}`;
 
   const handleRowClick = (event, item) => {
-    console.log("item", item);
     if (event.target.type === "checkbox") return;
 
     // Verificar si el click fue en un botón o elemento interactivo
@@ -616,8 +614,8 @@ const DataTable = ({
                 </TableHead>
                 <TableBody>
                   {dataOrdenados.map((item, index) => {
-                    const selectColumn = columns.find((col) => col.key === "seleccionar");
-                    const isSelected = selectColumn?.render?.(item)?.props?.checked || false;
+                    const isSelected =
+                      typeof rowIsSelected === "function" ? rowIsSelected(item) : false;
 
                     return (
                       <TableRow
@@ -708,5 +706,23 @@ const DataTable = ({
     </Box>
   );
 };
-
-export default DataTable;
+// Optimización: evitar re-renders cuando props relevantes no cambian.
+// Ignoramos identidad de funciones y solo comparamos props que afectan el render.
+// Si se pasa rowIsSelected nuevo pero su resultado por fila no cambia, el padre debe controlar eso.
+export default React.memo(DataTable, (prev, next) => {
+  if (prev.data !== next.data) return false;
+  if (prev.isLoading !== next.isLoading) return false;
+  if (prev.total !== next.total) return false;
+  if (prev.currentPage !== next.currentPage) return false;
+  if (prev.rowsPerPage !== next.rowsPerPage) return false;
+  if (prev.sortField !== next.sortField) return false;
+  if (prev.sortDirection !== next.sortDirection) return false;
+  if (prev.serverSide !== next.serverSide) return false;
+  if (prev.showSearch !== next.showSearch) return false;
+  if (prev.showDateFilterOptions !== next.showDateFilterOptions) return false;
+  if (prev.showDatePicker !== next.showDatePicker) return false;
+  // columns por referencia: si cambian, re-render
+  if (prev.columns !== next.columns) return false;
+  // Para el resto de props (funciones, etc.), no forzamos re-render
+  return true;
+});
