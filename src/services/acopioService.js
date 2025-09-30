@@ -27,6 +27,26 @@ const AcopioService = {
     }
   },
 
+  /**
+   * Cambia el estado (activo/inactivo) de un acopio
+   * @param {string} acopioId
+   * @param {boolean} activo - true = activar, false = desactivar
+   * @returns {Promise<{ok:boolean, message:string}>}
+   */
+  cambiarEstadoAcopio: async (acopioId, activo) => {
+    try {
+      const response = await api.patch(`/acopio/${acopioId}/estado`, { activo });
+      if (response.status === 200) {
+        console.log(`✅ ${response.data.message}`);
+        return response.data; // { ok: true, message: 'Acopio activado/desactivado correctamente.' }
+      }
+      throw new Error('No se pudo cambiar el estado del acopio.');
+    } catch (error) {
+      console.error('❌ Error en cambiarEstadoAcopio:', error);
+      throw error;
+    }
+  },
+
   crearRemitoConMovimientos: async (acopioId, materiales, remitoData) => {
     try {
       const formData = new FormData();
