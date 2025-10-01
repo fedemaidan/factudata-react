@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo } from 'react';
 import {
   Box,
   List,
@@ -9,8 +9,8 @@ import {
   Typography,
   TextField,
   InputAdornment,
-} from "@mui/material";
-import SearchIcon from "@mui/icons-material/Search";
+} from '@mui/material';
+import SearchIcon from '@mui/icons-material/Search';
 
 export default function ConversationList({
   conversations,
@@ -39,23 +39,29 @@ export default function ConversationList({
           }}
         />
       </Box>
-      <List dense sx={{ overflowY: "auto", flex: 1 }}>
+      <List dense sx={{ overflowY: 'auto', flex: 1 }}>
         {items.map((c) => (
-          <ListItemButton key={c.id} selected={c.id === selectedId} onClick={() => onSelect?.(c)}>
+          <ListItemButton
+            key={c.conversacionId}
+            selected={c.conversacionId === selectedId}
+            onClick={() => onSelect?.(c)}
+          >
             <ListItemAvatar>
-              <Avatar>{(c.displayName || c.userId || "?").charAt(0).toUpperCase()}</Avatar>
+              <Avatar>{(c.profile?.firstName || c.userId || '?').charAt(0).toUpperCase()}</Avatar>
             </ListItemAvatar>
             <ListItemText
               primary={
                 <Box display="flex" alignItems="center" justifyContent="space-between">
                   <Typography fontWeight={600} noWrap>
-                    {c.displayName || c.userId}
+                    {c.profile?.firstName && c.profile?.lastName
+                      ? `${c.profile?.firstName} ${c.profile?.lastName}`
+                      : c.empresa?.nombre || c.userId}
                   </Typography>
                 </Box>
               }
               secondary={
                 <Typography variant="body2" color="text.secondary" noWrap>
-                  {c.lastMessage || ""}
+                  {c.type === 'text' ? c.message || '' : `Tipo: ${c.type}`}
                 </Typography>
               }
             />

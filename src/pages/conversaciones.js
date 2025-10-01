@@ -1,43 +1,46 @@
-import { useEffect, useMemo, useState } from "react";
-import { Layout as DashboardLayout } from "src/layouts/dashboard/layout";
-import Head from "next/head";
-import { Box, Divider, Drawer, useMediaQuery, useTheme } from "@mui/material";
-import ConversationList from "src/components/conversaciones/ConversationList";
-import ChatWindow from "src/components/conversaciones/ChatWindow";
-import MessageInput from "src/components/conversaciones/MessageInput";
-import EmptyState from "src/components/conversaciones/EmptyState";
+import { useEffect, useMemo, useState } from 'react';
+import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
+import Head from 'next/head';
+import { Box, Divider, Drawer, useMediaQuery, useTheme } from '@mui/material';
+import ConversationList from 'src/components/conversaciones/ConversationList';
+import ChatWindow from 'src/components/conversaciones/ChatWindow';
+import MessageInput from 'src/components/conversaciones/MessageInput';
+import EmptyState from 'src/components/conversaciones/EmptyState';
 import {
   fetchConversations,
   fetchMessages,
   sendMessage,
   getConversationTitle,
   searchConversations,
-} from "src/services/conversacionService";
+} from 'src/services/conversacionService';
 
 export default function ConversacionesPage() {
   const [loading, setLoading] = useState(false);
   const [conversations, setConversations] = useState([]);
   const [messages, setMessages] = useState([]);
   const [selected, setSelected] = useState(null);
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState('');
   const [isListOpenMobile, setIsListOpenMobile] = useState(false);
 
-  const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
+  const [offset, setOffset] = useState(0);
+  const [total, setTotal] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const [scrollToBottom, setScrollToBottom] = useState(true);
+  const PAGE = 20;
 
-  // Número del usuario local (POV). "X" según requerimiento
-  const myNumber = "X";
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const myNumber = 'Sorby';
 
   useEffect(() => {
     let active = true;
-    const load = async () => {
+    (async () => {
       setLoading(true);
       const data = await fetchConversations();
       if (!active) return;
       setConversations(data);
       setLoading(false);
-    };
-    load();
+    })();
     return () => {
       active = false;
     };
@@ -45,44 +48,69 @@ export default function ConversacionesPage() {
 
   useEffect(() => {
     let active = true;
-    const load = async () => {
+    (async () => {
       if (!selected) {
         setMessages([]);
+        setOffset(0);
+        setTotal(0);
+        setHasMore(false);
         return;
       }
-      const msgs = await fetchMessages(selected.id);
+      const { items, total } = await fetchMessages(selected.conversacionId, {
+        limit: PAGE,
+        offset: 0,
+      });
       if (!active) return;
-      setMessages(msgs);
-    };
-    load();
+      setMessages(items);
+      setOffset(items.length);
+      setTotal(total);
+      setHasMore(items.length < total);
+      setScrollToBottom(true);
+    })();
     return () => {
       active = false;
     };
-  }, [selected?.id]);
+  }, [selected]);
+
+  const loadMore = async () => {
+    if (!selected || !hasMore) return;
+    setScrollToBottom(false);
+    const { items, total: t } = await fetchMessages(selected.conversacionId, {
+      limit: PAGE,
+      offset,
+    });
+    setMessages((prev) => [...prev, ...items]);
+    setOffset((prev) => prev + items.length);
+    setTotal(t);
+    setHasMore(offset + items.length < t);
+  };
 
   const onSelectConversation = (c) => setSelected(c);
 
   const onSend = async (text) => {
     if (!selected) return;
-    const m = await sendMessage({ conversationId: selected.id, text, myNumber });
-    setMessages((prev) => [...prev, m]);
+    const { message } = await sendMessage({ conversationId: selected.conversacionId, text });
+    setMessages((prev) => [...prev, message]);
     setConversations((prev) =>
       prev.map((cv) =>
-        cv.id === selected.id ? { ...cv, lastMessage: text, updatedAt: m.fechaMensaje } : cv
+        cv.id === selected.id ? { ...cv, lastMessage: text, updatedAt: message.fecha } : cv
       )
     );
+    setTotal((t) => t + 1);
+    setScrollToBottom(true);
   };
 
   const onSearch = async (q) => {
     setSearch(q);
-    const results = await searchConversations(q);
-    setConversations(results);
+    setConversations(await searchConversations(q));
   };
 
-  const title = useMemo(() => (selected ? getConversationTitle(selected) : ""), [selected]);
-
   return (
-    <DashboardLayout title="Conversaciones">
+    <DashboardLayout
+      title={
+        selected ? `${selected.profile.firstName} ${selected.profile.lastName}` : 'Conversaciones'
+      }
+    >
       <Head>
         <title>Conversaciones</title>
       </Head>
@@ -98,15 +126,13 @@ export default function ConversacionesPage() {
           width={360}
           minWidth={320}
           maxWidth={420}
-          display={{ xs: "none", sm: "none", md: "flex" }}
+          display={{ xs: 'none', sm: 'none', md: 'flex' }}
           flexDirection="column"
         >
           <ConversationList
             conversations={conversations}
-            selectedId={selected?.id}
-            onSelect={(c) => {
-              onSelectConversation(c);
-            }}
+            selectedId={selected?.conversacionId}
+            onSelect={onSelectConversation}
             search={search}
             onSearch={onSearch}
           />
@@ -118,8 +144,10 @@ export default function ConversacionesPage() {
               <ChatWindow
                 messages={messages}
                 myNumber={myNumber}
-                title={title}
                 onOpenList={isMobile ? () => setIsListOpenMobile(true) : undefined}
+                onLoadMore={loadMore}
+                hasMore={hasMore}
+                scrollToBottom={scrollToBottom}
               />
               <MessageInput onSend={onSend} />
             </>
@@ -128,18 +156,17 @@ export default function ConversacionesPage() {
           )}
         </Box>
       </Box>
-
       {isMobile ? (
         <Drawer
           open={isListOpenMobile}
           onClose={() => setIsListOpenMobile(false)}
           anchor="left"
-          PaperProps={{ sx: { width: "100%", maxWidth: "100%" } }}
+          PaperProps={{ sx: { width: '100%', maxWidth: '100%' } }}
         >
           <Box height="100vh" display="flex" flexDirection="column">
             <ConversationList
               conversations={conversations}
-              selectedId={selected?.id}
+              selectedId={selected?.conversacionId}
               onSelect={(c) => {
                 onSelectConversation(c);
                 setIsListOpenMobile(false);
