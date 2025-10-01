@@ -1,14 +1,14 @@
-import { useState, useMemo, useEffect } from "react";
-import { Layout as DashboardLayout } from "src/layouts/dashboard/layout";
-import Papa from "papaparse"; // ya deberías tenerlo instalado
-import Head from "next/head";
-import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
-import PictureAsPdfIcon from "@mui/icons-material/PictureAsPdf";
-import TableViewIcon from "@mui/icons-material/TableView";
-import InsertDriveFileIcon from "@mui/icons-material/InsertDriveFile";
-import MoreVertIcon from "@mui/icons-material/MoreVert";
-import TablePagination from "@mui/material/TablePagination";
-import movimientosService from "src/services/movimientosService";
+import { useState, useMemo, useEffect } from 'react';
+import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
+import Papa from 'papaparse'; // ya deberías tenerlo instalado
+import Head from 'next/head';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
+import TableViewIcon from '@mui/icons-material/TableView';
+import InsertDriveFileIcon from '@mui/icons-material/InsertDriveFile';
+import MoreVertIcon from '@mui/icons-material/MoreVert';
+import TablePagination from '@mui/material/TablePagination';
+import movimientosService from 'src/services/movimientosService';
 import {
   Box,
   Button,
@@ -40,22 +40,22 @@ import {
   Switch,
   FormControlLabel,
   DialogActions,
-} from "@mui/material";
-import ticketService from "src/services/ticketService";
-import { getProyectosByEmpresa, getProyectosFromUser } from "src/services/proyectosService";
-import { useAuthContext } from "src/contexts/auth-context";
-import { formatCurrency, formatTimestamp } from "src/utils/formatters";
-import { getEmpresaById, getEmpresaDetailsFromUser } from "src/services/empresaService";
-import { useRouter } from "next/router";
-import { subDays } from "date-fns";
-import DatePicker from "react-datepicker";
-import * as XLSX from "xlsx";
-import { saveAs } from "file-saver";
-import jsPDF from "jspdf";
-import autoTable from "jspdf-autotable";
-import { Tooltip } from "@mui/material";
-import { ColumnSelector } from "src/components/columnSelector";
-import { match } from "assert";
+} from '@mui/material';
+import ticketService from 'src/services/ticketService';
+import { getProyectosByEmpresa, getProyectosFromUser } from 'src/services/proyectosService';
+import { useAuthContext } from 'src/contexts/auth-context';
+import { formatCurrency, formatTimestamp } from 'src/utils/formatters';
+import { getEmpresaById, getEmpresaDetailsFromUser } from 'src/services/empresaService';
+import { useRouter } from 'next/router';
+import { subDays } from 'date-fns';
+import DatePicker from 'react-datepicker';
+import * as XLSX from 'xlsx';
+import { saveAs } from 'file-saver';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import { Tooltip } from '@mui/material';
+import { ColumnSelector } from 'src/components/columnSelector';
+import { match } from 'assert';
 
 const TodosProyectosPage = () => {
   const { user } = useAuthContext();
@@ -75,13 +75,13 @@ const TodosProyectosPage = () => {
   const [filtroProveedor, setFiltroProveedor] = useState([]);
   const [filtroMoneda, setFiltroMoneda] = useState([]);
   const [filtroTipo, setFiltroTipo] = useState([]);
-  const [filtroMontoMin, setFiltroMontoMin] = useState("");
-  const [filtroMontoMax, setFiltroMontoMax] = useState("");
-  const [filtroObservacion, setFiltroObservacion] = useState("");
+  const [filtroMontoMin, setFiltroMontoMin] = useState('');
+  const [filtroMontoMax, setFiltroMontoMax] = useState('');
+  const [filtroObservacion, setFiltroObservacion] = useState('');
   const [filtroCuentaInterna, setFiltroCuentaInterna] = useState([]);
   const [columnasVisibles, setColumnasVisibles] = useState(() => {
-    if (typeof window !== "undefined") {
-      const stored = localStorage.getItem("columnasVisibles");
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('columnasVisibles');
       return stored ? JSON.parse(stored) : null;
     }
     return null;
@@ -93,11 +93,11 @@ const TodosProyectosPage = () => {
 
   const [filtroFechaDesde, setFiltroFechaDesde] = useState(subDays(new Date(), 7));
   const [filtroFechaHasta, setFiltroFechaHasta] = useState(new Date());
-  const [ordenCampo, setOrdenCampo] = useState("codigo_operacion");
-  const [ordenDireccion, setOrdenDireccion] = useState("desc");
+  const [ordenCampo, setOrdenCampo] = useState('codigo_operacion');
+  const [ordenDireccion, setOrdenDireccion] = useState('desc');
 
   const [filtroMedioPago, setFiltroMedioPago] = useState([]);
-  const [filtroPalabrasSueltas, setFiltroPalabrasSueltas] = useState("");
+  const [filtroPalabrasSueltas, setFiltroPalabrasSueltas] = useState('');
   const [filtroTagsExtra, setFiltroTagsExtra] = useState([]);
 
   const [page, setPage] = useState(0); // Página actual
@@ -108,80 +108,80 @@ const TodosProyectosPage = () => {
   const handleExportClose = () => setAnchorElExport(null);
   const [filtroEtapa, setFiltroEtapa] = useState([]);
 
-  const [alert, setAlert] = useState({ open: false, message: "", severity: "info" });
+  const [alert, setAlert] = useState({ open: false, message: '', severity: 'info' });
   const [isLoading, setIsLoading] = useState(false);
 
   const camposBase = {
-    codigo_operacion: "Código",
-    proyecto: "Proyecto",
-    nombre_proveedor: "Proveedor",
-    fecha_factura: "Fecha",
-    total: "Monto",
-    moneda: "Moneda",
-    type: "Tipo",
+    codigo_operacion: 'Código',
+    proyecto: 'Proyecto',
+    nombre_proveedor: 'Proveedor',
+    fecha_factura: 'Fecha',
+    total: 'Monto',
+    moneda: 'Moneda',
+    type: 'Tipo',
   };
 
   const camposOpcionales = {
-    categoria: "Categoría",
-    subcategoria: "Subcategoría",
-    nombre_proveedor: "Proveedor",
+    categoria: 'Categoría',
+    subcategoria: 'Subcategoría',
+    nombre_proveedor: 'Proveedor',
     // cuit_proveedor: 'CUIT Proveedor',
-    observacion: "Observación",
-    total_original: "Monto Original",
-    medio_pago: "Medio de pago",
-    tipo_factura: "Tipo de factura",
-    caja_chica: "Caja chica",
-    tags_extra: "Extras",
-    subtotal: "Subtotal",
-    impuestos: "Impuestos",
-    numero_factura: "Número de factura",
-    cuenta_interna: "Cuenta interna",
+    observacion: 'Observación',
+    total_original: 'Monto Original',
+    medio_pago: 'Medio de pago',
+    tipo_factura: 'Tipo de factura',
+    caja_chica: 'Caja chica',
+    tags_extra: 'Extras',
+    subtotal: 'Subtotal',
+    impuestos: 'Impuestos',
+    numero_factura: 'Número de factura',
+    cuenta_interna: 'Cuenta interna',
   };
 
   function getTableHeadArray(empresa) {
     const head_array = [
-      ["codigo_operacion", "Código"],
-      ["fecha_creacion", "Fecha creacion"],
-      ["fecha_factura", "Fecha"],
-      ["proyectoNombre", "Proyecto"],
-      ["categoria", "Categoría"],
+      ['codigo_operacion', 'Código'],
+      ['fecha_creacion', 'Fecha creacion'],
+      ['fecha_factura', 'Fecha'],
+      ['proyectoNombre', 'Proyecto'],
+      ['categoria', 'Categoría'],
     ];
     if (empresa.comprobante_info?.subcategoria) {
-      head_array.push(["subcategoria", "Subcategoría"]);
+      head_array.push(['subcategoria', 'Subcategoría']);
     }
     if (empresa.comprobante_info?.medio_pago) {
-      head_array.push(["medio_pago", "Medio de pago"]);
+      head_array.push(['medio_pago', 'Medio de pago']);
     }
     if (empresa.comprobante_info?.cuenta_interna) {
-      head_array.push(["cuenta_interna", "Cuenta Interna"]);
+      head_array.push(['cuenta_interna', 'Cuenta Interna']);
     }
 
     if (empresa.comprobante_info?.impuestos) {
-      head_array.push(["impuestos", "Impuestos"]);
+      head_array.push(['impuestos', 'Impuestos']);
     }
 
     head_array.push(
-      ["subtotal_usd_blue", "Subtotal USD Blue"],
-      ["total_usd_blue", "Total USD Blue"],
-      ["subtotal_usd_oficial", "Subtotal USD Oficial"],
-      ["total_usd_oficial", "Total USD Oficial"]
+      ['subtotal_usd_blue', 'Subtotal USD Blue'],
+      ['total_usd_blue', 'Total USD Blue'],
+      ['subtotal_usd_oficial', 'Subtotal USD Oficial'],
+      ['total_usd_oficial', 'Total USD Oficial']
     );
 
     head_array.push(
-      ["nombre_proveedor", "Proveedor"],
-      ["etapa", "Etapa"],
-      ["observacion", "Observación"],
-      ["type", "Tipo"],
-      ["moneda", "Moneda"]
+      ['nombre_proveedor', 'Proveedor'],
+      ['etapa', 'Etapa'],
+      ['observacion', 'Observación'],
+      ['type', 'Tipo'],
+      ['moneda', 'Moneda']
     );
 
     if (empresa.comprobante_info?.subtotal) {
-      head_array.push(["subtotal", "Subtotal"]);
+      head_array.push(['subtotal', 'Subtotal']);
     }
     if (empresa.comprobante_info?.total_original) {
-      head_array.push(["total_original", "Total Original"]);
+      head_array.push(['total_original', 'Total Original']);
     }
-    head_array.push(["total", "Monto"], ["acciones", "Acciones"]);
+    head_array.push(['total', 'Monto'], ['acciones', 'Acciones']);
     return head_array;
   }
 
@@ -201,13 +201,13 @@ const TodosProyectosPage = () => {
           const { id, ...campos } = rows[i];
 
           try {
-            if (!id) throw new Error("Falta ID en la fila");
+            if (!id) throw new Error('Falta ID en la fila');
 
             const camposNormalizados = {};
             for (const key in campos) {
               const value = campos[key];
-              if (value === "") continue; // no actualizar campos vacíos
-              if (!isNaN(value) && value.trim() !== "") {
+              if (value === '') continue; // no actualizar campos vacíos
+              if (!isNaN(value) && value.trim() !== '') {
                 camposNormalizados[key] = Number(value);
               } else {
                 camposNormalizados[key] = value;
@@ -226,50 +226,50 @@ const TodosProyectosPage = () => {
         fetchData(); // refrescá los datos
         setAlert({
           open: true,
-          severity: errores.length === 0 ? "success" : "warning",
+          severity: errores.length === 0 ? 'success' : 'warning',
           message:
             errores.length === 0
-              ? "Importación exitosa"
+              ? 'Importación exitosa'
               : `Algunos movimientos fallaron (${errores.length})`,
         });
       },
       error: function (err) {
         console.error(err);
-        setAlert({ open: true, severity: "error", message: "Error al leer CSV" });
+        setAlert({ open: true, severity: 'error', message: 'Error al leer CSV' });
         setImportLoading(false);
       },
     });
   };
 
   function formatearCampo(campo, valor) {
-    if (valor === undefined || valor === null) return "-";
+    if (valor === undefined || valor === null) return '-';
     switch (campo) {
-      case "fecha_factura":
-      case "fecha_creacion":
+      case 'fecha_factura':
+      case 'fecha_creacion':
         return formatTimestamp(valor); // ya tenés esta función
 
-      case "total":
-      case "total_original":
+      case 'total':
+      case 'total_original':
         return formatCurrency(valor); // ya tenés esta función también
 
-      case "type":
-        return valor === "ingreso" ? "Ingreso" : "Egreso";
+      case 'type':
+        return valor === 'ingreso' ? 'Ingreso' : 'Egreso';
 
-      case "caja_chica":
-        return valor ? "Sí" : "No";
+      case 'caja_chica':
+        return valor ? 'Sí' : 'No';
 
-      case "tags_extra":
-        return Array.isArray(valor) ? valor.join(" - ") : valor;
+      case 'tags_extra':
+        return Array.isArray(valor) ? valor.join(' - ') : valor;
 
-      case "impuestos":
+      case 'impuestos':
         return Array.isArray(valor)
-          ? valor.map((imp) => `${imp.nombre}: ${formatCurrency(imp.monto)}`).join("\n")
+          ? valor.map((imp) => `${imp.nombre}: ${formatCurrency(imp.monto)}`).join('\n')
           : valor;
 
-      case "subtotal_usd_blue":
-      case "total_usd_blue":
-      case "subtotal_usd_oficial":
-      case "total_usd_oficial":
+      case 'subtotal_usd_blue':
+      case 'total_usd_blue':
+      case 'subtotal_usd_oficial':
+      case 'total_usd_oficial':
         return formatCurrency(valor);
 
       default:
@@ -278,7 +278,7 @@ const TodosProyectosPage = () => {
   }
 
   const columnasFiltradas = useMemo(() => {
-    const tableHeadArrayConf = tableHeadArray.filter(([key]) => key !== "acciones");
+    const tableHeadArrayConf = tableHeadArray.filter(([key]) => key !== 'acciones');
     return (tableHeadArrayConf || []).filter(([key]) => columnasVisibles?.[key]);
   }, [tableHeadArray, columnasVisibles]);
 
@@ -303,66 +303,68 @@ const TodosProyectosPage = () => {
 
     const worksheet = XLSX.utils.json_to_sheet(exportData);
     const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Movimientos");
-    const excelBuffer = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
-    const blob = new Blob([excelBuffer], { type: "application/octet-stream" });
-    saveAs(blob, "movimientos.xlsx");
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Movimientos');
+    const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+    const blob = new Blob([excelBuffer], { type: 'application/octet-stream' });
+    saveAs(blob, 'movimientos.xlsx');
   };
 
   const exportAfipExcel = () => {
     const rows = movimientosFiltrados.map((mov) => {
       const camposAfip = {
-        "FACTURA A": "1 - FACTURAS A",
-        "FACTURA B": "6 - FACTURAS B",
-        "FACTURA C": "11 - FACTURAS C",
+        'FACTURA A': '1 - FACTURAS A',
+        'FACTURA B': '6 - FACTURAS B',
+        'FACTURA C': '11 - FACTURAS C',
       };
 
-      const iva = mov.impuestos?.find((i) => i.nombre.includes("IVA"))?.monto || 0;
+      const iva = mov.impuestos?.find((i) => i.nombre.includes('IVA'))?.monto || 0;
       const otrosTributos =
         mov.impuestos
-          ?.filter((i) => !i.nombre.includes("IVA"))
+          ?.filter((i) => !i.nombre.includes('IVA'))
           .reduce((acc, i) => acc + (i.monto || 0), 0) || 0;
 
       const proveedor = (empresa.proveedores_data || []).find((p) => p.id === mov.id_proveedor);
-      const punto_venta = mov.numero_factura?.split("-")[0] || "";
-      const numero_desde = mov.numero_factura?.split("-")[1] || "";
+      const punto_venta = mov.numero_factura?.split('-')[0] || '';
+      const numero_desde = mov.numero_factura?.split('-')[1] || '';
 
-      const iva0 = mov.impuestos?.find((i) => i.nombre.includes("IVA 0%"))?.monto ?? "";
-      const iva25 = mov.impuestos?.find((i) => i.nombre.includes("IVA 2.5%"))?.monto ?? "";
-      const iva5 = mov.impuestos?.find((i) => i.nombre.includes("IVA 5%"))?.monto ?? "";
-      const iva105 = mov.impuestos?.find((i) => i.nombre.includes("IVA 10.5%"))?.monto ?? "";
-      const iva21 = mov.impuestos?.find((i) => i.nombre.includes("IVA 21%"))?.monto ?? "";
+      const iva0 = mov.impuestos?.find((i) => i.nombre.includes('IVA 0%'))?.monto ?? '';
+      const iva25 = mov.impuestos?.find((i) => i.nombre.includes('IVA 2.5%'))?.monto ?? '';
+      const iva5 = mov.impuestos?.find((i) => i.nombre.includes('IVA 5%'))?.monto ?? '';
+      const iva105 = mov.impuestos?.find((i) => i.nombre.includes('IVA 10.5%'))?.monto ?? '';
+      const iva21 = mov.impuestos?.find((i) => i.nombre.includes('IVA 21%'))?.monto ?? '';
+      const iva27 = mov.impuestos?.find((i) => i.nombre.includes('IVA 27%'))?.monto ?? '';
 
       return {
-        Fecha: formatTimestamp(mov.fecha_factura, "DIA/MES/ANO") || "",
-        Tipo: camposAfip[mov.tipo_factura] || "",
-        "Punto de Venta": parseInt(punto_venta) || "",
-        "Número Desde": parseInt(numero_desde) || "",
-        "Número Hasta": "",
-        "Cód. Autorización": "",
-        "Tipo Doc. Emisor": "CUIT",
-        "Nro. Doc. Emisor": proveedor?.cuit || "",
-        "Denominación Emisor": proveedor?.razon_social || mov.nombre_proveedor || "",
-        "Tipo Doc. Receptor": "CUIT",
-        "Nro. Doc. Receptor": empresa?.cuit || "",
-        "Tipo Cambio": 1,
-        Moneda: mov.moneda === "USD" ? "U$S" : "$",
-        "Neto Gravado IVA 0%": iva0 !== "" ? mov.total - iva0 - otrosTributos : "",
-        "IVA 2,5%": iva25,
-        "Neto Gravado IVA 2,5%": iva25 !== "" ? mov.total - iva25 - otrosTributos : "",
-        "IVA 5%": iva5,
-        "Neto Gravado IVA 5%": iva5 !== "" ? mov.total - iva5 - otrosTributos : "",
-        "IVA 10,5%": iva105,
-        "Neto Gravado IVA 10,5%": iva105 !== "" ? mov.total - iva105 - otrosTributos : "",
-        "IVA 21%": iva21,
-        "Neto Gravado IVA 21%": iva21 !== "" ? mov.total - iva21 - otrosTributos : "",
-        "Neto Gravado Total": mov.total - iva,
-        "Neto No Gravado": "",
-        //"Imp. Neto No Gravado": 0,
-        "Imp. Op. Exentas": "",
-        "Otros Tributos": otrosTributos,
-        "Total IVA": iva,
-        "Imp. Total": mov.total || 0,
+        Fecha: formatTimestamp(mov.fecha_factura, 'DIA/MES/ANO') || '',
+        Tipo: camposAfip[mov.tipo_factura] || '',
+        'Punto de Venta': parseInt(punto_venta) || '',
+        'Número Desde': parseInt(numero_desde) || '',
+        'Número Hasta': '',
+        'Cód. Autorización': '',
+        'Tipo Doc. Emisor': 'CUIT',
+        'Nro. Doc. Emisor': proveedor?.cuit || '',
+        'Denominación Emisor': proveedor?.razon_social || mov.nombre_proveedor || '',
+        'Tipo Doc. Receptor': 'CUIT',
+        'Nro. Doc. Receptor': empresa?.cuit || '',
+        'Tipo Cambio': 1,
+        Moneda: mov.moneda === 'USD' ? 'U$S' : '$',
+        'Neto Gravado IVA 0%': iva0 !== '' ? mov.total - iva0 - otrosTributos : '',
+        'IVA 2,5%': iva25,
+        'Neto Gravado IVA 2,5%': iva25 !== '' ? mov.total - iva25 - otrosTributos : '',
+        'IVA 5%': iva5,
+        'Neto Gravado IVA 5%': iva5 !== '' ? mov.total - iva5 - otrosTributos : '',
+        'IVA 10,5%': iva105,
+        'Neto Gravado IVA 10,5%': iva105 !== '' ? mov.total - iva105 - otrosTributos : '',
+        'IVA 21%': iva21,
+        'Neto Gravado IVA 21%': iva21 !== '' ? mov.total - iva21 - otrosTributos : '',
+        'IVA 27%': iva27,
+        'Neto Gravado IVA 27%': iva27 !== '' ? mov.total - iva27 - otrosTributos : '',
+        'Neto Gravado Total': mov.total - iva,
+        'Neto No Gravado': '',
+        'Op. Exentas': '',
+        'Otros Tributos': otrosTributos,
+        'Total IVA': iva,
+        'Imp. Total': mov.total || 0,
       };
     });
 
@@ -372,27 +374,27 @@ const TodosProyectosPage = () => {
     const fileTitle = `Mis Comprobantes Recibidos - CUIT ${empresa?.cuit}`;
 
     // Primera fila “vacía” pero con la columna I (índice 8) seteada
-    const firstRow = new Array(Math.max(headers.length, 9)).fill("");
+    const firstRow = new Array(Math.max(headers.length, 9)).fill('');
     firstRow[8] = fileTitle; // Columna I
 
     const aoa = [
       firstRow, // Fila 1
       headers, // Fila 2: títulos
-      ...rows.map((r) => headers.map((h) => r[h] ?? "")), // Datos
+      ...rows.map((r) => headers.map((h) => r[h] ?? '')), // Datos
     ];
 
     const worksheet = XLSX.utils.aoa_to_sheet(aoa);
     const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "AFIP Comprobantes");
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'AFIP Comprobantes');
 
-    const buffer = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
-    const blob = new Blob([buffer], { type: "application/octet-stream" });
+    const buffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+    const blob = new Blob([buffer], { type: 'application/octet-stream' });
     saveAs(blob, `${fileTitle}.xlsx`);
   };
 
   const exportToCSV = () => {
     const camposExportables = {
-      id: "id",
+      id: 'id',
       ...camposBase,
       ...Object.fromEntries(
         Object.entries(camposOpcionales).filter(([key]) => empresa.comprobante_info?.[key])
@@ -404,9 +406,9 @@ const TodosProyectosPage = () => {
       Object.keys(camposExportables).map((campo) => obtenerValorExportable(campo, mov[campo]))
     );
 
-    const csvContent = [headers, ...rows].map((e) => e.join(",")).join("\n");
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    saveAs(blob, "movimientos.csv");
+    const csvContent = [headers, ...rows].map((e) => e.join(',')).join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    saveAs(blob, 'movimientos.csv');
   };
 
   const exportToPDF = () => {
@@ -429,7 +431,7 @@ const TodosProyectosPage = () => {
       styles: { fontSize: 8 },
       headStyles: { fillColor: [25, 118, 210] },
     });
-    doc.save("movimientos.pdf");
+    doc.save('movimientos.pdf');
   };
 
   const fetchData = async () => {
@@ -475,7 +477,7 @@ const TodosProyectosPage = () => {
 
       setMovimientos(movimientosData);
     } catch (error) {
-      setAlert({ open: true, message: "Error al cargar los movimientos.", severity: "error" });
+      setAlert({ open: true, message: 'Error al cargar los movimientos.', severity: 'error' });
     } finally {
       setIsLoading(false);
     }
@@ -516,15 +518,15 @@ const TodosProyectosPage = () => {
           filtroTagsExtra.every((tag) => mov.tags_extra.includes(tag)));
 
       const matchPalabrasSueltas =
-        filtroPalabrasSueltas === "" ||
+        filtroPalabrasSueltas === '' ||
         Object.values(mov).some((valor) => {
-          if (typeof valor === "string") {
+          if (typeof valor === 'string') {
             return valor.toLowerCase().includes(filtroPalabrasSueltas.toLowerCase());
           }
           if (Array.isArray(valor)) {
             return valor.some(
               (item) =>
-                typeof item === "string" &&
+                typeof item === 'string' &&
                 item.toLowerCase().includes(filtroPalabrasSueltas.toLowerCase())
             );
           }
@@ -558,17 +560,17 @@ const TodosProyectosPage = () => {
       if (aVal == null) return 1;
       if (bVal == null) return -1;
 
-      if (typeof aVal === "number") {
-        return ordenDireccion === "asc" ? aVal - bVal : bVal - aVal;
+      if (typeof aVal === 'number') {
+        return ordenDireccion === 'asc' ? aVal - bVal : bVal - aVal;
       }
 
       if (aVal instanceof Date) {
-        return ordenDireccion === "asc"
+        return ordenDireccion === 'asc'
           ? new Date(aVal) - new Date(bVal)
           : new Date(bVal) - new Date(aVal);
       }
 
-      return ordenDireccion === "asc"
+      return ordenDireccion === 'asc'
         ? String(aVal).localeCompare(String(bVal))
         : String(bVal).localeCompare(String(aVal));
     });
@@ -601,9 +603,9 @@ const TodosProyectosPage = () => {
   const totalesPorMoneda = useMemo(() => {
     return movimientosFiltrados.reduce(
       (acc, mov) => {
-        const valor = mov.type === "ingreso" ? mov.total : -mov.total;
-        if (mov.moneda === "ARS") acc.ars += valor;
-        if (mov.moneda === "USD") acc.usd += valor;
+        const valor = mov.type === 'ingreso' ? mov.total : -mov.total;
+        if (mov.moneda === 'ARS') acc.ars += valor;
+        if (mov.moneda === 'USD') acc.usd += valor;
         return acc;
       },
       { ars: 0, usd: 0 }
@@ -622,7 +624,7 @@ const TodosProyectosPage = () => {
       setProveedoresUnicos(empresa?.proveedores_data?.map((p) => p.nombre) || empresa?.proveedores);
       setEtapasUnicas(empresa?.etapas?.map((e) => e.nombre) || []);
 
-      todas = todas.filter(([key]) => key !== "acciones");
+      todas = todas.filter(([key]) => key !== 'acciones');
 
       let porDefecto = columnasVisibles || {};
 
@@ -636,18 +638,18 @@ const TodosProyectosPage = () => {
       // ✅ Si todas están en false, borro la variable del localStorage
       const algunaActiva = Object.values(porDefecto).some((val) => val === true);
       if (!algunaActiva) {
-        localStorage.removeItem("columnasVisibles");
+        localStorage.removeItem('columnasVisibles');
         porDefecto = {};
         // Activar columnas mínimas para no quedar vacío
         for (const [key] of todas) {
           if (
             [
-              "codigo_operacion",
-              "proyectoNombre",
-              "fecha_factura",
-              "total",
-              "moneda",
-              "type",
+              'codigo_operacion',
+              'proyectoNombre',
+              'fecha_factura',
+              'total',
+              'moneda',
+              'type',
             ].includes(key)
           ) {
             porDefecto[key] = true;
@@ -656,44 +658,47 @@ const TodosProyectosPage = () => {
       }
 
       setColumnasVisibles(porDefecto);
-      localStorage.setItem("columnasVisibles", JSON.stringify(porDefecto));
+      localStorage.setItem('columnasVisibles', JSON.stringify(porDefecto));
     }
   }, [empresa]);
 
   function obtenerValorExportable(campo, valor) {
-    if (valor === undefined || valor === null) return "";
+    if (valor === undefined || valor === null) return '';
 
     switch (campo) {
-      case "fecha_factura":
+      case 'fecha_factura':
         return formatTimestamp(valor); // string legible
 
-      case "total":
-      case "total_original":
-      case "subtotal":
-      case "subtotal_usd_blue":
-      case "total_usd_blue":
-      case "subtotal_usd_oficial":
-      case "total_usd_oficial":
-        return typeof valor === "number" ? valor : Number(String(valor).replace(/[^\d.-]+/g, ""));
+      case 'total':
+      case 'total_original':
+      case 'subtotal':
+      case 'subtotal_usd_blue':
+      case 'total_usd_blue':
+      case 'subtotal_usd_oficial':
+      case 'total_usd_oficial':
+        return typeof valor === 'number' ? valor : Number(String(valor).replace(/[^\d.-]+/g, ''));
 
-      case "type":
-        return valor === "ingreso" ? "Ingreso" : "Egreso";
+      case 'type':
+        return valor === 'ingreso' ? 'Ingreso' : 'Egreso';
 
-      case "caja_chica":
-        return valor ? "Sí" : "No";
+      case 'caja_chica':
+        return valor ? 'Sí' : 'No';
 
-      case "tags_extra":
-        return Array.isArray(valor) ? valor.join(" - ") : valor;
+      case 'tags_extra':
+        return Array.isArray(valor) ? valor.join(' - ') : valor;
 
-      case "impuestos":
+      case 'impuestos':
         return Array.isArray(valor)
-          ? valor.map((imp) => `${imp.nombre}: ${imp.monto}`).join("\n")
+          ? valor.map((imp) => `${imp.nombre}: ${imp.monto}`).join('\n')
           : valor;
 
       default:
         return valor;
     }
   }
+
+  console.log('empresa', empresa);
+  console.log('mov', movimientosFiltrados);
 
   return (
     <>
@@ -889,7 +894,7 @@ const TodosProyectosPage = () => {
                       onChange={(e) => setFiltroCuentaInterna(e.target.value)}
                       label="Cuenta Interna"
                     >
-                      {(empresa?.cuentas || ["Cuenta A", "Cuenta B", "Cuenta C"]).map(
+                      {(empresa?.cuentas || ['Cuenta A', 'Cuenta B', 'Cuenta C']).map(
                         (cuenta, i) => (
                           <MenuItem key={i} value={cuenta}>
                             {cuenta}
@@ -1032,16 +1037,16 @@ const TodosProyectosPage = () => {
                             key={campo}
                             onClick={() => {
                               if (ordenCampo === campo) {
-                                setOrdenDireccion(ordenDireccion === "asc" ? "desc" : "asc");
+                                setOrdenDireccion(ordenDireccion === 'asc' ? 'desc' : 'asc');
                               } else {
                                 setOrdenCampo(campo);
-                                setOrdenDireccion("asc");
+                                setOrdenDireccion('asc');
                               }
                             }}
-                            sx={{ cursor: "pointer", fontWeight: "bold" }}
+                            sx={{ cursor: 'pointer', fontWeight: 'bold' }}
                           >
                             {label}
-                            {ordenCampo === campo ? (ordenDireccion === "asc" ? " ▲" : " ▼") : ""}
+                            {ordenCampo === campo ? (ordenDireccion === 'asc' ? ' ▲' : ' ▼') : ''}
                           </TableCell>
                         ))}
                         <TableCell key="acciones">Acciones</TableCell>
@@ -1053,7 +1058,7 @@ const TodosProyectosPage = () => {
                         <TableRow key={index}>
                           {columnasFiltradas.map(
                             ([campo]) =>
-                              campo !== "acciones" && (
+                              campo !== 'acciones' && (
                                 <TableCell key={campo}>
                                   {formatearCampo(campo, mov[campo])}
                                 </TableCell>
@@ -1113,7 +1118,7 @@ const TodosProyectosPage = () => {
                 disabled={!csvFile || importLoading}
                 onClick={handleImportCsv}
               >
-                {importLoading ? "Importando..." : "Importar"}
+                {importLoading ? 'Importando...' : 'Importar'}
               </Button>
             </DialogActions>
           </Dialog>
