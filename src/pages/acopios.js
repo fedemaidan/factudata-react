@@ -22,7 +22,8 @@ import {
   IconButton,
   Tooltip,
   Menu,
-  MenuItem
+  MenuItem,
+  Chip
 } from '@mui/material';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import AddIcon from '@mui/icons-material/Add';
@@ -108,7 +109,13 @@ const AcopiosPage = () => {
   const fetchAcopios = useCallback(async () => {
     setLoading(true);
     try {
-      const acopiosData = await AcopioService.listarAcopios(empresaId);
+      let acopiosData = await AcopioService.listarAcopios(empresaId);
+      // hace qeu si no tiene estado le ponga activo
+      acopiosData.map(acopio => {
+        if (!acopio.estado) {
+          acopio.estado = 'activo';
+        }
+      });
       setAcopios(acopiosData);
       const total = acopiosData.reduce((sum, acopio) => sum + (acopio.totalValor || 0), 0);
       setTotalAcopios(total);
@@ -176,6 +183,7 @@ const AcopiosPage = () => {
               <TableCell>Código</TableCell>
               <TableCell>Proveedor</TableCell>
               <TableCell>Proyecto</TableCell>
+              <TableCell>Estado</TableCell>
               <TableCell>Total disponible</TableCell>
               <TableCell align="center">Acciones</TableCell>
             </TableRow>
@@ -187,6 +195,9 @@ const AcopiosPage = () => {
                 <TableCell>{acopio.codigo}</TableCell>
                 <TableCell>{acopio.proveedor}</TableCell>
                 <TableCell>{acopio.proyecto_nombre}</TableCell>
+                <TableCell>
+                <Chip label={acopio.estado} color={acopio.estado == 'inactivo' ? 'error': 'success' } size="small" />
+                  </TableCell>
                 <TableCell>{formatCurrency(acopio.totalValor)}</TableCell>
                 <TableCell align="center">
                   <Tooltip title="Más opciones">

@@ -35,6 +35,9 @@ import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import AcopioService from 'src/services/acopioService';
 import RemitosTable from 'src/components/remitosTable';
 import MaterialesTable from 'src/components/materialesTable';
+import Chip from '@mui/material/Chip';
+import Switch from '@mui/material/Switch';
+import FormControlLabel from '@mui/material/FormControlLabel';
 
 /** ------------------------------
  *  FLAGS DE FUNCIONALIDAD (configurables)
@@ -73,6 +76,8 @@ const MovimientosAcopioPage = () => {
   const nextIdx = hasAcopioPages ? (pageIdx + 1) % totalPages : 0;
   const prevIdx = hasAcopioPages ? (pageIdx - 1 + totalPages) % totalPages : 0;
   const nextUrl = hasAcopioPages ? pages[nextIdx] : null;
+  const [estadoLoading, setEstadoLoading] = useState(false);
+
 
   const formatCurrency = (amount) =>
     amount ? amount.toLocaleString('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0 }) : '$ 0';
@@ -83,6 +88,11 @@ const MovimientosAcopioPage = () => {
       setLoading(true);
       const acopioData = await AcopioService.obtenerAcopio(acopioId);
       acopioData.tipo = acopioData.tipo || 'materiales';
+      acopioData.tipo = acopioData.tipo || 'materiales';
+      // si no existe el flag, lo consideramos activo por defecto
+      if (typeof acopioData.activo !== 'boolean') {
+        acopioData.activo = (acopioData.estado || '').toLowerCase() !== 'inactivo';
+      }
       setAcopio(acopioData);
 
       const comprasData = await AcopioService.obtenerCompras(acopioId);
@@ -98,7 +108,30 @@ const MovimientosAcopioPage = () => {
   }, [acopioId]);
 
   const [remitos, setRemitos] = useState([]);
-
+  
+  const handleToggleActivo = async () => {
+    if (!acopio) return;
+    try {
+      setEstadoLoading(true);
+      const activoActual = acopio.activo !== false; // true salvo que sea false explícito
+      const nuevoActivo = !activoActual;
+  
+      const resp = await AcopioService.cambiarEstadoAcopio(acopioId, nuevoActivo);
+      // Optimistic UI
+      setAcopio(prev => ({
+        ...prev,
+        activo: nuevoActivo,
+        estado: nuevoActivo ? 'activo' : 'inactivo'
+      }));
+      setAlert({ open: true, message: resp?.message || `Acopio ${nuevoActivo ? 'activado' : 'desactivado'} correctamente`, severity: 'success' });
+    } catch (error) {
+      console.error('Error al cambiar estado de acopio:', error);
+      setAlert({ open: true, message: 'No se pudo cambiar el estado del acopio', severity: 'error' });
+    } finally {
+      setEstadoLoading(false);
+    }
+  };
+  
   const fetchRemitos = useCallback(async () => {
     try {
       if (!acopioId) return;
@@ -341,6 +374,24 @@ const MovimientosAcopioPage = () => {
           <Box mt={3}>
             {acopio && (
               <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
+                <Stack direction="row" spacing={1} alignItems="center">
+                      <Chip
+                        size="small"
+                        label={acopio?.activo === false ? 'Inactivo' : 'Activo'}
+                        color={acopio?.activo === false ? 'default' : 'success'}
+                        variant="outlined"
+                      />
+                      <FormControlLabel
+                        control={
+                          <Switch
+                            checked={acopio?.activo !== false}
+                            onChange={handleToggleActivo}
+                            disabled={estadoLoading}
+                          />
+                        }
+                        label={acopio?.activo !== false ? 'Desactivar' : 'Activar'}
+                      />
+                    </Stack>
                 <Typography variant="h6" gutterBottom>Resumen del Acopio</Typography>
                 <Grid container spacing={2}>
                   <Grid item xs={12} sm={6} md={4}>
