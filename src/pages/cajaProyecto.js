@@ -200,6 +200,18 @@ const [rowsPerPage, setRowsPerPage] = useState(25);  // filas por página
    cac:         { out: 'ARS',       path: (e) => e?.total?.cac },          // ej. si calculás CAC a ARS
  };
 
+ // ordenar por fecha_factura (desc) y, si empata, por código (asc)
+const sortedMovs = useMemo(() => {
+  const arr = [...(movimientosFiltrados || [])];
+  return arr.sort((a, b) => {
+    const da = getTime(a.fecha_factura);
+    const db = getTime(b.fecha_factura);
+    if (db !== da) return db - da; // más reciente primero
+    const ca = (a.codigo_operacion || a.codigo || '').toString();
+    const cb = (b.codigo_operacion || b.codigo || '').toString();
+    return ca.localeCompare(cb, 'es-AR', { numeric: true, sensitivity: 'base' });
+  });
+}, [movimientosFiltrados]);
 
 // handlers
 const handleChangePage = (_evt, newPage) => {
@@ -575,6 +587,17 @@ const handleCloseCols = () => setAnchorColsEl(null);
     setCajaSeleccionada(caja);
     setFilters((f) => ({ ...f, caja }));
   };
+
+  // helper para normalizar fecha (Timestamp/Date/string/number)
+const getTime = (v) => {
+  if (!v) return 0;
+  if (typeof v === 'number') return v;
+  if (typeof v === 'string') return new Date(v).getTime() || 0;
+  if (v?.toDate) return v.toDate().getTime();
+  if (v?.seconds) return v.seconds * 1000;
+  return 0;
+};
+
   
   const totalesDetallados = useMemo(() => {
     const base = {
@@ -673,13 +696,14 @@ const handleCloseCols = () => setAnchorColsEl(null);
     await updateEmpresaDetails(empresa.id, { cajas_virtuales: nuevasCajas });
   };
   
-  const totalRows = movimientosFiltrados.length;
+  const totalRows = sortedMovs.length;
   
   const paginatedMovs = useMemo(() => {
     const start = page * rowsPerPage;
     const end = Math.min(totalRows, start + rowsPerPage);
-    return movimientosFiltrados.slice(start, end);
-  }, [movimientosFiltrados, page, rowsPerPage, totalRows]);
+    return sortedMovs.slice(start, end);
+  }, [sortedMovs, page, rowsPerPage, totalRows]);
+  
   
   const handleRecalcularEquivalencias = async () => {
     if (!proyectoId) return;
