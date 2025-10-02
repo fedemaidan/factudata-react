@@ -200,19 +200,6 @@ const [rowsPerPage, setRowsPerPage] = useState(25);  // filas por página
    cac:         { out: 'ARS',       path: (e) => e?.total?.cac },          // ej. si calculás CAC a ARS
  };
 
- // ordenar por fecha_factura (desc) y, si empata, por código (asc)
-const sortedMovs = useMemo(() => {
-  const arr = [...(movimientosFiltrados || [])];
-  return arr.sort((a, b) => {
-    const da = getTime(a.fecha_factura);
-    const db = getTime(b.fecha_factura);
-    if (db !== da) return db - da; // más reciente primero
-    const ca = (a.codigo_operacion || a.codigo || '').toString();
-    const cb = (b.codigo_operacion || b.codigo || '').toString();
-    return ca.localeCompare(cb, 'es-AR', { numeric: true, sensitivity: 'base' });
-  });
-}, [movimientosFiltrados]);
-
 // handlers
 const handleChangePage = (_evt, newPage) => {
   setPage(newPage);
@@ -614,6 +601,33 @@ const getTime = (v) => {
   
     return base;
   }, [movimientosFiltrados]);
+
+  // helper: normaliza la fecha al inicio del día (ignora hora)
+const getDayMs = (v) => {
+  if (!v) return 0;
+  let d;
+  if (typeof v === 'number') d = new Date(v);
+  else if (typeof v === 'string') d = new Date(v);
+  else if (v?.toDate) d = v.toDate();
+  else if (v?.seconds) d = new Date(v.seconds * 1000);
+  else return 0;
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+};
+
+  // ordenar por fecha_factura (desc) y, si empata, por código (asc)
+const sortedMovs = useMemo(() => {
+  const arr = [...(movimientosFiltrados || [])];
+  return arr.sort((a, b) => {
+    const da = getDayMs(a.fecha_factura);
+    const db = getDayMs(b.fecha_factura);
+    if (db !== da) return db - da; // más reciente primero
+    const ca = (a.codigo_operacion || a.codigo || '').toString();
+    const cb = (b.codigo_operacion || b.codigo || '').toString();
+    return cb.localeCompare(ca, 'es-AR', { numeric: true, sensitivity: 'base' });
+  });
+}, [movimientosFiltrados]);
+
 
   const formatByCurrency = (currency, amount) => {
     const cur = currency === 'USD' ? 'USD' : 'ARS';
