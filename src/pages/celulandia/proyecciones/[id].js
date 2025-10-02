@@ -21,10 +21,13 @@ import {
   FormControlLabel,
   Chip,
 } from '@mui/material';
+import { FileDownload as FileDownloadIcon } from '@mui/icons-material';
 import Head from 'next/head';
 import DataTable from 'src/components/celulandia/DataTable';
 import EliminarTagsModal from 'src/components/celulandia/EliminarTagsModal';
 import proyeccionService from 'src/services/celulandia/proyeccionService';
+import * as XLSX from 'xlsx';
+import dayjs from 'dayjs';
 
 export default function ProyeccionDetailPage() {
   const router = useRouter();
@@ -34,7 +37,7 @@ export default function ProyeccionDetailPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [paginaActual, setPaginaActual] = useState(1);
   const [total, setTotal] = useState(0);
-  const [limitePorPagina] = useState(200);
+  const [limitePorPagina] = useState(400);
   const [sortField, setSortField] = useState('codigo');
   const [sortDirection, setSortDirection] = useState('asc');
   const [selectedKeys, setSelectedKeys] = useState(new Set());
@@ -56,6 +59,9 @@ export default function ProyeccionDetailPage() {
   const [isRemoveTagOpen, setIsRemoveTagOpen] = useState(false);
   const [isRemoveTagSaving, setIsRemoveTagSaving] = useState(false);
   const [removeTagError, setRemoveTagError] = useState('');
+
+  // Estados para exportar
+  const [isExporting, setIsExporting] = useState(false);
 
   // Genera un color pastel determinístico basado en el texto del tag
   const getTagColor = (tag) => {
@@ -153,6 +159,106 @@ export default function ProyeccionDetailPage() {
       setRemoveTagError('Error al eliminar los tags');
     } finally {
       setIsRemoveTagSaving(false);
+    }
+  };
+
+  const handleExportExcel = async () => {
+    setIsExporting(true);
+    try {
+      // Obtener todos los datos sin paginación
+      const proyeccionResponse = await proyeccionService.getProyeccionById(id, {
+        limit: 10000, // Un número grande para obtener todos los datos
+        offset: 0,
+        sortField,
+        sortDirection,
+        tag: tagFilter,
+      });
+
+      const payload = proyeccionResponse?.data ? proyeccionResponse : { data: proyeccionResponse };
+      const allProductos = payload.data || payload?.data?.data || [];
+
+      // Formatear datos para Excel
+      const data = allProductos.map((item) => {
+        // Formatear tags como string separado por comas
+        const tagsValue = item?.tags;
+        let tagsArray = [];
+        if (Array.isArray(tagsValue)) tagsArray = tagsValue;
+        else if (typeof tagsValue === 'string' && tagsValue.trim() !== '') tagsArray = [tagsValue];
+
+        const tagsString = tagsArray.length > 0 ? tagsArray.join(', ') : '';
+
+        // Formatear días para agotar
+        const dias = Number(item?.diasSinStock ?? 0);
+        const diasString = dias === 0 ? 'Agotado' : `${dias} días`;
+
+        return {
+          Código: item.codigo || '',
+          Descripción: item.descripcion || '',
+          Tags: tagsString,
+          'Stock Actual': Number(item?.cantidad ?? 0),
+          'Ventas Período': Number(item?.ventasPeriodo ?? 0),
+          'Ventas 3M': Number(item?.ventasProyectadas ?? 0),
+          'Días p/Agotar': diasString.split(' ')[0],
+        };
+      });
+
+      const headers = Object.keys(data[0] || {});
+      const ws = XLSX.utils.json_to_sheet(data, { header: headers });
+      const wb = XLSX.utils.book_new();
+
+      // Auto-fit de anchos por contenido (para que nada quede "cortado")
+      const prettyNum = (v, dec = 2) =>
+        typeof v === 'number'
+          ? v.toLocaleString('en-US', { minimumFractionDigits: dec, maximumFractionDigits: dec })
+          : String(v ?? '');
+
+      const decimalsFor = (header) => (header === 'Tipo de cambio' ? 4 : 2); // más precisión para tipo de cambio
+
+      const colWidths = headers.map((h) => {
+        const maxLen = Math.max(
+          String(h).length,
+          ...data.map((row) => {
+            const v = row[h];
+            if (typeof v === 'number') return prettyNum(v, decimalsFor(h)).length;
+            return String(v ?? '').length;
+          })
+        );
+        // límites razonables: mínimo 10, máximo 40 'caracteres'
+        return { wch: Math.min(Math.max(maxLen + 2, 10), 40) };
+      });
+      ws['!cols'] = colWidths;
+
+      // Formatos numéricos (miles/decimales) por columna
+      const currencyCols = new Set(['Stock Actual', 'Ventas Período', 'Ventas 3M']);
+      const numberCols = new Set(['Días p/Agotar']);
+
+      // Rango de la hoja para iterar celdas
+      const range = XLSX.utils.decode_range(
+        ws['!ref'] || `A1:${XLSX.utils.encode_col(headers.length - 1)}${data.length + 1}`
+      );
+
+      headers.forEach((h, colIdx) => {
+        let numFmt = null;
+        if (currencyCols.has(h)) numFmt = '#,##0';
+        else if (numberCols.has(h)) numFmt = '#,##0';
+        for (let r = 1; r <= data.length; r++) {
+          const addr = XLSX.utils.encode_cell({ c: colIdx, r });
+          const cell = ws[addr];
+          if (cell && typeof cell.v === 'number') {
+            cell.z = numFmt;
+          }
+        }
+      });
+
+      XLSX.utils.book_append_sheet(wb, ws, 'Proyección');
+
+      const filename = `proyeccion_${dayjs().format('YYYY-MM-DD_HHmm')}.xlsx`;
+      XLSX.writeFile(wb, filename);
+    } catch (error) {
+      console.error('Error al exportar a Excel:', error);
+      alert('Error al exportar los datos');
+    } finally {
+      setIsExporting(false);
     }
   };
 
@@ -426,6 +532,17 @@ export default function ProyeccionDetailPage() {
               }}
             >
               {`Eliminar todos los tags (${selectedKeys.size})`}
+            </Button>
+            <Button
+              variant="contained"
+              color="success"
+              disabled={isExporting}
+              onClick={handleExportExcel}
+              startIcon={
+                isExporting ? <CircularProgress size={16} color="inherit" /> : <FileDownloadIcon />
+              }
+            >
+              {isExporting ? 'Exportando...' : 'Exportar a Excel'}
             </Button>
           </Stack>
 
