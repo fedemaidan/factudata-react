@@ -214,10 +214,10 @@ const MovimientosAcopioPage = () => {
         }
 
         if (mov.tipo === 'acopio') {
-          acc[mov.codigo].cantidadAcopiada += mov.cantidad;
+          acc[mov.codigo].cantidadAcopiada += parseInt(mov.cantidad, 10);
           acc[mov.codigo].valorTotalAcopiado += mov.valorOperacion || 0;
         } else if (mov.tipo === 'desacopio') {
-          acc[mov.codigo].cantidadDesacopiada += mov.cantidad;
+          acc[mov.codigo].cantidadDesacopiada += parseInt(mov.cantidad,10);
           acc[mov.codigo].valorTotalDesacopiado += mov.valorOperacion || 0;
         }
 
