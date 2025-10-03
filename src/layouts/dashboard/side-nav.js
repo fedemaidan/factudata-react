@@ -260,7 +260,9 @@ export const SideNav = (props) => {
             </SvgIcon>
           ),
         });
+      }
 
+      if (permisosUsuario.includes("VER_CONVERSACIONES")) {
         baseItems.push({
           title: "Conversaciones",
           path: "/conversaciones",
