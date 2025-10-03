@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from "react";
-import PropTypes from "prop-types";
+import React, { useState, useEffect, useMemo } from 'react';
+import PropTypes from 'prop-types';
 import {
   Dialog,
   DialogTitle,
@@ -9,13 +9,14 @@ import {
   Autocomplete,
   TextField,
   CircularProgress,
-} from "@mui/material";
-import profileService from "src/services/profileService";
+} from '@mui/material';
+import profileService from 'src/services/profileService';
 
 export const SpyAccountModal = ({ open, onClose, onSpyUser, user }) => {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
+  const [userInput, setUserInput] = useState('');
 
   useEffect(() => {
     if (open) {
@@ -26,13 +27,38 @@ export const SpyAccountModal = ({ open, onClose, onSpyUser, user }) => {
   const fetchUsers = async () => {
     setLoading(true);
     const profiles = await profileService.getProfiles();
+    console.log('profiles', profiles);
     setUsers(profiles.filter((profile) => profile.email && profile.email !== user.email));
     setLoading(false);
   };
 
-  const handleSelectUser = (user) => {
-    setSelectedUser(user);
-  };
+  const userOptions = useMemo(
+    () =>
+      users.map((u) => ({
+        id: u.id,
+        label: `${u.empresaData?.nombre || ''} ${u.email || ''} ${u.phone || ''} ${
+          u.firstName || ''
+        } ${u.lastName || ''}`.trim(),
+        ...u,
+      })),
+    [users]
+  );
+
+  useEffect(() => {
+    setUserInput(selectedUser?.label || '');
+  }, [selectedUser]);
+
+  const matchesOption = (text) =>
+    !!userOptions.find((o) =>
+      (o.label || '')
+        .trim()
+        .toUpperCase()
+        .includes((text || '').trim().toUpperCase())
+    );
+
+  const selectedOption = userOptions.find((o) => o.id === selectedUser?.id) || null;
+
+  const invalidUser = userInput !== '' && !matchesOption(userInput);
 
   const handleConfirm = () => {
     if (selectedUser) {
@@ -43,6 +69,7 @@ export const SpyAccountModal = ({ open, onClose, onSpyUser, user }) => {
 
   const handleClose = () => {
     setSelectedUser(null);
+    setUserInput('');
     onClose();
   };
 
@@ -51,25 +78,35 @@ export const SpyAccountModal = ({ open, onClose, onSpyUser, user }) => {
       <DialogTitle>Seleccionar cuenta</DialogTitle>
       <DialogContent>
         <Autocomplete
-          freeSolo
-          options={users}
-          getOptionLabel={(user) => user.email}
+          options={userOptions}
+          value={selectedOption}
+          inputValue={userInput}
+          onInputChange={(_, newInput) => setUserInput(newInput || '')}
+          onChange={(_, value) => setSelectedUser(value)}
+          isOptionEqualToValue={(option, value) => option.id === value.id}
+          getOptionLabel={(option) => option?.label || ''}
           loading={loading}
-          value={selectedUser}
-          onChange={(_, value) => handleSelectUser(value)}
           renderInput={(params) => (
             <TextField
               {...params}
-              label="Buscar por email"
+              label="Buscar usuario"
               margin="normal"
               required
               fullWidth
+              error={invalidUser}
+              helperText={invalidUser ? 'Debés seleccionar un usuario de la lista' : undefined}
+              onBlur={() => {
+                if (!matchesOption(userInput)) {
+                  setUserInput('');
+                  setSelectedUser(null);
+                }
+              }}
               InputProps={{
                 ...params.InputProps,
                 endAdornment: (
                   <>
                     {loading ? (
-                      <CircularProgress sx={{ alignSelf: "center" }} color="inherit" size={20} />
+                      <CircularProgress sx={{ alignSelf: 'center' }} color="inherit" size={20} />
                     ) : null}
                     {params.InputProps.endAdornment}
                   </>
@@ -78,14 +115,18 @@ export const SpyAccountModal = ({ open, onClose, onSpyUser, user }) => {
             />
           )}
           ListboxProps={{
-            style: { maxHeight: 200, overflow: "auto" },
+            style: { maxHeight: 200, overflow: 'auto' },
           }}
           filterOptions={(options, { inputValue }) => {
             const filtered = options.filter((option) =>
-              option.email.toLowerCase().includes(inputValue.toLowerCase())
+              option.label.toLowerCase().includes(inputValue.toLowerCase())
             );
             return filtered.slice(0, 50);
           }}
+          freeSolo={false}
+          selectOnFocus
+          clearOnBlur={false}
+          handleHomeEndKeys
         />
       </DialogContent>
       <DialogActions>
