@@ -200,7 +200,6 @@ const [rowsPerPage, setRowsPerPage] = useState(25);  // filas por página
    cac:         { out: 'ARS',       path: (e) => e?.total?.cac },          // ej. si calculás CAC a ARS
  };
 
-
 // handlers
 const handleChangePage = (_evt, newPage) => {
   setPage(newPage);
@@ -575,6 +574,17 @@ const handleCloseCols = () => setAnchorColsEl(null);
     setCajaSeleccionada(caja);
     setFilters((f) => ({ ...f, caja }));
   };
+
+  // helper para normalizar fecha (Timestamp/Date/string/number)
+const getTime = (v) => {
+  if (!v) return 0;
+  if (typeof v === 'number') return v;
+  if (typeof v === 'string') return new Date(v).getTime() || 0;
+  if (v?.toDate) return v.toDate().getTime();
+  if (v?.seconds) return v.seconds * 1000;
+  return 0;
+};
+
   
   const totalesDetallados = useMemo(() => {
     const base = {
@@ -591,6 +601,33 @@ const handleCloseCols = () => setAnchorColsEl(null);
   
     return base;
   }, [movimientosFiltrados]);
+
+  // helper: normaliza la fecha al inicio del día (ignora hora)
+const getDayMs = (v) => {
+  if (!v) return 0;
+  let d;
+  if (typeof v === 'number') d = new Date(v);
+  else if (typeof v === 'string') d = new Date(v);
+  else if (v?.toDate) d = v.toDate();
+  else if (v?.seconds) d = new Date(v.seconds * 1000);
+  else return 0;
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+};
+
+  // ordenar por fecha_factura (desc) y, si empata, por código (asc)
+const sortedMovs = useMemo(() => {
+  const arr = [...(movimientosFiltrados || [])];
+  return arr.sort((a, b) => {
+    const da = getDayMs(a.fecha_factura);
+    const db = getDayMs(b.fecha_factura);
+    if (db !== da) return db - da; // más reciente primero
+    const ca = (a.codigo_operacion || a.codigo || '').toString();
+    const cb = (b.codigo_operacion || b.codigo || '').toString();
+    return cb.localeCompare(ca, 'es-AR', { numeric: true, sensitivity: 'base' });
+  });
+}, [movimientosFiltrados]);
+
 
   const formatByCurrency = (currency, amount) => {
     const cur = currency === 'USD' ? 'USD' : 'ARS';
@@ -673,13 +710,14 @@ const handleCloseCols = () => setAnchorColsEl(null);
     await updateEmpresaDetails(empresa.id, { cajas_virtuales: nuevasCajas });
   };
   
-  const totalRows = movimientosFiltrados.length;
+  const totalRows = sortedMovs.length;
   
   const paginatedMovs = useMemo(() => {
     const start = page * rowsPerPage;
     const end = Math.min(totalRows, start + rowsPerPage);
-    return movimientosFiltrados.slice(start, end);
-  }, [movimientosFiltrados, page, rowsPerPage, totalRows]);
+    return sortedMovs.slice(start, end);
+  }, [sortedMovs, page, rowsPerPage, totalRows]);
+  
   
   const handleRecalcularEquivalencias = async () => {
     if (!proyectoId) return;
