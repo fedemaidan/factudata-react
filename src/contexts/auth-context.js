@@ -1,6 +1,6 @@
-import { createContext, useContext, useEffect, useReducer, useRef } from "react";
-import PropTypes from "prop-types";
-import { auth } from "../config/firebase";
+import { createContext, useContext, useEffect, useReducer, useRef } from 'react';
+import PropTypes from 'prop-types';
+import { auth } from '../config/firebase';
 import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
@@ -10,7 +10,7 @@ import {
   updateEmail,
   reauthenticateWithCredential,
   EmailAuthProvider,
-} from "firebase/auth";
+} from 'firebase/auth';
 import {
   collection,
   addDoc,
@@ -21,18 +21,18 @@ import {
   where,
   updateDoc,
   serverTimestamp,
-} from "firebase/firestore";
-import { db } from "src/config/firebase";
-import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
-import { storage } from "src/config/firebase";
-import { getTotalCreditsForUser, addCreditsForUser } from "src/services/creditService";
-import profileService from "src/services/profileService";
+} from 'firebase/firestore';
+import { db } from 'src/config/firebase';
+import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
+import { storage } from 'src/config/firebase';
+import { getTotalCreditsForUser, addCreditsForUser } from 'src/services/creditService';
+import profileService from 'src/services/profileService';
 
 const HANDLERS = {
-  INITIALIZE: "INITIALIZE",
-  SIGN_OUT: "SIGN_OUT",
-  UPDATE_USER: "UPDATE_USER",
-  RETURN_TO_ORIGINAL_USER: "RETURN_TO_ORIGINAL_USER",
+  INITIALIZE: 'INITIALIZE',
+  SIGN_OUT: 'SIGN_OUT',
+  UPDATE_USER: 'UPDATE_USER',
+  RETURN_TO_ORIGINAL_USER: 'RETURN_TO_ORIGINAL_USER',
 };
 
 const initialState = {
@@ -70,13 +70,13 @@ const handlers = {
       user,
       originalUser,
     };
-    window.localStorage.setItem("MY_APP_STATE", JSON.stringify(newState));
-    window.localStorage.setItem("authToken", user.token);
+    window.localStorage.setItem('MY_APP_STATE', JSON.stringify(newState));
+    window.localStorage.setItem('authToken', user.token);
 
     return newState;
   },
   [HANDLERS.SIGN_OUT]: (state) => {
-    window.localStorage.removeItem("MY_APP_STATE");
+    window.localStorage.removeItem('MY_APP_STATE');
 
     return {
       ...state,
@@ -108,7 +108,7 @@ export const AuthProvider = (props) => {
     }
 
     initialized.current = true;
-    const storageState = window.localStorage.getItem("MY_APP_STATE");
+    const storageState = window.localStorage.getItem('MY_APP_STATE');
 
     if (storageState) {
       const savedState = JSON.parse(storageState);
@@ -124,6 +124,8 @@ export const AuthProvider = (props) => {
     }
 
     onAuthStateChanged(auth, async (user) => {
+      console.log('AUTENTICANDO CON CREDENCIALES');
+
       if (user) {
         const idToken = await user.getIdToken(true); // Forzar actualización
         const updatedUser = await getPayloadUserByUid(user.uid, idToken);
@@ -146,13 +148,13 @@ export const AuthProvider = (props) => {
   }, []);
 
   const getPayloadUserByUid = async (uid, idToken) => {
-    const userRef = collection(db, "profile");
-    const q = query(userRef, where("user_id", "==", uid));
+    const userRef = collection(db, 'profile');
+    const q = query(userRef, where('user_id', '==', uid));
     const querySnapshot = await getDocs(q);
 
     if (querySnapshot.docs.length == 0) {
-      const error = new Error("Perfil no encontrado.");
-      error.code = "sorby/deleted-user";
+      const error = new Error('Perfil no encontrado.');
+      error.code = 'sorby/deleted-user';
       throw error;
     }
 
@@ -179,40 +181,39 @@ export const AuthProvider = (props) => {
         payload: { user: payload, originalUser: payload },
       });
     } catch (error) {
-      if (error.code === "auth/id-token-expired") {
+      if (error.code === 'auth/id-token-expired') {
         await refreshToken();
         return classicSignIn(email, password);
       }
-      if (error.code === "sorby/deleted-user") {
-        throw new Error("Usuario eliminado por el administrador.");
+      if (error.code === 'sorby/deleted-user') {
+        throw new Error('Usuario eliminado por el administrador.');
       }
-      console.error("Error in classicSignIn:", error);
+      console.error('Error in classicSignIn:', error);
       throw error;
     }
   };
 
   const signUp = async (email, password) => {
-    console.log(auth, email, password);
     const response = await createUserWithEmailAndPassword(auth, email, password);
-    console.log("SignUp response:", response);
+    console.log('SignUp response:', response);
 
     const user = {
       user_id: response.user.uid,
-      id: "",
+      id: '',
       avatar: auth.currentUser.photoURL,
-      firstName: "",
-      lastName: "",
+      firstName: '',
+      lastName: '',
       email,
-      phone: "",
-      state: "",
-      country: "",
+      phone: '',
+      state: '',
+      country: '',
       created_at: serverTimestamp(),
       admin: false,
       empresa: null,
       proyectos: [],
     };
 
-    const usersCollectionRef = collection(db, "profile");
+    const usersCollectionRef = collection(db, 'profile');
     const userRef = await addDoc(usersCollectionRef, user);
 
     const newUser = {
@@ -231,7 +232,7 @@ export const AuthProvider = (props) => {
     try {
       const profile = await profileService.getProfileByCode(code);
       if (!profile) {
-        throw new Error("Invalid confirmation code");
+        throw new Error('Invalid confirmation code');
       }
 
       const response = await createUserWithEmailAndPassword(auth, email, password);
@@ -245,7 +246,7 @@ export const AuthProvider = (props) => {
         confirmed: true,
       };
 
-      await updateDoc(doc(db, "profile", profile.id), updatedProfile);
+      await updateDoc(doc(db, 'profile', profile.id), updatedProfile);
       const idToken = await response.user.getIdToken(true);
 
       const payload = await getPayloadUserByUid(userId, idToken);
@@ -255,7 +256,7 @@ export const AuthProvider = (props) => {
         payload: payload,
       });
     } catch (error) {
-      console.error("Error in signUpWithCode:", error);
+      console.error('Error in signUpWithCode:', error);
       throw error;
     }
   };
@@ -269,7 +270,7 @@ export const AuthProvider = (props) => {
   };
 
   const updateUser = async (user) => {
-    const userRef = doc(db, "profile", user.id);
+    const userRef = doc(db, 'profile', user.id);
     await updateDoc(userRef, user);
 
     dispatch({
@@ -279,7 +280,7 @@ export const AuthProvider = (props) => {
   };
 
   const refreshUser = async (user) => {
-    console.log("refreshUser", user);
+    console.log('refreshUser', user);
     const credit = await getTotalCreditsForUser(user.id);
     dispatch({
       type: HANDLERS.UPDATE_USER,
@@ -297,8 +298,8 @@ export const AuthProvider = (props) => {
   const updateUserEmail = async (userId, newEmail) => {
     try {
       if (!auth.currentUser) {
-        const e = new Error("No hay usuario logueado.");
-        e.code = "sorby/no-current-user";
+        const e = new Error('No hay usuario logueado.');
+        e.code = 'sorby/no-current-user';
         throw e;
       }
 
@@ -306,7 +307,7 @@ export const AuthProvider = (props) => {
       await updateEmail(auth.currentUser, newEmail);
 
       // 2) Cambiar en Firestore (colección profile)
-      const userRef = doc(db, "profile", userId);
+      const userRef = doc(db, 'profile', userId);
       await updateDoc(userRef, { email: newEmail });
 
       // 3) Refrescar estado
@@ -317,15 +318,15 @@ export const AuthProvider = (props) => {
     } catch (error) {
       // ⚠️ NO PIERDAS EL CODE: re-lanzá el mismo error
       // (si querés, podés adjuntar un mensaje legible sin pisar code)
-      if (!error.message) error.message = "No se pudo actualizar el email.";
+      if (!error.message) error.message = 'No se pudo actualizar el email.';
       throw error;
     }
   };
 
   const reauthenticateUser = async (currentPassword) => {
-    if (!auth.currentUser) throw new Error("No hay sesión activa");
+    if (!auth.currentUser) throw new Error('No hay sesión activa');
     const email = auth.currentUser.email;
-    if (!email) throw new Error("No se encontró el email actual del usuario");
+    if (!email) throw new Error('No se encontró el email actual del usuario');
     const cred = EmailAuthProvider.credential(email, currentPassword);
     await reauthenticateWithCredential(auth.currentUser, cred);
   };
@@ -354,42 +355,39 @@ export const AuthProvider = (props) => {
         type: HANDLERS.UPDATE_USER,
         payload: user,
       });
-      window.localStorage.setItem("authToken", idToken); // Actualizar el token en localStorage
+      window.localStorage.setItem('authToken', idToken); // Actualizar el token en localStorage
       return idToken;
     } catch (error) {
-      console.error("Error refreshing token:", error);
+      console.error('Error refreshing token:', error);
     }
   };
 
   const spyUser = async (user) => {
     try {
       if (!state.originalUser?.admin) {
-        throw new Error("Solo los administradores pueden espiar cuentas");
+        throw new Error('Solo los administradores pueden espiar cuentas');
       }
 
-      const userRef = doc(db, "profile", user.id);
+      const userRef = doc(db, 'profile', user.id);
       const userDoc = await getDoc(userRef);
 
       if (!userDoc.exists()) {
-        throw new Error("Usuario no encontrado");
+        throw new Error('Usuario no encontrado');
       }
 
       const targetUserData = userDoc.data();
       const credit = await getTotalCreditsForUser(user.id);
 
-      console.log("targetUserData", targetUserData);
       dispatch({
         type: HANDLERS.UPDATE_USER,
         payload: {
           ...targetUserData,
           credit,
-          id: user.id,
           admin: targetUserData.admin || false,
-          token: state.originalUser.token, // Usar el token del admin original
         },
       });
     } catch (error) {
-      console.error("Error spying user:", error);
+      console.error('Error spying user:', error);
       throw error;
     }
   };
