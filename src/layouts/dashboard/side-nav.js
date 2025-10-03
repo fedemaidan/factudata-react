@@ -262,6 +262,18 @@ export const SideNav = (props) => {
         });
       }
 
+      if (permisosUsuario.includes("VER_CONVERSACIONES")) {
+        baseItems.push({
+          title: "Conversaciones",
+          path: "/conversaciones",
+          icon: (
+            <SvgIcon fontSize="small">
+              <DashboardIcon />
+            </SvgIcon>
+          ),
+        });
+      }
+
       if (user?.admin) {
         baseItems.push({
           title: "Configurar " + emp.nombre,
