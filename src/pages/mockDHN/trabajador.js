@@ -57,27 +57,140 @@ const MOCK = {
     advertencias: 3,
     errores: 1
   },
-  registros: [
-    { id: 1, fecha: '01/10/2025', tipo: 'Normal', horas: 8, obs: '', estado: 'ok' },
-    { id: 2, fecha: '02/10/2025', tipo: 'Normal', horas: 8, obs: '', estado: 'ok' },
-    { id: 3, fecha: '03/10/2025', tipo: 'Adicional 100%', horas: 14, obs: 'Turno extendido', estado: 'warn', nota: '>12h' },
-    { id: 4, fecha: '04/10/2025', tipo: 'Licencia', horas: 0, obs: 'Enfermedad (sin adjunto)', estado: 'warn', nota: 'Falta documento' },
-    { id: 5, fecha: '05/10/2025', tipo: 'Normal', horas: 8, obs: '', estado: 'ok' },
-    { id: 6, fecha: '06/10/2025', tipo: 'Normal', horas: 8, obs: '', estado: 'ok' },
-    { id: 7, fecha: '07/10/2025', tipo: 'Normal', horas: 8, obs: '', estado: 'ok' },
-    { id: 8, fecha: '08/10/2025', tipo: 'Normal', horas: 8, obs: '', estado: 'ok' },
-    { id: 9, fecha: '09/10/2025', tipo: 'Normal', horas: 8, obs: '', estado: 'ok' },
-    { id: 10, fecha: '10/10/2025', tipo: 'Normal', horas: 8, obs: '', estado: 'ok' },
-    { id: 11, fecha: '11/10/2025', tipo: 'Normal', horas: 8, obs: '', estado: 'ok' },
-    { id: 12, fecha: '12/10/2025', tipo: 'Normal', horas: 8, obs: '', estado: 'ok' },
-    { id: 13, fecha: '13/10/2025', tipo: 'Normal', horas: 10, obs: 'Superposición parcial con parte', estado: 'warn', nota: 'Chequear' },
-    { id: 14, fecha: '14/10/2025', tipo: 'Normal', horas: 8, obs: '', estado: 'ok' },
-    { id: 15, fecha: '15/10/2025', tipo: 'Normal', horas: 8, obs: '', estado: 'ok' },
-    { id: 16, fecha: '16/10/2025', tipo: 'Normal', horas: 8, obs: '', estado: 'ok' },
-    { id: 17, fecha: '17/10/2025', tipo: 'Normal', horas: 8, obs: '', estado: 'ok' },
-    { id: 18, fecha: '18/10/2025', tipo: '—', horas: 0, obs: 'Registro con fecha inválida', estado: 'error', nota: 'Fecha fuera de período' },
-  ]
+    registros: [
+      // Día con licencia (se ignoran excel/partes)
+      {
+        id: 1,
+        fecha: '01/10/2025',
+        licencia: { tipo: 'Enfermedad', observacion: 'Sin adjunto' },
+        excel: null,
+        partes: [],
+      },
+      // Día presente con Excel y Parte (ok)
+      {
+        id: 2,
+        fecha: '02/10/2025',
+        licencia: null,
+        excel: { inicio: '07:00', fin: '15:00', horas: 8 },
+        partes: [ { tipo: 'Normal', horas: 8 } ],
+      },
+      // Día presente con Excel y Parte (mismatch)
+      {
+        id: 3,
+        fecha: '03/10/2025',
+        licencia: null,
+        excel: { inicio: '07:00', fin: '20:00', horas: 13 },
+        partes: [ { tipo: 'Normal', horas: 8 }, { tipo: '100%', horas: 4 } ], // total 12 vs 13
+      },
+      // Día presente con solo Parte
+      {
+        id: 4,
+        fecha: '04/10/2025',
+        licencia: null,
+        excel: null,
+        partes: [ { tipo: 'Normal', horas: 8 } ],
+      },
+      // Día presente con solo Excel
+      {
+        id: 5,
+        fecha: '05/10/2025',
+        licencia: null,
+        excel: { inicio: '08:00', fin: '12:00', horas: 4 },
+        partes: [],
+      },
+    ]
 };
+
+const sumPartes = (partes = []) => partes.reduce((acc, p) => acc + (Number(p.horas) || 0), 0);
+
+const parseHM = (s) => {
+  if (!s) return null;
+  const [h, m] = s.split(':').map(Number);
+  return h * 60 + m;
+};
+
+const conciliarDia = (row, { toleranciaHoras = 0.5, maxHorasDia = 12 } = {}) => {
+  // Si hay licencia, prevalece
+  if (row.licencia) {
+    return {
+      modo: 'licencia',
+      estado: 'ok',
+      mensajes: [],
+      horasExcel: 0,
+      horasPartes: 0,
+      totalDia: 0
+    };
+  }
+
+  // Presente: comparar excel vs partes
+  const horasExcel = Number(row.excel?.horas || 0);
+  const horasPartes = sumPartes(row.partes || []);
+  const mensajes = [];
+
+  // Validaciones de Excel si existe
+  if (row.excel) {
+    const ini = parseHM(row.excel.inicio);
+    const fin = parseHM(row.excel.fin);
+    if (ini == null || fin == null || fin < ini) {
+      mensajes.push('Horario inválido en Excel');
+    }
+  }
+
+  // Reglas de presencia
+  if (!row.excel && (row.partes?.length || 0) === 0) {
+    mensajes.push('Sin Excel ni Partes');
+  } else {
+    if (!row.excel) mensajes.push('Falta Excel');
+    if ((row.partes?.length || 0) === 0) mensajes.push('Falta Parte');
+  }
+
+  // Mismatch horas (si ambos existen)
+  if (row.excel && (row.partes?.length || 0) > 0) {
+    const delta = Math.abs(horasExcel - horasPartes);
+    if (delta > toleranciaHoras) {
+      mensajes.push(`Diferencia de horas: Excel ${horasExcel} vs Partes ${horasPartes}`);
+    }
+  }
+
+  // Exceso de horas
+  const totalDia = Math.max(horasExcel, horasPartes); // referencia para KPI
+  if (totalDia > maxHorasDia) mensajes.push(`Más de ${maxHorasDia}h en el día`);
+
+  let estado = 'ok';
+  if (mensajes.length > 0) {
+    estado = mensajes.some(m => m.toLowerCase().includes('inválido')) ? 'error' : 'warn';
+  }
+
+  return {
+    modo: 'presente',
+    estado,
+    mensajes,
+    horasExcel,
+    horasPartes,
+    totalDia
+  };
+};
+
+const DetalleHorasCell = ({ detalles }) => {
+  if (!detalles || detalles.length === 0) return <Typography variant="body2">—</Typography>;
+  return (
+    <Stack direction="row" spacing={1} flexWrap="wrap">
+      {detalles.map((d, i) => (
+        <Chip
+          key={i}
+          size="small"
+          label={`${d.tipo}: ${d.horas}h`}
+          color={d.tipo === 'Normal' ? 'default' :
+            d.tipo.includes('50') ? 'primary' :
+            d.tipo.includes('100') ? 'success' :
+            d.tipo === 'Licencia' ? 'warning' : 'default'}
+          variant="outlined"
+        />
+      ))}
+    </Stack>
+  );
+};
+
 
 const VistaTrabajadorPage = () => {
   const [tab, setTab] = useState('lista');
@@ -97,6 +210,9 @@ const VistaTrabajadorPage = () => {
   }, [filtroEstado, desde, hasta]);
 
   const descargar = (tipo) => setAlert({ open: true, message: `Descarga simulada (${tipo}) lista`, severity: 'success' });
+
+  const totalHoras = (detalles = []) =>
+  detalles.reduce((acc, d) => acc + (Number(d.horas) || 0), 0);
 
   return (
     <Box component="main">
@@ -150,48 +266,111 @@ const VistaTrabajadorPage = () => {
         {/* Tabla */}
         <Paper variant="outlined" sx={{ p: 0, overflow: 'hidden' }}>
           <Table size="small">
-            <TableHead>
+          <TableHead>
               <TableRow>
                 <TableCell>Estado</TableCell>
                 <TableCell>Fecha</TableCell>
-                <TableCell>Tipo</TableCell>
-                <TableCell>Horas</TableCell>
-                <TableCell>Observación</TableCell>
+                <TableCell>Licencia</TableCell>
+                <TableCell>Excel (entrada–salida–horas)</TableCell>
+                <TableCell>Partes (por tipo)</TableCell>
+                <TableCell align="right">Total del día</TableCell>
+                <TableCell>Advertencias</TableCell>
                 <TableCell align="right">Acciones</TableCell>
               </TableRow>
-            </TableHead>
-            <TableBody>
-              {registrosFiltrados.map((r) => (
-                <TableRow key={r.id} hover>
-                  <TableCell width={110}>
-                    {r.estado === 'ok' && <Chip size="small" label="OK" color="success" />}
-                    {r.estado === 'warn' && <Chip size="small" label="⚠ Advertencia" color="warning" />}
-                    {r.estado === 'error' && <Chip size="small" label="✖ Error" color="error" />}
-                  </TableCell>
-                  <TableCell>{r.fecha}</TableCell>
-                  <TableCell>{r.tipo}</TableCell>
-                  <TableCell>{r.horas}</TableCell>
-                  <TableCell>{r.obs}</TableCell>
-                  <TableCell align="right">
-                    <Stack direction="row" spacing={1} justifyContent="flex-end">
-                      {r.estado !== 'ok' && (
-                        <Tooltip title="Resolver incidencia">
-                          <Button size="small" variant={r.estado === 'error' ? 'contained' : 'outlined'} color={r.estado === 'error' ? 'error' : 'warning'}>
-                            Resolver
-                          </Button>
-                        </Tooltip>
-                      )}
-                      <Tooltip title="Editar horas/observación">
-                        <IconButton size="small"><EditIcon fontSize="small" /></IconButton>
-                      </Tooltip>
-                      <Tooltip title="Agregar/adjuntar documento">
-                        <IconButton size="small"><NoteAddIcon fontSize="small" /></IconButton>
-                      </Tooltip>
-                    </Stack>
-                  </TableCell>
-                </TableRow>
+          </TableHead>
+          <TableBody>
+  {registrosFiltrados.map((r) => {
+    const conc = conciliarDia(r); // ← conciliación por fila
+
+    return (
+      <TableRow key={r.id} hover>
+        {/* Estado */}
+        <TableCell width={120}>
+          {conc.estado === 'ok' && <Chip size="small" label="OK" color="success" />}
+          {conc.estado === 'warn' && <Chip size="small" label="⚠ Advertencia" color="warning" />}
+          {conc.estado === 'error' && <Chip size="small" label="✖ Error" color="error" />}
+        </TableCell>
+
+        {/* Fecha */}
+        <TableCell>{r.fecha}</TableCell>
+
+        {/* Licencia */}
+        <TableCell>
+          {r.licencia ? (
+            <Stack spacing={0.5}>
+              <Chip size="small" label={r.licencia.tipo} color="warning" variant="outlined" />
+              {r.licencia.observacion && (
+                <Typography variant="caption" color="text.secondary">Obs: {r.licencia.observacion}</Typography>
+              )}
+            </Stack>
+          ) : <Typography variant="body2" color="text.secondary">—</Typography>}
+        </TableCell>
+
+        {/* Excel */}
+        <TableCell>
+          {r.excel ? (
+            <Stack direction="row" spacing={1} flexWrap="wrap">
+              <Chip size="small" label={`Inicio: ${r.excel.inicio}`} />
+              <Chip size="small" label={`Fin: ${r.excel.fin}`} />
+              <Chip size="small" color="primary" label={`Horas: ${r.excel.horas}`} />
+            </Stack>
+          ) : <Typography variant="body2" color="text.secondary">—</Typography>}
+        </TableCell>
+
+        {/* Partes (por tipo) */}
+        <TableCell>
+          {(r.partes && r.partes.length) ? (
+            <Stack direction="row" spacing={1} flexWrap="wrap">
+              {r.partes.map((p, i) => (
+                <Chip
+                  key={i}
+                  size="small"
+                  label={`${p.tipo}: ${p.horas}h`}
+                  variant="outlined"
+                  color={
+                    p.tipo === 'Normal' ? 'default' :
+                    p.tipo.includes('50') ? 'primary' :
+                    p.tipo.includes('100%') ? 'success' : 'default'
+                  }
+                />
               ))}
-            </TableBody>
+              <Chip size="small" label={`Total Partes: ${sumPartes(r.partes)}h`} />
+            </Stack>
+          ) : <Typography variant="body2" color="text.secondary">—</Typography>}
+        </TableCell>
+
+        {/* Total del día (ref) */}
+        <TableCell align="right"><strong>{conc.totalDia} h</strong></TableCell>
+
+        {/* Advertencias/Mensajes */}
+        <TableCell>
+          {conc.mensajes.length
+            ? <Stack spacing={0.5}>{conc.mensajes.map((m, i) => <Typography key={i} variant="body2" color="text.secondary">• {m}</Typography>)}</Stack>
+            : <Typography variant="body2" color="text.secondary">—</Typography>}
+        </TableCell>
+
+        {/* Acciones */}
+        <TableCell align="right">
+          <Stack direction="row" spacing={1} justifyContent="flex-end">
+            {conc.estado !== 'ok' && (
+              <Tooltip title="Resolver diferencia">
+                <Button size="small" variant={conc.estado === 'error' ? 'contained' : 'outlined'} color={conc.estado === 'error' ? 'error' : 'warning'}>
+                  Resolver
+                </Button>
+              </Tooltip>
+            )}
+            <Tooltip title="Editar">
+              <IconButton size="small"><EditIcon fontSize="small" /></IconButton>
+            </Tooltip>
+            <Tooltip title="Adjuntar documento">
+              <IconButton size="small"><NoteAddIcon fontSize="small" /></IconButton>
+            </Tooltip>
+          </Stack>
+        </TableCell>
+      </TableRow>
+    );
+  })}
+</TableBody>
           </Table>
         </Paper>
 

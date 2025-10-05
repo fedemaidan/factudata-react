@@ -52,16 +52,73 @@ const nombres = [
 ]
 
 const MOCK_PARSE = {
-  ok: Array.from({ length: 25 }).map((_, i) => ({ id: i + 1, persona: nombres[Math.floor(Math.random() * nombres.length)], fecha: '01/07/2025', tipo: 'Normal', horas: 8, origen: 'Parte' })),
+  ok: [
+    // Parte: detalle por tipo de hora
+    { id: 1, persona: 'GUTIERREZ JOAQUIN', fecha: '01/07/2025', origen: 'Parte PDF', tipo: 'Parte', detalleHoras: { normal: 8, '50': 0, '100': 0, a: 0, h: 1, zm: 0, c: 0, noct: 0, n50: 0, n100: 0 } },
+    // Excel horarios: hora inicio/fin + total horas
+    { id: 2, persona: 'VELAZQUEZ RUBEN', fecha: '01/07/2025', origen: 'Excel Fichadas', tipo: 'Excel', horaInicio: '07:00', horaFin: '15:00', horas: 8 },
+    // Licencia: fecha + observación
+    { id: 3, persona: 'TABORDA GASTON', fecha: '01/07/2025', origen: 'Licencia', tipo: 'Licencia', licenciaObs: 'Enfermedad (sin adjunto)' },
+  ],
   warn: [
-    { id: 101, persona: 'GUTIERREZ JOAQUIN', fecha: '01/07/2025', tipo: 'Adicional 100%', horas: 14, origen: 'Parte PDF', nota: '>12h' },
-    { id: 102, persona: 'VELAZQUEZ RUBEN', fecha: '01/07/2025', tipo: 'Normal', horas: 0, origen: 'Parte', nota: 'Sin detalle de motivo' },
+    { id: 101, persona: 'GUTIERREZ JOAQUIN', fecha: '01/07/2025', origen: 'Parte PDF', tipo: 'Parte', detalleHoras: { normal: 2, '50': 0, '100': 8, a: 1, h: 0, zm: 0, c: 0, noct: 0, n50: 0, n100: 0 }, nota: '>12h' },
+    { id: 102, persona: 'VELAZQUEZ RUBEN', fecha: '01/07/2025', origen: 'Excel Fichadas', tipo: 'Excel', horaInicio: '08:00', horaFin: '08:10', horas: 0.2, nota: 'Duración inusual' },
   ],
   error: [
-    { id: 201, persona: '—', fecha: '01/07/2025', tipo: 'Licencia', horas: 0, origen: 'Foto', nota: 'Trabajador no encontrado' },
-    { id: 202, persona: 'TABORDA GASTON', fecha: '32/13/2025', tipo: 'Normal', horas: 8, origen: 'Parte', nota: 'Fecha inválida' },
+    { id: 201, persona: '—', fecha: '01/07/2025', origen: 'Foto', tipo: 'Licencia', licenciaObs: 'Trabajador no encontrado', nota: 'DNI inexistente' },
+    { id: 202, persona: 'TABORDA GASTON', fecha: '32/13/2025', origen: 'Parte', tipo: 'Parte', detalleHoras: { normal: 8 }, nota: 'Fecha inválida' },
   ]
 };
+
+const DetalleCell = ({ row }) => {
+  if (row.tipo === 'Parte' && row.detalleHoras) {
+    const etiquetas = [
+      ['normal', 'Norm.'],
+      ['50', '50%'],
+      ['100', '100%'],
+      ['a', 'Aº'],
+      ['h', 'Hº'],
+      ['zm', 'Zº/M°'],
+      ['c', 'Cº'],
+      ['noct', 'Noct'],
+      ['n50', 'N.50%'],
+      ['n100', 'N.100%'],
+    ];
+    const items = etiquetas
+      .map(([k, label]) => ({ label, val: row.detalleHoras[k] || 0 }))
+      .filter(x => x.val > 0);
+    return items.length ? (
+      <Stack direction="row" spacing={1} flexWrap="wrap">
+        {items.map((x, i) => (
+          <Chip key={i} size="small" label={`${x.label}: ${x.val}`} variant="outlined" />
+        ))}
+      </Stack>
+    ) : <Typography variant="body2" color="text.secondary">Sin detalle</Typography>;
+  }
+
+  if (row.tipo === 'Excel') {
+    return (
+      <Stack direction="row" spacing={1} alignItems="center">
+        <Chip size="small" label={`Inicio: ${row.horaInicio || '—'}`} />
+        <Chip size="small" label={`Fin: ${row.horaFin || '—'}`} />
+        <Chip size="small" color="primary" label={`Horas: ${row.horas ?? '—'}`} />
+      </Stack>
+    );
+  }
+
+  if (row.tipo === 'Licencia') {
+    return (
+      <Stack spacing={0.5}>
+        <Typography variant="body2"><strong>Fecha:</strong> {row.fecha}</Typography>
+        <Typography variant="body2" color="text.secondary"><strong>Obs.:</strong> {row.licenciaObs || row.nota || '—'}</Typography>
+      </Stack>
+    );
+  }
+
+  // fallback
+  return <Typography variant="body2" color="text.secondary">—</Typography>;
+};
+
 
 const CargaDatosPage = () => {
   const inputRef = useRef(null);
@@ -95,6 +152,7 @@ const CargaDatosPage = () => {
 
   const removeItem = (idx) => setQueue((prev) => prev.filter((_, i) => i !== idx));
 
+  
   return (
     <Box component="main">
       <Container maxWidth="xl" sx={{ py: 3 }}>
@@ -160,34 +218,48 @@ const CargaDatosPage = () => {
         {tab === 'registros' && (
           <Paper sx={{ p: 0, overflow: 'hidden' }}>
             <Table size="small">
-              <TableHead>
-                <TableRow>
-                  <TableCell>Estado</TableCell>
-                  <TableCell>Persona</TableCell>
-                  <TableCell>Fecha</TableCell>
-                  <TableCell>Tipo</TableCell>
-                  <TableCell>Horas</TableCell>
-                  <TableCell>Origen</TableCell>
-                  <TableCell>Acción</TableCell>
-                  <TableCell>Nota</TableCell>
-                </TableRow>
-              </TableHead>
+            <TableHead>
+              <TableRow>
+                <TableCell>Estado</TableCell>
+                <TableCell>Persona</TableCell>
+                <TableCell>Fecha</TableCell>
+                <TableCell>Origen</TableCell>
+                <TableCell>Detalle</TableCell>
+                <TableCell>Acción</TableCell>
+                <TableCell>Nota</TableCell>
+              </TableRow>
+            </TableHead>
+
               <TableBody>
                 {[...MOCK_PARSE.ok.map(r => ({...r, estado: 'ok'})), ...MOCK_PARSE.warn.map(r => ({...r, estado: 'warn'})), ...MOCK_PARSE.error.map(r => ({...r, estado: 'error'}))].map((r) => (
                   <TableRow key={r.id} hover>
-                    <TableCell>{r.estado === 'ok' ? <Chip size="small" label="OK" color="success" /> : r.estado === 'warn' ? <Chip size="small" label="⚠" color="warning" /> : <Chip size="small" label="Error" color="error" />}</TableCell>
-                    <TableCell>{r.persona}</TableCell>
-                    <TableCell>{r.fecha}</TableCell>
-                    <TableCell>{r.tipo}</TableCell>
-                    <TableCell>{r.horas}</TableCell>
-                    <TableCell>{r.origen}</TableCell>
-                    <TableCell>
-                        {r.estado != "ok" && <Button size="small" variant={r.estado === 'error' ? 'contained' : 'outlined'} color={r.estado === 'error' ? 'error' : 'warning'}>
-                        Resolver
-                        </Button>}
-                        </TableCell>
-                    <TableCell>{r.nota || ''}</TableCell>
-                  </TableRow>
+                  <TableCell>
+                    {r.estado === 'ok'
+                      ? <Chip size="small" label="OK" color="success" />
+                      : r.estado === 'warn'
+                      ? <Chip size="small" label="⚠" color="warning" />
+                      : <Chip size="small" label="Error" color="error" />}
+                  </TableCell>
+                
+                  <TableCell>{r.persona}</TableCell>
+                  <TableCell>{r.fecha}</TableCell>
+                  <TableCell>{r.origen}</TableCell>
+                
+                  {/* Detalle dinámico según tipo */}
+                  <TableCell><DetalleCell row={r} /></TableCell>
+                
+                  <TableCell>
+                      <Button
+                        size="small"
+                        variant={r.estado === 'error' ? 'contained' : 'outlined'}
+                        color={r.estado === 'error' ? 'error' : (r.estado === 'ok' ? 'success' : 'warning')}
+                      >
+                        Editar
+                      </Button>
+                  </TableCell>
+                
+                  <TableCell>{r.nota || ''}</TableCell>
+                </TableRow>                
                 ))}
               </TableBody>
             </Table>
