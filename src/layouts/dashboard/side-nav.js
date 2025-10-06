@@ -393,7 +393,7 @@ export const SideNav = (props) => {
 
         baseItems.push({
           title: "Control diario",
-          path: "/mockDHN/controDiario",
+          path: "/mockDHN/controlDiario",
           icon: (
             <SvgIcon fontSize="small">
               <DashboardIcon />
