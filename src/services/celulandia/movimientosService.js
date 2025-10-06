@@ -11,6 +11,8 @@ const movimientosService = {
     tipoFactura,
     clienteNombre,
     cajaNombre,
+    categorias,
+    cajasIds,
     moneda,
     nombreUsuario,
     estado,
@@ -32,6 +34,8 @@ const movimientosService = {
         tipoFactura,
         clienteNombre,
         cajaNombre,
+        categorias,
+        cajasIds,
         moneda,
         nombreUsuario,
         estado,
@@ -168,14 +172,41 @@ const movimientosService = {
     return response.data;
   },
 
-  getArqueoTotalGeneral: async () => {
-    const response = await axiosCelulandia.get("/movimientos/arqueo/total-general");
+  getArqueoTotalGeneral: async ({
+    fechaInicio,
+    fechaFin,
+    cajaNombre,
+    categorias,
+    cajasIds,
+  } = {}) => {
+    const params = {
+      fechaInicio,
+      fechaFin,
+      cajaNombre,
+      categorias: Array.isArray(categorias) ? categorias.join(",") : categorias,
+      cajasIds: Array.isArray(cajasIds) ? cajasIds.join(",") : cajasIds,
+    };
+    const response = await axiosCelulandia.get("/movimientos/arqueo/total-general", { params });
     return response.data;
   },
-  getArqueoTotalGeneralFiltrado: async ({ fechaInicio, fechaFin, cajaNombre } = {}) => {
-    const response = await axiosCelulandia.get("/movimientos/arqueo/total-general", {
-      params: { fechaInicio, fechaFin, cajaNombre },
-    });
+
+  getTotalesAgrupados: async ({
+    fechaInicio,
+    fechaFin,
+    categorias,
+    cajasIds,
+    type,
+    moneda,
+  } = {}) => {
+    const params = {
+      fechaInicio,
+      fechaFin,
+      categorias: Array.isArray(categorias) ? categorias.join(",") : categorias,
+      cajasIds: Array.isArray(cajasIds) ? cajasIds.join(",") : cajasIds,
+      type,
+      moneda,
+    };
+    const response = await axiosCelulandia.get("/movimientos/totales-agrupados", { params });
     return response.data;
   },
 };
