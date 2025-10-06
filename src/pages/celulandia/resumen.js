@@ -76,7 +76,9 @@ export default function ResumenPage() {
         cajasService.getAllCajas(),
         getEmpresaDetailsFromUser(user),
       ]);
-      setCajas(cajasResponse.data);
+      setCajas(
+        cajasResponse.data.filter((caja) => caja.nombre !== "EZE" && caja.nombre !== "NICO")
+      );
       setCategorias(empresaResponse?.categorias || []);
 
       const initialCajasChecked = cajasResponse.data.reduce((acc, caja) => {
@@ -322,9 +324,13 @@ export default function ResumenPage() {
                         Total Ventas:
                       </Typography>
                       <Typography variant="body2" sx={{ fontSize: "0.75rem", fontWeight: 500 }}>
-                        {fmtARS.format(
+                        {(selectedCurrency === "ARS" ? fmtARS : fmtUSD).format(
                           (agrupadosCajas || []).reduce(
-                            (acc, g) => acc + Math.round(g.totalARS || 0),
+                            (acc, g) =>
+                              acc +
+                              Math.round(
+                                selectedCurrency === "ARS" ? g.totalARS || 0 : g.totalUSD || 0
+                              ),
                             0
                           )
                         )}
@@ -341,9 +347,13 @@ export default function ResumenPage() {
                         Total Egresos:
                       </Typography>
                       <Typography variant="body2" sx={{ fontSize: "0.75rem", fontWeight: 500 }}>
-                        {fmtARS.format(
+                        {(selectedCurrency === "ARS" ? fmtARS : fmtUSD).format(
                           (agrupadosCategorias || []).reduce(
-                            (acc, g) => acc + Math.round(g.totalARS || 0),
+                            (acc, g) =>
+                              acc +
+                              Math.round(
+                                selectedCurrency === "ARS" ? g.totalARS || 0 : g.totalUSD || 0
+                              ),
                             0
                           )
                         )}
@@ -361,11 +371,19 @@ export default function ResumenPage() {
                       </Typography>
                       {(() => {
                         const ventas = (agrupadosCajas || []).reduce(
-                          (acc, g) => acc + Math.round(g.totalARS || 0),
+                          (acc, g) =>
+                            acc +
+                            Math.round(
+                              selectedCurrency === "ARS" ? g.totalARS || 0 : g.totalUSD || 0
+                            ),
                           0
                         );
                         const egresos = (agrupadosCategorias || []).reduce(
-                          (acc, g) => acc + Math.round(g.totalARS || 0),
+                          (acc, g) =>
+                            acc +
+                            Math.round(
+                              selectedCurrency === "ARS" ? g.totalARS || 0 : g.totalUSD || 0
+                            ),
                           0
                         );
                         const res = ventas + egresos;
@@ -375,7 +393,7 @@ export default function ResumenPage() {
                             sx={{ fontSize: "0.75rem", fontWeight: 500 }}
                             color={res >= 0 ? "success.main" : "error.main"}
                           >
-                            {fmtARS.format(res)}
+                            {(selectedCurrency === "ARS" ? fmtARS : fmtUSD).format(res)}
                           </Typography>
                         );
                       })()}
@@ -522,7 +540,13 @@ export default function ResumenPage() {
                             const match = (agrupadosCajas || []).find(
                               (g) => String(g.key) === String(caja._id)
                             );
-                            return fmtARS.format(Math.round(match?.totalARS || 0));
+                            const valor =
+                              selectedCurrency === "ARS"
+                                ? match?.totalARS || 0
+                                : match?.totalUSD || 0;
+                            return (selectedCurrency === "ARS" ? fmtARS : fmtUSD).format(
+                              Math.round(valor)
+                            );
                           })()}
                         </Typography>
                       </Stack>
@@ -640,7 +664,13 @@ export default function ResumenPage() {
                             const match = (agrupadosCategorias || []).find(
                               (g) => String(g.key) === String(categoria.id)
                             );
-                            return fmtARS.format(Math.round(match?.totalARS || 0));
+                            const valor =
+                              selectedCurrency === "ARS"
+                                ? match?.totalARS || 0
+                                : match?.totalUSD || 0;
+                            return (selectedCurrency === "ARS" ? fmtARS : fmtUSD).format(
+                              Math.round(valor)
+                            );
                           })()}
                         </Typography>
                       </Stack>
