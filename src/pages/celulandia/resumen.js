@@ -76,13 +76,15 @@ export default function ResumenPage() {
         cajasService.getAllCajas(),
         getEmpresaDetailsFromUser(user),
       ]);
-      setCajas(
-        cajasResponse.data.filter((caja) => caja.nombre !== "EZE" && caja.nombre !== "NICO")
-      );
+      setCajas(cajasResponse.data);
       setCategorias(empresaResponse?.categorias || []);
 
       const initialCajasChecked = cajasResponse.data.reduce((acc, caja) => {
-        acc[caja._id] = true;
+        if (caja.nombre !== "EZE" && caja.nombre !== "NICO") {
+          acc[caja._id] = true;
+        } else {
+          acc[caja._id] = false;
+        }
         return acc;
       }, {});
       setCajasChecked(initialCajasChecked);
