@@ -370,6 +370,48 @@ export const SideNav = (props) => {
         });
       }
 
+      if (permisosUsuario.includes("MOCK_DHN")) {
+        baseItems.push({
+          title: "Cargar datos",
+          path: "/mockDHN/cargaDatos",
+          icon: (
+            <SvgIcon fontSize="small">
+              <NoteAltIcon />
+            </SvgIcon>
+          ),
+        });
+
+        baseItems.push({
+          title: "Vista trabajador",
+          path: "/mockDHN/trabajador",
+          icon: (
+            <SvgIcon fontSize="small">
+              <PeopleIcon />
+            </SvgIcon>
+          ),
+        });
+
+        baseItems.push({
+          title: "Control diario",
+          path: "/mockDHN/controDiario",
+          icon: (
+            <SvgIcon fontSize="small">
+              <DashboardIcon />
+            </SvgIcon>
+          ),
+        });
+
+        baseItems.push({
+          title: "Control quincenal",
+          path: "/mockDHN/controlQuincenal",
+          icon: (
+            <SvgIcon fontSize="small">
+              <DashboardIcon />
+            </SvgIcon>
+          ),
+        });
+      }
+
       if (permisosUsuario.includes("VER_CAJAS")) {
         if (permisosUsuario.includes("VER_MI_CAJA_CHICA")) {
           baseItems.push({
@@ -383,47 +425,6 @@ export const SideNav = (props) => {
           });
         }
 
-        if (permisosUsuario.includes("MOCK_DHN")) {
-          baseItems.push({
-            title: "Cargar datos",
-            path: "/mockDHN/cargaDatos",
-            icon: (
-              <SvgIcon fontSize="small">
-                <AttachMoneyIcon />
-              </SvgIcon>
-            ),
-          });
-
-          baseItems.push({
-            title: "Vista trabajador",
-            path: "/mockDHN/trabajador",
-            icon: (
-              <SvgIcon fontSize="small">
-                <AttachMoneyIcon />
-              </SvgIcon>
-            ),
-          });
-
-          baseItems.push({
-            title: "Control diario",
-            path: "/mockDHN/controDiario",
-            icon: (
-              <SvgIcon fontSize="small">
-                <AttachMoneyIcon />
-              </SvgIcon>
-            ),
-          });
-
-          baseItems.push({
-            title: "Control quincenal",
-            path: "/mockDHN/controlQuincenal",
-            icon: (
-              <SvgIcon fontSize="small">
-                <AttachMoneyIcon />
-              </SvgIcon>
-            ),
-          });
-        }
 
         baseItems.push({
           title: "Presupuestos",
