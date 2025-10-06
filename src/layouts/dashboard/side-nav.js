@@ -383,6 +383,48 @@ export const SideNav = (props) => {
           });
         }
 
+        if (permisosUsuario.includes("MOCK_DHN")) {
+          baseItems.push({
+            title: "Cargar datos",
+            path: "/mockDHN/cargaDatos",
+            icon: (
+              <SvgIcon fontSize="small">
+                <AttachMoneyIcon />
+              </SvgIcon>
+            ),
+          });
+
+          baseItems.push({
+            title: "Vista trabajador",
+            path: "/mockDHN/trabajador",
+            icon: (
+              <SvgIcon fontSize="small">
+                <AttachMoneyIcon />
+              </SvgIcon>
+            ),
+          });
+
+          baseItems.push({
+            title: "Control diario",
+            path: "/mockDHN/controDiario",
+            icon: (
+              <SvgIcon fontSize="small">
+                <AttachMoneyIcon />
+              </SvgIcon>
+            ),
+          });
+
+          baseItems.push({
+            title: "Control quincenal",
+            path: "/mockDHN/controlQuincenal",
+            icon: (
+              <SvgIcon fontSize="small">
+                <AttachMoneyIcon />
+              </SvgIcon>
+            ),
+          });
+        }
+
         baseItems.push({
           title: "Presupuestos",
           path: "/presupuestos",
