@@ -172,21 +172,14 @@ const movimientosService = {
     return response.data;
   },
 
-  getArqueoTotalGeneral: async ({
-    fechaInicio,
-    fechaFin,
-    cajaNombre,
-    categorias,
-    cajasIds,
-  } = {}) => {
-    const params = {
-      fechaInicio,
-      fechaFin,
-      cajaNombre,
-      categorias: Array.isArray(categorias) ? categorias.join(",") : categorias,
-      cajasIds: Array.isArray(cajasIds) ? cajasIds.join(",") : cajasIds,
-    };
-    const response = await axiosCelulandia.get("/movimientos/arqueo/total-general", { params });
+  getArqueoTotalGeneral: async () => {
+    const response = await axiosCelulandia.get("/movimientos/arqueo/total-general");
+    return response.data;
+  },
+  getArqueoTotalGeneralFiltrado: async ({ fechaInicio, fechaFin, cajaNombre } = {}) => {
+    const response = await axiosCelulandia.get("/movimientos/arqueo/total-general", {
+      params: { fechaInicio, fechaFin, cajaNombre },
+    });
     return response.data;
   },
 
