@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo } from "react";
 import {
   Box,
   List,
@@ -9,8 +9,18 @@ import {
   Typography,
   TextField,
   InputAdornment,
-} from '@mui/material';
-import SearchIcon from '@mui/icons-material/Search';
+} from "@mui/material";
+import SearchIcon from "@mui/icons-material/Search";
+import dayjs from "dayjs";
+
+const formatFecha = (fecha) => {
+  const date = dayjs(fecha);
+  const hoy = dayjs();
+  if (date.isSame(hoy, "day")) {
+    return date.format("HH:mm");
+  }
+  return date.format("D/M");
+};
 
 export default function ConversationList({
   conversations,
@@ -39,15 +49,19 @@ export default function ConversationList({
           }}
         />
       </Box>
-      <List dense sx={{ overflowY: 'auto', flex: 1 }}>
+      <List dense sx={{ overflowY: "auto", flex: 1 }}>
         {items.map((c) => (
           <ListItemButton
-            key={c.conversacionId}
-            selected={c.conversacionId === selectedId}
+            key={c.ultimoMensaje.id_conversacion}
+            selected={c.ultimoMensaje.id_conversacion === selectedId}
             onClick={() => onSelect?.(c)}
           >
             <ListItemAvatar>
-              <Avatar>{(c.profile?.firstName || c.userId || '?').charAt(0).toUpperCase()}</Avatar>
+              <Avatar>
+                {c.profile?.firstName.charAt(0).toUpperCase() ||
+                  c.profile?.lastName.charAt(0).toUpperCase() ||
+                  c.ultimoMensaje.emisor.charAt(0).toUpperCase()}
+              </Avatar>
             </ListItemAvatar>
             <ListItemText
               primary={
@@ -55,13 +69,24 @@ export default function ConversationList({
                   <Typography fontWeight={600} noWrap>
                     {c.profile?.firstName && c.profile?.lastName
                       ? `${c.profile?.firstName} ${c.profile?.lastName}`
-                      : c.empresa?.nombre || c.userId}
+                      : c.empresa?.nombre || c.userId || c.ultimoMensaje.emisor}
+                  </Typography>
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    sx={{ minWidth: 45, textAlign: "right" }}
+                  >
+                    {formatFecha(c.ultimoMensaje.fecha)}
                   </Typography>
                 </Box>
               }
               secondary={
                 <Typography variant="body2" color="text.secondary" noWrap>
-                  {c.type === 'text' ? c.message || '' : `Tipo: ${c.type}`}
+                  {c.ultimoMensaje.type === "text"
+                    ? c.ultimoMensaje.message || ""
+                    : `${
+                        c.ultimoMensaje.type.charAt(0).toUpperCase() + c.ultimoMensaje.type.slice(1)
+                      }`}
                 </Typography>
               }
             />

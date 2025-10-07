@@ -1,25 +1,25 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
-import Head from 'next/head';
-import { Box, Divider, Drawer, useMediaQuery, useTheme } from '@mui/material';
-import ConversationList from 'src/components/conversaciones/ConversationList';
-import ChatWindow from 'src/components/conversaciones/ChatWindow';
-import MessageInput from 'src/components/conversaciones/MessageInput';
-import EmptyState from 'src/components/conversaciones/EmptyState';
+import { useEffect, useMemo, useState } from "react";
+import { Layout as DashboardLayout } from "src/layouts/dashboard/layout";
+import Head from "next/head";
+import { Box, Divider, Drawer, useMediaQuery, useTheme } from "@mui/material";
+import ConversationList from "src/components/conversaciones/ConversationList";
+import ChatWindow from "src/components/conversaciones/ChatWindow";
+import MessageInput from "src/components/conversaciones/MessageInput";
+import EmptyState from "src/components/conversaciones/EmptyState";
 import {
   fetchConversations,
   fetchMessages,
   sendMessage,
   getConversationTitle,
   searchConversations,
-} from 'src/services/conversacionService';
+} from "src/services/conversacionService";
 
 export default function ConversacionesPage() {
   const [loading, setLoading] = useState(false);
   const [conversations, setConversations] = useState([]);
   const [messages, setMessages] = useState([]);
   const [selected, setSelected] = useState(null);
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState("");
   const [isListOpenMobile, setIsListOpenMobile] = useState(false);
 
   const [offset, setOffset] = useState(0);
@@ -29,8 +29,10 @@ export default function ConversacionesPage() {
   const PAGE = 20;
 
   const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
-  const myNumber = 'Sorby';
+  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
+  const myNumber = "Sorby";
+
+  console.log(conversations);
 
   useEffect(() => {
     let active = true;
@@ -56,7 +58,7 @@ export default function ConversacionesPage() {
         setHasMore(false);
         return;
       }
-      const { items, total } = await fetchMessages(selected.conversacionId, {
+      const { items, total } = await fetchMessages(selected.ultimoMensaje.id_conversacion, {
         limit: PAGE,
         offset: 0,
       });
@@ -75,7 +77,7 @@ export default function ConversacionesPage() {
   const loadMore = async () => {
     if (!selected || !hasMore) return;
     setScrollToBottom(false);
-    const { items, total: t } = await fetchMessages(selected.conversacionId, {
+    const { items, total: t } = await fetchMessages(selected.ultimoMensaje.id_conversacion, {
       limit: PAGE,
       offset,
     });
@@ -89,7 +91,10 @@ export default function ConversacionesPage() {
 
   const onSend = async (text) => {
     if (!selected) return;
-    const { message } = await sendMessage({ conversationId: selected.conversacionId, text });
+    const { message } = await sendMessage({
+      conversationId: selected.ultimoMensaje.id_conversacion,
+      text,
+    });
     setMessages((prev) => [...prev, message]);
     setConversations((prev) =>
       prev.map((cv) =>
@@ -105,12 +110,26 @@ export default function ConversacionesPage() {
     setConversations(await searchConversations(q));
   };
 
+  const getTitulo = useMemo(() => {
+    if (!selected) return "Conversaciones";
+
+    if (selected.ultimoMensaje?.profile?.firstName) {
+      return `${selected.ultimoMensaje.profile.firstName} ${selected.ultimoMensaje.profile.lastName}`;
+    }
+
+    if (selected.ultimoMensaje?.emisor) {
+      return selected.ultimoMensaje.emisor;
+    }
+
+    if (selected.ultimoMensaje?.wPid) {
+      return selected.ultimoMensaje.wPid.split("@")[0];
+    }
+
+    return "Conversaciones";
+  }, [selected]);
+
   return (
-    <DashboardLayout
-      title={
-        selected ? `${selected.profile.firstName} ${selected.profile.lastName}` : 'Conversaciones'
-      }
-    >
+    <DashboardLayout title={getTitulo}>
       <Head>
         <title>Conversaciones</title>
       </Head>
@@ -126,12 +145,12 @@ export default function ConversacionesPage() {
           width={360}
           minWidth={320}
           maxWidth={420}
-          display={{ xs: 'none', sm: 'none', md: 'flex' }}
+          display={{ xs: "none", sm: "none", md: "flex" }}
           flexDirection="column"
         >
           <ConversationList
             conversations={conversations}
-            selectedId={selected?.conversacionId}
+            selectedId={selected?.ultimoMensaje.id_conversacion}
             onSelect={onSelectConversation}
             search={search}
             onSearch={onSearch}
@@ -161,12 +180,12 @@ export default function ConversacionesPage() {
           open={isListOpenMobile}
           onClose={() => setIsListOpenMobile(false)}
           anchor="left"
-          PaperProps={{ sx: { width: '100%', maxWidth: '100%' } }}
+          PaperProps={{ sx: { width: "100%", maxWidth: "100%" } }}
         >
           <Box height="100vh" display="flex" flexDirection="column">
             <ConversationList
               conversations={conversations}
-              selectedId={selected?.conversacionId}
+              selectedId={selected?.ultimoMensaje.id_conversacion}
               onSelect={(c) => {
                 onSelectConversation(c);
                 setIsListOpenMobile(false);
