@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Box, Divider, Typography, IconButton, Button } from '@mui/material';
-import MenuIcon from '@mui/icons-material/Menu';
-import MessageBubble from './MessageBubble';
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Box, Divider, Typography, IconButton, Button } from "@mui/material";
+import MenuIcon from "@mui/icons-material/Menu";
+import MessageBubble from "./MessageBubble";
 
 export default function ChatWindow({
   messages,
-  myNumber = 'X',
+  myNumber = "X",
   title,
   onOpenList,
   onLoadMore,
@@ -17,7 +17,7 @@ export default function ChatWindow({
   const items = useMemo(() => messages || [], [messages]);
 
   useEffect(() => {
-    if (scrollToBottom) bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (scrollToBottom) bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [items.length, scrollToBottom]);
 
   return (
@@ -27,7 +27,7 @@ export default function ChatWindow({
           <IconButton
             onClick={onOpenList}
             aria-label="Abrir conversaciones"
-            sx={{ display: { xs: 'inline-flex', md: 'none' } }}
+            sx={{ display: { xs: "inline-flex", md: "none" } }}
           >
             <MenuIcon />
           </IconButton>
@@ -38,7 +38,7 @@ export default function ChatWindow({
         onScroll={(e) => setAtTop(e.currentTarget.scrollTop <= 0)}
         flex={1}
         overflow="auto"
-        bgcolor={(t) => (t.palette.mode === 'light' ? '#eceff1' : 'background.default')}
+        bgcolor={(t) => (t.palette.mode === "light" ? "#eceff1" : "background.default")}
       >
         {hasMore && atTop && onLoadMore ? (
           <Box textAlign="center" py={1}>
@@ -49,7 +49,7 @@ export default function ChatWindow({
         ) : null}
         {items.map((m, i) => (
           <MessageBubble
-            key={(m.id || m.conversationId || m.conversacionId) + '-' + i}
+            key={(m.id || m.conversationId || m.id_conversacion) + "-" + i}
             message={m}
             isMine={m.emisor === myNumber}
           />
