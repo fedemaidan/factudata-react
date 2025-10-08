@@ -51,7 +51,7 @@ export default function ChatWindow({
           <MessageBubble
             key={(m.id || m.conversationId || m.id_conversacion) + "-" + i}
             message={m}
-            isMine={m.emisor === myNumber}
+            isMine={m.emisor.toLowerCase() === myNumber.toLowerCase()}
           />
         ))}
         <div ref={bottomRef} />

@@ -6,7 +6,7 @@ import AudioPlayer from './AudioPlayer';
 export default function MessageBubble({ message, isMine }) {
   const [open, setOpen] = useState(false);
   const [mediaType, setMediaType] = useState('image');
-  const text = message?.type === 'text' ? message?.message || '' : '';
+  const text = message?.type === 'text' || message?.type === 'text_extended' ? message?.message || '' : '';
   const date = message?.fecha ? new Date(message.fecha) : null;
   const pad = (n) => String(n).padStart(2, '0');
 
@@ -20,6 +20,8 @@ export default function MessageBubble({ message, isMine }) {
     setOpen(true);
   };
   const handleClose = () => setOpen(false);
+
+  console.log(message)
 
   return (
     <Box display="flex" justifyContent={isMine ? 'flex-end' : 'flex-start'} px={2} py={0.5}>

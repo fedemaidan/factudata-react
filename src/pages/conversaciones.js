@@ -30,7 +30,7 @@ export default function ConversacionesPage() {
 
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
-  const myNumber = "Sorby";
+  const myNumber = "sorby";
 
   console.log(conversations);
 
@@ -110,22 +110,15 @@ export default function ConversacionesPage() {
     setConversations(await searchConversations(q));
   };
 
+  const nombreCliente = (c) => {
+    return ((c.profile && c.empresa)
+        ? `${c.profile.firstName} ${c.profile.lastName} - (${c.empresa.nombre}) ${c.profile.phone.slice(-4)}`
+        : c.ultimoMensaje.emisor.toLowerCase() == "sorby" ? c.ultimoMensaje.receptor : c.ultimoMensaje.emisor)
+  }
+
   const getTitulo = useMemo(() => {
     if (!selected) return "Conversaciones";
-
-    if (selected.ultimoMensaje?.profile?.firstName) {
-      return `${selected.ultimoMensaje.profile.firstName} ${selected.ultimoMensaje.profile.lastName}`;
-    }
-
-    if (selected.ultimoMensaje?.emisor) {
-      return selected.ultimoMensaje.emisor;
-    }
-
-    if (selected.ultimoMensaje?.wPid) {
-      return selected.ultimoMensaje.wPid.split("@")[0];
-    }
-
-    return "Conversaciones";
+    return nombreCliente(selected);
   }, [selected]);
 
   return (

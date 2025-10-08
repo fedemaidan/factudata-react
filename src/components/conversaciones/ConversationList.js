@@ -31,6 +31,12 @@ export default function ConversationList({
 }) {
   const items = useMemo(() => conversations || [], [conversations]);
 
+  const nombreCliente = (c) => {
+   return ((c.profile && c.empresa)
+      ? `${c.profile.firstName} ${c.profile.lastName} - (${c.empresa.nombre}) ${c.profile.phone.slice(-4)}`
+      : c.ultimoMensaje.emisor.toLowerCase() == "sorby" ? c.ultimoMensaje.receptor : c.ultimoMensaje.emisor)
+  }
+  console.log(items)
   return (
     <Box display="flex" flexDirection="column" height="100%">
       <Box p={1}>
@@ -50,7 +56,8 @@ export default function ConversationList({
         />
       </Box>
       <List dense sx={{ overflowY: "auto", flex: 1 }}>
-        {items.map((c) => (
+        {items.map((c) => {
+          return (
           <ListItemButton
             key={c.ultimoMensaje.id_conversacion}
             selected={c.ultimoMensaje.id_conversacion === selectedId}
@@ -58,18 +65,14 @@ export default function ConversationList({
           >
             <ListItemAvatar>
               <Avatar>
-                {c.profile?.firstName.charAt(0).toUpperCase() ||
-                  c.profile?.lastName.charAt(0).toUpperCase() ||
-                  c.ultimoMensaje.emisor.charAt(0).toUpperCase()}
+               {nombreCliente(c).charAt(0).toUpperCase()}
               </Avatar>
             </ListItemAvatar>
             <ListItemText
               primary={
                 <Box display="flex" alignItems="center" justifyContent="space-between">
                   <Typography fontWeight={600} noWrap>
-                    {c.profile?.firstName && c.profile?.lastName
-                      ? `${c.profile?.firstName} ${c.profile?.lastName}`
-                      : c.empresa?.nombre || c.userId || c.ultimoMensaje.emisor}
+                    {nombreCliente(c)}
                   </Typography>
                   <Typography
                     variant="caption"
@@ -82,7 +85,7 @@ export default function ConversationList({
               }
               secondary={
                 <Typography variant="body2" color="text.secondary" noWrap>
-                  {c.ultimoMensaje.type === "text"
+                  {c.ultimoMensaje.type === "text" || c.ultimoMensaje.type === "text_extended"
                     ? c.ultimoMensaje.message || ""
                     : `${
                         c.ultimoMensaje.type.charAt(0).toUpperCase() + c.ultimoMensaje.type.slice(1)
@@ -91,7 +94,7 @@ export default function ConversationList({
               }
             />
           </ListItemButton>
-        ))}
+        )})}
         {items.length === 0 && (
           <Box p={2}>
             <Typography variant="body2" color="text.secondary">
