@@ -36,7 +36,7 @@ export default function ConversationList({
       ? `${c.profile.firstName} ${c.profile.lastName} - (${c.empresa.nombre}) ${c.profile.phone.slice(-4)}`
       : c.ultimoMensaje.emisor.toLowerCase() == "sorby" ? c.ultimoMensaje.receptor : c.ultimoMensaje.emisor)
   }
-
+  console.log(items)
   return (
     <Box display="flex" flexDirection="column" height="100%">
       <Box p={1}>

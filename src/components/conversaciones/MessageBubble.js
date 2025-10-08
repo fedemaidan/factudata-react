@@ -21,6 +21,8 @@ export default function MessageBubble({ message, isMine }) {
   };
   const handleClose = () => setOpen(false);
 
+  console.log(message)
+
   return (
     <Box display="flex" justifyContent={isMine ? 'flex-end' : 'flex-start'} px={2} py={0.5}>
       <Paper
