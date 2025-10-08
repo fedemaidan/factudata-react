@@ -249,18 +249,35 @@ export const useMovimientoForm = (initialData = null, externalData = null) => {
       handleInputChange("cliente", newValue.nombre);
       const ccOptions = newValue.ccActivas || ["ARS", "USD BLUE", "USD OFICIAL"];
       if (!ccOptions.includes(formData.CC)) {
-        setFormData((prev) => ({
-          ...prev,
-          CC: ccOptions[0] || "ARS",
-        }));
+        const nuevaCC = ccOptions[0] || "ARS";
+        setFormData((prev) => {
+          const newFormData = { ...prev, CC: nuevaCC };
+          if (prev.montoEnviado) {
+            const newMontoCC = calcularMontoCC(
+              parseFloat(prev.montoEnviado) || 0,
+              prev.monedaDePago,
+              nuevaCC
+            );
+            newFormData.montoCC = Math.round(newMontoCC);
+          }
+          return newFormData;
+        });
       }
     } else {
       setClienteSeleccionado(null);
       handleInputChange("cliente", newValue || "");
-      setFormData((prev) => ({
-        ...prev,
-        CC: "ARS",
-      }));
+      setFormData((prev) => {
+        const newFormData = { ...prev, CC: "ARS" };
+        if (prev.montoEnviado) {
+          const newMontoCC = calcularMontoCC(
+            parseFloat(prev.montoEnviado) || 0,
+            prev.monedaDePago,
+            "ARS"
+          );
+          newFormData.montoCC = Math.round(newMontoCC);
+        }
+        return newFormData;
+      });
     }
   };
 
