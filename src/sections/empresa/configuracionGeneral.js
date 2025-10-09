@@ -193,6 +193,7 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
     "CREAR_OBRA",
     "CREAR_EGRESO_SIMPLIFICADO",
     "VER_CONVERSACIONES",
+    "CARGAR_REMITO"
   ];
 
   const celulandiaAcciones = [
