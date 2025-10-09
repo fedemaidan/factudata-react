@@ -71,7 +71,7 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
   );
   const [conEstados, setConEstados] = useState(empresa.con_estados || false);
   const [soloDolar, setSoloDolar] = useState(empresa.solo_dolar || false);
-  const [cajaChicaDirecto, setCajaChicaDirecto] = useState(empresa.cajaChicaDirecto || false);
+  const [cajaChicaDirecto, setCajaChicaDirecto] = useState(empresa.caja_chica_directo || false);
   const [notasEstados, setNotasEstados] = useState(
     empresa.notas_estados || ["Pendiente", "En proceso", "Completa"]
   );
