@@ -71,6 +71,7 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
   );
   const [conEstados, setConEstados] = useState(empresa.con_estados || false);
   const [soloDolar, setSoloDolar] = useState(empresa.solo_dolar || false);
+  const [cajaChicaDirecto, setCajaChicaDirecto] = useState(empresa.cajaChicaDirecto || false);
   const [notasEstados, setNotasEstados] = useState(
     empresa.notas_estados || ["Pendiente", "En proceso", "Completa"]
   );
@@ -302,6 +303,7 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
       comprobante_info: comprobanteInfo,
       con_estados: conEstados,
       solo_dolar: soloDolar,
+      caja_chica_directo: cajaChicaDirecto,
       notas_estados: notasEstados,
       tags_extra: tagsExtra,
       ingreso_info: ingresoInfo,
@@ -550,6 +552,11 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
       <FormControl sx={{ mt: 2 }}>
         <Checkbox checked={conEstados} onChange={(e) => setConEstados(e.target.checked)} />
         <ListItemText primary="Con Estados" />
+      </FormControl>
+
+      <FormControl sx={{ mt: 2 }}>
+        <Checkbox checked={cajaChicaDirecto} onChange={(e) => setCajaChicaDirecto(e.target.checked)} />
+        <ListItemText primary="Caja chica directo" />
       </FormControl>
 
       <FormControl sx={{ mt: 2 }}>
