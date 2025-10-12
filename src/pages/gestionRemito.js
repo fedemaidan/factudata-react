@@ -337,13 +337,6 @@ const deleteFromTable = (idx) => {
     {!!movimientos?.length && (
       <>
     <RemitoReadOnlyTable items={items} onEditItem={openEdit}  onDeleteItem={deleteFromTable}/>
-
-<InstructionBarIA
-  acopioId={acopioId}
-  items={items}
-  setItems={setItems}
-  onResumen={(msg) => setAlert({ open: true, message: msg || 'Edición aplicada', severity: 'success' })}
-/>
       </>
     )}
   </>
@@ -371,6 +364,15 @@ const deleteFromTable = (idx) => {
               </Stack>
             </Paper>
           </Grid>
+          <InstructionBarIA
+            acopioId={acopioId}
+            items={items}
+            setItems={setItems}
+            tipoAcopio={tipoAcopio}
+            onResumen={(msg) =>
+              setAlert({ open: true, message: msg || 'Edición aplicada', severity: 'success' })
+            }
+          />
         </Grid>
         <RemitoItemEditDialog
           open={editOpen}
