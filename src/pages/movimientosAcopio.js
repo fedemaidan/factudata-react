@@ -38,6 +38,8 @@ import MaterialesTable from 'src/components/materialesTable';
 import Chip from '@mui/material/Chip';
 import Switch from '@mui/material/Switch';
 import FormControlLabel from '@mui/material/FormControlLabel';
+import ListaPreciosBuscador from 'src/components/listaPreciosBuscador';
+
 
 /** ------------------------------
  *  FLAGS DE FUNCIONALIDAD (configurables)
@@ -68,7 +70,7 @@ const MovimientosAcopioPage = () => {
   const acopioFileInputRef = useRef(null);
   const [pageIdx, setPageIdx] = useState(0);
 
-  const pages = Array.isArray(acopio?.url_image) ? acopio.url_image : [];
+  const pages = Array.isArray(acopio?.url_image) ? acopio.url_image.filter(Boolean) : [];
   const hasAcopioPages = pages.length > 0;
 
   const totalPages = pages.length;
@@ -257,7 +259,10 @@ const MovimientosAcopioPage = () => {
     return duplicadosSet;
   };
 
-  const porcentajeDisponible = (1 - (acopio?.valor_desacopio / acopio?.valor_acopio || 0)) * 100;
+const va = Number(acopio?.valor_acopio) || 0;
+const vd = Number(acopio?.valor_desacopio) || 0;
+const porcentajeDisponible = va > 0 ? Math.max(0, Math.min(100, (1 - vd / va) * 100)) : 0;
+
 
   // ----- Handlers Hojas (acopio nivel) -----
   const handleAcopioUploadClick = () => {
@@ -332,8 +337,9 @@ const MovimientosAcopioPage = () => {
         <Tabs value={tabActiva} onChange={handleChangeTab}>
           <Tab label="Info Acopio" value="acopio" />
           <Tab label="Remitos" value="remitos" />
-          <Tab label="Materiales" value="materiales" />
-          {hasAcopioPages && <Tab label="Hojas" value="hojas" />}
+          {acopio?.tipo === 'materiales' && <Tab label="Materiales" value="materiales" />}
+          {acopio?.tipo === 'lista_precios' && <Tab label="Buscar materiales" value="buscar" />}
+          {hasAcopioPages && <Tab label={acopio?.tipo === 'lista_precios' ? "Lista original": "Comprobante original"} value="hojas" />}
         </Tabs>
 
         {loading && (
@@ -452,6 +458,12 @@ const MovimientosAcopioPage = () => {
               </Table>
             )}
           </Box>
+        )}
+
+        {tabActiva === 'buscar' && acopio?.tipo === 'lista_precios' && (
+           <Box mt={2}>
+             <ListaPreciosBuscador acopioId={acopioId} />
+           </Box>
         )}
 
         {/* Hojas: VISOR FULL */}

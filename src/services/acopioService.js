@@ -85,11 +85,13 @@ cambiarEstadoAcopio: async (acopioId, activo) => {
   
   
 
-  extraerDatosDesdeArchivo: async (acopioId, archivo, archivo_url) => {
+  extraerDatosDesdeArchivo: async (acopioId, archivo, archivo_url, opts = {}) => {
     try {
       const formData = new FormData();
       formData.append('archivo', archivo);
       formData.append('archivo_url', archivo_url);
+      console.log('opts', opts);
+      if (opts.sinMateriales) formData.append('sin_materiales', '1');
   
       const response = await api.post(`/acopio/${acopioId}/remito/extraer`, formData, {
         headers: {
@@ -128,6 +130,26 @@ cambiarEstadoAcopio: async (acopioId, activo) => {
       throw error;
     }
   },
+
+  interpretarInstruccionRemito: async (acopioId, instruccion, items, contexto={}) => {
+    try {
+      const resp = await api.post(`/acopio/${acopioId}/remito/interpretar-instruccion`, {
+        instruccion, items, contexto
+      });
+      // { ok, resumen, cambios, items }
+      return resp.data;
+    } catch (e) {
+      console.error('interpretarInstruccionRemito error', e);
+      return { ok:false, resumen:'No se pudo interpretar la instrucción.', cambios:[], items };
+    }
+  },
+
+  
+  buscarMaterialesListaPrecios: async (acopioId, q) => {
+     const resp = await api.get(`/acopio/${acopioId}/lista-precios/buscar`, { params: { q }});
+     return resp.data?.materiales || [];
+  },
+    
   
   extraerCompraInit: async (archivo, archivo_url) => {
     try {

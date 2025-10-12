@@ -8,15 +8,21 @@ import {
   TableCell,
   TableHead,
   TableRow,
-  MenuItem,
   Tooltip
 } from '@mui/material';
 import { Add, Delete } from '@mui/icons-material';
-import AcopioService from 'src/services/acopioService';
 import { Autocomplete } from '@mui/material';
+
+import AcopioService from 'src/services/acopioService';
 import { formatCurrency } from 'src/utils/formatters';
 
-const ProductosFormSelect = ({ productos, setProductos, valorTotal, setValorTotal, acopioId }) => {
+const ProductosFormSelect = ({
+  productos = [],
+  setProductos,
+  valorTotal,              // opcional
+  setValorTotal,           // <-- ahora es opcional
+  acopioId
+}) => {
   const [opcionesMateriales, setOpcionesMateriales] = useState([]);
 
   useEffect(() => {
@@ -24,7 +30,7 @@ const ProductosFormSelect = ({ productos, setProductos, valorTotal, setValorTota
       if (!acopioId) return;
       try {
         const materiales = await AcopioService.getMaterialesAcopiados(acopioId);
-        setOpcionesMateriales(materiales);
+        setOpcionesMateriales(materiales || []);
       } catch (err) {
         console.error('Error al cargar materiales:', err);
       }
@@ -32,8 +38,25 @@ const ProductosFormSelect = ({ productos, setProductos, valorTotal, setValorTota
     cargarMateriales();
   }, [acopioId]);
 
+  const safeNumber = (v) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : 0;
+  };
+
+  const recalcularTotal = (lista) => {
+    const total = (lista || []).reduce(
+      (acc, p) => acc + (safeNumber(p.cantidad) * safeNumber(p.valorUnitario)),
+      0
+    );
+    if (typeof setValorTotal === 'function') {
+      setValorTotal(total);
+    }
+  };
+
   const agregarProducto = () => {
-    setProductos([...productos, { codigo: '', descripcion: '', cantidad: 0, valorUnitario: 0 }]);
+    const next = [...productos, { codigo: '', descripcion: '', cantidad: 1, valorUnitario: 0 }];
+    setProductos(next);
+    recalcularTotal(next);
   };
 
   const actualizarProducto = (index, campo, valor) => {
@@ -41,17 +64,20 @@ const ProductosFormSelect = ({ productos, setProductos, valorTotal, setValorTota
 
     if (campo === 'codigo') {
       const seleccionado = opcionesMateriales.find(m => m.codigo === valor);
-      console.log(seleccionado)
       if (seleccionado) {
         nuevos[index] = {
           codigo: seleccionado.codigo,
           descripcion: seleccionado.descripcion,
           cantidad: 1,
-          valorUnitario: seleccionado.valorUnitario || 0
+          valorUnitario: safeNumber(seleccionado.valorUnitario)
         };
       }
+    } else if (campo === 'cantidad') {
+      nuevos[index].cantidad = safeNumber(valor);
+    } else if (campo === 'valorUnitario') {
+      nuevos[index].valorUnitario = safeNumber(valor);
     } else {
-      nuevos[index][campo] = campo === 'cantidad' ? parseFloat(valor) : valor;
+      nuevos[index][campo] = valor;
     }
 
     setProductos(nuevos);
@@ -64,11 +90,6 @@ const ProductosFormSelect = ({ productos, setProductos, valorTotal, setValorTota
     recalcularTotal(nuevos);
   };
 
-  const recalcularTotal = (lista) => {
-    const total = lista.reduce((acc, p) => acc + (p.cantidad * p.valorUnitario), 0);
-    setValorTotal(total);
-  };
-
   return (
     <>
       <Button startIcon={<Add />} onClick={agregarProducto} sx={{ mb: 2 }}>
@@ -79,48 +100,49 @@ const ProductosFormSelect = ({ productos, setProductos, valorTotal, setValorTota
         <TableHead>
           <TableRow>
             <TableCell>Material</TableCell>
-            <TableCell>Cantidad</TableCell>
-            <TableCell>Valor Unitario</TableCell>
-            <TableCell></TableCell>
+            <TableCell width="120">Cantidad</TableCell>
+            <TableCell width="160">Valor Unitario</TableCell>
+            <TableCell width="56" />
           </TableRow>
         </TableHead>
         <TableBody>
           {productos.map((prod, index) => (
             <TableRow key={index}>
-                <TableCell sx={{ width: '80%' }}>
+              <TableCell>
                 <Autocomplete
                   value={opcionesMateriales.find(opt => opt.codigo === prod.codigo) || null}
-                  onChange={(event, newValue) => {
-                    if (newValue) {
-                      actualizarProducto(index, 'codigo', newValue.codigo);
-                    }
+                  onChange={(_, newValue) => {
+                    if (newValue) actualizarProducto(index, 'codigo', newValue.codigo);
                   }}
                   options={opcionesMateriales}
-                  getOptionLabel={(option) =>
-                    option.codigo + ' - ' + option.descripcion
-                  }
+                  getOptionLabel={(option) => `${option.codigo} - ${option.descripcion}`}
                   renderInput={(params) => <TextField {...params} label="Material" fullWidth />}
                   fullWidth
                   isOptionEqualToValue={(option, value) => option.codigo === value.codigo}
                 />
               </TableCell>
 
-              <TableCell sx={{ width: '5%' }}>
+              <TableCell>
                 <TextField
                   type="number"
-                  value={prod.cantidad}
+                  value={prod.cantidad ?? 0}
                   onChange={(e) => actualizarProducto(index, 'cantidad', e.target.value)}
+                  inputProps={{ min: 0, step: 'any' }}
                   fullWidth
                 />
               </TableCell>
-              <TableCell sx={{ width: '13%' }}>
-               <Tooltip title={`Total: ${formatCurrency(prod.valorUnitario * prod.cantidad)}`} arrow>
-                  {formatCurrency(prod.valorUnitario)}
+
+              <TableCell>
+                <Tooltip
+                  title={`Total línea: ${formatCurrency(safeNumber(prod.valorUnitario) * safeNumber(prod.cantidad))}`}
+                  arrow
+                >
+                  <span>{formatCurrency(safeNumber(prod.valorUnitario))}</span>
                 </Tooltip>
               </TableCell>
-              <TableCell sx={{ width: '2%' }}>
 
-                <IconButton onClick={() => eliminarProducto(index)}>
+              <TableCell align="right">
+                <IconButton onClick={() => eliminarProducto(index)} size="small">
                   <Delete />
                 </IconButton>
               </TableCell>

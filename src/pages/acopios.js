@@ -183,6 +183,7 @@ const AcopiosPage = () => {
               <TableCell>Código</TableCell>
               <TableCell>Proveedor</TableCell>
               <TableCell>Proyecto</TableCell>
+              <TableCell>Tipo</TableCell>
               <TableCell>Estado</TableCell>
               <TableCell>Total disponible</TableCell>
               <TableCell align="center">Acciones</TableCell>
@@ -195,6 +196,9 @@ const AcopiosPage = () => {
                 <TableCell>{acopio.codigo}</TableCell>
                 <TableCell>{acopio.proveedor}</TableCell>
                 <TableCell>{acopio.proyecto_nombre}</TableCell>
+                <TableCell>
+                  <Chip label={acopio.tipo || 'materiales'} color={acopio.tipo == 'lista_precios' ? 'info': 'default' } size="small" />
+                  </TableCell>
                 <TableCell>
                 <Chip label={acopio.estado} color={acopio.estado == 'inactivo' ? 'error': 'success' } size="small" />
                   </TableCell>
