@@ -33,6 +33,7 @@ import { getProyectosByEmpresa } from 'src/services/proyectosService';
 import { formatTimestamp } from 'src/utils/formatters';
 import { useMovimientosFilters } from 'src/hooks/useMovimientosFilters';
 import { FilterBarCajaProyecto } from 'src/components/FilterBarCajaProyecto';
+import AsistenteFlotanteProyecto from 'src/components/asistenteFlotanteProyecto';
 
 
 // tamaños mínimos por columna (px)
@@ -1540,6 +1541,18 @@ useEffect(() => {
                 )}
             </Paper>
           </Stack>
+          <AsistenteFlotanteProyecto
+  empresa={empresa}
+  proyecto={proyecto}
+  filtros={filters}
+  movimientos={movimientos}
+  movimientosUSD={movimientosUSD}
+  cajasVirtuales={cajasVirtuales}
+  visibleCols={visibleCols}
+  compactCols={compactCols}
+  totalesDetallados={totalesDetallados}
+  totalesUsdBlue={totalesUsdBlue}
+/>
         </Container>
 
 <Menu
