@@ -245,49 +245,6 @@ const deleteFromTable = (idx) => {
         </Stack>
 
         <Grid container spacing={3}>
-          {/* Archivo + Extracción */}
-          <Grid item xs={12} md={6}>
-            <Paper elevation={2} sx={{ p: 2 }}>
-              <Typography variant="subtitle1" gutterBottom>Archivo del Remito</Typography>
-
-              {archivoRemitoUrl ? (
-                archivoRemitoUrl.endsWith('.pdf') ? (
-                  <iframe src={archivoRemitoUrl} width="100%" height="480" title="Remito PDF" />
-                ) : (
-                  <Box
-                    sx={{
-                      width: '100%', height: 480, backgroundImage: `url(${archivoRemitoUrl})`,
-                      backgroundSize: 'contain', backgroundRepeat: 'no-repeat', backgroundPosition: 'center',
-                      cursor: 'zoom-in', borderRadius: 1, bgcolor: 'background.default'
-                    }}
-                    onClick={() => setFullscreenOpen(true)}
-                  />
-                )
-              ) : (
-                <Typography variant="body2" color="text.secondary">No hay archivo cargado.</Typography>
-              )}
-
-              <Stack direction="row" spacing={1} mt={2}>
-                <Button component="label" variant="outlined" fullWidth>
-                  {archivoRemitoUrl ? 'Cambiar archivo' : 'Subir archivo'}
-                  <input type="file" hidden onChange={handleArchivoChange} />
-                </Button>
-                <Button
-                  variant="contained"
-                  fullWidth
-                  onClick={extraer}
-                  disabled={loadingProceso || (!archivoRemitoFile && !archivoRemitoUrl)}
-                >
-                  {loadingProceso ? <CircularProgress size={20} /> : 'Extraer datos'}
-                </Button>
-              </Stack>
-              {tipoAcopio === 'lista_precios' && (
-                <Typography variant="caption" color="text.secondary" display="block" mt={1}>
-                  * Acopio tipo <b>lista de precios</b>: extraemos sin catálogos cargados; luego podés ajustar con instrucciones.
-                </Typography>
-              )}
-            </Paper>
-          </Grid>
 
           {/* Datos remito */}
           <Grid item xs={12} md={6}>
@@ -332,14 +289,7 @@ const deleteFromTable = (idx) => {
     autoCompletarValoresUnitarios
   />
 ) : (
-  <>
-    
-    {!!movimientos?.length && (
-      <>
-    <RemitoReadOnlyTable items={items} onEditItem={openEdit}  onDeleteItem={deleteFromTable}/>
-      </>
-    )}
-  </>
+  <RemitoReadOnlyTable items={items} onEditItem={openEdit}  onDeleteItem={deleteFromTable}/>
 )}
                   
                     <Typography variant="subtitle1" sx={{ pt: 1 }}>
@@ -364,6 +314,52 @@ const deleteFromTable = (idx) => {
               </Stack>
             </Paper>
           </Grid>
+          
+          {/* Archivo + Extracción */}
+          <Grid item xs={12} md={6}>
+            <Paper elevation={2} sx={{ p: 2 }}>
+              <Typography variant="subtitle1" gutterBottom>Archivo del Remito</Typography>
+
+              {archivoRemitoUrl ? (
+                archivoRemitoUrl.endsWith('.pdf') ? (
+                  <iframe src={archivoRemitoUrl} width="100%" height="480" title="Remito PDF" />
+                ) : (
+                  <Box
+                    sx={{
+                      width: '100%', height: 480, backgroundImage: `url(${archivoRemitoUrl})`,
+                      backgroundSize: 'contain', backgroundRepeat: 'no-repeat', backgroundPosition: 'center',
+                      cursor: 'zoom-in', borderRadius: 1, bgcolor: 'background.default'
+                    }}
+                    onClick={() => setFullscreenOpen(true)}
+                  />
+                )
+              ) : (
+                <Typography variant="body2" color="text.secondary">No hay archivo cargado.</Typography>
+              )}
+
+              <Stack direction="row" spacing={1} mt={2}>
+                <Button component="label" variant="outlined" fullWidth>
+                  {archivoRemitoUrl ? 'Cambiar archivo' : 'Subir archivo'}
+                  <input type="file" hidden onChange={handleArchivoChange} />
+                </Button>
+                <Button
+                  variant="contained"
+                  fullWidth
+                  onClick={extraer}
+                  disabled={loadingProceso || (!archivoRemitoFile && !archivoRemitoUrl)}
+                >
+                  {loadingProceso ? <CircularProgress size={20} /> : 'Extraer datos'}
+                </Button>
+              </Stack>
+              {tipoAcopio === 'lista_precios' && (
+                <Typography variant="caption" color="text.secondary" display="block" mt={1}>
+                  * Acopio tipo <b>lista de precios</b>: extraemos sin catálogos cargados; luego podés ajustar con instrucciones.
+                </Typography>
+              )}
+            </Paper>
+          </Grid>
+
+          
           <InstructionBarIA
             acopioId={acopioId}
             items={items}
