@@ -34,7 +34,7 @@ export default function ConversationList({
   const nombreCliente = (c) => {
    return ((c.profile && c.empresa)
       ? `${c.profile.firstName} ${c.profile.lastName} - (${c.empresa.nombre}) ${c.profile.phone.slice(-4)}`
-      : c.ultimoMensaje.emisor.toLowerCase() == "sorby" ? c.ultimoMensaje.receptor : c.ultimoMensaje.emisor)
+      : c.ultimoMensaje?.emisor.toLowerCase() == "sorby" ? c.ultimoMensaje?.receptor : c.ultimoMensaje?.emisor)
   }
   console.log(items)
   return (
@@ -59,13 +59,13 @@ export default function ConversationList({
         {items.map((c) => {
           return (
           <ListItemButton
-            key={c.ultimoMensaje.id_conversacion}
-            selected={c.ultimoMensaje.id_conversacion === selectedId}
+            key={c.ultimoMensaje?.id_conversacion}
+            selected={c.ultimoMensaje?.id_conversacion === selectedId}
             onClick={() => onSelect?.(c)}
           >
             <ListItemAvatar>
               <Avatar>
-               {nombreCliente(c).charAt(0).toUpperCase()}
+               {nombreCliente(c)?.charAt(0).toUpperCase()}
               </Avatar>
             </ListItemAvatar>
             <ListItemText
@@ -79,16 +79,16 @@ export default function ConversationList({
                     color="text.secondary"
                     sx={{ minWidth: 45, textAlign: "right" }}
                   >
-                    {formatFecha(c.ultimoMensaje.fecha)}
+                    {formatFecha(c.ultimoMensaje?.fecha)}
                   </Typography>
                 </Box>
               }
               secondary={
                 <Typography variant="body2" color="text.secondary" noWrap>
-                  {c.ultimoMensaje.type === "text" || c.ultimoMensaje.type === "text_extended"
-                    ? c.ultimoMensaje.message || ""
+                  {c.ultimoMensaje?.type === "text" || c.ultimoMensaje?.type === "text_extended"
+                    ? c.ultimoMensaje?.message || ""
                     : `${
-                        c.ultimoMensaje.type.charAt(0).toUpperCase() + c.ultimoMensaje.type.slice(1)
+                        c.ultimoMensaje?.type.charAt(0).toUpperCase() + c.ultimoMensaje?.type.slice(1)
                       }`}
                 </Typography>
               }
