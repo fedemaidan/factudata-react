@@ -1541,7 +1541,7 @@ useEffect(() => {
                 )}
             </Paper>
           </Stack>
-          <AsistenteFlotanteProyecto
+          {/* <AsistenteFlotanteProyecto
   empresa={empresa}
   proyecto={proyecto}
   filtros={filters}
@@ -1552,7 +1552,7 @@ useEffect(() => {
   compactCols={compactCols}
   totalesDetallados={totalesDetallados}
   totalesUsdBlue={totalesUsdBlue}
-/>
+/> */}
         </Container>
 
 <Menu
