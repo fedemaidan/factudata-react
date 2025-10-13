@@ -26,7 +26,7 @@ export default function ConversacionesPage() {
   const [total, setTotal] = useState(0);
   const [hasMore, setHasMore] = useState(false);
   const [scrollToBottom, setScrollToBottom] = useState(true);
-  const PAGE = 20;
+  const PAGE = 50;
 
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
@@ -63,7 +63,7 @@ export default function ConversacionesPage() {
         offset: 0,
       });
       if (!active) return;
-      setMessages(items);
+      setMessages(items.reverse());
       setOffset(items.length);
       setTotal(total);
       setHasMore(items.length < total);
@@ -81,7 +81,7 @@ export default function ConversacionesPage() {
       limit: PAGE,
       offset,
     });
-    setMessages((prev) => [...prev, ...items]);
+    setMessages((prev) => [...items.reverse(), ...prev]);
     setOffset((prev) => prev + items.length);
     setTotal(t);
     setHasMore(offset + items.length < t);
@@ -150,7 +150,7 @@ export default function ConversacionesPage() {
           />
         </Box>
         <Divider orientation="vertical" flexItem />
-        <Box flex={1} display="flex" flexDirection="column">
+        <Box flex={1} display="flex" flexDirection="column" minHeight={0}>
           {selected ? (
             <>
               <ChatWindow
