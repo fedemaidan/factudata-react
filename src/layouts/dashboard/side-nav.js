@@ -86,6 +86,7 @@ export const SideNav = (props) => {
       }
       setEmpresa(emp || null);
 
+
       if (!emp) {
         setItems([
           {
@@ -129,6 +130,26 @@ export const SideNav = (props) => {
           ),
         },
       ];
+
+      baseItems.push({
+        title: "Trabajadores",
+        path: "/dhn/trabajador/68efb8f95c4f747cc4aa8dbf",
+        icon: (
+          <SvgIcon fontSize="small">
+            <PeopleIcon />
+          </SvgIcon>
+        ),
+      });
+
+      baseItems.push({
+        title: "Control Diario",
+        path: "/dhn/controlDiario",
+        icon: (
+          <SvgIcon fontSize="small">
+            <DashboardIcon />
+          </SvgIcon>
+        ),
+      });
 
       if (permisosUsuario.includes("CELULANDIA_COMPROBANTES")) {
         baseItems.push({
@@ -410,6 +431,7 @@ export const SideNav = (props) => {
             </SvgIcon>
           ),
         });
+
       }
 
       if (permisosUsuario.includes("VER_CAJAS")) {
