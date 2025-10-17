@@ -131,36 +131,6 @@ export const SideNav = (props) => {
         },
       ];
 
-      baseItems.push({
-        title: "Trabajadores",
-        path: "/dhn/trabajador",
-        icon: (
-          <SvgIcon fontSize="small">
-            <PeopleIcon />
-          </SvgIcon>
-        ),
-      });
-
-      baseItems.push({
-        title: "Sincronizacion",
-        path: "/dhn/cargarDrive",
-        icon: (
-          <SvgIcon fontSize="small">
-            <PeopleIcon />
-          </SvgIcon>
-        ),
-      });
-
-      baseItems.push({
-        title: "Control Diario",
-        path: "/dhn/controlDiario",
-        icon: (
-          <SvgIcon fontSize="small">
-            <DashboardIcon />
-          </SvgIcon>
-        ),
-      });
-
       if (permisosUsuario.includes("CELULANDIA_COMPROBANTES")) {
         baseItems.push({
           title: "Comprobantes",
@@ -403,18 +373,18 @@ export const SideNav = (props) => {
 
       if (permisosUsuario.includes("MOCK_DHN")) {
         baseItems.push({
-          title: "Cargar datos",
-          path: "/mockDHN/cargaDatos",
+          title: "Trabajadores",
+          path: "/dhn/trabajador",
           icon: (
             <SvgIcon fontSize="small">
-              <NoteAltIcon />
+              <PeopleIcon />
             </SvgIcon>
           ),
         });
-
+  
         baseItems.push({
-          title: "Vista trabajador",
-          path: "/mockDHN/trabajador",
+          title: "Sincronizacion",
+          path: "/dhn/cargarDrive",
           icon: (
             <SvgIcon fontSize="small">
               <PeopleIcon />
@@ -423,18 +393,18 @@ export const SideNav = (props) => {
         });
 
         baseItems.push({
-          title: "Control diario",
-          path: "/mockDHN/controlDiario",
+          title: "Sincronizacion V2",
+          path: "/dhn/cargarDriveV2",
           icon: (
             <SvgIcon fontSize="small">
-              <DashboardIcon />
+              <PeopleIcon />
             </SvgIcon>
           ),
         });
-
+  
         baseItems.push({
-          title: "Control quincenal",
-          path: "/mockDHN/controlQuincenal",
+          title: "Control Diario",
+          path: "/dhn/controlDiario",
           icon: (
             <SvgIcon fontSize="small">
               <DashboardIcon />
