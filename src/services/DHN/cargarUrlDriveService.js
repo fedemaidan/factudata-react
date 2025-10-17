@@ -1,4 +1,3 @@
-import axios from 'axios';
 import api from '../axiosConfig';
 
 /** Valida URLs/IDs típicos de Google Drive */
@@ -21,8 +20,6 @@ export const validarUrlDrive = (v) => {
   return patterns.some((re) => re.test(s));
 };
 
-const ENDPOINT = 'http://localhost:3003/api/dhn/sync'; // 👈 ruta correcta
-
 const DhnDriveService = {
   /**
    * POST /dhn/sync
@@ -36,7 +33,7 @@ const DhnDriveService = {
     }
     console.log('URL válida:', urlDrive);
     try {
-      const response = await axios.post(ENDPOINT, { urlDrive }); // ✅ /dhn/sync
+      const response = await api.post(`/dhn/sync`, { urlDrive }); // ✅ /dhn/sync
       if (response?.status === 200 || response?.status === 201) {
         return response.data; // { ok:true, ... }
       }
@@ -58,7 +55,7 @@ const DhnDriveService = {
 
   getAllSyncs: async () => {
     try {
-      const response = await axios.get(ENDPOINT);
+      const response = await api.get(`/dhn/sync`);
       console.log('response', response.data);
       // backend responde { ok: true, data: [...] }
       return response.data?.data || [];
