@@ -26,6 +26,7 @@ import { alpha } from "@mui/material/styles";
  * @param {String} sortDirection - Dirección: 'asc' o 'desc'
  * @param {Function} onSortChange - Callback al cambiar ordenamiento
  * @param {Function} rowIsSelected - Función para determinar si una fila está seleccionada
+ * @param {Function} onRowClick - Callback al hacer click en una fila: (item) => void
  */
 const TableComponent = ({
   data = [],
@@ -36,6 +37,7 @@ const TableComponent = ({
   sortDirection = "asc",
   onSortChange = null,
   rowIsSelected = null,
+  onRowClick = null,
 }) => {
   const ordenCampo = sortField;
   const ordenDireccion = sortDirection;
@@ -149,8 +151,9 @@ const TableComponent = ({
                       aria-checked={isSelected}
                       tabIndex={-1}
                       selected={isSelected}
+                      onClick={() => onRowClick && onRowClick(item)}
                       sx={{
-                        cursor: "pointer",
+                        cursor: onRowClick ? "pointer" : "default",
                         "&:hover": { backgroundColor: alpha("#1976d2", 0.04) },
                         ...(isSelected && {
                           backgroundColor: alpha("#1976d2", 0.08),

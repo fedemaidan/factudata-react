@@ -4,7 +4,7 @@ import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import { Container, Stack, Typography, Alert, Box, FormControl, InputLabel, Select, MenuItem } from '@mui/material';
 import TableComponent from 'src/components/TableComponent';
 import { buildTrabajoRegistradoColumns } from 'src/components/dhn/TrabajoRegistradoCells';
-import ControlDiarioService from 'src/services/dhn/ControlDiarioService';
+import TrabajoRegistradoService from 'src/services/dhn/TrabajoRegistradoService';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
@@ -23,7 +23,7 @@ const ControlDiarioPage = () => {
     try {
       const params = { limit: 500 };
       if (estadoFiltro !== 'todos') params.estado = estadoFiltro;
-      const res = await ControlDiarioService.getByDay(fecha.toDate(), params);
+      const res = await TrabajoRegistradoService.getByDay(fecha.toDate(), params);
       setData(res.data || []);
       setError(null);
     } catch (e) {

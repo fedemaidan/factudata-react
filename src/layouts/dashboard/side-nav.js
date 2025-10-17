@@ -133,7 +133,7 @@ export const SideNav = (props) => {
 
       baseItems.push({
         title: "Trabajadores",
-        path: "/dhn/trabajador/68efb8f95c4f747cc4aa8dbf",
+        path: "/dhn/trabajador",
         icon: (
           <SvgIcon fontSize="small">
             <PeopleIcon />

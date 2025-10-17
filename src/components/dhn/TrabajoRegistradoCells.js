@@ -141,7 +141,7 @@ export const ComprobantesCell = ({ item }) => (
   </Box>
 );
 
-export const buildTrabajoRegistradoColumns = () => ([
+export const buildTrabajoRegistradoColumns = (onEdit) => ([
   { key: 'estado', label: 'Estado', sortable: true, render: (item) => <EstadoCell item={item} /> },
   { key: 'licencia', label: 'Licencia', sortable: true, render: (item) => <LicenciaCell item={item} /> },
   { key: 'fecha', label: 'Fecha', sortable: true },
@@ -149,6 +149,12 @@ export const buildTrabajoRegistradoColumns = () => ([
   { key: 'partes', label: 'Partes', sortable: false, render: (item) => <PartesCell item={item} /> },
   { key: 'totalHoras', label: 'Total Partes', sortable: true, render: (item) => <TotalPartesCell item={item} /> },
   { key: 'comprobantes', label: 'Comprobantes', sortable: false, render: (item) => <ComprobantesCell item={item} /> },
+  ...(onEdit ? [{ 
+    key: 'acciones', 
+    label: 'Acciones', 
+    sortable: false, 
+    render: (item) => onEdit(item) 
+  }] : []),
 ]);
 
 
