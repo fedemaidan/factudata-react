@@ -6,7 +6,7 @@ const isProduction = process.env.NODE_ENV === 'production';
 // const apiUrl = isProduction ? 'https://stock-whatsapp-sorby-production.up.railway.app' : 'http://localhost:3000/';
 const apiUrl = isProduction
   ? 'https://api.sorbydata.com/chat-bot/api'
-  : 'http://localhost:3010/api/';
+  : 'http://localhost:3002/api/';
 // Crea una instancia de axios
 const api = axios.create({
   baseURL: apiUrl,
