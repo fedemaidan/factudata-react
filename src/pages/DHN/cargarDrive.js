@@ -13,7 +13,7 @@ import DeleteIcon from "@mui/icons-material/Delete";
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import InfoIcon from "@mui/icons-material/Info";
 
-import DhnDriveService, { validarUrlDrive as esUrlDriveValida } from "src/services/DHN/cargarUrlDriveService";
+import DhnDriveService, { validarUrlDrive as esUrlDriveValida } from "src/services/dhn/cargarUrlDriveService";
 
 const LS_KEY = "dhn_drive_history_v1";
 
@@ -52,6 +52,7 @@ export default function CargarDrivePage() {
 
     setEnviando(true);
     const data = await DhnDriveService.inspeccionarRecurso(url);
+    console.log('data', data);
     setResultado(data);
     setModalOpen(true);
 

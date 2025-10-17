@@ -1,3 +1,4 @@
+import axios from 'axios';
 import api from '../axiosConfig';
 
 /** Valida URLs/IDs típicos de Google Drive */
@@ -20,7 +21,7 @@ export const validarUrlDrive = (v) => {
   return patterns.some((re) => re.test(s));
 };
 
-const ENDPOINT = '/dhn/sync'; // 👈 ruta correcta
+const ENDPOINT = 'http://localhost:3003/api/dhn/sync'; // 👈 ruta correcta
 
 const DhnDriveService = {
   /**
@@ -29,12 +30,13 @@ const DhnDriveService = {
    * @returns {Promise<Object>} { ok:true, ...data } | { ok:false, error:{ code, message } }
    */
   inspeccionarRecurso: async (urlDrive) => {
+    console.log('Inspeccionando recurso:', urlDrive);
     if (!validarUrlDrive(urlDrive)) {
       return { ok: false, error: { code: 0, message: 'La URL/ID de Drive no es válida.' } };
     }
-
+    console.log('URL válida:', urlDrive);
     try {
-      const response = await api.post(ENDPOINT, { urlDrive }); // ✅ /dhn/sync
+      const response = await axios.post(ENDPOINT, { urlDrive }); // ✅ /dhn/sync
       if (response?.status === 200 || response?.status === 201) {
         return response.data; // { ok:true, ... }
       }
@@ -51,6 +53,19 @@ const DhnDriveService = {
         error?.message ||
         'Error de red';
       return { ok: false, error: { code, message } };
+    }
+  },
+
+  getAllSyncs: async () => {
+    try {
+      const response = await axios.get(ENDPOINT);
+      console.log('response', response.data);
+      // backend responde { ok: true, data: [...] }
+      return response.data?.data || [];
+    } catch (error) {
+      const message = error?.response?.data?.message || error?.message || 'Error de red';
+      console.error('Error getAllSyncs:', message);
+      return [];
     }
   },
 };

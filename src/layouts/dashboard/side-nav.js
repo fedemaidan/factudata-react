@@ -142,6 +142,16 @@ export const SideNav = (props) => {
       });
 
       baseItems.push({
+        title: "Sincronizacion",
+        path: "/dhn/cargarDrive",
+        icon: (
+          <SvgIcon fontSize="small">
+            <PeopleIcon />
+          </SvgIcon>
+        ),
+      });
+
+      baseItems.push({
         title: "Control Diario",
         path: "/dhn/controlDiario",
         icon: (
