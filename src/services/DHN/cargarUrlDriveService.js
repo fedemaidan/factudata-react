@@ -75,7 +75,7 @@ const DhnDriveService = {
     if (!syncId) return [];
     try {
       // El backend espera el syncId en el body, no en query params
-      const response = await api.post(`${ENDPOINT}/urls`, { syncId: syncId });
+      const response = await api.post(`/dhn/sync/urls`, { syncId: syncId });
       console.log('response getSyncChildren', response.data);
 
       const data = response.data;

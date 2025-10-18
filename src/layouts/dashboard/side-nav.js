@@ -381,20 +381,10 @@ export const SideNav = (props) => {
             </SvgIcon>
           ),
         });
-  
-        baseItems.push({
-          title: "Sincronizacion",
-          path: "/dhn/cargarDrive",
-          icon: (
-            <SvgIcon fontSize="small">
-              <PeopleIcon />
-            </SvgIcon>
-          ),
-        });
 
         baseItems.push({
-          title: "Sincronizacion V2",
-          path: "/dhn/cargarDriveV2",
+          title: "Sincronización",
+          path: "/dhn/cargarDrive",
           icon: (
             <SvgIcon fontSize="small">
               <PeopleIcon />
