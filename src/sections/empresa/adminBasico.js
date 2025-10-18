@@ -3,7 +3,7 @@ import {
   Card, CardHeader, Divider, CardContent, TextField, Button, Snackbar, Alert,
   FormControl, InputLabel, Select, MenuItem, Checkbox, ListItemText,
   Dialog, DialogTitle, DialogContent, DialogActions, Typography, Table, TableHead,
-  TableRow, TableCell, TableBody, IconButton, Collapse, FormHelperText
+  TableRow, TableCell, TableBody, IconButton, Collapse, FormHelperText, Box
 } from '@mui/material';
 import { useFormik } from 'formik';
 import * as Yup from 'yup';
@@ -12,6 +12,11 @@ import { getProyectosByEmpresa, getProyectosFromUser } from 'src/services/proyec
 import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
 import AddCircleIcon from '@mui/icons-material/AddCircle';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import Link from '@mui/material/Link';
+import Tooltip from '@mui/material/Tooltip';
+import { green } from '@mui/material/colors';
 
 export const AdminBasico = ({ empresa }) => {
   const [usuarios, setUsuarios] = useState([]);
@@ -234,6 +239,7 @@ export const AdminBasico = ({ empresa }) => {
               <TableCell>Apellido</TableCell>
               <TableCell>Teléfono</TableCell>
               <TableCell>Proyectos</TableCell>
+              <TableCell>Validó email</TableCell>
               <TableCell>Acciones</TableCell>
             </TableRow>
           </TableHead>
@@ -247,6 +253,43 @@ export const AdminBasico = ({ empresa }) => {
                 <TableCell>{u.proyectosData.map(project => (
                   <Typography key={project.id}>{project.nombre}</Typography>
                 ))}</TableCell>
+                <TableCell align="center">
+                  {u.confirmed ? (
+                    <CheckCircleIcon sx={{ color: green[500] }} />
+                  ) : (
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Link
+                        href={`https://admin.sorbydata.com/auth/register/?code=${u.confirmationCode}`}
+                        underline="hover"
+                        color="primary"
+                      >
+                        Link de registro
+                      </Link>
+                      <Tooltip title="Copiar mensaje de invitación">
+                        <IconButton
+                          size="small"
+                          onClick={async () => {
+                            const url = `https://admin.sorbydata.com/auth/register/?code=${u.confirmationCode}`;
+                            const mensaje =
+                              `Hola ${u.firstName || ''} ${u.lastName || ''}, con email ${u.email || ''}, ` +
+                              `te comparto el link para que puedas registrarte en Sorbydata. ` +
+                              `El email podés modificarlo ahí mismo.\n\n` +
+                              `Importante: Recordá que cada link es único.\n\n${url}`;
+                
+                            try {
+                              await navigator.clipboard.writeText(mensaje);
+                              setSnackbar({ open: true, message: 'Mensaje de invitación copiado al portapapeles', severity: 'success' });
+                            } catch (e) {
+                              setSnackbar({ open: true, message: 'No se pudo copiar el mensaje', severity: 'error' });
+                            }
+                          }}
+                        >
+                          <ContentCopyIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    </Box>
+                  )}
+                </TableCell>
                 <TableCell>
                   <IconButton onClick={() => openEdit(u)}><EditIcon /></IconButton>
                   <IconButton onClick={() => confirmDelete(u)}><DeleteIcon /></IconButton>

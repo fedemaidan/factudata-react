@@ -1,26 +1,23 @@
-import axios from 'axios';
-
-const API_BASE_URL = 'http://localhost:3003';
+import api from '../axiosConfig';
 
 const TrabajadorService = {
   getTrabajadorById: async (id) => {
-    const response = await axios.get(`${API_BASE_URL}/api/dhn/trabajadores/${id}`);
+    const response = await api.get(`/dhn/trabajadores/${id}`);
     return response.data;
   },
 
   getAll: async () => {
-    const response = await axios.get(`${API_BASE_URL}/api/dhn/trabajadores`);
-    console.log('response', response.data);
+    const response = await api.get(`/dhn/trabajadores`);
     return response.data;
   },
 
   create: async (data) => {
-    const response = await axios.post(`${API_BASE_URL}/api/dhn/trabajadores`, data);
+    const response = await api.post(`/dhn/trabajadores`, data);
     return response.data;
   },
 
   update: async (id, data) => {
-    const response = await axios.put(`${API_BASE_URL}/api/dhn/trabajadores/${id}`, data);
+    const response = await api.put(`/dhn/trabajadores/${id}`, data);
     return response.data;
   }
 }

@@ -1,6 +1,5 @@
-import axios from 'axios';
+import api from '../axiosConfig';
 
-const API_BASE_URL = 'http://localhost:3003';
 
 const TrabajoRegistradoService = {
   getTrabajoRegistradoByTrabajadorId: async (trabajadorId, params = {}) => {
@@ -13,8 +12,8 @@ const TrabajoRegistradoService = {
     if (from) queryParams.append('from', from);
     if (to) queryParams.append('to', to);
     if (estado) queryParams.append('estado', estado);
-    const response = await axios.get(
-      `${API_BASE_URL}/api/dhn/trabajo-diario-registrado/${trabajadorId}?${queryParams}`
+    const response = await api.get(
+      `/dhn/trabajo-diario-registrado/${trabajadorId}?${queryParams}`
     );
     return response.data;
   },
@@ -36,12 +35,12 @@ const TrabajoRegistradoService = {
     });
     if (estado) queryParams.append('estado', estado);
 
-    const response = await axios.get(`${API_BASE_URL}/api/dhn/trabajo-diario-registrado?${queryParams}`);
+    const response = await api.get(`/dhn/trabajo-diario-registrado?${queryParams}`);
     return response.data;
   },
 
   update: async (id, data) => {
-    const response = await axios.put(`${API_BASE_URL}/api/dhn/trabajo-diario-registrado/${id}`, data);
+    const response = await api.put(`/dhn/trabajo-diario-registrado/${id}`, data);
     return response.data;
   }
 };

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import profileService from 'src/services/profileService';
 import {
   Typography, Button, Card, CardContent, CardActions, CardHeader, Divider, IconButton, LinearProgress, TextField, Select, MenuItem, InputLabel, FormControl,
-  Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Dialog, DialogActions, DialogContent, DialogTitle, Snackbar, Alert
+  Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Dialog, DialogActions, DialogContent, DialogTitle, Snackbar, Alert, Box
 } from '@mui/material';
 import AddCircleIcon from '@mui/icons-material/AddCircle';
 import EditIcon from '@mui/icons-material/Edit';
@@ -12,6 +12,12 @@ import * as Yup from 'yup';
 import { getProyectosByEmpresa, getProyectosFromUser } from 'src/services/proyectosService';
 import { useAuthContext } from 'src/contexts/auth-context';
 import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import Link from '@mui/material/Link';
+import Tooltip from '@mui/material/Tooltip';
+import { green } from '@mui/material/colors';
+
 const normalizePhone = (phone) => (phone || '').toString().replace(/[^\d]/g, '');
 
 function reemplazarUndefined(obj) {
@@ -238,8 +244,7 @@ export const UsuariosDetails = ({ empresa }) => {
                   <TableCell>Nombre</TableCell>
                   <TableCell>Apellido</TableCell>
                   <TableCell>Validación Remito</TableCell>
-                  <TableCell>Código de Confirmación</TableCell>
-                  <TableCell>Confirmado</TableCell>
+                  <TableCell>Validó email</TableCell>
                   <TableCell>Proyectos</TableCell>
                   <TableCell>Caja chica</TableCell>
                   <TableCell>Notificación Nota Pedido</TableCell>
@@ -254,8 +259,33 @@ export const UsuariosDetails = ({ empresa }) => {
                     <TableCell>{usuario.firstName}</TableCell>
                     <TableCell>{usuario.lastName}</TableCell>
                     <TableCell>{usuario.tipo_validacion_remito}</TableCell>
-                    <TableCell>{"https://admin.sorbydata.com/auth/register/?code=" + usuario.confirmationCode}</TableCell>
-                    <TableCell>{usuario.confirmed ? "Sí" : "No"}</TableCell>
+                    <TableCell align="center">
+  {usuario.confirmed ? (
+    <CheckCircleIcon sx={{ color: green[500] }} />
+  ) : (
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, justifyContent: 'center' }}>
+      <Link
+        href={`https://admin.sorbydata.com/auth/register/?code=${usuario.confirmationCode}`}
+        underline="hover"
+        color="primary"
+      >
+        Link de registro
+      </Link>
+      <Tooltip title="Copiar mensaje">
+        <IconButton
+          size="small"
+          onClick={() => {
+            const mensaje = `Hola ${usuario.firstName || ''} ${usuario.lastName || ''}, con email ${usuario.email || ''}, te comparto el link para que puedas registrarte en Sorbydata. El email podés modificarlo ahí mismo.\n\nImportante: Recordá que cada link es único.\n\nhttps://admin.sorbydata.com/auth/register/?code=${usuario.confirmationCode}`;
+            navigator.clipboard.writeText(mensaje);
+          }}
+        >
+          <ContentCopyIcon fontSize="small" />
+        </IconButton>
+      </Tooltip>
+    </Box>
+  )}
+</TableCell>
+
                     <TableCell>
                       {usuario.proyectosData.filter(
                         project => project && project.nombre

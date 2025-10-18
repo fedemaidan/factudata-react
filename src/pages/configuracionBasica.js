@@ -39,7 +39,7 @@ const ConfiguracionBasicaPage = () => {
         <title>Configuración Básica</title>
       </Head>
       <Box component="main" sx={{ flexGrow: 1, py: 8 }}>
-        <Container maxWidth="md">
+      <Container maxWidth={false} sx={{ px: 6 }}>
           <Stack spacing={3}>
             <Typography variant="h4">Configuración Básica</Typography>
             <Tabs value={currentTab} onChange={handleTabChange}>

@@ -43,7 +43,7 @@ api.interceptors.response.use(
         const originalRequest = error.config;
 
         // Si la solicitud falla por un problema de autenticación y no se ha reintentado aún
-        if (error.response.status === 401 && !originalRequest._retry) {
+        if (error?.response?.status === 401 && !originalRequest._retry) {
             originalRequest._retry = true; // Marcar la solicitud como ya reintentada
             try {
                 const token = await auth.currentUser.getIdToken(true); // Forzar la actualización del token
