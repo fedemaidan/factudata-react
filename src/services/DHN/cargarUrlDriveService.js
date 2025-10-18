@@ -42,7 +42,6 @@ const DhnDriveService = {
         error: { code: response?.status ?? 0, message: 'Respuesta inesperada del servidor.' },
       };
     } catch (error) {
-      // ⚠️ NUNCA asumas error.response
       const code = error?.response?.status ?? 0;
       const message =
         error?.response?.data?.error?.message ||
@@ -62,6 +61,35 @@ const DhnDriveService = {
     } catch (error) {
       const message = error?.response?.data?.message || error?.message || 'Error de red';
       console.error('Error getAllSyncs:', message);
+      return [];
+    }
+  },
+
+  /**
+   * Obtiene los items/detalles de un sync específico.
+   * Envía el sync id como query param ?syncid=... (el backend debe aceptar este param).
+   * @param {string} syncId
+   * @returns {Promise<Array>} lista de items (o [])
+   */
+  getSyncChildren: async (syncId) => {
+    if (!syncId) return [];
+    try {
+      // El backend espera el syncId en el body, no en query params
+      const response = await api.post(`${ENDPOINT}/urls`, { syncId: syncId });
+      console.log('response getSyncChildren', response.data);
+
+      const data = response.data;
+      if (!data) return [];
+
+      if (Array.isArray(data)) return data;
+      if (Array.isArray(data.data)) return data.data;
+      if (Array.isArray(data.data?.items)) return data.data.items;
+      if (Array.isArray(data.items)) return data.items;
+
+      return [];
+    } catch (error) {
+      const message = error?.response?.data?.message || error?.message || 'Error de red';
+      console.error('Error getSyncChildren:', message);
       return [];
     }
   },
