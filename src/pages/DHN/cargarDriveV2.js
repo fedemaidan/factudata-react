@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Layout as DashboardLayout } from "src/layouts/dashboard/layout";
-import { Container, Box, Chip, IconButton } from "@mui/material";
+import { Container, Box, Chip, IconButton, TextField, Button } from "@mui/material";
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import TableComponent from "src/components/TableComponent";
 import DhnDriveService from "src/services/dhn/cargarUrlDriveService";
@@ -32,10 +32,18 @@ const statusChip = (status) => {
 const CargarDriveV2 = () => {
   const [items, setItems] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [urlDrive, setUrlDrive] = useState("");
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  const [expandedId, setExpandedId] = useState(null);
+  const [detailsMap, setDetailsMap] = useState({}); // id -> detalles[]
+  const [detailsLoadingId, setDetailsLoadingId] = useState(null);
 
   useEffect(() => {
     fetchSyncs();
   }, []);
+
+  const getId = (item) => item?.id || item?._id || item?.sync_id || null;
 
   const fetchSyncs = async () => {
     setIsLoading(true);
@@ -47,6 +55,56 @@ const CargarDriveV2 = () => {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  // Nuevo: carga children para un syncId (funciona análogo a fetchSyncs)
+  const fetchChildren = async (syncId) => {
+    if (!syncId) return [];
+    setDetailsLoadingId(syncId);
+    try {
+      const data = await DhnDriveService.getSyncChildren(syncId);
+      const list = Array.isArray(data) ? data : [];
+      setDetailsMap((prev) => ({ ...prev, [syncId]: list }));
+      return list;
+    } catch (err) {
+      console.error("Error fetchChildren:", err);
+      setDetailsMap((prev) => ({ ...prev, [syncId]: [] }));
+      return [];
+    } finally {
+      setDetailsLoadingId(null);
+    }
+  };
+
+  const handleSyncClick = async () => {
+    if (!urlDrive) return;
+    setIsSyncing(true);
+    try {
+      await DhnDriveService.inspeccionarRecurso(urlDrive);
+      await fetchSyncs();
+      setUrlDrive("");
+    } catch (e) {
+      console.error(e);
+      alert("Error al inspeccionar recurso");
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  // Modificado: al expandir siempre pedir fetchChildren(...) y poblar detalles
+  const handleRowClick = async (item) => {
+    const id = getId(item);
+    if (!id) return;
+
+    // si ya estaba expandido, colapsar
+    if (expandedId === id) {
+      setExpandedId(null);
+      return;
+    }
+
+    setExpandedId(id);
+
+    // Siempre solicitar al backend los children (no usar cache si el backend no devuelve children en getAllSyncs)
+    await fetchChildren(id);
   };
 
   const columns = useMemo(
@@ -63,7 +121,7 @@ const CargarDriveV2 = () => {
         sortable: true,
         render: (item) => formatearFechaHora(item.updated_at),
       },
-      { key: "tipo", label: "Tipo", sortable: true, render: (item) => item.tipo.toUpperCase() },
+      { key: "tipo", label: "Tipo", sortable: true, render: (item) => item.tipo?.toUpperCase?.() || "-" },
       {
         key: "status",
         label: "Estado",
@@ -94,6 +152,61 @@ const CargarDriveV2 = () => {
           </IconButton>
         ),
       },
+      // <- la columna "Abrir" fue eliminada: ahora la subtabla se carga al hacer click en la fila
+    ],
+    []
+  );
+
+  // Columnas para la subtabla (detalles) — ahora muestra status, url_storage, url_drive y observacion
+  const detailsColumns = useMemo(
+    () => [
+      {
+        key: "status",
+        label: "Estado",
+        render: (it) => statusChip(it?.status),
+      },
+      {
+        key: "url_storage",
+        label: "URL Storage",
+        render: (it) =>
+          it?.url_storage ? (
+            <IconButton
+              size="small"
+              href={it.url_storage}
+              target="_blank"
+              rel="noreferrer"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <OpenInNewIcon fontSize="small" />
+            </IconButton>
+          ) : (
+            "-"
+          ),
+      },
+      {
+        key: "url_drive",
+        label: "URL Drive",
+        render: (it) =>
+          it?.url_drive ? (
+            <IconButton
+              size="small"
+              href={it.url_drive}
+              target="_blank"
+              rel="noreferrer"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <OpenInNewIcon fontSize="small" />
+            </IconButton>
+          ) : (
+            "-"
+          ),
+      },
+      {
+        key: "observacion",
+        label: "Observación",
+        render: (it) => it?.observacion || "-",
+        sx: { maxWidth: "420px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" },
+      },
     ],
     []
   );
@@ -102,7 +215,59 @@ const CargarDriveV2 = () => {
     <DashboardLayout title="Cargar Drive - Historial">
       <Container maxWidth="xl">
         <Box sx={{ py: 3 }}>
-          <TableComponent data={items} columns={columns} isLoading={isLoading} />
+          {/* Caja con textbox y botón de sincronizar */}
+          <Box sx={{ display: "flex", gap: 2, mb: 2, alignItems: "center" }}>
+            <TextField
+              label="URL de Drive"
+              value={urlDrive}
+              onChange={(e) => setUrlDrive(e.target.value)}
+              fullWidth
+              size="small"
+            />
+            <Button
+              variant="contained"
+              onClick={handleSyncClick}
+              disabled={!urlDrive || isSyncing}
+            >
+              {isSyncing ? "Sincronizando..." : "Sincronizar"}
+            </Button>
+
+            {/* Botón para actualizar la lista */}
+            <Button
+              variant="outlined"
+              onClick={() => fetchSyncs()}
+              disabled={isLoading}
+            >
+              {isLoading ? "Actualizando..." : "Actualizar"}
+            </Button>
+          </Box>
+
+          {/* Tabla principal: pasamos onRowClick para que se active la subtabla */}
+          <TableComponent
+            data={items}
+            columns={columns}
+            isLoading={isLoading}
+            onRowClick={handleRowClick}
+          />
+
+          {/* Subtabla con detalles del registro seleccionado (se muestra debajo) */}
+          {expandedId && (
+            <Box sx={{ mt: 2 }}>
+              <Box sx={{ mb: 1, fontWeight: "bold" }}>
+                Detalles del registro: {items.find((it) => getId(it) === expandedId)?.tipo || ""}
+              </Box>
+
+              {detailsLoadingId === expandedId ? (
+                <div>Cargando detalles...</div>
+              ) : (
+                <TableComponent
+                  data={detailsMap[expandedId] || []}
+                  columns={detailsColumns}
+                  isLoading={false}
+                />
+              )}
+            </Box>
+          )}
         </Box>
       </Container>
     </DashboardLayout>
