@@ -131,6 +131,18 @@ export const SideNav = (props) => {
         },
       ];
 
+      if (permisosUsuario.includes("CREAR_EGRESO_SIMPLIFICADO")) {
+        baseItems.push({
+          title: "Ver caja",
+          path: "/cajaSimple",
+          icon: (
+            <SvgIcon fontSize="small">
+              <SettingsIcon />
+            </SvgIcon>
+          ),
+        });
+      }
+
       if (permisosUsuario.includes("CELULANDIA_COMPROBANTES")) {
         baseItems.push({
           title: "Comprobantes",
@@ -404,7 +416,7 @@ export const SideNav = (props) => {
 
       }
 
-      if (permisosUsuario.includes("VER_CAJAS")) {
+      if (permisosUsuario.includes("VER_CAJAS") && !permisosUsuario.includes("CREAR_EGRESO_SIMPLIFICADO")) {
         if (permisosUsuario.includes("VER_MI_CAJA_CHICA")) {
           baseItems.push({
             title: "Ver cajas chicas",
@@ -596,7 +608,7 @@ export const SideNav = (props) => {
                 </Box>
               </>
             )}
-
+  
             {proyectosPlanObra.length > 0 && (
               <>
                 {!collapsed && (
