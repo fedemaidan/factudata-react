@@ -4,6 +4,31 @@ import TableViewIcon from '@mui/icons-material/TableView';
 import AssignmentIcon from '@mui/icons-material/Assignment';
 import SickIcon from '@mui/icons-material/Sick';
 
+export const TrabajadorCell = ({ item }) => {
+  if (!item.trabajadorId) {
+    return <Typography variant="caption" color="textSecondary">-</Typography>;
+  }
+  const { apellido, nombre } = item.trabajadorId;
+  return (
+    <Typography variant="body2">
+      {apellido}, {nombre}
+    </Typography>
+  );
+};
+
+export const DNICell = ({ item }) => {
+  if (!item.trabajadorId?.dni) {
+    return <Typography variant="caption" color="textSecondary">-</Typography>;
+  }
+  const dni = item.trabajadorId.dni;
+  const dniFormateado = dni.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  return (
+    <Typography variant="body2" sx={{ fontSize: '0.875rem' }}>
+      {dniFormateado}
+    </Typography>
+  );
+};
+
 export const EstadoCell = ({ item }) => {
   const estado = item.estado || 'ok';
   if (estado === 'ok') return <Chip size="small" label="OK" color="success" />;
@@ -141,7 +166,11 @@ export const ComprobantesCell = ({ item }) => (
   </Box>
 );
 
-export const buildTrabajoRegistradoColumns = (onEdit) => ([
+export const buildTrabajoRegistradoColumns = (onEdit, incluirTrabajador = false) => ([
+  ...(incluirTrabajador ? [
+    { key: 'trabajador', label: 'Trabajador', sortable: true, render: (item) => <TrabajadorCell item={item} /> },
+    { key: 'dni', label: 'DNI', sortable: true, render: (item) => <DNICell item={item} /> },
+  ] : []),
   { key: 'estado', label: 'Estado', sortable: true, render: (item) => <EstadoCell item={item} /> },
   { key: 'licencia', label: 'Licencia', sortable: true, render: (item) => <LicenciaCell item={item} /> },
   { key: 'fecha', label: 'Fecha', sortable: true },

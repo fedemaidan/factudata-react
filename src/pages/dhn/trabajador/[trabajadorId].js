@@ -32,6 +32,7 @@ const TrabajadorPage = () => {
   const [estadoFiltro, setEstadoFiltro] = useState('todos');
   const [editarModalOpen, setEditarModalOpen] = useState(false);
   const [trabajoDiarioSeleccionado, setTrabajoDiarioSeleccionado] = useState(null);
+  const [trabajador, setTrabajador] = useState(null);
 
   console.log("trabajoRegistrado", trabajoRegistrado);
   useEffect(() => {
@@ -63,6 +64,12 @@ const TrabajadorPage = () => {
 
       const response = await TrabajoRegistradoService.getTrabajoRegistradoByTrabajadorId(trabajadorId, params);
       setTrabajoRegistrado(response.data || []);
+      
+      // Extraer datos del trabajador del primer registro (si existe)
+      if (response.data && response.data.length > 0 && response.data[0].trabajadorId) {
+        setTrabajador(response.data[0].trabajadorId);
+      }
+      
       setError(null);
     } catch (err) {
       console.error('Error al cargar trabajo registrado:', err);
@@ -116,16 +123,32 @@ const TrabajadorPage = () => {
   }
 
   return (
-    <DashboardLayout title={`Trabajador - ${trabajadorId}`}>
+    <DashboardLayout title={`${trabajador ? `${trabajador.apellido}, ${trabajador.nombre}` : trabajadorId}`}
+>
       <Container maxWidth="xl">
         <Stack spacing={3}>
           <Box>
-            <Typography variant="h4" component="h1" gutterBottom>
-              Trabajo Registrado
-            </Typography>
-            <Typography variant="body2" color="textSecondary">
-              ID: {trabajadorId}
-            </Typography>
+            <Stack direction="row" spacing={2} alignItems="center" flexWrap="wrap">
+              {trabajador?.dni && (
+                <Typography variant="body2" color="textSecondary">
+                  DNI: {trabajador.dni}
+                </Typography>
+              )}
+              {trabajador?.categoria && (
+                <Chip 
+                  label={`Categoría: ${trabajador.categoria}`} 
+                  size="small" 
+                  variant="outlined"
+                />
+              )}
+              {trabajador?.active !== undefined && (
+                <Chip 
+                  label={trabajador.active ? 'Activo' : 'Inactivo'} 
+                  size="small" 
+                  color={trabajador.active ? 'success' : 'default'}
+                />
+              )}
+            </Stack>
           </Box>
 
           <LocalizationProvider dateAdapter={AdapterDayjs}>

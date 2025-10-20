@@ -28,6 +28,7 @@ const EditarTrabajoDiarioModal = ({ open, onClose, onSave, trabajoDiario }) => {
 
   const [formData, setFormData] = useState({
     fecha: "",
+    horasTrabajadas: "",
     horasNormales: "",
     horas50: "",
     horas100: "",
@@ -41,6 +42,7 @@ const EditarTrabajoDiarioModal = ({ open, onClose, onSave, trabajoDiario }) => {
     if (trabajoDiario) {
       setFormData({
         fecha: trabajoDiario.fecha ? new Date(trabajoDiario.fecha).toISOString().split("T")[0] : "",
+        horasTrabajadas: trabajoDiario.horasTrabajadasExcel?.total ?? "",
         horasNormales: trabajoDiario.horasNormales ?? "",
         horas50: trabajoDiario.horas50 ?? "",
         horas100: trabajoDiario.horas100 ?? "",
@@ -71,7 +73,17 @@ const EditarTrabajoDiarioModal = ({ open, onClose, onSave, trabajoDiario }) => {
 
     setIsLoading(true);
     try {
-      await TrabajoRegistradoService.update(trabajoDiario._id, formData);
+      const payload = {
+        ...formData,
+        horasTrabajadasExcel: {
+          ...trabajoDiario.horasTrabajadasExcel,
+          total: formData.horasTrabajadas ? parseFloat(formData.horasTrabajadas) : null
+        }
+      };
+      
+      delete payload.horasTrabajadas;
+      
+      await TrabajoRegistradoService.update(trabajoDiario._id, payload);
       
       setAlert({
         open: true,
@@ -131,6 +143,18 @@ const EditarTrabajoDiarioModal = ({ open, onClose, onSave, trabajoDiario }) => {
                 margin="normal"
                 InputLabelProps={{ shrink: true }}
                 required
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Horas Trabajadas"
+                type="number"
+                value={formData.horasTrabajadas}
+                onChange={(e) => handleInputChange("horasTrabajadas", e.target.value)}
+                margin="normal"
+                inputProps={{ min: 0, step: 0.25 }}
+                helperText="Total de horas trabajadas del día"
               />
             </Grid>
             <Grid item xs={12} sm={6}>
