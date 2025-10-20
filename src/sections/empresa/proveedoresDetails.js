@@ -33,7 +33,7 @@ import SaveIcon from '@mui/icons-material/Save';
 import { updateEmpresaDetails } from 'src/services/empresaService';
 import Papa from 'papaparse';
 
-export const ProveedoresDetails = ({ empresa }) => {
+export const ProveedoresDetails = ({ empresa, refreshEmpresa }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [aliasInput, setAliasInput] = useState('');
 
@@ -101,6 +101,7 @@ export const ProveedoresDetails = ({ empresa }) => {
           proveedores: nuevosNombres,
           proveedores_data: nuevosData
         });
+        await refreshEmpresa?.();
 
         setSnackbarMessage(editingProveedorIndex !== null ? 'Proveedor actualizado' : 'Proveedor agregado');
         setSnackbarSeverity('success');
@@ -143,6 +144,7 @@ export const ProveedoresDetails = ({ empresa }) => {
           proveedores: nuevosNombres,
           proveedores_data: nuevosData
         });
+        await refreshEmpresa?.();
         setSnackbarMessage('Proveedor eliminado con éxito');
         setSnackbarSeverity('success');
       } catch (error) {
@@ -236,6 +238,7 @@ export const ProveedoresDetails = ({ empresa }) => {
         proveedores: nombres,
         proveedores_data: actualizados
       });
+      await refreshEmpresa?.();
   
       setSnackbarMessage('Proveedores importados con éxito');
       setSnackbarSeverity('success');

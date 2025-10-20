@@ -36,7 +36,7 @@ import SaveIcon from '@mui/icons-material/Save';
 import AddCircleIcon from '@mui/icons-material/AddCircle';
 import { getProyectosByEmpresa, hasPermission, updateProyecto, crearProyecto, subirCSVProyecto, otorgarPermisosDriveProyecto  } from 'src/services/proyectosService';
 
-export const ProyectosDetails = ({ empresa }) => {
+export const ProyectosDetails = ({ empresa, refreshEmpresa }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [proyectos, setProyectos] = useState([]);
   const [editingProyecto, setEditingProyecto] = useState(null);
@@ -81,12 +81,16 @@ export const ProyectosDetails = ({ empresa }) => {
       setSnackbarMessage('Proyecto eliminado (lógicamente) con éxito');
       setSnackbarSeverity('success');
     } catch (error) {
+      await refreshEmpresa?.();
+      const proyectosData = await getProyectosByEmpresa(empresa);
+      setProyectos(proyectosData);
       console.error('Error al eliminar el proyecto:', error);
       setSnackbarMessage('Error al eliminar el proyecto');
       setSnackbarSeverity('error');
     } finally {
       setSnackbarOpen(true);
       setProyectoAEliminar(null);
+      await refreshEmpresa?.();
       const proyectosData = await getProyectosByEmpresa(empresa);
       setProyectos(proyectosData);
     }
@@ -190,6 +194,7 @@ export const ProyectosDetails = ({ empresa }) => {
           setSnackbarMessage('Proyecto actualizado con éxito');
         } else {
           await crearProyecto(proyectoData, empresa.id);
+          await refreshEmpresa?.();
           setSnackbarMessage('Proyecto creado con éxito');
         }
         setSnackbarSeverity('success');
