@@ -11,7 +11,7 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import SaveIcon from '@mui/icons-material/Save';
 import { updateEmpresaDetails } from 'src/services/empresaService';
 
-export const EtapasDetails = ({ empresa }) => {
+export const EtapasDetails = ({ empresa, refreshEmpresa }) => {
   const [etapas, setEtapas] = useState(empresa?.etapas || []);
   const [editingIndex, setEditingIndex] = useState(null);
   const [form, setForm] = useState({ nombre: '', descripcion: '', categorias: [], proveedores: [] });
@@ -51,6 +51,7 @@ export const EtapasDetails = ({ empresa }) => {
     try {
       await updateEmpresaDetails(empresa.id, { etapas: nuevasEtapas });
       setEtapas(nuevasEtapas);
+      await refreshEmpresa?.();
       setSnackbar({ open: true, message: 'Etapa guardada con éxito', severity: 'success' });
     } catch (err) {
       console.error(err);
@@ -64,6 +65,7 @@ export const EtapasDetails = ({ empresa }) => {
     const nuevas = etapas.filter((_, i) => i !== index);
     try {
       await updateEmpresaDetails(empresa.id, { etapas: nuevas });
+      await refreshEmpresa?.();
       setEtapas(nuevas);
       setSnackbar({ open: true, message: 'Etapa eliminada', severity: 'success' });
     } catch (err) {

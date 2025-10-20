@@ -27,7 +27,7 @@ const impuestosDefault = [
   { id: uuidv4(), nombre: "Retención Ganancias", tipo: "porcentaje", valor: 2, aplicacion: "compra", incluir_en_total: false, activo: true },
 ];
 
-export const ImpuestosDetails = ({ empresa }) => {
+export const ImpuestosDetails = ({ empresa, refreshEmpresa }) => {
   const [impuestos, setImpuestos] = useState(() => {
     if (!empresa.impuestos_data || empresa.impuestos_data.length === 0) {
       return impuestosDefault;
@@ -71,6 +71,7 @@ export const ImpuestosDetails = ({ empresa }) => {
     else nuevos.push(nuevo);
     setImpuestos(nuevos);
     await updateEmpresaDetails(empresa.id, { impuestos_data: nuevos });
+    await refreshEmpresa?.();
     setSnackbar({ open: true, message: editingIndex !== null ? 'Impuesto actualizado' : 'Impuesto agregado', severity: 'success' });
     reset();
   };
@@ -79,6 +80,7 @@ export const ImpuestosDetails = ({ empresa }) => {
     const nuevos = impuestos.filter((_, i) => i !== index);
     setImpuestos(nuevos);
     await updateEmpresaDetails(empresa.id, { impuestos_data: nuevos });
+    await refreshEmpresa?.();
     setSnackbar({ open: true, message: 'Impuesto eliminado', severity: 'success' });
   };
 
@@ -91,6 +93,7 @@ export const ImpuestosDetails = ({ empresa }) => {
     nuevos[nuevoIndex] = temp;
     setImpuestos(nuevos);
     await updateEmpresaDetails(empresa.id, { impuestos_data: nuevos });
+    await refreshEmpresa?.();
   };
 
   return (

@@ -32,7 +32,7 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import SaveIcon from '@mui/icons-material/Save';
 import { updateEmpresaDetails } from 'src/services/empresaService';
 
-export const MediosPagoDetails = ({ empresa }) => {
+export const MediosPagoDetails = ({ empresa, refreshEmpresa }) => {
   const DEFAULT_MEDIOS = ['Efectivo', 'Transferencia', 'Tarjeta', 'Mercado Pago', 'Cheque'];
 
   const [mediosPago, setMediosPago] = useState(() => {
@@ -41,6 +41,7 @@ export const MediosPagoDetails = ({ empresa }) => {
         medios_pago: DEFAULT_MEDIOS,
         medio_pago_default: DEFAULT_MEDIOS[0]
       });
+      refreshEmpresa?.();
       return DEFAULT_MEDIOS;
     }
     return empresa.medios_pago;
@@ -75,6 +76,7 @@ export const MediosPagoDetails = ({ empresa }) => {
           medios_pago: actualizados,
           medio_pago_default: nuevoDefault
         });
+        await refreshEmpresa?.();
 
         setSnackbar({
           open: true,
@@ -110,6 +112,7 @@ export const MediosPagoDetails = ({ empresa }) => {
           medios_pago: resultadoFinal,
           medio_pago_default: nuevoDefault
         });
+        await refreshEmpresa?.();
 
         setSnackbar({
           open: true,
@@ -126,6 +129,7 @@ export const MediosPagoDetails = ({ empresa }) => {
   const cambiarPredeterminado = async (medio) => {
     setMedioPredeterminado(medio);
     await updateEmpresaDetails(empresa.id, { medio_pago_default: medio });
+    await refreshEmpresa?.();
     setSnackbar({ open: true, message: `Medio predeterminado: ${medio}`, severity: 'info' });
   };
 

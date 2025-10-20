@@ -31,6 +31,16 @@ const ConfiguracionBasicaPage = () => {
     setCurrentTab(newValue);
   };
 
+   const refreshEmpresa = async () => {
+    if (!empresaId) return;
+    const nueva = await getEmpresaById(empresaId);
+    setEmpresa(nueva);
+  };
+
+  const patchEmpresa = (partial) => {
+    setEmpresa(prev => (prev ? { ...prev, ...partial } : prev));
+  };
+
   if (!user || !empresa) return null;
 
   return (
@@ -52,13 +62,13 @@ const ConfiguracionBasicaPage = () => {
               <Tab label="Impuestos" value="impuestos" />
             </Tabs>
 
-            {currentTab === 'usuarios' && <AdminBasico empresa={empresa} />}
-            {currentTab === 'proyectos' && <ProyectosDetails empresa={empresa} />}
-            {currentTab === 'proveedores' && <ProveedoresDetails empresa={empresa} />}
-            {currentTab === 'categorias' && <CategoriasDetails empresa={empresa} />}
-            {currentTab === 'etapas' && <EtapasDetails empresa={empresa} />} 
-            {currentTab === 'medios_pago' && <MediosPagoDetails empresa={empresa} />}
-            {currentTab === 'impuestos' && <ImpuestosDetails empresa={empresa} />}
+            {currentTab === 'usuarios' && <AdminBasico empresa={empresa} onEmpresaChange={patchEmpresa} refreshEmpresa={refreshEmpresa}/>}
+            {currentTab === 'proyectos' && <ProyectosDetails empresa={empresa} onEmpresaChange={patchEmpresa} refreshEmpresa={refreshEmpresa}/>}
+            {currentTab === 'proveedores' && <ProveedoresDetails empresa={empresa} onEmpresaChange={patchEmpresa} refreshEmpresa={refreshEmpresa}/>}
+            {currentTab === 'categorias' && <CategoriasDetails empresa={empresa} onEmpresaChange={patchEmpresa} refreshEmpresa={refreshEmpresa}/>}
+            {currentTab === 'etapas' && <EtapasDetails empresa={empresa} onEmpresaChange={patchEmpresa} refreshEmpresa={refreshEmpresa}/>} 
+            {currentTab === 'medios_pago' && <MediosPagoDetails empresa={empresa} onEmpresaChange={patchEmpresa} refreshEmpresa={refreshEmpresa}/>}
+            {currentTab === 'impuestos' && <ImpuestosDetails empresa={empresa} onEmpresaChange={patchEmpresa} refreshEmpresa={refreshEmpresa}/>}
           </Stack>
         </Container>
       </Box>

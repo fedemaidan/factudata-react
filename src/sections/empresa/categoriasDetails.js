@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Box,
   Button,
@@ -95,7 +95,7 @@ const categoriasDefault = [
 // borrar luego
 
 
-export const CategoriasDetails = ({ empresa }) => {
+export const CategoriasDetails = ({ empresa, refreshEmpresa }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [categorias, setCategorias] = useState(empresa.categorias);
   const [editingCategoria, setEditingCategoria] = useState(null);
@@ -110,6 +110,11 @@ export const CategoriasDetails = ({ empresa }) => {
   const handleSnackbarClose = () => {
     setSnackbarOpen(false);
   };
+
+  useEffect(() => {
+    setCategorias(Array.isArray(empresa?.categorias) ? empresa.categorias : []);
+  }, [empresa?.categorias]);
+
 
   const formik = useFormik({
     initialValues: {
@@ -144,6 +149,7 @@ export const CategoriasDetails = ({ empresa }) => {
 
         setCategorias(newCategorias);
         await updateEmpresaDetails(empresa.id, { categorias: newCategorias });
+        await refreshEmpresa?.();
         setSnackbarSeverity('success');
       } catch (error) {
         console.error('Error al actualizar/crear la categoría:', error);
@@ -202,7 +208,7 @@ const handleImportarCSV = async (e) => {
 
     setCategorias(nuevasCategorias);
     await updateEmpresaDetails(empresa.id, { categorias: nuevasCategorias });
-
+    await refreshEmpresa?.();
     setSnackbarMessage('Categorías importadas con éxito');
     setSnackbarSeverity('success');
   } catch (error) {
@@ -220,6 +226,7 @@ const handleImportarCSV = async (e) => {
     try {
       setCategorias(categoriasDefault);
       await updateEmpresaDetails(empresa.id, { categorias: categoriasDefault });
+      await refreshEmpresa?.();
       setSnackbarMessage('Categorías restauradas con éxito');
       setSnackbarSeverity('success');
     } catch (error) {
@@ -241,6 +248,7 @@ const handleImportarCSV = async (e) => {
         );
         setCategorias(newCategorias);
         await updateEmpresaDetails(empresa.id, { categorias: newCategorias });
+        await refreshEmpresa?.();
         setSnackbarMessage('Subcategoría eliminada con éxito');
         setSnackbarSeverity('success');
       } catch (error) {
@@ -261,6 +269,7 @@ const handleImportarCSV = async (e) => {
         const newCategorias = categorias.filter((cat) => cat.id !== id);
         setCategorias(newCategorias);
         await updateEmpresaDetails(empresa.id, { categorias: newCategorias });
+        await refreshEmpresa?.();
         setSnackbarMessage('Categoría eliminada con éxito');
         setSnackbarSeverity('success');
       } catch (error) {
