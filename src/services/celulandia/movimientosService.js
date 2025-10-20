@@ -126,7 +126,7 @@ const movimientosService = {
   },
 
   getClientesTotales: async () => {
-    const response = await axiosCelulandia.get("/movimientos/clientes-totales");
+    const response = await axiosCelulandia.get("/movimientos/clientes-totales-v2");
     return response.data;
   },
 
