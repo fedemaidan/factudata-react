@@ -70,6 +70,10 @@ export const formatearCampo = (campo, valor, item = null) => {
           backgroundColor: "#F3E5F5",
           color: "#7B1FA2",
         },
+        "SERCOB SA": {
+          backgroundColor: "#FFEAE6",
+          color: "#C62828",
+        },
         EZE: {
           backgroundColor: "#E0F7FA",
           color: "#006064",

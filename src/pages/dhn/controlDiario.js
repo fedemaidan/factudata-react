@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useRouter } from 'next/router';
 import dayjs from 'dayjs';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
-import { Container, Stack, Typography, Alert, Box, FormControl, InputLabel, Select, MenuItem, TextField, InputAdornment, IconButton } from '@mui/material';
-import SearchIcon from '@mui/icons-material/Search';
+import { Container, Stack, Alert, Box, TextField, InputAdornment, IconButton } from '@mui/material';
+import ClearIcon from '@mui/icons-material/Clear';
 import EditIcon from '@mui/icons-material/Edit';
 import TableComponent from 'src/components/TableComponent';
 import { buildTrabajoRegistradoColumns } from 'src/components/dhn/TrabajoRegistradoCells';
@@ -11,16 +12,22 @@ import EditarTrabajoDiarioModal from 'src/components/dhn/EditarTrabajoDiarioModa
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
+import FiltroTrabajoDiario from 'src/components/dhn/FiltroTrabajoDiario';
 
 const ControlDiarioPage = () => {
+  const router = useRouter();
   const [fecha, setFecha] = useState(() => dayjs());
-  const [estadoFiltro, setEstadoFiltro] = useState('todos');
   const [data, setData] = useState([]);
+  const [stats, setStats] = useState({ total: 0, ok: 0, incompleto: 0, advertencia: 0, sinParte: 0, sinHoras: 0, sinLicencia: 0, conLicencia: 0 });
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [editarModalOpen, setEditarModalOpen] = useState(false);
   const [trabajoDiarioSeleccionado, setTrabajoDiarioSeleccionado] = useState(null);
+
+  const estadoFiltro = useMemo(() => {
+    return router.query.estado || 'todos';
+  }, [router.query.estado]);
 
   const handleEdit = (trabajoDiario) => {
     setTrabajoDiarioSeleccionado(trabajoDiario);
@@ -54,9 +61,12 @@ const ControlDiarioPage = () => {
     setIsLoading(true);
     try {
       const params = { limit: 500 };
-      if (estadoFiltro !== 'todos') params.estado = estadoFiltro;
+      if (estadoFiltro !== 'todos') {
+        params.estado = estadoFiltro;
+      }
       const res = await TrabajoRegistradoService.getByDay(fecha.toDate(), params);
       setData(res.data || []);
+      setStats(res.stats || { total: 0, ok: 0, incompleto: 0, advertencia: 0, sinParte: 0, sinHoras: 0, sinLicencia: 0, conLicencia: 0 });
       setError(null);
     } catch (e) {
       setError('Error al cargar control diario');
@@ -77,11 +87,42 @@ const ControlDiarioPage = () => {
     }
   }), []);
 
+  const estadisticas = stats;
+
   const filteredData = useMemo(() => {
-    if (!searchTerm.trim()) return data;
+    let filtered = data;
+    
+    if (estadoFiltro !== 'todos') {
+      filtered = filtered.filter(item => {
+        switch (estadoFiltro) {
+          case 'ok':
+            return item.estado === 'ok';
+          case 'incompleto':
+            return item.estado === 'incompleto';
+          case 'advertencia':
+            return item.estado === 'advertencia';
+          case 'sinParte':
+            if (!item.comprobantes || item.comprobantes.length === 0) return true;
+            return !item.comprobantes.some(comp => comp.type === 'parte');
+          case 'sinHoras':
+            if (!item.comprobantes || item.comprobantes.length === 0) return true;
+            return !item.comprobantes.some(comp => comp.type === 'horas');
+          case 'sinLicencia':
+            if (!item.comprobantes || item.comprobantes.length === 0) return true;
+            return !item.comprobantes.some(comp => comp.type === 'licencia');
+          case 'conLicencia':
+            if (!item.comprobantes || item.comprobantes.length === 0) return false;
+            return item.comprobantes.some(comp => comp.type === 'licencia');
+          default:
+            return true;
+        }
+      });
+    }
+    
+    if (!searchTerm.trim()) return filtered;
     
     const searchLower = searchTerm.toLowerCase().trim();
-    return data.filter(item => {
+    return filtered.filter(item => {
       if (!item.trabajadorId) return false;
       
       const apellido = item.trabajadorId.apellido?.toLowerCase() || '';
@@ -96,7 +137,7 @@ const ControlDiarioPage = () => {
         dni.includes(searchLower)
       );
     });
-  }, [data, searchTerm]);
+  }, [data, searchTerm, estadoFiltro]);
 
   return (
     <DashboardLayout title="Control Diario">
@@ -111,31 +152,31 @@ const ControlDiarioPage = () => {
                 format="DD/MM/YYYY"
                 slotProps={{ textField: { size: 'small', sx: { width: 200 } } }}
               />
-              <FormControl size="small" sx={{ minWidth: 150 }}>
-                <InputLabel>Estado</InputLabel>
-                <Select value={estadoFiltro} label="Estado" onChange={(e) => setEstadoFiltro(e.target.value)}>
-                  <MenuItem value="todos">Todos</MenuItem>
-                  <MenuItem value="ok">OK</MenuItem>
-                  <MenuItem value="incompleto">Incompleto</MenuItem>
-                  <MenuItem value="advertencia">Advertencia</MenuItem>
-                </Select>
-              </FormControl>
               <TextField
+                label="Buscar"
                 size="small"
-                placeholder="Buscar"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                sx={{ minWidth: 300 }}
+                sx={{ width: 200 }}
                 InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <SearchIcon />
+                  endAdornment: searchTerm.length > 0 && (
+                    <InputAdornment position="end">
+                      <IconButton
+                        onClick={() => setSearchTerm('')}
+                        edge="end"
+                        size="small"
+                        sx={{ color: 'text.secondary' }}
+                      >
+                        <ClearIcon />
+                      </IconButton>
                     </InputAdornment>
                   ),
                 }}
               />
             </Box>
           </LocalizationProvider>
+
+          <FiltroTrabajoDiario stats={estadisticas} />
 
           {error && (
             <Alert severity="error" onClose={() => setError(null)}>
