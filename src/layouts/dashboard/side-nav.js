@@ -439,6 +439,15 @@ export const SideNav = (props) => {
           });
         }
 
+        baseItems.push({
+          title: "Resumen general",
+          path: "/vistaResumen?empresaId=" + emp.id,
+          icon: (
+            <SvgIcon fontSize="small">
+              <DashboardIcon />
+            </SvgIcon>
+          ),
+        });
 
         baseItems.push({
           title: "Presupuestos",
@@ -450,15 +459,6 @@ export const SideNav = (props) => {
           ),
         });
 
-        const vista7 = {
-          title: "Vista 7 días",
-          path: "/resumenMovimientos?empresaId=" + emp.id,
-          icon: (
-            <SvgIcon fontSize="small">
-              <DashboardIcon />
-            </SvgIcon>
-          ),
-        };
         const todos = {
           title: "Todos los movimientos",
           path: "/todosProyectos?empresaId=" + emp.id,
@@ -478,7 +478,7 @@ export const SideNav = (props) => {
           ),
         };
 
-        baseItems = [vista7, todos, revision, ...baseItems];
+        baseItems = [ todos, revision, ...baseItems];
 
         // proyectos activos
         let proys = await getProyectosFromUser(user);

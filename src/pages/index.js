@@ -1,3 +1,3 @@
-import Page from "src/pages/resumenMovimientos";
+import Page from "src/pages/vistaResumen";
 
 export default Page;
