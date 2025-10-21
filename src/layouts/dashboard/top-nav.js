@@ -9,6 +9,8 @@ import {
   Tooltip,
   useMediaQuery,
   Button,
+  Alert,
+  Collapse,
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import { usePopover } from "src/hooks/use-popover";
@@ -21,7 +23,7 @@ const SIDE_NAV_WIDTH = 280;
 const TOP_NAV_HEIGHT = 64;
 
 export const TopNav = (props) => {
-  const { onNavOpen, title } = props;
+  const { onNavOpen, title, updateAvailable, onUpdateClick } = props; // <-- NUEVO
   const lgUp = useMediaQuery((theme) => theme.breakpoints.up("lg"));
   const accountPopover = usePopover();
   const { user, isSpying, originalUser } = useAuthContext();
@@ -42,31 +44,26 @@ export const TopNav = (props) => {
           backdropFilter: "blur(6px)",
           backgroundColor: (theme) => alpha(theme.palette.background.default, 0.8),
           position: "sticky",
-          left: {
-            lg: `${SIDE_NAV_WIDTH}px`,
-          },
+          left: { lg: `${SIDE_NAV_WIDTH}px` },
           top: 0,
-          width: {
-            lg: `calc(100% - ${SIDE_NAV_WIDTH}px)`,
-          },
+          width: { lg: `calc(100% - ${SIDE_NAV_WIDTH}px)` },
           zIndex: (theme) => theme.zIndex.appBar,
         }}
       >
+        {/* Barra superior */}
         <Stack
           alignItems="center"
           direction="row"
           justifyContent="space-between"
           spacing={2}
-          sx={{
-            minHeight: TOP_NAV_HEIGHT,
-            px: 2,
-          }}
+          sx={{ minHeight: TOP_NAV_HEIGHT, px: 2 }}
         >
           <Typography variant="h6">
             {isSpying()
               ? `${title} Soy ${originalUser.email} y estoy espiando a ${user.email}`
               : title}
           </Typography>
+
           <Stack alignItems="center" direction="row-reverse" spacing={2}>
             {!lgUp && (
               <IconButton onClick={onNavOpen}>
@@ -76,6 +73,7 @@ export const TopNav = (props) => {
               </IconButton>
             )}
           </Stack>
+
           <Stack alignItems="center" direction="row" spacing={2}>
             {requiereCargarDatos && (
               <Button
@@ -90,16 +88,36 @@ export const TopNav = (props) => {
             <Avatar
               onClick={accountPopover.handleOpen}
               ref={accountPopover.anchorRef}
-              sx={{
-                cursor: "pointer",
-                height: 40,
-                width: 40,
-              }}
+              sx={{ cursor: "pointer", height: 40, width: 40 }}
               src={user?.avatar}
             />
           </Stack>
         </Stack>
+
+        {/* Banner de actualización */}
+        <Collapse in={!!updateAvailable} mountOnEnter unmountOnExit>
+          <Alert
+            severity="info"
+            variant="filled"
+            icon={false}
+            sx={{
+              borderRadius: 0,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              py: 1, // finito
+            }}
+            action={
+              <Button color="inherit" size="small" onClick={onUpdateClick}>
+                Actualizar
+              </Button>
+            }
+          >
+            Hay una nueva versión disponible. Actualizá para ver los últimos cambios.
+          </Alert>
+        </Collapse>
       </Box>
+
       <AccountPopover
         anchorEl={accountPopover.anchorRef.current}
         open={accountPopover.open}
@@ -111,4 +129,7 @@ export const TopNav = (props) => {
 
 TopNav.propTypes = {
   onNavOpen: PropTypes.func,
+  title: PropTypes.string,
+  updateAvailable: PropTypes.bool,
+  onUpdateClick: PropTypes.func,
 };

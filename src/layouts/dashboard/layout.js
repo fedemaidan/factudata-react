@@ -4,6 +4,8 @@ import { styled } from '@mui/material/styles';
 import { withAuthGuard } from 'src/hocs/with-auth-guard';
 import { SideNav } from './side-nav';
 import { TopNav } from './top-nav';
+import { useVersionCheck } from 'src/hooks/use-version-check';
+import { getRemoteVersionFromFirestore } from 'src/services/versionService';
 
 const NAV_WIDTH_EXPANDED = 280;
 const NAV_WIDTH_COLLAPSED = 72;
@@ -37,6 +39,12 @@ export const Layout = withAuthGuard((props) => {
     return localStorage.getItem('sorby_nav_collapsed') === '1';
   });
 
+  const { updateAvailable, triggerReload } = useVersionCheck({
+    getRemoteVersion: getRemoteVersionFromFirestore, // o getRemoteVersionFromStorage
+    pollMs: 5 * 60 * 1000, // 5 minutos
+    // opcional: localVersion: process.env.NEXT_PUBLIC_APP_VERSION
+  });
+  
   const handlePathnameChange = useCallback(() => {
     if (openNav) setOpenNav(false);
   }, [openNav]);
@@ -65,6 +73,8 @@ export const Layout = withAuthGuard((props) => {
         onToggleNav={() => setCollapsed((v) => !v)}
         title={title || ""}
         collapsed={collapsed}
+        updateAvailable={updateAvailable}   // boolean
+        onUpdateClick={triggerReload}       // función que hace reload
       />
       <SideNav
         onClose={() => setOpenNav(false)}
