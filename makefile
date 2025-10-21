@@ -4,6 +4,7 @@ start-dev:
 deploy:
 	npm run build
 	npm run export
+	node tools/updateVersion.js
 	firebase deploy
 
 deploy_v2:
