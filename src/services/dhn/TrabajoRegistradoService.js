@@ -39,6 +39,26 @@ const TrabajoRegistradoService = {
     return response.data;
   },
 
+  getByRange: async (fromDate, toDate, params = {}) => {
+    const { limit = 500, offset = 0, estado } = params;
+
+    const start = new Date(fromDate);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(toDate);
+    end.setHours(23, 59, 59, 999);
+
+    const queryParams = new URLSearchParams({
+      limit: String(limit),
+      offset: String(offset),
+      from: start.toISOString(),
+      to: end.toISOString(),
+    });
+    if (estado) queryParams.append('estado', estado);
+
+    const response = await api.get(`/dhn/trabajo-diario-registrado?${queryParams}`);
+    return response.data;
+  },
+
   update: async (id, data) => {
     const response = await api.put(`/dhn/trabajo-diario-registrado/${id}`, data);
     return response.data;

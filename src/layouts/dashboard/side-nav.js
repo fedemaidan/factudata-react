@@ -414,6 +414,16 @@ export const SideNav = (props) => {
           ),
         });
 
+        baseItems.push({
+          title: "Control Quincenal",
+          path: "/dhn/controlQuincenal",
+          icon: (
+            <SvgIcon fontSize="small">
+              <DashboardIcon />
+            </SvgIcon>
+          ),
+        });
+
       }
 
       if (permisosUsuario.includes("VER_CAJAS") && !permisosUsuario.includes("CREAR_EGRESO_SIMPLIFICADO")) {
