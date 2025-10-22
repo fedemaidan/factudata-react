@@ -18,6 +18,7 @@ import clientesService from "src/services/celulandia/clientesService";
 import dolarService from "src/services/celulandia/dolarService";
 import cajasService from "src/services/celulandia/cajasService";
 import { getUser } from "src/utils/celulandia/currentUser";
+import useDebouncedValue from "src/hooks/useDebouncedValue";
 
 const ChequesCelulandiaPage = () => {
   const [movimientos, setMovimientos] = useState([]);
@@ -36,6 +37,8 @@ const ChequesCelulandiaPage = () => {
   const [sortField, setSortField] = useState("fechaFactura");
   const [sortDirection, setSortDirection] = useState("desc");
   const [filtroCaja, setFiltroCaja] = useState("ambas");
+  const [busquedaTexto, setBusquedaTexto] = useState("");
+  const debouncedBusqueda = useDebouncedValue(busquedaTexto, 500);
 
   const [clientes, setClientes] = useState([]);
   const [tipoDeCambio, setTipoDeCambio] = useState({
@@ -73,7 +76,12 @@ const ChequesCelulandiaPage = () => {
 
   useEffect(() => {
     fetchData(paginaActual);
-  }, [paginaActual, sortField, sortDirection, filtroCaja]);
+  }, [paginaActual, sortField, sortDirection, filtroCaja, debouncedBusqueda]);
+
+  // Resetear a la primera página cuando cambia la búsqueda
+  useEffect(() => {
+    setPaginaActual(1);
+  }, [debouncedBusqueda]);
 
   const fetchData = async (pagina = 1) => {
     setIsLoading(true);
@@ -94,6 +102,7 @@ const ChequesCelulandiaPage = () => {
             sortDirection,
             tipoFactura: "cheque",
             cajaNombre: cajaFilter,
+            text: debouncedBusqueda || undefined,
           }),
           clientesService.getAllClientes(),
           dolarService.getTipoDeCambio(),
@@ -200,6 +209,20 @@ const ChequesCelulandiaPage = () => {
     },
   };
 
+  const searchFields = [
+    "numeroFactura",
+    "fechaFactura",
+    "horaFactura",
+    "nombreCliente",
+    "cuentaDestino",
+    "moneda",
+    "clienteId",
+    "fechaCobro",
+    "tipoFactura",
+    "estado",
+    "nombreUsuario",
+  ];
+
   // Configuración del filtro por caja
   const selectFilterConfig = {
     label: "Filtrar por Caja",
@@ -241,17 +264,7 @@ const ChequesCelulandiaPage = () => {
 
   const refetchMovimientos = async () => {
     try {
-      // Usar directamente el filtro actual
-      const response = await movimientosService.getAllMovimientos({
-        type: "INGRESO",
-        populate: "caja",
-        sortField,
-        sortDirection,
-        tipoFactura: "cheque",
-        cajaNombre: filtroCaja,
-      });
-      const { data } = response;
-      setMovimientos(data.map(parseMovimiento));
+      await fetchData(paginaActual);
     } catch (error) {
       console.error("Error al recargar movimientos:", error);
     }
@@ -299,7 +312,7 @@ const ChequesCelulandiaPage = () => {
           data={movimientos}
           isLoading={isLoading}
           columns={columns}
-          searchFields={[]} // Sin campos de búsqueda
+          searchFields={searchFields}
           formatters={formatters}
           onAdd={() => setAgregarModalOpen(true)}
           dateField="fechaFactura"
@@ -310,7 +323,8 @@ const ChequesCelulandiaPage = () => {
           sortField={sortField}
           sortDirection={sortDirection}
           onSortChange={handleSortChange}
-          showSearch={false} // Ocultar el campo de búsqueda
+          showSearch={true}
+          onSearchDebounced={setBusquedaTexto}
           selectFilter={selectFilterConfig} // Agregar el filtro por select
           serverSide={true} // Habilitar modo servidor para filtros
           showRefreshButton={true}
