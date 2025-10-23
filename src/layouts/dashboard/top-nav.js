@@ -60,7 +60,7 @@ export const TopNav = (props) => {
         >
           <Typography variant="h6">
             {isSpying()
-              ? `${title} Soy ${originalUser.email} y estoy espiando a ${user.email}`
+              ? `${title} - Soy ${user.email}`
               : title}
           </Typography>
 
