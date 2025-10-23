@@ -21,7 +21,8 @@ import {
   LinearProgress,
   IconButton,
   Tooltip,
-  Divider
+  Divider,
+  TextField
 } from '@mui/material';
 import CircularProgress from '@mui/material/CircularProgress';
 import RefreshIcon from '@mui/icons-material/Refresh';
@@ -44,8 +45,8 @@ import ListaPreciosBuscador from 'src/components/listaPreciosBuscador';
 /** ------------------------------
  *  FLAGS DE FUNCIONALIDAD (configurables)
  *  ------------------------------ */
-const ENABLE_HOJA_UPLOAD = false; // activar cuando el backend esté listo
-const ENABLE_HOJA_DELETE = false; // activar cuando el backend esté listo
+const ENABLE_HOJA_UPLOAD = true; // activar cuando el backend esté listo
+const ENABLE_HOJA_DELETE = true; // activar cuando el backend esté listo
 
 const MovimientosAcopioPage = () => {
   const router = useRouter();
@@ -80,6 +81,13 @@ const MovimientosAcopioPage = () => {
   const nextUrl = hasAcopioPages ? pages[nextIdx] : null;
   const [estadoLoading, setEstadoLoading] = useState(false);
 
+  const [editMode, setEditMode] = useState(false);
+  const [formAcopio, setFormAcopio] = useState({
+    codigo: '',
+    proveedor: '',
+    proyecto_nombre: '',
+    tipo: 'materiales' // 'materiales' | 'lista_precios'
+  });
 
   const formatCurrency = (amount) =>
     amount ? amount.toLocaleString('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0 }) : '$ 0';
@@ -96,6 +104,12 @@ const MovimientosAcopioPage = () => {
         acopioData.activo = (acopioData.estado || '').toLowerCase() !== 'inactivo';
       }
       setAcopio(acopioData);
+      setFormAcopio({
+       codigo: acopioData.codigo || '',
+       proveedor: acopioData.proveedor || '',
+       proyecto_nombre: acopioData.proyecto_nombre || '',
+       tipo: acopioData.tipo || 'materiales'
+     });
 
       const comprasData = await AcopioService.obtenerCompras(acopioId);
       setCompras(comprasData || []);
@@ -236,6 +250,31 @@ const MovimientosAcopioPage = () => {
     }
   }, [acopioId]);
 
+  const handleSaveAcopio = async () => {
+   if (!acopio) return;
+   try {
+     setLoading(true);
+     const payload = {
+       codigo: formAcopio.codigo?.trim(),
+       proveedor: formAcopio.proveedor?.trim(),
+       proyecto_nombre: formAcopio.proyecto_nombre?.trim(),
+       tipo: formAcopio.tipo
+     };
+     const ok = await AcopioService.editarAcopio(acopioId, payload);
+     if (ok) {
+       setAlert({ open: true, message: 'Acopio actualizado', severity: 'success' });
+       setEditMode(false);
+       await fetchAcopio();
+     } else {
+       setAlert({ open: true, message: 'No se pudo actualizar el acopio', severity: 'error' });
+     }
+   } catch (e) {
+     setAlert({ open: true, message: 'Error al actualizar el acopio', severity: 'error' });
+   } finally {
+     setLoading(false);
+   }
+ };
+
   const detectarDuplicados = (lista) => {
     const duplicadosPorNumero = {};
     const duplicadosPorValorYFecha = {};
@@ -287,6 +326,24 @@ const porcentajeDisponible = va > 0 ? Math.max(0, Math.min(100, (1 - vd / va) * 
       setLoading(false);
     }
   };
+
+ const handleUploadListaPrecios = async (e) => {
+   const files = e.target.files;
+   if (!files || files.length === 0) return;
+   try {
+     setLoading(true);
+     await AcopioService.subirHojasAcopio(acopioId, files);
+     setAlert({ open: true, message: 'Imagen/es de lista subidas', severity: 'success' });
+     await fetchAcopio();
+   } catch (err) {
+     console.error(err);
+     setAlert({ open: true, message: 'Error al subir imagen', severity: 'error' });
+   } finally {
+     e.target.value = '';
+     setLoading(false);
+   }
+ };
+
 
   const handleEliminarPaginaAcopio = async (index) => {
     if (!ENABLE_HOJA_DELETE) return;
@@ -397,20 +454,79 @@ const porcentajeDisponible = va > 0 ? Math.max(0, Math.min(100, (1 - vd / va) * 
                         }
                         label={acopio?.activo !== false ? 'Desactivar' : 'Activar'}
                       />
+         <Stack direction="row" spacing={1}>
+           {!editMode ? (
+             <Button variant="outlined" onClick={() => setEditMode(true)}>Editar</Button>
+           ) : (
+             <>
+               <Button variant="text" onClick={() => { setEditMode(false); setFormAcopio({
+                 codigo: acopio.codigo || '', proveedor: acopio.proveedor || '',
+                 proyecto_nombre: acopio.proyecto_nombre || '', tipo: acopio.tipo || 'materiales'
+               }); }}>Cancelar</Button>
+               <Button variant="contained" onClick={handleSaveAcopio}>Guardar</Button>
+             </>
+           )}
+         </Stack>
                     </Stack>
                 <Typography variant="h6" gutterBottom>Resumen del Acopio</Typography>
                 <Grid container spacing={2}>
                   <Grid item xs={12} sm={6} md={4}>
                     <Typography variant="subtitle2">Código</Typography>
+                  {!editMode ? (
                     <Typography>{acopio.codigo}</Typography>
+                  ) : (
+                    <TextField
+                      size="small"
+                      fullWidth
+                      value={formAcopio.codigo}
+                      onChange={(e) => setFormAcopio((p) => ({ ...p, codigo: e.target.value }))}
+                    />
+                  )}
                   </Grid>
                   <Grid item xs={12} sm={6} md={4}>
                     <Typography variant="subtitle2">Proveedor</Typography>
-                    <Typography>{acopio.proveedor}</Typography>
+                    {!editMode ? (
+                      <Typography>{acopio.proveedor}</Typography>
+                    ) : (
+                      <TextField
+                        size="small"
+                        fullWidth
+                        value={formAcopio.proveedor}
+                        onChange={(e) => setFormAcopio((p) => ({ ...p, proveedor: e.target.value }))}
+                      />
+                    )}
                   </Grid>
                   <Grid item xs={12} sm={6} md={4}>
                     <Typography variant="subtitle2">Proyecto</Typography>
-                    <Typography>{acopio.proyecto_nombre}</Typography>
+                    {!editMode ? (
+                      <Typography>{acopio.proyecto_nombre}</Typography>
+                    ) : (
+                      <TextField
+                        size="small"
+                        fullWidth
+                        value={formAcopio.proyecto_nombre}
+                        onChange={(e) => setFormAcopio((p) => ({ ...p, proyecto_nombre: e.target.value }))}
+                        placeholder="Nombre visible del proyecto"
+                      />
+                    )}
+                  </Grid>
+                  <Grid item xs={12} sm={6} md={4}>
+                    <Typography variant="subtitle2">Tipo</Typography>
+                    {!editMode ? (
+                      <Typography>{(acopio.tipo || 'materiales').replace('_', ' ')}</Typography>
+                    ) : (
+                      <TextField
+                        select
+                        size="small"
+                        fullWidth
+                        value={formAcopio.tipo}
+                        onChange={(e) => setFormAcopio((p) => ({ ...p, tipo: e.target.value }))}
+                        SelectProps={{ native: true }}
+                      >
+                        <option value="materiales">materiales</option>
+                        <option value="lista_precios">lista_precios</option>
+                      </TextField>
+                    )}
                   </Grid>
                   <Grid item xs={12} sm={4}>
                     <Typography variant="subtitle2">Valor Total Acopiado</Typography>
@@ -427,6 +543,31 @@ const porcentajeDisponible = va > 0 ? Math.max(0, Math.min(100, (1 - vd / va) * 
                       {formatCurrency((acopio.valor_acopio || 0) - (acopio.valor_desacopio || 0))}
                     </Typography>
                   </Grid>
+                  {formAcopio.tipo === 'lista_precios' && (
+                    <Grid item xs={12}>
+                      <Divider sx={{ my: 1 }} />
+                      <Stack direction="row" spacing={2} alignItems="center">
+                        <input
+                          type="file"
+                          accept="image/*,application/pdf"
+                          style={{ display: 'none' }}
+                          ref={acopioFileInputRef}
+                          onChange={handleUploadListaPrecios}
+                        />
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          startIcon={<UploadFileIcon />}
+                          onClick={() => acopioFileInputRef.current?.click()}
+                        >
+                          Agregar imagen/lista
+                        </Button>
+                        <Typography variant="body2" color="text.secondary">
+                          Se mostrará en la pestaña “{hasAcopioPages ? 'Lista original' : 'Comprobante original'}”.
+                        </Typography>
+                      </Stack>
+                    </Grid>
+                  )}
                 </Grid>
               </Paper>
             )}

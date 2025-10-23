@@ -547,6 +547,41 @@ editarAcopio: async (acopioId, acopioData) => {
   }
 },
 
+  /**
+   * Sube 1..N hojas (imágenes o PDF) al acopio. Se usa para “lista de precios” o comprobantes.
+   * POST /acopio/:acopioId/hojas  (multipart)
+   */
+  subirHojasAcopio: async (acopioId, files) => {
+    try {
+      if (!acopioId) throw new Error('Falta acopioId');
+      const formData = new FormData();
+      // admite múltiples archivos
+      [...files].forEach((f) => formData.append('archivos', f));
+      const resp = await api.post(`/acopio/${acopioId}/hojas`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      if (resp.status === 200) return resp.data;
+      throw new Error('No se pudieron subir las hojas del acopio');
+    } catch (err) {
+      console.error('❌ subirHojasAcopio', err);
+      throw err;
+    }
+  },
+
+  /**
+   * Elimina una página/hoja por índice del array url_image
+   * DELETE /acopio/:acopioId/hojas/:index
+   */
+  eliminarHojaAcopio: async (acopioId, index) => {
+    try {
+      const resp = await api.delete(`/acopio/${acopioId}/hojas/${index}`);
+      if (resp.status === 200) return true;
+      return false;
+    } catch (err) {
+      console.error('❌ eliminarHojaAcopio', err);
+      return false;
+    }
+  },
 
 
 
