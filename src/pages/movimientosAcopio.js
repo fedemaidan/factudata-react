@@ -40,6 +40,7 @@ import Chip from '@mui/material/Chip';
 import Switch from '@mui/material/Switch';
 import FormControlLabel from '@mui/material/FormControlLabel';
 import ListaPreciosBuscador from 'src/components/listaPreciosBuscador';
+import { useAuthContext } from 'src/contexts/auth-context';
 
 
 /** ------------------------------
@@ -52,6 +53,7 @@ const MovimientosAcopioPage = () => {
   const router = useRouter();
   const { acopioId } = router.query;
 
+  const { user } = useAuthContext();
   const [movimientos, setMovimientos] = useState([]);
   const [materialesAgrupados, setMaterialesAgrupados] = useState({});
   const [alert, setAlert] = useState({ open: false, message: '', severity: 'info' });
@@ -562,6 +564,15 @@ const porcentajeDisponible = va > 0 ? Math.max(0, Math.min(100, (1 - vd / va) * 
                         >
                           Agregar imagen/lista
                         </Button>
+                        {(user.admin) && (
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          startIcon={<UploadFileIcon />}
+                          onClick={() => AcopioService.recalibrarImagenes(acopioId)}
+                        >
+                          Recalibrar imagenes
+                        </Button>)}
                         <Typography variant="body2" color="text.secondary">
                           Se mostrará en la pestaña “{hasAcopioPages ? 'Lista original' : 'Comprobante original'}”.
                         </Typography>

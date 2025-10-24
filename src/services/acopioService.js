@@ -584,6 +584,22 @@ editarAcopio: async (acopioId, acopioData) => {
   },
 
 
+  recalibrarImagenes: async (acopioId) => {
+    try {
+      const response = await api.post(`/acopio/${acopioId}/recalibrarImagen`, {});
+      if (response.status === 201) {
+        console.log('✅ Imagen recalibrada con éxito');
+        return response.data;
+      } else {
+        console.error('❌ Error al recalibrar imágenes');
+        throw new Error('Error al recalibrar imágenes.');
+      }
+    } catch (error) {
+      console.error('❌ Error en crearAcopioDesdeDatos:', error);
+      throw error;
+    }
+  },
+
 
 
 };
