@@ -171,6 +171,7 @@ cambiarEstadoAcopio: async (acopioId, activo) => {
   consultarEstadoExtraccion: async (taskId) => {
     try {
       const response = await api.get(`/acopio/compra/extraer/status/${taskId}`);
+      console.log(response.data)
       return response.data;
     } catch (error) {
       console.error('❌ Error al consultar estado de extracción:', error);
@@ -599,8 +600,6 @@ editarAcopio: async (acopioId, acopioData) => {
       throw error;
     }
   },
-
-
 
 };
 
