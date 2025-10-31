@@ -93,6 +93,11 @@ const DhnDriveService = {
       return [];
     }
   },
+
+  updateSyncSheet: async (googleSheetLink) => {
+    const response = await api.put(`/dhn/sync-sheet`, { googleSheetLink });
+    return response.data;
+  },
 };
 
 export default DhnDriveService;

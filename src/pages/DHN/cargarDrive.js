@@ -34,6 +34,8 @@ const CargarDrive = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [urlDrive, setUrlDrive] = useState("");
   const [isSyncing, setIsSyncing] = useState(false);
+  const [googleSheetLink, setGoogleSheetLink] = useState("");
+  const [isUpdatingSyncSheet, setIsUpdatingSyncSheet] = useState(false);
 
   const [expandedId, setExpandedId] = useState(null);
   const [detailsMap, setDetailsMap] = useState({}); // id -> detalles[]
@@ -236,11 +238,41 @@ const CargarDrive = () => {
     []
   );
 
+  const updateSyncSheet = async () => {
+    if (!googleSheetLink) return;
+    setIsUpdatingSyncSheet(true);
+    try {
+      await DhnDriveService.updateSyncSheet(googleSheetLink);
+    } catch (e) {
+      console.error(e);
+      alert("Error al actualizar Google Sheet");
+    }
+    finally {
+      setIsUpdatingSyncSheet(false);
+    }
+  };
+
   return (
     <DashboardLayout title="Cargar Drive - Historial">
       <Container maxWidth="xl">
         <Box sx={{ py: 3 }}>
           {/* Caja con textbox y botón de sincronizar */}
+          <Box sx={{ display: "flex", gap: 2, mb: 2, alignItems: "center" }}>
+            <TextField
+              label="URL de Google Sheet"
+              value={googleSheetLink}
+              onChange={(e) => setGoogleSheetLink(e.target.value)}
+              fullWidth
+              size="small"
+            />
+            <Button
+              variant="contained"
+              onClick={updateSyncSheet}
+              disabled={!googleSheetLink || isUpdatingSyncSheet}
+            >
+              {isUpdatingSyncSheet ? "Actualizando..." : "Actualizar"}
+            </Button>
+          </Box>
           <Box sx={{ display: "flex", gap: 2, mb: 2, alignItems: "center" }}>
             <TextField
               label="URL de Drive"
