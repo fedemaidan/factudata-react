@@ -2,10 +2,6 @@ import React, { useMemo, useCallback } from 'react';
 import { useRouter } from 'next/router';
 import { Paper, Stack, Chip } from '@mui/material';
 
-// Componente reutilizable de filtros por estado para Trabajo Diario
-// - Lee y escribe el query param `estado`
-// - Muestra los chips con contadores recibidos por props
-// - Llama a `onChange` (opcional) cuando cambia el filtro
 
 const FiltroTrabajoDiario = ({ stats = {}, onChange }) => {
   const router = useRouter();
@@ -32,7 +28,6 @@ const FiltroTrabajoDiario = ({ stats = {}, onChange }) => {
     { key: 'advertencia', label: `Advertencias (${stats.advertencia || 0})`, color: 'error', variant: undefined },
     { key: 'sinParte', label: `Sin parte (${stats.sinParte || 0})`, color: undefined, variant: 'outlined' },
     { key: 'sinHoras', label: `Sin horas (${stats.sinHoras || 0})`, color: undefined, variant: 'outlined' },
-    { key: 'sinLicencia', label: `Sin licencia (${stats.sinLicencia || 0})`, color: undefined, variant: 'outlined' },
     { key: 'conLicencia', label: `Con licencia (${stats.conLicencia || 0})`, color: undefined, variant: 'outlined' },
   ]), [stats, estado]);
 

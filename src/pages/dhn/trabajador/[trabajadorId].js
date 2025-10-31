@@ -1,7 +1,8 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import { useRouter } from 'next/router';
 import { Container, Box, Typography, Alert, Stack, Chip, IconButton } from '@mui/material';
+import BackButton from 'src/components/shared/BackButton';
 import EditIcon from '@mui/icons-material/Edit';
 import TableComponent from 'src/components/TableComponent';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
@@ -118,6 +119,8 @@ const TrabajadorPage = () => {
 
   const estadisticas = stats;
 
+  const handleVolver = useCallback(() => router.back(), [router]);
+
 
   if (!trabajadorId) {
     return (
@@ -133,8 +136,11 @@ const TrabajadorPage = () => {
     <DashboardLayout title={`${trabajador ? `${trabajador.apellido}, ${trabajador.nombre}` : trabajadorId}`}
 >
       <Container maxWidth="xl">
-        <Stack spacing={3}>
-          <Box>
+        <Stack>
+          <BackButton onClick={handleVolver} sx={{ mb: 3 }} />
+
+          <Stack spacing={3}>
+            <Box>
             <Stack direction="row" spacing={2} alignItems="center" flexWrap="wrap">
               {trabajador?.dni && (
                 <Typography variant="body2" color="textSecondary">
@@ -201,6 +207,7 @@ const TrabajadorPage = () => {
             formatters={formatters}
             isLoading={isLoading}
           />
+          </Stack>
         </Stack>
       </Container>
 

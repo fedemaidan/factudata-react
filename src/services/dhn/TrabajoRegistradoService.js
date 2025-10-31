@@ -18,6 +18,11 @@ const TrabajoRegistradoService = {
     return response.data;
   },
 
+  getQuincenas: async () => {
+    const response = await api.get('/dhn/trabajo-diario-registrado/quincenas');
+    return response.data;
+  },
+
 
   getByDay: async (date, params = {}) => {
     const { limit = 500, offset = 0, estado } = params;
@@ -40,6 +45,9 @@ const TrabajoRegistradoService = {
   },
 
   getByRange: async (fromDate, toDate, params = {}) => {
+    console.log("fromDate", fromDate)
+    console.log("toDate", toDate)
+    console.log("params", params)
     const { limit = 500, offset = 0, estado } = params;
 
     const start = new Date(fromDate);
@@ -56,6 +64,7 @@ const TrabajoRegistradoService = {
     if (estado) queryParams.append('estado', estado);
 
     const response = await api.get(`/dhn/trabajo-diario-registrado?${queryParams}`);
+    console.log("response", response.data)
     return response.data;
   },
 

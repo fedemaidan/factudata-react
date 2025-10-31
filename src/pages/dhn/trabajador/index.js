@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
-import { Box, IconButton, Chip, Button } from '@mui/material';
+import { Box, IconButton, Chip, Button, TextField, InputAdornment } from '@mui/material';
+import ClearIcon from '@mui/icons-material/Clear';
 import EditIcon from '@mui/icons-material/Edit';
 import AddIcon from '@mui/icons-material/Add';
 import TableComponent from 'src/components/TableComponent';
@@ -17,6 +18,7 @@ const TrabajadoresPage = () => {
   const [agregarModalOpen, setAgregarModalOpen] = useState(false);
   const [editarModalOpen, setEditarModalOpen] = useState(false);
   const [trabajadorSeleccionado, setTrabajadorSeleccionado] = useState(null);
+  const [busqueda, setBusqueda] = useState("");
 
   useEffect(() => {
     cargarTrabajadores();
@@ -115,10 +117,48 @@ const TrabajadoresPage = () => {
     }
   ];
 
+  const trabajadoresFiltrados = useMemo(() => {
+    const term = (busqueda || "").toString().trim().toLowerCase();
+    if (!term) return trabajadores;
+    return (trabajadores || []).filter((t) => {
+      const nombre = (t?.nombre || "").toString().toLowerCase();
+      const apellido = (t?.apellido || "").toString().toLowerCase();
+      const dni = (t?.dni || "").toString().replace(/\./g, "").toLowerCase();
+      return (
+        nombre.includes(term) ||
+        apellido.includes(term) ||
+        `${nombre} ${apellido}`.includes(term) ||
+        `${apellido} ${nombre}`.includes(term) ||
+        dni.includes(term)
+      );
+    });
+  }, [trabajadores, busqueda]);
+
   return (
     <DashboardLayout title="Trabajadores">
-      <Box sx={{ p: 3 }}>
-        <Box sx={{ mb: 2, display: 'flex', justifyContent: 'flex-start' }}>
+      <Box sx={{ px: 2 }}>
+        <Box sx={{ mb: 2, display: 'flex', justifyContent: 'flex-start', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
+          <TextField
+            label="Buscar"
+            size="small"
+            value={busqueda}
+            onChange={(e) => setBusqueda(e.target.value)}
+            sx={{ width: 200 }}
+            InputProps={{
+              endAdornment: busqueda.length > 0 && (
+                <InputAdornment position="end">
+                  <IconButton
+                    onClick={() => setBusqueda("")}
+                    edge="end"
+                    size="small"
+                    sx={{ color: 'text.secondary' }}
+                  >
+                    <ClearIcon />
+                  </IconButton>
+                </InputAdornment>
+              ),
+            }}
+          />
           <Button
             size="small"
             variant="contained"
@@ -138,7 +178,7 @@ const TrabajadoresPage = () => {
         </Box>
 
         <TableComponent
-          data={trabajadores}
+          data={trabajadoresFiltrados}
           columns={columns}
           isLoading={isLoading}
           onRowClick={handleRowClick}
