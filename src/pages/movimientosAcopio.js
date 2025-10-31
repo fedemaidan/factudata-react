@@ -396,8 +396,7 @@ const porcentajeDisponible = va > 0 ? Math.max(0, Math.min(100, (1 - vd / va) * 
         <Tabs value={tabActiva} onChange={handleChangeTab}>
           <Tab label="Info Acopio" value="acopio" />
           <Tab label="Remitos" value="remitos" />
-          {acopio?.tipo === 'materiales' && <Tab label="Materiales" value="materiales" />}
-          {acopio?.tipo === 'lista_precios' && <Tab label="Buscar materiales" value="buscar" />}
+          <Tab label="Materiales" value="materiales" />
           {hasAcopioPages && <Tab label={acopio?.tipo === 'lista_precios' ? "Lista original": "Comprobante original"} value="hojas" />}
         </Tabs>
 
@@ -583,7 +582,7 @@ const porcentajeDisponible = va > 0 ? Math.max(0, Math.min(100, (1 - vd / va) * 
               </Paper>
             )}
 
-            {acopio?.tipo === 'materiales' && (
+            
               <Table>
                 <TableHead>
                   <TableRow>
@@ -608,14 +607,7 @@ const porcentajeDisponible = va > 0 ? Math.max(0, Math.min(100, (1 - vd / va) * 
                   ))}
                 </TableBody>
               </Table>
-            )}
           </Box>
-        )}
-
-        {tabActiva === 'buscar' && acopio?.tipo === 'lista_precios' && (
-           <Box mt={2}>
-             <ListaPreciosBuscador acopioId={acopioId} />
-           </Box>
         )}
 
         {/* Hojas: VISOR FULL */}
