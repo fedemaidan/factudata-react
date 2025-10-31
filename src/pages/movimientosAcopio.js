@@ -2,9 +2,17 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   Box, Button, Container, Stack, Typography, Tabs, Tab, Paper, Grid, Snackbar, Alert,
-  Dialog, DialogContent, TextField, Divider, LinearProgress
+  Dialog, DialogContent, TextField, Divider, LinearProgress, IconButton, Tooltip
 } from '@mui/material';
 import CircularProgress from '@mui/material/CircularProgress';
+import RefreshIcon from '@mui/icons-material/Refresh';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import ArrowForwardIosIcon from '@mui/icons-material/ArrowForwardIos';
+import ArrowBackIosNewIcon from '@mui/icons-material/ArrowBackIosNew';
+import Chip from '@mui/material/Chip';
+import Switch from '@mui/material/Switch';
+import FormControlLabel from '@mui/material/FormControlLabel';
+
 import { useRouter } from 'next/router';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 
@@ -19,14 +27,21 @@ import AcopioVisor from 'src/components/acopioVisor';
 // Tu tabla actual de Remitos:
 import RemitosTable from 'src/components/remitosTable';
 
+// Buscador (para lista de precios)
+import ListaPreciosBuscador from 'src/components/listaPreciosBuscador';
 
+/** ------------------------------
+ *  FLAGS DE FUNCIONALIDAD (configurables)
+ *  ------------------------------ */
+const ENABLE_HOJA_UPLOAD = false;  // activar cuando backend listo
+const ENABLE_HOJA_DELETE = false;  // activar cuando backend listo
 
 const MovimientosAcopioPage = () => {
   const router = useRouter();
   const { acopioId } = router.query;
   const { user } = useAuthContext();
 
-  // Estado
+  // Estado principal
   const [tabActiva, setTabActiva] = useState('acopio');
   const [loading, setLoading] = useState(false);
   const [alert, setAlert] = useState({ open: false, message: '', severity: 'info' });
@@ -53,6 +68,11 @@ const MovimientosAcopioPage = () => {
   const [pageIdx, setPageIdx] = useState(0);
   const acopioFileInputRef = useRef(null);
 
+  // Remitos: expand + eliminar
+  const [expanded, setExpanded] = useState(null);
+  const [remitoAEliminar, setRemitoAEliminar] = useState(null);
+  const [dialogoEliminarAbierto, setDialogoEliminarAbierto] = useState(false);
+
   // Helpers
   const pages = useMemo(
     () => (Array.isArray(acopio?.url_image) ? acopio.url_image.filter(Boolean) : []),
@@ -60,10 +80,14 @@ const MovimientosAcopioPage = () => {
   );
   const totalPages = pages.length;
   const hasAcopioPages = totalPages > 0;
+  const nextUrl = hasAcopioPages ? pages[(pageIdx + 1) % totalPages] : null;
 
   const va = Number(acopio?.valor_acopio) || 0;
   const vd = Number(acopio?.valor_desacopio) || 0;
   const porcentajeDisponible = va > 0 ? Math.max(0, Math.min(100, (1 - vd / va) * 100)) : 0;
+
+  const formatCurrency = (amount) =>
+    amount ? Number(amount).toLocaleString('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0 }) : '$ 0';
 
   // Fetchers
   const fetchAcopio = useCallback(async () => {
@@ -122,7 +146,7 @@ const MovimientosAcopioPage = () => {
 
       // Agrupar
       const agrupados = union.reduce((acc, mov) => {
-        const key = mov.codigo + "_" + mov.descripcion || '(sin código)';
+        const key = (mov.codigo || '—') + "_" + (mov.descripcion || '');
         if (!acc[key]) {
           acc[key] = {
             codigo: mov.codigo || "Sin código",
@@ -174,17 +198,7 @@ const MovimientosAcopioPage = () => {
     return set;
   };
 
-  // Tabs: lazy fetch
-  useEffect(() => {
-    if (!acopioId) return;
-    if (tabActiva === 'acopio') fetchAcopio();
-    if (tabActiva === 'remitos') fetchRemitos();
-    if (tabActiva === 'materiales') fetchMovimientos();
-  }, [tabActiva, acopioId, fetchAcopio, fetchRemitos, fetchMovimientos]);
-
-  // Handlers
-  const handleChangeTab = (_e, v) => setTabActiva(v);
-
+  // Toggle activo
   const handleToggleActivo = async () => {
     if (!acopio) return;
     try {
@@ -200,6 +214,35 @@ const MovimientosAcopioPage = () => {
       setEstadoLoading(false);
     }
   };
+
+  // Eliminar remito
+  const eliminarRemito = async () => {
+    try {
+      const exito = await AcopioService.eliminarRemito(acopioId, remitoAEliminar);
+      if (exito) {
+        setAlert({ open: true, message: 'Remito eliminado con éxito', severity: 'success' });
+        await fetchRemitos();
+      } else {
+        setAlert({ open: true, message: 'No se pudo eliminar el remito', severity: 'error' });
+      }
+    } catch (error) {
+      console.error('Error al eliminar remito:', error);
+      setAlert({ open: true, message: 'Error al eliminar remito', severity: 'error' });
+    } finally {
+      setDialogoEliminarAbierto(false);
+      setRemitoAEliminar(null);
+    }
+  };
+
+  // Tabs: lazy fetch
+  useEffect(() => {
+    if (!acopioId) return;
+    if (tabActiva === 'acopio') fetchAcopio();
+    if (tabActiva === 'remitos') fetchRemitos();
+    if (tabActiva === 'materiales') fetchMovimientos();
+  }, [tabActiva, acopioId, fetchAcopio, fetchRemitos, fetchMovimientos]);
+
+  const handleChangeTab = (_e, v) => setTabActiva(v);
 
   const handleSaveAcopio = async () => {
     if (!acopio) return;
@@ -226,13 +269,12 @@ const MovimientosAcopioPage = () => {
   };
 
   const handleUploadFromHeader = () => {
-    // Dispara el input del visor cuando estés en la pestaña hojas
+    // Lleva a HOJAS; la subida se hace dentro del visor
     setTabActiva('hojas');
-    // El input está dentro del visor
   };
 
   const handleAcopioFilesSelected = async (e) => {
-    const files = e.target.files;
+    const files = e.target?.files;
     if (!files || files.length === 0) return;
     try {
       setLoading(true);
@@ -243,7 +285,7 @@ const MovimientosAcopioPage = () => {
       console.error(err);
       setAlert({ open: true, message: 'No se pudieron subir las hojas del acopio', severity: 'error' });
     } finally {
-      e.target.value = '';
+      if (e.target) e.target.value = '';
       setLoading(false);
     }
   };
@@ -270,6 +312,18 @@ const MovimientosAcopioPage = () => {
     else if (tabActiva === 'acopio') fetchAcopio();
   };
 
+  // Navegación con teclado en HOJAS
+  useEffect(() => {
+    if (tabActiva !== 'hojas') return;
+    const onKey = (e) => {
+      if (!hasAcopioPages) return;
+      if (e.key === 'ArrowRight') setPageIdx((i) => (i + 1) % totalPages);
+      if (e.key === 'ArrowLeft') setPageIdx((i) => (i - 1 + totalPages) % totalPages);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [tabActiva, hasAcopioPages, totalPages]);
+
   // Render
   return (
     <Box component="main">
@@ -291,6 +345,7 @@ const MovimientosAcopioPage = () => {
           <Tab label="Info Acopio" value="acopio" />
           <Tab label="Remitos" value="remitos" />
           <Tab label="Materiales" value="materiales" />
+          {acopio?.tipo === 'lista_precios' && <Tab label="Buscar materiales" value="buscar" />}
           {hasAcopioPages && (
             <Tab label={acopio?.tipo === 'lista_precios' ? 'Lista original' : 'Comprobante original'} value="hojas" />
           )}
@@ -316,22 +371,65 @@ const MovimientosAcopioPage = () => {
             <RemitosTable
               remitos={remitos}
               remitoMovimientos={remitoMovimientos}
-              expanded={null}
-              setExpanded={() => {}}
+              expanded={expanded}
+              setExpanded={setExpanded}
               router={router}
               acopioId={acopioId}
               remitosDuplicados={remitosDuplicados}
-              setDialogoEliminarAbierto={() => {}}
-              setRemitoAEliminar={() => {}}
+              setDialogoEliminarAbierto={setDialogoEliminarAbierto}
+              setRemitoAEliminar={setRemitoAEliminar}
             />
           </Box>
         )}
 
-        {/* INFO ACOPIO + editor simple */}
+        {/* BUSCAR (para lista de precios) */}
+        {tabActiva === 'buscar' && acopio?.tipo === 'lista_precios' && (
+          <Box sx={{ mt: 2 }}>
+            <ListaPreciosBuscador acopioId={acopioId} />
+          </Box>
+        )}
+
+        {/* INFO ACOPIO + editor */}
         {tabActiva === 'acopio' && (
           <Box sx={{ mt: 2 }}>
             {acopio && (
               <Paper elevation={2} sx={{ p: 3 }}>
+                {/* Estado + toggle + edición */}
+                <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 1 }}>
+                  <Chip
+                    size="small"
+                    label={acopio?.activo === false ? 'Inactivo' : 'Activo'}
+                    color={acopio?.activo === false ? 'default' : 'success'}
+                    variant="outlined"
+                  />
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={acopio?.activo !== false}
+                        onChange={handleToggleActivo}
+                        disabled={estadoLoading}
+                      />
+                    }
+                    label={acopio?.activo !== false ? 'Desactivar' : 'Activar'}
+                  />
+                  {!editMode ? (
+                    <Button variant="outlined" onClick={() => setEditMode(true)}>Editar</Button>
+                  ) : (
+                    <Stack direction="row" spacing={1}>
+                      <Button variant="text" onClick={() => {
+                        setEditMode(false);
+                        setFormAcopio({
+                          codigo: acopio.codigo || '',
+                          proveedor: acopio.proveedor || '',
+                          proyecto_nombre: acopio.proyecto_nombre || '',
+                          tipo: acopio.tipo || 'materiales'
+                        });
+                      }}>Cancelar</Button>
+                      <Button variant="contained" onClick={handleSaveAcopio}>Guardar</Button>
+                    </Stack>
+                  )}
+                </Stack>
+
                 <Typography variant="h6" gutterBottom>Resumen del Acopio</Typography>
                 <Grid container spacing={2}>
                   <Grid item xs={12} sm={6} md={4}>
@@ -395,42 +493,17 @@ const MovimientosAcopioPage = () => {
                   {/* KPIs */}
                   <Grid item xs={12} sm={4}>
                     <Typography variant="subtitle2">Valor Total Acopiado</Typography>
-                    <Typography>
-                      {(Number(acopio?.valor_acopio) || 0).toLocaleString('es-AR', { style: 'currency', currency: 'ARS' })}
-                    </Typography>
+                    <Typography>{formatCurrency(acopio?.valor_acopio)}</Typography>
                   </Grid>
                   <Grid item xs={12} sm={4}>
                     <Typography variant="subtitle2">Valor Total Desacopiado</Typography>
-                    <Typography>
-                      {(Number(acopio?.valor_desacopio) || 0).toLocaleString('es-AR', { style: 'currency', currency: 'ARS' })}
-                    </Typography>
+                    <Typography>{formatCurrency(acopio?.valor_desacopio)}</Typography>
                   </Grid>
                   <Grid item xs={12} sm={4}>
                     <Typography variant="subtitle2">Disponible {porcentajeDisponible.toFixed(2)}%</Typography>
                     <LinearProgress variant="determinate" value={porcentajeDisponible} />
                   </Grid>
                 </Grid>
-
-                <Divider sx={{ my: 2 }} />
-
-                <Stack direction="row" spacing={1}>
-                  {!editMode ? (
-                    <Button variant="outlined" onClick={() => setEditMode(true)}>Editar</Button>
-                  ) : (
-                    <>
-                      <Button variant="text" onClick={() => {
-                        setEditMode(false);
-                        setFormAcopio({
-                          codigo: acopio.codigo || '',
-                          proveedor: acopio.proveedor || '',
-                          proyecto_nombre: acopio.proyecto_nombre || '',
-                          tipo: acopio.tipo || 'materiales'
-                        });
-                      }}>Cancelar</Button>
-                      <Button variant="contained" onClick={handleSaveAcopio}>Guardar</Button>
-                    </>
-                  )}
-                </Stack>
               </Paper>
             )}
           </Box>
@@ -443,16 +516,30 @@ const MovimientosAcopioPage = () => {
               pages={pages}
               pageIdx={pageIdx}
               setPageIdx={setPageIdx}
-            //   onUploadFiles={!ENABLE_HOJA_UPLOAD ? undefined : handleAcopioFilesSelected}
-            //   onDeletePage={!ENABLE_HOJA_DELETE ? undefined : handleEliminarPaginaAcopio}
-            //   enableUpload={ENABLE_HOJA_UPLOAD}
-            //   enableDelete={ENABLE_HOJA_DELETE}
-            onUploadFiles={handleAcopioFilesSelected}
+              onUploadFiles={handleAcopioFilesSelected}
               onDeletePage={handleEliminarPaginaAcopio}
-              enableUpload={false}
-              enableDelete={false}
+              enableUpload={ENABLE_HOJA_UPLOAD}
+              enableDelete={ENABLE_HOJA_DELETE}
+              nextPreviewUrl={nextUrl}
             />
           </Box>
+        )}
+
+        {/* Confirmación eliminar remito */}
+        {dialogoEliminarAbierto && (
+          <Dialog open={dialogoEliminarAbierto} onClose={() => setDialogoEliminarAbierto(false)}>
+            <DialogContent>
+              <Typography variant="h6" gutterBottom>
+                ¿Estás seguro de que querés eliminar este remito?
+              </Typography>
+              <Stack direction="row" spacing={2} mt={2}>
+                <Button variant="outlined" onClick={() => setDialogoEliminarAbierto(false)}>Cancelar</Button>
+                <Button variant="contained" color="error" startIcon={<DeleteOutlineIcon />} onClick={eliminarRemito}>
+                  Eliminar
+                </Button>
+              </Stack>
+            </DialogContent>
+          </Dialog>
         )}
 
         {/* Snackbar */}
@@ -465,6 +552,29 @@ const MovimientosAcopioPage = () => {
             {alert.message}
           </Alert>
         </Snackbar>
+
+        {/* Botón actualizar flotante */}
+        <Box
+          sx={{
+            position: 'fixed',
+            bottom: 16,
+            right: 16,
+            zIndex: 10,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 1
+          }}
+        >
+          <Button
+            variant="outlined"
+            size="small"
+            startIcon={<RefreshIcon />}
+            onClick={fetchActualTab}
+            sx={{ minWidth: 'auto', px: 2 }}
+          >
+            Actualizar
+          </Button>
+        </Box>
       </Container>
     </Box>
   );
