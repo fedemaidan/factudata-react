@@ -221,7 +221,7 @@ const AcopiosPage = () => {
             handleCloseMenu();
           }}>Ver Movimientos</MenuItem>
           <MenuItem onClick={() => {
-            router.push(`/crearAcopio/?empresaId=${empresaId}&acopioId=${selectedAcopio?.id}`);
+            router.push(`/editarAcopio/?empresaId=${empresaId}&acopioId=${selectedAcopio?.id}`);
             handleCloseMenu();
           }}>Editar</MenuItem>
           <MenuItem onClick={() => {
