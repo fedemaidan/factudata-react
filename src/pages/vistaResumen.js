@@ -595,9 +595,14 @@ function BoxSummaryPage() {
       try {
         const proys = await getProyectosFromUser(user)
         if (!mounted) return
+        
+        const proysActive = proys.filter((p) => {
+          p.activo = p.activo === false ? false : true
+          return p.activo !== false
+        })
 
         // Normalizamos el shape esperado de la page
-        const mapped = (proys || []).map((p) => {
+        const mapped = (proysActive || []).map((p) => {
           // Si cada proyecto ya trae cajas agregadas, las usamos; si no, caemos a 0
           const cajas = {
             ARS: Number(p?.totalPesos ?? 0),

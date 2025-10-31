@@ -449,11 +449,15 @@ const TodosProyectosPage = () => {
       }
 
       const proyectosData = await getProyectosFromUser(user);
-      setProyectos(proyectosData);
+      const proysActive = proyectosData.filter((p) => {
+          p.activo = p.activo === false ? false : true
+          return p.activo !== false
+        })
+      setProyectos(proysActive);
       setTableHeadArray(getTableHeadArray(empresa));
 
       const movimientosData = [];
-      for (const proyecto of proyectosData) {
+      for (const proyecto of proysActive) {
         let movs;
         // Si se han seleccionado ambas fechas, se usa el rango personalizado
         if (filtroFechaDesde && filtroFechaHasta) {

@@ -105,7 +105,8 @@ const CajaSimplePage = () => {
         setEmpresa(e);
 
         const proyectos = await getProyectosByEmpresa(e);
-        const pid = proyectos?.[0]?.id || null;
+        const proyectosActivos = proyectos.filter(p => p.activo);
+        const pid = proyectosActivos?.[0]?.id || null;
         setProyectoId(pid);
 
         if (pid) {
