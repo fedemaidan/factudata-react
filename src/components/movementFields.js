@@ -37,6 +37,9 @@ const DEFINICION_CAMPOS = [
   { section: 'importes', name: 'subtotal', label: 'Subtotal', type: 'number' },
   { section: 'importes', name: 'total', label: 'Total', type: 'number' },
   { section: 'importes', name: 'total_original', label: 'Total Original', type: 'number', visibleIf: (info) => info.total_original },
+  { section: 'importes', name: 'dolar_referencia', label: 'Dólar de Referencia', type: 'number' },
+  { section: 'importes', name: 'subtotal_dolar', label: 'Subtotal USD', type: 'number', readonly: true },
+  { section: 'importes', name: 'total_dolar', label: 'Total USD', type: 'number', readonly: true },
 
   // PAGO
   { section: 'pago', name: 'medio_pago', label: 'Medio de Pago', type: 'select', optionsKey: 'mediosPago', visibleIf: (info) => info.medio_pago },
@@ -88,6 +91,42 @@ const MovementFields = ({
   clientesOptions = []
 }) => {
 
+  // Efecto para calcular valores en dólares cuando cambian los campos relevantes
+  React.useEffect(() => {
+    const dolarRef = Number(formik.values.dolar_referencia) || 0;
+    const subtotal = Number(formik.values.subtotal) || 0;
+    const total = Number(formik.values.total) || 0;
+
+    if (dolarRef > 0 && formik.values.moneda === 'ARS') {
+      const subtotalDolar = Number((subtotal / dolarRef).toFixed(2));
+      const totalDolar = Number((total / dolarRef).toFixed(2));
+
+      // Solo actualizar si los valores son diferentes (evitar loops)
+      if (Math.abs(Number(formik.values.subtotal_dolar) - subtotalDolar) > 0.01) {
+        formik.setFieldValue('subtotal_dolar', subtotalDolar);
+      }
+      if (Math.abs(Number(formik.values.total_dolar) - totalDolar) > 0.01) {
+        formik.setFieldValue('total_dolar', totalDolar);
+      }
+    } else if (formik.values.moneda === 'USD') {
+      // Si la moneda es USD, los valores en dólares son iguales a los originales
+      if (Number(formik.values.subtotal_dolar) !== subtotal) {
+        formik.setFieldValue('subtotal_dolar', subtotal);
+      }
+      if (Number(formik.values.total_dolar) !== total) {
+        formik.setFieldValue('total_dolar', total);
+      }
+    } else {
+      // Si no hay dólar de referencia o la moneda no es ARS, limpiar valores USD
+      if (formik.values.subtotal_dolar !== '' && formik.values.subtotal_dolar !== 0) {
+        formik.setFieldValue('subtotal_dolar', '');
+      }
+      if (formik.values.total_dolar !== '' && formik.values.total_dolar !== 0) {
+        formik.setFieldValue('total_dolar', '');
+      }
+    }
+  }, [formik.values.dolar_referencia, formik.values.subtotal, formik.values.total, formik.values.moneda, formik.setFieldValue]);
+
   
   function getOptionsFromContext(key) {
     switch (key) {
@@ -130,6 +169,8 @@ const MovementFields = ({
           label={campo.label}
           value={value}
           onChange={formik.handleChange}
+          InputProps={campo.readonly ? { readOnly: true } : undefined}
+          disabled={campo.readonly}
         />
       );
     }

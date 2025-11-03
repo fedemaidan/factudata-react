@@ -316,7 +316,7 @@ function ProjectRow({ p, categoriaColors = {} }) {
             <Button size="small" variant="outlined" endIcon={<OpenInNewIcon />} href={`/cajaProyecto/?proyectoId=${p.id}`} target="_blank" rel="noopener">
               Ver detalles
             </Button>
-            <Button size="small" variant="contained" href={`/movementForm/?lastPageName="Resumen general"&lastPageUrl="/vistaResumen"`}  target="_blank" rel="noopener">Agregar mov.</Button>
+            <Button size="small" variant="contained" href={`/movementForm/?proyectoName=${p.nombre}&proyectoId=${p.id}&lastPageName="Resumen general"&lastPageUrl="/vistaResumen"`}  target="_blank" rel="noopener">Agregar mov.</Button>
           </Stack>
         </TableCell>
       </TableRow>
