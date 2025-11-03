@@ -2,77 +2,62 @@ import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/router';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import { Container, Stack, Alert } from '@mui/material';
+import DataTable from 'src/components/celulandia/DataTable';
+import TrabajoRegistradoService from 'src/services/dhn/TrabajoRegistradoService';
 import TableComponent from 'src/components/TableComponent';
 import BackButton from 'src/components/shared/BackButton';
-import { buildTrabajoRegistradoColumns } from 'src/components/dhn/TrabajoRegistradoCells';
-import TrabajoRegistradoService from 'src/services/dhn/TrabajoRegistradoService';
-import FiltroTrabajoDiario from 'src/components/dhn/FiltroTrabajoDiario';
 import dayjs from 'dayjs';
-
-// --- FUNCION PURA: NO hooks adentro ---
-const parseQuincena = (qStr) => {
-  if (!qStr || typeof qStr !== 'string') throw new Error('quincena inválida');
-  const [year, month, q] = qStr.split('-'); // ej: "2025-09-1Q"
-  if (!year || !month || !q) throw new Error('Formato de quincena esperado: YYYY-MM-1Q|2Q');
-
-  const date = dayjs(`${year}-${month}-01`);
-  const isFirstQuincena = q === '1Q';
-
-  const from = isFirstQuincena
-    ? date.startOf('month').startOf('day')
-    : date.date(16).startOf('day');
-
-  const to = isFirstQuincena
-    ? date.date(15).endOf('day')
-    : date.endOf('month').endOf('day');
-
-  return { from: from.toDate(), to: to.toDate() };
-};
 
 const formatearFecha = (fecha) => {
   if (!fecha) return '-';
-  return dayjs(fecha).format('DD-MM-YYYY');
+  const fechaParsed = dayjs(fecha);
+  if (!fechaParsed.isValid()) return '-';
+  return fechaParsed.format('DD-MM-YYYY');
 };
 
-const ControlQuincenaPage = () => {
+const ControlQuincenalDiasPage = () => {
   const router = useRouter();
-  const { quincena: quincenaParam, estado: estadoParam } = router.query;
-
-  // Normalizar (Next puede darte array si hay repetidos)
-  const quincena = Array.isArray(quincenaParam) ? quincenaParam[0] : quincenaParam;
-  const estadoFiltro = useMemo(() => (Array.isArray(estadoParam) ? estadoParam[0] : (estadoParam || 'todos')), [estadoParam]);
+  const { quincena } = router.query;
 
   const [data, setData] = useState([]);
-  const [stats, setStats] = useState({ total: 0, ok: 0, incompleto: 0, advertencia: 0, sinParte: 0, sinHoras: 0, sinLicencia: 0, conLicencia: 0 });
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
-
-  const columns = useMemo(() => buildTrabajoRegistradoColumns(null, true), []);
-
-  const formatters = {
-    fecha: formatearFecha,
-  };
+  const [sortField, setSortField] = useState('dia');
+  const [sortDirection, setSortDirection] = useState('asc');
+  
+  const columns = useMemo(() => [
+    { key: 'seleccionar', label: '', sx: { display: 'none' }, onRowClick: (row) => {
+      const fecha = row.fecha ? dayjs(row.fecha).format('DD-MM-YYYY') : null;
+      if (fecha) {
+        router.push(`/dhn/controlQuincenal/diario/${fecha}`);
+      }
+    }},
+    { key: 'dia', label: 'Día', sortable: true },
+    { key: 'fecha', label: 'Fecha', sortable: true },
+    { key: 'total', label: 'Total', sortable: true },
+    { key: 'ok', label: 'OK', sortable: true },
+    { key: 'incompleto', label: 'Incompleto', sortable: true },
+    { key: 'advertencia', label: 'Advertencia', sortable: true },
+    { key: 'conLicencia', label: 'Con Licencia', sortable: true },
+    { key: 'sinHoras', label: 'Sin Horas', sortable: true },
+    { key: 'sinParte', label: 'Sin Parte', sortable: true },
+  ], [router]);
 
   const fetchData = useCallback(async () => {
     if (!router.isReady || !quincena) return;
 
     setIsLoading(true);
     try {
-      const { from, to } = parseQuincena(quincena);
-      const params = { limit: 500 };
-      if (estadoFiltro !== 'todos') params.estado = estadoFiltro;
-
-      const res = await TrabajoRegistradoService.getByRange(from, to, params);
-      setData(res.data || []);
-      setStats(res.stats || { total: 0, ok: 0, incompleto: 0, advertencia: 0, sinParte: 0, sinHoras: 0, sinLicencia: 0, conLicencia: 0 });
+      const res = await TrabajoRegistradoService.getStatsByQuincena(quincena);
+      setData(Array.isArray(res) ? res : []);
       setError(null);
     } catch (e) {
-      console.error(e);
-      setError('Error al cargar control quincenal');
+      console.error("error", e);
+      setError('Error al cargar estadísticas por día');
     } finally {
       setIsLoading(false);
     }
-  }, [router.isReady, quincena, estadoFiltro]);
+  }, [router.isReady, quincena]);
 
   useEffect(() => {
     fetchData();
@@ -80,32 +65,52 @@ const ControlQuincenaPage = () => {
 
   const handleVolver = useCallback(() => router.back(), [router]);
 
-  return (
-    <DashboardLayout title={`Control Quincena ${quincena || ''}`}>
-      <Container maxWidth="xl">
-        <Stack>
-          <BackButton onClick={handleVolver} sx={{ mb: 3 }} />
-          
-          <Stack spacing={3}>
-            <FiltroTrabajoDiario stats={stats} />
+  const handleSortChange = useCallback((field) => {
+    setSortField((prevField) => {
+      if (prevField === field) {
+        setSortDirection((prevDir) => (prevDir === 'asc' ? 'desc' : 'asc'));
+        return field;
+      }
+      setSortDirection('asc');
+      return field;
+    });
+  }, []);
 
+  const formatters = useMemo(() => ({
+    fecha: (value) => formatearFecha(value)
+  }), []);
+
+  return (
+    <DashboardLayout title={`Control Días - Quincena ${quincena || ''}`}>
+      <Container maxWidth="xl">
+        <Stack spacing={3}>
+          <BackButton onClick={handleVolver} />
+          
           {error && (
             <Alert severity="error" onClose={() => setError(null)}>
               {error}
             </Alert>
           )}
 
-          <TableComponent
+          <DataTable
             data={data}
             columns={columns}
             isLoading={isLoading}
+            showSearch={false}
+            showDateFilterOptions={false}
+            showDatePicker={false}
+            serverSide={false}
+            sortField={sortField}
+            sortDirection={sortDirection}
+            onSortChange={handleSortChange}
+            dateField="fecha"
             formatters={formatters}
           />
-          </Stack>
         </Stack>
       </Container>
     </DashboardLayout>
   );
 };
 
-export default ControlQuincenaPage;
+export default ControlQuincenalDiasPage;
+

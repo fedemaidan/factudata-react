@@ -11,6 +11,8 @@ const ControlQuincenalPage = () => {
   const [data, setData] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [sortField, setSortField] = useState('quincena');
+  const [sortDirection, setSortDirection] = useState('desc');
   
   const columns = useMemo(() => [
     { key: 'seleccionar', label: '', sx: { display: 'none' }, onRowClick: (row) => {
@@ -44,6 +46,17 @@ const ControlQuincenalPage = () => {
     fetchData();
   }, [fetchData]);
 
+  const handleSortChange = useCallback((field) => {
+    setSortField((prevField) => {
+      if (prevField === field) {
+        setSortDirection((prevDir) => (prevDir === 'asc' ? 'desc' : 'asc'));
+        return field;
+      }
+      setSortDirection('asc');
+      return field;
+    });
+  }, []);
+
 
   return (
     <DashboardLayout title="Control Quincenal">
@@ -55,13 +68,17 @@ const ControlQuincenalPage = () => {
             </Alert>
           )}
 
-          <TableComponent
+          <DataTable
             data={data}
             columns={columns}
             isLoading={isLoading}
             showSearch={false}
             showDateFilterOptions={false}
             showDatePicker={false}
+            serverSide={false}
+            sortField={sortField}
+            sortDirection={sortDirection}
+            onSortChange={handleSortChange}
           />
         </Stack>
       </Container>
