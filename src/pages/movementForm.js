@@ -194,7 +194,10 @@ const createdAtStr = (() => {
       materiales: [],
       empresa_facturacion: '',
       fecha_pago: '',
-      // <<< opcional: guardar “etapa” de la compra (string)
+      dolar_referencia: '',
+      subtotal_dolar: 0,
+      total_dolar: 0,
+      // <<< opcional: guardar "etapa" de la compra (string)
       etapa: '',
       obra: '',
       cliente: ''

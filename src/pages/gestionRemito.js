@@ -159,19 +159,19 @@ const deleteFromTable = (idx) => {
         return;
       }
       setLoadingProceso(true);
-      const sinMateriales = tipoAcopio === 'lista_precios';
+      
       const data = await AcopioService.extraerDatosDesdeArchivo(
-        acopioId, archivoRemitoFile, archivoRemitoUrl, { sinMateriales }
+        acopioId, archivoRemitoFile, archivoRemitoUrl, { sinMateriales: false }
       );
 
-      if (data && data.materiales) {
+      if (data && data.materiales) {s
         let mats = data.materiales.map(m => ({
           ...m,
           cantidad: Number(m.cantidad || 0),
           valorUnitario: Number(m.valorUnitario || 0)
         }));
 
-        if (sinMateriales || mats.some(m => !m.codigo)) {
+        if (mats.some(m => !m.codigo)) {
           const base = materialesDisponibles || [];
           mats = mats.map(m => completarPorFuzzy(m, base));
         }
