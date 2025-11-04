@@ -4,80 +4,92 @@ import Head from 'next/head';
 import {
   Alert, Box, Button, Chip, Container, Dialog, DialogActions, DialogContent, DialogTitle,
   IconButton, Paper, Snackbar, Stack, Table, TableBody, TableCell, TableHead, TableRow,
-  TextField, Tooltip, Typography, InputAdornment, MenuItem, Select, FormControl, InputLabel
+  TextField, Tooltip, Typography, InputAdornment, FormControl, InputLabel, Select, MenuItem,
+  TableSortLabel
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import SearchIcon from '@mui/icons-material/Search';
-import LinkIcon from '@mui/icons-material/Link';
 
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import StockMaterialesService from '../../services/stock/stockMaterialesService';
+
+import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
+import { useAuthContext } from 'src/contexts/auth-context';
 
 const emptyForm = {
   _id: '',
   nombre: '',
   SKU: '',
   desc_material: '',
-  alias: '',           // texto simple (podés transformarlo a array en back)
-  empresa_id: '',      // opcional: si tu back lo deduce, podés omitir
-};
-
-const emptyLink = {
-  movimientoId: '',
-  materialId: '',
   alias: '',
+  empresa_id: '',        // (no se edita en UI; lo llenamos automático)
+  empresa_nombre: '',    // idem
 };
 
-function mergeMaterialesConStock(materiales, stockItems) {
-  const mapStock = new Map();
-  for (const s of stockItems || []) {
-    mapStock.set(s.id_material || 'null', s);
-  }
-  return (materiales || []).map(m => {
-    const s = mapStock.get(m._id) || mapStock.get(m.id) || mapStock.get('null') || null;
-    const stockTotal = s?.stockTotal ?? 0;
-    return { ...m, stockTotal, porProyecto: s?.porProyecto || [] };
-  });
+// 👇 Helper: toma la respuesta del servicio ({ ok, items, total, ... }) o un array crudo
+function mapMateriales(resp) {
+  const arr = Array.isArray(resp?.items) ? resp.items : (Array.isArray(resp) ? resp : []);
+  return arr.map((m) => ({
+    ...m,
+    stockTotal: typeof m.stock === 'number' ? m.stock : 0,
+    porProyecto: Array.isArray(m.porProyecto) ? m.porProyecto : [],
+  }));
+}
+
+// Ordenamiento
+const sortables = {
+  nombre: 'nombre',
+  descripcion: 'desc_material',
+  sku: 'SKU',
+  stock: 'stockTotal',
+};
+
+function compareStrings(a = '', b = '', dir = 'asc') {
+  const res = (a || '').localeCompare(b || '', undefined, { sensitivity: 'base' });
+  return dir === 'asc' ? res : -res;
+}
+function compareNumbers(a = 0, b = 0, dir = 'asc') {
+  const res = (Number(a) || 0) - (Number(b) || 0);
+  return dir === 'asc' ? res : -res;
 }
 
 const StockMateriales = () => {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
+
+  // Búsqueda y filtros
   const [q, setQ] = useState('');
+  const [stockFilter, setStockFilter] = useState('all'); // all | gt0 | eq0 | lt0
 
-  // alerts
+  // Ordenamiento
+  const [orderBy, setOrderBy] = useState('nombre'); // nombre | descripcion | sku | stock
+  const [order, setOrder] = useState('asc'); // asc | desc
+
+  const { user } = useAuthContext();
   const [alert, setAlert] = useState({ open: false, message: '', severity: 'info' });
-  const closeAlert = () => setAlert(prev => ({ ...prev, open: false }));
+  const closeAlert = () => setAlert((prev) => ({ ...prev, open: false }));
 
-  // modal crear/editar
   const [openForm, setOpenForm] = useState(false);
   const [isEdit, setIsEdit] = useState(false);
   const [form, setForm] = useState(emptyForm);
 
-  // eliminar
   const [openDelete, setOpenDelete] = useState(false);
   const [toDelete, setToDelete] = useState(null);
-
-  // vincular movimiento
-  const [openLink, setOpenLink] = useState(false);
-  const [linkForm, setLinkForm] = useState(emptyLink);
 
   async function fetchAll() {
     setLoading(true);
     try {
-      const [materiales, stock] = await Promise.all([
-        StockMaterialesService.listarMateriales(),
-        StockMaterialesService.listarStock(),
-      ]);
-      const merged = mergeMaterialesConStock(materiales, stock);
-      // orden por nombre
-      merged.sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''));
-      setRows(merged);
+      const empresa = await getEmpresaDetailsFromUser(user);
+      const filters = { empresa_id: empresa.id };
+
+      const resp = await StockMaterialesService.listarMateriales(filters);
+      const mapped = mapMateriales(resp);
+      setRows(mapped);
     } catch (e) {
       console.error(e);
-      setAlert({ open: true, message: 'Error al cargar materiales/stock', severity: 'error' });
+      setAlert({ open: true, message: 'Error al cargar materiales', severity: 'error' });
     } finally {
       setLoading(false);
     }
@@ -85,15 +97,47 @@ const StockMateriales = () => {
 
   useEffect(() => { fetchAll(); }, []);
 
-  const filtered = useMemo(() => {
-    if (!q) return rows;
-    const qq = q.toLowerCase();
-    return rows.filter(r =>
-      (r.nombre || '').toLowerCase().includes(qq) ||
-      (r.SKU || '').toLowerCase().includes(qq) ||
-      (r.desc_material || '').toLowerCase().includes(qq)
-    );
-  }, [rows, q]);
+  // Filtro + ordenamiento
+  const filteredSorted = useMemo(() => {
+    let list = rows;
+
+    // Texto
+    if (q) {
+      const qq = q.toLowerCase();
+      list = list.filter((r) =>
+        (r.nombre || '').toLowerCase().includes(qq) ||
+        (r.SKU || '').toLowerCase().includes(qq) ||
+        (r.desc_material || '').toLowerCase().includes(qq)
+      );
+    }
+
+    // Stock
+    if (stockFilter !== 'all') {
+      list = list.filter((r) => {
+        const s = typeof r.stock === 'number' ? r.stock : r.stockTotal ?? 0;
+        if (stockFilter === 'gt0') return s > 0;
+        if (stockFilter === 'eq0') return s === 0;
+        if (stockFilter === 'lt0') return s < 0;
+        return true;
+      });
+    }
+
+    // Orden
+    const key = sortables[orderBy] || 'nombre';
+    const dir = order;
+    const sorted = [...list].sort((a, b) => {
+      if (key === 'stockTotal') {
+        const av = typeof a.stock === 'number' ? a.stock : a.stockTotal ?? 0;
+        const bv = typeof b.stock === 'number' ? b.stock : b.stockTotal ?? 0;
+        return compareNumbers(av, bv, dir);
+      }
+      if (key === 'SKU') return compareStrings(a.SKU, b.SKU, dir);
+      if (key === 'desc_material') return compareStrings(a.desc_material, b.desc_material, dir);
+      return compareStrings(a.nombre, b.nombre, dir);
+    });
+
+    return sorted;
+  }, [rows, q, stockFilter, orderBy, order]);
 
   // --- crear/editar ---
   const handleOpenCreate = () => {
@@ -111,6 +155,7 @@ const StockMateriales = () => {
       desc_material: row.desc_material || '',
       alias: Array.isArray(row.alias) ? row.alias.join(', ') : (row.alias || ''),
       empresa_id: row.empresa_id || '',
+      empresa_nombre: row.empresa_nombre || '',
     });
     setOpenForm(true);
   };
@@ -127,20 +172,27 @@ const StockMateriales = () => {
       return;
     }
     try {
-      // si alias viene como string "a, b, c" lo enviamos tal cual;
-      // tu back puede transformarlo a array o guardarlo como Mixed.
+      // 🔑 SIEMPRE tomamos empresa desde el usuario logueado
+      const empresa = await getEmpresaDetailsFromUser(user);
+      const empresa_id = empresa?.id ?? form.empresa_id ?? null;
+      const empresa_nombre = empresa?.nombre ?? form.empresa_nombre ?? null;
+
       const payload = {
         nombre: form.nombre?.trim(),
         SKU: form.SKU?.trim() || null,
         desc_material: form.desc_material?.trim() || null,
         alias: form.alias?.trim() || null,
-        ...(form.empresa_id ? { empresa_id: form.empresa_id } : {}),
+        // 👉 incluimos ambos campos siempre para consistencia y validaciones en backend
+        empresa_id,
+        empresa_nombre,
       };
+
       if (isEdit) {
         await StockMaterialesService.actualizarMaterial(form._id, payload);
       } else {
         await StockMaterialesService.crearMaterial(payload);
       }
+
       setAlert({
         open: true,
         message: isEdit ? 'Material actualizado' : 'Material creado',
@@ -174,30 +226,20 @@ const StockMateriales = () => {
     }
   };
 
-  // --- vincular movimiento→material (y alias) ---
-  const openVincular = (row) => {
-    setLinkForm({ movimientoId: '', materialId: row?._id || '', alias: '' });
-    setOpenLink(true);
+  // Ordenamiento por header
+  const handleRequestSort = (property) => {
+    if (orderBy === property) {
+      setOrder((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setOrderBy(property);
+      setOrder('asc');
+    }
   };
 
-  const doVincular = async () => {
-    if (!linkForm.movimientoId?.trim() || !linkForm.materialId?.trim()) {
-      setAlert({ open: true, message: 'Completá movimiento y material', severity: 'warning' });
-      return;
-    }
-    try {
-      await StockMaterialesService.vincularMovimientoAMaterial({
-        movimientoId: linkForm.movimientoId.trim(),
-        materialId: linkForm.materialId.trim(),
-        alias: linkForm.alias?.trim() || undefined,
-      });
-      setAlert({ open: true, message: 'Movimiento vinculado', severity: 'success' });
-      setOpenLink(false);
-      await fetchAll();
-    } catch (e) {
-      console.error(e);
-      setAlert({ open: true, message: 'Error vinculando movimiento', severity: 'error' });
-    }
+  // Util para TableSortLabel: estado activo del header
+  const createSortHandler = (property) => (event) => {
+    event.preventDefault();
+    handleRequestSort(property);
   };
 
   return (
@@ -208,7 +250,7 @@ const StockMateriales = () => {
         <Container maxWidth="xl">
           <Stack spacing={3}>
 
-            {/* Barra superior: Agregar / Eliminar */}
+            {/* Barra superior */}
             <Stack direction="row" alignItems="center" justifyContent="space-between">
               <Typography variant="h4">Stock de materiales</Typography>
               <Button variant="contained" startIcon={<AddIcon />} onClick={handleOpenCreate}>
@@ -216,41 +258,90 @@ const StockMateriales = () => {
               </Button>
             </Stack>
 
-            {/* Filtros / búsqueda rápida */}
-            <TextField
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="Buscar por nombre / SKU / descripción…"
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start"><SearchIcon /></InputAdornment>
-                ),
-              }}
-            />
+            {/* Búsqueda + Filtro de stock */}
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+              <TextField
+                sx={{ flex: 1, minWidth: 260 }}
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="Buscar por nombre / SKU / descripción…"
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start"><SearchIcon /></InputAdornment>
+                  ),
+                }}
+              />
+              <FormControl sx={{ minWidth: 220 }}>
+                <InputLabel id="stock-filter-label">Stock</InputLabel>
+                <Select
+                  labelId="stock-filter-label"
+                  label="Stock"
+                  value={stockFilter}
+                  onChange={(e) => setStockFilter(e.target.value)}
+                >
+                  <MenuItem value="all">Todos</MenuItem>
+                  <MenuItem value="gt0">Con stock (&gt; 0)</MenuItem>
+                  <MenuItem value="eq0">Sin stock (= 0)</MenuItem>
+                  <MenuItem value="lt0">Stock negativo (&lt; 0)</MenuItem>
+                </Select>
+              </FormControl>
+            </Stack>
 
             {/* Tabla */}
             <Paper>
               <Table>
                 <TableHead>
                   <TableRow>
-                    <TableCell>Nombre</TableCell>
-                    <TableCell>Descripción</TableCell>
-                    <TableCell>SKU</TableCell>
+                    <TableCell sortDirection={orderBy === 'nombre' ? order : false}>
+                      <TableSortLabel
+                        active={orderBy === 'nombre'}
+                        direction={orderBy === 'nombre' ? order : 'asc'}
+                        onClick={createSortHandler('nombre')}
+                      >
+                        Nombre
+                      </TableSortLabel>
+                    </TableCell>
+                    <TableCell sortDirection={orderBy === 'descripcion' ? order : false}>
+                      <TableSortLabel
+                        active={orderBy === 'descripcion'}
+                        direction={orderBy === 'descripcion' ? order : 'asc'}
+                        onClick={createSortHandler('descripcion')}
+                      >
+                        Descripción
+                      </TableSortLabel>
+                    </TableCell>
+                    <TableCell sortDirection={orderBy === 'sku' ? order : false}>
+                      <TableSortLabel
+                        active={orderBy === 'sku'}
+                        direction={orderBy === 'sku' ? order : 'asc'}
+                        onClick={createSortHandler('sku')}
+                      >
+                        SKU
+                      </TableSortLabel>
+                    </TableCell>
                     <TableCell>Alias</TableCell>
-                    <TableCell align="right">Stock total</TableCell>
+                    <TableCell align="right" sortDirection={orderBy === 'stock' ? order : false}>
+                      <TableSortLabel
+                        active={orderBy === 'stock'}
+                        direction={orderBy === 'stock' ? order : 'asc'}
+                        onClick={createSortHandler('stock')}
+                      >
+                        Stock total
+                      </TableSortLabel>
+                    </TableCell>
                     <TableCell align="right">Acciones</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {filtered.map((row) => (
+                  {filteredSorted.map((row) => (
                     <TableRow key={row._id} hover>
                       <TableCell>
                         <Stack spacing={0.5}>
                           <Typography variant="body1" fontWeight={600}>{row.nombre}</Typography>
-                          {/* mini detalle por obra */}
                           <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap' }}>
-                            {(row.porProyecto || []).map(p => (
-                              <Chip key={p.proyecto_id || p.proyecto_nombre || Math.random()}
+                            {(row.porProyecto || []).map((p) => (
+                              <Chip
+                                key={p.proyecto_id || p.proyecto_nombre || Math.random()}
                                 size="small"
                                 label={`${p.proyecto_nombre || p.proyecto_id || 'Obra'}: ${p.cantidad}`}
                               />
@@ -272,7 +363,9 @@ const StockMateriales = () => {
                           : (row.alias || <em>(—)</em>)}
                       </TableCell>
                       <TableCell align="right">
-                        <Typography fontWeight={700}>{row.stockTotal ?? 0}</Typography>
+                        <Typography fontWeight={700}>
+                          {typeof row.stock === 'number' ? row.stock : (row.stockTotal ?? 0)}
+                        </Typography>
                       </TableCell>
                       <TableCell align="right">
                         <IconButton color="primary" onClick={() => handleOpenEdit(row)} aria-label="Editar">
@@ -281,15 +374,10 @@ const StockMateriales = () => {
                         <IconButton color="error" onClick={() => confirmDelete(row)} aria-label="Eliminar">
                           <DeleteIcon />
                         </IconButton>
-                        <Tooltip title="Vincular un movimiento a este material (y agregar alias)">
-                          <IconButton onClick={() => openVincular(row)} aria-label="Vincular">
-                            <LinkIcon />
-                          </IconButton>
-                        </Tooltip>
                       </TableCell>
                     </TableRow>
                   ))}
-                  {!loading && filtered.length === 0 && (
+                  {!loading && filteredSorted.length === 0 && (
                     <TableRow>
                       <TableCell colSpan={6}>
                         <Typography variant="body2">Sin resultados.</Typography>
@@ -355,46 +443,6 @@ const StockMateriales = () => {
           <DialogActions>
             <Button onClick={() => setOpenDelete(false)}>Cancelar</Button>
             <Button color="error" variant="contained" onClick={remove}>Eliminar</Button>
-          </DialogActions>
-        </Dialog>
-
-        {/* Vincular movimiento → material */}
-        <Dialog open={openLink} onClose={() => setOpenLink(false)} fullWidth maxWidth="sm">
-          <DialogTitle>Vincular movimiento a material</DialogTitle>
-          <DialogContent>
-            <Stack spacing={2} sx={{ mt: 1 }}>
-              <TextField
-                label="ID del movimiento"
-                value={linkForm.movimientoId}
-                onChange={(e) => setLinkForm({ ...linkForm, movimientoId: e.target.value })}
-                placeholder="ObjectId del movimiento sin material"
-              />
-              <FormControl>
-                <InputLabel id="mat-id-label">Material</InputLabel>
-                <Select
-                  labelId="mat-id-label"
-                  label="Material"
-                  value={linkForm.materialId}
-                  onChange={(e) => setLinkForm({ ...linkForm, materialId: e.target.value })}
-                >
-                  {rows.map(m => (
-                    <MenuItem key={m._id} value={m._id}>
-                      {m.nombre} {m.SKU ? `(${m.SKU})` : ''}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-              <TextField
-                label="Alias a agregar (opcional)"
-                value={linkForm.alias}
-                onChange={(e) => setLinkForm({ ...linkForm, alias: e.target.value })}
-                placeholder="Si lo dejás vacío, no se agrega alias"
-              />
-            </Stack>
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={() => setOpenLink(false)}>Cancelar</Button>
-            <Button variant="contained" onClick={doVincular}>Vincular</Button>
           </DialogActions>
         </Dialog>
       </Box>
