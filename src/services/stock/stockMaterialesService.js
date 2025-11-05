@@ -43,7 +43,6 @@ const StockMaterialesService = {
 
   // Log explícito de lo que se envía al backend
   const qs = new URLSearchParams(params).toString();
-  console.log(`[StockMateriales] GET /materiales/stock?${qs}`);
 
   // Llamada
   const res = await api.get('/materiales/stock', { params });
