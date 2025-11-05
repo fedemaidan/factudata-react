@@ -5,7 +5,7 @@ import {
   Alert, Box, Button, Chip, Container, Dialog, DialogActions, DialogContent, DialogTitle,
   IconButton, Paper, Snackbar, Stack, Table, TableBody, TableCell, TableHead, TableRow,
   TextField, Tooltip, Typography, InputAdornment, FormControl, InputLabel, Select, MenuItem,
-  TableSortLabel
+  TableSortLabel, TablePagination, FormHelperText
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
@@ -24,48 +24,41 @@ const emptyForm = {
   SKU: '',
   desc_material: '',
   alias: '',
-  empresa_id: '',        // (no se edita en UI; lo llenamos automático)
-  empresa_nombre: '',    // idem
+  empresa_id: '',
+  empresa_nombre: '',
 };
 
-// 👇 Helper: toma la respuesta del servicio ({ ok, items, total, ... }) o un array crudo
-function mapMateriales(resp) {
-  const arr = Array.isArray(resp?.items) ? resp.items : (Array.isArray(resp) ? resp : []);
-  return arr.map((m) => ({
+// helper mapea items del back y da fallback a stockTotal
+function mapItems(items) {
+  return (items || []).map((m) => ({
     ...m,
-    stockTotal: typeof m.stock === 'number' ? m.stock : 0,
+    stockTotal: typeof m.stock === 'number' ? m.stock : (typeof m.stockTotal === 'number' ? m.stockTotal : 0),
     porProyecto: Array.isArray(m.porProyecto) ? m.porProyecto : [],
   }));
 }
 
-// Ordenamiento
-const sortables = {
+// columnas que exponemos en UI para ordenar -> nombre de campo que el back entiende
+const ORDER_MAP = {
   nombre: 'nombre',
   descripcion: 'desc_material',
   sku: 'SKU',
-  stock: 'stockTotal',
+  stock: 'stock',
 };
-
-function compareStrings(a = '', b = '', dir = 'asc') {
-  const res = (a || '').localeCompare(b || '', undefined, { sensitivity: 'base' });
-  return dir === 'asc' ? res : -res;
-}
-function compareNumbers(a = 0, b = 0, dir = 'asc') {
-  const res = (Number(a) || 0) - (Number(b) || 0);
-  return dir === 'asc' ? res : -res;
-}
 
 const StockMateriales = () => {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
 
-  // Búsqueda y filtros
+  // estados de filtros/orden/paginación (server-side)
   const [q, setQ] = useState('');
   const [stockFilter, setStockFilter] = useState('all'); // all | gt0 | eq0 | lt0
-
-  // Ordenamiento
   const [orderBy, setOrderBy] = useState('nombre'); // nombre | descripcion | sku | stock
   const [order, setOrder] = useState('asc'); // asc | desc
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(50);
+
+  // total que llega desde el back (para paginación)
+  const [total, setTotal] = useState(0);
 
   const { user } = useAuthContext();
   const [alert, setAlert] = useState({ open: false, message: '', severity: 'info' });
@@ -78,15 +71,31 @@ const StockMateriales = () => {
   const [openDelete, setOpenDelete] = useState(false);
   const [toDelete, setToDelete] = useState(null);
 
+  // construye el string sort "campo:asc|desc" para el back
+  const sortParam = useMemo(() => {
+    const field = ORDER_MAP[orderBy] || 'nombre';
+    const dir = order === 'desc' ? 'desc' : 'asc';
+    return `${field}:${dir}`;
+  }, [orderBy, order]);
+
+  // fetch al back en base a filtros/orden/paginación
   async function fetchAll() {
     setLoading(true);
     try {
       const empresa = await getEmpresaDetailsFromUser(user);
-      const filters = { empresa_id: empresa.id };
+      const params = {
+        empresa_id: empresa.id,
+        limit: rowsPerPage,
+        page,                // ✅ tu back calcula skip = page * limit
+        sort: sortParam,     // ej: "stock:desc"
+      };
+      if (q?.trim()) params.nombre = q.trim(); // ✅ SOLO NOMBRE
+      if (stockFilter !== 'all') params.stockFilter = stockFilter; // 'gt0' | 'eq0' | 'lt0'
 
-      const resp = await StockMaterialesService.listarMateriales(filters);
-      const mapped = mapMateriales(resp);
-      setRows(mapped);
+      // ✅ método existente en el default export del service
+      const resp = await StockMaterialesService.listarMateriales(params);
+      setRows(mapItems(resp.items));
+      setTotal(resp.total || 0);
     } catch (e) {
       console.error(e);
       setAlert({ open: true, message: 'Error al cargar materiales', severity: 'error' });
@@ -95,49 +104,11 @@ const StockMateriales = () => {
     }
   }
 
-  useEffect(() => { fetchAll(); }, []);
-
-  // Filtro + ordenamiento
-  const filteredSorted = useMemo(() => {
-    let list = rows;
-
-    // Texto
-    if (q) {
-      const qq = q.toLowerCase();
-      list = list.filter((r) =>
-        (r.nombre || '').toLowerCase().includes(qq) ||
-        (r.SKU || '').toLowerCase().includes(qq) ||
-        (r.desc_material || '').toLowerCase().includes(qq)
-      );
-    }
-
-    // Stock
-    if (stockFilter !== 'all') {
-      list = list.filter((r) => {
-        const s = typeof r.stock === 'number' ? r.stock : r.stockTotal ?? 0;
-        if (stockFilter === 'gt0') return s > 0;
-        if (stockFilter === 'eq0') return s === 0;
-        if (stockFilter === 'lt0') return s < 0;
-        return true;
-      });
-    }
-
-    // Orden
-    const key = sortables[orderBy] || 'nombre';
-    const dir = order;
-    const sorted = [...list].sort((a, b) => {
-      if (key === 'stockTotal') {
-        const av = typeof a.stock === 'number' ? a.stock : a.stockTotal ?? 0;
-        const bv = typeof b.stock === 'number' ? b.stock : b.stockTotal ?? 0;
-        return compareNumbers(av, bv, dir);
-      }
-      if (key === 'SKU') return compareStrings(a.SKU, b.SKU, dir);
-      if (key === 'desc_material') return compareStrings(a.desc_material, b.desc_material, dir);
-      return compareStrings(a.nombre, b.nombre, dir);
-    });
-
-    return sorted;
-  }, [rows, q, stockFilter, orderBy, order]);
+  // dispara el fetch cuando cambian filtros/orden/paginación
+  useEffect(() => {
+    fetchAll();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q, stockFilter, sortParam, page, rowsPerPage]);
 
   // --- crear/editar ---
   const handleOpenCreate = () => {
@@ -172,7 +143,6 @@ const StockMateriales = () => {
       return;
     }
     try {
-      // 🔑 SIEMPRE tomamos empresa desde el usuario logueado
       const empresa = await getEmpresaDetailsFromUser(user);
       const empresa_id = empresa?.id ?? form.empresa_id ?? null;
       const empresa_nombre = empresa?.nombre ?? form.empresa_nombre ?? null;
@@ -182,7 +152,6 @@ const StockMateriales = () => {
         SKU: form.SKU?.trim() || null,
         desc_material: form.desc_material?.trim() || null,
         alias: form.alias?.trim() || null,
-        // 👉 incluimos ambos campos siempre para consistencia y validaciones en backend
         empresa_id,
         empresa_nombre,
       };
@@ -219,14 +188,17 @@ const StockMateriales = () => {
       setAlert({ open: true, message: 'Material eliminado', severity: 'success' });
       setOpenDelete(false);
       setToDelete(null);
-      await fetchAll();
+
+      const isLastOnPage = rows.length === 1 && page > 0;
+      if (isLastOnPage) setPage((p) => Math.max(0, p - 1));
+      else await fetchAll();
     } catch (e) {
       console.error(e);
       setAlert({ open: true, message: 'Error eliminando material', severity: 'error' });
     }
   };
 
-  // Ordenamiento por header
+  // Ordenamiento por header (server-side)
   const handleRequestSort = (property) => {
     if (orderBy === property) {
       setOrder((prev) => (prev === 'asc' ? 'desc' : 'asc'));
@@ -234,12 +206,20 @@ const StockMateriales = () => {
       setOrderBy(property);
       setOrder('asc');
     }
+    setPage(0);
   };
-
-  // Util para TableSortLabel: estado activo del header
   const createSortHandler = (property) => (event) => {
     event.preventDefault();
     handleRequestSort(property);
+  };
+
+  // paginación
+  const handleChangePage = (_evt, newPage) => {
+    setPage(newPage);
+  };
+  const handleChangeRowsPerPage = (evt) => {
+    setRowsPerPage(parseInt(evt.target.value, 10));
+    setPage(0);
   };
 
   return (
@@ -260,24 +240,32 @@ const StockMateriales = () => {
 
             {/* Búsqueda + Filtro de stock */}
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-              <TextField
-                sx={{ flex: 1, minWidth: 260 }}
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                placeholder="Buscar por nombre / SKU / descripción…"
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start"><SearchIcon /></InputAdornment>
-                  ),
-                }}
-              />
+              {/* Buscador SOLO por nombre */}
+              <Box sx={{ flex: 1, minWidth: 260 }}>
+                <TextField
+                  fullWidth
+                  value={q}
+                  onChange={(e) => { setQ(e.target.value); setPage(0); }}
+                  placeholder="Buscar por nombre…"
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start"><SearchIcon /></InputAdornment>
+                    ),
+                  }}
+                />
+                {/* Nota sutil/“transparente”: solo filtra por nombre */}
+                <FormHelperText sx={{ color: 'text.secondary', mt: 0.5 }}>
+                  Filtra <strong>solo por NOMBRE</strong> (búsqueda por coincidencia).
+                </FormHelperText>
+              </Box>
+
               <FormControl sx={{ minWidth: 220 }}>
                 <InputLabel id="stock-filter-label">Stock</InputLabel>
                 <Select
                   labelId="stock-filter-label"
                   label="Stock"
                   value={stockFilter}
-                  onChange={(e) => setStockFilter(e.target.value)}
+                  onChange={(e) => { setStockFilter(e.target.value); setPage(0); }}
                 >
                   <MenuItem value="all">Todos</MenuItem>
                   <MenuItem value="gt0">Con stock (&gt; 0)</MenuItem>
@@ -333,7 +321,7 @@ const StockMateriales = () => {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {filteredSorted.map((row) => (
+                  {rows.map((row) => (
                     <TableRow key={row._id} hover>
                       <TableCell>
                         <Stack spacing={0.5}>
@@ -377,7 +365,7 @@ const StockMateriales = () => {
                       </TableCell>
                     </TableRow>
                   ))}
-                  {!loading && filteredSorted.length === 0 && (
+                  {!loading && rows.length === 0 && (
                     <TableRow>
                       <TableCell colSpan={6}>
                         <Typography variant="body2">Sin resultados.</Typography>
@@ -386,6 +374,17 @@ const StockMateriales = () => {
                   )}
                 </TableBody>
               </Table>
+
+              {/* paginación server-side */}
+              <TablePagination
+                component="div"
+                count={total}
+                page={page}
+                onPageChange={handleChangePage}
+                rowsPerPage={rowsPerPage}
+                onRowsPerPageChange={handleChangeRowsPerPage}
+                rowsPerPageOptions={[10, 25, 50, 100]}
+              />
             </Paper>
           </Stack>
         </Container>
