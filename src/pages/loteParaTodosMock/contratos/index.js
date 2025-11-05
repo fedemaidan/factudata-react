@@ -4,18 +4,24 @@ import {
   Container, Typography, Box, Grid, Card, CardContent, 
   TextField, InputAdornment, MenuItem, Autocomplete,
   Table, TableBody, TableCell, TableContainer, TableHead, 
-  TableRow, Paper, Chip, Button, IconButton
+  TableRow, Paper, Chip, Button,
+  Dialog, DialogTitle, DialogContent, DialogActions, Divider,
+  Alert, AlertTitle, Collapse, List, ListItem, ListItemIcon, ListItemText
 } from '@mui/material';
 import {
   Search as SearchIcon,
   FilterList as FilterIcon,
-  Visibility as VisibilityIcon,
-  Edit as EditIcon,
-  PictureAsPdf as PdfIcon,
   TrendingUp as TrendingUpIcon,
   AccountBalance as AccountBalanceIcon,
   Assignment as AssignmentIcon,
-  MonetizationOn as MoneyIcon
+  MonetizationOn as MoneyIcon,
+  Warning as WarningIcon,
+  Error as ErrorIcon,
+  Info as InfoIcon,
+  NotificationsActive as NotificationsIcon,
+  Person as PersonIcon,
+  Home as HomeIcon,
+  FileDownload as FileDownloadIcon
 } from '@mui/icons-material';
 import { useRouter } from 'next/router';
 
@@ -27,12 +33,39 @@ import { mockVendedores } from '../../../data/loteParaTodos/mockVendedores';
 import { mockEmprendimientos } from '../../../data/loteParaTodos/mockEmprendimientos';
 import { mockPlanes } from '../../../data/loteParaTodos/mockPlanes';
 
+// Importar XLSX para exportación
+import * as XLSX from 'xlsx';
+import LoteParaTodosLayout from '../../../components/layouts/LoteParaTodosLayout';
+
 export default function ContratosIndex() {
   const router = useRouter();
+  const { clienteId, clienteNombre } = router.query;
+  
   const [filtroTexto, setFiltroTexto] = useState('');
   const [filtroEstado, setFiltroEstado] = useState('TODOS');
   const [filtroVendedor, setFiltroVendedor] = useState(null);
   const [filtroEmprendimiento, setFiltroEmprendimiento] = useState(null);
+  
+
+
+  // Aplicar filtro automático si viene de clientes
+  React.useEffect(() => {
+    if (clienteNombre) {
+      setFiltroTexto(clienteNombre);
+    }
+  }, [clienteNombre]);
+
+  // Funciones de utilidad (definir antes de usar)
+  const formatearFecha = (fecha) => {
+    return new Date(fecha).toLocaleDateString('es-AR');
+  };
+
+  const formatearMoneda = (monto) => {
+    return new Intl.NumberFormat('es-AR', {
+      style: 'currency',
+      currency: 'ARS'
+    }).format(monto);
+  };
 
   // Estados disponibles
   const estados = [
@@ -110,26 +143,22 @@ export default function ContratosIndex() {
       .filter(c => c.estado === 'ACTIVO')
       .reduce((sum, c) => sum + c.saldo_pendiente, 0);
 
+    // Métricas básicas
+    const montoCobrado = mockContratos.reduce((sum, c) => 
+      sum + (c.precio_acordado - c.saldo_pendiente), 0);
+
     return {
       total,
       activos,
       completados,
       caidos,
       montoTotal,
-      saldoPendiente
+      saldoPendiente,
+      montoCobrado
     };
   }, []);
 
-  const formatearFecha = (fecha) => {
-    return new Date(fecha).toLocaleDateString('es-AR');
-  };
 
-  const formatearMoneda = (monto) => {
-    return new Intl.NumberFormat('es-AR', {
-      style: 'currency',
-      currency: 'ARS'
-    }).format(monto);
-  };
 
   const getColorEstado = (estado) => {
     switch (estado) {
@@ -141,16 +170,64 @@ export default function ContratosIndex() {
     }
   };
 
+
+
+  const exportarAExcel = () => {
+    const datosExportar = contratosFiltrados.map(contrato => ({
+      'ID Contrato': contrato.id,
+      'Cliente': contrato.cliente_nombre,
+      'DNI': contrato.cliente_dni,
+      'Lote': `${contrato.lote_numero} - Mza. ${contrato.lote_manzana}`,
+      'Emprendimiento': contrato.emprendimiento_nombre,
+      'Vendedor': contrato.vendedor_nombre,
+      'Precio Acordado': contrato.precio_acordado,
+      'Estado': contrato.estado,
+      'Fecha Contrato': formatearFecha(contrato.fecha_contrato),
+      'Entrega Inicial': contrato.entrega_inicial,
+      'Cuota Mensual': contrato.cuota_mensual,
+      'Saldo Pendiente': contrato.saldo_pendiente,
+      'Comentarios': contrato.comentarios || contrato.observaciones || ''
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(datosExportar);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Contratos');
+    
+    const fecha = new Date().toLocaleDateString('es-AR').replace(/\//g, '-');
+    XLSX.writeFile(wb, `Contratos_${fecha}.xlsx`);
+  };
+
+
+
   return (
-    <Container maxWidth="xl" sx={{ mt: 4, mb: 4 }}>
+    <LoteParaTodosLayout currentModule="contratos" pageTitle="Gestión de Contratos">
       {/* Header */}
       <Box sx={{ mb: 4 }}>
-        <Typography variant="h4" component="h1" gutterBottom>
-          Gestión de Contratos
-        </Typography>
-        <Typography variant="body1" color="text.secondary">
-          Administra todos los contratos de venta de lotes
-        </Typography>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
+          <Box>
+            <Typography variant="h4" component="h1" gutterBottom>
+              Gestión de Contratos
+            </Typography>
+            <Typography variant="body1" color="text.secondary">
+              {clienteNombre ? `Contratos de ${clienteNombre}` : 'Administra todos los contratos de venta de lotes'}
+            </Typography>
+          </Box>
+        </Box>
+        
+        {clienteNombre && (
+          <Box sx={{ mt: 1 }}>
+            <Chip 
+              label={`Filtrado por cliente: ${clienteNombre}`}
+              color="info"
+              variant="outlined"
+              onDelete={() => {
+                setFiltroTexto('');
+                router.push('/loteParaTodosMock/contratos');
+              }}
+              sx={{ mr: 1 }}
+            />
+          </Box>
+        )}
       </Box>
 
       {/* Tarjetas de estadísticas */}
@@ -312,6 +389,16 @@ export default function ContratosIndex() {
             <Typography variant="h6">
               Contratos ({contratosFiltrados.length})
             </Typography>
+            <Box sx={{ display: 'flex', gap: 1 }}>
+              <Button
+                variant="outlined"
+                startIcon={<FileDownloadIcon />}
+                onClick={exportarAExcel}
+                disabled={contratosFiltrados.length === 0}
+              >
+                Exportar Excel
+              </Button>
+            </Box>
           </Box>
 
           <TableContainer>
@@ -327,7 +414,6 @@ export default function ContratosIndex() {
                   <TableCell><strong>Estado</strong></TableCell>
                   <TableCell><strong>Fecha</strong></TableCell>
                   <TableCell><strong>Saldo</strong></TableCell>
-                  <TableCell align="center"><strong>Acciones</strong></TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -335,7 +421,11 @@ export default function ContratosIndex() {
                   <TableRow 
                     key={contrato.id} 
                     hover
-                    sx={{ '&:hover': { backgroundColor: '#f8f9fa' } }}
+                    onClick={() => router.push(`/loteParaTodosMock/contratos/${contrato.id}`)}
+                    sx={{ 
+                      '&:hover': { backgroundColor: '#f8f9fa', cursor: 'pointer' },
+                      cursor: 'pointer'
+                    }}
                   >
                     <TableCell>
                       <Typography variant="body2" fontWeight="bold">
@@ -394,32 +484,6 @@ export default function ContratosIndex() {
                         {formatearMoneda(contrato.saldo_pendiente)}
                       </Typography>
                     </TableCell>
-                    <TableCell align="center">
-                      <Box sx={{ display: 'flex', gap: 1 }}>
-                        <IconButton
-                          size="small"
-                          onClick={() => router.push(`/loteParaTodosMock/contratos/${contrato.id}`)}
-                          color="primary"
-                          title="Ver detalle"
-                        >
-                          <VisibilityIcon fontSize="small" />
-                        </IconButton>
-                        <IconButton
-                          size="small"
-                          color="secondary"
-                          title="Editar contrato"
-                        >
-                          <EditIcon fontSize="small" />
-                        </IconButton>
-                        <IconButton
-                          size="small"
-                          color="error"
-                          title="Generar PDF"
-                        >
-                          <PdfIcon fontSize="small" />
-                        </IconButton>
-                      </Box>
-                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -435,6 +499,6 @@ export default function ContratosIndex() {
           )}
         </CardContent>
       </Card>
-    </Container>
+    </LoteParaTodosLayout>
   );
 }

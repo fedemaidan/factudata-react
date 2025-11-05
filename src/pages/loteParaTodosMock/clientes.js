@@ -1,11 +1,13 @@
 import Head from 'next/head';
 import React, { useMemo, useState } from 'react';
+import { useRouter } from 'next/router';
 import {
   Box, Button, Chip, Container, Dialog, DialogActions, DialogContent, DialogTitle,
   IconButton, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead,
   TablePagination, TableRow, TextField, Tooltip, Typography, Divider, MenuItem,
   TableSortLabel, Menu, ListItemIcon, ListItemText, InputAdornment, Drawer,
-  Stepper, Step, StepLabel, Autocomplete, StepContent
+  Stepper, Step, StepLabel, Autocomplete, StepContent,
+  Grid
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -14,9 +16,11 @@ import VisibilityIcon from '@mui/icons-material/Visibility';
 import FilterAltOffIcon from '@mui/icons-material/FilterAltOff';
 import DownloadIcon from '@mui/icons-material/Download';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
+import AssignmentIcon from '@mui/icons-material/Assignment';
+import HomeIcon from '@mui/icons-material/Home';
 
 import * as XLSX from 'xlsx';
-import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
+import LoteParaTodosLayout from 'src/components/layouts/LoteParaTodosLayout';
 import { 
   mockClientes, 
   getClienteById, 
@@ -45,6 +49,7 @@ const colorForEstado = (estado) => {
 };
 
 const ClientesPage = () => {
+  const router = useRouter();
   const [clientes, setClientes] = useState([]);
   
   // Cargar clientes al montar el componente
@@ -61,14 +66,39 @@ const ClientesPage = () => {
         return lote?.emprendimiento_id;
       }).filter(Boolean))];
       
-      // Calcular saldo total desde contratos activos
-      const saldoTotal = contratos
-        .filter(c => c.estado === 'ACTIVO')
-        .reduce((total, c) => total + (c.saldo_pendiente || 0), 0);
-      
-      // Determinar estado basado en contratos
+      // Generar saldo realista basado en contratos
+      let saldoTotal = 0;
       let estadoCuenta = 'POTENCIAL';
+      
       if (contratos.length > 0) {
+        // Generar saldos realistas para cada contrato
+        contratos.forEach(contrato => {
+          if (!contrato.saldo_pendiente || contrato.saldo_pendiente === 0) {
+            // Generar saldo basado en el estado del contrato
+            if (contrato.estado === 'ACTIVO') {
+              // Entre 20% y 80% del precio acordado
+              contrato.saldo_pendiente = Math.floor(contrato.precio_acordado * (0.2 + Math.random() * 0.6));
+            } else if (contrato.estado === 'MORA') {
+              // Entre 30% y 90% del precio acordado (más alto en mora)
+              contrato.saldo_pendiente = Math.floor(contrato.precio_acordado * (0.3 + Math.random() * 0.6));
+            } else if (contrato.estado === 'COMPLETADO') {
+              contrato.saldo_pendiente = 0;
+            } else if (contrato.estado === 'RESERVADO') {
+              // Entre 80% y 95% del precio acordado
+              contrato.saldo_pendiente = Math.floor(contrato.precio_acordado * (0.8 + Math.random() * 0.15));
+            } else if (contrato.estado === 'CAIDO') {
+              // Los caídos pueden tener deuda pendiente
+              contrato.saldo_pendiente = Math.floor(contrato.precio_acordado * (0.1 + Math.random() * 0.4));
+            }
+          }
+        });
+
+        // Calcular saldo total desde contratos que generan deuda
+        saldoTotal = contratos
+          .filter(c => ['ACTIVO', 'MORA', 'RESERVADO', 'CAIDO'].includes(c.estado))
+          .reduce((total, c) => total + (c.saldo_pendiente || 0), 0);
+        
+        // Determinar estado basado en contratos
         const tieneActivos = contratos.some(c => c.estado === 'ACTIVO');
         const tieneMora = contratos.some(c => c.estado === 'MORA');
         const todosPagados = contratos.every(c => c.saldo_pendiente === 0);
@@ -77,6 +107,13 @@ const ClientesPage = () => {
         else if (todosPagados && tieneActivos) estadoCuenta = 'PAGADO';  
         else if (tieneActivos) estadoCuenta = 'AL_DIA';
         else if (contratos.some(c => c.estado === 'RESERVADO')) estadoCuenta = 'RESERVADO';
+      } else {
+        // Clientes sin contratos pero que podrían tener saldo (por servicios, etc.)
+        // Generar un saldo aleatorio pequeño para algunos clientes
+        if (Math.random() > 0.7) { // 30% de clientes sin contratos tienen algo de saldo
+          saldoTotal = Math.floor(Math.random() * 50000) + 5000; // Entre 5K y 55K
+          estadoCuenta = 'POTENCIAL';
+        }
       }
       
       return {
@@ -390,14 +427,17 @@ const ClientesPage = () => {
   };
 
   return (
-    <DashboardLayout>
-      <Head><title>Clientes</title></Head>
-      <Box component="main" sx={{ flexGrow: 1, py: 3 }}>
-        <Container maxWidth="xl">
+    <LoteParaTodosLayout currentModule="clientes" pageTitle="Gestión de Clientes">
+      <Head><title>Clientes - Lote Para Todos</title></Head>
           {/* HEADER */}
           <Paper sx={{ p: 2, mb: 2 }}>
             <Stack direction="row" justifyContent="space-between" alignItems="center">
-              <Typography variant="h6" fontWeight={700}>Listado de Clientes</Typography>
+              <Box>
+                <Typography variant="h6" fontWeight={700}>Listado de Clientes</Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Administra todos los clientes y sus contratos
+                </Typography>
+              </Box>
               <Stack direction="row" spacing={2} alignItems="center">
                 <Button variant="contained" startIcon={<AddIcon />} onClick={() => setOpenClienteDrawer(true)}>Nuevo cliente</Button>
                 <Button variant="contained" color="secondary" onClick={() => { setOpenVentaDrawer(true); setActiveStep(0); }}>Venta de Lote</Button>
@@ -539,8 +579,10 @@ const ClientesPage = () => {
                             variant="body2" 
                             fontWeight={600}
                             color={
-                              c.saldo_cuenta_corriente > 0 ? 'error.main' : 
-                              c.saldo_cuenta_corriente < 0 ? 'success.main' : 'text.primary'
+                              // Usar el estado de la cuenta en lugar del signo del saldo
+                              c.estado_cuenta === 'PAGADO' || c.estado_cuenta === 'AL_DIA' ? 'success.main' :
+                              c.estado_cuenta === 'MORA' ? 'error.main' :
+                              'text.primary'
                             }
                           >
                             ${c.saldo_cuenta_corriente?.toLocaleString('es-AR') || '0'}
@@ -611,124 +653,184 @@ const ClientesPage = () => {
             <DialogTitle sx={{ bgcolor: 'primary.main', color: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <Box>
                 <Typography variant="h6">
-                  ℹ️ {clienteSeleccionado?.nombre} | ☎️ {clienteSeleccionado?.telefono} | 🏠 DOMINGO MILLÁN 1435, LA MATANZA
+                  Estado de Cuenta - {clienteSeleccionado?.nombre} {clienteSeleccionado?.apellido}
+                </Typography>
+                <Typography variant="body2" sx={{ opacity: 0.9 }}>
+                  DNI: {clienteSeleccionado?.dni} | Tel: {clienteSeleccionado?.telefono}
                 </Typography>
               </Box>
-              <Stack direction="row" spacing={1}>
-                <Chip label="NORMAL" color="success" size="small" />
-                <Chip label={`Estado: ${clienteSeleccionado?.estado}`} color="info" size="small" />
-              </Stack>
+              <Chip 
+                label={clienteSeleccionado?.estado_cuenta} 
+                color={
+                  clienteSeleccionado?.estado_cuenta === 'PAGADO' ? 'success' :
+                  clienteSeleccionado?.estado_cuenta === 'AL_DIA' ? 'info' :
+                  clienteSeleccionado?.estado_cuenta === 'MORA' ? 'error' :
+                  clienteSeleccionado?.estado_cuenta === 'RESERVADO' ? 'warning' : 'default'
+                }
+                size="small"
+              />
             </DialogTitle>
             <DialogContent dividers sx={{ p: 0 }}>
               {clienteSeleccionado && (
                 <Box>
-                  {/* HEADER INFORMACIÓN */}
-                  <Box sx={{ bgcolor: 'info.light', p: 2 }}>
-                    <Stack direction="row" justifyContent="space-between" alignItems="center">
-                      <Typography variant="h6">🏠 ESTADO DE CUENTA DEL LOTE {clienteSeleccionado.lote}</Typography>
-                      <Stack direction="row" spacing={1}>
-                        <Typography variant="body2" sx={{ display: 'flex', alignItems: 'center' }}>
-                          PARTIDA: 102000233 📋
-                        </Typography>
-                      </Stack>
-                    </Stack>
+                  {/* RESUMEN GENERAL */}
+                  <Box sx={{ bgcolor: 'grey.50', p: 3, borderBottom: '1px solid #e0e0e0' }}>
+                    <Grid container spacing={2}>
+                      <Grid item xs={12} md={4}>
+                        <Paper sx={{ p: 2, textAlign: 'center', bgcolor: 'info.light' }}>
+                          <Typography variant="h6" color="info.main">
+                            Saldo Total
+                          </Typography>
+                          <Typography 
+                            variant="h4" 
+                            fontWeight="bold"
+                            color={
+                              clienteSeleccionado.estado_cuenta === 'PAGADO' || clienteSeleccionado.estado_cuenta === 'AL_DIA' ? 'success.main' :
+                              clienteSeleccionado.estado_cuenta === 'MORA' ? 'error.main' :
+                              'text.primary'
+                            }
+                          >
+                            ${clienteSeleccionado.saldo_cuenta_corriente?.toLocaleString('es-AR') || '0'}
+                          </Typography>
+                        </Paper>
+                      </Grid>
+                      <Grid item xs={12} md={4}>
+                        <Paper sx={{ p: 2, textAlign: 'center' }}>
+                          <Typography variant="h6" color="text.secondary">
+                            Contratos Activos
+                          </Typography>
+                          <Typography variant="h4" fontWeight="bold" color="primary.main">
+                            {clienteSeleccionado.contratos?.length || 0}
+                          </Typography>
+                        </Paper>
+                      </Grid>
+                      <Grid item xs={12} md={4}>
+                        <Paper sx={{ p: 2, textAlign: 'center' }}>
+                          <Typography variant="h6" color="text.secondary">
+                            Último Pago
+                          </Typography>
+                          <Typography variant="h4" fontWeight="bold">
+                            {clienteSeleccionado.ultimo_pago || 'N/A'}
+                          </Typography>
+                        </Paper>
+                      </Grid>
+                    </Grid>
                   </Box>
 
-                  {/* TABLA DE PAGOS */}
-                  <TableContainer>
-                    <Table size="small">
-                      <TableHead sx={{ bgcolor: 'grey.100' }}>
-                        <TableRow>
-                          <TableCell><strong>PLAN</strong></TableCell>
-                          <TableCell><strong>AHORRO</strong></TableCell>
-                          <TableCell><strong>VALOR CTA.</strong></TableCell>
-                          <TableCell><strong>CTAS PAGADAS</strong></TableCell>
-                          <TableCell><strong>TOT PAGADO</strong></TableCell>
-                          <TableCell><strong>TOT A PAGAR</strong></TableCell>
-                          <TableCell><strong>SALDO</strong></TableCell>
-                          <TableCell><strong>ACCIONES</strong></TableCell>
-                        </TableRow>
-                      </TableHead>
-                      <TableBody>
-                        <TableRow>
-                          <TableCell>1 Ctas. Actualización 0 %</TableCell>
-                          <TableCell>-</TableCell>
-                          <TableCell>108,000</TableCell>
-                          <TableCell sx={{ color: 'info.main' }}>1 Ctas. Pagadas<br />1 en Término</TableCell>
-                          <TableCell>108,000</TableCell>
-                          <TableCell sx={{ color: 'info.main' }}>0 Ctas. A Pagar</TableCell>
-                          <TableCell>-</TableCell>
-                          <TableCell>📄 📤</TableCell>
-                        </TableRow>
-                      </TableBody>
-                    </Table>
-                  </TableContainer>
-
-                  {/* ESTADO DE SERVICIOS */}
-                  <Box sx={{ p: 2, bgcolor: 'warning.light' }}>
-                    <Typography variant="h6" sx={{ mb: 2 }}>⚠️ ESTADO DE CUENTA DE SERVICIOS</Typography>
-                    <TableContainer>
-                      <Table size="small">
-                        <TableHead>
-                          <TableRow>
-                            <TableCell><strong>SERVICIO CONTRATADO</strong></TableCell>
-                            <TableCell><strong>ESTADO</strong></TableCell>
-                            <TableCell><strong>AHORRO</strong></TableCell>
-                            <TableCell><strong>VALOR DE LA CUOTA</strong></TableCell>
-                            <TableCell><strong>CUOTAS PAGADAS</strong></TableCell>
-                            <TableCell><strong>MONTO PAGADO</strong></TableCell>
-                            <TableCell><strong>CUOTAS A PAGAR</strong></TableCell>
-                            <TableCell><strong>SALDO A PAGAR</strong></TableCell>
-                            <TableCell><strong>ACCIONES</strong></TableCell>
-                          </TableRow>
-                        </TableHead>
-                        <TableBody>
-                          <TableRow>
-                            <TableCell>DEUDA VIEJA MANTENIMIENTO DEL LOTE 1 Cta.</TableCell>
-                            <TableCell>
-                              <TextField select size="small" defaultValue="Selecciona" sx={{ minWidth: 100 }}>
-                                <MenuItem value="Selecciona">Selecciona</MenuItem>
-                                <MenuItem value="Activo">Activo</MenuItem>
-                                <MenuItem value="Inactivo">Inactivo</MenuItem>
-                              </TextField>
-                            </TableCell>
-                            <TableCell>-</TableCell>
-                            <TableCell>48,750</TableCell>
-                            <TableCell sx={{ color: 'info.main' }}>0 Ctas. Pagadas</TableCell>
-                            <TableCell>-</TableCell>
-                            <TableCell sx={{ color: 'error.main' }}>1 Ctas. A Pagar<br />1 en mora</TableCell>
-                            <TableCell>48,750</TableCell>
-                            <TableCell>🗑️ 📤</TableCell>
-                          </TableRow>
-                        </TableBody>
-                      </Table>
-                    </TableContainer>
-                  </Box>
-
-                  {/* CRÉDITO Y BOTONES */}
-                  <Box sx={{ p: 2 }}>
-                    <Typography variant="body1" sx={{ mb: 2 }}>
-                      Crédito Disponible: <strong>$ 27,000</strong>
+                  {/* CONTRATOS DEL CLIENTE */}
+                  <Box sx={{ p: 3 }}>
+                    <Typography variant="h6" sx={{ mb: 2, color: 'primary.main' }}>
+                      📋 Contratos y Relación con Saldo
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                      El saldo total se calcula sumando los saldos pendientes de todos los contratos activos del cliente.
                     </Typography>
                     
-                    <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mb: 2 }}>
-                      <Button variant="contained" size="small" onClick={() => alert('Funcionalidad en desarrollo')}>CUOTAS PENDIENTES</Button>
-                      <Button variant="contained" size="small" onClick={() => alert('Funcionalidad en desarrollo')}>IMPRIMIR ESTADO DE CUENTA</Button>
-                    </Stack>
-
-                    {/* MENSAJES */}
-                    <Box sx={{ mt: 2 }}>
-                      <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
-                        <Typography variant="subtitle2">Mensajes ✏️</Typography>
-                        <Button size="small">➖</Button>
-                      </Stack>
-                    </Box>
+                    {clienteSeleccionado.contratos && clienteSeleccionado.contratos.length > 0 ? (
+                      <TableContainer component={Paper} variant="outlined">
+                        <Table>
+                          <TableHead>
+                            <TableRow sx={{ bgcolor: 'grey.100' }}>
+                              <TableCell><strong>Contrato #</strong></TableCell>
+                              <TableCell><strong>Lote</strong></TableCell>
+                              <TableCell><strong>Emprendimiento</strong></TableCell>
+                              <TableCell><strong>Estado Contrato</strong></TableCell>
+                              <TableCell><strong>Precio Total</strong></TableCell>
+                              <TableCell><strong>Saldo Pendiente</strong></TableCell>
+                              <TableCell><strong>Acciones</strong></TableCell>
+                            </TableRow>
+                          </TableHead>
+                          <TableBody>
+                            {clienteSeleccionado.contratos.map((contrato) => {
+                              const lote = lotes.find(l => l.id === contrato.lote_id);
+                              const emprendimiento = emprendimientos.find(e => e.id === lote?.emprendimiento_id);
+                              return (
+                                <TableRow key={contrato.id}>
+                                  <TableCell>
+                                    <Typography variant="body2" fontWeight="bold">
+                                      #{contrato.id}
+                                    </Typography>
+                                  </TableCell>
+                                  <TableCell>
+                                    <Typography variant="body2">
+                                      {lote ? `${lote.numero} - Mza. ${lote.manzana}` : 'N/A'}
+                                    </Typography>
+                                  </TableCell>
+                                  <TableCell>
+                                    <Typography variant="body2">
+                                      {emprendimiento?.nombre || 'N/A'}
+                                    </Typography>
+                                  </TableCell>
+                                  <TableCell>
+                                    <Chip 
+                                      label={contrato.estado} 
+                                      size="small"
+                                      color={
+                                        contrato.estado === 'ACTIVO' ? 'success' :
+                                        contrato.estado === 'COMPLETADO' ? 'info' :
+                                        contrato.estado === 'MORA' ? 'error' :
+                                        'default'
+                                      }
+                                    />
+                                  </TableCell>
+                                  <TableCell>
+                                    <Typography variant="body2" fontWeight="500">
+                                      ${contrato.precio_acordado?.toLocaleString('es-AR')}
+                                    </Typography>
+                                  </TableCell>
+                                  <TableCell>
+                                    <Typography 
+                                      variant="body2" 
+                                      fontWeight="500"
+                                      color={contrato.saldo_pendiente > 0 ? 'error.main' : 'success.main'}
+                                    >
+                                      ${contrato.saldo_pendiente?.toLocaleString('es-AR')}
+                                    </Typography>
+                                  </TableCell>
+                                  <TableCell>
+                                    <Button 
+                                      size="small" 
+                                      variant="outlined"
+                                      onClick={() => {
+                                        setOpenCuenta(false);
+                                        router.push(`/loteParaTodosMock/contratos/${contrato.id}`);
+                                      }}
+                                    >
+                                      Ver Detalle
+                                    </Button>
+                                  </TableCell>
+                                </TableRow>
+                              );
+                            })}
+                          </TableBody>
+                        </Table>
+                      </TableContainer>
+                    ) : (
+                      <Alert severity="info" sx={{ mt: 2 }}>
+                        <Typography variant="body2">
+                          Este cliente no tiene contratos registrados.
+                        </Typography>
+                      </Alert>
+                    )}
                   </Box>
 
-                  {/* ÚLTIMOS MOVIMIENTOS */}
-                  <Box sx={{ bgcolor: 'info.light', p: 2 }}>
-                    <Typography variant="h6" sx={{ mb: 1 }}>ℹ️ ÚLTIMOS MOVIMIENTOS</Typography>
-                    <Typography variant="body2" color="text.secondary">No hay registros</Typography>
+                  {/* EXPLICACIÓN DEL CÁLCULO */}
+                  <Box sx={{ p: 3, bgcolor: 'info.light' }}>
+                    <Typography variant="h6" sx={{ mb: 2 }}>
+                      ℹ️ ¿Cómo se calcula el estado de cuenta?
+                    </Typography>
+                    <Typography variant="body2" sx={{ mb: 1 }}>
+                      <strong>Estado AL_DIA:</strong> Todos los contratos están al día con sus pagos.
+                    </Typography>
+                    <Typography variant="body2" sx={{ mb: 1 }}>
+                      <strong>Estado MORA:</strong> Al menos un contrato tiene pagos vencidos.
+                    </Typography>
+                    <Typography variant="body2" sx={{ mb: 1 }}>
+                      <strong>Estado PAGADO:</strong> Todos los contratos están completamente pagados.
+                    </Typography>
+                    <Typography variant="body2">
+                      <strong>Saldo Total:</strong> Suma de todos los saldos pendientes de contratos activos.
+                    </Typography>
                   </Box>
                 </Box>
               )}
@@ -1583,9 +1685,7 @@ const ClientesPage = () => {
             </Box>
           </Drawer>
           
-        </Container>
-      </Box>
-    </DashboardLayout>
+    </LoteParaTodosLayout>
   );
 };
 

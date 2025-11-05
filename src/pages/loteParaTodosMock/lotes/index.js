@@ -8,9 +8,11 @@ import AddIcon from '@mui/icons-material/Add';
 import DownloadIcon from '@mui/icons-material/Download';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import LocationOnIcon from '@mui/icons-material/LocationOn';
+import PersonIcon from '@mui/icons-material/Person';
+import AssignmentIcon from '@mui/icons-material/Assignment';
 import { useRouter } from 'next/router';
 
-import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
+import LoteParaTodosLayout from '../../../components/layouts/LoteParaTodosLayout';
 import { 
   mockEmprendimientos,
   mockLotes,
@@ -115,12 +117,10 @@ const LotesDashboard = () => {
   };
 
   return (
-    <>
+    <LoteParaTodosLayout currentModule="lotes" pageTitle="Gestión de Lotes">
       <Head>
-        <title>Gestión de Lotes | Dashboard</title>
+        <title>Gestión de Lotes - Lote Para Todos</title>
       </Head>
-      <Box component="main" sx={{ flexGrow: 1, py: 4 }}>
-        <Container maxWidth="xl">
           {/* HEADER */}
           <Paper sx={{ p: 3, mb: 3 }}>
             <Stack direction="row" justifyContent="space-between" alignItems="center">
@@ -337,16 +337,8 @@ const LotesDashboard = () => {
               );
             })}
           </Grid>
-        </Container>
-      </Box>
-    </>
+    </LoteParaTodosLayout>
   );
 };
-
-LotesDashboard.getLayout = (page) => (
-  <DashboardLayout>
-    {page}
-  </DashboardLayout>
-);
 
 export default LotesDashboard;

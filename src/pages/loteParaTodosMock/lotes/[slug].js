@@ -16,7 +16,7 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import HomeIcon from '@mui/icons-material/Home';
 import { useRouter } from 'next/router';
 
-import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
+import LoteParaTodosLayout from '../../../components/layouts/LoteParaTodosLayout';
 import { 
   mockEmprendimientos,
   mockLotes,
@@ -236,14 +236,13 @@ const EmprendimientoDetalle = () => {
   }
 
   return (
-    <>
+    <LoteParaTodosLayout currentModule="lotes" pageTitle={emprendimiento?.nombre || 'Detalle Emprendimiento'}>
       <Head>
-        <title>{emprendimiento.nombre} | Gestión de Lotes</title>
+        <title>{emprendimiento.nombre} - Lote Para Todos</title>
       </Head>
-      <Box component="main" sx={{ flexGrow: 1, py: 4 }}>
-        <Container maxWidth="xl">
-          {/* BREADCRUMBS */}
-          <Breadcrumbs sx={{ mb: 2 }}>
+      <Container maxWidth="xl">
+        {/* BREADCRUMBS */}
+        <Breadcrumbs sx={{ mb: 2 }}>
             <Link
               color="inherit"
               href="/loteParaTodosMock/lotes"
@@ -505,8 +504,7 @@ const EmprendimientoDetalle = () => {
           {activeTab === 1 && <CalculadoraPrecios emprendimientoId={parseInt(id)} lotes={lotes} />}
 
           {activeTab === 2 && <VistaDisponibilidad emprendimientoId={parseInt(id)} lotes={lotes} />}
-        </Container>
-      </Box>
+      </Container>
 
       {/* DRAWER FORMULARIO LOTE */}
       <Drawer
@@ -617,7 +615,7 @@ const EmprendimientoDetalle = () => {
           </Button>
         </DialogActions>
       </Dialog>
-    </>
+    </LoteParaTodosLayout>
   );
 };
 
@@ -1278,11 +1276,5 @@ const VistaDisponibilidad = ({ emprendimientoId, lotes }) => {
     </Box>
   );
 };
-
-EmprendimientoDetalle.getLayout = (page) => (
-  <DashboardLayout>
-    {page}
-  </DashboardLayout>
-);
 
 export default EmprendimientoDetalle;
