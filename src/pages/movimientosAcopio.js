@@ -55,14 +55,7 @@ const MovimientosAcopioPage = () => {
   const [materialesAgrupados, setMaterialesAgrupados] = useState({});
   const [estadoLoading, setEstadoLoading] = useState(false);
 
-  // Editor
-  const [editMode, setEditMode] = useState(false);
-  const [formAcopio, setFormAcopio] = useState({
-    codigo: '',
-    proveedor: '',
-    proyecto_nombre: '',
-    tipo: 'materiales'
-  });
+  // Editor ya no se necesita - la edición se hace en página separada
 
   // Visor
   const [pageIdx, setPageIdx] = useState(0);
@@ -102,12 +95,6 @@ const MovimientosAcopioPage = () => {
       }
 
       setAcopio(acopioData);
-      setFormAcopio({
-        codigo: acopioData.codigo || '',
-        proveedor: acopioData.proveedor || '',
-        proyecto_nombre: acopioData.proyecto_nombre || '',
-        tipo: acopioData.tipo || 'materiales'
-      });
 
       const comprasData = await AcopioService.obtenerCompras(acopioId);
       setCompras(comprasData || []);
@@ -244,28 +231,9 @@ const MovimientosAcopioPage = () => {
 
   const handleChangeTab = (_e, v) => setTabActiva(v);
 
-  const handleSaveAcopio = async () => {
-    if (!acopio) return;
-    try {
-      setLoading(true);
-      const ok = await AcopioService.editarAcopio(acopioId, {
-        codigo: formAcopio.codigo?.trim(),
-        proveedor: formAcopio.proveedor?.trim(),
-        proyecto_nombre: formAcopio.proyecto_nombre?.trim(),
-        tipo: formAcopio.tipo
-      });
-      if (ok) {
-        setAlert({ open: true, message: 'Acopio actualizado', severity: 'success' });
-        setEditMode(false);
-        await fetchAcopio();
-      } else {
-        setAlert({ open: true, message: 'No se pudo actualizar el acopio', severity: 'error' });
-      }
-    } catch {
-      setAlert({ open: true, message: 'Error al actualizar el acopio', severity: 'error' });
-    } finally {
-      setLoading(false);
-    }
+  const handleEditAcopio = () => {
+    // Redirigir a la página de editar acopio
+    router.push(`/editarAcopio?empresaId=${acopio?.empresaId}&acopioId=${acopioId}`);
   };
 
   const handleUploadFromHeader = () => {
@@ -333,7 +301,7 @@ const MovimientosAcopioPage = () => {
           acopio={acopio}
           porcentajeDisponible={porcentajeDisponible}
           onVolver={() => router.push(`/acopios?empresaId=${acopio?.empresaId || ''}`)}
-          onEditar={() => setEditMode(true)}
+          onEditar={handleEditAcopio}
           onUploadClick={handleUploadFromHeader}
           onRecalibrarImagenes={() => AcopioService.recalibrarImagenes(acopioId)}
           onRefrescar={fetchActualTab}
@@ -412,82 +380,26 @@ const MovimientosAcopioPage = () => {
                     }
                     label={acopio?.activo !== false ? 'Desactivar' : 'Activar'}
                   />
-                  {!editMode ? (
-                    <Button variant="outlined" onClick={() => setEditMode(true)}>Editar</Button>
-                  ) : (
-                    <Stack direction="row" spacing={1}>
-                      <Button variant="text" onClick={() => {
-                        setEditMode(false);
-                        setFormAcopio({
-                          codigo: acopio.codigo || '',
-                          proveedor: acopio.proveedor || '',
-                          proyecto_nombre: acopio.proyecto_nombre || '',
-                          tipo: acopio.tipo || 'materiales'
-                        });
-                      }}>Cancelar</Button>
-                      <Button variant="contained" onClick={handleSaveAcopio}>Guardar</Button>
-                    </Stack>
-                  )}
+                  <Button variant="outlined" onClick={handleEditAcopio}>Editar Acopio</Button>
                 </Stack>
 
                 <Typography variant="h6" gutterBottom>Resumen del Acopio</Typography>
                 <Grid container spacing={2}>
                   <Grid item xs={12} sm={6} md={4}>
                     <Typography variant="subtitle2">Código</Typography>
-                    {!editMode ? (
-                      <Typography>{acopio.codigo || '—'}</Typography>
-                    ) : (
-                      <TextField
-                        size="small"
-                        fullWidth
-                        value={formAcopio.codigo}
-                        onChange={(e) => setFormAcopio((p) => ({ ...p, codigo: e.target.value }))}
-                      />
-                    )}
+                    <Typography>{acopio.codigo || '—'}</Typography>
                   </Grid>
                   <Grid item xs={12} sm={6} md={4}>
                     <Typography variant="subtitle2">Proveedor</Typography>
-                    {!editMode ? (
-                      <Typography>{acopio.proveedor || '—'}</Typography>
-                    ) : (
-                      <TextField
-                        size="small"
-                        fullWidth
-                        value={formAcopio.proveedor}
-                        onChange={(e) => setFormAcopio((p) => ({ ...p, proveedor: e.target.value }))}
-                      />
-                    )}
+                    <Typography>{acopio.proveedor || '—'}</Typography>
                   </Grid>
                   <Grid item xs={12} sm={6} md={4}>
                     <Typography variant="subtitle2">Proyecto</Typography>
-                    {!editMode ? (
-                      <Typography>{acopio.proyecto_nombre || '—'}</Typography>
-                    ) : (
-                      <TextField
-                        size="small"
-                        fullWidth
-                        value={formAcopio.proyecto_nombre}
-                        onChange={(e) => setFormAcopio((p) => ({ ...p, proyecto_nombre: e.target.value }))}
-                      />
-                    )}
+                    <Typography>{acopio.proyecto_nombre || '—'}</Typography>
                   </Grid>
                   <Grid item xs={12} sm={6} md={4}>
                     <Typography variant="subtitle2">Tipo</Typography>
-                    {!editMode ? (
-                      <Typography>{(acopio.tipo || 'materiales').replace('_', ' ')}</Typography>
-                    ) : (
-                      <TextField
-                        select
-                        size="small"
-                        fullWidth
-                        value={formAcopio.tipo}
-                        onChange={(e) => setFormAcopio((p) => ({ ...p, tipo: e.target.value }))}
-                        SelectProps={{ native: true }}
-                      >
-                        <option value="materiales">materiales</option>
-                        <option value="lista_precios">lista_precios</option>
-                      </TextField>
-                    )}
+                    <Typography>{(acopio.tipo || 'materiales').replace('_', ' ')}</Typography>
                   </Grid>
 
                   {/* KPIs */}
