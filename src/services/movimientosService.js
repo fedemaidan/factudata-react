@@ -168,6 +168,50 @@ const movimientosService = {
       return { error: true };
     }
   },
+
+  // Crear movimientos prorateados
+  crearMovimientoProrrateo: async (datosBase, distribuciones) => {
+    try {
+      console.log('📊 Enviando datos de prorrateo:', { datosBase, distribuciones });
+      
+      const response = await api.post('/movimiento/prorrateo', {
+        datosBase,
+        distribuciones
+      });
+
+      if (response.status === 201) {
+        console.log('✅ Movimientos prorrateo creados con éxito');
+        return { error: false, data: response.data };
+      } else {
+        console.error('❌ Error al crear movimientos prorrateo');
+        return { error: true, message: 'Error en la respuesta del servidor' };
+      }
+    } catch (err) {
+      console.error('❌ Error al crear movimientos prorrateo:', err);
+      return { 
+        error: true, 
+        message: err.response?.data?.error || 'Error de conexión',
+        details: err.response?.data
+      };
+    }
+  },
+
+  // Obtener movimientos por grupo de prorrateo
+  getMovimientosByGrupoProrrateo: async (grupoId) => {
+    try {
+      const response = await api.get(`/movimientos/prorrateo/${grupoId}`);
+      
+      if (response.status === 200) {
+        return response.data?.data || response.data || [];
+      } else {
+        console.error('Error al obtener movimientos de prorrateo');
+        return [];
+      }
+    } catch (err) {
+      console.error('Error al obtener movimientos de prorrateo:', err);
+      return [];
+    }
+  },
   
   
 };

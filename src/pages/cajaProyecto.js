@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useRef } from 'react';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
@@ -629,6 +629,63 @@ const sortedMovs = useMemo(() => {
   });
 }, [movimientosFiltrados]);
 
+// Agrupar movimientos por prorrateo
+const movimientosConProrrateo = useMemo(() => {
+  const grupos = {};
+  const sueltos = [];
+  
+  sortedMovs.forEach(mov => {
+    if (mov.prorrateo_grupo_id && mov.es_movimiento_prorrateo) {
+      if (!grupos[mov.prorrateo_grupo_id]) {
+        grupos[mov.prorrateo_grupo_id] = [];
+      }
+      grupos[mov.prorrateo_grupo_id].push(mov);
+    } else {
+      sueltos.push(mov);
+    }
+  });
+  
+  // Crear array final intercalando grupos y movimientos sueltos
+  const resultado = [];
+  
+  sueltos.forEach(mov => {
+    resultado.push({ tipo: 'movimiento', data: mov });
+  });
+  
+  Object.entries(grupos).forEach(([grupoId, movimientos]) => {
+    if (movimientos.length > 0) {
+      // Ordenar los movimientos del grupo por fecha y código
+      const movimientosOrdenados = movimientos.sort((a, b) => {
+        const da = getDayMs(a.fecha_factura);
+        const db = getDayMs(b.fecha_factura);
+        if (db !== da) return db - da;
+        const ca = (a.codigo_operacion || '').toString();
+        const cb = (b.codigo_operacion || '').toString();
+        return cb.localeCompare(ca, 'es-AR', { numeric: true });
+      });
+      
+      resultado.push({ 
+        tipo: 'grupo_prorrateo', 
+        grupoId, 
+        movimientos: movimientosOrdenados,
+        totalGrupo: movimientosOrdenados.reduce((sum, m) => sum + (Number(m.total) || 0), 0),
+        moneda: movimientosOrdenados[0]?.moneda || 'ARS',
+        proveedor: movimientosOrdenados[0]?.nombre_proveedor,
+        categoria: movimientosOrdenados[0]?.categoria,
+        fecha_factura: movimientosOrdenados[0]?.fecha_factura
+      });
+    }
+  });
+  
+  // Reordenar todo por fecha
+  return resultado.sort((a, b) => {
+    const getDate = (item) => {
+      if (item.tipo === 'movimiento') return getDayMs(item.data.fecha_factura);
+      return getDayMs(item.fecha_factura);
+    };
+    return getDate(b) - getDate(a);
+  });
+}, [sortedMovs]);
 
   const formatByCurrency = (currency, amount) => {
     const cur = currency === 'USD' ? 'USD' : 'ARS';
@@ -711,13 +768,13 @@ const sortedMovs = useMemo(() => {
     await updateEmpresaDetails(empresa.id, { cajas_virtuales: nuevasCajas });
   };
   
-  const totalRows = sortedMovs.length;
+  const totalRows = movimientosConProrrateo.length;
   
   const paginatedMovs = useMemo(() => {
     const start = page * rowsPerPage;
     const end = Math.min(totalRows, start + rowsPerPage);
-    return sortedMovs.slice(start, end);
-  }, [sortedMovs, page, rowsPerPage, totalRows]);
+    return movimientosConProrrateo.slice(start, end);
+  }, [movimientosConProrrateo, page, rowsPerPage, totalRows]);
   
   
   const handleRecalcularEquivalencias = async () => {
@@ -940,41 +997,98 @@ useEffect(() => {
               </Stack>
                 {isMobile ? (
                   <Stack spacing={2}>
-                    {paginatedMovs.map((mov, index) => (
-                      <Card key={index}>
-                        <CardContent>
-                          <Typography variant="h6" color={mov.type === "ingreso" ? "green" : "red"}>
-                            {mov.type === "ingreso" ? `Ingreso: ${formatCurrency(mov.total)}` : `Egreso: ${formatCurrency(mov.total)}`}
-                          </Typography>
-                          {mov.obra && <Typography variant="body2"><b>Obra:</b> {mov.obra}</Typography>}
-                          {mov.cliente && <Typography variant="body2"><b>Cliente:</b> {mov.cliente}</Typography>}
-                          <Typography variant="body2">{mov.observacion}</Typography>
-                          {mov.tc && <Typography variant="body2">Tipo de cambio: ${mov.tc}</Typography>}
-                          <Typography variant="caption" color="textSecondary">
-                            {formatTimestamp(mov.fecha_factura, "DIA/MES/ANO")}
-                          </Typography>
-                          <Typography variant="body2" color="textSecondary">
-                            Código de operación: {mov.codigo_operacion || "Ninguno"}
-                          </Typography>
-                          <Stack direction="row" spacing={1} mt={2}>
-                            <Button
-                              color="primary"
-                              startIcon={<EditIcon />}
-                              onClick={() => goToEdit(mov)}
-                            >
-                              Ver / Editar 
-                            </Button>
-                            <Button
-                              color="error"
-                              startIcon={<DeleteIcon />}
-                              onClick={() => handleEliminarClick(mov.id)}
-                            >
-                              {deletingElement !== mov.id ? "Eliminar" : "Eliminando..."}
-                            </Button>
-                          </Stack>
-                        </CardContent>
-                      </Card>
-                    ))}
+                    {paginatedMovs.map((item, index) => {
+                      // Si es un grupo de prorrateo - mostrar solo los movimientos individuales
+                      if (item.tipo === 'grupo_prorrateo') {
+                        return (
+                          <React.Fragment key={`grupo-${item.grupoId}`}>
+                            {item.movimientos.map((mov, subIndex) => {
+                              const amountColor = mov.type === 'ingreso' ? 'success.main' : 'error.main';
+                              
+                              return (
+                                <Card key={`${item.grupoId}-${subIndex}`} sx={{ mb: 1 }}>
+                                  <CardContent>
+                                    <Stack direction="row" spacing={2} alignItems="center">
+                                      <Box sx={{ flex: 1 }}>
+                                        <Stack direction="row" spacing={1} alignItems="center">
+                                          <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                                            {mov.codigo_operacion}
+                                          </Typography>
+                                          <Chip size="small" label="Prorrateo" variant="outlined" color="info" />
+                                        </Stack>
+                                        <Typography variant="body2">{mov.descripcion}</Typography>
+                                        <Typography variant="caption" color="textSecondary">
+                                          {formatTimestamp(mov.fecha_factura, "DIA/MES/ANO")} • {mov.categoria}
+                                        </Typography>
+                                      </Box>
+                                      <Typography variant="h6" color={amountColor}>
+                                        {formatByCurrency(mov.moneda, mov.total)}
+                                      </Typography>
+                                    </Stack>
+                                    <Stack direction="row" spacing={1} mt={1}>
+                                      <Button
+                                        size="small"
+                                        color="primary"
+                                        startIcon={<EditIcon />}
+                                        onClick={() => goToEdit(mov)}
+                                      >
+                                        Editar
+                                      </Button>
+                                      <Button
+                                        size="small"
+                                        color="error"
+                                        startIcon={<DeleteIcon />}
+                                        onClick={() => handleEliminarClick(mov.id)}
+                                      >
+                                        Eliminar
+                                      </Button>
+                                    </Stack>
+                                  </CardContent>
+                                </Card>
+                              );
+                            })}
+                          </React.Fragment>
+                        );
+                      }
+                      
+                      // Si es un movimiento normal
+                      const mov = item.data;
+                      return (
+                        <Card key={index}>
+                          <CardContent>
+                            <Typography variant="h6" color={mov.type === "ingreso" ? "green" : "red"}>
+                              {mov.type === "ingreso" ? `Ingreso: ${formatCurrency(mov.total)}` : `Egreso: ${formatCurrency(mov.total)}`}
+                            </Typography>
+                            {mov.obra && <Typography variant="body2"><b>Obra:</b> {mov.obra}</Typography>}
+                            {mov.cliente && <Typography variant="body2"><b>Cliente:</b> {mov.cliente}</Typography>}
+                            <Typography variant="body2">{mov.observacion}</Typography>
+                            {mov.tc && <Typography variant="body2">Tipo de cambio: ${mov.tc}</Typography>}
+                            <Typography variant="caption" color="textSecondary">
+                              {formatTimestamp(mov.fecha_factura, "DIA/MES/ANO")}
+                            </Typography>
+                            <Typography variant="body2" color="textSecondary">
+                              Código de operación: {mov.codigo_operacion || "Ninguno"}
+                            </Typography>
+                            <Stack direction="row" spacing={1} mt={2}>
+                              <Button
+                                color="primary"
+                                startIcon={<EditIcon />}
+                                onClick={() => goToEdit(mov)}
+                              >
+                                Ver / Editar 
+                              </Button>
+                              <Button
+                                color="error"
+                                startIcon={<DeleteIcon />}
+                                onClick={() => handleEliminarClick(mov.id)}
+                              >
+                                {deletingElement !== mov.id ? "Eliminar" : "Eliminando..."}
+                              </Button>
+                            </Stack>
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
                     
                   </Stack>
                 ) : (
@@ -1326,7 +1440,231 @@ useEffect(() => {
     </TableHead>
 
     <TableBody>
-      {paginatedMovs.map((mov, index) => {
+      {paginatedMovs.map((item, index) => {
+        // Si es un grupo de prorrateo
+        if (item.tipo === 'grupo_prorrateo') {
+          return (
+            <React.Fragment key={`grupo-${item.grupoId}`}>
+              {/* Sin fila de encabezado - solo mostrar los movimientos individuales */}
+              
+              {/* Filas de los movimientos del grupo */}
+              {item.movimientos.map((mov, subIndex) => {
+                const amountColor =
+                  compactCols
+                    ? (mov.type === 'ingreso' ? 'success.main' : 'error.main')
+                    : 'inherit';
+                
+                return (
+                  <TableRow 
+                    key={`${item.grupoId}-${subIndex}`} 
+                    hover
+                  >
+                    {visibleCols.codigo && (
+                      <TableCell
+                        sx={{ 
+                          ...cellBase, 
+                          minWidth: COLS.codigo, 
+                          position: 'sticky', 
+                          left: 0, 
+                          zIndex: 1, 
+                          bgcolor: 'background.paper'
+                        }}
+                      >
+                        <Stack direction="row" spacing={1} alignItems="center">
+                          <Typography variant="body2">
+                            {mov.codigo_operacion || mov.codigo || mov.id || 'Sin código'}
+                          </Typography>
+                          <Chip size="small" label="P" variant="outlined" color="info" sx={{ fontSize: '0.7rem', height: 16 }} />
+                        </Stack>
+                      </TableCell>
+                    )}
+
+                    {compactCols ? (
+                      visibleCols.fechas && (
+                        <TableCell sx={{ ...cellBase, minWidth: COLS.fecha + 40 }}>
+                          <Stack direction="row" spacing={1} divider={<span>•</span>}>
+                            <Typography variant="body2">Fac: {formatTimestamp(mov.fecha_factura, "DIA/MES/ANO")}</Typography>
+                            <Typography variant="body2" color="text.secondary">
+                              Cre: {formatTimestamp(mov.fecha_creacion, "DIA/MES/ANO")}
+                            </Typography>
+                          </Stack>
+                        </TableCell>
+                      )
+                    ) : (
+                      <>
+                        {visibleCols.fechaFactura && (
+                          <TableCell sx={{ ...cellBase, minWidth: COLS.fecha }}>
+                            {formatTimestamp(mov.fecha_factura, "DIA/MES/ANO")}
+                          </TableCell>
+                        )}
+                        {visibleCols.fechaCreacion && (
+                          <TableCell sx={{ ...cellBase, minWidth: COLS.fecha }}>
+                            {formatTimestamp(mov.fecha_creacion, "DIA/MES/ANO")}
+                          </TableCell>
+                        )}
+                      </>
+                    )}
+
+                    {!compactCols && visibleCols.tipo && (
+                      <TableCell sx={{ ...cellBase, minWidth: COLS.tipo }}>
+                        <Chip
+                          label={mov.type === 'ingreso' ? 'Ingreso' : 'Egreso'}
+                          color={mov.type === 'ingreso' ? 'success' : 'error'}
+                          size="small"
+                        />
+                      </TableCell>
+                    )}
+
+                    {visibleCols.total && (
+                      <TableCell
+                        sx={{ ...cellBase, minWidth: COLS.total, textAlign: 'right', fontWeight: 700, color: amountColor }}
+                      >
+                        {formatCurrency(mov.total)}
+                      </TableCell>
+                    )}
+
+                    {visibleCols.categoria && (
+                      <TableCell sx={{ ...cellBase, minWidth: COLS.categoria }}>
+                        {compactCols
+                          ? (
+                            <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+                              <span>{mov.categoria}</span>
+                              {empresa?.comprobante_info?.subcategoria && mov.subcategoria && (
+                                <Typography variant="caption" color="text.secondary">/ {mov.subcategoria}</Typography>
+                              )}
+                            </Stack>
+                          )
+                          : mov.categoria}
+                      </TableCell>
+                    )}
+
+                    {!compactCols && empresa?.comprobante_info?.subcategoria && visibleCols.subcategoria && (
+                      <TableCell sx={{ ...cellBase, minWidth: COLS.subcategoria }}>
+                        {mov.subcategoria}
+                      </TableCell>
+                    )}
+
+                    {empresa?.comprobante_info?.medio_pago && visibleCols.medioPago && (
+                      <TableCell sx={{ ...cellBase, minWidth: COLS.medioPago }}>
+                        <Chip size="small" label={mov.medio_pago || '-'} />
+                      </TableCell>
+                    )}
+
+                    {visibleCols.proveedor && (
+                      <TableCell sx={ellipsis(COLS.proveedor)}>
+                        <Tooltip title={mov.nombre_proveedor || ''}>
+                          <span>{mov.nombre_proveedor}</span>
+                        </Tooltip>
+                      </TableCell>
+                    )}
+
+                    {visibleCols.obra && (
+                      <TableCell sx={ellipsis(COLS.obra)}>
+                        <Tooltip title={mov.obra || ''}>
+                          <span>{mov.obra || '—'}</span>
+                        </Tooltip>
+                      </TableCell>
+                    )}
+
+                    {visibleCols.cliente && (
+                      <TableCell sx={ellipsis(COLS.cliente)}>
+                        <Tooltip title={mov.cliente || ''}>
+                          <span>{mov.cliente || '—'}</span>
+                        </Tooltip>
+                      </TableCell>
+                    )}
+
+                    {visibleCols.observacion && (
+                      <TableCell sx={ellipsis(COLS.observacion)}>
+                        <Tooltip title={mov.observacion || ''}>
+                          <span>{mov.observacion}</span>
+                        </Tooltip>
+                      </TableCell>
+                    )}
+
+                    {visibleCols.tc && (
+                      <TableCell sx={{ ...cellBase, minWidth: COLS.tc }}>
+                        {mov.tc ? `$ ${mov.tc}` : '-'}
+                      </TableCell>
+                    )}
+
+                    {visibleCols.usd && (
+                      <TableCell sx={{ ...cellBase, minWidth: COLS.usd }}>
+                        {mov.equivalencias
+                          ? `US$ ${mov.equivalencias.total.usd_blue?.toLocaleString('es-AR', { minimumFractionDigits: 2 })}`
+                          : '-'}
+                      </TableCell>
+                    )}
+
+                    {visibleCols.mep && (
+                      <TableCell sx={{ ...cellBase, minWidth: COLS.mep }}>
+                        {mov.equivalencias
+                          ? `US$ ${mov.equivalencias.total.usd_mep_medio?.toLocaleString('es-AR', { minimumFractionDigits: 2 })}`
+                          : '-'}
+                      </TableCell>
+                    )}
+
+                    {empresa?.con_estados && visibleCols.estado && (
+                      <TableCell sx={{ ...cellBase, minWidth: COLS.estado }}>
+                        {mov.estado ? <Chip size="small" label={mov.estado} /> : ''}
+                      </TableCell>
+                    )}
+
+                    {visibleCols.empresaFacturacion && (
+                      <TableCell sx={{ ...cellBase, minWidth: COLS.empresaFacturacion }}>
+                        {mov.empresa_facturacion || '—'}
+                      </TableCell>
+                    )}
+
+                    {visibleCols.fechaPago && (
+                      <TableCell sx={{ ...cellBase, minWidth: COLS.fechaPago }}>
+                        {mov.fecha_pago ? formatTimestamp(mov.fecha_pago, "DIA/MES/ANO") : '—'}
+                      </TableCell>
+                    )}
+
+                    {visibleCols.acciones && (
+                      <TableCell sx={{
+                        ...cellBase,
+                        minWidth: COLS.acciones,
+                        textAlign: 'center',
+                        position: 'sticky',
+                        right: 0,
+                        zIndex: 1,
+                        bgcolor: 'background.paper',
+                        boxShadow: 'inset 8px 0 8px -8px rgba(0,0,0,0.12)',
+                      }}>    
+                          {mov.url_imagen && <IconButton
+                            size="small"
+                            onClick={() => openImg(mov.url_imagen)}
+                          >
+                            <ImageIcon fontSize="small" />
+                          </IconButton>}
+                        <IconButton
+                          size="small"
+                          color="primary"
+                          onClick={() => goToEdit(mov)}
+                        >
+                          <EditIcon fontSize="small" />
+                        </IconButton>
+                        <IconButton
+                          size="small"
+                          color="error"
+                          onClick={() => handleEliminarClick(mov.id)}
+                          disabled={deletingElement === mov.id}
+                        >
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      </TableCell>
+                    )}
+                  </TableRow>
+                );
+              })}
+            </React.Fragment>
+          );
+        }
+        
+        // Si es un movimiento normal
+        const mov = item.data;
         const amountColor =
           compactCols
             ? (mov.type === 'ingreso' ? 'success.main' : 'error.main')

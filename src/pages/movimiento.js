@@ -1,5 +1,5 @@
 import Head from 'next/head';
-import { Box, Container, TextField, Typography, Button, CircularProgress, Tab, Tabs, FormControl, InputLabel, Select, MenuItem, Autocomplete } from '@mui/material';
+import { Box, Container, TextField, Typography, Button, CircularProgress, Tab, Tabs, FormControl, InputLabel, Select, MenuItem, Autocomplete, Paper, Chip, Link } from '@mui/material';
 import { useRouter } from 'next/router';
 import React, { useEffect, useState } from 'react';
 import { useFormik } from 'formik';
@@ -28,6 +28,107 @@ const dateToTimestamp = (dateString) => {
   const timestamp = Timestamp.fromDate(date);
   
   return timestamp;
+};
+
+// Componente para mostrar información de prorrateo
+const ProrrateoInfo = ({ movimiento, onVerRelacionados }) => {
+  const [movimientosRelacionados, setMovimientosRelacionados] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const cargarMovimientosRelacionados = async () => {
+      if (!movimiento?.prorrateo_grupo_id) return;
+      
+      setLoading(true);
+      try {
+        const movimientos = await movimientosService.getMovimientosByGrupoProrrateo(movimiento.prorrateo_grupo_id);
+        // Filtrar el movimiento actual
+        const otros = movimientos.filter(m => m.id !== movimiento.id);
+        setMovimientosRelacionados(otros);
+      } catch (error) {
+        console.error('Error cargando movimientos relacionados:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    cargarMovimientosRelacionados();
+  }, [movimiento?.prorrateo_grupo_id, movimiento?.id]);
+
+  const formatCurrency = (amount, currency = 'ARS') => {
+    return new Intl.NumberFormat('es-AR', {
+      style: 'currency',
+      currency: currency,
+      minimumFractionDigits: 2
+    }).format(amount);
+  };
+
+  return (
+    <Paper sx={{ p: 4, mt: 3, backgroundColor: '#e3f2fd', border: '2px solid #1976d2' }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
+        <Chip 
+          label="🔄 MOVIMIENTO PRORRATEADO" 
+          color="primary" 
+          variant="filled" 
+          sx={{ fontSize: '0.875rem', fontWeight: 'bold' }}
+        />
+      </Box>
+
+      <Typography variant="h6" gutterBottom color="primary" sx={{ mb: 2 }}>
+        📊 Distribución del Gasto
+      </Typography>
+      
+      <Box sx={{ mb: 3, bgcolor: 'white', p: 2, borderRadius: 1, border: '1px solid #bbdefb' }}>
+        <Typography variant="body1" sx={{ fontWeight: 'bold', mb: 1, color: 'primary.main' }}>
+          💰 Este proyecto: {formatCurrency(movimiento.total, movimiento.moneda)} 
+          {movimiento.prorrateo_porcentaje && ` (${movimiento.prorrateo_porcentaje}%)`}
+        </Typography>
+        
+        {loading && (
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <CircularProgress size={16} />
+            <Typography variant="body2" color="text.secondary">
+              Cargando distribución completa...
+            </Typography>
+          </Box>
+        )}
+        
+        {!loading && movimientosRelacionados.length > 0 && (
+          <Box sx={{ mt: 2 }}>
+            <Typography variant="body2" sx={{ fontWeight: 'bold', mb: 1 }}>
+              Otros proyectos:
+            </Typography>
+            {movimientosRelacionados.map((mov, index) => (
+              <Typography key={mov.id} variant="body2" color="text.secondary" sx={{ ml: 2, mb: 0.5 }}>
+                • <strong>{mov.proyecto}:</strong> {formatCurrency(mov.total, mov.moneda)}
+                {mov.prorrateo_porcentaje && ` (${mov.prorrateo_porcentaje}%)`}
+              </Typography>
+            ))}
+          </Box>
+        )}
+      </Box>
+
+      {movimientosRelacionados.length > 0 && (
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <Button
+            variant="contained"
+            size="medium"
+            onClick={onVerRelacionados}
+            sx={{ alignSelf: 'flex-start' }}
+          >
+            Ver todos los movimientos ({movimientosRelacionados.length + 1})
+          </Button>
+          
+          <Typography variant="body1" sx={{ fontWeight: 'bold', color: 'success.main' }}>
+            💸 Total distribuido: {formatCurrency(
+              Number(movimiento.total) + movimientosRelacionados.reduce((sum, m) => sum + Number(m.total), 0),
+              movimiento.moneda
+            )}
+          </Typography>
+        </Box>
+      )}
+    </Paper>
+  );
 };
 
 const MovementDataEntryPage = () => {
@@ -500,6 +601,16 @@ const MovementDataEntryPage = () => {
                   helperText={formik.touched.observacion && formik.errors.observacion}
                   margin="normal"
                 />
+
+                {/* Información de Prorrateo */}
+                {movimiento?.es_movimiento_prorrateo && (
+                  <ProrrateoInfo 
+                    movimiento={movimiento}
+                    onVerRelacionados={() => {
+                      router.push(`/movimientos-prorrateo?grupoId=${movimiento.prorrateo_grupo_id}`);
+                    }}
+                  />
+                )}
               </>
             )}
 
