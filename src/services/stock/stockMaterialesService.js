@@ -18,7 +18,6 @@ const StockMaterialesService = {
    */
   listarMateriales: async (raw = {}) => {
     if (!raw.empresa_id) throw new Error('empresa_id es requerido');
-
     const params = {
       empresa_id: String(raw.empresa_id),
 

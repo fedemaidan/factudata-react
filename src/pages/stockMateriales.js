@@ -5,7 +5,7 @@ import {
   Alert, Box, Button, Chip, Container, Dialog, DialogActions, DialogContent, DialogTitle,
   IconButton, Paper, Snackbar, Stack, Table, TableBody, TableCell, TableHead, TableRow,
   TextField, Tooltip, Typography, InputAdornment, FormControl, InputLabel, Select, MenuItem,
-  TableSortLabel, TablePagination, FormHelperText
+  TableSortLabel, TablePagination, FormHelperText, LinearProgress, Backdrop, CircularProgress
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
@@ -13,7 +13,7 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import SearchIcon from '@mui/icons-material/Search';
 
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
-import StockMaterialesService from '../../services/stock/stockMaterialesService';
+import StockMaterialesService from '../services/stock/stockMaterialesService';
 
 import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
 import { useAuthContext } from 'src/contexts/auth-context';
@@ -41,6 +41,12 @@ function addChip(list, value) {
 function removeChip(list, idx) {
   return list.filter((_, i) => i !== idx);
 }
+
+/* ======================
+   Delay mínimo para el loader
+   ====================== */
+const MIN_LOADING_MS = 1000;
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /* ====================== */
 
@@ -115,6 +121,7 @@ const StockMateriales = () => {
   // fetch al back en base a filtros/orden/paginación
   async function fetchAll() {
     setLoading(true);
+    const startedAt = Date.now(); // 👈 arranque para calcular el mínimo 1s
     try {
       const empresa = await getEmpresaDetailsFromUser(user);
 
@@ -139,6 +146,10 @@ const StockMateriales = () => {
       console.error(e);
       setAlert({ open: true, message: 'Error al cargar materiales', severity: 'error' });
     } finally {
+      // 👇 garantiza mínimo 1s de loader visible
+      const elapsed = Date.now() - startedAt;
+      const wait = Math.max(0, MIN_LOADING_MS - elapsed);
+      if (wait) await sleep(wait);
       setLoading(false);
     }
   }
@@ -376,12 +387,12 @@ const StockMateriales = () => {
                   ))}
                   <TextField
                     variant="standard"
-                    placeholder="Agregar alias (Enter , ;)"
+                    placeholder="-"
                     onKeyDown={onAliasKeyDown}
                     sx={{ minWidth: 140 }}
                   />
                 </Stack>
-                <FormHelperText>Se envía como coincidencia parcial al backend</FormHelperText>
+                <FormHelperText>Ingresa el alias y presiona ENTER para agregarlo al filtro</FormHelperText>
               </FormControl>
 
               <FormControl sx={{ minWidth: 180 }}>
@@ -402,6 +413,9 @@ const StockMateriales = () => {
 
             {/* Tabla */}
             <Paper>
+              {/* 🔵 Barra fina de carga */}
+              {loading && <LinearProgress />}
+
               <Table>
                 <TableHead>
                   <TableRow>
@@ -573,14 +587,14 @@ const StockMateriales = () => {
                   ))}
                   <TextField
                     variant="standard"
-                    placeholder="Agregar alias (Enter , ;)"
+                    placeholder="Ingresa un alias"
                     value={aliasInput}
                     onChange={(e) => setAliasInput(e.target.value)}
                     onKeyDown={onAliasFormKeyDown}
                     sx={{ minWidth: 140 }}
                   />
                 </Stack>
-                <FormHelperText>Se guarda como array de alias</FormHelperText>
+                <FormHelperText></FormHelperText>
               </FormControl>
             </Stack>
           </DialogContent>
@@ -603,6 +617,14 @@ const StockMateriales = () => {
             <Button color="error" variant="contained" onClick={remove}>Eliminar</Button>
           </DialogActions>
         </Dialog>
+
+        {/* 🔵 Overlay centrado mientras carga */}
+        <Backdrop
+          sx={{ color: '#fff', zIndex: (t) => t.zIndex.drawer + 1 }}
+          open={loading}
+        >
+          <CircularProgress />
+        </Backdrop>
       </Box>
     </>
   );
