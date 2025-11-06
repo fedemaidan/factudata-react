@@ -18,12 +18,38 @@ import StockMaterialesService from '../../services/stock/stockMaterialesService'
 import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
 import { useAuthContext } from 'src/contexts/auth-context';
 
+/* ======================
+   Helpers alias <-> chips
+   ====================== */
+function parseAliasToChips(src) {
+  if (Array.isArray(src)) {
+    return [...new Set(src.map(String).map((s) => s.trim()).filter(Boolean))];
+  }
+  if (src == null) return [];
+  return [...new Set(String(src)
+    .split(/[,;]+/g)
+    .map((s) => s.trim())
+    .filter(Boolean)
+  )];
+}
+function addChip(list, value) {
+  const v = String(value || '').trim();
+  if (!v) return list;
+  if (list.includes(v)) return list;
+  return [...list, v];
+}
+function removeChip(list, idx) {
+  return list.filter((_, i) => i !== idx);
+}
+
+/* ====================== */
+
 const emptyForm = {
   _id: '',
   nombre: '',
   SKU: '',
   desc_material: '',
-  alias: '',
+  aliasChips: [],            // ← usamos chips en el form
   empresa_id: '',
   empresa_nombre: '',
 };
@@ -32,7 +58,10 @@ const emptyForm = {
 function mapItems(items) {
   return (items || []).map((m) => ({
     ...m,
-    stockTotal: typeof m.stock === 'number' ? m.stock : (typeof m.stockTotal === 'number' ? m.stockTotal : 0),
+    stockTotal:
+      typeof m.stock === 'number'
+        ? m.stock
+        : (typeof m.stockTotal === 'number' ? m.stockTotal : 0),
     porProyecto: Array.isArray(m.porProyecto) ? m.porProyecto : [],
   }));
 }
@@ -50,8 +79,12 @@ const StockMateriales = () => {
   const [loading, setLoading] = useState(false);
 
   // estados de filtros/orden/paginación (server-side)
-  const [q, setQ] = useState('');
+  const [nombre, setNombre] = useState('');            // 🔎 nombre
+  const [descripcion, setDescripcion] = useState('');  // 🔎 descripción
+  const [sku, setSku] = useState('');                  // 🔎 SKU
+  const [aliasChips, setAliasChips] = useState([]);    // 🔎 alias (chips)
   const [stockFilter, setStockFilter] = useState('all'); // all | gt0 | eq0 | lt0
+
   const [orderBy, setOrderBy] = useState('nombre'); // nombre | descripcion | sku | stock
   const [order, setOrder] = useState('asc'); // asc | desc
   const [page, setPage] = useState(0);
@@ -67,6 +100,7 @@ const StockMateriales = () => {
   const [openForm, setOpenForm] = useState(false);
   const [isEdit, setIsEdit] = useState(false);
   const [form, setForm] = useState(emptyForm);
+  const [aliasInput, setAliasInput] = useState('');   // input del dialog chips
 
   const [openDelete, setOpenDelete] = useState(false);
   const [toDelete, setToDelete] = useState(null);
@@ -83,16 +117,21 @@ const StockMateriales = () => {
     setLoading(true);
     try {
       const empresa = await getEmpresaDetailsFromUser(user);
+
       const params = {
         empresa_id: empresa.id,
         limit: rowsPerPage,
-        page,                // ✅ tu back calcula skip = page * limit
+        page,                // tu back calcula skip = page * limit
         sort: sortParam,     // ej: "stock:desc"
       };
-      if (q?.trim()) params.nombre = q.trim(); // ✅ SOLO NOMBRE
-      if (stockFilter !== 'all') params.stockFilter = stockFilter; // 'gt0' | 'eq0' | 'lt0'
 
-      // ✅ método existente en el default export del service
+      // 🔎 filtros (solo envío si hay valor)
+      if (nombre?.trim())        params.nombre        = nombre.trim();
+      if (descripcion?.trim())   params.desc_material = descripcion.trim();
+      if (sku?.trim())           params.SKU           = sku.trim();
+      if (aliasChips.length)     params.alias         = aliasChips.join(',');
+      if (stockFilter !== 'all') params.stockFilter   = stockFilter; // 'gt0' | 'eq0' | 'lt0'
+
       const resp = await StockMaterialesService.listarMateriales(params);
       setRows(mapItems(resp.items));
       setTotal(resp.total || 0);
@@ -108,12 +147,13 @@ const StockMateriales = () => {
   useEffect(() => {
     fetchAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q, stockFilter, sortParam, page, rowsPerPage]);
+  }, [nombre, descripcion, sku, aliasChips, stockFilter, sortParam, page, rowsPerPage]);
 
   // --- crear/editar ---
   const handleOpenCreate = () => {
     setIsEdit(false);
-    setForm(emptyForm);
+    setForm({ ...emptyForm, aliasChips: [] });
+    setAliasInput('');
     setOpenForm(true);
   };
 
@@ -124,10 +164,11 @@ const StockMateriales = () => {
       nombre: row.nombre || '',
       SKU: row.SKU || '',
       desc_material: row.desc_material || '',
-      alias: Array.isArray(row.alias) ? row.alias.join(', ') : (row.alias || ''),
+      aliasChips: parseAliasToChips(row.alias),       // ← chips desde DB
       empresa_id: row.empresa_id || '',
       empresa_nombre: row.empresa_nombre || '',
     });
+    setAliasInput('');
     setOpenForm(true);
   };
 
@@ -151,7 +192,7 @@ const StockMateriales = () => {
         nombre: form.nombre?.trim(),
         SKU: form.SKU?.trim() || null,
         desc_material: form.desc_material?.trim() || null,
-        alias: form.alias?.trim() || null,
+        alias: form.aliasChips && form.aliasChips.length ? form.aliasChips : null, // ← array
         empresa_id,
         empresa_nombre,
       };
@@ -222,6 +263,41 @@ const StockMateriales = () => {
     setPage(0);
   };
 
+  // handler para agregar chip de alias (filtros)
+  const onAliasKeyDown = (e) => {
+    const raw = String(e.target.value || '');
+    const commit = (txt) => {
+      const vs = parseAliasToChips(txt);
+      if (vs.length) {
+        setAliasChips((prev) => {
+          const merged = [...prev];
+          vs.forEach((v) => { if (!merged.includes(v)) merged.push(v); });
+          return merged;
+        });
+        setPage(0);
+      }
+    };
+
+    if (e.key === 'Enter' || e.key === ',' || e.key === ';') {
+      e.preventDefault();
+      commit(raw);
+      e.target.value = '';
+    }
+  };
+
+  // handler chips dentro del diálogo (crear/editar)
+  const onAliasFormKeyDown = (e) => {
+    const raw = String(e.target.value || '');
+    if (e.key === 'Enter' || e.key === ',' || e.key === ';') {
+      e.preventDefault();
+      const newOnes = parseAliasToChips(raw);
+      if (newOnes.length) {
+        setForm((f) => ({ ...f, aliasChips: [...new Set([...(f.aliasChips || []), ...newOnes])] }));
+      }
+      setAliasInput('');
+    }
+  };
+
   return (
     <>
       <Head><title>Stock de materiales</title></Head>
@@ -238,14 +314,14 @@ const StockMateriales = () => {
               </Button>
             </Stack>
 
-            {/* Búsqueda + Filtro de stock */}
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-              {/* Buscador SOLO por nombre */}
-              <Box sx={{ flex: 1, minWidth: 260 }}>
+            {/* Filtros */}
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} flexWrap="wrap">
+              <Box sx={{ minWidth: 220, flex: 1 }}>
                 <TextField
                   fullWidth
-                  value={q}
-                  onChange={(e) => { setQ(e.target.value); setPage(0); }}
+                  label="Nombre"
+                  value={nombre}
+                  onChange={(e) => { setNombre(e.target.value); setPage(0); }}
                   placeholder="Buscar por nombre…"
                   InputProps={{
                     startAdornment: (
@@ -253,13 +329,62 @@ const StockMateriales = () => {
                     ),
                   }}
                 />
-                {/* Nota sutil/“transparente”: solo filtra por nombre */}
-                <FormHelperText sx={{ color: 'text.secondary', mt: 0.5 }}>
-                  Filtra <strong>solo por NOMBRE</strong> (búsqueda por coincidencia).
-                </FormHelperText>
               </Box>
 
-              <FormControl sx={{ minWidth: 220 }}>
+              <TextField
+                label="Descripción"
+                value={descripcion}
+                onChange={(e) => { setDescripcion(e.target.value); setPage(0); }}
+                sx={{ minWidth: 220 }}
+                placeholder="Filtrar por descripción…"
+              />
+
+              <TextField
+                label="SKU"
+                value={sku}
+                onChange={(e) => { setSku(e.target.value); setPage(0); }}
+                sx={{ minWidth: 160 }}
+                placeholder="Filtrar por SKU…"
+              />
+
+              {/* Alias en formato chips (filtro) */}
+              <FormControl sx={{ minWidth: 260, flexGrow: 1 }}>
+                <InputLabel shrink>Alias</InputLabel>
+                <Stack
+                  direction="row"
+                  spacing={1}
+                  sx={{
+                    flexWrap: 'wrap',
+                    p: 1,
+                    pt: 3.5,
+                    border: '1px solid',
+                    borderColor: 'divider',
+                    borderRadius: 1,
+                    minHeight: 56
+                  }}
+                >
+                  {aliasChips.map((a, idx) => (
+                    <Chip
+                      key={`${a}-${idx}`}
+                      label={a}
+                      onDelete={() => {
+                        setAliasChips(removeChip(aliasChips, idx));
+                        setPage(0);
+                      }}
+                      size="small"
+                    />
+                  ))}
+                  <TextField
+                    variant="standard"
+                    placeholder="Agregar alias (Enter , ;)"
+                    onKeyDown={onAliasKeyDown}
+                    sx={{ minWidth: 140 }}
+                  />
+                </Stack>
+                <FormHelperText>Se envía como coincidencia parcial al backend</FormHelperText>
+              </FormControl>
+
+              <FormControl sx={{ minWidth: 180 }}>
                 <InputLabel id="stock-filter-label">Stock</InputLabel>
                 <Select
                   labelId="stock-filter-label"
@@ -345,9 +470,13 @@ const StockMateriales = () => {
                         </Tooltip>
                       </TableCell>
                       <TableCell>{row.SKU || <em>(—)</em>}</TableCell>
-                      <TableCell sx={{ maxWidth: 240 }}>
+                      <TableCell sx={{ maxWidth: 300 }}>
                         {Array.isArray(row.alias)
-                          ? row.alias.join(', ')
+                          ? row.alias.length
+                            ? row.alias.map((a, i) => (
+                                <Chip key={`${a}-${i}`} label={a} size="small" sx={{ mr: .5, mb: .5 }} />
+                              ))
+                            : <em>(—)</em>
                           : (row.alias || <em>(—)</em>)}
                       </TableCell>
                       <TableCell align="right">
@@ -417,12 +546,42 @@ const StockMateriales = () => {
                 value={form.SKU}
                 onChange={(e) => setForm({ ...form, SKU: e.target.value })}
               />
-              <TextField
-                label="Alias (coma separada, opcional)"
-                value={form.alias}
-                onChange={(e) => setForm({ ...form, alias: e.target.value })}
-                helperText="Ej.: varilla 8, hierro 8, fi8"
-              />
+
+              {/* Alias en formato chips (crear/editar) */}
+              <FormControl>
+                <InputLabel shrink>Alias (chips)</InputLabel>
+                <Stack
+                  direction="row"
+                  spacing={1}
+                  sx={{
+                    flexWrap: 'wrap',
+                    p: 1,
+                    pt: 3.5,
+                    border: '1px solid',
+                    borderColor: 'divider',
+                    borderRadius: 1,
+                    minHeight: 56
+                  }}
+                >
+                  {(form.aliasChips || []).map((a, idx) => (
+                    <Chip
+                      key={`${a}-${idx}`}
+                      label={a}
+                      onDelete={() => setForm(f => ({ ...f, aliasChips: removeChip(f.aliasChips, idx) }))}
+                      size="small"
+                    />
+                  ))}
+                  <TextField
+                    variant="standard"
+                    placeholder="Agregar alias (Enter , ;)"
+                    value={aliasInput}
+                    onChange={(e) => setAliasInput(e.target.value)}
+                    onKeyDown={onAliasFormKeyDown}
+                    sx={{ minWidth: 140 }}
+                  />
+                </Stack>
+                <FormHelperText>Se guarda como array de alias</FormHelperText>
+              </FormControl>
             </Stack>
           </DialogContent>
           <DialogActions>
