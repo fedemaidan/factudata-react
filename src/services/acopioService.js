@@ -171,6 +171,7 @@ cambiarEstadoAcopio: async (acopioId, activo) => {
   consultarEstadoExtraccion: async (taskId) => {
     try {
       const response = await api.get(`/acopio/compra/extraer/status/${taskId}`);
+      console.log(response.data)
       return response.data;
     } catch (error) {
       console.error('❌ Error al consultar estado de extracción:', error);
@@ -547,6 +548,28 @@ editarAcopio: async (acopioId, acopioData) => {
   }
 },
 
+/**
+ * Actualiza campos específicos de un acopio (tipo, valorTotal, etc.)
+ * @param {string} acopioId - ID del acopio
+ * @param {Object} updates - Campos a actualizar
+ * @returns {Promise<boolean>}
+ */
+actualizarCamposAcopio: async (acopioId, updates) => {
+  try {
+    const response = await api.patch(`/acopio/${acopioId}`, updates);
+    if (response.status === 200) {
+      console.log('✅ Campos del acopio actualizados con éxito');
+      return true;
+    } else {
+      console.error('❌ Error al actualizar campos del acopio');
+      return false;
+    }
+  } catch (error) {
+    console.error('❌ Error en actualizarCamposAcopio:', error);
+    return false;
+  }
+},
+
   /**
    * Sube 1..N hojas (imágenes o PDF) al acopio. Se usa para “lista de precios” o comprobantes.
    * POST /acopio/:acopioId/hojas  (multipart)
@@ -599,8 +622,6 @@ editarAcopio: async (acopioId, acopioData) => {
       throw error;
     }
   },
-
-
 
 };
 

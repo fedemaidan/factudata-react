@@ -101,11 +101,13 @@ const getCategoriasARSFromProyecto = (p) => {
 }
 
 
-function BoxDashboardHeader({ projects }) {
+function BoxDashboardHeader({ projects, filteredProjects }) {
   const totals = useMemo(() => {
-    const ars = sum(projects.map((p) => p.cajas?.ARS || 0))
-    const usd = sum(projects.map((p) => p.cajas?.USD || 0))
-    const lastDates = projects
+    // Calcular totales solo con proyectos filtrados
+    const projectsToCalc = filteredProjects || projects
+    const ars = sum(projectsToCalc.map((p) => p.cajas?.ARS || 0))
+    const usd = sum(projectsToCalc.map((p) => p.cajas?.USD || 0))
+    const lastDates = projectsToCalc
         .map((p) => {
           const f = p?.ultimoMovimiento?.fecha
           if (!f) return 0
@@ -123,10 +125,10 @@ function BoxDashboardHeader({ projects }) {
         .filter((t) => t > 0)
 
     const last = lastDates.length ? Math.max(...lastDates) : null
-    const activos = projects.filter((p) => p.estado === 'activo').length
-    const conAlertas = projects.filter((p) => (p.cajas?.ARS || 0) < 1).length
+    const activos = projects.filter((p) => p.activo === true).length
+    const conAlertas = projectsToCalc.filter((p) => (p.cajas?.ARS || 0) < 1).length
     return { ars, usd, last, activos, conAlertas }
-  }, [projects])
+  }, [projects, filteredProjects])
 
   return (
     <Grid container spacing={2} sx={{ mb: 2 }}>
@@ -197,20 +199,41 @@ function FiltersBar({ filtro, setFiltro }) {
       <TextField
         size="small"
         select
-        label="Estado"
-        value={filtro.estado}
-        onChange={(e) => setFiltro((f) => ({ ...f, estado: e.target.value }))}
-        sx={{ minWidth: 180 }}
+        label="Activo"
+        value={filtro.activo}
+        onChange={(e) => setFiltro((f) => ({ ...f, activo: e.target.value }))}
+        sx={{ 
+          minWidth: 180,
+          '& .MuiOutlinedInput-root': {
+            backgroundColor: filtro.activo === 'true' ? 'success.light' : 
+                           filtro.activo === 'false' ? 'error.light' : 'inherit',
+            '&:hover': {
+              backgroundColor: filtro.activo === 'true' ? 'success.light' : 
+                             filtro.activo === 'false' ? 'error.light' : 'inherit',
+            },
+          },
+          '& .MuiInputLabel-root': {
+            color: filtro.activo === 'true' ? 'success.main' : 
+                   filtro.activo === 'false' ? 'error.main' : 'inherit',
+            '&.Mui-focused': {
+              color: filtro.activo === 'true' ? 'success.main' : 
+                     filtro.activo === 'false' ? 'error.main' : 'primary.main',
+            }
+          },
+          '& .MuiOutlinedInput-notchedOutline': {
+            borderColor: filtro.activo === 'true' ? 'success.main' : 
+                        filtro.activo === 'false' ? 'error.main' : 'inherit',
+          },
+        }}
       >
         <MenuItem value="ALL">Todos</MenuItem>
-        <MenuItem value="activo">Activo</MenuItem>
-        <MenuItem value="cierre">En cierre</MenuItem>
-        <MenuItem value="inactiva">Inactiva</MenuItem>
+        <MenuItem value="true" sx={{ color: 'success.main', fontWeight: 'medium' }}>✓ Activo</MenuItem>
+        <MenuItem value="false" sx={{ color: 'error.main', fontWeight: 'medium' }}>✗ Inactivo</MenuItem>
       </TextField>
       <Button
         variant="outlined"
         startIcon={<FilterAltOffIcon />}
-        onClick={() => setFiltro({ q: '', moneda: 'ALL', estado: 'ALL' })}
+        onClick={() => setFiltro({ q: '', moneda: 'ALL', activo: 'true' })}
       >
         Limpiar filtros
       </Button>
@@ -301,14 +324,14 @@ function ProjectRow({ p, categoriaColors = {} }) {
         <TableCell>
           <Chip
             size="small"
-            label={p?.estado || 'activo'}
-            color={p?.estado === 'activo' ? 'success' : p?.estado === 'cierre' ? 'warning' : 'default'}
+            label={p?.activo === true ? 'Activo' : 'Inactivo'}
+            color={p?.activo === true ? 'success' : 'default'}
           />
         </TableCell>
 
         <TableCell>
           {(p?.cajas?.ARS || 0) < 1 && <Chip size="small" color="error" label="Saldo bajo" />}
-          {p?.estado === 'inactiva' && <Chip size="small" label="Inactivo" />}
+          {p?.activo === false && <Chip size="small" color="warning" label="Inactivo" />}
         </TableCell>
 
         <TableCell align="right">
@@ -316,7 +339,7 @@ function ProjectRow({ p, categoriaColors = {} }) {
             <Button size="small" variant="outlined" endIcon={<OpenInNewIcon />} href={`/cajaProyecto/?proyectoId=${p.id}`} target="_blank" rel="noopener">
               Ver detalles
             </Button>
-            <Button size="small" variant="contained" href={`/movementForm/?lastPageName="Resumen general"&lastPageUrl="/vistaResumen"`}  target="_blank" rel="noopener">Agregar mov.</Button>
+            <Button size="small" variant="contained" href={`/movementForm/?proyectoName=${p.nombre}&proyectoId=${p.id}&lastPageName="Resumen general"&lastPageUrl="/vistaResumen"`}  target="_blank" rel="noopener">Agregar mov.</Button>
           </Stack>
         </TableCell>
       </TableRow>
@@ -424,13 +447,23 @@ function ProjectRow({ p, categoriaColors = {} }) {
 }
 
 
-function TabPorProyecto({ projects }) {
-  const [filtro, setFiltro] = useState({ q: '', moneda: 'ALL', estado: 'ALL' })
+function TabPorProyecto({ projects, onFilterChange }) {
+  const [filtro, setFiltro] = useState({ q: '', moneda: 'ALL', activo: 'true' })
   const data = useMemo(() => {
-    return projects
+    const filtered = projects
       .filter((p) => (filtro.q ? p.nombre.toLowerCase().includes(filtro.q.toLowerCase()) : true))
-      .filter((p) => (filtro.estado === 'ALL' ? true : p.estado === filtro.estado))
-  }, [projects, filtro])
+      .filter((p) => {
+        if (filtro.activo === 'ALL') return true
+        return filtro.activo === 'true' ? p.activo === true : p.activo === false
+      })
+    
+    // Notificar cambios de filtro al componente padre
+    if (onFilterChange) {
+      onFilterChange(filtered)
+    }
+    
+    return filtered
+  }, [projects, filtro, onFilterChange])
 
   return (
     <>
@@ -562,6 +595,7 @@ function BoxSummaryPage() {
 
   const [empresa, setEmpresa] = useState(null)
   const [projects, setProjects] = useState([])
+  const [filteredProjects, setFilteredProjects] = useState([])
   const [tab, setTab] = useState(0)
   const [loading, setLoading] = useState(true)
 
@@ -596,10 +630,11 @@ function BoxSummaryPage() {
         const proys = await getProyectosFromUser(user)
         if (!mounted) return
         
-        const proysActive = proys.filter((p) => {
-          p.activo = p.activo === false ? false : true
-          return p.activo !== false
-        })
+        // const proysActive = proys.filter((p) => {
+        //   p.activo = p.activo === false ? false : true
+        //   return p.activo !== false
+        // })
+        const proysActive = proys
 
         // Normalizamos el shape esperado de la page
         const mapped = (proysActive || []).map((p) => {
@@ -629,7 +664,7 @@ function BoxSummaryPage() {
           return {
             id: p.id,
             nombre: p.nombre || 'Proyecto sin nombre',
-            estado: p.activo === false ? 'inactiva' : p.estado || 'activo',
+            activo: p.activo === false ? false : true,
             cajas,
             ultimoMovimiento,
             categorias,
@@ -669,7 +704,7 @@ function BoxSummaryPage() {
           <Stack spacing={2}>
             <Typography variant="h5">Resumen de cajas</Typography>
 
-            <BoxDashboardHeader projects={projects} />
+            <BoxDashboardHeader projects={projects} filteredProjects={filteredProjects} />
 
             <Paper elevation={0} sx={{ borderRadius: 2, border: '1px solid', borderColor: 'divider' }}>
               <Tabs value={tab} onChange={(_, v) => setTab(v)} variant="scrollable">
@@ -684,8 +719,8 @@ function BoxSummaryPage() {
                   <Typography variant="body2" color="text.secondary">No hay proyectos para mostrar.</Typography>
                 ) : (
                   <>
-                    {tab === 0 && <TabPorProyecto projects={projects} />}
-                    {tab === 1 && <TabPorCategoria projects={projects} empresa={empresa} />}
+                    {tab === 0 && <TabPorProyecto projects={projects} onFilterChange={setFilteredProjects} />}
+                    {tab === 1 && <TabPorCategoria projects={filteredProjects.length > 0 ? filteredProjects : projects} empresa={empresa} />}
                   </>
                 )}
               </Box>

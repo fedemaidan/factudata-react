@@ -71,6 +71,14 @@ const TrabajoRegistradoService = {
   update: async (id, data) => {
     const response = await api.put(`/dhn/trabajo-diario-registrado/${id}`, data);
     return response.data;
+  },
+
+  getStatsByQuincena: async (quincena) => {
+    const queryParams = new URLSearchParams({
+      quincena
+    });
+    const response = await api.get(`/dhn/trabajo-diario-registrado/stats-day-by-quincena?${queryParams}`);
+    return response.data;
   }
 };
 
