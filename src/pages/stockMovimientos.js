@@ -48,7 +48,9 @@ const StockMovimientos = () => {
   const [fUsuarioId, setFUsuarioId] = useState('');
   const [fDesde, setFDesde] = useState('');            // YYYY-MM-DD
   const [fHasta, setFHasta] = useState('');            // YYYY-MM-DD
-  const [conciliado, setConciliado] = useState('false'); // 'true' | 'false' (obligatorio)
+  const [fMaterial, setFMaterial] = useState('');      // Nombre del material (solo aplica si conciliado === 'true')
+  // '' = TODOS, 'true' = Conciliado, 'false' = No conciliado
+  const [conciliado, setConciliado] = useState('');
 
   // sort + paginación server-side
   const [orderBy, setOrderBy] = useState('fecha');
@@ -90,7 +92,6 @@ const StockMovimientos = () => {
 
   // ====== consulta principal ======
   async function fetchAll() {
-    if (!conciliado) return;
     setLoading(true);
     try {
       const empresa = await getEmpresaDetailsFromUser(user);
@@ -104,7 +105,9 @@ const StockMovimientos = () => {
         ...(fUsuarioId ? { usuario_id: fUsuarioId } : {}),
         ...(fDesde ? { fecha_desde: fDesde } : {}),
         ...(fHasta ? { fecha_hasta: fHasta } : {}),
-        conciliado,
+        // Material solo si está conciliado
+        ...(conciliado === 'true' && fMaterial.trim() ? { material_nombre: fMaterial.trim() } : {}),
+        ...(conciliado !== '' ? { conciliado } : {}),
       };
       const resp = await StockMovimientosService.listarMovimientos(params);
       const items = resp.items || [];
@@ -142,7 +145,7 @@ const StockMovimientos = () => {
   useEffect(() => {
     fetchAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fNombre, fProyectoId, fUsuarioId, fDesde, fHasta, conciliado, sortParam, page, rowsPerPage]);
+  }, [fNombre, fProyectoId, fUsuarioId, fDesde, fHasta, fMaterial, conciliado, sortParam, page, rowsPerPage]);
 
   // ====== orden ======
   const handleRequestSort = (property) => {
@@ -191,7 +194,8 @@ const StockMovimientos = () => {
     },
     fDesde && { k: 'Desde', v: fDesde, onDelete: () => setFDesde('') },
     fHasta && { k: 'Hasta', v: fHasta, onDelete: () => setFHasta('') },
-    conciliado && { k: 'Conciliación', v: conciliado === 'true' ? 'Conciliado' : 'No conciliado', onDelete: () => setConciliado('false') },
+    conciliado === 'true' && fMaterial.trim() && { k: 'Material', v: fMaterial, onDelete: () => setFMaterial('') },
+    conciliado !== '' && { k: 'Conciliación', v: conciliado === 'true' ? 'Conciliado' : 'No conciliado', onDelete: () => setConciliado('') },
   ].filter(Boolean);
 
   const limpiarFiltros = () => {
@@ -200,7 +204,8 @@ const StockMovimientos = () => {
     setFUsuarioId('');
     setFDesde('');
     setFHasta('');
-    setConciliado('false');
+    setFMaterial('');
+    setConciliado('');
     setPage(0);
   };
 
@@ -264,10 +269,20 @@ const StockMovimientos = () => {
                       value={conciliado}
                       onChange={(e) => { setConciliado(e.target.value); setPage(0); }}
                     >
+                      <MenuItem value=""><em>— Todos —</em></MenuItem>
                       <MenuItem value="false">No conciliado</MenuItem>
                       <MenuItem value="true">Conciliado</MenuItem>
                     </Select>
                   </FormControl>
+
+                  <TextField
+                    label="Material (conciliado)"
+                    value={fMaterial}
+                    onChange={(e) => { setFMaterial(e.target.value); setPage(0); }}
+                    placeholder="Ej. Hierro del 8"
+                    disabled={conciliado !== 'true'}
+                    sx={{ minWidth: 260, flex: 1 }}
+                  />
                 </Stack>
 
                 <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
