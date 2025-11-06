@@ -19,7 +19,7 @@ import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
 import { useAuthContext } from 'src/contexts/auth-context';
 
 /* ======================
-   Helpers alias <-> chips
+   Helpers alias <-> chips (para crear/editar)
    ====================== */
 function parseAliasToChips(src) {
   if (Array.isArray(src)) {
@@ -31,12 +31,6 @@ function parseAliasToChips(src) {
     .map((s) => s.trim())
     .filter(Boolean)
   )];
-}
-function addChip(list, value) {
-  const v = String(value || '').trim();
-  if (!v) return list;
-  if (list.includes(v)) return list;
-  return [...list, v];
 }
 function removeChip(list, idx) {
   return list.filter((_, i) => i !== idx);
@@ -55,7 +49,7 @@ const emptyForm = {
   nombre: '',
   SKU: '',
   desc_material: '',
-  aliasChips: [],            // ← usamos chips en el form
+  aliasChips: [],            // ← chips en el form
   empresa_id: '',
   empresa_nombre: '',
 };
@@ -88,7 +82,7 @@ const StockMateriales = () => {
   const [nombre, setNombre] = useState('');            // 🔎 nombre
   const [descripcion, setDescripcion] = useState('');  // 🔎 descripción
   const [sku, setSku] = useState('');                  // 🔎 SKU
-  const [aliasChips, setAliasChips] = useState([]);    // 🔎 alias (chips)
+  const [aliasText, setAliasText] = useState('');      // 🔎 alias como texto
   const [stockFilter, setStockFilter] = useState('all'); // all | gt0 | eq0 | lt0
 
   const [orderBy, setOrderBy] = useState('nombre'); // nombre | descripcion | sku | stock
@@ -121,7 +115,7 @@ const StockMateriales = () => {
   // fetch al back en base a filtros/orden/paginación
   async function fetchAll() {
     setLoading(true);
-    const startedAt = Date.now(); // 👈 arranque para calcular el mínimo 1s
+    const startedAt = Date.now();
     try {
       const empresa = await getEmpresaDetailsFromUser(user);
 
@@ -136,7 +130,7 @@ const StockMateriales = () => {
       if (nombre?.trim())        params.nombre        = nombre.trim();
       if (descripcion?.trim())   params.desc_material = descripcion.trim();
       if (sku?.trim())           params.SKU           = sku.trim();
-      if (aliasChips.length)     params.alias         = aliasChips.join(',');
+      if (aliasText?.trim())     params.alias         = aliasText.trim();
       if (stockFilter !== 'all') params.stockFilter   = stockFilter; // 'gt0' | 'eq0' | 'lt0'
 
       const resp = await StockMaterialesService.listarMateriales(params);
@@ -146,7 +140,7 @@ const StockMateriales = () => {
       console.error(e);
       setAlert({ open: true, message: 'Error al cargar materiales', severity: 'error' });
     } finally {
-      // 👇 garantiza mínimo 1s de loader visible
+      // mínimo 1s de loader visible
       const elapsed = Date.now() - startedAt;
       const wait = Math.max(0, MIN_LOADING_MS - elapsed);
       if (wait) await sleep(wait);
@@ -158,7 +152,7 @@ const StockMateriales = () => {
   useEffect(() => {
     fetchAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nombre, descripcion, sku, aliasChips, stockFilter, sortParam, page, rowsPerPage]);
+  }, [nombre, descripcion, sku, aliasText, stockFilter, sortParam, page, rowsPerPage]);
 
   // --- crear/editar ---
   const handleOpenCreate = () => {
@@ -274,28 +268,6 @@ const StockMateriales = () => {
     setPage(0);
   };
 
-  // handler para agregar chip de alias (filtros)
-  const onAliasKeyDown = (e) => {
-    const raw = String(e.target.value || '');
-    const commit = (txt) => {
-      const vs = parseAliasToChips(txt);
-      if (vs.length) {
-        setAliasChips((prev) => {
-          const merged = [...prev];
-          vs.forEach((v) => { if (!merged.includes(v)) merged.push(v); });
-          return merged;
-        });
-        setPage(0);
-      }
-    };
-
-    if (e.key === 'Enter' || e.key === ',' || e.key === ';') {
-      e.preventDefault();
-      commit(raw);
-      e.target.value = '';
-    }
-  };
-
   // handler chips dentro del diálogo (crear/editar)
   const onAliasFormKeyDown = (e) => {
     const raw = String(e.target.value || '');
@@ -358,42 +330,15 @@ const StockMateriales = () => {
                 placeholder="Filtrar por SKU…"
               />
 
-              {/* Alias en formato chips (filtro) */}
-              <FormControl sx={{ minWidth: 260, flexGrow: 1 }}>
-                <InputLabel shrink>Alias</InputLabel>
-                <Stack
-                  direction="row"
-                  spacing={1}
-                  sx={{
-                    flexWrap: 'wrap',
-                    p: 1,
-                    pt: 3.5,
-                    border: '1px solid',
-                    borderColor: 'divider',
-                    borderRadius: 1,
-                    minHeight: 56
-                  }}
-                >
-                  {aliasChips.map((a, idx) => (
-                    <Chip
-                      key={`${a}-${idx}`}
-                      label={a}
-                      onDelete={() => {
-                        setAliasChips(removeChip(aliasChips, idx));
-                        setPage(0);
-                      }}
-                      size="small"
-                    />
-                  ))}
-                  <TextField
-                    variant="standard"
-                    placeholder="-"
-                    onKeyDown={onAliasKeyDown}
-                    sx={{ minWidth: 140 }}
-                  />
-                </Stack>
-                <FormHelperText>Ingresa el alias y presiona ENTER para agregarlo al filtro</FormHelperText>
-              </FormControl>
+              {/* Alias como texto (filtro) */}
+              <TextField
+                label="Alias"
+                value={aliasText}
+                onChange={(e) => { setAliasText(e.target.value); setPage(0); }}
+                sx={{ minWidth: 220 }}
+                placeholder="Filtrar por alias…"
+                helperText="Coincidencia parcial en cualquier alias"
+              />
 
               <FormControl sx={{ minWidth: 180 }}>
                 <InputLabel id="stock-filter-label">Stock</InputLabel>
@@ -587,14 +532,14 @@ const StockMateriales = () => {
                   ))}
                   <TextField
                     variant="standard"
-                    placeholder="Ingresa un alias"
+                    placeholder="Ingresa un alias (Enter , ;)"
                     value={aliasInput}
                     onChange={(e) => setAliasInput(e.target.value)}
                     onKeyDown={onAliasFormKeyDown}
                     sx={{ minWidth: 140 }}
                   />
                 </Stack>
-                <FormHelperText></FormHelperText>
+                <FormHelperText>Se guarda como array de alias</FormHelperText>
               </FormControl>
             </Stack>
           </DialogContent>
