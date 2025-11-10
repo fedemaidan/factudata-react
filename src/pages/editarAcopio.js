@@ -43,6 +43,7 @@ export default function EditarAcopioPage() {
   const [proyecto, setProyecto] = useState('');
   const [tipoLista, setTipoLista] = useState('');
   const [valorTotal, setValorTotal] = useState(0);
+  const [actualizacionAutomatica, setActualizacionAutomatica] = useState(false); // Por defecto manual
   const [productos, setProductos] = useState([]);
   const [urls, setUrls] = useState([]);
 
@@ -80,26 +81,97 @@ const goNext = () => setCurrentIdx((i) => (i + 1) % (urls?.length || 0));
         setProyectosOptions(proyectos);
 
         const acopio = await AcopioService.obtenerAcopio(acopioId);
-        setCodigo(acopio.codigo || '');
-        setTipoLista(acopio.tipo || '');
-        setProveedor(acopio.proveedor || '');
-        setProyecto(acopio.proyecto_id || '');
-        setValorTotal(acopio.valorTotal || 0);
-        setUrls(acopio.url_imagen_compra || acopio.url_image || []);
-        setCurrentIdx(0);
-
-        const movimientos = await AcopioService.obtenerCompras(acopioId);
+        console.log('Acopio cargado:', acopio); // Para debug
         
-        setProductos(
-          (movimientos || []).map((m, i) => ({
-            id: `${acopioId}-${i}-${m.codigo || Math.random()}`,
-            codigo: m.codigo || '',
-            descripcion: m.descripcion || '',
-            cantidad: m.cantidad || 0,
-            valorUnitario: m.valorUnitario || 0,
-            valorTotal: m.valorTotal || 0,
-          }))
+        // El backend devuelve { acopio: {...} } o directamente el objeto acopio
+        const acopioData = acopio?.acopio || acopio;
+        
+        setCodigo(acopioData.codigo || '');
+        setTipoLista(acopioData.tipo || acopioData.tipoLista || 'materiales');
+        setProveedor(acopioData.proveedor || '');
+        setProyecto(acopioData.proyecto_id || acopioData.proyectoId || '');
+        
+        // Usar el campo correcto del backend
+        const valorAcopio = acopioData.valor_acopio || acopioData.valorTotal || acopioData.valor_total || 0;
+        setValorTotal(valorAcopio);
+        
+        // Manejar las URLs de imágenes con el nombre correcto
+        const imageUrls = acopioData.url_image || acopioData.url_imagen_compra || acopioData.urls || [];
+        setUrls(Array.isArray(imageUrls) ? imageUrls : []);
+        setCurrentIdx(0);
+        
+        console.log('Datos mapeados:', {
+          codigo: acopioData.codigo,
+          tipo: acopioData.tipo,
+          proveedor: acopioData.proveedor,
+          proyecto_id: acopioData.proyecto_id,
+          valor_acopio: valorAcopio,
+          url_image: imageUrls
+        });
+
+        // Obtener productos desde compras solamente
+        let productosData = [];
+        
+        try {
+          const compras = await AcopioService.obtenerCompras(acopioId);
+          console.log('Compras cargadas:', compras);
+          
+          if (Array.isArray(compras) && compras.length > 0) {
+            // Las compras son directamente los productos/materiales
+            console.log('Procesando compras como productos directos');
+            productosData = compras;
+          } else {
+            console.log('No hay compras o el array está vacío');
+            // Si no hay compras, empezar con productos vacíos para permitir agregar manualmente
+            productosData = [];
+          }
+        } catch (err) {
+          console.error('Error al cargar compras:', err);
+          productosData = [];
+        }
+        
+        console.log('Productos finales desde compras:', productosData);
+        
+        const productosFinales = productosData.map((compra, i) => {
+          // Calcular cantidad desde valorOperacion / valorUnitario si no existe cantidad
+          const valorUnitario = compra.valorUnitario || 0;
+          const valorOperacion = compra.valorOperacion || 0;
+          const cantidadCalculada = valorUnitario > 0 ? valorOperacion / valorUnitario : 1;
+          
+          return {
+            id: `${acopioId}-${i}-${compra.id || Math.random()}`,
+            codigo: compra.codigo || '',
+            descripcion: compra.descripcion || '',
+            cantidad: compra.cantidad || cantidadCalculada || 1,
+            valorUnitario: valorUnitario,
+            valorTotal: compra.valorTotal || valorOperacion || 0,
+          };
+        });
+
+        setProductos(productosFinales);
+
+        // Verificar si el valor del backend coincide con la suma calculada
+        const sumaCalculada = productosFinales.reduce(
+          (acc, r) => acc + toNumber(r.valorTotal || r.cantidad * r.valorUnitario),
+          0
         );
+        
+        const valorDelBackend = valorAcopio;
+        const coincide = Math.abs(sumaCalculada - valorDelBackend) < 0.01;
+        
+        console.log('Verificando modo inicial:', {
+          valorDelBackend,
+          sumaCalculada,
+          coincide,
+          modoInicial: coincide ? 'automático' : 'manual'
+        });
+        
+        // Solo activar modo automático si los valores coinciden
+        if (coincide) {
+          setActualizacionAutomatica(true);
+        } else {
+          setActualizacionAutomatica(false);
+        }
       } catch (err) {
         console.error(err);
         setAlert({ open: true, message: 'Error al cargar datos', severity: 'error' });
@@ -110,36 +182,68 @@ const goNext = () => setCurrentIdx((i) => (i + 1) % (urls?.length || 0));
     cargarDatos();
   }, [empresaId, acopioId]);
 
-  // 💾 Guardar cambios
+  // 🔄 Actualizar valorTotal cuando cambien los productos (solo si está en modo automático)
+  useEffect(() => {
+    if (actualizacionAutomatica && productos.length > 0) {
+      const nuevoValorTotal = productos.reduce(
+        (acc, r) => acc + toNumber(r.valorTotal || r.cantidad * r.valorUnitario),
+        0
+      );
+      if (Math.abs(nuevoValorTotal - valorTotal) > 0.01) {
+        setValorTotal(nuevoValorTotal);
+      }
+    }
+  }, [productos, actualizacionAutomatica, valorTotal]);
+
+  // �💾 Guardar cambios
   const guardarCambios = async () => {
     try {
       setGuardando(true);
 
-      const proyecto_nombre = proyectosOptions.find((p) => p.id === proyecto)?.nombre;
-      const acopio = {
-        codigo,
-        tipo: tipoLista,
+
+
+      // 3. Actualizar proveedores si es necesario
+      if (proveedor && !proveedoresOptions.includes(proveedor)) {
+        const nuevos = [...proveedoresOptions, proveedor];
+        await updateEmpresaDetails(empresaId, { proveedores: nuevos });
+      }
+
+      // 1. Primero actualizar productos usando PUT
+      const datosProductos = {
         proveedor,
         proyecto_id: proyecto,
-        proyecto_nombre,
-        valorTotal: Number(valorTotal) || 0,
-        url_imagen_compra: urls,
+        codigo,
         productos: productos.map((p) => ({
           codigo: p.codigo,
           descripcion: p.descripcion,
           cantidad: Number(p.cantidad) || 0,
           valorUnitario: Number(p.valorUnitario) || 0,
           valorTotal: Number(p.valorTotal) || 0,
-        })),
-        empresaId,
+        }))
       };
-
-      if (proveedor && !proveedoresOptions.includes(proveedor)) {
-        const nuevos = [...proveedoresOptions, proveedor];
-        await updateEmpresaDetails(empresaId, { proveedores: nuevos });
+      
+      console.log('1. Actualizando productos:', datosProductos);
+      const resultadoProductos = await AcopioService.editarAcopio(acopioId, datosProductos);
+      console.log('1. Resultado actualización productos:', resultadoProductos);
+      
+      if (!resultadoProductos) {
+        throw new Error('Falló la actualización de productos');
       }
-
-      await AcopioService.editarAcopio(acopioId, acopio);
+      
+      // 2. Después actualizar campos del acopio (PATCH) - usando valor_acopio
+      const camposAcopio = {
+        tipo: tipoLista,
+        valor_acopio: Number(valorTotal) || 0,
+        url_image: urls,
+      };
+      
+      console.log('2. Actualizando campos del acopio (incluyendo valor_acopio):', camposAcopio);
+      const resultadoCampos = await AcopioService.actualizarCamposAcopio(acopioId, camposAcopio);
+      console.log('2. Resultado actualización campos:', resultadoCampos);
+      
+      if (resultadoCampos && resultadoCampos.error) {
+        throw new Error(`Error en campos: ${resultadoCampos.msg}`);
+      }
       setAlert({ open: true, message: '✅ Acopio actualizado con éxito.', severity: 'success' });
       setTimeout(() => router.push(`/acopios?empresaId=${empresaId}`), 1500);
     } catch (err) {
@@ -158,9 +262,22 @@ const goNext = () => setCurrentIdx((i) => (i + 1) % (urls?.length || 0));
     if (tipoLista === 'materiales') {
       updated.valorTotal = cantidad * valorUnitario;
     }
-    setProductos((rows) =>
-      rows.map((r) => (String(r.id) === String(updated.id) ? updated : r))
-    );
+    
+    setProductos((rows) => {
+      const updatedRows = rows.map((r) => (String(r.id) === String(updated.id) ? updated : r));
+      
+      // Actualizar valorTotal del acopio automáticamente solo si está en modo automático
+      if (actualizacionAutomatica) {
+        const nuevoValorTotal = updatedRows.reduce(
+          (acc, r) => acc + toNumber(r.valorTotal || r.cantidad * r.valorUnitario),
+          0
+        );
+        setValorTotal(nuevoValorTotal);
+      }
+      
+      return updatedRows;
+    });
+    
     return updated;
   };
 
@@ -169,7 +286,7 @@ const goNext = () => setCurrentIdx((i) => (i + 1) % (urls?.length || 0));
     if (!formula?.trim()) return;
     setProductos((rows) => {
       const setSelected = new Set(selectionModel.map(String));
-      return rows.map((r, i) => {
+      const updatedRows = rows.map((r, i) => {
         const id = String(r.id ?? `${i}`);
         if (scope === 'selected' && !setSelected.has(id)) return r;
         const nuevoVU = applyPriceFormulaToValue(r.valorUnitario, formula);
@@ -180,18 +297,32 @@ const goNext = () => setCurrentIdx((i) => (i + 1) % (urls?.length || 0));
         }
         return actualizado;
       });
+      
+      // Actualizar valorTotal automáticamente si está en modo automático
+      if (actualizacionAutomatica) {
+        const nuevoValorTotal = updatedRows.reduce(
+          (acc, r) => acc + toNumber(r.valorTotal || r.cantidad * r.valorUnitario),
+          0
+        );
+        setValorTotal(nuevoValorTotal);
+      }
+      
+      return updatedRows;
     });
   };
 
   const onGenerateMissingCodes = () => {
     setProductos((rows) => {
       const used = new Set(rows.map((r) => String(r.codigo || '').trim()).filter(Boolean));
-      return rows.map((r) => {
+      const updatedRows = rows.map((r) => {
         const codigo = String(r.codigo || '').trim();
         if (codigo) return r;
         const nuevo = codeFromDescription(r.descripcion, { prefix, maxLen }, used);
         return { ...r, codigo: nuevo };
       });
+      
+      // No afecta valorTotal, pero mantenemos consistencia
+      return updatedRows;
     });
   };
 
@@ -541,6 +672,16 @@ const goNext = () => setCurrentIdx((i) => (i + 1) % (urls?.length || 0));
               {/* Datos generales */}
               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
                 <TextField label="Código" value={codigo} onChange={(e) => setCodigo(e.target.value)} size="small" />
+                <TextField
+                  select
+                  label="Tipo"
+                  value={tipoLista}
+                  onChange={(e) => setTipoLista(e.target.value)}
+                  size="small"
+                >
+                  <MenuItem value="materiales">Materiales</MenuItem>
+                  <MenuItem value="lista_precios">Lista de precios</MenuItem>
+                </TextField>
                 <Autocomplete
                   freeSolo
                   options={proveedoresOptions}
@@ -564,15 +705,41 @@ const goNext = () => setCurrentIdx((i) => (i + 1) % (urls?.length || 0));
                 </TextField>
               </Stack>
 
-              
+              <Stack direction="row" spacing={2} alignItems="center">
                 <TextField
                   label="Valor acopiado"
                   value={valorTotal}
-                  onChange={(e) => setValorTotal(toNumber(e.target.value))}
+                  onChange={(e) => {
+                    setValorTotal(toNumber(e.target.value));
+                    setActualizacionAutomatica(false); // Cambiar a modo manual al editar
+                  }}
                   size="small"
                   fullWidth
+                  disabled={actualizacionAutomatica}
+                  helperText={actualizacionAutomatica ? "Se calcula automáticamente" : "Valor manual"}
                 />
-              
+                <Button
+                  variant={actualizacionAutomatica ? "contained" : "outlined"}
+                  size="small"
+                  onClick={() => {
+                    const nuevoModo = !actualizacionAutomatica;
+                    setActualizacionAutomatica(nuevoModo);
+                    
+                    if (nuevoModo) {
+                      // Al cambiar A automático, recalcular inmediatamente
+                      const nuevoValorTotal = productos.reduce(
+                        (acc, r) => acc + toNumber(r.valorTotal || r.cantidad * r.valorUnitario),
+                        0
+                      );
+                      setValorTotal(nuevoValorTotal);
+                    }
+                    // Al cambiar A manual, mantener el valor actual (no hacer nada)
+                  }}
+                  sx={{ minWidth: 120 }}
+                >
+                  {actualizacionAutomatica ? "🔄 Auto" : "✏️ Manual"}
+                </Button>
+              </Stack>
 
               {/* Acciones masivas */}
               <Stack spacing={1}>
