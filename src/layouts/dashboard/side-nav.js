@@ -38,6 +38,7 @@ import SyncIcon from "@mui/icons-material/Sync";
 import TodayIcon from "@mui/icons-material/Today";
 import DateRangeIcon from "@mui/icons-material/DateRange";
 import CompareArrowsIcon from "@mui/icons-material/CompareArrows";
+import SwapHorizIcon from "@mui/icons-material/SwapHoriz";
 
 export const SideNav = (props) => {
   const { open, onClose, collapsed = false, onToggleCollapsed, width = 280 } = props;
@@ -468,6 +469,16 @@ export const SideNav = (props) => {
           icon: (
             <SvgIcon fontSize="small">
               <NoteAltIcon />
+            </SvgIcon>
+          ),
+        });
+
+        baseItems.push({
+          title: "Transferencias Internas",
+          path: "/transferencias",
+          icon: (
+            <SvgIcon fontSize="small">
+              <SwapHorizIcon />
             </SvgIcon>
           ),
         });

@@ -212,6 +212,27 @@ const movimientosService = {
       return [];
     }
   },
+
+  // Método para crear transferencia interna entre proyectos
+  createTransferenciaInterna: async (transferencia) => {
+    try {
+      const response = await api.post('transferencia-interna/', transferencia);
+      
+      if (response.status === 201) {
+        console.log('Transferencia interna creada con éxito');
+        return { error: false, data: response.data };
+      } else {
+        console.error('Error al crear la transferencia interna');
+        return { error: true, message: 'Error al crear la transferencia' };
+      }
+    } catch (err) {
+      console.error('Error al crear transferencia interna:', err);
+      return { 
+        error: true, 
+        message: err.response?.data?.error || 'Error al procesar la transferencia'
+      };
+    }
+  },
   
   
 };

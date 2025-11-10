@@ -29,6 +29,8 @@ import AssignToPlanDialog from 'src/components/planobra/AssignToPlanDialog';
 import MovimientoMaterialService from 'src/services/movimientoMaterialService';
 import { getProyectosByEmpresa } from 'src/services/proyectosService';
 import ProrrateoDialog from 'src/components/ProrrateoDialog';
+import TransferenciaInternaDialog from 'src/components/TransferenciaInternaDialog';
+import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 
 // Componente para mostrar información de prorrateo
 const ProrrateoInfo = ({ movimiento, onVerRelacionados }) => {
@@ -150,6 +152,7 @@ const MovementFormPage = () => {
   const [tagsExtra, setTagsExtra] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [alert, setAlert] = useState({ open: false, message: '', severity: 'info' });
+  const [openTransferencia, setOpenTransferencia] = useState(false);
   const [mediosPago, setMediosPago] = useState(['Efectivo', 'Transferencia', 'Tarjeta', 'Mercado Pago', 'Cheque']);
   const [urlTemporal, setUrlTemporal] = useState(null);
   const [createdUser, setCreatedUser] = useState(null);
@@ -595,6 +598,22 @@ function syncMaterialesWithMovs(currentMateriales = [], mmRows = [], { proyecto_
 
   const pendienteDe = (mm) => Math.max(0, (Number(mm.cantidad) || 0) - (Number(mm.asignado_qty) || 0));
 
+  const handleOpenTransferencia = () => {
+    setOpenTransferencia(true);
+  };
+
+  const handleCloseTransferencia = () => {
+    setOpenTransferencia(false);
+  };
+
+  const handleTransferenciaSuccess = (result) => {
+    setAlert({
+      open: true,
+      message: 'Transferencia interna realizada con éxito',
+      severity: 'success',
+    });
+  };
+
   return (
     <>
       <Head><title>{titulo}</title></Head>
@@ -624,15 +643,32 @@ function syncMaterialesWithMovs(currentMateriales = [], mmRows = [], { proyecto_
                 {isExtractingData ? 'Extrayendo...' : 'Extraer datos'}
               </Button>
               
-              {!isEditMode && formik.values.total && proyectos.length >= 1 && (
-                <Button 
-                  variant="outlined" 
-                  color="info"
-                  onClick={() => setProrrateoOpen(true)}
-                  disabled={isLoading || !formik.values.total}
+              <Button
+                variant="outlined"
+                color="primary"
+                startIcon={<SwapHorizIcon />}
+                onClick={handleOpenTransferencia}
+                disabled={!proyectoId}
+              >
+                Transferencia
+              </Button>
+              
+              {!isEditMode && proyectos.length >= 1 && (
+                <Tooltip 
+                  title={!formik.values.total ? "Ingresa un total para habilitar el prorrateo" : ""}
+                  arrow
                 >
-                  Prorratear por Proyectos
-                </Button>
+                  <span>
+                    <Button 
+                      variant="outlined" 
+                      color="info"
+                      onClick={() => setProrrateoOpen(true)}
+                      disabled={isLoading || !formik.values.total}
+                    >
+                      Prorratear por Proyectos
+                    </Button>
+                  </span>
+                </Tooltip>
               )}
               
               <Button variant="outlined" onClick={() => router.push(lastPageUrl || '/')}>Volver sin guardar</Button>
@@ -1103,6 +1139,16 @@ function syncMaterialesWithMovs(currentMateriales = [], mmRows = [], { proyecto_
           onSuccess={(data) => {
             console.log('Prorrateo exitoso:', data);
           }}
+        />
+
+        {/* Diálogo de Transferencia Interna */}
+        <TransferenciaInternaDialog
+          open={openTransferencia}
+          onClose={handleCloseTransferencia}
+          proyectos={proyectos}
+          onSuccess={handleTransferenciaSuccess}
+          defaultProyectoEmisor={proyectoId && proyectoName ? { id: proyectoId, nombre: proyectoName } : null}
+          userPhone={user?.phone}
         />
 
         <Snackbar open={alert.open} autoHideDuration={6000} onClose={handleCloseAlert}>

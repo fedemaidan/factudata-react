@@ -34,6 +34,8 @@ import { formatTimestamp } from 'src/utils/formatters';
 import { useMovimientosFilters } from 'src/hooks/useMovimientosFilters';
 import { FilterBarCajaProyecto } from 'src/components/FilterBarCajaProyecto';
 import AsistenteFlotanteProyecto from 'src/components/asistenteFlotanteProyecto';
+import TransferenciaInternaDialog from 'src/components/TransferenciaInternaDialog';
+import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 
 
 // tamaños mínimos por columna (px)
@@ -145,6 +147,8 @@ const ProyectoMovimientosPage = () => {
     message: '',
     severity: 'info',
   });
+  const [openTransferencia, setOpenTransferencia] = useState(false);
+  const [proyectos, setProyectos] = useState([]);
   const router = useRouter();
   const { proyectoId } = router.query;
   const theme = useTheme();
@@ -518,6 +522,14 @@ const handleCloseCols = () => setAnchorColsEl(null);
       setEmpresa({ ...empresa, cajas_virtuales: cajasIniciales });
       setCajasVirtuales(cajasIniciales);
 
+      // Cargar proyectos para transferencias internas
+      try {
+        const proyectosData = await getProyectosByEmpresa(empresa);
+        setProyectos(proyectosData || []);
+      } catch (error) {
+        console.error('Error cargando proyectos:', error);
+      }
+
       if (empresa.solo_dolar) {
         setTablaActiva("USD")
       }
@@ -552,8 +564,6 @@ const handleCloseCols = () => setAnchorColsEl(null);
         if (proyectos.length === 1) {
           pid = proyectos[0].id;
         }
-        
-
       }
 
       if (pid) {
@@ -777,6 +787,24 @@ const movimientosConProrrateo = useMemo(() => {
   }, [movimientosConProrrateo, page, rowsPerPage, totalRows]);
   
   
+  const handleOpenTransferencia = () => {
+    setOpenTransferencia(true);
+  };
+
+  const handleCloseTransferencia = () => {
+    setOpenTransferencia(false);
+  };
+
+  const handleTransferenciaSuccess = (result) => {
+    setAlert({
+      open: true,
+      message: 'Transferencia interna realizada con éxito',
+      severity: 'success',
+    });
+    // Refrescar movimientos después de la transferencia
+    handleRefresh();
+  };
+
   const handleRecalcularEquivalencias = async () => {
     if (!proyectoId) return;
     setAlert({
@@ -1903,6 +1931,13 @@ useEffect(() => {
     <AddCircleIcon sx={{ mr: 1 }} />
     Registrar movimiento
   </MenuOption>
+  <MenuOption onClick={() => {
+    handleOpenTransferencia();
+    handleCloseMenu();
+  }}>
+    <SwapHorizIcon sx={{ mr: 1 }} />
+    Transferencia interna
+  </MenuOption>
   <MenuOption onClick={() => handleMenuOptionClick('recalcularSheets')}>
     <RefreshIcon sx={{ mr: 1 }} />
     Recalcular sheets
@@ -2008,6 +2043,16 @@ useEffect(() => {
     )}
   </DialogContent>
 </Dialog>
+
+{/* Dialog de Transferencia Interna */}
+<TransferenciaInternaDialog
+  open={openTransferencia}
+  onClose={handleCloseTransferencia}
+  proyectos={proyectos}
+  onSuccess={handleTransferenciaSuccess}
+  defaultProyectoEmisor={proyecto ? { id: proyecto.id, nombre: proyecto.nombre } : null}
+  userPhone={user?.phone}
+/>
 
 
     </DashboardLayout>
