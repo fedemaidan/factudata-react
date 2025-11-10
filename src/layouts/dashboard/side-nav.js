@@ -34,6 +34,10 @@ import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import { AccountBalanceWallet, Checklist, LocalAtm } from "@mui/icons-material";
 import InventoryIcon from "@mui/icons-material/Inventory";
+import SyncIcon from "@mui/icons-material/Sync";
+import TodayIcon from "@mui/icons-material/Today";
+import DateRangeIcon from "@mui/icons-material/DateRange";
+import CompareArrowsIcon from "@mui/icons-material/CompareArrows";
 
 export const SideNav = (props) => {
   const { open, onClose, collapsed = false, onToggleCollapsed, width = 280 } = props;
@@ -399,7 +403,7 @@ export const SideNav = (props) => {
           path: "/dhn/cargarDrive",
           icon: (
             <SvgIcon fontSize="small">
-              <PeopleIcon />
+              <SyncIcon />
             </SvgIcon>
           ),
         });
@@ -409,7 +413,7 @@ export const SideNav = (props) => {
           path: "/dhn/controlDiario",
           icon: (
             <SvgIcon fontSize="small">
-              <DashboardIcon />
+              <TodayIcon />
             </SvgIcon>
           ),
         });
@@ -419,11 +423,20 @@ export const SideNav = (props) => {
           path: "/dhn/controlQuincenal",
           icon: (
             <SvgIcon fontSize="small">
-              <DashboardIcon />
+              <DateRangeIcon />
             </SvgIcon>
           ),
         });
 
+        baseItems.push({
+          title: "Conciliacion",
+          path: "/dhn/conciliacion",
+          icon: (
+            <SvgIcon fontSize="small">
+              <CompareArrowsIcon />
+            </SvgIcon>
+          ),
+        })
       }
 
       if (permisosUsuario.includes("VER_CAJAS") && !permisosUsuario.includes("CREAR_EGRESO_SIMPLIFICADO")) {
