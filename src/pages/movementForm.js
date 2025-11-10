@@ -3,7 +3,7 @@ import Head from 'next/head';
 import {
   Box, Container, Typography, Button, CircularProgress, Snackbar, Alert,
   Grid, Paper, Stack, Chip, Divider, TextField, MenuItem, Select,
-  FormControl, InputLabel, Tooltip
+  FormControl, InputLabel, Tooltip, Menu, ListItemIcon, ListItemText
 } from '@mui/material';
 import { useRouter } from 'next/router';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
@@ -34,6 +34,8 @@ import EgresoConCajaPagadoraDialog from 'src/components/EgresoConCajaPagadoraDia
 import PagoEntreCajasInfo from 'src/components/PagoEntreCajasInfo';
 import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
+import MoreVertIcon from '@mui/icons-material/MoreVert';
+import CallSplitIcon from '@mui/icons-material/CallSplit';
 
 // Componente para mostrar información de prorrateo
 const ProrrateoInfo = ({ movimiento, onVerRelacionados }) => {
@@ -157,6 +159,7 @@ const MovementFormPage = () => {
   const [alert, setAlert] = useState({ open: false, message: '', severity: 'info' });
   const [openTransferencia, setOpenTransferencia] = useState(false);
   const [openEgresoConCajaPagadora, setOpenEgresoConCajaPagadora] = useState(false);
+  const [accionesMenuAnchor, setAccionesMenuAnchor] = useState(null);
   const [mediosPago, setMediosPago] = useState(['Efectivo', 'Transferencia', 'Tarjeta', 'Mercado Pago', 'Cheque']);
   const [urlTemporal, setUrlTemporal] = useState(null);
   const [createdUser, setCreatedUser] = useState(null);
@@ -645,6 +648,31 @@ function syncMaterialesWithMovs(currentMateriales = [], mmRows = [], { proyecto_
     }, 1500);
   };
 
+  const handleAccionesMenuOpen = (event) => {
+    setAccionesMenuAnchor(event.currentTarget);
+  };
+
+  const handleAccionesMenuClose = () => {
+    setAccionesMenuAnchor(null);
+  };
+
+  const handleAccionesMenuItemClick = (action) => {
+    handleAccionesMenuClose();
+    switch (action) {
+      case 'transferencia':
+        handleOpenTransferencia();
+        break;
+      case 'pagoOtraCaja':
+        handleOpenEgresoConCajaPagadora();
+        break;
+      case 'prorrateo':
+        setProrrateoOpen(true);
+        break;
+      default:
+        break;
+    }
+  };
+
   return (
     <>
       <Head><title>{titulo}</title></Head>
@@ -663,7 +691,8 @@ function syncMaterialesWithMovs(currentMateriales = [], mmRows = [], { proyecto_
               </Stack>
             </Box>
 
-            <Stack direction="row" spacing={1} flexWrap="wrap">
+            <Stack direction="row" spacing={1} flexWrap="wrap" alignItems="center">
+              {/* Acciones principales */}
               <Button
                 variant="outlined"
                 color="secondary"
@@ -673,61 +702,77 @@ function syncMaterialesWithMovs(currentMateriales = [], mmRows = [], { proyecto_
               >
                 {isExtractingData ? 'Extrayendo...' : 'Extraer datos'}
               </Button>
-              
+
+              {/* Menú de acciones avanzadas */}
               <Button
                 variant="outlined"
                 color="primary"
-                startIcon={<SwapHorizIcon />}
-                onClick={handleOpenTransferencia}
-                disabled={!proyectoId}
+                startIcon={<MoreVertIcon />}
+                onClick={handleAccionesMenuOpen}
+                disabled={isLoading}
+                sx={{ minWidth: 'auto', px: 2 }}
               >
-                Transferencia
+                Acciones
               </Button>
 
-              {!isEditMode && (
-                <Tooltip 
-                  title={
-                    !proyectoId ? "Selecciona un proyecto primero" :
-                    !formik.values.total ? "Ingresa un total para habilitar el pago desde otra caja" :
-                    proyectos.length <= 1 ? "Se necesitan al menos 2 proyectos para pagar desde otra caja" :
-                    formik.values.type !== 'egreso' ? "Solo disponible para egresos/gastos" :
-                    "Crear gasto pagado desde otra caja/proyecto"
-                  }
-                  arrow
+              <Menu
+                anchorEl={accionesMenuAnchor}
+                open={Boolean(accionesMenuAnchor)}
+                onClose={handleAccionesMenuClose}
+                PaperProps={{
+                  sx: { minWidth: 200 }
+                }}
+              >
+                <MenuItem 
+                  onClick={() => handleAccionesMenuItemClick('transferencia')}
+                  disabled={!proyectoId}
                 >
-                  <span>
-                    <Button
-                      variant="outlined"
-                      color="warning"
-                      startIcon={<AccountBalanceWalletIcon />}
-                      onClick={handleOpenEgresoConCajaPagadora}
-                      disabled={!proyectoId || !formik.values.total || proyectos.length <= 1 || formik.values.type !== 'egreso'}
-                    >
-                      Pagar desde otra caja
-                    </Button>
-                  </span>
-                </Tooltip>
-              )}
+                  <ListItemIcon>
+                    <SwapHorizIcon fontSize="small" />
+                  </ListItemIcon>
+                  <ListItemText primary="Transferencia interna" />
+                </MenuItem>
+
+                {!isEditMode && (
+                  <MenuItem 
+                    onClick={() => handleAccionesMenuItemClick('pagoOtraCaja')}
+                    disabled={!proyectoId || !formik.values.total || proyectos.length <= 1 || formik.values.type !== 'egreso'}
+                  >
+                    <ListItemIcon>
+                      <AccountBalanceWalletIcon fontSize="small" />
+                    </ListItemIcon>
+                    <ListItemText 
+                      primary="Pagar desde otra caja" 
+                      secondary={
+                        !proyectoId ? "Falta proyecto" :
+                        !formik.values.total ? "Falta total" :
+                        proyectos.length <= 1 ? "Faltan proyectos" :
+                        formik.values.type !== 'egreso' ? "Solo para egresos" : null
+                      }
+                    />
+                  </MenuItem>
+                )}
+
+                {!isEditMode && proyectos.length >= 1 && (
+                  <MenuItem 
+                    onClick={() => handleAccionesMenuItemClick('prorrateo')}
+                    disabled={isLoading || !formik.values.total}
+                  >
+                    <ListItemIcon>
+                      <CallSplitIcon fontSize="small" />
+                    </ListItemIcon>
+                    <ListItemText 
+                      primary="Prorratear por Proyectos"
+                      secondary={!formik.values.total ? "Falta total" : null}
+                    />
+                  </MenuItem>
+                )}
+              </Menu>
               
-              {!isEditMode && proyectos.length >= 1 && (
-                <Tooltip 
-                  title={!formik.values.total ? "Ingresa un total para habilitar el prorrateo" : ""}
-                  arrow
-                >
-                  <span>
-                    <Button 
-                      variant="outlined" 
-                      color="info"
-                      onClick={() => setProrrateoOpen(true)}
-                      disabled={isLoading || !formik.values.total}
-                    >
-                      Prorratear por Proyectos
-                    </Button>
-                  </span>
-                </Tooltip>
-              )}
-              
-              <Button variant="outlined" onClick={() => router.push(lastPageUrl || '/')}>Volver sin guardar</Button>
+              {/* Acciones principales de navegación */}
+              <Button variant="outlined" onClick={() => router.push(lastPageUrl || '/')}>
+                Volver sin guardar
+              </Button>
               <Button variant="contained" onClick={formik.submitForm} disabled={isLoading}>
                 {isLoading ? <CircularProgress size={22} /> : (isEditMode ? 'Guardar' : 'Crear')}
               </Button>
