@@ -30,7 +30,10 @@ import MovimientoMaterialService from 'src/services/movimientoMaterialService';
 import { getProyectosByEmpresa } from 'src/services/proyectosService';
 import ProrrateoDialog from 'src/components/ProrrateoDialog';
 import TransferenciaInternaDialog from 'src/components/TransferenciaInternaDialog';
+import EgresoConCajaPagadoraDialog from 'src/components/EgresoConCajaPagadoraDialog';
+import PagoEntreCajasInfo from 'src/components/PagoEntreCajasInfo';
 import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
+import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
 
 // Componente para mostrar información de prorrateo
 const ProrrateoInfo = ({ movimiento, onVerRelacionados }) => {
@@ -153,6 +156,7 @@ const MovementFormPage = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [alert, setAlert] = useState({ open: false, message: '', severity: 'info' });
   const [openTransferencia, setOpenTransferencia] = useState(false);
+  const [openEgresoConCajaPagadora, setOpenEgresoConCajaPagadora] = useState(false);
   const [mediosPago, setMediosPago] = useState(['Efectivo', 'Transferencia', 'Tarjeta', 'Mercado Pago', 'Cheque']);
   const [urlTemporal, setUrlTemporal] = useState(null);
   const [createdUser, setCreatedUser] = useState(null);
@@ -284,11 +288,11 @@ const createdAtStr = (() => {
   const formik = useFormik({
     initialValues: {
       fecha_factura: '',
-      type: '',
+      type: 'egreso',
       total: '',
       subtotal: '',
       total_original: '',
-      moneda: '',
+      moneda: 'ARS',
       nombre_proveedor: '',
       categoria: '',
       subcategoria: '',
@@ -614,6 +618,33 @@ function syncMaterialesWithMovs(currentMateriales = [], mmRows = [], { proyecto_
     });
   };
 
+  const handleOpenEgresoConCajaPagadora = () => {
+    console.log('Debug - Estado para pago entre cajas:', {
+      proyectoId,
+      total: formik.values.total,
+      type: formik.values.type,
+      proyectosLength: proyectos.length,
+      isEditMode
+    });
+    setOpenEgresoConCajaPagadora(true);
+  };
+
+  const handleCloseEgresoConCajaPagadora = () => {
+    setOpenEgresoConCajaPagadora(false);
+  };
+
+  const handleEgresoConCajaPagadoraSuccess = (result) => {
+    setAlert({
+      open: true,
+      message: 'Egreso con caja pagadora creado con éxito',
+      severity: 'success',
+    });
+    // Opcional: redirigir o refrescar datos
+    setTimeout(() => {
+      router.push(lastPageUrl || `/cajaProyecto?proyectoId=${proyectoId}`);
+    }, 1500);
+  };
+
   return (
     <>
       <Head><title>{titulo}</title></Head>
@@ -652,6 +683,31 @@ function syncMaterialesWithMovs(currentMateriales = [], mmRows = [], { proyecto_
               >
                 Transferencia
               </Button>
+
+              {!isEditMode && (
+                <Tooltip 
+                  title={
+                    !proyectoId ? "Selecciona un proyecto primero" :
+                    !formik.values.total ? "Ingresa un total para habilitar el pago desde otra caja" :
+                    proyectos.length <= 1 ? "Se necesitan al menos 2 proyectos para pagar desde otra caja" :
+                    formik.values.type !== 'egreso' ? "Solo disponible para egresos/gastos" :
+                    "Crear gasto pagado desde otra caja/proyecto"
+                  }
+                  arrow
+                >
+                  <span>
+                    <Button
+                      variant="outlined"
+                      color="warning"
+                      startIcon={<AccountBalanceWalletIcon />}
+                      onClick={handleOpenEgresoConCajaPagadora}
+                      disabled={!proyectoId || !formik.values.total || proyectos.length <= 1 || formik.values.type !== 'egreso'}
+                    >
+                      Pagar desde otra caja
+                    </Button>
+                  </span>
+                </Tooltip>
+              )}
               
               {!isEditMode && proyectos.length >= 1 && (
                 <Tooltip 
@@ -1049,6 +1105,13 @@ function syncMaterialesWithMovs(currentMateriales = [], mmRows = [], { proyecto_
                   />
                 )}
 
+                {/* Información de Pago Entre Cajas */}
+                {isEditMode && movimiento?.es_pago_entre_cajas && (
+                  <PagoEntreCajasInfo 
+                    movimiento={movimiento}
+                  />
+                )}
+
                 {/* HISTORIAL / ACCIONES secundarias… (sin cambios) */}
                 {/* ... */}
               </Stack>
@@ -1149,6 +1212,21 @@ function syncMaterialesWithMovs(currentMateriales = [], mmRows = [], { proyecto_
           onSuccess={handleTransferenciaSuccess}
           defaultProyectoEmisor={proyectoId && proyectoName ? { id: proyectoId, nombre: proyectoName } : null}
           userPhone={user?.phone}
+        />
+
+        {/* Diálogo de Egreso con Caja Pagadora */}
+        <EgresoConCajaPagadoraDialog
+          open={openEgresoConCajaPagadora}
+          onClose={handleCloseEgresoConCajaPagadora}
+          datosEgreso={{
+            ...formik.values,
+            proyecto_id: proyectoId,
+            proyecto_nombre: proyectoName,
+            user_phone: user?.phone,
+            empresa_id: empresa?.id
+          }}
+          proyectos={proyectos}
+          onSuccess={handleEgresoConCajaPagadoraSuccess}
         />
 
         <Snackbar open={alert.open} autoHideDuration={6000} onClose={handleCloseAlert}>

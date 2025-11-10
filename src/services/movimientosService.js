@@ -233,6 +233,32 @@ const movimientosService = {
       };
     }
   },
+
+  createEgresoConCajaPagadora: async (datosEgreso, proyectoPagadorId, proyectoPagadorNombre) => {
+    try {
+      const payload = {
+        datosEgreso,
+        proyectoPagadorId,
+        proyectoPagadorNombre
+      };
+
+      const response = await api.post('egreso-con-caja-pagadora/', payload);
+      
+      if (response.status === 201) {
+        console.log('Egreso con caja pagadora creado con éxito');
+        return { error: false, data: response.data };
+      } else {
+        console.error('Error al crear el egreso con caja pagadora');
+        return { error: true, message: 'Error al crear el egreso' };
+      }
+    } catch (err) {
+      console.error('Error al crear egreso con caja pagadora:', err);
+      return { 
+        error: true, 
+        message: err.response?.data?.error || 'Error al procesar el egreso'
+      };
+    }
+  },
   
   
 };
