@@ -24,6 +24,17 @@ const formatNumberWithThousands = (value) => {
   return value.toString().replace(/\B((?=(\d{3})+(?!\d)))/g, ".");
 };
 
+const formatFechaLarga = (yyyyMmDd) => {
+  try {
+    if (!yyyyMmDd) return "";
+    const [y, m, d] = yyyyMmDd.split("-").map(Number);
+    const fecha = new Date(y, (m || 1) - 1, d || 1);
+    return new Intl.DateTimeFormat("es-AR", { dateStyle: "long" }).format(fecha);
+  } catch {
+    return "";
+  }
+};
+
 const AgregarEntregaModal = ({ open, onClose, onSaved, clientes = [], tipoDeCambio }) => {
   const [isSaving, setIsSaving] = useState(false);
   const [descuentoPorcentaje, setDescuentoPorcentaje] = useState("");
@@ -296,7 +307,7 @@ const AgregarEntregaModal = ({ open, onClose, onSaved, clientes = [], tipoDeCamb
                 onChange={(e) => setFechaEntrega(e.target.value)}
                 margin="normal"
                 InputLabelProps={{ shrink: true }}
-                helperText="Opcional"
+                helperText={fechaEntrega ? formatFechaLarga(fechaEntrega) : "Opcional"}
               />
             </Grid>
             <Grid item xs={12} sm={6}>

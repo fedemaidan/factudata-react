@@ -20,11 +20,23 @@ import { getUser } from "src/utils/celulandia/currentUser";
 import { useMovimientoFormV2, calcularMovimientoV2 } from "src/hooks/useMovimientoFormV2";
 import { toNumber, formatNumberWithThousands } from "src/utils/celulandia/separacionMiles";
 
+const formatFechaLarga = (yyyyMmDd) => {
+  try {
+    if (!yyyyMmDd) return "";
+    const [y, m, d] = yyyyMmDd.split("-").map(Number);
+    const fecha = new Date(y, (m || 1) - 1, d || 1);
+    return new Intl.DateTimeFormat("es-AR", { dateStyle: "long" }).format(fecha);
+  } catch {
+    return "";
+  }
+};
+
 const EditarEntregaModal = ({ open, onClose, data, onSaved, clientes = [], tipoDeCambio }) => {
   const [isSaving, setIsSaving] = useState(false);
   const [descuentoPorcentaje, setDescuentoPorcentaje] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [initialData, setInitialData] = useState(null);
+  const [fechaCuenta, setFechaCuenta] = useState("");
 
   // Normalizar opciones de clientes para Autocomplete
   const clienteOptions = useMemo(
@@ -54,6 +66,8 @@ const EditarEntregaModal = ({ open, onClose, data, onSaved, clientes = [], tipoD
         : "0"
     );
 
+    console.log('data', data);
+
     if (data && Object.keys(data).length > 0 && open) {
       const processedData = {
         _id: data._id,
@@ -72,6 +86,17 @@ const EditarEntregaModal = ({ open, onClose, data, onSaved, clientes = [], tipoD
         montoTotal: data.montoTotal,
       };
       setInitialData(processedData);
+      // Precargar fechaCuenta en formato YYYY-MM-DD si existe
+      try {
+        const originalFecha = data?.fechaCuenta;
+        if (originalFecha && typeof originalFecha === "string") {
+          setFechaCuenta(originalFecha.slice(0, 10));
+        } else {
+          setFechaCuenta("");
+        }
+      } catch {
+        setFechaCuenta("");
+      }
       setIsLoading(false);
     }
   }, [data, open]);
@@ -167,6 +192,31 @@ const EditarEntregaModal = ({ open, onClose, data, onSaved, clientes = [], tipoD
         // ID del cliente desde el hook (coincidirá porque forzamos selección válida)
         cliente: clienteSeleccionado?._id,
       };
+
+      // Si se modificó la fecha de la cuenta, construir una fecha con la hora original (zona AR)
+      try {
+        const originalFechaStr = (data?.fechaCuenta || "").slice(0, 10);
+        if (fechaCuenta && fechaCuenta !== originalFechaStr) {
+          const [year, month, day] = fechaCuenta.split("-").map((v) => parseInt(v, 10));
+          const fechaBaseOriginalAR = new Date(
+            new Date(data?.fechaCuenta || Date.now()).toLocaleString("en-US", {
+              timeZone: "America/Argentina/Buenos_Aires",
+            })
+          );
+          const fechaCuentaCompleta = new Date(
+            year,
+            month - 1,
+            day,
+            fechaBaseOriginalAR.getHours(),
+            fechaBaseOriginalAR.getMinutes(),
+            fechaBaseOriginalAR.getSeconds(),
+            fechaBaseOriginalAR.getMilliseconds()
+          );
+          datosParaGuardar.fechaCuenta = fechaCuentaCompleta;
+        }
+      } catch {
+        // Si hay error en la construcción de la fecha, no bloquear el guardado del resto
+      }
 
       if (didChangeDescuento) {
         datosParaGuardar.descuentoAplicado = factorDescuento;
@@ -286,6 +336,18 @@ const EditarEntregaModal = ({ open, onClose, data, onSaved, clientes = [], tipoD
       <DialogContent>
         <Box sx={{ py: 2 }}>
           <Grid container spacing={2}>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Fecha"
+                type="date"
+                value={fechaCuenta}
+                onChange={(e) => setFechaCuenta(e.target.value)}
+                margin="normal"
+                InputLabelProps={{ shrink: true }}
+                helperText={formatFechaLarga(fechaCuenta) || "Sin fecha seleccionada"}
+              />
+            </Grid>
             {/* Fila 1: Cliente - Descripción */}
             <Grid item xs={12} sm={6}>
               <FormControl fullWidth margin="normal" required>

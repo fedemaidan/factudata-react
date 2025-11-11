@@ -28,6 +28,8 @@ export const parseCuentaPendiente = (c) => {
     numeroComprobante: c.descripcion || "-",
     descripcion: c.descripcion || "-",
     fecha: c.fechaCuenta,
+    fechaEntrega: c.fechaCuenta,
+    fechaCreacion: c.fechaCreacion,
     //horaCreacion: getHoraArgentina(c.fechaCreacion),
     horaCreacion: c.fechaCreacion.split("T")[1].split(":").slice(0, 2).join(":"),
     fechaCuenta: c.fechaCuenta, // Mantener la fecha original para EditarEntregaModal

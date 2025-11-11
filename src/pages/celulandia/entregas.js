@@ -41,7 +41,7 @@ const EntregasCelulandiaPage = () => {
   const [totalEntregas, setTotalEntregas] = useState(0);
   const [limitePorPagina] = useState(75);
 
-  const [sortField, setSortField] = useState("fecha");
+  const [sortField, setSortField] = useState("fechaEntrega");
   const [sortDirection, setSortDirection] = useState("desc");
   const [filtroFecha, setFiltroFecha] = useState("todos");
   const [busquedaTexto, setBusquedaTexto] = useState("");
@@ -87,7 +87,13 @@ const EntregasCelulandiaPage = () => {
           populate: "cliente",
           limit: limitePorPagina,
           offset,
-          sortField: sortField === "fecha" ? "fechaCuenta" : sortField,
+          // Mapeo de campos de orden: UI -> backend
+          sortField:
+            sortField === "fechaEntrega"
+              ? "fechaCuenta"
+              : sortField === "fechaHoraCreacion"
+              ? "fechaCreacion"
+              : sortField,
           sortDirection,
           fechaInicio,
           fechaFin,
@@ -138,16 +144,19 @@ const EntregasCelulandiaPage = () => {
 
   const columns = [
     {
-      key: "fechaHora",
-      label: "Fecha y Hora",
+      key: "fechaHoraCreacion",
+      label: "Fecha y Hora Creación",
       sortable: true,
       render: (item) => (
         <div>
-          <div>{getFechaArgentina(item.fecha)}</div>
-          <div style={{ fontSize: "0.75rem", color: "#666" }}>{item.horaCreacion}</div>
+          <div>{getFechaArgentina(item.fechaCreacion)}</div>
+          <div style={{ fontSize: "0.75rem", color: "#666" }}>
+            {item.horaCreacion}
+          </div>
         </div>
       ),
     },
+    { key: "fechaEntrega", label: "Fecha Entrega", sortable: true },
     { key: "clienteNombre", label: "Cliente", sortable: false },
     { key: "descripcion", label: "Descripción", sortable: false },
     { key: "montoEnviado", label: "Monto", sortable: true },
@@ -180,6 +189,7 @@ const EntregasCelulandiaPage = () => {
 
   const formatters = {
     fecha: (value, item) => getFechaArgentina(value),
+    fechaEntrega: (value, item) => getFechaArgentina(value),
     horaCreacion: (value, item) => value,
     descripcion: (value, item) => formatearCampo("default", value, item),
     montoEnviado: (value, item) => formatearCampo("montoEnviado", value, item),
@@ -195,7 +205,8 @@ const EntregasCelulandiaPage = () => {
 
   const searchFields = [
     "numeroEntrega",
-    "fecha",
+    "fechaEntrega",
+    "fechaCreacion",
     "hora",
     "montoEnviado",
     "moneda",
@@ -211,8 +222,13 @@ const EntregasCelulandiaPage = () => {
   };
 
   const handleSortChange = (campo) => {
-    // Si se hace click en la columna combinada "fechaHora", ordenar por "fecha"
-    const actualSortField = campo === "fechaHora" ? "fecha" : campo;
+    // Mapear columnas combinadas a campos de orden reales
+    let actualSortField = campo;
+    if (campo === "fechaHoraCreacion") {
+      actualSortField = "fechaHoraCreacion";
+    } else if (campo === "fechaEntrega") {
+      actualSortField = "fechaEntrega";
+    }
 
     if (sortField === actualSortField) {
       setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
@@ -267,7 +283,7 @@ const EntregasCelulandiaPage = () => {
           formatters={formatters}
           showSearch={true}
           onSearchDebounced={setBusquedaTexto}
-          dateField="fecha"
+          dateField="fechaEntrega"
           total={totalEntregas}
           currentPage={paginaActual}
           onPageChange={(nuevaPagina) => setPaginaActual(nuevaPagina)}
