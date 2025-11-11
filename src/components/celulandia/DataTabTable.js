@@ -97,12 +97,13 @@ const DataTabTable = ({
   const [internalSortDirection, setInternalSortDirection] = useState(sortDirection);
   useEffect(() => setInternalSortDirection(sortDirection), [sortDirection]);
 
+  // Campo de orden final: si el padre controla, usarlo; sino default "fechaCreacion"
+  const finalSortField = onSortChange ? sortField : (sortField || "fechaCreacion");
   const [page, setPage] = useState(0);
   const [internalRowsPerPage, setInternalRowsPerPage] = useState(rowsPerPage);
 
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  const finalSortField = "fecha"; // <-- forzado a 'fecha'
   const finalSortDirection = onSortChange ? sortDirection : internalSortDirection;
   const finalFiltroFecha = onFiltroFechaChange ? filtroFecha : internalFiltroFecha;
   const finalRowsPerPage = onPageChange ? rowsPerPage : internalRowsPerPage;
@@ -110,9 +111,8 @@ const DataTabTable = ({
 
   const handleSortChange = useCallback(
     (campo) => {
-      if (campo !== "fecha") return; // solo permitimos ordenar por fecha
       if (onSortChange) {
-        onSortChange("fecha");
+        onSortChange(campo);
       } else {
         setInternalSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
       }
@@ -228,7 +228,17 @@ const DataTabTable = ({
 
     // Orden interno SOLO si el padre no controla el sort
     if (!onSortChange) {
-      rows = [...rows].sort(finalSortDirection === "asc" ? ascByOrderKey : descByOrderKey);
+      const toTime = (val) => {
+        if (!val) return 0;
+        const d = new Date(val);
+        return isNaN(d.getTime()) ? 0 : d.getTime();
+      };
+      const key = finalSortField || "fechaCreacion";
+      rows = [...rows].sort((a, b) => {
+        const av = toTime(a[key] || a.fecha);
+        const bv = toTime(b[key] || b.fecha);
+        return finalSortDirection === "asc" ? av - bv : bv - av;
+      });
     }
 
     return rows;
@@ -238,6 +248,7 @@ const DataTabTable = ({
     finalFiltroFecha,
     selectedDate,
     finalSortDirection,
+    finalSortField,
     showSearch,
     showDateFilterOptions,
     showDatePicker,
@@ -521,11 +532,20 @@ const DataTabTable = ({
                   <TableRow>
                     <TableCell sx={{ fontWeight: "bold", cursor: "pointer" }}>
                       <TableSortLabel
-                        active={true} // siempre ordenamos por fecha
-                        direction={finalSortDirection}
-                        onClick={() => handleSortChange("fecha")}
+                        active={finalSortField === "fechaCreacion"}
+                        direction={finalSortField === "fechaCreacion" ? finalSortDirection : "asc"}
+                        onClick={() => handleSortChange("fechaCreacion")}
                       >
-                        Fecha
+                        Fecha y Hora Creación
+                      </TableSortLabel>
+                    </TableCell>
+                    <TableCell sx={{ fontWeight: "bold", cursor: "pointer" }}>
+                      <TableSortLabel
+                        active={finalSortField === "fechaEntrega"}
+                        direction={finalSortField === "fechaEntrega" ? finalSortDirection : "asc"}
+                        onClick={() => handleSortChange("fechaEntrega")}
+                      >
+                        Fecha Cuenta/Entrega
                       </TableSortLabel>
                     </TableCell>
 
@@ -546,8 +566,16 @@ const DataTabTable = ({
                   {(paginatedGrouped.get(opt.value) || []).map((row) => (
                     <TableRow key={row.id} sx={{ cursor: "pointer" }}>
                       <TableCell onClick={() => console.log("row", row)}>
-                        {formatearCampo("fecha", row.fecha)}
+                        <div>
+                          <div>{formatearCampo("fecha", row.fechaCreacion || row.fecha)}</div>
+                          {row.horaCreacion ? (
+                            <div style={{ fontSize: "0.75rem", color: "#666" }}>
+                              {row.horaCreacion}
+                            </div>
+                          ) : null}
+                        </div>
                       </TableCell>
+                      <TableCell>{formatearCampo("fecha", row.fechaEntrega || row.fecha)}</TableCell>
                       <TableCell>{row.descripcion || "-"}</TableCell>
                       <TableCell
                         sx={{
