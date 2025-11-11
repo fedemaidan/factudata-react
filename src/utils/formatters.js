@@ -47,10 +47,44 @@ const formatCurrency = (amount, digits = 0) => {
     return "$ 0";
   }
 
+  // Validar que digits esté en el rango permitido (0-20)
+  const validDigits = Math.max(0, Math.min(20, parseInt(digits) || 0));
+
   // Formatear como moneda
   return numericAmount.toLocaleString("es-AR", {
     style: "currency",
     currency: "ARS",
+    minimumFractionDigits: validDigits,
+  });
+};
+
+// Función mejorada que acepta el código de moneda
+const formatCurrencyWithCode = (amount, currencyCode = 'ARS') => {
+  if (amount === null || amount === undefined || amount === "") {
+    return "$ 0";
+  }
+
+  // Convertir a número si es string
+  let numericAmount;
+  if (typeof amount === "string") {
+    const cleanAmount = amount.replace(/[^\d.,]/g, "").replace(",", ".");
+    numericAmount = parseFloat(cleanAmount);
+  } else {
+    numericAmount = parseFloat(amount);
+  }
+
+  // Verificar si es un número válido
+  if (isNaN(numericAmount)) {
+    return "$ 0";
+  }
+
+  // Definir decimales según la moneda
+  const digits = currencyCode === 'USD' ? 2 : 0;
+
+  // Formatear como moneda
+  return numericAmount.toLocaleString("es-AR", {
+    style: "currency",
+    currency: currencyCode === 'USD' ? 'USD' : 'ARS',
     minimumFractionDigits: digits,
   });
 };
@@ -69,6 +103,6 @@ const formatCurrency = (amount, digits = 0) => {
     return Timestamp.fromDate(new Date(year, month - 1, day, 13, 30));
   };
 
-export {formatTimestamp, formatCurrency, toDateFromFirestore, dateToTimestamp
+export {formatTimestamp, formatCurrency, formatCurrencyWithCode, toDateFromFirestore, dateToTimestamp
 };
 

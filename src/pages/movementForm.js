@@ -3,7 +3,7 @@ import Head from 'next/head';
 import {
   Box, Container, Typography, Button, CircularProgress, Snackbar, Alert,
   Grid, Paper, Stack, Chip, Divider, TextField, MenuItem, Select,
-  FormControl, InputLabel, Tooltip
+  FormControl, InputLabel, Tooltip, Menu, ListItemIcon, ListItemText
 } from '@mui/material';
 import { useRouter } from 'next/router';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
@@ -28,6 +28,115 @@ import DocumentScannerIcon from '@mui/icons-material/DocumentScanner';
 import AssignToPlanDialog from 'src/components/planobra/AssignToPlanDialog';
 import MovimientoMaterialService from 'src/services/movimientoMaterialService';
 import { getProyectosByEmpresa } from 'src/services/proyectosService';
+import ProrrateoDialog from 'src/components/ProrrateoDialog';
+import TransferenciaInternaDialog from 'src/components/TransferenciaInternaDialog';
+import EgresoConCajaPagadoraDialog from 'src/components/EgresoConCajaPagadoraDialog';
+import PagoEntreCajasInfo from 'src/components/PagoEntreCajasInfo';
+import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
+import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
+import MoreVertIcon from '@mui/icons-material/MoreVert';
+import CallSplitIcon from '@mui/icons-material/CallSplit';
+
+// Componente para mostrar información de prorrateo
+const ProrrateoInfo = ({ movimiento, onVerRelacionados }) => {
+  const [movimientosRelacionados, setMovimientosRelacionados] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const cargarMovimientosRelacionados = async () => {
+      if (!movimiento?.prorrateo_grupo_id) return;
+      
+      setLoading(true);
+      try {
+        const movimientos = await movimientosService.getMovimientosByGrupoProrrateo(movimiento.prorrateo_grupo_id);
+        // Filtrar el movimiento actual
+        const otros = movimientos.filter(m => m.id !== movimiento.id);
+        setMovimientosRelacionados(otros);
+      } catch (error) {
+        console.error('Error cargando movimientos relacionados:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    cargarMovimientosRelacionados();
+  }, [movimiento?.prorrateo_grupo_id, movimiento?.id]);
+
+  const formatCurrencyLocal = (amount, currency = 'ARS') => {
+    return new Intl.NumberFormat('es-AR', {
+      style: 'currency',
+      currency: currency,
+      minimumFractionDigits: 2
+    }).format(amount);
+  };
+
+  return (
+    <Paper sx={{ p: 4, mt: 3, backgroundColor: '#e3f2fd', border: '2px solid #1976d2' }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
+        <Chip 
+          label="🔄 MOVIMIENTO PRORRATEADO" 
+          color="primary" 
+          variant="filled" 
+          sx={{ fontSize: '0.875rem', fontWeight: 'bold' }}
+        />
+      </Box>
+
+      <Typography variant="h6" gutterBottom color="primary" sx={{ mb: 2 }}>
+        📊 Distribución del Gasto
+      </Typography>
+      
+      <Box sx={{ mb: 3, bgcolor: 'white', p: 2, borderRadius: 1, border: '1px solid #bbdefb' }}>
+        <Typography variant="body1" sx={{ fontWeight: 'bold', mb: 1, color: 'primary.main' }}>
+          💰 Este proyecto: {formatCurrencyLocal(movimiento.total, movimiento.moneda)} 
+          {movimiento.prorrateo_porcentaje && ` (${movimiento.prorrateo_porcentaje}%)`}
+        </Typography>
+        
+        {loading && (
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <CircularProgress size={16} />
+            <Typography variant="body2" color="text.secondary">
+              Cargando distribución completa...
+            </Typography>
+          </Box>
+        )}
+        
+        {!loading && movimientosRelacionados.length > 0 && (
+          <Box sx={{ mt: 2 }}>
+            <Typography variant="body2" sx={{ fontWeight: 'bold', mb: 1 }}>
+              Otros proyectos:
+            </Typography>
+            {movimientosRelacionados.map((mov, index) => (
+              <Typography key={mov.id} variant="body2" color="text.secondary" sx={{ ml: 2, mb: 0.5 }}>
+                • <strong>{mov.proyecto}:</strong> {formatCurrencyLocal(mov.total, mov.moneda)}
+                {mov.prorrateo_porcentaje && ` (${mov.prorrateo_porcentaje}%)`}
+              </Typography>
+            ))}
+          </Box>
+        )}
+      </Box>
+
+      {movimientosRelacionados.length > 0 && (
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <Button
+            variant="contained"
+            size="medium"
+            onClick={onVerRelacionados}
+            sx={{ alignSelf: 'flex-start' }}
+          >
+            Ver todos los movimientos ({movimientosRelacionados.length + 1})
+          </Button>
+          
+          <Typography variant="body1" sx={{ fontWeight: 'bold', color: 'success.main' }}>
+            💸 Total distribuido: {formatCurrencyLocal(
+              Number(movimiento.total) + movimientosRelacionados.reduce((sum, m) => sum + Number(m.total), 0),
+              movimiento.moneda
+            )}
+          </Typography>
+        </Box>
+      )}
+    </Paper>
+  );
+};
 
 const MovementFormPage = () => {
   const { user } = useAuthContext();
@@ -48,6 +157,9 @@ const MovementFormPage = () => {
   const [tagsExtra, setTagsExtra] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [alert, setAlert] = useState({ open: false, message: '', severity: 'info' });
+  const [openTransferencia, setOpenTransferencia] = useState(false);
+  const [openEgresoConCajaPagadora, setOpenEgresoConCajaPagadora] = useState(false);
+  const [accionesMenuAnchor, setAccionesMenuAnchor] = useState(null);
   const [mediosPago, setMediosPago] = useState(['Efectivo', 'Transferencia', 'Tarjeta', 'Mercado Pago', 'Cheque']);
   const [urlTemporal, setUrlTemporal] = useState(null);
   const [createdUser, setCreatedUser] = useState(null);
@@ -70,6 +182,9 @@ const MovementFormPage = () => {
   const [proyectos, setProyectos] = useState([]);
   // Alta rápida MM
   const [mmQuick, setMmQuick] = useState({ descripcion: '', cantidad: '', tipo: 'entrada' });
+  
+  // Prorrateo
+  const [prorrateoOpen, setProrrateoOpen] = useState(false);
 
   // Flags y utilidades para sincronizar Materiales <-> MM
   const SYNC_DEBOUNCE_MS = 500;
@@ -176,11 +291,11 @@ const createdAtStr = (() => {
   const formik = useFormik({
     initialValues: {
       fecha_factura: '',
-      type: '',
+      type: 'egreso',
       total: '',
       subtotal: '',
       total_original: '',
-      moneda: '',
+      moneda: 'ARS',
       nombre_proveedor: '',
       categoria: '',
       subcategoria: '',
@@ -490,6 +605,74 @@ function syncMaterialesWithMovs(currentMateriales = [], mmRows = [], { proyecto_
 
   const pendienteDe = (mm) => Math.max(0, (Number(mm.cantidad) || 0) - (Number(mm.asignado_qty) || 0));
 
+  const handleOpenTransferencia = () => {
+    setOpenTransferencia(true);
+  };
+
+  const handleCloseTransferencia = () => {
+    setOpenTransferencia(false);
+  };
+
+  const handleTransferenciaSuccess = (result) => {
+    setAlert({
+      open: true,
+      message: 'Transferencia interna realizada con éxito',
+      severity: 'success',
+    });
+  };
+
+  const handleOpenEgresoConCajaPagadora = () => {
+    console.log('Debug - Estado para pago entre cajas:', {
+      proyectoId,
+      total: formik.values.total,
+      type: formik.values.type,
+      proyectosLength: proyectos.length,
+      isEditMode
+    });
+    setOpenEgresoConCajaPagadora(true);
+  };
+
+  const handleCloseEgresoConCajaPagadora = () => {
+    setOpenEgresoConCajaPagadora(false);
+  };
+
+  const handleEgresoConCajaPagadoraSuccess = (result) => {
+    setAlert({
+      open: true,
+      message: 'Egreso con caja pagadora creado con éxito',
+      severity: 'success',
+    });
+    // Opcional: redirigir o refrescar datos
+    setTimeout(() => {
+      router.push(lastPageUrl || `/cajaProyecto?proyectoId=${proyectoId}`);
+    }, 1500);
+  };
+
+  const handleAccionesMenuOpen = (event) => {
+    setAccionesMenuAnchor(event.currentTarget);
+  };
+
+  const handleAccionesMenuClose = () => {
+    setAccionesMenuAnchor(null);
+  };
+
+  const handleAccionesMenuItemClick = (action) => {
+    handleAccionesMenuClose();
+    switch (action) {
+      case 'transferencia':
+        handleOpenTransferencia();
+        break;
+      case 'pagoOtraCaja':
+        handleOpenEgresoConCajaPagadora();
+        break;
+      case 'prorrateo':
+        setProrrateoOpen(true);
+        break;
+      default:
+        break;
+    }
+  };
+
   return (
     <>
       <Head><title>{titulo}</title></Head>
@@ -508,7 +691,8 @@ function syncMaterialesWithMovs(currentMateriales = [], mmRows = [], { proyecto_
               </Stack>
             </Box>
 
-            <Stack direction="row" spacing={1} flexWrap="wrap">
+            <Stack direction="row" spacing={1} flexWrap="wrap" alignItems="center">
+              {/* Acciones principales */}
               <Button
                 variant="outlined"
                 color="secondary"
@@ -518,7 +702,77 @@ function syncMaterialesWithMovs(currentMateriales = [], mmRows = [], { proyecto_
               >
                 {isExtractingData ? 'Extrayendo...' : 'Extraer datos'}
               </Button>
-              <Button variant="outlined" onClick={() => router.push(lastPageUrl || '/')}>Volver sin guardar</Button>
+
+              {/* Menú de acciones avanzadas */}
+              <Button
+                variant="outlined"
+                color="primary"
+                startIcon={<MoreVertIcon />}
+                onClick={handleAccionesMenuOpen}
+                disabled={isLoading}
+                sx={{ minWidth: 'auto', px: 2 }}
+              >
+                Acciones
+              </Button>
+
+              <Menu
+                anchorEl={accionesMenuAnchor}
+                open={Boolean(accionesMenuAnchor)}
+                onClose={handleAccionesMenuClose}
+                PaperProps={{
+                  sx: { minWidth: 200 }
+                }}
+              >
+                <MenuItem 
+                  onClick={() => handleAccionesMenuItemClick('transferencia')}
+                  disabled={!proyectoId}
+                >
+                  <ListItemIcon>
+                    <SwapHorizIcon fontSize="small" />
+                  </ListItemIcon>
+                  <ListItemText primary="Transferencia interna" />
+                </MenuItem>
+
+                {!isEditMode && (
+                  <MenuItem 
+                    onClick={() => handleAccionesMenuItemClick('pagoOtraCaja')}
+                    disabled={!proyectoId || !formik.values.total || proyectos.length <= 1 || formik.values.type !== 'egreso'}
+                  >
+                    <ListItemIcon>
+                      <AccountBalanceWalletIcon fontSize="small" />
+                    </ListItemIcon>
+                    <ListItemText 
+                      primary="Pagar desde otra caja" 
+                      secondary={
+                        !proyectoId ? "Falta proyecto" :
+                        !formik.values.total ? "Falta total" :
+                        proyectos.length <= 1 ? "Faltan proyectos" :
+                        formik.values.type !== 'egreso' ? "Solo para egresos" : null
+                      }
+                    />
+                  </MenuItem>
+                )}
+
+                {!isEditMode && proyectos.length >= 1 && (
+                  <MenuItem 
+                    onClick={() => handleAccionesMenuItemClick('prorrateo')}
+                    disabled={isLoading || !formik.values.total}
+                  >
+                    <ListItemIcon>
+                      <CallSplitIcon fontSize="small" />
+                    </ListItemIcon>
+                    <ListItemText 
+                      primary="Prorratear por Proyectos"
+                      secondary={!formik.values.total ? "Falta total" : null}
+                    />
+                  </MenuItem>
+                )}
+              </Menu>
+              
+              {/* Acciones principales de navegación */}
+              <Button variant="outlined" onClick={() => router.push(lastPageUrl || '/')}>
+                Volver sin guardar
+              </Button>
               <Button variant="contained" onClick={formik.submitForm} disabled={isLoading}>
                 {isLoading ? <CircularProgress size={22} /> : (isEditMode ? 'Guardar' : 'Crear')}
               </Button>
@@ -886,6 +1140,23 @@ function syncMaterialesWithMovs(currentMateriales = [], mmRows = [], { proyecto_
                   </Stack>
                 </Paper>
 
+                {/* Información de Prorrateo */}
+                {isEditMode && movimiento?.es_movimiento_prorrateo && (
+                  <ProrrateoInfo 
+                    movimiento={movimiento}
+                    onVerRelacionados={() => {
+                      router.push(`/movimientos-prorrateo?grupoId=${movimiento.prorrateo_grupo_id}`);
+                    }}
+                  />
+                )}
+
+                {/* Información de Pago Entre Cajas */}
+                {isEditMode && movimiento?.es_pago_entre_cajas && (
+                  <PagoEntreCajasInfo 
+                    movimiento={movimiento}
+                  />
+                )}
+
                 {/* HISTORIAL / ACCIONES secundarias… (sin cambios) */}
                 {/* ... */}
               </Stack>
@@ -949,6 +1220,59 @@ function syncMaterialesWithMovs(currentMateriales = [], mmRows = [], { proyecto_
             </Button>
           </DialogActions>
         </Dialog>
+
+        {/* Diálogo de Prorrateo */}
+        <ProrrateoDialog 
+          open={prorrateoOpen}
+          onClose={(success) => {
+            setProrrateoOpen(false);
+            if (success) {
+              setAlert({
+                open: true,
+                message: 'Movimientos prorrateo creados con éxito',
+                severity: 'success'
+              });
+              // Redirigir a la lista o mostrar éxito
+              setTimeout(() => {
+                router.push(lastPageUrl || `/cajaProyecto?proyectoId=${proyectoId}`);
+              }, 1500);
+            }
+          }}
+          datosBase={{
+            ...formik.values,
+            proyecto_id: proyectoId,
+            proyecto_nombre: proyectoName
+          }}
+          proyectos={proyectos}
+          onSuccess={(data) => {
+            console.log('Prorrateo exitoso:', data);
+          }}
+        />
+
+        {/* Diálogo de Transferencia Interna */}
+        <TransferenciaInternaDialog
+          open={openTransferencia}
+          onClose={handleCloseTransferencia}
+          proyectos={proyectos}
+          onSuccess={handleTransferenciaSuccess}
+          defaultProyectoEmisor={proyectoId && proyectoName ? { id: proyectoId, nombre: proyectoName } : null}
+          userPhone={user?.phone}
+        />
+
+        {/* Diálogo de Egreso con Caja Pagadora */}
+        <EgresoConCajaPagadoraDialog
+          open={openEgresoConCajaPagadora}
+          onClose={handleCloseEgresoConCajaPagadora}
+          datosEgreso={{
+            ...formik.values,
+            proyecto_id: proyectoId,
+            proyecto_nombre: proyectoName,
+            user_phone: user?.phone,
+            empresa_id: empresa?.id
+          }}
+          proyectos={proyectos}
+          onSuccess={handleEgresoConCajaPagadoraSuccess}
+        />
 
         <Snackbar open={alert.open} autoHideDuration={6000} onClose={handleCloseAlert}>
           <Alert severity={alert.severity}>{alert.message}</Alert>
