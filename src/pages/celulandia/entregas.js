@@ -93,16 +93,7 @@ const EntregasCelulandiaPage = () => {
       const offset = (pagina - 1) * limitePorPagina;
       const { fechaInicio, fechaFin } = calcularFechasFiltro(filtroFecha);
       
-      let montoDesdeNegativo = undefined;
-      let montoHastaNegativo = undefined;
-      if (debouncedMontoDesde || debouncedMontoHasta) {
-        if (debouncedMontoHasta) {
-          montoDesdeNegativo = -Math.abs(Number(debouncedMontoHasta));
-        }
-        if (debouncedMontoDesde) {
-          montoHastaNegativo = -Math.abs(Number(debouncedMontoDesde));
-        }
-      }
+      // Buscar por valor absoluto en backend; enviar montos tal cual (sin invertir signo)
 
       const [cuentasResp, clientesResp, tcResp] = await Promise.all([
         cuentasPendientesService.getAll({
@@ -124,8 +115,8 @@ const EntregasCelulandiaPage = () => {
           ...(filtroCC ? { cc: filtroCC } : {}),
           ...(filtroUsuario ? { usuario: filtroUsuario } : {}),
           ...(filtroNombreCliente ? { nombreCliente: filtroNombreCliente } : {}),
-          ...(montoDesdeNegativo !== undefined ? { montoDesde: montoDesdeNegativo } : {}),
-          ...(montoHastaNegativo !== undefined ? { montoHasta: montoHastaNegativo } : {}),
+          ...(debouncedMontoDesde ? { montoDesde: debouncedMontoDesde } : {}),
+          ...(debouncedMontoHasta ? { montoHasta: debouncedMontoHasta } : {}),
           ...(montoTipo ? { montoTipo } : {}),
           text: debouncedBusqueda || undefined,
         }),
