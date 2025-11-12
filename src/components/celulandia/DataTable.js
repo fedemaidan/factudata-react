@@ -83,6 +83,7 @@ const DataTable = ({
   onBack = null,
   backButtonLabel = "Volver",
   rowIsSelected,
+  controlsLayout,
 }) => {
   const [busqueda, setBusqueda] = useState("");
   const [filtroFecha, setFiltroFecha] = useState("todos");
@@ -402,6 +403,34 @@ const DataTable = ({
             />
           )}
 
+          {showDateFilterOptions && !showDatePicker && dateFilterOptions.length > 0 && (
+            <FormControl size="small" sx={{ width: 200 }} variant="filled">
+              <InputLabel size="small" id="filtro-fecha-label">
+                Filtrar por fecha
+              </InputLabel>
+              <Select
+                size="small"
+                labelId="filtro-fecha-label"
+                id="filtro-fecha-select"
+                value={currentFiltroFecha}
+                label="Filtrar por fecha"
+                onChange={(e) => {
+                  if (serverSide && onFiltroFechaChange) {
+                    onFiltroFechaChange(e.target.value);
+                  } else {
+                    setFiltroFecha(e.target.value);
+                  }
+                }}
+              >
+                {dateFilterOptions.map((option) => (
+                  <MenuItem key={option.value} value={option.value}>
+                    {option.label}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          )}
+
           {/* Select único (compatibilidad) */}
           {selectFilter && (
             <FormControl size="small" sx={{ width: 150 }} variant="filled">
@@ -447,33 +476,7 @@ const DataTable = ({
             </FormControl>
           ))}
 
-          {showDateFilterOptions && !showDatePicker && dateFilterOptions.length > 0 && (
-            <FormControl size="small" sx={{ width: 200 }} variant="filled">
-              <InputLabel size="small" id="filtro-fecha-label">
-                Filtrar por fecha
-              </InputLabel>
-              <Select
-                size="small"
-                labelId="filtro-fecha-label"
-                id="filtro-fecha-select"
-                value={currentFiltroFecha}
-                label="Filtrar por fecha"
-                onChange={(e) => {
-                  if (serverSide && onFiltroFechaChange) {
-                    onFiltroFechaChange(e.target.value);
-                  } else {
-                    setFiltroFecha(e.target.value);
-                  }
-                }}
-              >
-                {dateFilterOptions.map((option) => (
-                  <MenuItem key={option.value} value={option.value}>
-                    {option.label}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          )}
+          {/* Eliminado duplicado: el filtro de fecha siempre se muestra arriba */}
 
           {showDatePicker && (
             <LocalizationProvider dateAdapter={AdapterDayjs}>
