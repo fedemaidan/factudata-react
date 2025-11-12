@@ -77,13 +77,13 @@ const DataTable = ({
   showRefreshButton = false,
   onSearchDebounced,
   searchDebounceMs = 500,
-  // Mostrar un chip sutil en la columna "cliente" cuando el item tiene clienteId
   showClienteListedChip = false,
   showBackButton = false,
   onBack = null,
   backButtonLabel = "Volver",
   rowIsSelected,
   controlsLayout,
+  customFiltersComponent = null, 
 }) => {
   const [busqueda, setBusqueda] = useState("");
   const [filtroFecha, setFiltroFecha] = useState("todos");
@@ -379,116 +379,142 @@ const DataTable = ({
         )}
 
         <Stack direction="row" sx={{ margin: 0, gap: 1 }} alignItems="center" flexWrap="wrap">
-          {showSearch && (
-            <TextField
-              label="Buscar"
+          {/* Componente de filtros personalizado (si existe) */}
+          {customFiltersComponent ? (
+            customFiltersComponent
+          ) : (
+            <>
+              {showSearch && (
+                <TextField
+                  label="Buscar"
+                  size="small"
+                  value={busqueda}
+                  onChange={(e) => setBusqueda(e.target.value)}
+                  sx={{ width: 200 }}
+                  InputProps={{
+                    endAdornment: busqueda.length > 0 && (
+                      <InputAdornment position="end">
+                        <IconButton
+                          onClick={() => setBusqueda("")}
+                          edge="end"
+                          size="small"
+                          sx={{ color: "text.secondary" }}
+                        >
+                          <ClearIcon />
+                        </IconButton>
+                      </InputAdornment>
+                    ),
+                  }}
+                />
+              )}
+
+              {showDateFilterOptions && !showDatePicker && dateFilterOptions.length > 0 && (
+                <FormControl size="small" sx={{ width: 200 }} variant="filled">
+                  <InputLabel size="small" id="filtro-fecha-label">
+                    Filtrar por fecha
+                  </InputLabel>
+                  <Select
+                    size="small"
+                    labelId="filtro-fecha-label"
+                    id="filtro-fecha-select"
+                    value={currentFiltroFecha}
+                    label="Filtrar por fecha"
+                    onChange={(e) => {
+                      if (serverSide && onFiltroFechaChange) {
+                        onFiltroFechaChange(e.target.value);
+                      } else {
+                        setFiltroFecha(e.target.value);
+                      }
+                    }}
+                  >
+                    {dateFilterOptions.map((option) => (
+                      <MenuItem key={option.value} value={option.value}>
+                        {option.label}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              )}
+
+              {/* Select único (compatibilidad) */}
+              {selectFilter && (
+                <FormControl size="small" sx={{ width: 150 }} variant="filled">
+                  <InputLabel size="small" id="select-filter-label">
+                    {selectFilter.label}
+                  </InputLabel>
+                  <Select
+                    size="small"
+                    labelId="select-filter-label"
+                    id="select-filter-select"
+                    value={selectFilterValue}
+                    label={selectFilter.label}
+                    onChange={handleSelectFilterChange}
+                  >
+                    {selectFilter.options.map((option) => (
+                      <MenuItem key={option.value} value={option.value}>
+                        {option.label}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              )}
+
+              {multipleSelectFilters.map((f) => (
+                <FormControl size="small" key={f.key} sx={{ width: 150 }} variant="filled">
+                  <InputLabel size="small" id={`msf-${f.key}-label`}>
+                    {f.label}
+                  </InputLabel>
+                  <Select
+                    size="small"
+                    labelId={`msf-${f.key}-label`}
+                    id={`msf-${f.key}-select`}
+                    value={serverSide ? f.value ?? "" : localMultiSelects[f.key] ?? ""}
+                    label={f.label}
+                    onChange={(e) => handleMultiSelectChange(f.key, e.target.value, f.onChange)}
+                  >
+                    {(f.options || []).map((option) => (
+                      <MenuItem key={`${f.key}-${option.value}`} value={option.value}>
+                        {option.label}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              ))}
+
+              {showDatePicker && (
+                <LocalizationProvider dateAdapter={AdapterDayjs}>
+                  <DatePicker
+                    label="Seleccionar fecha"
+                    value={selectedDate}
+                    onChange={(newValue) => setSelectedDate(newValue)}
+                    format="DD/MM/YYYY"
+                  />
+                </LocalizationProvider>
+              )}
+            </>
+          )}
+
+          {/* Botón agregar */}
+          {(onAdd || AddModalComponent) && (
+            <Button
               size="small"
-              value={busqueda}
-              onChange={(e) => setBusqueda(e.target.value)}
-              sx={{ width: 200 }}
-              InputProps={{
-                endAdornment: busqueda.length > 0 && (
-                  <InputAdornment position="end">
-                    <IconButton
-                      onClick={() => setBusqueda("")}
-                      edge="end"
-                      size="small"
-                      sx={{ color: "text.secondary" }}
-                    >
-                      <ClearIcon />
-                    </IconButton>
-                  </InputAdornment>
-                ),
+              variant="contained"
+              color="primary"
+              startIcon={<AddIcon />}
+              onClick={handleOpenAdd}
+              sx={{
+                borderRadius: 2,
+                px: 3,
+                py: 1,
+                boxShadow: 2,
+                "&:hover": { boxShadow: 4 },
               }}
-            />
+            >
+              {addButtonLabel}
+            </Button>
           )}
 
-          {showDateFilterOptions && !showDatePicker && dateFilterOptions.length > 0 && (
-            <FormControl size="small" sx={{ width: 200 }} variant="filled">
-              <InputLabel size="small" id="filtro-fecha-label">
-                Filtrar por fecha
-              </InputLabel>
-              <Select
-                size="small"
-                labelId="filtro-fecha-label"
-                id="filtro-fecha-select"
-                value={currentFiltroFecha}
-                label="Filtrar por fecha"
-                onChange={(e) => {
-                  if (serverSide && onFiltroFechaChange) {
-                    onFiltroFechaChange(e.target.value);
-                  } else {
-                    setFiltroFecha(e.target.value);
-                  }
-                }}
-              >
-                {dateFilterOptions.map((option) => (
-                  <MenuItem key={option.value} value={option.value}>
-                    {option.label}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          )}
-
-          {/* Select único (compatibilidad) */}
-          {selectFilter && (
-            <FormControl size="small" sx={{ width: 150 }} variant="filled">
-              <InputLabel size="small" id="select-filter-label">
-                {selectFilter.label}
-              </InputLabel>
-              <Select
-                size="small"
-                labelId="select-filter-label"
-                id="select-filter-select"
-                value={selectFilterValue}
-                label={selectFilter.label}
-                onChange={handleSelectFilterChange}
-              >
-                {selectFilter.options.map((option) => (
-                  <MenuItem key={option.value} value={option.value}>
-                    {option.label}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          )}
-
-          {multipleSelectFilters.map((f) => (
-            <FormControl size="small" key={f.key} sx={{ width: 150 }} variant="filled">
-              <InputLabel size="small" id={`msf-${f.key}-label`}>
-                {f.label}
-              </InputLabel>
-              <Select
-                size="small"
-                labelId={`msf-${f.key}-label`}
-                id={`msf-${f.key}-select`}
-                value={serverSide ? f.value ?? "" : localMultiSelects[f.key] ?? ""}
-                label={f.label}
-                onChange={(e) => handleMultiSelectChange(f.key, e.target.value, f.onChange)}
-              >
-                {(f.options || []).map((option) => (
-                  <MenuItem key={`${f.key}-${option.value}`} value={option.value}>
-                    {option.label}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          ))}
-
-          {/* Eliminado duplicado: el filtro de fecha siempre se muestra arriba */}
-
-          {showDatePicker && (
-            <LocalizationProvider dateAdapter={AdapterDayjs}>
-              <DatePicker
-                label="Seleccionar fecha"
-                value={selectedDate}
-                onChange={(newValue) => setSelectedDate(newValue)}
-                format="DD/MM/YYYY"
-              />
-            </LocalizationProvider>
-          )}
-
+          {/* Botón actualizar */}
           {showRefreshButton && onRefresh && (
             <Tooltip title="Actualizar datos">
               <IconButton
@@ -537,26 +563,6 @@ const DataTable = ({
               {btn.label}
             </Button>
           ))}
-
-          {/* Botón agregar por defecto */}
-          {(onAdd || AddModalComponent) && (
-            <Button
-              size="small"
-              variant="contained"
-              color="primary"
-              startIcon={<AddIcon />}
-              onClick={handleOpenAdd}
-              sx={{
-                borderRadius: 2,
-                px: 3,
-                py: 1,
-                boxShadow: 2,
-                "&:hover": { boxShadow: 4 },
-              }}
-            >
-              {addButtonLabel}
-            </Button>
-          )}
         </Stack>
 
         <Box position="relative">

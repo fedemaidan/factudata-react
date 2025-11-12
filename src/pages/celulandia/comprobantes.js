@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { Layout as DashboardLayout } from "src/layouts/dashboard/layout";
-import { Container, Box, Stack, TextField, Chip } from "@mui/material";
+import { Container } from "@mui/material";
 
 import DataTable from "src/components/celulandia/DataTable";
 import RowActions from "src/components/celulandia/RowActions";
@@ -19,6 +19,7 @@ import cajasService from "src/services/celulandia/cajasService";
 import { getMovimientoHistorialConfig } from "src/utils/celulandia/historial";
 import Head from "next/head";
 import useDebouncedValue from "src/hooks/useDebouncedValue";
+import ComprobantesFiltersBar from "src/components/celulandia/ComprobantesFiltersBar";
 import { formatearMonto, parsearMonto } from "src/utils/celulandia/separacionMiles";
 
 const ComprobantesCelulandiaPage = () => {
@@ -340,60 +341,6 @@ const ComprobantesCelulandiaPage = () => {
     <DashboardLayout title="Comprobantes">
       <Head>Comprobantes</Head>
       <Container maxWidth="xl">
-        <Box sx={{ mb: 1 }}>
-          <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
-          <TextField
-              label="Monto desde"
-              size="small"
-              type="text"
-              value={formatearMonto(montoDesde)}
-              onChange={(e) => {
-                const valorParseado = parsearMonto(e.target.value);
-                if (valorParseado === "" || !isNaN(Number(valorParseado))) {
-                  setMontoDesde(valorParseado);
-                }
-              }}
-              sx={{ width: 140 }}
-            />
-            <TextField
-              label="Monto hasta"
-              size="small"
-              type="text"
-              value={formatearMonto(montoHasta)}
-              onChange={(e) => {
-                const valorParseado = parsearMonto(e.target.value);
-                if (valorParseado === "" || !isNaN(Number(valorParseado))) {
-                  setMontoHasta(valorParseado);
-                }
-              }}
-              sx={{ width: 140 }}
-            />
-            <Stack direction="row" spacing={0.5} sx={{ mr: 1 }}>
-              <Chip
-                label="Monto Enviado"
-                size="small"
-                color={montoTipo === "enviado" ? "primary" : "default"}
-                variant={montoTipo === "enviado" ? "filled" : "outlined"}
-                onClick={() => {
-                  setMontoTipo("enviado");
-                  setPaginaActual(1);
-                }}
-                sx={{ height: 26, borderRadius: 2, fontSize: 12 }}
-              />
-              <Chip
-                label="Monto CC"
-                size="small"
-                color={montoTipo === "cc" ? "primary" : "default"}
-                variant={montoTipo === "cc" ? "filled" : "outlined"}
-                onClick={() => {
-                  setMontoTipo("cc");
-                  setPaginaActual(1);
-                }}
-                sx={{ height: 26, borderRadius: 2, fontSize: 12 }}
-              />
-            </Stack>
-          </Stack>
-        </Box>
         <DataTable
           data={movimientos}
           isLoading={isLoading}
@@ -402,84 +349,9 @@ const ComprobantesCelulandiaPage = () => {
           formatters={formatters}
           showClienteListedChip={true}
           serverSide={true}
-          showSearch={true}
-          onSearchDebounced={setBusquedaTexto}
-          multipleSelectFilters={[
-            {
-              key: "nombreCliente",
-              label: "Cliente",
-              type: "autocomplete",
-              value: filtroNombreCliente,
-              options: Array.from(
-                new Set(
-                  (clientes || [])
-                    .map((c) => (c?.nombre || "").toString().trim())
-                    .filter((n) => n && n.length > 0)
-                )
-              )
-                .sort((a, b) => a.localeCompare(b))
-                .map((n) => ({ value: n, label: n })),
-              onChange: (v) => {
-                setFiltroNombreCliente(v);
-                setPaginaActual(1);
-              },
-            },
-            {
-              key: "moneda",
-              label: "Moneda",
-              value: filtroMoneda,
-              options: [
-                { value: "", label: "(todas)" },
-                { value: "ARS", label: "ARS" },
-                { value: "USD", label: "USD" },
-              ],
-              onChange: (val) => {
-                setFiltroMoneda(val);
-                setPaginaActual(1);
-              },
-            },
-            {
-              key: "cuentaCorriente",
-              label: "CC",
-              value: filtroCuentaCorriente,
-              options: [
-                { value: "", label: "(todas)" },
-                { value: "ARS", label: "ARS" },
-                { value: "USD OFICIAL", label: "USD OFICIAL" },
-                { value: "USD BLUE", label: "USD BLUE" },
-              ],
-              onChange: (val) => {
-                setFiltroCuentaCorriente(val);
-                setPaginaActual(1);
-              },
-            },
-            {
-              key: "cajaNombre",
-              label: "Cuenta destino",
-              value: selectedCajaNombre,
-              options: [
-                { value: "", label: "Todas" },
-                ...(Array.isArray(cajas) ? cajas : []).map((caja) => ({
-                  value: caja?.nombre || "",
-                  label: caja?.nombre || "-",
-                })),
-              ],
-              onChange: (val) => {
-                setSelectedCajaNombre(val);
-                setPaginaActual(1);
-              },
-            },
-            {
-              key: "nombreUsuario",
-              label: "Usuario",
-              value: filtroUsuario,
-              options: usuariosOptions,
-              onChange: (val) => {
-                setFiltroUsuario(val);
-                setPaginaActual(1);
-              },
-            },
-          ]}
+          showSearch={false}
+          showDateFilterOptions={false}
+          multipleSelectFilters={[]}
           onAdd={() => setAgregarModalOpen(true)}
           dateField="fechaFactura"
           total={totalMovimientos}
@@ -496,6 +368,58 @@ const ComprobantesCelulandiaPage = () => {
           }}
           showRefreshButton={true}
           onRefresh={refetchMovimientos}
+          customFiltersComponent={
+            <ComprobantesFiltersBar
+              // búsqueda
+              onSearchDebounced={setBusquedaTexto}
+              initialSearch={busquedaTexto}
+              // fecha
+              filtroFecha={filtroFecha}
+              onFiltroFechaChange={(nuevoFiltro) => {
+                setFiltroFecha(nuevoFiltro);
+                setPaginaActual(1);
+              }}
+              // datos
+              clientes={clientes}
+              cajas={cajas}
+              usuariosOptions={usuariosOptions}
+              // valores y setters
+              filtroNombreCliente={filtroNombreCliente}
+              setFiltroNombreCliente={(v) => {
+                setFiltroNombreCliente(v);
+                setPaginaActual(1);
+              }}
+              filtroMoneda={filtroMoneda}
+              setFiltroMoneda={(v) => {
+                setFiltroMoneda(v);
+                setPaginaActual(1);
+              }}
+              filtroCuentaCorriente={filtroCuentaCorriente}
+              setFiltroCuentaCorriente={(v) => {
+                setFiltroCuentaCorriente(v);
+                setPaginaActual(1);
+              }}
+              selectedCajaNombre={selectedCajaNombre}
+              setSelectedCajaNombre={(v) => {
+                setSelectedCajaNombre(v);
+                setPaginaActual(1);
+              }}
+              filtroUsuario={filtroUsuario}
+              setFiltroUsuario={(v) => {
+                setFiltroUsuario(v);
+                setPaginaActual(1);
+              }}
+              montoDesde={montoDesde}
+              setMontoDesde={setMontoDesde}
+              montoHasta={montoHasta}
+              setMontoHasta={setMontoHasta}
+              montoTipo={montoTipo}
+              setMontoTipo={(v) => {
+                setMontoTipo(v);
+                setPaginaActual(1);
+              }}
+            />
+          }
         />
       </Container>
 

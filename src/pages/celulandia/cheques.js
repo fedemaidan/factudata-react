@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Layout as DashboardLayout } from "src/layouts/dashboard/layout";
 import Head from "next/head";
-import { Container, Box, Stack, TextField, Chip } from "@mui/material";
+import { Container } from "@mui/material";
 
 import DataTable from "src/components/celulandia/DataTable";
 import RowActions from "src/components/celulandia/RowActions";
@@ -20,6 +20,7 @@ import cajasService from "src/services/celulandia/cajasService";
 import { getUser } from "src/utils/celulandia/currentUser";
 import useDebouncedValue from "src/hooks/useDebouncedValue";
 import { formatearMonto, parsearMonto } from "src/utils/celulandia/separacionMiles";
+import ChequesFiltersBar from "src/components/celulandia/ChequesFiltersBar";
 
 const ChequesCelulandiaPage = () => {
   const [movimientos, setMovimientos] = useState([]);
@@ -54,6 +55,7 @@ const ChequesCelulandiaPage = () => {
   const [filtroCuentaCorriente, setFiltroCuentaCorriente] = useState("");
   const [filtroUsuario, setFiltroUsuario] = useState("");
   const [usuariosOptions, setUsuariosOptions] = useState([{ value: "", label: "(todos)" }]);
+  const [filtroNombreCliente, setFiltroNombreCliente] = useState("");
   const [montoDesde, setMontoDesde] = useState("");
   const [montoHasta, setMontoHasta] = useState("");
   const [montoTipo, setMontoTipo] = useState("enviado"); // 'enviado' | 'cc'
@@ -130,6 +132,7 @@ const ChequesCelulandiaPage = () => {
             ...(filtroMoneda ? { moneda: filtroMoneda } : {}),
             ...(filtroCuentaCorriente ? { cuentaCorriente: filtroCuentaCorriente } : {}),
             nombreUsuario: filtroUsuario || undefined,
+            ...(filtroNombreCliente ? { clienteNombre: filtroNombreCliente } : {}),
             ...(debouncedMontoDesde ? { montoDesde: debouncedMontoDesde } : {}),
             ...(debouncedMontoHasta ? { montoHasta: debouncedMontoHasta } : {}),
             ...(montoTipo ? { montoTipo } : {}),
@@ -354,60 +357,6 @@ const ChequesCelulandiaPage = () => {
         <title>Cheques</title>
       </Head>
       <Container maxWidth="xl">
-        <Box sx={{ mb: 1 }}>
-          <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
-            <TextField
-              label="Monto desde"
-              size="small"
-              type="text"
-              value={formatearMonto(montoDesde)}
-              onChange={(e) => {
-                const valorParseado = parsearMonto(e.target.value);
-                if (valorParseado === "" || !isNaN(Number(valorParseado))) {
-                  setMontoDesde(valorParseado);
-                }
-              }}
-              sx={{ width: 140 }}
-            />
-            <TextField
-              label="Monto hasta"
-              size="small"
-              type="text"
-              value={formatearMonto(montoHasta)}
-              onChange={(e) => {
-                const valorParseado = parsearMonto(e.target.value);
-                if (valorParseado === "" || !isNaN(Number(valorParseado))) {
-                  setMontoHasta(valorParseado);
-                }
-              }}
-              sx={{ width: 140 }}
-            />
-            <Stack direction="row" spacing={0.5} sx={{ mr: 1 }}>
-              <Chip
-                label="Monto Enviado"
-                size="small"
-                color={montoTipo === "enviado" ? "primary" : "default"}
-                variant={montoTipo === "enviado" ? "filled" : "outlined"}
-                onClick={() => {
-                  setMontoTipo("enviado");
-                  setPaginaActual(1);
-                }}
-                sx={{ height: 26, borderRadius: 2, fontSize: 12 }}
-              />
-              <Chip
-                label="Monto CC"
-                size="small"
-                color={montoTipo === "cc" ? "primary" : "default"}
-                variant={montoTipo === "cc" ? "filled" : "outlined"}
-                onClick={() => {
-                  setMontoTipo("cc");
-                  setPaginaActual(1);
-                }}
-                sx={{ height: 26, borderRadius: 2, fontSize: 12 }}
-              />
-            </Stack>
-          </Stack>
-        </Box>
         <DataTable
           data={movimientos}
           isLoading={isLoading}
@@ -423,74 +372,63 @@ const ChequesCelulandiaPage = () => {
           sortField={sortField}
           sortDirection={sortDirection}
           onSortChange={handleSortChange}
-          showSearch={true}
-          onSearchDebounced={setBusquedaTexto}
-          selectFilter={selectFilterConfig} // Filtro exclusivo de Cheques para CHEQUE/ECHEQ/ambas
+          showSearch={false}
+          showDateFilterOptions={false}
           serverSide={true}
           filtroFecha={filtroFecha}
           onFiltroFechaChange={(nuevo) => {
             setFiltroFecha(nuevo);
             setPaginaActual(1);
           }}
-          multipleSelectFilters={[
-            {
-              key: "nombreCliente",
-              label: "Cliente",
-              type: "autocomplete",
-              value: "", // usamos onSearch global y backend por text; autocomplete solo muestra opciones
-              options: Array.from(
-                new Set((clientes || []).map((c) => (c?.nombre || "").toString().trim()).filter((n) => n && n.length > 0))
-              )
-                .sort((a, b) => a.localeCompare(b))
-                .map((n) => ({ value: n, label: n })),
-              onChange: (v) => {
-                // En cheques usamos búsqueda global; permitimos enviar nombre exacto también
-                setBusquedaTexto(v || "");
-                setPaginaActual(1);
-              },
-            },
-            {
-              key: "moneda",
-              label: "Moneda",
-              value: filtroMoneda,
-              options: [
-                { value: "", label: "(todas)" },
-                { value: "ARS", label: "ARS" },
-                { value: "USD", label: "USD" },
-              ],
-              onChange: (val) => {
-                setFiltroMoneda(val);
-                setPaginaActual(1);
-              },
-            },
-            {
-              key: "cuentaCorriente",
-              label: "CC",
-              value: filtroCuentaCorriente,
-              options: [
-                { value: "", label: "(todas)" },
-                { value: "ARS", label: "ARS" },
-                { value: "USD OFICIAL", label: "USD OFICIAL" },
-                { value: "USD BLUE", label: "USD BLUE" },
-              ],
-              onChange: (val) => {
-                setFiltroCuentaCorriente(val);
-                setPaginaActual(1);
-              },
-            },
-            {
-              key: "nombreUsuario",
-              label: "Usuario",
-              value: filtroUsuario,
-              options: usuariosOptions,
-              onChange: (val) => {
-                setFiltroUsuario(val);
-                setPaginaActual(1);
-              },
-            },
-          ]}
           showRefreshButton={true}
           onRefresh={refetchMovimientos}
+          customFiltersComponent={
+            <ChequesFiltersBar
+              onSearchDebounced={setBusquedaTexto}
+              initialSearch={busquedaTexto}
+              filtroFecha={filtroFecha}
+              onFiltroFechaChange={(nuevo) => {
+                setFiltroFecha(nuevo);
+                setPaginaActual(1);
+              }}
+              clientes={clientes}
+              usuariosOptions={usuariosOptions}
+              filtroNombreCliente={filtroNombreCliente}
+              setFiltroNombreCliente={(v) => {
+                setFiltroNombreCliente(v);
+                setPaginaActual(1);
+              }}
+              filtroMoneda={filtroMoneda}
+              setFiltroMoneda={(v) => {
+                setFiltroMoneda(v);
+                setPaginaActual(1);
+              }}
+              filtroCuentaCorriente={filtroCuentaCorriente}
+              setFiltroCuentaCorriente={(v) => {
+                setFiltroCuentaCorriente(v);
+                setPaginaActual(1);
+              }}
+              filtroUsuario={filtroUsuario}
+              setFiltroUsuario={(v) => {
+                setFiltroUsuario(v);
+                setPaginaActual(1);
+              }}
+              filtroCaja={filtroCaja}
+              setFiltroCaja={(v) => {
+                setFiltroCaja(v);
+                setPaginaActual(1);
+              }}
+              montoDesde={montoDesde}
+              setMontoDesde={setMontoDesde}
+              montoHasta={montoHasta}
+              setMontoHasta={setMontoHasta}
+              montoTipo={montoTipo}
+              setMontoTipo={(v) => {
+                setMontoTipo(v);
+                setPaginaActual(1);
+              }}
+            />
+          }
         />
       </Container>
 

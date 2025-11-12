@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { Layout as DashboardLayout } from "src/layouts/dashboard/layout";
 import Head from "next/head";
-import { Container, Box, Stack, TextField } from "@mui/material";
+import { Container } from "@mui/material";
 
 import DataTable from "src/components/celulandia/DataTable";
 import RowActions from "src/components/celulandia/RowActions";
@@ -19,6 +19,7 @@ import { getEmpresaDetailsFromUser } from "src/services/empresaService";
 import { useAuthContext } from "src/contexts/auth-context";
 import { formatearMonto, parsearMonto } from "src/utils/celulandia/separacionMiles";
 import useDebouncedValue from "src/hooks/useDebouncedValue";
+import PagosFiltersBar from "src/components/celulandia/PagosFiltersBar";
 
 const PagosCelulandiaPage = () => {
   const { user } = useAuthContext();
@@ -45,6 +46,8 @@ const PagosCelulandiaPage = () => {
   const [montoHasta, setMontoHasta] = useState("");
   const debouncedMontoDesde = useDebouncedValue(montoDesde, 500);
   const debouncedMontoHasta = useDebouncedValue(montoHasta, 500);
+  const [busquedaTexto, setBusquedaTexto] = useState("");
+  const debouncedBusqueda = useDebouncedValue(busquedaTexto, 500);
 
 
   const movimientoHistorialConfig = useMemo(
@@ -142,12 +145,16 @@ const PagosCelulandiaPage = () => {
 
   useEffect(() => {
     fetchData(paginaActual);
-  }, [paginaActual, sortField, sortDirection, filtroFecha, selectedCajaNombre, filtroMoneda, debouncedMontoDesde, debouncedMontoHasta]);
+  }, [paginaActual, sortField, sortDirection, filtroFecha, selectedCajaNombre, filtroMoneda, debouncedMontoDesde, debouncedMontoHasta, debouncedBusqueda]);
 
   // Al cambiar los montos, resetear a página 1
   useEffect(() => {
     setPaginaActual(1);
   }, [debouncedMontoDesde, debouncedMontoHasta]);
+  // Resetear a la primera página cuando cambia la búsqueda
+  useEffect(() => {
+    setPaginaActual(1);
+  }, [debouncedBusqueda]);
 
   const fetchData = async (pagina = 1) => {
     setIsLoading(true);
@@ -186,6 +193,7 @@ const PagosCelulandiaPage = () => {
           montoTipo: "enviado",
           fechaInicio,
           fechaFin,
+          text: debouncedBusqueda || undefined,
           //includeInactive: true, // Incluir registros inactivos para mostrarlos tachados
         }),
         cajasService.getAllCajas(),
@@ -320,36 +328,6 @@ const PagosCelulandiaPage = () => {
         <title>Pagos</title>
       </Head>
       <Container maxWidth="xl">
-        <Box sx={{ mb: 1 }}>
-          <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
-            <TextField
-              label="Monto desde"
-              size="small"
-              type="text"
-              value={formatearMonto(montoDesde)}
-              onChange={(e) => {
-                const valorParseado = parsearMonto(e.target.value);
-                if (valorParseado === "" || !isNaN(Number(valorParseado))) {
-                  setMontoDesde(valorParseado);
-                }
-              }}
-              sx={{ width: 140 }}
-            />
-            <TextField
-              label="Monto hasta"
-              size="small"
-              type="text"
-              value={formatearMonto(montoHasta)}
-              onChange={(e) => {
-                const valorParseado = parsearMonto(e.target.value);
-                if (valorParseado === "" || !isNaN(Number(valorParseado))) {
-                  setMontoHasta(valorParseado);
-                }
-              }}
-              sx={{ width: 140 }}
-            />
-          </Stack>
-        </Box>
         <DataTable
           data={pagos}
           isLoading={isLoading}
@@ -366,46 +344,41 @@ const PagosCelulandiaPage = () => {
           sortDirection={sortDirection}
           onSortChange={handleSortChange}
           showSearch={false}
+          showDateFilterOptions={false}
           serverSide={true}
           filtroFecha={filtroFecha}
           onFiltroFechaChange={(nuevoFiltro) => {
             setFiltroFecha(nuevoFiltro);
             setPaginaActual(1); // Resetear a la primera página
           }}
-          multipleSelectFilters={[
-            {
-              key: "moneda",
-              label: "Moneda",
-              value: filtroMoneda,
-              options: [
-                { value: "", label: "(todas)" },
-                { value: "ARS", label: "ARS" },
-                { value: "USD", label: "USD" },
-              ],
-              onChange: (val) => {
-                setFiltroMoneda(val);
-                setPaginaActual(1);
-              },
-            },
-            {
-              key: "cajaNombre",
-              label: "Cuenta de Origen",
-              value: selectedCajaNombre,
-              options: [
-                { value: "", label: "Todas" },
-                ...(Array.isArray(cajas) ? cajas : []).map((caja) => ({
-                  value: caja?.nombre || "",
-                  label: caja?.nombre || "-",
-                })),
-              ],
-              onChange: (val) => {
-                setSelectedCajaNombre(val);
-                setPaginaActual(1);
-              },
-            },
-          ]}
           showRefreshButton={true}
           onRefresh={refetchPagos}
+          customFiltersComponent={
+            <PagosFiltersBar
+              onSearchDebounced={setBusquedaTexto}
+              initialSearch={busquedaTexto}
+              filtroFecha={filtroFecha}
+              onFiltroFechaChange={(nuevo) => {
+                setFiltroFecha(nuevo);
+                setPaginaActual(1);
+              }}
+              cajas={cajas}
+              filtroMoneda={filtroMoneda}
+              setFiltroMoneda={(v) => {
+                setFiltroMoneda(v);
+                setPaginaActual(1);
+              }}
+              selectedCajaNombre={selectedCajaNombre}
+              setSelectedCajaNombre={(v) => {
+                setSelectedCajaNombre(v);
+                setPaginaActual(1);
+              }}
+              montoDesde={montoDesde}
+              setMontoDesde={setMontoDesde}
+              montoHasta={montoHasta}
+              setMontoHasta={setMontoHasta}
+            />
+          }
         />
       </Container>
 
