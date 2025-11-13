@@ -6,6 +6,17 @@ const conciliacionService = {
     return data;
   },
 
+  async crearConciliacionConArchivo(archivoExcel) {
+    const formData = new FormData();
+    formData.append('archivoExcel', archivoExcel);
+    const { data } = await api.post('/dhn/conciliacion', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return data;
+  },
+
   async getConciliaciones({ limit, offset, sheetId } = {}) {
     const params = {};
     if (limit != null) params.limit = limit;

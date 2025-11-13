@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { Layout as DashboardLayout } from "src/layouts/dashboard/layout";
-import { Container, Box, Chip, IconButton, TextField, Button } from "@mui/material";
+import { Container, Box, Chip, IconButton, TextField, Button, Dialog, DialogTitle, DialogContent, DialogActions, MenuItem, Stack } from "@mui/material";
+import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
+import VisibilityIcon from "@mui/icons-material/Visibility";
 import TableComponent from "src/components/TableComponent";
 import DhnDriveService from "src/services/dhn/cargarUrlDriveService";
+import ComprobanteModal from "src/components/celulandia/ComprobanteModal";
 
 const formatearFechaHora = (s) => {
   if (!s) return "-";
@@ -20,13 +23,31 @@ const formatearFechaHora = (s) => {
 
 const statusChip = (status) => {
   const map = {
-    pending: { color: "default", label: "Pendiente" },
-    processing: { color: "warning", label: "Procesando" },
-    done: { color: "success", label: "Completado" },
-    error: { color: "error", label: "Error" },
+    pending: { color: "#757575", label: "Pendiente" },
+    processing: { color: "#ed6c02", label: "Procesando" },
+    done: { color: "#2e7d32", label: "Completado" },
+    ok: { color: "#2e7d32", label: "OK" },
+    error: { color: "#d32f2f", label: "Error" },
   };
-  const cfg = map[status] || { color: "default", label: status || "-" };
-  return <Chip label={cfg.label} color={cfg.color} size="small" variant="outlined" />;
+  const cfg = map[status] || { color: "#757575", label: status || "-" };
+  return (
+    <Chip
+      label={cfg.label}
+      size="small"
+      variant="outlined"
+      sx={{
+        borderColor: cfg.color,
+        color: cfg.color,
+        fontWeight: 500,
+        fontSize: "0.7rem",
+        height: "24px",
+        backgroundColor: "transparent",
+        "& .MuiChip-label": {
+          padding: "0 8px",
+        },
+      }}
+    />
+  );
 };
 
 const CargarDrive = () => {
@@ -36,10 +57,25 @@ const CargarDrive = () => {
   const [isSyncing, setIsSyncing] = useState(false);
   const [googleSheetLink, setGoogleSheetLink] = useState("");
   const [isUpdatingSyncSheet, setIsUpdatingSyncSheet] = useState(false);
+  const [sheetDialogOpen, setSheetDialogOpen] = useState(false);
+  const [driveDialogOpen, setDriveDialogOpen] = useState(false);
+  const [periodDate, setPeriodDate] = useState(null); // Date | null
+  const [tipo, setTipo] = useState("");
 
   const [expandedId, setExpandedId] = useState(null);
   const [detailsMap, setDetailsMap] = useState({}); // id -> detalles[]
   const [detailsLoadingId, setDetailsLoadingId] = useState(null);
+  const [imageModalOpen, setImageModalOpen] = useState(false);
+  const [imageUrl, setImageUrl] = useState("");
+  const openImageModal = (url) => {
+    if (!url) return;
+    setImageUrl(url);
+    setImageModalOpen(true);
+  };
+  const closeImageModal = () => {
+    setImageModalOpen(false);
+    setImageUrl("");
+  };
 
   useEffect(() => {
     fetchSyncs();
@@ -102,11 +138,11 @@ const CargarDrive = () => {
     await fetchChildren(expandedId);
   };
 
-  const handleSyncClick = async () => {
+  const handleSyncClick = async (options = {}) => {
     if (!urlDrive) return;
     setIsSyncing(true);
     try {
-      await DhnDriveService.inspeccionarRecurso(urlDrive);
+      await DhnDriveService.inspeccionarRecurso(urlDrive, options);
       await refreshSyncsAndDetails();
       setUrlDrive("");
     } catch (e) {
@@ -115,6 +151,20 @@ const CargarDrive = () => {
     } finally {
       setIsSyncing(false);
     }
+  };
+  const handleDriveSave = async () => {
+    const periodo =
+      periodDate instanceof Date && !Number.isNaN(periodDate.getTime())
+        ? `${periodDate.getFullYear()}-${String(periodDate.getMonth() + 1).padStart(2, "0")}`
+        : undefined;
+    const tipoValue = tipo || undefined;
+    
+    // Cerrar el modal primero y limpiar campos
+    setDriveDialogOpen(false);
+    setPeriodDate(null);
+    setTipo("");
+    
+    await handleSyncClick({ periodo, tipo: tipoValue });
   };
 
   // Modificado: al expandir siempre pedir fetchChildren(...) y poblar detalles
@@ -184,7 +234,7 @@ const CargarDrive = () => {
     []
   );
 
-  // Columnas para la subtabla (detalles) — ahora muestra status, url_storage, url_drive y observacion
+  // Columnas para la subtabla (detalles) — ahora muestra status, imagen (modal), url_drive y observacion
   const detailsColumns = useMemo(
     () => [
       {
@@ -193,18 +243,24 @@ const CargarDrive = () => {
         render: (it) => statusChip(it?.status),
       },
       {
-        key: "url_storage",
-        label: "URL Storage",
+        key: "imagen",
+        label: "Imagen",
         render: (it) =>
           it?.url_storage ? (
             <IconButton
               size="small"
-              href={it.url_storage}
-              target="_blank"
-              rel="noreferrer"
-              onClick={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                openImageModal(it.url_storage);
+              }}
+              sx={{
+                padding: "4px",
+                "& .MuiSvgIcon-root": {
+                  fontSize: "1rem",
+                },
+              }}
             >
-              <OpenInNewIcon fontSize="small" />
+              <VisibilityIcon fontSize="small" />
             </IconButton>
           ) : (
             "-"
@@ -251,45 +307,31 @@ const CargarDrive = () => {
       setIsUpdatingSyncSheet(false);
     }
   };
+  const handleSheetSave = async () => {
+    await updateSyncSheet();
+    setSheetDialogOpen(false);
+    setGoogleSheetLink("");
+  };
 
   return (
     <DashboardLayout title="Cargar Drive - Historial">
       <Container maxWidth="xl">
         <Box sx={{ py: 3 }}>
-          {/* Caja con textbox y botón de sincronizar */}
+          {/* Acciones principales: abrir modales y refrescar */}
           <Box sx={{ display: "flex", gap: 2, mb: 2, alignItems: "center" }}>
-            <TextField
-              label="URL de Google Sheet"
-              value={googleSheetLink}
-              onChange={(e) => setGoogleSheetLink(e.target.value)}
-              fullWidth
-              size="small"
-            />
             <Button
               variant="contained"
-              onClick={updateSyncSheet}
-              disabled={!googleSheetLink || isUpdatingSyncSheet}
+              onClick={() => setSheetDialogOpen(true)}
             >
-              {isUpdatingSyncSheet ? "Actualizando..." : "Actualizar"}
+              Actualizar Google Sheet
             </Button>
-          </Box>
-          <Box sx={{ display: "flex", gap: 2, mb: 2, alignItems: "center" }}>
-            <TextField
-              label="URL de Drive"
-              value={urlDrive}
-              onChange={(e) => setUrlDrive(e.target.value)}
-              fullWidth
-              size="small"
-            />
             <Button
               variant="contained"
-              onClick={handleSyncClick}
-              disabled={!urlDrive || isSyncing}
+              onClick={() => setDriveDialogOpen(true)}
+              disabled={isSyncing}
             >
               {isSyncing ? "Sincronizando..." : "Sincronizar"}
             </Button>
-
-            {/* Botón para actualizar la lista */}
             <Button
               variant="outlined"
               onClick={refreshSyncsAndDetails}
@@ -300,31 +342,218 @@ const CargarDrive = () => {
           </Box>
 
           {/* Tabla principal: pasamos onRowClick para que se active la subtabla */}
-          <TableComponent
-            data={items}
-            columns={columns}
-            isLoading={isLoading}
-            onRowClick={handleRowClick}
-          />
+          <Box
+            sx={{
+              "& .MuiPaper-root": {
+                boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
+                borderRadius: 2,
+                overflow: "hidden",
+              },
+              "& .MuiTable-root": {
+                "& .MuiTableCell-root": {
+                  fontSize: "0.8rem",
+                  padding: "12px 16px",
+                  borderBottom: "1px solid rgba(224, 224, 224, 0.5)",
+                },
+                "& .MuiTableHead-root .MuiTableCell-root": {
+                  backgroundColor: "grey.50",
+                  fontWeight: 600,
+                  fontSize: "0.75rem",
+                  color: "text.secondary",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.5px",
+                  padding: "10px 16px",
+                  borderBottom: "2px solid",
+                  borderColor: "divider",
+                },
+                "& .MuiTableBody-root .MuiTableRow-root": {
+                  transition: "background-color 0.2s ease",
+                  "&:hover": {
+                    backgroundColor: "action.hover",
+                  },
+                  "&:last-child .MuiTableCell-root": {
+                    borderBottom: "none",
+                  },
+                },
+              },
+            }}
+          >
+            <TableComponent
+              data={items}
+              columns={columns}
+              isLoading={isLoading}
+              onRowClick={handleRowClick}
+            />
+          </Box>
 
           {/* Subtabla con detalles del registro seleccionado (se muestra debajo) */}
           {expandedId && (
-            <Box sx={{ mt: 2 }}>
-              <Box sx={{ mb: 1, fontWeight: "bold" }}>
-                Detalles del registro: {items.find((it) => getId(it) === expandedId)?.tipo || ""}
+            <Box
+              sx={{
+                mt: 3,
+                mb: 2,
+                border: "1px solid",
+                borderColor: "divider",
+                borderRadius: 2,
+                backgroundColor: "background.paper",
+                boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
+                overflow: "hidden",
+              }}
+            >
+              <Box
+                sx={{
+                  px: 2,
+                  py: 1.5,
+                  borderLeft: "4px solid",
+                  borderColor: "primary.main",
+                  backgroundColor: "transparent",
+                  fontWeight: 600,
+                  fontSize: "0.875rem",
+                  color: "text.primary",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 1,
+                }}
+              >
+                <Box
+                  component="span"
+                  sx={{
+                    color: "primary.main",
+                    fontWeight: 700,
+                  }}
+                >
+                  Detalles del registro:
+                </Box>
+                <Box component="span" sx={{ textTransform: "uppercase" }}>
+                  {items.find((it) => getId(it) === expandedId)?.tipo || ""}
+                </Box>
               </Box>
 
               {detailsLoadingId === expandedId ? (
-                <div>Cargando detalles...</div>
+                <Box sx={{ p: 3, textAlign: "center", color: "text.secondary" }}>
+                  Cargando detalles...
+                </Box>
               ) : (
-                <TableComponent
-                  data={detailsMap[expandedId] || []}
-                  columns={detailsColumns}
-                  isLoading={false}
-                />
+                <Box
+                  sx={{
+                    "& .MuiPaper-root": {
+                      boxShadow: "none",
+                      borderRadius: 0,
+                    },
+                    "& .MuiTable-root": {
+                      "& .MuiTableCell-root": {
+                        fontSize: "0.8rem",
+                        padding: "12px 16px",
+                        borderBottom: "1px solid rgba(224, 224, 224, 0.5)",
+                      },
+                      "& .MuiTableHead-root .MuiTableCell-root": {
+                        backgroundColor: "grey.50",
+                        fontWeight: 600,
+                        fontSize: "0.75rem",
+                        color: "text.secondary",
+                        textTransform: "uppercase",
+                        letterSpacing: "0.5px",
+                        padding: "10px 16px",
+                        borderBottom: "2px solid",
+                        borderColor: "divider",
+                      },
+                      "& .MuiTableBody-root .MuiTableRow-root": {
+                        "&:hover": {
+                          backgroundColor: "action.hover",
+                        },
+                        "&:last-child .MuiTableCell-root": {
+                          borderBottom: "none",
+                        },
+                      },
+                    },
+                  }}
+                >
+                  <TableComponent
+                    data={detailsMap[expandedId] || []}
+                    columns={detailsColumns}
+                    isLoading={false}
+                  />
+                </Box>
               )}
             </Box>
           )}
+          <ComprobanteModal open={imageModalOpen} onClose={closeImageModal} imagenUrl={imageUrl} />
+          <Dialog open={sheetDialogOpen} onClose={() => setSheetDialogOpen(false)} maxWidth="sm" fullWidth>
+            <DialogTitle>Actualizar Google Sheet</DialogTitle>
+            <DialogContent>
+              <TextField
+                label="URL de Google Sheet"
+                value={googleSheetLink}
+                onChange={(e) => setGoogleSheetLink(e.target.value)}
+                fullWidth
+                size="small"
+                margin="dense"
+                placeholder="Pega el enlace del Google Sheet"
+              />
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={() => setSheetDialogOpen(false)}>Cancelar</Button>
+              <Button
+                variant="contained"
+                onClick={handleSheetSave}
+                disabled={!googleSheetLink || isUpdatingSyncSheet}
+              >
+                {isUpdatingSyncSheet ? "Actualizando..." : "Guardar"}
+              </Button>
+            </DialogActions>
+          </Dialog>
+          {/* Modal: Sincronizar URL de Drive */}
+          <Dialog open={driveDialogOpen} onClose={() => setDriveDialogOpen(false)} maxWidth="sm" fullWidth>
+            <DialogTitle>Sincronizar desde Drive</DialogTitle>
+            <DialogContent>
+              <TextField
+                label="URL de Drive"
+                value={urlDrive}
+                onChange={(e) => setUrlDrive(e.target.value)}
+                fullWidth
+                size="small"
+                margin="dense"
+                placeholder="Pega el enlace de la carpeta/archivo de Drive"
+              />
+              <Stack direction="row" spacing={2} sx={{ mt: 1 }}>
+                <DatePicker
+                  label="Mes y año"
+                  views={["year", "month"]}
+                  value={periodDate}
+                  onChange={(newValue) => {
+                    // Con AdapterDateFns global, newValue es Date | null
+                    setPeriodDate(newValue);
+                  }}
+                  format="MM/yyyy"
+                />
+                <TextField
+                  select
+                  fullWidth
+                  size="small"
+                  margin="dense"
+                  label="Tipo"
+                  value={tipo}
+                  onChange={(e) => setTipo(e.target.value)}
+                  placeholder="Seleccionar tipo"
+                >
+                  <MenuItem value="">(Sin especificar)</MenuItem>
+                  <MenuItem value="partes">Partes</MenuItem>
+                  <MenuItem value="licencias">Licencias</MenuItem>
+                  <MenuItem value="horas">Horas</MenuItem>
+                </TextField>
+              </Stack>
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={() => setDriveDialogOpen(false)}>Cancelar</Button>
+              <Button
+                variant="contained"
+                onClick={handleDriveSave}
+                disabled={!urlDrive || isSyncing}
+              >
+                {isSyncing ? "Sincronizando..." : "Guardar"}
+              </Button>
+            </DialogActions>
+          </Dialog>
         </Box>
       </Container>
     </DashboardLayout>

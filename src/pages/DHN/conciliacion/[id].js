@@ -133,7 +133,7 @@ const ConciliacionDetallePage = () => {
         ].filter(i => i.v > 0) : [];
         if (items.length === 0) return '-';
         return (
-          <Stack direction="row" spacing={0.5} useFlexGap flexWrap="wrap">
+          <Stack direction="column" spacing={0.5}>
             {items.map(({ k, v }) => (
               <Chip
                 key={k}
@@ -163,7 +163,7 @@ const ConciliacionDetallePage = () => {
         ].filter(i => i.v > 0);
         if (items.length === 0) return '-';
         return (
-          <Stack direction="row" spacing={0.5} useFlexGap flexWrap="wrap">
+          <Stack direction="column" spacing={0.5}>
             {items.map(({ k, v }) => (
               <Chip
                 key={k}
