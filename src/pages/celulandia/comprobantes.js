@@ -337,6 +337,38 @@ const ComprobantesCelulandiaPage = () => {
     }
   };
 
+  const filterChips = useMemo(() => {
+    const chips = [];
+    const fechaLabels = {
+      todos: "Todos",
+      hoy: "Hoy",
+      estaSemana: "Esta semana",
+      esteMes: "Este mes",
+      esteAño: "Este año",
+    };
+    if (filtroFecha && filtroFecha !== "todos") chips.push(`Fecha: ${fechaLabels[filtroFecha] || filtroFecha}`);
+    if (filtroNombreCliente) chips.push(`Cliente: ${filtroNombreCliente}`);
+    if (filtroMoneda) chips.push(`Moneda: ${filtroMoneda}`);
+    if (filtroCuentaCorriente) chips.push(`CC: ${filtroCuentaCorriente}`);
+    if (selectedCajaNombre) chips.push(`Cuenta destino: ${selectedCajaNombre}`);
+    if (filtroUsuario) chips.push(`Usuario: ${filtroUsuario}`);
+    if (montoDesde) chips.push(`Desde: $${formatearMonto(montoDesde)}`);
+    if (montoHasta) chips.push(`Hasta: $${formatearMonto(montoHasta)}`);
+    if (busquedaTexto) chips.push(`Buscar: ${busquedaTexto}`);
+    return chips;
+  }, [
+    filtroFecha,
+    filtroNombreCliente,
+    filtroMoneda,
+    filtroCuentaCorriente,
+    selectedCajaNombre,
+    filtroUsuario,
+    montoTipo,
+    montoDesde,
+    montoHasta,
+    busquedaTexto,
+  ]);
+
   return (
     <DashboardLayout title="Comprobantes">
       <Head>Comprobantes</Head>
@@ -420,6 +452,7 @@ const ComprobantesCelulandiaPage = () => {
               }}
             />
           }
+          filterChips={filterChips}
         />
       </Container>
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { Layout as DashboardLayout } from "src/layouts/dashboard/layout";
 import Head from "next/head";
 import { Container } from "@mui/material";
@@ -351,6 +351,37 @@ const ChequesCelulandiaPage = () => {
     }
   };
 
+  const filterChips = useMemo(() => {
+    const chips = [];
+    const fechaLabels = {
+      todos: "Todos",
+      hoy: "Hoy",
+      estaSemana: "Esta semana",
+      esteMes: "Este mes",
+      esteAño: "Este año",
+    };
+    if (filtroFecha && filtroFecha !== "todos") chips.push(`Fecha: ${fechaLabels[filtroFecha] || filtroFecha}`);
+    if (filtroNombreCliente) chips.push(`Cliente: ${filtroNombreCliente}`);
+    if (filtroMoneda) chips.push(`Moneda: ${filtroMoneda}`);
+    if (filtroCuentaCorriente) chips.push(`CC: ${filtroCuentaCorriente}`);
+    if (filtroUsuario) chips.push(`Usuario: ${filtroUsuario}`);
+    if (filtroCaja && filtroCaja !== "ambas") chips.push(`Caja: ${filtroCaja}`);
+    if (montoDesde) chips.push(`Desde: $${formatearMonto(montoDesde)}`);
+    if (montoHasta) chips.push(`Hasta: $${formatearMonto(montoHasta)}`);
+    if (busquedaTexto) chips.push(`Buscar: ${busquedaTexto}`);
+    return chips;
+  }, [
+    filtroFecha,
+    filtroNombreCliente,
+    filtroMoneda,
+    filtroCuentaCorriente,
+    filtroUsuario,
+    filtroCaja,
+    montoDesde,
+    montoHasta,
+    busquedaTexto,
+  ]);
+
   return (
     <DashboardLayout title="Cheques">
       <Head>
@@ -429,6 +460,7 @@ const ChequesCelulandiaPage = () => {
               }}
             />
           }
+          filterChips={filterChips}
         />
       </Container>
 

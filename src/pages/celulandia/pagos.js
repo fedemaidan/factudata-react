@@ -322,6 +322,24 @@ const PagosCelulandiaPage = () => {
     }
   };
 
+  const filterChips = useMemo(() => {
+    const chips = [];
+    const fechaLabels = {
+      todos: "Todos",
+      hoy: "Hoy",
+      estaSemana: "Esta semana",
+      esteMes: "Este mes",
+      esteAño: "Este año",
+    };
+    if (filtroFecha && filtroFecha !== "todos") chips.push(`Fecha: ${fechaLabels[filtroFecha] || filtroFecha}`);
+    if (filtroMoneda) chips.push(`Moneda: ${filtroMoneda}`);
+    if (selectedCajaNombre) chips.push(`Cuenta de Origen: ${selectedCajaNombre}`);
+    if (montoDesde) chips.push(`Desde: $${formatearMonto(montoDesde)}`);
+    if (montoHasta) chips.push(`Hasta: $${formatearMonto(montoHasta)}`);
+    if (busquedaTexto) chips.push(`Buscar: ${busquedaTexto}`);
+    return chips;
+  }, [filtroFecha, filtroMoneda, selectedCajaNombre, montoDesde, montoHasta, busquedaTexto]);
+
   return (
     <DashboardLayout title="Pagos">
       <Head>
@@ -379,6 +397,7 @@ const PagosCelulandiaPage = () => {
               setMontoHasta={setMontoHasta}
             />
           }
+          filterChips={filterChips}
         />
       </Container>
 

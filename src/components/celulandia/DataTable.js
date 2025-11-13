@@ -84,6 +84,7 @@ const DataTable = ({
   rowIsSelected,
   controlsLayout,
   customFiltersComponent = null, 
+  filterChips = [],
 }) => {
   const [busqueda, setBusqueda] = useState("");
   const [filtroFecha, setFiltroFecha] = useState("todos");
@@ -565,6 +566,20 @@ const DataTable = ({
           ))}
         </Stack>
 
+        {Array.isArray(filterChips) && filterChips.length > 0 && (
+          <Stack direction="row" spacing={0.5} alignItems="center" flexWrap="wrap" sx={{ mt: -0.5 }}>
+            {filterChips.map((chip, idx) => (
+              <Chip
+                key={`filter-chip-${idx}`}
+                label={chip}
+                size="small"
+                variant="outlined"
+                sx={{ height: 22, fontSize: 11 }}
+              />
+            ))}
+          </Stack>
+        )}
+
         <Box position="relative">
           <Paper sx={{ width: "100%", mb: 2 }}>
             <TableContainer>
@@ -715,9 +730,6 @@ const DataTable = ({
     </Box>
   );
 };
-// Optimización: evitar re-renders cuando props relevantes no cambian.
-// Ignoramos identidad de funciones y solo comparamos props que afectan el render.
-// Si se pasa rowIsSelected nuevo pero su resultado por fila no cambia, el padre debe controlar eso.
 export default React.memo(DataTable, (prev, next) => {
   if (prev.data !== next.data) return false;
   if (prev.isLoading !== next.isLoading) return false;
@@ -730,8 +742,7 @@ export default React.memo(DataTable, (prev, next) => {
   if (prev.showSearch !== next.showSearch) return false;
   if (prev.showDateFilterOptions !== next.showDateFilterOptions) return false;
   if (prev.showDatePicker !== next.showDatePicker) return false;
-  // columns por referencia: si cambian, re-render
   if (prev.columns !== next.columns) return false;
-  // Para el resto de props (funciones, etc.), no forzamos re-render
+  if (prev.filterChips !== next.filterChips) return false;
   return true;
 });
