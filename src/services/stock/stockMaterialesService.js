@@ -68,23 +68,19 @@ const StockMaterialesService = {
     throw new Error('Error al obtener material');
   },
 
-  actualizarMaterial: async (id, data) => {
-    const res = await api.put(`/materiales/${id}`, data);
-    if (res.status === 200) return res.data;
-    throw new Error('Error al actualizar el material');
-  },
-
-  eliminarMaterial: async (id) => {
-    const res = await api.delete(`/materiales/${id}`);
-    if (res.status === 204) return;
-    throw new Error('Error al eliminar material');
-  },
-
-
-  obtenerMaterialPorId: async (id) => {
-    const res = await api.get(`/materiales/${id}`);
-    if (res.status === 200) return res.data;
-    throw new Error('Error al obtener material');
+  obtenerMaterial: async ({ empresa_id, material_id }) => {
+    try {
+      const res = await api.get(`/materiales/${material_id}`, {
+        params: { empresa_id }
+      });
+      if (res.status === 200) {
+        return unwrap(res);
+      }
+      return null;
+    } catch (err) {
+      console.error('[SVC][obtenerMaterial][ERR]', err);
+      return null;
+    }
   },
 
   actualizarMaterial: async (id, data) => {
@@ -98,6 +94,13 @@ const StockMaterialesService = {
     if (res.status === 204) return;
     throw new Error('Error al eliminar material');
   },
+};
+
+const unwrap = (res) => {
+  const payload = res?.data ?? {};
+  return (payload && typeof payload === 'object' && 'data' in payload)
+    ? (payload.data ?? {})
+    : payload;
 };
 
 export default StockMaterialesService;
