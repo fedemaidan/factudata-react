@@ -60,6 +60,8 @@ const emptyForm = {
   nombre: '',
   SKU: '',
   desc_material: '',
+  categoria: '',
+  subcategoria: '',
   aliasChips: [],            // ← chips en el form
   empresa_id: '',
   empresa_nombre: '',
@@ -208,6 +210,8 @@ const StockMateriales = () => {
       nombre: row.nombre || '',
       SKU: row.SKU || '',
       desc_material: row.desc_material || '',
+      categoria: row.categoria || '',
+      subcategoria: row.subcategoria || '',
       aliasChips: parseAliasToChips(row.alias),       // ← chips desde DB
       empresa_id: row.empresa_id || '',
       empresa_nombre: row.empresa_nombre || '',
@@ -236,6 +240,8 @@ const StockMateriales = () => {
         nombre: form.nombre?.trim(),
         SKU: form.SKU?.trim() || null,
         desc_material: form.desc_material?.trim() || null,
+        categoria: form.categoria?.trim() || null,
+        subcategoria: form.subcategoria?.trim() || null,
         alias: form.aliasChips && form.aliasChips.length ? form.aliasChips : null, // ← array
         empresa_id,
         empresa_nombre,
@@ -980,6 +986,22 @@ const StockMateriales = () => {
                 value={form.SKU}
                 onChange={(e) => setForm({ ...form, SKU: e.target.value })}
               />
+              <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+                <TextField
+                  label="Categoría"
+                  value={form.categoria}
+                  onChange={(e) => setForm({ ...form, categoria: e.target.value })}
+                  fullWidth
+                  placeholder="Ej: Ferretería, Electricidad, etc."
+                />
+                <TextField
+                  label="Subcategoría"
+                  value={form.subcategoria}
+                  onChange={(e) => setForm({ ...form, subcategoria: e.target.value })}
+                  fullWidth
+                  placeholder="Ej: Tornillos, Cables, etc."
+                />
+              </Stack>
 
               {/* Alias en formato chips (crear/editar) */}
               <FormControl>

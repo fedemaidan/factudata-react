@@ -52,6 +52,8 @@ const ExportarStock = ({
             dataToExport.push({
               'ID Material': material._id,
               'Nombre': material.nombre || '',
+              'Categoría': material.categoria || '',
+              'Subcategoría': material.subcategoria || '',
               'SKU': material.SKU || '',
               'Descripción': material.desc_material || '',
               'Stock Actual': stockActual,
@@ -67,6 +69,8 @@ const ExportarStock = ({
           dataToExport.push({
             'ID Material': material._id,
             'Nombre': material.nombre || '',
+            'Categoría': material.categoria || '',
+            'Subcategoría': material.subcategoria || '',
             'SKU': material.SKU || '',
             'Descripción': material.desc_material || '',
             'Stock Actual': stockSinAsignar,
@@ -83,6 +87,8 @@ const ExportarStock = ({
           return {
             'ID Material': material._id,
             'Nombre': material.nombre || '',
+            'Categoría': material.categoria || '',
+            'Subcategoría': material.subcategoria || '',
             'SKU': material.SKU || '',
             'Descripción': material.desc_material || '',
             'Stock Actual': stockSinAsignar,
@@ -99,6 +105,8 @@ const ExportarStock = ({
           return {
             'ID Material': material._id,
             'Nombre': material.nombre || '',
+            'Categoría': material.categoria || '',
+            'Subcategoría': material.subcategoria || '',
             'SKU': material.SKU || '',
             'Descripción': material.desc_material || '',
             'Stock Actual': stockActual,
@@ -115,6 +123,8 @@ const ExportarStock = ({
       const colWidths = [
         { wch: 25 }, // ID Material
         { wch: 30 }, // Nombre
+        { wch: 20 }, // Categoría
+        { wch: 20 }, // Subcategoría
         { wch: 15 }, // SKU
         { wch: 40 }, // Descripción
         { wch: 12 }, // Stock Actual
@@ -129,14 +139,16 @@ const ExportarStock = ({
       const instrucciones = [
         { 'Instrucciones para el ajuste de stock': '' },
         { 'Instrucciones para el ajuste de stock': '1. Modifique únicamente la columna "Stock Actual" con los nuevos valores' },
-        { 'Instrucciones para el ajuste de stock': '2. NO modifique las demás columnas (ID Material, Nombre, SKU, Descripción, Proyecto)' },
-        { 'Instrucciones para el ajuste de stock': '3. El sistema comparará automáticamente:' },
+        { 'Instrucciones para el ajuste de stock': '2. NO modifique las demás columnas (ID Material, Nombre, Categoría, Subcategoría, SKU, Descripción, Proyecto)' },
+        { 'Instrucciones para el ajuste de stock': '3. Las columnas Categoría, Subcategoría y Descripción son OPCIONALES' },
+        { 'Instrucciones para el ajuste de stock': '4. Si modifica campos opcionales, se actualizará el material en el sistema' },
+        { 'Instrucciones para el ajuste de stock': '5. El sistema comparará automáticamente:' },
         { 'Instrucciones para el ajuste de stock': '   - Stock actual en el sistema vs Stock actual en el Excel' },
         { 'Instrucciones para el ajuste de stock': '   - Y generará los movimientos de ajuste correspondientes' },
-        { 'Instrucciones para el ajuste de stock': '4. Ejemplo: Sistema=0, Excel=20 → Movimiento INGRESO +20' },
-        { 'Instrucciones para el ajuste de stock': '5. Ejemplo: Sistema=50, Excel=30 → Movimiento EGRESO -20' },
-        { 'Instrucciones para el ajuste de stock': '6. Si exportó "Todos los proyectos", se creará una solicitud por proyecto' },
-        { 'Instrucciones para el ajuste de stock': '7. Guarde el archivo y luego impórtelo en el sistema' }
+        { 'Instrucciones para el ajuste de stock': '6. Ejemplo: Sistema=0, Excel=20 → Movimiento INGRESO +20' },
+        { 'Instrucciones para el ajuste de stock': '7. Ejemplo: Sistema=50, Excel=30 → Movimiento EGRESO -20' },
+        { 'Instrucciones para el ajuste de stock': '8. Si exportó "Todos los proyectos", se creará una solicitud por proyecto' },
+        { 'Instrucciones para el ajuste de stock': '9. Guarde el archivo y luego impórtelo en el sistema' }
       ];
       
       const wsInstrucciones = XLSX.utils.json_to_sheet(instrucciones);

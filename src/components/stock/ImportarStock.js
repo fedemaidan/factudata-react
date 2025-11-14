@@ -91,6 +91,32 @@ const ImportarStock = ({
 
   const compararConSistema = (ajustesExcel) => {
     return ajustesExcel.map(ajusteExcel => {
+      // Función auxiliar para verificar si hay cambios en campos opcionales
+      const verificarCambiosCamposOpcionales = (materialSistema, ajusteExcel) => {
+        const cambios = {};
+        let hayCambios = false;
+        
+        // Verificar categoría
+        if (ajusteExcel.categoria && ajusteExcel.categoria !== (materialSistema.categoria || '')) {
+          cambios.categoria = ajusteExcel.categoria;
+          hayCambios = true;
+        }
+        
+        // Verificar subcategoría
+        if (ajusteExcel.subcategoria && ajusteExcel.subcategoria !== (materialSistema.subcategoria || '')) {
+          cambios.subcategoria = ajusteExcel.subcategoria;
+          hayCambios = true;
+        }
+        
+        // Verificar descripción
+        if (ajusteExcel.descripcion && ajusteExcel.descripcion !== (materialSistema.desc_material || '')) {
+          cambios.desc_material = ajusteExcel.descripcion;
+          hayCambios = true;
+        }
+        
+        return { hayCambios, cambios };
+      };
+
       // Manejar proyecto especial "Sin asignar"
       if (ajusteExcel.proyectoNombre === 'Sin asignar') {
         // Buscar el material en el sistema
@@ -157,6 +183,12 @@ const ImportarStock = ({
         // Para materiales recién creados, el stock del sistema es 0
         const diferencia = ajusteExcel.stockExcel - 0; // Stock sistema = 0 para material nuevo
         
+        // Solo incluir si hay diferencia (evitar movimientos con saldo 0)
+        if (diferencia === 0) {
+          console.log('⚠️ Material recién creado con stock 0, no se genera movimiento:', ajusteExcel.materialNombre);
+          return null;
+        }
+        
         return {
           ...ajusteExcel,
           proyectoId: proyecto.id,
@@ -214,6 +246,8 @@ const ImportarStock = ({
           // Campos opcionales
           SKU: material.sku || null,
           desc_material: material.descripcion || null,
+          categoria: material.categoria || null,
+          subcategoria: material.subcategoria || null,
           alias: null, // Array o null, según el helper
           empresa_nombre: empresa.nombre || null // Usar empresa.nombre
         };
@@ -288,28 +322,37 @@ const ImportarStock = ({
       // No crear materiales, procesar solo como nombres
       const empresa = await getEmpresaDetailsFromUser(user); // Obtener empresa para materiales sin ID
       
-      const ajustesComoNombres = materialesNuevos.map(material => {
-        // Buscar el proyecto para obtener su ID
-        const proyecto = proyectos.find(p => p.nombre === material.proyectoNombre);
-        
-        return {
-          materialId: null, // Sin ID, se procesará como nombre
-          materialNombre: material.nombre,
-          sku: material.sku,
-          descripcion: material.descripcion,
-          stockExcel: material.stockExcel,
-          proyectoNombre: material.proyectoNombre,
-          proyectoId: material.proyectoNombre === 'Sin asignar' ? null : (proyecto?.id || null),
-          lineNumber: material.lineNumber,
-          // Campos adicionales para movimientos sin ID
-          esSinId: true,
-          tipo: material.stockExcel > 0 ? 'INGRESO' : 'EGRESO',
-          cantidad: Math.abs(material.stockExcel),
-          diferencia: material.stockExcel,
-          stockSistema: 0,
-          empresaId: empresa.id // ✅ AGREGAR empresaId para materiales sin ID
-        };
-      });
+      const ajustesComoNombres = materialesNuevos
+        .filter(material => {
+          // Filtrar materiales con stock 0 para evitar movimientos innecesarios
+          if (material.stockExcel === 0) {
+            console.log('⚠️ Material sin crear con stock 0, se omite movimiento:', material.nombre);
+            return false;
+          }
+          return true;
+        })
+        .map(material => {
+          // Buscar el proyecto para obtener su ID
+          const proyecto = proyectos.find(p => p.nombre === material.proyectoNombre);
+          
+          return {
+            materialId: null, // Sin ID, se procesará como nombre
+            materialNombre: material.nombre,
+            sku: material.sku,
+            descripcion: material.descripcion,
+            stockExcel: material.stockExcel,
+            proyectoNombre: material.proyectoNombre,
+            proyectoId: material.proyectoNombre === 'Sin asignar' ? null : (proyecto?.id || null),
+            lineNumber: material.lineNumber,
+            // Campos adicionales para movimientos sin ID
+            esSinId: true,
+            tipo: material.stockExcel > 0 ? 'INGRESO' : 'EGRESO',
+            cantidad: Math.abs(material.stockExcel),
+            diferencia: material.stockExcel,
+            stockSistema: 0,
+            empresaId: empresa.id // ✅ AGREGAR empresaId para materiales sin ID
+          };
+        });
 
       console.log('📝 Ajustes como nombres (sin crear materiales):', ajustesComoNombres);
 
@@ -351,8 +394,11 @@ const ImportarStock = ({
 
     // Validar estructura del archivo
     const requiredColumns = [
-      'ID Material', 'Nombre', 'SKU', 'Descripción', 'Stock Actual', 'Proyecto'
+      'Nombre', 'SKU', 'Stock Actual', 'Proyecto'
     ];
+    
+    // Columnas opcionales
+    const optionalColumns = ['ID Material', 'Categoría', 'Subcategoría', 'Descripción'];
 
     if (!data || data.length === 0) {
       errores.push('El archivo está vacío o no tiene datos válidos');
@@ -375,8 +421,10 @@ const ImportarStock = ({
         const stockExcel = Number(row['Stock Actual']) || 0;
         const proyectoNombre = row['Proyecto'];
         const materialNombre = row['Nombre']?.toString().trim() || '';
+        const categoria = row['Categoría']?.toString().trim() || ''; // Opcional
+        const subcategoria = row['Subcategoría']?.toString().trim() || ''; // Opcional
         const sku = row['SKU']?.toString().trim() || '';
-        const descripcion = row['Descripción']?.toString().trim() || '';
+        const descripcion = row['Descripción']?.toString().trim() || ''; // Opcional
         
         // Si no tiene ID de material, es un material nuevo potencial
         if (!materialId) {
@@ -385,9 +433,21 @@ const ImportarStock = ({
             return;
           }
           
+          if (!proyectoNombre?.trim()) {
+            errores.push(`Línea ${lineNumber}: Proyecto es requerido`);
+            return;
+          }
+
+          if (!Number.isFinite(stockExcel) || stockExcel < 0) {
+            errores.push(`Línea ${lineNumber}: Stock Actual debe ser un número válido mayor o igual a 0`);
+            return;
+          }
+          
           materialesNuevosDetectados.push({
             lineNumber,
             nombre: materialNombre,
+            categoria,
+            subcategoria,
             sku,
             descripcion,
             stockExcel,
@@ -400,6 +460,8 @@ const ImportarStock = ({
         const ajuste = {
           materialId,
           materialNombre,
+          categoria,
+          subcategoria,
           sku,
           descripcion,
           stockExcel,
@@ -444,12 +506,24 @@ const ImportarStock = ({
     try {
       // Asegurar que todos los ajustes tengan empresaId
       const empresa = await getEmpresaDetailsFromUser(user);
-      const ajustesConEmpresa = ajustesPreview.map(ajuste => ({
+      
+      // Filtrar ajustes con diferencia 0 para evitar errores
+      const ajustesValidos = ajustesPreview.filter(ajuste => {
+        if (ajuste.diferencia === 0 || ajuste.cantidad === 0) {
+          console.log(`⚠️ Omitiendo movimiento con diferencia 0:`, ajuste.materialNombre);
+          return false;
+        }
+        return true;
+      });
+      
+      const ajustesConEmpresa = ajustesValidos.map(ajuste => ({
         ...ajuste,
         empresaId: ajuste.empresaId || empresa.id // Asegurar que siempre tenga empresaId
       }));
       
-      console.log('🚀 Enviando ajustes al padre con empresaId:', ajustesConEmpresa);
+      const ajustesOmitidos = ajustesPreview.length - ajustesValidos.length;
+      
+      console.log(`🚀 Enviando ${ajustesValidos.length} ajustes al padre (${ajustesOmitidos} omitidos por diferencia 0):`, ajustesConEmpresa);
       
       await onConfirmAjustes(ajustesConEmpresa);
       setActiveStep(3);
@@ -486,8 +560,10 @@ const ImportarStock = ({
     return tipo === 'INGRESO' ? 'success' : 'error';
   };
 
-  const totalIngresos = ajustesPreview.filter(a => a.tipo === 'INGRESO').length;
-  const totalEgresos = ajustesPreview.filter(a => a.tipo === 'EGRESO').length;
+  // Filtrar ajustes válidos para mostrar conteos correctos
+  const ajustesValidos = ajustesPreview.filter(a => a.diferencia !== 0 && a.cantidad !== 0);
+  const totalIngresos = ajustesValidos.filter(a => a.tipo === 'INGRESO').length;
+  const totalEgresos = ajustesValidos.filter(a => a.tipo === 'EGRESO').length;
 
   return (
     <Dialog open={open} onClose={handleClose} maxWidth="lg" fullWidth>
@@ -512,8 +588,10 @@ const ImportarStock = ({
           {activeStep === 0 && (
             <Box>
               <Alert severity="info" sx={{ mb: 2 }}>
-                Seleccione un archivo Excel exportado desde el sistema. El sistema comparará automáticamente 
-                el stock modificado en Excel vs el stock actual del sistema para generar los ajustes necesarios.
+                Seleccione un archivo Excel exportado desde el sistema o creado manualmente para carga inicial. 
+                El sistema comparará automáticamente el stock modificado en Excel vs el stock actual del sistema 
+                para generar los ajustes necesarios. Para carga inicial, puede dejar la columna "ID Material" 
+                vacía y el sistema le permitirá crear los materiales automáticamente.
               </Alert>
 
               <Box display="flex" justifyContent="center" p={3}>
@@ -554,8 +632,9 @@ const ImportarStock = ({
           {activeStep === 1 && showMaterialesNuevos && (
             <Box>
               <Alert severity="warning" sx={{ mb: 2 }}>
-                Se detectaron {materialesNuevos.length} materiales sin ID. 
-                ¿Desea crear estos materiales en el sistema o procesarlos solo como nombres?
+                Se detectaron {materialesNuevos.length} materiales sin ID (nuevos materiales). 
+                Para carga inicial de stock, puede crearlos automáticamente en el sistema o 
+                procesarlos como texto plano para crear movimientos sin conciliar.
               </Alert>
 
               <Paper sx={{ maxHeight: 400, overflow: 'auto', mb: 3 }}>
@@ -564,6 +643,8 @@ const ImportarStock = ({
                     <TableRow>
                       <TableCell>Línea</TableCell>
                       <TableCell>Nombre</TableCell>
+                      <TableCell>Categoría</TableCell>
+                      <TableCell>Subcategoría</TableCell>
                       <TableCell>SKU</TableCell>
                       <TableCell>Descripción</TableCell>
                       <TableCell>Stock</TableCell>
@@ -575,6 +656,8 @@ const ImportarStock = ({
                       <TableRow key={idx}>
                         <TableCell>{material.lineNumber}</TableCell>
                         <TableCell><strong>{material.nombre}</strong></TableCell>
+                        <TableCell>{material.categoria}</TableCell>
+                        <TableCell>{material.subcategoria}</TableCell>
                         <TableCell>{material.sku}</TableCell>
                         <TableCell>{material.descripcion}</TableCell>
                         <TableCell>{material.stockExcel}</TableCell>
@@ -600,7 +683,7 @@ const ImportarStock = ({
                   disabled={processing}
                   onClick={() => handleMaterialesNuevosConfirmation(false)}
                 >
-                  Procesar solo como nombres
+                  Procesar como texto plano (sin conciliar)
                 </Button>
               </Box>
             </Box>
@@ -611,7 +694,9 @@ const ImportarStock = ({
             <Box>
               <Alert severity="warning" sx={{ mb: 2 }}>
                 Revise cuidadosamente los cambios detectados. El sistema comparó el stock del Excel 
-                vs el stock actual del sistema. Se crearán {ajustesPreview.length} movimientos de ajuste.
+                vs el stock actual del sistema. Se crearán {ajustesValidos.length} movimientos de ajuste
+                {ajustesPreview.length !== ajustesValidos.length && 
+                  ` (${ajustesPreview.length - ajustesValidos.length} omitidos por diferencia 0)`}.
               </Alert>
 
               <Box display="flex" gap={1} mb={2}>
@@ -632,6 +717,8 @@ const ImportarStock = ({
                   <TableHead>
                     <TableRow>
                       <TableCell>Material</TableCell>
+                      <TableCell>Categoría</TableCell>
+                      <TableCell>Subcategoría</TableCell>
                       <TableCell>SKU</TableCell>
                       <TableCell>Proyecto</TableCell>
                       <TableCell>Stock Sistema</TableCell>
@@ -642,31 +729,52 @@ const ImportarStock = ({
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {ajustesPreview.map((ajuste, idx) => (
-                      <TableRow key={idx}>
-                        <TableCell>
-                          {ajuste.materialNombre}
-                          {ajuste.esSinId && <Chip label="Nuevo" size="small" color="info" sx={{ ml: 1 }} />}
-                        </TableCell>
-                        <TableCell>{ajuste.sku}</TableCell>
-                        <TableCell>{ajuste.proyectoNombre}</TableCell>
-                        <TableCell>{ajuste.stockSistema}</TableCell>
-                        <TableCell>{ajuste.stockExcel}</TableCell>
-                        <TableCell>
-                          <Box display="flex" alignItems="center" gap={1}>
-                            {ajuste.diferencia > 0 ? '+' : ''}{ajuste.diferencia}
-                          </Box>
-                        </TableCell>
-                        <TableCell>
-                          <Chip 
-                            label={ajuste.tipo} 
-                            color={getTipoColor(ajuste.tipo)} 
-                            size="small" 
-                          />
-                        </TableCell>
-                        <TableCell>{ajuste.cantidad}</TableCell>
-                      </TableRow>
-                    ))}
+                    {ajustesPreview.map((ajuste, idx) => {
+                      const seOmite = ajuste.diferencia === 0 || ajuste.cantidad === 0;
+                      return (
+                        <TableRow 
+                          key={idx}
+                          sx={{ 
+                            opacity: seOmite ? 0.5 : 1,
+                            backgroundColor: seOmite ? 'action.hover' : 'transparent'
+                          }}
+                        >
+                          <TableCell>
+                            {ajuste.materialNombre}
+                            {ajuste.esSinId && <Chip label="Nuevo" size="small" color="info" sx={{ ml: 1 }} />}
+                            {seOmite && <Chip label="Omitido" size="small" color="default" sx={{ ml: 1 }} />}
+                          </TableCell>
+                          <TableCell>{ajuste.categoria}</TableCell>
+                          <TableCell>{ajuste.subcategoria}</TableCell>
+                          <TableCell>{ajuste.sku}</TableCell>
+                          <TableCell>{ajuste.proyectoNombre}</TableCell>
+                          <TableCell>{ajuste.stockSistema}</TableCell>
+                          <TableCell>{ajuste.stockExcel}</TableCell>
+                          <TableCell>
+                            <Box display="flex" alignItems="center" gap={1}>
+                              {ajuste.diferencia > 0 ? '+' : ''}{ajuste.diferencia}
+                            </Box>
+                          </TableCell>
+                          <TableCell>
+                            {!seOmite && (
+                              <Chip 
+                                label={ajuste.tipo} 
+                                color={getTipoColor(ajuste.tipo)} 
+                                size="small" 
+                              />
+                            )}
+                            {seOmite && (
+                              <Chip 
+                                label="Sin movimiento" 
+                                color="default" 
+                                size="small" 
+                              />
+                            )}
+                          </TableCell>
+                          <TableCell>{seOmite ? '-' : ajuste.cantidad}</TableCell>
+                        </TableRow>
+                      );
+                    })}
                   </TableBody>
                 </Table>
               </Paper>
@@ -681,7 +789,7 @@ const ImportarStock = ({
                 Ajustes procesados exitosamente
               </Typography>
               <Typography color="text.secondary">
-                Se han creado {ajustesPreview.length} movimientos de ajuste.
+                Se han creado {ajustesValidos.length} movimientos de ajuste.
                 El diálogo se cerrará automáticamente.
               </Typography>
             </Box>

@@ -19,6 +19,29 @@ const AjusteStockService = {
       throw new Error('Usuario no autenticado');
     }
 
+    // Filtrar ajustes con diferencia 0 antes de procesarlos
+    const ajustesValidos = ajustes.filter(ajuste => {
+      const diferencia = Number(ajuste.diferencia) || 0;
+      const cantidad = Number(ajuste.cantidad) || 0;
+      
+      if (diferencia === 0 || cantidad === 0) {
+        console.log(`⚠️ Omitiendo ajuste con diferencia 0:`, ajuste.materialNombre);
+        return false;
+      }
+      return true;
+    });
+
+    if (ajustesValidos.length === 0) {
+      console.log('ℹ️ No hay ajustes válidos para procesar después del filtrado');
+      return {
+        exitosos: 0,
+        errores: [],
+        solicitudesCreadas: []
+      };
+    }
+
+    console.log(`🔄 Procesando ${ajustesValidos.length} ajustes válidos de ${ajustes.length} totales`);
+
     const resultados = {
       exitosos: 0,
       errores: [],
@@ -27,7 +50,7 @@ const AjusteStockService = {
 
     try {
       // Agrupar ajustes por proyecto para crear una solicitud por proyecto
-      const ajustesPorProyecto = AjusteStockService.agruparPorProyecto(ajustes);
+      const ajustesPorProyecto = AjusteStockService.agruparPorProyecto(ajustesValidos);
 
       // Procesar cada proyecto
       for (const [proyectoId, ajustesProyecto] of Object.entries(ajustesPorProyecto)) {
@@ -85,13 +108,17 @@ const AjusteStockService = {
     }
 
     const primerAjuste = ajustesProyecto[0];
-    const fechaActual = new Date().toISOString();
+    
+    // Crear fecha en formato YYYY-MM-DD que espera el servicio
+    const fechaHoy = new Date();
+    const fechaFormatted = fechaHoy.toISOString().split('T')[0]; // Solo la parte de fecha YYYY-MM-DD
+    const fechaCompleta = fechaHoy.toISOString(); // Para movimientos individuales
 
     // Preparar el formulario de la solicitud
     const form = {
       tipo: 'AJUSTE',
       subtipo: '-',
-      fecha: fechaActual,
+      fecha: fechaFormatted, // Usar formato YYYY-MM-DD para el form
       responsable: user.email,
       proveedor_nombre: '',
       proveedor_id: '',
@@ -106,15 +133,20 @@ const AjusteStockService = {
       usuario_id: user.uid || user.id,
       usuario_mail: user.email,
       nombre_item: ajuste.materialNombre,
-      cantidad: ajuste.cantidad, // Siempre positivo
+      cantidad: Number(ajuste.cantidad) || 0, // Asegurar que sea número
       tipo: ajuste.tipo, // 'INGRESO' o 'EGRESO' 
       subtipo: 'AJUSTE',
-      fecha_movimiento: fechaActual,
+      fecha_movimiento: fechaCompleta, // Usar ISO string completo para movimientos
       proyecto_id: ajuste.proyectoId || null, // null para "sin asignar"
       proyecto_nombre: ajuste.proyectoId ? ajuste.proyectoNombre : 'Sin asignar',
-      observacion: `Ajuste de stock - Stock sistema: ${ajuste.stockSistema}, Stock Excel: ${ajuste.stockExcel}, Diferencia: ${ajuste.diferencia}`,
-      id_material: ajuste.materialId
+      observacion: `Ajuste de stock - Stock sistema: ${ajuste.stockSistema || 0}, Stock Excel: ${ajuste.stockExcel || 0}, Diferencia: ${ajuste.diferencia || 0}`,
+      id_material: ajuste.materialId || null // null para materiales no conciliados (texto plano)
     }));
+
+    console.log('🔄 Creando solicitud para proyecto:', primerAjuste.proyectoNombre);
+    console.log('📅 Fecha formatted:', fechaFormatted);
+    console.log('📝 Form data:', form);
+    console.log('📦 Movimientos count:', movimientos.length);
 
     // Crear la solicitud usando el servicio existente
     const solicitudCreada = await StockSolicitudesService.guardarSolicitud({
@@ -172,6 +204,11 @@ const AjusteStockService = {
 
       if (!['INGRESO', 'EGRESO'].includes(ajuste.tipo)) {
         erroresAjuste.push('El tipo debe ser INGRESO o EGRESO');
+      }
+
+      // Validación adicional para asegurar que tenemos los campos necesarios
+      if (!Number.isFinite(ajuste.diferencia)) {
+        erroresAjuste.push('La diferencia debe ser un número válido');
       }
 
       if (erroresAjuste.length > 0) {
