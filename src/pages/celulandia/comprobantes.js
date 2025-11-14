@@ -19,6 +19,8 @@ import cajasService from "src/services/celulandia/cajasService";
 import { getMovimientoHistorialConfig } from "src/utils/celulandia/historial";
 import Head from "next/head";
 import useDebouncedValue from "src/hooks/useDebouncedValue";
+import ComprobantesFiltersBar from "src/components/celulandia/ComprobantesFiltersBar";
+import { formatearMonto, parsearMonto } from "src/utils/celulandia/separacionMiles";
 
 const ComprobantesCelulandiaPage = () => {
   const [movimientos, setMovimientos] = useState([]);
@@ -53,6 +55,14 @@ const ComprobantesCelulandiaPage = () => {
   const [filtroUsuario, setFiltroUsuario] = useState("");
   const [usuariosOptions, setUsuariosOptions] = useState([{ value: "", label: "(todos)" }]);
   const [filtroNombreCliente, setFiltroNombreCliente] = useState("");
+  const [filtroMoneda, setFiltroMoneda] = useState("");
+  const [filtroCuentaCorriente, setFiltroCuentaCorriente] = useState("");
+  const [montoDesde, setMontoDesde] = useState("");
+  const [montoHasta, setMontoHasta] = useState("");
+  const [montoTipo, setMontoTipo] = useState("enviado"); // 'enviado' | 'cc'
+  const debouncedMontoDesde = useDebouncedValue(montoDesde, 500);
+  const debouncedMontoHasta = useDebouncedValue(montoHasta, 500);
+
 
   const movimientoHistorialConfig = useMemo(() => getMovimientoHistorialConfig(cajas), [cajas]);
 
@@ -66,13 +76,17 @@ const ComprobantesCelulandiaPage = () => {
     selectedCajaNombre,
     filtroUsuario,
     filtroNombreCliente,
+    filtroMoneda,
+    filtroCuentaCorriente,
+    debouncedMontoDesde,
+    debouncedMontoHasta,
+    montoTipo,
     debouncedBusqueda,
   ]);
 
-  // Al cambiar el término de búsqueda, resetear a página 1
   useEffect(() => {
     setPaginaActual(1);
-  }, [debouncedBusqueda]);
+  }, [debouncedBusqueda, debouncedMontoDesde, debouncedMontoHasta]);
 
   const fetchData = async (pagina = 1) => {
     setIsLoading(true);
@@ -92,6 +106,11 @@ const ComprobantesCelulandiaPage = () => {
             cajaNombre: selectedCajaNombre || undefined,
             nombreUsuario: filtroUsuario || undefined,
             ...(filtroNombreCliente ? { clienteNombre: filtroNombreCliente } : {}),
+          ...(filtroMoneda ? { moneda: filtroMoneda } : {}),
+          ...(filtroCuentaCorriente ? { cuentaCorriente: filtroCuentaCorriente } : {}),
+          ...(debouncedMontoDesde ? { montoDesde: debouncedMontoDesde } : {}),
+          ...(debouncedMontoHasta ? { montoHasta: debouncedMontoHasta } : {}),
+          ...(montoTipo ? { montoTipo } : {}),
             fechaInicio,
             fechaFin,
             text: debouncedBusqueda || undefined,
@@ -318,6 +337,38 @@ const ComprobantesCelulandiaPage = () => {
     }
   };
 
+  const filterChips = useMemo(() => {
+    const chips = [];
+    const fechaLabels = {
+      todos: "Todos",
+      hoy: "Hoy",
+      estaSemana: "Esta semana",
+      esteMes: "Este mes",
+      esteAño: "Este año",
+    };
+    if (filtroFecha && filtroFecha !== "todos") chips.push(`Fecha: ${fechaLabels[filtroFecha] || filtroFecha}`);
+    if (filtroNombreCliente) chips.push(`Cliente: ${filtroNombreCliente}`);
+    if (filtroMoneda) chips.push(`Moneda: ${filtroMoneda}`);
+    if (filtroCuentaCorriente) chips.push(`CC: ${filtroCuentaCorriente}`);
+    if (selectedCajaNombre) chips.push(`Cuenta destino: ${selectedCajaNombre}`);
+    if (filtroUsuario) chips.push(`Usuario: ${filtroUsuario}`);
+    if (montoDesde) chips.push(`Desde: $${formatearMonto(montoDesde)}`);
+    if (montoHasta) chips.push(`Hasta: $${formatearMonto(montoHasta)}`);
+    if (busquedaTexto) chips.push(`Buscar: ${busquedaTexto}`);
+    return chips;
+  }, [
+    filtroFecha,
+    filtroNombreCliente,
+    filtroMoneda,
+    filtroCuentaCorriente,
+    selectedCajaNombre,
+    filtroUsuario,
+    montoTipo,
+    montoDesde,
+    montoHasta,
+    busquedaTexto,
+  ]);
+
   return (
     <DashboardLayout title="Comprobantes">
       <Head>Comprobantes</Head>
@@ -330,55 +381,9 @@ const ComprobantesCelulandiaPage = () => {
           formatters={formatters}
           showClienteListedChip={true}
           serverSide={true}
-          showSearch={true}
-          onSearchDebounced={setBusquedaTexto}
-          multipleSelectFilters={[
-            {
-              key: "nombreCliente",
-              label: "Cliente",
-              type: "autocomplete",
-              value: filtroNombreCliente,
-              options: Array.from(
-                new Set(
-                  (clientes || [])
-                    .map((c) => (c?.nombre || "").toString().trim())
-                    .filter((n) => n && n.length > 0)
-                )
-              )
-                .sort((a, b) => a.localeCompare(b))
-                .map((n) => ({ value: n, label: n })),
-              onChange: (v) => {
-                setFiltroNombreCliente(v);
-                setPaginaActual(1);
-              },
-            },
-            {
-              key: "cajaNombre",
-              label: "Cuenta destino",
-              value: selectedCajaNombre,
-              options: [
-                { value: "", label: "Todas" },
-                ...(Array.isArray(cajas) ? cajas : []).map((caja) => ({
-                  value: caja?.nombre || "",
-                  label: caja?.nombre || "-",
-                })),
-              ],
-              onChange: (val) => {
-                setSelectedCajaNombre(val);
-                setPaginaActual(1);
-              },
-            },
-            {
-              key: "nombreUsuario",
-              label: "Usuario",
-              value: filtroUsuario,
-              options: usuariosOptions,
-              onChange: (val) => {
-                setFiltroUsuario(val);
-                setPaginaActual(1);
-              },
-            },
-          ]}
+          showSearch={false}
+          showDateFilterOptions={false}
+          multipleSelectFilters={[]}
           onAdd={() => setAgregarModalOpen(true)}
           dateField="fechaFactura"
           total={totalMovimientos}
@@ -395,6 +400,59 @@ const ComprobantesCelulandiaPage = () => {
           }}
           showRefreshButton={true}
           onRefresh={refetchMovimientos}
+          customFiltersComponent={
+            <ComprobantesFiltersBar
+              // búsqueda
+              onSearchDebounced={setBusquedaTexto}
+              initialSearch={busquedaTexto}
+              // fecha
+              filtroFecha={filtroFecha}
+              onFiltroFechaChange={(nuevoFiltro) => {
+                setFiltroFecha(nuevoFiltro);
+                setPaginaActual(1);
+              }}
+              // datos
+              clientes={clientes}
+              cajas={cajas}
+              usuariosOptions={usuariosOptions}
+              // valores y setters
+              filtroNombreCliente={filtroNombreCliente}
+              setFiltroNombreCliente={(v) => {
+                setFiltroNombreCliente(v);
+                setPaginaActual(1);
+              }}
+              filtroMoneda={filtroMoneda}
+              setFiltroMoneda={(v) => {
+                setFiltroMoneda(v);
+                setPaginaActual(1);
+              }}
+              filtroCuentaCorriente={filtroCuentaCorriente}
+              setFiltroCuentaCorriente={(v) => {
+                setFiltroCuentaCorriente(v);
+                setPaginaActual(1);
+              }}
+              selectedCajaNombre={selectedCajaNombre}
+              setSelectedCajaNombre={(v) => {
+                setSelectedCajaNombre(v);
+                setPaginaActual(1);
+              }}
+              filtroUsuario={filtroUsuario}
+              setFiltroUsuario={(v) => {
+                setFiltroUsuario(v);
+                setPaginaActual(1);
+              }}
+              montoDesde={montoDesde}
+              setMontoDesde={setMontoDesde}
+              montoHasta={montoHasta}
+              setMontoHasta={setMontoHasta}
+              montoTipo={montoTipo}
+              setMontoTipo={(v) => {
+                setMontoTipo(v);
+                setPaginaActual(1);
+              }}
+            />
+          }
+          filterChips={filterChips}
         />
       </Container>
 

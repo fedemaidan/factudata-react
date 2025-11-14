@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { Layout as DashboardLayout } from "src/layouts/dashboard/layout";
 import Head from "next/head";
 import { Container } from "@mui/material";
@@ -23,6 +23,8 @@ import { getCuentaPendienteHistorialConfig } from "src/utils/celulandia/historia
 import { parseCuentaPendiente } from "src/utils/celulandia/cuentasPendientes/parseCuentasPendientes";
 import { EditarEntregaModalV2 } from "src/components/celulandia/EditarEntregaModalV2";
 import useDebouncedValue from "src/hooks/useDebouncedValue";
+import { formatearMonto, parsearMonto } from "src/utils/celulandia/separacionMiles";
+import EntregasFiltersBar from "src/components/celulandia/EntregasFiltersBar";
 
 const EntregasCelulandiaPage = () => {
   const [entregas, setEntregas] = useState([]);
@@ -55,6 +57,12 @@ const EntregasCelulandiaPage = () => {
   const [usuariosOptions, setUsuariosOptions] = useState([{ value: "", label: "(todos)" }]);
 
   const [entregaHistorialConfig, setEntregaHistorialConfig] = useState(null);
+  // Filtros de monto
+  const [montoDesde, setMontoDesde] = useState("");
+  const [montoHasta, setMontoHasta] = useState("");
+  const [montoTipo, setMontoTipo] = useState("enviado"); // 'enviado' | 'cc'
+  const debouncedMontoDesde = useDebouncedValue(montoDesde, 500);
+  const debouncedMontoHasta = useDebouncedValue(montoHasta, 500);
 
   useEffect(() => {
     fetchData(paginaActual);
@@ -69,18 +77,23 @@ const EntregasCelulandiaPage = () => {
     filtroUsuario,
     filtroNombreCliente,
     debouncedBusqueda,
+    debouncedMontoDesde,
+    debouncedMontoHasta,
+    montoTipo,
   ]);
 
   // Al cambiar el término de búsqueda, resetear a página 1
   useEffect(() => {
     setPaginaActual(1);
-  }, [debouncedBusqueda]);
+  }, [debouncedBusqueda, debouncedMontoDesde, debouncedMontoHasta]);
 
   const fetchData = async (pagina = 1) => {
     setIsLoading(true);
     try {
       const offset = (pagina - 1) * limitePorPagina;
       const { fechaInicio, fechaFin } = calcularFechasFiltro(filtroFecha);
+      
+      // Buscar por valor absoluto en backend; enviar montos tal cual (sin invertir signo)
 
       const [cuentasResp, clientesResp, tcResp] = await Promise.all([
         cuentasPendientesService.getAll({
@@ -102,6 +115,9 @@ const EntregasCelulandiaPage = () => {
           ...(filtroCC ? { cc: filtroCC } : {}),
           ...(filtroUsuario ? { usuario: filtroUsuario } : {}),
           ...(filtroNombreCliente ? { nombreCliente: filtroNombreCliente } : {}),
+          ...(debouncedMontoDesde ? { montoDesde: debouncedMontoDesde } : {}),
+          ...(debouncedMontoHasta ? { montoHasta: debouncedMontoHasta } : {}),
+          ...(montoTipo ? { montoTipo } : {}),
           text: debouncedBusqueda || undefined,
         }),
         clientesService.getAllClientes(),
@@ -143,6 +159,7 @@ const EntregasCelulandiaPage = () => {
   };
 
   const columns = [
+    // ... columnas existentes ...
     {
       key: "fechaHoraCreacion",
       label: "Fecha y Hora Creación",
@@ -271,6 +288,35 @@ const EntregasCelulandiaPage = () => {
     }
   };
 
+  const filterChips = useMemo(() => {
+    const chips = [];
+    const fechaLabels = {
+      todos: "Todos",
+      hoy: "Hoy",
+      estaSemana: "Esta semana",
+      esteMes: "Este mes",
+      esteAño: "Este año",
+    };
+    if (filtroFecha && filtroFecha !== "todos") chips.push(`Fecha: ${fechaLabels[filtroFecha] || filtroFecha}`);
+    if (filtroNombreCliente) chips.push(`Cliente: ${filtroNombreCliente}`);
+    if (filtroMoneda) chips.push(`Moneda: ${filtroMoneda}`);
+    if (filtroCC) chips.push(`CC: ${filtroCC}`);
+    if (filtroUsuario) chips.push(`Usuario: ${filtroUsuario}`);
+    if (montoDesde) chips.push(`Desde: $${formatearMonto(montoDesde)}`);
+    if (montoHasta) chips.push(`Hasta: $${formatearMonto(montoHasta)}`);
+    if (busquedaTexto) chips.push(`Buscar: ${busquedaTexto}`);
+    return chips;
+  }, [
+    filtroFecha,
+    filtroNombreCliente,
+    filtroMoneda,
+    filtroCC,
+    filtroUsuario,
+    montoDesde,
+    montoHasta,
+    busquedaTexto,
+  ]);
+
   return (
     <DashboardLayout title="Entregas">
       <Head>Entregas</Head>
@@ -281,8 +327,8 @@ const EntregasCelulandiaPage = () => {
           columns={columns}
           searchFields={searchFields}
           formatters={formatters}
-          showSearch={true}
-          onSearchDebounced={setBusquedaTexto}
+          showSearch={false}
+          showDateFilterOptions={false}
           dateField="fechaEntrega"
           total={totalEntregas}
           currentPage={paginaActual}
@@ -300,67 +346,53 @@ const EntregasCelulandiaPage = () => {
           onAdd={() => setAgregarModalOpen(true)}
           showRefreshButton={true}
           onRefresh={refetch}
-          // NUEVO: múltiples selects server-side
-          multipleSelectFilters={[
-            {
-              key: "nombreCliente",
-              label: "Cliente",
-              type: "autocomplete",
-              value: filtroNombreCliente,
-              options: Array.from(
-                new Set(
-                  (clientes || [])
-                    .map((c) => (c?.nombre || "").toString().trim())
-                    .filter((n) => n && n.length > 0)
-                )
-              )
-                .sort((a, b) => a.localeCompare(b))
-                .map((n) => ({ value: n, label: n })),
-              onChange: (v) => {
+          customFiltersComponent={
+            <EntregasFiltersBar
+              // búsqueda
+              onSearchDebounced={setBusquedaTexto}
+              initialSearch={busquedaTexto}
+              // fecha
+              filtroFecha={filtroFecha}
+              onFiltroFechaChange={(nuevo) => {
+                setFiltroFecha(nuevo);
+                setPaginaActual(1);
+              }}
+              // data
+              clientes={clientes}
+              usuariosOptions={usuariosOptions}
+              // filtros
+              filtroNombreCliente={filtroNombreCliente}
+              setFiltroNombreCliente={(v) => {
                 setFiltroNombreCliente(v);
                 setPaginaActual(1);
-              },
-            },
-            {
-              key: "moneda",
-              label: "Moneda",
-              value: filtroMoneda,
-              options: [
-                { value: "", label: "(todas)" },
-                { value: "ARS", label: "ARS" },
-                { value: "USD", label: "USD" },
-              ],
-              onChange: (v) => {
+              }}
+              filtroMoneda={filtroMoneda}
+              setFiltroMoneda={(v) => {
                 setFiltroMoneda(v);
                 setPaginaActual(1);
-              },
-            },
-            {
-              key: "cc",
-              label: "CC",
-              value: filtroCC,
-              options: [
-                { value: "", label: "(todas)" },
-                { value: "ARS", label: "ARS" },
-                { value: "USD OFICIAL", label: "USD OFICIAL" },
-                { value: "USD BLUE", label: "USD BLUE" },
-              ],
-              onChange: (v) => {
+              }}
+              filtroCC={filtroCC}
+              setFiltroCC={(v) => {
                 setFiltroCC(v);
                 setPaginaActual(1);
-              },
-            },
-            {
-              key: "usuario",
-              label: "Usuario",
-              value: filtroUsuario,
-              options: usuariosOptions,
-              onChange: (v) => {
+              }}
+              filtroUsuario={filtroUsuario}
+              setFiltroUsuario={(v) => {
                 setFiltroUsuario(v);
                 setPaginaActual(1);
-              },
-            },
-          ]}
+              }}
+              montoDesde={montoDesde}
+              setMontoDesde={setMontoDesde}
+              montoHasta={montoHasta}
+              setMontoHasta={setMontoHasta}
+              montoTipo={montoTipo}
+              setMontoTipo={(v) => {
+                setMontoTipo(v);
+                setPaginaActual(1);
+              }}
+            />
+          }
+          filterChips={filterChips}
         />
       </Container>
 

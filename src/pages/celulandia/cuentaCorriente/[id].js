@@ -54,6 +54,7 @@ const ClienteCelulandiaCCPage = () => {
   const [grupoActual, setGrupoActual] = useState("ARS");
   const initialGroupSetRef = useRef(false);
   // const [filtroFecha, setFiltroFecha] = useState("todos"); // comentado: filtro por fecha deshabilitado en esta vista
+  const [sortField, setSortField] = useState("fechaEntrega");
   const [sortDirection, setSortDirection] = useState("desc");
 
   const [clientes, setClientes] = useState([]);
@@ -132,6 +133,10 @@ const ClienteCelulandiaCCPage = () => {
     return movimientos.map((m) => {
       const isMov = m.itemType === "movimiento";
       const fecha = isMov ? m.fecha : m.fechaCuenta;
+      // Campos para doble columna de fechas
+      const fechaCreacion = m.fechaCreacion || null;
+      const horaCreacion = m.horaCreacion || null;
+      const fechaEntrega = isMov ? m.fecha : m.fechaCuenta;
 
       const monto = round2(toNumber(m.montoCC || 0)); // base en CC
       const tipoDeCambio = toNumber(m.tipoDeCambio || 1);
@@ -146,6 +151,9 @@ const ClienteCelulandiaCCPage = () => {
       return {
         id: m.id || m._id,
         fecha,
+        fechaCreacion,
+        horaCreacion,
+        fechaEntrega,
         descripcion:
           m.concepto && m.concepto !== "-" ? m.concepto : m.descripcion ? m.descripcion : "-",
         cliente: m?.nombreCliente || m?.clienteNombre || m.cliente?.nombre || "-",
@@ -169,11 +177,19 @@ const ClienteCelulandiaCCPage = () => {
 
   const itemsOrdenados = useMemo(() => {
     if (!itemsDataTab.length) return [];
-    const ordenados = [...itemsDataTab].sort(
-      sortDirection === "desc" ? descByOrderKey : ascByOrderKey
-    );
+    const toTime = (v) => {
+      if (!v) return 0;
+      const d = new Date(v);
+      return isNaN(d.getTime()) ? 0 : d.getTime();
+    };
+    const key = sortField || "fechaEntrega";
+    const ordenados = [...itemsDataTab].sort((a, b) => {
+      const av = toTime(a[key] || a.fecha);
+      const bv = toTime(b[key] || b.fecha);
+      return sortDirection === "asc" ? av - bv : bv - av;
+    });
     return ordenados;
-  }, [itemsDataTab, sortDirection]);
+  }, [itemsDataTab, sortField, sortDirection]);
 
   // Setear grupo inicial según primer total != 0 en orden preferido
   useEffect(() => {
@@ -202,9 +218,14 @@ const ClienteCelulandiaCCPage = () => {
   // }, []);
 
   const handleSortChange = useCallback((campo) => {
-    if (campo !== "fecha") return;
-    setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
-  }, []);
+    const actualCampo = campo === "fecha" ? "fechaEntrega" : campo; // compat
+    if (sortField === actualCampo) {
+      setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
+    } else {
+      setSortField(actualCampo);
+      setSortDirection("asc");
+    }
+  }, [sortField]);
 
   const handleSaveEdit = useCallback((id, updatedData) => {
     setMovimientos((prevMovimientos) =>
@@ -324,8 +345,8 @@ const ClienteCelulandiaCCPage = () => {
                 onOptionChange={(newGroup) => setGrupoActual(newGroup)}
                 showRefreshButton={true}
                 onRefresh={fetchData}
-                // Solo orden por fecha (frontend)
-                sortField="fecha"
+                // Orden por dos columnas (frontend)
+                sortField={sortField}
                 sortDirection={sortDirection}
                 onSortChange={handleSortChange}
                 // Filtro de fecha (frontend) — comentado

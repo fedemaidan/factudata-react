@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { Layout as DashboardLayout } from "src/layouts/dashboard/layout";
 import Head from "next/head";
 import { Container } from "@mui/material";
@@ -7,7 +7,7 @@ import DataTable from "src/components/celulandia/DataTable";
 import RowActions from "src/components/celulandia/RowActions";
 import movimientosService from "src/services/celulandia/movimientosService";
 import { formatearCampo } from "src/utils/celulandia/formatearCampo";
-import { getFechaArgentina } from "src/utils/celulandia/fechas";
+import { getFechaArgentina, calcularFechasFiltro } from "src/utils/celulandia/fechas";
 import ComprobanteModal from "src/components/celulandia/ComprobanteModal";
 import EditarChequeModal from "src/components/celulandia/EditarChequeModal";
 import HistorialModal from "src/components/celulandia/HistorialModal";
@@ -19,6 +19,8 @@ import dolarService from "src/services/celulandia/dolarService";
 import cajasService from "src/services/celulandia/cajasService";
 import { getUser } from "src/utils/celulandia/currentUser";
 import useDebouncedValue from "src/hooks/useDebouncedValue";
+import { formatearMonto, parsearMonto } from "src/utils/celulandia/separacionMiles";
+import ChequesFiltersBar from "src/components/celulandia/ChequesFiltersBar";
 
 const ChequesCelulandiaPage = () => {
   const [movimientos, setMovimientos] = useState([]);
@@ -48,6 +50,17 @@ const ChequesCelulandiaPage = () => {
     current: 1,
   });
   const [cajas, setCajas] = useState([]);
+  const [filtroFecha, setFiltroFecha] = useState("todos");
+  const [filtroMoneda, setFiltroMoneda] = useState("");
+  const [filtroCuentaCorriente, setFiltroCuentaCorriente] = useState("");
+  const [filtroUsuario, setFiltroUsuario] = useState("");
+  const [usuariosOptions, setUsuariosOptions] = useState([{ value: "", label: "(todos)" }]);
+  const [filtroNombreCliente, setFiltroNombreCliente] = useState("");
+  const [montoDesde, setMontoDesde] = useState("");
+  const [montoHasta, setMontoHasta] = useState("");
+  const [montoTipo, setMontoTipo] = useState("enviado"); // 'enviado' | 'cc'
+  const debouncedMontoDesde = useDebouncedValue(montoDesde, 500);
+  const debouncedMontoHasta = useDebouncedValue(montoHasta, 500);
 
   const movimientoHistorialConfig = {
     title: "Historial del Cheque",
@@ -76,17 +89,31 @@ const ChequesCelulandiaPage = () => {
 
   useEffect(() => {
     fetchData(paginaActual);
-  }, [paginaActual, sortField, sortDirection, filtroCaja, debouncedBusqueda]);
+  }, [
+    paginaActual,
+    sortField,
+    sortDirection,
+    filtroCaja,
+    debouncedBusqueda,
+    filtroFecha,
+    filtroMoneda,
+    filtroCuentaCorriente,
+    filtroUsuario,
+    debouncedMontoDesde,
+    debouncedMontoHasta,
+    montoTipo,
+  ]);
 
   // Resetear a la primera página cuando cambia la búsqueda
   useEffect(() => {
     setPaginaActual(1);
-  }, [debouncedBusqueda]);
+  }, [debouncedBusqueda, debouncedMontoDesde, debouncedMontoHasta]);
 
   const fetchData = async (pagina = 1) => {
     setIsLoading(true);
     try {
       const offset = (pagina - 1) * limitePorPagina;
+      const { fechaInicio, fechaFin } = calcularFechasFiltro(filtroFecha);
 
       // Siempre enviar el filtro de caja al backend
       const cajaFilter = filtroCaja;
@@ -102,6 +129,15 @@ const ChequesCelulandiaPage = () => {
             sortDirection,
             tipoFactura: "cheque",
             cajaNombre: cajaFilter,
+            ...(filtroMoneda ? { moneda: filtroMoneda } : {}),
+            ...(filtroCuentaCorriente ? { cuentaCorriente: filtroCuentaCorriente } : {}),
+            nombreUsuario: filtroUsuario || undefined,
+            ...(filtroNombreCliente ? { clienteNombre: filtroNombreCliente } : {}),
+            ...(debouncedMontoDesde ? { montoDesde: debouncedMontoDesde } : {}),
+            ...(debouncedMontoHasta ? { montoHasta: debouncedMontoHasta } : {}),
+            ...(montoTipo ? { montoTipo } : {}),
+            fechaInicio,
+            fechaFin,
             text: debouncedBusqueda || undefined,
           }),
           clientesService.getAllClientes(),
@@ -124,6 +160,19 @@ const ChequesCelulandiaPage = () => {
       });
 
       setCajas(cajasResponse.data);
+
+      // Usuarios (lista simple como en comprobantes)
+      const uniqueUsers = Array.from(
+        new Set([
+          "ezequielszejman@gmail.com",
+          "matias_kat14@hotmail.com",
+          "lidnicolas@gmail.com",
+          "ventas@celulandiaweb.com.ar",
+          "info@celulandiaweb.com.ar",
+          "Sistema",
+        ])
+      ).sort();
+      setUsuariosOptions([{ value: "", label: "(todos)" }, ...uniqueUsers.map((u) => ({ value: u, label: u }))]);
     } catch (error) {
       console.error("Error al cargar datos:", error);
     } finally {
@@ -302,6 +351,37 @@ const ChequesCelulandiaPage = () => {
     }
   };
 
+  const filterChips = useMemo(() => {
+    const chips = [];
+    const fechaLabels = {
+      todos: "Todos",
+      hoy: "Hoy",
+      estaSemana: "Esta semana",
+      esteMes: "Este mes",
+      esteAño: "Este año",
+    };
+    if (filtroFecha && filtroFecha !== "todos") chips.push(`Fecha: ${fechaLabels[filtroFecha] || filtroFecha}`);
+    if (filtroNombreCliente) chips.push(`Cliente: ${filtroNombreCliente}`);
+    if (filtroMoneda) chips.push(`Moneda: ${filtroMoneda}`);
+    if (filtroCuentaCorriente) chips.push(`CC: ${filtroCuentaCorriente}`);
+    if (filtroUsuario) chips.push(`Usuario: ${filtroUsuario}`);
+    if (filtroCaja && filtroCaja !== "ambas") chips.push(`Caja: ${filtroCaja}`);
+    if (montoDesde) chips.push(`Desde: $${formatearMonto(montoDesde)}`);
+    if (montoHasta) chips.push(`Hasta: $${formatearMonto(montoHasta)}`);
+    if (busquedaTexto) chips.push(`Buscar: ${busquedaTexto}`);
+    return chips;
+  }, [
+    filtroFecha,
+    filtroNombreCliente,
+    filtroMoneda,
+    filtroCuentaCorriente,
+    filtroUsuario,
+    filtroCaja,
+    montoDesde,
+    montoHasta,
+    busquedaTexto,
+  ]);
+
   return (
     <DashboardLayout title="Cheques">
       <Head>
@@ -323,12 +403,64 @@ const ChequesCelulandiaPage = () => {
           sortField={sortField}
           sortDirection={sortDirection}
           onSortChange={handleSortChange}
-          showSearch={true}
-          onSearchDebounced={setBusquedaTexto}
-          selectFilter={selectFilterConfig} // Agregar el filtro por select
-          serverSide={true} // Habilitar modo servidor para filtros
+          showSearch={false}
+          showDateFilterOptions={false}
+          serverSide={true}
+          filtroFecha={filtroFecha}
+          onFiltroFechaChange={(nuevo) => {
+            setFiltroFecha(nuevo);
+            setPaginaActual(1);
+          }}
           showRefreshButton={true}
           onRefresh={refetchMovimientos}
+          customFiltersComponent={
+            <ChequesFiltersBar
+              onSearchDebounced={setBusquedaTexto}
+              initialSearch={busquedaTexto}
+              filtroFecha={filtroFecha}
+              onFiltroFechaChange={(nuevo) => {
+                setFiltroFecha(nuevo);
+                setPaginaActual(1);
+              }}
+              clientes={clientes}
+              usuariosOptions={usuariosOptions}
+              filtroNombreCliente={filtroNombreCliente}
+              setFiltroNombreCliente={(v) => {
+                setFiltroNombreCliente(v);
+                setPaginaActual(1);
+              }}
+              filtroMoneda={filtroMoneda}
+              setFiltroMoneda={(v) => {
+                setFiltroMoneda(v);
+                setPaginaActual(1);
+              }}
+              filtroCuentaCorriente={filtroCuentaCorriente}
+              setFiltroCuentaCorriente={(v) => {
+                setFiltroCuentaCorriente(v);
+                setPaginaActual(1);
+              }}
+              filtroUsuario={filtroUsuario}
+              setFiltroUsuario={(v) => {
+                setFiltroUsuario(v);
+                setPaginaActual(1);
+              }}
+              filtroCaja={filtroCaja}
+              setFiltroCaja={(v) => {
+                setFiltroCaja(v);
+                setPaginaActual(1);
+              }}
+              montoDesde={montoDesde}
+              setMontoDesde={setMontoDesde}
+              montoHasta={montoHasta}
+              setMontoHasta={setMontoHasta}
+              montoTipo={montoTipo}
+              setMontoTipo={(v) => {
+                setMontoTipo(v);
+                setPaginaActual(1);
+              }}
+            />
+          }
+          filterChips={filterChips}
         />
       </Container>
 

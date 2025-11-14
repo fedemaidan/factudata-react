@@ -77,12 +77,14 @@ const DataTable = ({
   showRefreshButton = false,
   onSearchDebounced,
   searchDebounceMs = 500,
-  // Mostrar un chip sutil en la columna "cliente" cuando el item tiene clienteId
   showClienteListedChip = false,
   showBackButton = false,
   onBack = null,
   backButtonLabel = "Volver",
   rowIsSelected,
+  controlsLayout,
+  customFiltersComponent = null, 
+  filterChips = [],
 }) => {
   const [busqueda, setBusqueda] = useState("");
   const [filtroFecha, setFiltroFecha] = useState("todos");
@@ -378,114 +380,142 @@ const DataTable = ({
         )}
 
         <Stack direction="row" sx={{ margin: 0, gap: 1 }} alignItems="center" flexWrap="wrap">
-          {showSearch && (
-            <TextField
-              label="Buscar"
+          {/* Componente de filtros personalizado (si existe) */}
+          {customFiltersComponent ? (
+            customFiltersComponent
+          ) : (
+            <>
+              {showSearch && (
+                <TextField
+                  label="Buscar"
+                  size="small"
+                  value={busqueda}
+                  onChange={(e) => setBusqueda(e.target.value)}
+                  sx={{ width: 200 }}
+                  InputProps={{
+                    endAdornment: busqueda.length > 0 && (
+                      <InputAdornment position="end">
+                        <IconButton
+                          onClick={() => setBusqueda("")}
+                          edge="end"
+                          size="small"
+                          sx={{ color: "text.secondary" }}
+                        >
+                          <ClearIcon />
+                        </IconButton>
+                      </InputAdornment>
+                    ),
+                  }}
+                />
+              )}
+
+              {showDateFilterOptions && !showDatePicker && dateFilterOptions.length > 0 && (
+                <FormControl size="small" sx={{ width: 200 }} variant="filled">
+                  <InputLabel size="small" id="filtro-fecha-label">
+                    Filtrar por fecha
+                  </InputLabel>
+                  <Select
+                    size="small"
+                    labelId="filtro-fecha-label"
+                    id="filtro-fecha-select"
+                    value={currentFiltroFecha}
+                    label="Filtrar por fecha"
+                    onChange={(e) => {
+                      if (serverSide && onFiltroFechaChange) {
+                        onFiltroFechaChange(e.target.value);
+                      } else {
+                        setFiltroFecha(e.target.value);
+                      }
+                    }}
+                  >
+                    {dateFilterOptions.map((option) => (
+                      <MenuItem key={option.value} value={option.value}>
+                        {option.label}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              )}
+
+              {/* Select único (compatibilidad) */}
+              {selectFilter && (
+                <FormControl size="small" sx={{ width: 150 }} variant="filled">
+                  <InputLabel size="small" id="select-filter-label">
+                    {selectFilter.label}
+                  </InputLabel>
+                  <Select
+                    size="small"
+                    labelId="select-filter-label"
+                    id="select-filter-select"
+                    value={selectFilterValue}
+                    label={selectFilter.label}
+                    onChange={handleSelectFilterChange}
+                  >
+                    {selectFilter.options.map((option) => (
+                      <MenuItem key={option.value} value={option.value}>
+                        {option.label}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              )}
+
+              {multipleSelectFilters.map((f) => (
+                <FormControl size="small" key={f.key} sx={{ width: 150 }} variant="filled">
+                  <InputLabel size="small" id={`msf-${f.key}-label`}>
+                    {f.label}
+                  </InputLabel>
+                  <Select
+                    size="small"
+                    labelId={`msf-${f.key}-label`}
+                    id={`msf-${f.key}-select`}
+                    value={serverSide ? f.value ?? "" : localMultiSelects[f.key] ?? ""}
+                    label={f.label}
+                    onChange={(e) => handleMultiSelectChange(f.key, e.target.value, f.onChange)}
+                  >
+                    {(f.options || []).map((option) => (
+                      <MenuItem key={`${f.key}-${option.value}`} value={option.value}>
+                        {option.label}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              ))}
+
+              {showDatePicker && (
+                <LocalizationProvider dateAdapter={AdapterDayjs}>
+                  <DatePicker
+                    label="Seleccionar fecha"
+                    value={selectedDate}
+                    onChange={(newValue) => setSelectedDate(newValue)}
+                    format="DD/MM/YYYY"
+                  />
+                </LocalizationProvider>
+              )}
+            </>
+          )}
+
+          {/* Botón agregar */}
+          {(onAdd || AddModalComponent) && (
+            <Button
               size="small"
-              value={busqueda}
-              onChange={(e) => setBusqueda(e.target.value)}
-              sx={{ width: 200 }}
-              InputProps={{
-                endAdornment: busqueda.length > 0 && (
-                  <InputAdornment position="end">
-                    <IconButton
-                      onClick={() => setBusqueda("")}
-                      edge="end"
-                      size="small"
-                      sx={{ color: "text.secondary" }}
-                    >
-                      <ClearIcon />
-                    </IconButton>
-                  </InputAdornment>
-                ),
+              variant="contained"
+              color="primary"
+              startIcon={<AddIcon />}
+              onClick={handleOpenAdd}
+              sx={{
+                borderRadius: 2,
+                px: 3,
+                py: 1,
+                boxShadow: 2,
+                "&:hover": { boxShadow: 4 },
               }}
-            />
+            >
+              {addButtonLabel}
+            </Button>
           )}
 
-          {/* Select único (compatibilidad) */}
-          {selectFilter && (
-            <FormControl size="small" sx={{ width: 150 }} variant="filled">
-              <InputLabel size="small" id="select-filter-label">
-                {selectFilter.label}
-              </InputLabel>
-              <Select
-                size="small"
-                labelId="select-filter-label"
-                id="select-filter-select"
-                value={selectFilterValue}
-                label={selectFilter.label}
-                onChange={handleSelectFilterChange}
-              >
-                {selectFilter.options.map((option) => (
-                  <MenuItem key={option.value} value={option.value}>
-                    {option.label}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          )}
-
-          {multipleSelectFilters.map((f) => (
-            <FormControl size="small" key={f.key} sx={{ width: 150 }} variant="filled">
-              <InputLabel size="small" id={`msf-${f.key}-label`}>
-                {f.label}
-              </InputLabel>
-              <Select
-                size="small"
-                labelId={`msf-${f.key}-label`}
-                id={`msf-${f.key}-select`}
-                value={serverSide ? f.value ?? "" : localMultiSelects[f.key] ?? ""}
-                label={f.label}
-                onChange={(e) => handleMultiSelectChange(f.key, e.target.value, f.onChange)}
-              >
-                {(f.options || []).map((option) => (
-                  <MenuItem key={`${f.key}-${option.value}`} value={option.value}>
-                    {option.label}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          ))}
-
-          {showDateFilterOptions && !showDatePicker && dateFilterOptions.length > 0 && (
-            <FormControl size="small" sx={{ width: 200 }} variant="filled">
-              <InputLabel size="small" id="filtro-fecha-label">
-                Filtrar por fecha
-              </InputLabel>
-              <Select
-                size="small"
-                labelId="filtro-fecha-label"
-                id="filtro-fecha-select"
-                value={currentFiltroFecha}
-                label="Filtrar por fecha"
-                onChange={(e) => {
-                  if (serverSide && onFiltroFechaChange) {
-                    onFiltroFechaChange(e.target.value);
-                  } else {
-                    setFiltroFecha(e.target.value);
-                  }
-                }}
-              >
-                {dateFilterOptions.map((option) => (
-                  <MenuItem key={option.value} value={option.value}>
-                    {option.label}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          )}
-
-          {showDatePicker && (
-            <LocalizationProvider dateAdapter={AdapterDayjs}>
-              <DatePicker
-                label="Seleccionar fecha"
-                value={selectedDate}
-                onChange={(newValue) => setSelectedDate(newValue)}
-                format="DD/MM/YYYY"
-              />
-            </LocalizationProvider>
-          )}
-
+          {/* Botón actualizar */}
           {showRefreshButton && onRefresh && (
             <Tooltip title="Actualizar datos">
               <IconButton
@@ -534,27 +564,21 @@ const DataTable = ({
               {btn.label}
             </Button>
           ))}
-
-          {/* Botón agregar por defecto */}
-          {(onAdd || AddModalComponent) && (
-            <Button
-              size="small"
-              variant="contained"
-              color="primary"
-              startIcon={<AddIcon />}
-              onClick={handleOpenAdd}
-              sx={{
-                borderRadius: 2,
-                px: 3,
-                py: 1,
-                boxShadow: 2,
-                "&:hover": { boxShadow: 4 },
-              }}
-            >
-              {addButtonLabel}
-            </Button>
-          )}
         </Stack>
+
+        {Array.isArray(filterChips) && filterChips.length > 0 && (
+          <Stack direction="row" spacing={0.5} alignItems="center" flexWrap="wrap" sx={{ mt: -0.5 }}>
+            {filterChips.map((chip, idx) => (
+              <Chip
+                key={`filter-chip-${idx}`}
+                label={chip}
+                size="small"
+                variant="outlined"
+                sx={{ height: 22, fontSize: 11 }}
+              />
+            ))}
+          </Stack>
+        )}
 
         <Box position="relative">
           <Paper sx={{ width: "100%", mb: 2 }}>
@@ -706,9 +730,6 @@ const DataTable = ({
     </Box>
   );
 };
-// Optimización: evitar re-renders cuando props relevantes no cambian.
-// Ignoramos identidad de funciones y solo comparamos props que afectan el render.
-// Si se pasa rowIsSelected nuevo pero su resultado por fila no cambia, el padre debe controlar eso.
 export default React.memo(DataTable, (prev, next) => {
   if (prev.data !== next.data) return false;
   if (prev.isLoading !== next.isLoading) return false;
@@ -721,8 +742,7 @@ export default React.memo(DataTable, (prev, next) => {
   if (prev.showSearch !== next.showSearch) return false;
   if (prev.showDateFilterOptions !== next.showDateFilterOptions) return false;
   if (prev.showDatePicker !== next.showDatePicker) return false;
-  // columns por referencia: si cambian, re-render
   if (prev.columns !== next.columns) return false;
-  // Para el resto de props (funciones, etc.), no forzamos re-render
+  if (prev.filterChips !== next.filterChips) return false;
   return true;
 });

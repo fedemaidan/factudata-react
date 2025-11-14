@@ -10,3 +10,15 @@ export const formatNumberWithThousands = (value) => {
   if (!value || value === 0) return "0";
   return value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
 };
+
+export const formatearMonto = (valor) => {
+  if (!valor || valor === "") return "";
+  const numero = parseFloat(String(valor).replace(/\./g, ""));
+  if (isNaN(numero)) return "";
+  return formatNumberWithThousands(Math.round(numero));
+};
+
+export const parsearMonto = (valor) => {
+  if (!valor || valor === "") return "";
+  return String(valor).replace(/\./g, "");
+};

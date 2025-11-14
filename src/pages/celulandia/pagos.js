@@ -17,6 +17,9 @@ import AgregarPagoModal from "src/components/celulandia/AgregarPagoModal";
 import ConfirmarEliminacionModal from "src/components/celulandia/ConfirmarEliminacionModal";
 import { getEmpresaDetailsFromUser } from "src/services/empresaService";
 import { useAuthContext } from "src/contexts/auth-context";
+import { formatearMonto, parsearMonto } from "src/utils/celulandia/separacionMiles";
+import useDebouncedValue from "src/hooks/useDebouncedValue";
+import PagosFiltersBar from "src/components/celulandia/PagosFiltersBar";
 
 const PagosCelulandiaPage = () => {
   const { user } = useAuthContext();
@@ -37,6 +40,15 @@ const PagosCelulandiaPage = () => {
   const [categorias, setCategorias] = useState([]);
 
   const [cajas, setCajas] = useState([]);
+  const [filtroMoneda, setFiltroMoneda] = useState("");
+  const [selectedCajaNombre, setSelectedCajaNombre] = useState(""); // "" => Todas
+  const [montoDesde, setMontoDesde] = useState("");
+  const [montoHasta, setMontoHasta] = useState("");
+  const debouncedMontoDesde = useDebouncedValue(montoDesde, 500);
+  const debouncedMontoHasta = useDebouncedValue(montoHasta, 500);
+  const [busquedaTexto, setBusquedaTexto] = useState("");
+  const debouncedBusqueda = useDebouncedValue(busquedaTexto, 500);
+
 
   const movimientoHistorialConfig = useMemo(
     () => ({
@@ -133,13 +145,38 @@ const PagosCelulandiaPage = () => {
 
   useEffect(() => {
     fetchData(paginaActual);
-  }, [paginaActual, sortField, sortDirection, filtroFecha]);
+  }, [paginaActual, sortField, sortDirection, filtroFecha, selectedCajaNombre, filtroMoneda, debouncedMontoDesde, debouncedMontoHasta, debouncedBusqueda]);
+
+  // Al cambiar los montos, resetear a página 1
+  useEffect(() => {
+    setPaginaActual(1);
+  }, [debouncedMontoDesde, debouncedMontoHasta]);
+  // Resetear a la primera página cuando cambia la búsqueda
+  useEffect(() => {
+    setPaginaActual(1);
+  }, [debouncedBusqueda]);
 
   const fetchData = async (pagina = 1) => {
     setIsLoading(true);
     try {
       const offset = (pagina - 1) * limitePorPagina;
       const { fechaInicio, fechaFin } = calcularFechasFiltro(filtroFecha);
+
+      // Convertir montos a negativos e invertir desde/hasta para EGRESOS
+      // Si el usuario busca desde 100 hasta 500, en la BD buscamos desde -500 hasta -100
+      let montoDesdeNegativo = undefined;
+      let montoHastaNegativo = undefined;
+      
+      if (debouncedMontoDesde || debouncedMontoHasta) {
+        // Si hay montoHasta del usuario, se convierte en montoDesde negativo (límite inferior)
+        if (debouncedMontoHasta) {
+          montoDesdeNegativo = -Math.abs(Number(debouncedMontoHasta));
+        }
+        // Si hay montoDesde del usuario, se convierte en montoHasta negativo (límite superior)
+        if (debouncedMontoDesde) {
+          montoHastaNegativo = -Math.abs(Number(debouncedMontoDesde));
+        }
+      }
 
       const [movimientosResponse, cajasResponse, empresaResponse] = await Promise.all([
         movimientosService.getAllMovimientos({
@@ -149,8 +186,14 @@ const PagosCelulandiaPage = () => {
           offset,
           sortField,
           sortDirection,
+          cajaNombre: selectedCajaNombre || undefined,
+          moneda: filtroMoneda || undefined,
+          ...(montoDesdeNegativo !== undefined ? { montoDesde: montoDesdeNegativo } : {}),
+          ...(montoHastaNegativo !== undefined ? { montoHasta: montoHastaNegativo } : {}),
+          montoTipo: "enviado",
           fechaInicio,
           fechaFin,
+          text: debouncedBusqueda || undefined,
           //includeInactive: true, // Incluir registros inactivos para mostrarlos tachados
         }),
         cajasService.getAllCajas(),
@@ -279,6 +322,24 @@ const PagosCelulandiaPage = () => {
     }
   };
 
+  const filterChips = useMemo(() => {
+    const chips = [];
+    const fechaLabels = {
+      todos: "Todos",
+      hoy: "Hoy",
+      estaSemana: "Esta semana",
+      esteMes: "Este mes",
+      esteAño: "Este año",
+    };
+    if (filtroFecha && filtroFecha !== "todos") chips.push(`Fecha: ${fechaLabels[filtroFecha] || filtroFecha}`);
+    if (filtroMoneda) chips.push(`Moneda: ${filtroMoneda}`);
+    if (selectedCajaNombre) chips.push(`Cuenta de Origen: ${selectedCajaNombre}`);
+    if (montoDesde) chips.push(`Desde: $${formatearMonto(montoDesde)}`);
+    if (montoHasta) chips.push(`Hasta: $${formatearMonto(montoHasta)}`);
+    if (busquedaTexto) chips.push(`Buscar: ${busquedaTexto}`);
+    return chips;
+  }, [filtroFecha, filtroMoneda, selectedCajaNombre, montoDesde, montoHasta, busquedaTexto]);
+
   return (
     <DashboardLayout title="Pagos">
       <Head>
@@ -301,6 +362,7 @@ const PagosCelulandiaPage = () => {
           sortDirection={sortDirection}
           onSortChange={handleSortChange}
           showSearch={false}
+          showDateFilterOptions={false}
           serverSide={true}
           filtroFecha={filtroFecha}
           onFiltroFechaChange={(nuevoFiltro) => {
@@ -309,6 +371,33 @@ const PagosCelulandiaPage = () => {
           }}
           showRefreshButton={true}
           onRefresh={refetchPagos}
+          customFiltersComponent={
+            <PagosFiltersBar
+              onSearchDebounced={setBusquedaTexto}
+              initialSearch={busquedaTexto}
+              filtroFecha={filtroFecha}
+              onFiltroFechaChange={(nuevo) => {
+                setFiltroFecha(nuevo);
+                setPaginaActual(1);
+              }}
+              cajas={cajas}
+              filtroMoneda={filtroMoneda}
+              setFiltroMoneda={(v) => {
+                setFiltroMoneda(v);
+                setPaginaActual(1);
+              }}
+              selectedCajaNombre={selectedCajaNombre}
+              setSelectedCajaNombre={(v) => {
+                setSelectedCajaNombre(v);
+                setPaginaActual(1);
+              }}
+              montoDesde={montoDesde}
+              setMontoDesde={setMontoDesde}
+              montoHasta={montoHasta}
+              setMontoHasta={setMontoHasta}
+            />
+          }
+          filterChips={filterChips}
         />
       </Container>
 

@@ -26,14 +26,15 @@ const DhnDriveService = {
    * @param {string} urlDrive  URL o ID de Google Drive
    * @returns {Promise<Object>} { ok:true, ...data } | { ok:false, error:{ code, message } }
    */
-  inspeccionarRecurso: async (urlDrive) => {
+  inspeccionarRecurso: async (urlDrive, extra = {}) => {
     console.log('Inspeccionando recurso:', urlDrive);
     if (!validarUrlDrive(urlDrive)) {
       return { ok: false, error: { code: 0, message: 'La URL/ID de Drive no es válida.' } };
     }
     console.log('URL válida:', urlDrive);
     try {
-      const response = await api.post(`/dhn/sync`, { urlDrive }); // ✅ /dhn/sync
+      const payload = { urlDrive, ...extra };
+      const response = await api.post(`/dhn/sync`, payload); // ✅ /dhn/sync
       if (response?.status === 200 || response?.status === 201) {
         return response.data; // { ok:true, ... }
       }
