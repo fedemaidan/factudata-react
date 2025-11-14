@@ -21,6 +21,7 @@ import HomeIcon from '@mui/icons-material/Home';
 
 import * as XLSX from 'xlsx';
 import LoteParaTodosLayout from 'src/components/layouts/LoteParaTodosLayout';
+import ClienteResumenDrawer from 'src/components/loteParaTodos/ClienteResumenDrawer';
 import { 
   mockClientes, 
   getClienteById, 
@@ -148,6 +149,8 @@ const ClientesPage = () => {
   const [showCreateClienteForm, setShowCreateClienteForm] = useState(false);
   const [editingCliente, setEditingCliente] = useState(null);
   const [clienteSeleccionado, setClienteSeleccionado] = useState(null);
+  const [openResumenDrawer, setOpenResumenDrawer] = useState(false);
+  const [clienteResumenSeleccionado, setClienteResumenSeleccionado] = useState(null);
   const [anchorMenu, setAnchorMenu] = useState(null);
   const [menuCliente, setMenuCliente] = useState(null);
   const [lotesDisponibles, setLotesDisponibles] = useState([]);
@@ -226,6 +229,10 @@ const ClientesPage = () => {
 
   // --- ACCIONES ---
   const openEstadoCuenta = (c) => { setClienteSeleccionado(c); setOpenCuenta(true); };
+  const openResumenCliente = (cliente) => { 
+    setClienteResumenSeleccionado(cliente); 
+    setOpenResumenDrawer(true); 
+  };
   const deleteCliente = (id) => { if (confirm('¿Eliminar este cliente definitivamente?')) setClientes(prev => prev.filter(c => c.id !== id)); };
   const exportToExcel = () => {
     const data = filtered.map(({ id, ...rest }) => rest);
@@ -602,9 +609,16 @@ const ClientesPage = () => {
                         </TableCell>
                         <TableCell>{c.ultimo_pago || '-'}</TableCell>
                         <TableCell align="center">
-                          <IconButton size="small" onClick={(e) => openMenu(e, c)}>
-                            <MoreVertIcon fontSize="small" />
-                          </IconButton>
+                          <Stack direction="row" spacing={1}>
+                            <Tooltip title="Ver resumen completo">
+                              <IconButton size="small" onClick={() => openResumenCliente(c)} color="primary">
+                                <AssignmentIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                            <IconButton size="small" onClick={(e) => openMenu(e, c)}>
+                              <MoreVertIcon fontSize="small" />
+                            </IconButton>
+                          </Stack>
                         </TableCell>
                       </TableRow>
                     );
@@ -634,6 +648,10 @@ const ClientesPage = () => {
 
           {/* MENU ACCIONES */}
           <Menu anchorEl={anchorMenu} open={Boolean(anchorMenu)} onClose={closeMenu}>
+            <MenuItem onClick={() => { openResumenCliente(menuCliente); closeMenu(); }}>
+              <ListItemIcon><AssignmentIcon fontSize="small" /></ListItemIcon>
+              <ListItemText>Ver resumen completo</ListItemText>
+            </MenuItem>
             <MenuItem onClick={() => { openEstadoCuenta(menuCliente); closeMenu(); }}>
               <ListItemIcon><VisibilityIcon fontSize="small" /></ListItemIcon>
               <ListItemText>Ver estado de cuenta</ListItemText>
@@ -1684,6 +1702,16 @@ const ClientesPage = () => {
               </Box>
             </Box>
           </Drawer>
+
+          {/* Nuevo componente de resumen completo del cliente */}
+          <ClienteResumenDrawer
+            cliente={clienteResumenSeleccionado}
+            open={openResumenDrawer}
+            onClose={() => {
+              setOpenResumenDrawer(false);
+              setClienteResumenSeleccionado(null);
+            }}
+          />
           
     </LoteParaTodosLayout>
   );

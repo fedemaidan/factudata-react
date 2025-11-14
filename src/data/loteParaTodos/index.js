@@ -4,7 +4,16 @@
 import { mockClientes, getClienteById, buscarClientes } from './mockClientes.js';
 import { mockContratos, getContratosByClienteId, getContratoActivoByLoteId, getContratoById } from './mockContratos.js';
 import { mockVendedores, getVendedorById } from './mockVendedores.js';
-import { mockEmprendimientos, getEmprendimientosActivos, getEmprendimientoById } from './mockEmprendimientos.js';
+import { 
+  mockEmprendimientos, 
+  getEmprendimientosActivos, 
+  getEmprendimientoById,
+  getEstadisticasGeneralesEmprendimientos,
+  buscarEmprendimientos,
+  ESTADO_EMPRENDIMIENTO,
+  ESTADO_EMPRENDIMIENTO_LABELS,
+  ESTADO_EMPRENDIMIENTO_COLORS
+} from './mockEmprendimientos.js';
 import { mockLotes, getLotesByEmprendimiento, getLotesByEstado, getLoteCompleto } from './mockLotes.js';
 import { mockPlanes, getPlanesActivos, calcularFinanciacion } from './mockPlanes.js';
 
@@ -82,6 +91,11 @@ export {
   // Funciones de emprendimientos
   getEmprendimientosActivos,
   getEmprendimientoById,
+  getEstadisticasGeneralesEmprendimientos,
+  buscarEmprendimientos,
+  ESTADO_EMPRENDIMIENTO,
+  ESTADO_EMPRENDIMIENTO_LABELS,
+  ESTADO_EMPRENDIMIENTO_COLORS,
   
   // Funciones de lotes
   getLotesByEmprendimiento,
@@ -92,3 +106,7 @@ export {
   getPlanesActivos,
   calcularFinanciacion
 };
+
+// Exportar también las nuevas constantes y funciones de lotes
+export * from './constantes.js';
+export * from './mockLotes.js';

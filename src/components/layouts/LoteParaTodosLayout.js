@@ -9,14 +9,23 @@ import {
   Container,
   Breadcrumbs,
   Link,
-  Chip
+  Chip,
+  Menu,
+  MenuItem,
+  ListItemIcon,
+  ListItemText,
+  Divider
 } from '@mui/material';
 import { 
   Home as HomeIcon,
   Person as PersonIcon,
   Assignment as AssignmentIcon,
   Landscape as LandscapeIcon,
-  Business as BusinessIcon
+  Business as BusinessIcon,
+  Settings as SettingsIcon,
+  People as PeopleIcon,
+  Security as SecurityIcon,
+  ArrowDropDown as ArrowDropDownIcon
 } from '@mui/icons-material';
 import { useRouter } from 'next/router';
 import NextLink from 'next/link';
@@ -27,6 +36,18 @@ const moduleConfig = {
     icon: BusinessIcon,
     path: '/loteParaTodosMock/dashboard',
     description: 'Resumen general y métricas principales'
+  },
+  emprendimientos: {
+    title: 'Emprendimientos',
+    icon: BusinessIcon,
+    path: '/loteParaTodosMock/emprendimientos',
+    description: 'Configuración y administración de emprendimientos'
+  },
+  lotes: {
+    title: 'Lotes',
+    icon: LandscapeIcon,
+    path: '/loteParaTodosMock/lotes',
+    description: 'Gestión operativa de lotes'
   },
   clientes: {
     title: 'Clientes',
@@ -40,16 +61,23 @@ const moduleConfig = {
     path: '/loteParaTodosMock/contratos',
     description: 'Administración de contratos y pagos'
   },
-  lotes: {
-    title: 'Lotes',
-    icon: LandscapeIcon,
-    path: '/loteParaTodosMock/lotes',
-    description: 'Gestión de lotes y emprendimientos'
+  configuracion: {
+    title: 'Configuración',
+    icon: SettingsIcon,
+    path: '/loteParaTodosMock/configuracion',
+    description: 'Configuración del sistema y administración'
+  },
+  usuarios: {
+    title: 'Usuarios',
+    icon: PeopleIcon,
+    path: '/loteParaTodosMock/usuarios',
+    description: 'Gestión de usuarios del sistema'
   }
 };
 
 const LoteParaTodosLayout = ({ children, currentModule, pageTitle }) => {
   const router = useRouter();
+  const [configMenuAnchor, setConfigMenuAnchor] = React.useState(null);
 
   const getCurrentModule = () => {
     if (currentModule) return currentModule;
@@ -59,7 +87,21 @@ const LoteParaTodosLayout = ({ children, currentModule, pageTitle }) => {
     if (path.includes('/clientes')) return 'clientes';
     if (path.includes('/contratos')) return 'contratos';
     if (path.includes('/lotes')) return 'lotes';
+    if (path.includes('/usuarios') || path.includes('/configurador-roles') || path.includes('/emprendimientos')) return 'configuracion';
     return 'dashboard'; // default
+  };
+
+  const handleConfigMenuOpen = (event) => {
+    setConfigMenuAnchor(event.currentTarget);
+  };
+
+  const handleConfigMenuClose = () => {
+    setConfigMenuAnchor(null);
+  };
+
+  const handleConfigMenuItemClick = (path) => {
+    router.push(path);
+    handleConfigMenuClose();
   };
 
   const activeModule = getCurrentModule();
@@ -86,6 +128,9 @@ const LoteParaTodosLayout = ({ children, currentModule, pageTitle }) => {
             {/* Module Navigation */}
             <Box sx={{ display: 'flex', gap: 1 }}>
               {Object.entries(moduleConfig).map(([key, config]) => {
+                // Skip configuracion, usuarios, and emprendimientos from direct nav
+                if (key === 'configuracion' || key === 'usuarios' || key === 'emprendimientos') return null;
+                
                 const isActive = key === activeModule;
                 const ModuleIcon = config.icon;
                 
@@ -110,6 +155,25 @@ const LoteParaTodosLayout = ({ children, currentModule, pageTitle }) => {
                   </Button>
                 );
               })}
+              
+              {/* Configuración Dropdown Menu */}
+              <Button
+                onClick={handleConfigMenuOpen}
+                variant={activeModule === 'configuracion' ? "contained" : "outlined"}
+                startIcon={<SettingsIcon />}
+                endIcon={<ArrowDropDownIcon />}
+                sx={{
+                  color: activeModule === 'configuracion' ? 'white' : 'rgba(255,255,255,0.8)',
+                  borderColor: activeModule === 'configuracion' ? 'white' : 'rgba(255,255,255,0.3)',
+                  backgroundColor: activeModule === 'configuracion' ? 'rgba(255,255,255,0.2)' : 'transparent',
+                  '&:hover': {
+                    backgroundColor: 'rgba(255,255,255,0.1)',
+                    borderColor: 'white'
+                  }
+                }}
+              >
+                Configuración
+              </Button>
             </Box>
           </Box>
 
@@ -181,6 +245,82 @@ const LoteParaTodosLayout = ({ children, currentModule, pageTitle }) => {
           </Typography>
         </Container>
       </Box>
+
+      {/* Menu de Configuración */}
+      <Menu
+        anchorEl={configMenuAnchor}
+        open={Boolean(configMenuAnchor)}
+        onClose={handleConfigMenuClose}
+        PaperProps={{
+          sx: {
+            borderRadius: 2,
+            minWidth: 200,
+            boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
+            mt: 1
+          }
+        }}
+        anchorOrigin={{
+          vertical: 'bottom',
+          horizontal: 'left',
+        }}
+        transformOrigin={{
+          vertical: 'top',
+          horizontal: 'left',
+        }}
+      >
+        <MenuItem 
+          onClick={() => handleConfigMenuItemClick('/loteParaTodosMock/usuarios')}
+          sx={{ py: 1.5 }}
+        >
+          <ListItemIcon>
+            <PeopleIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>
+            <Typography variant="body2" sx={{ fontWeight: 500 }}>
+              Usuarios
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              Gestión de usuarios del sistema
+            </Typography>
+          </ListItemText>
+        </MenuItem>
+        
+        <MenuItem 
+          onClick={() => handleConfigMenuItemClick('/loteParaTodosMock/configurador-roles')}
+          sx={{ py: 1.5 }}
+        >
+          <ListItemIcon>
+            <SecurityIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>
+            <Typography variant="body2" sx={{ fontWeight: 500 }}>
+              Roles y Permisos
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              Configuración de roles y permisos
+            </Typography>
+          </ListItemText>
+        </MenuItem>
+        
+        <Divider sx={{ my: 1 }} />
+        
+        <MenuItem 
+          onClick={() => handleConfigMenuItemClick('/loteParaTodosMock/emprendimientos')}
+          sx={{ py: 1.5 }}
+        >
+          <ListItemIcon>
+            <BusinessIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>
+            <Typography variant="body2" sx={{ fontWeight: 500 }}>
+              Emprendimientos
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              Configuración de emprendimientos
+            </Typography>
+          </ListItemText>
+        </MenuItem>
+      </Menu>
     </Box>
   );
 };

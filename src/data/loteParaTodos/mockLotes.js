@@ -1,21 +1,204 @@
 // src/data/loteParaTodos/mockLotes.js
+import { CONDICION_LOTE, ESTADO_LEGAL, SITUACION_FISICA, mapLegacyEstadoToCondicion, mapLegacyEstadoToEstadoLegal } from './constantes.js';
 
 export const mockLotes = [
   // CERRO VERDE I - Emprendimiento ID 1
-  { id: 1, emprendimiento_id: 1, numero: 'A-001', manzana: 'A', superficie: 350, estado: 'VENDIDO', precio_base: 25000, fecha_venta: '2023-03-15', observaciones: 'Esquina, doble frente' },
-  { id: 2, emprendimiento_id: 1, numero: 'A-002', manzana: 'A', superficie: 320, estado: 'DISPONIBLE', precio_base: 22000, fecha_venta: null, observaciones: 'Vista al parque' },
-  { id: 3, emprendimiento_id: 1, numero: 'A-003', manzana: 'A', superficie: 300, estado: 'RESERVADO', precio_base: 21000, fecha_venta: null, observaciones: 'Lote central' },
-  { id: 4, emprendimiento_id: 1, numero: 'A-004', manzana: 'A', superficie: 280, estado: 'VENDIDO', precio_base: 19000, fecha_venta: '2023-07-22', observaciones: null },
-  { id: 5, emprendimiento_id: 1, numero: 'A-005', manzana: 'A', superficie: 450, estado: 'DISPONIBLE', precio_base: 32000, fecha_venta: null, observaciones: 'Lote premium, frente amplio' },
-  { id: 6, emprendimiento_id: 1, numero: 'B-001', manzana: 'B', superficie: 330, estado: 'VENDIDO', precio_base: 23000, fecha_venta: '2023-05-10', observaciones: 'Cerca del acceso principal' },
-  { id: 7, emprendimiento_id: 1, numero: 'B-002', manzana: 'B', superficie: 310, estado: 'DISPONIBLE', precio_base: 21500, fecha_venta: null, observaciones: null },
-  { id: 8, emprendimiento_id: 1, numero: 'B-003', manzana: 'B', superficie: 295, estado: 'BLOQUEADO', precio_base: 20500, fecha_venta: null, observaciones: 'Problema legal pendiente' },
-  { id: 9, emprendimiento_id: 1, numero: 'C-001', manzana: 'C', superficie: 380, estado: 'VENDIDO', precio_base: 27000, fecha_venta: '2023-09-18', observaciones: 'Esquina privilegiada' },
-  { id: 10, emprendimiento_id: 1, numero: 'C-002', manzana: 'C', superficie: 340, estado: 'RESERVADO', precio_base: 24000, fecha_venta: null, observaciones: 'Reserva hasta fin de mes' },
+  { 
+    id: 1, 
+    emprendimiento_id: 1, 
+    numero: 'A-001', 
+    manzana: 'A', 
+    superficie: 350, 
+    condicion_lote: CONDICION_LOTE.ACTIVO,
+    estado_legal: ESTADO_LEGAL.NORMAL,
+    situacion_fisica: SITUACION_FISICA.VIVIENDO,
+    precio_base: 25000, 
+    fecha_venta: '2023-03-15', 
+    observaciones_lote: 'Esquina, doble frente',
+    numero_partida: '12-345-001',
+    vendedor_responsable_id: 1,
+    // Campos legacy para compatibilidad
+    estado: 'VENDIDO'
+  },
+  { 
+    id: 2, 
+    emprendimiento_id: 1, 
+    numero: 'A-002', 
+    manzana: 'A', 
+    superficie: 320, 
+    condicion_lote: CONDICION_LOTE.DISPONIBLE,
+    estado_legal: ESTADO_LEGAL.NORMAL,
+    situacion_fisica: SITUACION_FISICA.BALDIO,
+    precio_base: 22000, 
+    fecha_venta: null, 
+    observaciones_lote: 'Vista al parque',
+    numero_partida: '12-345-002',
+    vendedor_responsable_id: 1,
+    // Campos legacy para compatibilidad
+    estado: 'DISPONIBLE'
+  },
+  { 
+    id: 3, 
+    emprendimiento_id: 1, 
+    numero: 'A-003', 
+    manzana: 'A', 
+    superficie: 300, 
+    condicion_lote: CONDICION_LOTE.RESERVADO,
+    estado_legal: ESTADO_LEGAL.NORMAL,
+    situacion_fisica: SITUACION_FISICA.CERCADO,
+    precio_base: 21000, 
+    fecha_venta: null, 
+    observaciones_lote: 'Lote central',
+    numero_partida: '12-345-003',
+    vendedor_responsable_id: 1,
+    estado: 'RESERVADO'
+  },
+  { 
+    id: 4, 
+    emprendimiento_id: 1, 
+    numero: 'A-004', 
+    manzana: 'A', 
+    superficie: 280, 
+    condicion_lote: CONDICION_LOTE.ACTIVO,
+    estado_legal: ESTADO_LEGAL.NORMAL,
+    situacion_fisica: SITUACION_FISICA.EN_CONSTRUCCION,
+    precio_base: 19000, 
+    fecha_venta: '2023-07-22', 
+    observaciones_lote: null,
+    numero_partida: '12-345-004',
+    vendedor_responsable_id: 2,
+    estado: 'VENDIDO'
+  },
+  { 
+    id: 5, 
+    emprendimiento_id: 1, 
+    numero: 'A-005', 
+    manzana: 'A', 
+    superficie: 450, 
+    condicion_lote: CONDICION_LOTE.DISPONIBLE,
+    estado_legal: ESTADO_LEGAL.NORMAL,
+    situacion_fisica: SITUACION_FISICA.BALDIO,
+    precio_base: 32000, 
+    fecha_venta: null, 
+    observaciones_lote: 'Lote premium, frente amplio',
+    numero_partida: '12-345-005',
+    vendedor_responsable_id: 1,
+    estado: 'DISPONIBLE'
+  },
+  { 
+    id: 6, 
+    emprendimiento_id: 1, 
+    numero: 'B-001', 
+    manzana: 'B', 
+    superficie: 330, 
+    condicion_lote: CONDICION_LOTE.ACTIVO,
+    estado_legal: ESTADO_LEGAL.NORMAL,
+    situacion_fisica: SITUACION_FISICA.OBRA_TERMINADA,
+    precio_base: 23000, 
+    fecha_venta: '2023-05-10', 
+    observaciones_lote: 'Cerca del acceso principal',
+    numero_partida: '12-345-006',
+    vendedor_responsable_id: 2,
+    estado: 'VENDIDO'
+  },
+  { 
+    id: 7, 
+    emprendimiento_id: 1, 
+    numero: 'B-002', 
+    manzana: 'B', 
+    superficie: 310, 
+    condicion_lote: CONDICION_LOTE.DISPONIBLE,
+    estado_legal: ESTADO_LEGAL.NORMAL,
+    situacion_fisica: SITUACION_FISICA.BALDIO,
+    precio_base: 21500, 
+    fecha_venta: null, 
+    observaciones_lote: null,
+    numero_partida: '12-345-007',
+    vendedor_responsable_id: 1,
+    estado: 'DISPONIBLE'
+  },
+  { 
+    id: 8, 
+    emprendimiento_id: 1, 
+    numero: 'B-003', 
+    manzana: 'B', 
+    superficie: 295, 
+    condicion_lote: CONDICION_LOTE.NO_A_LA_VENTA,
+    estado_legal: ESTADO_LEGAL.EN_LEGALES,
+    situacion_fisica: SITUACION_FISICA.BALDIO,
+    precio_base: 20500, 
+    fecha_venta: null, 
+    observaciones_lote: 'Problema legal pendiente',
+    numero_partida: '12-345-008',
+    vendedor_responsable_id: null,
+    estado: 'BLOQUEADO'
+  },
+  { 
+    id: 9, 
+    emprendimiento_id: 1, 
+    numero: 'C-001', 
+    manzana: 'C', 
+    superficie: 380, 
+    condicion_lote: CONDICION_LOTE.ACTIVO,
+    estado_legal: ESTADO_LEGAL.NORMAL,
+    situacion_fisica: SITUACION_FISICA.VIVIENDO,
+    precio_base: 27000, 
+    fecha_venta: '2023-09-18', 
+    observaciones_lote: 'Esquina privilegiada',
+    numero_partida: '12-345-009',
+    vendedor_responsable_id: 1,
+    estado: 'VENDIDO'
+  },
+  { 
+    id: 10, 
+    emprendimiento_id: 1, 
+    numero: 'C-002', 
+    manzana: 'C', 
+    superficie: 340, 
+    condicion_lote: CONDICION_LOTE.PRE_RESERVADO,
+    estado_legal: ESTADO_LEGAL.NORMAL,
+    situacion_fisica: SITUACION_FISICA.CERCADO,
+    precio_base: 24000, 
+    fecha_venta: null, 
+    observaciones_lote: 'Reserva hasta fin de mes',
+    numero_partida: '12-345-010',
+    vendedor_responsable_id: 2,
+    estado: 'RESERVADO'
+  },
 
   // LOTEO NORTE PREMIUM - Emprendimiento ID 2
-  { id: 11, emprendimiento_id: 2, numero: 'P-001', manzana: 'Premium', superficie: 500, estado: 'VENDIDO', precio_base: 45000, fecha_venta: '2023-08-15', observaciones: 'Frente al club house' },
-  { id: 12, emprendimiento_id: 2, numero: 'P-002', manzana: 'Premium', superficie: 480, estado: 'DISPONIBLE', precio_base: 43000, fecha_venta: null, observaciones: 'Vista panorámica' },
+  { 
+    id: 11, 
+    emprendimiento_id: 2, 
+    numero: 'P-001', 
+    manzana: 'Premium', 
+    superficie: 500, 
+    condicion_lote: CONDICION_LOTE.ACTIVO,
+    estado_legal: ESTADO_LEGAL.NORMAL,
+    situacion_fisica: SITUACION_FISICA.OBRA_TERMINADA,
+    precio_base: 45000, 
+    fecha_venta: '2023-08-15', 
+    observaciones_lote: 'Frente al club house',
+    numero_partida: '23-456-001',
+    vendedor_responsable_id: 3,
+    estado: 'VENDIDO'
+  },
+  { 
+    id: 12, 
+    emprendimiento_id: 2, 
+    numero: 'P-002', 
+    manzana: 'Premium', 
+    superficie: 480, 
+    condicion_lote: CONDICION_LOTE.DISPONIBLE,
+    estado_legal: ESTADO_LEGAL.NORMAL,
+    situacion_fisica: SITUACION_FISICA.BALDIO,
+    precio_base: 43000, 
+    fecha_venta: null, 
+    observaciones_lote: 'Vista panorámica',
+    numero_partida: '23-456-002',
+    vendedor_responsable_id: 3,
+    estado: 'DISPONIBLE'
+  },
   { id: 13, emprendimiento_id: 2, numero: 'P-003', manzana: 'Premium', superficie: 520, estado: 'VENDIDO', precio_base: 47000, fecha_venta: '2023-10-02', observaciones: 'Doble lote unificado' },
   { id: 14, emprendimiento_id: 2, numero: 'E-001', manzana: 'Este', superficie: 420, estado: 'DISPONIBLE', precio_base: 38000, fecha_venta: null, observaciones: 'Zona tranquila' },
   { id: 15, emprendimiento_id: 2, numero: 'E-002', manzana: 'Este', superficie: 410, estado: 'RESERVADO', precio_base: 37000, fecha_venta: null, observaciones: 'Cliente con financiación aprobada' },
@@ -40,14 +223,159 @@ export const mockLotes = [
   { id: 30, emprendimiento_id: 4, numero: 'E-001', manzana: 'Ecológica', superficie: 450, estado: 'DISPONIBLE', precio_base: 52000, fecha_venta: null, observaciones: 'Huerta comunitaria incluida' },
 
   // DELTA TIGRE - Emprendimiento ID 5 (todos bloqueados en planificación)
-  { id: 31, emprendimiento_id: 5, numero: 'R-001', manzana: 'Río', superficie: 600, estado: 'BLOQUEADO', precio_base: 75000, fecha_venta: null, observaciones: 'Muelle privado 15m' },
-  { id: 32, emprendimiento_id: 5, numero: 'R-002', manzana: 'Río', superficie: 580, estado: 'BLOQUEADO', precio_base: 73000, fecha_venta: null, observaciones: 'Frente al río Luján' },
-  { id: 33, emprendimiento_id: 5, numero: 'I-001', manzana: 'Isla', superficie: 800, estado: 'BLOQUEADO', precio_base: 95000, fecha_venta: null, observaciones: 'Isla privada con puente' },
+  { 
+    id: 31, 
+    emprendimiento_id: 5, 
+    numero: 'R-001', 
+    manzana: 'Río', 
+    superficie: 600, 
+    condicion_lote: CONDICION_LOTE.NO_A_LA_VENTA,
+    estado_legal: ESTADO_LEGAL.BLOQUEADO,
+    situacion_fisica: SITUACION_FISICA.BALDIO,
+    precio_base: 75000, 
+    fecha_venta: null, 
+    observaciones_lote: 'Muelle privado 15m',
+    numero_partida: '45-789-001',
+    vendedor_responsable_id: null,
+    estado: 'BLOQUEADO'
+  },
+  { 
+    id: 32, 
+    emprendimiento_id: 5, 
+    numero: 'R-002', 
+    manzana: 'Río', 
+    superficie: 580, 
+    condicion_lote: CONDICION_LOTE.NO_A_LA_VENTA,
+    estado_legal: ESTADO_LEGAL.BLOQUEADO,
+    situacion_fisica: SITUACION_FISICA.BALDIO,
+    precio_base: 73000, 
+    fecha_venta: null, 
+    observaciones_lote: 'Frente al río Luján',
+    numero_partida: '45-789-002',
+    vendedor_responsable_id: null,
+    estado: 'BLOQUEADO'
+  },
+  { 
+    id: 33, 
+    emprendimiento_id: 5, 
+    numero: 'I-001', 
+    manzana: 'Isla', 
+    superficie: 800, 
+    condicion_lote: CONDICION_LOTE.OFICINA,
+    estado_legal: ESTADO_LEGAL.NORMAL,
+    situacion_fisica: SITUACION_FISICA.EN_CONSTRUCCION,
+    precio_base: 95000, 
+    fecha_venta: null, 
+    observaciones_lote: 'Isla privada con puente - Oficina de ventas temporal',
+    numero_partida: '45-789-003',
+    vendedor_responsable_id: null,
+    estado: 'BLOQUEADO'
+  },
 
   // CERRO VERDE II - Emprendimiento ID 6 (todos bloqueados en planificación)
-  { id: 34, emprendimiento_id: 6, numero: 'AA-001', manzana: 'AA', superficie: 500, estado: 'BLOQUEADO', precio_base: 35000, fecha_venta: null, observaciones: 'Segunda etapa - lotes ampliados' },
-  { id: 35, emprendimiento_id: 6, numero: 'AA-002', manzana: 'AA', superficie: 520, estado: 'BLOQUEADO', precio_base: 36000, fecha_venta: null, observaciones: 'Infraestructura mejorada' }
+  { 
+    id: 34, 
+    emprendimiento_id: 6, 
+    numero: 'AA-001', 
+    manzana: 'AA', 
+    superficie: 500, 
+    condicion_lote: CONDICION_LOTE.NO_A_LA_VENTA,
+    estado_legal: ESTADO_LEGAL.BLOQUEADO,
+    situacion_fisica: SITUACION_FISICA.BALDIO,
+    precio_base: 35000, 
+    fecha_venta: null, 
+    observaciones_lote: 'Segunda etapa - lotes ampliados',
+    numero_partida: '12-999-001',
+    vendedor_responsable_id: null,
+    estado: 'BLOQUEADO'
+  },
+  { 
+    id: 35, 
+    emprendimiento_id: 6, 
+    numero: 'AA-002', 
+    manzana: 'AA', 
+    superficie: 520, 
+    condicion_lote: CONDICION_LOTE.NO_A_LA_VENTA,
+    estado_legal: ESTADO_LEGAL.BLOQUEADO,
+    situacion_fisica: SITUACION_FISICA.BALDIO,
+    precio_base: 36000, 
+    fecha_venta: null, 
+    observaciones_lote: 'Infraestructura mejorada',
+    numero_partida: '12-999-002',
+    vendedor_responsable_id: null,
+    estado: 'BLOQUEADO'
+  }
 ];
+
+// Funciones auxiliares para trabajar con lotes
+export const getLotesDisponiblesParaVenta = (emprendimientoId) => {
+  return mockLotes
+    .filter(lote => 
+      lote.emprendimiento_id === emprendimientoId && 
+      [CONDICION_LOTE.DISPONIBLE, CONDICION_LOTE.PRE_RESERVADO].includes(lote.condicion_lote)
+    );
+};
+
+export const getLotesByCondicion = (condicion) => {
+  return mockLotes.filter(lote => lote.condicion_lote === condicion);
+};
+
+export const getLotesByEstadoLegal = (estadoLegal) => {
+  return mockLotes.filter(lote => lote.estado_legal === estadoLegal);
+};
+
+export const getLotesBySituacionFisica = (situacion) => {
+  return mockLotes.filter(lote => lote.situacion_fisica === situacion);
+};
+
+export const getLotesByVendedor = (vendedorId) => {
+  return mockLotes.filter(lote => lote.vendedor_responsable_id === vendedorId);
+};
+
+export const getEstadisticasLotesPorEmprendimiento = (emprendimientoId) => {
+  const lotes = mockLotes.filter(l => l.emprendimiento_id === emprendimientoId);
+  
+  const stats = {
+    total: lotes.length,
+    disponibles: lotes.filter(l => l.condicion_lote === CONDICION_LOTE.DISPONIBLE).length,
+    pre_reservados: lotes.filter(l => l.condicion_lote === CONDICION_LOTE.PRE_RESERVADO).length,
+    reservados: lotes.filter(l => l.condicion_lote === CONDICION_LOTE.RESERVADO).length,
+    activos: lotes.filter(l => l.condicion_lote === CONDICION_LOTE.ACTIVO).length,
+    no_a_la_venta: lotes.filter(l => l.condicion_lote === CONDICION_LOTE.NO_A_LA_VENTA).length,
+    oficinas: lotes.filter(l => l.condicion_lote === CONDICION_LOTE.OFICINA).length
+  };
+  
+  return stats;
+};
+
+// Función para generar URL de deuda municipal
+export const generarLinkDeudaMunicipal = (numeroPartida, municipio = 'default') => {
+  if (!numeroPartida) return null;
+  
+  // URLs base por municipio - esto debería venir de configuración
+  const urlsBase = {
+    'default': 'https://consulta-municipal.gov.ar/partida/',
+    'tigre': 'https://tigre.gob.ar/consulta-partida/',
+    'san_isidro': 'https://sanisidro.gob.ar/partida-deuda/'
+  };
+  
+  const urlBase = urlsBase[municipio] || urlsBase.default;
+  return `${urlBase}${numeroPartida}`;
+};
+
+// Función para validar transiciones de condición
+export const puedeTransicionarCondicion = (condicionActual, condicionNueva) => {
+  const transicionesPermitidas = {
+    [CONDICION_LOTE.DISPONIBLE]: [CONDICION_LOTE.PRE_RESERVADO, CONDICION_LOTE.NO_A_LA_VENTA],
+    [CONDICION_LOTE.PRE_RESERVADO]: [CONDICION_LOTE.RESERVADO, CONDICION_LOTE.DISPONIBLE],
+    [CONDICION_LOTE.RESERVADO]: [CONDICION_LOTE.ACTIVO, CONDICION_LOTE.DISPONIBLE],
+    [CONDICION_LOTE.ACTIVO]: [],
+    [CONDICION_LOTE.NO_A_LA_VENTA]: [CONDICION_LOTE.DISPONIBLE],
+    [CONDICION_LOTE.OFICINA]: [CONDICION_LOTE.DISPONIBLE]
+  };
+  
+  return transicionesPermitidas[condicionActual]?.includes(condicionNueva) || false;
+};
 
 export const getLotesByEmprendimiento = (emprendimientoId) => {
   return mockLotes.filter(lote => lote.emprendimiento_id === emprendimientoId);
