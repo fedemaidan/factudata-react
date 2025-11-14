@@ -89,8 +89,8 @@ const ORDER_MAP = {
 
 // Helper para obtener estado de stock
 const getStockStatus = (stock) => {
-  if (stock <= 0) return { color: 'error', label: 'Sin Stock', icon: WarningIcon };
-  return { color: 'success', label: 'En Stock', icon: CheckCircleIcon };
+  if (stock <= 0) return { color: 'error', label: 'Sin Stock' };
+  return { color: 'success', label: 'En Stock' };
 };
 
 const StockMateriales = () => {
@@ -625,28 +625,19 @@ const StockMateriales = () => {
                           : (row.alias || <em>(—)</em>)}
                       </TableCell>
                       <TableCell align="right">
-                        <Box display="flex" alignItems="center" justifyContent="flex-end" gap={1}>
-                          {(() => {
-                            const stockValue = typeof row.stock === 'number' ? row.stock : (row.stockTotal ?? 0);
-                            const status = getStockStatus(stockValue);
-                            const IconComponent = status.icon;
-                            return (
-                              <Box display="flex" alignItems="center" gap={1}>
-                                <IconComponent 
-                                  color={status.color} 
-                                  fontSize="small" 
-                                />
-                                <Typography 
-                                  variant="body1" 
-                                  fontWeight="bold"
-                                  color={status.color === 'error' ? 'error.main' : 'success.main'}
-                                >
-                                  {stockValue}
-                                </Typography>
-                              </Box>
-                            );
-                          })()} 
-                        </Box>
+                        {(() => {
+                          const stockValue = typeof row.stock === 'number' ? row.stock : (row.stockTotal ?? 0);
+                          const status = getStockStatus(stockValue);
+                          return (
+                            <Typography 
+                              variant="body1" 
+                              fontWeight="bold"
+                              color={status.color === 'error' ? 'error.main' : 'success.main'}
+                            >
+                              {stockValue}
+                            </Typography>
+                          );
+                        })()} 
                       </TableCell>
                       <TableCell>
                         <Typography variant="body2">
@@ -690,28 +681,19 @@ const StockMateriales = () => {
                                     <TableRow key={proj.proyecto_id}>
                                       <TableCell>{proj.proyecto_nombre}</TableCell>
                                       <TableCell align="right">
-                                        <Box display="flex" alignItems="center" justifyContent="flex-end" gap={1}>
-                                          {(() => {
-                                            const stockValue = proj.stock || proj.cantidad || 0;
-                                            const isError = stockValue <= 0;
-                                            const IconComponent = isError ? WarningIcon : CheckCircleIcon;
-                                            return (
-                                              <Box display="flex" alignItems="center" gap={1}>
-                                                <IconComponent 
-                                                  color={isError ? 'error' : 'success'} 
-                                                  fontSize="small" 
-                                                />
-                                                <Typography 
-                                                  variant="body1" 
-                                                  fontWeight="bold"
-                                                  color={isError ? 'error.main' : 'success.main'}
-                                                >
-                                                  {stockValue}
-                                                </Typography>
-                                              </Box>
-                                            );
-                                          })()} 
-                                        </Box>
+                                        {(() => {
+                                          const stockValue = proj.stock || proj.cantidad || 0;
+                                          const isError = stockValue <= 0;
+                                          return (
+                                            <Typography 
+                                              variant="body1" 
+                                              fontWeight="bold"
+                                              color={isError ? 'error.main' : 'success.main'}
+                                            >
+                                              {stockValue}
+                                            </Typography>
+                                          );
+                                        })()} 
                                       </TableCell>
                                     </TableRow>
                                   ))}
@@ -829,25 +811,13 @@ const StockMateriales = () => {
                                 <TableCell>{row.SKU || <em>(—)</em>}</TableCell>
                                 <TableCell align="right">
                                   <Box display="flex" alignItems="center" justifyContent="flex-end" gap={1}>
-                                    {(() => {
-                                      const isError = stockSinAsignar <= 0;
-                                      const IconComponent = isError ? WarningIcon : CheckCircleIcon;
-                                      return (
-                                        <Box display="flex" alignItems="center" gap={1}>
-                                          <IconComponent 
-                                            color={isError ? 'error' : 'success'} 
-                                            fontSize="small" 
-                                          />
-                                          <Typography 
-                                            variant="body1" 
-                                            fontWeight="bold"
-                                            color={isError ? 'error.main' : 'warning.main'}
-                                          >
-                                            {stockSinAsignar}
-                                          </Typography>
-                                        </Box>
-                                      );
-                                    })()} 
+                                    <Typography 
+                                      variant="body1" 
+                                      fontWeight="bold"
+                                      color={stockSinAsignar <= 0 ? 'error.main' : 'success.main'}
+                                    >
+                                      {stockSinAsignar}
+                                    </Typography>
                                     <Typography variant="caption" color="text.secondary">
                                       (sin proyecto asignado)
                                     </Typography>
@@ -908,28 +878,19 @@ const StockMateriales = () => {
                                 </TableCell>
                                 <TableCell>{row.SKU || <em>(—)</em>}</TableCell>
                                 <TableCell align="right">
-                                  <Box display="flex" alignItems="center" justifyContent="flex-end" gap={1}>
-                                    {(() => {
-                                      const stockValue = proyectoStock?.stock || proyectoStock?.cantidad || 0;
-                                      const isError = stockValue <= 0;
-                                      const IconComponent = isError ? WarningIcon : CheckCircleIcon;
-                                      return (
-                                        <Box display="flex" alignItems="center" gap={1}>
-                                          <IconComponent 
-                                            color={isError ? 'error' : 'success'} 
-                                            fontSize="small" 
-                                          />
-                                          <Typography 
-                                            variant="body1" 
-                                            fontWeight="bold"
-                                            color={isError ? 'error.main' : 'success.main'}
-                                          >
-                                            {stockValue}
-                                          </Typography>
-                                        </Box>
-                                      );
-                                    })()} 
-                                  </Box>
+                                  {(() => {
+                                    const stockValue = proyectoStock?.stock || proyectoStock?.cantidad || 0;
+                                    const isError = stockValue <= 0;
+                                    return (
+                                      <Typography 
+                                        variant="body1" 
+                                        fontWeight="bold"
+                                        color={isError ? 'error.main' : 'success.main'}
+                                      >
+                                        {stockValue}
+                                      </Typography>
+                                    );
+                                  })()} 
                                 </TableCell>
                                 <TableCell align="right">
                                   <IconButton color="primary" onClick={() => handleOpenEdit(row)} aria-label="Editar">
