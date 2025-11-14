@@ -157,7 +157,7 @@ const ProyectoMovimientosPage = () => {
   const [cajasVirtuales, setCajasVirtuales] = useState([
     { nombre: 'Caja en Pesos', moneda: 'ARS', medio_pago: "" , equivalencia: 'none', type: '' },
     { nombre: 'Caja en Dólares', moneda: 'USD', medio_pago: "" , equivalencia: 'none', type: '' },
-    { nombre: 'Gastos en', moneda: 'ARS', medio_pago: "" , equivalencia: 'use_blue', type: 'egreso' },
+    { nombre: 'Gastos en USD Blue', moneda: 'ARS', medio_pago: "" , equivalencia: 'usd_blue', type: 'egreso' },
   ]);  
   const [showCrearCaja, setShowCrearCaja] = useState(false);
   const [nombreCaja, setNombreCaja] = useState('');
@@ -710,7 +710,14 @@ const movimientosConProrrateo = useMemo(() => {
    const calcularTotalParaCaja = (caja) => {
        // Filtramos por medio de pago / estado sobre TODOS los movimientos relevantes
        // (si querés mantener la restricción por moneda nativa de la caja, podés filtrar por mov.moneda también)
-       const allMovs = [...movimientos, ...movimientosUSD];
+       
+       // EVITAR DUPLICADOS: Si un movimiento existe en ambos arrays, solo tomarlo una vez
+       const movimientosUnicos = new Map();
+       [...movimientos, ...movimientosUSD].forEach(mov => {
+         movimientosUnicos.set(mov.id, mov);
+       });
+       const allMovs = Array.from(movimientosUnicos.values());
+       
        const meta = EQUIV_META[caja.equivalencia || 'none'] || EQUIV_META.none;
      
        const mergeMonedas = (caja.equivalencia && caja.equivalencia !== 'none');
@@ -728,12 +735,11 @@ const movimientosConProrrateo = useMemo(() => {
            const equivVal = meta.path(mov.equivalencias);
            if (typeof equivVal === 'number') {
               val = equivVal;
-            } else if (meta.out && mov.moneda?.toUpperCase() === meta.out.toUpperCase()) {
-              // si la moneda del mov ya coincide con la moneda objetivo (p.ej. USD → USD MEP),
-              // usamos el total nativo como último recurso
-              val = mov.total || 0;
             } else {
-              val = mov.total || 0;
+              // Si no hay equivalencia calculada, usar 0 para evitar mezclar monedas
+              // ANTES: usaba mov.total que podía ser en otra moneda
+              val = 0;
+              console.warn(`Movimiento ${mov.id} (${mov.moneda} $${mov.total}) sin equivalencia ${caja.equivalencia} calculada`);
             }
          } else {
            // sin equivalencia → monto nativo
