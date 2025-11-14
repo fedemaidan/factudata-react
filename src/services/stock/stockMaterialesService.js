@@ -3,8 +3,15 @@ import api from '../axiosConfig';
 
 const StockMaterialesService = {
   crearMaterial: async (data) => {
+    console.log('📤 [Service] Enviando material:', data);
     const res = await api.post('/materiales', data);
-    if (res.status === 200 || res.status === 201) return res.data;
+    console.log('📥 [Service] Respuesta completa:', res);
+    console.log('📋 [Service] Respuesta data:', res.data);
+    
+    if (res.status === 200 || res.status === 201) {
+      // El backend envuelve la respuesta en { ok: true, data: materialCreado }
+      return res.data; 
+    }
     throw new Error('No se pudo crear el material');
   },
 

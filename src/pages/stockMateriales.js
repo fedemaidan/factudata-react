@@ -1,4 +1,3 @@
-// src/pages/stockMateriales.js
 import { useEffect, useMemo, useState } from 'react';
 import Head from 'next/head';
 import {
@@ -447,6 +446,7 @@ const StockMateriales = () => {
               <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
                 <Tabs value={currentTab} onChange={(e, newValue) => setCurrentTab(newValue)}>
                   <Tab label="General" value="general" />
+                  <Tab label="Sin asignar" value="sin-asignar" />
                   {proyectos.map(proyecto => (
                     <Tab 
                       key={proyecto.id} 
@@ -620,12 +620,26 @@ const StockMateriales = () => {
                       </TableCell>
                       <TableCell align="right">
                         <Box display="flex" alignItems="center" justifyContent="flex-end" gap={1}>
-                          <Chip 
-                            label={typeof row.stock === 'number' ? row.stock : (row.stockTotal ?? 0)}
-                            color={getStockStatus(typeof row.stock === 'number' ? row.stock : (row.stockTotal ?? 0)).color}
-                            size="small"
-                            icon={row.stockTotal <= 0 ? <WarningIcon /> : <CheckCircleIcon />}
-                          />
+                          {(() => {
+                            const stockValue = typeof row.stock === 'number' ? row.stock : (row.stockTotal ?? 0);
+                            const status = getStockStatus(stockValue);
+                            const IconComponent = status.icon;
+                            return (
+                              <Box display="flex" alignItems="center" gap={1}>
+                                <IconComponent 
+                                  color={status.color} 
+                                  fontSize="small" 
+                                />
+                                <Typography 
+                                  variant="body1" 
+                                  fontWeight="bold"
+                                  color={status.color === 'error' ? 'error.main' : 'success.main'}
+                                >
+                                  {stockValue}
+                                </Typography>
+                              </Box>
+                            );
+                          })()} 
                         </Box>
                       </TableCell>
                       <TableCell>
@@ -670,11 +684,28 @@ const StockMateriales = () => {
                                     <TableRow key={proj.proyecto_id}>
                                       <TableCell>{proj.proyecto_nombre}</TableCell>
                                       <TableCell align="right">
-                                        <Chip 
-                                          label={proj.stock || proj.cantidad || 0}
-                                          color={(proj.stock || proj.cantidad || 0) <= 0 ? 'error' : 'success'}
-                                          size="small"
-                                        />
+                                        <Box display="flex" alignItems="center" justifyContent="flex-end" gap={1}>
+                                          {(() => {
+                                            const stockValue = proj.stock || proj.cantidad || 0;
+                                            const isError = stockValue <= 0;
+                                            const IconComponent = isError ? WarningIcon : CheckCircleIcon;
+                                            return (
+                                              <Box display="flex" alignItems="center" gap={1}>
+                                                <IconComponent 
+                                                  color={isError ? 'error' : 'success'} 
+                                                  fontSize="small" 
+                                                />
+                                                <Typography 
+                                                  variant="body1" 
+                                                  fontWeight="bold"
+                                                  color={isError ? 'error.main' : 'success.main'}
+                                                >
+                                                  {stockValue}
+                                                </Typography>
+                                              </Box>
+                                            );
+                                          })()} 
+                                        </Box>
                                       </TableCell>
                                     </TableRow>
                                   ))}
@@ -719,6 +750,118 @@ const StockMateriales = () => {
                 </Stack>
               </TabPanel>
 
+              {/* Tab para materiales sin proyecto asignado */}
+              <TabPanel value={currentTab} index="sin-asignar">
+                <Stack spacing={3} sx={{ mt: 2 }}>
+                  <Typography variant="h6">
+                    Materiales sin proyecto asignado
+                  </Typography>
+                  
+                  {/* Tabla filtrada por materiales sin proyecto */}
+                  <Paper>
+                    {loading && <LinearProgress />}
+                    <Table>
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>Nombre</TableCell>
+                          <TableCell>Descripción</TableCell>
+                          <TableCell>SKU</TableCell>
+                          <TableCell align="right">Stock Sin Asignar</TableCell>
+                          <TableCell align="right">Acciones</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {(() => {
+                          // Debug: agregar logs para entender los datos
+                          console.log('🔍 [Debug] rows en sin-asignar:', rows.length);
+                          console.log('🔍 [Debug] sample row:', rows[0]);
+                          
+                          const materialesConStockSinAsignar = rows.filter(row => {
+                            // Buscar específicamente proyectos con ID "SIN_ASIGNAR" o que tengan stock sin asignar
+                            const tieneStockSinAsignar = (row.porProyecto || []).some(p => 
+                              (p.proyecto_id === 'SIN_ASIGNAR' || p.proyecto_id === null) && (p.stock || 0) > 0
+                            );
+                            
+                            console.log(`🔍 [Debug] ${row.nombre}: tieneStockSinAsignar=${tieneStockSinAsignar}, porProyecto:`, row.porProyecto);
+                            
+                            return tieneStockSinAsignar;
+                          });
+                          
+                          console.log('🔍 [Debug] materialesConStockSinAsignar:', materialesConStockSinAsignar.length);
+                          
+                          if (materialesConStockSinAsignar.length === 0 && !loading) {
+                            return (
+                              <TableRow>
+                                <TableCell colSpan={5}>
+                                  <Typography variant="body2">No hay materiales con stock sin asignar a proyectos.</Typography>
+                                  <Typography variant="caption" color="text.secondary">
+                                    Total de materiales: {rows.length}
+                                  </Typography>
+                                </TableCell>
+                              </TableRow>
+                            );
+                          }
+                          
+                          return materialesConStockSinAsignar.map((row) => {
+                            // Encontrar el stock sin asignar
+                            const stockSinAsignar = (row.porProyecto || [])
+                              .filter(p => p.proyecto_id === 'SIN_ASIGNAR' || p.proyecto_id === null)
+                              .reduce((sum, p) => sum + (p.stock || 0), 0);
+                            
+                            return (
+                              <TableRow key={row._id} hover>
+                                <TableCell>
+                                  <Typography variant="body1" fontWeight={600}>{row.nombre}</Typography>
+                                </TableCell>
+                                <TableCell sx={{ maxWidth: 280 }}>
+                                  <Tooltip title={row.desc_material || ''}>
+                                    <Typography variant="body2" noWrap>
+                                      {row.desc_material || <em>(—)</em>}
+                                    </Typography>
+                                  </Tooltip>
+                                </TableCell>
+                                <TableCell>{row.SKU || <em>(—)</em>}</TableCell>
+                                <TableCell align="right">
+                                  <Box display="flex" alignItems="center" justifyContent="flex-end" gap={1}>
+                                    {(() => {
+                                      const isError = stockSinAsignar <= 0;
+                                      const IconComponent = isError ? WarningIcon : CheckCircleIcon;
+                                      return (
+                                        <Box display="flex" alignItems="center" gap={1}>
+                                          <IconComponent 
+                                            color={isError ? 'error' : 'success'} 
+                                            fontSize="small" 
+                                          />
+                                          <Typography 
+                                            variant="body1" 
+                                            fontWeight="bold"
+                                            color={isError ? 'error.main' : 'warning.main'}
+                                          >
+                                            {stockSinAsignar}
+                                          </Typography>
+                                        </Box>
+                                      );
+                                    })()} 
+                                    <Typography variant="caption" color="text.secondary">
+                                      (sin proyecto asignado)
+                                    </Typography>
+                                  </Box>
+                                </TableCell>
+                                <TableCell align="right">
+                                  <IconButton color="primary" onClick={() => handleOpenEdit(row)} aria-label="Editar">
+                                    <EditIcon />
+                                  </IconButton>
+                                </TableCell>
+                              </TableRow>
+                            );
+                          });
+                        })()}
+                      </TableBody>
+                    </Table>
+                  </Paper>
+                </Stack>
+              </TabPanel>
+
               {/* Tab para cada proyecto */}
               {proyectos.map(proyecto => (
                 <TabPanel key={proyecto.id} value={currentTab} index={proyecto.id}>
@@ -759,12 +902,28 @@ const StockMateriales = () => {
                                 </TableCell>
                                 <TableCell>{row.SKU || <em>(—)</em>}</TableCell>
                                 <TableCell align="right">
-                                  <Chip 
-                                    label={proyectoStock?.stock || proyectoStock?.cantidad || 0}
-                                    color={(proyectoStock?.stock || proyectoStock?.cantidad || 0) <= 0 ? 'error' : 'success'}
-                                    size="small"
-                                    icon={(proyectoStock?.stock || proyectoStock?.cantidad || 0) <= 0 ? <WarningIcon /> : <CheckCircleIcon />}
-                                  />
+                                  <Box display="flex" alignItems="center" justifyContent="flex-end" gap={1}>
+                                    {(() => {
+                                      const stockValue = proyectoStock?.stock || proyectoStock?.cantidad || 0;
+                                      const isError = stockValue <= 0;
+                                      const IconComponent = isError ? WarningIcon : CheckCircleIcon;
+                                      return (
+                                        <Box display="flex" alignItems="center" gap={1}>
+                                          <IconComponent 
+                                            color={isError ? 'error' : 'success'} 
+                                            fontSize="small" 
+                                          />
+                                          <Typography 
+                                            variant="body1" 
+                                            fontWeight="bold"
+                                            color={isError ? 'error.main' : 'success.main'}
+                                          >
+                                            {stockValue}
+                                          </Typography>
+                                        </Box>
+                                      );
+                                    })()} 
+                                  </Box>
                                 </TableCell>
                                 <TableCell align="right">
                                   <IconButton color="primary" onClick={() => handleOpenEdit(row)} aria-label="Editar">
@@ -894,6 +1053,7 @@ const StockMateriales = () => {
           onClose={() => setOpenImportar(false)}
           onConfirmAjustes={handleConfirmAjustes}
           materiales={rows} // Pasar los materiales actuales para comparar
+          proyectos={proyectos} // Pasar los proyectos para convertir nombres a IDs
           user={user}
         />
 

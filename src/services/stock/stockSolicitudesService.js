@@ -31,9 +31,22 @@ const StockSolicitudesService = {
   
   crearSolicitud: async (payload) => {
     console.log('[SVC][crearSolicitud] payload -----------------------------------=', payload);
-    const res = await api.post(BASE, payload);
-    if (res.status !== 201) throw new Error('Error al crear solicitud');
-    return unwrap(res);
+    try {
+      const res = await api.post(BASE, payload);
+      if (res.status !== 201) throw new Error('Error al crear solicitud');
+      return unwrap(res);
+    } catch (err) {
+      console.error('[SVC][crearSolicitud] ERROR:', {
+        status: err?.response?.status,
+        statusText: err?.response?.statusText,
+        data: err?.response?.data,
+        message: err?.message,
+        url: err?.config?.url,
+        method: err?.config?.method,
+        payload: payload
+      });
+      throw err; // re-throw para que el UI lo capture
+    }
   },
   
   actualizarSolicitud: async (solicitudId, patch) => {
@@ -118,9 +131,6 @@ const StockSolicitudesService = {
     // Validaciones mínimas por movimiento
     for (let i = 0; i < movs.length; i++) {
       const m = movs[i];
-      if (!m?.proyecto_id) {
-        throw new Error(`Movimiento #${i + 1}: seleccioná un proyecto`);
-      }
       if (!Number.isFinite(Number(m?.cantidad)) || Number(m?.cantidad) === 0) {
         throw new Error(`Movimiento #${i + 1}: la cantidad debe ser distinta de 0`);
       }
@@ -129,7 +139,7 @@ const StockSolicitudesService = {
     const empresa = await getEmpresaDetailsFromUser(user);
 
     const movimientos = (movs || [])
-      .filter(m => (m?.nombre_item?.trim() && Number(m?.cantidad)))
+      .filter(m => Number(m?.cantidad)) // Solo requerir cantidad > 0
       .map(m => ({
         // incluir el _id del movimiento si existe para que el backend lo identifique al actualizar
         _id: m._id ?? null,
@@ -138,7 +148,7 @@ const StockSolicitudesService = {
         usuario_id: user?.uid || user?.id || null,
         usuario_mail: user?.email || null,
 
-        nombre_item: m.nombre_item.trim(),
+        nombre_item: m.nombre_item?.trim() || `Material sin nombre ${Date.now()}`, // Asegurar que siempre tenga nombre_item
         cantidad: Number(m.cantidad),
         tipo: String(m.tipo || 'EGRESO').toUpperCase(),
         subtipo: m.subtipo ? String(m.subtipo).toUpperCase() : null,
@@ -149,6 +159,14 @@ const StockSolicitudesService = {
 
         id_material: m.id_material ?? null,
       }));
+
+    // Preparar fecha para la solicitud (11:00 del mediodía)
+    let fechaSolicitud = form?.fecha || new Date().toISOString();
+    if (form?.fecha && typeof form.fecha === 'string') {
+      // Si viene una fecha en formato YYYY-MM-DD, convertirla a las 11:00
+      const date = new Date(form.fecha + 'T11:00:00.000Z');
+      fechaSolicitud = date.toISOString();
+    }
 
     const payload = {
       solicitud: {
@@ -161,7 +179,7 @@ const StockSolicitudesService = {
           : null,
         id_compra: form?.id_compra?.trim() || null,
         url_doc: form?.url_doc?.trim() || null,
-        fecha: form?.fecha || new Date().toISOString(),
+        fecha: fechaSolicitud,
       },
       movimientos,
     };

@@ -26,6 +26,7 @@ import CalendarTodayIcon from '@mui/icons-material/CalendarToday';
 import UpdateIcon from '@mui/icons-material/Update';
 import InventoryIcon from '@mui/icons-material/Inventory';
 import SummarizeIcon from '@mui/icons-material/Summarize';
+import FolderIcon from '@mui/icons-material/Folder';
 
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import { useAuthContext } from 'src/contexts/auth-context';
@@ -39,7 +40,14 @@ import MaterialAutocomplete from 'src/components/MaterialAutocomplete';
 
 const TIPO_OPCIONES = ['INGRESO', 'EGRESO', 'TRANSFERENCIA', 'AJUSTE', 'COMPRA'];
 const ORDER_MAP = { fecha: 'fecha', tipo: 'tipo', subtipo: 'subtipo', responsable: 'responsable', updated: 'updatedAt' };
-function fmt(d) { try { return new Date(d).toLocaleString(); } catch { return d || '—'; } }
+function fmt(d) { 
+  try { 
+    const date = new Date(d);
+    return date.toLocaleDateString('es-ES'); 
+  } catch { 
+    return d || '—'; 
+  } 
+}
 
 export default function StockSolicitudes() {
   const { user } = useAuthContext();
@@ -60,7 +68,6 @@ export default function StockSolicitudes() {
   // ===== filtros
   const [fTipo, setFTipo] = useState('');
   const [fSubtipo, setFSubtipo] = useState('');
-  const [fResponsable, setFResponsable] = useState(''); // email
   const [fDesde, setFDesde] = useState('');
   const [fHasta, setFHasta] = useState('');
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'info' });
@@ -118,7 +125,7 @@ export default function StockSolicitudes() {
   }, [user]);
 
   const limpiarFiltros = () => {
-    setFTipo(''); setFSubtipo(''); setFResponsable('');
+    setFTipo(''); setFSubtipo('');
     setFDesde(''); setFHasta('');
     setPage(0);
   };
@@ -126,7 +133,6 @@ export default function StockSolicitudes() {
   const chips = [
     fTipo && { k: 'Tipo', v: `${fTipo} (${total})`, onDelete: () => setFTipo('') },
     fSubtipo && { k: 'Subtipo', v: `${fSubtipo} (${total})`, onDelete: () => setFSubtipo('') },
-    fResponsable && { k: 'Responsable', v: `${fResponsable} (${total})`, onDelete: () => setFResponsable('') },
     fDesde && { k: 'Desde', v: fDesde, onDelete: () => setFDesde('') },
     fHasta && { k: 'Hasta', v: fHasta, onDelete: () => setFHasta('') },
   ].filter(Boolean);
@@ -213,7 +219,6 @@ export default function StockSolicitudes() {
       return {
         Tipo: s.tipo,
         Subtipo: s.subtipo,
-        Responsable: s.responsable,
         Fecha: fmt(s.fecha),
         'Total Items': totals.totalItems,
         'Cantidad Total': totals.totalCantidad,
@@ -253,7 +258,6 @@ export default function StockSolicitudes() {
         page,
         ...(fTipo ? { tipo: fTipo } : {}),
         ...(fSubtipo?.trim() ? { subtipo: fSubtipo.trim() } : {}),
-        ...(fResponsable?.trim() ? { responsable: fResponsable.trim() } : {}),
         ...(fDesde ? { fecha_desde: fDesde } : {}),
         ...(fHasta ? { fecha_hasta: fHasta } : {}),
       };
@@ -273,7 +277,7 @@ export default function StockSolicitudes() {
   useEffect(() => {
     fetchAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, fTipo, fSubtipo, fResponsable, fDesde, fHasta, sortParam, page, rpp]);
+  }, [user, fTipo, fSubtipo, fDesde, fHasta, sortParam, page, rpp]);
 
   // ===== helpers modal
   const resetModal = () => {
@@ -298,8 +302,11 @@ export default function StockSolicitudes() {
     setEditMode(false);
     setModalMode('ingreso');
     patchForm('tipo', 'INGRESO');
-    patchForm('fecha', new Date().toISOString().substring(0, 10));
+    const today = new Date();
+    today.setHours(11, 0, 0, 0); // 11:00 del mediodía
+    patchForm('fecha', today.toISOString().substring(0, 10));
     patchForm('responsable', user?.email || '');
+    // No preseleccionar proyecto - dejar que el usuario elija o deje vacío para "Sin asignar"
     setOpenModal(true);
   };
   
@@ -308,8 +315,11 @@ export default function StockSolicitudes() {
     setEditMode(false);
     setModalMode('egreso');
     patchForm('tipo', 'EGRESO');
-    patchForm('fecha', new Date().toISOString().substring(0, 10));
+    const today = new Date();
+    today.setHours(11, 0, 0, 0); // 11:00 del mediodía
+    patchForm('fecha', today.toISOString().substring(0, 10));
     patchForm('responsable', user?.email || '');
+    // No preseleccionar proyecto - dejar que el usuario elija o deje vacío para "Sin asignar"
     setOpenModal(true);
   };
   
@@ -318,8 +328,11 @@ export default function StockSolicitudes() {
     setEditMode(false);
     setModalMode('transferencia');
     patchForm('tipo', 'TRANSFERENCIA');
-    patchForm('fecha', new Date().toISOString().substring(0, 10));
+    const today = new Date();
+    today.setHours(11, 0, 0, 0); // 11:00 del mediodía
+    patchForm('fecha', today.toISOString().substring(0, 10));
     patchForm('responsable', user?.email || '');
+    // Proyectos de transferencia comienzan vacíos (sin asignar por defecto)
     setTransProyectoEgreso('');
     setTransProyectoIngreso('');
     setOpenModal(true);
@@ -459,6 +472,7 @@ export default function StockSolicitudes() {
       proyecto_id: '',
       proyecto_nombre: '',
       observacion: '',
+      id_material: '',
     });
     setOpenMovDialog(true);
   };
@@ -568,51 +582,51 @@ export default function StockSolicitudes() {
 
       // ===== CASO TRANSFERENCIA =====
       if (modalMode === 'transferencia' || form.tipo === 'TRANSFERENCIA') {
-        // Validar que se hayan seleccionado ambos proyectos
-        if (!transProyectoEgreso || !transProyectoIngreso) {
-          throw new Error('Debés seleccionar proyecto DESDE (egreso) y HACIA (ingreso)');
-        }
-
-        const proyEgresoNombre = proyectos.find(p => p.id === transProyectoEgreso)?.nombre || '';
-        const proyIngresoNombre = proyectos.find(p => p.id === transProyectoIngreso)?.nombre || '';
+        // Los proyectos son opcionales, si están vacíos se asignan a "Sin asignar"
+        const proyEgresoId = transProyectoEgreso || null;
+        const proyIngresoId = transProyectoIngreso || null;
+        const proyEgresoNombre = proyEgresoId 
+          ? (proyectos.find(p => p.id === proyEgresoId)?.nombre || 'Proyecto desconocido') 
+          : 'Sin asignar';
+        const proyIngresoNombre = proyIngresoId 
+          ? (proyectos.find(p => p.id === proyIngresoId)?.nombre || 'Proyecto desconocido') 
+          : 'Sin asignar';
 
         // Duplicar cada movimiento: uno de egreso y uno de ingreso
         effectiveMovs = movs.flatMap((m) => {
           const cantidad = Math.abs(Number(m.cantidad || 0));
           if (cantidad === 0) return [];
 
+          const baseMovimiento = {
+            _id: null, // para movimientos nuevos
+            empresa_id: null, // se setea en el servicio
+            usuario_id: null,
+            usuario_mail: null,
+            nombre_item: m.nombre_item?.trim() || '',
+            subtipo: 'TRANSFERENCIA',
+            fecha_movimiento: m.fecha_movimiento || form?.fecha || new Date().toISOString(),
+            observacion: m.observacion || `Transferencia: ${proyEgresoNombre} → ${proyIngresoNombre}`,
+            id_material: m.id_material || null,
+          };
+
           return [
             // EGRESO (cantidad negativa)
             {
+              ...baseMovimiento,
               _id: m._id_egreso ?? null, // si editamos, podría venir con _id
-              empresa_id: null, // se setea en el servicio
-              usuario_id: null,
-              usuario_mail: null,
-              nombre_item: m.nombre_item?.trim() || '',
               cantidad: -cantidad, // negativa
               tipo: 'EGRESO',
-              subtipo: m.subtipo || 'TRANSFERENCIA',
-              fecha_movimiento: m.fecha_movimiento || form?.fecha || new Date().toISOString(),
-              proyecto_id: transProyectoEgreso,
+              proyecto_id: proyEgresoId,
               proyecto_nombre: proyEgresoNombre,
-              observacion: m.observacion || null,
-              id_material: m.id_material || null,
             },
             // INGRESO (cantidad positiva)
             {
+              ...baseMovimiento,
               _id: m._id_ingreso ?? null,
-              empresa_id: null,
-              usuario_id: null,
-              usuario_mail: null,
-              nombre_item: m.nombre_item?.trim() || '',
               cantidad: cantidad, // positiva
               tipo: 'INGRESO',
-              subtipo: m.subtipo || 'TRANSFERENCIA',
-              fecha_movimiento: m.fecha_movimiento || form?.fecha || new Date().toISOString(),
-              proyecto_id: transProyectoIngreso,
+              proyecto_id: proyIngresoId,
               proyecto_nombre: proyIngresoNombre,
-              observacion: m.observacion || null,
-              id_material: m.id_material || null,
             },
           ];
         });
@@ -620,16 +634,37 @@ export default function StockSolicitudes() {
       // ===== CASO NORMAL (INGRESO/EGRESO) =====
       else {
         effectiveMovs = (movs || []).map((m) => {
+          // Prioridad: 1. proyecto del movimiento individual, 2. proyecto del formulario, 3. null (sin asignar)
           const proyectoId = m.proyecto_id || form.proyecto_id || null;
-          const proyectoNombre = m.proyecto_nombre || proyectos.find(p => p.id === proyectoId)?.nombre || null;
-          return { ...m, proyecto_id: proyectoId, proyecto_nombre: proyectoNombre };
+          let proyectoNombre;
+          
+          if (proyectoId) {
+            // Buscar el nombre del proyecto por ID
+            const proyecto = proyectos.find(p => p.id === proyectoId);
+            proyectoNombre = proyecto?.nombre || m.proyecto_nombre || 'Proyecto desconocido';
+          } else {
+            // Sin proyecto asignado
+            proyectoNombre = 'Sin asignar';
+          }
+          
+          return { 
+            ...m, 
+            proyecto_id: proyectoId, 
+            proyecto_nombre: proyectoNombre 
+          };
         });
       }
+
+      // Asegurar que el responsable siempre sea el usuario actual
+      const formWithUser = {
+        ...form,
+        responsable: user?.email || ''
+      };
 
       // Delegar validación/normalización al servicio central
       const resp = await StockSolicitudesService.guardarSolicitud({
         user,
-        form,
+        form: formWithUser,
         movs: effectiveMovs,
         editMode,
         editId
@@ -649,10 +684,12 @@ export default function StockSolicitudes() {
       return resp;
     } catch (e) {
       console.error('[UI] guardarSolicitud', e);
-      const serverMsg = e?.response?.data || e?.message;
+      const serverMsg = e?.response?.data || e?.message || e;
+      const errorMessage = typeof serverMsg === 'string' ? serverMsg 
+                        : (serverMsg?.message || 'Error al guardar la solicitud');
       setSnackbar({ 
         open: true, 
-        message: serverMsg?.message || serverMsg || 'Error al guardar la solicitud', 
+        message: errorMessage, 
         severity: 'error' 
       });
       throw e;
@@ -673,7 +710,7 @@ export default function StockSolicitudes() {
           onChange({ id, nombre: p?.nombre || '' });
         }}
       >
-        <MenuItem value=""><em>(sin proyecto)</em></MenuItem>
+        <MenuItem value=""><em>(sin proyecto - "Sin asignar")</em></MenuItem>
         {proyectos.map(p => (
           <MenuItem key={p.id} value={p.id}>{p.nombre}</MenuItem>
         ))}
@@ -706,13 +743,13 @@ export default function StockSolicitudes() {
 
   return (
     <>
-      <Head><title>Solicitudes</title></Head>
+      <Head><title>Tickets</title></Head>
 
       <Box component="main" sx={{ flexGrow: 1, py: 8 }}>
         <Container maxWidth="xl">
           <Stack spacing={3}>
             <Stack direction="row" alignItems="center" justifyContent="space-between">
-              <Typography variant="h4">Solicitudes</Typography>
+              <Typography variant="h4">Tickets</Typography>
               <Stack direction="row" spacing={1}>
                 <Button 
                   startIcon={<GetAppIcon />} 
@@ -748,24 +785,6 @@ export default function StockSolicitudes() {
 
                   <TextField label="Subtipo" value={fSubtipo} onChange={(e) => { setFSubtipo(e.target.value); setPage(0); }} sx={{ minWidth: 200 }} />
 
-                  <FormControl sx={{ minWidth: 220 }}>
-                    <InputLabel id="responsable-label">Responsable (email)</InputLabel>
-                    <Select
-                      labelId="responsable-label"
-                      label="Responsable (email)"
-                      value={fResponsable}
-                      onChange={(e) => { setFResponsable(e.target.value); setPage(0); }}
-                    >
-                      <MenuItem value=""><em>— Todos —</em></MenuItem>
-                      {usuarios.map((u) => (
-                        <MenuItem key={u.id} value={u.email}>{u.email}</MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-
-                </Stack>
-
-                <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
                   <TextField
                     type="date"
                     label="Desde"
@@ -827,12 +846,7 @@ export default function StockSolicitudes() {
                         <span>Subtipo</span>
                       </Stack>
                     </TableCell>
-                    <TableCell>
-                      <Stack direction="row" alignItems="center" spacing={1}>
-                        <PersonIcon fontSize="small" />
-                        <span>Responsable</span>
-                      </Stack>
-                    </TableCell>
+
                     <TableCell>
                       <Stack direction="row" alignItems="center" spacing={1}>
                         <CalendarTodayIcon fontSize="small" />
@@ -851,10 +865,10 @@ export default function StockSolicitudes() {
                         <span>Items</span>
                       </Stack>
                     </TableCell>
-                    <TableCell align="right">
-                      <Stack direction="row" alignItems="center" spacing={1} justifyContent="flex-end">
-                        <SummarizeIcon fontSize="small" />
-                        <span>Cant. Total</span>
+                    <TableCell>
+                      <Stack direction="row" alignItems="center" spacing={1}>
+                        <FolderIcon fontSize="small" />
+                        <span>Proyectos</span>
                       </Stack>
                     </TableCell>
                     <TableCell align="right">Acciones</TableCell>
@@ -888,7 +902,6 @@ export default function StockSolicitudes() {
                           </Box>
                         </TableCell>
                         <TableCell>{s.subtipo}</TableCell>
-                        <TableCell>{s.responsable || '—'}</TableCell>
                         <TableCell>{fmt(s.fecha)}</TableCell>
                         <TableCell>{fmt(s.updatedAt)}</TableCell>
                         <TableCell align="right">
@@ -899,10 +912,55 @@ export default function StockSolicitudes() {
                             color={totals.totalItems > 0 ? "primary" : "default"}
                           />
                         </TableCell>
-                        <TableCell align="right">
-                          <Typography variant="body2" fontWeight={500}>
-                            {totals.totalCantidad}
-                          </Typography>
+                        <TableCell>
+                          <Box display="flex" flexWrap="wrap" gap={0.5} maxWidth={200}>
+                            {(() => {
+                              // Obtener proyectos únicos de los movimientos
+                              const proyectosUnicos = [...new Set(
+                                movsArr
+                                  .map(mov => mov.proyecto_nombre || 'Sin asignar')
+                                  .filter(Boolean)
+                              )];
+                              
+                              if (proyectosUnicos.length === 0) {
+                                return (
+                                  <Chip 
+                                    label="Sin asignar" 
+                                    size="small" 
+                                    variant="outlined" 
+                                    color="default"
+                                  />
+                                );
+                              }
+                              
+                              return proyectosUnicos.slice(0, 3).map((proyecto, idx) => (
+                                <Chip 
+                                  key={idx}
+                                  label={proyecto}
+                                  size="small" 
+                                  variant="outlined"
+                                  color="primary"
+                                  sx={{ 
+                                    maxWidth: 120,
+                                    '& .MuiChip-label': {
+                                      overflow: 'hidden',
+                                      textOverflow: 'ellipsis'
+                                    }
+                                  }}
+                                />
+                              )).concat(
+                                proyectosUnicos.length > 3 ? [
+                                  <Chip 
+                                    key="more"
+                                    label={`+${proyectosUnicos.length - 3}`}
+                                    size="small"
+                                    variant="filled"
+                                    color="secondary"
+                                  />
+                                ] : []
+                              );
+                            })()}
+                          </Box>
                         </TableCell>
                         <TableCell align="right">
                           <Tooltip title="Editar">
@@ -921,18 +979,18 @@ export default function StockSolicitudes() {
                   })}
                   {!loading && (!rows || rows.length === 0) && (
                     <TableRow>
-                      <TableCell colSpan={8} sx={{ textAlign: 'center', py: 4 }}>
+                      <TableCell colSpan={7} sx={{ textAlign: 'center', py: 4 }}>
                         <Stack spacing={2} alignItems="center">
                           <Typography variant="h6" color="text.secondary">
                             {chips.length > 0 
-                              ? "No se encontraron solicitudes con estos filtros" 
-                              : "No hay solicitudes registradas"
+                              ? "No se encontraron tickets con estos filtros" 
+                              : "No hay tickets registrados"
                             }
                           </Typography>
                           <Typography variant="body2" color="text.secondary">
                             {chips.length > 0
                               ? "Probá ajustar los criterios de búsqueda"
-                              : "¡Creá tu primera solicitud!"
+                              : "¡Creá tu primer ticket!"
                             }
                           </Typography>
                           {chips.length === 0 && (
@@ -1001,7 +1059,7 @@ export default function StockSolicitudes() {
         PaperProps={{ sx: { width: '100%', maxWidth: 1200 } }}
       >
        <DialogTitle>
-         {editMode ? 'Editar solicitud' : ('Nueva solicitud - ' + (modalMode?.toUpperCase() || ''))}
+         {editMode ? 'Editar ticket' : ('Nuevo ticket - ' + (modalMode?.toUpperCase() || ''))}
        </DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
@@ -1037,24 +1095,6 @@ export default function StockSolicitudes() {
             )}
 
              <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
-               {usuarios.length > 0 ? (
-                 <FormControl sx={{ minWidth: 300 }}>
-                   <InputLabel id="nresponsable">Responsable (email)</InputLabel>
-                   <Select
-                     labelId="nresponsable"
-                     label="Responsable (email)"
-                     value={form.responsable || ''}
-                     onChange={(e) => patchForm('responsable', e.target.value)}
-                   >
-                     <MenuItem value=""><em>(sin asignar)</em></MenuItem>
-                     {usuarios.map((u) => (
-                       <MenuItem key={u.id} value={u.email}>{u.email}</MenuItem>
-                     ))}
-                   </Select>
-                 </FormControl>
-               ) : (
-                 <TextField label="Responsable (email)" value={form.responsable} onChange={(e) => patchForm('responsable', e.target.value)} sx={{ minWidth: 300 }} />
-               )}
 
               {!editMode && !modalMode && (
                 <>
@@ -1074,10 +1114,10 @@ export default function StockSolicitudes() {
             {/* Selector de proyecto (solo en creación rápida, ingreso/egreso/transferencia) */}
             {!editMode && modalMode && modalMode !== 'transferencia' && (
               <FormControl fullWidth>
-                <InputLabel id="proy-rapida">Proyecto (se replica en movimientos)</InputLabel>
+                <InputLabel id="proy-rapida">Proyecto (opcional - sin proyecto = "Sin asignar")</InputLabel>
                 <Select
                   labelId="proy-rapida"
-                  label="Proyecto (se replica en movimientos)"
+                  label="Proyecto (opcional - sin proyecto = 'Sin asignar')"
                   value={form.proyecto_id || ''}
                   onChange={(e) => {
                     const id = e.target.value;
@@ -1086,7 +1126,7 @@ export default function StockSolicitudes() {
                     patchForm('proyecto_nombre', p?.nombre || '');
                   }}
                 >
-                  <MenuItem value=""><em>(sin proyecto)</em></MenuItem>
+                  <MenuItem value=""><em>(sin proyecto - se asigna a "Sin asignar")</em></MenuItem>
                   {proyectos.map(p => (
                     <MenuItem key={p.id} value={p.id}>{p.nombre}</MenuItem>
                   ))}
@@ -1105,7 +1145,7 @@ export default function StockSolicitudes() {
                     value={transProyectoEgreso}
                     onChange={(e) => setTransProyectoEgreso(e.target.value)}
                   >
-                    <MenuItem value=""><em>(sin proyecto)</em></MenuItem>
+                    <MenuItem value=""><em>(sin proyecto - "Sin asignar")</em></MenuItem>
                     {proyectos.map(p => (
                       <MenuItem key={p.id} value={p.id}>{p.nombre}</MenuItem>
                     ))}
@@ -1120,7 +1160,7 @@ export default function StockSolicitudes() {
                     value={transProyectoIngreso}
                     onChange={(e) => setTransProyectoIngreso(e.target.value)}
                   >
-                    <MenuItem value=""><em>(sin proyecto)</em></MenuItem>
+                    <MenuItem value=""><em>(sin proyecto - "Sin asignar")</em></MenuItem>
                     {proyectos.map(p => (
                       <MenuItem key={p.id} value={p.id}>{p.nombre}</MenuItem>
                     ))}
@@ -1150,20 +1190,26 @@ export default function StockSolicitudes() {
                         <MaterialAutocomplete
                           user={user}
                           value={m.id_material || ''}
-                          onChange={(id) => {
-                            patchMov(idx, 'id_material', id);
-                          }}
                           onTextChange={(textLibre) => {
-                            patchMov(idx, 'id_material', '');
+                            // Usuario escribió texto libre - limpiar id_material y usar texto como nombre_item
+                            patchMov(idx, 'id_material', null);
                             patchMov(idx, 'nombre_item', textLibre || '');
                           }}
                           onMaterialSelect={(mat) => {
-                            patchMov(idx, 'id_material', mat.id || '');
-                            patchMov(idx, 'nombre_item', mat.nombre || mat.label || '');
+                            // Usuario seleccionó material de la lista - actualizar ambos campos
+                            patchMov(idx, 'id_material', mat.id || null);
+                            patchMov(idx, 'nombre_item', mat.label || mat.nombre || '');
+                          }}
+                          onMaterialCreated={(materialCreado) => {
+                            // Cuando se crea un material nuevo
+                            patchMov(idx, 'id_material', materialCreado.id);
+                            patchMov(idx, 'nombre_item', materialCreado.nombre);
+                            console.log('✅ Material creado en solicitud:', materialCreado);
                           }}
                           label="Material (elige o escribe)"
                           disabled={false}
                           fullWidth
+                          showCreateOption={true} // Habilitar creación de materiales
                         />
                       </TableCell>
 

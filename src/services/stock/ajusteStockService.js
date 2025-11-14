@@ -64,7 +64,7 @@ const AjusteStockService = {
    */
   agruparPorProyecto: (ajustes) => {
     return ajustes.reduce((acc, ajuste) => {
-      const key = ajuste.proyectoId;
+      const key = ajuste.proyectoId || 'SIN_ASIGNAR'; // null/undefined se agrupa como 'SIN_ASIGNAR'
       if (!acc[key]) {
         acc[key] = [];
       }
@@ -90,7 +90,7 @@ const AjusteStockService = {
     // Preparar el formulario de la solicitud
     const form = {
       tipo: 'AJUSTE',
-      subtipo: 'AJUSTE_STOCK',
+      subtipo: '-',
       fecha: fechaActual,
       responsable: user.email,
       proveedor_nombre: '',
@@ -110,8 +110,8 @@ const AjusteStockService = {
       tipo: ajuste.tipo, // 'INGRESO' o 'EGRESO' 
       subtipo: 'AJUSTE',
       fecha_movimiento: fechaActual,
-      proyecto_id: ajuste.proyectoId,
-      proyecto_nombre: ajuste.proyectoNombre,
+      proyecto_id: ajuste.proyectoId || null, // null para "sin asignar"
+      proyecto_nombre: ajuste.proyectoId ? ajuste.proyectoNombre : 'Sin asignar',
       observacion: `Ajuste de stock - Stock sistema: ${ajuste.stockSistema}, Stock Excel: ${ajuste.stockExcel}, Diferencia: ${ajuste.diferencia}`,
       id_material: ajuste.materialId
     }));
@@ -145,16 +145,17 @@ const AjusteStockService = {
     ajustes.forEach((ajuste, index) => {
       const erroresAjuste = [];
 
-      if (!ajuste.materialId) {
-        erroresAjuste.push('ID del material es requerido');
-      }
+      // ❌ REMOVED: No requerir materialId - puede ser null para materiales no conciliados
+      // if (!ajuste.materialId) {
+      //   erroresAjuste.push('ID del material es requerido');
+      // }
 
       if (!ajuste.materialNombre?.trim()) {
         erroresAjuste.push('Nombre del material es requerido');
       }
 
-      if (!ajuste.proyectoId) {
-        erroresAjuste.push('ID del proyecto es requerido');
+      if (!ajuste.proyectoId && ajuste.proyectoNombre !== 'Sin asignar') {
+        erroresAjuste.push('ID del proyecto es requerido (excepto para "Sin asignar")');
       }
 
       if (!ajuste.proyectoNombre?.trim()) {

@@ -23,12 +23,15 @@ import {
 import UploadFileIcon from '@mui/icons-material/UploadFile';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import * as XLSX from 'xlsx';
+import StockMaterialesService from '../../services/stock/stockMaterialesService';
+import { getEmpresaDetailsFromUser } from '../../services/empresaService';
 
 const ImportarStock = ({ 
   open, 
   onClose, 
   onConfirmAjustes,
   materiales = [], // Materiales actuales del sistema para comparar
+  proyectos = [], // Proyectos para convertir nombres a IDs
   user 
 }) => {
   const [activeStep, setActiveStep] = useState(0);
@@ -36,9 +39,12 @@ const ImportarStock = ({
   const [fileData, setFileData] = useState(null);
   const [ajustesPreview, setAjustesPreview] = useState([]);
   const [errores, setErrores] = useState([]);
+  const [materialesNuevos, setMaterialesNuevos] = useState([]);
+  const [showMaterialesNuevos, setShowMaterialesNuevos] = useState(false);
+  const [crearMateriales, setCrearMateriales] = useState(false);
   const fileInputRef = useRef();
 
-  const steps = ['Seleccionar archivo', 'Revisar cambios', 'Confirmar ajustes'];
+  const steps = ['Seleccionar archivo', 'Materiales nuevos', 'Revisar cambios', 'Confirmar ajustes'];
 
   const handleFileSelect = (event) => {
     const file = event.target.files[0];
@@ -51,6 +57,8 @@ const ImportarStock = ({
     setProcessing(true);
     setErrores([]);
     setAjustesPreview([]);
+    setMaterialesNuevos([]);
+    setShowMaterialesNuevos(false);
 
     try {
       const data = await readExcelFile(file);
@@ -59,12 +67,19 @@ const ImportarStock = ({
       if (result.errores.length > 0) {
         setErrores(result.errores);
         setActiveStep(0);
+      } else if (result.materialesNuevos.length > 0) {
+        // Hay materiales nuevos, preguntar al usuario
+        setFileData(data);
+        setMaterialesNuevos(result.materialesNuevos);
+        setAjustesPreview(result.ajustes); // Guardar ajustes para procesarlos después
+        setShowMaterialesNuevos(true);
+        setActiveStep(1); // Ir al step de materiales nuevos
       } else {
-        // Comparar con stock del sistema y generar diferencias
+        // No hay materiales nuevos, procesar normalmente
         const ajustesConDiferencias = compararConSistema(result.ajustes);
         setFileData(data);
         setAjustesPreview(ajustesConDiferencias);
-        setActiveStep(1);
+        setActiveStep(2); // Saltar el step de materiales nuevos
       }
     } catch (error) {
       console.error('Error procesando archivo:', error);
@@ -76,8 +91,82 @@ const ImportarStock = ({
 
   const compararConSistema = (ajustesExcel) => {
     return ajustesExcel.map(ajusteExcel => {
+      // Manejar proyecto especial "Sin asignar"
+      if (ajusteExcel.proyectoNombre === 'Sin asignar') {
+        // Buscar el material en el sistema
+        const materialSistema = materiales.find(m => m._id === ajusteExcel.materialId);
+        
+        // Si no encontramos el material en la lista local, es porque es recién creado
+        if (!materialSistema && ajusteExcel.materialId) {
+          console.log('📝 Material recién creado (Sin asignar):', ajusteExcel.materialNombre);
+          // Para materiales recién creados, el stock del sistema es 0
+          const diferencia = ajusteExcel.stockExcel - 0; // Stock sistema = 0 para material nuevo
+          
+          return {
+            ...ajusteExcel,
+            proyectoId: null, // null indica "sin asignar"
+            stockSistema: 0,
+            diferencia,
+            tipo: diferencia > 0 ? 'INGRESO' : 'EGRESO',
+            cantidad: Math.abs(diferencia),
+            empresaId: ajusteExcel.empresaId // Usar el empresaId que ya debe estar definido
+          };
+        }
+        
+        if (!materialSistema) {
+          console.warn(`Material no encontrado en sistema: ${ajusteExcel.materialId}`);
+          return null;
+        }
+
+        // Buscar específicamente el proyecto "SIN_ASIGNAR" en porProyecto
+        const stockSinAsignarProyecto = materialSistema.porProyecto?.find(p => p.proyecto_id === 'SIN_ASIGNAR' || p.proyecto_id === null);
+        const stockSinAsignarActual = stockSinAsignarProyecto?.stock || 0;
+        
+        // Calcular diferencia: Excel - Sistema
+        const diferencia = ajusteExcel.stockExcel - stockSinAsignarActual;
+        
+        // Solo incluir si hay diferencia
+        if (diferencia === 0) {
+          return null;
+        }
+
+        return {
+          ...ajusteExcel,
+          proyectoId: null, // null indica "sin asignar"
+          stockSistema: stockSinAsignarActual,
+          diferencia,
+          tipo: diferencia > 0 ? 'INGRESO' : 'EGRESO',
+          cantidad: Math.abs(diferencia),
+          empresaId: materialSistema.empresa_id
+        };
+      }
+      
+      // Buscar el proyecto por nombre (caso normal)
+      const proyecto = proyectos.find(p => p.nombre === ajusteExcel.proyectoNombre);
+      if (!proyecto) {
+        console.warn(`Proyecto no encontrado: ${ajusteExcel.proyectoNombre}`);
+        return null; // Se filtrará después
+      }
+
       // Buscar el material en el sistema
       const materialSistema = materiales.find(m => m._id === ajusteExcel.materialId);
+      
+      // Si no encontramos el material en la lista local, es porque es recién creado
+      if (!materialSistema && ajusteExcel.materialId) {
+        console.log('📝 Material recién creado:', ajusteExcel.materialNombre, 'en proyecto:', proyecto.nombre);
+        // Para materiales recién creados, el stock del sistema es 0
+        const diferencia = ajusteExcel.stockExcel - 0; // Stock sistema = 0 para material nuevo
+        
+        return {
+          ...ajusteExcel,
+          proyectoId: proyecto.id,
+          stockSistema: 0,
+          diferencia,
+          tipo: diferencia > 0 ? 'INGRESO' : 'EGRESO',
+          cantidad: Math.abs(diferencia),
+          empresaId: ajusteExcel.empresaId // Usar empresaId que debe estar definido
+        };
+      }
       
       if (!materialSistema) {
         console.warn(`Material no encontrado en sistema: ${ajusteExcel.materialId}`);
@@ -85,7 +174,7 @@ const ImportarStock = ({
       }
 
       // Buscar stock actual en el proyecto
-      const stockProyecto = materialSistema.porProyecto?.find(p => p.proyecto_id === ajusteExcel.proyectoId);
+      const stockProyecto = materialSistema.porProyecto?.find(p => p.proyecto_id === proyecto.id);
       const stockSistema = stockProyecto?.stock || 0;
       
       // Calcular diferencia: Excel - Sistema
@@ -98,15 +187,141 @@ const ImportarStock = ({
 
       return {
         ...ajusteExcel,
+        proyectoId: proyecto.id, // Agregar el ID del proyecto
         stockSistema, // Stock actual en el sistema
         diferencia,   // Diferencia calculada
         tipo: diferencia > 0 ? 'INGRESO' : 'EGRESO',
         cantidad: Math.abs(diferencia),
         // Datos adicionales del material del sistema
-        empresaId: materialSistema.empresa_id,
-        proyectoNombre: stockProyecto?.proyecto_nombre || 'Proyecto desconocido'
+        empresaId: materialSistema.empresa_id
       };
     }).filter(Boolean); // Filtrar nulls
+  };
+
+  // Función para crear materiales nuevos
+  const crearMaterialesNuevos = async (materialesParaCrear) => {
+    try {
+      const materialesCreados = [];
+      
+      // Obtener empresa del usuario usando la misma función que stockMateriales
+      const empresa = await getEmpresaDetailsFromUser(user);
+      console.log('🏢 Empresa obtenida:', empresa);
+      
+      for (const material of materialesParaCrear) {
+        const nuevoMaterial = {
+          nombre: material.nombre,
+          empresa_id: empresa.id, // Usar empresa.id en lugar de user.empresa_id
+          // Campos opcionales
+          SKU: material.sku || null,
+          desc_material: material.descripcion || null,
+          alias: null, // Array o null, según el helper
+          empresa_nombre: empresa.nombre || null // Usar empresa.nombre
+        };
+
+        console.log('📤 Enviando al backend:', nuevoMaterial);
+        
+        const materialCreado = await StockMaterialesService.crearMaterial(nuevoMaterial);
+        
+        console.log('✅ Material creado:', materialCreado);
+        
+        materialesCreados.push({
+          ...material,
+          materialId: materialCreado.data?.id_material || materialCreado.data?._id || materialCreado._id || materialCreado.id,
+          empresaId: empresa.id // Agregar empresaId para usar en ajustes
+        });
+      }
+
+      return materialesCreados;
+    } catch (error) {
+      console.error('❌ Error creando materiales:', error);
+      console.error('📋 Response data:', error.response?.data);
+      throw new Error(`Error al crear materiales: ${error.response?.data?.error?.message || error.message}`);
+    }
+  };
+
+  // Función para manejar la confirmación de materiales nuevos
+  const handleMaterialesNuevosConfirmation = async (crear) => {
+    setCrearMateriales(crear);
+    
+    if (crear) {
+      try {
+        setProcessing(true);
+        
+        // Crear los materiales nuevos
+        console.log('🔄 Creando materiales nuevos:', materialesNuevos);
+        const materialesCreados = await crearMaterialesNuevos(materialesNuevos);
+        console.log('✅ Materiales creados exitosamente:', materialesCreados);
+        
+        // Convertir los materiales nuevos a ajustes con sus IDs generados
+        const ajustesDeMaterialesNuevos = materialesCreados.map(material => ({
+          materialId: material.materialId, // ID generado por el backend
+          materialNombre: material.nombre,
+          sku: material.sku,
+          descripcion: material.descripcion,
+          stockExcel: material.stockExcel,
+          proyectoNombre: material.proyectoNombre,
+          lineNumber: material.lineNumber,
+          empresaId: material.empresaId // Incluir empresaId
+        }));
+        
+        console.log('🔄 Ajustes de materiales nuevos:', ajustesDeMaterialesNuevos);
+
+        // Combinar ajustes existentes con los nuevos materiales
+        const todosLosAjustes = [...ajustesPreview, ...ajustesDeMaterialesNuevos];
+        console.log('📋 Todos los ajustes combinados:', todosLosAjustes);
+        
+        // Comparar con sistema y continuar (esto calculará las diferencias)
+        const ajustesConDiferencias = compararConSistema(todosLosAjustes);
+        console.log('📊 Ajustes con diferencias calculadas:', ajustesConDiferencias);
+        
+        setAjustesPreview(ajustesConDiferencias);
+        setActiveStep(2); // Ir a revisar cambios
+        
+      } catch (error) {
+        console.error('Error creando materiales:', error);
+        setErrores([`Error al crear materiales: ${error.message}`]);
+        setActiveStep(0);
+      } finally {
+        setProcessing(false);
+      }
+    } else {
+      // No crear materiales, procesar solo como nombres
+      const empresa = await getEmpresaDetailsFromUser(user); // Obtener empresa para materiales sin ID
+      
+      const ajustesComoNombres = materialesNuevos.map(material => {
+        // Buscar el proyecto para obtener su ID
+        const proyecto = proyectos.find(p => p.nombre === material.proyectoNombre);
+        
+        return {
+          materialId: null, // Sin ID, se procesará como nombre
+          materialNombre: material.nombre,
+          sku: material.sku,
+          descripcion: material.descripcion,
+          stockExcel: material.stockExcel,
+          proyectoNombre: material.proyectoNombre,
+          proyectoId: material.proyectoNombre === 'Sin asignar' ? null : (proyecto?.id || null),
+          lineNumber: material.lineNumber,
+          // Campos adicionales para movimientos sin ID
+          esSinId: true,
+          tipo: material.stockExcel > 0 ? 'INGRESO' : 'EGRESO',
+          cantidad: Math.abs(material.stockExcel),
+          diferencia: material.stockExcel,
+          stockSistema: 0,
+          empresaId: empresa.id // ✅ AGREGAR empresaId para materiales sin ID
+        };
+      });
+
+      console.log('📝 Ajustes como nombres (sin crear materiales):', ajustesComoNombres);
+
+      // Combinar con ajustes existentes procesados
+      const ajustesExistentesConDiferencias = compararConSistema(ajustesPreview);
+      const todosLosAjustes = [...ajustesExistentesConDiferencias, ...ajustesComoNombres];
+      
+      setAjustesPreview(todosLosAjustes);
+      setActiveStep(2); // Ir a revisar cambios
+    }
+    
+    setShowMaterialesNuevos(false);
   };
 
   const readExcelFile = (file) => {
@@ -132,22 +347,23 @@ const ImportarStock = ({
   const validateAndProcessData = (data) => {
     const errores = [];
     const ajustes = [];
+    const materialesNuevosDetectados = [];
 
     // Validar estructura del archivo
     const requiredColumns = [
-      'ID Material', 'Nombre', 'SKU', 'Descripción', 'Stock Actual', 'Proyecto ID'
+      'ID Material', 'Nombre', 'SKU', 'Descripción', 'Stock Actual', 'Proyecto'
     ];
 
     if (!data || data.length === 0) {
       errores.push('El archivo está vacío o no tiene datos válidos');
-      return { errores, ajustes };
+      return { errores, ajustes, materialesNuevos: materialesNuevosDetectados };
     }
 
     const firstRow = data[0];
     const missingColumns = requiredColumns.filter(col => !(col in firstRow));
     if (missingColumns.length > 0) {
       errores.push(`Faltan las siguientes columnas: ${missingColumns.join(', ')}`);
-      return { errores, ajustes };
+      return { errores, ajustes, materialesNuevos: materialesNuevosDetectados };
     }
 
     // Procesar cada fila
@@ -155,31 +371,50 @@ const ImportarStock = ({
       const lineNumber = index + 2; // +2 porque Excel empieza en 1 y hay header
       
       try {
-        const stockExcel = Number(row['Stock Actual']) || 0; // Stock modificado en Excel
+        const materialId = row['ID Material']?.toString().trim();
+        const stockExcel = Number(row['Stock Actual']) || 0;
+        const proyectoNombre = row['Proyecto'];
+        const materialNombre = row['Nombre']?.toString().trim() || '';
+        const sku = row['SKU']?.toString().trim() || '';
+        const descripcion = row['Descripción']?.toString().trim() || '';
+        
+        // Si no tiene ID de material, es un material nuevo potencial
+        if (!materialId) {
+          if (!materialNombre) {
+            errores.push(`Línea ${lineNumber}: Nombre del material es requerido para materiales nuevos`);
+            return;
+          }
+          
+          materialesNuevosDetectados.push({
+            lineNumber,
+            nombre: materialNombre,
+            sku,
+            descripcion,
+            stockExcel,
+            proyectoNombre,
+            fila: row
+          });
+          return; // No procesamos como ajuste todavía
+        }
         
         const ajuste = {
-          materialId: row['ID Material'],
-          materialNombre: row['Nombre'],
-          sku: row['SKU'] || '',
-          descripcion: row['Descripción'] || '',
-          stockExcel, // Stock que viene del Excel (modificado por el usuario)
-          proyectoId: row['Proyecto ID'],
+          materialId,
+          materialNombre,
+          sku,
+          descripcion,
+          stockExcel,
+          proyectoNombre,
           lineNumber
         };
 
-        // Validaciones básicas
-        if (!ajuste.materialId) {
-          errores.push(`Línea ${lineNumber}: ID Material es requerido`);
-          return;
-        }
-
-        if (!ajuste.materialNombre?.trim()) {
+        // Validaciones para materiales existentes
+        if (!materialNombre) {
           errores.push(`Línea ${lineNumber}: Nombre del material es requerido`);
           return;
         }
 
-        if (!ajuste.proyectoId) {
-          errores.push(`Línea ${lineNumber}: Proyecto ID es requerido`);
+        if (!proyectoNombre?.trim()) {
+          errores.push(`Línea ${lineNumber}: Proyecto es requerido`);
           return;
         }
 
@@ -188,21 +423,36 @@ const ImportarStock = ({
           return;
         }
 
-        // Siempre agregar para poder comparar después con el sistema
+        // Validar que el material existe en el sistema
+        const materialExistente = materiales.find(m => m._id === materialId);
+        if (!materialExistente) {
+          errores.push(`Línea ${lineNumber}: Material con ID ${materialId} no existe en el sistema`);
+          return;
+        }
+
         ajustes.push(ajuste);
       } catch (error) {
         errores.push(`Línea ${lineNumber}: Error al procesar - ${error.message}`);
       }
     });
 
-    return { errores, ajustes };
+    return { errores, ajustes, materialesNuevos: materialesNuevosDetectados };
   };
 
   const handleConfirmAjustes = async () => {
     setProcessing(true);
     try {
-      await onConfirmAjustes(ajustesPreview);
-      setActiveStep(2);
+      // Asegurar que todos los ajustes tengan empresaId
+      const empresa = await getEmpresaDetailsFromUser(user);
+      const ajustesConEmpresa = ajustesPreview.map(ajuste => ({
+        ...ajuste,
+        empresaId: ajuste.empresaId || empresa.id // Asegurar que siempre tenga empresaId
+      }));
+      
+      console.log('🚀 Enviando ajustes al padre con empresaId:', ajustesConEmpresa);
+      
+      await onConfirmAjustes(ajustesConEmpresa);
+      setActiveStep(3);
       
       // Auto-cerrar después de 3 segundos
       setTimeout(() => {
@@ -211,7 +461,7 @@ const ImportarStock = ({
     } catch (error) {
       console.error('Error al procesar ajustes:', error);
       setErrores([`Error al procesar ajustes: ${error.message}`]);
-      setActiveStep(1);
+      setActiveStep(2);
     } finally {
       setProcessing(false);
     }
@@ -222,6 +472,9 @@ const ImportarStock = ({
     setFileData(null);
     setAjustesPreview([]);
     setErrores([]);
+    setMaterialesNuevos([]);
+    setShowMaterialesNuevos(false);
+    setCrearMateriales(false);
     setProcessing(false);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
@@ -297,8 +550,64 @@ const ImportarStock = ({
             </Box>
           )}
 
-          {/* Step 1: Revisar cambios */}
-          {activeStep === 1 && (
+          {/* Step 1: Materiales nuevos detectados */}
+          {activeStep === 1 && showMaterialesNuevos && (
+            <Box>
+              <Alert severity="warning" sx={{ mb: 2 }}>
+                Se detectaron {materialesNuevos.length} materiales sin ID. 
+                ¿Desea crear estos materiales en el sistema o procesarlos solo como nombres?
+              </Alert>
+
+              <Paper sx={{ maxHeight: 400, overflow: 'auto', mb: 3 }}>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Línea</TableCell>
+                      <TableCell>Nombre</TableCell>
+                      <TableCell>SKU</TableCell>
+                      <TableCell>Descripción</TableCell>
+                      <TableCell>Stock</TableCell>
+                      <TableCell>Proyecto</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {materialesNuevos.map((material, idx) => (
+                      <TableRow key={idx}>
+                        <TableCell>{material.lineNumber}</TableCell>
+                        <TableCell><strong>{material.nombre}</strong></TableCell>
+                        <TableCell>{material.sku}</TableCell>
+                        <TableCell>{material.descripcion}</TableCell>
+                        <TableCell>{material.stockExcel}</TableCell>
+                        <TableCell>{material.proyectoNombre}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </Paper>
+
+              <Box display="flex" gap={2} justifyContent="center">
+                <Button
+                  variant="contained"
+                  color="primary"
+                  disabled={processing}
+                  onClick={() => handleMaterialesNuevosConfirmation(true)}
+                  startIcon={processing ? <CircularProgress size={16} /> : null}
+                >
+                  {processing ? 'Creando materiales...' : 'Crear materiales en el sistema'}
+                </Button>
+                <Button
+                  variant="outlined"
+                  disabled={processing}
+                  onClick={() => handleMaterialesNuevosConfirmation(false)}
+                >
+                  Procesar solo como nombres
+                </Button>
+              </Box>
+            </Box>
+          )}
+
+          {/* Step 2: Revisar cambios */}
+          {activeStep === 2 && (
             <Box>
               <Alert severity="warning" sx={{ mb: 2 }}>
                 Revise cuidadosamente los cambios detectados. El sistema comparó el stock del Excel 
@@ -324,6 +633,7 @@ const ImportarStock = ({
                     <TableRow>
                       <TableCell>Material</TableCell>
                       <TableCell>SKU</TableCell>
+                      <TableCell>Proyecto</TableCell>
                       <TableCell>Stock Sistema</TableCell>
                       <TableCell>Stock Excel</TableCell>
                       <TableCell>Diferencia</TableCell>
@@ -334,8 +644,12 @@ const ImportarStock = ({
                   <TableBody>
                     {ajustesPreview.map((ajuste, idx) => (
                       <TableRow key={idx}>
-                        <TableCell>{ajuste.materialNombre}</TableCell>
+                        <TableCell>
+                          {ajuste.materialNombre}
+                          {ajuste.esSinId && <Chip label="Nuevo" size="small" color="info" sx={{ ml: 1 }} />}
+                        </TableCell>
                         <TableCell>{ajuste.sku}</TableCell>
+                        <TableCell>{ajuste.proyectoNombre}</TableCell>
                         <TableCell>{ajuste.stockSistema}</TableCell>
                         <TableCell>{ajuste.stockExcel}</TableCell>
                         <TableCell>
@@ -359,8 +673,8 @@ const ImportarStock = ({
             </Box>
           )}
 
-          {/* Step 2: Confirmación */}
-          {activeStep === 2 && (
+          {/* Step 3: Confirmación */}
+          {activeStep === 3 && (
             <Box textAlign="center" py={3}>
               <CheckCircleIcon sx={{ fontSize: 64, color: 'success.main', mb: 2 }} />
               <Typography variant="h6" gutterBottom>
@@ -379,7 +693,7 @@ const ImportarStock = ({
         <Button onClick={handleClose} disabled={processing}>
           Cancelar
         </Button>
-        {activeStep === 1 && (
+        {activeStep === 2 && (
           <Button
             onClick={handleConfirmAjustes}
             variant="contained"
