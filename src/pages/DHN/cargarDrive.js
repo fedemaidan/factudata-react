@@ -139,7 +139,10 @@ const CargarDrive = () => {
   };
 
   const handleSyncClick = async (options = {}) => {
-    if (!urlDrive) return;
+    if (!urlDrive) {
+      console.log('urlDrive is required');
+      return;
+    };
     setIsSyncing(true);
     try {
       await DhnDriveService.inspeccionarRecurso(urlDrive, options);
@@ -179,8 +182,6 @@ const CargarDrive = () => {
     }
 
     setExpandedId(id);
-
-    // Siempre solicitar al backend los children (no usar cache si el backend no devuelve children en getAllSyncs)
     await fetchChildren(id);
   };
 
@@ -229,12 +230,10 @@ const CargarDrive = () => {
           </IconButton>
         ),
       },
-      // <- la columna "Abrir" fue eliminada: ahora la subtabla se carga al hacer click en la fila
     ],
     []
   );
 
-  // Columnas para la subtabla (detalles) — ahora muestra status, imagen (modal), url_drive y observacion
   const detailsColumns = useMemo(
     () => [
       {

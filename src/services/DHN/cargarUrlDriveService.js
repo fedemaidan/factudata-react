@@ -1,21 +1,22 @@
 import api from '../axiosConfig';
 
-/** Valida URLs/IDs típicos de Google Drive */
+/** Valida URLs/IDs típicos de Google Drive y Google Sheets */
 export const validarUrlDrive = (v) => {
   if (!v || typeof v !== 'string') return false;
   const s = v.trim();
   if (!s) return false;
 
-  // ID “crudo”
-  if (!s.includes('http') && !s.includes('drive.google.com') && !/\s/.test(s) && s.length >= 10) {
+  // ID "crudo"
+  if (!s.includes('http') && !s.includes('drive.google.com') && !s.includes('docs.google.com') && !/\s/.test(s) && s.length >= 10) {
     return true;
   }
-  // URLs frecuentes
+  // URLs frecuentes de Drive y Sheets
   const patterns = [
     /https?:\/\/drive\.google\.com\/file\/d\/[a-zA-Z0-9\-_]+/i,
     /https?:\/\/drive\.google\.com\/drive\/folders\/[a-zA-Z0-9\-_]+/i,
     /https?:\/\/drive\.google\.com\/.*[?&]id=[a-zA-Z0-9\-_]+/i,
     /https?:\/\/drive\.google\.com\/uc\?id=[a-zA-Z0-9\-_]+/i,
+    /https?:\/\/docs\.google\.com\/spreadsheets\/d\/[a-zA-Z0-9\-_]+/i,
   ];
   return patterns.some((re) => re.test(s));
 };
