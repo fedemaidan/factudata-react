@@ -3,8 +3,15 @@ import api from '../axiosConfig';
 
 const StockMaterialesService = {
   crearMaterial: async (data) => {
+    console.log('📤 [Service] Enviando material:', data);
     const res = await api.post('/materiales', data);
-    if (res.status === 200 || res.status === 201) return res.data;
+    console.log('📥 [Service] Respuesta completa:', res);
+    console.log('📋 [Service] Respuesta data:', res.data);
+    
+    if (res.status === 200 || res.status === 201) {
+      // El backend envuelve la respuesta en { ok: true, data: materialCreado }
+      return res.data; 
+    }
     throw new Error('No se pudo crear el material');
   },
 
@@ -36,8 +43,8 @@ const StockMaterialesService = {
       ...(raw.stockFilter && raw.stockFilter !== 'all' ? { stockFilter: raw.stockFilter } : {}),
 
       sort: (typeof raw.sort === 'string' && raw.sort.includes(':')) ? raw.sort : 'nombre:asc',
-      limit: Number.isFinite(raw.limit) ? Number(raw.limit) : 50,
-      page:  Number.isFinite(raw.page)  ? Number(raw.page)  : 0,
+      limit: Number.isFinite(raw.limit) ? Number(raw.limit) : 9999, // Traer todos los datos
+      page: 0, // Siempre página 0 para traer todo
     };
 
     // (opcional) log para depurar qué se envía
@@ -68,23 +75,19 @@ const StockMaterialesService = {
     throw new Error('Error al obtener material');
   },
 
-  actualizarMaterial: async (id, data) => {
-    const res = await api.put(`/materiales/${id}`, data);
-    if (res.status === 200) return res.data;
-    throw new Error('Error al actualizar el material');
-  },
-
-  eliminarMaterial: async (id) => {
-    const res = await api.delete(`/materiales/${id}`);
-    if (res.status === 204) return;
-    throw new Error('Error al eliminar material');
-  },
-
-
-  obtenerMaterialPorId: async (id) => {
-    const res = await api.get(`/materiales/${id}`);
-    if (res.status === 200) return res.data;
-    throw new Error('Error al obtener material');
+  obtenerMaterial: async ({ empresa_id, material_id }) => {
+    try {
+      const res = await api.get(`/materiales/${material_id}`, {
+        params: { empresa_id }
+      });
+      if (res.status === 200) {
+        return unwrap(res);
+      }
+      return null;
+    } catch (err) {
+      console.error('[SVC][obtenerMaterial][ERR]', err);
+      return null;
+    }
   },
 
   actualizarMaterial: async (id, data) => {
@@ -98,6 +101,13 @@ const StockMaterialesService = {
     if (res.status === 204) return;
     throw new Error('Error al eliminar material');
   },
+};
+
+const unwrap = (res) => {
+  const payload = res?.data ?? {};
+  return (payload && typeof payload === 'object' && 'data' in payload)
+    ? (payload.data ?? {})
+    : payload;
 };
 
 export default StockMaterialesService;

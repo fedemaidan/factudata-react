@@ -17,6 +17,7 @@ import RefreshIcon from '@mui/icons-material/Refresh';
 import ImageIcon from '@mui/icons-material/Image';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import CloseIcon from '@mui/icons-material/Close';
+import DownloadIcon from '@mui/icons-material/Download';
 
 import EditIcon from '@mui/icons-material/Edit';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
@@ -719,10 +720,18 @@ const movimientosConProrrateo = useMemo(() => {
        const allMovs = Array.from(movimientosUnicos.values());
        
        const meta = EQUIV_META[caja.equivalencia || 'none'] || EQUIV_META.none;
+       
+       // DEBUG: Log para detectar problemas
+       if (caja.equivalencia && caja.equivalencia !== 'none') {
+         console.group(`🔍 DEBUG Caja: ${caja.nombre} (${caja.equivalencia})`);
+         console.log(`📊 Total movimientos únicos: ${allMovs.length}`);
+         console.log(`💰 ARS: ${allMovs.filter(m => m.moneda === 'ARS').length} movimientos`);
+         console.log(`💵 USD: ${allMovs.filter(m => m.moneda === 'USD').length} movimientos`);
+       }
      
        const mergeMonedas = (caja.equivalencia && caja.equivalencia !== 'none');
 
-       return allMovs.reduce((acc, mov) => {
+       const result = allMovs.reduce((acc, mov) => {
          const matchMedioPago = caja.medio_pago ? mov.medio_pago === caja.medio_pago : true;
          const matchEstado    = caja.estado ? mov.estado === caja.estado : true;
          const matchType      = caja.type ? mov.type === caja.type : true;
@@ -735,23 +744,123 @@ const movimientosConProrrateo = useMemo(() => {
            const equivVal = meta.path(mov.equivalencias);
            if (typeof equivVal === 'number') {
               val = equivVal;
+              // DEBUG: Log conversiones exitosas
+              if (caja.equivalencia && caja.equivalencia !== 'none') {
+                console.log(`✅ ${mov.id}: ${mov.moneda} $${mov.total} → ${meta.out} $${val.toFixed(2)}`);
+              }
             } else {
               // Si no hay equivalencia calculada, usar 0 para evitar mezclar monedas
               // ANTES: usaba mov.total que podía ser en otra moneda
               val = 0;
-              console.warn(`Movimiento ${mov.id} (${mov.moneda} $${mov.total}) sin equivalencia ${caja.equivalencia} calculada`);
+              console.warn(`❌ Movimiento ${mov.id} (${mov.moneda} $${mov.total}) sin equivalencia ${caja.equivalencia} calculada`);
             }
          } else {
            // sin equivalencia → monto nativo
            val = mov.total || 0;
          }
-     
-         return acc + (mov.type === 'ingreso' ? val : -val);
+         
+         const contribution = (mov.type === 'ingreso' ? val : -val);
+         if (caja.equivalencia && caja.equivalencia !== 'none') {
+           console.log(`📝 ${mov.type}: ${contribution > 0 ? '+' : ''}${contribution.toFixed(2)}`);
+         }
+         
+         return acc + contribution;
        }, 0);
+       
+       // DEBUG: Log resultado final
+       if (caja.equivalencia && caja.equivalencia !== 'none') {
+         console.log(`🎯 Total final: ${result.toFixed(2)}`);
+         console.groupEnd();
+       }
+       
+       return result;
      };
-  
-  
 
+  // Función para exportar CSV con análisis detallado
+  const exportarCSVAnalisis = () => {
+    const movimientosUnicos = new Map();
+    [...movimientos, ...movimientosUSD].forEach(mov => {
+      movimientosUnicos.set(mov.id, mov);
+    });
+    const allMovs = Array.from(movimientosUnicos.values());
+
+    // Headers del CSV
+    const headers = [
+      'ID',
+      'Codigo',
+      'Fecha',
+      'Tipo',
+      'Moneda_Original',
+      'Total_Original',
+      'Proveedor',
+      'Categoria',
+      'Medio_Pago',
+      'Estado',
+      'USD_Blue',
+      'USD_Oficial',
+      'USD_MEP_Medio',
+      'Tiene_Equivalencias',
+      'Proyecto',
+      'TC_Ejecutado',
+      'Ratio_USD_Blue_vs_Original',
+      'Observacion'
+    ];
+
+    // Convertir movimientos a filas CSV
+    const rows = allMovs.map(mov => {
+      const usdBlue = mov.equivalencias?.total?.usd_blue;
+      const total = mov.total || 0;
+      const ratio = (usdBlue && total > 0) ? (usdBlue / total).toFixed(4) : 'N/A';
+      
+      return [
+        mov.id || '',
+        mov.codigo_operacion || '',
+        mov.fecha_factura ? new Date(mov.fecha_factura.seconds * 1000).toLocaleDateString('es-AR') : '',
+        mov.type || '',
+        mov.moneda || '',
+        total,
+        mov.nombre_proveedor || '',
+        mov.categoria || '',
+        mov.medio_pago || '',
+        mov.estado || '',
+        usdBlue || 'N/A',
+        mov.equivalencias?.total?.usd_oficial || 'N/A',
+        mov.equivalencias?.total?.usd_mep_medio || 'N/A',
+        mov.equivalencias ? 'SI' : 'NO',
+        mov.proyecto_nombre || '',
+        mov.tc || 'N/A',
+        ratio,
+        mov.observacion || ''
+      ];
+    });
+
+    // Crear contenido CSV
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => row.map(cell => 
+        typeof cell === 'string' && cell.includes(',') 
+          ? `"${cell}"` 
+          : cell
+      ).join(','))
+    ].join('\n');
+
+    // Crear y descargar archivo
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `analisis_movimientos_${proyecto?.nombre || 'proyecto'}_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    setAlert({
+      open: true,
+      message: `CSV exportado con ${allMovs.length} movimientos`,
+      severity: 'success',
+    });
+  };
 
   const handleGuardarCaja = async () => {
     const nuevaCaja = {
@@ -1973,6 +2082,16 @@ useEffect(() => {
   <MenuOption onClick={() => handleMenuOptionClick('recalcularEquivalencias')}>
     <RefreshIcon sx={{ mr: 1 }} />
     Recalcular valor dolar estimado
+  </MenuOption>
+  
+  <Divider sx={{ my: 1 }} />
+  
+  <MenuOption onClick={() => {
+    exportarCSVAnalisis();
+    handleCloseMenu();
+  }}>
+    <DownloadIcon sx={{ mr: 1 }} />
+    Exportar CSV para análisis
   </MenuOption>
 </Menu>
 

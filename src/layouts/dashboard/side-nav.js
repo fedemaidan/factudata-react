@@ -351,6 +351,42 @@ export const SideNav = (props) => {
         });
       }
 
+      if (permisosUsuario.includes("VER_STOCK_MATERIALES")) {
+        baseItems.push({
+          title: "Stock de materiales",
+          path: "/stockMateriales?empresaId=" + emp.id,
+          icon: (
+            <SvgIcon fontSize="small">
+              <InventoryIcon />
+            </SvgIcon>
+          ),
+        });
+      }
+
+      if (permisosUsuario.includes("VER_STOCK_SOLICITUDES")) {
+        baseItems.push({
+          title: "Tickets de stock",
+          path: "/stockSolicitudes?empresaId=" + emp.id,
+          icon: (
+            <SvgIcon fontSize="small">
+              <NoteAltIcon />
+            </SvgIcon>
+          ),
+        });
+      }
+
+      if (permisosUsuario.includes("VER_STOCK_MOVIMIENTOS")) {
+        baseItems.push({
+          title: "Movimientos de stock",
+          path: "/stockMovimientos?empresaId=" + emp.id,
+          icon: (
+            <SvgIcon fontSize="small">
+              <CompareArrowsIcon />
+            </SvgIcon>
+          ),
+        });
+      }
+
       if (permisosUsuario.includes("VER_NOTAS_DE_PEDIDO")) {
         baseItems.push({
           title: "Notas de pedido",
