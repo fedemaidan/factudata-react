@@ -127,14 +127,8 @@ const MaterialAutocomplete = ({
       }
     } catch (error) {
       console.error('[MaterialAutocomplete] Error cargando material por ID:', error);
-      // Si no se puede cargar, intentar buscar en las opciones existentes
-      const found = options.find(opt => opt.id === materialId);
-      if (found) {
-        setSelectedMaterial(found);
-        setInputValue(found.label);
-        setMaterialExists(true);
-      } else if (fallbackText) {
-        // Usar fallbackText si no se encontró el material
+      // Si no se puede cargar, usar fallbackText si está disponible
+      if (fallbackText) {
         setInputValue(fallbackText);
         setSelectedMaterial(null);
         setMaterialExists(false);
@@ -142,22 +136,23 @@ const MaterialAutocomplete = ({
     } finally {
       setLoading(false);
     }
-  }, [user, options, fallbackText]);
+  }, [user, fallbackText]); // Removed options from dependencies
 
   // Efecto para cargar material por ID cuando se pasa un value inicial
   useEffect(() => {
     if (value && value !== selectedMaterial?.id) {
       // Si tenemos un ID diferente al material actual, buscarlo
       loadMaterialById(value);
-    } else if (!value && (selectedMaterial || inputValue)) {
-      // Si no hay value, limpiar completamente
+    } else if (!value && selectedMaterial) {
+      // Si no hay value pero tenemos un material seleccionado, limpiar
       setSelectedMaterial(null);
       setInputValue('');
       setMaterialExists(null);
     }
-  }, [value, loadMaterialById, selectedMaterial, inputValue]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value, loadMaterialById]); // Solo depende de value y loadMaterialById
 
-  // Encontrar material seleccionado por ID en opciones existentes
+  // Encontrar material seleccionado por ID en opciones existentes (solo si no tenemos selectedMaterial)
   useEffect(() => {
     if (value && options.length > 0 && !selectedMaterial) {
       const found = options.find(opt => opt.id === value);
@@ -167,7 +162,8 @@ const MaterialAutocomplete = ({
         setMaterialExists(true);
       }
     }
-  }, [value, options, selectedMaterial]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value, options]); // Removed selectedMaterial from dependencies to avoid circular updates
 
   const handleInputChange = (event, newInputValue, reason) => {
     setInputValue(newInputValue);

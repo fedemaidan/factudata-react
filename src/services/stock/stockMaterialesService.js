@@ -43,8 +43,8 @@ const StockMaterialesService = {
       ...(raw.stockFilter && raw.stockFilter !== 'all' ? { stockFilter: raw.stockFilter } : {}),
 
       sort: (typeof raw.sort === 'string' && raw.sort.includes(':')) ? raw.sort : 'nombre:asc',
-      limit: Number.isFinite(raw.limit) ? Number(raw.limit) : 50,
-      page:  Number.isFinite(raw.page)  ? Number(raw.page)  : 0,
+      limit: Number.isFinite(raw.limit) ? Number(raw.limit) : 9999, // Traer todos los datos
+      page: 0, // Siempre página 0 para traer todo
     };
 
     // (opcional) log para depurar qué se envía

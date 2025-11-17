@@ -94,7 +94,8 @@ const getStockStatus = (stock) => {
 };
 
 const StockMateriales = () => {
-  const [rows, setRows] = useState([]);
+  const [allRows, setAllRows] = useState([]); // Todos los datos del backend
+  const [rows, setRows] = useState([]); // Datos de la página actual
   const [loading, setLoading] = useState(false);
 
   // estados de filtros/orden/paginación (server-side)
@@ -103,6 +104,7 @@ const StockMateriales = () => {
   const [sku, setSku] = useState('');                  // 🔎 SKU
   const [aliasText, setAliasText] = useState('');      // 🔎 alias como texto
   const [stockFilter, setStockFilter] = useState('all'); // all | gt0 | eq0 | lt0
+  const [proyectoFilter, setProyectoFilter] = useState(''); // filtro por proyecto
 
   const [orderBy, setOrderBy] = useState('nombre'); // nombre | descripcion | sku | stock
   const [order, setOrder] = useState('asc'); // asc | desc
@@ -149,9 +151,8 @@ const StockMateriales = () => {
 
       const params = {
         empresa_id: empresa.id,
-        limit: rowsPerPage,
-        page,                // tu back calcula skip = page * limit
-        sort: sortParam,     // ej: "stock:desc"
+        limit: 9999, // Traer todos los datos
+        sort: sortParam, // ej: "stock:desc"
       };
 
       // 🔎 filtros (solo envío si hay valor)
@@ -162,8 +163,27 @@ const StockMateriales = () => {
       if (stockFilter !== 'all') params.stockFilter   = stockFilter; // 'gt0' | 'eq0' | 'lt0'
 
       const resp = await StockMaterialesService.listarMateriales(params);
-      setRows(mapItems(resp.items));
-      setTotal(resp.total || 0);
+      const allData = mapItems(resp.items || []);
+      
+      // Aplicar filtros adicionales en frontend que no se aplicaron en el backend
+      let filteredData = allData;
+      
+      // Filtro por proyecto (si está activo)
+      if (proyectoFilter) {
+        filteredData = filteredData.filter(row => 
+          (row.porProyecto || []).some(p => p.proyecto_id === proyectoFilter)
+        );
+      }
+      
+      // Guardar todos los datos filtrados
+      setAllRows(filteredData);
+      setTotal(filteredData.length);
+      
+      // Calcular datos de la página actual (paginación client-side)
+      const startIndex = page * rowsPerPage;
+      const endIndex = startIndex + rowsPerPage;
+      const pageData = filteredData.slice(startIndex, endIndex);
+      setRows(pageData);
     } catch (e) {
       console.error(e);
       setAlert({ open: true, message: 'Error al cargar materiales', severity: 'error' });
@@ -189,11 +209,21 @@ const StockMateriales = () => {
     });
   };
 
-  // dispara el fetch cuando cambian filtros/orden/paginación
+  // dispara el fetch cuando cambian filtros/orden (no page/rowsPerPage ya que paginamos en frontend)
   useEffect(() => {
     fetchAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nombre, descripcion, sku, aliasText, stockFilter, sortParam, page, rowsPerPage]);
+  }, [nombre, descripcion, sku, aliasText, stockFilter, proyectoFilter, sortParam]);
+
+  // Efecto separado para manejar cambios de paginación (solo client-side)
+  useEffect(() => {
+    if (allRows.length > 0) {
+      const startIndex = page * rowsPerPage;
+      const endIndex = startIndex + rowsPerPage;
+      const pageData = allRows.slice(startIndex, endIndex);
+      setRows(pageData);
+    }
+  }, [allRows, page, rowsPerPage]);
 
   // --- crear/editar ---
   const handleOpenCreate = () => {
@@ -529,6 +559,21 @@ const StockMateriales = () => {
                       Con Stock
                     </Box>
                   </MenuItem>
+                  </Select>
+                </FormControl>
+
+                <FormControl sx={{ minWidth: 150 }}>
+                  <InputLabel id="proyecto-filter-label">Proyecto</InputLabel>
+                  <Select
+                    labelId="proyecto-filter-label"
+                    label="Proyecto"
+                    value={proyectoFilter}
+                    onChange={(e) => { setProyectoFilter(e.target.value); setPage(0); }}
+                  >
+                    <MenuItem value="">Todos los proyectos</MenuItem>
+                    {proyectos.map(p => (
+                      <MenuItem key={p.id} value={p.id}>{p.nombre}</MenuItem>
+                    ))}
                   </Select>
                 </FormControl>
               </Stack>            {/* Tabla */}
