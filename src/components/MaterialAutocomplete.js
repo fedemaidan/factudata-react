@@ -23,6 +23,7 @@ import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
 const MaterialAutocomplete = ({
   user,
   value = '', // id del material seleccionado
+  fallbackText = '', // texto a mostrar si no se encuentra el material por ID
   onTextChange = () => {}, // (texto) => void - cuando se escribe texto libre
   onMaterialSelect = () => {}, // (materialObj) => void - cuando se selecciona un material completo
   onMaterialCreated = () => {}, // (materialCreado) => void - cuando se crea un material nuevo
@@ -90,18 +91,83 @@ const MaterialAutocomplete = ({
     }
   }, [inputValue, searchMaterials]);
 
-  // Encontrar material seleccionado por ID
+  // Buscar material por ID específico cuando se pasa un value inicial
+  const loadMaterialById = useCallback(async (materialId) => {
+    if (!materialId || !user) return;
+    
+    try {
+      setLoading(true);
+      const empresa = await getEmpresaDetailsFromUser(user);
+      
+      // Buscar el material específico por ID
+      const response = await StockMaterialesService.obtenerMaterial({
+        empresa_id: empresa.id,
+        material_id: materialId
+      });
+      
+      if (response) {
+        const material = {
+          id: response.id || response._id,
+          nombre: response.nombre || '',
+          SKU: response.SKU || '',
+          desc_material: response.desc_material || '',
+          stock: response.stock || 0,
+          label: `${response.nombre || 'Sin nombre'}${response.SKU ? ` - ${response.SKU}` : ''}`
+        };
+        
+        setSelectedMaterial(material);
+        setInputValue(material.label);
+        setMaterialExists(true);
+        
+        // Agregar a las opciones si no está
+        setOptions(prev => {
+          const exists = prev.some(opt => opt.id === materialId);
+          return exists ? prev : [material, ...prev];
+        });
+      }
+    } catch (error) {
+      console.error('[MaterialAutocomplete] Error cargando material por ID:', error);
+      // Si no se puede cargar, intentar buscar en las opciones existentes
+      const found = options.find(opt => opt.id === materialId);
+      if (found) {
+        setSelectedMaterial(found);
+        setInputValue(found.label);
+        setMaterialExists(true);
+      } else if (fallbackText) {
+        // Usar fallbackText si no se encontró el material
+        setInputValue(fallbackText);
+        setSelectedMaterial(null);
+        setMaterialExists(false);
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [user, options, fallbackText]);
+
+  // Efecto para cargar material por ID cuando se pasa un value inicial
   useEffect(() => {
-    if (value && options.length > 0) {
+    if (value && value !== selectedMaterial?.id) {
+      // Si tenemos un ID diferente al material actual, buscarlo
+      loadMaterialById(value);
+    } else if (!value && (selectedMaterial || inputValue)) {
+      // Si no hay value, limpiar completamente
+      setSelectedMaterial(null);
+      setInputValue('');
+      setMaterialExists(null);
+    }
+  }, [value, loadMaterialById, selectedMaterial, inputValue]);
+
+  // Encontrar material seleccionado por ID en opciones existentes
+  useEffect(() => {
+    if (value && options.length > 0 && !selectedMaterial) {
       const found = options.find(opt => opt.id === value);
       if (found) {
         setSelectedMaterial(found);
         setInputValue(found.label);
+        setMaterialExists(true);
       }
-    } else if (!value) {
-      setSelectedMaterial(null);
     }
-  }, [value, options]);
+  }, [value, options, selectedMaterial]);
 
   const handleInputChange = (event, newInputValue, reason) => {
     setInputValue(newInputValue);

@@ -1190,6 +1190,7 @@ export default function StockSolicitudes() {
                         <MaterialAutocomplete
                           user={user}
                           value={m.id_material || ''}
+                          fallbackText={m.nombre_item || ''} // Mostrar nombre como fallback si no se encuentra el ID
                           onTextChange={(textLibre) => {
                             // Usuario escribió texto libre - limpiar id_material y usar texto como nombre_item
                             patchMov(idx, 'id_material', null);
