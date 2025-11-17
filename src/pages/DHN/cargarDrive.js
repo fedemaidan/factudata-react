@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Layout as DashboardLayout } from "src/layouts/dashboard/layout";
-import { Container, Box, Chip, IconButton, TextField, Button, Dialog, DialogTitle, DialogContent, DialogActions, MenuItem, Stack } from "@mui/material";
+import { Container, Box, Chip, IconButton, TextField, Button, Dialog, DialogTitle, DialogContent, DialogActions, MenuItem, Stack, Snackbar, Alert } from "@mui/material";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import VisibilityIcon from "@mui/icons-material/Visibility";
@@ -67,6 +67,11 @@ const CargarDrive = () => {
   const [detailsLoadingId, setDetailsLoadingId] = useState(null);
   const [imageModalOpen, setImageModalOpen] = useState(false);
   const [imageUrl, setImageUrl] = useState("");
+  const [alert, setAlert] = useState({
+    open: false,
+    message: "",
+    severity: "error",
+  });
   const openImageModal = (url) => {
     if (!url) return;
     setImageUrl(url);
@@ -145,12 +150,25 @@ const CargarDrive = () => {
     };
     setIsSyncing(true);
     try {
-      await DhnDriveService.inspeccionarRecurso(urlDrive, options);
+      const resp = await DhnDriveService.inspeccionarRecurso(urlDrive, options);
+      if (!resp?.ok) {
+        const msg = resp?.error?.message || "Error al inspeccionar recurso";
+        setAlert({
+          open: true,
+          message: msg,
+          severity: "error",
+        });
+        return;
+      }
       await refreshSyncsAndDetails();
       setUrlDrive("");
     } catch (e) {
       console.error(e);
-      alert("Error al inspeccionar recurso");
+      setAlert({
+        open: true,
+        message: "Error al inspeccionar recurso",
+        severity: "error",
+      });
     } finally {
       setIsSyncing(false);
     }
@@ -300,7 +318,11 @@ const CargarDrive = () => {
       await DhnDriveService.updateSyncSheet(googleSheetLink);
     } catch (e) {
       console.error(e);
-      alert("Error al actualizar Google Sheet");
+      setAlert({
+        open: true,
+        message: "Error al actualizar Google Sheet",
+        severity: "error",
+      });
     }
     finally {
       setIsUpdatingSyncSheet(false);
@@ -311,10 +333,19 @@ const CargarDrive = () => {
     setSheetDialogOpen(false);
     setGoogleSheetLink("");
   };
+  const handleCloseAlert = (event, reason) => {
+    if (reason === "clickaway") return;
+    setAlert({ ...alert, open: false });
+  };
 
   return (
     <DashboardLayout title="Cargar Drive - Historial">
       <Container maxWidth="xl">
+        <Snackbar anchorOrigin={{ vertical: "top", horizontal: "center" }} open={alert.open} autoHideDuration={6000} onClose={handleCloseAlert}>
+          <Alert onClose={handleCloseAlert} severity={alert.severity} sx={{ width: "100%" }}>
+            {alert.message}
+          </Alert>
+        </Snackbar>
         <Box sx={{ py: 3 }}>
           {/* Acciones principales: abrir modales y refrescar */}
           <Box sx={{ display: "flex", gap: 2, mb: 2, alignItems: "center" }}>
