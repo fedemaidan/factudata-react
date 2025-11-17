@@ -1,49 +1,22 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/router';
-import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
-import { Container, Stack, Alert } from '@mui/material';
-import TableComponent from 'src/components/TableComponent';
-import BackButton from 'src/components/shared/BackButton';
 import { buildTrabajoRegistradoColumns } from 'src/components/dhn/TrabajoRegistradoCells';
 import TrabajoRegistradoService from 'src/services/dhn/TrabajoRegistradoService';
+import { formatDateDDMMYYYY } from 'src/utils/handleDates';
+import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
+import { Container, Stack, Alert } from '@mui/material';
+import BackButton from 'src/components/shared/BackButton';
 import FiltroTrabajoDiario from 'src/components/dhn/FiltroTrabajoDiario';
-import dayjs from 'dayjs';
+import TableComponent from 'src/components/TableComponent';
 
-const formatearFecha = (fecha) => {
-  if (!fecha) return '-';
-  const fechaParsed = dayjs(fecha);
-  if (!fechaParsed.isValid()) return '-';
-  return fechaParsed.format('DD-MM-YYYY');
-};
 
 const ControlDiaPage = () => {
   const router = useRouter();
   const { dia: diaParam, estado: estadoParam } = router.query;
 
-  // Normalizar (Next puede darte array si hay repetidos)
   const diaFormatoParam = Array.isArray(diaParam) ? diaParam[0] : diaParam;
-  const estadoFiltro = useMemo(() => (Array.isArray(estadoParam) ? estadoParam[0] : (estadoParam || 'todos')), [estadoParam]);
-
-  // Convertir dd-mm-yyyy de la URL a YYYY-MM-DD para el backend
-  const dia = useMemo(() => {
-    if (!diaFormatoParam) return null;
-    
-    // Primero intentar como DD-MM-YYYY (formato de la URL)
-    let fechaParsed = dayjs(diaFormatoParam, 'DD-MM-YYYY', true);
-    if (fechaParsed.isValid()) {
-      return fechaParsed.format('YYYY-MM-DD');
-    }
-    
-    // Si falla, intentar parsear sin formato específico (por si viene con otro formato)
-    fechaParsed = dayjs(diaFormatoParam);
-    if (fechaParsed.isValid()) {
-      return fechaParsed.format('YYYY-MM-DD');
-    }
-    
-    // Si todo falla, devolver null para evitar errores
-    console.error('Formato de fecha inválido:', diaFormatoParam);
-    return null;
-  }, [diaFormatoParam]);
+  const estadoFiltro = Array.isArray(estadoParam) ? estadoParam[0] : (estadoParam || 'todos');  
+  const dia = formatDateDDMMYYYY(diaFormatoParam);
 
   const [data, setData] = useState([]);
   const [stats, setStats] = useState({ total: 0, ok: 0, incompleto: 0, advertencia: 0, sinParte: 0, sinHoras: 0, sinLicencia: 0, conLicencia: 0 });
@@ -53,7 +26,7 @@ const ControlDiaPage = () => {
   const columns = useMemo(() => buildTrabajoRegistradoColumns(null, true), []);
 
   const formatters = {
-    fecha: formatearFecha,
+    fecha: formatDateDDMMYYYY,
   };
 
   const fetchData = useCallback(async () => {
@@ -87,24 +60,8 @@ const ControlDiaPage = () => {
 
   const handleVolver = useCallback(() => router.back(), [router]);
 
-  // Usar el formato original (dd-mm-yyyy) para visualización
-  const fechaFormateada = useMemo(() => {
-    if (!diaFormatoParam) return '';
-    // Intentar parsear como dd-mm-yyyy
-    const fechaParsed = dayjs(diaFormatoParam, 'DD-MM-YYYY', true);
-    if (fechaParsed.isValid()) {
-      return fechaParsed.format('DD-MM-YYYY');
-    }
-    // Si falla, intentar como YYYY-MM-DD y formatear
-    const fechaParsedISO = dayjs(diaFormatoParam, 'YYYY-MM-DD', true);
-    if (fechaParsedISO.isValid()) {
-      return fechaParsedISO.format('DD-MM-YYYY');
-    }
-    return diaFormatoParam;
-  }, [diaFormatoParam]);
-
   return (
-    <DashboardLayout title={`Control Diario - ${fechaFormateada}`}>
+    <DashboardLayout title={`Control Diario - ${diaParam}`}>
       <Container maxWidth="xl">
         <Stack>
           <BackButton onClick={handleVolver} sx={{ mb: 3 }} />

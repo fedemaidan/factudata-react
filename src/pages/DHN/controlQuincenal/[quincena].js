@@ -4,20 +4,14 @@ import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import { Container, Stack, Alert } from '@mui/material';
 import DataTable from 'src/components/celulandia/DataTable';
 import TrabajoRegistradoService from 'src/services/dhn/TrabajoRegistradoService';
-import TableComponent from 'src/components/TableComponent';
 import BackButton from 'src/components/shared/BackButton';
-import dayjs from 'dayjs';
-
-const formatearFecha = (fecha) => {
-  if (!fecha) return '-';
-  const fechaParsed = dayjs(fecha);
-  if (!fechaParsed.isValid()) return '-';
-  return fechaParsed.format('DD-MM-YYYY');
-};
+import { formatDateDDMMYYYY } from 'src/utils/handleDates';
 
 const ControlQuincenalDiasPage = () => {
   const router = useRouter();
   const { quincena } = router.query;
+
+  const quincenaParsed = quincena.split('-').reverse().join('-')
 
   const [data, setData] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -27,7 +21,7 @@ const ControlQuincenalDiasPage = () => {
   
   const columns = useMemo(() => [
     { key: 'seleccionar', label: '', sx: { display: 'none' }, onRowClick: (row) => {
-      const fecha = row.fecha ? dayjs(row.fecha).format('DD-MM-YYYY') : null;
+      const fecha = row.fecha ? formatDateDDMMYYYY(row.fecha) : null;
       if (fecha) {
         router.push(`/dhn/controlQuincenal/diario/${fecha}`);
       }
@@ -77,11 +71,11 @@ const ControlQuincenalDiasPage = () => {
   }, []);
 
   const formatters = useMemo(() => ({
-    fecha: (value) => formatearFecha(value)
+    fecha: (value) => formatDateDDMMYYYY(value)
   }), []);
 
   return (
-    <DashboardLayout title={`Control Días - Quincena ${quincena || ''}`}>
+    <DashboardLayout title={`Control Días - Quincena ${quincenaParsed || ''}`}>
       <Container maxWidth="xl">
         <Stack spacing={3}>
           <BackButton onClick={handleVolver} />

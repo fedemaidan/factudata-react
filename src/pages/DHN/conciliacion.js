@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState, useCallback } from "react";
 import Head from "next/head";
-import { Container, Button, Dialog, DialogTitle, DialogContent, DialogActions, TextField, Stack, Box, Typography, IconButton, Paper, alpha } from "@mui/material";
+import { Container, Button, Dialog, DialogTitle, DialogContent, DialogActions, TextField, Stack, Box, Typography, IconButton, Paper, alpha, Snackbar, Alert } from "@mui/material";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
 import ClearIcon from "@mui/icons-material/Clear";
 import { Layout as DashboardLayout } from "src/layouts/dashboard/layout";
@@ -152,6 +152,11 @@ const ConciliacionPage = () => {
   const [addOpen, setAddOpen] = useState(false);
   const [sheetLink, setSheetLink] = useState("");
   const [archivoExcel, setArchivoExcel] = useState(null);
+  const [alert, setAlert] = useState({
+    open: false,
+    message: "",
+    severity: "error",
+  });
 
   const fetchConciliaciones = async () => {
     setIsLoading(true);
@@ -231,13 +236,30 @@ const ConciliacionPage = () => {
       handleCloseAdd();
     } catch (e) {
       console.error("Error creando conciliación", e);
+      setAlert({
+        open: true,
+        message: e.response?.data?.error || "Error al crear la conciliación",
+        severity: "error",
+      });
       setIsLoading(false);
     }
+  };
+
+  const handleCloseAlert = (event, reason) => {
+    if (reason === "clickaway") {
+      return;
+    }
+    setAlert({ ...alert, open: false });
   };
 
   return (
     <DashboardLayout title="Conciliación DHN">
       <Head>Conciliación DHN</Head>
+      <Snackbar anchorOrigin={{ vertical: "top", horizontal: "center" }} open={alert.open} autoHideDuration={6000} onClose={handleCloseAlert}>
+        <Alert onClose={handleCloseAlert} severity={alert.severity} sx={{ width: "100%" }}>
+          {alert.message}
+        </Alert>
+      </Snackbar>
       <Container maxWidth="xl">
         <Stack direction="row" justifyContent="flex-start" mb={1}>
           <Button variant="contained" color="primary" onClick={handleOpenAdd}>
