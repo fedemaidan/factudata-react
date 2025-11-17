@@ -13,6 +13,7 @@ import {
   MenuItem,
   Grid,
   CircularProgress,
+  Link,
 } from "@mui/material";
 import { Autocomplete } from "@mui/material";
 import cuentasPendientesService from "src/services/celulandia/cuentasPendientesService";
@@ -39,6 +40,7 @@ const AgregarEntregaModal = ({ open, onClose, onSaved, clientes = [], tipoDeCamb
   const [isSaving, setIsSaving] = useState(false);
   const [descuentoPorcentaje, setDescuentoPorcentaje] = useState("");
   const [fechaEntrega, setFechaEntrega] = useState("");
+  const [mostrarDescripcion, setMostrarDescripcion] = useState(false);
 
   // Opciones normalizadas para el Autocomplete
   const clienteOptions = useMemo(
@@ -79,6 +81,12 @@ const AgregarEntregaModal = ({ open, onClose, onSaved, clientes = [], tipoDeCamb
   useEffect(() => {
     setClienteInput(formData.cliente || "");
   }, [formData.cliente]);
+
+  useEffect(() => {
+    if ((formData.concepto || "").trim() !== "") {
+      setMostrarDescripcion(true);
+    }
+  }, [formData.concepto]);
 
   // Si el cliente seleccionado tiene descuento, precargar
   useEffect(() => {
@@ -238,6 +246,7 @@ const AgregarEntregaModal = ({ open, onClose, onSaved, clientes = [], tipoDeCamb
   const handleClose = () => {
     setDescuentoPorcentaje("");
     setFechaEntrega("");
+    setMostrarDescripcion(false);
     resetForm();
     onClose();
   };
@@ -288,13 +297,25 @@ const AgregarEntregaModal = ({ open, onClose, onSaved, clientes = [], tipoDeCamb
             </Grid>
 
             <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Descripción"
-                value={formData.concepto || ""}
-                onChange={(e) => handleInputChange("concepto", e.target.value)}
-                margin="normal"
-              />
+              {mostrarDescripcion ? (
+                <TextField
+                  fullWidth
+                  label="Descripción"
+                  value={formData.concepto || ""}
+                  onChange={(e) => handleInputChange("concepto", e.target.value)}
+                  margin="normal"
+                />
+              ) : (
+                <Box sx={{ mt: 3 }}>
+                  <Link
+                    component="button"
+                    variant="body2"
+                    onClick={() => setMostrarDescripcion(true)}
+                  >
+                    Agregar descripción
+                  </Link>
+                </Box>
+              )}
             </Grid>
 
             {/* Fila 2: Fecha de Entrega - Monto */}
