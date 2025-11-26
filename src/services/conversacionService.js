@@ -7,8 +7,8 @@ function getTextFromMessage(message) {
   return '';
 }
 
-export async function fetchConversations() {
-  const response = await api.get('/conversaciones');
+export async function fetchConversations(params = {}) {
+  const response = await api.get('/conversaciones', { params });
   return response.data;
 }
 
@@ -31,16 +31,15 @@ export async function sendMessage({ conversationId, text }) {
 }
 
 export async function searchConversations(query) {
-  await artificialDelay(150);
-  const q = (query || '').toLowerCase();
-  if (!q) return fetchConversations();
-  return mockConversations.filter((c) => {
-    return (
-      c.displayName.toLowerCase().includes(q) ||
-      c.userId.toLowerCase().includes(q) ||
-      (c.lastMessage || '').toLowerCase().includes(q)
-    );
+  return fetchConversations({ search: query });
+}
+
+export async function downloadConversation(id, fechaInicio, fechaFin) {
+  const response = await api.get(`/conversaciones/${id}/download`, {
+    params: { fechaInicio, fechaFin },
+    responseType: 'blob'
   });
+  return response;
 }
 
 export function getMessagePreview(message) {

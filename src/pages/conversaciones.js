@@ -1,7 +1,22 @@
 import { useEffect, useMemo, useState } from "react";
 import { Layout as DashboardLayout } from "src/layouts/dashboard/layout";
 import Head from "next/head";
-import { Box, Divider, Drawer, useMediaQuery, useTheme } from "@mui/material";
+import { 
+  Box, 
+  Divider, 
+  Drawer, 
+  useMediaQuery, 
+  useTheme,
+  IconButton,
+  Typography,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  Button
+} from "@mui/material";
+import DownloadIcon from '@mui/icons-material/Download';
 import ConversationList from "src/components/conversaciones/ConversationList";
 import ChatWindow from "src/components/conversaciones/ChatWindow";
 import MessageInput from "src/components/conversaciones/MessageInput";
@@ -12,6 +27,7 @@ import {
   sendMessage,
   getConversationTitle,
   searchConversations,
+  downloadConversation
 } from "src/services/conversacionService";
 
 export default function ConversacionesPage() {
@@ -26,6 +42,10 @@ export default function ConversacionesPage() {
   const [total, setTotal] = useState(0);
   const [hasMore, setHasMore] = useState(false);
   const [scrollToBottom, setScrollToBottom] = useState(true);
+  
+  const [downloadOpen, setDownloadOpen] = useState(false);
+  const [downloadDates, setDownloadDates] = useState({ start: '', end: '' });
+
   const PAGE = 50;
 
   const theme = useTheme();
@@ -110,6 +130,23 @@ export default function ConversacionesPage() {
     setConversations(await searchConversations(q));
   };
 
+  const handleDownload = async () => {
+    if (!selected || !downloadDates.start || !downloadDates.end) return;
+    try {
+        const response = await downloadConversation(selected.ultimoMensaje.id_conversacion, downloadDates.start, downloadDates.end);
+        const url = window.URL.createObjectURL(new Blob([response.data]));
+        const link = document.createElement('a');
+        link.href = url;
+        link.setAttribute('download', `conversacion_${downloadDates.start}_${downloadDates.end}.txt`);
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setDownloadOpen(false);
+    } catch (e) {
+        console.error(e);
+    }
+  };
+
   const nombreCliente = (c) => {
     return ((c.profile && c.empresa)
         ? `${c.profile.firstName} ${c.profile.lastName} - (${c.empresa.nombre}) ${c.profile.phone.slice(-4)}`
@@ -153,6 +190,12 @@ export default function ConversacionesPage() {
         <Box flex={1} display="flex" flexDirection="column" minHeight={0}>
           {selected ? (
             <>
+              <Box p={2} display="flex" justifyContent="space-between" alignItems="center" borderBottom="1px solid" borderColor="divider">
+                  <Typography variant="h6">{getTitulo}</Typography>
+                  <IconButton onClick={() => setDownloadOpen(true)} title="Descargar conversación">
+                      <DownloadIcon />
+                  </IconButton>
+              </Box>
               <ChatWindow
                 messages={messages}
                 myNumber={myNumber}
@@ -189,6 +232,36 @@ export default function ConversacionesPage() {
           </Box>
         </Drawer>
       ) : null}
+
+      <Dialog open={downloadOpen} onClose={() => setDownloadOpen(false)}>
+        <DialogTitle>Descargar Conversación</DialogTitle>
+        <DialogContent>
+          <Box display="flex" flexDirection="column" gap={2} mt={1}>
+            <TextField
+              label="Fecha Inicio"
+              type="datetime-local"
+              InputLabelProps={{ shrink: true }}
+              value={downloadDates.start}
+              onChange={(e) => setDownloadDates({ ...downloadDates, start: e.target.value })}
+              fullWidth
+            />
+            <TextField
+              label="Fecha Fin"
+              type="datetime-local"
+              InputLabelProps={{ shrink: true }}
+              value={downloadDates.end}
+              onChange={(e) => setDownloadDates({ ...downloadDates, end: e.target.value })}
+              fullWidth
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDownloadOpen(false)}>Cancelar</Button>
+          <Button onClick={handleDownload} variant="contained" disabled={!downloadDates.start || !downloadDates.end}>
+            Descargar
+          </Button>
+        </DialogActions>
+      </Dialog>
     </DashboardLayout>
   );
 }
