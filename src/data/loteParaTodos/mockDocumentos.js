@@ -10,7 +10,8 @@ export const TIPO_DOCUMENTO = {
   REGLAMENTO: 'reglamento',
   REFINANCIACION: 'refinanciacion',
   ACTA_ENTREGA: 'acta_entrega',
-  COMPROBANTE_PAGO: 'comprobante_pago'
+  COMPROBANTE_PAGO: 'comprobante_pago',
+  RESERVA: 'reserva'
 };
 
 export const TIPO_DOCUMENTO_LABELS = {
@@ -23,7 +24,8 @@ export const TIPO_DOCUMENTO_LABELS = {
   [TIPO_DOCUMENTO.REGLAMENTO]: 'Reglamento del Emprendimiento',
   [TIPO_DOCUMENTO.REFINANCIACION]: 'Convenio de Refinanciación',
   [TIPO_DOCUMENTO.ACTA_ENTREGA]: 'Acta de Entrega',
-  [TIPO_DOCUMENTO.COMPROBANTE_PAGO]: 'Comprobante de Pago'
+  [TIPO_DOCUMENTO.COMPROBANTE_PAGO]: 'Comprobante de Pago',
+  [TIPO_DOCUMENTO.RESERVA]: 'Reserva'
 };
 
 export const ESTADO_DOCUMENTO = {
@@ -260,9 +262,52 @@ export const mockDocumentos = [
   }
 ];
 
+export const mockPlantillas = [
+  {
+    id: 1,
+    emprendimiento_id: 1,
+    tipo_documento: TIPO_DOCUMENTO.BOLETO,
+    nombre: 'Plantilla Boleto Estándar 2025',
+    descripcion: 'Modelo de boleto para ventas en cuotas',
+    archivo: 'plantilla_boleto_v2.docx',
+    fecha_subida: '2025-01-10',
+    usuario_subida: 'admin',
+    version: 2,
+    variables: ['cliente.nombre', 'cliente.dni', 'lote.numero', 'lote.superficie', 'contrato.precio_total']
+  },
+  {
+    id: 2,
+    emprendimiento_id: 1,
+    tipo_documento: TIPO_DOCUMENTO.RESERVA,
+    nombre: 'Formulario de Reserva',
+    descripcion: 'Documento para formalizar la reserva',
+    archivo: 'plantilla_reserva_v1.docx',
+    fecha_subida: '2024-12-01',
+    usuario_subida: 'admin',
+    version: 1,
+    variables: ['cliente.nombre', 'lote.numero', 'reserva.monto']
+  },
+  {
+    id: 3,
+    emprendimiento_id: 2,
+    tipo_documento: TIPO_DOCUMENTO.BOLETO,
+    nombre: 'Boleto Aires del Sur',
+    descripcion: 'Boleto específico para Aires del Sur',
+    archivo: 'boleto_aires_v1.docx',
+    fecha_subida: '2024-11-15',
+    usuario_subida: 'juan.perez',
+    version: 1,
+    variables: ['cliente.nombre', 'lote.numero', 'contrato.precio_total']
+  }
+];
+
 // Funciones auxiliares para consultar documentos
+export const getPlantillasByEmprendimiento = (emprendimientoId) => {
+  return mockPlantillas.filter(p => p.emprendimiento_id === emprendimientoId);
+};
+
 export const getDocumentosByContrato = (contratoId) => {
-  return mockDocumentos.filter(doc => doc.contrato_id === contratoId);
+  return mockDocumentos.filter(d => d.contrato_id === contratoId);
 };
 
 export const getDocumentosByCliente = (clienteId) => {

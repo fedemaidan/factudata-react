@@ -177,7 +177,7 @@ export default function LoteParaTodosDashboard() {
             subtitle="Contratos con pagos vencidos"
             icon={WarningIcon}
             color="error"
-            onClick={() => router.push('/loteParaTodosMock/contratos?filtro=mora')}
+            onClick={() => router.push('/loteParaTodosMock/clientes?estado=mora')}
           />
         </Grid>
         <Grid item xs={12} sm={6} lg={3}>

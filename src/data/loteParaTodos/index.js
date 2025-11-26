@@ -16,6 +16,7 @@ import {
 } from './mockEmprendimientos.js';
 import { mockLotes, getLotesByEmprendimiento, getLotesByEstado, getLoteCompleto } from './mockLotes.js';
 import { mockPlanes, getPlanesActivos, calcularFinanciacion } from './mockPlanes.js';
+import { mockCuentas, mockMovimientos, CATEGORIAS_MOVIMIENTOS, mockExtractoBancario } from './mockFinanzas.js';
 
 // Función principal que combina datos del cliente con sus contratos
 export const getClienteCompleto = (clienteId) => {
@@ -75,6 +76,9 @@ export {
   mockEmprendimientos,
   mockLotes,
   mockPlanes,
+  mockCuentas,
+  mockMovimientos,
+  mockExtractoBancario,
   
   // Funciones de clientes
   getClienteById,
@@ -104,7 +108,10 @@ export {
   
   // Funciones de planes
   getPlanesActivos,
-  calcularFinanciacion
+  calcularFinanciacion,
+  
+  // Constantes y funciones de finanzas
+  CATEGORIAS_MOVIMIENTOS
 };
 
 // Exportar también las nuevas constantes y funciones de lotes

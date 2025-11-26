@@ -19,13 +19,17 @@ import {
 import { 
   Home as HomeIcon,
   Person as PersonIcon,
-  Assignment as AssignmentIcon,
-  Landscape as LandscapeIcon,
   Business as BusinessIcon,
   Settings as SettingsIcon,
   People as PeopleIcon,
   Security as SecurityIcon,
-  ArrowDropDown as ArrowDropDownIcon
+  ArrowDropDown as ArrowDropDownIcon,
+  MonetizationOn as SalesIcon,
+  Assignment as AssignmentIcon,
+  AccountBalance as BankIcon,
+  Receipt as ReceiptIcon,
+  CheckCircle as CheckCircleIcon,
+  TrendingUp as TrendingUpIcon
 } from '@mui/icons-material';
 import { useRouter } from 'next/router';
 import NextLink from 'next/link';
@@ -37,29 +41,23 @@ const moduleConfig = {
     path: '/loteParaTodosMock/dashboard',
     description: 'Resumen general y métricas principales'
   },
-  emprendimientos: {
-    title: 'Emprendimientos',
-    icon: BusinessIcon,
-    path: '/loteParaTodosMock/emprendimientos',
-    description: 'Configuración y administración de emprendimientos'
-  },
-  lotes: {
-    title: 'Lotes',
-    icon: LandscapeIcon,
-    path: '/loteParaTodosMock/lotes',
-    description: 'Gestión operativa de lotes'
+  ventas: {
+    title: 'Ventas',
+    icon: SalesIcon,
+    path: '/loteParaTodosMock/ventas',
+    description: 'Catálogo y gestión de reservas'
   },
   clientes: {
-    title: 'Clientes',
+    title: 'Clientes & Contratos',
     icon: PersonIcon,
     path: '/loteParaTodosMock/clientes',
     description: 'Gestión de clientes y prospectos'
   },
-  contratos: {
-    title: 'Contratos',
-    icon: AssignmentIcon,
-    path: '/loteParaTodosMock/contratos',
-    description: 'Administración de contratos y pagos'
+  tesoreria: {
+    title: 'Tesorería',
+    icon: BankIcon,
+    path: '/loteParaTodosMock/tesoreria',
+    description: 'Cajas, bancos y movimientos'
   },
   configuracion: {
     title: 'Configuración',
@@ -78,16 +76,19 @@ const moduleConfig = {
 const LoteParaTodosLayout = ({ children, currentModule, pageTitle }) => {
   const router = useRouter();
   const [configMenuAnchor, setConfigMenuAnchor] = React.useState(null);
+  const [ventasMenuAnchor, setVentasMenuAnchor] = React.useState(null);
+  const [tesoreriaMenuAnchor, setTesoreriaMenuAnchor] = React.useState(null);
 
   const getCurrentModule = () => {
     if (currentModule) return currentModule;
     
     const path = router.pathname;
     if (path.includes('/dashboard')) return 'dashboard';
-    if (path.includes('/clientes')) return 'clientes';
-    if (path.includes('/contratos')) return 'contratos';
-    if (path.includes('/lotes')) return 'lotes';
-    if (path.includes('/usuarios') || path.includes('/configurador-roles') || path.includes('/emprendimientos')) return 'configuracion';
+    if (path.includes('/ventas')) return 'ventas';
+    if (path.includes('/clientes') || path.includes('/contratos')) return 'clientes';
+    if (path.includes('/tesoreria')) return 'tesoreria';
+    if (path.includes('/emprendimientos')) return 'emprendimientos';
+    if (path.includes('/usuarios') || path.includes('/configurador-roles')) return 'configuracion';
     return 'dashboard'; // default
   };
 
@@ -102,6 +103,32 @@ const LoteParaTodosLayout = ({ children, currentModule, pageTitle }) => {
   const handleConfigMenuItemClick = (path) => {
     router.push(path);
     handleConfigMenuClose();
+  };
+
+  const handleVentasMenuOpen = (event) => {
+    setVentasMenuAnchor(event.currentTarget);
+  };
+
+  const handleVentasMenuClose = () => {
+    setVentasMenuAnchor(null);
+  };
+
+  const handleVentasMenuItemClick = (path) => {
+    router.push(path);
+    handleVentasMenuClose();
+  };
+
+  const handleTesoreriaMenuOpen = (event) => {
+    setTesoreriaMenuAnchor(event.currentTarget);
+  };
+
+  const handleTesoreriaMenuClose = () => {
+    setTesoreriaMenuAnchor(null);
+  };
+
+  const handleTesoreriaMenuItemClick = (path) => {
+    router.push(path);
+    handleTesoreriaMenuClose();
   };
 
   const activeModule = getCurrentModule();
@@ -128,8 +155,8 @@ const LoteParaTodosLayout = ({ children, currentModule, pageTitle }) => {
             {/* Module Navigation */}
             <Box sx={{ display: 'flex', gap: 1 }}>
               {Object.entries(moduleConfig).map(([key, config]) => {
-                // Skip configuracion, usuarios, and emprendimientos from direct nav
-                if (key === 'configuracion' || key === 'usuarios' || key === 'emprendimientos') return null;
+                // Skip configuracion, usuarios, emprendimientos AND ventas from direct nav
+                if (key === 'configuracion' || key === 'usuarios' || key === 'emprendimientos' || key === 'ventas' || key === 'tesoreria') return null;
                 
                 const isActive = key === activeModule;
                 const ModuleIcon = config.icon;
@@ -155,6 +182,44 @@ const LoteParaTodosLayout = ({ children, currentModule, pageTitle }) => {
                   </Button>
                 );
               })}
+
+              {/* Ventas Dropdown Menu */}
+              <Button
+                onClick={handleVentasMenuOpen}
+                variant={activeModule === 'ventas' ? "contained" : "outlined"}
+                startIcon={<SalesIcon />}
+                endIcon={<ArrowDropDownIcon />}
+                sx={{
+                  color: activeModule === 'ventas' ? 'white' : 'rgba(255,255,255,0.8)',
+                  borderColor: activeModule === 'ventas' ? 'white' : 'rgba(255,255,255,0.3)',
+                  backgroundColor: activeModule === 'ventas' ? 'rgba(255,255,255,0.2)' : 'transparent',
+                  '&:hover': {
+                    backgroundColor: 'rgba(255,255,255,0.1)',
+                    borderColor: 'white'
+                  }
+                }}
+              >
+                Ventas
+              </Button>
+
+              {/* Tesorería Dropdown Menu */}
+              <Button
+                onClick={handleTesoreriaMenuOpen}
+                variant={activeModule === 'tesoreria' ? "contained" : "outlined"}
+                startIcon={<BankIcon />}
+                endIcon={<ArrowDropDownIcon />}
+                sx={{
+                  color: activeModule === 'tesoreria' ? 'white' : 'rgba(255,255,255,0.8)',
+                  borderColor: activeModule === 'tesoreria' ? 'white' : 'rgba(255,255,255,0.3)',
+                  backgroundColor: activeModule === 'tesoreria' ? 'rgba(255,255,255,0.2)' : 'transparent',
+                  '&:hover': {
+                    backgroundColor: 'rgba(255,255,255,0.1)',
+                    borderColor: 'white'
+                  }
+                }}
+              >
+                Tesorería
+              </Button>
               
               {/* Configuración Dropdown Menu */}
               <Button
@@ -297,26 +362,176 @@ const LoteParaTodosLayout = ({ children, currentModule, pageTitle }) => {
               Roles y Permisos
             </Typography>
             <Typography variant="caption" color="text.secondary">
-              Configuración de roles y permisos
+              Configuración de accesos
+            </Typography>
+          </ListItemText>
+        </MenuItem>
+
+        <Divider />
+
+        <MenuItem 
+          onClick={() => handleConfigMenuItemClick('/loteParaTodosMock/configuracion')}
+          sx={{ py: 1.5 }}
+        >
+          <ListItemIcon>
+            <SettingsIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>
+            <Typography variant="body2" sx={{ fontWeight: 500 }}>
+              Configuración del Sistema
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              Plantillas y parámetros generales
+            </Typography>
+          </ListItemText>
+        </MenuItem>
+      </Menu>
+
+      {/* Menu de Ventas */}
+      <Menu
+        anchorEl={ventasMenuAnchor}
+        open={Boolean(ventasMenuAnchor)}
+        onClose={handleVentasMenuClose}
+        PaperProps={{
+          sx: {
+            borderRadius: 2,
+            minWidth: 200,
+            boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
+            mt: 1
+          }
+        }}
+        anchorOrigin={{
+          vertical: 'bottom',
+          horizontal: 'left',
+        }}
+        transformOrigin={{
+          vertical: 'top',
+          horizontal: 'left',
+        }}
+      >
+        <MenuItem 
+          onClick={() => handleVentasMenuItemClick('/loteParaTodosMock/ventas')}
+          sx={{ py: 1.5 }}
+        >
+          <ListItemIcon>
+            <AssignmentIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>
+            <Typography variant="body2" sx={{ fontWeight: 500 }}>
+              Catálogo de Lotes
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              Ver disponibilidad y precios
             </Typography>
           </ListItemText>
         </MenuItem>
         
-        <Divider sx={{ my: 1 }} />
-        
         <MenuItem 
-          onClick={() => handleConfigMenuItemClick('/loteParaTodosMock/emprendimientos')}
+          onClick={() => handleVentasMenuItemClick('/loteParaTodosMock/ventas/contratos')}
           sx={{ py: 1.5 }}
         >
           <ListItemIcon>
-            <BusinessIcon fontSize="small" />
+            <SalesIcon fontSize="small" />
           </ListItemIcon>
           <ListItemText>
             <Typography variant="body2" sx={{ fontWeight: 500 }}>
-              Emprendimientos
+              Gestión de Reservas
             </Typography>
             <Typography variant="caption" color="text.secondary">
-              Configuración de emprendimientos
+              Administrar señas y contratos
+            </Typography>
+          </ListItemText>
+        </MenuItem>
+      </Menu>
+
+      {/* Menu de Tesorería */}
+      <Menu
+        anchorEl={tesoreriaMenuAnchor}
+        open={Boolean(tesoreriaMenuAnchor)}
+        onClose={handleTesoreriaMenuClose}
+        PaperProps={{
+          sx: {
+            borderRadius: 2,
+            minWidth: 240,
+            boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
+            mt: 1
+          }
+        }}
+        anchorOrigin={{
+          vertical: 'bottom',
+          horizontal: 'left',
+        }}
+        transformOrigin={{
+          vertical: 'top',
+          horizontal: 'left',
+        }}
+      >
+        <MenuItem 
+          onClick={() => handleTesoreriaMenuItemClick('/loteParaTodosMock/tesoreria')}
+          sx={{ py: 1.5 }}
+        >
+          <ListItemIcon>
+            <BankIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>
+            <Typography variant="body2" sx={{ fontWeight: 500 }}>
+              Cajas y Bancos
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              Saldos y movimientos generales
+            </Typography>
+          </ListItemText>
+        </MenuItem>
+
+        <Divider />
+
+        <MenuItem 
+          onClick={() => handleTesoreriaMenuItemClick('/loteParaTodosMock/tesoreria')}
+          sx={{ py: 1.5 }}
+        >
+          <ListItemIcon>
+            <ReceiptIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>
+            <Typography variant="body2" sx={{ fontWeight: 500 }}>
+              Movimientos Admin.
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              Gastos e ingresos varios
+            </Typography>
+          </ListItemText>
+        </MenuItem>
+
+        <MenuItem 
+          onClick={() => handleTesoreriaMenuItemClick('/loteParaTodosMock/tesoreria/conciliacion')}
+          sx={{ py: 1.5 }}
+        >
+          <ListItemIcon>
+            <CheckCircleIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>
+            <Typography variant="body2" sx={{ fontWeight: 500 }}>
+              Conciliación Bancaria
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              Control de extractos
+            </Typography>
+          </ListItemText>
+        </MenuItem>
+
+        <MenuItem 
+          onClick={() => handleTesoreriaMenuItemClick('/loteParaTodosMock/tesoreria/cashflow')}
+          sx={{ py: 1.5 }}
+        >
+          <ListItemIcon>
+            <TrendingUpIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>
+            <Typography variant="body2" sx={{ fontWeight: 500 }}>
+              Proyecciones & Cash Flow
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              Flujo de fondos futuro
             </Typography>
           </ListItemText>
         </MenuItem>

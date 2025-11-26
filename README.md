@@ -7,3 +7,8 @@ npm run dev
 npm run build
 npm run export
 firebase deploy
+
+## Documentación interna
+
+- [Pago entre cajas](./PAGO_ENTRE_CAJAS_DOCUMENTATION.md)
+- [Clientes & Contratos](./CLIENTES_CONTRATOS_DOCUMENTATION.md)

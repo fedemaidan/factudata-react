@@ -73,29 +73,35 @@ export const SITUACION_FISICA_COLORS = {
 
 // Estados de contrato
 export const ESTADO_CONTRATO = {
+  PRE_RESERVA: 'pre_reserva',
+  RESERVA: 'reserva',
   ACTIVO: 'activo',
-  EN_MORA: 'en_mora',
-  EN_LEGALES: 'en_legales',
-  BLOQUEADO: 'bloqueado',
+  MORA: 'mora',
+  LEGALES: 'legales',
   RESCINDIDO: 'rescindido',
-  FINALIZADO: 'finalizado'
+  CANCELADO: 'cancelado',
+  FINALIZADO: 'finalizado' // Mantenemos por compatibilidad si se usa
 };
 
 export const ESTADO_CONTRATO_LABELS = {
+  [ESTADO_CONTRATO.PRE_RESERVA]: 'Pre-reserva',
+  [ESTADO_CONTRATO.RESERVA]: 'Reserva',
   [ESTADO_CONTRATO.ACTIVO]: 'Activo',
-  [ESTADO_CONTRATO.EN_MORA]: 'En Mora',
-  [ESTADO_CONTRATO.EN_LEGALES]: 'En Legales',
-  [ESTADO_CONTRATO.BLOQUEADO]: 'Bloqueado',
+  [ESTADO_CONTRATO.MORA]: 'Mora',
+  [ESTADO_CONTRATO.LEGALES]: 'Legales',
   [ESTADO_CONTRATO.RESCINDIDO]: 'Rescindido',
+  [ESTADO_CONTRATO.CANCELADO]: 'Cancelado',
   [ESTADO_CONTRATO.FINALIZADO]: 'Finalizado'
 };
 
 export const ESTADO_CONTRATO_COLORS = {
+  [ESTADO_CONTRATO.PRE_RESERVA]: 'info',
+  [ESTADO_CONTRATO.RESERVA]: 'warning',
   [ESTADO_CONTRATO.ACTIVO]: 'success',
-  [ESTADO_CONTRATO.EN_MORA]: 'warning',
-  [ESTADO_CONTRATO.EN_LEGALES]: 'error',
-  [ESTADO_CONTRATO.BLOQUEADO]: 'error',
+  [ESTADO_CONTRATO.MORA]: 'error',
+  [ESTADO_CONTRATO.LEGALES]: 'error',
   [ESTADO_CONTRATO.RESCINDIDO]: 'default',
+  [ESTADO_CONTRATO.CANCELADO]: 'default',
   [ESTADO_CONTRATO.FINALIZADO]: 'primary'
 };
 

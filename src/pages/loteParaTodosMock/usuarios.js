@@ -42,6 +42,27 @@ import {
 } from '@mui/icons-material';
 import LoteParaTodosLayout from 'src/components/layouts/LoteParaTodosLayout';
 
+const emprendimientosCatalogo = [
+  { id: 'CR1', label: 'CR1 - Cerro Rico I' },
+  { id: 'CR2', label: 'CR2 - Cerro Rico II' },
+  { id: 'CR3', label: 'CR3 - Cerro Rico III' },
+  { id: 'CR4', label: 'CR4 - Cerro Rico IV' },
+  { id: 'CR5', label: 'CR5 - Cerro Rico V' },
+  { id: 'PC', label: 'PC - Parque Central' },
+  { id: 'EP', label: 'EP - El Portal' },
+  { id: 'VM', label: 'VM - Vaca Muerta' }
+];
+
+const reportesCatalogo = {
+  'reporte-mora': 'Reporte de Mora',
+  'reporte-caja': 'Reporte de Caja y Tesorería',
+  'reporte-ventas': 'Reporte Comercial / Ventas',
+  'reporte-lotes': 'Reporte de Lotes y Masterplan'
+};
+
+const getReporteLabel = (id) => reportesCatalogo[id] || id;
+const getEmprendimientoLabel = (id) => emprendimientosCatalogo.find((item) => item.id === id)?.label || id;
+
 // Mock data para usuarios
 const mockUsuarios = [
   {
@@ -49,7 +70,10 @@ const mockUsuarios = [
     nombre: 'Juan Pérez',
     email: 'juan.perez@example.com',
     rol: 'Administrador',
-    emprendimientos: ['Las Flores', 'Villa Nueva'],
+    emprendimientos: ['CR1', 'CR2'],
+    gremios: ['UOM'],
+    lotesEspeciales: ['CR1-045'],
+    reportes: ['reporte-mora', 'reporte-caja', 'reporte-lotes'],
     avatar: null,
     estado: 'Activo',
     ultimoAcceso: '2024-11-13T10:30:00Z'
@@ -59,7 +83,10 @@ const mockUsuarios = [
     nombre: 'María González',
     email: 'maria.gonzalez@example.com',
     rol: 'Supervisor',
-    emprendimientos: ['Las Flores'],
+    emprendimientos: ['CR1'],
+    gremios: ['Comercio', 'Docentes'],
+    lotesEspeciales: ['CR2-120'],
+    reportes: ['reporte-mora', 'reporte-ventas'],
     avatar: null,
     estado: 'Activo',
     ultimoAcceso: '2024-11-13T09:15:00Z'
@@ -69,7 +96,10 @@ const mockUsuarios = [
     nombre: 'Carlos Rodríguez',
     email: 'carlos.rodriguez@example.com',
     rol: 'Vendedor',
-    emprendimientos: ['Villa Nueva', 'El Mirador'],
+    emprendimientos: ['CR3', 'EP'],
+    gremios: ['UOM', 'Comercio'],
+    lotesEspeciales: [],
+    reportes: ['reporte-ventas'],
     avatar: null,
     estado: 'Activo',
     ultimoAcceso: '2024-11-12T16:45:00Z'
@@ -79,7 +109,10 @@ const mockUsuarios = [
     nombre: 'Ana López',
     email: 'ana.lopez@example.com',
     rol: 'Vendedor',
-    emprendimientos: ['Las Flores'],
+    emprendimientos: ['CR1'],
+    gremios: ['Docentes'],
+    lotesEspeciales: [],
+    reportes: [],
     avatar: null,
     estado: 'Inactivo',
     ultimoAcceso: '2024-11-10T14:20:00Z'
@@ -89,19 +122,17 @@ const mockUsuarios = [
     nombre: 'Diego Martínez',
     email: 'diego.martinez@example.com',
     rol: 'Supervisor',
-    emprendimientos: ['El Mirador', 'Costa Azul'],
+    emprendimientos: ['CR4', 'VM'],
+    gremios: ['Bancarios'],
+    lotesEspeciales: ['VM-301'],
+    reportes: ['reporte-caja', 'reporte-lotes'],
     avatar: null,
     estado: 'Activo',
     ultimoAcceso: '2024-11-13T08:00:00Z'
   }
 ];
 
-const mockEmprendimientos = [
-  'Las Flores',
-  'Villa Nueva', 
-  'El Mirador',
-  'Costa Azul'
-];
+const mockEmprendimientos = emprendimientosCatalogo;
 
 const mockRoles = [
   'Administrador',
@@ -289,8 +320,8 @@ const UsuariosPage = () => {
                       >
                         <MenuItem value="">Todos los emprendimientos</MenuItem>
                         {mockEmprendimientos.map((emprendimiento) => (
-                          <MenuItem key={emprendimiento} value={emprendimiento}>
-                            {emprendimiento}
+                          <MenuItem key={emprendimiento.id} value={emprendimiento.id}>
+                            {emprendimiento.label}
                           </MenuItem>
                         ))}
                       </Select>
@@ -343,6 +374,12 @@ const UsuariosPage = () => {
                     </TableCell>
                     <TableCell sx={{ fontWeight: 600, color: 'text.primary' }}>
                       Emprendimientos asignados
+                    </TableCell>
+                    <TableCell sx={{ fontWeight: 600, color: 'text.primary' }}>
+                      Gremios asignados
+                    </TableCell>
+                    <TableCell sx={{ fontWeight: 600, color: 'text.primary' }}>
+                      Reportes habilitados
                     </TableCell>
                     <TableCell sx={{ fontWeight: 600, color: 'text.primary', textAlign: 'center' }}>
                       Acciones
@@ -421,7 +458,7 @@ const UsuariosPage = () => {
                             {usuario.emprendimientos.map((emprendimiento, index) => (
                               <Chip
                                 key={index}
-                                label={emprendimiento}
+                                label={getEmprendimientoLabel(emprendimiento)}
                                 size="small"
                                 variant="outlined"
                                 sx={{
@@ -435,6 +472,78 @@ const UsuariosPage = () => {
                               />
                             ))}
                           </Stack>
+                          {usuario.lotesEspeciales?.length > 0 && (
+                            <Stack direction="row" spacing={0.5} flexWrap="wrap" sx={{ mt: 1 }}>
+                              {usuario.lotesEspeciales.map((lote) => (
+                                <Chip
+                                  key={lote}
+                                  label={`Lote ${lote}`}
+                                  size="small"
+                                  color="secondary"
+                                  variant="outlined"
+                                  sx={{
+                                    fontSize: '0.7rem',
+                                    height: 22,
+                                    borderRadius: 1.5,
+                                  }}
+                                />
+                              ))}
+                            </Stack>
+                          )}
+                        </TableCell>
+
+                        <TableCell>
+                          {usuario.gremios?.length ? (
+                            <Stack direction="row" spacing={0.5} flexWrap="wrap">
+                              {usuario.gremios.map((gremio) => (
+                                <Chip
+                                  key={gremio}
+                                  label={gremio}
+                                  size="small"
+                                  variant="outlined"
+                                  sx={{
+                                    fontSize: '0.75rem',
+                                    height: 24,
+                                    borderRadius: 1.5,
+                                    mb: 0.5
+                                  }}
+                                />
+                              ))}
+                            </Stack>
+                          ) : (
+                            <Typography variant="body2" color="text.secondary">
+                              Sin gremios
+                            </Typography>
+                          )}
+                        </TableCell>
+
+                        <TableCell>
+                          {usuario.reportes?.length ? (
+                            <Stack direction="row" spacing={0.5} flexWrap="wrap">
+                              {usuario.reportes.map((reporte) => (
+                                <Chip
+                                  key={reporte}
+                                  label={getReporteLabel(reporte)}
+                                  size="small"
+                                  color="secondary"
+                                  variant="outlined"
+                                  sx={{
+                                    fontSize: '0.7rem',
+                                    height: 22,
+                                    borderRadius: 1.5,
+                                    mb: 0.5
+                                  }}
+                                />
+                              ))}
+                            </Stack>
+                          ) : (
+                            <Chip
+                              label="Sin reportes"
+                              size="small"
+                              variant="outlined"
+                              sx={{ fontSize: '0.7rem', height: 22 }}
+                            />
+                          )}
                         </TableCell>
                         
                         <TableCell align="center">

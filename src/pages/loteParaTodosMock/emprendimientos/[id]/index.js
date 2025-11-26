@@ -21,7 +21,11 @@ import {
   Schedule as ScheduleIcon,
   Home as HomeIcon,
   People as PeopleIcon,
-  AttachMoney as MoneyIcon
+  AttachMoney as MoneyIcon,
+  Description as DescriptionIcon,
+  CloudUpload as CloudUploadIcon,
+  Download as DownloadIcon,
+  PlayArrow as PlayArrowIcon
 } from '@mui/icons-material';
 
 import LoteParaTodosLayout from '../../../../components/layouts/LoteParaTodosLayout';
@@ -34,6 +38,10 @@ import {
 } from '../../../../data/loteParaTodos/mockEmprendimientos';
 import { mockLotes, getEstadisticasLotes } from '../../../../data/loteParaTodos/mockLotes';
 import { mockContratos, getEstadisticasContratos } from '../../../../data/loteParaTodos/mockContratos';
+import { 
+  getPlantillasByEmprendimiento, 
+  TIPO_DOCUMENTO_LABELS 
+} from '../../../../data/loteParaTodos/mockDocumentos';
 
 function TabPanel({ children, value, index, ...other }) {
   return (
@@ -63,6 +71,11 @@ const EmprendimientoDetalle = () => {
     if (!id) return null;
     return getEmprendimientoById(parseInt(id));
   }, [id]);
+
+  const plantillas = useMemo(() => {
+    if (!emprendimiento) return [];
+    return getPlantillasByEmprendimiento(emprendimiento.id);
+  }, [emprendimiento]);
   
   // Datos relacionados (zonas eliminadas del modelo)
   
@@ -175,6 +188,14 @@ const EmprendimientoDetalle = () => {
               label={ESTADO_EMPRENDIMIENTO_LABELS[emprendimiento.estado]}
               color={ESTADO_EMPRENDIMIENTO_COLORS[emprendimiento.estado]}
             />
+            <Button
+              variant="contained"
+              color="secondary"
+              startIcon={<AssessmentIcon />}
+              onClick={() => router.push(`/loteParaTodosMock/emprendimientos/${id}/masterplan`)}
+            >
+              Masterplan & Lotes
+            </Button>
             <Button
               variant="outlined"
               startIcon={<EditIcon />}
@@ -313,6 +334,7 @@ const EmprendimientoDetalle = () => {
             <Tab label="Lotes y Estadísticas" />
             <Tab label="Dashboard Comercial" />
             <Tab label="Configuración" />
+            <Tab label="Plantillas (DOC1)" />
           </Tabs>
         </Box>
 
@@ -625,6 +647,69 @@ const EmprendimientoDetalle = () => {
               </Button>
             </Grid>
           </Grid>
+        </TabPanel>
+
+        {/* Tab 5: Plantillas (DOC1) */}
+        <TabPanel value={tabActivo} index={4}>
+          <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Typography variant="h6">Biblioteca de Plantillas</Typography>
+            <Button variant="contained" startIcon={<CloudUploadIcon />}>
+              Subir Plantilla
+            </Button>
+          </Box>
+          
+          <TableContainer component={Paper} variant="outlined">
+            <Table>
+              <TableHead>
+                <TableRow>
+                  <TableCell>Nombre</TableCell>
+                  <TableCell>Tipo</TableCell>
+                  <TableCell>Versión</TableCell>
+                  <TableCell>Fecha Subida</TableCell>
+                  <TableCell>Usuario</TableCell>
+                  <TableCell align="center">Acciones</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {plantillas.length > 0 ? (
+                  plantillas.map((plantilla) => (
+                    <TableRow key={plantilla.id}>
+                      <TableCell>
+                        <Typography variant="subtitle2">{plantilla.nombre}</Typography>
+                        <Typography variant="caption" color="text.secondary">{plantilla.descripcion}</Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Chip label={TIPO_DOCUMENTO_LABELS[plantilla.tipo_documento]} size="small" />
+                      </TableCell>
+                      <TableCell>v{plantilla.version}</TableCell>
+                      <TableCell>{plantilla.fecha_subida}</TableCell>
+                      <TableCell>{plantilla.usuario_subida}</TableCell>
+                      <TableCell align="center">
+                        <Tooltip title="Descargar">
+                          <IconButton size="small">
+                            <DownloadIcon />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Probar Generación">
+                          <IconButton size="small" color="primary">
+                            <PlayArrowIcon />
+                          </IconButton>
+                        </Tooltip>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                ) : (
+                  <TableRow>
+                    <TableCell colSpan={6} align="center">
+                      <Typography variant="body2" sx={{ py: 3 }}>
+                        No hay plantillas cargadas para este emprendimiento.
+                      </Typography>
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </TableContainer>
         </TabPanel>
       </Card>
     </LoteParaTodosLayout>

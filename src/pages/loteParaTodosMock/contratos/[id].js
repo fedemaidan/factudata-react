@@ -3,11 +3,11 @@ import React, { useState, useMemo } from 'react';
 import { useRouter } from 'next/router';
 import {
   Container, Typography, Box, Grid, Card, CardContent, 
-  Tabs, Tab, Button, Chip, Paper, Divider,
+  Tabs, Tab, Button, Chip, Paper, Divider, Stack,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   Alert, LinearProgress, Dialog, DialogTitle, DialogContent, DialogActions,
-  TextField, InputAdornment, MenuItem,
-  IconButton, Tooltip
+  TextField, InputAdornment, MenuItem, Checkbox, FormControlLabel,
+  IconButton, Tooltip, Switch
 } from '@mui/material';
 import {
   ArrowBack as ArrowBackIcon,
@@ -27,7 +27,16 @@ import {
   Add as AddIcon,
   AccessTime as AccessTimeIcon,
   Comment as CommentIcon,
-  Warning as WarningIcon
+  Warning as WarningIcon,
+  Build as BuildIcon,
+  MonetizationOn as MoneyIcon,
+  ReceiptLong as ReceiptIcon,
+  CloudDownload as CloudDownloadIcon,
+  SwapHoriz as SwapHorizIcon,
+  Gavel as GavelIcon,
+  Visibility as VisibilityIcon,
+  VisibilityOff as VisibilityOffIcon,
+  FilterList as FilterListIcon
 } from '@mui/icons-material';
 
 // Importar datos
@@ -37,6 +46,34 @@ import { mockLotes } from '../../../data/loteParaTodos/mockLotes';
 import { mockVendedores } from '../../../data/loteParaTodos/mockVendedores';
 import { mockEmprendimientos } from '../../../data/loteParaTodos/mockEmprendimientos';
 import { mockPlanes } from '../../../data/loteParaTodos/mockPlanes';
+import { getPagosByContrato } from '../../../data/loteParaTodos/mockPagos';
+import { 
+  getServiciosContratadosByContrato,
+  mockServicios,
+  CATEGORIA_SERVICIO_LABELS
+} from '../../../data/loteParaTodos/mockServicios';
+import {
+  getPrestamosByContrato,
+  getCuotasPrestamo,
+  ESTADO_PRESTAMO_LABELS,
+  TIPO_PRESTAMO_LABELS
+} from '../../../data/loteParaTodos/mockPrestamos';
+import {
+  getDocumentosByContrato,
+  getPlantillasByEmprendimiento,
+  TIPO_DOCUMENTO_LABELS,
+  ESTADO_DOCUMENTO_LABELS,
+  generarUrlDocumento
+} from '../../../data/loteParaTodos/mockDocumentos';
+import {
+  TIPO_PAGO,
+  TIPO_PAGO_LABELS,
+  METODO_PAGO,
+  METODO_PAGO_LABELS,
+  ESTADO_CONTRATO_LABELS,
+  ESTADO_CONTRATO_COLORS,
+  ESTADO_CONTRATO
+} from '../../../data/loteParaTodos/constantes';
 import LoteParaTodosLayout from '../../../components/layouts/LoteParaTodosLayout';
 
 function TabPanel({ children, value, index, ...other }) {
@@ -60,6 +97,10 @@ export default function ContratoDetalle() {
   const [openEditDialog, setOpenEditDialog] = useState(false);
   const [contratoEditando, setContratoEditando] = useState(null);
   
+  // Estados para generación de documentos
+  const [openGenerarDocDialog, setOpenGenerarDocDialog] = useState(false);
+  const [plantillaSeleccionada, setPlantillaSeleccionada] = useState('');
+  
   // Estados para comentarios
   const [comentarios, setComentarios] = useState([]);
   const [openComentarioDialog, setOpenComentarioDialog] = useState(false);
@@ -68,8 +109,6 @@ export default function ContratoDetalle() {
   // Estados para pagos
   const [openPagoDialog, setOpenPagoDialog] = useState(false);
   const [cuotaSeleccionada, setCuotaSeleccionada] = useState(null);
-  const [montoPago, setMontoPago] = useState(0);
-  const [metodoPago, setMetodoPago] = useState('EFECTIVO');
 
   // Estados para re-financiación
   const [openRefinanciacionDialog, setOpenRefinanciacionDialog] = useState(false);
@@ -83,6 +122,28 @@ export default function ContratoDetalle() {
     fecha_aplicacion: new Date().toISOString().split('T')[0],
     observaciones: ''
   });
+  const [subTabServicios, setSubTabServicios] = useState(0);
+  const [estadoCuentaFiltro, setEstadoCuentaFiltro] = useState('todos');
+  const [documentoVisibilidad, setDocumentoVisibilidad] = useState({});
+  const [pagoForm, setPagoForm] = useState({
+    tipoMovimiento: TIPO_PAGO.CUOTA,
+    imputacion: 'cuota_mes',
+    monto: 0,
+    metodo: METODO_PAGO.TRANSFERENCIA,
+    medioDetalle: '',
+    adjuntoRef: '',
+    notas: '',
+    enviarRecibo: true,
+    aplicarAdelanto: false
+  });
+  const reglasImputacion = [
+    { value: 'cuota_mes', label: 'Cuota del mes' },
+    { value: 'cuotas_vencidas', label: 'Cuotas vencidas' },
+    { value: 'cuotas_futuras', label: 'Cuotas futuras / plan libre' },
+    { value: 'gastos_administrativos', label: 'Gastos Administrativos' },
+    { value: 'servicios', label: 'Servicios contratados' },
+    { value: 'prestamos', label: 'Préstamos asociados' }
+  ];
 
   const contrato = useMemo(() => {
     if (!id) return null;
@@ -113,6 +174,52 @@ export default function ContratoDetalle() {
     if (!contrato) return null;
     return mockPlanes.find(p => p.id === contrato.plan_financiacion_id);
   }, [contrato]);
+  const pagosContrato = useMemo(() => {
+    if (!contrato) return [];
+    return getPagosByContrato(contrato.id);
+  }, [contrato]);
+  const serviciosContrato = useMemo(() => {
+    if (!contrato) return [];
+    return getServiciosContratadosByContrato(contrato.id, contrato.lote_id).map(servicio => {
+      const catalogo = mockServicios.find(s => s.id === servicio.servicio_id);
+      return {
+        ...servicio,
+        catalogo,
+        categoria_label: catalogo ? CATEGORIA_SERVICIO_LABELS[catalogo.categoria] : 'Servicio'
+      };
+    });
+  }, [contrato]);
+  const prestamosContrato = useMemo(() => {
+    if (!contrato) return [];
+    return getPrestamosByContrato(contrato.id, contrato.lote_id).map(prestamo => ({
+      ...prestamo,
+      cuotas: getCuotasPrestamo(prestamo.id)
+    }));
+  }, [contrato]);
+  const documentosContrato = useMemo(() => {
+    if (!contrato) return [];
+    return getDocumentosByContrato(contrato.id);
+  }, [contrato]);
+
+  const plantillasDisponibles = useMemo(() => {
+    if (!lote) return [];
+    return getPlantillasByEmprendimiento(lote.emprendimiento_id);
+  }, [lote]);
+
+  const evaluarAlerta = (fecha, estado) => {
+    if (!fecha) return null;
+    if (typeof estado === 'string' && estado.toLowerCase().includes('venc')) {
+      return 'vencido';
+    }
+    const hoy = new Date();
+    const fechaObj = new Date(fecha);
+    const diffDias = (fechaObj - hoy) / (1000 * 60 * 60 * 24);
+    if (diffDias >= 0 && diffDias <= 7) {
+      return 'proximo';
+    }
+    return null;
+  };
+
 
   // Sistema de cuotas organizadas por ciclos
   const cuotasYCiclos = useMemo(() => {
@@ -207,6 +314,130 @@ export default function ContratoDetalle() {
 
     return { ciclos, entregaInicial, pagoContado };
   }, [contrato]);
+
+  const estadoCuentaMovimientos = useMemo(() => {
+    if (!contrato) return [];
+    const movimientos = [];
+    const pushMovimiento = (mov) => {
+      movimientos.push({
+        ...mov,
+        fechaOrden: mov.fecha ? new Date(mov.fecha).getTime() : Date.now()
+      });
+    };
+
+    cuotasYCiclos.ciclos.forEach(ciclo => {
+      ciclo.cuotas.forEach(cuota => {
+        pushMovimiento({
+          id: cuota.id,
+          fecha: cuota.fecha,
+          tipo: 'Cuota',
+          categoria: 'cuota',
+          descripcion: `Cuota ${cuota.numero}`,
+          debito: cuota.monto,
+          credito: 0,
+          estado: cuota.estado,
+          alerta: evaluarAlerta(cuota.fecha, cuota.estado)
+        });
+      });
+    });
+
+    serviciosContrato.forEach(servicio => {
+      pushMovimiento({
+        id: `serv-${servicio.id}`,
+        fecha: servicio.fecha_contratacion,
+        tipo: 'Servicio',
+        categoria: 'servicio',
+        descripcion: `${servicio.catalogo?.nombre || 'Servicio'} (${servicio.categoria_label})`,
+        debito: servicio.precio_acordado || servicio.catalogo?.precio_base || 0,
+        credito: 0,
+        estado: servicio.estado,
+        alerta: evaluarAlerta(servicio.fecha_contratacion, servicio.estado)
+      });
+    });
+
+    prestamosContrato.forEach(prestamo => {
+      if (prestamo.fecha_desembolso) {
+        pushMovimiento({
+          id: `prestamo-${prestamo.id}-desembolso`,
+          fecha: prestamo.fecha_desembolso,
+          tipo: 'Desembolso Préstamo',
+          categoria: 'prestamo',
+          descripcion: `${TIPO_PRESTAMO_LABELS[prestamo.tipo] || 'Préstamo'} - Desembolso`,
+          debito: 0,
+          credito: prestamo.monto_aprobado,
+          estado: ESTADO_PRESTAMO_LABELS[prestamo.estado] || prestamo.estado,
+          alerta: null
+        });
+      }
+      prestamo.cuotas?.forEach(cuota => {
+        pushMovimiento({
+          id: `prestamo-${prestamo.id}-cuota-${cuota.numero_cuota}`,
+          fecha: cuota.fecha_vencimiento,
+          tipo: 'Cuota Préstamo',
+          categoria: 'prestamo',
+          descripcion: `Préstamo ${prestamo.id} • Cuota ${cuota.numero_cuota}`,
+          debito: cuota.monto,
+          credito: 0,
+          estado: cuota.estado,
+          alerta: evaluarAlerta(cuota.fecha_vencimiento, cuota.estado)
+        });
+      });
+    });
+
+    pagosContrato.forEach(pago => {
+      const categoria = pago.tipo_pago === TIPO_PAGO.SERVICIO
+        ? 'servicio'
+        : pago.tipo_pago === TIPO_PAGO.PRESTAMO
+          ? 'prestamo'
+          : pago.tipo_pago === TIPO_PAGO.MOVIMIENTO_INTERNO
+            ? 'ajuste'
+            : 'pago';
+      const monto = pago.monto || 0;
+      const debitoMovimiento = categoria === 'ajuste' && monto > 0 ? monto : 0;
+      const creditoMovimiento = categoria === 'ajuste' && monto < 0 ? Math.abs(monto) : categoria === 'ajuste' ? 0 : monto;
+      pushMovimiento({
+        id: `pago-${pago.id}`,
+        fecha: pago.fecha_pago || pago.fecha_vencimiento,
+        tipo: pago.tipo_pago === TIPO_PAGO.MOVIMIENTO_INTERNO ? 'Ajuste' : 'Pago',
+        categoria,
+        descripcion: pago.observaciones || TIPO_PAGO_LABELS[pago.tipo_pago] || 'Movimiento',
+        debito: debitoMovimiento,
+        credito: categoria === 'ajuste' ? creditoMovimiento : monto,
+        estado: pago.estado,
+        alerta: evaluarAlerta(pago.fecha_vencimiento, pago.estado)
+      });
+    });
+
+    const ordenados = movimientos.sort((a, b) => a.fechaOrden - b.fechaOrden);
+    let saldo = 0;
+    return ordenados.map(mov => {
+      saldo += (mov.debito || 0) - (mov.credito || 0);
+      return { ...mov, saldo };
+    });
+  }, [contrato, cuotasYCiclos, serviciosContrato, prestamosContrato, pagosContrato]);
+
+  const estadoCuentaResumen = useMemo(() => {
+    const totalDebitos = estadoCuentaMovimientos.reduce((sum, mov) => sum + (mov.debito || 0), 0);
+    const totalCreditos = estadoCuentaMovimientos.reduce((sum, mov) => sum + (mov.credito || 0), 0);
+    const saldo = totalDebitos - totalCreditos;
+    const vencidos = estadoCuentaMovimientos.filter(mov => mov.alerta === 'vencido').length;
+    const proximos = estadoCuentaMovimientos.filter(mov => mov.alerta === 'proximo').length;
+    return { totalDebitos, totalCreditos, saldo, vencidos, proximos };
+  }, [estadoCuentaMovimientos]);
+
+  const estadoCuentaCategorias = [
+    { value: 'todos', label: 'Todos' },
+    { value: 'cuota', label: 'Cuotas' },
+    { value: 'pago', label: 'Pagos' },
+    { value: 'servicio', label: 'Servicios' },
+    { value: 'prestamo', label: 'Préstamos' },
+    { value: 'ajuste', label: 'Ajustes' }
+  ];
+
+  const estadoCuentaFiltrado = useMemo(() => {
+    if (estadoCuentaFiltro === 'todos') return estadoCuentaMovimientos;
+    return estadoCuentaMovimientos.filter(mov => mov.categoria === estadoCuentaFiltro);
+  }, [estadoCuentaMovimientos, estadoCuentaFiltro]);
 
   const formatearFecha = (fecha) => {
     return new Date(fecha).toLocaleDateString('es-AR');
@@ -347,26 +578,22 @@ export default function ContratoDetalle() {
       id: Date.now(),
       texto: nuevoComentario,
       fecha: new Date().toISOString().split('T')[0],
-      usuario: 'Usuario Actual' // En producción sería el usuario logueado
+      usuario: 'Usuario Actual'
     };
-    
+
     setComentarios(prev => [...prev, comentario]);
     setNuevoComentario('');
-    alert('Comentario agregado exitosamente');
+    cerrarComentarios();
   };
 
-  // Funciones para re-financiación
+  const toggleDocumentoVisibilidad = (docId) => {
+    setDocumentoVisibilidad(prev => ({
+      ...prev,
+      [docId]: prev[docId] === 'cliente' ? 'interno' : 'cliente'
+    }));
+  };
+
   const abrirRefinanciacion = () => {
-    setDatosRefinanciacion({
-      tipo: 'CAMBIO_CICLO',
-      motivo: '',
-      nuevo_ciclo: (contrato.ciclo_actual || 1) + 1,
-      nuevo_indice: contrato.indice_actualizacion || 0,
-      nuevas_cuotas: contrato.cuotas_cantidad || 0,
-      nueva_cuota_mensual: contrato.cuota_mensual || 0,
-      fecha_aplicacion: new Date().toISOString().split('T')[0],
-      observaciones: ''
-    });
     setOpenRefinanciacionDialog(true);
   };
 
@@ -385,20 +612,11 @@ export default function ContratoDetalle() {
   };
 
   const procesarRefinanciacion = () => {
-    // Validaciones
-    if (!datosRefinanciacion.motivo.trim()) {
-      alert('Debe especificar el motivo de la re-financiación');
-      return;
-    }
-
-    // Crear registro de re-financiación
     const refinanciacion = {
-      id: Date.now(),
       contrato_id: contrato.id,
-      fecha_creacion: new Date().toISOString(),
       tipo: datosRefinanciacion.tipo,
       motivo: datosRefinanciacion.motivo,
-      datos_anteriores: {
+      datos_actuales: {
         ciclo: contrato.ciclo_actual || 1,
         indice: contrato.indice_actualizacion || 0,
         cuotas: contrato.cuotas_cantidad || 0,
@@ -412,16 +630,14 @@ export default function ContratoDetalle() {
       },
       fecha_aplicacion: datosRefinanciacion.fecha_aplicacion,
       observaciones: datosRefinanciacion.observaciones,
-      usuario: 'Usuario Actual', // En producción sería el usuario logueado
+      usuario: 'Usuario Actual',
       estado: 'PENDIENTE_APLICACION'
     };
 
     console.log('Re-financiación creada:', refinanciacion);
     
-    // Aquí se guardaría en la base de datos
     alert('Re-financiación creada exitosamente. Se aplicará en la fecha especificada.');
     
-    // Agregar comentario automático
     const comentarioRefinanciacion = {
       id: Date.now() + 1,
       texto: `Re-financiación solicitada: ${datosRefinanciacion.tipo} - ${datosRefinanciacion.motivo}`,
@@ -446,17 +662,17 @@ export default function ContratoDetalle() {
   // Datos con valores por defecto si no se encuentran
   const clienteData = cliente || { nombre: 'Cliente', apellido: 'No encontrado', dni: 'N/A', email: 'N/A', telefono: 'N/A', direccion: 'N/A', ciudad: 'N/A', ocupacion: 'N/A', estado_civil: 'N/A' };
   const loteData = lote || { numero: 'N/A', manzana: 'N/A', superficie: 0, frente: 0, fondo: 0, precio_m2: 0, estado: 'N/A' };
-  const emprendimientoData = emprendimiento || { nombre: 'No encontrado', ubicacion: 'N/A', desarrollador: 'N/A', fecha_entrega: new Date().toISOString(), estado: 'N/A', servicios: [] };
+  const emprendimientoData = emprendimiento || { nombre: 'No encontrado', ubicacion: 'N/A', desarrollador: { nombre: 'N/A' }, fecha_entrega_estimada: new Date().toISOString(), estado: 'N/A', servicios_incluidos: [] };
   const vendedorData = vendedor || { nombre: 'No encontrado' };
   const planData = plan || { nombre: 'No encontrado' };
 
   return (
-    <LoteParaTodosLayout currentModule="contratos" pageTitle={`Contrato #${contrato.id}`}>
+    <LoteParaTodosLayout currentModule="clientes" pageTitle={`Contrato #${contrato.id}`}>
       {/* Header */}
-      <Box sx={{ mb: 4, display: 'flex', alignItems: 'center', gap: 2 }}>
+      <Box sx={{ mb: 4, display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
         <Button
           startIcon={<ArrowBackIcon />}
-          onClick={() => router.push('/loteParaTodosMock/contratos')}
+          onClick={() => router.push('/loteParaTodosMock/clientes')}
           variant="outlined"
         >
           Volver
@@ -469,13 +685,13 @@ export default function ContratoDetalle() {
             {clienteData.nombre} {clienteData.apellido} - Lote {loteData.numero}, {emprendimientoData.nombre}
           </Typography>
         </Box>
-        <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+        <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
           <Chip 
-            label={contrato.estado} 
-            color={getColorEstado(contrato.estado)}
+            label={ESTADO_CONTRATO_LABELS[contrato.estado] || contrato.estado} 
+            color={ESTADO_CONTRATO_COLORS[contrato.estado] || 'default'}
             size="large"
           />
-          {contrato.estado === 'ACTIVO' && tieneCuotasVencidas() && (
+          {contrato.estado === ESTADO_CONTRATO.MORA && (
             <Chip 
               label="CON MORA"
               color="error"
@@ -483,6 +699,30 @@ export default function ContratoDetalle() {
               icon={<WarningIcon />}
             />
           )}
+          
+          <Button
+            variant="contained"
+            color="primary"
+            startIcon={<PaymentIcon />}
+            onClick={() => {
+              if (contrato.estado === ESTADO_CONTRATO.CANCELADO || contrato.estado === ESTADO_CONTRATO.RESCINDIDO) {
+                alert('No se pueden registrar pagos en contratos cancelados o rescindidos.');
+                return;
+              }
+              setOpenPagoDialog(true);
+            }}
+          >
+            Registrar Pago
+          </Button>
+          
+          <Button
+            variant="outlined"
+            startIcon={<DescriptionIcon />}
+            onClick={() => setTabActivo(3)} // Ir a tab Documentos
+          >
+            Ver Documentación
+          </Button>
+
           <Button
             variant="outlined"
             startIcon={<CommentIcon />}
@@ -492,10 +732,11 @@ export default function ContratoDetalle() {
           </Button>
           <Button
             variant="contained"
+            color="secondary"
             startIcon={<EditIcon />}
             onClick={abrirEdicion}
           >
-            Editar Contrato
+            Editar
           </Button>
         </Box>
       </Box>
@@ -626,23 +867,18 @@ export default function ContratoDetalle() {
             scrollButtons="auto"
           >
             <Tab 
-              label="Información General" 
+              label="Resumen" 
               icon={<PersonIcon />}
               iconPosition="start"
             />
             <Tab 
-              label="Detalles del Lote" 
-              icon={<HomeIcon />}
-              iconPosition="start"
-            />
-            <Tab 
-              label="Cuotas y Pagos" 
-              icon={<PaymentIcon />}
-              iconPosition="start"
-            />
-            <Tab 
-              label="Cuenta Corriente" 
+              label="Estado de Cuenta" 
               icon={<AccountBalanceIcon />}
+              iconPosition="start"
+            />
+            <Tab 
+              label="Servicios & Préstamos" 
+              icon={<BuildIcon />}
               iconPosition="start"
             />
             <Tab 
@@ -650,222 +886,675 @@ export default function ContratoDetalle() {
               icon={<DescriptionIcon />}
               iconPosition="start"
             />
+            <Tab 
+              label="Gestión y Acciones" 
+              icon={<PaymentIcon />}
+              iconPosition="start"
+            />
           </Tabs>
         </Box>
-
-        {/* Tab 1: Información General */}
         <TabPanel value={tabActivo} index={0}>
-          <Grid container spacing={4}>
-            <Grid item xs={12} md={6}>
-              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
-                <PersonIcon sx={{ mr: 1 }} />
-                Información del Cliente
-              </Typography>
-              <Paper sx={{ p: 3, backgroundColor: '#fafafa' }}>
-                <Typography variant="body1" gutterBottom>
-                  <strong>Nombre:</strong> {clienteData.nombre} {clienteData.apellido}
+          <Stack spacing={4}>
+            <Grid container spacing={4}>
+              <Grid item xs={12} md={6}>
+                <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
+                  <PersonIcon sx={{ mr: 1 }} />
+                  Información del Cliente
                 </Typography>
-                <Typography variant="body1" gutterBottom>
-                  <strong>DNI:</strong> {clienteData.dni}
+                <Paper sx={{ p: 3, backgroundColor: '#fafafa' }}>
+                  <Typography variant="body1" gutterBottom>
+                    <strong>Nombre:</strong> {clienteData.nombre} {clienteData.apellido}
+                  </Typography>
+                  <Typography variant="body1" gutterBottom>
+                    <strong>DNI:</strong> {clienteData.dni}
+                  </Typography>
+                  <Typography variant="body1" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
+                    <EmailIcon sx={{ mr: 1, fontSize: 16 }} />
+                    {clienteData.email}
+                  </Typography>
+                  <Typography variant="body1" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
+                    <PhoneIcon sx={{ mr: 1, fontSize: 16 }} />
+                    {clienteData.telefono}
+                  </Typography>
+                  <Typography variant="body1" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
+                    <LocationIcon sx={{ mr: 1, fontSize: 16 }} />
+                    {clienteData.direccion}, {clienteData.ciudad}
+                  </Typography>
+                  <Typography variant="body1" gutterBottom>
+                    <strong>Ocupación:</strong> {clienteData.ocupacion}
+                  </Typography>
+                  <Typography variant="body1">
+                    <strong>Estado Civil:</strong> {clienteData.estado_civil}
+                  </Typography>
+                </Paper>
+              </Grid>
+
+              <Grid item xs={12} md={6}>
+                <Typography variant="h6" gutterBottom>
+                  Detalles del Contrato
                 </Typography>
-                <Typography variant="body1" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
-                  <EmailIcon sx={{ mr: 1, fontSize: 16 }} />
-                  {clienteData.email}
-                </Typography>
-                <Typography variant="body1" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
-                  <PhoneIcon sx={{ mr: 1, fontSize: 16 }} />
-                  {clienteData.telefono}
-                </Typography>
-                <Typography variant="body1" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
-                  <LocationIcon sx={{ mr: 1, fontSize: 16 }} />
-                  {clienteData.direccion}, {clienteData.ciudad}
-                </Typography>
-                <Typography variant="body1" gutterBottom>
-                  <strong>Ocupación:</strong> {clienteData.ocupacion}
-                </Typography>
-                <Typography variant="body1">
-                  <strong>Estado Civil:</strong> {clienteData.estado_civil}
-                </Typography>
-              </Paper>
+                <Paper sx={{ p: 3, backgroundColor: '#fafafa' }}>
+                  <Typography variant="body1" gutterBottom>
+                    <strong>Fecha de Contrato:</strong> {formatearFecha(contrato.fecha_contrato)}
+                  </Typography>
+                  <Typography variant="body1" gutterBottom>
+                    <strong>Fecha de Vencimiento:</strong> {formatearFecha(contrato.fecha_vencimiento)}
+                  </Typography>
+                  <Typography variant="body1" gutterBottom>
+                    <strong>Vendedor:</strong> {vendedorData.nombre}
+                  </Typography>
+                  <Typography variant="body1" gutterBottom>
+                    <strong>Plan de Financiación:</strong> {planData.nombre}
+                  </Typography>
+                  <Divider sx={{ my: 2 }} />
+                  <Typography variant="body1" gutterBottom>
+                    <strong>Entrega Inicial:</strong> {formatearMoneda(contrato.entrega_inicial)}
+                  </Typography>
+                  <Typography variant="body1" gutterBottom>
+                    <strong>Pago al Contado:</strong> {formatearMoneda(contrato.pago_contado_hoy)}
+                  </Typography>
+                  <Typography variant="body1" gutterBottom>
+                    <strong>Cantidad de Cuotas:</strong> {contrato.cuotas_cantidad}
+                  </Typography>
+                  <Typography variant="body1" gutterBottom>
+                    <strong>Cuota Mensual:</strong> {formatearMoneda(contrato.cuota_mensual)}
+                  </Typography>
+                </Paper>
+              </Grid>
             </Grid>
 
-            <Grid item xs={12} md={6}>
-              <Typography variant="h6" gutterBottom>
-                Detalles del Contrato
-              </Typography>
-              <Paper sx={{ p: 3, backgroundColor: '#fafafa' }}>
-                <Typography variant="body1" gutterBottom>
-                  <strong>Fecha de Contrato:</strong> {formatearFecha(contrato.fecha_contrato)}
+            <Grid container spacing={4}>
+              <Grid item xs={12} md={6}>
+                <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
+                  <HomeIcon sx={{ mr: 1 }} />
+                  Información del Lote
                 </Typography>
-                <Typography variant="body1" gutterBottom>
-                  <strong>Fecha de Vencimiento:</strong> {formatearFecha(contrato.fecha_vencimiento)}
-                </Typography>
-                <Typography variant="body1" gutterBottom>
-                  <strong>Vendedor:</strong> {vendedorData.nombre}
-                </Typography>
-                <Typography variant="body1" gutterBottom>
-                  <strong>Plan de Financiación:</strong> {planData.nombre}
-                </Typography>
-                <Divider sx={{ my: 2 }} />
-                <Typography variant="body1" gutterBottom>
-                  <strong>Entrega Inicial:</strong> {formatearMoneda(contrato.entrega_inicial)}
-                </Typography>
-                <Typography variant="body1" gutterBottom>
-                  <strong>Pago al Contado:</strong> {formatearMoneda(contrato.pago_contado_hoy)}
-                </Typography>
-                <Typography variant="body1" gutterBottom>
-                  <strong>Cantidad de Cuotas:</strong> {contrato.cuotas_cantidad}
-                </Typography>
-                <Typography variant="body1" gutterBottom>
-                  <strong>Cuota Mensual:</strong> {formatearMoneda(contrato.cuota_mensual)}
-                </Typography>
-              </Paper>
-            </Grid>
-          </Grid>
+                <Paper sx={{ p: 3, backgroundColor: '#fafafa' }}>
+                  <Typography variant="body1" gutterBottom>
+                    <strong>Número de Lote:</strong> {loteData.numero}
+                  </Typography>
+                  <Typography variant="body1" gutterBottom>
+                    <strong>Manzana:</strong> {loteData.manzana}
+                  </Typography>
+                  <Typography variant="body1" gutterBottom>
+                    <strong>Superficie:</strong> {loteData.superficie} m²
+                  </Typography>
+                  <Typography variant="body1" gutterBottom>
+                    <strong>Frente:</strong> {loteData.frente} m
+                  </Typography>
+                  <Typography variant="body1" gutterBottom>
+                    <strong>Fondo:</strong> {loteData.fondo} m
+                  </Typography>
+                  <Typography variant="body1" gutterBottom>
+                    <strong>Precio por m²:</strong> {formatearMoneda(loteData.precio_m2)}
+                  </Typography>
+                  <Typography variant="body1">
+                    <strong>Estado:</strong> 
+                    <Chip 
+                      label={loteData.estado} 
+                      color={loteData.estado === 'VENDIDO' ? 'error' : 'success'}
+                      size="small"
+                      sx={{ ml: 1 }}
+                    />
+                  </Typography>
+                </Paper>
+              </Grid>
 
-          {/* Sección de Comentarios */}
-          <Box sx={{ mt: 4 }}>
-            <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
-              <DescriptionIcon sx={{ mr: 1 }} />
-              Comentarios del Contrato
-            </Typography>
-            
-            <Paper sx={{ p: 3, backgroundColor: '#fafafa' }}>
-              {comentarios.length > 0 ? (
-                <Box sx={{ maxHeight: 300, overflow: 'auto' }}>
-                  {comentarios.map((comentario, index) => (
-                    <Box 
-                      key={comentario.id} 
-                      sx={{ 
-                        mb: 2, 
-                        p: 2, 
-                        backgroundColor: 'white',
-                        borderRadius: 1,
-                        border: '1px solid #e0e0e0'
-                      }}
-                    >
-                      <Typography variant="body2" sx={{ mb: 1 }}>
-                        {comentario.texto}
+              <Grid item xs={12} md={6}>
+                <Typography variant="h6" gutterBottom>
+                  Información del Emprendimiento
+                </Typography>
+                <Paper sx={{ p: 3, backgroundColor: '#fafafa' }}>
+                  <Typography variant="body1" gutterBottom>
+                    <strong>Nombre:</strong> {emprendimientoData.nombre}
+                  </Typography>
+                  <Typography variant="body1" gutterBottom>
+                    <strong>Ubicación:</strong> {emprendimientoData.ciudad || emprendimientoData.ubicacion}
+                  </Typography>
+                  <Typography variant="body1" gutterBottom>
+                    <strong>Desarrollador:</strong> {emprendimientoData.desarrollador?.nombre || emprendimientoData.desarrollador}
+                  </Typography>
+                  <Typography variant="body1" gutterBottom>
+                    <strong>Fecha de Entrega:</strong> {formatearFecha(emprendimientoData.fecha_entrega_estimada || emprendimientoData.fecha_entrega)}
+                  </Typography>
+                  <Typography variant="body1">
+                    <strong>Estado:</strong> 
+                    <Chip 
+                      label={emprendimientoData.estado} 
+                      color="primary"
+                      size="small"
+                      sx={{ ml: 1 }}
+                    />
+                  </Typography>
+                  
+                  {emprendimientoData.servicios_incluidos && emprendimientoData.servicios_incluidos.length > 0 && (
+                    <Box sx={{ mt: 2 }}>
+                      <Typography variant="body1" gutterBottom>
+                        <strong>Servicios:</strong>
                       </Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        Por {comentario.usuario} • {formatearFecha(comentario.fecha)}
-                      </Typography>
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                        {emprendimientoData.servicios_incluidos.map((servicio, index) => (
+                          <Chip
+                            key={index}
+                            label={servicio}
+                            variant="outlined"
+                            size="small"
+                          />
+                        ))}
+                      </Box>
                     </Box>
-                  ))}
-                </Box>
-              ) : (
-                <Typography variant="body2" color="text.secondary" align="center" sx={{ py: 2 }}>
-                  No hay comentarios para este contrato
-                </Typography>
-              )}
+                  )}
+                </Paper>
+              </Grid>
+            </Grid>
+
+            <Box>
+              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
+                <DescriptionIcon sx={{ mr: 1 }} />
+                Comentarios del Contrato
+              </Typography>
               
-              <Box sx={{ mt: 2, display: 'flex', justifyContent: 'center' }}>
-                <Button
-                  variant="contained"
-                  startIcon={<EditIcon />}
-                  onClick={abrirComentarios}
-                >
-                  Gestionar Comentarios
-                </Button>
-              </Box>
-            </Paper>
-          </Box>
-        </TabPanel>
-
-        {/* Tab 2: Detalles del Lote */}
-        <TabPanel value={tabActivo} index={1}>
-          <Grid container spacing={4}>
-            <Grid item xs={12} md={6}>
-              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
-                <HomeIcon sx={{ mr: 1 }} />
-                Información del Lote
-              </Typography>
               <Paper sx={{ p: 3, backgroundColor: '#fafafa' }}>
-                <Typography variant="body1" gutterBottom>
-                  <strong>Número de Lote:</strong> {loteData.numero}
-                </Typography>
-                <Typography variant="body1" gutterBottom>
-                  <strong>Manzana:</strong> {loteData.manzana}
-                </Typography>
-                <Typography variant="body1" gutterBottom>
-                  <strong>Superficie:</strong> {loteData.superficie} m²
-                </Typography>
-                <Typography variant="body1" gutterBottom>
-                  <strong>Frente:</strong> {loteData.frente} m
-                </Typography>
-                <Typography variant="body1" gutterBottom>
-                  <strong>Fondo:</strong> {loteData.fondo} m
-                </Typography>
-                <Typography variant="body1" gutterBottom>
-                  <strong>Precio por m²:</strong> {formatearMoneda(loteData.precio_m2)}
-                </Typography>
-                <Typography variant="body1">
-                  <strong>Estado:</strong> 
-                  <Chip 
-                    label={loteData.estado} 
-                    color={loteData.estado === 'VENDIDO' ? 'error' : 'success'}
-                    size="small"
-                    sx={{ ml: 1 }}
-                  />
-                </Typography>
-              </Paper>
-            </Grid>
-
-            <Grid item xs={12} md={6}>
-              <Typography variant="h6" gutterBottom>
-                Información del Emprendimiento
-              </Typography>
-              <Paper sx={{ p: 3, backgroundColor: '#fafafa' }}>
-                <Typography variant="body1" gutterBottom>
-                  <strong>Nombre:</strong> {emprendimientoData.nombre}
-                </Typography>
-                <Typography variant="body1" gutterBottom>
-                  <strong>Ubicación:</strong> {emprendimientoData.ubicacion}
-                </Typography>
-                <Typography variant="body1" gutterBottom>
-                  <strong>Desarrollador:</strong> {emprendimientoData.desarrollador}
-                </Typography>
-                <Typography variant="body1" gutterBottom>
-                  <strong>Fecha de Entrega:</strong> {formatearFecha(emprendimientoData.fecha_entrega)}
-                </Typography>
-                <Typography variant="body1">
-                  <strong>Estado:</strong> 
-                  <Chip 
-                    label={emprendimientoData.estado} 
-                    color="primary"
-                    size="small"
-                    sx={{ ml: 1 }}
-                  />
-                </Typography>
-                
-                {emprendimientoData.servicios && emprendimientoData.servicios.length > 0 && (
-                  <Box sx={{ mt: 2 }}>
-                    <Typography variant="body1" gutterBottom>
-                      <strong>Servicios:</strong>
-                    </Typography>
-                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                      {emprendimientoData.servicios.map((servicio, index) => (
-                        <Chip
-                          key={index}
-                          label={servicio}
-                          variant="outlined"
-                          size="small"
-                        />
-                      ))}
-                    </Box>
+                {comentarios.length > 0 ? (
+                  <Box sx={{ maxHeight: 300, overflow: 'auto' }}>
+                    {comentarios.map((comentario) => (
+                      <Box 
+                        key={comentario.id} 
+                        sx={{ 
+                          mb: 2, 
+                          p: 2, 
+                          backgroundColor: 'white',
+                          borderRadius: 1,
+                          border: '1px solid #e0e0e0'
+                        }}
+                      >
+                        <Typography variant="body2" sx={{ mb: 1 }}>
+                          {comentario.texto}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          Por {comentario.usuario} • {formatearFecha(comentario.fecha)}
+                        </Typography>
+                      </Box>
+                    ))}
                   </Box>
+                ) : (
+                  <Typography variant="body2" color="text.secondary" align="center" sx={{ py: 2 }}>
+                    No hay comentarios para este contrato
+                  </Typography>
                 )}
+                
+                <Box sx={{ mt: 2, display: 'flex', justifyContent: 'center' }}>
+                  <Button
+                    variant="contained"
+                    startIcon={<EditIcon />}
+                    onClick={abrirComentarios}
+                  >
+                    Gestionar Comentarios
+                  </Button>
+                </Box>
               </Paper>
-            </Grid>
-          </Grid>
+            </Box>
+          </Stack>
         </TabPanel>
 
-        {/* Tab 3: Cuotas y Pagos */}
+        <TabPanel value={tabActivo} index={1}>
+          <Stack spacing={3}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <AccountBalanceIcon color="primary" />
+              <Typography variant="h6">Estado de Cuenta Consolidado</Typography>
+            </Box>
+
+            <Grid container spacing={3}>
+              <Grid item xs={12} md={3}>
+                <Paper sx={{ p: 3, backgroundColor: '#e3f2fd' }}>
+                  <Typography variant="body2" color="primary">Total Generado</Typography>
+                  <Typography variant="h5" fontWeight="bold" color="primary">
+                    {formatearMoneda(estadoCuentaResumen.totalDebitos)}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">Debe acumulado</Typography>
+                </Paper>
+              </Grid>
+              <Grid item xs={12} md={3}>
+                <Paper sx={{ p: 3, backgroundColor: '#e8f5e8' }}>
+                  <Typography variant="body2" color="success.main">Total Pagado</Typography>
+                  <Typography variant="h5" fontWeight="bold" color="success.main">
+                    {formatearMoneda(estadoCuentaResumen.totalCreditos)}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">Haber registrado</Typography>
+                </Paper>
+              </Grid>
+              <Grid item xs={12} md={3}>
+                <Paper sx={{ p: 3, backgroundColor: '#fff3e0' }}>
+                  <Typography variant="body2" color="warning.main">Saldo Real</Typography>
+                  <Typography variant="h5" fontWeight="bold" color="warning.main">
+                    {formatearMoneda(estadoCuentaResumen.saldo)}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">Debe - Haber</Typography>
+                </Paper>
+              </Grid>
+              <Grid item xs={12} md={3}>
+                <Paper sx={{ p: 3, backgroundColor: '#ffebee' }}>
+                  <Typography variant="body2" color="error">Requieren atención</Typography>
+                  <Typography variant="h5" fontWeight="bold" color="error">
+                    {estadoCuentaResumen.vencidos}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">Mov. vencidos</Typography>
+                  <Typography variant="subtitle2" sx={{ mt: 1 }}>
+                    Próximos 7d: {estadoCuentaResumen.proximos}
+                  </Typography>
+                </Paper>
+              </Grid>
+            </Grid>
+
+            <Card>
+              <CardContent>
+                <Stack spacing={2}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 2 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <FilterListIcon color="action" />
+                      <Typography variant="subtitle1">Filtrar por categoría</Typography>
+                    </Box>
+                    <Stack direction="row" spacing={1}>
+                      <Button variant="outlined" startIcon={<PdfIcon />}>
+                        Descargar PDF
+                      </Button>
+                      <Button variant="contained" startIcon={<PaymentIcon />} onClick={() => {
+                        const proxima = obtenerProximaCuota();
+                        if (proxima) abrirPago(proxima);
+                        else alert('No hay cuotas pendientes para pagar');
+                      }}>
+                        Registrar Pago
+                      </Button>
+                    </Stack>
+                  </Box>
+                  <Stack direction="row" spacing={1} flexWrap="wrap">
+                    {estadoCuentaCategorias.map(categoria => (
+                      <Chip
+                        key={categoria.value}
+                        label={categoria.label}
+                        color={estadoCuentaFiltro === categoria.value ? 'primary' : 'default'}
+                        variant={estadoCuentaFiltro === categoria.value ? 'filled' : 'outlined'}
+                        onClick={() => setEstadoCuentaFiltro(categoria.value)}
+                      />
+                    ))}
+                  </Stack>
+                </Stack>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent>
+                <Typography variant="h6" gutterBottom>
+                  Movimientos ({estadoCuentaFiltrado.length})
+                </Typography>
+                {estadoCuentaFiltrado.length === 0 ? (
+                  <Alert severity="info">
+                    No hay movimientos para la categoría seleccionada
+                  </Alert>
+                ) : (
+                  <TableContainer component={Paper} variant="outlined">
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>Fecha</TableCell>
+                          <TableCell>Concepto</TableCell>
+                          <TableCell>Tipo</TableCell>
+                          <TableCell align="right">Debe</TableCell>
+                          <TableCell align="right">Haber</TableCell>
+                          <TableCell align="right">Saldo</TableCell>
+                          <TableCell>Estado</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {estadoCuentaFiltrado.map(mov => (
+                          <TableRow key={mov.id}>
+                            <TableCell>{formatearFecha(mov.fecha)}</TableCell>
+                            <TableCell>
+                              <Typography variant="body2" fontWeight={600}>{mov.descripcion}</Typography>
+                              {mov.alerta && (
+                                <Typography variant="caption" color={mov.alerta === 'vencido' ? 'error' : 'warning.main'}>
+                                  {mov.alerta === 'vencido' ? 'Vencido' : 'Próximo vencimiento'}
+                                </Typography>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              <Chip
+                                label={mov.categoria}
+                                size="small"
+                                color={mov.categoria === 'pago' ? 'success' : mov.categoria === 'cuota' ? 'default' : 'info'}
+                              />
+                            </TableCell>
+                            <TableCell align="right" sx={{ color: 'error.main' }}>
+                              {mov.debito ? formatearMoneda(mov.debito) : '-'}
+                            </TableCell>
+                            <TableCell align="right" sx={{ color: 'success.main' }}>
+                              {mov.credito ? formatearMoneda(mov.credito) : '-'}
+                            </TableCell>
+                            <TableCell align="right" sx={{ fontWeight: 'bold' }}>
+                              {formatearMoneda(mov.saldo)}
+                            </TableCell>
+                            <TableCell>
+                              <Chip
+                                label={mov.estado}
+                                size="small"
+                                color={mov.estado?.toLowerCase().includes('pag') ? 'success' : mov.estado?.toLowerCase().includes('venc') ? 'error' : 'warning'}
+                              />
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                )}
+              </CardContent>
+            </Card>
+
+            {(() => {
+              const proximos = estadoCuentaMovimientos.filter(mov => mov.alerta === 'proximo');
+              const vencidos = estadoCuentaMovimientos.filter(mov => mov.alerta === 'vencido');
+              if (proximos.length === 0 && vencidos.length === 0) return null;
+              return (
+                <Grid container spacing={3}>
+                  <Grid item xs={12} md={6}>
+                    <Card sx={{ borderTop: '4px solid #ffb300' }}>
+                      <CardContent>
+                        <Typography variant="subtitle1" gutterBottom>Próximos 7 días</Typography>
+                        {proximos.length === 0 ? (
+                          <Typography variant="body2" color="text.secondary">Sin vencimientos inmediatos</Typography>
+                        ) : (
+                          <Stack spacing={1}>
+                            {proximos.slice(0, 5).map(mov => (
+                              <Box key={mov.id} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <Box>
+                                  <Typography variant="body2" fontWeight={600}>{mov.descripcion}</Typography>
+                                  <Typography variant="caption" color="text.secondary">{formatearFecha(mov.fecha)}</Typography>
+                                </Box>
+                                <Typography variant="body2" fontWeight={600}>{formatearMoneda(mov.debito || mov.credito)}</Typography>
+                              </Box>
+                            ))}
+                          </Stack>
+                        )}
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <Card sx={{ borderTop: '4px solid #d32f2f' }}>
+                      <CardContent>
+                        <Typography variant="subtitle1" gutterBottom>En mora</Typography>
+                        {vencidos.length === 0 ? (
+                          <Typography variant="body2" color="text.secondary">Sin movimientos vencidos 🎉</Typography>
+                        ) : (
+                          <Stack spacing={1}>
+                            {vencidos.slice(0, 5).map(mov => (
+                              <Box key={mov.id} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <Box>
+                                  <Typography variant="body2" fontWeight={600}>{mov.descripcion}</Typography>
+                                  <Typography variant="caption" color="text.secondary">{formatearFecha(mov.fecha)}</Typography>
+                                </Box>
+                                <Typography variant="body2" fontWeight={600}>{formatearMoneda(mov.debito || mov.credito)}</Typography>
+                              </Box>
+                            ))}
+                          </Stack>
+                        )}
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                </Grid>
+              );
+            })()}
+          </Stack>
+        </TabPanel>
+
         <TabPanel value={tabActivo} index={2}>
+          <Stack spacing={3}>
+            <Tabs
+              value={subTabServicios}
+              onChange={(e, value) => setSubTabServicios(value)}
+              variant="fullWidth"
+            >
+              <Tab label="Servicios" icon={<BuildIcon />} iconPosition="start" />
+              <Tab label="Préstamos" icon={<MoneyIcon />} iconPosition="start" />
+            </Tabs>
+
+            {subTabServicios === 0 ? (
+              serviciosContrato.length === 0 ? (
+                <Alert severity="info">Este contrato no tiene servicios adicionales</Alert>
+              ) : (
+                <Grid container spacing={3}>
+                  {serviciosContrato.map(servicio => (
+                    <Grid item xs={12} md={6} key={servicio.id}>
+                      <Card>
+                        <CardContent>
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <Box>
+                              <Typography variant="h6">{servicio.catalogo?.nombre || 'Servicio'}</Typography>
+                              <Typography variant="body2" color="text.secondary">
+                                {servicio.categoria_label} • {formatearFecha(servicio.fecha_contratacion)}
+                              </Typography>
+                            </Box>
+                            <Chip label={servicio.estado} color={servicio.estado === 'activo' ? 'success' : 'default'} size="small" />
+                          </Box>
+                          <Divider sx={{ my: 2 }} />
+                          <Stack spacing={1}>
+                            <Typography variant="body2"><strong>Costo pactado:</strong> {formatearMoneda(servicio.precio_acordado || servicio.catalogo?.precio_base || 0)}</Typography>
+                            <Typography variant="body2"><strong>Modalidad:</strong> {servicio.modalidad || 'Pago único'}</Typography>
+                            <Typography variant="body2"><strong>Notas:</strong> {servicio.notas || 'Sin observaciones'}</Typography>
+                          </Stack>
+                          <Box sx={{ mt: 2, display: 'flex', gap: 1 }}>
+                            <Button variant="outlined" size="small" startIcon={<ReceiptIcon />}>Ver detalle</Button>
+                            <Button variant="contained" size="small" startIcon={<PaymentIcon />} onClick={() => alert('Simular imputación a servicio')}>
+                              Imputar Pago
+                            </Button>
+                          </Box>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                  ))}
+                </Grid>
+              )
+            ) : (
+              prestamosContrato.length === 0 ? (
+                <Alert severity="info">No hay préstamos asociados a este contrato</Alert>
+              ) : (
+                <Stack spacing={3}>
+                  {prestamosContrato.map(prestamo => (
+                    <Card key={prestamo.id}>
+                      <CardContent>
+                        <Grid container spacing={2}>
+                          <Grid item xs={12} md={8}>
+                            <Typography variant="h6" gutterBottom>
+                              {TIPO_PRESTAMO_LABELS[prestamo.tipo] || 'Préstamo'} #{prestamo.id}
+                            </Typography>
+                            <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mb: 2 }}>
+                              <Chip label={ESTADO_PRESTAMO_LABELS[prestamo.estado] || prestamo.estado} color="primary" size="small" />
+                              <Chip label={`Monto: ${formatearMoneda(prestamo.monto_aprobado)}`} size="small" variant="outlined" />
+                              <Chip label={`${prestamo.plazo_meses} meses`} size="small" variant="outlined" />
+                            </Stack>
+                            <Typography variant="body2" gutterBottom>
+                              <strong>Tasa:</strong> {prestamo.tasa_nominal_anual}% • <strong>Desembolso:</strong> {prestamo.fecha_desembolso ? formatearFecha(prestamo.fecha_desembolso) : 'Pendiente'}
+                            </Typography>
+                            <Typography variant="body2" gutterBottom>
+                              <strong>Destino:</strong> {prestamo.destino || 'Sin especificar'}
+                            </Typography>
+                          </Grid>
+                          <Grid item xs={12} md={4}>
+                            <Paper sx={{ p: 2, backgroundColor: '#f5f5f5', height: '100%' }}>
+                              <Typography variant="subtitle2" gutterBottom>Próxima cuota</Typography>
+                              {(() => {
+                                const proxima = prestamo.cuotas?.find(c => c.estado !== 'PAGADO');
+                                if (!proxima) return <Typography variant="body2">Préstamo cancelado</Typography>;
+                                return (
+                                  <Stack spacing={0.5}>
+                                    <Typography variant="body2"><strong>Cuota:</strong> {proxima.numero_cuota}</Typography>
+                                    <Typography variant="body2"><strong>Vence:</strong> {formatearFecha(proxima.fecha_vencimiento)}</Typography>
+                                    <Typography variant="body2"><strong>Monto:</strong> {formatearMoneda(proxima.monto)}</Typography>
+                                    <Chip label={proxima.estado} size="small" color={proxima.estado === 'VENCIDO' ? 'error' : 'warning'} />
+                                  </Stack>
+                                );
+                              })()}
+                            </Paper>
+                          </Grid>
+                        </Grid>
+
+                        {prestamo.cuotas && prestamo.cuotas.length > 0 && (
+                          <TableContainer component={Paper} variant="outlined" sx={{ mt: 3 }}>
+                            <Table size="small">
+                              <TableHead>
+                                <TableRow>
+                                  <TableCell>#</TableCell>
+                                  <TableCell>Vencimiento</TableCell>
+                                  <TableCell>Monto</TableCell>
+                                  <TableCell>Estado</TableCell>
+                                </TableRow>
+                              </TableHead>
+                              <TableBody>
+                                {prestamo.cuotas.slice(0, 6).map(cuota => (
+                                  <TableRow key={cuota.numero_cuota}>
+                                    <TableCell>{cuota.numero_cuota}</TableCell>
+                                    <TableCell>{formatearFecha(cuota.fecha_vencimiento)}</TableCell>
+                                    <TableCell>{formatearMoneda(cuota.monto)}</TableCell>
+                                    <TableCell>
+                                      <Chip 
+                                        label={cuota.estado}
+                                        size="small"
+                                        color={cuota.estado === 'PAGADO' ? 'success' : cuota.estado === 'VENCIDO' ? 'error' : 'warning'}
+                                      />
+                                    </TableCell>
+                                  </TableRow>
+                                ))}
+                              </TableBody>
+                            </Table>
+                          </TableContainer>
+                        )}
+                      </CardContent>
+                    </Card>
+                  ))}
+                </Stack>
+              )
+            )}
+          </Stack>
+        </TabPanel>
+
+        <TabPanel value={tabActivo} index={3}>
+          <Stack spacing={3}>
+            <Grid container spacing={3}>
+              <Grid item xs={12} md={4}>
+                <Paper sx={{ p: 3, backgroundColor: '#e3f2fd' }}>
+                  <Typography variant="body2" color="primary">Documentos totales</Typography>
+                  <Typography variant="h5" fontWeight="bold">{documentosContrato.length}</Typography>
+                  <Typography variant="caption" color="text.secondary">Generados para este contrato</Typography>
+                </Paper>
+              </Grid>
+              <Grid item xs={12} md={4}>
+                <Paper sx={{ p: 3, backgroundColor: '#e8f5e8' }}>
+                  <Typography variant="body2" color="success.main">Visibles al cliente</Typography>
+                  <Typography variant="h5" fontWeight="bold">
+                    {documentosContrato.filter(doc => documentoVisibilidad[doc.id] === 'cliente').length}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">Documentos compartidos</Typography>
+                </Paper>
+              </Grid>
+              <Grid item xs={12} md={4}>
+                <Paper sx={{ p: 3, backgroundColor: '#ffebee' }}>
+                  <Typography variant="body2" color="error">Requieren atención</Typography>
+                  <Typography variant="h5" fontWeight="bold">
+                    {documentosContrato.filter(doc => doc.estado !== 'firmado').length}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">Pendientes de firma u observados</Typography>
+                </Paper>
+              </Grid>
+            </Grid>
+
+            <Card>
+              <CardContent>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
+                  <Typography variant="h6">Gestión de Documentos</Typography>
+                  <Box sx={{ display: 'flex', gap: 2 }}>
+                    <Button variant="contained" startIcon={<AddIcon />} onClick={() => setOpenGenerarDocDialog(true)}>
+                      Generar Documento
+                    </Button>
+                    <Button variant="outlined" startIcon={<CloudDownloadIcon />} onClick={() => alert('Descargar todo')}>
+                      Exportar paquete
+                    </Button>
+                  </Box>
+                </Box>
+
+                {documentosContrato.length === 0 ? (
+                  <Alert severity="info" sx={{ mt: 2 }}>
+                    Aún no se cargaron documentos para este contrato
+                  </Alert>
+                ) : (
+                  <TableContainer component={Paper} variant="outlined" sx={{ mt: 3 }}>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>Tipo</TableCell>
+                          <TableCell>Estado</TableCell>
+                          <TableCell>Fecha</TableCell>
+                          <TableCell>Visibilidad</TableCell>
+                          <TableCell align="right">Acciones</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {documentosContrato.map(doc => (
+                          <TableRow key={doc.id}>
+                            <TableCell>
+                              <Typography variant="body2" fontWeight={600}>{doc.nombre}</Typography>
+                              <Typography variant="caption" color="text.secondary">
+                                {TIPO_DOCUMENTO_LABELS[doc.tipo] || 'Documento'}
+                              </Typography>
+                            </TableCell>
+                            <TableCell>
+                              <Chip
+                                label={ESTADO_DOCUMENTO_LABELS[doc.estado] || doc.estado}
+                                color={doc.estado === 'firmado' ? 'success' : doc.estado === 'observado' ? 'warning' : 'default'}
+                                size="small"
+                              />
+                            </TableCell>
+                            <TableCell>{formatearFecha(doc.fecha_actualizacion)}</TableCell>
+                            <TableCell>
+                              <FormControlLabel
+                                control={
+                                  <Switch
+                                    checked={documentoVisibilidad[doc.id] === 'cliente'}
+                                    onChange={() => toggleDocumentoVisibilidad(doc.id)}
+                                    size="small"
+                                  />
+                                }
+                                label={documentoVisibilidad[doc.id] === 'cliente' ? 'Cliente' : 'Interno'}
+                              />
+                            </TableCell>
+                            <TableCell align="right">
+                              <Stack direction="row" spacing={1} justifyContent="flex-end">
+                                <Tooltip title="Descargar">
+                                  <IconButton onClick={() => window.open(generarUrlDocumento(doc), '_blank')}>
+                                    <CloudDownloadIcon fontSize="small" />
+                                  </IconButton>
+                                </Tooltip>
+                                <Tooltip title="Cambiar visibilidad">
+                                  <IconButton onClick={() => toggleDocumentoVisibilidad(doc.id)}>
+                                    {documentoVisibilidad[doc.id] === 'cliente' ? <VisibilityOffIcon fontSize="small" /> : <VisibilityIcon fontSize="small" />}
+                                  </IconButton>
+                                </Tooltip>
+                              </Stack>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                )}
+              </CardContent>
+            </Card>
+          </Stack>
+        </TabPanel>
+
+        {/* Tab 5: Gestión y Acciones */}
+        <TabPanel value={tabActivo} index={4}>
           <Box sx={{ mb: 3 }}>
             <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
               <PaymentIcon sx={{ mr: 1 }} />
-              Cuotas y Pagos
+              Gestión Integral de Cuotas y Pagos
             </Typography>
             
             <Alert severity="info" sx={{ mb: 3 }}>
@@ -1272,7 +1961,7 @@ export default function ContratoDetalle() {
                           }}
                         >
                           <TableCell>
-                            <Typography variant="body2" fontWeight="600">
+                            <Typography variant="body2" fontWeight={600}>
                               {cuota.numero}
                             </Typography>
                           </TableCell>
@@ -1329,243 +2018,9 @@ export default function ContratoDetalle() {
           ))}
         </TabPanel>
 
-        {/* Tab 4: Cuenta Corriente */}
-        <TabPanel value={tabActivo} index={3}>
-          <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
-            <AccountBalanceIcon sx={{ mr: 1 }} />
-            Cuenta Corriente del Contrato
-          </Typography>
-
-          <Grid container spacing={3}>
-            <Grid item xs={12}>
-              <Card>
-                <CardContent>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-                    <Typography variant="h6">
-                      Estado de Cuenta - Contrato #{contrato.id}
-                    </Typography>
-                    <Box sx={{ display: 'flex', gap: 2 }}>
-                      <Button variant="outlined" startIcon={<PdfIcon />}>
-                        Exportar PDF
-                      </Button>
-                      <Button variant="contained" startIcon={<PaymentIcon />}>
-                        Nuevo Movimiento
-                      </Button>
-                    </Box>
-                  </Box>
 
 
 
-                  {/* Tabla de movimientos */}
-                  <TableContainer component={Paper} variant="outlined">
-                    <Table>
-                      <TableHead>
-                        <TableRow sx={{ backgroundColor: '#f5f5f5' }}>
-                          <TableCell><strong>Fecha</strong></TableCell>
-                          <TableCell><strong>Concepto</strong></TableCell>
-                          <TableCell align="right"><strong>Debe</strong></TableCell>
-                          <TableCell align="right"><strong>Haber</strong></TableCell>
-                          <TableCell align="right"><strong>Saldo</strong></TableCell>
-                          <TableCell><strong>Estado</strong></TableCell>
-                        </TableRow>
-                      </TableHead>
-                      <TableBody>
-                        {(() => {
-                          const movimientos = [];
-                          let saldoAcumulado = contrato.precio_acordado;
-
-                          // Agregar entrega inicial si existe
-                          if (contrato.entrega_inicial && contrato.entrega_inicial > 0) {
-                            saldoAcumulado -= contrato.entrega_inicial;
-                            movimientos.push({
-                              fecha: contrato.fecha_contrato,
-                              concepto: 'Entrega Inicial',
-                              debe: 0,
-                              haber: contrato.entrega_inicial,
-                              saldo: saldoAcumulado,
-                              estado: 'PAGADO',
-                              tipo: 'pago'
-                            });
-                          }
-
-                          // Agregar solo cuotas vencidas o pagadas (movimientos reales)
-                          const hoy = new Date();
-                          cuotasYCiclos.ciclos.forEach(ciclo => {
-                            ciclo.cuotas.forEach(cuota => {
-                              const fechaCuota = new Date(cuota.fecha);
-                              const yaVencio = fechaCuota <= hoy;
-                              
-                              // Solo mostrar cuotas que ya vencieron o que fueron pagadas
-                              if (yaVencio || cuota.estado === 'PAGADO') {
-                                // Primero agregar la cuota (deuda)
-                                if (cuota.estado !== 'PAGADO') {
-                                  movimientos.push({
-                                    fecha: cuota.fecha,
-                                    concepto: `Cuota #${cuota.numero}`,
-                                    debe: cuota.monto,
-                                    haber: 0,
-                                    saldo: saldoAcumulado + cuota.monto,
-                                    estado: cuota.estado,
-                                    tipo: 'cuota'
-                                  });
-                                  saldoAcumulado += cuota.monto;
-                                }
-                                
-                                // Si está pagada, agregar también el pago
-                                if (cuota.estado === 'PAGADO') {
-                                  // Agregar la cuota
-                                  movimientos.push({
-                                    fecha: cuota.fecha,
-                                    concepto: `Cuota #${cuota.numero}`,
-                                    debe: cuota.monto,
-                                    haber: 0,
-                                    saldo: saldoAcumulado + cuota.monto,
-                                    estado: 'FACTURADO',
-                                    tipo: 'cuota'
-                                  });
-                                  saldoAcumulado += cuota.monto;
-                                  
-                                  // Agregar el pago
-                                  movimientos.push({
-                                    fecha: cuota.fecha_pago || cuota.fecha,
-                                    concepto: `Pago Cuota #${cuota.numero} - ${cuota.metodo_pago || 'TRANSFERENCIA'}`,
-                                    debe: 0,
-                                    haber: cuota.monto,
-                                    saldo: saldoAcumulado - cuota.monto,
-                                    estado: 'PAGADO',
-                                    tipo: 'pago'
-                                  });
-                                  saldoAcumulado -= cuota.monto;
-                                }
-                              }
-                            });
-                          });
-
-                          // Ordenar movimientos por fecha
-                          movimientos.sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
-
-                          return movimientos.map((movimiento, index) => (
-                            <TableRow 
-                              key={`movimiento_${index}`} 
-                              sx={{
-                                backgroundColor: movimiento.estado === 'VENCIDO' ? '#ffebee' : 
-                                                movimiento.estado === 'PAGADO' ? '#e8f5e8' : 
-                                                movimiento.tipo === 'pago' ? '#e8f5e8' : 'inherit'
-                              }}
-                            >
-                              <TableCell>{formatearFecha(movimiento.fecha)}</TableCell>
-                              <TableCell>{movimiento.concepto}</TableCell>
-                              <TableCell align="right" sx={{ color: 'error.main' }}>
-                                {movimiento.debe > 0 ? formatearMoneda(movimiento.debe) : '-'}
-                              </TableCell>
-                              <TableCell align="right" sx={{ color: 'success.main' }}>
-                                {movimiento.haber > 0 ? formatearMoneda(movimiento.haber) : '-'}
-                              </TableCell>
-                              <TableCell align="right" sx={{ fontWeight: 'bold' }}>
-                                {formatearMoneda(Math.max(0, movimiento.saldo))}
-                              </TableCell>
-                              <TableCell>
-                                <Chip 
-                                  label={movimiento.estado}
-                                  color={
-                                    movimiento.estado === 'PAGADO' ? 'success' :
-                                    movimiento.estado === 'VENCIDO' ? 'error' : 
-                                    movimiento.estado === 'FACTURADO' ? 'info' : 'warning'
-                                  }
-                                  size="small"
-                                />
-                              </TableCell>
-                            </TableRow>
-                          ));
-                        })()}
-                      </TableBody>
-                    </Table>
-                  </TableContainer>
-                </CardContent>
-              </Card>
-            </Grid>
-          </Grid>
-        </TabPanel>
-
-        {/* Tab 5: Documentos */}
-        <TabPanel value={tabActivo} index={4}>
-          <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
-            <DescriptionIcon sx={{ mr: 1 }} />
-            Documentos del Contrato
-          </Typography>
-
-          <Grid container spacing={3}>
-            <Grid item xs={12} md={6}>
-              <Paper sx={{ p: 3 }}>
-                <Typography variant="h6" gutterBottom>
-                  Documentos Disponibles
-                </Typography>
-                
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                  <Button
-                    variant="outlined"
-                    startIcon={<PdfIcon />}
-                    fullWidth
-                    sx={{ justifyContent: 'flex-start' }}
-                  >
-                    Contrato de Compraventa
-                  </Button>
-                  
-                  <Button
-                    variant="outlined"
-                    startIcon={<PdfIcon />}
-                    fullWidth
-                    sx={{ justifyContent: 'flex-start' }}
-                  >
-                    Plano del Lote
-                  </Button>
-                  
-                  <Button
-                    variant="outlined"
-                    startIcon={<PdfIcon />}
-                    fullWidth
-                    sx={{ justifyContent: 'flex-start' }}
-                  >
-                    Cronograma de Pagos
-                  </Button>
-                  
-                  <Button
-                    variant="outlined"
-                    startIcon={<PdfIcon />}
-                    fullWidth
-                    sx={{ justifyContent: 'flex-start' }}
-                  >
-                    Documentación del Cliente
-                  </Button>
-                </Box>
-              </Paper>
-            </Grid>
-
-            <Grid item xs={12} md={6}>
-              <Paper sx={{ p: 3 }}>
-                <Typography variant="h6" gutterBottom>
-                  Acciones Rápidas
-                </Typography>
-                
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                  <Button
-                    variant="outlined"
-                    startIcon={<PdfIcon />}
-                    fullWidth
-                  >
-                    Generar Reporte Completo
-                  </Button>
-                  
-                  <Divider />
-                  
-                  <Typography variant="body2" color="text.secondary" align="center">
-                    Última actualización: {formatearFecha(contrato.ultimo_pago)}
-                  </Typography>
-                </Box>
-              </Paper>
-            </Grid>
-          </Grid>
-        </TabPanel>
       </Card>
 
       {/* Modal de Edición de Contrato */}
@@ -1710,10 +2165,14 @@ export default function ContratoDetalle() {
                     variant="outlined"
                     fullWidth
                     startIcon={<HomeIcon />}
-                    onClick={() => router.push(`/loteParaTodosMock/lotes/${lote?.id}`)}
+                    disabled={!lote?.emprendimiento_id}
+                    onClick={() => {
+                      if (!lote?.emprendimiento_id) return;
+                      router.push(`/loteParaTodosMock/emprendimientos/${lote.emprendimiento_id}?lote=${lote.id}`);
+                    }}
                     sx={{ height: 56 }}
                   >
-                    Editar Lote
+                    Ver en Emprendimiento
                   </Button>
                 </Grid>
                 <Grid item xs={12} md={4}>
@@ -2242,6 +2701,52 @@ export default function ContratoDetalle() {
             disabled={!datosRefinanciacion.motivo.trim()}
           >
             Crear Re-financiación
+          </Button>
+        </DialogActions>
+      </Dialog>
+      {/* Modal de Generación de Documentos */}
+      <Dialog 
+        open={openGenerarDocDialog} 
+        onClose={() => setOpenGenerarDocDialog(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Generar Documento</DialogTitle>
+        <DialogContent dividers>
+          <Stack spacing={3} sx={{ mt: 1 }}>
+            <TextField
+              select
+              fullWidth
+              label="Seleccionar Plantilla"
+              value={plantillaSeleccionada}
+              onChange={(e) => setPlantillaSeleccionada(e.target.value)}
+            >
+              {plantillasDisponibles.map(plantilla => (
+                <MenuItem key={plantilla.id} value={plantilla.id}>
+                  {plantilla.nombre}
+                </MenuItem>
+              ))}
+            </TextField>
+            
+            {plantillaSeleccionada && (
+              <Alert severity="info">
+                Se generará el documento utilizando los datos actuales del contrato y del cliente.
+              </Alert>
+            )}
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpenGenerarDocDialog(false)}>Cancelar</Button>
+          <Button 
+            variant="contained" 
+            disabled={!plantillaSeleccionada}
+            onClick={() => {
+              alert('Documento generado exitosamente');
+              setOpenGenerarDocDialog(false);
+              setPlantillaSeleccionada('');
+            }}
+          >
+            Generar
           </Button>
         </DialogActions>
       </Dialog>

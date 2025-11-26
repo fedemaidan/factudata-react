@@ -236,6 +236,61 @@ export const mockContratos = [
     ultimo_pago: '2023-08-10',
     saldo_pendiente: 265000,
     observaciones: 'Contrato caído por falta de pago - lote disponible nuevamente'
+  },
+  // Contratos en etapa comercial (Ventas)
+  {
+    id: 101,
+    cliente_id: 5,
+    lote_id: 15,
+    vendedor_id: 'juan.perez',
+    plan_financiacion_id: 1,
+    precio_acordado: 350000,
+    entrega_inicial: 105000,
+    cuotas_cantidad: 12,
+    cuota_mensual: 20416,
+    pago_contado_hoy: 0,
+    estado: 'PRE-RESERVA',
+    fecha_contrato: '2025-11-20',
+    fecha_vencimiento: '2025-11-27', // Vence en 7 días
+    ultimo_pago: null,
+    saldo_pendiente: 0,
+    observaciones: 'Cliente interesado, falta confirmar anticipo.'
+  },
+  {
+    id: 102,
+    cliente_id: 8,
+    lote_id: 18,
+    vendedor_id: 'maria.garcia',
+    plan_financiacion_id: 2,
+    precio_acordado: 290000,
+    entrega_inicial: 87000,
+    cuotas_cantidad: 24,
+    cuota_mensual: 8458,
+    pago_contado_hoy: 50000, // Ya pagó parte del anticipo
+    estado: 'RESERVA',
+    fecha_contrato: '2025-11-22',
+    fecha_vencimiento: '2025-12-22',
+    ultimo_pago: '2025-11-22',
+    saldo_pendiente: 37000, // Resto del anticipo
+    observaciones: 'Seña recibida. Esperando completitud de documentación.'
+  },
+  {
+    id: 103,
+    cliente_id: 12,
+    lote_id: 22,
+    vendedor_id: 'carlos.lopez',
+    plan_financiacion_id: 3,
+    precio_acordado: 410000,
+    entrega_inicial: 82000,
+    cuotas_cantidad: 36,
+    cuota_mensual: 9111,
+    pago_contado_hoy: 0,
+    estado: 'CANCELADO',
+    fecha_contrato: '2025-11-10',
+    fecha_vencimiento: '2025-11-17',
+    ultimo_pago: null,
+    saldo_pendiente: 0,
+    observaciones: 'Cliente desistió por falta de fondos.'
   }
 ];
 

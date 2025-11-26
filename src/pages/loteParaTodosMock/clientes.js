@@ -7,7 +7,9 @@ import {
   TablePagination, TableRow, TextField, Tooltip, Typography, Divider, MenuItem,
   TableSortLabel, Menu, ListItemIcon, ListItemText, InputAdornment, Drawer,
   Stepper, Step, StepLabel, Autocomplete, StepContent,
-  Grid
+  Grid,
+  Alert,
+  Snackbar
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -18,10 +20,19 @@ import DownloadIcon from '@mui/icons-material/Download';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import AssignmentIcon from '@mui/icons-material/Assignment';
 import HomeIcon from '@mui/icons-material/Home';
+import SearchIcon from '@mui/icons-material/Search';
+import GavelIcon from '@mui/icons-material/Gavel';
+import BuildCircleIcon from '@mui/icons-material/BuildCircle';
+import LinkIcon from '@mui/icons-material/Link';
+import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
+import WarningIcon from '@mui/icons-material/Warning';
+import ErrorIcon from '@mui/icons-material/Error';
+import InfoIcon from '@mui/icons-material/Info';
 
 import * as XLSX from 'xlsx';
 import LoteParaTodosLayout from 'src/components/layouts/LoteParaTodosLayout';
 import ClienteResumenDrawer from 'src/components/loteParaTodos/ClienteResumenDrawer';
+import VentaWizard from 'src/components/loteParaTodos/ventas/VentaWizard';
 import { 
   mockClientes, 
   getClienteById, 
@@ -39,6 +50,48 @@ import {
   getClienteCompleto,
   getLoteCompleto
 } from 'src/data/loteParaTodos/index';
+import {
+  ESTADO_CONTRATO,
+  ESTADO_CONTRATO_LABELS,
+  ESTADO_CONTRATO_COLORS,
+  ESTADO_LEGAL,
+  ESTADO_LEGAL_LABELS,
+  ESTADO_LEGAL_COLORS
+} from 'src/data/loteParaTodos/constantes';
+import { 
+  mockServicios, 
+  getServiciosContratadosByCliente 
+} from 'src/data/loteParaTodos/mockServicios';
+
+const SERVICIO_CATALOGO_MAP = mockServicios.reduce((acc, servicio) => {
+  acc[servicio.id] = servicio;
+  return acc;
+}, {});
+
+const ESTADO_CONTRATO_OPTIONS = Object.entries(ESTADO_CONTRATO_LABELS).map(([value, label]) => ({ value, label }));
+const ESTADO_LEGAL_OPTIONS = Object.entries(ESTADO_LEGAL_LABELS).map(([value, label]) => ({ value, label }));
+const MONEDA_OPTIONS = [
+  { value: 'ARS', label: 'Pesos (ARS)' },
+  { value: 'USD', label: 'Dólares (USD)' }
+];
+const SERVICIO_CATEGORIAS_OPTIONS = [
+  { value: 'agua', label: 'Agua' },
+  { value: 'alambrado', label: 'Alambrado' },
+  { value: 'corte_cesped', label: 'Corte de Césped' },
+  { value: 'gas', label: 'Gas' },
+  { value: 'instalacion', label: 'Instalación' },
+  { value: 'mejoras', label: 'Mejoras' },
+  { value: 'mantenimiento', label: 'Mantenimiento' }
+];
+const CATEGORIA_SERVICIO_LABELS = {
+  agua: 'Agua',
+  alambrado: 'Alambrado',
+  corte_cesped: 'Corte de Césped',
+  gas: 'Gas',
+  instalacion: 'Instalación',
+  mejoras: 'Mejoras',
+  mantenimiento: 'Mantenimiento'
+};
 
 const colorForEstado = (estado) => {
   if (estado === 'PAGADO') return 'success.main';
@@ -52,6 +105,7 @@ const colorForEstado = (estado) => {
 const ClientesPage = () => {
   const router = useRouter();
   const [clientes, setClientes] = useState([]);
+  const [snackbar, setSnackbar] = useState({ open: false, message: '' });
   
   // Cargar clientes al montar el componente
   React.useEffect(() => {
@@ -62,15 +116,59 @@ const ClientesPage = () => {
       // Calcular datos agregados desde los contratos
       const contratos = clienteCompleto?.contratos || [];
       const lotesIds = contratos.map(c => c.lote_id);
+      const lotesDetalle = lotesIds
+        .map(id => mockLotes.find(l => l.id === id))
+        .filter(Boolean);
       const emprendimientosIds = [...new Set(contratos.map(c => {
         const lote = mockLotes.find(l => l.id === c.lote_id);
         return lote?.emprendimiento_id;
       }).filter(Boolean))];
+      const serviciosCliente = getServiciosContratadosByCliente(cliente.id).map(servicio => {
+        const definicion = SERVICIO_CATALOGO_MAP[servicio.servicio_id] || {};
+        return {
+          ...servicio,
+          categoria: definicion.categoria || 'otros',
+          nombre_servicio: definicion.nombre || `Servicio ${servicio.servicio_id}`
+        };
+      });
+      const serviciosCategoriasCliente = [...new Set(serviciosCliente.map(s => s.categoria).filter(Boolean))];
+      const serviciosActivos = serviciosCliente.filter(s => ['activo', 'en_proceso'].includes(s.estado));
+      const estadosLegales = lotesDetalle.map(lote => lote.estado_legal).filter(Boolean);
+      const estadoLegalGeneral = estadosLegales.includes(ESTADO_LEGAL.BLOQUEADO)
+        ? ESTADO_LEGAL.BLOQUEADO
+        : estadosLegales.includes(ESTADO_LEGAL.EN_LEGALES)
+          ? ESTADO_LEGAL.EN_LEGALES
+          : estadosLegales.length > 0
+            ? ESTADO_LEGAL.NORMAL
+            : 'sin_info';
+      const bloqueadoPorLegal = estadoLegalGeneral === ESTADO_LEGAL.BLOQUEADO;
       
       // Generar saldo realista basado en contratos
       let saldoTotal = 0;
       let estadoCuenta = 'POTENCIAL';
       
+      // Determinar estado comercial principal (prioridad: Mora > Legales > Activo > Reserva > etc)
+      let estadoContratoPrincipal = ESTADO_CONTRATO.PRE_RESERVA; // Default
+      const estadosContratos = contratos.map(c => c.estado.toLowerCase());
+      
+      if (estadosContratos.some(e => ['mora', 'en_mora'].includes(e))) estadoContratoPrincipal = ESTADO_CONTRATO.MORA;
+      else if (estadosContratos.some(e => ['legales', 'en_legales', 'bloqueado'].includes(e))) estadoContratoPrincipal = ESTADO_CONTRATO.LEGALES;
+      else if (estadosContratos.some(e => ['activo'].includes(e))) estadoContratoPrincipal = ESTADO_CONTRATO.ACTIVO;
+      else if (estadosContratos.some(e => ['reserva'].includes(e))) estadoContratoPrincipal = ESTADO_CONTRATO.RESERVA;
+      else if (estadosContratos.some(e => ['pre_reserva', 'pre-reserva'].includes(e))) estadoContratoPrincipal = ESTADO_CONTRATO.PRE_RESERVA;
+      else if (estadosContratos.some(e => ['rescindido'].includes(e))) estadoContratoPrincipal = ESTADO_CONTRATO.RESCINDIDO;
+      else if (estadosContratos.some(e => ['cancelado'].includes(e))) estadoContratoPrincipal = ESTADO_CONTRATO.CANCELADO;
+      else if (estadosContratos.some(e => ['finalizado', 'completado'].includes(e))) estadoContratoPrincipal = ESTADO_CONTRATO.FINALIZADO;
+      else if (contratos.length === 0) estadoContratoPrincipal = 'sin_contrato';
+
+      // Alertas
+      const alertas = {
+        mora: estadosContratos.some(e => ['mora', 'en_mora'].includes(e)),
+        legales: estadosContratos.some(e => ['legales', 'en_legales', 'bloqueado'].includes(e)) || bloqueadoPorLegal,
+        servicios: serviciosCliente.some(s => s.estado === 'mora' || s.estado === 'deuda'),
+        sin_contrato: contratos.length === 0
+      };
+
       if (contratos.length > 0) {
         // Generar saldos realistas para cada contrato
         contratos.forEach(contrato => {
@@ -99,7 +197,7 @@ const ClientesPage = () => {
           .filter(c => ['ACTIVO', 'MORA', 'RESERVADO', 'CAIDO'].includes(c.estado))
           .reduce((total, c) => total + (c.saldo_pendiente || 0), 0);
         
-        // Determinar estado basado en contratos
+        // Determinar estado basado en contratos (Legacy para compatibilidad visual anterior)
         const tieneActivos = contratos.some(c => c.estado === 'ACTIVO');
         const tieneMora = contratos.some(c => c.estado === 'MORA');
         const todosPagados = contratos.every(c => c.saldo_pendiente === 0);
@@ -126,9 +224,17 @@ const ClientesPage = () => {
         lote_id: lotesIds[0] || null, // Primer lote para compatibilidad
         saldo_cuenta_corriente: saldoTotal,
         estado_cuenta: estadoCuenta,
+        estado_contrato_principal: estadoContratoPrincipal,
+        alertas,
+        moneda: 'ARS', // Mockeado por ahora
         ultimo_pago: contratos
           .filter(c => c.ultimo_pago)
-          .sort((a, b) => new Date(b.ultimo_pago) - new Date(a.ultimo_pago))[0]?.ultimo_pago || null
+          .sort((a, b) => new Date(b.ultimo_pago) - new Date(a.ultimo_pago))[0]?.ultimo_pago || null,
+        estado_legal_general: estadoLegalGeneral,
+        legal_bloqueado: bloqueadoPorLegal,
+        servicios_categorias: serviciosCategoriasCliente,
+        servicios_detalle: serviciosCliente,
+        servicios_activos_count: serviciosActivos.length
       };
     });
     
@@ -137,16 +243,26 @@ const ClientesPage = () => {
   const [emprendimientos] = useState(mockEmprendimientos);
   const [lotes] = useState(mockLotes);
   const [planes] = useState(mockPlanes);
-  const [filters, setFilters] = useState({ nombre: '', dni: '', email: '', telefono: '', emprendimiento_id: '', estado_cuenta: '', lote_id: '' });
+  const [filters, setFilters] = useState({
+    global: '',
+    nombre: '',
+    dni: '',
+    email: '',
+    telefono: '',
+    emprendimiento_id: '',
+    estado_cuenta: '', // Legacy
+    estado_contrato: '', // Nuevo
+    moneda: '', // Nuevo
+    lote_id: '',
+    estado_legal: '',
+    servicio_categoria: ''
+  });
   const [sortConfig, setSortConfig] = useState({ field: null, direction: 'asc' });
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(15);
   const [openCuenta, setOpenCuenta] = useState(false);
   const [openClienteDrawer, setOpenClienteDrawer] = useState(false);
   const [openVentaDrawer, setOpenVentaDrawer] = useState(false);
-  const [activeStep, setActiveStep] = useState(0);
-  const [clienteSeleccionadoVenta, setClienteSeleccionadoVenta] = useState(null);
-  const [showCreateClienteForm, setShowCreateClienteForm] = useState(false);
   const [editingCliente, setEditingCliente] = useState(null);
   const [clienteSeleccionado, setClienteSeleccionado] = useState(null);
   const [openResumenDrawer, setOpenResumenDrawer] = useState(false);
@@ -169,24 +285,33 @@ const ClientesPage = () => {
   const frecuenciasRevision = ['12 meses', '24 meses', '36 meses'];
   const opcionesIndiceRevision = ['IPC', 'UVA', 'Dólar', 'Fijo'];
   
-  // Pasos del proceso de venta
-  const ventaSteps = [
-    'Buscar o Crear Cliente',
-    'Seleccionar Proyecto y Lote', 
-    'Configurar Modo de Pago',
-    'Datos Adicionales'
-  ];
-
   // --- FILTROS ---
   const handleChangeFilter = (field, value) => setFilters(prev => ({ ...prev, [field]: value }));
   const clearFilters = () => {
-    setFilters({ nombre: '', dni: '', email: '', telefono: '', emprendimiento_id: '', estado_cuenta: '', lote_id: '' });
+    setFilters({
+      global: '',
+      nombre: '',
+      dni: '',
+      email: '',
+      telefono: '',
+      emprendimiento_id: '',
+      estado_cuenta: '',
+      estado_contrato: '',
+      moneda: '',
+      lote_id: '',
+      estado_legal: '',
+      servicio_categoria: ''
+    });
   };
 
   const filtered = useMemo(() => clientes.filter(c => {
     const match = (field) => !filters[field] || (c[field] || '').toLowerCase().includes(filters[field].toLowerCase());
-    const matchSelect = (field) => !filters[field] || c[field] === parseInt(filters[field]);
     const matchEstado = () => !filters.estado_cuenta || c.estado_cuenta === filters.estado_cuenta;
+    const matchEstadoContrato = () => !filters.estado_contrato || c.estado_contrato_principal === filters.estado_contrato;
+    const matchMoneda = () => !filters.moneda || c.moneda === filters.moneda;
+    const matchEstadoLegal = () => !filters.estado_legal || c.estado_legal_general === filters.estado_legal;
+    const matchServicioCategoria = () => !filters.servicio_categoria ||
+      ((c.servicios_categorias || []).includes(filters.servicio_categoria));
 
     // Filtros específicos para emprendimiento y lote (buscar en arrays)
     const matchEmprendimiento = !filters.emprendimiento_id || 
@@ -195,13 +320,61 @@ const ClientesPage = () => {
     const matchLote = !filters.lote_id || 
       (c.lotes_ids && c.lotes_ids.includes(parseInt(filters.lote_id)));
 
-    return match('nombre') && 
-           match('dni') && 
-           match('email') && 
-           match('telefono') && 
-           matchEmprendimiento && 
-           matchLote && 
-           matchEstado();
+    const normalizedGlobal = filters.global.trim().toLowerCase();
+    const matchGlobal = () => {
+      if (!normalizedGlobal) return true;
+      const baseFields = [
+        c.id,
+        c.nombre,
+        c.apellido,
+        c.dni,
+        c.email,
+        c.telefono,
+        c.telefonoFijo,
+        c.telefonoMovil2,
+        c.ocupacion,
+        c.estado_cuenta,
+        c.ultimo_pago
+      ];
+
+      const contratoFields = (c.contratos || []).flatMap((contrato) => [
+        contrato.id,
+        contrato.estado,
+        contrato.vendedor,
+        contrato.plan_nombre,
+        contrato.numero_contrato
+      ]);
+
+      const relacionCampos = (c.lotes_ids || []).flatMap((loteId) => {
+        const lote = lotes.find((l) => l.id === loteId);
+        if (!lote) return [];
+        const emprendimiento = emprendimientos.find((e) => e.id === lote.emprendimiento_id);
+        return [
+          lote.numero,
+          lote.manzana,
+          lote.estado,
+          emprendimiento?.nombre,
+          emprendimiento?.ubicacion
+        ];
+      });
+
+      return [...baseFields, ...contratoFields, ...relacionCampos]
+        .filter(Boolean)
+        .some((value) => value.toString().toLowerCase().includes(normalizedGlobal));
+    };
+
+    return matchGlobal() &&
+      match('nombre') && 
+      match('dni') && 
+      match('email') && 
+      match('telefono') && 
+      matchEmprendimiento && 
+      matchLote && 
+      matchEstado() &&
+      matchEstadoContrato() &&
+      matchMoneda() &&
+      matchEstadoLegal() &&
+      matchServicioCategoria();
   }), [clientes, filters, emprendimientos, lotes]);  // --- ORDENAMIENTO ---
   const sorted = useMemo(() => {
     if (!sortConfig.field) return filtered;
@@ -264,6 +437,13 @@ const ClientesPage = () => {
       potencial: conteos.POTENCIAL || 0
     };
   }, [clientes]);
+  const legalStats = useMemo(() => (
+    clientes.reduce((acc, cliente) => {
+      const estado = cliente.estado_legal_general || 'sin_info';
+      acc[estado] = (acc[estado] || 0) + 1;
+      return acc;
+    }, {})
+  ), [clientes]);
   const toggleEstadoFilter = (estado) => setFilters(prev => ({ ...prev, estado_cuenta: prev.estado_cuenta === estado ? '' : estado }));
 
   // --- FORMULARIO NUEVO / EDITAR ---
@@ -279,23 +459,6 @@ const ClientesPage = () => {
     aceptaPromoADL: 'NO'
   };
   const [formData, setFormData] = useState(initialForm);
-
-  // --- FORMULARIO CONTRATO ---
-  const initialContrato = {
-    emprendimiento_id: '',
-    lote_id: '',
-    plan_financiacion_id: '',
-    precio_acordado: 0,
-    entrega_inicial: 0,
-    cuotas_cantidad: 0,
-    cuota_mensual: 0,
-    pago_contado_hoy: 0,
-    fecha_contrato: new Date().toISOString().slice(0, 10),
-    vendedor: '',
-    observaciones: '',
-    condiciones_especiales: []
-  };
-  const [contratoData, setContratoData] = useState(initialContrato);
 
   const openNuevoCliente = () => {
     setEditingCliente(null);
@@ -340,105 +503,14 @@ const ClientesPage = () => {
     setFormData(initialForm);
   };
 
-  // Funciones para el stepper de venta
-  const handleNext = () => setActiveStep((prev) => prev + 1);
-  const handleBack = () => setActiveStep((prev) => prev - 1);
-  const handleReset = () => {
-    setActiveStep(0);
-    setClienteSeleccionadoVenta(null);
-    setContratoData(initialContrato);
-    setShowCreateClienteForm(false);
-  };
 
-  const selectClienteForVenta = (cliente) => {
-    setClienteSeleccionadoVenta(cliente);
-    handleNext();
-  };
-
-  const createNewClienteInVenta = () => {
-    setFormData(initialForm);
-    setShowCreateClienteForm(true);
-  };
-
-  const saveClienteInVenta = () => {
-    if (!formData.nombre || !formData.dni) return alert('Nombre y DNI son obligatorios');
-    
-    const clienteData = {
-      ...formData,
-      nombre: formData.apellido ? `${formData.nombre} ${formData.apellido}` : formData.nombre,
-      id: Math.max(...clientes.map(c => c.id)) + 1,
-      estado_cuenta: 'POTENCIAL'
-    };
-    
-    setClientes(prev => [...prev, clienteData]);
-    setClienteSeleccionadoVenta(clienteData);
-    setShowCreateClienteForm(false);
-    handleNext();
-  };
-
-  // Función para actualizar lotes disponibles cuando se selecciona un emprendimiento
-  const handleEmprendimientoChange = (emprendimientoId) => {
-    setEmprendimientoSeleccionado(emprendimientoId);
-    if (emprendimientoId) {
-      const lotesDelEmprendimiento = getLotesByEmprendimiento(parseInt(emprendimientoId));
-      const disponibles = lotesDelEmprendimiento.filter(lote => lote.estado === 'DISPONIBLE');
-      setLotesDisponibles(disponibles);
-    } else {
-      setLotesDisponibles([]);
-    }
-    setContratoData(prev => ({ ...prev, emprendimiento_id: emprendimientoId, lote_id: '' }));
-  };
-
-  // Función para calcular financiación cuando se selecciona lote y plan
-  const calcularResumenVenta = (precioPersonalizado = null) => {
-    if (contratoData.lote_id && contratoData.plan_financiacion_id) {
-      const lote = lotes.find(l => l.id === parseInt(contratoData.lote_id));
-      const precioBase = precioPersonalizado || lote?.precio_base || 0;
-      
-      const calculoFinanciacion = calcularFinanciacion(
-        precioBase, 
-        parseInt(contratoData.plan_financiacion_id)
-      );
-      
-      if (calculoFinanciacion) {
-        setContratoData(prev => ({
-          ...prev,
-          precio_acordado: calculoFinanciacion.precio_final,
-          entrega_inicial: calculoFinanciacion.entrega_inicial,
-          cuotas_cantidad: calculoFinanciacion.plan.cuotas_cantidad,
-          cuota_mensual: calculoFinanciacion.cuota_mensual,
-          pago_contado_hoy: 0 // Reset pago al contado cuando se recalcula
-        }));
-      }
-    }
-  };
-
-  // Función para recalcular basado en precio acordado manual
-  const recalcularConPrecioManual = (nuevoPrecio) => {
-    if (contratoData.plan_financiacion_id && nuevoPrecio > 0) {
-      const calculoFinanciacion = calcularFinanciacion(
-        nuevoPrecio, 
-        parseInt(contratoData.plan_financiacion_id)
-      );
-      
-      if (calculoFinanciacion) {
-        setContratoData(prev => ({
-          ...prev,
-          precio_acordado: nuevoPrecio,
-          entrega_inicial: calculoFinanciacion.entrega_inicial,
-          cuotas_cantidad: calculoFinanciacion.plan.cuotas_cantidad,
-          cuota_mensual: calculoFinanciacion.cuota_mensual
-        }));
-      }
-    }
-  };
 
   return (
     <LoteParaTodosLayout currentModule="clientes" pageTitle="Gestión de Clientes">
       <Head><title>Clientes - Lote Para Todos</title></Head>
           {/* HEADER */}
           <Paper sx={{ p: 2, mb: 2 }}>
-            <Stack direction="row" justifyContent="space-between" alignItems="center">
+            <Stack direction="row" justifyContent="space-between" alignItems="center" flexWrap="wrap" rowGap={2}>
               <Box>
                 <Typography variant="h6" fontWeight={700}>Listado de Clientes</Typography>
                 <Typography variant="body2" color="text.secondary">
@@ -446,6 +518,20 @@ const ClientesPage = () => {
                 </Typography>
               </Box>
               <Stack direction="row" spacing={2} alignItems="center">
+                <TextField
+                  size="small"
+                  placeholder="Buscar por nombre, contrato, lote o vendedor"
+                  value={filters.global}
+                  onChange={(e) => handleChangeFilter('global', e.target.value)}
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <SearchIcon fontSize="small" color={filters.global ? 'primary' : 'action'} />
+                      </InputAdornment>
+                    )
+                  }}
+                  sx={{ minWidth: { xs: '100%', sm: 260, md: 320 } }}
+                />
                 <Button variant="contained" startIcon={<AddIcon />} onClick={() => setOpenClienteDrawer(true)}>Nuevo cliente</Button>
                 <Button variant="contained" color="secondary" onClick={() => { setOpenVentaDrawer(true); setActiveStep(0); }}>Venta de Lote</Button>
                 <Button variant="outlined" startIcon={<DownloadIcon />} onClick={exportToExcel}>EXCEL</Button>
@@ -472,15 +558,108 @@ const ClientesPage = () => {
             <Chip color="default" clickable onClick={() => toggleEstadoFilter('POTENCIAL')} 
                   label={`Potencial: ${stats.potencial}`} 
                   variant={filters.estado_cuenta === 'POTENCIAL' ? 'filled' : 'outlined'} />
+    <Chip
+      icon={<GavelIcon />}
+      color="success"
+      variant={filters.estado_legal === ESTADO_LEGAL.NORMAL ? 'filled' : 'outlined'}
+      onClick={() => handleChangeFilter('estado_legal', filters.estado_legal === ESTADO_LEGAL.NORMAL ? '' : ESTADO_LEGAL.NORMAL)}
+      label={`Legal OK: ${legalStats[ESTADO_LEGAL.NORMAL] || 0}`}
+    />
+    <Chip
+      icon={<GavelIcon />}
+      color="warning"
+      variant={filters.estado_legal === ESTADO_LEGAL.EN_LEGALES ? 'filled' : 'outlined'}
+      onClick={() => handleChangeFilter('estado_legal', filters.estado_legal === ESTADO_LEGAL.EN_LEGALES ? '' : ESTADO_LEGAL.EN_LEGALES)}
+      label={`En legales: ${legalStats[ESTADO_LEGAL.EN_LEGALES] || 0}`}
+    />
+    <Chip
+      icon={<GavelIcon />}
+      color="error"
+      variant={filters.estado_legal === ESTADO_LEGAL.BLOQUEADO ? 'filled' : 'outlined'}
+      onClick={() => handleChangeFilter('estado_legal', filters.estado_legal === ESTADO_LEGAL.BLOQUEADO ? '' : ESTADO_LEGAL.BLOQUEADO)}
+      label={`Bloqueado: ${legalStats[ESTADO_LEGAL.BLOQUEADO] || 0}`}
+    />
           </Stack>
 
           {/* TABLA */}
           <Paper sx={{ p: 1 }}>
+            <Box sx={{ px: 1.5, py: 2, borderBottom: '1px solid', borderColor: 'divider' }}>
+              <Grid container spacing={2}>
+                <Grid item xs={12} md={3}>
+                  <TextField
+                    select
+                    fullWidth
+                    label="Estado Contrato"
+                    value={filters.estado_contrato}
+                    onChange={(e) => handleChangeFilter('estado_contrato', e.target.value)}
+                    size="small"
+                  >
+                    <MenuItem value="">Todos</MenuItem>
+                    {ESTADO_CONTRATO_OPTIONS.map((option) => (
+                      <MenuItem key={option.value} value={option.value}>
+                        {option.label}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+                </Grid>
+                <Grid item xs={12} md={3}>
+                  <TextField
+                    select
+                    fullWidth
+                    label="Moneda"
+                    value={filters.moneda}
+                    onChange={(e) => handleChangeFilter('moneda', e.target.value)}
+                    size="small"
+                  >
+                    <MenuItem value="">Todas</MenuItem>
+                    {MONEDA_OPTIONS.map((option) => (
+                      <MenuItem key={option.value} value={option.value}>
+                        {option.label}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+                </Grid>
+                <Grid item xs={12} md={3}>
+                  <TextField
+                    select
+                    fullWidth
+                    label="Estado legal"
+                    value={filters.estado_legal}
+                    onChange={(e) => handleChangeFilter('estado_legal', e.target.value)}
+                    size="small"
+                  >
+                    {ESTADO_LEGAL_OPTIONS.map((option) => (
+                      <MenuItem key={option.value || 'all-legal'} value={option.value}>
+                        {option.label}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+                </Grid>
+                <Grid item xs={12} md={3}>
+                  <TextField
+                    select
+                    fullWidth
+                    label="Servicios contratados"
+                    helperText="Filtra por categoría clave"
+                    value={filters.servicio_categoria}
+                    onChange={(e) => handleChangeFilter('servicio_categoria', e.target.value)}
+                    size="small"
+                  >
+                    <MenuItem value="">Todos los servicios</MenuItem>
+                    {SERVICIO_CATEGORIAS_OPTIONS.map((categoria) => (
+                      <MenuItem key={categoria.value} value={categoria.value}>
+                        {categoria.label}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+                </Grid>
+              </Grid>
+            </Box>
             <TableContainer sx={{ maxHeight: 'calc(100vh - 300px)' }}>
               <Table stickyHeader size="small">
                 <TableHead>
                   <TableRow>
-                    {['nombre', 'dni', 'telefono', 'email', 'emprendimiento', 'lotes', 'saldo', 'estado_cuenta', 'ultimo_pago'].map((field) => (
+                    {['nombre', 'contacto', 'emprendimiento', 'lotes', 'saldo', 'estado_contrato'].map((field) => (
                       <TableCell key={field} sx={{ py: 0.5 }}>
                         <TableSortLabel
                           active={sortConfig.field === field}
@@ -488,24 +667,19 @@ const ClientesPage = () => {
                           onClick={() => handleSort(field)}
                         >
                           {field === 'nombre' && 'Cliente'}
-                          {field === 'dni' && 'DNI/CUIT'}
-                          {field === 'telefono' && 'Teléfono'}
-                          {field === 'email' && 'Email'}
+                          {field === 'contacto' && 'Contacto'}
                           {field === 'emprendimiento' && 'Emprendimiento'}
                           {field === 'lotes' && 'Lotes'}
                           {field === 'saldo' && 'Saldo CC'}
-                          {field === 'estado_cuenta' && 'Estado'}
-                          {field === 'ultimo_pago' && 'Último pago'}
+                          {field === 'estado_contrato' && 'Estado'}
                         </TableSortLabel>
                       </TableCell>
                     ))}
-                    <TableCell align="center" sx={{ py: 0.5 }}>⋮</TableCell>
+                    <TableCell align="center" sx={{ py: 0.5 }}>Acciones</TableCell>
                   </TableRow>
                   <TableRow>
-                    <TableCell><TextField size="small" value={filters.nombre} onChange={(e) => handleChangeFilter('nombre', e.target.value)} fullWidth /></TableCell>
-                    <TableCell><TextField size="small" value={filters.dni} onChange={(e) => handleChangeFilter('dni', e.target.value)} fullWidth /></TableCell>
-                    <TableCell><TextField size="small" value={filters.telefono} onChange={(e) => handleChangeFilter('telefono', e.target.value)} fullWidth /></TableCell>
-                    <TableCell><TextField size="small" value={filters.email} onChange={(e) => handleChangeFilter('email', e.target.value)} fullWidth /></TableCell>
+                    <TableCell><TextField size="small" value={filters.nombre} onChange={(e) => handleChangeFilter('nombre', e.target.value)} fullWidth placeholder="Nombre o DNI" /></TableCell>
+                    <TableCell><TextField size="small" value={filters.telefono} onChange={(e) => handleChangeFilter('telefono', e.target.value)} fullWidth placeholder="Tel / Email" /></TableCell>
                     <TableCell>
                       <TextField size="small" select fullWidth value={filters.emprendimiento_id} onChange={(e) => handleChangeFilter('emprendimiento_id', e.target.value)}>
                         <MenuItem value="">Todos</MenuItem>
@@ -513,18 +687,21 @@ const ClientesPage = () => {
                       </TextField>
                     </TableCell>
                     <TableCell>
-                      {/* Filtro por múltiples lotes - se puede mejorar */}
+                      {/* Filtro por lotes */}
                     </TableCell>
                     <TableCell>
-                      {/* Filtro por saldo - opcional */}
-                    </TableCell>
-                    <TableCell>
-                      <TextField size="small" select fullWidth value={filters.estado_cuenta} onChange={(e) => handleChangeFilter('estado_cuenta', e.target.value)}>
-                        <MenuItem value="">Todos</MenuItem>
-                        {estados.map((s) => <MenuItem key={s} value={s}>{s}</MenuItem>)}
+                       <TextField size="small" select fullWidth value={filters.moneda} onChange={(e) => handleChangeFilter('moneda', e.target.value)}>
+                        <MenuItem value="">Todas</MenuItem>
+                        {MONEDA_OPTIONS.map((m) => <MenuItem key={m.value} value={m.value}>{m.label}</MenuItem>)}
                       </TextField>
                     </TableCell>
-                    <TableCell /><TableCell />
+                    <TableCell>
+                      <TextField size="small" select fullWidth value={filters.estado_contrato} onChange={(e) => handleChangeFilter('estado_contrato', e.target.value)}>
+                        <MenuItem value="">Todos</MenuItem>
+                        {ESTADO_CONTRATO_OPTIONS.map((s) => <MenuItem key={s.value} value={s.value}>{s.label}</MenuItem>)}
+                      </TextField>
+                    </TableCell>
+                    <TableCell />
                   </TableRow>
                 </TableHead>
 
@@ -532,22 +709,49 @@ const ClientesPage = () => {
                   {paginated.map((c) => {
                     // Obtener primer emprendimiento del cliente (puede tener varios)
                     const emprendimiento = emprendimientos.find(e => e.id === c.emprendimiento_id);
-                    // Los lotes del cliente están en lotes_ids (array)
-                    const clienteLotes = c.lotes_ids ? c.lotes_ids.map(id => lotes.find(l => l.id === id)).filter(Boolean) : [];
                     
                     return (
-                      <TableRow key={c.id} hover sx={{ '& td': { py: 0.6, fontSize: '0.85rem' } }}>
+                      <TableRow 
+                        key={c.id} 
+                        hover 
+                        onClick={() => openResumenCliente(c)}
+                        sx={{ '& td': { py: 0.6, fontSize: '0.85rem' }, cursor: 'pointer' }}
+                      >
                         <TableCell>
                           <Box>
                             <Typography variant="body2" fontWeight={600}>{c.nombre}</Typography>
-                            {c.ocupacion && (
-                              <Typography variant="caption" color="text.secondary">{c.ocupacion}</Typography>
-                            )}
+                            <Typography variant="caption" color="text.secondary" display="block">
+                              {c.dni}
+                            </Typography>
+                            <Stack direction="row" spacing={0.5} flexWrap="wrap" mt={0.5} useFlexGap>
+                              <Chip
+                                size="small"
+                                icon={<GavelIcon sx={{ fontSize: 14 }} />}
+                                label={c.estado_legal_general === 'sin_info'
+                                  ? 'Legal pendiente'
+                                  : `Legal: ${ESTADO_LEGAL_LABELS[c.estado_legal_general] || 'Sin dato'}`}
+                                color={ESTADO_LEGAL_COLORS[c.estado_legal_general] || 'default'}
+                                variant={c.estado_legal_general === ESTADO_LEGAL.NORMAL ? 'outlined' : 'filled'}
+                              />
+                              {(c.servicios_categorias || []).slice(0, 2).map((categoria) => (
+                                <Chip
+                                  key={`${c.id}-${categoria}`}
+                                  size="small"
+                                  icon={<BuildCircleIcon sx={{ fontSize: 14 }} />}
+                                  label={CATEGORIA_SERVICIO_LABELS[categoria] || categoria}
+                                  variant="outlined"
+                                  color={c.servicios_activos_count > 0 ? 'info' : 'default'}
+                                />
+                              ))}
+                            </Stack>
                           </Box>
                         </TableCell>
-                        <TableCell>{c.dni}</TableCell>
-                        <TableCell>{c.telefono}</TableCell>
-                        <TableCell>{c.email}</TableCell>
+                        <TableCell>
+                          <Typography variant="body2">{c.telefono}</Typography>
+                          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {c.email}
+                          </Typography>
+                        </TableCell>
                         <TableCell>
                           {emprendimiento ? (
                             <Box>
@@ -586,35 +790,51 @@ const ClientesPage = () => {
                             variant="body2" 
                             fontWeight={600}
                             color={
-                              // Usar el estado de la cuenta en lugar del signo del saldo
-                              c.estado_cuenta === 'PAGADO' || c.estado_cuenta === 'AL_DIA' ? 'success.main' :
-                              c.estado_cuenta === 'MORA' ? 'error.main' :
+                              c.estado_contrato_principal === ESTADO_CONTRATO.ACTIVO ? 'success.main' :
+                              c.estado_contrato_principal === ESTADO_CONTRATO.MORA ? 'error.main' :
                               'text.primary'
                             }
                           >
                             ${c.saldo_cuenta_corriente?.toLocaleString('es-AR') || '0'}
                           </Typography>
+                          <Chip size="small" label={c.moneda || 'ARS'} variant="outlined" sx={{ height: 20, fontSize: '0.7rem' }} />
                         </TableCell>
                         <TableCell>
-                          <Chip 
-                            size="small"
-                            label={c.estado_cuenta}
-                            color={
-                              c.estado_cuenta === 'PAGADO' ? 'success' :
-                              c.estado_cuenta === 'AL_DIA' ? 'info' :
-                              c.estado_cuenta === 'MORA' ? 'error' :
-                              c.estado_cuenta === 'RESERVADO' ? 'warning' : 'default'
-                            }
-                          />
+                          <Stack direction="row" alignItems="center" spacing={1}>
+                            <Chip 
+                              size="small"
+                              label={ESTADO_CONTRATO_LABELS[c.estado_contrato_principal] || c.estado_contrato_principal}
+                              color={ESTADO_CONTRATO_COLORS[c.estado_contrato_principal] || 'default'}
+                            />
+                            <Stack direction="row" spacing={0.5}>
+                              {c.alertas?.mora && (
+                                <Tooltip title="Cliente en Mora">
+                                  <WarningIcon color="error" fontSize="small" />
+                                </Tooltip>
+                              )}
+                              {c.alertas?.legales && (
+                                <Tooltip title="En proceso legal">
+                                  <GavelIcon color="warning" fontSize="small" />
+                                </Tooltip>
+                              )}
+                              {c.alertas?.sin_contrato && (
+                                <Tooltip title="Sin contrato activo">
+                                  <InfoIcon color="info" fontSize="small" />
+                                </Tooltip>
+                              )}
+                            </Stack>
+                          </Stack>
                         </TableCell>
-                        <TableCell>{c.ultimo_pago || '-'}</TableCell>
-                        <TableCell align="center">
-                          <Stack direction="row" spacing={1}>
-                            <Tooltip title="Ver resumen completo">
-                              <IconButton size="small" onClick={() => openResumenCliente(c)} color="primary">
-                                <AssignmentIcon fontSize="small" />
-                              </IconButton>
-                            </Tooltip>
+                        <TableCell align="center" onClick={(e) => e.stopPropagation()}>
+                          <Stack direction="row" spacing={1} justifyContent="center">
+                            <Button 
+                              size="small" 
+                              variant="contained" 
+                              onClick={() => openResumenCliente(c)}
+                              sx={{ minWidth: 'auto', px: 1 }}
+                            >
+                              Ir a Ficha
+                            </Button>
                             <IconButton size="small" onClick={(e) => openMenu(e, c)}>
                               <MoreVertIcon fontSize="small" />
                             </IconButton>
@@ -625,7 +845,7 @@ const ClientesPage = () => {
                   })}
                   {totalRows === 0 && (
                     <TableRow>
-                      <TableCell colSpan={9} align="center" sx={{ py: 2 }}>
+                      <TableCell colSpan={7} align="center" sx={{ py: 2 }}>
                         <Typography variant="body2" color="text.secondary">No hay clientes con estos filtros.</Typography>
                       </TableCell>
                     </TableRow>
@@ -651,6 +871,14 @@ const ClientesPage = () => {
             <MenuItem onClick={() => { openResumenCliente(menuCliente); closeMenu(); }}>
               <ListItemIcon><AssignmentIcon fontSize="small" /></ListItemIcon>
               <ListItemText>Ver resumen completo</ListItemText>
+            </MenuItem>
+            <MenuItem onClick={() => { 
+              navigator.clipboard.writeText(`https://portal.loteparatodos.com/cliente/${menuCliente?.id}`);
+              alert('Enlace copiado al portapapeles');
+              closeMenu(); 
+            }}>
+              <ListItemIcon><LinkIcon fontSize="small" /></ListItemIcon>
+              <ListItemText>Copiar enlace Portal</ListItemText>
             </MenuItem>
             <MenuItem onClick={() => { openEstadoCuenta(menuCliente); closeMenu(); }}>
               <ListItemIcon><VisibilityIcon fontSize="small" /></ListItemIcon>
@@ -1154,555 +1382,15 @@ const ClientesPage = () => {
             </Box>
           </Drawer>
 
-          {/* DRAWER VENTA DE LOTE */}
-          <Drawer 
-            anchor="right" 
+          {/* DRAWER VENTA DE LOTE (Reutilizado) */}
+          <VentaWizard 
             open={openVentaDrawer} 
-            onClose={() => { setOpenVentaDrawer(false); handleReset(); }}
-            PaperProps={{ sx: { width: 800 } }}
-          >
-            <Box sx={{ p: 3, height: '100%', display: 'flex', flexDirection: 'column' }}>
-              <Typography variant="h5" sx={{ mb: 3, fontWeight: 600 }}>
-                Venta de Lote
-              </Typography>
-              
-              <Stepper activeStep={activeStep} orientation="horizontal" sx={{ mb: 3 }}>
-                {ventaSteps.map((label) => (
-                  <Step key={label}>
-                    <StepLabel>{label}</StepLabel>
-                  </Step>
-                ))}
-              </Stepper>
-
-              <Box sx={{ flex: 1, overflow: 'auto' }}>
-                {/* PASO 1: BUSCAR O CREAR CLIENTE */}
-                {activeStep === 0 && (
-                  <Box>
-                    <Typography variant="h6" sx={{ mb: 2 }}>Paso 1: Seleccionar Cliente</Typography>
-                    {!showCreateClienteForm ? (
-                      <Stack spacing={3}>
-                        <Autocomplete
-                          options={clientes}
-                          getOptionLabel={(option) => `${option.nombre} - ${option.dni}`}
-                          renderInput={(params) => (
-                            <TextField 
-                              {...params} 
-                              label="Buscar cliente existente" 
-                              placeholder="Escriba el nombre o DNI del cliente"
-                              fullWidth
-                            />
-                          )}
-                          onChange={(event, value) => {
-                            if (value) selectClienteForVenta(value);
-                          }}
-                        />
-                        
-                        <Divider sx={{ my: 2 }}>
-                          <Typography variant="body2" color="text.secondary">O</Typography>
-                        </Divider>
-                        
-                        <Button 
-                          variant="outlined" 
-                          onClick={createNewClienteInVenta}
-                          fullWidth
-                        >
-                          Crear Nuevo Cliente
-                        </Button>
-                      </Stack>
-                    ) : (
-                      <Stack spacing={3}>
-                        <Typography variant="subtitle1">Datos del Nuevo Cliente</Typography>
-                        <Stack direction="row" spacing={2}>
-                          <TextField 
-                            label="Nombre (*)" 
-                            value={formData.nombre} 
-                            onChange={(e) => setFormData({ ...formData, nombre: e.target.value })} 
-                            required 
-                            fullWidth 
-                          />
-                          <TextField 
-                            label="Apellido (*)" 
-                            value={formData.apellido} 
-                            onChange={(e) => setFormData({ ...formData, apellido: e.target.value })} 
-                            required 
-                            fullWidth 
-                          />
-                        </Stack>
-                        <Stack direction="row" spacing={2}>
-                          <TextField 
-                            label="DNI (*)" 
-                            value={formData.dni} 
-                            onChange={(e) => setFormData({ ...formData, dni: e.target.value.replace(/\D/g, '') })} 
-                            required 
-                            fullWidth 
-                          />
-                          <TextField 
-                            label="Teléfono (*)" 
-                            value={formData.telefono} 
-                            onChange={(e) => setFormData({ ...formData, telefono: e.target.value })} 
-                            required 
-                            fullWidth 
-                          />
-                        </Stack>
-                        <TextField 
-                          label="Email" 
-                          value={formData.email} 
-                          onChange={(e) => setFormData({ ...formData, email: e.target.value })} 
-                          fullWidth 
-                        />
-                        
-                        <Stack direction="row" spacing={2}>
-                          <Button 
-                            onClick={() => setShowCreateClienteForm(false)} 
-                            color="inherit"
-                            fullWidth
-                          >
-                            Volver a Buscar
-                          </Button>
-                          <Button 
-                            onClick={saveClienteInVenta} 
-                            variant="contained"
-                            fullWidth
-                          >
-                            Crear y Continuar
-                          </Button>
-                        </Stack>
-                      </Stack>
-                    )}
-                  </Box>
-                )}
-
-                {/* PASO 2: PROYECTO Y LOTE */}
-                {activeStep === 1 && (
-                  <Box>
-                    <Typography variant="h6" sx={{ mb: 2 }}>Paso 2: Proyecto y Lote</Typography>
-                    <Typography variant="body2" sx={{ mb: 3, color: 'text.secondary' }}>
-                      Cliente seleccionado: <strong>{clienteSeleccionadoVenta?.nombre}</strong>
-                    </Typography>
-                    
-                    <Stack spacing={3}>
-                      <TextField 
-                        label="Emprendimiento" 
-                        select
-                        value={contratoData.emprendimiento_id} 
-                        onChange={(e) => handleEmprendimientoChange(e.target.value)} 
-                        fullWidth
-                        required
-                      >
-                        <MenuItem value="">Seleccionar emprendimiento</MenuItem>
-                        {emprendimientosActivos.map((e) => (
-                          <MenuItem key={e.id} value={e.id}>
-                            <Box>
-                              <Typography variant="body2">{e.nombre}</Typography>
-                              <Typography variant="caption" color="text.secondary">
-                                {e.ubicacion} • {e.lotes_disponibles} disponibles
-                              </Typography>
-                            </Box>
-                          </MenuItem>
-                        ))}
-                      </TextField>
-                      
-                      <TextField 
-                        label="Lote" 
-                        select
-                        value={contratoData.lote_id} 
-                        onChange={(e) => {
-                          setContratoData({ ...contratoData, lote_id: e.target.value });
-                          calcularResumenVenta();
-                        }} 
-                        fullWidth
-                        required
-                        disabled={!emprendimientoSeleccionado}
-                        helperText={emprendimientoSeleccionado ? `${lotesDisponibles.length} lotes disponibles` : "Selecciona un emprendimiento primero"}
-                      >
-                        <MenuItem value="">Seleccionar lote</MenuItem>
-                        {lotesDisponibles.map((lote) => (
-                          <MenuItem key={lote.id} value={lote.id}>
-                            <Box>
-                              <Typography variant="body2">
-                                {lote.numero} - Manzana {lote.manzana}
-                              </Typography>
-                              <Typography variant="caption" color="text.secondary">
-                                {lote.superficie}m² • ${lote.precio_base?.toLocaleString()}
-                                {lote.observaciones && ` • ${lote.observaciones}`}
-                              </Typography>
-                            </Box>
-                          </MenuItem>
-                        ))}
-                      </TextField>
-
-                      {contratoData.lote_id && (
-                        <Paper sx={{ p: 2, bgcolor: 'grey.50' }}>
-                          <Typography variant="subtitle2" sx={{ mb: 1 }}>Resumen del Lote</Typography>
-                          {(() => {
-                            const loteSeleccionado = lotes.find(l => l.id === parseInt(contratoData.lote_id));
-                            return loteSeleccionado && (
-                              <Stack spacing={1}>
-                                <Typography variant="body2">
-                                  <strong>Lote:</strong> {loteSeleccionado.numero} - Manzana {loteSeleccionado.manzana}
-                                </Typography>
-                                <Typography variant="body2">
-                                  <strong>Superficie:</strong> {loteSeleccionado.superficie} m²
-                                </Typography>
-                                <Typography variant="body2">
-                                  <strong>Precio base:</strong> ${loteSeleccionado.precio_base?.toLocaleString()}
-                                </Typography>
-                                {loteSeleccionado.observaciones && (
-                                  <Typography variant="body2">
-                                    <strong>Observaciones:</strong> {loteSeleccionado.observaciones}
-                                  </Typography>
-                                )}
-                              </Stack>
-                            );
-                          })()}
-                        </Paper>
-                      )}
-                    </Stack>
-                  </Box>
-                )}
-
-                {/* PASO 3: MODO DE PAGO */}
-                {activeStep === 2 && (
-                  <Box>
-                    <Typography variant="h6" sx={{ mb: 2 }}>Paso 3: Configuración de Pago</Typography>
-                    
-                    <Stack spacing={3}>
-                      <TextField 
-                        label="Plan de Financiación" 
-                        select
-                        value={contratoData.plan_financiacion_id} 
-                        onChange={(e) => {
-                          setContratoData({ ...contratoData, plan_financiacion_id: e.target.value });
-                          calcularResumenVenta();
-                        }} 
-                        fullWidth
-                        required
-                      >
-                        <MenuItem value="">Seleccionar plan</MenuItem>
-                        {planesActivos.map((plan) => (
-                          <MenuItem key={plan.id} value={plan.id}>
-                            <Box>
-                              <Typography variant="body2">{plan.nombre}</Typography>
-                              <Typography variant="caption" color="text.secondary">
-                                {plan.cuotas_cantidad} cuotas • {plan.interes_mensual}% mensual
-                                {plan.descuento_porcentaje !== 0 && 
-                                  ` • ${plan.descuento_porcentaje > 0 ? 'Desc.' : 'Rec.'} ${Math.abs(plan.descuento_porcentaje)}%`
-                                }
-                              </Typography>
-                            </Box>
-                          </MenuItem>
-                        ))}
-                      </TextField>
-
-                      {contratoData.plan_financiacion_id && contratoData.lote_id && (() => {
-                        const lote = lotes.find(l => l.id === parseInt(contratoData.lote_id));
-                        // Usar precio acordado si está disponible, sino el precio base del lote
-                        const precioACalcular = contratoData.precio_acordado > 0 ? contratoData.precio_acordado : (lote?.precio_base || 0);
-                        const calculacion = calcularFinanciacion(precioACalcular, parseInt(contratoData.plan_financiacion_id));
-                        
-
-                        
-                        return calculacion && (
-                          <Paper sx={{ p: 2, bgcolor: 'success.50', border: '1px solid', borderColor: 'success.200' }}>
-                            <Typography variant="subtitle2" sx={{ mb: 2, color: 'success.800' }}>💰 Resumen Financiero</Typography>
-                            <Stack spacing={1}>
-                              {/* Mostrar precio original vs precio acordado */}
-                              {(() => {
-                                const precioOriginal = lote?.precio_base || 0;
-                                const precioAcordado = contratoData.precio_acordado || precioOriginal;
-                                const hayDiferencia = precioOriginal !== precioAcordado;
-                                
-                                return (
-                                  <Stack direction="row" justifyContent="space-between" alignItems="center">
-                                    <Typography variant="body2" color="text.primary">Precio:</Typography>
-                                    <Stack direction="row" spacing={1} alignItems="center">
-                                      {hayDiferencia && (
-                                        <Typography 
-                                          variant="body2" 
-                                          color="text.secondary" 
-                                          sx={{ textDecoration: 'line-through' }}
-                                        >
-                                          ${precioOriginal.toLocaleString('es-AR')}
-                                        </Typography>
-                                      )}
-                                      <Typography 
-                                        variant="body2" 
-                                        fontWeight={600} 
-                                        color={hayDiferencia ? "error.700" : "success.800"}
-                                      >
-                                        ${precioAcordado.toLocaleString('es-AR')}
-                                      </Typography>
-                                      {hayDiferencia && (() => {
-                                        const diferencia = Math.abs(precioOriginal - precioAcordado);
-                                        const porcentaje = ((diferencia / precioOriginal) * 100).toFixed(1);
-                                        const esDescuento = precioAcordado < precioOriginal;
-                                        
-                                        return (
-                                          <Chip 
-                                            label={`${esDescuento ? 'DESC' : 'REC'} ${porcentaje}% ($${diferencia.toLocaleString('es-AR')})`}
-                                            size="small" 
-                                            color={esDescuento ? "success" : "warning"}
-                                            sx={{ fontSize: '0.6rem', height: 20 }}
-                                          />
-                                        );
-                                      })()}
-                                    </Stack>
-                                  </Stack>
-                                );
-                              })()}
-                              <Stack direction="row" justifyContent="space-between">
-                                <Typography variant="body2" color="text.primary">Entrega inicial:</Typography>
-                                <Typography variant="body2" fontWeight={600} color="info.700">
-                                  ${(calculacion.entrega_inicial || 0).toLocaleString('es-AR')}
-                                </Typography>
-                              </Stack>
-                              {calculacion.cuota_mensual > 0 && (
-                                <Stack direction="row" justifyContent="space-between">
-                                  <Typography variant="body2" color="text.primary">Cuota mensual:</Typography>
-                                  <Typography variant="body2" fontWeight={600} color="info.700">
-                                    ${calculacion.cuota_mensual.toLocaleString('es-AR')} x {calculacion.plan.cuotas_cantidad} cuotas
-                                  </Typography>
-                                </Stack>
-                              )}
-                              <Stack direction="row" justifyContent="space-between" sx={{ pt: 1, borderTop: 1, borderColor: 'success.200' }}>
-                                <Typography variant="body2" fontWeight={600} color="text.primary">Total a pagar:</Typography>
-                                <Typography variant="body2" fontWeight={700} color="success.800">
-                                  ${(calculacion.total_a_pagar || 0).toLocaleString('es-AR')}
-                                </Typography>
-                              </Stack>
-                              {calculacion.descuento_aplicado > 0 && (
-                                <Stack direction="row" justifyContent="space-between">
-                                  <Typography variant="body2" color="success.700">✅ Descuento aplicado:</Typography>
-                                  <Typography variant="body2" fontWeight={600} color="success.700">
-                                    {calculacion.descuento_aplicado.toFixed(1)}%
-                                  </Typography>
-                                </Stack>
-                              )}
-                              {calculacion.total_intereses > 0 && (
-                                <Stack direction="row" justifyContent="space-between">
-                                  <Typography variant="caption" color="text.secondary">Intereses totales:</Typography>
-                                  <Typography variant="caption" color="text.secondary">
-                                    ${calculacion.total_intereses.toLocaleString('es-AR')}
-                                  </Typography>
-                                </Stack>
-                              )}
-                            </Stack>
-                          </Paper>
-                        );
-                      })()}
-
-                      <TextField 
-                        label="Precio Acordado (manual)" 
-                        type="number"
-                        value={contratoData.precio_acordado} 
-                        onChange={(e) => {
-                          const nuevoPrecio = parseFloat(e.target.value) || 0;
-                          setContratoData({ ...contratoData, precio_acordado: nuevoPrecio });
-                          // Recalcular automáticamente cuando se cambia el precio
-                          if (nuevoPrecio > 0) {
-                            recalcularConPrecioManual(nuevoPrecio);
-                          }
-                        }}
-                        fullWidth
-                        helperText="Se calcula automáticamente, editar solo si es necesario"
-                      />
-                    </Stack>
-                  </Box>
-                )}
-
-                {/* PASO 4: DATOS ADICIONALES */}
-                {activeStep === 3 && (
-                  <Box>
-                    <Typography variant="h6" sx={{ mb: 2 }}>Paso 4: Finalizar Venta</Typography>
-                    
-                    <Stack spacing={3}>
-                      <Stack direction="row" spacing={2}>
-                        <TextField 
-                          label="Vendedor" 
-                          select
-                          value={contratoData.vendedor} 
-                          onChange={(e) => setContratoData({ ...contratoData, vendedor: e.target.value })} 
-                          fullWidth
-                        >
-                          <MenuItem value="">Seleccionar</MenuItem>
-                          {vendedores.map((v) => <MenuItem key={v} value={v}>{v}</MenuItem>)}
-                        </TextField>
-                        <TextField 
-                          label="Fecha de Contrato" 
-                          type="date"
-                          value={contratoData.fecha_contrato} 
-                          onChange={(e) => setContratoData({ ...contratoData, fecha_contrato: e.target.value })} 
-                          fullWidth 
-                          InputLabelProps={{ shrink: true }}
-                        />
-                      </Stack>
-                      
-                      <TextField 
-                        label="Pago al Contado Hoy" 
-                        type="number"
-                        value={contratoData.pago_contado_hoy || ''} 
-                        onChange={(e) => setContratoData({ ...contratoData, pago_contado_hoy: parseFloat(e.target.value) || 0 })} 
-                        fullWidth
-                        helperText="Monto que paga en efectivo en este momento"
-                        InputProps={{
-                          startAdornment: <InputAdornment position="start">$</InputAdornment>,
-                        }}
-                      />
-
-                      <TextField 
-                        label="Observaciones" 
-                        multiline
-                        rows={4}
-                        value={contratoData.observaciones} 
-                        onChange={(e) => setContratoData({ ...contratoData, observaciones: e.target.value })} 
-                        fullWidth
-                        placeholder="Notas adicionales sobre el contrato..."
-                      />
-
-                      {/* RESUMEN FINAL */}
-                      <Paper sx={{ p: 3, bgcolor: 'grey.50', border: '2px solid', borderColor: 'success.300' }}>
-                        <Typography variant="h6" sx={{ mb: 2, color: 'success.700' }}>
-                          📋 Resumen de la Venta
-                        </Typography>
-                        <Stack spacing={1}>
-                          <Typography variant="body1" color="text.primary">
-                            <strong>Cliente:</strong> {clienteSeleccionadoVenta?.nombre} ({clienteSeleccionadoVenta?.dni})
-                          </Typography>
-                          <Typography variant="body1" color="text.primary">
-                            <strong>Emprendimiento:</strong> {emprendimientos.find(e => e.id === parseInt(contratoData.emprendimiento_id))?.nombre}
-                          </Typography>
-                          <Typography variant="body1" color="text.primary">
-                            <strong>Lote:</strong> {lotes.find(l => l.id === parseInt(contratoData.lote_id))?.numero}
-                          </Typography>
-                          <Typography variant="body1" color="text.primary">
-                            <strong>Plan:</strong> {planes.find(p => p.id === parseInt(contratoData.plan_financiacion_id))?.nombre}
-                          </Typography>
-                          {(() => {
-                            const lote = lotes.find(l => l.id === parseInt(contratoData.lote_id));
-                            const precioOriginal = lote?.precio_base || 0;
-                            const precioAcordado = contratoData.precio_acordado || precioOriginal;
-                            const hayDiferencia = precioOriginal !== precioAcordado;
-                            
-                            return (
-                              <Box>
-                                {hayDiferencia ? (
-                                  <>
-                                    <Typography variant="body1" color="text.secondary" sx={{ textDecoration: 'line-through' }}>
-                                      <strong>Precio original:</strong> ${precioOriginal.toLocaleString('es-AR')}
-                                    </Typography>
-                                    <Typography variant="body1" color="error.700" fontWeight={600}>
-                                      <strong>Precio acordado:</strong> ${precioAcordado.toLocaleString('es-AR')} 
-                                      {(() => {
-                                        const diferencia = Math.abs(precioOriginal - precioAcordado);
-                                        const porcentaje = ((diferencia / precioOriginal) * 100).toFixed(1);
-                                        const esDescuento = precioAcordado < precioOriginal;
-                                        
-                                        return (
-                                          <Chip 
-                                            label={`${esDescuento ? 'DESCUENTO' : 'RECARGO'} ${porcentaje}% ($${diferencia.toLocaleString('es-AR')})`}
-                                            size="small" 
-                                            color={esDescuento ? "success" : "warning"}
-                                            sx={{ ml: 1, fontSize: '0.6rem', height: 20 }}
-                                          />
-                                        );
-                                      })()}
-                                    </Typography>
-                                  </>
-                                ) : (
-                                  <Typography variant="body1" color="success.700" fontWeight={600}>
-                                    <strong>Precio acordado:</strong> ${precioAcordado.toLocaleString('es-AR')}
-                                  </Typography>
-                                )}
-                              </Box>
-                            );
-                          })()}
-                          <Typography variant="body1" color="info.700">
-                            <strong>Entrega inicial:</strong> ${contratoData.entrega_inicial?.toLocaleString('es-AR')}
-                          </Typography>
-                          {contratoData.pago_contado_hoy > 0 && (
-                            <Typography variant="body1" color="warning.700" fontWeight={600}>
-                              <strong>💰 Pago al contado hoy:</strong> ${contratoData.pago_contado_hoy?.toLocaleString('es-AR')}
-                            </Typography>
-                          )}
-                          {contratoData.cuotas_cantidad > 1 && (
-                            <Typography variant="body1" color="text.primary">
-                              <strong>Cuotas:</strong> {contratoData.cuotas_cantidad} x ${contratoData.cuota_mensual?.toLocaleString('es-AR')}
-                            </Typography>
-                          )}
-                        </Stack>
-                      </Paper>
-                    </Stack>
-                  </Box>
-                )}
-              </Box>
-
-              {/* BOTONES DE NAVEGACIÓN */}
-              <Box sx={{ p: 2, borderTop: 1, borderColor: 'divider' }}>
-                <Stack direction="row" spacing={2}>
-                  <Button 
-                    onClick={() => { setOpenVentaDrawer(false); handleReset(); }} 
-                    color="inherit"
-                    fullWidth
-                  >
-                    CANCELAR
-                  </Button>
-                  
-                  {activeStep > 0 && (
-                    <Button 
-                      onClick={handleBack} 
-                      color="inherit"
-                      fullWidth
-                    >
-                      ANTERIOR
-                    </Button>
-                  )}
-                  
-                  {activeStep < ventaSteps.length - 1 ? (
-                    <Button 
-                      onClick={handleNext} 
-                      variant="contained"
-                      fullWidth
-                      disabled={
-                        (activeStep === 0 && !clienteSeleccionadoVenta) ||
-                        (activeStep === 1 && (!contratoData.emprendimiento_id || !contratoData.lote_id)) ||
-                        (activeStep === 2 && (!contratoData.plan_financiacion_id))
-                      }
-                    >
-                      SIGUIENTE
-                    </Button>
-                  ) : (
-                    <Button 
-                      onClick={() => {
-                        // Actualizar cliente con los datos de la venta
-                        const clienteActualizado = {
-                          ...clienteSeleccionadoVenta,
-                          emprendimiento_id: parseInt(contratoData.emprendimiento_id),
-                          lote_id: parseInt(contratoData.lote_id),
-                          plan_financiacion_id: parseInt(contratoData.plan_financiacion_id),
-                          estado_cuenta: 'RESERVADO',
-                          fecha_compra: contratoData.fecha_contrato,
-                          observaciones: contratoData.observaciones
-                        };
-                        
-                        setClientes(prev => 
-                          prev.map(c => c.id === clienteSeleccionadoVenta.id ? clienteActualizado : c)
-                        );
-                        
-                        alert(`¡Venta realizada exitosamente!\n\nCliente: ${clienteSeleccionadoVenta.nombre}\nLote: ${lotes.find(l => l.id === parseInt(contratoData.lote_id))?.numero}\nPrecio: $${contratoData.precio_acordado?.toLocaleString()}`);
-                        setOpenVentaDrawer(false); 
-                        handleReset(); 
-                      }} 
-                      variant="contained"
-                      fullWidth
-                    >
-                      FINALIZAR VENTA
-                    </Button>
-                  )}
-                </Stack>
-              </Box>
-            </Box>
-          </Drawer>
-
+            onClose={() => setOpenVentaDrawer(false)}
+            onSuccess={(contrato) => {
+              alert(`¡Venta realizada exitosamente!\n\nContrato creado.`);
+              setOpenVentaDrawer(false);
+            }}
+          />
           {/* Nuevo componente de resumen completo del cliente */}
           <ClienteResumenDrawer
             cliente={clienteResumenSeleccionado}

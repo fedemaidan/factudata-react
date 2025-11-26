@@ -70,6 +70,40 @@ import {
 } from '@mui/icons-material';
 import LoteParaTodosLayout from 'src/components/layouts/LoteParaTodosLayout';
 
+// Catálogo oficial de emprendimientos y gremios
+const emprendimientosOficiales = [
+  { id: 'CR1', label: 'Cerro Rico 1' },
+  { id: 'CR2', label: 'Cerro Rico 2' },
+  { id: 'CR2E2', label: 'Cerro Rico 2 Etapa 2' },
+  { id: 'MO', label: 'Moreno' },
+  { id: 'LG1', label: 'La Glorieta 1' },
+  { id: 'LG2', label: 'La Glorieta 2' },
+  { id: 'CR3', label: 'Cerro Rico 3' },
+  { id: 'NH', label: 'Nuevo Horizonte' },
+  { id: 'PC', label: 'Parque Central' },
+  { id: 'PI', label: 'Pinares del Casco' },
+  { id: 'EP', label: 'El Portal' },
+  { id: 'PB', label: 'Parque Bicentenario' },
+  { id: 'LF', label: 'La Fraternidad' },
+  { id: 'VM', label: 'Vaca Muerta' }
+];
+
+const gremiosOficiales = [
+  { id: 'UOM', label: 'UOM' },
+  { id: 'Comercio', label: 'Sindicato de Comercio' },
+  { id: 'Docentes', label: 'Docentes' },
+  { id: 'Bancarios', label: 'Bancarios' },
+  { id: 'Petroleros', label: 'Petroleros' },
+  { id: 'Municipales', label: 'Municipales' }
+];
+
+const reportPermissions = [
+  { id: 'reporte-mora', label: 'Reporte de Mora' },
+  { id: 'reporte-caja', label: 'Reporte de Caja y Tesorería' },
+  { id: 'reporte-ventas', label: 'Reporte Comercial / Ventas' },
+  { id: 'reporte-lotes', label: 'Reporte de Lotes y Masterplan' }
+];
+
 // Datos de roles del sistema
 const rolesData = [
   {
@@ -85,7 +119,10 @@ const rolesData = [
       'Registrar Pagos',
       'Iniciar Venta',
       'Ver Cajas y Bancos'
-    ]
+    ],
+    reportes: ['reporte-ventas', 'reporte-lotes'],
+    emprendimientosDisponibles: ['CR1', 'CR2', 'CR2E2', 'CR3', 'LG1', 'LG2', 'NH', 'PC', 'EP', 'PB'],
+    gremiosDisponibles: ['UOM', 'Comercio', 'Docentes']
   },
   {
     id: 'atencion-cliente',
@@ -99,7 +136,10 @@ const rolesData = [
       'Ver Contratos',
       'Cargar Servicios',
       'Generar Documentos'
-    ]
+    ],
+    reportes: ['reporte-ventas'],
+    emprendimientosDisponibles: ['CR1', 'CR2', 'CR2E2', 'MO', 'LG1', 'LG2', 'CR3', 'NH', 'PC', 'EP', 'PB', 'LF'],
+    gremiosDisponibles: ['UOM', 'Comercio', 'Docentes', 'Bancarios']
   },
   {
     id: 'administracion',
@@ -118,7 +158,10 @@ const rolesData = [
       'Ver Cajas y Bancos',
       'Editar Emprendimientos',
       'Editar Lotes'
-    ]
+    ],
+    reportes: ['reporte-mora', 'reporte-caja', 'reporte-ventas', 'reporte-lotes'],
+    emprendimientosDisponibles: emprendimientosOficiales.map((item) => item.id),
+    gremiosDisponibles: gremiosOficiales.map((item) => item.id)
   },
   {
     id: 'tesoreria',
@@ -134,7 +177,10 @@ const rolesData = [
       'Cargar Préstamos',
       'Ver Cajas y Bancos',
       'Conciliar'
-    ]
+    ],
+    reportes: ['reporte-caja', 'reporte-mora'],
+    emprendimientosDisponibles: emprendimientosOficiales.map((item) => item.id),
+    gremiosDisponibles: ['UOM', 'Comercio', 'Bancarios', 'Petroleros']
   },
   {
     id: 'legales',
@@ -147,7 +193,10 @@ const rolesData = [
       'Ver Clientes',
       'Ver Contratos',
       'Generar Documentos'
-    ]
+    ],
+    reportes: ['reporte-mora'],
+    emprendimientosDisponibles: emprendimientosOficiales.map((item) => item.id),
+    gremiosDisponibles: gremiosOficiales.map((item) => item.id)
   },
   {
     id: 'supervisor',
@@ -168,7 +217,10 @@ const rolesData = [
       'Iniciar Venta',
       'Editar Emprendimientos',
       'Editar Lotes'
-    ]
+    ],
+    reportes: reportPermissions.map((item) => item.id),
+    emprendimientosDisponibles: emprendimientosOficiales.map((item) => item.id),
+    gremiosDisponibles: gremiosOficiales.map((item) => item.id)
   },
   {
     id: 'configuracion',
@@ -180,7 +232,10 @@ const rolesData = [
     permisos: [
       'Editar Emprendimientos',
       'Editar Lotes'
-    ]
+    ],
+    reportes: ['reporte-lotes'],
+    emprendimientosDisponibles: emprendimientosOficiales.map((item) => item.id),
+    gremiosDisponibles: gremiosOficiales.map((item) => item.id)
   },
   {
     id: 'portal-cliente',
@@ -191,7 +246,10 @@ const rolesData = [
     activo: true,
     permisos: [
       'Ver Contratos'
-    ]
+    ],
+    reportes: [],
+    emprendimientosDisponibles: [],
+    gremiosDisponibles: []
   }
 ];
 
@@ -239,6 +297,13 @@ const ConfiguradorRolesPage = () => {
   const [roles, setRoles] = useState(rolesData);
   const [rolSeleccionado, setRolSeleccionado] = useState(rolesData[0]); // Vendedor por defecto
   const [permisosModificados, setPermisosModificados] = useState(rolesData[0].permisos);
+  const [reportesSeleccionados, setReportesSeleccionados] = useState(rolesData[0].reportes || []);
+  const [emprendimientosAsignados, setEmprendimientosAsignados] = useState(
+    rolesData[0].emprendimientosDisponibles || emprendimientosOficiales.map((item) => item.id)
+  );
+  const [gremiosAsignados, setGremiosAsignados] = useState(
+    rolesData[0].gremiosDisponibles || gremiosOficiales.map((item) => item.id)
+  );
   
   // Estados para el modal de nuevo rol
   const [modalAbierto, setModalAbierto] = useState(false);
@@ -247,7 +312,10 @@ const ConfiguradorRolesPage = () => {
     descripcion: '',
     icono: 'person',
     color: 'primary',
-    permisos: []
+    permisos: [],
+    reportes: [],
+    emprendimientosDisponibles: emprendimientosOficiales.map((item) => item.id),
+    gremiosDisponibles: gremiosOficiales.map((item) => item.id)
   });
 
   // Estados para edición de roles
@@ -259,6 +327,9 @@ const ConfiguradorRolesPage = () => {
   const handleSeleccionarRol = (rol) => {
     setRolSeleccionado(rol);
     setPermisosModificados([...rol.permisos]);
+    setReportesSeleccionados([...(rol.reportes || [])]);
+    setEmprendimientosAsignados([...(rol.emprendimientosDisponibles || [])]);
+    setGremiosAsignados([...(rol.gremiosDisponibles || [])]);
   };
 
   const handleTogglePermiso = (permisoLabel) => {
@@ -269,6 +340,30 @@ const ConfiguradorRolesPage = () => {
     }
   };
 
+  const handleToggleReporte = (reporteId) => {
+    if (reportesSeleccionados.includes(reporteId)) {
+      setReportesSeleccionados(reportesSeleccionados.filter((rep) => rep !== reporteId));
+    } else {
+      setReportesSeleccionados([...reportesSeleccionados, reporteId]);
+    }
+  };
+
+  const handleToggleEmprendimiento = (codigo) => {
+    if (emprendimientosAsignados.includes(codigo)) {
+      setEmprendimientosAsignados(emprendimientosAsignados.filter((item) => item !== codigo));
+    } else {
+      setEmprendimientosAsignados([...emprendimientosAsignados, codigo]);
+    }
+  };
+
+  const handleToggleGremio = (gremioId) => {
+    if (gremiosAsignados.includes(gremioId)) {
+      setGremiosAsignados(gremiosAsignados.filter((item) => item !== gremioId));
+    } else {
+      setGremiosAsignados([...gremiosAsignados, gremioId]);
+    }
+  };
+
   const handleGuardar = () => {
     console.log('Guardando permisos para:', rolSeleccionado.nombre);
     console.log('Permisos:', permisosModificados);
@@ -276,18 +371,33 @@ const ConfiguradorRolesPage = () => {
     // Actualizar el rol en la lista
     const rolesActualizados = roles.map(rol => 
       rol.id === rolSeleccionado.id 
-        ? { ...rol, permisos: [...permisosModificados] }
+        ? {
+            ...rol,
+            permisos: [...permisosModificados],
+            reportes: [...reportesSeleccionados],
+            emprendimientosDisponibles: [...emprendimientosAsignados],
+            gremiosDisponibles: [...gremiosAsignados]
+          }
         : rol
     );
     setRoles(rolesActualizados);
     
     // Actualizar el rol seleccionado
-    const rolActualizado = { ...rolSeleccionado, permisos: [...permisosModificados] };
+    const rolActualizado = {
+      ...rolSeleccionado,
+      permisos: [...permisosModificados],
+      reportes: [...reportesSeleccionados],
+      emprendimientosDisponibles: [...emprendimientosAsignados],
+      gremiosDisponibles: [...gremiosAsignados]
+    };
     setRolSeleccionado(rolActualizado);
   };
 
   const handleCancelar = () => {
     setPermisosModificados([...rolSeleccionado.permisos]);
+    setReportesSeleccionados([...(rolSeleccionado.reportes || [])]);
+    setEmprendimientosAsignados([...(rolSeleccionado.emprendimientosDisponibles || [])]);
+    setGremiosAsignados([...(rolSeleccionado.gremiosDisponibles || [])]);
   };
 
   // Funciones para el modal de nuevo rol
@@ -298,7 +408,10 @@ const ConfiguradorRolesPage = () => {
       descripcion: '',
       icono: 'person',
       color: 'primary',
-      permisos: []
+      permisos: [],
+      reportes: [],
+      emprendimientosDisponibles: emprendimientosOficiales.map((item) => item.id),
+      gremiosDisponibles: gremiosOficiales.map((item) => item.id)
     });
   };
 
@@ -328,6 +441,17 @@ const ConfiguradorRolesPage = () => {
     }
   };
 
+  const handleToggleListaNuevoRol = (campo, valor) => {
+    setNuevoRol((prev) => {
+      const listaActual = prev[campo] || [];
+      const existe = listaActual.includes(valor);
+      return {
+        ...prev,
+        [campo]: existe ? listaActual.filter((item) => item !== valor) : [...listaActual, valor]
+      };
+    });
+  };
+
   const handleCrearRol = () => {
     if (!nuevoRol.nombre.trim()) {
       return;
@@ -342,6 +466,9 @@ const ConfiguradorRolesPage = () => {
       color: nuevoRol.color,
       descripcion: nuevoRol.descripcion || 'Rol personalizado',
       permisos: [...nuevoRol.permisos],
+      reportes: [...nuevoRol.reportes],
+      emprendimientosDisponibles: [...nuevoRol.emprendimientosDisponibles],
+      gremiosDisponibles: [...nuevoRol.gremiosDisponibles],
       esPersonalizado: true,
       activo: true
     };
@@ -353,6 +480,9 @@ const ConfiguradorRolesPage = () => {
     // Seleccionar el nuevo rol
     setRolSeleccionado(rolCreado);
     setPermisosModificados([...rolCreado.permisos]);
+  setReportesSeleccionados([...rolCreado.reportes]);
+  setEmprendimientosAsignados([...rolCreado.emprendimientosDisponibles]);
+  setGremiosAsignados([...rolCreado.gremiosDisponibles]);
     
     // Cerrar modal
     handleCerrarModal();
@@ -387,11 +517,15 @@ const ConfiguradorRolesPage = () => {
     setRoles(rolesActualizados);
     
     // Si se desactiva el rol actualmente seleccionado, seleccionar otro
-    if (rolSeleccionado.id === rolMenuSeleccionado.id && !rolMenuSeleccionado.activo) {
+    const rolAfectado = rolesActualizados.find(r => r.id === rolMenuSeleccionado.id);
+    if (rolSeleccionado.id === rolMenuSeleccionado.id && rolAfectado && !rolAfectado.activo) {
       const primerRolActivo = rolesActualizados.find(r => r.activo);
       if (primerRolActivo) {
         setRolSeleccionado(primerRolActivo);
         setPermisosModificados([...primerRolActivo.permisos]);
+        setReportesSeleccionados([...(primerRolActivo.reportes || [])]);
+        setEmprendimientosAsignados([...(primerRolActivo.emprendimientosDisponibles || [])]);
+        setGremiosAsignados([...(primerRolActivo.gremiosDisponibles || [])]);
       }
     }
     
@@ -602,7 +736,7 @@ const ConfiguradorRolesPage = () => {
                     </Box>
                     <Box sx={{ ml: 'auto' }}>
                       <Chip
-                        label={`${permisosModificados.length} permisos`}
+                        label={`${permisosModificados.length} permisos / ${reportesSeleccionados.length} reportes`}
                         color="primary"
                         variant="outlined"
                         size="small"
@@ -677,6 +811,112 @@ const ConfiguradorRolesPage = () => {
                     </Grid>
                   </FormGroup>
 
+                  
+
+                  {/* Sección: Emprendimientos disponibles */}
+                  <Box sx={{ mt: 5 }}>
+                    <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2 }}>
+                      <BusinessIcon color="primary" />
+                      <Typography variant="h6" sx={{ fontWeight: 600, color: 'text.primary' }}>
+                        Emprendimientos habilitados
+                      </Typography>
+                    </Stack>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                      Solo podrás asignar usuarios a los emprendimientos seleccionados para este rol.
+                    </Typography>
+                    <Grid container spacing={2}>
+                      {emprendimientosOficiales.map((emprendimiento) => (
+                        <Grid item xs={12} sm={6} md={4} key={emprendimiento.id}>
+                          <FormControlLabel
+                            control={
+                              <Checkbox
+                                checked={emprendimientosAsignados.includes(emprendimiento.id)}
+                                onChange={() => handleToggleEmprendimiento(emprendimiento.id)}
+                                sx={{ '&.Mui-checked': { color: 'primary.main' } }}
+                              />
+                            }
+                            label={`${emprendimiento.id} - ${emprendimiento.label}`}
+                          />
+                        </Grid>
+                      ))}
+                    </Grid>
+                  </Box>
+
+                  {/* Sección: Gremios disponibles */}
+                  <Box sx={{ mt: 5 }}>
+                    <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2 }}>
+                      <GroupRoleIcon color="primary" />
+                      <Typography variant="h6" sx={{ fontWeight: 600, color: 'text.primary' }}>
+                        Gremios disponibles
+                      </Typography>
+                    </Stack>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                      Determina qué gremios o agrupaciones puede gestionar cada rol. Se usarán en el formulario de usuarios.
+                    </Typography>
+                    <Grid container spacing={2}>
+                      {gremiosOficiales.map((gremio) => (
+                        <Grid item xs={12} sm={6} md={4} key={gremio.id}>
+                          <FormControlLabel
+                            control={
+                              <Checkbox
+                                checked={gremiosAsignados.includes(gremio.id)}
+                                onChange={() => handleToggleGremio(gremio.id)}
+                                sx={{ '&.Mui-checked': { color: 'success.main' } }}
+                              />
+                            }
+                            label={gremio.label}
+                          />
+                        </Grid>
+                      ))}
+                    </Grid>
+                  </Box>
+
+                  {/* Sección: Reportes habilitados */}
+                  <Box sx={{ mt: 5 }}>
+                    <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2 }}>
+                      <DocumentIcon color="primary" />
+                      <Typography variant="h6" sx={{ fontWeight: 600, color: 'text.primary' }}>
+                        Reportes habilitados
+                      </Typography>
+                    </Stack>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                      Definí qué reportes avanzados podrá consultar este rol. Los reportes suelen incluir datos sensibles.
+                    </Typography>
+                    <Grid container spacing={2}>
+                      {reportPermissions.map((reporte) => (
+                        <Grid item xs={12} sm={6} key={reporte.id}>
+                          <Paper
+                            sx={{
+                              p: 2,
+                              borderRadius: 2,
+                              backgroundColor: reportesSeleccionados.includes(reporte.id)
+                                ? 'secondary.50'
+                                : 'grey.50',
+                              border: '1px solid',
+                              borderColor: reportesSeleccionados.includes(reporte.id)
+                                ? 'secondary.200'
+                                : 'grey.200'
+                            }}
+                          >
+                            <FormControlLabel
+                              control={
+                                <Checkbox
+                                  checked={reportesSeleccionados.includes(reporte.id)}
+                                  onChange={() => handleToggleReporte(reporte.id)}
+                                  sx={{ '&.Mui-checked': { color: 'secondary.main' } }}
+                                />
+                              }
+                              label={
+                                <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                                  {reporte.label}
+                                </Typography>
+                              }
+                            />
+                          </Paper>
+                        </Grid>
+                      ))}
+                    </Grid>
+                  </Box>
                   {/* Notas aclaratorias */}
                   <Box sx={{ mt: 4, mb: 3 }}>
                     <Alert severity="info" sx={{ borderRadius: 2, mb: 2 }}>
@@ -948,11 +1188,93 @@ const ConfiguradorRolesPage = () => {
                   {/* Contador de permisos seleccionados */}
                   <Box sx={{ mt: 3, textAlign: 'center' }}>
                     <Chip
-                      label={`${nuevoRol.permisos.length} permisos seleccionados`}
+                      label={`${nuevoRol.permisos.length} permisos seleccionados / ${nuevoRol.reportes.length} reportes`}
                       color="primary"
                       variant="outlined"
                     />
                   </Box>
+                </Grid>
+
+                {/* Reportes */}
+                <Grid item xs={12}>
+                  <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
+                    Reportes habilitados
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                    Indicá qué reportes avanzados podrán consultar las personas con este rol.
+                  </Typography>
+                  <FormGroup>
+                    <Grid container spacing={2}>
+                      {reportPermissions.map((reporte) => (
+                        <Grid item xs={12} sm={6} key={reporte.id}>
+                          <FormControlLabel
+                            control={
+                              <Checkbox
+                                checked={nuevoRol.reportes.includes(reporte.id)}
+                                onChange={() => handleToggleListaNuevoRol('reportes', reporte.id)}
+                                sx={{ '&.Mui-checked': { color: 'secondary.main' } }}
+                              />
+                            }
+                            label={reporte.label}
+                          />
+                        </Grid>
+                      ))}
+                    </Grid>
+                  </FormGroup>
+                </Grid>
+
+                {/* Emprendimientos */}
+                <Grid item xs={12}>
+                  <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
+                    Emprendimientos habilitados
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                    Estos códigos se usarán como límite al asignar usuarios desde el formulario.
+                  </Typography>
+                  <FormGroup>
+                    <Grid container spacing={2}>
+                      {emprendimientosOficiales.map((emprendimiento) => (
+                        <Grid item xs={12} sm={6} md={4} key={emprendimiento.id}>
+                          <FormControlLabel
+                            control={
+                              <Checkbox
+                                checked={nuevoRol.emprendimientosDisponibles.includes(emprendimiento.id)}
+                                onChange={() => handleToggleListaNuevoRol('emprendimientosDisponibles', emprendimiento.id)}
+                              />
+                            }
+                            label={`${emprendimiento.id} - ${emprendimiento.label}`}
+                          />
+                        </Grid>
+                      ))}
+                    </Grid>
+                  </FormGroup>
+                </Grid>
+
+                {/* Gremios */}
+                <Grid item xs={12}>
+                  <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
+                    Gremios disponibles
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                    Limita qué gremios puede seleccionar un usuario al recibir este rol.
+                  </Typography>
+                  <FormGroup>
+                    <Grid container spacing={2}>
+                      {gremiosOficiales.map((gremio) => (
+                        <Grid item xs={12} sm={6} md={4} key={gremio.id}>
+                          <FormControlLabel
+                            control={
+                              <Checkbox
+                                checked={nuevoRol.gremiosDisponibles.includes(gremio.id)}
+                                onChange={() => handleToggleListaNuevoRol('gremiosDisponibles', gremio.id)}
+                              />
+                            }
+                            label={gremio.label}
+                          />
+                        </Grid>
+                      ))}
+                    </Grid>
+                  </FormGroup>
                 </Grid>
               </Grid>
             </DialogContent>

@@ -39,6 +39,10 @@ import {
   StepLabel,
   StepContent,
   Divider,
+  CircularProgress,
+  ListItemIcon,
+  ListItemText,
+  Tooltip,
 } from "@mui/material";
 import {
   LocalShipping as LocalShippingIcon,
@@ -48,13 +52,17 @@ import {
   CheckCircle as CheckCircleIcon,
   Schedule as ScheduleIcon,
   Inventory as InventoryIcon,
-  ExpandMore as ExpandMoreIcon,
-  Close as CloseIcon,
-  Business as BusinessIcon,
+  FileDownload as FileDownloadIcon,
   Add as AddIcon,
   Delete as DeleteIcon,
-  Search as SearchIcon,
+  Close as CloseIcon,
+  Label as LabelIcon,
+  LabelOff as LabelOffIcon,
+  TrendingUp as TrendingUpIcon,
   FilterList as FilterListIcon,
+  ExpandMore as ExpandMoreIcon,
+  Business as BusinessIcon,
+  Search as SearchIcon,
   Visibility as VisibilityIcon,
 } from "@mui/icons-material";
 import Head from "next/head";
@@ -249,6 +257,88 @@ const mockPedidosCompletos = [
   }
 ];
 
+// Datos mock de productos para la funcionalidad de gestión de productos
+const mockProductosPedidos = [
+  {
+    _id: "1",
+    codigo: "A02CLD",
+    descripcion: "AURICULAR 02 CLD",
+    tags: ["ARTICULOS PARA REPOSICION"],
+    cantidad: 0,
+    stockProyectado: 200,
+    ventasPeriodo: 150,
+    ventasProyectadas: 350,
+    diasSinStock: 15,
+    diasSinStockEnPeriodo: 8,
+    stockCritico: true,
+    tienePedidosRetrasos: false,
+    proximoPedido: {
+      numeroPedido: "PED-2025-001",
+      fecha: "2025-11-25",
+      cantidad: 200,
+      proveedor: "Tech Solutions",
+      contenedor: "TCLU123456"
+    }
+  },
+  {
+    _id: "2",
+    codigo: "A03CLD",
+    descripcion: "AURICULAR 03 CLD",
+    tags: ["ARTICULOS SIN REPOSICION"],
+    cantidad: 45,
+    stockProyectado: 245,
+    ventasPeriodo: 89,
+    ventasProyectadas: 200,
+    diasSinStock: 0,
+    diasSinStockEnPeriodo: 0,
+    stockCritico: false,
+    tienePedidosRetrasos: false,
+    proximoPedido: {
+      numeroPedido: "PED-2025-002",
+      fecha: "2025-12-05",
+      cantidad: 200,
+      proveedor: "Tech Solutions",
+      contenedor: null
+    }
+  },
+  {
+    _id: "3",
+    codigo: "CARG01",
+    descripcion: "CARGADOR TIPO C RAPIDO",
+    tags: ["ARTICULOS SIN REPOSICION"],
+    cantidad: 120,
+    stockProyectado: 120,
+    ventasPeriodo: 95,
+    ventasProyectadas: 180,
+    diasSinStock: 85,
+    diasSinStockEnPeriodo: 0,
+    stockCritico: false,
+    tienePedidosRetrasos: false,
+    proximoPedido: null
+  },
+  {
+    _id: "4",
+    codigo: "FUND01",
+    descripcion: "FUNDA SILICONA IPHONE 15",
+    tags: ["ARTICULOS PARA REPOSICION"],
+    cantidad: 0,
+    stockProyectado: 150,
+    ventasPeriodo: 210,
+    ventasProyectadas: 380,
+    diasSinStock: 25,
+    diasSinStockEnPeriodo: 25,
+    stockCritico: true,
+    tienePedidosRetrasos: false,
+    proximoPedido: {
+      numeroPedido: "PED-2025-005",
+      fecha: "2025-11-28",
+      cantidad: 150,
+      proveedor: "Case Pro",
+      contenedor: "TCLU901234"
+    }
+  }
+];
+
 function PedidosMockPage() {
   const router = useRouter();
   const [pedidos, setPedidos] = useState(mockPedidosCompletos);
@@ -266,6 +356,7 @@ function PedidosMockPage() {
   const [isNuevoContenedorOpen, setIsNuevoContenedorOpen] = useState(false);
   const [isAsignarContenedorOpen, setIsAsignarContenedorOpen] = useState(false);
   const [isGestionContenedorOpen, setIsGestionContenedorOpen] = useState(false);
+  const [isNuevoPedidoOpen, setIsNuevoPedidoOpen] = useState(false);
   const [contenedorNuevo, setContenedorNuevo] = useState("");
   
   // Estados para formularios
@@ -273,6 +364,330 @@ function PedidosMockPage() {
   const [nuevoNumeroContenedor, setNuevoNumeroContenedor] = useState("");
   const [nuevaFechaEstimada, setNuevaFechaEstimada] = useState("");
   const [nuevasObservaciones, setNuevasObservaciones] = useState("");
+  
+  // Estados para crear nuevo pedido
+  const [nuevoPedidoNumero, setNuevoPedidoNumero] = useState("");
+  const [nuevoPedidoFechaEstimada, setNuevoPedidoFechaEstimada] = useState("");
+  const [nuevoPedidoComentarios, setNuevoPedidoComentarios] = useState("");
+  const [contenedoresEnPedido, setContenedoresEnPedido] = useState([]);
+  const [contenedorActual, setContenedorActual] = useState({
+    numero: "",
+    fechaEstimada: "",
+    observaciones: "",
+    productos: []
+  });
+
+  // Estados para gestión de productos (nueva funcionalidad)
+  const [productosProyeccion, setProductosProyeccion] = useState(mockProductosPedidos);
+  const [selectedKeys, setSelectedKeys] = useState(new Set());
+  const [showProductTable, setShowProductTable] = useState(false);
+  
+  // Estados para filtros de productos
+  const [filtros, setFiltros] = useState({
+    stockCriticos: false,
+    tags: [],
+    pedidosVencidos: false
+  });
+
+  // Estados para gestión de tags
+  const [isTagOpen, setIsTagOpen] = useState(false);
+  const [isTagSaving, setIsTagSaving] = useState(false);
+  const [isTagLoading, setIsTagLoading] = useState(false);
+  const [availableTags, setAvailableTags] = useState([]);
+  const [selectedExistingTag, setSelectedExistingTag] = useState("");
+  const [newTagName, setNewTagName] = useState("");
+  const [tagError, setTagError] = useState("");
+  const [isRemoveTagOpen, setIsRemoveTagOpen] = useState(false);
+  const [isRemoveTagSaving, setIsRemoveTagSaving] = useState(false);
+  const [removeTagError, setRemoveTagError] = useState("");
+
+  // Estados para pedidos confirmados/entregados
+  const [pedidosEntregados, setPedidosEntregados] = useState(new Set());
+
+  // Estados para agregar productos a pedidos/contenedores
+  const [isAgregarProductosOpen, setIsAgregarProductosOpen] = useState(false);
+  const [tipoAgregar, setTipoAgregar] = useState("existente");
+  const [pedidoSeleccionadoProductos, setPedidoSeleccionadoProductos] = useState("");
+  const [contenedorSeleccionadoProductos, setContenedorSeleccionadoProductos] = useState("");
+  const [tipoContenedor, setTipoContenedor] = useState("existente");
+  const [nuevoPedidoData, setNuevoPedidoData] = useState({
+    numero: "",
+    fechaEstimada: "",
+    observaciones: ""
+  });
+  const [nuevoContenedorData, setNuevoContenedorData] = useState({
+    numero: "",
+    fechaEstimada: ""
+  });
+  const [cantidadesProductos, setCantidadesProductos] = useState({});
+  const [productoActual, setProductoActual] = useState({ codigo: "", descripcion: "", cantidad: "" });
+
+  // Obtener todos los tags únicos disponibles
+  const tagsDisponibles = useMemo(() => {
+    const allTags = productosProyeccion.flatMap(p => p.tags || []);
+    return [...new Set(allTags)].sort();
+  }, [productosProyeccion]);
+
+  // Productos filtrados según los filtros aplicados
+  const productosFiltrados = useMemo(() => {
+    let productos = productosProyeccion;
+
+    // Filtro de stock críticos
+    if (filtros.stockCriticos) {
+      productos = productos.filter(producto => producto.diasSinStock < 60);
+    }
+
+    // Filtro por tags
+    if (filtros.tags.length > 0) {
+      productos = productos.filter(producto => 
+        producto.tags && producto.tags.some(tag => filtros.tags.includes(tag))
+      );
+    }
+
+    // Filtro de pedidos vencidos
+    if (filtros.pedidosVencidos) {
+      const hoy = new Date();
+      productos = productos.filter(producto => {
+        if (!producto.proximoPedido) return false;
+        const fechaPedido = new Date(producto.proximoPedido.fecha);
+        return fechaPedido < hoy && !pedidosEntregados.has(producto.proximoPedido.numeroPedido);
+      });
+    }
+
+    return productos;
+  }, [productosProyeccion, filtros, pedidosEntregados]);
+
+  // Funciones auxiliares para colores y formato
+  const getDiasSinStockColor = (dias) => {
+    if (dias < 30) return 'error';
+    if (dias < 60) return 'warning';
+    return 'success';
+  };
+
+  const formatStockProyectado = (producto) => {
+    if (!producto.proximoPedido) return producto.stockProyectado;
+    
+    const fechaFormateada = dayjs(producto.proximoPedido.fecha).format('DD/MM');
+    return {
+      total: producto.stockProyectado,
+      incremento: producto.proximoPedido.cantidad,
+      fecha: fechaFormateada
+    };
+  };
+
+  // Funciones para agregar productos a pedidos/contenedores
+  const obtenerProductosSeleccionados = () => {
+    return productosProyeccion.filter(p => selectedKeys.has(p._id));
+  };
+
+  const obtenerCantidadProducto = (productoId) => {
+    return cantidadesProductos[productoId] || 1;
+  };
+
+  const actualizarCantidadProducto = (productoId, cantidad) => {
+    setCantidadesProductos(prev => ({
+      ...prev,
+      [productoId]: Math.max(1, parseInt(cantidad) || 1)
+    }));
+  };
+
+  // Funciones para filtros
+  const actualizarFiltroStockCriticos = (valor) => {
+    setFiltros(prev => ({ ...prev, stockCriticos: valor }));
+  };
+
+  const actualizarFiltroTags = (tags) => {
+    setFiltros(prev => ({ ...prev, tags }));
+  };
+
+  const actualizarFiltroPedidosVencidos = (valor) => {
+    setFiltros(prev => ({ ...prev, pedidosVencidos: valor }));
+  };
+
+  // Función para confirmar entrega de pedidos
+  const confirmarEntregaPedido = (numeroPedido) => {
+    setPedidosEntregados(prev => new Set([...prev, numeroPedido]));
+    alert(`✅ Pedido ${numeroPedido} marcado como entregado`);
+  };
+
+  // Limpiar todos los filtros
+  const limpiarFiltros = () => {
+    setFiltros({
+      stockCriticos: false,
+      tags: [],
+      pedidosVencidos: false
+    });
+  };
+
+  // Función para generar color de tag determinístico
+  const getTagColor = (tag) => {
+    let hash = 0;
+    for (let i = 0; i < tag.length; i++) {
+      hash = tag.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    const h = hash % 360;
+    const s = 75 + (hash % 10);
+    const l = 85 + (hash % 5);
+    return `hsl(${h}, ${s}%, ${l}%)`;
+  };
+
+  // Funciones para manejar tags
+  const handleAgregarTag = async () => {
+    try {
+      setTagError("");
+      const finalTag = (newTagName || selectedExistingTag || "").trim();
+      if (!finalTag) {
+        setTagError("Elegí un tag existente o crea uno nuevo");
+        return;
+      }
+      setIsTagSaving(true);
+      
+      const productosActualizados = productosProyeccion.map(producto => {
+        if (selectedKeys.has(producto._id)) {
+          const tagsExistentes = producto.tags || [];
+          const nuevasTags = [...tagsExistentes];
+          if (!nuevasTags.includes(finalTag)) {
+            nuevasTags.push(finalTag);
+          }
+          return { ...producto, tags: nuevasTags };
+        }
+        return producto;
+      });
+      
+      setProductosProyeccion(productosActualizados);
+      setSelectedKeys(new Set());
+      setIsTagOpen(false);
+      setSelectedExistingTag("");
+      setNewTagName("");
+      alert(`✅ Tag "${finalTag}" agregado a ${selectedKeys.size} producto(s)`);
+    } catch (e) {
+      console.error(e);
+      setTagError("Error al guardar el tag");
+    } finally {
+      setIsTagSaving(false);
+    }
+  };
+
+  const handleEliminarTags = async () => {
+    try {
+      setRemoveTagError("");
+      setIsRemoveTagSaving(true);
+      
+      const productosActualizados = productosProyeccion.map(producto => {
+        if (selectedKeys.has(producto._id)) {
+          return { ...producto, tags: [] };
+        }
+        return producto;
+      });
+      
+      setProductosProyeccion(productosActualizados);
+      setSelectedKeys(new Set());
+      setIsRemoveTagOpen(false);
+      alert(`✅ Tags eliminados de ${selectedKeys.size} producto(s)`);
+    } catch (e) {
+      console.error(e);
+      setRemoveTagError("Error al eliminar los tags");
+    } finally {
+      setIsRemoveTagSaving(false);
+    }
+  };
+
+  // Cargar tags disponibles para el selector
+  const cargarTagsDisponibles = async () => {
+    setIsTagLoading(true);
+    try {
+      const todosLosTags = productosProyeccion.flatMap(p => p.tags || []);
+      const tagsUnicos = [...new Set(todosLosTags)].sort();
+      setAvailableTags(tagsUnicos);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsTagLoading(false);
+    }
+  };
+
+  const limpiarFormularioAgregarProductos = () => {
+    setPedidoSeleccionadoProductos("");
+    setContenedorSeleccionadoProductos("");
+    setTipoContenedor("existente");
+    setNuevoPedidoData({ numero: "", fechaEstimada: "", observaciones: "" });
+    setNuevoContenedorData({ numero: "", fechaEstimada: "" });
+    setCantidadesProductos({});
+    setTipoAgregar("existente");
+  };
+
+  const agregarProductosAPedidoExistente = () => {
+    if (!pedidoSeleccionadoProductos || selectedKeys.size === 0) return;
+
+    const productosAgregar = obtenerProductosSeleccionados();
+    const pedido = pedidos.find(p => p._id === pedidoSeleccionadoProductos);
+    
+    const totalUnidades = productosAgregar.reduce((total, producto) => 
+      total + obtenerCantidadProducto(producto._id), 0
+    );
+    
+    let mensajeContenedor = "";
+    if (contenedorSeleccionadoProductos) {
+      const contenedor = contenedores.find(c => c._id === contenedorSeleccionadoProductos);
+      mensajeContenedor = ` y asignados al contenedor ${contenedor.numero}`;
+    }
+    
+    alert(`✅ ${productosAgregar.length} producto(s) (${totalUnidades} unidades total) agregados al pedido ${pedido.numeroPedido}${mensajeContenedor}`);
+
+    setSelectedKeys(new Set());
+    setIsAgregarProductosOpen(false);
+    limpiarFormularioAgregarProductos();
+  };
+
+  const crearNuevoPedidoConProductos = () => {
+    if (!nuevoPedidoData.numero || selectedKeys.size === 0) return;
+
+    const productosAgregar = obtenerProductosSeleccionados();
+    const totalUnidades = productosAgregar.reduce((total, producto) => 
+      total + obtenerCantidadProducto(producto._id), 0
+    );
+    
+    const nuevoPedido = {
+      _id: `PED${Date.now()}`,
+      numeroPedido: nuevoPedidoData.numero,
+      fechaPedido: new Date().toISOString().split('T')[0],
+      fechaEstimada: nuevoPedidoData.fechaEstimada,
+      fechaReal: null,
+      fechaUltimaModificacion: new Date().toISOString(),
+      comentarios: nuevoPedidoData.observaciones,
+      historial: [
+        { fecha: new Date().toISOString().split('T')[0], accion: "Pedido creado desde productos", usuario: "Usuario" }
+      ]
+    };
+
+    setPedidos(prev => [...prev, nuevoPedido]);
+
+    // Crear contenedor si se especificó uno nuevo
+    let mensajeContenedor = "";
+    if (tipoContenedor === "nuevo" && nuevoContenedorData.numero) {
+      const nuevoContenedor = {
+        _id: `CONT${Date.now()}`,
+        numero: nuevoContenedorData.numero,
+        estado: "pendiente",
+        fechaCreacion: new Date().toISOString().split('T')[0],
+        fechaEstimada: nuevoContenedorData.fechaEstimada,
+        fechaReal: null,
+        fechaUltimaModificacion: new Date().toISOString(),
+        observaciones: `Contenedor creado para pedido ${nuevoPedidoData.numero}`
+      };
+      setContenedores(prev => [...prev, nuevoContenedor]);
+      mensajeContenedor = ` y contenedor ${nuevoContenedorData.numero}`;
+    } else if (tipoContenedor === "existente" && contenedorSeleccionadoProductos) {
+      const contenedor = contenedores.find(c => c._id === contenedorSeleccionadoProductos);
+      mensajeContenedor = ` y asignado al contenedor ${contenedor.numero}`;
+    }
+
+    alert(`✅ Nuevo pedido ${nuevoPedidoData.numero} creado con ${productosAgregar.length} producto(s) (${totalUnidades} unidades total)${mensajeContenedor}`);
+
+    setSelectedKeys(new Set());
+    setIsAgregarProductosOpen(false);
+    limpiarFormularioAgregarProductos();
+  };
 
   // Funciones para manejo de contenedores y estados
   const obtenerContenedoresPorPedido = (pedidoId) => {
@@ -441,6 +856,116 @@ function PedidosMockPage() {
     ));
   };
 
+  const agregarProductoAContenedor = () => {
+    if (!productoActual.codigo || !productoActual.descripcion || !productoActual.cantidad) return;
+    
+    setContenedorActual(prev => ({
+      ...prev,
+      productos: [...prev.productos, {
+        productoId: Date.now().toString(),
+        codigo: productoActual.codigo,
+        descripcion: productoActual.descripcion,
+        cantidad: parseInt(productoActual.cantidad)
+      }]
+    }));
+    
+    setProductoActual({ codigo: "", descripcion: "", cantidad: "" });
+  };
+
+  const removerProductoDeContenedor = (productoId) => {
+    setContenedorActual(prev => ({
+      ...prev,
+      productos: prev.productos.filter(p => p.productoId !== productoId)
+    }));
+  };
+
+  const agregarContenedorAPedido = () => {
+    if (!contenedorActual.numero || !contenedorActual.fechaEstimada || contenedorActual.productos.length === 0) return;
+    
+    setContenedoresEnPedido(prev => [...prev, {
+      ...contenedorActual,
+      id: Date.now().toString()
+    }]);
+    
+    setContenedorActual({
+      numero: "",
+      fechaEstimada: "",
+      observaciones: "",
+      productos: []
+    });
+  };
+
+  const removerContenedorDePedido = (contenedorId) => {
+    setContenedoresEnPedido(prev => prev.filter(c => c.id !== contenedorId));
+  };
+
+  const crearNuevoPedido = () => {
+    if (!nuevoPedidoNumero || !nuevoPedidoFechaEstimada || contenedoresEnPedido.length === 0) return;
+    
+    const nuevoPedidoId = `PED${Date.now()}`;
+    const fechaActual = new Date().toISOString().split('T')[0];
+    
+    // Crear el pedido
+    const nuevoPedido = {
+      _id: nuevoPedidoId,
+      numeroPedido: nuevoPedidoNumero,
+      fechaPedido: fechaActual,
+      fechaEstimada: nuevoPedidoFechaEstimada,
+      fechaReal: null,
+      fechaUltimaModificacion: new Date().toISOString(),
+      comentarios: nuevoPedidoComentarios,
+      historial: [
+        { fecha: fechaActual, accion: "Pedido creado", usuario: "Usuario Demo" }
+      ]
+    };
+    
+    // Crear contenedores
+    const nuevosContenedores = contenedoresEnPedido.map(cont => ({
+      _id: `CONT${Date.now()}_${cont.id}`,
+      numero: cont.numero,
+      estado: "pendiente",
+      fechaCreacion: fechaActual,
+      fechaEstimada: cont.fechaEstimada,
+      fechaReal: null,
+      fechaUltimaModificacion: new Date().toISOString(),
+      observaciones: cont.observaciones
+    }));
+    
+    // Crear relaciones pedido-contenedor
+    const nuevasRelaciones = contenedoresEnPedido.map((cont, idx) => ({
+      _id: `PC${Date.now()}_${idx}`,
+      pedidoId: nuevoPedidoId,
+      contenedorId: `CONT${Date.now()}_${cont.id}`,
+      productos: cont.productos,
+      fechaAsignacion: fechaActual
+    }));
+    
+    // Actualizar estados
+    setPedidos(prev => [...prev, nuevoPedido]);
+    setContenedores(prev => [...prev, ...nuevosContenedores]);
+    setPedidoContenedores(prev => [...prev, ...nuevasRelaciones]);
+    
+    // Limpiar formulario
+    limpiarFormularioNuevoPedido();
+    setIsNuevoPedidoOpen(false);
+    
+    alert(`Pedido ${nuevoPedido.numeroPedido} creado exitosamente con ${nuevosContenedores.length} contenedor(es)`);
+  };
+
+  const limpiarFormularioNuevoPedido = () => {
+    setNuevoPedidoNumero("");
+    setNuevoPedidoFechaEstimada("");
+    setNuevoPedidoComentarios("");
+    setContenedoresEnPedido([]);
+    setContenedorActual({
+      numero: "",
+      fechaEstimada: "",
+      observaciones: "",
+      productos: []
+    });
+    setProductoActual({ codigo: "", descripcion: "", cantidad: "" });
+  };
+
   const getStatusColor = (estado) => {
     switch (estado) {
       case "recibido": return "success";
@@ -485,23 +1010,7 @@ function PedidosMockPage() {
       .sort((a, b) => new Date(b.fechaUltimaModificacion) - new Date(a.fechaUltimaModificacion)); // Ordenar por última modificación
   }, [pedidos, contenedores, pedidoContenedores, filtroEstado, busqueda]);
 
-  const estadisticas = useMemo(() => {
-    const pedidosConEstado = pedidos.map(p => ({
-      ...p,
-      estadoCalculado: calcularEstadoPedido(p._id),
-      productosTotales: obtenerProductosTotalesPedido(p._id)
-    }));
-    
-    return {
-      total: pedidos.length,
-      pedidos: pedidosConEstado.filter(p => p.estadoCalculado === 'pedido').length,
-      enTransito: pedidosConEstado.filter(p => p.estadoCalculado === 'en_transito').length,
-      recibidos: pedidosConEstado.filter(p => p.estadoCalculado === 'recibido').length,
-      atrasados: pedidosConEstado.filter(p => p.estadoCalculado === 'atrasado').length,
-      totalProductos: pedidosConEstado.reduce((sum, p) => sum + p.productosTotales.reduce((pSum, prod) => pSum + prod.cantidad, 0), 0),
-      totalContenedores: contenedores.length
-    };
-  }, [pedidos, contenedores, pedidoContenedores]);
+
 
 
 
@@ -531,67 +1040,7 @@ function PedidosMockPage() {
             </Typography>
           </Box>
 
-          {/* Estadísticas */}
-          <Grid container spacing={2} sx={{ mb: 4 }}>
-            <Grid item xs={12} md={2}>
-              <Card>
-                <CardContent sx={{ textAlign: 'center' }}>
-                  <Typography variant="h4" color="primary.main">{estadisticas.total}</Typography>
-                  <Typography variant="caption">Total Pedidos</Typography>
-                </CardContent>
-              </Card>
-            </Grid>
-            <Grid item xs={12} md={2}>
-              <Card>
-                <CardContent sx={{ textAlign: 'center' }}>
-                  <Typography variant="h4" color="warning.main">{estadisticas.pedidos}</Typography>
-                  <Typography variant="caption">Pendientes</Typography>
-                </CardContent>
-              </Card>
-            </Grid>
-            <Grid item xs={12} md={2}>
-              <Card>
-                <CardContent sx={{ textAlign: 'center' }}>
-                  <Typography variant="h4" color="info.main">{estadisticas.enTransito}</Typography>
-                  <Typography variant="caption">En Tránsito</Typography>
-                </CardContent>
-              </Card>
-            </Grid>
-            <Grid item xs={12} md={1.5}>
-              <Card>
-                <CardContent sx={{ textAlign: 'center' }}>
-                  <Typography variant="h4" color="success.main">{estadisticas.recibidos}</Typography>
-                  <Typography variant="caption">Recibidos</Typography>
-                </CardContent>
-              </Card>
-            </Grid>
-            <Grid item xs={12} md={1.5}>
-              <Card>
-                <CardContent sx={{ textAlign: 'center' }}>
-                  <Typography variant="h4" color="error.main">{estadisticas.atrasados}</Typography>
-                  <Typography variant="caption">Atrasados</Typography>
-                </CardContent>
-              </Card>
-            </Grid>
-            <Grid item xs={12} md={1.5}>
-              <Card>
-                <CardContent sx={{ textAlign: 'center' }}>
-                  <Typography variant="h4" color="secondary.main">{estadisticas.totalContenedores}</Typography>
-                  <Typography variant="caption">Contenedores</Typography>
-                </CardContent>
-              </Card>
-            </Grid>
-            <Grid item xs={12} md={1.5}>
-              <Card>
-                <CardContent sx={{ textAlign: 'center' }}>
-                  <Typography variant="h4" color="success.main">
-                    {estadisticas.totalProductos.toLocaleString()}
-                  </Typography>
-                  <Typography variant="caption">Productos</Typography>
-                </CardContent>
-              </Card>
-            </Grid>
-          </Grid>
+
 
           {/* Filtros y búsqueda */}
           <Card sx={{ mb: 3, p: 2 }}>
@@ -645,14 +1094,15 @@ function PedidosMockPage() {
                   >
                     Limpiar Filtros
                   </Button>
+
                   <Button
-                    variant="contained"
+                    variant={showProductTable ? "contained" : "outlined"}
                     size="small"
-                    color="success"
-                    onClick={() => setIsNuevoContenedorOpen(true)}
-                    startIcon={<AddIcon />}
+                    color="secondary"
+                    onClick={() => setShowProductTable(!showProductTable)}
+                    startIcon={<InventoryIcon />}
                   >
-                    Nuevo Contenedor
+                    {showProductTable ? "Ocultar" : "Gestionar"} Productos
                   </Button>
                 </Stack>
               </Grid>
@@ -794,6 +1244,330 @@ function PedidosMockPage() {
                 </Typography>
               </CardContent>
             </Card>
+          )}
+
+          {/* Sección de Gestión de Productos */}
+          {showProductTable && (
+            <Box sx={{ mt: 4 }}>
+              <Divider sx={{ mb: 3 }} />
+              
+              <Typography variant="h5" gutterBottom>
+                📊 Gestión de Productos
+              </Typography>
+
+              {/* Controles y Filtros */}
+              <Box sx={{ mb: 3 }}>
+                <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
+                  <Typography variant="h6">
+                    Productos ({productosFiltrados.length}{productosProyeccion.length !== productosFiltrados.length ? ` de ${productosProyeccion.length}` : ''})
+                  </Typography>
+                </Stack>
+
+                {/* Filtros */}
+                <Paper sx={{ p: 2, mb: 2 }}>
+                  <Stack direction="row" alignItems="center" spacing={2} flexWrap="wrap" gap={1}>
+                    <Typography variant="subtitle2" color="text.secondary">
+                      Filtros:
+                    </Typography>
+                    
+                    {/* Filtro Stock Críticos */}
+                    <Button
+                      variant={filtros.stockCriticos ? "contained" : "outlined"}
+                      color="warning"
+                      startIcon={<WarningIcon />}
+                      onClick={() => actualizarFiltroStockCriticos(!filtros.stockCriticos)}
+                      size="small"
+                    >
+                      Stock Críticos (&lt;60 días)
+                    </Button>
+
+                    {/* Filtro Pedidos Vencidos */}
+                    <Button
+                      variant={filtros.pedidosVencidos ? "contained" : "outlined"}
+                      color="error"
+                      startIcon={<ErrorIcon />}
+                      onClick={() => actualizarFiltroPedidosVencidos(!filtros.pedidosVencidos)}
+                      size="small"
+                    >
+                      Pedidos Vencidos
+                    </Button>
+
+                    {/* Selector de Tags */}
+                    <FormControl size="small" sx={{ minWidth: 200 }}>
+                      <InputLabel>Tags</InputLabel>
+                      <Select
+                        multiple
+                        value={filtros.tags}
+                        onChange={(e) => actualizarFiltroTags(e.target.value)}
+                        label="Tags"
+                        renderValue={(selected) => (
+                          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                            {selected.map((value) => (
+                              <Chip key={value} label={value} size="small" />
+                            ))}
+                          </Box>
+                        )}
+                      >
+                        {tagsDisponibles.map((tag) => (
+                          <MenuItem key={tag} value={tag}>
+                            <Checkbox checked={filtros.tags.indexOf(tag) > -1} />
+                            <ListItemText primary={tag} />
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+
+                    {/* Botón limpiar filtros */}
+                    {(filtros.stockCriticos || filtros.pedidosVencidos || filtros.tags.length > 0) && (
+                      <Button
+                        variant="text"
+                        color="secondary"
+                        onClick={limpiarFiltros}
+                        size="small"
+                        startIcon={<CloseIcon />}
+                      >
+                        Limpiar Filtros
+                      </Button>
+                    )}
+                  </Stack>
+                </Paper>
+              </Box>
+
+              {/* Controles de acciones */}
+              <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 3 }}>
+                <Box />
+                
+                {/* Acciones */}
+                <Stack direction="row" spacing={2}>
+                  <Button
+                    variant="outlined"
+                    color="success"
+                    startIcon={<FileDownloadIcon />}
+                    onClick={() => alert("Función de exportar implementada!")}
+                  >
+                    Exportar
+                  </Button>
+
+                  {/* Acciones para productos seleccionados */}
+                  {selectedKeys.size > 0 && (
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      <Typography variant="body2" color="text.secondary" sx={{ mr: 1 }}>
+                        {selectedKeys.size} seleccionado(s):
+                      </Typography>
+                      
+                      <Button
+                        variant="contained"
+                        color="primary"
+                        onClick={() => setIsAgregarProductosOpen(true)}
+                        startIcon={<AddIcon />}
+                        size="small"
+                      >
+                        Agregar a Pedido
+                      </Button>
+
+                      <Button
+                        variant="outlined"
+                        color="secondary"
+                        onClick={async () => {
+                          setIsTagOpen(true);
+                          setSelectedExistingTag("");
+                          setNewTagName("");
+                          setTagError("");
+                          await cargarTagsDisponibles();
+                        }}
+                        startIcon={<LabelIcon />}
+                        size="small"
+                      >
+                        Agregar Tag
+                      </Button>
+
+                      <Button
+                        variant="outlined"
+                        color="warning"
+                        onClick={() => {
+                          setIsRemoveTagOpen(true);
+                          setRemoveTagError("");
+                        }}
+                        startIcon={<LabelOffIcon />}
+                        size="small"
+                      >
+                        Eliminar Tags
+                      </Button>
+                    </Stack>
+                  )}
+                </Stack>
+              </Stack>
+
+              {/* Tabla de productos */}
+              <TableContainer component={Paper}>
+                <Table>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell padding="checkbox">
+                        <Checkbox
+                          indeterminate={selectedKeys.size > 0 && selectedKeys.size < productosFiltrados.length}
+                          checked={productosFiltrados.length > 0 && selectedKeys.size === productosFiltrados.length}
+                          onChange={(event) => {
+                            if (event.target.checked) {
+                              setSelectedKeys(new Set(productosFiltrados.map(p => p._id)));
+                            } else {
+                              setSelectedKeys(new Set());
+                            }
+                          }}
+                        />
+                      </TableCell>
+                      <TableCell>Código</TableCell>
+                      <TableCell>Descripción</TableCell>
+                      <TableCell>Tags</TableCell>
+                      <TableCell align="center">Stock Actual</TableCell>
+                      <TableCell align="center">Stock Proyectado</TableCell>
+                      <TableCell align="center">Ventas Período</TableCell>
+                      <TableCell align="center">Días hasta agotar stock</TableCell>
+                      <TableCell align="center">Acciones</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {productosFiltrados.map((producto) => {
+                      const stockProyectadoInfo = formatStockProyectado(producto);
+                      
+                      return (
+                        <TableRow 
+                          key={producto._id}
+                          selected={selectedKeys.has(producto._id)}
+                          onClick={() => {
+                            const newSelectedKeys = new Set(selectedKeys);
+                            if (newSelectedKeys.has(producto._id)) {
+                              newSelectedKeys.delete(producto._id);
+                            } else {
+                              newSelectedKeys.add(producto._id);
+                            }
+                            setSelectedKeys(newSelectedKeys);
+                          }}
+                          sx={{ cursor: 'pointer' }}
+                        >
+                          <TableCell padding="checkbox">
+                            <Checkbox checked={selectedKeys.has(producto._id)} />
+                          </TableCell>
+                          <TableCell>{producto.codigo}</TableCell>
+                          <TableCell>{producto.descripcion}</TableCell>
+                          
+                          {/* Tags */}
+                          <TableCell>
+                            {producto.tags && producto.tags.length > 0 ? (
+                              <Stack direction="row" spacing={0.5} sx={{ flexWrap: "wrap", gap: 0.5 }}>
+                                {producto.tags.map((tag, idx) => (
+                                  <Chip
+                                    key={`${producto._id}-tag-${idx}`}
+                                    label={tag}
+                                    size="small"
+                                    sx={{
+                                      backgroundColor: getTagColor(tag),
+                                      color: "text.primary",
+                                      fontWeight: 500,
+                                      fontSize: '0.75rem'
+                                    }}
+                                  />
+                                ))}
+                              </Stack>
+                            ) : (
+                              <Typography variant="body2" color="text.secondary">
+                                -
+                              </Typography>
+                            )}
+                          </TableCell>
+                          
+                          {/* Stock Actual con colores */}
+                          <TableCell align="center">
+                            {producto.cantidad === 0 ? (
+                              <Chip 
+                                label={producto.cantidad}
+                                color="error"
+                                variant="filled"
+                                size="small"
+                              />
+                            ) : (
+                              <Typography variant="body2">
+                                {producto.cantidad}
+                              </Typography>
+                            )}
+                          </TableCell>
+                          
+                          {/* Stock Proyectado con explicación */}
+                          <TableCell align="center">
+                            <Box display="flex" alignItems="center" justifyContent="center" gap={1}>
+                              <Typography variant="body2" fontWeight="bold">
+                                {stockProyectadoInfo.total}
+                              </Typography>
+                              {stockProyectadoInfo.incremento && (
+                                <Tooltip title={`Pedido llegando el ${stockProyectadoInfo.fecha}`}>
+                                  <Chip
+                                    icon={<TrendingUpIcon />}
+                                    label={`+${stockProyectadoInfo.incremento} ${stockProyectadoInfo.fecha}`}
+                                    color="info"
+                                    variant="outlined"
+                                    size="small"
+                                    sx={{ fontSize: '0.75rem' }}
+                                  />
+                                </Tooltip>
+                              )}
+                            </Box>
+                          </TableCell>
+                          
+                          {/* Ventas Período con aclaración */}
+                          <TableCell align="center">
+                            <Box display="flex" alignItems="center" justifyContent="center" gap={1}>
+                              <Typography variant="body2" fontWeight="bold">
+                                {producto.ventasPeriodo}
+                              </Typography>
+                              {producto.diasSinStockEnPeriodo > 0 && (
+                                <Tooltip title={`${producto.diasSinStockEnPeriodo} días sin stock en período`}>
+                                  <Chip
+                                    icon={<WarningIcon />}
+                                    label={`${producto.diasSinStockEnPeriodo}d sin stock`}
+                                    color="warning"
+                                    variant="outlined"
+                                    size="small"
+                                    sx={{ fontSize: '0.75rem' }}
+                                  />
+                                </Tooltip>
+                              )}
+                            </Box>
+                          </TableCell>
+                          
+                          {/* Días hasta agotar stock */}
+                          <TableCell align="center">
+                            <Chip 
+                              label={producto.diasSinStock}
+                              color={getDiasSinStockColor(producto.diasSinStock)}
+                              variant="filled"
+                              size="small"
+                            />
+                          </TableCell>
+                          
+                          {/* Acciones */}
+                          <TableCell align="center">
+                            {producto.proximoPedido && !pedidosEntregados.has(producto.proximoPedido.numeroPedido) && (
+                              <Button
+                                variant="outlined"
+                                color="success"
+                                size="small"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  confirmarEntregaPedido(producto.proximoPedido.numeroPedido);
+                                }}
+                                startIcon={<CheckCircleIcon />}
+                              >
+                                Confirmar Llegada
+                              </Button>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </Box>
           )}
         </Container>
       </Box>
@@ -1034,55 +1808,7 @@ function PedidosMockPage() {
         </DialogActions>
       </Dialog>
 
-      {/* Modal para Crear Nuevo Contenedor */}
-      <Dialog open={isNuevoContenedorOpen} onClose={() => setIsNuevoContenedorOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Crear Nuevo Contenedor</DialogTitle>
-        <DialogContent>
-          <Stack spacing={2} sx={{ mt: 1 }}>
-            <TextField
-              fullWidth
-              label="Número de Contenedor"
-              value={nuevoNumeroContenedor}
-              onChange={(e) => setNuevoNumeroContenedor(e.target.value.toUpperCase())}
-              placeholder="Ej: TCLU123456"
-            />
-            <TextField
-              fullWidth
-              type="date"
-              label="Fecha Estimada de Llegada"
-              value={nuevaFechaEstimada}
-              onChange={(e) => setNuevaFechaEstimada(e.target.value)}
-              InputLabelProps={{ shrink: true }}
-            />
-            <TextField
-              fullWidth
-              multiline
-              rows={3}
-              label="Observaciones"
-              value={nuevasObservaciones}
-              onChange={(e) => setNuevasObservaciones(e.target.value)}
-              placeholder="Observaciones opcionales sobre el contenedor"
-            />
-          </Stack>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => {
-            setIsNuevoContenedorOpen(false);
-            setNuevoNumeroContenedor("");
-            setNuevaFechaEstimada("");
-            setNuevasObservaciones("");
-          }}>
-            Cancelar
-          </Button>
-          <Button 
-            variant="contained" 
-            onClick={crearNuevoContenedor}
-            disabled={!nuevoNumeroContenedor || !nuevaFechaEstimada}
-          >
-            Crear Contenedor
-          </Button>
-        </DialogActions>
-      </Dialog>
+
 
       {/* Modal para Asignar Contenedor a Pedido */}
       <Dialog open={isAsignarContenedorOpen} onClose={() => setIsAsignarContenedorOpen(false)} maxWidth="md" fullWidth>
@@ -1189,6 +1915,403 @@ function PedidosMockPage() {
         <DialogActions>
           <Button onClick={() => setIsGestionContenedorOpen(false)}>
             Cerrar
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+
+
+
+      {/* Modal para Agregar Productos a Pedidos */}
+      <Dialog open={isAgregarProductosOpen} onClose={() => {
+        setIsAgregarProductosOpen(false);
+        limpiarFormularioAgregarProductos();
+      }} maxWidth="md" fullWidth>
+        <DialogTitle>
+          <Stack direction="row" alignItems="center" justifyContent="space-between">
+            <Typography variant="h6">Agregar Productos a Pedido</Typography>
+            <IconButton onClick={() => {
+              setIsAgregarProductosOpen(false);
+              limpiarFormularioAgregarProductos();
+            }}>
+              <CloseIcon />
+            </IconButton>
+          </Stack>
+        </DialogTitle>
+        <DialogContent>
+          {/* Mostrar productos seleccionados con cantidades */}
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="subtitle1" gutterBottom>
+              📦 Productos a agregar ({selectedKeys.size}):
+            </Typography>
+            <Grid container spacing={2}>
+              {obtenerProductosSeleccionados().map(producto => (
+                <Grid item xs={12} md={6} key={producto._id}>
+                  <Box 
+                    sx={{ 
+                      p: 2, 
+                      border: 1, 
+                      borderColor: 'divider', 
+                      borderRadius: 1,
+                      bgcolor: 'background.paper'
+                    }}
+                  >
+                    <Stack direction="row" alignItems="center" spacing={2}>
+                      <Box flex={1}>
+                        <Typography variant="body2" fontWeight="bold">
+                          {producto.codigo}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {producto.descripcion}
+                        </Typography>
+                      </Box>
+                      <TextField
+                        size="small"
+                        label="Cantidad"
+                        type="number"
+                        value={obtenerCantidadProducto(producto._id)}
+                        onChange={(e) => actualizarCantidadProducto(producto._id, e.target.value)}
+                        inputProps={{ min: 1, step: 1 }}
+                        sx={{ width: 80 }}
+                      />
+                    </Stack>
+                  </Box>
+                </Grid>
+              ))}
+            </Grid>
+          </Box>
+
+          <Divider sx={{ mb: 3 }} />
+
+          {/* Tabs para elegir método */}
+          <Tabs 
+            value={tipoAgregar} 
+            onChange={(e, newValue) => setTipoAgregar(newValue)}
+            sx={{ mb: 3 }}
+          >
+            <Tab label="Pedido Existente" value="existente" />
+            <Tab label="Crear Nuevo Pedido" value="nuevo" />
+          </Tabs>
+
+          {tipoAgregar === "existente" ? (
+            <Box>
+              <Grid container spacing={2} sx={{ mb: 3 }}>
+                <Grid item xs={12}>
+                  <FormControl fullWidth>
+                    <InputLabel>Seleccionar Pedido</InputLabel>
+                    <Select
+                      value={pedidoSeleccionadoProductos}
+                      label="Seleccionar Pedido"
+                      onChange={(e) => setPedidoSeleccionadoProductos(e.target.value)}
+                    >
+                      {pedidos.map(pedido => (
+                        <MenuItem key={pedido._id} value={pedido._id}>
+                          <Box>
+                            <Typography variant="body2" fontWeight="bold">
+                              {pedido.numeroPedido}
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              Creado: {pedido.fechaPedido} | Llegada: {pedido.fechaEstimada}
+                            </Typography>
+                          </Box>
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Grid>
+                
+                <Grid item xs={12}>
+                  <FormControl fullWidth>
+                    <InputLabel>Contenedor (Opcional)</InputLabel>
+                    <Select
+                      value={contenedorSeleccionadoProductos}
+                      label="Contenedor (Opcional)"
+                      onChange={(e) => setContenedorSeleccionadoProductos(e.target.value)}
+                    >
+                      <MenuItem value="">
+                        <Typography variant="body2" color="text.secondary">
+                          Sin contenedor asignado
+                        </Typography>
+                      </MenuItem>
+                      {contenedores.map(contenedor => (
+                        <MenuItem key={contenedor._id} value={contenedor._id}>
+                          <Box>
+                            <Typography variant="body2" fontWeight="bold">
+                              {contenedor.numero}
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              Estado: {contenedor.estado} | Llegada: {contenedor.fechaEstimada}
+                            </Typography>
+                          </Box>
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Grid>
+              </Grid>
+            </Box>
+          ) : (
+            <Box>
+              <Grid container spacing={2} sx={{ mb: 3 }}>
+                <Grid item xs={12} md={6}>
+                  <TextField
+                    fullWidth
+                    label="Número de Pedido"
+                    value={nuevoPedidoData.numero}
+                    onChange={(e) => setNuevoPedidoData(prev => ({
+                      ...prev,
+                      numero: e.target.value
+                    }))}
+                    placeholder="Ej: PED-2025-020"
+                    required
+                  />
+                </Grid>
+                <Grid item xs={12} md={6}>
+                  <TextField
+                    fullWidth
+                    label="Fecha Estimada"
+                    type="date"
+                    value={nuevoPedidoData.fechaEstimada}
+                    onChange={(e) => setNuevoPedidoData(prev => ({
+                      ...prev,
+                      fechaEstimada: e.target.value
+                    }))}
+                    InputLabelProps={{ shrink: true }}
+                    required
+                  />
+                </Grid>
+                <Grid item xs={12}>
+                  <TextField
+                    fullWidth
+                    label="Observaciones del Pedido"
+                    value={nuevoPedidoData.observaciones}
+                    onChange={(e) => setNuevoPedidoData(prev => ({
+                      ...prev,
+                      observaciones: e.target.value
+                    }))}
+                    placeholder="Observaciones opcionales"
+                  />
+                </Grid>
+              </Grid>
+
+              <Divider sx={{ my: 3 }} />
+
+              <Typography variant="subtitle1" gutterBottom sx={{ mb: 2 }}>
+                🚢 Contenedor (Opcional)
+              </Typography>
+              
+              <Tabs 
+                value={tipoContenedor} 
+                onChange={(e, newValue) => setTipoContenedor(newValue)}
+                sx={{ mb: 3 }}
+              >
+                <Tab label="Contenedor Existente" value="existente" />
+                <Tab label="Crear Nuevo Contenedor" value="nuevo" />
+              </Tabs>
+
+              {tipoContenedor === "existente" ? (
+                <Grid container spacing={2}>
+                  <Grid item xs={12}>
+                    <FormControl fullWidth>
+                      <InputLabel>Seleccionar Contenedor</InputLabel>
+                      <Select
+                        value={contenedorSeleccionadoProductos}
+                        label="Seleccionar Contenedor"
+                        onChange={(e) => setContenedorSeleccionadoProductos(e.target.value)}
+                      >
+                        <MenuItem value="">
+                          <Typography variant="body2" color="text.secondary">
+                            Sin contenedor asignado
+                          </Typography>
+                        </MenuItem>
+                        {contenedores.map(contenedor => (
+                          <MenuItem key={contenedor._id} value={contenedor._id}>
+                            <Box>
+                              <Typography variant="body2" fontWeight="bold">
+                                {contenedor.numero}
+                              </Typography>
+                              <Typography variant="caption" color="text.secondary">
+                                Estado: {contenedor.estado} | Llegada: {contenedor.fechaEstimada}
+                              </Typography>
+                            </Box>
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                </Grid>
+              ) : (
+                <Grid container spacing={2}>
+                  <Grid item xs={12} md={6}>
+                    <TextField
+                      fullWidth
+                      label="Código del Contenedor"
+                      value={nuevoContenedorData.numero}
+                      onChange={(e) => setNuevoContenedorData(prev => ({
+                        ...prev,
+                        numero: e.target.value
+                      }))}
+                      placeholder="Ej: TCLU123456"
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <TextField
+                      fullWidth
+                      label="Fecha Estimada de Llegada"
+                      type="date"
+                      value={nuevoContenedorData.fechaEstimada}
+                      onChange={(e) => setNuevoContenedorData(prev => ({
+                        ...prev,
+                        fechaEstimada: e.target.value
+                      }))}
+                      InputLabelProps={{ shrink: true }}
+                    />
+                  </Grid>
+                </Grid>
+              )}
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => {
+            setIsAgregarProductosOpen(false);
+            limpiarFormularioAgregarProductos();
+          }}>
+            Cancelar
+          </Button>
+          <Button 
+            variant="contained" 
+            onClick={tipoAgregar === "existente" ? agregarProductosAPedidoExistente : crearNuevoPedidoConProductos}
+            disabled={
+              selectedKeys.size === 0 ||
+              (tipoAgregar === "existente" && !pedidoSeleccionadoProductos) ||
+              (tipoAgregar === "nuevo" && (!nuevoPedidoData.numero || !nuevoPedidoData.fechaEstimada))
+            }
+            startIcon={<AddIcon />}
+          >
+            {tipoAgregar === "existente" ? "Agregar a Pedido" : "Crear y Agregar"}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Modal para Agregar Tags */}
+      <Dialog
+        open={isTagOpen}
+        onClose={isTagSaving ? undefined : () => setIsTagOpen(false)}
+        fullWidth
+        maxWidth="sm"
+      >
+        <DialogTitle>Agregar tag a productos seleccionados</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <Typography variant="body2" color="text.secondary">
+              Productos seleccionados: {selectedKeys.size}
+            </Typography>
+            
+            <FormControl fullWidth size="small">
+              <InputLabel>Tag existente</InputLabel>
+              <Select
+                value={selectedExistingTag}
+                label="Tag existente"
+                onChange={(e) => setSelectedExistingTag(e.target.value)}
+                disabled={isTagLoading}
+              >
+                <MenuItem value="">
+                  <em>Ninguno</em>
+                </MenuItem>
+                {availableTags.map((tag) => (
+                  <MenuItem key={tag} value={tag}>
+                    <Chip
+                      label={tag}
+                      size="small"
+                      sx={{
+                        backgroundColor: getTagColor(tag),
+                        color: "text.primary",
+                        fontWeight: 500,
+                      }}
+                    />
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            
+            <Typography variant="caption" color="text.secondary">
+              O crear uno nuevo:
+            </Typography>
+            
+            <TextField
+              size="small"
+              label="Nuevo tag"
+              value={newTagName}
+              onChange={(e) => setNewTagName(e.target.value)}
+              placeholder="Ej: ARTICULOS PARA REPOSICION, ARTICULOS SIN REPOSICION"
+            />
+            
+            {tagError && (
+              <Typography variant="caption" color="error">
+                {tagError}
+              </Typography>
+            )}
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button 
+            onClick={() => setIsTagOpen(false)} 
+            disabled={isTagSaving}
+          >
+            Cancelar
+          </Button>
+          <Button
+            onClick={handleAgregarTag}
+            variant="contained"
+            disabled={isTagSaving}
+            startIcon={isTagSaving ? <CircularProgress size={16} color="inherit" /> : <LabelIcon />}
+          >
+            {isTagSaving ? "Guardando..." : "Agregar Tag"}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Modal para Eliminar Tags */}
+      <Dialog
+        open={isRemoveTagOpen}
+        onClose={isRemoveTagSaving ? undefined : () => setIsRemoveTagOpen(false)}
+        fullWidth
+        maxWidth="sm"
+      >
+        <DialogTitle>Eliminar todos los tags</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <Typography variant="body2">
+              ¿Estás seguro que deseas eliminar todos los tags de los {selectedKeys.size} productos seleccionados?
+            </Typography>
+            
+            <Typography variant="caption" color="text.secondary">
+              Esta acción no se puede deshacer.
+            </Typography>
+            
+            {removeTagError && (
+              <Typography variant="caption" color="error">
+                {removeTagError}
+              </Typography>
+            )}
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button 
+            onClick={() => setIsRemoveTagOpen(false)} 
+            disabled={isRemoveTagSaving}
+          >
+            Cancelar
+          </Button>
+          <Button
+            onClick={handleEliminarTags}
+            variant="contained"
+            color="error"
+            disabled={isRemoveTagSaving}
+            startIcon={isRemoveTagSaving ? <CircularProgress size={16} color="inherit" /> : <DeleteIcon />}
+          >
+            {isRemoveTagSaving ? "Eliminando..." : "Eliminar Tags"}
           </Button>
         </DialogActions>
       </Dialog>

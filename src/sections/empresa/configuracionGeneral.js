@@ -197,6 +197,7 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
     "CARGAR_REMITO",
     "VER_STOCK_MATERIALES",
     "VER_STOCK_SOLICITUDES",
+    "CREAR_SOLICITUD_MATERIAL",
     "VER_STOCK_MOVIMIENTOS"
 
   ];
