@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
-import Papa from 'papaparse'; // ya deberías tenerlo instalado
+import Papa from 'papaparse'; 
 import Head from 'next/head';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';

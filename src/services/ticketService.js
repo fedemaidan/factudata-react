@@ -353,8 +353,13 @@ const ticketService = {
       console.log("getMovimientosEnRango");
 
       // Convertir fechas JS a Timestamp de Firebase
-      const desdeTimestamp = Timestamp.fromDate(new Date(desde));
-      const hastaTimestamp = Timestamp.fromDate(new Date(hasta));
+      const fechaDesde = new Date(desde);
+      fechaDesde.setHours(0, 0, 0, 0);
+      const desdeTimestamp = Timestamp.fromDate(fechaDesde);
+      
+      const fechaHasta = new Date(hasta);
+      fechaHasta.setHours(23, 59, 59, 999);
+      const hastaTimestamp = Timestamp.fromDate(fechaHasta);
 
       const q = query(
         collection(db, 'movimientos'),
