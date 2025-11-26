@@ -146,11 +146,11 @@ const Page = () => {
   const [data, setData] = useState([]);
   
   const today = new Date();
-  const twoWeeksAgo = new Date();
-  twoWeeksAgo.setDate(today.getDate() - 14);
+  const oneWeekAgo = new Date();
+  oneWeekAgo.setDate(today.getDate() - 7);
 
   const [filters, setFilters] = useState({
-    fechaInicio: twoWeeksAgo.toISOString().split('T')[0],
+    fechaInicio: oneWeekAgo.toISOString().split('T')[0],
     fechaFin: today.toISOString().split('T')[0],
     empresaId: '',
     empresaNombre: '',
