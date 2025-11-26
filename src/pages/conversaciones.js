@@ -17,6 +17,7 @@ import {
   Button
 } from "@mui/material";
 import DownloadIcon from '@mui/icons-material/Download';
+import RefreshIcon from '@mui/icons-material/Refresh';
 import ConversationList from "src/components/conversaciones/ConversationList";
 import ChatWindow from "src/components/conversaciones/ChatWindow";
 import MessageInput from "src/components/conversaciones/MessageInput";
@@ -130,6 +131,26 @@ export default function ConversacionesPage() {
     setConversations(await searchConversations(q));
   };
 
+  const handleRefreshConversations = async () => {
+    setLoading(true);
+    const data = await fetchConversations();
+    setConversations(data);
+    setLoading(false);
+  };
+
+  const handleRefreshCurrentConversation = async () => {
+    if (!selected) return;
+    const { items, total } = await fetchMessages(selected.ultimoMensaje.id_conversacion, {
+      limit: PAGE,
+      offset: 0,
+    });
+    setMessages(items.reverse());
+    setOffset(items.length);
+    setTotal(total);
+    setHasMore(items.length < total);
+    setScrollToBottom(true);
+  };
+
   const handleDownload = async () => {
     if (!selected || !downloadDates.start || !downloadDates.end) return;
     try {
@@ -184,6 +205,7 @@ export default function ConversacionesPage() {
             onSelect={onSelectConversation}
             search={search}
             onSearch={onSearch}
+            onRefresh={handleRefreshConversations}
           />
         </Box>
         <Divider orientation="vertical" flexItem />
@@ -192,9 +214,14 @@ export default function ConversacionesPage() {
             <>
               <Box p={2} display="flex" justifyContent="space-between" alignItems="center" borderBottom="1px solid" borderColor="divider">
                   <Typography variant="h6">{getTitulo}</Typography>
-                  <IconButton onClick={() => setDownloadOpen(true)} title="Descargar conversación">
-                      <DownloadIcon />
-                  </IconButton>
+                  <Box>
+                    <IconButton onClick={handleRefreshCurrentConversation} title="Refrescar conversación">
+                        <RefreshIcon />
+                    </IconButton>
+                    <IconButton onClick={() => setDownloadOpen(true)} title="Descargar conversación">
+                        <DownloadIcon />
+                    </IconButton>
+                  </Box>
               </Box>
               <ChatWindow
                 messages={messages}
@@ -228,6 +255,7 @@ export default function ConversacionesPage() {
               }}
               search={search}
               onSearch={onSearch}
+              onRefresh={handleRefreshConversations}
             />
           </Box>
         </Drawer>

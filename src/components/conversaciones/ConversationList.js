@@ -9,8 +9,10 @@ import {
   Typography,
   TextField,
   InputAdornment,
+  IconButton,
 } from "@mui/material";
 import SearchIcon from "@mui/icons-material/Search";
+import RefreshIcon from "@mui/icons-material/Refresh";
 import dayjs from "dayjs";
 
 const formatFecha = (fecha) => {
@@ -28,6 +30,7 @@ export default function ConversationList({
   onSelect,
   search,
   onSearch,
+  onRefresh,
 }) {
   const items = useMemo(() => conversations || [], [conversations]);
 
@@ -39,7 +42,7 @@ export default function ConversationList({
   console.log(items)
   return (
     <Box display="flex" flexDirection="column" height="100%">
-      <Box p={1}>
+      <Box p={1} display="flex" alignItems="center" gap={1}>
         <TextField
           fullWidth
           size="small"
@@ -54,6 +57,9 @@ export default function ConversationList({
             ),
           }}
         />
+        <IconButton onClick={onRefresh} title="Refrescar lista">
+            <RefreshIcon />
+        </IconButton>
       </Box>
       <List dense sx={{ overflowY: "auto", flex: 1 }}>
         {items.map((c) => {
