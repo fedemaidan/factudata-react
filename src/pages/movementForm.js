@@ -157,6 +157,9 @@ const MovementFormPage = () => {
   const [tagsExtra, setTagsExtra] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [alert, setAlert] = useState({ open: false, message: '', severity: 'info' });
+  const [loadingError, setLoadingError] = useState(null);
+  const [retryCount, setRetryCount] = useState(0);
+  const [isRetrying, setIsRetrying] = useState(false);
   const [openTransferencia, setOpenTransferencia] = useState(false);
   const [openEgresoConCajaPagadora, setOpenEgresoConCajaPagadora] = useState(false);
   const [accionesMenuAnchor, setAccionesMenuAnchor] = useState(null);
@@ -223,6 +226,110 @@ const MovementFormPage = () => {
   const toggleWide = () => setIsWide(w => !w);
   const handleCloseAlert = () => setAlert({ ...alert, open: false });
   const hasComprobante = Boolean(movimiento?.url_imagen || urlTemporal);
+
+  // Función para cargar todos los datos iniciales
+  const loadInitialData = async (attempt = 1) => {
+    const maxRetries = 3;
+    
+    try {
+      setLoadingError(null);
+      setIsRetrying(attempt > 1);
+      
+      const empresa = await getEmpresaDetailsFromUser(user);
+      if (!empresa) {
+        throw new Error('No se pudo obtener la información de la empresa');
+      }
+      
+      setEmpresa(empresa);
+      const proyectosData = await getProyectosByEmpresa(empresa);
+      setProyectos(proyectosData);
+      const cates = [...empresa.categorias, { name: 'Ingreso dinero', subcategorias: [] }, { name: 'Ajuste', subcategorias: ['Ajuste'] }];
+      const provs = [...empresa.proveedores, 'Ajuste'];
+      setComprobanteInfo(empresa.comprobante_info || []);
+      setCategorias(cates);
+      setProveedores(provs);
+      setTagsExtra(empresa.tags_extra || []);
+      setMediosPago(empresa.medios_pago?.length ? empresa.medios_pago : mediosPago);
+
+      const obras = Array.isArray(empresa.obras) ? empresa.obras : [];
+      setObrasEmpresa(obras);
+      setObrasOptions(obras.map(o => o.nombre).filter(Boolean));
+      setClientesOptions([...new Set(obras.map(o => o.cliente).filter(Boolean))]);
+
+      if (isEditMode) {
+        const data = await movimientosService.getMovimientoById(movimientoId);
+        if (!data) {
+          throw new Error('No se pudo cargar el movimiento solicitado');
+        }
+        
+        data.fecha_factura = formatTimestamp(data.fecha_factura);
+        if (data.fecha_pago) data.fecha_pago = formatTimestamp(data.fecha_pago);
+        setMovimiento(data);
+        
+        // Cargar perfil del creador (no crítico si falla)
+        try {
+          const created_user = await profileService.getProfileByPhone(data.user_phone);
+          setCreatedUser(created_user);
+        } catch (profileErr) {
+          console.warn('No se pudo cargar el perfil del creador:', profileErr);
+          setCreatedUser(null);
+        }
+        
+        formik.setValues({
+          ...formik.values,
+          ...data,
+          fecha_factura: data.fecha_factura,
+          fecha_pago: data.fecha_pago || '',
+          tags_extra: data.tags_extra || [],
+          caja_chica: data.caja_chica ?? false,
+          impuestos: data.impuestos || [],
+          materiales: data.materiales || [],
+          etapa: data.etapa || '',
+          obra: data.obra || '',
+          cliente: data.cliente || ''
+        });
+        await fetchMmList();
+      }
+      
+      // Éxito: resetear contador de reintentos
+      setRetryCount(0);
+      setLoadingError(null);
+      
+    } catch (error) {
+      console.error(`Error cargando datos (intento ${attempt}/${maxRetries}):`, error);
+      
+      // Si no hemos alcanzado el máximo de reintentos, intentar de nuevo
+      if (attempt < maxRetries) {
+        const nextAttempt = attempt + 1;
+        setRetryCount(nextAttempt);
+        
+        console.log(`Reintentando en 2 segundos... (intento ${nextAttempt}/${maxRetries})`);
+        setTimeout(() => {
+          loadInitialData(nextAttempt);
+        }, 2000);
+        
+        return; // No mostrar error aún, seguimos intentando
+      }
+      
+      // Máximo de reintentos alcanzado
+      setLoadingError(error);
+      setAlert({ 
+        open: true, 
+        message: `Error al cargar datos después de ${maxRetries} intentos: ${error.message || 'Error desconocido'}`, 
+        severity: 'error' 
+      });
+    } finally {
+      setIsInitialLoading(false);
+      setIsRetrying(false);
+    }
+  };
+
+  // Función para reintentar manualmente
+  const handleRetry = () => {
+    setIsInitialLoading(true);
+    setRetryCount(0);
+    loadInitialData(1);
+  };
 
   const handleUploadImage = async () => {
     if (!nuevoArchivo) return;
@@ -350,59 +457,25 @@ const createdAtStr = (() => {
   });
 
   // --- Carga inicial
-  const fetchMmList = async () => {
+  const fetchMmList = async (retries = 2) => {
     if (!movimientoId) return;
     try {
       const mmList = await MovimientoMaterialService.listarPorCompra(movimientoId, { limit: 500 });
       setMmRows(mmList.items || []);
-    } catch {
-      setMmRows([]);
+    } catch (error) {
+      console.warn('Error cargando movimientos de materiales:', error);
+      if (retries > 0) {
+        console.log(`Reintentando cargar MM... quedan ${retries} intentos`);
+        setTimeout(() => fetchMmList(retries - 1), 1000);
+      } else {
+        console.error('Falló cargar movimientos de materiales después de todos los reintentos');
+        setMmRows([]);
+      }
     }
   };
 
   useEffect(() => {
-    (async () => {
-      const empresa = await getEmpresaDetailsFromUser(user);
-      setEmpresa(empresa);
-      const proyectosData = await getProyectosByEmpresa(empresa);
-      setProyectos(proyectosData);
-      const cates = [...empresa.categorias, { name: 'Ingreso dinero', subcategorias: [] }, { name: 'Ajuste', subcategorias: ['Ajuste'] }];
-      const provs = [...empresa.proveedores, 'Ajuste'];
-      setComprobanteInfo(empresa.comprobante_info || []);
-      setCategorias(cates);
-      setProveedores(provs);
-      setTagsExtra(empresa.tags_extra || []);
-      setMediosPago(empresa.medios_pago?.length ? empresa.medios_pago : mediosPago);
-
-      const obras = Array.isArray(empresa.obras) ? empresa.obras : [];
-      setObrasEmpresa(obras);
-      setObrasOptions(obras.map(o => o.nombre).filter(Boolean));
-      setClientesOptions([...new Set(obras.map(o => o.cliente).filter(Boolean))]);
-
-      if (isEditMode) {
-        const data = await movimientosService.getMovimientoById(movimientoId);
-        data.fecha_factura = formatTimestamp(data.fecha_factura);
-        if (data.fecha_pago) data.fecha_pago = formatTimestamp(data.fecha_pago);
-        setMovimiento(data);
-        const created_user = await profileService.getProfileByPhone(data.user_phone);
-        setCreatedUser(created_user);
-        formik.setValues({
-          ...formik.values,
-          ...data,
-          fecha_factura: data.fecha_factura,
-          fecha_pago: data.fecha_pago || '',
-          tags_extra: data.tags_extra || [],
-          caja_chica: data.caja_chica ?? false,
-          impuestos: data.impuestos || [],
-          materiales: data.materiales || [],
-          etapa: data.etapa || '',
-          obra: data.obra || '',         // <-- NUEVO
-          cliente: data.cliente || ''    // <-- NUEVO
-        });
-        await fetchMmList();
-      }
-      setIsInitialLoading(false);
-    })();
+    loadInitialData(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [movimientoId]);
   
@@ -683,11 +756,19 @@ function syncMaterialesWithMovs(currentMateriales = [], mmRows = [], { proyecto_
           <Stack direction={{ xs: 'column', md: 'row' }} alignItems={{ xs: 'flex-start', md: 'center' }} justifyContent="space-between" spacing={1}>
             <Box>
               <Typography variant="h5" sx={{ mb: 0.5 }}>{titulo}</Typography>
-              <Stack direction="row" spacing={1} flexWrap="wrap">
+              <Stack direction="row" spacing={1} flexWrap="wrap" alignItems="center">
                 {proyectoName && <Chip size="small" label={`${proyectoName}`} />}
                 {formik.values?.fecha_factura && <Chip size="small" label={`${formik.values.fecha_factura}`} />}
                 {formik.values.type && <Chip size="small" color={formik.values?.type === 'ingreso' ? 'success' : 'error'} label={`${formik.values.type.toUpperCase()}`} />}
                 {formik.values.caja_chica && <Chip size="small" color="info" label='Caja chica'/>}
+                {isRetrying && (
+                  <Chip 
+                    size="small" 
+                    color="warning" 
+                    label="Reintentando conexión..." 
+                    icon={<CircularProgress size={12} />}
+                  />
+                )}
               </Stack>
             </Box>
 
@@ -781,8 +862,45 @@ function syncMaterialesWithMovs(currentMateriales = [], mmRows = [], { proyecto_
         </Paper>
 
         {isInitialLoading ? (
-          <Box display="flex" justifyContent="center" alignItems="center" minHeight="50vh">
+          <Box display="flex" flexDirection="column" justifyContent="center" alignItems="center" minHeight="50vh" spacing={2}>
             <CircularProgress />
+            {isRetrying && retryCount > 0 && (
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+                Reintentando... (intento {retryCount}/3)
+              </Typography>
+            )}
+            {!isRetrying && retryCount === 0 && (
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+                Cargando datos...
+              </Typography>
+            )}
+          </Box>
+        ) : loadingError ? (
+          <Box display="flex" flexDirection="column" justifyContent="center" alignItems="center" minHeight="50vh" spacing={2}>
+            <Alert severity="error" sx={{ mb: 2, maxWidth: 600 }}>
+              <Typography variant="h6" gutterBottom>
+                Error al cargar los datos
+              </Typography>
+              <Typography variant="body2" sx={{ mb: 2 }}>
+                {loadingError.message || 'Ha ocurrido un error inesperado'}
+              </Typography>
+              <Stack direction="row" spacing={2} sx={{ mt: 2 }}>
+                <Button 
+                  variant="outlined" 
+                  onClick={() => router.push(lastPageUrl || '/')}
+                >
+                  Volver
+                </Button>
+                <Button 
+                  variant="contained" 
+                  onClick={handleRetry}
+                  startIcon={isInitialLoading ? <CircularProgress size={16} /> : null}
+                  disabled={isInitialLoading}
+                >
+                  {isInitialLoading ? 'Reintentando...' : 'Reintentar'}
+                </Button>
+              </Stack>
+            </Alert>
           </Box>
         ) : (
           <Grid container spacing={3}>
@@ -921,7 +1039,14 @@ function syncMaterialesWithMovs(currentMateriales = [], mmRows = [], { proyecto_
                     Movimientos de materiales (de esta compra)
                   </Typography>
                   {isEditMode && (
-                    <Button size="small" variant="outlined" onClick={fetchMmList}>Refrescar</Button>
+                    <Button 
+                      size="small" 
+                      variant="outlined" 
+                      onClick={() => fetchMmList(2)}
+                      startIcon={<CircularProgress size={14} sx={{ display: 'none' }} />}
+                    >
+                      Refrescar
+                    </Button>
                   )}
                 </Stack>
 
