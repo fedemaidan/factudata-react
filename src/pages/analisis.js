@@ -79,19 +79,19 @@ const AnalisisRow = ({ row, handleDownload }) => {
       <TableCell>
         {row.rango_analisis?.inicio ? format(new Date(row.rango_analisis.inicio), 'dd/MM/yyyy') : '-'}
       </TableCell>
-      <TableCell>
-        <Typography variant="subtitle2">
+      <TableCell sx={{ maxWidth: 150, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+        <Typography variant="subtitle2" noWrap>
           {row.empresa?.nombre || 'Sin nombre'}
         </Typography>
-        <Typography variant="caption" color="textSecondary">
+        <Typography variant="caption" color="textSecondary" noWrap display="block">
           {row.empresa?.id}
         </Typography>
       </TableCell>
-      <TableCell>
-        <Typography variant="body2">
+      <TableCell sx={{ maxWidth: 150, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+        <Typography variant="body2" noWrap>
           {row.usuario?.nombre || 'Desconocido'}
         </Typography>
-        <Typography variant="caption" color="textSecondary">
+        <Typography variant="caption" color="textSecondary" noWrap display="block">
           {row.usuario?.telefono}
         </Typography>
       </TableCell>
@@ -115,7 +115,7 @@ const AnalisisRow = ({ row, handleDownload }) => {
           size="small"
         />
       </TableCell>
-      <TableCell sx={{ maxWidth: 400 }}>
+      <TableCell sx={{ maxWidth: 120 }}>
         <Typography 
           variant="body2" 
           onClick={() => setExpanded(!expanded)}
@@ -292,7 +292,7 @@ const Page = () => {
 
   const renderGroupedTable = (groupedData, entityLabel) => (
     <TableContainer component={Paper}>
-      <Table>
+      <Table size="small">
         <TableHead>
           <TableRow>
             <TableCell>
@@ -310,7 +310,7 @@ const Page = () => {
                   direction={groupedOrderBy === 'count' ? groupedOrder : 'asc'}
                   onClick={() => handleRequestGroupedSort('count')}
                 >
-                  Conversaciones
+                  Conv.
                 </TableSortLabel>
             </TableCell>
             <TableCell align="center">
@@ -319,7 +319,7 @@ const Page = () => {
                   direction={groupedOrderBy === 'avgScore' ? groupedOrder : 'asc'}
                   onClick={() => handleRequestGroupedSort('avgScore')}
                 >
-                  Prom. Exp.
+                  Exp.
                 </TableSortLabel>
             </TableCell>
             <TableCell align="center">
@@ -328,7 +328,7 @@ const Page = () => {
                   direction={groupedOrderBy === 'movimientos' ? groupedOrder : 'asc'}
                   onClick={() => handleRequestGroupedSort('movimientos')}
                 >
-                  Mov. Caja
+                  Mov.
                 </TableSortLabel>
             </TableCell>
             <TableCell align="center">
@@ -337,7 +337,7 @@ const Page = () => {
                   direction={groupedOrderBy === 'remitos' ? groupedOrder : 'asc'}
                   onClick={() => handleRequestGroupedSort('remitos')}
                 >
-                  Remitos
+                  Rem.
                 </TableSortLabel>
             </TableCell>
             <TableCell align="center">
@@ -346,7 +346,7 @@ const Page = () => {
                   direction={groupedOrderBy === 'acopios' ? groupedOrder : 'asc'}
                   onClick={() => handleRequestGroupedSort('acopios')}
                 >
-                  Acopios
+                  Acop.
                 </TableSortLabel>
             </TableCell>
             <TableCell align="center">
@@ -355,7 +355,7 @@ const Page = () => {
                   direction={groupedOrderBy === 'correcciones' ? groupedOrder : 'asc'}
                   onClick={() => handleRequestGroupedSort('correcciones')}
                 >
-                  Correcciones
+                  Corr.
                 </TableSortLabel>
             </TableCell>
             <TableCell align="center">
@@ -364,7 +364,7 @@ const Page = () => {
                   direction={groupedOrderBy === 'flujoRoto' ? groupedOrder : 'asc'}
                   onClick={() => handleRequestGroupedSort('flujoRoto')}
                 >
-                  Flujo Roto
+                  F. Roto
                 </TableSortLabel>
             </TableCell>
           </TableRow>
@@ -536,7 +536,7 @@ const Page = () => {
             {tabValue === 0 && (
             <Card>
               <TableContainer component={Paper}>
-                <Table>
+                <Table size="small">
                   <TableHead>
                     <TableRow>
                       <TableCell>
@@ -572,7 +572,7 @@ const Page = () => {
                           direction={orderBy === 'metricas.movimientos_caja_creados' ? order : 'asc'}
                           onClick={() => handleRequestSort('metricas.movimientos_caja_creados')}
                         >
-                          Mov. Caja
+                          Mov.
                         </TableSortLabel>
                       </TableCell>
                       <TableCell align="center">
@@ -581,7 +581,7 @@ const Page = () => {
                           direction={orderBy === 'metricas.remitos_cargados' ? order : 'asc'}
                           onClick={() => handleRequestSort('metricas.remitos_cargados')}
                         >
-                          Remitos
+                          Rem.
                         </TableSortLabel>
                       </TableCell>
                       <TableCell align="center">
@@ -590,7 +590,7 @@ const Page = () => {
                           direction={orderBy === 'metricas.acopios_cargados' ? order : 'asc'}
                           onClick={() => handleRequestSort('metricas.acopios_cargados')}
                         >
-                          Acopios
+                          Acop.
                         </TableSortLabel>
                       </TableCell>
                       <TableCell align="center">
@@ -599,7 +599,7 @@ const Page = () => {
                           direction={orderBy === 'correcciones' ? order : 'asc'}
                           onClick={() => handleRequestSort('correcciones')}
                         >
-                          Correcciones
+                          Corr.
                         </TableSortLabel>
                       </TableCell>
                       <TableCell align="center">
@@ -608,7 +608,7 @@ const Page = () => {
                           direction={orderBy === 'metricas.flujo_roto' ? order : 'asc'}
                           onClick={() => handleRequestSort('metricas.flujo_roto')}
                         >
-                          Flujo Roto
+                          F. Roto
                         </TableSortLabel>
                       </TableCell>
                       <TableCell align="center">
@@ -617,7 +617,7 @@ const Page = () => {
                           direction={orderBy === 'metricas.experiencia_cliente' ? order : 'asc'}
                           onClick={() => handleRequestSort('metricas.experiencia_cliente')}
                         >
-                          Exp. Cliente
+                          Exp.
                         </TableSortLabel>
                       </TableCell>
                       <TableCell>Resumen</TableCell>
