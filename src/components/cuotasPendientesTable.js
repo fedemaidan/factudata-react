@@ -26,7 +26,10 @@ export const CuotasPendientesTable = ({ cuotas }) => {
       .sort((a, b) => {
         const fechaA = toDateFromFirestore(a.fecha_vencimiento);
         const fechaB = toDateFromFirestore(b.fecha_vencimiento);
-        return fechaA - fechaB;
+        if (fechaA.getTime() !== fechaB.getTime()) {
+          return fechaA - fechaB;
+        }
+        return (a.numero_cuota || 0) - (b.numero_cuota || 0);
       });
   }, [cuotas, desde, hasta, tipoFiltro]);
 
@@ -75,7 +78,14 @@ export const CuotasPendientesTable = ({ cuotas }) => {
         <TableBody>
           {cuotasFiltradas.map((cuota, idx) => (
             <TableRow key={idx}>
-              <TableCell>{cuota.cuenta_nombre || '-'}</TableCell>
+              <TableCell>
+                <Typography variant="body2">{cuota.cuenta_nombre || '-'}</Typography>
+                {cuota.numero_cuota && (
+                  <Typography variant="caption" color="textSecondary">
+                    Cuota {cuota.numero_cuota} de {cuota.total_cuotas}
+                  </Typography>
+                )}
+              </TableCell>
               <TableCell>{formatCurrency(cuota.monto_nominal)}</TableCell>
               <TableCell>{formatTimestamp(cuota.fecha_vencimiento)}</TableCell>
               <TableCell>

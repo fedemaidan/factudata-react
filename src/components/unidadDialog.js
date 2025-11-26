@@ -7,7 +7,7 @@ import {
 
 import { calcularTotalUF, calcularRentabilidad } from 'src/utils/unidadUtils';
 
-export default function UnidadDialog({ unidad, onClose, onChange, onSave, proyectos }) {
+export default function UnidadDialog({ unidad, onClose, onChange, onSave, proyectos = [] }) {
   if (!unidad) return null;
 
   const handleProyectoChange = (id) => {
@@ -19,6 +19,11 @@ export default function UnidadDialog({ unidad, onClose, onChange, onSave, proyec
   const handleSave = () => {
     if (!unidad.proyectoId) {
       alert('Seleccioná un proyecto para continuar');
+      return;
+    }
+
+    if (!unidad.nombre || unidad.nombre.trim() === '') {
+      alert('El nombre de la unidad es obligatorio');
       return;
     }
 

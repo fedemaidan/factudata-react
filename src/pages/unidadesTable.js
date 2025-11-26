@@ -5,17 +5,20 @@ import {
   Tooltip, CircularProgress, Dialog, DialogTitle, DialogContent, DialogActions,
   MenuItem, Select, FormControl, InputLabel, Chip, Collapse
 } from '@mui/material';
-import { Edit, Add } from '@mui/icons-material';
+import { Edit, Add, ShoppingCart, Home } from '@mui/icons-material';
 import { useRouter } from 'next/router';
 import { calcularTotalUF, calcularRentabilidad } from 'src/utils/unidadUtils';
 
 import UnidadDialog from 'src/components/unidadDialog';
+import VenderUnidadDialog from 'src/components/venderUnidadDialog';
+import AlquilarUnidadDialog from 'src/components/alquilarUnidadDialog';
 import { formatCurrency } from 'src/utils/formatters';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 
 import { getEmpresaById } from 'src/services/empresaService';
 import { getProyectosByEmpresa, getProyectoById, updateProyecto } from 'src/services/proyectosService';
 import ImportarUnidadesDesdeCSV from 'src/components/importarUnidadesDesdeCSV';
+import { venderUnidad, alquilarUnidad } from 'src/services/unidadService';
 
 function UnidadesTablePage() {
   const router = useRouter();
@@ -26,6 +29,8 @@ function UnidadesTablePage() {
   const [subproyectos, setSubproyectos] = useState([]);
   const [filtro, setFiltro] = useState('');
   const [unidadSeleccionada, setUnidadSeleccionada] = useState(null);
+  const [unidadParaVender, setUnidadParaVender] = useState(null);
+  const [unidadParaAlquilar, setUnidadParaAlquilar] = useState(null);
   const [loading, setLoading] = useState(false);
   const [cantidadMultiples, setCantidadMultiples] = useState(1);
   const [prefijoNombre, setPrefijoNombre] = useState('Unidad');
@@ -179,6 +184,93 @@ const [unidadBaseMultiple, setUnidadBaseMultiple] = useState({
 
   const handleAgregarMultiples = () => {
     setDialogMultiplesOpen(true);
+  };
+
+  const handleVenderUnidad = (unidad) => {
+    setUnidadParaVender(unidad);
+  };
+
+  const handleAlquilarUnidad = (unidad) => {
+    setUnidadParaAlquilar(unidad);
+  };
+
+  const handleConfirmarVenta = async (ventaData) => {
+    setLoading(true);
+    try {
+      // Obtener userId del localStorage o contexto de autenticación
+      const userId = localStorage.getItem('userId') || 'admin';
+      
+      const resultado = await venderUnidad(ventaData, empresaId, userId);
+      
+      let mensaje = '✅ Venta registrada exitosamente\n\n';
+      
+      if (resultado.unidadActualizada) {
+        mensaje += '✓ Unidad marcada como vendida\n';
+      }
+      
+      if (resultado.cuentaPendienteCreada) {
+        mensaje += '✓ Cuenta a cobrar generada\n';
+      }
+      
+      if (resultado.ingresoCreado) {
+        mensaje += `✓ Ingreso de caja generado (Código: ${resultado.codigoOperacion})\n`;
+      }
+      
+      alert(mensaje);
+      
+      // Recargar datos
+      const empresaData = await getEmpresaById(empresaId);
+      const proyectosData = await getProyectosByEmpresa(empresaData);
+      setProyectos(proyectosData);
+      const todosSubproyectos = proyectosData.flatMap(p =>
+        (p.subproyectos || []).map(sp => ({ ...sp, proyecto: p.nombre, proyectoId: p.id }))
+      );
+      setSubproyectos(todosSubproyectos);
+      
+      setUnidadParaVender(null);
+    } catch (error) {
+      console.error('Error al vender unidad:', error);
+      alert('❌ Error al registrar la venta: ' + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleConfirmarAlquiler = async (alquilerData) => {
+    setLoading(true);
+    try {
+      const userId = localStorage.getItem('userId') || 'admin';
+      
+      const resultado = await alquilarUnidad(alquilerData, empresaId, userId);
+      
+      let mensaje = '✅ Alquiler registrado exitosamente\n\n';
+      
+      if (resultado.unidadActualizada) {
+        mensaje += '✓ Unidad marcada como alquilada\n';
+      }
+      
+      if (resultado.cuentaPendienteCreada) {
+        mensaje += '✓ Cuenta a cobrar generada\n';
+      }
+      
+      alert(mensaje);
+      
+      // Recargar datos
+      const empresaData = await getEmpresaById(empresaId);
+      const proyectosData = await getProyectosByEmpresa(empresaData);
+      setProyectos(proyectosData);
+      const todosSubproyectos = proyectosData.flatMap(p =>
+        (p.subproyectos || []).map(sp => ({ ...sp, proyecto: p.nombre, proyectoId: p.id }))
+      );
+      setSubproyectos(todosSubproyectos);
+      
+      setUnidadParaAlquilar(null);
+    } catch (error) {
+      console.error('Error al alquilar unidad:', error);
+      alert('❌ Error al registrar el alquiler: ' + error.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const renderEstadoChip = (estado) => {
@@ -363,10 +455,8 @@ const [unidadBaseMultiple, setUnidadBaseMultiple] = useState({
       <Table>
       <TableHead>
       <TableRow>
-  <TableCell colSpan={9}><strong>Totales</strong></TableCell>
-  <TableCell><strong>{formatCurrency(totalUF)}</strong></TableCell>
-  <TableCell><strong>{formatCurrency(totalAlquiler)}</strong></TableCell>
-  <TableCell><strong>{promedioRentabilidad.toFixed(2)}%</strong></TableCell>
+  <TableCell colSpan={7}><strong>Totales</strong></TableCell>
+  <TableCell colSpan={2}><strong>{formatCurrency(totalUF)}</strong></TableCell>
   <TableCell colSpan={2} />
 </TableRow>
 
@@ -384,22 +474,15 @@ const [unidadBaseMultiple, setUnidadBaseMultiple] = useState({
         }}
       />
     </TableCell>
-    <TableCell>Unidad</TableCell>
-    <TableCell>Proyecto</TableCell>
-    <TableCell>Lote</TableCell>
-    <TableCell>Edificio</TableCell>
-    <TableCell>Tipificación</TableCell>
-    <TableCell>m² Cubiertos</TableCell>
-    <TableCell>m² Comunes</TableCell>
-    <TableCell>m² Totales</TableCell>
-    <TableCell>Cocheras / Camas</TableCell>
-    <TableCell>Valor UF</TableCell>
-    <TableCell>Valor cochera</TableCell>
-    <TableCell>Total UF</TableCell>
-    <TableCell>Alquiler</TableCell>
-    <TableCell>Rentabilidad</TableCell>
-    <TableCell>Estado</TableCell>
-    <TableCell>Acciones</TableCell>
+    <TableCell><strong>Unidad</strong></TableCell>
+    <TableCell><strong>Proyecto</strong></TableCell>
+    <TableCell><strong>Ubicación</strong></TableCell>
+    <TableCell><strong>Tipificación</strong></TableCell>
+    <TableCell><strong>Superficies (m²)</strong></TableCell>
+    <TableCell><strong>Extras</strong></TableCell>
+    <TableCell><strong>Valores UF</strong></TableCell>
+    <TableCell><strong>Estado</strong></TableCell>
+    <TableCell><strong>Acciones</strong></TableCell>
   </TableRow>
 </TableHead>
 
@@ -419,27 +502,78 @@ const [unidadBaseMultiple, setUnidadBaseMultiple] = useState({
           }}
         />
       </TableCell>
-      <TableCell>{sp.nombre}</TableCell>
+      <TableCell><strong>{sp.nombre}</strong></TableCell>
       <TableCell>{sp.proyecto}</TableCell>
-      <TableCell>{sp.lote}</TableCell>
-      <TableCell>{sp.edificio}</TableCell>
+      <TableCell>
+        <Typography variant="body2">
+          {sp.lote && `Lote: ${sp.lote}`}
+          {sp.lote && sp.edificio && ' - '}
+          {sp.edificio && `Edif: ${sp.edificio}`}
+        </Typography>
+      </TableCell>
       <TableCell>{sp.tipificacion}</TableCell>
-      <TableCell>{sp.m2_cubierta || 0}</TableCell>
-      <TableCell>{sp.m2_comunes || 0}</TableCell>
-      <TableCell>{(parseFloat(sp.m2_cubierta || 0) + parseFloat(sp.m2_comunes || 0))}</TableCell>
-      <TableCell>{`${sp.cocheras || 0} / ${sp.camas || 0}`}</TableCell>
-      <TableCell>{formatCurrency(sp.valor_uf)}</TableCell>
-      <TableCell>{formatCurrency(sp.valor_cochera)}</TableCell>
-      <TableCell>{formatCurrency(sp.total_uf)}</TableCell>
-      <TableCell>{formatCurrency(sp.alquiler_mensual)}</TableCell>
-      <TableCell>{`${calcularRentabilidad(sp).toFixed(2)}%`}</TableCell>
+      <TableCell>
+        <Typography variant="body2">
+          Cub: {sp.m2_cubierta || 0} | Com: {sp.m2_comunes || 0}
+        </Typography>
+        <Typography variant="caption" color="text.secondary">
+          Total: {(parseFloat(sp.m2_cubierta || 0) + parseFloat(sp.m2_comunes || 0))} m²
+        </Typography>
+      </TableCell>
+      <TableCell>
+        <Typography variant="body2">
+          🚗 {sp.cocheras || 0} | 🛏️ {sp.camas || 0}
+        </Typography>
+      </TableCell>
+      <TableCell>
+        <Typography variant="body2">UF: {formatCurrency(sp.valor_uf)}</Typography>
+        <Typography variant="body2">Coch: {formatCurrency(sp.valor_cochera)}</Typography>
+        <Typography variant="caption" color="primary" fontWeight="bold">
+          Total: {formatCurrency(sp.total_uf)}
+        </Typography>
+      </TableCell>
       <TableCell>{renderEstadoChip(sp.estado)}</TableCell>
       <TableCell>
-        <Tooltip title="Editar">
-          <IconButton onClick={() => setUnidadSeleccionada({ ...sp, nombreAntiguo: sp.nombre })}>
-            <Edit fontSize="small" />
-          </IconButton>
-        </Tooltip>
+        <Box display="flex" gap={0.5}>
+          <Tooltip title="Editar">
+            <IconButton 
+              size="small"
+              onClick={() => setUnidadSeleccionada({ ...sp, nombreAntiguo: sp.nombre })}
+            >
+              <Edit fontSize="small" />
+            </IconButton>
+          </Tooltip>
+          {sp.estado !== 'vendido' && (
+            <Tooltip title="Vender">
+              <IconButton 
+                size="small"
+                color="success"
+                sx={{ 
+                  bgcolor: 'success.lighter',
+                  '&:hover': { bgcolor: 'success.light' }
+                }}
+                onClick={() => handleVenderUnidad(sp)}
+              >
+                <ShoppingCart fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          )}
+          {sp.estado === 'disponible' && (
+            <Tooltip title="Alquilar">
+              <IconButton 
+                size="small"
+                color="primary"
+                sx={{ 
+                  bgcolor: 'primary.lighter',
+                  '&:hover': { bgcolor: 'primary.light' }
+                }}
+                onClick={() => handleAlquilarUnidad(sp)}
+              >
+                <Home fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          )}
+        </Box>
       </TableCell>
     </TableRow>
   ))}
@@ -457,9 +591,18 @@ const [unidadBaseMultiple, setUnidadBaseMultiple] = useState({
             const actualizarUnidad = async () => {
               setLoading(true);
               const proyecto = await getProyectoById(unidadActualizada.proyectoId);
-              const nuevosSubproyectos = (proyecto.subproyectos || []).map(sp =>
-                sp.nombre === unidadActualizada.nombreAntiguo ? unidadActualizada : sp
-              );
+              
+              let nuevosSubproyectos;
+              if (unidadActualizada.nombreAntiguo === null) {
+                // Crear nueva unidad
+                nuevosSubproyectos = [...(proyecto.subproyectos || []), unidadActualizada];
+              } else {
+                // Editar existente
+                nuevosSubproyectos = (proyecto.subproyectos || []).map(sp =>
+                  sp.nombre === unidadActualizada.nombreAntiguo ? unidadActualizada : sp
+                );
+              }
+              
               const ok = await updateProyecto(proyecto.id, { ...proyecto, subproyectos: nuevosSubproyectos });
           
               if (ok) {
@@ -478,6 +621,18 @@ const [unidadBaseMultiple, setUnidadBaseMultiple] = useState({
           
             actualizarUnidad();
           }}          
+      />
+
+      <VenderUnidadDialog
+        unidad={unidadParaVender}
+        onClose={() => setUnidadParaVender(null)}
+        onConfirm={handleConfirmarVenta}
+      />
+
+      <AlquilarUnidadDialog
+        unidad={unidadParaAlquilar}
+        onClose={() => setUnidadParaAlquilar(null)}
+        onConfirm={handleConfirmarAlquiler}
       />
 
       <Dialog open={dialogMultiplesOpen} onClose={() => setDialogMultiplesOpen(false)}>

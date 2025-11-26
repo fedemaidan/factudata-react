@@ -5,7 +5,7 @@ import {
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
-import { formatCurrency, formatTimestamp } from 'src/utils/formatters';
+import { formatCurrency, formatTimestamp, toDateFromFirestore } from 'src/utils/formatters';
 import { CuotaRowWithActions } from './cuotaRowWithActions';
 import CuentasPendientesService from 'src/services/cuentasPendientesService';
 
@@ -124,7 +124,22 @@ export const CuentasTable = ({
                               <TableCell colSpan={7}>Cargando cuotas...</TableCell>
                             </TableRow>
                           ) : (
-                            (cuenta.cuotas || []).map((cuota, idx) => (
+                            (cuenta.cuotas || [])
+                              .sort((a, b) => {
+                                const fechaA = toDateFromFirestore(a.fecha_vencimiento);
+                                const fechaB = toDateFromFirestore(b.fecha_vencimiento);
+                                
+                                // Si alguna fecha es inválida, ponerla al final
+                                if (!fechaA && !fechaB) return (a.numero || 0) - (b.numero || 0);
+                                if (!fechaA) return 1;
+                                if (!fechaB) return -1;
+
+                                if (fechaA.getTime() !== fechaB.getTime()) {
+                                  return fechaA - fechaB;
+                                }
+                                return (a.numero || 0) - (b.numero || 0);
+                              })
+                              .map((cuota, idx) => (
                               <CuotaRowWithActions
                                 key={cuota.id || idx}
                                 cuota={cuota}

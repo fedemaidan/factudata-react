@@ -22,6 +22,7 @@ function UnidadesTreeViewPage() {
   const { empresaId } = router.query;
 
   const [empresa, setEmpresa] = useState(null);
+  const [proyectos, setProyectos] = useState([]);
   const [subproyectos, setSubproyectos] = useState([]);
   const [filtro, setFiltro] = useState('');
   const [agrupados, setAgrupados] = useState({});
@@ -36,6 +37,7 @@ function UnidadesTreeViewPage() {
       const empresaData = await getEmpresaById(empresaId);
       setEmpresa(empresaData);
       const proyectos = await getProyectosByEmpresa(empresaData);
+      setProyectos(proyectos);
       const todosSubproyectos = proyectos.flatMap(p =>
         (p.subproyectos || []).map(sp => ({ ...sp, proyecto: p.nombre, proyectoId: p.id }))
       );
@@ -92,6 +94,7 @@ function UnidadesTreeViewPage() {
       const empresaData = await getEmpresaById(empresaId);
       setEmpresa(empresaData);
       const proyectos = await getProyectosByEmpresa(empresaData);
+      setProyectos(proyectos);
       const todosSubproyectos = proyectos.flatMap(p =>
         (p.subproyectos || []).map(sp => ({ ...sp, proyecto: p.nombre, proyectoId: p.id }))
       );
@@ -129,6 +132,7 @@ function UnidadesTreeViewPage() {
     if (ok) {
       const empresaData = await getEmpresaById(empresaId);
       const proyectos = await getProyectosByEmpresa(empresaData);
+      setProyectos(proyectos);
       const todosSubproyectos = proyectos.flatMap(p =>
         (p.subproyectos || []).map(sp => ({ ...sp, proyecto: p.nombre, proyectoId: p.id }))
       );
@@ -214,6 +218,7 @@ function UnidadesTreeViewPage() {
 
       <UnidadDialog
         unidad={unidadSeleccionada}
+        proyectos={proyectos}
         onClose={() => setUnidadSeleccionada(null)}
         onChange={handleUnidadChange}
         onSave={handleGuardarCambios}
