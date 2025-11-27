@@ -85,6 +85,8 @@ const DataTable = ({
   controlsLayout,
   customFiltersComponent = null, 
   filterChips = [],
+  strikeInactive = true,
+  secondaryAddButtons = [],
 }) => {
   const [busqueda, setBusqueda] = useState("");
   const [filtroFecha, setFiltroFecha] = useState("todos");
@@ -515,6 +517,29 @@ const DataTable = ({
             </Button>
           )}
 
+          {/* Botones secundarios junto a "Agregar" */}
+          {Array.isArray(secondaryAddButtons) &&
+            secondaryAddButtons.map((btn, idx) => (
+              <Button
+                key={`secondary-add-btn-${idx}`}
+                size="small"
+                variant={btn.variant || "contained"}
+                color={btn.color || "primary"}
+                startIcon={btn.icon}
+                onClick={btn.onClick}
+                sx={{
+                  borderRadius: 2,
+                  px: 3,
+                  py: 1,
+                  boxShadow: 2,
+                  "&:hover": { boxShadow: 4 },
+                  ...btn.sx,
+                }}
+              >
+                {btn.label}
+              </Button>
+            ))}
+
           {/* Botón actualizar */}
           {showRefreshButton && onRefresh && (
             <Tooltip title="Actualizar datos">
@@ -664,9 +689,13 @@ const DataTable = ({
                             key={`${getRowKey(item, index)}-${column.key}`}
                             padding={column.key === "seleccionar" ? "checkbox" : "normal"}
                             sx={{
-                              textDecoration: item.active === false ? "line-through" : "none",
-                              opacity: item.active === false ? 0.6 : 1,
-                              color: item.active === false ? "text.disabled" : "text.primary",
+                              ...(strikeInactive && item.active === false
+                                ? {
+                                    textDecoration: "line-through",
+                                    opacity: 0.6,
+                                    color: "text.disabled",
+                                  }
+                                : {}),
                               ...(column.key.includes("fecha") || column.key.includes("hora")
                                 ? {
                                     minWidth: "80px",
@@ -744,5 +773,6 @@ export default React.memo(DataTable, (prev, next) => {
   if (prev.showDatePicker !== next.showDatePicker) return false;
   if (prev.columns !== next.columns) return false;
   if (prev.filterChips !== next.filterChips) return false;
+  if (prev.secondaryAddButtons !== next.secondaryAddButtons) return false;
   return true;
 });
