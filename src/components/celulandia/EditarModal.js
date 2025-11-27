@@ -156,6 +156,27 @@ const EditarModal = ({ open, onClose, data, onSave, clientes, tipoDeCambio, caja
         return;
       }
 
+      // Si el movimiento tiene complementario, editar ambos con endpoint compuesto
+      if (data?.movimientoComplementario) {
+        // Toda la lógica de consistencia se maneja en backend
+        const result = await movimientosService.updateMovimientoCompuesto({
+          id1: data._id,
+          data1: camposModificados,
+          id2: data.movimientoComplementario,
+          data2: {},
+          nombreUsuario: getUser(),
+        });
+
+        if (result.success) {
+          await onSave();
+          onClose();
+          return;
+        } else {
+          alert(result.error || "Error al editar movimientos compuestos");
+          return;
+        }
+      }
+
       const result = await movimientosService.updateMovimiento(
         data._id,
         camposModificados,
