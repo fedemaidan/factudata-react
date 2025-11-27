@@ -128,6 +128,25 @@ const EditarChequeModal = ({ open, onClose, data, onSave, clientes, tipoDeCambio
         return;
       }
 
+      if (data?.movimientoComplementario) {
+        const result = await movimientosService.updateMovimientoCompuesto({
+          id1: data._id,
+          data1: camposModificados,
+          id2: data.movimientoComplementario,
+          data2: {},
+          nombreUsuario: getUser(),
+        });
+
+        if (result.success) {
+          await onSave();
+          onClose();
+          return;
+        } else {
+          alert(result.error || "Error al editar movimientos compuestos");
+          return;
+        }
+      }
+
       const result = await movimientosService.updateMovimiento(
         data._id,
         camposModificados,

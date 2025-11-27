@@ -49,13 +49,12 @@ const AgregarPagoModal = ({ open, onClose, onSave, cajas, categorias = [] }) => 
     }
 
     setIsSaving(true);
-    let movimientoOrigen = null;
-    let movimientoDestino = null;
 
     try {
-      // 1. Crear el movimiento origen (EGRESO)
       const cajaId = cajas.find((caja) => caja.nombre === formData.cuentaDestino)?._id;
-      const payload = {
+      
+      // Preparar el movimiento origen (EGRESO)
+      const movimientoOrigen = {
         movimiento: {
           type: "EGRESO",
           cliente: { nombre: "PAGO" },
@@ -73,17 +72,9 @@ const AgregarPagoModal = ({ open, onClose, onSave, cajas, categorias = [] }) => 
         montoEnviado: -1 * formData.montoEnviado,
       };
 
-      const result = await movimientosService.createMovimiento(payload);
-
-      if (!result.success) {
-        throw new Error(`Error al crear movimiento origen: ${result.error}`);
-      }
-
-      movimientoOrigen = result.data;
-
-      // 2. Si hay cuenta destino, crear el movimiento destino (INGRESO)
+      // Si hay cuenta destino, crear movimientos compuestos
       if (cuentaDestino !== "") {
-        const payloadDestino = {
+        const movimientoDestino = {
           movimiento: {
             type: "INGRESO",
             cliente: { nombre: formData.concepto || "PAGO" },
@@ -101,31 +92,30 @@ const AgregarPagoModal = ({ open, onClose, onSave, cajas, categorias = [] }) => 
           montoEnviado: formData.montoEnviado,
         };
 
-        const resultDestino = await movimientosService.createMovimiento(payloadDestino);
+        const result = await movimientosService.createMovimientoCompuesto({
+          movimiento1: movimientoOrigen,
+          movimiento2: movimientoDestino,
+        });
 
-        if (!resultDestino.success) {
-          throw new Error(`Error al crear movimiento destino: ${resultDestino.error}`);
+        if (!result.success) {
+          throw new Error(`Error al crear movimientos compuestos: ${result.error}`);
         }
 
-        movimientoDestino = resultDestino.data;
+        onSave(result.data?.movimiento1, result.data?.movimiento2);
+      } else {
+        // Si no hay cuenta destino, crear solo el movimiento origen
+        const result = await movimientosService.createMovimiento(movimientoOrigen);
+
+        if (!result.success) {
+          throw new Error(`Error al crear movimiento: ${result.error}`);
+        }
+
+        onSave(result.data);
       }
 
-      // 3. Si llegamos aquí, ambos movimientos se crearon exitosamente
-      onSave(movimientoOrigen, movimientoDestino);
       handleClose();
     } catch (error) {
       console.error("Error al crear pago:", error);
-
-      // 4. Rollback: Si falló el segundo movimiento, eliminar el primero
-      if (movimientoOrigen && !movimientoDestino && cuentaDestino !== "") {
-        try {
-          await movimientosService.deleteMovimiento(movimientoOrigen._id, getUser());
-          console.log("Rollback: Movimiento origen eliminado");
-        } catch (rollbackError) {
-          console.error("Error en rollback:", rollbackError);
-        }
-      }
-
       alert(`Error al crear el pago: ${error.message}`);
     } finally {
       setIsSaving(false);
