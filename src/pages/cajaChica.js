@@ -11,6 +11,8 @@ import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import movimientosService from 'src/services/movimientosService';
 import { useRouter } from 'next/router';
 import profileService from 'src/services/profileService';
+import cajaChicaService from 'src/services/cajaChica/cajaChicaService';
+import TransferenciaModal from 'src/components/cajaChica/TransferenciaModal';
 import { set } from 'nprogress';
 import { formatTimestamp } from 'src/utils/formatters';
 
@@ -32,6 +34,11 @@ const CajaChicaPage = () => {
   const [filtroProveedor, setFiltroProveedor] = useState('');
   const [filtroProyecto, setFiltroProyecto] = useState('');
   const [userById, setUserById] = useState(null);
+  
+  // Estados para transferencias
+  const [profiles, setProfiles] = useState([]);
+  const [isTransferLoading, setIsTransferLoading] = useState(false);
+  const [transferModalOpen, setTransferModalOpen] = useState(false);
 
 
   const [deletingElement, setDeletingElement] = useState(null);
@@ -60,6 +67,40 @@ const CajaChicaPage = () => {
             setOpenDialog(false);
         }
     };
+
+  const handleOpenTransferModal = () => {
+    setTransferModalOpen(true);
+  };
+
+  const handleCloseTransferModal = () => {
+    setTransferModalOpen(false);
+  };
+
+  const handleCreateTransfer = async (transferData) => {
+    setIsTransferLoading(true);
+    try {
+      console.log('Creando transferencia desde caja chica:', transferData);
+      const response = await cajaChicaService.crearTransferencia(transferData);
+      console.log('Transferencia creada:', response);
+      
+      setAlert({ 
+        open: true, 
+        message: 'Transferencia creada exitosamente', 
+        severity: 'success' 
+      });
+      setTransferModalOpen(false);
+      
+    } catch (error) {
+      console.error('Error al crear transferencia:', error);
+      setAlert({ 
+        open: true, 
+        message: error.message || 'Error al crear la transferencia', 
+        severity: 'error' 
+      });
+    } finally {
+      setIsTransferLoading(false);
+    }
+  };
             
   useEffect(() => {
     const fetchMovimientos = async () => {
@@ -73,9 +114,19 @@ const CajaChicaPage = () => {
       
       const movs = await ticketService.getCajaChicaDelUsuario(userU);
       setMovimientos(movs.filter(m => m.moneda === 'ARS'));
+      
+      // Cargar perfiles para transferencias
+      if (user?.empresa) {
+        try {
+          const perfiles = await profileService.getProfileByEmpresa(user.empresa.id);
+          setProfiles(perfiles);
+        } catch (err) {
+          console.error('Error cargando perfiles:', err);
+        }
+      }
     };
     fetchMovimientos();
-  }, [user]);
+  }, [user, userId]);
 
   const handleCloseAlert = () => setAlert({ ...alert, open: false });
 
@@ -125,10 +176,24 @@ const CajaChicaPage = () => {
             <Typography variant="h4">
             { userById ? "Caja chica de " + userById.firstName + " " + userById.lastName : "Mi Caja Chica"}
             </Typography>
-            <Typography variant="h6">Saldo Disponible: {formatCurrency(saldoTotalCaja)}</Typography>
-            <Typography variant="subtitle1">
-              Saldo con filtros aplicados: {formatCurrency(saldoFiltrado)}
-            </Typography>
+            
+            <Box display="flex" justifyContent="space-between" alignItems="center">
+              <Box>
+                <Typography variant="h6">Saldo Disponible: {formatCurrency(saldoTotalCaja)}</Typography>
+                <Typography variant="subtitle1">
+                  Saldo con filtros aplicados: {formatCurrency(saldoFiltrado)}
+                </Typography>
+              </Box>
+              
+              <Button 
+                variant="contained" 
+                color="primary"
+                onClick={handleOpenTransferModal}
+                disabled={profiles.length < 2}
+              >
+                Nueva Transferencia
+              </Button>
+            </Box>
 
 
             <Stack direction="row" spacing={2}>
@@ -232,6 +297,17 @@ const CajaChicaPage = () => {
             </Paper>
           </Stack>
         </Container>
+
+        <TransferenciaModal
+          open={transferModalOpen}
+          onClose={handleCloseTransferModal}
+          onSubmit={handleCreateTransfer}
+          profiles={profiles}
+          userActual={user}
+          isLoading={isTransferLoading}
+          usuarioFijo={userById || user} // Usuario fijo es el de la caja actual
+        />
+
         <Snackbar open={alert.open} autoHideDuration={6000} onClose={handleCloseAlert}>
           <Alert onClose={handleCloseAlert} severity={alert.severity} sx={{ width: '100%' }}>
             {alert.message}
