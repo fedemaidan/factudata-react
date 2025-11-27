@@ -213,6 +213,7 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
     "CELULANDIA_EZE_NICO",
     "CELULANDIA_PROYECCIONES",
     "CELULANDIA_RESUMEN",
+    "CELULANDIA_BACKUPS"
   ];
 
   opcionesAcciones.push(...celulandiaAcciones);

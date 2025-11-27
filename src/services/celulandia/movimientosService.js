@@ -143,6 +143,27 @@ const movimientosService = {
     return response.data;
   },
 
+  createMovimientoCompuesto: async ({ movimiento1, movimiento2, saveToSheet = true, calcular = true }) => {
+    const response = await axiosCelulandia.post("/movimientos/compuesto", {
+      movimiento1,
+      movimiento2,
+      saveToSheet,
+      calcular,
+    });
+    return response.data;
+  },
+
+  updateMovimientoCompuesto: async ({ id1, data1, id2, data2, nombreUsuario }) => {
+    const response = await axiosCelulandia.put("/movimientos/compuesto", {
+      id1,
+      data1,
+      id2,
+      data2,
+      nombreUsuario,
+    });
+    return response.data;
+  },
+
   updateMovimiento: async (id, movimientoData, nombreUsuario) => {
     const response = await axiosCelulandia.put(`/movimientos/${id}`, {
       ...movimientoData,
