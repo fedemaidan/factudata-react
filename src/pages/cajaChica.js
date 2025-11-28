@@ -76,6 +76,29 @@ const CajaChicaPage = () => {
     setTransferModalOpen(false);
   };
 
+  const fetchMovimientos = async () => {
+    if (!user) return;
+    let userU = user;
+    
+    if (userId) {
+      userU = await profileService.getProfileById(userId);
+      setUserById(userU);
+    }
+    
+    const movs = await ticketService.getCajaChicaDelUsuario(userU);
+    setMovimientos(movs.filter(m => m.moneda === 'ARS'));
+    
+    // Cargar perfiles para transferencias
+    if (user?.empresa) {
+      try {
+        const perfiles = await profileService.getProfileByEmpresa(user.empresa.id);
+        setProfiles(perfiles);
+      } catch (err) {
+        console.error('Error cargando perfiles:', err);
+      }
+    }
+  };
+
   const handleCreateTransfer = async (transferData) => {
     setIsTransferLoading(true);
     try {
@@ -90,6 +113,9 @@ const CajaChicaPage = () => {
       });
       setTransferModalOpen(false);
       
+      // Actualizar el listado de movimientos
+      await fetchMovimientos();
+      
     } catch (error) {
       console.error('Error al crear transferencia:', error);
       setAlert({ 
@@ -103,28 +129,6 @@ const CajaChicaPage = () => {
   };
             
   useEffect(() => {
-    const fetchMovimientos = async () => {
-      if (!user) return;
-      let userU = user;
-      
-      if (userId) {
-        userU = await profileService.getProfileById(userId);
-        setUserById(userU);
-      }
-      
-      const movs = await ticketService.getCajaChicaDelUsuario(userU);
-      setMovimientos(movs.filter(m => m.moneda === 'ARS'));
-      
-      // Cargar perfiles para transferencias
-      if (user?.empresa) {
-        try {
-          const perfiles = await profileService.getProfileByEmpresa(user.empresa.id);
-          setProfiles(perfiles);
-        } catch (err) {
-          console.error('Error cargando perfiles:', err);
-        }
-      }
-    };
     fetchMovimientos();
   }, [user, userId]);
 
