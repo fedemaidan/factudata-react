@@ -45,7 +45,7 @@ const BackupsPage = () => {
     message: "",
     severity: "error",
   });
-  const isConfirmValid = confirmWord === "CONFIRMAR";
+  const isConfirmValid = confirmWord === "CONFIRMAR, VOY A BORRAR LA BASE DE DATOS ACTUAL PARA REEMPLAZARLA POR EL BACKUP";
   const isUrlFilled = googleSheetUrl.trim().length > 0;
 
   const handleOpen = () => setIsModalOpen(true);
@@ -347,10 +347,10 @@ const BackupsPage = () => {
               />
               <Box>
                 <Typography variant="body2" sx={{ mb: 1 }}>
-                  Escribí <b>CONFIRMAR</b> para continuar. Ingresalo aquí abajo:
+                  Escribí <b>CONFIRMAR, VOY A BORRAR LA BASE DE DATOS ACTUAL PARA REEMPLAZARLA POR EL BACKUP</b> para continuar. Ingresalo aquí abajo:
                 </Typography>
                 <TextField
-                  label="CONFIRMAR"
+                  label="CONFIRMAR ..."
                   fullWidth
                   value={confirmWord}
                   onChange={(e) => setConfirmWord(e.target.value)}
@@ -358,7 +358,7 @@ const BackupsPage = () => {
                   error={confirmWord.length > 0 && !isConfirmValid}
                   helperText={
                     confirmWord.length > 0 && !isConfirmValid
-                      ? 'Debés escribir exactamente "CONFIRMAR"'
+                      ? 'Debés escribir exactamente "CONFIRMAR, VOY A BORRAR LA BASE DE DATOS ACTUAL PARA REEMPLAZARLA POR EL BACKUP"'
                       : " "
                   }
                 />
