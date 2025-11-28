@@ -25,12 +25,15 @@ import { EditarEntregaModalV2 } from "src/components/celulandia/EditarEntregaMod
 import useDebouncedValue from "src/hooks/useDebouncedValue";
 import { formatearMonto, parsearMonto } from "src/utils/celulandia/separacionMiles";
 import EntregasFiltersBar from "src/components/celulandia/EntregasFiltersBar";
+import AgregarDevolucionModal from "src/components/celulandia/AgregarDevolucionModal";
+import AddIcon from "@mui/icons-material/Add";
 
 const EntregasCelulandiaPage = () => {
   const [entregas, setEntregas] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [editarModalOpen, setEditarModalOpen] = useState(false);
   const [agregarModalOpen, setAgregarModalOpen] = useState(false);
+  const [agregarDevolucionOpen, setAgregarDevolucionOpen] = useState(false);
   const [historialModalOpen, setHistorialModalOpen] = useState(false);
   const [confirmarEliminacionOpen, setConfirmarEliminacionOpen] = useState(false);
   const [selectedData, setSelectedData] = useState(null);
@@ -346,6 +349,15 @@ const EntregasCelulandiaPage = () => {
           onAdd={() => setAgregarModalOpen(true)}
           showRefreshButton={true}
           onRefresh={refetch}
+          secondaryAddButtons={[
+            {
+              label: "Agregar Devoluciones",
+              onClick: () => setAgregarDevolucionOpen(true),
+              icon: <AddIcon />,
+              variant: "contained",
+              color: "primary",
+            },
+          ]}
           customFiltersComponent={
             <EntregasFiltersBar
               // búsqueda
@@ -407,6 +419,13 @@ const EntregasCelulandiaPage = () => {
       <AgregarEntregaModal
         open={agregarModalOpen}
         onClose={() => setAgregarModalOpen(false)}
+        onSaved={handleSaved}
+        clientes={clientes}
+        tipoDeCambio={tipoDeCambio}
+      />
+      <AgregarDevolucionModal
+        open={agregarDevolucionOpen}
+        onClose={() => setAgregarDevolucionOpen(false)}
         onSaved={handleSaved}
         clientes={clientes}
         tipoDeCambio={tipoDeCambio}

@@ -12,6 +12,7 @@ import {
   MenuItem,
   Divider,
   Typography,
+  Button,
 } from "@mui/material";
 import dayjs from "dayjs";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
@@ -20,6 +21,8 @@ import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import DataTable from "src/components/celulandia/DataTable";
 import movimientosService from "src/services/celulandia/movimientosService";
 import { formatearCampo } from "src/utils/celulandia/formatearCampo";
+import cajasService from "src/services/celulandia/cajasService";
+import AgregarAporteModal from "src/components/celulandia/AgregarAporteModal";
 
 const mapMovimientoToRow = (m) => {
   const fecha = m.fechaFactura || m.fechaCreacion;
@@ -71,6 +74,8 @@ const EzeNicoPage = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [ezeRows, setEzeRows] = useState([]);
   const [nicoRows, setNicoRows] = useState([]);
+  const [cajas, setCajas] = useState([]);
+  const [aporteModalOpen, setAporteModalOpen] = useState(false);
   const [totales, setTotales] = useState({
     eze: {
       sumaARS: 0,
@@ -92,52 +97,65 @@ const EzeNicoPage = () => {
   const [desde, setDesde] = useState(null);
   const [hasta, setHasta] = useState(null);
 
+  const fetchData = async () => {
+    setIsLoading(true);
+    try {
+      const [ezeResp, nicoResp] = await Promise.all([
+        movimientosService.getAllMovimientos({
+          populate: "cliente",
+          cajaNombre: "EZE",
+          limit: 1000,
+          totalMoneda: true,
+        }),
+        movimientosService.getAllMovimientos({
+          populate: "cliente",
+          cajaNombre: "NICO",
+          limit: 1000,
+          totalMoneda: true,
+        }),
+      ]);
+
+      const { sumaARS: ezeSumaARS, sumaUSD: ezeSumaUSD } = ezeResp;
+      const { sumaARS: nicoSumaARS, sumaUSD: nicoSumaUSD } = nicoResp;
+      const ezeData = Array.isArray(ezeResp?.data) ? ezeResp.data : ezeResp?.data || [];
+      const nicoData = Array.isArray(nicoResp?.data) ? nicoResp.data : nicoResp?.data || [];
+
+      setEzeRows(ezeData.map(mapMovimientoToRow));
+      setNicoRows(nicoData.map(mapMovimientoToRow));
+      setTotales({
+        eze: {
+          sumaARS: ezeSumaARS,
+          sumaUSD: ezeSumaUSD,
+        },
+        nico: {
+          sumaARS: nicoSumaARS,
+          sumaUSD: nicoSumaUSD,
+        },
+      });
+    } catch (err) {
+      console.error("Error cargando movimientos EZE/NICO:", err);
+      setEzeRows([]);
+      setNicoRows([]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const fetchData = async () => {
-      setIsLoading(true);
+    fetchData();
+  }, []);
+
+  useEffect(() => {
+    const loadCajas = async () => {
       try {
-        const [ezeResp, nicoResp] = await Promise.all([
-          movimientosService.getAllMovimientos({
-            populate: "cliente",
-            cajaNombre: "EZE",
-            limit: 1000,
-            totalMoneda: true,
-          }),
-          movimientosService.getAllMovimientos({
-            populate: "cliente",
-            cajaNombre: "NICO",
-            limit: 1000,
-            totalMoneda: true,
-          }),
-        ]);
-
-        const { sumaARS: ezeSumaARS, sumaUSD: ezeSumaUSD } = ezeResp;
-        const { sumaARS: nicoSumaARS, sumaUSD: nicoSumaUSD } = nicoResp;
-        const ezeData = Array.isArray(ezeResp?.data) ? ezeResp.data : ezeResp?.data || [];
-        const nicoData = Array.isArray(nicoResp?.data) ? nicoResp.data : nicoResp?.data || [];
-
-        setEzeRows(ezeData.map(mapMovimientoToRow));
-        setNicoRows(nicoData.map(mapMovimientoToRow));
-        setTotales({
-          eze: {
-            sumaARS: ezeSumaARS,
-            sumaUSD: ezeSumaUSD,
-          },
-          nico: {
-            sumaARS: nicoSumaARS,
-            sumaUSD: nicoSumaUSD,
-          },
-        });
-      } catch (err) {
-        console.error("Error cargando movimientos EZE/NICO:", err);
-        setEzeRows([]);
-        setNicoRows([]);
-      } finally {
-        setIsLoading(false);
+        const res = await cajasService.getAllCajas();
+        setCajas(res?.data || []);
+      } catch (e) {
+        console.error("Error cargando cajas:", e);
+        setCajas([]);
       }
     };
-
-    fetchData();
+    loadCajas();
   }, []);
 
   const rangoFechas = useMemo(() => {
@@ -253,8 +271,7 @@ const EzeNicoPage = () => {
                 </Typography>
               </Stack>
             </Stack>
-            <Divider />
-            <Stack direction="row" justifyContent="space-between">
+              <Stack direction="row" justifyContent="space-between">
               <Stack direction="row" spacing={2} alignItems="center" sx={{ width: "100%" }}>
                 <FormControl sx={{ minWidth: 220 }} variant="filled">
                   <InputLabel id="filtro-fecha-label">Rango</InputLabel>
@@ -290,6 +307,9 @@ const EzeNicoPage = () => {
                     />
                   </LocalizationProvider>
                 )}
+                <Button variant="contained" color="primary" onClick={() => setAporteModalOpen(true)}>
+                  Aporte de capital
+                </Button>
               </Stack>
             </Stack>
 
@@ -339,6 +359,14 @@ const EzeNicoPage = () => {
           </Stack>
         </Container>
       </Box>
+      <AgregarAporteModal
+        open={aporteModalOpen}
+        onClose={() => setAporteModalOpen(false)}
+        onSave={async () => {
+          await fetchData();
+        }}
+        cajas={cajas}
+      />
     </>
   );
 };

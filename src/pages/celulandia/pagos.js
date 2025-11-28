@@ -50,6 +50,7 @@ const PagosCelulandiaPage = () => {
   const debouncedBusqueda = useDebouncedValue(busquedaTexto, 500);
 
 
+  console.log('pagos', pagos);
   const movimientoHistorialConfig = useMemo(
     () => ({
       title: "Historial del Pago",

@@ -85,6 +85,24 @@ const EditarPagoModal = ({ open, onClose, data, onSave, cajas }) => {
         return;
       }
 
+      // Si tiene movimiento complementario, usar edición compuesta (backend maneja consistencia)
+      if (data?.movimientoComplementario) {
+        const result = await movimientosService.updateMovimientoCompuesto({
+          id1: data._id,
+          data1: camposModificados,
+          id2: data.movimientoComplementario,
+          data2: {},
+          nombreUsuario: getUser(),
+        });
+        if (result.success) {
+          onSave();
+          onClose();
+        } else {
+          alert(result.error || "Error al actualizar movimientos compuestos");
+        }
+        return;
+      }
+
       const result = await movimientosService.updateMovimiento(
         data._id,
         camposModificados,

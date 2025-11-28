@@ -42,6 +42,8 @@ const ComprobantesCelulandiaPage = () => {
   const [busquedaTexto, setBusquedaTexto] = useState("");
   const debouncedBusqueda = useDebouncedValue(busquedaTexto, 500);
 
+  console.log('movimientos', movimientos);
+
   // Nuevos estados para los datos compartidos
   const [clientes, setClientes] = useState([]);
   const [tipoDeCambio, setTipoDeCambio] = useState({

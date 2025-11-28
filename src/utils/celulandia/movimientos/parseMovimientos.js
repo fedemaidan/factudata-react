@@ -72,6 +72,7 @@ export const parseMovimiento = (movimiento) => {
     cuentaDestino: movimiento.caja?.nombre || "Sin caja",
     type: "movimiento",
     camposBusqueda: movimiento?.camposBusqueda,
+    movimientoComplementario: movimiento?.movimientoComplementario,
     fecha: fechaFacturaISO,
     descripcion: movimiento?.descripcion || "-",
   };

@@ -317,88 +317,150 @@ export default function ResumenPage() {
               <Grid item xs={12} sm={9}>
                 <Grid container spacing={1}>
                   <Grid item xs={12} sm={4}>
-                    <Stack direction="row" spacing={1} alignItems="center">
-                      <Typography
-                        variant="body2"
-                        color="text.secondary"
-                        sx={{ fontSize: "0.75rem", minWidth: 90 }}
-                      >
-                        Total Ventas:
-                      </Typography>
-                      <Typography variant="body2" sx={{ fontSize: "0.75rem", fontWeight: 500 }}>
-                        {(selectedCurrency === "ARS" ? fmtARS : fmtUSD).format(
-                          (agrupadosCajas || []).reduce(
-                            (acc, g) =>
-                              acc +
-                              Math.round(
-                                selectedCurrency === "ARS" ? g.totalARS || 0 : g.totalUSD || 0
-                              ),
-                            0
-                          )
-                        )}
-                      </Typography>
-                    </Stack>
-                  </Grid>
-                  <Grid item xs={12} sm={4}>
-                    <Stack direction="row" spacing={1} alignItems="center">
-                      <Typography
-                        variant="body2"
-                        color="text.secondary"
-                        sx={{ fontSize: "0.75rem", minWidth: 90 }}
-                      >
-                        Total Egresos:
-                      </Typography>
-                      <Typography variant="body2" sx={{ fontSize: "0.75rem", fontWeight: 500 }}>
-                        {(selectedCurrency === "ARS" ? fmtARS : fmtUSD).format(
-                          (agrupadosCategorias || []).reduce(
-                            (acc, g) =>
-                              acc +
-                              Math.round(
-                                selectedCurrency === "ARS" ? g.totalARS || 0 : g.totalUSD || 0
-                              ),
-                            0
-                          )
-                        )}
-                      </Typography>
-                    </Stack>
-                  </Grid>
-                  <Grid item xs={12} sm={4}>
-                    <Stack direction="row" spacing={1} alignItems="center">
-                      <Typography
-                        variant="body2"
-                        color="text.secondary"
-                        sx={{ fontSize: "0.75rem", minWidth: 90 }}
-                      >
-                        Resultado:
-                      </Typography>
-                      {(() => {
-                        const ventas = (agrupadosCajas || []).reduce(
-                          (acc, g) =>
-                            acc +
-                            Math.round(
-                              selectedCurrency === "ARS" ? g.totalARS || 0 : g.totalUSD || 0
-                            ),
-                          0
-                        );
-                        const egresos = (agrupadosCategorias || []).reduce(
-                          (acc, g) =>
-                            acc +
-                            Math.round(
-                              selectedCurrency === "ARS" ? g.totalARS || 0 : g.totalUSD || 0
-                            ),
-                          0
-                        );
-                        const res = ventas + egresos;
-                        return (
-                          <Typography
-                            variant="body2"
-                            sx={{ fontSize: "0.75rem", fontWeight: 500 }}
-                            color={res >= 0 ? "success.main" : "error.main"}
-                          >
-                            {(selectedCurrency === "ARS" ? fmtARS : fmtUSD).format(res)}
+                    <Stack direction="column" spacing={0.25} alignItems="flex-start">
+                      <Stack direction="row" spacing={1} alignItems="center">
+                        <Typography
+                          variant="body2"
+                          color="text.secondary"
+                          sx={{ fontSize: "0.75rem", minWidth: 90 }}
+                        >
+                          Total Ventas:
+                        </Typography>
+                        <Typography variant="body2" sx={{ fontSize: "0.75rem", fontWeight: 500 }}>
+                          {(selectedCurrency === "ARS" ? fmtARS : fmtUSD).format(
+                            (agrupadosCajas || []).reduce(
+                              (acc, g) =>
+                                acc +
+                                Math.round(
+                                  selectedCurrency === "ARS" ? g.totalARS || 0 : g.totalUSD || 0
+                                ),
+                              0
+                            )
+                          )}
+                        </Typography>
+                      </Stack>
+                      {selectedCurrency === "ARS" && (
+                        <Stack direction="row" spacing={1} alignItems="center">
+                          <Typography variant="body2" sx={{ fontSize: "0.7rem", color: "text.secondary" }}>
+                            Balance USD:
                           </Typography>
-                        );
-                      })()}
+                          <Typography variant="body2" sx={{ fontSize: "0.7rem", fontWeight: 500 }}>
+                            {fmtUSD.format(
+                              (agrupadosCajas || []).reduce(
+                                (acc, g) => acc + Math.round(g.totalUSDBalance || 0),
+                                0
+                              )
+                            )}
+                          </Typography>
+                        </Stack>
+                      )}
+                    </Stack>
+                  </Grid>
+                  <Grid item xs={12} sm={4}>
+                    <Stack direction="column" spacing={0.25} alignItems="flex-start">
+                      <Stack direction="row" spacing={1} alignItems="center">
+                        <Typography
+                          variant="body2"
+                          color="text.secondary"
+                          sx={{ fontSize: "0.75rem", minWidth: 90 }}
+                        >
+                          Total Egresos:
+                        </Typography>
+                        <Typography variant="body2" sx={{ fontSize: "0.75rem", fontWeight: 500 }}>
+                          {(selectedCurrency === "ARS" ? fmtARS : fmtUSD).format(
+                            (agrupadosCategorias || []).reduce(
+                              (acc, g) =>
+                                acc +
+                                Math.round(
+                                  selectedCurrency === "ARS" ? g.totalARS || 0 : g.totalUSD || 0
+                                ),
+                              0
+                            )
+                          )}
+                        </Typography>
+                      </Stack>
+                      {selectedCurrency === "ARS" && (
+                        <Stack direction="row" spacing={1} alignItems="center">
+                          <Typography variant="body2" sx={{ fontSize: "0.7rem", color: "text.secondary" }}>
+                            Balance USD:
+                          </Typography>
+                          <Typography variant="body2" sx={{ fontSize: "0.7rem", fontWeight: 500 }}>
+                            {fmtUSD.format(
+                              (agrupadosCategorias || []).reduce(
+                                (acc, g) => acc + Math.round(g.totalUSDBalance || 0),
+                                0
+                              )
+                            )}
+                          </Typography>
+                        </Stack>
+                      )}
+                    </Stack>
+                  </Grid>
+                  <Grid item xs={12} sm={4}>
+                    <Stack direction="column" spacing={0.25} alignItems="flex-start">
+                      <Stack direction="row" spacing={1} alignItems="center">
+                        <Typography
+                          variant="body2"
+                          color="text.secondary"
+                          sx={{ fontSize: "0.75rem", minWidth: 90 }}
+                        >
+                          Resultado:
+                        </Typography>
+                        {(() => {
+                          const ventas = (agrupadosCajas || []).reduce(
+                            (acc, g) =>
+                              acc +
+                              Math.round(
+                                selectedCurrency === "ARS" ? g.totalARS || 0 : g.totalUSD || 0
+                              ),
+                            0
+                          );
+                          const egresos = (agrupadosCategorias || []).reduce(
+                            (acc, g) =>
+                              acc +
+                              Math.round(
+                                selectedCurrency === "ARS" ? g.totalARS || 0 : g.totalUSD || 0
+                              ),
+                            0
+                          );
+                          const res = ventas + egresos;
+                          return (
+                            <Typography
+                              variant="body2"
+                              sx={{ fontSize: "0.75rem", fontWeight: 500 }}
+                              color={res >= 0 ? "success.main" : "error.main"}
+                            >
+                              {(selectedCurrency === "ARS" ? fmtARS : fmtUSD).format(res)}
+                            </Typography>
+                          );
+                        })()}
+                      </Stack>
+                      {selectedCurrency === "ARS" &&
+                        (() => {
+                          const ventasBal = (agrupadosCajas || []).reduce(
+                            (acc, g) => acc + Math.round(g.totalUSDBalance || 0),
+                            0
+                          );
+                          const egresosBal = (agrupadosCategorias || []).reduce(
+                            (acc, g) => acc + Math.round(g.totalUSDBalance || 0),
+                            0
+                          );
+                          const resBal = ventasBal + egresosBal;
+                          return (
+                            <Stack direction="row" spacing={1} alignItems="center">
+                              <Typography variant="body2" sx={{ fontSize: "0.7rem", color: "text.secondary" }}>
+                                Balance USD:
+                              </Typography>
+                              <Typography
+                                variant="body2"
+                                sx={{ fontSize: "0.7rem", fontWeight: 500 }}
+                                color={resBal >= 0 ? "success.main" : "error.main"}
+                              >
+                                {fmtUSD.format(resBal)}
+                              </Typography>
+                            </Stack>
+                          );
+                        })()}
                     </Stack>
                   </Grid>
                 </Grid>
@@ -588,6 +650,9 @@ export default function ResumenPage() {
                     },
                   },
                   { key: "montoYMoneda", label: "Monto Enviado", sortable: true },
+                  ...(selectedCurrency === "ARS"
+                    ? [{ key: "montoDolarBalance", label: "Monto USD Balance", sortable: false }]
+                    : []),
                 ]}
                 formatters={{
                   fechaFactura: (value, item) => getFechaArgentina(value),
@@ -596,6 +661,12 @@ export default function ResumenPage() {
                   nombreUsuario: (value, item) => formatearCampo("nombreUsuario", value, item),
                   cuentaDestino: (value, item) => formatearCampo("cuentaDestino", value, item),
                   montoYMoneda: (value, item) => formatearCampo("montoYMoneda", value, item),
+                  ...(selectedCurrency === "ARS"
+                    ? {
+                        montoDolarBalance: (value, item) =>
+                          `${fmtUSD.format(Math.round(item?.montoDolarBalance || 0))} USD`,
+                      }
+                    : {}),
                   cliente: (value, item) => {
                     let clienteValue;
                     if (value && typeof value === "object" && value.nombre) {
@@ -713,6 +784,9 @@ export default function ResumenPage() {
                   { key: "cuentaDestino", label: "Cuenta Origen", sortable: true },
                   { key: "montoEnviado", label: "Monto", sortable: true },
                   { key: "moneda", label: "Moneda", sortable: true },
+                  ...(selectedCurrency === "ARS"
+                    ? [{ key: "montoDolarBalance", label: "Monto USD Balance", sortable: false }]
+                    : []),
                 ]}
                 formatters={{
                   fechaFactura: (value) => getFechaArgentina(value),
@@ -720,6 +794,12 @@ export default function ResumenPage() {
                   cuentaDestino: (value, item) => formatearCampo("cuentaDestino", value, item),
                   montoEnviado: (value, item) => formatearCampo("montoEnviado", value, item),
                   moneda: (value, item) => formatearCampo("monedaDePago", value, item),
+                  ...(selectedCurrency === "ARS"
+                    ? {
+                        montoDolarBalance: (value, item) =>
+                          `${fmtUSD.format(Math.round(item?.montoDolarBalance || 0))} USD`,
+                      }
+                    : {}),
                   categoria: (value, item) => {
                     const id = item?.categoriaId || item?.categoria;
                     const found = categorias.find((c) => String(c.id) === String(id));

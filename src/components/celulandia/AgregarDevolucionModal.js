@@ -36,9 +36,8 @@ const formatFechaLarga = (yyyyMmDd) => {
   }
 };
 
-const AgregarEntregaModal = ({ open, onClose, onSaved, clientes = [], tipoDeCambio }) => {
+const AgregarDevolucionModal = ({ open, onClose, onSaved, clientes = [], tipoDeCambio }) => {
   const [isSaving, setIsSaving] = useState(false);
-  const [descuentoPorcentaje, setDescuentoPorcentaje] = useState("");
   const [fechaEntrega, setFechaEntrega] = useState("");
   const [mostrarDescripcion, setMostrarDescripcion] = useState(false);
 
@@ -72,10 +71,9 @@ const AgregarEntregaModal = ({ open, onClose, onSaved, clientes = [], tipoDeCamb
     resetForm,
   } = useMovimientoForm(null, { clientes, tipoDeCambio });
 
-  // Calcular totales
-  const factorDescuento = 1 - (parseFloat(descuentoPorcentaje) || 0) / 100;
+  // Cálculo de totales (sin descuento; factor siempre 1)
   const subtotalEntrega = Math.round(parseFloat(formData.montoCC) || 0);
-  const totalEntrega = Math.round(subtotalEntrega * factorDescuento);
+  const totalEntrega = subtotalEntrega;
 
   // Mantener el input del Autocomplete sincronizado con el formData.cliente
   useEffect(() => {
@@ -87,16 +85,6 @@ const AgregarEntregaModal = ({ open, onClose, onSaved, clientes = [], tipoDeCamb
       setMostrarDescripcion(true);
     }
   }, [formData.concepto]);
-
-  // Si el cliente seleccionado tiene descuento, precargar
-  useEffect(() => {
-    if (clienteSeleccionado && clienteSeleccionado.descuento !== undefined) {
-      const porcentajeCliente = (clienteSeleccionado.descuento || 0) * 100;
-      setDescuentoPorcentaje(porcentajeCliente.toString());
-    } else {
-      setDescuentoPorcentaje("");
-    }
-  }, [clienteSeleccionado]);
 
   // Validación estricta: ¿lo escrito coincide con una opción?
   const matchesOption = (text) =>
@@ -127,57 +115,58 @@ const AgregarEntregaModal = ({ open, onClose, onSaved, clientes = [], tipoDeCamb
       const tcOficial = tipoDeCambio?.oficial?.venta || tipoDeCambio?.oficial || 1;
       const tcBlue = tipoDeCambio?.blue?.venta || tipoDeCambio?.blue || 1;
 
+      // Para devoluciones: todos los montos POSITIVOS
       let subTotal = { ars: 0, usdOficial: 0, usdBlue: 0 };
       if (formData.CC === "ARS") {
         subTotal = {
-          ars: formData.monedaDePago === "ARS" ? -formData.montoEnviado : -subtotalEntrega,
+          ars: formData.monedaDePago === "ARS" ? formData.montoEnviado : subtotalEntrega,
           usdOficial:
             formData.monedaDePago === "USD"
-              ? -formData.montoEnviado
-              : -Math.round(subtotalEntrega / tcOficial),
+              ? formData.montoEnviado
+              : Math.round(subtotalEntrega / tcOficial),
           usdBlue:
             formData.monedaDePago === "USD"
-              ? -formData.montoEnviado
-              : -Math.round(subtotalEntrega / tcBlue),
+              ? formData.montoEnviado
+              : Math.round(subtotalEntrega / tcBlue),
         };
       } else if (formData.CC === "USD OFICIAL") {
         subTotal = {
           ars:
             formData.monedaDePago === "ARS"
-              ? -formData.montoEnviado
-              : -Math.round(subtotalEntrega * tcOficial),
-          usdOficial: formData.monedaDePago === "USD" ? -formData.montoEnviado : -subtotalEntrega,
-          usdBlue: formData.monedaDePago === "USD" ? -formData.montoEnviado : -subtotalEntrega,
+              ? formData.montoEnviado
+              : Math.round(subtotalEntrega * tcOficial),
+          usdOficial: formData.monedaDePago === "USD" ? formData.montoEnviado : subtotalEntrega,
+          usdBlue: formData.monedaDePago === "USD" ? formData.montoEnviado : subtotalEntrega,
         };
       } else if (formData.CC === "USD BLUE") {
         subTotal = {
           ars:
             formData.monedaDePago === "ARS"
-              ? -formData.montoEnviado
-              : -Math.round(subtotalEntrega * tcBlue),
-          usdOficial: formData.monedaDePago === "USD" ? -formData.montoEnviado : -subtotalEntrega,
-          usdBlue: formData.monedaDePago === "USD" ? -formData.montoEnviado : -subtotalEntrega,
+              ? formData.montoEnviado
+              : Math.round(subtotalEntrega * tcBlue),
+          usdOficial: formData.monedaDePago === "USD" ? formData.montoEnviado : subtotalEntrega,
+          usdBlue: formData.monedaDePago === "USD" ? formData.montoEnviado : subtotalEntrega,
         };
       }
 
       let montoTotal = { ars: 0, usdOficial: 0, usdBlue: 0 };
       if (formData.CC === "ARS") {
         montoTotal = {
-          ars: -totalEntrega,
-          usdOficial: -Math.round(totalEntrega / tcOficial),
-          usdBlue: -totalEntrega,
+          ars: totalEntrega,
+          usdOficial: Math.round(totalEntrega / tcOficial),
+          usdBlue: totalEntrega,
         };
       } else if (formData.CC === "USD OFICIAL") {
         montoTotal = {
-          ars: -Math.round(totalEntrega * tcOficial),
-          usdOficial: -totalEntrega,
-          usdBlue: -totalEntrega,
+          ars: Math.round(totalEntrega * tcOficial),
+          usdOficial: totalEntrega,
+          usdBlue: totalEntrega,
         };
       } else if (formData.CC === "USD BLUE") {
         montoTotal = {
-          ars: -Math.round(totalEntrega * tcBlue),
-          usdOficial: -totalEntrega,
-          usdBlue: -totalEntrega,
+          ars: Math.round(totalEntrega * tcBlue),
+          usdOficial: totalEntrega,
+          usdBlue: totalEntrega,
         };
       }
 
@@ -212,7 +201,7 @@ const AgregarEntregaModal = ({ open, onClose, onSaved, clientes = [], tipoDeCamb
         descripcion: formData.concepto,
         proveedorOCliente: formData.cliente,
         fechaCuenta: fechaCuentaCompleta,
-        descuentoAplicado: factorDescuento,
+        descuentoAplicado: 1, // SIEMPRE 1 para devoluciones
         subTotal,
         montoTotal,
         empresaId: "celulandia",
@@ -233,18 +222,17 @@ const AgregarEntregaModal = ({ open, onClose, onSaved, clientes = [], tipoDeCamb
         resetForm();
         onClose();
       } else {
-        alert(result.error || "Error al crear la entrega");
+        alert(result.error || "Error al crear la devolución");
       }
     } catch (err) {
       console.error(err);
-      alert("Error al crear la entrega");
+      alert("Error al crear la devolución");
     } finally {
       setIsSaving(false);
     }
   };
 
   const handleClose = () => {
-    setDescuentoPorcentaje("");
     setFechaEntrega("");
     setMostrarDescripcion(false);
     resetForm();
@@ -253,7 +241,7 @@ const AgregarEntregaModal = ({ open, onClose, onSaved, clientes = [], tipoDeCamb
 
   return (
     <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth>
-      <DialogTitle>Nueva Entrega</DialogTitle>
+      <DialogTitle>Nueva Devolución</DialogTitle>
       <DialogContent>
         <Box sx={{ py: 2 }}>
           <Grid container spacing={2}>
@@ -278,7 +266,6 @@ const AgregarEntregaModal = ({ open, onClose, onSaved, clientes = [], tipoDeCamb
                         invalidCliente ? "Debés seleccionar un cliente de la lista" : undefined
                       }
                       onBlur={() => {
-                        // Si lo escrito no coincide con ninguna opción, limpiar
                         if (!matchesOption(clienteInput)) {
                           setClienteInput("");
                           handleInputChange("cliente", "");
@@ -286,9 +273,7 @@ const AgregarEntregaModal = ({ open, onClose, onSaved, clientes = [], tipoDeCamb
                       }}
                     />
                   )}
-                  // Evitar que se creen valores libres
                   freeSolo={false}
-                  // Mejor UX: selecciona opción al presionar Enter si hay una resaltada
                   selectOnFocus
                   clearOnBlur={false}
                   handleHomeEndKeys
@@ -318,11 +303,11 @@ const AgregarEntregaModal = ({ open, onClose, onSaved, clientes = [], tipoDeCamb
               )}
             </Grid>
 
-            {/* Fila 2: Fecha de Entrega - Monto */}
+            {/* Fila 2: Fecha - Monto */}
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
-                label="Fecha de Entrega"
+                label="Fecha de Devolución"
                 type="date"
                 value={fechaEntrega}
                 onChange={(e) => setFechaEntrega(e.target.value)}
@@ -339,11 +324,6 @@ const AgregarEntregaModal = ({ open, onClose, onSaved, clientes = [], tipoDeCamb
                 onChange={(e) => handleMontoChange(e.target.value)}
                 margin="normal"
                 required
-                helperText={
-                  formData.montoEnviado < 0
-                    ? "Recuerde que el monto se multiplicará por -1 antes de enviar"
-                    : ""
-                }
               />
             </Grid>
 
@@ -362,7 +342,6 @@ const AgregarEntregaModal = ({ open, onClose, onSaved, clientes = [], tipoDeCamb
               </FormControl>
             </Grid>
 
-            {/* Fila 4: Cuenta Corriente - Subtotal */}
             <Grid item xs={12} sm={6}>
               <FormControl fullWidth margin="normal">
                 <InputLabel>Cuenta Corriente *</InputLabel>
@@ -380,42 +359,29 @@ const AgregarEntregaModal = ({ open, onClose, onSaved, clientes = [], tipoDeCamb
               </FormControl>
             </Grid>
 
-            {/* Fila 4: Subtotal - Total con Descuento */}
+            {/* Fila 4: Subtotal - Total */}
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
-                label="Subtotal (sin descuento)"
+                label="Subtotal"
                 value={formatNumberWithThousands(subtotalEntrega.toString())}
                 margin="normal"
                 disabled
                 helperText="Calculado automáticamente"
               />
             </Grid>
-
-            {/* Fila 5: Total con Descuento - Descuento */}
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
-                label="Total (con descuento)"
+                label="Total"
                 value={formatNumberWithThousands(totalEntrega.toString())}
                 margin="normal"
                 disabled
-                helperText="Con el descuento aplicado"
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Descuento (%)"
-                type="number"
-                value={descuentoPorcentaje}
-                onChange={(e) => setDescuentoPorcentaje(e.target.value)}
-                margin="normal"
-                inputProps={{ min: 0, max: 100 }}
+                helperText="Sin descuento"
               />
             </Grid>
 
-            {/* Fila 6: Usuario - Tipo de Cambio */}
+            {/* Fila 5: Usuario - Tipo de Cambio */}
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
@@ -480,4 +446,6 @@ const AgregarEntregaModal = ({ open, onClose, onSaved, clientes = [], tipoDeCamb
   );
 };
 
-export default AgregarEntregaModal;
+export default AgregarDevolucionModal;
+
+
