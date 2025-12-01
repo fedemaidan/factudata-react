@@ -280,13 +280,13 @@ export const SideNav = (props) => {
         });
       }
 
-      //if (permisosUsuario.includes("CELULANDIA_BACKUPS")) {
+      if (permisosUsuario.includes("CELULANDIA_BACKUPS")) {
         baseItems.push({
           title: "Backups",
           path: "/celulandia/backups",
           icon: <SvgIcon fontSize="small"><BackupIcon /></SvgIcon>,
         });
-     // }
+     }
 
       if (permisosUsuario.includes("VER_CONVERSACIONES")) {
         baseItems.push({

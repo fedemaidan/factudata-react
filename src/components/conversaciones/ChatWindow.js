@@ -88,7 +88,7 @@ export default function ChatWindow({
         flex={1}
         overflow="auto"
         bgcolor={(t) => (t.palette.mode === "light" ? "#eceff1" : "background.default")}
-        sx={{ overflowY: 'scroll', position: 'relative', minHeight: 0, pt: 1, pb: 8 }}
+        sx={{ overflowY: 'scroll', position: 'relative', minHeight: 0, pt: 1, pb: 2 }}
       >
         {items.map((m, i) => (
           <MessageBubble
@@ -97,7 +97,6 @@ export default function ChatWindow({
             isMine={m.emisor?.toLowerCase().includes(myNumber?.toLowerCase())}
           />
         ))}
-        <Box height={16} />
         <div ref={bottomRef} />
       </Box>
     </Box>
