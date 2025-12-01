@@ -58,6 +58,9 @@ const COLS = {
   estado: 140,
   empresaFacturacion: 200,
   fechaPago: 140,
+  dolarReferencia: 140,
+  totalDolar: 140,
+  subtotalDolar: 140,
   acciones: 96,
 };
 
@@ -325,6 +328,9 @@ const handleSaveCols = async () => {
     acciones: true,
     empresaFacturacion: false,
     fechaPago: false,
+    dolarReferencia: false,
+    totalDolar: false,
+    subtotalDolar: false,
   }), [compactCols, empresa]);
   
 
@@ -1284,6 +1290,12 @@ useEffect(() => {
     )}
     <FormControlLabel control={<Checkbox size="small" checked={visibleCols.empresaFacturacion} onChange={() => toggleCol('empresaFacturacion')} />} label="Empresa facturación" />
     <FormControlLabel control={<Checkbox size="small" checked={visibleCols.fechaPago} onChange={() => toggleCol('fechaPago')} />} label="Fecha de pago" />
+    <Divider sx={{ my: 1 }} />
+    <Typography variant="caption" color="text.secondary" sx={{ px: 1 }}>Dólar de referencia</Typography>
+    <FormControlLabel control={<Checkbox size="small" checked={visibleCols.dolarReferencia} onChange={() => toggleCol('dolarReferencia')} />} label="TC Referencia" />
+    <FormControlLabel control={<Checkbox size="small" checked={visibleCols.totalDolar} onChange={() => toggleCol('totalDolar')} />} label="Total USD" />
+    <FormControlLabel control={<Checkbox size="small" checked={visibleCols.subtotalDolar} onChange={() => toggleCol('subtotalDolar')} />} label="Subtotal USD" />
+    <Divider sx={{ my: 1 }} />
     <FormControlLabel control={<Checkbox size="small" checked={visibleCols.acciones}     onChange={() => toggleCol('acciones')} />}     label="Acciones" />
         <Box sx={{ display: 'flex', gap: 1, pt: 0.5 }}>
       <Button
@@ -1561,6 +1573,18 @@ useEffect(() => {
           <TableCell sx={{ ...cellBase, minWidth: COLS.fechaPago }}>FECHA PAGO</TableCell>
         )}
 
+        {visibleCols.dolarReferencia && (
+          <TableCell sx={{ ...cellBase, minWidth: COLS.dolarReferencia }}>TC REF.</TableCell>
+        )}
+
+        {visibleCols.totalDolar && (
+          <TableCell sx={{ ...cellBase, minWidth: COLS.totalDolar, textAlign: 'right' }}>TOTAL USD</TableCell>
+        )}
+
+        {visibleCols.subtotalDolar && (
+          <TableCell sx={{ ...cellBase, minWidth: COLS.subtotalDolar, textAlign: 'right' }}>SUBTOTAL USD</TableCell>
+        )}
+
 
 {visibleCols.acciones && (
   <TableCell
@@ -1765,6 +1789,24 @@ useEffect(() => {
                       </TableCell>
                     )}
 
+                    {visibleCols.dolarReferencia && (
+                      <TableCell sx={{ ...cellBase, minWidth: COLS.dolarReferencia }}>
+                        {mov.dolar_referencia ? `$ ${mov.dolar_referencia.toLocaleString('es-AR', { minimumFractionDigits: 2 })}` : '—'}
+                      </TableCell>
+                    )}
+
+                    {visibleCols.totalDolar && (
+                      <TableCell sx={{ ...cellBase, minWidth: COLS.totalDolar, textAlign: 'right' }}>
+                        {mov.total_dolar ? `US$ ${mov.total_dolar.toLocaleString('es-AR', { minimumFractionDigits: 2 })}` : '—'}
+                      </TableCell>
+                    )}
+
+                    {visibleCols.subtotalDolar && (
+                      <TableCell sx={{ ...cellBase, minWidth: COLS.subtotalDolar, textAlign: 'right' }}>
+                        {mov.subtotal_dolar ? `US$ ${mov.subtotal_dolar.toLocaleString('es-AR', { minimumFractionDigits: 2 })}` : '—'}
+                      </TableCell>
+                    )}
+
                     {visibleCols.acciones && (
                       <TableCell sx={{
                         ...cellBase,
@@ -1963,6 +2005,24 @@ useEffect(() => {
             {visibleCols.fechaPago && (
               <TableCell sx={{ ...cellBase, minWidth: COLS.fechaPago }}>
                 {mov.fecha_pago ? formatTimestamp(mov.fecha_pago, "DIA/MES/ANO") : '—'}
+              </TableCell>
+            )}
+
+            {visibleCols.dolarReferencia && (
+              <TableCell sx={{ ...cellBase, minWidth: COLS.dolarReferencia }}>
+                {mov.dolar_referencia ? `$ ${mov.dolar_referencia.toLocaleString('es-AR', { minimumFractionDigits: 2 })}` : '—'}
+              </TableCell>
+            )}
+
+            {visibleCols.totalDolar && (
+              <TableCell sx={{ ...cellBase, minWidth: COLS.totalDolar, textAlign: 'right' }}>
+                {mov.total_dolar ? `US$ ${mov.total_dolar.toLocaleString('es-AR', { minimumFractionDigits: 2 })}` : '—'}
+              </TableCell>
+            )}
+
+            {visibleCols.subtotalDolar && (
+              <TableCell sx={{ ...cellBase, minWidth: COLS.subtotalDolar, textAlign: 'right' }}>
+                {mov.subtotal_dolar ? `US$ ${mov.subtotal_dolar.toLocaleString('es-AR', { minimumFractionDigits: 2 })}` : '—'}
               </TableCell>
             )}
 
