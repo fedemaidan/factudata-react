@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect } from "react";
 import NextLink from "next/link";
 import { usePathname } from "next/navigation";
 import PropTypes from "prop-types";
@@ -39,6 +39,7 @@ import TodayIcon from "@mui/icons-material/Today";
 import DateRangeIcon from "@mui/icons-material/DateRange";
 import CompareArrowsIcon from "@mui/icons-material/CompareArrows";
 import BackupIcon from "@mui/icons-material/Backup";
+import ScheduleIcon from "@mui/icons-material/Schedule";
 
 export const SideNav = (props) => {
   const { open, onClose, collapsed = false, onToggleCollapsed, width = 280 } = props;
@@ -482,6 +483,16 @@ export const SideNav = (props) => {
             </SvgIcon>
           ),
         })
+
+        baseItems.push({
+          title: "Horarios",
+          path: "/dhn/horarios",
+          icon: (
+            <SvgIcon fontSize="small">
+              <ScheduleIcon />
+            </SvgIcon>
+          ),
+        });
       }
 
       if (permisosUsuario.includes("VER_CAJAS") && !permisosUsuario.includes("CREAR_EGRESO_SIMPLIFICADO")) {

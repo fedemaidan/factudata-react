@@ -4,7 +4,6 @@ import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import { Container, Stack, Alert } from '@mui/material';
 import DataTable from 'src/components/celulandia/DataTable';
 import TrabajoRegistradoService from 'src/services/dhn/TrabajoRegistradoService';
-import TableComponent from 'src/components/TableComponent';
 
 const ControlQuincenalPage = () => {
   const router = useRouter();
