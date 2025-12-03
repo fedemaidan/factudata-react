@@ -6,8 +6,17 @@ const TrabajadorService = {
     return response.data;
   },
 
-  getAll: async () => {
-    const response = await api.get(`/dhn/trabajadores`);
+  getAll: async (params = {}) => {
+    const queryParams = new URLSearchParams();
+    if (params.limit !== undefined) {
+      queryParams.append('limit', params.limit.toString());
+    }
+    if (params.offset !== undefined) {
+      queryParams.append('offset', params.offset.toString());
+    }
+    const queryString = queryParams.toString();
+    const url = queryString ? `/dhn/trabajadores?${queryString}` : `/dhn/trabajadores`;
+    const response = await api.get(url);
     return response.data;
   },
 

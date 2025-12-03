@@ -1,10 +1,8 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/router";
 import { Layout as DashboardLayout } from "src/layouts/dashboard/layout";
-import Head from "next/head";
 import { Box, Container, Stack, Typography, CircularProgress, Button } from "@mui/material";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
-import Divider from "@mui/material/Divider";
 
 import movimientosService from "src/services/celulandia/movimientosService";
 import clientesService from "src/services/celulandia/clientesService";
@@ -24,8 +22,6 @@ import {
 } from "src/utils/celulandia/historial";
 import { getUser } from "src/utils/celulandia/currentUser";
 import EditarEntregaModal from "src/components/celulandia/EditarEntregaModal";
-import agregarSaldoCalculado from "src/utils/celulandia/agregarSaldoCalculado";
-import { ascByOrderKey, descByOrderKey } from "src/utils/dateOrder";
 
 // helpers numéricos simples
 const toNumber = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);

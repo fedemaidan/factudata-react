@@ -1,25 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/router";
 import { Layout as DashboardLayout } from "src/layouts/dashboard/layout";
 import { Container, Box, Chip, IconButton, TextField, Button, Dialog, DialogTitle, DialogContent, DialogActions, MenuItem, Stack, Snackbar, Alert } from "@mui/material";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
-import VisibilityIcon from "@mui/icons-material/Visibility";
 import TableComponent from "src/components/TableComponent";
 import DhnDriveService from "src/services/dhn/cargarUrlDriveService";
-import ComprobanteModal from "src/components/celulandia/ComprobanteModal";
-
-const formatearFechaHora = (s) => {
-  if (!s) return "-";
-  const d = new Date(s);
-  if (Number.isNaN(d.getTime())) return "-";
-  return d.toLocaleString("es-AR", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-};
+import { formatearFechaHora } from "src/utils/handleDates";
 
 const statusChip = (status) => {
   const map = {
@@ -51,6 +38,7 @@ const statusChip = (status) => {
 };
 
 const CargarDrive = () => {
+  const router = useRouter();
   const [items, setItems] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [urlDrive, setUrlDrive] = useState("");
@@ -62,25 +50,11 @@ const CargarDrive = () => {
   const [periodDate, setPeriodDate] = useState(null); // Date | null
   const [tipo, setTipo] = useState("");
 
-  const [expandedId, setExpandedId] = useState(null);
-  const [detailsMap, setDetailsMap] = useState({}); // id -> detalles[]
-  const [detailsLoadingId, setDetailsLoadingId] = useState(null);
-  const [imageModalOpen, setImageModalOpen] = useState(false);
-  const [imageUrl, setImageUrl] = useState("");
   const [alert, setAlert] = useState({
     open: false,
     message: "",
     severity: "error",
   });
-  const openImageModal = (url) => {
-    if (!url) return;
-    setImageUrl(url);
-    setImageModalOpen(true);
-  };
-  const closeImageModal = () => {
-    setImageModalOpen(false);
-    setImageUrl("");
-  };
 
   useEffect(() => {
     fetchSyncs();
@@ -94,53 +68,17 @@ const CargarDrive = () => {
       const data = await DhnDriveService.getAllSyncs();
       const list = Array.isArray(data) ? data : [];
       setItems(list);
-      setDetailsMap((prev) => {
-        const next = {};
-        list.forEach((item) => {
-          const id = getId(item);
-          if (id && prev[id]) {
-            next[id] = prev[id];
-          }
-        });
-        return next;
-      });
       return list;
     } catch (e) {
       setItems([]);
-      setDetailsMap({});
       return [];
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Nuevo: carga children para un syncId (funciona análogo a fetchSyncs)
-  const fetchChildren = async (syncId) => {
-    if (!syncId) return [];
-    setDetailsLoadingId(syncId);
-    try {
-      const data = await DhnDriveService.getSyncChildren(syncId);
-      const list = Array.isArray(data) ? data : [];
-      setDetailsMap((prev) => ({ ...prev, [syncId]: list }));
-      return list;
-    } catch (err) {
-      console.error("Error fetchChildren:", err);
-      setDetailsMap((prev) => ({ ...prev, [syncId]: [] }));
-      return [];
-    } finally {
-      setDetailsLoadingId(null);
-    }
-  };
-
   const refreshSyncsAndDetails = async () => {
-    const list = await fetchSyncs();
-    if (!expandedId) return;
-    const stillExists = list.some((item) => getId(item) === expandedId);
-    if (!stillExists) {
-      setExpandedId(null);
-      return;
-    }
-    await fetchChildren(expandedId);
+    await fetchSyncs();
   };
 
   const handleSyncClick = async (options = {}) => {
@@ -180,7 +118,6 @@ const CargarDrive = () => {
         : undefined;
     const tipoValue = tipo || undefined;
     
-    // Cerrar el modal primero y limpiar campos
     setDriveDialogOpen(false);
     setPeriodDate(null);
     setTipo("");
@@ -188,19 +125,12 @@ const CargarDrive = () => {
     await handleSyncClick({ periodo, tipo: tipoValue });
   };
 
-  // Modificado: al expandir siempre pedir fetchChildren(...) y poblar detalles
   const handleRowClick = async (item) => {
     const id = getId(item);
     if (!id) return;
 
-    // si ya estaba expandido, colapsar
-    if (expandedId === id) {
-      setExpandedId(null);
-      return;
-    }
-
-    setExpandedId(id);
-    await fetchChildren(id);
+    const tipoParam = item?.tipo ? String(item.tipo).toLowerCase() : "";
+    router.push(`/dhn/sync/${id}${tipoParam ? `?tipo=${tipoParam}` : ""}`);
   };
 
   const columns = useMemo(
@@ -252,64 +182,7 @@ const CargarDrive = () => {
     []
   );
 
-  const detailsColumns = useMemo(
-    () => [
-      {
-        key: "status",
-        label: "Estado",
-        render: (it) => statusChip(it?.status),
-      },
-      {
-        key: "imagen",
-        label: "Imagen",
-        render: (it) =>
-          it?.url_storage ? (
-            <IconButton
-              size="small"
-              onClick={(e) => {
-                e.stopPropagation();
-                openImageModal(it.url_storage);
-              }}
-              sx={{
-                padding: "4px",
-                "& .MuiSvgIcon-root": {
-                  fontSize: "1rem",
-                },
-              }}
-            >
-              <VisibilityIcon fontSize="small" />
-            </IconButton>
-          ) : (
-            "-"
-          ),
-      },
-      {
-        key: "url_drive",
-        label: "URL Drive",
-        render: (it) =>
-          it?.url_drive ? (
-            <IconButton
-              size="small"
-              href={it.url_drive}
-              target="_blank"
-              rel="noreferrer"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <OpenInNewIcon fontSize="small" />
-            </IconButton>
-          ) : (
-            "-"
-          ),
-      },
-      {
-        key: "observacion",
-        label: "Observación",
-        render: (it) => it?.observacion || "-",
-        sx: { maxWidth: "420px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" },
-      },
-    ],
-    []
-  );
+  // Eliminado detalle embebido: redirect a pantalla de detalle
 
   const updateSyncSheet = async () => {
     if (!googleSheetLink) return;
@@ -416,98 +289,7 @@ const CargarDrive = () => {
             />
           </Box>
 
-          {/* Subtabla con detalles del registro seleccionado (se muestra debajo) */}
-          {expandedId && (
-            <Box
-              sx={{
-                mt: 3,
-                mb: 2,
-                border: "1px solid",
-                borderColor: "divider",
-                borderRadius: 2,
-                backgroundColor: "background.paper",
-                boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
-                overflow: "hidden",
-              }}
-            >
-              <Box
-                sx={{
-                  px: 2,
-                  py: 1.5,
-                  borderLeft: "4px solid",
-                  borderColor: "primary.main",
-                  backgroundColor: "transparent",
-                  fontWeight: 600,
-                  fontSize: "0.875rem",
-                  color: "text.primary",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 1,
-                }}
-              >
-                <Box
-                  component="span"
-                  sx={{
-                    color: "primary.main",
-                    fontWeight: 700,
-                  }}
-                >
-                  Detalles del registro:
-                </Box>
-                <Box component="span" sx={{ textTransform: "uppercase" }}>
-                  {items.find((it) => getId(it) === expandedId)?.tipo || ""}
-                </Box>
-              </Box>
-
-              {detailsLoadingId === expandedId ? (
-                <Box sx={{ p: 3, textAlign: "center", color: "text.secondary" }}>
-                  Cargando detalles...
-                </Box>
-              ) : (
-                <Box
-                  sx={{
-                    "& .MuiPaper-root": {
-                      boxShadow: "none",
-                      borderRadius: 0,
-                    },
-                    "& .MuiTable-root": {
-                      "& .MuiTableCell-root": {
-                        fontSize: "0.8rem",
-                        padding: "12px 16px",
-                        borderBottom: "1px solid rgba(224, 224, 224, 0.5)",
-                      },
-                      "& .MuiTableHead-root .MuiTableCell-root": {
-                        backgroundColor: "grey.50",
-                        fontWeight: 600,
-                        fontSize: "0.75rem",
-                        color: "text.secondary",
-                        textTransform: "uppercase",
-                        letterSpacing: "0.5px",
-                        padding: "10px 16px",
-                        borderBottom: "2px solid",
-                        borderColor: "divider",
-                      },
-                      "& .MuiTableBody-root .MuiTableRow-root": {
-                        "&:hover": {
-                          backgroundColor: "action.hover",
-                        },
-                        "&:last-child .MuiTableCell-root": {
-                          borderBottom: "none",
-                        },
-                      },
-                    },
-                  }}
-                >
-                  <TableComponent
-                    data={detailsMap[expandedId] || []}
-                    columns={detailsColumns}
-                    isLoading={false}
-                  />
-                </Box>
-              )}
-            </Box>
-          )}
-          <ComprobanteModal open={imageModalOpen} onClose={closeImageModal} imagenUrl={imageUrl} />
+          
           <Dialog open={sheetDialogOpen} onClose={() => setSheetDialogOpen(false)} maxWidth="sm" fullWidth>
             <DialogTitle>Actualizar Google Sheet</DialogTitle>
             <DialogContent>

@@ -38,9 +38,21 @@ const HorariosPage = () => {
     { key: 'feriado', label: 'Feriado' },
   ]), []);
 
+  // Valida formato HH:mm o H:mm (24h)
   const isValidTime24 = (value) => {
-    if (!value || String(value).trim() === '') return true; // vacío es válido (no aplica)
-    return /^([01]\d|2[0-3]):[0-5]\d$/.test(value.trim());
+    if (!value || String(value).trim() === '') return true;
+    return /^([01]?\d|2[0-3]):[0-5]\d$/.test(String(value).trim());
+  };
+
+  const normalizeTime = (value) => {
+    if (!value || String(value).trim() === '') return '';
+    const trimmed = String(value).trim();
+    const match = trimmed.match(/^(\d{1,2}):(\d{2})$/);
+    if (match) {
+      const hour = match[1].padStart(2, '0');
+      return `${hour}:${match[2]}`;
+    }
+    return trimmed;
   };
 
   const toUiConfig = (serverCfg) => {
@@ -48,8 +60,8 @@ const HorariosPage = () => {
     for (const d of dias) {
       const c = serverCfg?.[d.key] || {};
       ui[d.key] = {
-        ingreso: c.ingreso ?? '',
-        salida: c.salida ?? '',
+        ingreso: normalizeTime(c.ingreso ?? ''),
+        salida: normalizeTime(c.salida ?? ''),
         fraccion: {
           minutos: typeof c?.fraccion?.minutos === 'number' ? c.fraccion.minutos : 20,
           decimal: typeof c?.fraccion?.decimal === 'number' ? c.fraccion.decimal : 0.34,
@@ -64,8 +76,10 @@ const HorariosPage = () => {
     const out = {};
     for (const d of dias) {
       const c = uiCfg?.[d.key] || {};
-      const ingreso = c.ingreso && String(c.ingreso).trim() !== '' ? c.ingreso : null;
-      const salida = c.salida && String(c.salida).trim() !== '' ? c.salida : null;
+      const ingresoNorm = normalizeTime(c.ingreso);
+      const salidaNorm = normalizeTime(c.salida);
+      const ingreso = ingresoNorm !== '' ? ingresoNorm : null;
+      const salida = salidaNorm !== '' ? salidaNorm : null;
       const minutos = Number.isFinite(Number(c?.fraccion?.minutos)) ? Number(c.fraccion.minutos) : 20;
       const decimal = decimalCeil2(minutos / 60);
       out[d.key] = { ingreso, salida, fraccion: { minutos, decimal } };
@@ -137,13 +151,14 @@ const HorariosPage = () => {
 
   const handleSave = async () => {
     try {
-      // Validación previa
-      const invalid = dias.some(d => {
+      // Validación previa - detectar qué días tienen error
+      const invalidDays = dias.filter(d => {
         const c = config?.[d.key] || {};
         return !isValidTime24(c.ingreso) || !isValidTime24(c.salida);
       });
-      if (invalid) {
-        setError('Revise los campos con error. Formato esperado HH:mm (24h).');
+      if (invalidDays.length > 0) {
+        const dayLabels = invalidDays.map(d => d.label).join(', ');
+        setError(`Revise los campos con error en: ${dayLabels}. Formato esperado HH:mm (24h).`);
         return;
       }
 

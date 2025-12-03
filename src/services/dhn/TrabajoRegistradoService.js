@@ -79,7 +79,25 @@ const TrabajoRegistradoService = {
     });
     const response = await api.get(`/dhn/trabajo-diario-registrado/stats-day-by-quincena?${queryParams}`);
     return response.data;
-  }
+  },
+
+  updateByComprobante: async (urlComprobante, patch = {}) => {
+    const response = await api.put("/dhn/trabajo-diario-registrado/by-comprobante", {
+      urlComprobante,
+      ...patch,
+    });
+    return response.data;
+  },
+
+
+  resolverTrabajador: async (urlStorage, trabajadorId, trabajadorDetectado) => {
+    const response = await api.post("/dhn/trabajo-diario-registrado/resolver-trabajador", {
+      urlStorage,
+      trabajadorId,
+      trabajadorDetectado,
+    });
+    return response.data;
+  },
 };
 
 export default TrabajoRegistradoService;
