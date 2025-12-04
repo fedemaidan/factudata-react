@@ -53,5 +53,6 @@ export const parseCuentaPendiente = (c) => {
     montoTotal: c.montoTotal,
     type: "cuentaPendiente",
     camposBusqueda: c?.camposBusqueda,
+    fechaOrden: c.fechaCuenta,
   };
 };

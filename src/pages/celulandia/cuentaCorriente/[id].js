@@ -176,7 +176,7 @@ const ClienteCelulandiaCCPage = () => {
     const toTime = (v) => {
       if (!v) return 0;
       const d = new Date(v);
-      return isNaN(d.getTime()) ? 0 : d.getTime();
+      return isNaN(d.getTime()) ? new Date().getTime() : d.getTime();
     };
     const key = sortField || "fechaEntrega";
     const ordenados = [...itemsDataTab].sort((a, b) => {

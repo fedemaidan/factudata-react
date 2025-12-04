@@ -7,7 +7,8 @@ export function agregarSaldoCalculado(items = []) {
   if (!Array.isArray(items) || items.length === 0) return [];
 
   // Orden determinístico (ASC)
-  const rowsSorted = [...items].sort(ascByOrderKey);
+  //const rowsSorted = [...items].sort(ascByOrderKey);
+  const rowsSorted = [...items].reverse()
 
   const idToComputed = new Map();
   let running = 0;

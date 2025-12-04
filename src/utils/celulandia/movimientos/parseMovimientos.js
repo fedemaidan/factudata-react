@@ -38,7 +38,16 @@ export const parseMovimiento = (movimiento) => {
 
   if (movimiento?.fechaFactura) {
     fechaFactura = getFechaArgentina(movimiento.fechaFactura);
-    fechaFacturaISO = movimiento.fechaFactura;
+    // Agregar un valor random a los segundos (manteniendo formato ISO)
+    if (typeof movimiento.fechaFactura === "string") {
+      const dateObj = new Date(movimiento.fechaFactura);
+      // agregar random [0,59] a los segundos
+      const randomSeconds = Math.floor(Math.random() * 60);
+      dateObj.setSeconds(randomSeconds);
+      fechaFacturaISO = dateObj.toISOString();
+    } else {
+      fechaFacturaISO = movimiento.fechaFactura;
+    }
     horaFactura = movimiento.fechaFactura.split("T")[1].split(":").slice(0, 2).join(":");
   }
 
