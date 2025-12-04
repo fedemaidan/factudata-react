@@ -55,7 +55,10 @@ const ControlDiarioPage = () => {
     </IconButton>
   );
 
-  const columns = useMemo(() => buildTrabajoRegistradoColumns(renderEditButton, true), []);
+  const columns = useMemo(() => (
+    buildTrabajoRegistradoColumns(renderEditButton, true)
+      .filter((column) => column.key !== 'totalHoras')
+  ), [renderEditButton]);
 
   const fetchData = useCallback(async () => {
     setIsLoading(true);
