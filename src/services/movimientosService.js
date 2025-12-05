@@ -26,10 +26,14 @@ const movimientosService = {
     }
   },
   
-  updateMovimiento: async (movimientoId, nuevosDatos) => {
+  updateMovimiento: async (movimientoId, nuevosDatos, nombreUsuario) => {
     try {
       console.log(nuevosDatos)
-      const response = await api.put(`movimiento/${movimientoId}`, nuevosDatos);
+      const payload = {
+        ...nuevosDatos,
+        nombreUsuario,
+      };
+      const response = await api.put(`movimiento/${movimientoId}`, payload);
       if (response.status === 201) {
           console.log('Movimiento editado con éxito');
           return {error: false, data: response.data};

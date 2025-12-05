@@ -20,9 +20,44 @@ import movimientosService from "src/services/celulandia/movimientosService";
 import { getUser } from "src/utils/celulandia/currentUser";
 import { toNumber, formatNumberWithThousands } from "src/utils/celulandia/separacionMiles";
 
+const parseFechaToDate = (value) => {
+  if (!value) return null;
+  if (value instanceof Date && !Number.isNaN(value.getTime())) return value;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    const slashMatch = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (slashMatch) {
+      const [, dd, mm, yyyy] = slashMatch.map(Number);
+      const parsedSlash = new Date(yyyy, mm - 1, dd);
+      if (!Number.isNaN(parsedSlash.getTime())) return parsedSlash;
+    }
+    const parsed = new Date(trimmed);
+    if (!Number.isNaN(parsed.getTime())) return parsed;
+  }
+  return null;
+};
+
+const formatFechaLarga = (yyyyMmDd) => {
+  try {
+    if (!yyyyMmDd) return "";
+    const parsed = parseFechaToDate(yyyyMmDd);
+    if (!parsed) return "";
+    return new Intl.DateTimeFormat("es-AR", { dateStyle: "long" }).format(parsed);
+  } catch {
+    return "";
+  }
+};
+
+const formatDateInputValue = (value) => {
+  const parsed = parseFechaToDate(value);
+  if (!parsed) return "";
+  return parsed.toISOString().split("T")[0];
+};
+
 const EditarModal = ({ open, onClose, data, onSave, clientes, tipoDeCambio, cajas }) => {
   const [isSaving, setIsSaving] = useState(false);
   const [montoDisplay, setMontoDisplay] = useState("");
+  const [fechaFactura, setFechaFactura] = useState("");
 
   const {
     formData,
@@ -40,6 +75,14 @@ const EditarModal = ({ open, onClose, data, onSave, clientes, tipoDeCambio, caja
   useEffect(() => {
     setMontoDisplay(formatNumberWithThousands(formData.montoEnviado || 0));
   }, [formData.montoEnviado]);
+
+  useEffect(() => {
+    if (open && data) {
+      setFechaFactura(formatDateInputValue(data.fechaFactura));
+    } else if (!open) {
+      setFechaFactura("");
+    }
+  }, [open, data]);
 
   const tipoDeCambioGuardado = data?.tipoDeCambio || 1;
   useEffect(() => {
@@ -100,6 +143,18 @@ const EditarModal = ({ open, onClose, data, onSave, clientes, tipoDeCambio, caja
       };
 
       const camposModificados = {};
+      const originalFechaFactura = formatDateInputValue(data?.fechaFactura);
+      const nuevaFechaFactura = fechaFactura || "";
+      if (originalFechaFactura !== nuevaFechaFactura) {
+        if (nuevaFechaFactura) {
+          const parsedFecha = new Date(`${nuevaFechaFactura}T00:00:00`);
+          if (!Number.isNaN(parsedFecha.getTime())) {
+            camposModificados.fechaFactura = parsedFecha;
+          }
+        } else {
+          camposModificados.fechaFactura = null;
+        }
+      }
 
       Object.keys(datosParaGuardar).forEach((key) => {
         if (key === "cliente") {
@@ -211,6 +266,7 @@ const EditarModal = ({ open, onClose, data, onSave, clientes, tipoDeCambio, caja
         montoCC: data.montoCC || "",
         usuario: getUser(),
       });
+      setFechaFactura(formatDateInputValue(data.fechaFactura));
     }
     onClose();
   };
@@ -372,6 +428,18 @@ const EditarModal = ({ open, onClose, data, onSave, clientes, tipoDeCambio, caja
                   <MenuItem value="PENDIENTE">PENDIENTE</MenuItem>
                 </Select>
               </FormControl>
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Fecha de la factura"
+                type="date"
+                value={fechaFactura}
+                onChange={(e) => setFechaFactura(e.target.value)}
+                margin="normal"
+                InputLabelProps={{ shrink: true }}
+                helperText={formatFechaLarga(fechaFactura) || "Sin fecha seleccionada"}
+              />
             </Grid>
             <Grid item xs={12} sm={6}>
               <TextField
