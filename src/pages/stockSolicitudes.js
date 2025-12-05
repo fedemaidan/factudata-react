@@ -5,7 +5,7 @@ import {
   FormControl, InputLabel, MenuItem, Paper, Select, Stack,
   Table, TableBody, TableCell, TableHead, TablePagination, TableRow, TableSortLabel,
   TextField, Typography, IconButton, Tooltip, Divider, Radio, LinearProgress, InputAdornment,
-  Alert, Snackbar
+  Alert, Snackbar, Menu, ListItemIcon, ListItemText
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
@@ -30,6 +30,8 @@ import FolderIcon from '@mui/icons-material/Folder';
 import AttachFileIcon from '@mui/icons-material/AttachFile';
 import ImageIcon from '@mui/icons-material/Image';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
+import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
+import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
 
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import { useAuthContext } from 'src/contexts/auth-context';
@@ -40,6 +42,10 @@ import StockMaterialesService from 'src/services/stock/stockMaterialesService';
 import api from 'src/services/axiosConfig';
 import { getProyectosFromUser } from 'src/services/proyectosService';
 import MaterialAutocomplete from 'src/components/MaterialAutocomplete';
+import IngresoDesdeFactura from 'src/components/stock/IngresoDesdeFactura';
+import EgresoDesdeRemito from 'src/components/stock/EgresoDesdeRemito';
+import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
+import LocalShippingIcon from '@mui/icons-material/LocalShipping';
 
 const TIPO_OPCIONES = ['INGRESO', 'EGRESO', 'TRANSFERENCIA', 'AJUSTE', 'COMPRA'];
 const ORDER_MAP = { fecha: 'fecha', tipo: 'tipo', subtipo: 'subtipo', responsable: 'responsable', updated: 'updatedAt' };
@@ -74,6 +80,18 @@ export default function StockSolicitudes() {
   const [fDesde, setFDesde] = useState('');
   const [fHasta, setFHasta] = useState('');
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'info' });
+
+  // ===== modal de ingreso desde factura (IA)
+  const [openIngresoFactura, setOpenIngresoFactura] = useState(false);
+
+  // ===== modal de egreso desde remito (IA)
+  const [openEgresoRemito, setOpenEgresoRemito] = useState(false);
+
+  // ===== menús desplegables para acciones
+  const [anchorElNuevo, setAnchorElNuevo] = useState(null);
+  const [anchorElIA, setAnchorElIA] = useState(null);
+  const openMenuNuevo = Boolean(anchorElNuevo);
+  const openMenuIA = Boolean(anchorElIA);
 
   const sortParam = useMemo(() => {
     const field = ORDER_MAP[orderBy] || 'updatedAt';
@@ -773,15 +791,63 @@ export default function StockSolicitudes() {
                 >
                   Exportar
                 </Button>
-                <Button startIcon={<AddIcon />} variant="contained" onClick={openCreateIngreso}>
-                  Registrar ingreso
+                
+                {/* Menú: Cargar con IA */}
+                <Button 
+                  variant="contained" 
+                  color="secondary"
+                  startIcon={<AutoFixHighIcon />}
+                  endIcon={<KeyboardArrowDownIcon />}
+                  onClick={(e) => setAnchorElIA(e.currentTarget)}
+                >
+                  Cargar con IA
                 </Button>
-                <Button startIcon={<AddIcon />} variant="contained" onClick={openCreateEgreso}>
-                  Registrar egreso
+                <Menu
+                  anchorEl={anchorElIA}
+                  open={openMenuIA}
+                  onClose={() => setAnchorElIA(null)}
+                  anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+                  transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+                >
+                  <MenuItem onClick={() => { setAnchorElIA(null); setOpenIngresoFactura(true); }}>
+                    <ListItemIcon><ReceiptLongIcon color="success" /></ListItemIcon>
+                    <ListItemText primary="Ingreso desde Factura" secondary="Extraer materiales de una factura de compra" />
+                  </MenuItem>
+                  <MenuItem onClick={() => { setAnchorElIA(null); setOpenEgresoRemito(true); }}>
+                    <ListItemIcon><LocalShippingIcon color="warning" /></ListItemIcon>
+                    <ListItemText primary="Egreso desde Remito" secondary="Extraer materiales de un remito de entrega" />
+                  </MenuItem>
+                </Menu>
+
+                {/* Menú: Nuevo ticket */}
+                <Button 
+                  variant="contained" 
+                  startIcon={<AddIcon />}
+                  endIcon={<KeyboardArrowDownIcon />}
+                  onClick={(e) => setAnchorElNuevo(e.currentTarget)}
+                >
+                  Nuevo ticket
                 </Button>
-                <Button startIcon={<AddIcon />} variant="contained" onClick={openCreateTransferencia}>
-                  Realizar transferencia
-                </Button>
+                <Menu
+                  anchorEl={anchorElNuevo}
+                  open={openMenuNuevo}
+                  onClose={() => setAnchorElNuevo(null)}
+                  anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+                  transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+                >
+                  <MenuItem onClick={() => { setAnchorElNuevo(null); openCreateIngreso(); }}>
+                    <ListItemIcon><CallReceivedIcon color="success" /></ListItemIcon>
+                    <ListItemText primary="Registrar ingreso" />
+                  </MenuItem>
+                  <MenuItem onClick={() => { setAnchorElNuevo(null); openCreateEgreso(); }}>
+                    <ListItemIcon><CallMadeIcon color="error" /></ListItemIcon>
+                    <ListItemText primary="Registrar egreso" />
+                  </MenuItem>
+                  <MenuItem onClick={() => { setAnchorElNuevo(null); openCreateTransferencia(); }}>
+                    <ListItemIcon><SwapHorizIcon color="info" /></ListItemIcon>
+                    <ListItemText primary="Realizar transferencia" />
+                  </MenuItem>
+                </Menu>
               </Stack>
             </Stack>
 
@@ -1427,6 +1493,38 @@ export default function StockSolicitudes() {
           {snackbar.message}
         </Alert>
       </Snackbar>
+
+      {/* Diálogo de Ingreso desde Factura (IA) */}
+      <IngresoDesdeFactura
+        open={openIngresoFactura}
+        onClose={() => setOpenIngresoFactura(false)}
+        onSuccess={(resultado) => {
+          setSnackbar({ 
+            open: true, 
+            message: 'Ingreso desde factura creado exitosamente', 
+            severity: 'success' 
+          });
+          fetchAll(); // Recargar la lista
+        }}
+        user={user}
+        proyectos={proyectos}
+      />
+
+      {/* Diálogo de Egreso desde Remito (IA) */}
+      <EgresoDesdeRemito
+        open={openEgresoRemito}
+        onClose={() => setOpenEgresoRemito(false)}
+        onSuccess={(resultado) => {
+          setSnackbar({ 
+            open: true, 
+            message: 'Egreso desde remito creado exitosamente', 
+            severity: 'success' 
+          });
+          fetchAll(); // Recargar la lista
+        }}
+        user={user}
+        proyectos={proyectos}
+      />
     </>
   );
 }

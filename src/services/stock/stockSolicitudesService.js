@@ -212,6 +212,92 @@ const StockSolicitudesService = {
       throw new Error('Error al eliminar solicitud');
     }
   },
+
+  /**
+   * Extraer datos de una factura de compra usando IA (ChatGPT Vision)
+   * @param {string|string[]} urlFactura - URL(s) de la imagen de factura
+   * @returns {Promise<Object>} - Datos extraídos de la factura
+   */
+  extraerDatosFactura: async (urlFactura) => {
+    if (!urlFactura) throw new Error('URL de factura requerida');
+    const endpoint = `${BASE}/extraer-factura`;
+    console.log('[SVC][extraerDatosFactura] URL:', urlFactura);
+    try {
+      const res = await api.post(endpoint, { url_factura: urlFactura });
+      console.log(`[SVC][extraerDatosFactura OK] status=${res.status}`);
+      const data = unwrap(res);
+      return data?.datos || data;
+    } catch (err) {
+      const status = err?.response?.status;
+      console.error(`[SVC][extraerDatosFactura ERR] ${endpoint} status=${status}`, err?.response?.data || err);
+      throw new Error(err?.response?.data?.message || 'Error al extraer datos de la factura');
+    }
+  },
+
+  /**
+   * Conciliar materiales extraídos con materiales existentes en el inventario
+   * @param {Array} materiales - Array de materiales a conciliar
+   * @param {string} empresa_id - ID de la empresa
+   * @returns {Promise<Object>} - Resultado de conciliación con materiales actualizados
+   */
+  conciliarMateriales: async (materiales, empresa_id) => {
+    if (!materiales || !Array.isArray(materiales)) throw new Error('Materiales debe ser un array');
+    if (!empresa_id) throw new Error('empresa_id es requerido');
+    const endpoint = `${BASE}/conciliar-materiales`;
+    console.log('[SVC][conciliarMateriales] materiales:', materiales.length, 'empresa:', empresa_id);
+    try {
+      const res = await api.post(endpoint, { materiales, empresa_id });
+      console.log(`[SVC][conciliarMateriales OK] status=${res.status}`);
+      return unwrap(res);
+    } catch (err) {
+      const status = err?.response?.status;
+      console.error(`[SVC][conciliarMateriales ERR] ${endpoint} status=${status}`, err?.response?.data || err);
+      throw new Error(err?.response?.data?.message || 'Error al conciliar materiales');
+    }
+  },
+
+  /**
+   * Extraer datos de un remito de entrega usando IA (ChatGPT Vision)
+   * @param {string|string[]} urlRemito - URL(s) de la imagen del remito
+   * @returns {Promise<Object>} - Datos extraídos del remito
+   */
+  extraerDatosRemito: async (urlRemito) => {
+    if (!urlRemito) throw new Error('URL de remito requerida');
+    const endpoint = `${BASE}/extraer-remito`;
+    console.log('[SVC][extraerDatosRemito] URL:', urlRemito);
+    try {
+      const res = await api.post(endpoint, { url_remito: urlRemito });
+      console.log(`[SVC][extraerDatosRemito OK] status=${res.status}`);
+      const data = unwrap(res);
+      return data?.datos || data;
+    } catch (err) {
+      const status = err?.response?.status;
+      console.error(`[SVC][extraerDatosRemito ERR] ${endpoint} status=${status}`, err?.response?.data || err);
+      throw new Error(err?.response?.data?.message || 'Error al extraer datos del remito');
+    }
+  },
+
+  /**
+   * Conciliar materiales extraídos de un remito con materiales existentes en el inventario (para egreso)
+   * @param {Array} materiales - Array de materiales a conciliar
+   * @param {string} empresa_id - ID de la empresa
+   * @returns {Promise<Object>} - Resultado de conciliación con materiales actualizados
+   */
+  conciliarMaterialesEgreso: async (materiales, empresa_id) => {
+    if (!materiales || !Array.isArray(materiales)) throw new Error('Materiales debe ser un array');
+    if (!empresa_id) throw new Error('empresa_id es requerido');
+    const endpoint = `${BASE}/conciliar-materiales-egreso`;
+    console.log('[SVC][conciliarMaterialesEgreso] materiales:', materiales.length, 'empresa:', empresa_id);
+    try {
+      const res = await api.post(endpoint, { materiales, empresa_id });
+      console.log(`[SVC][conciliarMaterialesEgreso OK] status=${res.status}`);
+      return unwrap(res);
+    } catch (err) {
+      const status = err?.response?.status;
+      console.error(`[SVC][conciliarMaterialesEgreso ERR] ${endpoint} status=${status}`, err?.response?.data || err);
+      throw new Error(err?.response?.data?.message || 'Error al conciliar materiales para egreso');
+    }
+  },
 };
 
 export default StockSolicitudesService;
