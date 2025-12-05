@@ -554,6 +554,20 @@ const handleCloseCols = () => setAnchorColsEl(null);
       const movsUsd = await ticketService.getMovimientosForProyecto(proyectoId, 'USD');
       setMovimientos(movs);
       setMovimientosUSD(movsUsd);
+
+      // Aplicar filtro desde query params si existe, o limpiar si no está
+      if (router.query.codigoSync) {
+        setFilters(prev => ({
+          ...prev,
+          codigoSync: router.query.codigoSync
+        }));
+      } else {
+        // Si no hay codigoSync en la URL, limpiar el filtro
+        setFilters(prev => ({
+          ...prev,
+          codigoSync: ''
+        }));
+      }
     };
 
     const fetchData = async () => {
@@ -984,10 +998,19 @@ useEffect(() => {
   if (empresa?.cuenta_suspendida === true) {
     return ("Cuenta suspendida. Contacte al administrador." )
   }
+
+  // Construir el título con el código de sincronización si está activo
+  const tituloConCodigo = useMemo(() => {
+    if (filters.codigoSync && filters.codigoSync.trim() !== '') {
+      return `${proyecto?.nombre || 'Proyecto'} - Código: ${filters.codigoSync}`;
+    }
+    return proyecto?.nombre || 'Proyecto';
+  }, [proyecto?.nombre, filters.codigoSync]);
+
     return (
-    <DashboardLayout title={proyecto?.nombre || 'Proyecto'}>
+    <DashboardLayout title={tituloConCodigo}>
       <Head>
-        <title>{proyecto?.nombre}</title>
+        <title>{tituloConCodigo}</title>
       </Head>
       <Box component="main" sx={{ flexGrow: 1, py: 8, paddingTop: 2 }}>
         <Container maxWidth="xl">
