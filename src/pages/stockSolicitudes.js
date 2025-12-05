@@ -27,6 +27,9 @@ import UpdateIcon from '@mui/icons-material/Update';
 import InventoryIcon from '@mui/icons-material/Inventory';
 import SummarizeIcon from '@mui/icons-material/Summarize';
 import FolderIcon from '@mui/icons-material/Folder';
+import AttachFileIcon from '@mui/icons-material/AttachFile';
+import ImageIcon from '@mui/icons-material/Image';
+import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import { useAuthContext } from 'src/contexts/auth-context';
@@ -182,7 +185,8 @@ export default function StockSolicitudes() {
   const emptyForm = {
     tipo: '', subtipo: '', fecha: '', responsable: '', // responsable = email
     proveedor_nombre: '', proveedor_id: '', proveedor_cuit: '',
-    id_compra: '', url_doc: ''
+    id_compra: '', url_doc: '', documentos: [], // documentos = array de URLs de remitos
+    proyecto_id: '', proyecto_nombre: '' // proyecto de la solicitud
   };
   const [form, setForm] = useState(emptyForm);
   const [movs, setMovs] = useState([]);
@@ -346,6 +350,15 @@ export default function StockSolicitudes() {
     setEditId(s._id || null);
     setEditMode(true);
 
+    // Intentar obtener proyecto_id de la solicitud o del primer movimiento
+    const proyectoIdFromSolicitud = s.proyecto_id || '';
+    const proyectoNombreFromSolicitud = s.proyecto_nombre || '';
+    
+    // Si no hay proyecto en la solicitud, intentar obtenerlo del primer movimiento
+    const primerMovConProyecto = m.find(mm => mm.proyecto_id);
+    const proyectoId = proyectoIdFromSolicitud || primerMovConProyecto?.proyecto_id || '';
+    const proyectoNombre = proyectoNombreFromSolicitud || primerMovConProyecto?.proyecto_nombre || '';
+
     setForm({
       tipo: s.tipo || '',
       subtipo: s.subtipo || '',
@@ -356,8 +369,9 @@ export default function StockSolicitudes() {
       proveedor_cuit: s?.proveedor?.cuit || '',
       id_compra: s.id_compra || '',
       url_doc: s.url_doc || '',
-      proyecto_id: s.proyecto_id || '',
-      proyecto_nombre: s.proyecto_nombre || '',
+      documentos: Array.isArray(s.documentos) ? s.documentos : (s.url_doc ? [s.url_doc] : []), // Cargar documentos o fallback a url_doc
+      proyecto_id: proyectoId,
+      proyecto_nombre: proyectoNombre,
     });
 
     // Para transferencias, consolidar movimientos duplicados
@@ -407,7 +421,7 @@ export default function StockSolicitudes() {
 
       const normMovs = m.map(mm => ({
         nombre_item: mm?.nombre_item || '',
-        cantidad: mm?.cantidad ?? 0,
+        cantidad: Math.abs(mm?.cantidad ?? 0), // Mostrar valor absoluto en UI
         tipo: mm?.tipo || 'EGRESO',
         subtipo: mm?.subtipo || 'GENERAL',
         fecha_movimiento: mm?.fecha_movimiento ? String(mm.fecha_movimiento).substring(0, 10) : '',
@@ -883,15 +897,7 @@ export default function StockSolicitudes() {
                       <TableRow
                         key={s._id}
                         hover
-                        sx={{ 
-                          cursor: 'pointer',
-                          '&:hover': {
-                            backgroundColor: (theme) => theme.palette.action.hover,
-                            '& .MuiIconButton-root': {
-                              backgroundColor: (theme) => theme.palette.action.selected
-                            }
-                          }
-                        }}
+                        sx={{ cursor: 'pointer' }}
                       >
                         <TableCell>
                           <Box display="flex" alignItems="center" gap={1}>
@@ -963,6 +969,31 @@ export default function StockSolicitudes() {
                           </Box>
                         </TableCell>
                         <TableCell align="right">
+                          {/* Indicador de documentos adjuntos */}
+                          {(s.documentos?.length > 0 || s.url_doc) && (
+                            <Tooltip title={`${s.documentos?.length || 1} documento(s) adjunto(s) - Click para ver`}>
+                              <IconButton 
+                                size="small" 
+                                color="info"
+                                onClick={(ev) => {
+                                  ev.stopPropagation();
+                                  let url = s.documentos?.[0] || s.url_doc;
+                                  if (url) {
+                                    // Convertir URL de Google Drive de descarga a preview
+                                    if (url.includes('drive.google.com') && url.includes('/d/')) {
+                                      const match = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
+                                      if (match) {
+                                        url = `https://drive.google.com/file/d/${match[1]}/preview`;
+                                      }
+                                    }
+                                    window.open(url, '_blank', 'noopener,noreferrer');
+                                  }
+                                }}
+                              >
+                                <AttachFileIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                          )}
                           <Tooltip title="Editar">
                             <IconButton onClick={() => openEdit(e)} size="small">
                               <EditIcon />
@@ -1081,9 +1112,111 @@ export default function StockSolicitudes() {
             {/* En edición, solo mostrar fecha (tipo y subtipo readonly) */}
             {editMode && (
               <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
-                <TextField label="Tipo" value={form.tipo} disabled fullWidth />
+                <TextField label="Tipo" value={form.tipo} disabled sx={{ minWidth: 150 }} />
                 <TextField type="date" label="Fecha" InputLabelProps={{ shrink: true }} value={form.fecha} onChange={(e) => patchForm('fecha', e.target.value)} sx={{ minWidth: 200 }} />
+                <FormControl sx={{ minWidth: 250 }}>
+                  <InputLabel id="proyecto-edit">Proyecto</InputLabel>
+                  <Select 
+                    labelId="proyecto-edit" 
+                    label="Proyecto" 
+                    value={form.proyecto_id || ''} 
+                    onChange={(e) => {
+                      const proyId = e.target.value;
+                      const proy = proyectos.find(p => p.id === proyId);
+                      patchForm('proyecto_id', proyId);
+                      patchForm('proyecto_nombre', proy?.nombre || 'Sin asignar');
+                      // También actualizar el proyecto en todos los movimientos
+                      setMovs(prev => prev.map(m => ({
+                        ...m,
+                        proyecto_id: proyId || null,
+                        proyecto_nombre: proy?.nombre || 'Sin asignar'
+                      })));
+                    }}
+                  >
+                    <MenuItem value="">
+                      <em>Sin asignar</em>
+                    </MenuItem>
+                    {proyectos.map(p => (
+                      <MenuItem key={p.id} value={p.id}>{p.nombre}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
               </Stack>
+            )}
+
+            {/* Mostrar documentos adjuntos (remitos) en modo edición */}
+            {editMode && form.documentos && form.documentos.length > 0 && (
+              <Paper variant="outlined" sx={{ p: 2, bgcolor: 'grey.50' }}>
+                <Stack spacing={1.5}>
+                  <Stack direction="row" alignItems="center" spacing={1}>
+                    <AttachFileIcon color="primary" />
+                    <Typography variant="subtitle2" color="primary">
+                      Documentos adjuntos ({form.documentos.length})
+                    </Typography>
+                  </Stack>
+                  <Stack direction="row" spacing={2} flexWrap="wrap" useFlexGap>
+                    {form.documentos.map((url, idx) => (
+                      <Paper 
+                        key={idx} 
+                        variant="outlined" 
+                        sx={{ 
+                          p: 1, 
+                          cursor: 'pointer',
+                          transition: 'all 0.2s',
+                          '&:hover': { 
+                            boxShadow: 2,
+                            borderColor: 'primary.main'
+                          }
+                        }}
+                        onClick={() => window.open(url, '_blank')}
+                      >
+                        <Stack direction="row" alignItems="center" spacing={1}>
+                          <Box
+                            component="img"
+                            src={url}
+                            alt={`Remito ${idx + 1}`}
+                            sx={{
+                              width: 80,
+                              height: 80,
+                              objectFit: 'cover',
+                              borderRadius: 1,
+                              border: '1px solid',
+                              borderColor: 'divider'
+                            }}
+                            onError={(e) => {
+                              e.target.style.display = 'none';
+                              e.target.nextSibling.style.display = 'flex';
+                            }}
+                          />
+                          <Box 
+                            sx={{ 
+                              display: 'none', 
+                              width: 80, 
+                              height: 80, 
+                              alignItems: 'center', 
+                              justifyContent: 'center',
+                              bgcolor: 'grey.200',
+                              borderRadius: 1
+                            }}
+                          >
+                            <ImageIcon color="disabled" />
+                          </Box>
+                          <Stack>
+                            <Typography variant="caption" color="text.secondary">
+                              Página {idx + 1}
+                            </Typography>
+                            <Tooltip title="Abrir en nueva pestaña">
+                              <IconButton size="small" color="primary">
+                                <OpenInNewIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                          </Stack>
+                        </Stack>
+                      </Paper>
+                    ))}
+                  </Stack>
+                </Stack>
+              </Paper>
             )}
 
             {/* En modo creación rápida, solo fecha y observación */}

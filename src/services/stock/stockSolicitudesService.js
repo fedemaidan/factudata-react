@@ -179,6 +179,9 @@ const StockSolicitudesService = {
           : null,
         id_compra: form?.id_compra?.trim() || null,
         url_doc: form?.url_doc?.trim() || null,
+        documentos: Array.isArray(form?.documentos) ? form.documentos.filter(Boolean) : [], // Array de URLs de documentos
+        proyecto_id: form?.proyecto_id || null,
+        proyecto_nombre: form?.proyecto_nombre || null,
         fecha: fechaSolicitud,
       },
       movimientos,

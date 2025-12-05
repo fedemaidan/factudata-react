@@ -17,6 +17,7 @@ import { PermisosUsuarios } from 'src/sections/empresa/PermisosUsuarios';
 import { EtapasDetails } from 'src/sections/empresa/etapasDetails';
 import { SubEmpresasDetails } from 'src/sections/empresa/subEmpresasDetails';
 import { ObrasDetails } from 'src/sections/empresa/obrasDetails';
+import { CategoriasMaterialesDetails } from 'src/sections/empresa/categoriasMaterialesDetails';
 
 
 const EmpresaPage = () => {
@@ -34,6 +35,7 @@ const EmpresaPage = () => {
     { value: 'sub_empresas', label: 'SubEmpresas' },
     { value: 'proyectos', label: 'Proyectos' },
     { value: 'categorias', label: 'Categorías' },
+    { value: 'categorias_materiales', label: 'Categorías Materiales' },
     { value: 'proveedores', label: 'Proveedores' },
     { value: 'etapas', label: 'Etapas' },
     { value: 'medios_pago', label: 'Medios de Pago' },
@@ -140,6 +142,7 @@ const EmpresaPage = () => {
             {currentTab === 'usuarios' && <UsuariosDetails empresa={empresa}/>}
              {currentTab === 'proyectos' && <ProyectosDetails empresa={empresa}/>} 
             {currentTab === 'categorias' && <CategoriasDetails empresa={empresa}/>}
+            {currentTab === 'categorias_materiales' && <CategoriasMaterialesDetails empresa={empresa}/>}
             {currentTab === 'proveedores' && <ProveedoresDetails empresa={empresa}/>}
             {currentTab === 'etapas' && <EtapasDetails empresa={empresa} />} 
             {currentTab === 'configuracion' && <ConfiguracionGeneral empresa={empresa} updateEmpresaData={updateEmpresaDetails} hasPermission={hasPermission}/>}
