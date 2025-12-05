@@ -33,7 +33,9 @@ const StockSolicitudesService = {
     console.log('[SVC][crearSolicitud] payload -----------------------------------=', payload);
     try {
       const res = await api.post(BASE, payload);
-      if (res.status !== 201) throw new Error('Error al crear solicitud');
+      console.log('[SVC][crearSolicitud] response status:', res.status, 'data:', res.data);
+      // Aceptar tanto 200 como 201 como éxito
+      if (res.status !== 201 && res.status !== 200) throw new Error('Error al crear solicitud');
       return unwrap(res);
     } catch (err) {
       console.error('[SVC][crearSolicitud] ERROR:', {

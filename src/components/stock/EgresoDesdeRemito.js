@@ -317,8 +317,9 @@ export default function EgresoDesdeRemito({
         id_material: mat.id_material || null
       }));
 
-      // Preparar documentos
-      const documentos = previewUrl ? [previewUrl] : [];
+      // Preparar documentos - usar urlRemito (URL de Firebase), no previewUrl (base64 local)
+      const urlDocumento = urlRemito || '';
+      const documentos = urlDocumento ? [urlDocumento] : [];
 
       // Crear solicitud
       const form = {
@@ -328,7 +329,7 @@ export default function EgresoDesdeRemito({
         responsable: user?.email || '',
         destinatario: datosRemito?.destinatario || '',
         obra: datosRemito?.obra || '',
-        url_doc: previewUrl || '',
+        url_doc: urlDocumento,
         documentos: documentos,
         proyecto_id: proyectoId,
         proyecto_nombre: proyectoNombre,

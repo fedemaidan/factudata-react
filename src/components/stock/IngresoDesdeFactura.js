@@ -308,8 +308,9 @@ export default function IngresoDesdeFactura({
         id_material: mat.id_material || null
       }));
 
-      // Preparar documentos
-      const documentos = previewUrl ? [previewUrl] : [];
+      // Preparar documentos - usar urlFactura (URL de Firebase), no previewUrl (base64 local)
+      const urlDocumento = urlFactura || '';
+      const documentos = urlDocumento ? [urlDocumento] : [];
 
       // Crear solicitud
       const form = {
@@ -319,7 +320,7 @@ export default function IngresoDesdeFactura({
         responsable: user?.email || '',
         proveedor_nombre: datosFactura?.proveedor || '',
         proveedor_cuit: datosFactura?.cuit_proveedor || '',
-        url_doc: previewUrl || '',
+        url_doc: urlDocumento,
         documentos: documentos,
         proyecto_id: proyectoId,
         proyecto_nombre: proyectoNombre,
