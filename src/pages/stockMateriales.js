@@ -135,6 +135,16 @@ const StockMateriales = () => {
   const [openExportar, setOpenExportar] = useState(false);
   const [openImportar, setOpenImportar] = useState(false);
 
+  // Estado para categorías de materiales de la empresa
+  const [categoriasMateriales, setCategoriasMateriales] = useState([]);
+  
+  // Subcategorías disponibles según la categoría seleccionada
+  const subcategoriasDisponibles = useMemo(() => {
+    if (!form.categoria) return [];
+    const cat = categoriasMateriales.find(c => c.name === form.categoria);
+    return cat?.subcategorias || [];
+  }, [form.categoria, categoriasMateriales]);
+
   // construye el string sort "campo:asc|desc" para el back
   const sortParam = useMemo(() => {
     const field = ORDER_MAP[orderBy] || 'nombre';
@@ -364,6 +374,16 @@ const StockMateriales = () => {
         })).filter(p => p.id);
         
         setProyectos(normProjs);
+
+        // Cargar categorías de materiales de la empresa
+        try {
+          const empresa = await getEmpresaDetailsFromUser(user);
+          const cats = empresa?.categorias_materiales || [];
+          setCategoriasMateriales(cats);
+        } catch (e) {
+          console.warn('[stockMateriales] Error obteniendo categorías de materiales:', e);
+          setCategoriasMateriales([]);
+        }
         
       } catch (e) {
         console.error('Error cargando proyectos', e);
@@ -993,20 +1013,51 @@ const StockMateriales = () => {
                 onChange={(e) => setForm({ ...form, SKU: e.target.value })}
               />
               <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
-                <TextField
-                  label="Categoría"
-                  value={form.categoria}
-                  onChange={(e) => setForm({ ...form, categoria: e.target.value })}
-                  fullWidth
-                  placeholder="Ej: Ferretería, Electricidad, etc."
-                />
-                <TextField
-                  label="Subcategoría"
-                  value={form.subcategoria}
-                  onChange={(e) => setForm({ ...form, subcategoria: e.target.value })}
-                  fullWidth
-                  placeholder="Ej: Tornillos, Cables, etc."
-                />
+                <FormControl fullWidth>
+                  <InputLabel>Categoría</InputLabel>
+                  <Select
+                    label="Categoría"
+                    value={form.categoria}
+                    onChange={(e) => setForm({ ...form, categoria: e.target.value, subcategoria: '' })}
+                  >
+                    <MenuItem value="">
+                      <em>Sin categoría</em>
+                    </MenuItem>
+                    {categoriasMateriales.map((cat) => (
+                      <MenuItem key={cat.id || cat.name} value={cat.name}>
+                        {cat.name}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                  {categoriasMateriales.length === 0 && (
+                    <FormHelperText>
+                      Configura categorías en Empresa → Categorías Materiales
+                    </FormHelperText>
+                  )}
+                </FormControl>
+                <FormControl fullWidth>
+                  <InputLabel>Subcategoría</InputLabel>
+                  <Select
+                    label="Subcategoría"
+                    value={form.subcategoria}
+                    onChange={(e) => setForm({ ...form, subcategoria: e.target.value })}
+                    disabled={!form.categoria}
+                  >
+                    <MenuItem value="">
+                      <em>Sin subcategoría</em>
+                    </MenuItem>
+                    {subcategoriasDisponibles.map((sub) => (
+                      <MenuItem key={sub} value={sub}>
+                        {sub}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                  {form.categoria && subcategoriasDisponibles.length === 0 && (
+                    <FormHelperText>
+                      Esta categoría no tiene subcategorías
+                    </FormHelperText>
+                  )}
+                </FormControl>
               </Stack>
 
               {/* Alias en formato chips (crear/editar) */}

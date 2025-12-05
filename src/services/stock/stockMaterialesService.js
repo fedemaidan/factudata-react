@@ -101,6 +101,13 @@ const StockMaterialesService = {
     if (res.status === 204) return;
     throw new Error('Error al eliminar material');
   },
+
+  // Agregar o modificar alias de un material
+  agregarAlias: async (materialId, alias) => {
+    const res = await api.patch(`/materiales/alias/${materialId}`, { alias });
+    if (res.status === 200) return res.data;
+    throw new Error('Error al agregar alias');
+  },
 };
 
 const unwrap = (res) => {

@@ -13,9 +13,12 @@ import {
   DialogContent,
   DialogActions,
   Stack,
-  Alert
+  Alert,
+  Checkbox,
+  FormControlLabel
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
+import BookmarkAddIcon from '@mui/icons-material/BookmarkAdd';
 import { debounce } from 'lodash';
 import StockMaterialesService from 'src/services/stock/stockMaterialesService';
 import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
@@ -40,6 +43,21 @@ const MaterialAutocomplete = ({
   const [materialExists, setMaterialExists] = useState(null); // true/false/null
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [createLoading, setCreateLoading] = useState(false);
+  
+  // Guardar el texto original del remito (no cambia cuando el usuario escribe)
+  const [originalRemitoText, setOriginalRemitoText] = useState('');
+  
+  // Estado para el diálogo de agregar alias
+  const [showAliasDialog, setShowAliasDialog] = useState(false);
+  const [aliasDialogData, setAliasDialogData] = useState(null); // { material, originalText }
+  const [aliasLoading, setAliasLoading] = useState(false);
+  
+  // Guardar el texto original del remito cuando se monta el componente o cambia fallbackText
+  useEffect(() => {
+    if (fallbackText && !originalRemitoText) {
+      setOriginalRemitoText(fallbackText.trim());
+    }
+  }, [fallbackText, originalRemitoText]);
 
   // Buscar materiales con debounce
   const searchMaterials = useCallback(
@@ -67,6 +85,7 @@ const MaterialAutocomplete = ({
           SKU: item.SKU || '',
           desc_material: item.desc_material || '',
           stock: item.stock || 0,
+          alias: item.alias || [], // Incluir aliases para verificar duplicados
           label: `${item.nombre || 'Sin nombre'}${item.SKU ? ` - ${item.SKU}` : ''}`
         }));
 
@@ -112,6 +131,7 @@ const MaterialAutocomplete = ({
           SKU: response.SKU || '',
           desc_material: response.desc_material || '',
           stock: response.stock || 0,
+          alias: response.alias || [], // Incluir aliases para verificar duplicados
           label: `${response.nombre || 'Sin nombre'}${response.SKU ? ` - ${response.SKU}` : ''}`
         };
         
@@ -148,9 +168,13 @@ const MaterialAutocomplete = ({
       setSelectedMaterial(null);
       setInputValue('');
       setMaterialExists(null);
+    } else if (!value && !selectedMaterial && fallbackText && inputValue !== fallbackText) {
+      // Si no hay ID pero sí hay fallbackText (nombre del remito sin conciliar), mostrarlo
+      setInputValue(fallbackText);
+      setMaterialExists(false); // Indicar que NO está conciliado (chip "Nuevo")
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [value, loadMaterialById]); // Solo depende de value y loadMaterialById
+  }, [value, loadMaterialById, fallbackText]); // Agregamos fallbackText como dependencia
 
   // Encontrar material seleccionado por ID en opciones existentes (solo si no tenemos selectedMaterial)
   useEffect(() => {
@@ -192,6 +216,29 @@ const MaterialAutocomplete = ({
       setSelectedMaterial(newValue);
       setInputValue(newValue.label);
       setMaterialExists(true);
+      
+      // Usar el texto original del remito (guardado al montar) para proponer como alias
+      // NO usar lo que el usuario escribió parcialmente en el input
+      const originalText = originalRemitoText || fallbackText?.trim();
+      const materialName = newValue.nombre?.trim()?.toLowerCase();
+      
+      if (originalText && originalText.toLowerCase() !== materialName) {
+        // Verificar que no sea ya un alias existente
+        const existingAliases = Array.isArray(newValue.alias) 
+          ? newValue.alias 
+          : (newValue.alias ? [newValue.alias] : []);
+        
+        const isAlreadyAlias = existingAliases.some(
+          a => a?.toLowerCase() === originalText.toLowerCase()
+        );
+        
+        if (!isAlreadyAlias) {
+          // Mostrar diálogo para preguntar si agregar como alias
+          setAliasDialogData({ material: newValue, originalText });
+          setShowAliasDialog(true);
+        }
+      }
+      
       onMaterialSelect(newValue); // callback completo
     } else if (reason === 'clear') {
       // Usuario limpió la selección
@@ -245,6 +292,48 @@ const MaterialAutocomplete = ({
     } finally {
       setCreateLoading(false);
     }
+  };
+
+  // Función para agregar alias al material
+  const handleAddAlias = async () => {
+    if (!aliasDialogData) return;
+    
+    const { material, originalText } = aliasDialogData;
+    
+    try {
+      setAliasLoading(true);
+      
+      // Obtener aliases existentes y agregar el nuevo
+      const existingAliases = Array.isArray(material.alias) 
+        ? material.alias 
+        : (material.alias ? [material.alias] : []);
+      
+      const newAliases = [...existingAliases, originalText];
+      
+      // Usar el endpoint específico para agregar alias
+      await StockMaterialesService.agregarAlias(material.id, newAliases);
+      
+      // Actualizar el material local con los nuevos aliases
+      const updatedMaterial = { ...material, alias: newAliases };
+      setSelectedMaterial(updatedMaterial);
+      
+      console.log(`✅ Alias "${originalText}" agregado al material "${material.nombre}"`);
+      
+      setShowAliasDialog(false);
+      setAliasDialogData(null);
+      
+    } catch (error) {
+      console.error('Error agregando alias:', error);
+      alert(`Error al agregar alias: ${error.response?.data?.error?.message || error.message}`);
+    } finally {
+      setAliasLoading(false);
+    }
+  };
+
+  // Función para cerrar el diálogo de alias sin agregar
+  const handleSkipAlias = () => {
+    setShowAliasDialog(false);
+    setAliasDialogData(null);
   };
 
   // Determinar el color del texto basado en si el material existe
@@ -384,6 +473,38 @@ const MaterialAutocomplete = ({
             startIcon={createLoading ? <CircularProgress size={16} /> : <AddIcon />}
           >
             {createLoading ? 'Creando...' : 'Crear Material'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Diálogo para agregar alias al material */}
+      <Dialog open={showAliasDialog} onClose={handleSkipAlias} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <BookmarkAddIcon color="primary" />
+          Agregar como Alias
+        </DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <Alert severity="info">
+              El nombre del remito "<strong>{aliasDialogData?.originalText}</strong>" es diferente al material seleccionado "<strong>{aliasDialogData?.material?.nombre}</strong>".
+            </Alert>
+            <Typography variant="body2" color="text.secondary">
+              ¿Deseas agregar "<strong>{aliasDialogData?.originalText}</strong>" como alias de este material? 
+              Así la próxima vez se conciliará automáticamente.
+            </Typography>
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleSkipAlias} disabled={aliasLoading}>
+            No, gracias
+          </Button>
+          <Button 
+            onClick={handleAddAlias} 
+            variant="contained" 
+            disabled={aliasLoading}
+            startIcon={aliasLoading ? <CircularProgress size={16} /> : <BookmarkAddIcon />}
+          >
+            {aliasLoading ? 'Guardando...' : 'Sí, agregar alias'}
           </Button>
         </DialogActions>
       </Dialog>
