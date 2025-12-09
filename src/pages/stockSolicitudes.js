@@ -458,7 +458,7 @@ export default function StockSolicitudes() {
   // ===== crear / actualizar
   const agregarMovimientoVacio = () => {
     setMovs(prev => [...prev, {
-      nombre_item: '', cantidad: 0, tipo: 'EGRESO', subtipo: 'GENERAL',
+      nombre_item: '', cantidad: 0, tipo: form.tipo || 'INGRESO', subtipo: 'GENERAL',
       fecha_movimiento: '', proyecto_id: '', proyecto_nombre: '', observacion: ''
     }]);
   };
@@ -498,7 +498,7 @@ export default function StockSolicitudes() {
     setMovFormData({
       nombre_item: '',
       cantidad: 0,
-      tipo: 'EGRESO',
+      tipo: form.tipo || 'INGRESO', // Heredar tipo de la solicitud
       subtipo: 'GENERAL',
       fecha_movimiento: '',
       proyecto_id: '',
@@ -516,7 +516,7 @@ export default function StockSolicitudes() {
     setMovFormData({
       nombre_item: mov.nombre_item || '',
       cantidad: mov.cantidad || 0,
-      tipo: mov.tipo || 'EGRESO',
+      tipo: mov.tipo || form.tipo || 'INGRESO', // Heredar tipo de la solicitud si el mov no tiene
       subtipo: mov.subtipo || 'GENERAL',
       fecha_movimiento: mov.fecha_movimiento || '',
       proyecto_id: mov.proyecto_id || '',
@@ -1458,7 +1458,7 @@ export default function StockSolicitudes() {
               const newMov = {
                 nombre_item: '', 
                 cantidad: 0, 
-                tipo: modalMode === 'transferencia' ? 'TRANSFERENCIA' : 'EGRESO', 
+                tipo: modalMode === 'transferencia' ? 'TRANSFERENCIA' : (form.tipo || 'INGRESO'), 
                 subtipo: modalMode === 'transferencia' ? 'TRANSFERENCIA' : 'GENERAL',
                 fecha_movimiento: form.fecha || '', 
                 proyecto_id: '', // en transferencias no se muestra

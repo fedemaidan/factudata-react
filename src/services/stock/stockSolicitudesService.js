@@ -140,6 +140,9 @@ const StockSolicitudesService = {
 
     const empresa = await getEmpresaDetailsFromUser(user);
 
+    // Tipo por defecto basado en el formulario (INGRESO o EGRESO)
+    const tipoDefault = String(form?.tipo || 'INGRESO').toUpperCase();
+
     const movimientos = (movs || [])
       .filter(m => Number(m?.cantidad)) // Solo requerir cantidad > 0
       .map(m => ({
@@ -152,7 +155,7 @@ const StockSolicitudesService = {
 
         nombre_item: m.nombre_item?.trim() || `Material sin nombre ${Date.now()}`, // Asegurar que siempre tenga nombre_item
         cantidad: Number(m.cantidad),
-        tipo: String(m.tipo || 'EGRESO').toUpperCase(),
+        tipo: String(m.tipo || tipoDefault).toUpperCase(), // Heredar tipo de la solicitud si no viene en el movimiento
         subtipo: m.subtipo ? String(m.subtipo).toUpperCase() : null,
         fecha_movimiento: m.fecha_movimiento || form?.fecha || new Date().toISOString(),
         proyecto_id: m.proyecto_id || null,
