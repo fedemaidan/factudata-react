@@ -216,23 +216,64 @@ const StockSolicitudesService = {
   },
 
   /**
-   * Extraer datos de una factura de compra usando IA (ChatGPT Vision)
+   * Extraer datos de una factura de compra usando IA (O3) - ASYNC con polling
    * @param {string|string[]} urlFactura - URL(s) de la imagen de factura
+   * @param {function} onProgress - Callback opcional para reportar progreso
    * @returns {Promise<Object>} - Datos extraídos de la factura
    */
-  extraerDatosFactura: async (urlFactura) => {
+  extraerDatosFactura: async (urlFactura, onProgress) => {
     if (!urlFactura) throw new Error('URL de factura requerida');
     const endpoint = `${BASE}/extraer-factura`;
     console.log('[SVC][extraerDatosFactura] URL:', urlFactura);
+    
     try {
-      const res = await api.post(endpoint, { url_factura: urlFactura });
-      console.log(`[SVC][extraerDatosFactura OK] status=${res.status}`);
-      const data = unwrap(res);
-      return data?.datos || data;
+      // 1. Iniciar extracción y obtener taskId
+      const initRes = await api.post(endpoint, { url_factura: urlFactura });
+      console.log(`[SVC][extraerDatosFactura] Init response status=${initRes.status}`);
+      
+      const initData = unwrap(initRes);
+      const taskId = initData?.taskId;
+      
+      if (!taskId) {
+        // Si no hay taskId, es la respuesta antigua (síncrona)
+        return initData?.datos || initData;
+      }
+      
+      // 2. Polling para obtener el resultado
+      const statusEndpoint = `${endpoint}/status/${taskId}`;
+      const maxAttempts = 60; // 60 intentos x 3 seg = 3 minutos máximo
+      const pollInterval = 3000; // 3 segundos
+      
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        await new Promise(resolve => setTimeout(resolve, pollInterval));
+        
+        if (onProgress) {
+          onProgress({ attempt, maxAttempts, status: 'polling' });
+        }
+        
+        const statusRes = await api.get(statusEndpoint);
+        const statusData = unwrap(statusRes);
+        
+        console.log(`[SVC][extraerDatosFactura] Poll ${attempt}/${maxAttempts} status=${statusData?.status}`);
+        
+        if (statusData?.status === 'completed') {
+          // datos viene directamente en statusData.datos (que contiene {success, materiales, etc})
+          return statusData?.datos || statusData;
+        }
+        
+        if (statusData?.status === 'error') {
+          throw new Error(statusData?.error || 'Error en la extracción de datos');
+        }
+        
+        // Si sigue pendiente, continuar polling
+      }
+      
+      throw new Error('Tiempo de espera agotado para la extracción de datos');
+      
     } catch (err) {
       const status = err?.response?.status;
       console.error(`[SVC][extraerDatosFactura ERR] ${endpoint} status=${status}`, err?.response?.data || err);
-      throw new Error(err?.response?.data?.message || 'Error al extraer datos de la factura');
+      throw new Error(err?.response?.data?.message || err?.message || 'Error al extraer datos de la factura');
     }
   },
 
@@ -259,23 +300,64 @@ const StockSolicitudesService = {
   },
 
   /**
-   * Extraer datos de un remito de entrega usando IA (ChatGPT Vision)
+   * Extraer datos de un remito de entrega usando IA (O3) - ASYNC con polling
    * @param {string|string[]} urlRemito - URL(s) de la imagen del remito
+   * @param {function} onProgress - Callback opcional para reportar progreso
    * @returns {Promise<Object>} - Datos extraídos del remito
    */
-  extraerDatosRemito: async (urlRemito) => {
+  extraerDatosRemito: async (urlRemito, onProgress) => {
     if (!urlRemito) throw new Error('URL de remito requerida');
     const endpoint = `${BASE}/extraer-remito`;
     console.log('[SVC][extraerDatosRemito] URL:', urlRemito);
+    
     try {
-      const res = await api.post(endpoint, { url_remito: urlRemito });
-      console.log(`[SVC][extraerDatosRemito OK] status=${res.status}`);
-      const data = unwrap(res);
-      return data?.datos || data;
+      // 1. Iniciar extracción y obtener taskId
+      const initRes = await api.post(endpoint, { url_remito: urlRemito });
+      console.log(`[SVC][extraerDatosRemito] Init response status=${initRes.status}`);
+      
+      const initData = unwrap(initRes);
+      const taskId = initData?.taskId;
+      
+      if (!taskId) {
+        // Si no hay taskId, es la respuesta antigua (síncrona)
+        return initData?.datos || initData;
+      }
+      
+      // 2. Polling para obtener el resultado
+      const statusEndpoint = `${endpoint}/status/${taskId}`;
+      const maxAttempts = 60; // 60 intentos x 3 seg = 3 minutos máximo
+      const pollInterval = 3000; // 3 segundos
+      
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        await new Promise(resolve => setTimeout(resolve, pollInterval));
+        
+        if (onProgress) {
+          onProgress({ attempt, maxAttempts, status: 'polling' });
+        }
+        
+        const statusRes = await api.get(statusEndpoint);
+        const statusData = unwrap(statusRes);
+        
+        console.log(`[SVC][extraerDatosRemito] Poll ${attempt}/${maxAttempts} status=${statusData?.status}`);
+        
+        if (statusData?.status === 'completed') {
+          // datos viene directamente en statusData.datos (que contiene {success, materiales, etc})
+          return statusData?.datos || statusData;
+        }
+        
+        if (statusData?.status === 'error') {
+          throw new Error(statusData?.error || 'Error en la extracción de datos');
+        }
+        
+        // Si sigue pendiente, continuar polling
+      }
+      
+      throw new Error('Tiempo de espera agotado para la extracción de datos');
+      
     } catch (err) {
       const status = err?.response?.status;
       console.error(`[SVC][extraerDatosRemito ERR] ${endpoint} status=${status}`, err?.response?.data || err);
-      throw new Error(err?.response?.data?.message || 'Error al extraer datos del remito');
+      throw new Error(err?.response?.data?.message || err?.message || 'Error al extraer datos del remito');
     }
   },
 

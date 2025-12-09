@@ -59,6 +59,7 @@ export default function EgresoDesdeRemito({
   const [previewUrl, setPreviewUrl] = useState('');
   const [isUploading, setIsUploading] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [progressInfo, setProgressInfo] = useState(''); // Info adicional de progreso
   const [error, setError] = useState('');
   const fileInputRef = useRef(null);
   
@@ -150,8 +151,17 @@ export default function EgresoDesdeRemito({
       // 2. Extraer datos con IA
       setIsUploading(false);
       setIsProcessing(true);
+      setProgressInfo('Analizando remito con IA (esto puede tomar hasta 2 minutos)...');
       
-      const datos = await StockSolicitudesService.extraerDatosRemito(urlSubida);
+      // Callback para mostrar progreso del polling
+      const onProgress = ({ attempt, maxAttempts, status }) => {
+        const segundos = attempt * 3;
+        setProgressInfo(`Analizando remito con IA... (${segundos}s transcurridos)`);
+      };
+      
+      const datos = await StockSolicitudesService.extraerDatosRemito(urlSubida, onProgress);
+      
+      setProgressInfo('');
       
       console.log('[EgresoDesdeRemito] Datos extraídos:', datos);
       
@@ -732,10 +742,10 @@ export default function EgresoDesdeRemito({
             <Typography variant="body2" color="text.secondary" sx={{ mt: 1, textAlign: 'center' }}>
               {isUploading 
                 ? 'Subiendo imagen...' 
-                : (activeStep === 0 
+                : (progressInfo || (activeStep === 0 
                     ? 'Extrayendo datos del remito con IA...' 
                     : 'Procesando...'
-                  )
+                  ))
               }
             </Typography>
           </Box>
