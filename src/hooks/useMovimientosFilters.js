@@ -8,7 +8,7 @@ const PERSIST_KEYS = [
   'categorias','subcategorias','proveedores','medioPago',
   'tipo','moneda','etapa','estados','cuentaInterna','tagsExtra',
   'montoMin','montoMax','ordenarPor','ordenDir','caja', '_dayKey',
-  'empresaFacturacion','fechaPagoDesde','fechaPagoHasta'
+  'empresaFacturacion','fechaPagoDesde','fechaPagoHasta','codigoSync'
 ];
 
 const pickPersistable = (f) => {
@@ -50,6 +50,7 @@ const defaultFilters = {
   fechaPagoDesde: null,     // Date
   fechaPagoHasta: null,     // Date
   caja: null, // { moneda, medio_pago }
+  codigoSync: '', // código de sincronización de importación masiva
 };
 
 const arrayFields = [
@@ -228,7 +229,8 @@ useEffect(() => {
     const {
       fechaDesde, fechaHasta, palabras, observacion, categorias, subcategorias,
       proveedores, medioPago, tipo, moneda, etapa, cuentaInterna, estado, tagsExtra,
-      montoMin, montoMax, ordenarPor, ordenarDir, empresaFacturacion, fechaPagoDesde, fechaPagoHasta
+      montoMin, montoMax, ordenarPor, ordenarDir, empresaFacturacion, fechaPagoDesde, fechaPagoHasta,
+      codigoSync
     } = filters;
 
     const match = (value, arr) => arr.length === 0 || arr.includes(value);
@@ -252,6 +254,10 @@ useEffect(() => {
       if (!filters.estados || filters.estados.length === 0) return true;
       return filters.estados.includes(mov.estado);
     };
+    const matchCodigoSync = (mov) => {
+      if (!codigoSync || codigoSync.trim() === '') return true;
+      return mov.codigo_sync === codigoSync.trim();
+    };
 
     const res = base.filter(mov =>
       insideRange(mov, fechaDesde, fechaHasta)
@@ -270,6 +276,7 @@ useEffect(() => {
       && matchText(Object.values(mov).join(' '), palabras)
       && matchEstado(mov)
       && matchCaja(mov)
+      && matchCodigoSync(mov)
       && (empresaFacturacion.length === 0 || empresaFacturacion.includes(mov.empresa_facturacion)) // 🔹 NUEVO
     );
     

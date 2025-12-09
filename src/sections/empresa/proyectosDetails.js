@@ -35,8 +35,11 @@ import EditIcon from '@mui/icons-material/Edit';
 import SaveIcon from '@mui/icons-material/Save';
 import AddCircleIcon from '@mui/icons-material/AddCircle';
 import { getProyectosByEmpresa, hasPermission, updateProyecto, crearProyecto, subirCSVProyecto, otorgarPermisosDriveProyecto  } from 'src/services/proyectosService';
+import { useRouter } from 'next/router';
+import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 
 export const ProyectosDetails = ({ empresa, refreshEmpresa }) => {
+  const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
   const [proyectos, setProyectos] = useState([]);
   const [editingProyecto, setEditingProyecto] = useState(null);
@@ -150,6 +153,10 @@ export const ProyectosDetails = ({ empresa, refreshEmpresa }) => {
       setUploading(false);
       setSnackbarOpen(true);
     }
+  };
+
+  const handleImportarCSV = () => {
+    router.push(`/importMovimientos?empresaId=${empresa.id}`);
   };
   
 
@@ -449,7 +456,15 @@ export const ProyectosDetails = ({ empresa, refreshEmpresa }) => {
           </List>
         </CardContent>
         <Divider />
-        <CardActions sx={{ justifyContent: 'flex-end' }}>
+        <CardActions sx={{ justifyContent: 'space-between' }}>
+          <Button
+            color="secondary"
+            variant="outlined"
+            startIcon={<CloudUploadIcon />}
+            onClick={handleImportarCSV}
+          >
+            Importar CSV
+          </Button>
           <Button
             color="primary"
             variant="contained"

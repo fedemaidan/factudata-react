@@ -194,7 +194,13 @@ const handleImportarCSV = async (e) => {
 
       let categoriaExistente = nuevasCategorias.find(c => c.name === catNombre);
       if (categoriaExistente) {
-        if (!categoriaExistente.subcategorias.includes(subNombre)) {
+        // Verificar si la subcategoría ya existe (manejar strings y objetos)
+        const subExiste = categoriaExistente.subcategorias.some(existingSub => {
+          const existingName = typeof existingSub === 'string' ? existingSub : existingSub?.name;
+          return existingName === subNombre;
+        });
+        
+        if (!subExiste) {
           categoriaExistente.subcategorias.push(subNombre);
         }
       } else {
@@ -239,12 +245,21 @@ const handleImportarCSV = async (e) => {
     }
   };
 
-  const eliminarSubcategoria = async (categoriaId, subcategoria) => {
-    confirmarEliminacion(`¿Estás seguro de que deseas eliminar la subcategoría "${subcategoria}"?`, async () => {
+  const eliminarSubcategoria = async (categoriaId, subcategoriaNombre) => {
+    confirmarEliminacion(`¿Estás seguro de que deseas eliminar la subcategoría "${subcategoriaNombre}"?`, async () => {
       setIsLoading(true);
       try {
         const newCategorias = categorias.map((cat) =>
-          cat.id === categoriaId ? { ...cat, subcategorias: cat.subcategorias.filter(sub => sub !== subcategoria) } : cat
+          cat.id === categoriaId 
+            ? { 
+                ...cat, 
+                subcategorias: cat.subcategorias.filter(sub => {
+                  // Manejar tanto strings como objetos {id, name}
+                  const subName = typeof sub === 'string' ? sub : sub?.name;
+                  return subName !== subcategoriaNombre;
+                })
+              } 
+            : cat
         );
         setCategorias(newCategorias);
         await updateEmpresaDetails(empresa.id, { categorias: newCategorias });
@@ -311,16 +326,22 @@ const handleImportarCSV = async (e) => {
             {categorias.map((categoria) => (
               <ListItem key={categoria.id} divider>
                 <ListItemText primary={categoria.name} secondary={
-                  categoria.subcategorias?.map(sub => (
-                    <Chip
-                      key={sub}
-                      label={sub}
-                      onDelete={() => eliminarSubcategoria(categoria.id, sub)}
-                      color="primary"
-                      size="small"
-                      style={{ margin: 2 }}
-                    />
-                  ))
+                  categoria.subcategorias?.map((sub, index) => {
+                    // Manejar tanto strings como objetos {id, name}
+                    const subName = typeof sub === 'string' ? sub : sub?.name || '';
+                    const subKey = typeof sub === 'string' ? sub : sub?.id || index;
+                    
+                    return (
+                      <Chip
+                        key={subKey}
+                        label={subName}
+                        onDelete={() => eliminarSubcategoria(categoria.id, subName)}
+                        color="primary"
+                        size="small"
+                        style={{ margin: 2 }}
+                      />
+                    );
+                  })
                 } />
                 <ListItemSecondaryAction>
                   <IconButton edge="end" onClick={() => startEditCategoria(categoria)}>
