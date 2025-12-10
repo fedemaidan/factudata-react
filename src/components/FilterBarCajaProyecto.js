@@ -7,6 +7,7 @@ const defaultFilters = {
   fechaHasta: null,
   palabras: '',
   observacion: '',
+  codigoSync: '',
   categorias: [],
   subcategorias: [],
   proveedores: [],
@@ -38,6 +39,7 @@ export const FilterBarCajaProyecto = ({
   const DEFINICION_FILTROS = [
     { name: 'observacion', label: 'Observación', type: 'text', visibleIf: () => true },
     { name: 'palabras', label: 'Palabras sueltas', type: 'text', visibleIf: () => true },
+    { name: 'codigoSync', label: 'Código de importación', type: 'text', visibleIf: () => false }, // Oculto - solo por URL
     { name: 'tipo', label: 'Tipo', type: 'selectMultiple', options: ['ingreso', 'egreso'], visibleIf: () => true },
     { name: 'moneda', label: 'Moneda', type: 'selectMultiple', optionsKey: 'monedas', visibleIf: () => true },
     { name: 'proveedores', label: 'Proveedor', type: 'selectMultiple', optionsKey: 'proveedores', visibleIf: (empresa) => empresa?.proveedores?.length > 0 },
