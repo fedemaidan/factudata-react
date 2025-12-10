@@ -116,23 +116,6 @@ export const PartesCell = ({ item }) => {
   );
 };
 
-export const TotalPartesCell = ({ item }) => {
-  const total = (
-    (item.horasNormales || 0) +
-    (item.horas50 || 0) +
-    (item.horas100 || 0) +
-    (item.horasAltura || 0) +
-    (item.horasHormigon || 0) +
-    (item.horasZanjeo || 0)
-  );
-  if (total === 0) return <Typography variant="caption" color="textSecondary">-</Typography>;
-  return (
-    <Typography variant="body2" sx={{ fontSize: '0.875rem' }}>
-      {total.toFixed(2)}h
-    </Typography>
-  );
-};
-
 export const ComprobantesCell = ({ item }) => (
   <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
     {item.comprobantes && item.comprobantes.length > 0 ? (
@@ -176,7 +159,6 @@ export const buildTrabajoRegistradoColumns = (onEdit, incluirTrabajador = false)
   { key: 'fecha', label: 'Fecha', sortable: true },
   { key: 'horasExcel', label: 'Horas Excel', sortable: false, render: (item) => <HorasExcelCell item={item} /> },
   { key: 'partes', label: 'Partes', sortable: false, render: (item) => <PartesCell item={item} /> },
-  { key: 'totalHoras', label: 'Total Partes', sortable: true, render: (item) => <TotalPartesCell item={item} /> },
   { key: 'comprobantes', label: 'Comprobantes', sortable: false, render: (item) => <ComprobantesCell item={item} /> },
   ...(onEdit ? [{ 
     key: 'acciones', 

@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/router';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
-import { Container, Stack, Alert, Box, TextField, InputAdornment, IconButton, Chip, Button, Typography, Dialog, DialogTitle, DialogContent, DialogActions } from '@mui/material';
+import { Container, Stack, Alert, Box, TextField, InputAdornment, IconButton, Chip, Button, Typography, Dialog, DialogTitle, DialogContent, DialogActions, Tooltip } from '@mui/material';
 import { alpha } from '@mui/material/styles';
 import ClearIcon from '@mui/icons-material/Clear';
 import TableViewIcon from '@mui/icons-material/TableView';
@@ -222,7 +222,33 @@ const ConciliacionDetallePage = () => {
         return <Chip size="small" color={color} label={label} />;
       }
     },
-    { key: 'observacion', label: 'Observación', sx: { maxWidth: 280, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } },
+    {
+      key: 'observacion',
+      label: 'Observación',
+      render: (row) => {
+        const text = row?.observacion || '-';
+        if (text === '-') return text;
+        return (
+          <Tooltip title={text} placement="left" arrow>
+            <Typography
+              variant="body2"
+              sx={{
+                whiteSpace: 'normal',
+                wordBreak: 'break-word',
+                display: 'block',
+              }}
+            >
+              {text}
+            </Typography>
+          </Tooltip>
+        );
+      },
+      sx: {
+        maxWidth: 320,
+        whiteSpace: 'normal',
+        wordBreak: 'break-word',
+      },
+    },
     {
       key: 'acciones',
       label: '',

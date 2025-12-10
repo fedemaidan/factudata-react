@@ -9,7 +9,7 @@ const Alerts = ({ alert, onClose }) => {
       open={alert.open}
       autoHideDuration={6000}
       onClose={onClose}
-      anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
     >
       <Alert onClose={onClose} severity={alert.severity} variant="filled">
         {alert.message}
