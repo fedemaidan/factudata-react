@@ -397,6 +397,18 @@ export const SideNav = (props) => {
         });
       }
 
+      if (permisosUsuario.includes("VER_INVENTARIO_PRODUCTOS")) {
+        baseItems.push({
+          title: "Inventario Productos",
+          path: "/inventarioProductos?empresaId=" + emp.id,
+          icon: (
+            <SvgIcon fontSize="small">
+              <InventoryIcon />
+            </SvgIcon>
+          ),
+        });
+      }
+
       if (permisosUsuario.includes("VER_NOTAS_DE_PEDIDO")) {
         baseItems.push({
           title: "Notas de pedido",
