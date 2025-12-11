@@ -4,7 +4,8 @@ import {
   Box, Button, Container, Dialog, DialogActions, DialogContent, DialogTitle,
   IconButton, Paper, Stack, Table, TableBody, TableCell, TableHead, TableRow,
   TextField, Typography, Tabs, Tab, Select, MenuItem, FormControl, InputLabel,
-  Card, CardContent, Grid, Chip, Tooltip
+  Card, CardContent, Grid, Chip, Tooltip, InputAdornment, Autocomplete,
+  TablePagination, Snackbar, Alert, InputBase
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
@@ -12,6 +13,8 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import HistoryIcon from '@mui/icons-material/History';
 import PostAddIcon from '@mui/icons-material/PostAdd';
+import AutorenewIcon from '@mui/icons-material/Autorenew';
+import SearchIcon from '@mui/icons-material/Search';
 
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import InventarioService from '../services/stock/inventarioService';
@@ -27,6 +30,18 @@ const InventarioProductos = () => {
   const [stockMap, setStockMap] = useState({});
   const [proyectos, setProyectos] = useState([]);
   const [filterProductoId, setFilterProductoId] = useState('');
+
+  // UX States
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [searchTerm, setSearchTerm] = useState('');
+  
+  // UX States for Movimientos
+  const [pageMov, setPageMov] = useState(0);
+  const [rowsPerPageMov, setRowsPerPageMov] = useState(10);
+  const [searchTermMov, setSearchTermMov] = useState('');
+
+  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
   
   // Dialogs
   const [openProductDialog, setOpenProductDialog] = useState(false);
@@ -42,6 +57,60 @@ const InventarioProductos = () => {
   const [editingProduct, setEditingProduct] = useState(null);
 
   const empresaId = user?.empresaId || user?.empresa?.id;
+
+  const categories = useMemo(() => {
+    const cats = new Set(productos.map(p => p.categoria).filter(Boolean));
+    return Array.from(cats).sort();
+  }, [productos]);
+
+  // Filter & Pagination Logic
+  const filteredProducts = useMemo(() => {
+    return productos.filter(p => {
+      const term = searchTerm.toLowerCase();
+      return (
+        p.nombre.toLowerCase().includes(term) ||
+        (p.sku && p.sku.toLowerCase().includes(term)) ||
+        (p.categoria && p.categoria.toLowerCase().includes(term))
+      );
+    });
+  }, [productos, searchTerm]);
+
+  const paginatedProducts = useMemo(() => {
+    return filteredProducts.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
+  }, [filteredProducts, page, rowsPerPage]);
+
+  // Filter & Pagination Logic for Movimientos
+  const filteredMovimientos = useMemo(() => {
+    return movimientos.filter(m => {
+      const term = searchTermMov.toLowerCase();
+      const prodName = m.producto_id?.nombre || '';
+      const origen = proyectos.find(p => p.id === m.origen_proyecto_id)?.nombre || '';
+      const destino = proyectos.find(p => p.id === m.destino_proyecto_id)?.nombre || '';
+      
+      return (
+        prodName.toLowerCase().includes(term) ||
+        m.tipo.toLowerCase().includes(term) ||
+        (m.razon && m.razon.toLowerCase().includes(term)) ||
+        origen.toLowerCase().includes(term) ||
+        destino.toLowerCase().includes(term)
+      );
+    });
+  }, [movimientos, searchTermMov, proyectos]);
+
+  const paginatedMovimientos = useMemo(() => {
+    return filteredMovimientos.slice(pageMov * rowsPerPageMov, pageMov * rowsPerPageMov + rowsPerPageMov);
+  }, [filteredMovimientos, pageMov, rowsPerPageMov]);
+
+  const handleCloseSnackbar = () => setSnackbar({ ...snackbar, open: false });
+  const showMsg = (msg, severity = 'success') => setSnackbar({ open: true, message: msg, severity });
+
+  useEffect(() => {
+    setPage(0);
+  }, [searchTerm]);
+
+  useEffect(() => {
+    setPageMov(0);
+  }, [searchTermMov, filterProductoId]);
 
   useEffect(() => {
     if (user) {
@@ -102,22 +171,35 @@ const InventarioProductos = () => {
         await InventarioService.createProducto({ ...productForm, empresa_id: empresaId });
       }
       setOpenProductDialog(false);
+      showMsg('Producto guardado correctamente');
       loadData();
     } catch (error) {
       console.error(error);
+      showMsg('Error al guardar producto', 'error');
     }
   };
 
   const handleDeleteProduct = async (id) => {
     if (confirm('¿Eliminar producto?')) {
-      await InventarioService.deleteProducto(id);
-      loadData();
+      try {
+        await InventarioService.deleteProducto(id);
+        showMsg('Producto eliminado');
+        loadData();
+      } catch (e) {
+        showMsg('Error al eliminar', 'error');
+      }
     }
   };
 
   const handleViewHistory = (prodId) => {
       setFilterProductoId(prodId);
       setCurrentTab('movimientos');
+  };
+
+  const generateSku = () => {
+    const prefix = productForm.nombre ? productForm.nombre.substring(0, 3).toUpperCase() : 'PROD';
+    const random = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+    setProductForm({ ...productForm, sku: `${prefix}-${random}` });
   };
 
   // --- Movement Handlers ---
@@ -144,7 +226,7 @@ const InventarioProductos = () => {
       
       // Validaciones simples
       if (payload.tipo === 'TRANSFERENCIA' && (!payload.origen_proyecto_id || !payload.destino_proyecto_id)) {
-          alert('Origen y Destino requeridos para transferencia');
+          showMsg('Origen y Destino requeridos para transferencia', 'warning');
           return;
       }
 
@@ -155,17 +237,18 @@ const InventarioProductos = () => {
           const stockEnOrigen = (stockData.proyectos && stockData.proyectos[origenKey]) || 0;
           
           if (payload.cantidad > stockEnOrigen) {
-              alert(`Stock insuficiente en origen. Disponible: ${stockEnOrigen}`);
+              showMsg(`Stock insuficiente en origen. Disponible: ${stockEnOrigen}`, 'warning');
               return;
           }
       }
       
       await InventarioService.createMovimiento(payload);
       setOpenMovDialog(false);
+      showMsg('Movimiento registrado con éxito');
       loadData(); // Reload stock/movements
     } catch (error) {
       console.error(error);
-      alert('Error al guardar movimiento');
+      showMsg('Error al guardar movimiento', 'error');
     }
   };
 
@@ -188,6 +271,24 @@ const InventarioProductos = () => {
           </Tabs>
 
           {currentTab === 'productos' && (
+            <>
+            <Paper sx={{ p: 2, mb: 2 }}>
+                <TextField 
+                    label="Buscar Producto" 
+                    variant="outlined" 
+                    size="small"
+                    fullWidth
+                    value={searchTerm}
+                    onChange={e => setSearchTerm(e.target.value)}
+                    InputProps={{
+                        startAdornment: (
+                            <InputAdornment position="start">
+                                <SearchIcon />
+                            </InputAdornment>
+                        ),
+                    }}
+                />
+            </Paper>
             <Paper>
               <Table>
                 <TableHead>
@@ -200,7 +301,7 @@ const InventarioProductos = () => {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {productos.map((prod) => {
+                  {paginatedProducts.map((prod) => {
                       const stockInfo = stockMap[prod._id] || { total: 0 };
                       return (
                     <TableRow key={prod._id}>
@@ -251,13 +352,26 @@ const InventarioProductos = () => {
                   )}
                 </TableBody>
               </Table>
+              <TablePagination
+                rowsPerPageOptions={[5, 10, 25]}
+                component="div"
+                count={filteredProducts.length}
+                rowsPerPage={rowsPerPage}
+                page={page}
+                onPageChange={(e, newPage) => setPage(newPage)}
+                onRowsPerPageChange={e => {
+                    setRowsPerPage(parseInt(e.target.value, 10));
+                    setPage(0);
+                }}
+              />
             </Paper>
+            </>
           )}
 
           {currentTab === 'movimientos' && (
             <Paper>
-                <Box p={2} display="flex" justifyContent="space-between" alignItems="center">
-                    <Box>
+                <Box p={2} display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={2}>
+                    <Box flexGrow={1} display="flex" alignItems="center" gap={2}>
                         {filterProductoId && (
                             <Chip 
                                 label={`Filtrado por: ${productos.find(p => p._id === filterProductoId)?.nombre || 'Producto'}`} 
@@ -265,6 +379,21 @@ const InventarioProductos = () => {
                                 color="primary"
                             />
                         )}
+                         <TextField 
+                            label="Buscar en Movimientos" 
+                            variant="outlined" 
+                            size="small"
+                            value={searchTermMov}
+                            onChange={e => setSearchTermMov(e.target.value)}
+                            InputProps={{
+                                startAdornment: (
+                                    <InputAdornment position="start">
+                                        <SearchIcon />
+                                    </InputAdornment>
+                                ),
+                            }}
+                            sx={{ minWidth: 300 }}
+                        />
                     </Box>
                     <Button variant="outlined" onClick={() => handleOpenMov()}>Registrar Movimiento</Button>
                 </Box>
@@ -281,7 +410,7 @@ const InventarioProductos = () => {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {movimientos.map((mov) => {
+                  {paginatedMovimientos.map((mov) => {
                       const origen = proyectos.find(p => p.id === mov.origen_proyecto_id)?.nombre || (mov.origen_proyecto_id ? 'Otro' : '-');
                       const destino = proyectos.find(p => p.id === mov.destino_proyecto_id)?.nombre || (mov.destino_proyecto_id ? 'Otro' : '-');
                       return (
@@ -295,11 +424,27 @@ const InventarioProductos = () => {
                       <TableCell>{mov.razon}</TableCell>
                     </TableRow>
                   )})}
+                  {filteredMovimientos.length === 0 && (
+                      <TableRow><TableCell colSpan={7} align="center">No se encontraron movimientos</TableCell></TableRow>
+                  )}
                 </TableBody>
               </Table>
+              <TablePagination
+                rowsPerPageOptions={[5, 10, 25]}
+                component="div"
+                count={filteredMovimientos.length}
+                rowsPerPage={rowsPerPageMov}
+                page={pageMov}
+                onPageChange={(e, newPage) => setPageMov(newPage)}
+                onRowsPerPageChange={e => {
+                    setRowsPerPageMov(parseInt(e.target.value, 10));
+                    setPageMov(0);
+                }}
+              />
             </Paper>
           )}
-        </Container>
+
+            </Container>
       </Box>
 
       {/* Dialog Producto */}
@@ -308,8 +453,30 @@ const InventarioProductos = () => {
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1, minWidth: 300 }}>
             <TextField label="Nombre" fullWidth value={productForm.nombre} onChange={e => setProductForm({...productForm, nombre: e.target.value})} />
-            <TextField label="SKU" fullWidth value={productForm.sku} onChange={e => setProductForm({...productForm, sku: e.target.value})} />
-            <TextField label="Categoría" fullWidth value={productForm.categoria} onChange={e => setProductForm({...productForm, categoria: e.target.value})} />
+            <TextField 
+                label="SKU" 
+                fullWidth 
+                value={productForm.sku} 
+                onChange={e => setProductForm({...productForm, sku: e.target.value})}
+                InputProps={{
+                    endAdornment: (
+                        <InputAdornment position="end">
+                            <Tooltip title="Generar SKU">
+                                <IconButton onClick={generateSku} edge="end">
+                                    <AutorenewIcon />
+                                </IconButton>
+                            </Tooltip>
+                        </InputAdornment>
+                    )
+                }}
+            />
+            <Autocomplete
+                freeSolo
+                options={categories}
+                value={productForm.categoria}
+                onInputChange={(_, newVal) => setProductForm({ ...productForm, categoria: newVal })}
+                renderInput={(params) => <TextField {...params} label="Categoría" fullWidth />}
+            />
             <TextField label="Descripción" fullWidth multiline rows={2} value={productForm.descripcion} onChange={e => setProductForm({...productForm, descripcion: e.target.value})} />
           </Stack>
         </DialogContent>
@@ -422,6 +589,18 @@ const InventarioProductos = () => {
           <Button variant="contained" onClick={handleSaveMov}>Guardar</Button>
         </DialogActions>
       </Dialog>
+
+      {/* Snackbar para notificaciones */}
+      <Snackbar 
+        open={snackbar.open} 
+        autoHideDuration={6000} 
+        onClose={() => setSnackbar({ ...snackbar, open: false })}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+      >
+        <Alert onClose={() => setSnackbar({ ...snackbar, open: false })} severity={snackbar.severity} sx={{ width: '100%' }}>
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </>
   );
 };
