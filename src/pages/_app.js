@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import Head from 'next/head';
 import { CacheProvider } from '@emotion/react';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
@@ -13,6 +13,7 @@ import 'simplebar-react/dist/simplebar.min.css';
 import { BrowserRouter as Router, Switch, Route } from 'react-router-dom';
 import { TicketDetails } from 'src/pages/ticketDetails'; // Ajusta la ruta a tu estructura de carpetas
 import 'src/styles/react-datepicker.css';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 
 
@@ -22,6 +23,7 @@ const SplashScreen = () => null;
 
 const App = (props) => {
   const { Component, emotionCache = clientSideEmotionCache, pageProps } = props;
+  const [queryClient] = useState(() => new QueryClient());
 
   useNProgress();
 
@@ -34,32 +36,34 @@ const App = (props) => {
   });
   
   return (
-    <CacheProvider value={emotionCache}>
-      <Head>
-        <title>Sorbydata - Admin</title>
-        <meta
-          name="viewport"
-          content="initial-scale=1, width=device-width"
-        />
-      </Head>
-      <LocalizationProvider dateAdapter={AdapterDateFns}>
-        <AuthProvider>
-          <ThemeProvider theme={theme}>
-            <CssBaseline />
-            <AuthConsumer>
-              {(auth) =>
-                auth.isLoading ? (
-                  <SplashScreen />
-                ) : (
-                  getLayout(<Component {...pageProps} />)
-                )
-              }
-            </AuthConsumer>
-           
-          </ThemeProvider>
-        </AuthProvider>
-      </LocalizationProvider>
-    </CacheProvider>
+    <QueryClientProvider client={queryClient}>
+      <CacheProvider value={emotionCache}>
+        <Head>
+          <title>Sorbydata - Admin</title>
+          <meta
+            name="viewport"
+            content="initial-scale=1, width=device-width"
+          />
+        </Head>
+        <LocalizationProvider dateAdapter={AdapterDateFns}>
+          <AuthProvider>
+            <ThemeProvider theme={theme}>
+              <CssBaseline />
+              <AuthConsumer>
+                {(auth) =>
+                  auth.isLoading ? (
+                    <SplashScreen />
+                  ) : (
+                    getLayout(<Component {...pageProps} />)
+                  )
+                }
+              </AuthConsumer>
+             
+            </ThemeProvider>
+          </AuthProvider>
+        </LocalizationProvider>
+      </CacheProvider>
+    </QueryClientProvider>
   );
 };
 

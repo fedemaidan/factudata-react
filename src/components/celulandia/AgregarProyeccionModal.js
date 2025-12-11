@@ -154,6 +154,7 @@ const AgregarProyeccionModal = ({ open, onClose, onCreated }) => {
   const [fechaFin, setFechaFin] = useState(null);
   const [archivoVentas, setArchivoVentas] = useState(null);
   const [archivoStock, setArchivoStock] = useState(null);
+  const [archivoQuiebre, setArchivoQuiebre] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const canSubmit = Boolean(archivoVentas && archivoStock);
@@ -167,13 +168,16 @@ const AgregarProyeccionModal = ({ open, onClose, onCreated }) => {
         ...(fechaFin && { fechaFin: dayjs(fechaFin).toISOString() }),
         archivoVentas,
         archivoStock,
-      });
-      if (typeof onCreated === "function") onCreated();
+        archivoQuiebre,
+      });      
       onClose?.();
     } catch (error) {
       console.error("Error creando proyección", error);
     } finally {
       setIsSubmitting(false);
+      setArchivoVentas(null);
+      setArchivoStock(null);
+      setArchivoQuiebre(null);
     }
   };
 
@@ -209,6 +213,12 @@ const AgregarProyeccionModal = ({ open, onClose, onCreated }) => {
             label="Excel de stock (.xlsx, .xls)"
             file={archivoStock}
             onFileChange={setArchivoStock}
+            accept=".xlsx,.xls"
+          />
+          <DropZone
+            label="Excel de quiebre de stock (opcional)"
+            file={archivoQuiebre}
+            onFileChange={setArchivoQuiebre}
             accept=".xlsx,.xls"
           />
         </Stack>

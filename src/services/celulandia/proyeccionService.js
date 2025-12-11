@@ -23,12 +23,19 @@ const proyeccionService = {
     return response.data;
   },
 
-  createProyeccion: async ({ fechaInicio, fechaFin, archivoVentas, archivoStock }) => {
+  createProyeccion: async ({
+    fechaInicio,
+    fechaFin,
+    archivoVentas,
+    archivoStock,
+    archivoQuiebre,
+  }) => {
     const formData = new FormData();
     if (fechaInicio) formData.append("fechaInicio", fechaInicio);
     if (fechaFin) formData.append("fechaFin", fechaFin);
     if (archivoVentas) formData.append("ventas", archivoVentas);
     if (archivoStock) formData.append("stock", archivoStock);
+    if (archivoQuiebre) formData.append("quiebre", archivoQuiebre);
 
     for (let pair of formData.entries()) {
       console.log(pair[0], pair[1]); // Mostrará cada campo y su valor
