@@ -198,8 +198,8 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
     "VER_STOCK_MATERIALES",
     "VER_STOCK_SOLICITUDES",
     "CREAR_SOLICITUD_MATERIAL",
-    "VER_STOCK_MOVIMIENTOS"
-
+    "VER_STOCK_MOVIMIENTOS",
+    "VER_INVENTARIO_PRODUCTOS",
   ];
 
   const celulandiaAcciones = [
