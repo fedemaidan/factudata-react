@@ -1,4 +1,4 @@
-import { useQuery, queryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import pedidoService from "src/services/celulandia/pedidoService";
 
 export const usePedidosResumen = ({
@@ -7,6 +7,7 @@ export const usePedidosResumen = ({
   limit = 200,
   offset = 0,
 } = {}) => {
+  const queryClient = useQueryClient();
   const query = useQuery({
     queryKey: ["pedidos-resumen", sortField, sortDirection, limit, offset],
     queryFn: () =>

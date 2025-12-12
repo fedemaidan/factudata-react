@@ -1,14 +1,42 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { useRouter } from "next/router";
 import { Layout as DashboardLayout } from "src/layouts/dashboard/layout";
-import { Container, Stack, Button, Chip, Typography } from "@mui/material";
+import { Container, Stack, Button, Typography } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
 import AgregarProyeccionModal from "src/components/celulandia/AgregarProyeccionModal";
 import AgregarPedidoModal from "src/components/celulandia/proyecciones/AgregarPedidoModal";
 import TableSelectComponent from "src/components/TableSelectComponent";
 import { useProductos } from "src/hooks/celulandia/useProductos";
-import Alerts from "src/components/alerts";
+import { useLotesPendientes } from "src/hooks/celulandia/useLotesPendientes";
 import { SeAgotaChip } from "src/components/celulandia/proyecciones/productosProyecciones";
+import PedidoArriboChip from "src/components/celulandia/proyecciones/pedidoArriboChip";
+import StatusCircle from "src/components/celulandia/proyecciones/StatusCircle";
+import { formatDateDDMMYYYY } from "src/utils/handleDates";
+
+const getDiasHastaAgotar = (item) => {
+  const raw = item?.diasSinStock ?? item?.diasHastaAgotarStock;
+  const n = Number(raw);
+  if (Number.isFinite(n)) return n;
+
+  const fecha = item?.fechaAgotamientoStock;
+  if (!fecha) return null;
+  const target = new Date(fecha);
+  if (Number.isNaN(target.getTime())) return null;
+
+  const today = new Date();
+  const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+  const startOfTarget = new Date(target.getFullYear(), target.getMonth(), target.getDate()).getTime();
+  const diffDays = Math.ceil((startOfTarget - startOfToday) / (24 * 60 * 60 * 1000));
+  return diffDays;
+};
+
+// Igual que el mock: <30 rojo, <60 warning, >=60 verde
+const getSemaforoDiasColor = (dias) => {
+  if (dias == null) return null;
+  if (dias < 30) return "error";
+  if (dias < 60) return "warning";
+  return "success";
+};
 
 const INITIAL_SORT_OPTIONS = {
   sortField: "createdAt",
@@ -20,16 +48,19 @@ const ProyeccionesV2Page = () => {
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [isAddPedidoOpen, setIsAddPedidoOpen] = useState(false);
   const [sortOptions, setSortOptions] = useState(INITIAL_SORT_OPTIONS);
-  const [alert, setAlert] = useState({ open: false, message: "", severity: "error" });
   const [selectedProducts, setSelectedProducts] = useState([]);
 
   const {
     data: productosResponse,
     isLoading,
     isFetching,
-    error,
-    invalidateProductos,
+    refetch: refetchProductos,
   } = useProductos(sortOptions);
+
+  const {
+    proximoArriboPorCodigo,
+    refetch: refetchLotes,
+  } = useLotesPendientes();
 
   const handleSortChange = (campo) => {
     setSortOptions((prev) => {
@@ -42,34 +73,74 @@ const ProyeccionesV2Page = () => {
     });
   };
 
-  useEffect(() => {
-    if (error) {
-      setAlert({
-        open: true,
-        severity: "error",
-        message: error?.message || "Error al cargar productos",
-      });
-    }
-  }, [error]);
-
-  const handleCloseAlert = () => setAlert((prev) => ({ ...prev, open: false }));
-
   const columns = [
     { key: "codigo", label: "Código", sortable: true },
     { key: "nombre", label: "Nombre", sortable: true, sx: { minWidth: 180 } },
-    { key: "stockActual", label: "Stock actual", sortable: true },
+    {
+      key: "stockActual",
+      label: "Stock actual",
+      sortable: true,
+      sx: { textAlign: "center", whiteSpace: "nowrap" },
+      render: (item) => {
+        const v = Number(item?.stockActual ?? item?.cantidad ?? 0);
+        const isCritico = Number.isFinite(v) && v <= 0;
+        if (!Number.isFinite(v)) return "-";
+        if (!isCritico) return v.toLocaleString();
+        // igual al mock: chip rojo con el número
+        return <StatusCircle value={v} color="error" />;
+      },
+    },
     { key: "ventasPeriodo", label: "Ventas período", sortable: true },
     { key: "ventasProyectadas", label: "Ventas proyectadas", sortable: true },
-    { key: "stockProyectado", label: "Stock proyectado", sortable: true },
-    { key: "diasHastaAgotarStock", label: "Días hasta agotar", sortable: true },
+    {
+      key: "diasHastaAgotarStock",
+      label: "Días hasta agotar stock",
+      sortable: false,
+      sx: { textAlign: "center", whiteSpace: "nowrap" },
+      render: (item) => {
+        const dias = getDiasHastaAgotar(item);
+        if (dias == null) return "-";
+
+        const color = getSemaforoDiasColor(dias);
+        // pedido: no "Agotado", mostrar 0 en el circulito
+        const value = Math.max(0, Math.trunc(dias));
+        return <StatusCircle value={value} color={color} />;
+      },
+    },
+    {
+      key: "stockProyectado",
+      label: "Stock proyectado (90 días)",
+      sortable: true,
+      render: (item) => {
+        const total = item.stockProyectado ?? 0;
+        const infoArribo = proximoArriboPorCodigo.get(item.codigo);
+
+        return <PedidoArriboChip total={total} infoArribo={infoArribo} />;
+      },
+    },
+    {
+      key: "fechaAgotamientoStock",
+      label: "Fecha agotamiento",
+      sortable: true,
+      render: (item) => formatDateDDMMYYYY(item.fechaAgotamientoStock),
+    },
+    {
+      key: "cantidadCompraSugerida",
+      label: "Cant. a comprar (100 días)",
+      sortable: true,
+    },
+    {
+      key: "fechaCompraSugerida",
+      label: "Fecha compra sugerida",
+      sortable: true,
+      render: (item) => formatDateDDMMYYYY(item.fechaCompraSugerida),
+    },
     { key: "seAgota", label: "Se agota", sortable: true, render: SeAgotaChip },
   ];
 
   return (
     <DashboardLayout title="Proyecciones">
       <Container maxWidth="xl">
-        <Alerts alert={alert} onClose={handleCloseAlert} />
-        
         <Stack
           direction="row"
           alignItems="center"
@@ -126,7 +197,7 @@ const ProyeccionesV2Page = () => {
         <AgregarProyeccionModal
           open={isAddOpen}
           onClose={() => setIsAddOpen(false)}
-          onCreated={invalidateProductos}
+          onCreated={() => {refetchProductos(); refetchLotes();}}
         />
 
         <AgregarPedidoModal
@@ -135,7 +206,7 @@ const ProyeccionesV2Page = () => {
             setIsAddPedidoOpen(false);
             setSelectedProducts([]);
           }}
-          onCreated={invalidateProductos}
+          onCreated={() => {refetchProductos(); refetchLotes();}}
           productosSeleccionados={selectedProducts}
           pedidos={[]}
           contenedores={[]}

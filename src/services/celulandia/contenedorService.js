@@ -7,7 +7,7 @@ const contenedorService = {
     sortField = "createdAt",
     sortDirection = "desc",
   } = {}) => {
-    const response = await axiosCelulandia.get("/contenedor", {
+    const response = await axiosCelulandia.get("/contenedores", {
       params: {
         limit,
         offset,
@@ -15,6 +15,11 @@ const contenedorService = {
         sortOrder: sortDirection,
       },
     });
+    return response.data;
+  },
+
+  updateEstado: async (contenedorId, estado) => {
+    const response = await axiosCelulandia.patch(`/contenedores/${contenedorId}/estado`, { estado });
     return response.data;
   },
 };

@@ -10,10 +10,9 @@ import { useNProgress } from 'src/hooks/use-nprogress';
 import { createTheme } from 'src/theme';
 import { createEmotionCache } from 'src/utils/create-emotion-cache';
 import 'simplebar-react/dist/simplebar.min.css';
-import { BrowserRouter as Router, Switch, Route } from 'react-router-dom';
-import { TicketDetails } from 'src/pages/ticketDetails'; // Ajusta la ruta a tu estructura de carpetas
 import 'src/styles/react-datepicker.css';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryCache, QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { AlertProvider, useAlert } from 'src/contexts/alert-context';
 
 
 
@@ -21,9 +20,26 @@ const clientSideEmotionCache = createEmotionCache();
 
 const SplashScreen = () => null;
 
+const ReactQueryProvider = ({ children }) => {
+  const { notifyError } = useAlert();
+
+  const [queryClient] = useState(
+    () =>
+      new QueryClient({
+        queryCache: new QueryCache({
+          onError: (error) => {
+            console.error(error);
+            notifyError(error);
+          },
+        }),
+      })
+  );
+
+  return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
+};
+
 const App = (props) => {
   const { Component, emotionCache = clientSideEmotionCache, pageProps } = props;
-  const [queryClient] = useState(() => new QueryClient());
 
   useNProgress();
 
@@ -36,34 +52,35 @@ const App = (props) => {
   });
   
   return (
-    <QueryClientProvider client={queryClient}>
-      <CacheProvider value={emotionCache}>
-        <Head>
-          <title>Sorbydata - Admin</title>
-          <meta
-            name="viewport"
-            content="initial-scale=1, width=device-width"
-          />
-        </Head>
-        <LocalizationProvider dateAdapter={AdapterDateFns}>
-          <AuthProvider>
-            <ThemeProvider theme={theme}>
-              <CssBaseline />
-              <AuthConsumer>
-                {(auth) =>
-                  auth.isLoading ? (
-                    <SplashScreen />
-                  ) : (
-                    getLayout(<Component {...pageProps} />)
-                  )
-                }
-              </AuthConsumer>
-             
-            </ThemeProvider>
-          </AuthProvider>
-        </LocalizationProvider>
-      </CacheProvider>
-    </QueryClientProvider>
+    <CacheProvider value={emotionCache}>
+      <Head>
+        <title>Sorbydata - Admin</title>
+        <meta
+          name="viewport"
+          content="initial-scale=1, width=device-width"
+        />
+      </Head>
+      <LocalizationProvider dateAdapter={AdapterDateFns}>
+        <AuthProvider>
+          <ThemeProvider theme={theme}>
+            <CssBaseline />
+            <AlertProvider>
+              <ReactQueryProvider>
+                <AuthConsumer>
+                  {(auth) =>
+                    auth.isLoading ? (
+                      <SplashScreen />
+                    ) : (
+                      getLayout(<Component {...pageProps} />)
+                    )
+                  }
+                </AuthConsumer>
+              </ReactQueryProvider>
+            </AlertProvider>
+          </ThemeProvider>
+        </AuthProvider>
+      </LocalizationProvider>
+    </CacheProvider>
   );
 };
 

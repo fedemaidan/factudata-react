@@ -18,7 +18,9 @@ import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import dayjs from "dayjs";
+import { useMutation } from "@tanstack/react-query";
 import proyeccionService from "src/services/celulandia/proyeccionService";
+import Alerts from "src/components/alerts";
 
 const DropZone = ({ label, file, onFileChange, accept }) => {
   const [isDragging, setIsDragging] = useState(false);
@@ -149,40 +151,65 @@ const DropZone = ({ label, file, onFileChange, accept }) => {
   );
 };
 
-const AgregarProyeccionModal = ({ open, onClose, onCreated }) => {
+const AgregarProyeccionModal = ({ open, onClose, onCreated, onError }) => {
   const [fechaInicio, setFechaInicio] = useState(null);
   const [fechaFin, setFechaFin] = useState(null);
   const [archivoVentas, setArchivoVentas] = useState(null);
   const [archivoStock, setArchivoStock] = useState(null);
   const [archivoQuiebre, setArchivoQuiebre] = useState(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [alert, setAlert] = useState({ open: false, message: "", severity: "error" });
+
+  const resetForm = () => {
+    setArchivoVentas(null);
+    setArchivoStock(null);
+    setArchivoQuiebre(null);
+    setFechaInicio(null);
+    setFechaFin(null);
+  };
+
+  const { mutateAsync, isPending } = useMutation({
+    mutationFn: (payload) => proyeccionService.createProyeccion(payload),
+  });
 
   const canSubmit = Boolean(archivoVentas && archivoStock);
 
   const handleSubmit = async () => {
-    if (!canSubmit) return;
-    setIsSubmitting(true);
+    if (!canSubmit || isPending) return;
     try {
-      await proyeccionService.createProyeccion({
+      await mutateAsync({
         ...(fechaInicio && { fechaInicio: dayjs(fechaInicio).toISOString() }),
         ...(fechaFin && { fechaFin: dayjs(fechaFin).toISOString() }),
         archivoVentas,
         archivoStock,
         archivoQuiebre,
-      });      
+      });
+      if (typeof onCreated === "function") {
+        await onCreated();
+      }
+
       onClose?.();
     } catch (error) {
       console.error("Error creando proyección", error);
+      const message =
+        error?.response?.data?.error ||
+        error?.message ||
+        "Error al crear la proyección";
+      if (typeof onError === "function") {
+        onError(message);
+      } else {
+        setAlert({ open: true, message, severity: "error" });
+      }
     } finally {
-      setIsSubmitting(false);
-      setArchivoVentas(null);
-      setArchivoStock(null);
-      setArchivoQuiebre(null);
+      resetForm();
     }
   };
 
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
+      <Alerts
+        alert={alert}
+        onClose={() => setAlert((prev) => ({ ...prev, open: false }))}
+      />
       <DialogTitle>Agregar proyección</DialogTitle>
       <DialogContent>
         <Stack spacing={2} sx={{ mt: 1 }}>
@@ -224,11 +251,11 @@ const AgregarProyeccionModal = ({ open, onClose, onCreated }) => {
         </Stack>
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose} disabled={isSubmitting}>
+        <Button onClick={onClose} disabled={isPending}>
           Cancelar
         </Button>
-        <Button onClick={handleSubmit} variant="contained" disabled={!canSubmit || isSubmitting}>
-          {isSubmitting ? "Guardando..." : "Guardar"}
+        <Button onClick={handleSubmit} variant="contained" disabled={!canSubmit || isPending}>
+          {isPending ? "Guardando..." : "Guardar"}
         </Button>
       </DialogActions>
     </Dialog>

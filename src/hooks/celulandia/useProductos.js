@@ -1,4 +1,4 @@
-import { useQuery, queryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import productoService from "src/services/celulandia/productoService";
 
 export const useProductos = ({
@@ -7,6 +7,7 @@ export const useProductos = ({
   limit = 200,
   offset = 0,
 } = {}) => {
+  const queryClient = useQueryClient();
   const query = useQuery({
     queryKey: ["productos", sortField, sortDirection, limit, offset],
     queryFn: () =>
@@ -22,7 +23,7 @@ export const useProductos = ({
 
   const invalidateProductos = () => {
     queryClient.invalidateQueries({ queryKey: ["productos"] });
-  }
+  };
 
   return {
     ...query,

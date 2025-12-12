@@ -39,6 +39,24 @@ const pedidoService = {
     });
     return response.data;
   },
+
+  getLotesPendientes: async () => {
+    const response = await axiosCelulandia.get("/lotes/pendientes");
+    return response.data;
+  },
+
+  asociarContenedor: async (pedidoId, contenedorId) => {
+    const response = await axiosCelulandia.post(
+      `/pedidos/${pedidoId}/asociar-contenedor`,
+      { contenedorId }
+    );
+    return response.data;
+  },
+
+  updateEstado: async (pedidoId, estado) => {
+    const response = await axiosCelulandia.patch(`/pedidos/${pedidoId}/estado`, { estado });
+    return response.data;
+  },
 };
 
 export default pedidoService;

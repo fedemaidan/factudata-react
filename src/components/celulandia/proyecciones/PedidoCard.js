@@ -30,6 +30,20 @@ const PedidoCard = ({
   const productosCount = productosTotales.length || 0;
   const unidades = unidadesTotales || 0;
 
+  const proximaEtaEnTransito = (() => {
+    const enTransito = contenedores
+      .filter(
+        (c) =>
+          c.estado === "EN_TRANSITO" &&
+          c?.contenedor?.fechaEstimadaLlegada
+      )
+      .map((c) => new Date(c.contenedor.fechaEstimadaLlegada).getTime());
+
+    if (enTransito.length === 0) return null;
+    const masCercana = Math.min(...enTransito);
+    return new Date(masCercana);
+  })();
+
   return (
     <Card variant="outlined">
       <CardContent>
@@ -76,19 +90,31 @@ const PedidoCard = ({
                 Sin contenedores
               </Typography>
             ) : (
-              <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
-                {contenedores.slice(0, 3).map((c) => (
-                  <Chip
-                    key={c?.contenedor?._id || c?.contenedor?.codigo || c.contenedor || Math.random()}
-                    size="small"
-                    label={c?.contenedor?.codigo || "Sin código"}
-                    color={c.estado === "RECIBIDO" ? "success" : "info"}
-                  />
-                ))}
-                {contenedores.length > 3 && (
-                  <Chip size="small" label={`+${contenedores.length - 3}`} />
+              <>
+                <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
+                  {contenedores.slice(0, 3).map((c) => (
+                    <Chip
+                      key={c?.contenedor?._id || c?.contenedor?.codigo || c.contenedor || Math.random()}
+                      size="small"
+                      label={c?.contenedor?.codigo || "Sin código"}
+                      color={c.estado === "RECIBIDO" ? "success" : "info"}
+                    />
+                  ))}
+                  {contenedores.length > 3 && (
+                    <Chip size="small" label={`+${contenedores.length - 3}`} />
+                  )}
+                </Stack>
+                {proximaEtaEnTransito && (
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    display="block"
+                    sx={{ mt: 0.5 }}
+                  >
+                    Fecha estimada de llegada: {dayjs(proximaEtaEnTransito).format("DD/MM/YYYY")}
+                  </Typography>
                 )}
-              </Stack>
+              </>
             )}
           </Grid>
         </Grid>

@@ -23,6 +23,7 @@ import movimientosService from "src/services/celulandia/movimientosService";
 import { formatearCampo } from "src/utils/celulandia/formatearCampo";
 import cajasService from "src/services/celulandia/cajasService";
 import AgregarAporteModal from "src/components/celulandia/AgregarAporteModal";
+import AgregarCompraVentaUsd from "src/components/celulandia/AgregarCompraVentaUsd";
 
 const mapMovimientoToRow = (m) => {
   const fecha = m.fechaFactura || m.fechaCreacion;
@@ -76,6 +77,7 @@ const EzeNicoPage = () => {
   const [nicoRows, setNicoRows] = useState([]);
   const [cajas, setCajas] = useState([]);
   const [aporteModalOpen, setAporteModalOpen] = useState(false);
+  const [compraVentaModalOpen, setCompraVentaModalOpen] = useState(false);
   const [totales, setTotales] = useState({
     eze: {
       sumaARS: 0,
@@ -310,6 +312,13 @@ const EzeNicoPage = () => {
                 <Button variant="contained" color="primary" onClick={() => setAporteModalOpen(true)}>
                   Aporte de capital
                 </Button>
+                <Button
+                  variant="outlined"
+                  color="primary"
+                  onClick={() => setCompraVentaModalOpen(true)}
+                >
+                  Compra/Venta USD
+                </Button>
               </Stack>
             </Stack>
 
@@ -362,6 +371,14 @@ const EzeNicoPage = () => {
       <AgregarAporteModal
         open={aporteModalOpen}
         onClose={() => setAporteModalOpen(false)}
+        onSave={async () => {
+          await fetchData();
+        }}
+        cajas={cajas}
+      />
+      <AgregarCompraVentaUsd
+        open={compraVentaModalOpen}
+        onClose={() => setCompraVentaModalOpen(false)}
         onSave={async () => {
           await fetchData();
         }}

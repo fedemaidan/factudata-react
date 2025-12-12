@@ -12,18 +12,30 @@ import {
   Select,
   MenuItem,
 } from "@mui/material";
+import pedidoService from "src/services/celulandia/pedidoService";
 
-const AgregarContenedorDialog = ({ open, onClose, contenedores = [] }) => {
+const AgregarContenedorDialog = ({ open, onClose, contenedores = [], pedidoId, onAsociado }) => {
   const [contenedorId, setContenedorId] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleClose = () => {
     setContenedorId("");
     onClose?.();
   };
 
-  const handleConfirm = () => {
-    // No POST por ahora: solo UX
-    handleClose();
+  const handleConfirm = async () => {
+    if (!pedidoId || !contenedorId) return;
+    try {
+      setIsSubmitting(true);
+      await pedidoService.asociarContenedor(pedidoId, contenedorId);
+      onAsociado?.();
+      handleClose();
+    } catch (e) {
+      // Podrías conectar con Alerts globales si hace falta
+      console.error("Error al asociar contenedor", e);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -43,8 +55,8 @@ const AgregarContenedorDialog = ({ open, onClose, contenedores = [] }) => {
                 </MenuItem>
               )}
               {contenedores.map((c) => (
-                <MenuItem key={c?.contenedor?._id || c?.contenedor?.codigo} value={c?.contenedor?._id || c?.contenedor?.codigo}>
-                  {c?.contenedor?.codigo || "Sin código"}
+                <MenuItem key={c._id || c.codigo} value={c._id}>
+                  {c.codigo}
                 </MenuItem>
               ))}
             </Select>
@@ -52,8 +64,8 @@ const AgregarContenedorDialog = ({ open, onClose, contenedores = [] }) => {
       </DialogContent>
       <DialogActions>
         <Button onClick={handleClose}>Cancelar</Button>
-        <Button onClick={handleConfirm} variant="contained" disabled={!contenedorId}>
-          Asociar
+        <Button onClick={handleConfirm} variant="contained" disabled={!contenedorId || isSubmitting}>
+          {isSubmitting ? "Asociando..." : "Asociar"}
         </Button>
       </DialogActions>
     </Dialog>

@@ -1,12 +1,12 @@
 import React, { useMemo, useState, useCallback } from "react";
 import Head from "next/head";
 import { useRouter } from "next/router";
-import { Box, Button, Card, CardContent, Chip, Container, Grid, Stack, Typography, Alert, Skeleton } from "@mui/material";
+import { Box, Button, Card, CardContent, Container, Grid, Stack, Typography, Skeleton } from "@mui/material";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
-import InventoryIcon from "@mui/icons-material/Inventory";
 import { Layout as DashboardLayout } from "src/layouts/dashboard/layout";
 import { usePedidosResumen } from "src/hooks/celulandia/usePedidosResumen";
+import { useContenedores } from "src/hooks/celulandia/useContenedores";
 import PedidoCard from "src/components/celulandia/proyecciones/PedidoCard";
 import SectionHeader from "src/components/celulandia/proyecciones/SectionHeader";
 import PedidoDetalleModal from "src/components/celulandia/proyecciones/PedidoDetalleModal";
@@ -22,13 +22,18 @@ const PedidosPage = () => {
     data: resumenResponse,
     isLoading: loadingPedidos,
     isFetching: fetchingPedidos,
-    error: pedidosError,
     invalidatePedidosResumen,
   } = usePedidosResumen(sortOptions);
 
   const pedidos = resumenResponse?.data ?? [];
 
   const pedidosFiltrados = useMemo(() => pedidos, [pedidos]);
+
+  const {
+    data: contenedoresResponse,
+  } = useContenedores();
+
+  const contenedoresDisponibles = contenedoresResponse?.data ?? [];
 
   const handleRefresh = useCallback(() => {
     invalidatePedidosResumen();
@@ -61,11 +66,6 @@ const PedidosPage = () => {
               </Button>
             </Stack>
 
-            {pedidosError && (
-              <Alert severity="error" sx={{ mb: 2 }}>
-                {pedidosError?.message || "Error al cargar datos"}
-              </Alert>
-            )}
             <SectionHeader title="Pedidos" />
 
             {loadingPedidos ? (
@@ -112,7 +112,9 @@ const PedidosPage = () => {
             <AgregarContenedorDialog
               open={Boolean(contenedorDialogPedido)}
               onClose={() => setContenedorDialogPedido(null)}
-              contenedores={contenedorDialogPedido?.contenedores || []}
+              contenedores={contenedoresDisponibles}
+              pedidoId={contenedorDialogPedido?.pedido?._id}
+              onAsociado={() => invalidatePedidosResumen()}
             />
           </Container>
         </Box>
