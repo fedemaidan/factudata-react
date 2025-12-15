@@ -73,6 +73,7 @@ export const Layout = withAuthGuard((props) => {
         onToggleNav={() => setCollapsed((v) => !v)}
         title={title || ""}
         collapsed={collapsed}
+        navWidth={navWidth}
         updateAvailable={updateAvailable}   // boolean
         onUpdateClick={triggerReload}       // función que hace reload
       />

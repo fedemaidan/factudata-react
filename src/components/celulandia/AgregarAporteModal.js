@@ -25,9 +25,10 @@ const initialAporteData = {
   moneda: "ARS",
   cuentaCorriente: "ARS",
   estado: "CONFIRMADO",
+  categoria: "",
 };
 
-const AgregarAporteModal = ({ open, onClose, onSave, cajas = [] }) => {
+const AgregarAporteModal = ({ open, onClose, onSave, cajas = [], categorias = [] }) => {
   const [isSaving, setIsSaving] = useState(false);
   const [aportante, setAportante] = useState("EZE");
   const [cajaDestino, setCajaDestino] = useState("");
@@ -63,6 +64,7 @@ const AgregarAporteModal = ({ open, onClose, onSave, cajas = [] }) => {
           estado: "CONFIRMADO",
           empresaId: "celulandia",
           concepto: (formData.concepto || "").trim(),
+          categoria: formData.categoria || null,
         },
         montoEnviado: -1 * formData.montoEnviado,
       };
@@ -79,6 +81,7 @@ const AgregarAporteModal = ({ open, onClose, onSave, cajas = [] }) => {
           estado: "CONFIRMADO",
           empresaId: "celulandia",
           concepto: `Aporte de capital desde ${aportante}`,
+          categoria: formData.categoria || null,
         },
         montoEnviado: formData.montoEnviado,
       };
@@ -181,6 +184,22 @@ const AgregarAporteModal = ({ open, onClose, onSave, cajas = [] }) => {
             </Grid>
           </Grid>
           <Grid container spacing={2}>
+            <Grid item xs={12} sm={6}>
+              <FormControl fullWidth margin="normal">
+                <InputLabel>Categoria</InputLabel>
+                <Select
+                  value={formData.categoria}
+                  label="Categoria"
+                  onChange={(e) => handleInputChange("categoria", e.target.value)}
+                >
+                  {categorias.map((categoria) => (
+                    <MenuItem key={categoria.id} value={categoria.id}>
+                      {categoria.name}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
             <Grid item xs={12}>
               <TextField
                 fullWidth

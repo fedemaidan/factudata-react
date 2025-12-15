@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback, useMemo, useState } from "react";
 import {
   Dialog,
   DialogTitle,
@@ -8,12 +8,57 @@ import {
   Typography,
   CircularProgress,
 } from '@mui/material';
+import { useMutation } from "@tanstack/react-query";
+import productoService from "src/services/celulandia/productoService";
 
-const EliminarTagsModal = ({ open, onClose, isSaving, selectedCount, onConfirm, error }) => {
+const EliminarTagsModal = ({
+  open,
+  onClose,
+  productosSeleccionados = [],
+  onTagsDeleted,
+}) => {
+  const [localError, setLocalError] = useState("");
+
+  const productoIds = useMemo(
+    () => productosSeleccionados.map((p) => p?._id).filter(Boolean),
+    [productosSeleccionados]
+  );
+
+  const selectedCount = productoIds.length;
+
+  const { mutateAsync: eliminarTagsDeProductos, isLoading: isSaving } = useMutation({
+    mutationFn: async ({ productoIds: ids }) => {
+      const result = await productoService.eliminarTagsDeProductos({ productoIds: ids });
+      if (!result?.success) {
+        throw new Error(result?.error || "No se pudieron eliminar los tags");
+      }
+      return result.data;
+    },
+  });
+
+  const handleConfirm = useCallback(async () => {
+    if (selectedCount === 0) return;
+
+    setLocalError("");
+    try {
+      await eliminarTagsDeProductos({ productoIds });
+      if (onTagsDeleted) onTagsDeleted();
+      onClose();
+    } catch (e) {
+      setLocalError(e?.message || "No se pudieron eliminar los tags");
+    }
+  }, [eliminarTagsDeProductos, onClose, onTagsDeleted, productoIds, selectedCount]);
+
+  const handleClose = useCallback(() => {
+    if (isSaving) return;
+    setLocalError("");
+    onClose();
+  }, [isSaving, onClose]);
+
   return (
     <Dialog
       open={open}
-      onClose={isSaving ? undefined : onClose}
+      onClose={isSaving ? undefined : handleClose}
       fullWidth
       TransitionProps={{ timeout: 0 }}
     >
@@ -27,21 +72,21 @@ const EliminarTagsModal = ({ open, onClose, isSaving, selectedCount, onConfirm, 
           Esta acción eliminará todos los tags asociados a los productos seleccionados y no se puede
           deshacer.
         </Typography>
-        {error && (
+        {localError && (
           <Typography variant="caption" color="error" sx={{ mt: 2, display: 'block' }}>
-            {error}
+            {localError}
           </Typography>
         )}
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose} disabled={isSaving}>
+        <Button onClick={handleClose} disabled={isSaving}>
           Cancelar
         </Button>
         <Button
-          onClick={onConfirm}
+          onClick={handleConfirm}
           variant="contained"
           color="warning"
-          disabled={isSaving}
+          disabled={isSaving || selectedCount === 0}
           startIcon={isSaving ? <CircularProgress size={16} color="inherit" /> : null}
         >
           {isSaving ? 'Eliminando...' : 'Eliminar todos los tags'}

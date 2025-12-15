@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useMemo, useState } from "react";
 import {
   Dialog,
   DialogTitle,
@@ -20,7 +20,8 @@ import {
   Save as SaveIcon,
   Cancel as CancelIcon,
 } from '@mui/icons-material';
-import proyeccionService from 'src/services/celulandia/proyeccionService';
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import productoService from "src/services/celulandia/productoService";
 
 // Genera un color pastel determinístico basado en el texto del tag
 const getTagColor = (tag) => {
@@ -35,32 +36,65 @@ const getTagColor = (tag) => {
 };
 
 const GestionarTagsModal = ({ open, onClose, onTagsUpdated }) => {
-  const [tags, setTags] = useState([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
+  const queryClient = useQueryClient();
+
   const [editingTag, setEditingTag] = useState(null);
   const [editingTagName, setEditingTagName] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
-  useEffect(() => {
-    if (open) {
-      fetchTags();
-    }
-  }, [open]);
+  const {
+    data: tags = [],
+    isLoading,
+    isFetching,
+    isError,
+  } = useQuery({
+    queryKey: ["productos-tags"],
+    enabled: !!open,
+    queryFn: async () => {
+      const result = await productoService.getTags();
+      if (!result?.success) {
+        throw new Error(result?.error || "Error al cargar los tags");
+      }
+      return result.data || [];
+    },
+    retry: false,
+  });
 
-  const fetchTags = async () => {
-    setIsLoading(true);
-    setError('');
-    try {
-      const data = await proyeccionService.getTags();
-      setTags(data || []);
-    } catch (err) {
-      setError('Error al cargar los tags');
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  const { mutateAsync: actualizarTag, isLoading: isUpdating } = useMutation({
+    mutationFn: async ({ id, nombre }) => {
+      const result = await productoService.actualizarTag({ id, nombre });
+      if (!result?.success) {
+        throw new Error(result?.error || "Error al actualizar el tag");
+      }
+      return result.data;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["productos-tags"] });
+      if (onTagsUpdated) onTagsUpdated();
+    },
+  });
+
+  const { mutateAsync: eliminarTag, isLoading: isDeleting } = useMutation({
+    mutationFn: async ({ id }) => {
+      const result = await productoService.eliminarTag({ id });
+      if (!result?.success) {
+        throw new Error(result?.error || "Error al eliminar el tag");
+      }
+      return result.data;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["productos-tags"] });
+      if (onTagsUpdated) onTagsUpdated();
+    },
+  });
+
+  const isSaving = isUpdating || isDeleting;
+  const loadingText = useMemo(() => {
+    if (isLoading || isFetching) return "Cargando tags...";
+    if (isSaving) return "Guardando cambios...";
+    return "";
+  }, [isFetching, isLoading, isSaving]);
 
   const handleEditTag = (tag) => {
     setEditingTag(tag);
@@ -76,68 +110,66 @@ const GestionarTagsModal = ({ open, onClose, onTagsUpdated }) => {
     setSuccess('');
   };
 
-  const handleSaveTag = async () => {
-    if (!editingTagName.trim()) {
-      setError('El nombre del tag no puede estar vacío');
+  const handleSaveTag = useCallback(async () => {
+    if (!editingTag?._id) return;
+
+    const nombre = editingTagName?.trim();
+    if (!nombre) {
+      setError("El nombre del tag no puede estar vacío");
       return;
     }
 
-    setIsSaving(true);
-    setError('');
+    setError("");
+    setSuccess("");
     try {
-      const data = await proyeccionService.actualizarTag({
-        id: editingTag._id,
-        nombre: editingTagName.trim(),
-      });
+      await actualizarTag({ id: editingTag._id, nombre });
+      setSuccess("Tag actualizado correctamente");
+      handleCancelEdit();
+    } catch (e) {
+      setError(e?.message || "Error al actualizar el tag");
+    }
+  }, [actualizarTag, editingTag?._id, editingTagName, handleCancelEdit]);
 
-      if (data.success) {
-        setSuccess('Tag actualizado correctamente');
-        await fetchTags();
-        if (onTagsUpdated) onTagsUpdated();
-        handleCancelEdit();
-      } else {
-        setError(data.error || 'Error al actualizar el tag');
+  const handleDeleteTag = useCallback(
+    async (tag) => {
+      if (!tag?._id) return;
+
+      const confirmed = window.confirm(
+        `¿Estás seguro de que deseas eliminar el tag "${tag.nombre}"?`
+      );
+      if (!confirmed) return;
+
+      setError("");
+      setSuccess("");
+      try {
+        await eliminarTag({ id: tag._id });
+        setSuccess("Tag eliminado correctamente");
+      } catch (e) {
+        setError(e?.message || "Error al eliminar el tag");
       }
-    } catch (err) {
-      setError('Error al actualizar el tag');
-    } finally {
-      setIsSaving(false);
-    }
-  };
+    },
+    [eliminarTag]
+  );
 
-  const handleDeleteTag = async (tag) => {
-    if (!window.confirm(`¿Estás seguro de que deseas eliminar el tag "${tag.nombre}"?`)) {
-      return;
-    }
-
-    setIsSaving(true);
-    setError('');
-    try {
-      const data = await proyeccionService.eliminarTag({
-        id: tag._id,
-      });
-
-      if (data.success) {
-        setSuccess('Tag eliminado correctamente');
-        await fetchTags();
-        if (onTagsUpdated) onTagsUpdated();
-      } else {
-        setError(data.error || 'Error al eliminar el tag');
-      }
-    } catch (err) {
-      setError('Error al eliminar el tag');
-    } finally {
-      setIsSaving(false);
-    }
-  };
+  const handleClose = useCallback(() => {
+    handleCancelEdit();
+    onClose();
+  }, [handleCancelEdit, onClose]);
 
   return (
-    <Dialog open={open} onClose={onClose} fullWidth maxWidth="md">
+    <Dialog open={open} onClose={handleClose} fullWidth maxWidth="md">
       <DialogTitle>Gestionar Tags</DialogTitle>
       <DialogContent>
         <Stack spacing={2} sx={{ mt: 1 }}>
+          {!!loadingText && (
+            <Alert severity="info" sx={{ display: "flex", alignItems: "center" }}>
+              {loadingText}
+            </Alert>
+          )}
+
           {error && <Alert severity="error">{error}</Alert>}
           {success && <Alert severity="success">{success}</Alert>}
+          {isError && !error && <Alert severity="error">Error al cargar los tags</Alert>}
 
           {/* Lista de tags existentes */}
           <Box>
@@ -237,7 +269,7 @@ const GestionarTagsModal = ({ open, onClose, onTagsUpdated }) => {
         </Stack>
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose} disabled={isSaving}>
+        <Button onClick={handleClose} disabled={isSaving}>
           Cerrar
         </Button>
       </DialogActions>

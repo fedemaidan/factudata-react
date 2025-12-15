@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Dialog,
   DialogTitle,
@@ -11,33 +11,66 @@ import {
   Typography,
   Alert,
 } from "@mui/material";
-import proyeccionService from "src/services/celulandia/proyeccionService";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import productoService from "src/services/celulandia/productoService";
 
 const AgregarIgnorarProductosModal = ({ open, onClose }) => {
-  const [productosIgnorados, setProductosIgnorados] = useState([]); // [{ _id, codigo }]
   const [inputValue, setInputValue] = useState("");
   const [nuevosProductos, setNuevosProductos] = useState([]); // ["CODIGO", ...]
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
-  const fetchProductosIgnorados = useCallback(async () => {
-    try {
-      setErrorMsg("");
-      const response = await proyeccionService.getProductosIgnorados();
-      setProductosIgnorados(Array.isArray(response) ? response : []);
-    } catch (error) {
-      console.error("Error al cargar productos ignorados", error);
-      setErrorMsg("No se pudo cargar la lista de productos ignorados.");
-    }
-  }, []);
+  const queryClient = useQueryClient();
+
+  const {
+    data: productosIgnorados = [],
+    isLoading,
+    isError,
+  } = useQuery({
+    queryKey: ["productos-ignorar"],
+    enabled: !!open,
+    queryFn: async () => {
+      const result = await productoService.getProductosIgnorados();
+      if (!result?.success) {
+        throw new Error(result?.error || "No se pudo cargar la lista de productos ignorados.");
+      }
+      return Array.isArray(result.data) ? result.data : [];
+    },
+    retry: false,
+  });
+
+  const { mutateAsync: guardarIgnorados, isLoading: isSubmitting } = useMutation({
+    mutationFn: async ({ codigos }) => {
+      const result = await productoService.ignorarProductos({ codigos });
+      if (!result?.success) {
+        throw new Error(result?.error || "No se pudo guardar. Verificá los códigos e intentá nuevamente.");
+      }
+      return result.data;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["productos-ignorar"] });
+    },
+  });
+
+  const { mutateAsync: eliminarIgnorado, isLoading: isDeleting } = useMutation({
+    mutationFn: async ({ id }) => {
+      const result = await productoService.eliminarProductoIgnorado({ id });
+      if (!result?.success) {
+        throw new Error(result?.error || "No se pudo eliminar el producto ignorado.");
+      }
+      return result.data;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["productos-ignorar"] });
+    },
+  });
 
   useEffect(() => {
     if (open) {
-      fetchProductosIgnorados();
       setNuevosProductos([]);
       setInputValue("");
+      setErrorMsg("");
     }
-  }, [open, fetchProductosIgnorados]);
+  }, [open]);
 
   const todosLosExistentes = useMemo(
     () => new Set(productosIgnorados.map((item) => String(item?.codigo))),
@@ -84,28 +117,23 @@ const AgregarIgnorarProductosModal = ({ open, onClose }) => {
   const handleRemoveExistente = async (id) => {
     try {
       setErrorMsg("");
-      await proyeccionService.eliminarArticuloIgnorado({ id });
-      await fetchProductosIgnorados();
+      await eliminarIgnorado({ id });
     } catch (error) {
       console.error("Error al eliminar producto ignorado", error);
-      setErrorMsg("No se pudo eliminar el producto ignorado.");
+      setErrorMsg(error?.message || "No se pudo eliminar el producto ignorado.");
     }
   };
 
   const handleGuardar = async () => {
     if (nuevosProductos.length === 0) return;
-    setIsSubmitting(true);
     setErrorMsg("");
     try {
-      await proyeccionService.ignorarArticulos({ codigos: nuevosProductos });
-      await fetchProductosIgnorados();
+      await guardarIgnorados({ codigos: nuevosProductos });
       setNuevosProductos([]);
       setInputValue("");
     } catch (error) {
       console.error("Error al guardar productos ignorados", error);
-      setErrorMsg("No se pudo guardar. Verificá los códigos e intentá nuevamente.");
-    } finally {
-      setIsSubmitting(false);
+      setErrorMsg(error?.message || "No se pudo guardar. Verificá los códigos e intentá nuevamente.");
     }
   };
 
@@ -114,6 +142,8 @@ const AgregarIgnorarProductosModal = ({ open, onClose }) => {
       <DialogTitle>Gestionar Productos Ignorados</DialogTitle>
       <DialogContent>
         <Stack spacing={2} sx={{ mt: 1 }}>
+          {isLoading && <Alert severity="info">Cargando...</Alert>}
+          {isError && !errorMsg && <Alert severity="error">No se pudo cargar la lista.</Alert>}
           {errorMsg && <Alert severity="error">{errorMsg}</Alert>}
 
           <TextField
@@ -123,6 +153,7 @@ const AgregarIgnorarProductosModal = ({ open, onClose }) => {
             onChange={(e) => setInputValue(e.target.value)}
             onKeyDown={handleKeyDown}
             fullWidth
+            disabled={isSubmitting}
           />
 
           {nuevosProductos.length > 0 && (
@@ -157,6 +188,7 @@ const AgregarIgnorarProductosModal = ({ open, onClose }) => {
                   color="primary"
                   variant="outlined"
                   onDelete={() => handleRemoveExistente(item._id)}
+                  disabled={isSubmitting || isDeleting}
                   sx={{ mb: 1 }}
                 />
               ))}

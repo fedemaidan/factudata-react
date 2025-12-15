@@ -41,6 +41,7 @@ export const useMovimientoForm = (initialData = null, externalData = null) => {
     montoCC: initialData?.montoCC || "",
     estado: initialData?.estado || "CONFIRMADO",
     concepto: initialData?.concepto || "",
+    categoria: initialData?.categoria || "",
     usuario: getUser(),
   });
 
@@ -62,6 +63,7 @@ export const useMovimientoForm = (initialData = null, externalData = null) => {
         montoCC: initialData.montoCC || "",
         estado: initialData.estado || "CONFIRMADO",
         concepto: initialData.concepto || "",
+        categoria: initialData.categoria || "",
         usuario: getUser(),
       });
 
@@ -243,6 +245,7 @@ export const useMovimientoForm = (initialData = null, externalData = null) => {
       CC: "ARS",
       montoCC: "",
       estado: "CONFIRMADO",
+      categoria: "",
       usuario: getUser(),
     });
     setTipoDeCambioManual(null);

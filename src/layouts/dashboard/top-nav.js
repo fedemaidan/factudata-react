@@ -23,7 +23,7 @@ const SIDE_NAV_WIDTH = 280;
 const TOP_NAV_HEIGHT = 64;
 
 export const TopNav = (props) => {
-  const { onNavOpen, title, updateAvailable, onUpdateClick } = props; // <-- NUEVO
+  const { onNavOpen, title, updateAvailable, onUpdateClick, navWidth = SIDE_NAV_WIDTH } = props; // <-- NUEVO
   const lgUp = useMediaQuery((theme) => theme.breakpoints.up("lg"));
   const accountPopover = usePopover();
   const { user, isSpying, originalUser } = useAuthContext();
@@ -44,9 +44,9 @@ export const TopNav = (props) => {
           backdropFilter: "blur(6px)",
           backgroundColor: (theme) => alpha(theme.palette.background.default, 0.8),
           position: "sticky",
-          left: { lg: `${SIDE_NAV_WIDTH}px` },
+          left: { lg: `${navWidth}px` },
           top: 0,
-          width: { lg: `calc(100% - ${SIDE_NAV_WIDTH}px)` },
+          width: { lg: `calc(100% - ${navWidth}px)` },
           zIndex: (theme) => theme.zIndex.appBar,
         }}
       >
@@ -132,4 +132,5 @@ TopNav.propTypes = {
   title: PropTypes.string,
   updateAvailable: PropTypes.bool,
   onUpdateClick: PropTypes.func,
+  navWidth: PropTypes.number,
 };

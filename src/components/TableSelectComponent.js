@@ -11,6 +11,7 @@ import {
   TableSortLabel,
   Checkbox,
   CircularProgress,
+  TablePagination,
   Typography,
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
@@ -18,7 +19,7 @@ import { alpha } from "@mui/material/styles";
 const TableSelectComponent = ({
   data = [],
   columns = [],
-  selectedItems = [],
+  selectedItems,
   onSelectionChange = () => {},
   isLoading = false,
   sortField = "",
@@ -26,9 +27,13 @@ const TableSelectComponent = ({
   onSortChange = () => {},
   getRowId = (item) => item._id || item.id,
   emptyMessage = "No hay datos para mostrar",
+  pagination = null, // { total, page, rowsPerPage, rowsPerPageOptions }
+  onPageChange = () => {},
+  onRowsPerPageChange = () => {},
 }) => {
   const [selectedIds, setSelectedIds] = useState(new Set());
-  const selectedSet = selectedItems.length > 0
+  const isSelectionControlled = Array.isArray(selectedItems);
+  const selectedSet = isSelectionControlled
     ? new Set(selectedItems.map(getRowId))
     : selectedIds;
 
@@ -42,18 +47,24 @@ const TableSelectComponent = ({
       newSelectedIds.add(itemId);
     }
 
-    setSelectedIds(newSelectedIds);
+    if (!isSelectionControlled) {
+      setSelectedIds(newSelectedIds);
+    }
     const selectedData = data.filter((item) => newSelectedIds.has(getRowId(item)));
     onSelectionChange(selectedData);
   };
 
   const handleSelectAll = () => {
     if (selectedSet.size === data.length && data.length > 0) {
-      setSelectedIds(new Set());
+      if (!isSelectionControlled) {
+        setSelectedIds(new Set());
+      }
       onSelectionChange([]);
     } else {
       const allIds = new Set(data.map(getRowId));
-      setSelectedIds(allIds);
+      if (!isSelectionControlled) {
+        setSelectedIds(allIds);
+      }
       onSelectionChange([...data]);
     }
   };
@@ -88,14 +99,17 @@ const TableSelectComponent = ({
             sx={{
               minWidth: 750,
               "& .MuiTableCell-root": {
-                fontSize: "0.75rem",
-                padding: "8px 16px",
+                fontSize: "0.7rem",
+                padding: "6px 8px",
               },
               "& .MuiTableHead-root .MuiTableCell-root": {
                 borderBottom: "1px solid rgba(224, 224, 224, 1)",
-                fontSize: "0.65rem",
+                fontSize: "0.6rem",
                 fontWeight: "bold",
                 backgroundColor: "background.paper",
+              },
+              "& .MuiTableCell-paddingCheckbox": {
+                padding: "4px",
               },
             }}
           >
@@ -202,6 +216,19 @@ const TableSelectComponent = ({
             </TableBody>
           </Table>
         </TableContainer>
+
+        {pagination && (
+          <TablePagination
+            component="div"
+            count={pagination.total ?? 0}
+            page={pagination.page ?? 0}
+            rowsPerPage={pagination.rowsPerPage ?? 50}
+            onPageChange={onPageChange}
+            onRowsPerPageChange={onRowsPerPageChange}
+            rowsPerPageOptions={pagination.rowsPerPageOptions ?? [25, 50, 100, 200]}
+            disabled={isLoading}
+          />
+        )}
       </Paper>
 
       {/* Loading overlay */}

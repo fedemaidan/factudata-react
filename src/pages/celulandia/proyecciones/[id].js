@@ -54,16 +54,9 @@ export default function ProyeccionDetailPage() {
   const [tagError, setTagError] = useState("");
   const [tagFilter, setTagFilter] = useState("Todos");
   const [tagsDisponibles, setTagsDisponibles] = useState([]);
-
-  // Estados para eliminar tags
   const [isRemoveTagOpen, setIsRemoveTagOpen] = useState(false);
-  const [isRemoveTagSaving, setIsRemoveTagSaving] = useState(false);
-  const [removeTagError, setRemoveTagError] = useState("");
-
-  // Estados para exportar
   const [isExporting, setIsExporting] = useState(false);
 
-  // Genera un color pastel determinístico basado en el texto del tag
   const getTagColor = (tag) => {
     let hash = 0;
     for (let i = 0; i < tag.length; i++) {
@@ -152,25 +145,6 @@ export default function ProyeccionDetailPage() {
       setTagError("Error al guardar el tag");
     } finally {
       setIsTagSaving(false);
-    }
-  };
-
-  const handleEliminarTags = async () => {
-    try {
-      setRemoveTagError("");
-      setIsRemoveTagSaving(true);
-      const ids = Array.from(selectedKeys);
-      await proyeccionService.eliminarTagsAProductos({
-        productosProyeccionId: ids,
-      });
-      setSelectedKeys(new Set());
-      setIsRemoveTagOpen(false);
-      await fetchData(paginaActual);
-    } catch (e) {
-      console.error(e);
-      setRemoveTagError("Error al eliminar los tags");
-    } finally {
-      setIsRemoveTagSaving(false);
     }
   };
 
@@ -548,7 +522,6 @@ export default function ProyeccionDetailPage() {
               disabled={selectedKeys.size === 0}
               onClick={() => {
                 setIsRemoveTagOpen(true);
-                setRemoveTagError("");
               }}
             >
               {`Eliminar todos los tags (${selectedKeys.size})`}
@@ -692,10 +665,11 @@ export default function ProyeccionDetailPage() {
       <EliminarTagsModal
         open={isRemoveTagOpen}
         onClose={() => setIsRemoveTagOpen(false)}
-        isSaving={isRemoveTagSaving}
-        selectedCount={selectedKeys.size}
-        onConfirm={handleEliminarTags}
-        error={removeTagError}
+        productosSeleccionados={productosProyeccion.filter((p) => selectedKeys.has(p._id))}
+        onTagsDeleted={() => {
+          // Este flujo legacy está deprecado, pero evitamos dejar el modal colgado.
+          setSelectedKeys(new Set());
+        }}
       />
     </DashboardLayout>
   );
