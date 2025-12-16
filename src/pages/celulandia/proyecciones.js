@@ -118,10 +118,7 @@ const ProyeccionesV2Page = () => {
         label: "Nombre",
         sortable: true,
         sx: {
-          maxWidth: 150,
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          whiteSpace: "nowrap",
+
         },
         render: (item) => <NombreProductoCell nombre={item?.nombre} />,
       },
