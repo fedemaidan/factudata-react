@@ -49,6 +49,12 @@ const proyeccionService = {
     return response.data;
   },
 
+  getProyeccionesMetadata: async ({ ids } = {}) => {
+    const safeIds = Array.isArray(ids) ? ids.filter(Boolean) : [];
+    const response = await axiosCelulandia.post("/proyeccion/metadata", { ids: safeIds });
+    return response.data;
+  },
+
   ignorarArticulos: async ({ codigos }) => {
     const response = await axiosCelulandia.post("/proyeccion/ignorar", { codigos });
     return response?.data;

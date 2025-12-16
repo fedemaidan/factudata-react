@@ -1,4 +1,5 @@
 import React from "react";
+import { Chip, Tooltip } from "@mui/material";
 import StatusCircle from "src/components/celulandia/proyecciones/StatusCircle";
 
 const getDiasHastaAgotar = (item) => {
@@ -27,7 +28,22 @@ const getSemaforoDiasColor = (dias) => {
 
 const DiasHastaAgotarProductoCell = ({ item }) => {
   const dias = getDiasHastaAgotar(item);
-  if (dias == null) return "-";
+  if (dias == null) {
+    if (item?.agotamientoExcede365Dias) {
+      return (
+        <Tooltip title="No se agota en los próximos 365 días (límite de simulación).">
+          <Chip
+            label="+ 1 año"
+            size="small"
+            variant="outlined"
+            color="info"
+            sx={{ fontWeight: 600 }}
+          />
+        </Tooltip>
+      );
+    }
+    return "-";
+  }
   const color = getSemaforoDiasColor(dias);
   const value = Math.max(0, Math.trunc(dias));
   return <StatusCircle value={value} color={color} />;

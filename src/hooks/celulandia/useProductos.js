@@ -25,7 +25,6 @@ export const useProductos = ({
         text,
       }),
     retry: false,
-    keepPreviousData: true,
   });
 
   const invalidateProductos = () => {
@@ -84,7 +83,12 @@ export const useProductos = ({
 
       const data = allProductos.map((item) => {
         const dias = getDiasHastaAgotar(item);
-        const diasValue = dias == null ? "" : String(Math.max(0, Math.trunc(dias)));
+        const diasValue =
+          dias == null
+            ? item?.agotamientoExcede365Dias
+              ? "+ 1 año"
+              : ""
+            : String(Math.max(0, Math.trunc(dias)));
 
         return {
           Código: item?.codigo ?? "",

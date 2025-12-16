@@ -55,18 +55,27 @@ const TableSelectComponent = ({
   };
 
   const handleSelectAll = () => {
-    if (selectedSet.size === data.length && data.length > 0) {
+    const newSelectedIds = new Set(selectedSet);
+    const isAllSelectedInPage = data.length > 0 && data.every((item) => newSelectedIds.has(getRowId(item)));
+
+    if (isAllSelectedInPage) {
+      data.forEach((item) => {
+        newSelectedIds.delete(getRowId(item));
+      });
       if (!isSelectionControlled) {
-        setSelectedIds(new Set());
+        setSelectedIds(newSelectedIds);
       }
       onSelectionChange([]);
-    } else {
-      const allIds = new Set(data.map(getRowId));
-      if (!isSelectionControlled) {
-        setSelectedIds(allIds);
-      }
-      onSelectionChange([...data]);
+      return;
     }
+
+    data.forEach((item) => {
+      newSelectedIds.add(getRowId(item));
+    });
+    if (!isSelectionControlled) {
+      setSelectedIds(newSelectedIds);
+    }
+    onSelectionChange([...data]);
   };
 
   const handleSort = (campo) => {
@@ -86,13 +95,21 @@ const TableSelectComponent = ({
     return selectedSet.has(getRowId(item));
   };
 
-  const isAllSelected = data.length > 0 && selectedSet.size === data.length;
-  const isSomeSelected = selectedSet.size > 0 && selectedSet.size < data.length;
+  const selectedCountInPage = data.reduce((acc, item) => acc + (selectedSet.has(getRowId(item)) ? 1 : 0), 0);
+  const isAllSelected = data.length > 0 && selectedCountInPage === data.length;
+  const isSomeSelected = selectedCountInPage > 0 && selectedCountInPage < data.length;
 
   return (
     <Box sx={{ position: "relative" }}>
       <Paper sx={{ width: "100%", mb: 2 }}>
-        <TableContainer>
+        <TableContainer
+          sx={{
+            maxHeight: {
+              xs: "65vh",
+              md: "72vh",
+            },
+          }}
+        >
           <Table
             stickyHeader
             size="small"
@@ -107,6 +124,7 @@ const TableSelectComponent = ({
                 fontSize: "0.6rem",
                 fontWeight: "bold",
                 backgroundColor: "background.paper",
+                zIndex: 2,
               },
               "& .MuiTableCell-paddingCheckbox": {
                 padding: "4px",
@@ -197,6 +215,9 @@ const TableSelectComponent = ({
                         checked={itemSelected}
                         color="primary"
                         size="small"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                        }}
                         onChange={() => handleSelectOne(item)}
                       />
                     </TableCell>
@@ -225,7 +246,7 @@ const TableSelectComponent = ({
             rowsPerPage={pagination.rowsPerPage ?? 50}
             onPageChange={onPageChange}
             onRowsPerPageChange={onRowsPerPageChange}
-            rowsPerPageOptions={pagination.rowsPerPageOptions ?? [25, 50, 100, 200]}
+            rowsPerPageOptions={pagination.rowsPerPageOptions ?? [100, 200]}
             disabled={isLoading}
           />
         )}

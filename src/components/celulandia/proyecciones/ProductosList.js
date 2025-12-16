@@ -2,6 +2,19 @@ import React from "react";
 import { Box, Typography, Grid, Stack, TextField } from "@mui/material";
 
 const ProductosList = ({ productos, cantidades, onCantidadChange }) => {
+  const sanitizeCantidadInput = (value) => {
+    const stringValue = String(value ?? "");
+    if (stringValue === "") return "";
+    return stringValue.replace(/[^\d]/g, "");
+  };
+
+  const normalizeCantidadOnBlur = (value) => {
+    const sanitized = sanitizeCantidadInput(value);
+    const parsed = parseInt(sanitized, 10);
+    if (!Number.isFinite(parsed) || parsed < 1) return "1";
+    return String(parsed);
+  };
+
   if (!productos || productos.length === 0) {
     return (
       <Typography variant="body2" color="text.secondary">
@@ -39,10 +52,21 @@ const ProductosList = ({ productos, cantidades, onCantidadChange }) => {
                 <TextField
                   size="small"
                   label="Cantidad"
-                  type="number"
-                  value={cantidades[producto._id] || 1}
-                  onChange={(e) => onCantidadChange(producto._id, e.target.value)}
-                  inputProps={{ min: 1, step: 1 }}
+                  type="text"
+                  value={cantidades?.[producto._id] ?? "1"}
+                  onChange={(e) => {
+                    const sanitized = sanitizeCantidadInput(e.target.value);
+                    onCantidadChange(producto._id, sanitized);
+                  }}
+                  onBlur={(e) => {
+                    const normalized = normalizeCantidadOnBlur(e.target.value);
+                    onCantidadChange(producto._id, normalized);
+                  }}
+                  inputProps={{
+                    inputMode: "numeric",
+                    pattern: "[0-9]*",
+                    "aria-label": `Cantidad para ${producto.codigo}`,
+                  }}
                   sx={{ width: 80 }}
                 />
               </Stack>

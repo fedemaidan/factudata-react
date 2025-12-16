@@ -6,6 +6,7 @@ import {
   DialogActions,
   Button,
   Box,
+  Grid,
   Typography,
   Stack,
   IconButton,
@@ -18,6 +19,7 @@ import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import dayjs from "dayjs";
+import "dayjs/locale/es";
 import { useMutation } from "@tanstack/react-query";
 import proyeccionService from "src/services/celulandia/proyeccionService";
 import Alerts from "src/components/alerts";
@@ -55,7 +57,7 @@ const DropZone = ({ label, file, onFileChange, accept }) => {
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       sx={{
-        p: 3,
+        p: 2,
         borderStyle: "dashed",
         borderWidth: 2,
         borderColor: isDragging ? "primary.main" : file ? "success.main" : "divider",
@@ -72,14 +74,14 @@ const DropZone = ({ label, file, onFileChange, accept }) => {
         },
       }}
     >
-      <Stack spacing={2} alignItems="center">
+      <Stack spacing={1.5} alignItems="center">
         <Box
           sx={{
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            width: 60,
-            height: 60,
+            width: 52,
+            height: 52,
             borderRadius: "50%",
             backgroundColor: (theme) =>
               file
@@ -90,7 +92,7 @@ const DropZone = ({ label, file, onFileChange, accept }) => {
             transform: isDragging ? "scale(1.1)" : "scale(1)",
           }}
         >
-          <UploadFileIcon sx={{ fontSize: 32 }} />
+          <UploadFileIcon sx={{ fontSize: 28 }} />
         </Box>
 
         <Box sx={{ textAlign: "center" }}>
@@ -158,6 +160,7 @@ const AgregarProyeccionModal = ({ open, onClose, onCreated, onError }) => {
   const [archivoStock, setArchivoStock] = useState(null);
   const [archivoQuiebre, setArchivoQuiebre] = useState(null);
   const [alert, setAlert] = useState({ open: false, message: "", severity: "error" });
+  const [touched, setTouched] = useState({ fechaInicio: false, fechaFin: false });
 
   const resetForm = () => {
     setArchivoVentas(null);
@@ -165,20 +168,44 @@ const AgregarProyeccionModal = ({ open, onClose, onCreated, onError }) => {
     setArchivoQuiebre(null);
     setFechaInicio(null);
     setFechaFin(null);
+    setTouched({ fechaInicio: false, fechaFin: false });
   };
 
   const { mutateAsync, isPending } = useMutation({
     mutationFn: (payload) => proyeccionService.createProyeccion(payload),
   });
 
-  const canSubmit = Boolean(archivoVentas && archivoStock);
+  const canSubmit = Boolean(archivoVentas && archivoStock && fechaInicio && fechaFin);
+
+  const fechaInicioHasError = touched.fechaInicio && !fechaInicio;
+  const fechaFinHasError = touched.fechaFin && !fechaFin;
+
+  const handleFechaInicioChange = useCallback((newValue) => {
+    setFechaInicio(newValue);
+    setTouched((prev) => ({ ...prev, fechaInicio: true }));
+  }, []);
+
+  const handleFechaFinChange = useCallback((newValue) => {
+    setFechaFin(newValue);
+    setTouched((prev) => ({ ...prev, fechaFin: true }));
+  }, []);
 
   const handleSubmit = async () => {
-    if (!canSubmit || isPending) return;
+    if (isPending) return;
+    if (!fechaInicio || !fechaFin) {
+      setTouched({ fechaInicio: true, fechaFin: true });
+      setAlert({
+        open: true,
+        message: "La fecha de inicio y la fecha de fin son obligatorias.",
+        severity: "error",
+      });
+      return;
+    }
+    if (!canSubmit) return;
     try {
       await mutateAsync({
-        ...(fechaInicio && { fechaInicio: dayjs(fechaInicio).toISOString() }),
-        ...(fechaFin && { fechaFin: dayjs(fechaFin).toISOString() }),
+        fechaInicio: dayjs(fechaInicio).toISOString(),
+        fechaFin: dayjs(fechaFin).toISOString(),
         archivoVentas,
         archivoStock,
         archivoQuiebre,
@@ -205,7 +232,7 @@ const AgregarProyeccionModal = ({ open, onClose, onCreated, onError }) => {
   };
 
   return (
-    <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
+    <Dialog open={open} onClose={onClose} fullWidth maxWidth="md">
       <Alerts
         alert={alert}
         onClose={() => setAlert((prev) => ({ ...prev, open: false }))}
@@ -213,41 +240,65 @@ const AgregarProyeccionModal = ({ open, onClose, onCreated, onError }) => {
       <DialogTitle>Agregar proyección</DialogTitle>
       <DialogContent>
         <Stack spacing={2} sx={{ mt: 1 }}>
-          <LocalizationProvider dateAdapter={AdapterDayjs}>
+          <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale="es">
             <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
               <DatePicker
-                label="Fecha inicio (Opcional)"
+                label="Fecha inicio"
                 value={fechaInicio}
-                onChange={setFechaInicio}
+                onChange={handleFechaInicioChange}
                 format="DD/MM/YYYY"
+                slotProps={{
+                  textField: {
+                    required: true,
+                    error: fechaInicioHasError,
+                    helperText: fechaInicioHasError ? "Requerido" : "",
+                    fullWidth: true,
+                  },
+                }}
               />
               <DatePicker
-                label="Fecha fin (Opcional)"
+                label="Fecha fin"
                 value={fechaFin}
-                onChange={setFechaFin}
+                onChange={handleFechaFinChange}
                 format="DD/MM/YYYY"
+                slotProps={{
+                  textField: {
+                    required: true,
+                    error: fechaFinHasError,
+                    helperText: fechaFinHasError ? "Requerido" : "",
+                    fullWidth: true,
+                  },
+                }}
               />
             </Stack>
           </LocalizationProvider>
 
-          <DropZone
-            label="Excel de ventas (.xlsx, .xls)"
-            file={archivoVentas}
-            onFileChange={setArchivoVentas}
-            accept=".xlsx,.xls"
-          />
-          <DropZone
-            label="Excel de stock (.xlsx, .xls)"
-            file={archivoStock}
-            onFileChange={setArchivoStock}
-            accept=".xlsx,.xls"
-          />
-          <DropZone
-            label="Excel de quiebre de stock (opcional)"
-            file={archivoQuiebre}
-            onFileChange={setArchivoQuiebre}
-            accept=".xlsx,.xls"
-          />
+          <Grid container spacing={2}>
+            <Grid item xs={12} md={6}>
+              <DropZone
+                label="Excel de ventas (.xlsx, .xls)"
+                file={archivoVentas}
+                onFileChange={setArchivoVentas}
+                accept=".xlsx,.xls"
+              />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <DropZone
+                label="Excel de stock (.xlsx, .xls)"
+                file={archivoStock}
+                onFileChange={setArchivoStock}
+                accept=".xlsx,.xls"
+              />
+            </Grid>
+            <Grid item xs={12} md={6} sx={{ mx: { md: "auto" } }}>
+              <DropZone
+                label="Excel de quiebre de stock (opcional)"
+                file={archivoQuiebre}
+                onFileChange={setArchivoQuiebre}
+                accept=".xlsx,.xls"
+              />
+            </Grid>
+          </Grid>
         </Stack>
       </DialogContent>
       <DialogActions>

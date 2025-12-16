@@ -84,10 +84,17 @@ const AgregarPedidoModal = ({
   const [alert, setAlert] = useState({ open: false, message: "", severity: "success" });
 
   const actualizarCantidadProducto = (productoId, cantidad) => {
+    const cantidadString = String(cantidad ?? "");
     setCantidadesProductos((prev) => ({
       ...prev,
-      [productoId]: Math.max(1, parseInt(cantidad) || 1),
+      [productoId]: cantidadString,
     }));
+  };
+
+  const normalizarCantidad = (cantidad) => {
+    const parsed = parseInt(String(cantidad ?? ""), 10);
+    if (!Number.isFinite(parsed) || parsed < 1) return 1;
+    return parsed;
   };
 
   const resetForm = () => {
@@ -133,7 +140,7 @@ const AgregarPedidoModal = ({
 
     const productosPayload = productosSeleccionados.map((p) => ({
       productoId: p._id,
-      cantidad: cantidadesProductos[p._id] || 1,
+      cantidad: normalizarCantidad(cantidadesProductos[p._id]),
     }));
 
     const contenedorPayload =
@@ -159,7 +166,8 @@ const AgregarPedidoModal = ({
     crearPedido(payload)
       .then(() => {
         const totalUnidades = productosSeleccionados.reduce(
-          (total, producto) => total + (cantidadesProductos[producto._id] || 1),
+          (total, producto) =>
+            total + normalizarCantidad(cantidadesProductos[producto._id]),
           0
         );
 
