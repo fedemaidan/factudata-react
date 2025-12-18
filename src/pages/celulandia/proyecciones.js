@@ -12,6 +12,10 @@ import {
   Menu,
   MenuItem,
   Link,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
 import { Block as BlockIcon } from "@mui/icons-material";
@@ -35,12 +39,16 @@ import {
   TagsProductoCell,
   StockActualProductoCell,
   DiasHastaAgotarProductoCell,
+  NotasProductoCell,
 } from "src/components/celulandia/proyecciones/cells";
 import { formatDateDDMMYYYY } from "src/utils/handleDates";
+import productoService from "src/services/celulandia/productoService";
 const INITIAL_SORT_OPTIONS = {
   sortField: "createdAt",
   sortDirection: "desc",
 };
+
+const ROWS_PER_PAGE_OPTIONS = [100, 200];
 
 const ProyeccionesV2Page = () => {
   const router = useRouter();
@@ -62,6 +70,16 @@ const ProyeccionesV2Page = () => {
   const [rowsPerPage, setRowsPerPage] = useState(200);
   const [busquedaTexto, setBusquedaTexto] = useState("");
   const debouncedBusqueda = useDebouncedValue(busquedaTexto, 500);
+
+  const [isNotaDialogOpen, setIsNotaDialogOpen] = useState(false);
+  const [notaProducto, setNotaProducto] = useState(null);
+  const [notaDraft, setNotaDraft] = useState("");
+  const [notaError, setNotaError] = useState("");
+  const [isSavingNota, setIsSavingNota] = useState(false);
+  const [notaEditando, setNotaEditando] = useState(null); // { notaId, texto }
+  const [isDeleteNotaDialogOpen, setIsDeleteNotaDialogOpen] = useState(false);
+  const [notaParaEliminar, setNotaParaEliminar] = useState(null); // { producto, notaId, texto }
+  const [isDeletingNota, setIsDeletingNota] = useState(false);
 
   const {
     data: productosResponse,
@@ -90,15 +108,15 @@ const ProyeccionesV2Page = () => {
     });
   }, []);
 
-  const handlePageChange = (_event, newPage) => {
+  const handlePageChange = useCallback((_event, newPage) => {
     setPage(newPage);
-  }
+  }, []);
 
-  const handleRowsPerPageChange = (event) => {
+  const handleRowsPerPageChange = useCallback((event) => {
     const next = parseInt(event.target.value, 10);
     setRowsPerPage(Number.isNaN(next) ? 200 : next);
     setPage(0);
-  }
+  }, []);
 
   useEffect(() => {
     setPage(0);
@@ -109,6 +127,108 @@ const ProyeccionesV2Page = () => {
     size: "small",
     sx: { textTransform: "none", minWidth: 0, px: 1.25, py: 0.5 },
   };
+
+  const handleOpenNotaDialog = useCallback((producto) => {
+    setNotaProducto(producto ?? null);
+    setNotaDraft("");
+    setNotaError("");
+    setNotaEditando(null);
+    setIsNotaDialogOpen(true);
+  }, []);
+
+  const handleOpenEditarNotaDialog = useCallback((producto, nota) => {
+    setNotaProducto(producto ?? null);
+    setNotaDraft(typeof nota?.nota === "string" ? nota.nota : "");
+    setNotaError("");
+    setNotaEditando({ notaId: nota?._id ?? null });
+    setIsNotaDialogOpen(true);
+  }, []);
+
+  const handleCloseNotaDialog = useCallback(() => {
+    if (isSavingNota) return;
+    setIsNotaDialogOpen(false);
+    setNotaProducto(null);
+    setNotaDraft("");
+    setNotaError("");
+    setNotaEditando(null);
+  }, [isSavingNota]);
+
+  const handleSaveNota = useCallback(async () => {
+    try {
+      const productoId = notaProducto?._id ?? notaProducto?.id ?? null;
+      const nota = String(notaDraft ?? "").trim();
+
+      if (!productoId) {
+        setNotaError("No se pudo identificar el producto.");
+        return;
+      }
+      if (!nota) {
+        setNotaError("La anotación no puede estar vacía.");
+        return;
+      }
+
+      setIsSavingNota(true);
+      setNotaError("");
+      if (notaEditando?.notaId) {
+        await productoService.updateNota({ productoId, notaId: notaEditando.notaId, nota });
+      } else {
+        await productoService.addNota({ productoId, nota });
+      }
+      setIsNotaDialogOpen(false);
+      setNotaProducto(null);
+      setNotaDraft("");
+      setNotaEditando(null);
+      await refetchProductos();
+    } catch (e) {
+      const message =
+        typeof e?.response?.data?.error === "string"
+          ? e.response.data.error
+          : typeof e?.message === "string"
+          ? e.message
+          : "No se pudo guardar la anotación.";
+      setNotaError(message);
+    } finally {
+      setIsSavingNota(false);
+    }
+  }, [notaProducto, notaDraft, notaEditando, refetchProductos]);
+
+  const handleOpenDeleteNotaDialog = useCallback((producto, nota) => {
+    setNotaParaEliminar({
+      producto,
+      notaId: nota?._id ?? null,
+      texto: typeof nota?.nota === "string" ? nota.nota : "",
+    });
+    setIsDeleteNotaDialogOpen(true);
+  }, []);
+
+  const handleCloseDeleteNotaDialog = useCallback(() => {
+    if (isDeletingNota) return;
+    setIsDeleteNotaDialogOpen(false);
+    setNotaParaEliminar(null);
+  }, [isDeletingNota]);
+
+  const handleConfirmDeleteNota = useCallback(async () => {
+    try {
+      const productoId = notaParaEliminar?.producto?._id ?? notaParaEliminar?.producto?.id ?? null;
+      const notaId = notaParaEliminar?.notaId ?? null;
+      if (!productoId || !notaId) {
+        setIsDeleteNotaDialogOpen(false);
+        setNotaParaEliminar(null);
+        return;
+      }
+      setIsDeletingNota(true);
+      await productoService.deleteNota({ productoId, notaId });
+      setIsDeleteNotaDialogOpen(false);
+      setNotaParaEliminar(null);
+      await refetchProductos();
+    } catch (_e) {
+      // silencioso: si querés, después le agregamos snackbar
+      setIsDeleteNotaDialogOpen(false);
+      setNotaParaEliminar(null);
+    } finally {
+      setIsDeletingNota(false);
+    }
+  }, [notaParaEliminar, refetchProductos]);
 
   const columns = useMemo(
     () => [
@@ -128,6 +248,20 @@ const ProyeccionesV2Page = () => {
         sortable: false,
         render: (item) => (
           <TagsProductoCell tags={item?.tags} rowId={item?._id ?? item?.codigo} />
+        ),
+      },
+      {
+        key: "anotaciones",
+        label: "Anotaciones",
+        sortable: false,
+        render: (item) => (
+          <NotasProductoCell
+            notas={item?.notas}
+            rowId={item?._id ?? item?.codigo}
+            onAddNota={() => handleOpenNotaDialog(item)}
+            onEditNota={(nota) => handleOpenEditarNotaDialog(item, nota)}
+            onDeleteNota={(nota) => handleOpenDeleteNotaDialog(item, nota)}
+          />
         ),
       },
       {
@@ -175,7 +309,7 @@ const ProyeccionesV2Page = () => {
         render: (item) => formatDateDDMMYYYY(item.fechaCompraSugerida),
       },
     ],
-    [proximoArriboPorCodigo]
+    [proximoArriboPorCodigo, handleOpenNotaDialog, handleOpenEditarNotaDialog, handleOpenDeleteNotaDialog]
   );
 
   const {
@@ -225,15 +359,14 @@ const ProyeccionesV2Page = () => {
     };
   }, [proyeccionIdsEnPagina]);
 
-  const rowsPerPageOptions = [100, 200]
   const tablePagination = useMemo(
     () => ({
       total: productosPagination?.total ?? 0,
       page,
       rowsPerPage,
-      rowsPerPageOptions,
+      rowsPerPageOptions: ROWS_PER_PAGE_OPTIONS,
     }),
-    [productosPagination?.total, page, rowsPerPage, rowsPerPageOptions]
+    [productosPagination?.total, page, rowsPerPage]
   );
 
   const handleSelectionChange = useCallback(
@@ -485,6 +618,69 @@ const ProyeccionesV2Page = () => {
           onPageChange={handlePageChange}
           onRowsPerPageChange={handleRowsPerPageChange}
         />
+
+        <Dialog open={isNotaDialogOpen} onClose={handleCloseNotaDialog} maxWidth="sm" fullWidth>
+          <DialogTitle>{notaEditando?.notaId ? "Editar nota del producto" : "Agregar nota al producto"}</DialogTitle>
+          <DialogContent>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+              {notaProducto?.codigo ? `${notaProducto.codigo} · ` : ""}
+              {notaProducto?.nombre ?? ""}
+            </Typography>
+            <TextField
+              autoFocus
+              fullWidth
+              multiline
+              minRows={3}
+              value={notaDraft}
+              onChange={(event) => setNotaDraft(event.target.value)}
+              placeholder="Escribí una nota…"
+              size="small"
+              disabled={isSavingNota}
+              error={Boolean(notaError)}
+              helperText={notaError || " "}
+            />
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={handleCloseNotaDialog} disabled={isSavingNota}>
+              Cancelar
+            </Button>
+            <Button
+              variant="contained"
+              onClick={handleSaveNota}
+              disabled={isSavingNota || String(notaDraft ?? "").trim().length === 0}
+              startIcon={isSavingNota ? <CircularProgress size={16} color="inherit" /> : null}
+            >
+              {notaEditando?.notaId ? "Guardar cambios" : "Guardar"}
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        <Dialog open={isDeleteNotaDialogOpen} onClose={handleCloseDeleteNotaDialog} maxWidth="xs" fullWidth>
+          <DialogTitle>Borrar nota</DialogTitle>
+          <DialogContent>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+              {notaParaEliminar?.producto?.codigo ? `${notaParaEliminar.producto.codigo} · ` : ""}
+              {notaParaEliminar?.producto?.nombre ?? ""}
+            </Typography>
+            <Typography variant="body2">
+              ¿Seguro que querés borrar esta nota?
+            </Typography>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={handleCloseDeleteNotaDialog} disabled={isDeletingNota}>
+              Cancelar
+            </Button>
+            <Button
+              variant="contained"
+              color="error"
+              onClick={handleConfirmDeleteNota}
+              disabled={isDeletingNota}
+              startIcon={isDeletingNota ? <CircularProgress size={16} color="inherit" /> : null}
+            >
+              Borrar
+            </Button>
+          </DialogActions>
+        </Dialog>
 
         <AgregarProyeccionModal
           open={isAddOpen}

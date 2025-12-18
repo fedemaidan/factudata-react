@@ -77,6 +77,21 @@ const productoService = {
     const response = await axiosCelulandia.post("/productos/tags/asignar", { productoIds, tagNombre });
     return response.data;
   },
+
+  addNota: async ({ productoId, nota }) => {
+    const response = await axiosCelulandia.post(`/productos/${productoId}/notas`, { nota });
+    return response.data;
+  },
+
+  updateNota: async ({ productoId, notaId, nota }) => {
+    const response = await axiosCelulandia.put(`/productos/${productoId}/notas/${notaId}`, { nota });
+    return response.data;
+  },
+
+  deleteNota: async ({ productoId, notaId }) => {
+    const response = await axiosCelulandia.delete(`/productos/${productoId}/notas/${notaId}`);
+    return response.data;
+  },
 };
 
 export default productoService;
