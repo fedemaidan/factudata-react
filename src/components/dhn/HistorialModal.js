@@ -16,35 +16,34 @@ import {
   CircularProgress,
 } from "@mui/material";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import { formatDateTimeToMinutes, formatDateToDDMMYYYY } from "src/utils/handleDates";
 
 const DEFAULT_TITLE = "Historial de cambios";
 
 const safeDate = (value) => {
   if (!value) return null;
-  const d = new Date(value);
+  const d = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(d.getTime())) return null;
   return d;
 };
 
-const defaultFormatDateTime = (value) => {
-  const d = safeDate(value);
-  if (!d) return "-";
-  try {
-    return new Intl.DateTimeFormat("es-AR", {
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-    }).format(d);
-  } catch (_e) {
-    return d.toLocaleString("es-AR");
-  }
-};
+const defaultFormatDateTime = (value) => formatDateTimeToMinutes(value);
+
+const isDateLikeString = (s) =>
+  typeof s === "string" &&
+  (/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(s) || /^\d{4}-\d{2}-\d{2}$/.test(s));
 
 const defaultFormatValue = (value) => {
   if (value === undefined || value === null) return "null";
-  if (typeof value === "string") return value.trim().length ? value : '""';
+  if (value instanceof Date) return formatDateToDDMMYYYY(value);
+
+  if (typeof value === "string") {
+    const s = value.trim();
+    if (!s.length) return '""';
+    // En Antes/Después queremos SOLO la fecha
+    if (isDateLikeString(s)) return formatDateToDDMMYYYY(s);
+    return s;
+  }
   if (typeof value === "number" || typeof value === "boolean") return String(value);
 
   try {

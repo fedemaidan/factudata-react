@@ -2,9 +2,10 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/router';
 import dayjs from 'dayjs';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
-import { Container, Stack, Alert, Box, TextField, InputAdornment, IconButton } from '@mui/material';
+import { Container, Stack, Alert, Box, TextField, InputAdornment, IconButton, Tooltip } from '@mui/material';
 import ClearIcon from '@mui/icons-material/Clear';
 import EditIcon from '@mui/icons-material/Edit';
+import HistoryIcon from '@mui/icons-material/History';
 import TableComponent from 'src/components/TableComponent';
 import { buildTrabajoRegistradoColumns } from 'src/components/dhn/TrabajoRegistradoCells';
 import TrabajoRegistradoService from 'src/services/dhn/TrabajoRegistradoService';
@@ -13,6 +14,8 @@ import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import FiltroTrabajoDiario from 'src/components/dhn/FiltroTrabajoDiario';
+import HistorialModal from 'src/components/dhn/HistorialModal';
+import { formatDateDDMMYYYY } from 'src/utils/handleDates';
 
 const ControlDiarioPage = () => {
   const router = useRouter();
@@ -24,15 +27,28 @@ const ControlDiarioPage = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [editarModalOpen, setEditarModalOpen] = useState(false);
   const [trabajoDiarioSeleccionado, setTrabajoDiarioSeleccionado] = useState(null);
+  const [logsModalOpen, setLogsModalOpen] = useState(false);
+  const [logsTrabajo, setLogsTrabajo] = useState(null);
 
   const estadoFiltro = useMemo(() => {
     return router.query.estado || 'todos';
   }, [router.query.estado]);
 
-  const handleEdit = (trabajoDiario) => {
+  const handleEdit = useCallback((trabajoDiario) => {
     setTrabajoDiarioSeleccionado(trabajoDiario);
     setEditarModalOpen(true);
-  };
+  }, []);
+
+  const handleOpenLogs = useCallback((item) => {
+    if (!item?._id) return;
+    setLogsTrabajo(item);
+    setLogsModalOpen(true);
+  }, []);
+
+  const handleCloseLogs = useCallback(() => {
+    setLogsModalOpen(false);
+    setLogsTrabajo(null);
+  }, []);
 
   const handleSaveEdit = async () => {
     try {
@@ -42,23 +58,45 @@ const ControlDiarioPage = () => {
     }
   };
 
-  const renderEditButton = (item) => (
-    <IconButton 
-      size="small" 
-      onClick={(e) => {
-        e.stopPropagation();
-        handleEdit(item);
-      }}
-      color="primary"
-    >
-      <EditIcon fontSize="small" />
-    </IconButton>
+  const renderAcciones = useCallback(
+    (item) => (
+      <Stack direction="row" spacing={0.5} alignItems="center">
+        <Tooltip title="Editar">
+          <IconButton
+            size="small"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleEdit(item);
+            }}
+            color="primary"
+            aria-label="Editar trabajo diario"
+          >
+            <EditIcon fontSize="small" />
+          </IconButton>
+        </Tooltip>
+
+        <Tooltip title="Ver historial">
+          <IconButton
+            size="small"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleOpenLogs(item);
+            }}
+            color="inherit"
+            aria-label="Ver historial de cambios"
+          >
+            <HistoryIcon fontSize="small" />
+          </IconButton>
+        </Tooltip>
+      </Stack>
+    ),
+    [handleEdit, handleOpenLogs]
   );
 
   const columns = useMemo(() => (
-    buildTrabajoRegistradoColumns(renderEditButton, true)
+    buildTrabajoRegistradoColumns(renderAcciones, true)
       .filter((column) => column.key !== 'totalHoras')
-  ), [renderEditButton]);
+  ), [renderAcciones]);
 
   const fetchData = useCallback(async () => {
     setIsLoading(true);
@@ -201,6 +239,27 @@ const ControlDiarioPage = () => {
         onClose={() => setEditarModalOpen(false)}
         onSave={handleSaveEdit}
         trabajoDiario={trabajoDiarioSeleccionado}
+      />
+
+      <HistorialModal
+        open={logsModalOpen}
+        onClose={handleCloseLogs}
+        entity={logsTrabajo}
+        title="Historial de cambios"
+        entityLabel="Trabajo diario"
+        getEntityTitle={(t) => {
+          const trabajador = t?.trabajadorId || {};
+          const apellido = (trabajador?.apellido || '').toString();
+          const nombre = (trabajador?.nombre || '').toString();
+          const full = `${apellido} ${nombre}`.trim();
+          return full || t?._id || '-';
+        }}
+        getEntitySubtitle={(t) => {
+          const fechaFmt = t?.fecha ? formatDateDDMMYYYY(t.fecha) : '-';
+          const estado = (t?.estado || '-').toString();
+          const dni = t?.trabajadorId?.dni ? ` • DNI: ${t.trabajadorId.dni}` : '';
+          return `Fecha: ${fechaFmt} • Estado: ${estado}${dni}`;
+        }}
       />
     </DashboardLayout>
   );

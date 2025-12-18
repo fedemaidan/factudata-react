@@ -1,9 +1,8 @@
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
-import { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Container,
   Stack,
-  Grid,
   Card,
   CardHeader,
   CardContent,
@@ -14,7 +13,14 @@ import {
   CircularProgress,
   Box,
   Divider,
-  Typography
+  Typography,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Paper
 } from '@mui/material';
 import horariosService from 'src/services/dhn/horariosService';
 
@@ -59,12 +65,25 @@ const HorariosPage = () => {
     const ui = {};
     for (const d of dias) {
       const c = serverCfg?.[d.key] || {};
+      const noct = c?.nocturno && typeof c.nocturno === 'object' ? c.nocturno : {};
+      const fraccionMinutos = typeof c?.fraccion?.minutos === 'number' ? c.fraccion.minutos : 20;
+      const fraccionDecimal = typeof c?.fraccion?.decimal === 'number' ? c.fraccion.decimal : 0.34;
+      const fraccionNoctMinutos = typeof noct?.fraccion?.minutos === 'number' ? noct.fraccion.minutos : fraccionMinutos;
+      const fraccionNoctDecimal = typeof noct?.fraccion?.decimal === 'number' ? noct.fraccion.decimal : fraccionDecimal;
       ui[d.key] = {
         ingreso: normalizeTime(c.ingreso ?? ''),
         salida: normalizeTime(c.salida ?? ''),
         fraccion: {
-          minutos: typeof c?.fraccion?.minutos === 'number' ? c.fraccion.minutos : 20,
-          decimal: typeof c?.fraccion?.decimal === 'number' ? c.fraccion.decimal : 0.34,
+          minutos: fraccionMinutos,
+          decimal: fraccionDecimal,
+        },
+        nocturno: {
+          ingreso: normalizeTime(noct.ingreso ?? ''),
+          salida: normalizeTime(noct.salida ?? ''),
+          fraccion: {
+            minutos: fraccionNoctMinutos,
+            decimal: fraccionNoctDecimal,
+          }
         }
       };
     }
@@ -82,7 +101,25 @@ const HorariosPage = () => {
       const salida = salidaNorm !== '' ? salidaNorm : null;
       const minutos = Number.isFinite(Number(c?.fraccion?.minutos)) ? Number(c.fraccion.minutos) : 20;
       const decimal = decimalCeil2(minutos / 60);
-      out[d.key] = { ingreso, salida, fraccion: { minutos, decimal } };
+
+      const noct = c?.nocturno && typeof c.nocturno === 'object' ? c.nocturno : {};
+      const noctIngresoNorm = normalizeTime(noct.ingreso);
+      const noctSalidaNorm = normalizeTime(noct.salida);
+      const noctIngreso = noctIngresoNorm !== '' ? noctIngresoNorm : null;
+      const noctSalida = noctSalidaNorm !== '' ? noctSalidaNorm : null;
+      const noctMinutos = Number.isFinite(Number(noct?.fraccion?.minutos)) ? Number(noct.fraccion.minutos) : minutos;
+      const noctDecimal = decimalCeil2(noctMinutos / 60);
+
+      out[d.key] = {
+        ingreso,
+        salida,
+        fraccion: { minutos, decimal },
+        nocturno: {
+          ingreso: noctIngreso,
+          salida: noctSalida,
+          fraccion: { minutos: noctMinutos, decimal: noctDecimal }
+        }
+      };
     }
     return out;
   };
@@ -107,42 +144,70 @@ const HorariosPage = () => {
     return () => { active = false; };
   }, []);
 
-  const handleChange = (dia, field, value) => {
-    setConfig(prev => ({
-      ...prev,
-      [dia]: {
-        ...prev[dia],
-        [field]: value
+  const buildTimeErrorKey = (turno, field) => `${turno}.${field}`;
+
+  const handleTimeChange = useCallback((dia, turno, field, value) => {
+    setConfig((prev) => {
+      if (!prev) return prev;
+      if (turno === 'nocturno') {
+        return {
+          ...prev,
+          [dia]: {
+            ...prev[dia],
+            nocturno: {
+              ...(prev[dia]?.nocturno || {}),
+              [field]: value
+            }
+          }
+        };
       }
-    }));
-    if (field === 'ingreso' || field === 'salida') {
-      setErrors(prev => ({
+      return {
         ...prev,
         [dia]: {
-          ...(prev[dia] || {}),
-          [field]: !isValidTime24(value) ? 'Formato inválido. Use HH:mm (24h)' : ''
-        }
-      }));
-    }
-  };
-
-  const handleFraccionChange = (dia, field, value) => {
-    setConfig(prev => ({
-      ...prev,
-      [dia]: {
-        ...prev[dia],
-        fraccion: {
-          ...prev[dia]?.fraccion,
+          ...prev[dia],
           [field]: value
         }
+      };
+    });
+
+    if (field !== 'ingreso' && field !== 'salida') return;
+    setErrors((prev) => ({
+      ...prev,
+      [dia]: {
+        ...(prev[dia] || {}),
+        [buildTimeErrorKey(turno, field)]: !isValidTime24(value) ? 'Formato inválido. Use HH:mm (24h)' : ''
       }
     }));
-  };
+  }, []);
+
+  const handleFraccionChange = useCallback((dia, field, value) => {
+    setConfig((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        [dia]: {
+          ...prev[dia],
+          fraccion: {
+            ...prev[dia]?.fraccion,
+            [field]: value
+          }
+        }
+      };
+    });
+  }, []);
 
   const isDirty = useMemo(() => {
     if (!config || !original) return false;
     return JSON.stringify(config) !== JSON.stringify(original);
   }, [config, original]);
+
+  const hasTimeErrors = useMemo(() => {
+    if (!errors || typeof errors !== 'object') return false;
+    return Object.values(errors).some((dayErrors) => {
+      if (!dayErrors || typeof dayErrors !== 'object') return false;
+      return Object.values(dayErrors).some((msg) => Boolean(msg));
+    });
+  }, [errors]);
 
   const handleReset = () => {
     setConfig(original);
@@ -154,7 +219,13 @@ const HorariosPage = () => {
       // Validación previa - detectar qué días tienen error
       const invalidDays = dias.filter(d => {
         const c = config?.[d.key] || {};
-        return !isValidTime24(c.ingreso) || !isValidTime24(c.salida);
+        const n = c?.nocturno || {};
+        return (
+          !isValidTime24(c.ingreso) ||
+          !isValidTime24(c.salida) ||
+          !isValidTime24(n.ingreso) ||
+          !isValidTime24(n.salida)
+        );
       });
       if (invalidDays.length > 0) {
         const dayLabels = invalidDays.map(d => d.label).join(', ');
@@ -194,63 +265,118 @@ const HorariosPage = () => {
           ) : (
             <>
               {error ? <Alert severity="error" onClose={() => setError('')}>{error}</Alert> : null}
-              <Grid container spacing={2}>
-                {dias.map(({ key, label }) => (
-                  <Grid item xs={12} sm={6} md={4} key={key}>
-                    <Card>
-                      <CardHeader title={label} />
-                      <CardContent>
-                        <Stack spacing={1.5}>
-                          <Stack direction="row" spacing={1.5}>
-                            <TextField
-                              label="Ingreso"
-                              type="text"
-                              value={config?.[key]?.ingreso || ''}
-                              onChange={(e) => handleChange(key, 'ingreso', e.target.value)}
-                              fullWidth
-                              size="small"
-                              placeholder="HH:mm"
-                              inputProps={{ inputMode: 'numeric', pattern: '([01]\\d|2[0-3]):[0-5]\\d' }}
-                              error={Boolean(errors?.[key]?.ingreso)}
-                              helperText={errors?.[key]?.ingreso || 'Dejar vacío si no aplica'}
-                            />
-                            <TextField
-                              label="Salida"
-                              type="text"
-                              value={config?.[key]?.salida || ''}
-                              onChange={(e) => handleChange(key, 'salida', e.target.value)}
-                              fullWidth
-                              size="small"
-                              placeholder="HH:mm"
-                              inputProps={{ inputMode: 'numeric', pattern: '([01]\\d|2[0-3]):[0-5]\\d' }}
-                              error={Boolean(errors?.[key]?.salida)}
-                              helperText={errors?.[key]?.salida || 'Dejar vacío si no aplica'}
-                            />
-                          </Stack>
-                          <Stack direction="row" spacing={1.5} alignItems="flex-end">
-                            <TextField
-                              label="Fracción (minutos)"
-                              type="number"
-                              value={config?.[key]?.fraccion?.minutos ?? 20}
-                              onChange={(e) => handleFraccionChange(key, 'minutos', e.target.value)}
-                              fullWidth
-                              size="small"
-                              InputProps={{ inputProps: { min: 0, step: 1 } }}
-                            />
-                            <Typography variant="caption" color="text.secondary" sx={{ minWidth: 120 }}>
-                              {(() => {
-                                const m = Number(config?.[key]?.fraccion?.minutos ?? 20);
-                                const dec = (Math.ceil((m / 60) * 100) / 100).toFixed(2);
-                                return `Decimal: ${dec}`;
-                              })()}
-                            </Typography>
-                          </Stack>
-                        </Stack>
-                      </CardContent>
-                    </Card>
-                  </Grid>
-                ))}
-              </Grid>
+              <Card>
+                <CardContent>
+                  <TableContainer component={Paper} variant="outlined">
+                    <Table size="small" aria-label="tabla de horarios por día">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell rowSpan={2} sx={{ fontWeight: 600, width: 140 }}>Día</TableCell>
+                          <TableCell align="center" colSpan={2} sx={{ fontWeight: 600 }}>Turno día</TableCell>
+                          <TableCell align="center" colSpan={2} sx={{ fontWeight: 600 }}>Turno noche</TableCell>
+                          <TableCell rowSpan={2} align="right" sx={{ fontWeight: 600, width: 190 }}>
+                            Fracción (min)
+                          </TableCell>
+                        </TableRow>
+                        <TableRow>
+                          <TableCell sx={{ fontWeight: 600 }}>Entrada</TableCell>
+                          <TableCell sx={{ fontWeight: 600 }}>Salida</TableCell>
+                          <TableCell sx={{ fontWeight: 600 }}>Entrada</TableCell>
+                          <TableCell sx={{ fontWeight: 600 }}>Salida</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {dias.map(({ key, label }) => {
+                          const dayCfg = config?.[key] || {};
+                          const noct = dayCfg?.nocturno || {};
+                          const minutes = Number(dayCfg?.fraccion?.minutos ?? 20);
+                          const dec = (Math.ceil((minutes / 60) * 100) / 100).toFixed(2);
+
+                          const dayIngresoError = errors?.[key]?.[buildTimeErrorKey('diurno', 'ingreso')] || '';
+                          const daySalidaError = errors?.[key]?.[buildTimeErrorKey('diurno', 'salida')] || '';
+                          const noctIngresoError = errors?.[key]?.[buildTimeErrorKey('nocturno', 'ingreso')] || '';
+                          const noctSalidaError = errors?.[key]?.[buildTimeErrorKey('nocturno', 'salida')] || '';
+
+                          return (
+                            <TableRow
+                              key={key}
+                              sx={{ '&:last-child td, &:last-child th': { border: 0 } }}
+                            >
+                              <TableCell component="th" scope="row">
+                                <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                                  {label}
+                                </Typography>
+                              </TableCell>
+
+                              <TableCell>
+                                <TextField
+                                  value={dayCfg.ingreso || ''}
+                                  onChange={(e) => handleTimeChange(key, 'diurno', 'ingreso', e.target.value)}
+                                  size="small"
+                                  placeholder="HH:mm"
+                                  inputProps={{ inputMode: 'numeric', pattern: '([01]\\d|2[0-3]):[0-5]\\d' }}
+                                  error={Boolean(dayIngresoError)}
+                                  sx={{ width: 120 }}
+                                />
+                              </TableCell>
+                              <TableCell>
+                                <TextField
+                                  value={dayCfg.salida || ''}
+                                  onChange={(e) => handleTimeChange(key, 'diurno', 'salida', e.target.value)}
+                                  size="small"
+                                  placeholder="HH:mm"
+                                  inputProps={{ inputMode: 'numeric', pattern: '([01]\\d|2[0-3]):[0-5]\\d' }}
+                                  error={Boolean(daySalidaError)}
+                                  sx={{ width: 120 }}
+                                />
+                              </TableCell>
+
+                              <TableCell>
+                                <TextField
+                                  value={noct.ingreso || ''}
+                                  onChange={(e) => handleTimeChange(key, 'nocturno', 'ingreso', e.target.value)}
+                                  size="small"
+                                  placeholder="HH:mm"
+                                  inputProps={{ inputMode: 'numeric', pattern: '([01]\\d|2[0-3]):[0-5]\\d' }}
+                                  error={Boolean(noctIngresoError)}
+                                  sx={{ width: 120 }}
+                                />
+                              </TableCell>
+                              <TableCell>
+                                <TextField
+                                  value={noct.salida || ''}
+                                  onChange={(e) => handleTimeChange(key, 'nocturno', 'salida', e.target.value)}
+                                  size="small"
+                                  placeholder="HH:mm"
+                                  inputProps={{ inputMode: 'numeric', pattern: '([01]\\d|2[0-3]):[0-5]\\d' }}
+                                  error={Boolean(noctSalidaError)}
+                                  sx={{ width: 120 }}
+                                />
+                              </TableCell>
+
+                              <TableCell align="right">
+                                <Stack spacing={0.25} alignItems="flex-end">
+                                  <TextField
+                                    value={dayCfg?.fraccion?.minutos ?? 20}
+                                    onChange={(e) => handleFraccionChange(key, 'minutos', e.target.value)}
+                                    size="small"
+                                    type="number"
+                                    InputProps={{ inputProps: { min: 0, step: 1 } }}
+                                    sx={{ width: 140 }}
+                                  />
+                                  <Typography variant="caption" color="text.secondary">
+                                    Decimal: {dec}
+                                  </Typography>
+                                </Stack>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </CardContent>
+              </Card>
             </>
           )}
         </Stack>

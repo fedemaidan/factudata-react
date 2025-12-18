@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   Dialog,
   DialogTitle,
@@ -14,13 +14,11 @@ import {
   CircularProgress,
 } from "@mui/material";
 import TrabajadorService from "src/services/dhn/TrabajadorService";
+import { getUser } from "src/utils/celulandia/currentUser";
+import useModalAlert from "src/hooks/useModalAlert";
 
 const AgregarTrabajadorModal = ({ open, onClose, onSave }) => {
-  const [alert, setAlert] = useState({
-    open: false,
-    message: "",
-    severity: "error",
-  });
+  const { alert, showAlert, closeAlert } = useModalAlert(open);
 
   const [isLoading, setIsLoading] = useState(false);
 
@@ -32,6 +30,11 @@ const AgregarTrabajadorModal = ({ open, onClose, onSave }) => {
     hasta: "",
   });
 
+  useEffect(() => {
+    // Evitar que quede el loader activo entre aperturas
+    if (!open) setIsLoading(false);
+  }, [open]);
+
   const handleInputChange = (field, value) => {
     setFormData((prev) => ({
       ...prev,
@@ -41,23 +44,15 @@ const AgregarTrabajadorModal = ({ open, onClose, onSave }) => {
 
   const handleSave = async () => {
     if (!formData.nombre || !formData.apellido || !formData.dni) {
-      setAlert({
-        open: true,
-        message: "Por favor complete todos los campos requeridos",
-        severity: "error",
-      });
+      showAlert({ message: "Por favor complete todos los campos requeridos", severity: "error" });
       return;
     }
 
     setIsLoading(true);
     try {
-      await TrabajadorService.create(formData);
+      await TrabajadorService.create({ ...formData, user: getUser() });
       
-      setAlert({
-        open: true,
-        message: "Trabajador creado correctamente",
-        severity: "success",
-      });
+      showAlert({ message: "Trabajador creado correctamente", severity: "success" });
 
       setTimeout(() => {
         if (onSave) {
@@ -67,8 +62,7 @@ const AgregarTrabajadorModal = ({ open, onClose, onSave }) => {
       }, 500);
     } catch (error) {
       console.error('Error al crear trabajador:', error);
-      setAlert({
-        open: true,
+      showAlert({
         message: error.response?.data?.error || "Error al crear el trabajador",
         severity: "error",
       });
@@ -77,14 +71,8 @@ const AgregarTrabajadorModal = ({ open, onClose, onSave }) => {
     }
   };
 
-  const handleCloseAlert = (event, reason) => {
-    if (reason === "clickaway") {
-      return;
-    }
-    setAlert({ ...alert, open: false });
-  };
-
-  const handleClose = () => {
+  const handleClose = useCallback(() => {
+    setIsLoading(false);
     setFormData({
       nombre: "",
       apellido: "",
@@ -92,13 +80,13 @@ const AgregarTrabajadorModal = ({ open, onClose, onSave }) => {
       desde: new Date().toISOString().split("T")[0],
       hasta: "",
     });
-    onClose();
-  };
+    if (typeof onClose === "function") onClose();
+  }, [onClose]);
 
   return (
     <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth>
-      <Snackbar anchorOrigin={{ vertical: "top", horizontal: "center" }} open={alert.open} autoHideDuration={6000} onClose={handleCloseAlert}>
-        <Alert onClose={handleCloseAlert} severity={alert.severity} sx={{ width: "100%" }}>
+      <Snackbar anchorOrigin={{ vertical: "top", horizontal: "center" }} open={alert.open} autoHideDuration={6000} onClose={closeAlert}>
+        <Alert onClose={closeAlert} severity={alert.severity} sx={{ width: "100%" }}>
           {alert.message}
         </Alert>
       </Snackbar>

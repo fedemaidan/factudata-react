@@ -74,3 +74,75 @@ export const normalizeLicenciaFechasDetectadasString = (value) => {
   }
   return null;
 };
+
+// Formatea fechas a "DD/MM/YYYY HH:mm" (sin segundos).
+// - Acepta Date, ISO string, timestamp o "YYYY-MM-DD".
+// - Para "YYYY-MM-DD" usa 12:00 UTC para evitar corrimientos por zona horaria.
+export const formatDateTimeToMinutes = (value) => {
+  if (!value) return "-";
+
+  let d = null;
+
+  if (value instanceof Date) {
+    d = value;
+  } else if (typeof value === "number") {
+    d = new Date(value);
+  } else if (typeof value === "string") {
+    const s = value.trim();
+    if (!s) return "-";
+
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+      d = new Date(`${s}T12:00:00.000Z`);
+    } else {
+      d = new Date(s);
+    }
+  } else {
+    try {
+      d = new Date(value);
+    } catch (_e) {
+      d = null;
+    }
+  }
+
+  if (!d || Number.isNaN(d.getTime())) return "-";
+
+  const parsed = dayjs(d);
+  if (!parsed.isValid()) return "-";
+  return parsed.format("DD/MM/YYYY HH:mm");
+};
+
+// Formatea fechas a "DD/MM/YYYY" (sin hora).
+// - Acepta Date, ISO string, timestamp o "YYYY-MM-DD".
+// - Para "YYYY-MM-DD" usa 12:00 UTC para evitar corrimientos por zona horaria.
+export const formatDateToDDMMYYYY = (value) => {
+  if (!value) return "-";
+
+  let d = null;
+
+  if (value instanceof Date) {
+    d = value;
+  } else if (typeof value === "number") {
+    d = new Date(value);
+  } else if (typeof value === "string") {
+    const s = value.trim();
+    if (!s) return "-";
+
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+      d = new Date(`${s}T12:00:00.000Z`);
+    } else {
+      d = new Date(s);
+    }
+  } else {
+    try {
+      d = new Date(value);
+    } catch (_e) {
+      d = null;
+    }
+  }
+
+  if (!d || Number.isNaN(d.getTime())) return "-";
+
+  const parsed = dayjs(d);
+  if (!parsed.isValid()) return "-";
+  return parsed.format("DD/MM/YYYY");
+};
