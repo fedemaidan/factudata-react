@@ -1,4 +1,4 @@
-import api from './axiosChatBot';
+import api from './axiosConfig';
 const artificialDelay = (ms = 300) => new Promise((res) => setTimeout(res, ms));
 
 function getTextFromMessage(message) {
