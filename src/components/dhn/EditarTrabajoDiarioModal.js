@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   Dialog,
   DialogTitle,
@@ -16,13 +16,10 @@ import {
   CircularProgress,
 } from "@mui/material";
 import TrabajoRegistradoService from "src/services/dhn/TrabajoRegistradoService";
+import useModalAlert from "src/hooks/useModalAlert";
 
 const EditarTrabajoDiarioModal = ({ open, onClose, onSave, trabajoDiario }) => {
-  const [alert, setAlert] = useState({
-    open: false,
-    message: "",
-    severity: "error",
-  });
+  const { alert, showAlert, closeAlert } = useModalAlert(open);
 
   const [isLoading, setIsLoading] = useState(false);
 
@@ -54,6 +51,11 @@ const EditarTrabajoDiarioModal = ({ open, onClose, onSave, trabajoDiario }) => {
     }
   }, [trabajoDiario]);
 
+  useEffect(() => {
+    // Evitar que quede el loader activo entre aperturas
+    if (!open) setIsLoading(false);
+  }, [open]);
+
   const handleInputChange = (field, value) => {
     setFormData((prev) => ({
       ...prev,
@@ -63,18 +65,23 @@ const EditarTrabajoDiarioModal = ({ open, onClose, onSave, trabajoDiario }) => {
 
   const handleSave = async () => {
     if (!formData.fecha) {
-      setAlert({
-        open: true,
-        message: "Por favor complete la fecha",
-        severity: "error",
-      });
+      showAlert({ message: "Por favor complete la fecha", severity: "error" });
       return;
     }
 
     setIsLoading(true);
     try {
+      const originalFechaDay = trabajoDiario?.fecha
+        ? new Date(trabajoDiario.fecha).toISOString().split("T")[0]
+        : "";
+
+      const shouldUpdateFecha = Boolean(formData.fecha && formData.fecha !== originalFechaDay);
+
+      const buildNoonISO = (yyyyMmDd) => `${yyyyMmDd}T12:00:00.000Z`;
+
       const payload = {
         ...formData,
+        ...(shouldUpdateFecha ? { fecha: buildNoonISO(formData.fecha) } : {}),
         horasTrabajadasExcel: {
           ...trabajoDiario.horasTrabajadasExcel,
           total: formData.horasTrabajadas ? parseFloat(formData.horasTrabajadas) : null
@@ -82,25 +89,21 @@ const EditarTrabajoDiarioModal = ({ open, onClose, onSave, trabajoDiario }) => {
       };
       
       delete payload.horasTrabajadas;
+      if (!shouldUpdateFecha) delete payload.fecha;
       
       await TrabajoRegistradoService.update(trabajoDiario._id, payload);
       
-      setAlert({
-        open: true,
-        message: "Trabajo diario actualizado correctamente",
-        severity: "success",
-      });
+      showAlert({ message: "Trabajo diario actualizado correctamente", severity: "success" });
 
       setTimeout(() => {
         if (onSave) {
           onSave(formData);
         }
-        onClose();
+        if (typeof onClose === "function") onClose();
       }, 500);
     } catch (error) {
       console.error('Error al actualizar trabajo diario:', error);
-      setAlert({
-        open: true,
+      showAlert({
         message: error.response?.data?.error || "Error al actualizar el trabajo diario",
         severity: "error",
       });
@@ -109,17 +112,14 @@ const EditarTrabajoDiarioModal = ({ open, onClose, onSave, trabajoDiario }) => {
     }
   };
 
-  const handleCloseAlert = (event, reason) => {
-    if (reason === "clickaway") {
-      return;
-    }
-    setAlert({ ...alert, open: false });
-  };
+  const handleCloseModal = useCallback(() => {
+    if (typeof onClose === "function") onClose();
+  }, [onClose]);
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
-      <Snackbar anchorOrigin={{ vertical: "top", horizontal: "center" }} open={alert.open} autoHideDuration={6000} onClose={handleCloseAlert}>
-        <Alert onClose={handleCloseAlert} severity={alert.severity} sx={{ width: "100%" }}>
+    <Dialog open={open} onClose={handleCloseModal} maxWidth="md" fullWidth>
+      <Snackbar anchorOrigin={{ vertical: "top", horizontal: "center" }} open={alert.open} autoHideDuration={6000} onClose={closeAlert}>
+        <Alert onClose={closeAlert} severity={alert.severity} sx={{ width: "100%" }}>
           {alert.message}
         </Alert>
       </Snackbar>
@@ -143,18 +143,6 @@ const EditarTrabajoDiarioModal = ({ open, onClose, onSave, trabajoDiario }) => {
                 margin="normal"
                 InputLabelProps={{ shrink: true }}
                 required
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Horas Trabajadas"
-                type="number"
-                value={formData.horasTrabajadas}
-                onChange={(e) => handleInputChange("horasTrabajadas", e.target.value)}
-                margin="normal"
-                inputProps={{ min: 0, step: 0.25 }}
-                helperText="Total de horas trabajadas del día"
               />
             </Grid>
             <Grid item xs={12} sm={6}>
@@ -241,7 +229,7 @@ const EditarTrabajoDiarioModal = ({ open, onClose, onSave, trabajoDiario }) => {
         </Box>
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose} color="inherit" disabled={isLoading}>
+        <Button onClick={handleCloseModal} color="inherit" disabled={isLoading}>
           Cancelar
         </Button>
         <Button 

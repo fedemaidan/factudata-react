@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { useRouter } from "next/router";
-import { Container, Box, IconButton, Snackbar, Alert, Button, Stack, TextField, Chip } from "@mui/material";
+import { Container, Box, IconButton, Snackbar, Alert, Button, Stack, TextField, Chip, Tooltip, CircularProgress } from "@mui/material";
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
+import ReplayIcon from "@mui/icons-material/Replay";
 import { Layout as DashboardLayout } from "src/layouts/dashboard/layout";
 import TableComponent from "src/components/TableComponent";
 import DhnDriveService from "src/services/dhn/cargarUrlDriveService";
@@ -90,6 +91,8 @@ const SyncDetailPage = () => {
   const [editingValue, setEditingValue] = useState("");
   const [savingId, setSavingId] = useState(null);
 
+  const [resyncingId, setResyncingId] = useState(null);
+
   const [resolverModalOpen, setResolverModalOpen] = useState(false);
   const [trabajadorSeleccionado, setTrabajadorSeleccionado] = useState(null);
   const [urlStorageSeleccionado, setUrlStorageSeleccionado] = useState(null);
@@ -102,6 +105,24 @@ const SyncDetailPage = () => {
   const canEditFecha = isParte || isLicencia;
 
   const handleVolver = useCallback(() => router.back(), [router]);
+
+  const fetchDetails = useCallback(async () => {
+    if (!syncId) return;
+    setIsLoading(true);
+    try {
+      const data = await DhnDriveService.getSyncChildren(String(syncId));
+      setItems(Array.isArray(data) ? data : []);
+    } catch (e) {
+      setItems([]);
+      setAlert({ open: true, message: "Error cargando detalles", severity: "error" });
+    } finally {
+      setIsLoading(false);
+    }
+  }, [syncId]);
+
+  const handleActualizar = useCallback(async () => {
+    await fetchDetails();
+  }, [fetchDetails]);
 
   const openImageModal = (url) => {
     if (!url) return;
@@ -133,23 +154,69 @@ const SyncDetailPage = () => {
     }
   }, [syncId]);
 
+  const handleResyncUrlStorage = useCallback(
+    async (row) => {
+      const urlStorageId = row?._id;
+      if (!urlStorageId) return;
+      if (!syncId) return;
+      if (resyncingId) return;
+
+      const payload = {};
+      if (tipo && ["parte", "licencia", "horas"].includes(tipo)) {
+        payload.tipo = tipo;
+      }
+
+      try {
+        setResyncingId(urlStorageId);
+
+        // Optimista: mostrar que arrancó el reprocesamiento.
+        setItems((prev) =>
+          prev.map((it) =>
+            it?._id === urlStorageId ? { ...it, status: "processing" } : it
+          )
+        );
+
+        const resp = await DhnDriveService.resyncUrlStorageById(String(urlStorageId), payload);
+        if (!resp?.ok) {
+          throw new Error(resp?.error?.message || "No se pudo iniciar la resincronización");
+        }
+
+        setAlert({
+          open: true,
+          severity: "success",
+          message: "Resincronización iniciada.",
+        });
+
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        const data = await DhnDriveService.getSyncChildren(String(syncId));
+        setItems(Array.isArray(data) ? data : []);
+      } catch (error) {
+        console.error("Error resincronizando urlStorage:", error);
+        setAlert({
+          open: true,
+          severity: "error",
+          message: error?.message || "Error al resincronizar",
+        });
+        // Si algo falla, recargar para dejar el estado real.
+        try {
+          const data = await DhnDriveService.getSyncChildren(String(syncId));
+          setItems(Array.isArray(data) ? data : []);
+        } catch (e) {
+          // noop
+        }
+      } finally {
+        setResyncingId(null);
+      }
+    },
+    [resyncingId, syncId, tipo]
+  );
+
   useEffect(() => {
     const run = async () => {
-      if (!syncId) return;
-      setIsLoading(true);
-      try {
-        const data = await DhnDriveService.getSyncChildren(String(syncId));
-        console.log('data', data);
-        setItems(Array.isArray(data) ? data : []);
-      } catch (e) {
-        setItems([]);
-        setAlert({ open: true, message: "Error cargando detalles", severity: "error" });
-      } finally {
-        setIsLoading(false);
-      }
+      await fetchDetails();
     };
     run();
-  }, [syncId]);
+  }, [fetchDetails]);
 
   const columns = useMemo(() => {
     const cols = [
@@ -159,6 +226,51 @@ const SyncDetailPage = () => {
         render: (it) => statusChip(it?.status),
       },
     ];
+
+    cols.push({
+      key: "acciones",
+      label: "Acciones",
+      render: (it) => {
+        const isError = it?.status === "error";
+        const shouldShowButton = Boolean(isParte) || isError;
+        if (!shouldShowButton) return "-";
+
+        const isResyncing = resyncingId === it?._id;
+        const buttonColor = isError ? "error" : "primary";
+        const buttonLabel = isError ? "Reintentar" : "Resincronizar";
+        return (
+          <Tooltip
+            title={isError ? "Reintentar procesamiento" : "Resincronizar / reprocesar"}
+            placement="top"
+          >
+            <Box component="span" sx={{ display: "inline-flex" }}>
+              <Button
+                size="small"
+                variant="outlined"
+                color={buttonColor}
+                startIcon={<ReplayIcon fontSize="small" />}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleResyncUrlStorage(it);
+                }}
+                disabled={Boolean(resyncingId) || isResyncing}
+                sx={{ minWidth: 120 }}
+              >
+                {isResyncing ? (
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                    Reintentando
+                    <CircularProgress size={14} />
+                  </Box>
+                ) : (
+                  buttonLabel
+                )}
+              </Button>
+            </Box>
+          </Tooltip>
+        );
+      },
+    });
+
     if (shouldShowFecha) {
       cols.push({
         key: "fechasDetectadas",
@@ -378,8 +490,7 @@ const SyncDetailPage = () => {
       }
     );
     return cols;
-  }, [shouldShowFecha, canEditFecha, editingId, editingValue, savingId, isParte, isLicencia, isHoras, handleResolverTrabajador]);
-
+  }, [shouldShowFecha, canEditFecha, editingId, editingValue, savingId, isParte, isLicencia, isHoras, handleResolverTrabajador, handleResyncUrlStorage, resyncingId]);
   return (
     <DashboardLayout title="Detalle de sincronización">
       <Container maxWidth="xl">
@@ -395,20 +506,29 @@ const SyncDetailPage = () => {
         </Snackbar>
 
         <Stack>
-          <Button
-            variant="text"
-            startIcon={<ArrowBackIcon />}
-            onClick={handleVolver}
-            sx={{
-              alignSelf: "flex-start",
-              color: "text.secondary",
-              "&:hover": { backgroundColor: "action.hover", color: "primary.main" },
-              transition: "all 0.2s ease-in-out",
-              fontWeight: 500,
-            }}
-          >
-            Volver
-          </Button>
+          <Box sx={{ display: "flex", gap: 2, alignItems: "center" }}>
+            <Button
+              variant="text"
+              startIcon={<ArrowBackIcon />}
+              onClick={handleVolver}
+              sx={{
+                alignSelf: "flex-start",
+                color: "text.secondary",
+                "&:hover": { backgroundColor: "action.hover", color: "primary.main" },
+                transition: "all 0.2s ease-in-out",
+                fontWeight: 500,
+              }}
+            >
+              Volver
+            </Button>
+            <Button
+              variant="outlined"
+              onClick={handleActualizar}
+              disabled={isLoading}
+            >
+              {isLoading ? "Actualizando..." : "Actualizar"}
+            </Button>
+          </Box>
 
           <Box>
             <Box
@@ -486,7 +606,14 @@ const SyncDetailPage = () => {
                   },
                 }}
               >
-                <TableComponent data={items} columns={columns} isLoading={isLoading} />
+                <TableComponent
+                  data={items}
+                  columns={columns}
+                  isLoading={isLoading}
+                  onRowClick={(row) => {
+                    console.log("[DHN Sync] row click:", row);
+                  }}
+                />
               </Box>
             </Box>
           </Box>
