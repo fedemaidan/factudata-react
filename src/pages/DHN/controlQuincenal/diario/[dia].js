@@ -9,6 +9,7 @@ import TableComponent from 'src/components/TableComponent';
 import HistorialModal from 'src/components/dhn/HistorialModal';
 import useTrabajoDiarioPage from 'src/hooks/dhn/useTrabajoDiarioPage';
 import ClearIcon from '@mui/icons-material/Clear';
+import EditarTrabajoDiarioModal from 'src/components/dhn/EditarTrabajoDiarioModal';
 
 const ControlDiaPage = () => {
   const router = useRouter();
@@ -19,7 +20,6 @@ const ControlDiaPage = () => {
   const diaLabel = diaFormatoParam ? formatDateDDMMYYYY(diaISO || diaFormatoParam) : '-';
 
   const {
-    error,
     isError,
     isLoading,
     data,
@@ -28,11 +28,11 @@ const ControlDiaPage = () => {
     table,
     logs,
     filters,
+    edit,
   } = useTrabajoDiarioPage({
     enabled: router.isReady,
-    diaISO: diaISO ? `${diaISO}T12:00:00` : null,
+    diaISO,
     incluirTrabajador: true,
-    enableEdit: false,
     defaultLimit: 200,
   });
 
@@ -46,6 +46,10 @@ const ControlDiaPage = () => {
   }, [isError]);
 
   const handleVolver = useCallback(() => router.back(), [router]);
+
+  const handleRowClick = useCallback((item) => {
+    console.log('[controlQuincenal/diario] row click _id:', item?._id, item);
+  }, []);
 
   return (
     <DashboardLayout title={`Control Diario - ${diaLabel}`}>
@@ -97,6 +101,7 @@ const ControlDiaPage = () => {
             pagination={table.pagination}
             onPageChange={table.onPageChange}
             onRowsPerPageChange={table.onRowsPerPageChange}
+            onRowClick={handleRowClick}
           />
           </Stack>
         </Stack>
@@ -110,6 +115,13 @@ const ControlDiaPage = () => {
         entityLabel="Trabajo diario"
         getEntityTitle={logs.getEntityTitle}
         getEntitySubtitle={logs.getEntitySubtitle}
+      />
+
+      <EditarTrabajoDiarioModal
+        open={edit.open}
+        onClose={edit.onClose}
+        onSave={edit.onSave}
+        trabajoDiario={edit.entity}
       />
     </DashboardLayout>
   );

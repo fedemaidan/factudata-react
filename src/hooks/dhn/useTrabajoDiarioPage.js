@@ -31,7 +31,6 @@ export default function useTrabajoDiarioPage(options = {}) {
     enabled = true,
     diaISO,
     incluirTrabajador = true,
-    enableEdit = false,
     defaultLimit = 200,
   } = options || {};
 
@@ -70,7 +69,6 @@ export default function useTrabajoDiarioPage(options = {}) {
   };
 
   const handleEdit = (item) => {
-    if (!enableEdit) return;
     if (!item?._id) return;
     setTrabajoDiarioSeleccionado(item);
     setEditarModalOpen(true);
@@ -127,13 +125,13 @@ export default function useTrabajoDiarioPage(options = {}) {
         (item) => (
           <AccionesTrabajoDiario
             item={item}
-            onEdit={enableEdit ? handleEdit : undefined}
+            onEdit={handleEdit}
             onOpenLogs={handleOpenLogs}
           />
         ),
         incluirTrabajador
       ),
-    [enableEdit, incluirTrabajador]
+    [incluirTrabajador]
   );
 
   const pagination = {
@@ -205,7 +203,6 @@ export default function useTrabajoDiarioPage(options = {}) {
       getEntitySubtitle,
     },
     edit: {
-      enabled: enableEdit,
       open: editarModalOpen,
       entity: trabajoDiarioSeleccionado,
       onOpen: handleEdit,

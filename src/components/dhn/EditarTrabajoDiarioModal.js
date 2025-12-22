@@ -71,8 +71,17 @@ const EditarTrabajoDiarioModal = ({ open, onClose, onSave, trabajoDiario }) => {
 
     setIsLoading(true);
     try {
+      const originalFechaDay = trabajoDiario?.fecha
+        ? new Date(trabajoDiario.fecha).toISOString().split("T")[0]
+        : "";
+
+      const shouldUpdateFecha = Boolean(formData.fecha && formData.fecha !== originalFechaDay);
+
+      const buildNoonISO = (yyyyMmDd) => `${yyyyMmDd}T12:00:00.000Z`;
+
       const payload = {
         ...formData,
+        ...(shouldUpdateFecha ? { fecha: buildNoonISO(formData.fecha) } : {}),
         horasTrabajadasExcel: {
           ...trabajoDiario.horasTrabajadasExcel,
           total: formData.horasTrabajadas ? parseFloat(formData.horasTrabajadas) : null
@@ -80,6 +89,7 @@ const EditarTrabajoDiarioModal = ({ open, onClose, onSave, trabajoDiario }) => {
       };
       
       delete payload.horasTrabajadas;
+      if (!shouldUpdateFecha) delete payload.fecha;
       
       await TrabajoRegistradoService.update(trabajoDiario._id, payload);
       
@@ -133,18 +143,6 @@ const EditarTrabajoDiarioModal = ({ open, onClose, onSave, trabajoDiario }) => {
                 margin="normal"
                 InputLabelProps={{ shrink: true }}
                 required
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Horas Trabajadas"
-                type="number"
-                value={formData.horasTrabajadas}
-                onChange={(e) => handleInputChange("horasTrabajadas", e.target.value)}
-                margin="normal"
-                inputProps={{ min: 0, step: 0.25 }}
-                helperText="Total de horas trabajadas del día"
               />
             </Grid>
             <Grid item xs={12} sm={6}>

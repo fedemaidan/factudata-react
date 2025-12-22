@@ -106,6 +106,24 @@ const SyncDetailPage = () => {
 
   const handleVolver = useCallback(() => router.back(), [router]);
 
+  const fetchDetails = useCallback(async () => {
+    if (!syncId) return;
+    setIsLoading(true);
+    try {
+      const data = await DhnDriveService.getSyncChildren(String(syncId));
+      setItems(Array.isArray(data) ? data : []);
+    } catch (e) {
+      setItems([]);
+      setAlert({ open: true, message: "Error cargando detalles", severity: "error" });
+    } finally {
+      setIsLoading(false);
+    }
+  }, [syncId]);
+
+  const handleActualizar = useCallback(async () => {
+    await fetchDetails();
+  }, [fetchDetails]);
+
   const openImageModal = (url) => {
     if (!url) return;
     setImageUrl(url);
@@ -195,21 +213,10 @@ const SyncDetailPage = () => {
 
   useEffect(() => {
     const run = async () => {
-      if (!syncId) return;
-      setIsLoading(true);
-      try {
-        const data = await DhnDriveService.getSyncChildren(String(syncId));
-        console.log('data', data);
-        setItems(Array.isArray(data) ? data : []);
-      } catch (e) {
-        setItems([]);
-        setAlert({ open: true, message: "Error cargando detalles", severity: "error" });
-      } finally {
-        setIsLoading(false);
-      }
+      await fetchDetails();
     };
     run();
-  }, [syncId]);
+  }, [fetchDetails]);
 
   const columns = useMemo(() => {
     const cols = [
@@ -493,20 +500,29 @@ const SyncDetailPage = () => {
         </Snackbar>
 
         <Stack>
-          <Button
-            variant="text"
-            startIcon={<ArrowBackIcon />}
-            onClick={handleVolver}
-            sx={{
-              alignSelf: "flex-start",
-              color: "text.secondary",
-              "&:hover": { backgroundColor: "action.hover", color: "primary.main" },
-              transition: "all 0.2s ease-in-out",
-              fontWeight: 500,
-            }}
-          >
-            Volver
-          </Button>
+          <Box sx={{ display: "flex", gap: 2, alignItems: "center" }}>
+            <Button
+              variant="text"
+              startIcon={<ArrowBackIcon />}
+              onClick={handleVolver}
+              sx={{
+                alignSelf: "flex-start",
+                color: "text.secondary",
+                "&:hover": { backgroundColor: "action.hover", color: "primary.main" },
+                transition: "all 0.2s ease-in-out",
+                fontWeight: 500,
+              }}
+            >
+              Volver
+            </Button>
+            <Button
+              variant="outlined"
+              onClick={handleActualizar}
+              disabled={isLoading}
+            >
+              {isLoading ? "Actualizando..." : "Actualizar"}
+            </Button>
+          </Box>
 
           <Box>
             <Box

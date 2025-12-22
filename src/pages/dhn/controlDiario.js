@@ -12,6 +12,7 @@ import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import FiltroTrabajoDiario from 'src/components/dhn/FiltroTrabajoDiario';
 import HistorialModal from 'src/components/dhn/HistorialModal';
 import useTrabajoDiarioPage from 'src/hooks/dhn/useTrabajoDiarioPage';
+import { parseDDMMYYYYAnyToISO } from 'src/utils/handleDates';
 
 const ControlDiarioPage = () => {
   const router = useRouter();
@@ -22,25 +23,24 @@ const ControlDiarioPage = () => {
 
   const diaISO = useMemo(() => {
     if (diaParam) {
-      const d = dayjs(diaParam);
-      if (d.isValid()) return d.format('YYYY-MM-DD');
+      const iso = parseDDMMYYYYAnyToISO(diaParam);
+      if (iso) return iso;
     }
-    return dayjs().format('YYYY-MM-DD');
+    return parseDDMMYYYYAnyToISO(dayjs().format('DD-MM-YYYY'));
   }, [diaParam]);
 
   useEffect(() => {
     if (!router.isReady) return;
     if (diaParam) return;
     router.replace(
-      { pathname: router.pathname, query: { ...router.query, dia: diaISO } },
+      { pathname: router.pathname, query: { ...router.query, dia: dayjs().format('DD-MM-YYYY') } },
       undefined,
       { shallow: true }
     );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [router.isReady]);
+  }, [router.isReady, diaParam, router]);
 
   const handleChangeDia = useCallback((nv) => {
-    const nextDia = (nv || dayjs()).format('YYYY-MM-DD');
+    const nextDia = (nv || dayjs()).format('DD-MM-YYYY');
     const nextQuery = { ...router.query, dia: nextDia };
     delete nextQuery.page;
     router.replace({ pathname: router.pathname, query: nextQuery }, undefined, { shallow: true });
@@ -59,9 +59,8 @@ const ControlDiarioPage = () => {
     edit,
   } = useTrabajoDiarioPage({
     enabled: router.isReady,
-    diaISO: `${diaISO}T12:00:00`,
+    diaISO,
     incluirTrabajador: true,
-    enableEdit: true,
     defaultLimit: 200,
   });
 
@@ -72,6 +71,10 @@ const ControlDiarioPage = () => {
       return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
     }
   }), []);
+
+  const handleRowClick = useCallback((item) => {
+    console.log('[controlDiario] row click _id:', item?._id, item);
+  }, []);
 
   return (
     <DashboardLayout title="Control Diario">
@@ -129,6 +132,7 @@ const ControlDiarioPage = () => {
             pagination={table.pagination}
             onPageChange={table.onPageChange}
             onRowsPerPageChange={table.onRowsPerPageChange}
+            onRowClick={handleRowClick}
           />
         </Stack>
       </Container>

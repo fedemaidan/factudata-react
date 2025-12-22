@@ -55,6 +55,15 @@ const defaultFormatValue = (value) => {
   }
 };
 
+const isNullish = (v) => v === null || v === undefined;
+const isEmptyString = (v) => typeof v === "string" && v.trim() === "";
+
+const isNoisyChange = (c) => {
+  if (!c) return true;
+  if (isNullish(c.before) && isEmptyString(c.after)) return true;
+  return false;
+};
+
 function HistorialModal({
   open,
   onClose,
@@ -175,13 +184,48 @@ function HistorialModal({
             orderedLogs.length ? (
               <Stack spacing={1}>
                 {orderedLogs.map((entry, idx) => {
-                  const changes = Array.isArray(entry?.changes) ? entry.changes : [];
+                  const rawChanges = Array.isArray(entry?.changes) ? entry.changes : [];
+                  const changes =
+                    entry?.action === "create"
+                      ? []
+                      : rawChanges.filter((c) => !isNoisyChange(c));
                   const actionLabel =
                     entry?.action === "create"
                       ? "Creación"
                       : entry?.action === "update"
                       ? "Actualización"
                       : "Cambio";
+
+                  // En creación no mostramos el detalle de cambios (normalmente son null->null).
+                  if (entry?.action === "create") {
+                    return (
+                      <Box
+                        key={`${entry?.at || "log"}-${idx}`}
+                        sx={{
+                          border: "1px solid",
+                          borderColor: "divider",
+                          borderRadius: 1.5,
+                          p: 1.25,
+                          bgcolor: "background.paper",
+                        }}
+                      >
+                        <Stack direction="row" spacing={1.5} alignItems="center" sx={{ width: "100%" }}>
+                          <Chip
+                            size="small"
+                            label={actionLabel}
+                            color="success"
+                            variant="outlined"
+                          />
+                          <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                            {resolvedFormatDateTime(entry?.at)}
+                          </Typography>
+                          <Typography variant="body2" color="text.secondary" noWrap>
+                            {entry?.user || "-"}
+                          </Typography>
+                        </Stack>
+                      </Box>
+                    );
+                  }
 
                   return (
                     <Accordion key={`${entry?.at || "log"}-${idx}`} disableGutters>
@@ -205,9 +249,11 @@ function HistorialModal({
                             {entry?.user || "-"}
                           </Typography>
                           <Box sx={{ flex: 1 }} />
-                          <Typography variant="caption" color="text.secondary">
-                            {changes.length} cambio{changes.length === 1 ? "" : "s"}
-                          </Typography>
+                          {changes.length ? (
+                            <Typography variant="caption" color="text.secondary">
+                              {changes.length} cambio{changes.length === 1 ? "" : "s"}
+                            </Typography>
+                          ) : null}
                         </Stack>
                       </AccordionSummary>
 
@@ -252,7 +298,7 @@ function HistorialModal({
                           </Stack>
                         ) : (
                           <Typography color="text.secondary">
-                            No hay detalle de cambios.
+                            No hay cambios relevantes para mostrar.
                           </Typography>
                         )}
                       </AccordionDetails>
