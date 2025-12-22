@@ -184,7 +184,7 @@ const SyncDetailPage = () => {
         setAlert({
           open: true,
           severity: "success",
-          message: "Reintento iniciado. En unos segundos se actualizará el estado.",
+          message: "Resincronización iniciada.",
         });
 
         await new Promise((resolve) => setTimeout(resolve, 1000));
@@ -232,16 +232,22 @@ const SyncDetailPage = () => {
       label: "Acciones",
       render: (it) => {
         const isError = it?.status === "error";
-        if (!isError) return "-";
+        const shouldShowButton = Boolean(isParte) || isError;
+        if (!shouldShowButton) return "-";
 
         const isResyncing = resyncingId === it?._id;
+        const buttonColor = isError ? "error" : "primary";
+        const buttonLabel = isError ? "Reintentar" : "Resincronizar";
         return (
-          <Tooltip title="Reintentar procesamiento" placement="top">
+          <Tooltip
+            title={isError ? "Reintentar procesamiento" : "Resincronizar / reprocesar"}
+            placement="top"
+          >
             <Box component="span" sx={{ display: "inline-flex" }}>
               <Button
                 size="small"
                 variant="outlined"
-                color="error"
+                color={buttonColor}
                 startIcon={<ReplayIcon fontSize="small" />}
                 onClick={(e) => {
                   e.stopPropagation();
@@ -256,7 +262,7 @@ const SyncDetailPage = () => {
                     <CircularProgress size={14} />
                   </Box>
                 ) : (
-                  "Reintentar"
+                  buttonLabel
                 )}
               </Button>
             </Box>
@@ -600,7 +606,14 @@ const SyncDetailPage = () => {
                   },
                 }}
               >
-                <TableComponent data={items} columns={columns} isLoading={isLoading} />
+                <TableComponent
+                  data={items}
+                  columns={columns}
+                  isLoading={isLoading}
+                  onRowClick={(row) => {
+                    console.log("[DHN Sync] row click:", row);
+                  }}
+                />
               </Box>
             </Box>
           </Box>
