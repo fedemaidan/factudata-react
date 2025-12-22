@@ -168,6 +168,7 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
     "TRANSFERIR_ENTRE_CAJAS",
     "CREAR_NUEVO_PROYECTO",
     "VENDER_DOLARES",
+    "COMPRAR_DOLARES",
     "VALIDAR_CODIGO",
     "CONFIRMAR_PAGOS_PENDIENTES",
     "VER_DRIVE",
