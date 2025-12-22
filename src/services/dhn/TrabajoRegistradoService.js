@@ -3,7 +3,7 @@ import api from '../axiosConfig';
 
 const TrabajoRegistradoService = {
   getTrabajoRegistradoByTrabajadorId: async (trabajadorId, params = {}) => {
-    const { limit = 200, offset = 0, from, to, estado } = params;
+    const { limit = 200, offset = 0, from, to, estado, filtro } = params;
     const queryParams = new URLSearchParams({
       limit: limit.toString(),
       offset: offset.toString(),
@@ -12,6 +12,7 @@ const TrabajoRegistradoService = {
     if (from) queryParams.append('from', from);
     if (to) queryParams.append('to', to);
     if (estado) queryParams.append('estado', estado);
+    if (filtro) queryParams.append('filtro', filtro);
     const response = await api.get(
       `/dhn/trabajo-diario-registrado/${trabajadorId}?${queryParams}`
     );
@@ -25,7 +26,7 @@ const TrabajoRegistradoService = {
 
 
   getByDay: async (date, params = {}) => {
-    const { limit = 500, offset = 0, estado } = params;
+    const { limit = 200, offset = 0, estado, filtro, q, sort } = params;
 
     const start = new Date(date);
     start.setHours(0, 0, 0, 0);
@@ -39,6 +40,9 @@ const TrabajoRegistradoService = {
       to: end.toISOString(),
     });
     if (estado) queryParams.append('estado', estado);
+    if (filtro) queryParams.append('filtro', filtro);
+    if (q) queryParams.append('q', q);
+    if (sort) queryParams.append('sort', sort);
 
     const response = await api.get(`/dhn/trabajo-diario-registrado?${queryParams}`);
     return response.data;
@@ -48,7 +52,7 @@ const TrabajoRegistradoService = {
     console.log("fromDate", fromDate)
     console.log("toDate", toDate)
     console.log("params", params)
-    const { limit = 500, offset = 0, estado } = params;
+    const { limit = 500, offset = 0, estado, filtro } = params;
 
     const start = new Date(fromDate);
     start.setHours(0, 0, 0, 0);
@@ -62,6 +66,7 @@ const TrabajoRegistradoService = {
       to: end.toISOString(),
     });
     if (estado) queryParams.append('estado', estado);
+    if (filtro) queryParams.append('filtro', filtro);
 
     const response = await api.get(`/dhn/trabajo-diario-registrado?${queryParams}`);
     console.log("response", response.data)
