@@ -36,7 +36,9 @@ import { useMovimientosFilters } from 'src/hooks/useMovimientosFilters';
 import { FilterBarCajaProyecto } from 'src/components/FilterBarCajaProyecto';
 import AsistenteFlotanteProyecto from 'src/components/asistenteFlotanteProyecto';
 import TransferenciaInternaDialog from 'src/components/TransferenciaInternaDialog';
+import IntercambioMonedaDialog from 'src/components/IntercambioMonedaDialog';
 import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
+import CurrencyExchangeIcon from '@mui/icons-material/CurrencyExchange';
 
 
 // tamaños mínimos por columna (px)
@@ -152,6 +154,7 @@ const ProyectoMovimientosPage = () => {
     severity: 'info',
   });
   const [openTransferencia, setOpenTransferencia] = useState(false);
+  const [openIntercambio, setOpenIntercambio] = useState(false);
   const [proyectos, setProyectos] = useState([]);
   const router = useRouter();
   const { proyectoId } = router.query;
@@ -937,6 +940,23 @@ const movimientosConProrrateo = useMemo(() => {
       severity: 'success',
     });
     // Refrescar movimientos después de la transferencia
+    handleRefresh();
+  };
+
+  const handleOpenIntercambio = () => {
+    setOpenIntercambio(true);
+  };
+
+  const handleCloseIntercambio = () => {
+    setOpenIntercambio(false);
+  };
+
+  const handleIntercambioSuccess = (result) => {
+    setAlert({
+      open: true,
+      message: 'Operación de cambio realizada con éxito',
+      severity: 'success',
+    });
     handleRefresh();
   };
 
@@ -2136,6 +2156,13 @@ useEffect(() => {
     <SwapHorizIcon sx={{ mr: 1 }} />
     Transferencia interna
   </MenuOption>
+  <MenuOption onClick={() => {
+    handleOpenIntercambio();
+    handleCloseMenu();
+  }}>
+    <CurrencyExchangeIcon sx={{ mr: 1 }} />
+    Compra/Venta Moneda
+  </MenuOption>
   <MenuOption onClick={() => handleMenuOptionClick('recalcularSheets')}>
     <RefreshIcon sx={{ mr: 1 }} />
     Recalcular sheets
@@ -2260,6 +2287,15 @@ useEffect(() => {
   onSuccess={handleTransferenciaSuccess}
   defaultProyectoEmisor={proyecto ? { id: proyecto.id, nombre: proyecto.nombre } : null}
   userPhone={user?.phone}
+/>
+
+{/* Dialog de Intercambio de Moneda */}
+<IntercambioMonedaDialog
+  open={openIntercambio}
+  onClose={handleCloseIntercambio}
+  onSuccess={handleIntercambioSuccess}
+  proyectoId={proyecto?.id}
+  empresa={empresa}
 />
 
 

@@ -62,7 +62,33 @@ const movimientosService = {
         return false;
     }
   },
+  comprarDolares: async (data) => {
+    try {
+      const response = await api.post('intercambio-monedas/comprar-dolares', data);
+      if (response.status === 201) {
+        return response.data;
+      } else {
+        return { error: 'Error en la respuesta del servidor' };
+      }
+    } catch (err) {
+      console.error('Error al comprar dólares:', err);
+      return { error: err.response?.data?.error || err.message };
+    }
+  },
 
+  venderDolares: async (data) => {
+    try {
+      const response = await api.post('intercambio-monedas/vender-dolares', data);
+      if (response.status === 201) {
+        return response.data;
+      } else {
+        return { error: 'Error en la respuesta del servidor' };
+      }
+    } catch (err) {
+      console.error('Error al vender dólares:', err);
+      return { error: err.response?.data?.error || err.message };
+    }
+  },
   addMovimiento: async (datosMovimiento) => {
     try {
         const nuevoMovimiento = {
