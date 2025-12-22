@@ -68,6 +68,10 @@ const Page = () => {
       const profile = await profileService.getProfileByCode(code);
 
       if (profile) {
+        if (profile.confirmed) {
+          router.push('/');
+          return;
+        }
         setIsCodeValid(true);
         formik.setFieldValue('email', profile.email);
         setEmpresaName(profile.empresaData.nombre);
