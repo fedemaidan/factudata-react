@@ -10,6 +10,7 @@ import {
   CircularProgress,
   TableContainer,
   TableSortLabel,
+  TablePagination,
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 
@@ -25,6 +26,9 @@ import { alpha } from "@mui/material/styles";
  * @param {String} sortField - Campo actual de ordenamiento
  * @param {String} sortDirection - Dirección: 'asc' o 'desc'
  * @param {Function} onSortChange - Callback al cambiar ordenamiento
+ * @param {Object} pagination - { total, page, rowsPerPage, rowsPerPageOptions }
+ * @param {Function} onPageChange - (event, newPage) => void
+ * @param {Function} onRowsPerPageChange - (event) => void
  * @param {Function} rowIsSelected - Función para determinar si una fila está seleccionada
  * @param {Function} onRowClick - Callback al hacer click en una fila: (item) => void
  */
@@ -36,6 +40,9 @@ const TableComponent = ({
   sortField = null,
   sortDirection = "asc",
   onSortChange = null,
+  pagination = null,
+  onPageChange = null,
+  onRowsPerPageChange = null,
   rowIsSelected = null,
   onRowClick = null,
 }) => {
@@ -191,6 +198,19 @@ const TableComponent = ({
             </TableBody>
           </Table>
         </TableContainer>
+
+        {pagination && (
+          <TablePagination
+            component="div"
+            count={pagination.total ?? 0}
+            page={pagination.page ?? 0}
+            rowsPerPage={pagination.rowsPerPage ?? 50}
+            onPageChange={onPageChange || (() => {})}
+            onRowsPerPageChange={onRowsPerPageChange || (() => {})}
+            rowsPerPageOptions={pagination.rowsPerPageOptions ?? [25, 50, 100, 200]}
+            disabled={isLoading}
+          />
+        )}
       </Paper>
       
       {isLoading && (

@@ -4,9 +4,7 @@ import {
   Container,
   Stack,
   Card,
-  CardHeader,
   CardContent,
-  TextField,
   Button,
   Alert,
   Snackbar,
@@ -14,24 +12,23 @@ import {
   Box,
   Divider,
   Typography,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Paper
+  Tabs,
+  Tab
 } from '@mui/material';
 import horariosService from 'src/services/dhn/horariosService';
+import HorariosConfigTable from 'src/components/dhn/HorariosConfigTable';
+import FeriadosCalendar from 'src/components/dhn/FeriadosCalendar';
 
 const HorariosPage = () => {
   const [config, setConfig] = useState(null);
   const [original, setOriginal] = useState(null);
+  const [feriadosFechas, setFeriadosFechas] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
   const [errors, setErrors] = useState({});
+  const [tab, setTab] = useState(0);
 
   const dias = useMemo(() => ([
     { key: 'lunes', label: 'Lunes' },
@@ -134,6 +131,7 @@ const HorariosPage = () => {
         const ui = toUiConfig(cfg);
         setConfig(ui);
         setOriginal(ui);
+        setFeriadosFechas(Array.isArray(cfg?.feriadosFechas) ? cfg.feriadosFechas : []);
         setErrors({});
       } catch (e) {
         setError('No se pudo cargar la configuración de horarios');
@@ -143,8 +141,6 @@ const HorariosPage = () => {
     })();
     return () => { active = false; };
   }, []);
-
-  const buildTimeErrorKey = (turno, field) => `${turno}.${field}`;
 
   const handleTimeChange = useCallback((dia, turno, field, value) => {
     setConfig((prev) => {
@@ -175,7 +171,7 @@ const HorariosPage = () => {
       ...prev,
       [dia]: {
         ...(prev[dia] || {}),
-        [buildTimeErrorKey(turno, field)]: !isValidTime24(value) ? 'Formato inválido. Use HH:mm (24h)' : ''
+        [`${turno}.${field}`]: !isValidTime24(value) ? 'Formato inválido. Use HH:mm (24h)' : ''
       }
     }));
   }, []);
@@ -214,6 +210,10 @@ const HorariosPage = () => {
     setErrors({});
   };
 
+  const handleTabChange = useCallback((_, newValue) => {
+    setTab(newValue);
+  }, []);
+
   const handleSave = async () => {
     try {
       // Validación previa - detectar qué días tienen error
@@ -245,19 +245,37 @@ const HorariosPage = () => {
     }
   };
 
+  const handleAddFeriado = useCallback(async (fecha) => {
+    try {
+      const result = await horariosService.addFeriado(fecha);
+      const fechas = Array.isArray(result?.feriadosFechas) ? result.feriadosFechas : [];
+      setFeriadosFechas(fechas);
+    } catch (e) {
+      throw new Error(e?.response?.data?.message || e?.message || 'No se pudo agregar el feriado');
+    }
+  }, []);
+
+  const handleRemoveFeriado = useCallback(async (fecha) => {
+    try {
+      const result = await horariosService.removeFeriado(fecha);
+      const fechas = Array.isArray(result?.feriadosFechas) ? result.feriadosFechas : [];
+      setFeriadosFechas(fechas);
+    } catch (e) {
+      throw new Error(e?.response?.data?.message || e?.message || 'No se pudo eliminar el feriado');
+    }
+  }, []);
+
   return (
     <DashboardLayout title="Horarios">
       <Container maxWidth="xl">
         <Stack spacing={2} sx={{ py: 2 }}>
-          <Stack direction="row" alignItems="center" justifyContent="space-between">
-            <Stack direction="row" spacing={1}>
-              <Button variant="outlined" onClick={handleReset} disabled={!isDirty || saving}>Cancelar</Button>
-              <Button variant="contained" onClick={handleSave} disabled={!isDirty || saving}>
-                {saving ? <CircularProgress size={20} /> : 'Guardar cambios'}
-              </Button>
-            </Stack>
-          </Stack>
-          <Divider />
+          <Card>
+            <Tabs value={tab} onChange={handleTabChange} aria-label="tabs de horarios y feriados">
+              <Tab label="Horarios" value={0} />
+              <Tab label="Feriados" value={1} />
+            </Tabs>
+          </Card>
+
           {loading ? (
             <Box display="flex" alignItems="center" justifyContent="center" minHeight={240}>
               <CircularProgress />
@@ -265,118 +283,53 @@ const HorariosPage = () => {
           ) : (
             <>
               {error ? <Alert severity="error" onClose={() => setError('')}>{error}</Alert> : null}
-              <Card>
-                <CardContent>
-                  <TableContainer component={Paper} variant="outlined">
-                    <Table size="small" aria-label="tabla de horarios por día">
-                      <TableHead>
-                        <TableRow>
-                          <TableCell rowSpan={2} sx={{ fontWeight: 600, width: 140 }}>Día</TableCell>
-                          <TableCell align="center" colSpan={2} sx={{ fontWeight: 600 }}>Turno día</TableCell>
-                          <TableCell align="center" colSpan={2} sx={{ fontWeight: 600 }}>Turno noche</TableCell>
-                          <TableCell rowSpan={2} align="right" sx={{ fontWeight: 600, width: 190 }}>
-                            Fracción (min)
-                          </TableCell>
-                        </TableRow>
-                        <TableRow>
-                          <TableCell sx={{ fontWeight: 600 }}>Entrada</TableCell>
-                          <TableCell sx={{ fontWeight: 600 }}>Salida</TableCell>
-                          <TableCell sx={{ fontWeight: 600 }}>Entrada</TableCell>
-                          <TableCell sx={{ fontWeight: 600 }}>Salida</TableCell>
-                        </TableRow>
-                      </TableHead>
-                      <TableBody>
-                        {dias.map(({ key, label }) => {
-                          const dayCfg = config?.[key] || {};
-                          const noct = dayCfg?.nocturno || {};
-                          const minutes = Number(dayCfg?.fraccion?.minutos ?? 20);
-                          const dec = (Math.ceil((minutes / 60) * 100) / 100).toFixed(2);
+              {tab === 0 ? (
+                <>
+                  <Stack direction="row" alignItems="center" justifyContent="space-between">
+                    <Stack direction="row" spacing={1}>
+                      <Button variant="outlined" onClick={handleReset} disabled={!isDirty || saving}>
+                        Cancelar
+                      </Button>
+                      <Button variant="contained" onClick={handleSave} disabled={!isDirty || saving}>
+                        {saving ? <CircularProgress size={20} /> : 'Guardar cambios'}
+                      </Button>
+                    </Stack>
+                  </Stack>
 
-                          const dayIngresoError = errors?.[key]?.[buildTimeErrorKey('diurno', 'ingreso')] || '';
-                          const daySalidaError = errors?.[key]?.[buildTimeErrorKey('diurno', 'salida')] || '';
-                          const noctIngresoError = errors?.[key]?.[buildTimeErrorKey('nocturno', 'ingreso')] || '';
-                          const noctSalidaError = errors?.[key]?.[buildTimeErrorKey('nocturno', 'salida')] || '';
+                  <Divider />
 
-                          return (
-                            <TableRow
-                              key={key}
-                              sx={{ '&:last-child td, &:last-child th': { border: 0 } }}
-                            >
-                              <TableCell component="th" scope="row">
-                                <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                                  {label}
-                                </Typography>
-                              </TableCell>
+                  {hasTimeErrors ? (
+                    <Alert severity="warning" variant="outlined">
+                      Hay campos con formato inválido. Usá <strong>HH:mm</strong> (24hs).
+                    </Alert>
+                  ) : null}
 
-                              <TableCell>
-                                <TextField
-                                  value={dayCfg.ingreso || ''}
-                                  onChange={(e) => handleTimeChange(key, 'diurno', 'ingreso', e.target.value)}
-                                  size="small"
-                                  placeholder="HH:mm"
-                                  inputProps={{ inputMode: 'numeric', pattern: '([01]\\d|2[0-3]):[0-5]\\d' }}
-                                  error={Boolean(dayIngresoError)}
-                                  sx={{ width: 120 }}
-                                />
-                              </TableCell>
-                              <TableCell>
-                                <TextField
-                                  value={dayCfg.salida || ''}
-                                  onChange={(e) => handleTimeChange(key, 'diurno', 'salida', e.target.value)}
-                                  size="small"
-                                  placeholder="HH:mm"
-                                  inputProps={{ inputMode: 'numeric', pattern: '([01]\\d|2[0-3]):[0-5]\\d' }}
-                                  error={Boolean(daySalidaError)}
-                                  sx={{ width: 120 }}
-                                />
-                              </TableCell>
+                  <Card>
+                    <CardContent>
+                      <Stack spacing={1} sx={{ mb: 1 }}>
+                        <Typography variant="body2" color="text.secondary">
+                          Formato 24hs (HH:mm). Turno noche puede cruzar medianoche (ej: 21:00 a 06:00).
+                        </Typography>
+                      </Stack>
 
-                              <TableCell>
-                                <TextField
-                                  value={noct.ingreso || ''}
-                                  onChange={(e) => handleTimeChange(key, 'nocturno', 'ingreso', e.target.value)}
-                                  size="small"
-                                  placeholder="HH:mm"
-                                  inputProps={{ inputMode: 'numeric', pattern: '([01]\\d|2[0-3]):[0-5]\\d' }}
-                                  error={Boolean(noctIngresoError)}
-                                  sx={{ width: 120 }}
-                                />
-                              </TableCell>
-                              <TableCell>
-                                <TextField
-                                  value={noct.salida || ''}
-                                  onChange={(e) => handleTimeChange(key, 'nocturno', 'salida', e.target.value)}
-                                  size="small"
-                                  placeholder="HH:mm"
-                                  inputProps={{ inputMode: 'numeric', pattern: '([01]\\d|2[0-3]):[0-5]\\d' }}
-                                  error={Boolean(noctSalidaError)}
-                                  sx={{ width: 120 }}
-                                />
-                              </TableCell>
-
-                              <TableCell align="right">
-                                <Stack spacing={0.25} alignItems="flex-end">
-                                  <TextField
-                                    value={dayCfg?.fraccion?.minutos ?? 20}
-                                    onChange={(e) => handleFraccionChange(key, 'minutos', e.target.value)}
-                                    size="small"
-                                    type="number"
-                                    InputProps={{ inputProps: { min: 0, step: 1 } }}
-                                    sx={{ width: 140 }}
-                                  />
-                                  <Typography variant="caption" color="text.secondary">
-                                    Decimal: {dec}
-                                  </Typography>
-                                </Stack>
-                              </TableCell>
-                            </TableRow>
-                          );
-                        })}
-                      </TableBody>
-                    </Table>
-                  </TableContainer>
-                </CardContent>
-              </Card>
+                      <HorariosConfigTable
+                        dias={dias}
+                        config={config}
+                        errors={errors}
+                        onTimeChange={handleTimeChange}
+                        onFraccionChange={handleFraccionChange}
+                      />
+                    </CardContent>
+                  </Card>
+                </>
+              ) : (
+                <FeriadosCalendar
+                  feriadosFechas={feriadosFechas}
+                  onAddFeriado={handleAddFeriado}
+                  onRemoveFeriado={handleRemoveFeriado}
+                  loading={loading}
+                />
+              )}
             </>
           )}
         </Stack>

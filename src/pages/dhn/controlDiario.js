@@ -1,124 +1,69 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useEffect, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/router';
 import dayjs from 'dayjs';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
-import { Container, Stack, Alert, Box, TextField, InputAdornment, IconButton, Tooltip } from '@mui/material';
+import { Container, Stack, Alert, Box, TextField, InputAdornment, IconButton } from '@mui/material';
 import ClearIcon from '@mui/icons-material/Clear';
-import EditIcon from '@mui/icons-material/Edit';
-import HistoryIcon from '@mui/icons-material/History';
 import TableComponent from 'src/components/TableComponent';
-import { buildTrabajoRegistradoColumns } from 'src/components/dhn/TrabajoRegistradoCells';
-import TrabajoRegistradoService from 'src/services/dhn/TrabajoRegistradoService';
 import EditarTrabajoDiarioModal from 'src/components/dhn/EditarTrabajoDiarioModal';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import FiltroTrabajoDiario from 'src/components/dhn/FiltroTrabajoDiario';
 import HistorialModal from 'src/components/dhn/HistorialModal';
-import { formatDateDDMMYYYY } from 'src/utils/handleDates';
+import useTrabajoDiarioPage from 'src/hooks/dhn/useTrabajoDiarioPage';
 
 const ControlDiarioPage = () => {
   const router = useRouter();
-  const [fecha, setFecha] = useState(() => dayjs());
-  const [data, setData] = useState([]);
-  const [stats, setStats] = useState({ total: 0, ok: 0, incompleto: 0, advertencia: 0, sinParte: 0, sinHoras: 0, sinLicencia: 0, conLicencia: 0 });
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [editarModalOpen, setEditarModalOpen] = useState(false);
-  const [trabajoDiarioSeleccionado, setTrabajoDiarioSeleccionado] = useState(null);
-  const [logsModalOpen, setLogsModalOpen] = useState(false);
-  const [logsTrabajo, setLogsTrabajo] = useState(null);
+  const diaParam = useMemo(() => {
+    const raw = Array.isArray(router.query.dia) ? router.query.dia[0] : router.query.dia;
+    return raw ? String(raw) : null;
+  }, [router.query.dia]);
 
-  const estadoFiltro = useMemo(() => {
-    return router.query.estado || 'todos';
-  }, [router.query.estado]);
-
-  const handleEdit = useCallback((trabajoDiario) => {
-    setTrabajoDiarioSeleccionado(trabajoDiario);
-    setEditarModalOpen(true);
-  }, []);
-
-  const handleOpenLogs = useCallback((item) => {
-    if (!item?._id) return;
-    setLogsTrabajo(item);
-    setLogsModalOpen(true);
-  }, []);
-
-  const handleCloseLogs = useCallback(() => {
-    setLogsModalOpen(false);
-    setLogsTrabajo(null);
-  }, []);
-
-  const handleSaveEdit = async () => {
-    try {
-      await fetchData();
-    } catch (error) {
-      console.error('Error al recargar trabajo registrado:', error);
+  const diaISO = useMemo(() => {
+    if (diaParam) {
+      const d = dayjs(diaParam);
+      if (d.isValid()) return d.format('YYYY-MM-DD');
     }
-  };
-
-  const renderAcciones = useCallback(
-    (item) => (
-      <Stack direction="row" spacing={0.5} alignItems="center">
-        <Tooltip title="Editar">
-          <IconButton
-            size="small"
-            onClick={(e) => {
-              e.stopPropagation();
-              handleEdit(item);
-            }}
-            color="primary"
-            aria-label="Editar trabajo diario"
-          >
-            <EditIcon fontSize="small" />
-          </IconButton>
-        </Tooltip>
-
-        <Tooltip title="Ver historial">
-          <IconButton
-            size="small"
-            onClick={(e) => {
-              e.stopPropagation();
-              handleOpenLogs(item);
-            }}
-            color="inherit"
-            aria-label="Ver historial de cambios"
-          >
-            <HistoryIcon fontSize="small" />
-          </IconButton>
-        </Tooltip>
-      </Stack>
-    ),
-    [handleEdit, handleOpenLogs]
-  );
-
-  const columns = useMemo(() => (
-    buildTrabajoRegistradoColumns(renderAcciones, true)
-      .filter((column) => column.key !== 'totalHoras')
-  ), [renderAcciones]);
-
-  const fetchData = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      const params = { limit: 500 };
-      if (estadoFiltro !== 'todos') {
-        params.estado = estadoFiltro;
-      }
-      const res = await TrabajoRegistradoService.getByDay(fecha.toDate(), params);
-      setData(res.data || []);
-      setStats(res.stats || { total: 0, ok: 0, incompleto: 0, advertencia: 0, sinParte: 0, sinHoras: 0, sinLicencia: 0, conLicencia: 0 });
-      setError(null);
-    } catch (e) {
-      setError('Error al cargar control diario');
-    } finally {
-      setIsLoading(false);
-    }
-  }, [fecha, estadoFiltro]);
+    return dayjs().format('YYYY-MM-DD');
+  }, [diaParam]);
 
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    if (!router.isReady) return;
+    if (diaParam) return;
+    router.replace(
+      { pathname: router.pathname, query: { ...router.query, dia: diaISO } },
+      undefined,
+      { shallow: true }
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router.isReady]);
+
+  const handleChangeDia = useCallback((nv) => {
+    const nextDia = (nv || dayjs()).format('YYYY-MM-DD');
+    const nextQuery = { ...router.query, dia: nextDia };
+    delete nextQuery.page;
+    router.replace({ pathname: router.pathname, query: nextQuery }, undefined, { shallow: true });
+  }, [router]);
+
+  const {
+    data,
+    stats,
+    error,
+    isError,
+    isLoading,
+    columns,
+    table,
+    filters,
+    logs,
+    edit,
+  } = useTrabajoDiarioPage({
+    enabled: router.isReady,
+    diaISO: `${diaISO}T12:00:00`,
+    incluirTrabajador: true,
+    enableEdit: true,
+    defaultLimit: 200,
+  });
 
   const formatters = useMemo(() => ({
     fecha: (value) => {
@@ -128,58 +73,6 @@ const ControlDiarioPage = () => {
     }
   }), []);
 
-  const estadisticas = stats;
-
-  const filteredData = useMemo(() => {
-    let filtered = data;
-    
-    if (estadoFiltro !== 'todos') {
-      filtered = filtered.filter(item => {
-        switch (estadoFiltro) {
-          case 'ok':
-            return item.estado === 'ok';
-          case 'incompleto':
-            return item.estado === 'incompleto';
-          case 'advertencia':
-            return item.estado === 'advertencia';
-          case 'sinParte':
-            if (!item.comprobantes || item.comprobantes.length === 0) return true;
-            return !item.comprobantes.some(comp => comp.type === 'parte');
-          case 'sinHoras':
-            if (!item.comprobantes || item.comprobantes.length === 0) return true;
-            return !item.comprobantes.some(comp => comp.type === 'horas');
-          case 'sinLicencia':
-            if (!item.comprobantes || item.comprobantes.length === 0) return true;
-            return !item.comprobantes.some(comp => comp.type === 'licencia');
-          case 'conLicencia':
-            if (!item.comprobantes || item.comprobantes.length === 0) return false;
-            return item.comprobantes.some(comp => comp.type === 'licencia');
-          default:
-            return true;
-        }
-      });
-    }
-    
-    if (!searchTerm.trim()) return filtered;
-    
-    const searchLower = searchTerm.toLowerCase().trim();
-    return filtered.filter(item => {
-      if (!item.trabajadorId) return false;
-      
-      const apellido = item.trabajadorId.apellido?.toLowerCase() || '';
-      const nombre = item.trabajadorId.nombre?.toLowerCase() || '';
-      const dni = item.trabajadorId.dni || '';
-      const nombreCompleto = `${apellido} ${nombre}`;
-      
-      return (
-        apellido.includes(searchLower) ||
-        nombre.includes(searchLower) ||
-        nombreCompleto.includes(searchLower) ||
-        dni.includes(searchLower)
-      );
-    });
-  }, [data, searchTerm, estadoFiltro]);
-
   return (
     <DashboardLayout title="Control Diario">
       <Container maxWidth="xl">
@@ -188,22 +81,22 @@ const ControlDiarioPage = () => {
             <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
               <DatePicker
                 label="Día"
-                value={fecha}
-                onChange={(nv) => setFecha(nv || dayjs())}
+                value={dayjs(diaISO)}
+                onChange={handleChangeDia}
                 format="DD/MM/YYYY"
                 slotProps={{ textField: { size: 'small', sx: { width: 200 } } }}
               />
               <TextField
                 label="Buscar"
                 size="small"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                value={filters.qInput}
+                onChange={(e) => filters.setQInput(e.target.value)}
                 sx={{ width: 200 }}
                 InputProps={{
-                  endAdornment: searchTerm.length > 0 && (
+                  endAdornment: filters.qInput.length > 0 && (
                     <InputAdornment position="end">
                       <IconButton
-                        onClick={() => setSearchTerm('')}
+                        onClick={() => filters.setQInput('')}
                         edge="end"
                         size="small"
                         sx={{ color: 'text.secondary' }}
@@ -217,49 +110,44 @@ const ControlDiarioPage = () => {
             </Box>
           </LocalizationProvider>
 
-          <FiltroTrabajoDiario stats={estadisticas} />
+          <FiltroTrabajoDiario stats={stats} />
 
-          {error && (
-            <Alert severity="error" onClose={() => setError(null)}>
-              {error}
+          {isError && (
+            <Alert severity="error">
+              {error?.message || 'Error al cargar control diario'}
             </Alert>
           )}
 
           <TableComponent
-            data={filteredData}
+            data={data}
             columns={columns}
             formatters={formatters}
             isLoading={isLoading}
+            sortField={table.sortField}
+            sortDirection={table.sortDirection}
+            onSortChange={table.onSortChange}
+            pagination={table.pagination}
+            onPageChange={table.onPageChange}
+            onRowsPerPageChange={table.onRowsPerPageChange}
           />
         </Stack>
       </Container>
 
       <EditarTrabajoDiarioModal
-        open={editarModalOpen}
-        onClose={() => setEditarModalOpen(false)}
-        onSave={handleSaveEdit}
-        trabajoDiario={trabajoDiarioSeleccionado}
+        open={edit.open}
+        onClose={edit.onClose}
+        onSave={edit.onSave}
+        trabajoDiario={edit.entity}
       />
 
       <HistorialModal
-        open={logsModalOpen}
-        onClose={handleCloseLogs}
-        entity={logsTrabajo}
+        open={logs.open}
+        onClose={logs.onClose}
+        entity={logs.entity}
         title="Historial de cambios"
         entityLabel="Trabajo diario"
-        getEntityTitle={(t) => {
-          const trabajador = t?.trabajadorId || {};
-          const apellido = (trabajador?.apellido || '').toString();
-          const nombre = (trabajador?.nombre || '').toString();
-          const full = `${apellido} ${nombre}`.trim();
-          return full || t?._id || '-';
-        }}
-        getEntitySubtitle={(t) => {
-          const fechaFmt = t?.fecha ? formatDateDDMMYYYY(t.fecha) : '-';
-          const estado = (t?.estado || '-').toString();
-          const dni = t?.trabajadorId?.dni ? ` • DNI: ${t.trabajadorId.dni}` : '';
-          return `Fecha: ${fechaFmt} • Estado: ${estado}${dni}`;
-        }}
+        getEntityTitle={logs.getEntityTitle}
+        getEntitySubtitle={logs.getEntitySubtitle}
       />
     </DashboardLayout>
   );

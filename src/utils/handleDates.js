@@ -7,6 +7,29 @@ export const formatDateDDMMYYYY = (fecha) => {
   return fechaParsed.format('DD-MM-YYYY');
 };
 
+
+export const parseDDMMYYYYAnyToISO = (value) => {
+  if (!value) return null;
+  if (value instanceof Date) {
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return null;
+    d.setHours(12, 0, 0, 0);
+    return d.toISOString();
+  }
+  if (typeof value !== "string") return null;
+
+  const s = value.trim();
+  if (!s) return null;
+
+  // Soportar también "DD-MM-YYYY"
+  const normalized = s.includes("-") && !s.includes("/")
+    ? s.replaceAll("-", "/")
+    : s;
+
+  // Reutiliza el parser existente (DD/MM/YYYY)
+  return parseDDMMYYYYToISO(normalized);
+};
+
 export const formatearFechaHora = (s) => {
   if (!s) return "-";
   const d = new Date(s);

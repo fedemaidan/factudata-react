@@ -96,6 +96,25 @@ const DhnDriveService = {
     }
   },
 
+  resyncUrlStorageById: async (urlStorageId, extra = {}) => {
+    if (!urlStorageId) {
+      return { ok: false, error: { code: 0, message: "urlStorageId es requerido" } };
+    }
+    try {
+      const payload = extra && typeof extra === "object" ? extra : {};
+      const response = await api.post(`/dhn/sync/url/${encodeURIComponent(urlStorageId)}/resync`, payload);
+      return response?.data;
+    } catch (error) {
+      const code = error?.response?.status ?? 0;
+      const message =
+        error?.response?.data?.error?.message ||
+        error?.response?.data?.message ||
+        error?.message ||
+        "Error de red";
+      return { ok: false, error: { code, message } };
+    }
+  },
+
   updateSyncSheet: async (googleSheetLink) => {
     const response = await api.put(`/dhn/sync-sheet`, { googleSheetLink });
     return response.data;
