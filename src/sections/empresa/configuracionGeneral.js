@@ -59,6 +59,7 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
   const [camposObligatorios, setCamposObligatorios] = useState(empresa.camposObligatorios || []);
   const [confFecha, setConfFecha] = useState(empresa.conf_fecha || "REAL");
   const [tipo, setTipo] = useState(empresa.tipo || "Constructora");
+  const [configNotificacionNp, setConfigNotificacionNp] = useState(empresa.config_notificacion_np || 'SOLO_REGISTRADOS');
   const [sheetCentral, setSheetCentral] = useState(empresa.sheetCentral || "");
   const [acciones, setAcciones] = useState(empresa.acciones || []);
   const [isLoading, setIsLoading] = useState(false);
@@ -304,6 +305,7 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
       camposObligatorios: camposObligatorios,
       conf_fecha: confFecha,
       tipo: tipo,
+      config_notificacion_np: configNotificacionNp,
       sheetCentral: sheetCentral,
       acciones: acciones,
       dolarDeAjuste: dolarDeAjuste,
@@ -435,6 +437,20 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
         <MenuItem value="Logistica">Logística</MenuItem>
         <MenuItem value="Rinde gastos">Rinde Gastos</MenuItem>
       </TextField>
+
+      <TextField
+        select
+        label="Notificación Notas de Pedido"
+        value={configNotificacionNp}
+        onChange={(e) => setConfigNotificacionNp(e.target.value)}
+        fullWidth
+        sx={{ mt: 2 }}
+      >
+        <MenuItem value="SOLO_REGISTRADOS">Solo Registrados</MenuItem>
+        <MenuItem value="SOLO_RESPONSABLE">Solo Responsable</MenuItem>
+        <MenuItem value="AMBOS">Ambos</MenuItem>
+      </TextField>
+
       <Typography variant="h6" sx={{ mt: 4 }}>
         Cuentas de la empresa
       </Typography>

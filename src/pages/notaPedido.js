@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Box,
   Button,
@@ -27,6 +27,7 @@ import {
   useMediaQuery,
   FormControl,
   InputLabel,
+  TablePagination,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import FilterListIcon from '@mui/icons-material/FilterList';
@@ -44,6 +45,7 @@ import { formatTimestamp } from 'src/utils/formatters';
 import { Timestamp } from 'firebase/firestore';
 import { Router } from 'react-router-dom';
 import { useRouter } from 'next/router';
+import { NotaPedidoAddDialog } from 'src/components/NotaPedidoAddDialog';
 
 const NotaPedidoPage = () => {
   const router = useRouter();
@@ -54,7 +56,6 @@ const NotaPedidoPage = () => {
   const [openFilters, setOpenFilters] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [openAddDialog, setOpenAddDialog] = useState(false); // Estado para añadir nota
-  const [newNoteData, setNewNoteData] = useState({ descripcion: '', proyecto_id: '', proveedor: '' }); // Datos de nueva nota
   const [currentNota, setCurrentNota] = useState(null);
   const [openDeleteDialog, setOpenDeleteDialog] = useState(false);
   const [notaToDelete, setNotaToDelete] = useState(null);
@@ -78,27 +79,48 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
     descripcion: '', proyecto_id: '', estado: '', owner: '', creador: '', proveedor: ''
   });
   const [filters, setFilters] = useState({ text: '', estado: '', proyecto_id: '', proveedor: '' });
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(10);
   const isMobile = useMediaQuery((theme) => theme.breakpoints.down('sm'));
   
-  const sortedNotas = [...filteredNotas].sort((a, b) => {
-    if (!a[sortConfig.key] || !b[sortConfig.key]) return 0; // Evitar errores con valores nulos
-  
-    let aValue = a[sortConfig.key];
-    let bValue = b[sortConfig.key];
-  
-    // Si es una fecha, convertir a timestamp
-    if (sortConfig.key === 'fechaCreacion') {
-      aValue = aValue._seconds || 0;
-      bValue = bValue._seconds || 0;
-    } else if (typeof aValue === 'string' && typeof bValue === 'string') {
-      aValue = aValue.toLowerCase();
-      bValue = bValue.toLowerCase();
-    }
-  
-    if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
-    if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
-    return 0;
-  });
+  const sortedNotas = useMemo(() => {
+    return [...filteredNotas].sort((a, b) => {
+      if (!a[sortConfig.key] || !b[sortConfig.key]) return 0; // Evitar errores con valores nulos
+    
+      let aValue = a[sortConfig.key];
+      let bValue = b[sortConfig.key];
+    
+      // Si es una fecha, convertir a timestamp
+      if (sortConfig.key === 'fechaCreacion') {
+        aValue = aValue._seconds || 0;
+        bValue = bValue._seconds || 0;
+      } else if (typeof aValue === 'string' && typeof bValue === 'string') {
+        aValue = aValue.toLowerCase();
+        bValue = bValue.toLowerCase();
+      }
+    
+      if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
+      if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }, [filteredNotas, sortConfig]);
+
+  const paginatedNotas = useMemo(() => {
+    return sortedNotas.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
+  }, [sortedNotas, page, rowsPerPage]);
+
+  const handlePageChange = (event, newPage) => {
+    setPage(newPage);
+  };
+
+  const handleRowsPerPageChange = (event) => {
+    setRowsPerPage(parseInt(event.target.value, 10));
+    setPage(0);
+  };
+
+  useEffect(() => {
+    setPage(0);
+  }, [filters]);
 
   const handleSort = (key) => {
     setSortConfig((prev) => ({
@@ -308,28 +330,28 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
     setIsEditing(true);
   };
 
-  const handleSaveNewNote = async () => {
+  const handleSaveNewNote = async (data) => {
     try {
-      const ownerObj = profiles.filter( (p) => p.id === newNoteData.owner)[0]
-      const proyectoObj = proyectos.filter( (p) => p.id === newNoteData.proyecto_id)[0]
+      const ownerObj = profiles.find((p) => p.id === data.owner);
+      const proyectoObj = proyectos.find((p) => p.id === data.proyecto_id);
+      
       const newNote = {
-        ...newNoteData,
-        owner: newNoteData.owner || user.id,
-        owner_name: ownerObj.firstName + " " + ownerObj.lastName,
+        ...data,
+        owner: data.owner || user.id,
+        owner_name: ownerObj ? (ownerObj.firstName + " " + ownerObj.lastName) : (user.firstName + " " + user.lastName),
         estado: notasEstados[0],
         empresaId: user.empresa.id,
         creador: user.id,
         creador_name: user.firstName + " " + user.lastName,
-        proyecto_id: newNoteData.proyecto_id,
-        proyecto_nombre: proyectoObj.nombre,
-        proveedor: newNoteData.proveedor || '',
+        proyecto_id: data.proyecto_id,
+        proyecto_nombre: proyectoObj ? proyectoObj.nombre : null,
+        proveedor: data.proveedor || '',
       };
       
       const savedNote = await notaPedidoService.createNota(newNote);
       setNotas([savedNote, ...notas]);
       setAlert({ open: true, message: 'Nota añadida con éxito', severity: 'success' });
       setOpenAddDialog(false);
-      setNewNoteData({  descripcion: '' }); // Reiniciar formulario
     } catch (error) {
       console.error('Error al añadir nota:', error);
       setAlert({ open: true, message: 'Error al añadir la nota', severity: 'error' });
@@ -539,7 +561,7 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
 
         {isMobile ? (
           <Stack spacing={2}>
-            {filteredNotas.map((nota) => (
+            {paginatedNotas.map((nota) => (
               <Card key={nota.id}>
                 <CardContent>
                   <Typography variant="h6">Código: {nota.codigo} - {nota.proyecto_nombre}</Typography>
@@ -597,8 +619,19 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
                 </CardContent>
               </Card>
             ))}
+            <TablePagination
+              component="div"
+              count={filteredNotas.length}
+              page={page}
+              onPageChange={handlePageChange}
+              rowsPerPage={rowsPerPage}
+              onRowsPerPageChange={handleRowsPerPageChange}
+              rowsPerPageOptions={[5, 10, 25]}
+              labelRowsPerPage="Filas:"
+            />
           </Stack>
         ) : (
+          <>
           <Table>
             <TableHead>
               <TableRow>
@@ -631,7 +664,7 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
             </TableHead>
 
             <TableBody>
-              {sortedNotas.map((nota) => (
+              {paginatedNotas.map((nota) => (
                 <TableRow key={nota.id}>
                   <TableCell>{nota.codigo}</TableCell>
                   <TableCell>{nota.proyecto_nombre}</TableCell>
@@ -703,6 +736,17 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
               ))}
             </TableBody>
           </Table>
+          <TablePagination
+            component="div"
+            count={filteredNotas.length}
+            page={page}
+            onPageChange={handlePageChange}
+            rowsPerPage={rowsPerPage}
+            onRowsPerPageChange={handleRowsPerPageChange}
+            rowsPerPageOptions={[5, 10, 25, 50]}
+            labelRowsPerPage="Filas por página:"
+          />
+          </>
         )}
   {isMobile && (
     <>
@@ -797,61 +841,13 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
   </DialogActions>
 </Dialog>
 
-        <Dialog open={openAddDialog} onClose={() => setOpenAddDialog(false)} maxWidth="sm" fullWidth>
-  <DialogTitle>Añadir Nota</DialogTitle>
-  <DialogContent>
-    <Stack spacing={2}>
-      <TextField
-        label="Descripción"
-        value={newNoteData.descripcion}
-        onChange={(e) => setNewNoteData({ ...newNoteData, descripcion: e.target.value })}
-        multiline
-        rows={3}
-        fullWidth
-      />
-      <TextField
-        label="Proveedor"
-        value={newNoteData.proveedor}
-        onChange={(e) => setNewNoteData({ ...newNoteData, proveedor: e.target.value })}
-        fullWidth
-      />
-      <FormControl fullWidth>
-  <InputLabel>Asignar a</InputLabel>
-  <Select
-    value={newNoteData.owner || ''}
-    onChange={(e) => setNewNoteData({ ...newNoteData, owner: e.target.value })}
-  >
-    {profiles.map((profile) => (
-      <MenuItem key={profile.id} value={profile.id}>
-        {profile.firstName + " "+ profile.lastName}
-      </MenuItem>
-    ))}
-  </Select>
-</FormControl>
-<FormControl fullWidth>
-  <InputLabel>Proyecto</InputLabel>
-  <Select
-    value={newNoteData.proyecto_id}
-    onChange={(e) => setNewNoteData({ ...newNoteData, proyecto_id: e.target.value })}
-  >
-    {proyectos.map((proyecto) => (
-      <MenuItem key={proyecto.id} value={proyecto.id}>
-        {proyecto.nombre}
-      </MenuItem>
-    ))}
-  </Select>
-</FormControl>
-
-
-    </Stack>
-  </DialogContent>
-  <DialogActions>
-    <Button onClick={() => setOpenAddDialog(false)}>Cancelar</Button>
-    <Button onClick={handleSaveNewNote} variant="contained">
-      Guardar
-    </Button>
-  </DialogActions>
-</Dialog>
+        <NotaPedidoAddDialog
+          open={openAddDialog}
+          onClose={() => setOpenAddDialog(false)}
+          onSave={handleSaveNewNote}
+          profiles={profiles}
+          proyectos={proyectos}
+        />
 
 <Dialog open={openDeleteDialog} onClose={closeDeleteConfirmation}>
   <DialogTitle>Confirmar eliminación</DialogTitle>
