@@ -30,11 +30,29 @@ export const DNICell = ({ item }) => {
 };
 
 export const EstadoCell = ({ item }) => {
-  const estado = item.estado || 'ok';
-  if (estado === 'ok') return <Chip size="small" label="OK" color="success" />;
+  const estado = (item?.estado || '-').toString();
+
+  const formatEstadoLabel = (value) => {
+    const raw = (value || '-').toString();
+    if (raw === 'ok') return 'OK';
+    if (raw === 'okAutomatico') return 'OK Automático';
+    if (raw === 'okManual') return 'OK Manual';
+    if (raw === '-' || raw.trim() === '') return '-';
+
+    const withSpaces = raw
+      .replace(/_/g, ' ')
+      .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+      .trim();
+
+    return withSpaces.charAt(0).toUpperCase() + withSpaces.slice(1);
+  };
+
+  if (['ok', 'okAutomatico', 'okManual'].includes(estado)) {
+    return <Chip size="small" label={formatEstadoLabel(estado)} color="success" />;
+  }
   if (estado === 'incompleto') return <Chip size="small" label="⚠ Incompleto" color="warning" />;
   if (estado === 'advertencia') return <Chip size="small" label="✖ Error" color="error" />;
-  return <Chip size="small" label={estado} color="default" />;
+  return <Chip size="small" label={formatEstadoLabel(estado)} color="default" />;
 };
 
 export const LicenciaCell = ({ item }) => {
