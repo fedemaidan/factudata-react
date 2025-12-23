@@ -234,6 +234,11 @@ const MovementFormPage = () => {
     try {
       setLoadingError(null);
       setIsRetrying(attempt > 1);
+
+      // Verificar conexión antes de intentar
+      if (typeof navigator !== 'undefined' && !navigator.onLine) {
+        throw new Error('Sin conexión a internet');
+      }
       
       const empresa = await getEmpresaDetailsFromUser(user);
       if (!empresa) {
@@ -294,19 +299,27 @@ const MovementFormPage = () => {
       // Éxito: resetear contador de reintentos
       setRetryCount(0);
       setLoadingError(null);
+      setIsInitialLoading(false);
+      setIsRetrying(false);
       
     } catch (error) {
       console.error(`Error cargando datos (intento ${attempt}/${maxRetries}):`, error);
       
-      // Si no hemos alcanzado el máximo de reintentos, intentar de nuevo
+      const isOffline = typeof navigator !== 'undefined' && !navigator.onLine;
+      const isNetworkError = error.message.includes('network') || error.message.includes('conexión') || error.message.includes('internet') || isOffline;
+
+      // Si no hemos alcanzado el máximo de reintentos, seguimos intentando (útil para microcortes)
       if (attempt < maxRetries) {
         const nextAttempt = attempt + 1;
         setRetryCount(nextAttempt);
         
-        console.log(`Reintentando en 2 segundos... (intento ${nextAttempt}/${maxRetries})`);
+        // Backoff exponencial: 2s, 3s, 4.5s...
+        const delay = 2000 * Math.pow(1.5, attempt - 1);
+        
+        console.log(`Reintentando en ${delay}ms... (intento ${nextAttempt}/${maxRetries})`);
         setTimeout(() => {
           loadInitialData(nextAttempt);
-        }, 2000);
+        }, delay);
         
         return; // No mostrar error aún, seguimos intentando
       }
@@ -315,10 +328,11 @@ const MovementFormPage = () => {
       setLoadingError(error);
       setAlert({ 
         open: true, 
-        message: `Error al cargar datos después de ${maxRetries} intentos: ${error.message || 'Error desconocido'}`, 
+        message: isNetworkError 
+          ? `Problema de conexión. Verificá tu internet. (${error.message})` 
+          : `Error al cargar datos: ${error.message || 'Error desconocido'}`, 
         severity: 'error' 
       });
-    } finally {
       setIsInitialLoading(false);
       setIsRetrying(false);
     }

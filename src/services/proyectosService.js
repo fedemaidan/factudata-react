@@ -119,7 +119,7 @@ export const getProyectoById = async (id) => {
  * @param {object} proyecto - Un objeto con los datos a actualizar del proyecto.
  * @returns {Promise<boolean>} - Retorna true si la actualización fue exitosa, false si falló.
  */
-export const updateProyecto = async (id, proyecto) => {
+export const updateProyecto = async (id, proyecto, empresaId = null) => {
   try {
     asegurarIdsSubproyectos(proyecto); // ← agregar esta línea
     console.log(proyecto, " proyecto a actualizar");
@@ -137,6 +137,16 @@ export const updateProyecto = async (id, proyecto) => {
     console.log("proyecto nuevo", proyecto);
     const proyectoDocRef = doc(db, 'proyectos', id);
     await updateDoc(proyectoDocRef, proyecto);
+    
+    if (empresaId) {
+      try {
+        await api.post('/cache/invalidate', { tipo: 'empresa', id: empresaId });
+        console.log('Caché invalidado tras actualizar proyecto');
+      } catch (error) {
+        console.warn('Error invalidando caché:', error);
+      }
+    }
+
     console.log('Proyecto actualizado con éxito');
     return true;
   } catch (err) {
@@ -175,6 +185,11 @@ export const actualizarSheetsDesdeBaseEmpresa = async (empresaId, proyectoId = n
     });
 
     if (response.status === 200) {
+      try {
+        await api.post('/cache/invalidate', { tipo: 'empresa', id: empresaId });
+      } catch (error) {
+        console.warn('Error invalidando caché:', error);
+      }
       console.log('Proyectos actualizados con éxito:', response.data.detalles);
       return { success: true, detalles: response.data.detalles };
     } else {
@@ -219,6 +234,11 @@ export const crearProyecto = async (proyecto, empresaId) => {
     });
 
     if (response.status === 201) {
+      try {
+        await api.post('/cache/invalidate', { tipo: 'empresa', id: empresaId });
+      } catch (error) {
+        console.warn('Error invalidando caché:', error);
+      }
       console.log('Proyecto creado con éxito:', response.data.proyecto);
       return response.data.proyecto;
     } else {
@@ -237,7 +257,7 @@ export const crearProyecto = async (proyecto, empresaId) => {
  * @param {string} proyectoId - El ID del proyecto a eliminar.
  * @returns {Promise<boolean>} - Retorna true si la eliminación fue exitosa, false si falló.
  */
-export const deleteProyectoById = async (proyectoId) => {
+export const deleteProyectoById = async (proyectoId, empresaId = null) => {
   try {
     // Obtén todos los movimientos asociados al proyecto
     const movimientosQuery = query(
@@ -255,6 +275,14 @@ export const deleteProyectoById = async (proyectoId) => {
     // Elimina el proyecto una vez que todos los movimientos se han eliminado
     const proyectoDocRef = doc(db, 'proyectos', proyectoId);
     await deleteDoc(proyectoDocRef);
+
+    if (empresaId) {
+      try {
+        await api.post('/cache/invalidate', { tipo: 'empresa', id: empresaId });
+      } catch (error) {
+        console.warn('Error invalidando caché:', error);
+      }
+    }
 
     console.log('Proyecto y movimientos eliminados con éxito');
     return true;

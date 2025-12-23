@@ -9,7 +9,7 @@ import { UsuariosDetails } from 'src/sections/empresa/usuariosDetails';
 import { MediosPagoDetails } from 'src/sections/empresa/mediosPagoDetails';
 import { ImpuestosDetails } from 'src/sections/empresa/impuestosDetails';
 import { ConfiguracionGeneral } from 'src/sections/empresa/configuracionGeneral';
-import { updateEmpresaDetails, getEmpresaById } from 'src/services/empresaService'; 
+import { updateEmpresaDetails, getEmpresaById, invalidateEmpresaCache } from 'src/services/empresaService'; 
 import { getProyectosByEmpresa, hasPermission } from 'src/services/proyectosService'; 
 import { useAuthContext } from 'src/contexts/auth-context';
 import { useRouter } from 'next/router';
@@ -81,6 +81,17 @@ const EmpresaPage = () => {
     setEmpresa(updatedEmpresa);
   };
 
+  const handleInvalidateCache = async () => {
+    if (empresa?.id) {
+      const success = await invalidateEmpresaCache(empresa.id);
+      if (success) {
+        alert('Caché invalidado correctamente');
+      } else {
+        alert('Error al invalidar caché');
+      }
+    }
+  };
+
   return (
     <>
       <Head>
@@ -118,13 +129,22 @@ const EmpresaPage = () => {
                   <Typography variant="h4">
                     {empresa?.nombre}
                   </Typography>
-                  <Button
-                    color="primary"
-                    variant="outlined"
-                    onClick={handleEdit}
-                  >
-                    Editar nombre empresa
-                  </Button>
+                  <Stack direction="row" spacing={2}>
+                    <Button
+                      color="warning"
+                      variant="outlined"
+                      onClick={handleInvalidateCache}
+                    >
+                      Invalidar Caché
+                    </Button>
+                    <Button
+                      color="primary"
+                      variant="outlined"
+                      onClick={handleEdit}
+                    >
+                      Editar nombre empresa
+                    </Button>
+                  </Stack>
                 </Stack>
                 <Tabs
                   value={currentTab}

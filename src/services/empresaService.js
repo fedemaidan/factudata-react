@@ -1,5 +1,6 @@
 import { doc, updateDoc, getDoc, addDoc, collection, getDocs, deleteDoc } from 'firebase/firestore';
 import { db } from 'src/config/firebase';
+import api from './axiosConfig';
 import profileService from 'src/services/profileService';
 import { deleteCajaById, deleteProyectoById, getCajasByEmpresaId, getProyectoById } from 'src/services/proyectosService';
 import TicketService from './ticketService';
@@ -147,10 +148,34 @@ export const updateEmpresaDetails = async (empresaId, newDetails) => {
     console.log(newDetails)
     const empresaDocRef = doc(db, 'empresas', empresaId);
     await updateDoc(empresaDocRef, newDetails);
+    
+    // Invalidate cache
+    try {
+      await api.post('/cache/invalidate', { tipo: 'empresa', id: empresaId });
+      console.log('Caché invalidado automáticamente tras actualización');
+    } catch (cacheErr) {
+      console.warn('No se pudo invalidar el caché:', cacheErr);
+    }
+
     console.log('Detalles de la empresa actualizados con éxito');
     return true;
   } catch (err) {
     console.error('Error al actualizar los detalles de la empresa:', err);
+    return false;
+  }
+};
+
+/**
+ * Invalida el caché de la empresa manualmente.
+ * @param {string} empresaId - El ID de la empresa.
+ * @returns {Promise<boolean>}
+ */
+export const invalidateEmpresaCache = async (empresaId) => {
+  try {
+    await api.post('/cache/invalidate', { tipo: 'empresa', id: empresaId });
+    return true;
+  } catch (err) {
+    console.error('Error al invalidar caché:', err);
     return false;
   }
 };

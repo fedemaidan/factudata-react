@@ -51,7 +51,7 @@ export const CajaProyectoManager = () => {
     const proyecto = proyectos.find((p) => p.id === proyectoId);
     const nuevos = [...(proyecto.subproyectos || []), nuevoSubproyecto];
     console.log(nuevos, "nuevos subproyectos");
-    await updateProyecto(proyectoId, { subproyectos: nuevos });
+    await updateProyecto(proyectoId, { subproyectos: nuevos }, empresaId);
 
     // setNuevoSubproyecto({ nombre: '', valor: '', estado: '', meses: '' });
     const proyectosActualizados = await getProyectosByEmpresa(empresa);
@@ -61,7 +61,7 @@ export const CajaProyectoManager = () => {
   const handleEliminarSubproyecto = async (proyectoId, index) => {
     const proyecto = proyectos.find((p) => p.id === proyectoId);
     const nuevos = proyecto.subproyectos.filter((_, i) => i !== index);
-    await updateProyecto(proyectoId, { subproyectos: nuevos });
+    await updateProyecto(proyectoId, { subproyectos: nuevos }, empresaId);
     const proyectosActualizados = await getProyectosByEmpresa(empresa);
     setProyectos(proyectosActualizados);
   };

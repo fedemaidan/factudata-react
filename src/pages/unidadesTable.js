@@ -101,7 +101,7 @@ const [unidadBaseMultiple, setUnidadBaseMultiple] = useState({
           }
           return sp;
         });
-        await updateProyecto(proyecto.id, { ...proyecto, subproyectos: nuevosSub });
+        await updateProyecto(proyecto.id, { ...proyecto, subproyectos: nuevosSub }, empresaId);
         return proyecto;
       })
     );
@@ -124,7 +124,7 @@ const [unidadBaseMultiple, setUnidadBaseMultiple] = useState({
       proyectos.map(async (proyecto) => {
         const nuevosSub = (proyecto.subproyectos || []).filter(sp => !seleccionadas.includes(sp.nombre));
         if (nuevosSub.length !== (proyecto.subproyectos || []).length) {
-          await updateProyecto(proyecto.id, { ...proyecto, subproyectos: nuevosSub });
+          await updateProyecto(proyecto.id, { ...proyecto, subproyectos: nuevosSub }, empresaId);
         }
         return proyecto;
       })
@@ -154,7 +154,7 @@ const [unidadBaseMultiple, setUnidadBaseMultiple] = useState({
     ];
 
     const actualizado = { ...proyecto, subproyectos: nuevosSubproyectos };
-    const ok = await updateProyecto(proyecto.id, actualizado);
+    const ok = await updateProyecto(proyecto.id, actualizado, empresaId);
 
     if (ok) {
       const empresaData = await getEmpresaById(empresaId);

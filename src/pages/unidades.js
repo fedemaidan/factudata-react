@@ -88,7 +88,7 @@ function UnidadesTreeViewPage() {
     }
   
     const actualizado = { ...proyecto, subproyectos: nuevosSubproyectos };
-    const ok = await updateProyecto(proyecto.id, actualizado);
+    const ok = await updateProyecto(proyecto.id, actualizado, empresaId);
   
     if (ok) {
       const empresaData = await getEmpresaById(empresaId);
@@ -128,7 +128,7 @@ function UnidadesTreeViewPage() {
       subproyectos: [...(proyecto.subproyectos || []), ...clonados]
     };
   
-    const ok = await updateProyecto(proyectoId, actualizado);
+    const ok = await updateProyecto(proyectoId, actualizado, empresaId);
     if (ok) {
       const empresaData = await getEmpresaById(empresaId);
       const proyectos = await getProyectosByEmpresa(empresaData);
