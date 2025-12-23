@@ -30,6 +30,7 @@ export default function useTrabajoDiarioPage(options = {}) {
   const {
     enabled = true,
     diaISO,
+    trabajadorId,
     incluirTrabajador = true,
     defaultLimit = 200,
   } = options || {};
@@ -92,6 +93,18 @@ export default function useTrabajoDiarioPage(options = {}) {
       ...(q?.trim() ? { q: q.trim() } : {}),
     };
 
+    if (trabajadorId) {
+      const start = new Date(diaISO);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(diaISO);
+      end.setHours(23, 59, 59, 999);
+      return await TrabajoRegistradoService.getTrabajoRegistradoByTrabajadorId(trabajadorId, {
+        ...params,
+        from: start.toISOString(),
+        to: end.toISOString(),
+      });
+    }
+
     return await TrabajoRegistradoService.getByDay(diaISO, params);
   };
 
@@ -103,7 +116,7 @@ export default function useTrabajoDiarioPage(options = {}) {
     refetch,
   } = useFetch(
     fetchData,
-    [enabled, diaISO, estado, filtro, limit, offset, sort, q],
+    [enabled, diaISO, trabajadorId, estado, filtro, limit, offset, sort, q],
     {
       enabled,
       initialData: buildInitialData,

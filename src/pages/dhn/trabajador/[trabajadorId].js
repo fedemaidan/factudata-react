@@ -1,126 +1,88 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useEffect, useMemo, useCallback } from 'react';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import { useRouter } from 'next/router';
-import { Container, Box, Typography, Alert, Stack, Chip, IconButton } from '@mui/material';
+import dayjs from 'dayjs';
+import { Container, Stack, Alert, Box, TextField, InputAdornment, IconButton, Typography } from '@mui/material';
 import BackButton from 'src/components/shared/BackButton';
-import EditIcon from '@mui/icons-material/Edit';
+import ClearIcon from '@mui/icons-material/Clear';
 import TableComponent from 'src/components/TableComponent';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
-import { buildTrabajoRegistradoColumns } from 'src/components/dhn/TrabajoRegistradoCells';
-import TrabajoRegistradoService from 'src/services/dhn/TrabajoRegistradoService';
+import useTrabajoDiarioPage from 'src/hooks/dhn/useTrabajoDiarioPage';
 import EditarTrabajoDiarioModal from 'src/components/dhn/EditarTrabajoDiarioModal';
 import FiltroTrabajoDiario from 'src/components/dhn/FiltroTrabajoDiario';
-
-const formatearFecha = (fecha) => {
-  if (!fecha) return '-';
-  const date = new Date(fecha);
-  return date.toLocaleDateString('es-AR', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  });
-};
+import HistorialModal from 'src/components/dhn/HistorialModal';
+import { parseDDMMYYYYAnyToISO } from 'src/utils/handleDates';
 
 const TrabajadorPage = () => {
   const router = useRouter();
   const { trabajadorId } = router.query;
-  const [trabajoRegistrado, setTrabajoRegistrado] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [fechaDesde, setFechaDesde] = useState(null);
-  const [fechaHasta, setFechaHasta] = useState(null);
-  const estadoFiltro = useMemo(() => {
-    return router.query.estado || 'todos';
-  }, [router.query.estado]);
-  const [editarModalOpen, setEditarModalOpen] = useState(false);
-  const [trabajoDiarioSeleccionado, setTrabajoDiarioSeleccionado] = useState(null);
-  const [trabajador, setTrabajador] = useState(null);
-  const [stats, setStats] = useState({ total: 0, ok: 0, incompleto: 0, advertencia: 0, sinParte: 0, sinHoras: 0, sinLicencia: 0, conLicencia: 0 });
+  const diaParam = useMemo(() => {
+    const raw = Array.isArray(router.query.dia) ? router.query.dia[0] : router.query.dia;
+    return raw ? String(raw) : null;
+  }, [router.query.dia]);
 
-  console.log("trabajoRegistrado", trabajoRegistrado);
+  const diaISO = useMemo(() => {
+    if (diaParam) {
+      const iso = parseDDMMYYYYAnyToISO(diaParam);
+      if (iso) return iso;
+    }
+    return parseDDMMYYYYAnyToISO(dayjs().format('DD-MM-YYYY'));
+  }, [diaParam]);
+
   useEffect(() => {
-    if (trabajadorId) {
-      fetchTrabajoRegistrado();
-    }
-  }, [trabajadorId, fechaDesde, fechaHasta, estadoFiltro]);
+    if (!router.isReady) return;
+    if (!trabajadorId) return;
+    if (diaParam) return;
+    router.replace(
+      { pathname: router.pathname, query: { ...router.query, dia: dayjs().format('DD-MM-YYYY') } },
+      undefined,
+      { shallow: true }
+    );
+  }, [router.isReady, trabajadorId, diaParam, router]);
 
-  const fetchTrabajoRegistrado = async () => {
-    setIsLoading(true);
-    try {
-      const params = {
-        limit: 200,
-        offset: 0,
-        };
+  const handleChangeDia = useCallback((nv) => {
+    const nextDia = (nv || dayjs()).format('DD-MM-YYYY');
+    const nextQuery = { ...router.query, dia: nextDia };
+    delete nextQuery.page;
+    router.replace({ pathname: router.pathname, query: nextQuery }, undefined, { shallow: true });
+  }, [router]);
 
-      // Agregar filtros de fecha si existen
-      if (fechaDesde) {
-        params.from = fechaDesde.toISOString();
-      }
-      if (fechaHasta) {
-        params.to = fechaHasta.toISOString();
-      }
+  const {
+    data,
+    stats,
+    error,
+    isError,
+    isLoading,
+    columns,
+    table,
+    filters,
+    logs,
+    edit,
+  } = useTrabajoDiarioPage({
+    enabled: router.isReady && !!trabajadorId,
+    diaISO,
+    trabajadorId: trabajadorId ? String(trabajadorId) : undefined,
+    incluirTrabajador: false,
+    defaultLimit: 200,
+  });
 
-      // Agregar filtro de estado si no es 'todos'
-      if (estadoFiltro !== 'todos') {
-        params.estado = estadoFiltro;
-      }
-
-      const response = await TrabajoRegistradoService.getTrabajoRegistradoByTrabajadorId(trabajadorId, params);
-      setTrabajoRegistrado(response.data || []);
-      setStats(response.stats || { total: 0, ok: 0, incompleto: 0, advertencia: 0, sinParte: 0, sinHoras: 0, sinLicencia: 0, conLicencia: 0 });
-      
-      // Extraer datos del trabajador del primer registro (si existe)
-      if (response.data && response.data.length > 0 && response.data[0].trabajadorId) {
-        setTrabajador(response.data[0].trabajadorId);
-      }
-      
-      setError(null);
-    } catch (err) {
-      console.error('Error al cargar trabajo registrado:', err);
-      setError('Error al cargar los datos del trabajador');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleEdit = (trabajoDiario) => {
-    setTrabajoDiarioSeleccionado(trabajoDiario);
-    setEditarModalOpen(true);
-  };
-
-  const handleSaveEdit = async () => {
-    try {
-      await fetchTrabajoRegistrado();
-    } catch (error) {
-      console.error('Error al recargar trabajo registrado:', error);
-    }
-  };
-
-  const renderEditButton = (item) => (
-    <IconButton 
-      size="small" 
-      onClick={(e) => {
-        e.stopPropagation();
-        handleEdit(item);
-      }}
-      color="primary"
-    >
-      <EditIcon fontSize="small" />
-    </IconButton>
-  );
-
-  const columns = useMemo(() => buildTrabajoRegistradoColumns(renderEditButton), []);
-
-  const formatters = {
-    fecha: (value) => formatearFecha(value),
-  };
-
-  const estadisticas = stats;
+  const trabajador = useMemo(() => {
+    const first = Array.isArray(data) && data.length > 0 ? data[0] : null;
+    return first?.trabajadorId || null;
+  }, [data]);
 
   const handleVolver = useCallback(() => router.back(), [router]);
 
+  const title = useMemo(() => {
+    if (trabajador?.apellido || trabajador?.nombre) {
+      const ap = String(trabajador?.apellido || '').trim();
+      const no = String(trabajador?.nombre || '').trim();
+      return `${ap}${ap && no ? ', ' : ''}${no}`.trim();
+    }
+    return trabajadorId ? String(trabajadorId) : 'Trabajador';
+  }, [trabajador, trabajadorId]);
 
   if (!trabajadorId) {
     return (
@@ -133,89 +95,89 @@ const TrabajadorPage = () => {
   }
 
   return (
-    <DashboardLayout title={`${trabajador ? `${trabajador.apellido}, ${trabajador.nombre}` : trabajadorId}`}
->
+    <DashboardLayout title={title}>
       <Container maxWidth="xl">
         <Stack>
           <BackButton onClick={handleVolver} sx={{ mb: 3 }} />
 
           <Stack spacing={3}>
-            <Box>
-            <Stack direction="row" spacing={2} alignItems="center" flexWrap="wrap">
-              {trabajador?.dni && (
-                <Typography variant="body2" color="textSecondary">
-                  DNI: {trabajador.dni}
-                </Typography>
-              )}
-              {trabajador?.categoria && (
-                <Chip 
-                  label={`Categoría: ${trabajador.categoria}`} 
-                  size="small" 
-                  variant="outlined"
+            {trabajador?.dni && (
+              <Typography variant="body2" color="text.secondary">
+                DNI: {trabajador.dni}
+              </Typography>
+            )}
+
+            <LocalizationProvider dateAdapter={AdapterDayjs}>
+              <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
+                <DatePicker
+                  label="Día"
+                  value={dayjs(diaISO)}
+                  onChange={handleChangeDia}
+                  format="DD/MM/YYYY"
+                  slotProps={{ textField: { size: 'small', sx: { width: 200 } } }}
                 />
-              )}
-              {trabajador?.active !== undefined && (
-                <Chip 
-                  label={trabajador.active ? 'Activo' : 'Inactivo'} 
-                  size="small" 
-                  color={trabajador.active ? 'success' : 'default'}
+                <TextField
+                  label="Buscar"
+                  size="small"
+                  value={filters.qInput}
+                  onChange={(e) => filters.setQInput(e.target.value)}
+                  sx={{ width: 240 }}
+                  InputProps={{
+                    endAdornment: filters.qInput.length > 0 && (
+                      <InputAdornment position="end">
+                        <IconButton
+                          onClick={() => filters.setQInput('')}
+                          edge="end"
+                          size="small"
+                          sx={{ color: 'text.secondary' }}
+                        >
+                          <ClearIcon />
+                        </IconButton>
+                      </InputAdornment>
+                    ),
+                  }}
                 />
-              )}
-            </Stack>
-          </Box>
+              </Box>
+            </LocalizationProvider>
 
-          <LocalizationProvider dateAdapter={AdapterDayjs}>
-            <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
-              <DatePicker
-                label="Desde"
-                value={fechaDesde}
-                onChange={(newValue) => setFechaDesde(newValue)}
-                format="DD/MM/YYYY"
-                slotProps={{
-                  textField: {
-                    size: 'small',
-                    sx: { width: 200 }
-                  }
-                }}
-              />
-              <DatePicker
-                label="Hasta"
-                value={fechaHasta}
-                onChange={(newValue) => setFechaHasta(newValue)}
-                format="DD/MM/YYYY"
-                slotProps={{
-                  textField: {
-                    size: 'small',
-                    sx: { width: 200 }
-                  }
-                }}
-              />
-            </Box>
-          </LocalizationProvider>
+            <FiltroTrabajoDiario stats={stats} />
 
-          <FiltroTrabajoDiario stats={estadisticas} />
+            {isError && (
+              <Alert severity="error">
+                {error?.message || 'Error al cargar los trabajos del trabajador'}
+              </Alert>
+            )}
 
-          {error && (
-            <Alert severity="error" onClose={() => setError(null)}>
-              {error}
-            </Alert>
-          )}
-
-          <TableComponent
-            data={trabajoRegistrado}
-            columns={columns}
-            formatters={formatters}
-            isLoading={isLoading}
-          />
+            <TableComponent
+              data={data}
+              columns={columns}
+              isLoading={isLoading}
+              sortField={table.sortField}
+              sortDirection={table.sortDirection}
+              onSortChange={table.onSortChange}
+              pagination={table.pagination}
+              onPageChange={table.onPageChange}
+              onRowsPerPageChange={table.onRowsPerPageChange}
+            />
           </Stack>
         </Stack>
       </Container>
 
       <EditarTrabajoDiarioModal
-        open={editarModalOpen}
-        onClose={() => setEditarModalOpen(false)}
-        onSave={handleSaveEdit}
-        trabajoDiario={trabajoDiarioSeleccionado}
+        open={edit.open}
+        onClose={edit.onClose}
+        onSave={edit.onSave}
+        trabajoDiario={edit.entity}
+      />
+
+      <HistorialModal
+        open={logs.open}
+        onClose={logs.onClose}
+        entity={logs.entity}
+        title="Historial de cambios"
+        entityLabel="Trabajo diario"
+        getEntityTitle={logs.getEntityTitle}
+        getEntitySubtitle={logs.getEntitySubtitle}
       />
     </DashboardLayout>
   );

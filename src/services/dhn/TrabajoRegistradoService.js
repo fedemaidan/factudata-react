@@ -3,7 +3,7 @@ import api from '../axiosConfig';
 
 const TrabajoRegistradoService = {
   getTrabajoRegistradoByTrabajadorId: async (trabajadorId, params = {}) => {
-    const { limit = 200, offset = 0, from, to, estado, filtro } = params;
+    const { limit = 200, offset = 0, from, to, estado, filtro, q, sort } = params;
     const queryParams = new URLSearchParams({
       limit: limit.toString(),
       offset: offset.toString(),
@@ -13,6 +13,8 @@ const TrabajoRegistradoService = {
     if (to) queryParams.append('to', to);
     if (estado) queryParams.append('estado', estado);
     if (filtro) queryParams.append('filtro', filtro);
+    if (q) queryParams.append('q', q);
+    if (sort) queryParams.append('sort', sort);
     const response = await api.get(
       `/dhn/trabajo-diario-registrado/${trabajadorId}?${queryParams}`
     );

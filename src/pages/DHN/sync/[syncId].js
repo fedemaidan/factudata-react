@@ -9,7 +9,7 @@ import { Layout as DashboardLayout } from "src/layouts/dashboard/layout";
 import TableComponent from "src/components/TableComponent";
 import DhnDriveService from "src/services/dhn/cargarUrlDriveService";
 import TrabajoRegistradoService from "src/services/dhn/TrabajoRegistradoService";
-import ComprobanteModal from "src/components/celulandia/ComprobanteModal";
+import ImagenModal from "src/components/ImagenModal";
 import ResolverTrabajadorModal from "src/components/dhn/ResolverTrabajadorModal";
 import {
   parseDDMMYYYYToISO,
@@ -86,6 +86,7 @@ const SyncDetailPage = () => {
 
   const [imageModalOpen, setImageModalOpen] = useState(false);
   const [imageUrl, setImageUrl] = useState("");
+  const [imageFileName, setImageFileName] = useState("");
 
   const [editingId, setEditingId] = useState(null);
   const [editingValue, setEditingValue] = useState("");
@@ -124,14 +125,16 @@ const SyncDetailPage = () => {
     await fetchDetails();
   }, [fetchDetails]);
 
-  const openImageModal = (url) => {
+  const openImageModal = (url, fileName) => {
     if (!url) return;
     setImageUrl(url);
+    setImageFileName(typeof fileName === "string" ? fileName : "");
     setImageModalOpen(true);
   };
   const closeImageModal = () => {
     setImageModalOpen(false);
     setImageUrl("");
+    setImageFileName("");
   };
   const handleCloseAlert = (_, reason) => {
     if (reason === "clickaway") return;
@@ -168,8 +171,6 @@ const SyncDetailPage = () => {
 
       try {
         setResyncingId(urlStorageId);
-
-        // Optimista: mostrar que arrancó el reprocesamiento.
         setItems((prev) =>
           prev.map((it) =>
             it?._id === urlStorageId ? { ...it, status: "processing" } : it
@@ -227,6 +228,66 @@ const SyncDetailPage = () => {
       },
     ];
 
+    const renderArchivoCell = (it) => {
+      const name = typeof it?.file_name === "string" ? it.file_name.trim() : "";
+      const hasImage = Boolean(it?.url_storage);
+      const hasDrive = Boolean(it?.url_drive);
+
+      return (
+        <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+          <Tooltip title={name || "-"} placement="top" arrow>
+            <Box
+              component="span"
+              sx={{
+                display: "inline-block",
+                maxWidth: 200,
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                verticalAlign: "bottom",
+                cursor: "default",
+              }}
+            >
+              {name || "-"}
+            </Box>
+          </Tooltip>
+
+          <Tooltip title={hasImage ? "Ver imagen" : "Sin imagen"} placement="top">
+            <Box component="span" sx={{ display: "inline-flex" }}>
+              <IconButton
+                size="small"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (!hasImage) return;
+                  openImageModal(it.url_storage, it.file_name);
+                }}
+                disabled={!hasImage}
+                sx={{ p: "4px" }}
+              >
+                <VisibilityIcon fontSize="small" />
+              </IconButton>
+            </Box>
+          </Tooltip>
+
+          <Tooltip title={hasDrive ? "Abrir en Drive" : "Sin URL Drive"} placement="top">
+            <Box component="span" sx={{ display: "inline-flex" }}>
+              <IconButton
+                size="small"
+                href={hasDrive ? it.url_drive : undefined}
+                target={hasDrive ? "_blank" : undefined}
+                rel={hasDrive ? "noreferrer" : undefined}
+                onClick={(e) => e.stopPropagation()}
+                disabled={!hasDrive}
+                sx={{ p: "4px" }}
+              >
+                <OpenInNewIcon fontSize="small" />
+              </IconButton>
+            </Box>
+          </Tooltip>
+        </Box>
+      );
+    };
+
     cols.push({
       key: "acciones",
       label: "Acciones",
@@ -255,7 +316,11 @@ const SyncDetailPage = () => {
                   handleResyncUrlStorage(it);
                 }}
                 disabled={Boolean(resyncingId) || isResyncing || isProcessing}
-                sx={{ minWidth: 120 }}
+                sx={{ 
+                  minWidth: 90,
+                  padding: "4px 8px",
+                  fontSize: "0.75rem"
+                }}
               >
                 {isResyncing ? (
                   <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
@@ -392,46 +457,15 @@ const SyncDetailPage = () => {
         },
       });
     }
-    if (!isHoras) {
-      cols.push({
-        key: "imagen",
-        label: "Imagen",
-        render: (it) =>
-          it?.url_storage ? (
-            <IconButton
-              size="small"
-              onClick={(e) => {
-                e.stopPropagation();
-                openImageModal(it.url_storage);
-              }}
-              sx={{ p: "4px" }}
-            >
-              <VisibilityIcon fontSize="small" />
-            </IconButton>
-          ) : (
-            "-"
-          ),
-      });
-    }
+
+    // Columna única (siempre): nombre + acciones (ver imagen + url drive)
+    cols.push({
+      key: "archivo",
+      label: "Archivo",
+      render: renderArchivoCell,
+    });
+
     cols.push(
-      {
-        key: "url_drive",
-        label: "URL Drive",
-        render: (it) =>
-          it?.url_drive ? (
-            <IconButton
-              size="small"
-              href={it.url_drive}
-              target="_blank"
-              rel="noreferrer"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <OpenInNewIcon fontSize="small" />
-            </IconButton>
-          ) : (
-            "-"
-          ),
-      },
       {
         key: "observacion",
         label: "Observación",
@@ -620,7 +654,12 @@ const SyncDetailPage = () => {
           </Box>
         </Stack>
 
-        <ComprobanteModal open={imageModalOpen} onClose={closeImageModal} imagenUrl={imageUrl} />
+        <ImagenModal
+          open={imageModalOpen}
+          onClose={closeImageModal}
+          imagenUrl={imageUrl}
+          fileName={imageFileName}
+        />
         
         <ResolverTrabajadorModal
           open={resolverModalOpen}
