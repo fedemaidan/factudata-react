@@ -236,6 +236,7 @@ const SyncDetailPage = () => {
         if (!shouldShowButton) return "-";
 
         const isResyncing = resyncingId === it?._id;
+        const isProcessing = it?.status === "processing";
         const buttonColor = isError ? "error" : "primary";
         const buttonLabel = isError ? "Reintentar" : "Resincronizar";
         return (
@@ -253,7 +254,7 @@ const SyncDetailPage = () => {
                   e.stopPropagation();
                   handleResyncUrlStorage(it);
                 }}
-                disabled={Boolean(resyncingId) || isResyncing}
+                disabled={Boolean(resyncingId) || isResyncing || isProcessing}
                 sx={{ minWidth: 120 }}
               >
                 {isResyncing ? (
