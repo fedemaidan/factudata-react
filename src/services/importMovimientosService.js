@@ -502,15 +502,17 @@ class ImportMovimientosService {
    * @param {string} empresaId - ID de la empresa
    * @param {string} userId - ID del usuario
    * @param {string} userName - Nombre del usuario
+   * @param {string|null} proyectoId - ID del proyecto específico (null = detectar del CSV)
    * @returns {Promise<object>} { codigo, resultado: null }
    */
-  async importarDirecto(archivosUrls, empresaId, userId, userName) {
+  async importarDirecto(archivosUrls, empresaId, userId, userName, proyectoId = null) {
     try {
       console.log('[ImportMovimientosService] Iniciando importación directa:', {
         archivos: archivosUrls.length,
         empresaId,
         userId,
-        userName
+        userName,
+        proyectoId
       });
       
       const response = await fetch(`${API_BASE_URL}/api/importar-movimientos/importar-directo`, {
@@ -522,7 +524,8 @@ class ImportMovimientosService {
           archivosUrls,
           empresaId,
           userId,
-          userName
+          userName,
+          proyectoId
         })
       });
 
