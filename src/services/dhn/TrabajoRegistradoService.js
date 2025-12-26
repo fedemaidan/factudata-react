@@ -105,6 +105,10 @@ const TrabajoRegistradoService = {
     });
     return response.data;
   },
+  resolverLicenciaManual: async (payload = {}) => {
+    const response = await api.post("/dhn/trabajo-diario-registrado/resolver-licencia-manual", payload);
+    return response.data;
+  },
 };
 
 export default TrabajoRegistradoService;

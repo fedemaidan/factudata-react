@@ -1,80 +1,20 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { useRouter } from "next/router";
-import { Container, Box, IconButton, Snackbar, Alert, Button, Stack, TextField, Chip, Tooltip, CircularProgress } from "@mui/material";
-import OpenInNewIcon from "@mui/icons-material/OpenInNew";
-import VisibilityIcon from "@mui/icons-material/Visibility";
+import { Container, Box, Snackbar, Alert, Button, Stack } from "@mui/material";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
-import ReplayIcon from "@mui/icons-material/Replay";
 import { Layout as DashboardLayout } from "src/layouts/dashboard/layout";
 import TableComponent from "src/components/TableComponent";
 import DhnDriveService from "src/services/dhn/cargarUrlDriveService";
-import TrabajoRegistradoService from "src/services/dhn/TrabajoRegistradoService";
 import ImagenModal from "src/components/ImagenModal";
 import ResolverTrabajadorModal from "src/components/dhn/ResolverTrabajadorModal";
+import ResolverLicenciaManualForm from "src/components/dhn/ResolverLicenciaManualForm";
 import {
-  parseDDMMYYYYToISO,
-  normalizeDDMMYYYYString,
-  normalizeLicenciaFechasDetectadasString,
-} from "src/utils/handleDates";
-
-const statusChip = (status) => {
-  const map = {
-    pending: { color: "#757575", label: "Pendiente" },
-    processing: { color: "#ed6c02", label: "Procesando" },
-    done: { color: "#2e7d32", label: "Completado" },
-    ok: { color: "#2e7d32", label: "OK" },
-    error: { color: "#d32f2f", label: "Error" },
-  };
-  const cfg = map[status] || { color: "#757575", label: status || "-" };
-  return (
-    <Box
-      component="span"
-      sx={{
-        display: "inline-block",
-        border: "1px solid",
-        borderColor: cfg.color,
-        color: cfg.color,
-        fontWeight: 500,
-        fontSize: "0.7rem",
-        px: 1,
-        py: "2px",
-        borderRadius: 1,
-      }}
-    >
-      {cfg.label}
-    </Box>
-  );
-};
-
-const parsearTrabajadoresNoIdentificados = (observacion) => {
-  if (!observacion || typeof observacion !== "string") return [];
-  
-  const prefix = "Trabajadores no identificados: ";
-  if (!observacion.startsWith(prefix)) return [];
-  
-  const trabajadoresStr = observacion.slice(prefix.length).trim();
-  if (!trabajadoresStr) return [];
-  
-  const trabajadores = trabajadoresStr.split(",").map((t) => {
-    const trimmed = t.trim();
-    // Formato: "NOMBRE APELLIDO (DNI)"
-    const match = trimmed.match(/^(.+?)\s+\((\d+)\)$/);
-    if (match) {
-      const nombreCompleto = match[1].trim();
-      const dni = match[2].trim();
-      const partes = nombreCompleto.split(/\s+/);
-      if (partes.length >= 2) {
-        const apellido = partes[partes.length - 1];
-        const nombre = partes.slice(0, -1).join(" ");
-        return { nombre, apellido, dni };
-      }
-      return { nombre: "", apellido: nombreCompleto, dni };
-    }
-    return null;
-  }).filter(Boolean);
-  
-  return trabajadores;
-};
+  AccionesCell,
+  ArchivoCell,
+  FechaDetectadaCell,
+  ObservacionCell,
+  StatusChip,
+} from "src/components/dhn/sync/cells";
 
 const SyncDetailPage = () => {
   const router = useRouter();
@@ -93,6 +33,8 @@ const SyncDetailPage = () => {
   const [savingId, setSavingId] = useState(null);
 
   const [resyncingId, setResyncingId] = useState(null);
+  const [resolverLicenciaModalOpen, setResolverLicenciaModalOpen] = useState(false);
+  const [resolverLicenciaRow, setResolverLicenciaRow] = useState(null);
 
   const [resolverModalOpen, setResolverModalOpen] = useState(false);
   const [trabajadorSeleccionado, setTrabajadorSeleccionado] = useState(null);
@@ -104,8 +46,6 @@ const SyncDetailPage = () => {
   const isHoras = tipo === "horas";
   const shouldShowFecha = isParte || isLicencia;
   const canEditFecha = isParte || isLicencia;
-
-  const handleVolver = useCallback(() => router.back(), [router]);
 
   const fetchDetails = useCallback(async () => {
     if (!syncId) return;
@@ -120,10 +60,6 @@ const SyncDetailPage = () => {
       setIsLoading(false);
     }
   }, [syncId]);
-
-  const handleActualizar = useCallback(async () => {
-    await fetchDetails();
-  }, [fetchDetails]);
 
   const openImageModal = (url, fileName) => {
     if (!url) return;
@@ -141,76 +77,98 @@ const SyncDetailPage = () => {
     setAlert((prev) => ({ ...prev, open: false }));
   };
 
-  const handleResolverTrabajador = useCallback((trabajador, urlStorage) => {
+  const handleResolverTrabajador = (trabajador, urlStorage) => {
     setTrabajadorSeleccionado(trabajador);
     setUrlStorageSeleccionado(urlStorage);
     setResolverModalOpen(true);
-  }, []);
+  };
 
-  const handleTrabajadorResuelto = useCallback(async () => {
-    // Recargar los datos para actualizar la observación
+  const handleOpenResolverLicencia = (row) => {
+    if (!row?.url_storage) return;
+    setResolverLicenciaRow(row);
+    setResolverLicenciaModalOpen(true);
+  };
+
+  const handleCloseResolverLicencia = () => {
+    setResolverLicenciaModalOpen(false);
+    setResolverLicenciaRow(null);
+  };
+
+  const handleTrabajadorResuelto = async () => {
     try {
       const data = await DhnDriveService.getSyncChildren(String(syncId));
       setItems(Array.isArray(data) ? data : []);
     } catch (e) {
       console.error("Error recargando datos:", e);
     }
-  }, [syncId]);
+  };
 
-  const handleResyncUrlStorage = useCallback(
-    async (row) => {
-      const urlStorageId = row?._id;
-      if (!urlStorageId) return;
-      if (!syncId) return;
-      if (resyncingId) return;
+  const handleLicenciaResuelta = async (resp) => {
+    const registros = resp?.registrosCreados ?? resp?.data?.registrosCreados ?? 0;
+    const baseMessage =
+      resp?.message ||
+      resp?.mensaje ||
+      `Licencia resuelta manualmente (${registros} registro${registros === 1 ? "" : "s"})`;
+    const fechas = resp?.fechasDetectadas || resp?.data?.fechasDetectadas || "";
+    setAlert({
+      open: true,
+      severity: "success",
+      message: fechas ? `${baseMessage} (${fechas})` : baseMessage,
+    });
+    handleCloseResolverLicencia();
+    await fetchDetails();
+  };
 
-      const payload = {};
-      if (tipo && ["parte", "licencia", "horas"].includes(tipo)) {
-        payload.tipo = tipo;
+  const handleResyncUrlStorage = async (row) => {
+    const urlStorageId = row?._id;
+    if (!urlStorageId) return;
+    if (!syncId) return;
+    if (resyncingId) return;
+
+    const payload = {};
+    if (tipo && ["parte", "licencia", "horas"].includes(tipo)) {
+      payload.tipo = tipo;
+    }
+
+    try {
+      setResyncingId(urlStorageId);
+      setItems((prev) =>
+        prev.map((it) =>
+          it?._id === urlStorageId ? { ...it, status: "processing" } : it
+        )
+      );
+
+      const resp = await DhnDriveService.resyncUrlStorageById(String(urlStorageId), payload);
+      if (!resp?.ok) {
+        throw new Error(resp?.error?.message || "No se pudo iniciar la resincronización");
       }
 
+      setAlert({
+        open: true,
+        severity: "success",
+        message: "Resincronización iniciada.",
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      const data = await DhnDriveService.getSyncChildren(String(syncId));
+      setItems(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error("Error resincronizando urlStorage:", error);
+      setAlert({
+        open: true,
+        severity: "error",
+        message: error?.message || "Error al resincronizar",
+      });
       try {
-        setResyncingId(urlStorageId);
-        setItems((prev) =>
-          prev.map((it) =>
-            it?._id === urlStorageId ? { ...it, status: "processing" } : it
-          )
-        );
-
-        const resp = await DhnDriveService.resyncUrlStorageById(String(urlStorageId), payload);
-        if (!resp?.ok) {
-          throw new Error(resp?.error?.message || "No se pudo iniciar la resincronización");
-        }
-
-        setAlert({
-          open: true,
-          severity: "success",
-          message: "Resincronización iniciada.",
-        });
-
-        await new Promise((resolve) => setTimeout(resolve, 1000));
         const data = await DhnDriveService.getSyncChildren(String(syncId));
         setItems(Array.isArray(data) ? data : []);
-      } catch (error) {
-        console.error("Error resincronizando urlStorage:", error);
-        setAlert({
-          open: true,
-          severity: "error",
-          message: error?.message || "Error al resincronizar",
-        });
-        // Si algo falla, recargar para dejar el estado real.
-        try {
-          const data = await DhnDriveService.getSyncChildren(String(syncId));
-          setItems(Array.isArray(data) ? data : []);
-        } catch (e) {
-          // noop
-        }
-      } finally {
-        setResyncingId(null);
+      } catch (e) {
+        // noop
       }
-    },
-    [resyncingId, syncId, tipo]
-  );
+    } finally {
+      setResyncingId(null);
+    }
+  };
 
   useEffect(() => {
     const run = async () => {
@@ -224,308 +182,81 @@ const SyncDetailPage = () => {
       {
         key: "status",
         label: "Estado",
-        render: (it) => statusChip(it?.status),
+        render: (it) => <StatusChip status={it?.status} />,
       },
     ];
-
-    const renderArchivoCell = (it) => {
-      const name = typeof it?.file_name === "string" ? it.file_name.trim() : "";
-      const hasImage = Boolean(it?.url_storage);
-      const hasDrive = Boolean(it?.url_drive);
-
-      return (
-        <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
-          <Tooltip title={name || "-"} placement="top" arrow>
-            <Box
-              component="span"
-              sx={{
-                display: "inline-block",
-                maxWidth: 200,
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                verticalAlign: "bottom",
-                cursor: "default",
-              }}
-            >
-              {name || "-"}
-            </Box>
-          </Tooltip>
-
-          <Tooltip title={hasImage ? "Ver imagen" : "Sin imagen"} placement="top">
-            <Box component="span" sx={{ display: "inline-flex" }}>
-              <IconButton
-                size="small"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (!hasImage) return;
-                  openImageModal(it.url_storage, it.file_name);
-                }}
-                disabled={!hasImage}
-                sx={{ p: "4px" }}
-              >
-                <VisibilityIcon fontSize="small" />
-              </IconButton>
-            </Box>
-          </Tooltip>
-
-          <Tooltip title={hasDrive ? "Abrir en Drive" : "Sin URL Drive"} placement="top">
-            <Box component="span" sx={{ display: "inline-flex" }}>
-              <IconButton
-                size="small"
-                href={hasDrive ? it.url_drive : undefined}
-                target={hasDrive ? "_blank" : undefined}
-                rel={hasDrive ? "noreferrer" : undefined}
-                onClick={(e) => e.stopPropagation()}
-                disabled={!hasDrive}
-                sx={{ p: "4px" }}
-              >
-                <OpenInNewIcon fontSize="small" />
-              </IconButton>
-            </Box>
-          </Tooltip>
-        </Box>
-      );
-    };
 
     cols.push({
       key: "acciones",
       label: "Acciones",
-      render: (it) => {
-        const isError = it?.status === "error";
-        const shouldShowButton = Boolean(isParte) || isError;
-        if (!shouldShowButton) return "-";
-
-        const isResyncing = resyncingId === it?._id;
-        const isProcessing = it?.status === "processing";
-        const buttonColor = isError ? "error" : "primary";
-        const buttonLabel = isError ? "Reintentar" : "Resincronizar";
-        return (
-          <Tooltip
-            title={isError ? "Reintentar procesamiento" : "Resincronizar / reprocesar"}
-            placement="top"
-          >
-            <Box component="span" sx={{ display: "inline-flex" }}>
-              <Button
-                size="small"
-                variant="outlined"
-                color={buttonColor}
-                startIcon={<ReplayIcon fontSize="small" />}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleResyncUrlStorage(it);
-                }}
-                disabled={Boolean(resyncingId) || isResyncing || isProcessing}
-                sx={{ 
-                  minWidth: 90,
-                  padding: "4px 8px",
-                  fontSize: "0.75rem"
-                }}
-              >
-                {isResyncing ? (
-                  <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                    Reintentando
-                    <CircularProgress size={14} />
-                  </Box>
-                ) : (
-                  buttonLabel
-                )}
-              </Button>
-            </Box>
-          </Tooltip>
-        );
-      },
+      render: (it) => (
+        <AccionesCell
+          row={it}
+          isParte={isParte}
+          resyncingId={resyncingId}
+          handleResyncUrlStorage={handleResyncUrlStorage}
+          handleOpenResolverLicencia={handleOpenResolverLicencia}
+        />
+      ),
     });
 
     if (shouldShowFecha) {
       cols.push({
         key: "fechasDetectadas",
         label: "Fecha detectada",
-        render: (it) => {
-          const value = typeof it?.fechasDetectadas === "string" ? it.fechasDetectadas : "-";
-          const hasValue = value && value !== "-" && value.trim().length > 0;
-          const isRange = hasValue && value.includes(" - ");
-          const isEditing = canEditFecha && editingId === it._id;
-          if (isEditing) {
-            return (
-              <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
-                <TextField
-                  value={editingValue}
-                  onChange={(e) => setEditingValue(e.target.value)}
-                  size="small"
-                  variant="standard"
-                  sx={{ maxWidth: isRange ? 220 : 110 }}
-                  placeholder={isLicencia ? (isRange ? "DD/MM/AAAA - DD/MM/AAAA" : "DD/MM/AAAA") : "DD/MM/AAAA"}
-                />
-                <IconButton
-                  size="small"
-                  onClick={async (e) => {
-                    e.stopPropagation();
-                    const nuevaFecha = editingValue.trim();
-                    if (!nuevaFecha) return;
-                    try {
-                      setSavingId(it._id);
-
-                      const patch = {};
-                      if (isParte) {
-                        const iso = parseDDMMYYYYToISO(nuevaFecha);
-                        if (iso) {
-                          patch.fecha = iso;
-                          const normalized = normalizeDDMMYYYYString(nuevaFecha);
-                          if (normalized) {
-                            patch.fechasDetectadas = normalized;
-                          }
-                        }
-                      } else if (isLicencia) {
-                        const normalizedRange = normalizeLicenciaFechasDetectadasString(nuevaFecha);
-                        if (normalizedRange) {
-                          patch.fechasDetectadas = normalizedRange;
-                        }
-                      }
-
-                      const resp = await TrabajoRegistradoService.updateByComprobante(
-                        it.url_storage,
-                        patch
-                      );
-                      setItems((prev) =>
-                        prev.map((row) =>
-                          row._id === it._id ? { ...row, fechasDetectadas: nuevaFecha } : row
-                        )
-                      );
-                      const updatedCount =
-                        resp?.modifiedCount ??
-                        resp?.data?.modifiedCount ??
-                        0;
-                      setAlert({
-                        open: true,
-                        severity: "success",
-                        message:
-                          updatedCount > 0
-                            ? `Fecha detectada actualizada en ${updatedCount} trabajo${updatedCount === 1 ? "" : "s"} diario${updatedCount === 1 ? "" : "s"}`
-                            : "Fecha detectada actualizada",
-                      });
-                      setEditingId(null);
-                      setEditingValue("");
-                    } catch (error) {
-                      console.error("Error actualizando fecha detectada:", error);
-                      setAlert({
-                        open: true,
-                        severity: "error",
-                        message: "Error al actualizar la fecha detectada",
-                      });
-                    } finally {
-                      setSavingId(null);
-                    }
-                  }}
-                  disabled={savingId === it._id}
-                  sx={{ p: 0.5 }}
-                >
-                  ✓
-                </IconButton>
-                <IconButton
-                  size="small"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setEditingId(null);
-                    setEditingValue("");
-                  }}
-                  sx={{ p: 0.5 }}
-                >
-                  ✕
-                </IconButton>
-              </Box>
-            );
-          }
-          return (
-            <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
-              <Box component="span">{value}</Box>
-              {canEditFecha && hasValue && (
-                <IconButton
-                  size="small"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setEditingId(it._id);
-                    setEditingValue(value);
-                  }}
-                  sx={{ p: 0.25 }}
-                >
-                  ✎
-                </IconButton>
-              )}
-            </Box>
-          );
-        },
+        render: (it) => (
+          <FechaDetectadaCell
+            row={it}
+            canEditFecha={canEditFecha}
+            isParte={isParte}
+            isLicencia={isLicencia}
+            editingId={editingId}
+            editingValue={editingValue}
+            setEditingId={setEditingId}
+            setEditingValue={setEditingValue}
+            savingId={savingId}
+            setSavingId={setSavingId}
+            setItems={setItems}
+            setAlert={setAlert}
+          />
+        ),
       });
     }
 
-    // Columna única (siempre): nombre + acciones (ver imagen + url drive)
     cols.push({
       key: "archivo",
       label: "Archivo",
-      render: renderArchivoCell,
+      render: (it) => <ArchivoCell row={it} onOpenImage={openImageModal} />,
     });
 
-    cols.push(
-      {
-        key: "observacion",
-        label: "Observación",
-        render: (it) => {
-          const observacion = it?.observacion || "-";
-          const trabajadoresNoIdentificados = parsearTrabajadoresNoIdentificados(observacion);
-          
-          if (trabajadoresNoIdentificados.length > 0) {
-            return (
-              <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5, maxWidth: "600px" }}>
-                <Box component="span" sx={{ fontSize: "0.8rem", color: "text.secondary", mr: 0.5 }}>
-                  Trabajadores no identificados:
-                </Box>
-                {trabajadoresNoIdentificados.map((trabajador, idx) => (
-                 <Chip
-                 key={idx}
-                 label={`${trabajador.nombre} ${trabajador.apellido} (${trabajador.dni})`}
-                 size="small"
-                 variant="outlined"
-                 color="primary"
-                 onClick={(e) => {
-                   e.stopPropagation();
-                   handleResolverTrabajador(trabajador, it?.url_storage);
-                 }}
-                 sx={{
-                   cursor: "pointer",
-                   borderColor: "primary.main",
-                   color: "primary.main",
-                   transition: "all .2s ease",
-                   "&:hover": {
-                     backgroundColor: "rgba(25, 118, 210, 0.12)", // azul soft (no blanco)
-                     color: "primary.dark",                         // texto visible
-                     borderColor: "primary.dark",
-                   },
-                 }}
-               />
-               
-                ))}
-              </Box>
-            );
-          }
-          
-          // Si no hay trabajadores no identificados, mostrar la observación normal
-          return (
-            <Box
-              sx={{
-                maxWidth: "420px",
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-              }}
-            >
-              {observacion}
-            </Box>
-          );
-        },
-      }
-    );
+    cols.push({
+      key: "observacion",
+      label: "Observación",
+      render: (it) => (
+        <ObservacionCell row={it} handleResolverTrabajador={handleResolverTrabajador} />
+      ),
+    });
+
     return cols;
-  }, [shouldShowFecha, canEditFecha, editingId, editingValue, savingId, isParte, isLicencia, isHoras, handleResolverTrabajador, handleResyncUrlStorage, resyncingId]);
+  }, [
+    shouldShowFecha,
+    canEditFecha,
+    editingId,
+    editingValue,
+    savingId,
+    isParte,
+    isLicencia,
+    isHoras,
+    resyncingId,
+    handleResolverTrabajador,
+    handleResyncUrlStorage,
+    handleOpenResolverLicencia,
+    setItems,
+    setAlert,
+    openImageModal,
+  ]);
+
+
   return (
     <DashboardLayout title="Detalle de sincronización">
       <Container maxWidth="xl">
@@ -545,7 +276,7 @@ const SyncDetailPage = () => {
             <Button
               variant="text"
               startIcon={<ArrowBackIcon />}
-              onClick={handleVolver}
+              onClick={() => router.back()}
               sx={{
                 alignSelf: "flex-start",
                 color: "text.secondary",
@@ -558,7 +289,7 @@ const SyncDetailPage = () => {
             </Button>
             <Button
               variant="outlined"
-              onClick={handleActualizar}
+              onClick={fetchDetails}
               disabled={isLoading}
             >
               {isLoading ? "Actualizando..." : "Actualizar"}
@@ -660,6 +391,21 @@ const SyncDetailPage = () => {
           imagenUrl={imageUrl}
           fileName={imageFileName}
         />
+        <ImagenModal
+          open={resolverLicenciaModalOpen}
+          onClose={handleCloseResolverLicencia}
+          imagenUrl={resolverLicenciaRow?.url_storage}
+          fileName={resolverLicenciaRow?.file_name}
+          leftContent={
+            resolverLicenciaRow ? (
+              <ResolverLicenciaManualForm
+                urlStorage={resolverLicenciaRow.url_storage}
+                onResolved={handleLicenciaResuelta}
+                onCancel={handleCloseResolverLicencia}
+              />
+            ) : null
+          }
+        />
         
         <ResolverTrabajadorModal
           open={resolverModalOpen}
@@ -676,7 +422,4 @@ const SyncDetailPage = () => {
     </DashboardLayout>
   );
 };
-
 export default SyncDetailPage;
-
-

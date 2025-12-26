@@ -38,7 +38,7 @@ const rotatePoint = (point, degrees) => {
 
 const inverseRotatePoint = (point, degrees) => rotatePoint(point, -(Number(degrees || 0)));
 
-const ImagenModal = ({ open, onClose, imagenUrl, fileName }) => {
+const ImagenModal = ({ open, onClose, imagenUrl, fileName, leftContent }) => {
   const theme = useTheme();
   const isMdDown = useMediaQuery(theme.breakpoints.down("md"));
 
@@ -451,131 +451,161 @@ const ImagenModal = ({ open, onClose, imagenUrl, fileName }) => {
         </AppBar>
 
         <Box
-          ref={viewerRef}
-          onWheel={handleWheel}
-          onDoubleClick={handleDoubleClick}
-          onMouseDown={handlePointerDown}
-          onMouseMove={handlePointerMove}
-          onMouseUp={stopPanning}
-          onMouseLeave={stopPanning}
           sx={{
-            position: "relative",
             display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
             flex: 1,
             minHeight: 0,
-            px: { xs: 1, sm: 2 },
-            py: { xs: 1, sm: 2 },
+            width: "100%",
             overflow: "hidden",
-            userSelect: "none",
-            WebkitUserSelect: "none",
-            cursor: zoom > 1 ? "grab" : "default",
-            "&:active": { cursor: zoom > 1 ? "grabbing" : "default" },
+            flexDirection: { xs: "column", md: leftContent ? "row" : "column" },
           }}
         >
-          {imagenUrl && !hasError && (
-            <React.Fragment>
-              <Box
-                aria-hidden
-                sx={{
-                  position: "absolute",
-                  inset: 0,
-                  backgroundImage: `url(${imagenUrl})`,
-                  backgroundSize: "cover",
-                  backgroundPosition: "center",
-                  filter: "blur(28px) saturate(1.15) brightness(0.65)",
-                  transform: "scale(1.15)",
-                  opacity: 0.95,
-                  pointerEvents: "none",
-                }}
-              />
-              <Box
-                aria-hidden
-                sx={{
-                  position: "absolute",
-                  inset: 0,
-                  background:
-                    "radial-gradient(circle at center, rgba(0,0,0,0.15) 0%, rgba(0,0,0,0.72) 70%, rgba(0,0,0,0.88) 100%)",
-                  pointerEvents: "none",
-                }}
-              />
-            </React.Fragment>
-          )}
-
-          {(isLoading || hasError || !imagenUrl) && (
+          {leftContent && (
             <Box
+              component="section"
               sx={{
-                position: "absolute",
-                inset: 0,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                flexDirection: "column",
-                gap: 1.5,
-                color: "grey.200",
-                px: 2,
-                textAlign: "center",
-                zIndex: 1,
+                width: { xs: "100%", md: 360 },
+                borderRight: { md: "1px solid", xs: "none" },
+                borderColor: "divider",
+                backgroundColor: "background.paper",
+                p: 2,
+                overflowY: "auto",
+                flexShrink: 0,
+                maxHeight: "100%",
+                boxShadow: { md: "2px 0 20px rgba(0,0,0,0.08)" },
               }}
             >
-              {isLoading && (
-                <React.Fragment>
-                  <CircularProgress color="inherit" />
-                  <Typography variant="body2" sx={{ opacity: 0.9 }}>
-                    Cargando imagen…
-                  </Typography>
-                  <Typography variant="caption" sx={{ opacity: 0.7 }}>
-                    Tip: podés hacer zoom con la rueda del mouse.
-                  </Typography>
-                </React.Fragment>
-              )}
-
-              {!isLoading && hasError && (
-                <React.Fragment>
-                  <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-                    No se pudo cargar la imagen
-                  </Typography>
-                  <Typography variant="body2" sx={{ opacity: 0.85 }}>
-                    Probá abrirla en otra pestaña o copiá el link.
-                  </Typography>
-                </React.Fragment>
-              )}
-
-              {!isLoading && !hasError && !imagenUrl && (
-                <Typography variant="body2" sx={{ opacity: 0.85 }}>
-                  No hay imagen para mostrar.
-                </Typography>
-              )}
+              {leftContent}
             </Box>
           )}
 
-          {imagenUrl && !hasError && (
-            <Box
-              component="img"
-              src={imagenUrl}
-              alt="Imagen"
-              onLoad={() => setIsLoading(false)}
-              onError={() => {
-                setIsLoading(false);
-                setHasError(true);
-              }}
-              sx={{
-                maxWidth: "100%",
-                maxHeight: "100%",
-                transform,
-                transformOrigin: "center",
-                transition: "transform 120ms ease-out",
-                objectFit: "contain",
-                cursor: zoom > 1 ? "grab" : canShowActions ? "zoom-in" : "default",
-                boxShadow: hasError ? "none" : "0 12px 30px rgba(0,0,0,0.45)",
-                borderRadius: 1,
-                outline: 0,
-                position: "relative",
-                zIndex: 2,
-              }}
-            />
-          )}
+          <Box
+            ref={viewerRef}
+            onWheel={handleWheel}
+            onDoubleClick={handleDoubleClick}
+            onMouseDown={handlePointerDown}
+            onMouseMove={handlePointerMove}
+            onMouseUp={stopPanning}
+            onMouseLeave={stopPanning}
+            sx={{
+              position: "relative",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              flex: 1,
+              minHeight: 0,
+              px: { xs: 1, sm: 2 },
+              py: { xs: 1, sm: 2 },
+              overflow: "hidden",
+              userSelect: "none",
+              WebkitUserSelect: "none",
+              cursor: zoom > 1 ? "grab" : "default",
+              "&:active": { cursor: zoom > 1 ? "grabbing" : "default" },
+            }}
+          >
+            {imagenUrl && !hasError && (
+              <React.Fragment>
+                <Box
+                  aria-hidden
+                  sx={{
+                    position: "absolute",
+                    inset: 0,
+                    backgroundImage: `url(${imagenUrl})`,
+                    backgroundSize: "cover",
+                    backgroundPosition: "center",
+                    filter: "blur(28px) saturate(1.15) brightness(0.65)",
+                    transform: "scale(1.15)",
+                    opacity: 0.95,
+                    pointerEvents: "none",
+                  }}
+                />
+                <Box
+                  aria-hidden
+                  sx={{
+                    position: "absolute",
+                    inset: 0,
+                    background:
+                      "radial-gradient(circle at center, rgba(0,0,0,0.15) 0%, rgba(0,0,0,0.72) 70%, rgba(0,0,0,0.88) 100%)",
+                    pointerEvents: "none",
+                  }}
+                />
+              </React.Fragment>
+            )}
+
+            {(isLoading || hasError || !imagenUrl) && (
+              <Box
+                sx={{
+                  position: "absolute",
+                  inset: 0,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flexDirection: "column",
+                  gap: 1.5,
+                  color: "grey.200",
+                  px: 2,
+                  textAlign: "center",
+                  zIndex: 1,
+                }}
+              >
+                {isLoading && (
+                  <React.Fragment>
+                    <CircularProgress color="inherit" />
+                    <Typography variant="body2" sx={{ opacity: 0.9 }}>
+                      Cargando imagen…
+                    </Typography>
+                    <Typography variant="caption" sx={{ opacity: 0.7 }}>
+                      Tip: podés hacer zoom con la rueda del mouse.
+                    </Typography>
+                  </React.Fragment>
+                )}
+
+                {!isLoading && hasError && (
+                  <React.Fragment>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+                      No se pudo cargar la imagen
+                    </Typography>
+                    <Typography variant="body2" sx={{ opacity: 0.85 }}>
+                      Probá abrirla en otra pestaña o copiá el link.
+                    </Typography>
+                  </React.Fragment>
+                )}
+
+                {!isLoading && !hasError && !imagenUrl && (
+                  <Typography variant="body2" sx={{ opacity: 0.85 }}>
+                    No hay imagen para mostrar.
+                  </Typography>
+                )}
+              </Box>
+            )}
+
+            {imagenUrl && !hasError && (
+              <Box
+                component="img"
+                src={imagenUrl}
+                alt="Imagen"
+                onLoad={() => setIsLoading(false)}
+                onError={() => {
+                  setIsLoading(false);
+                  setHasError(true);
+                }}
+                sx={{
+                  maxWidth: "100%",
+                  maxHeight: "100%",
+                  transform,
+                  transformOrigin: "center",
+                  transition: "transform 120ms ease-out",
+                  objectFit: "contain",
+                  cursor: zoom > 1 ? "grab" : canShowActions ? "zoom-in" : "default",
+                  boxShadow: hasError ? "none" : "0 12px 30px rgba(0,0,0,0.45)",
+                  borderRadius: 1,
+                  outline: 0,
+                  position: "relative",
+                  zIndex: 2,
+                }}
+              />
+            )}
+          </Box>
         </Box>
       </Dialog>
 
