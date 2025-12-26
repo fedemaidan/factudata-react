@@ -148,16 +148,23 @@ const PasoResumen = ({
       }
 
       console.log('[PasoResumen] Archivos a procesar:', archivosUrls);
+      console.log('[PasoResumen] Proyecto seleccionado:', wizardData.proyectoSeleccionado);
       
       // 2. Iniciar importación (retorna inmediatamente con código)
       setEtapaActual('Iniciando procesamiento...');
       setProgresoImport(20);
       
+      // Si tipoImportacion es 'proyecto_especifico', pasar el ID del proyecto
+      const proyectoId = wizardData.tipoImportacion === 'proyecto_especifico' 
+        ? wizardData.proyectoSeleccionado?.id 
+        : null;
+      
       const inicioImportacion = await importMovimientosService.importarDirecto(
         archivosUrls,
         empresa.id,
         user.id,
-        user.firstName + ' ' + user.lastName
+        user.firstName + ' ' + user.lastName,
+        proyectoId
       );
 
       console.log('[PasoResumen] Importación iniciada:', inicioImportacion);
