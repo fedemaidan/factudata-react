@@ -27,15 +27,13 @@ const proyeccionService = {
     fechaInicio,
     fechaFin,
     archivoVentas,
-    archivoStock,
-    archivoQuiebre,
+    archivoStockQuiebre,
   }) => {
     const formData = new FormData();
     if (fechaInicio) formData.append("fechaInicio", fechaInicio);
     if (fechaFin) formData.append("fechaFin", fechaFin);
     if (archivoVentas) formData.append("ventas", archivoVentas);
-    if (archivoStock) formData.append("stock", archivoStock);
-    if (archivoQuiebre) formData.append("quiebre", archivoQuiebre);
+    if (archivoStockQuiebre) formData.append("quiebre", archivoStockQuiebre);
 
     for (let pair of formData.entries()) {
       console.log(pair[0], pair[1]); // Mostrará cada campo y su valor

@@ -561,33 +561,18 @@ const ProyeccionesV2Page = () => {
                   Ventas
                 </Typography>
               )}
-              {proyeccionMeta?.linkStock ? (
+              {proyeccionMeta?.linkQuiebre || proyeccionMeta?.linkStock ? (
                 <Link
-                  href={proyeccionMeta.linkStock}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  underline="hover"
-                  sx={{ mr: 1 }}
-                >
-                  Stock
-                </Link>
-              ) : (
-                <Typography component="span" variant="inherit" sx={{ mr: 1, color: "text.disabled" }}>
-                  Stock
-                </Typography>
-              )}
-              {proyeccionMeta?.linkQuiebre ? (
-                <Link
-                  href={proyeccionMeta.linkQuiebre}
+                  href={proyeccionMeta?.linkQuiebre || proyeccionMeta?.linkStock}
                   target="_blank"
                   rel="noopener noreferrer"
                   underline="hover"
                 >
-                  Quiebre
+                  Stock/Quiebre
                 </Link>
               ) : (
                 <Typography component="span" variant="inherit" sx={{ color: "text.disabled" }}>
-                  Quiebre
+                  Stock/Quiebre
                 </Typography>
               )}
             </>

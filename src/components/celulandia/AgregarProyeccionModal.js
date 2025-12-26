@@ -157,15 +157,13 @@ const AgregarProyeccionModal = ({ open, onClose, onCreated, onError }) => {
   const [fechaInicio, setFechaInicio] = useState(null);
   const [fechaFin, setFechaFin] = useState(null);
   const [archivoVentas, setArchivoVentas] = useState(null);
-  const [archivoStock, setArchivoStock] = useState(null);
-  const [archivoQuiebre, setArchivoQuiebre] = useState(null);
+  const [archivoStockQuiebre, setArchivoStockQuiebre] = useState(null);
   const [alert, setAlert] = useState({ open: false, message: "", severity: "error" });
   const [touched, setTouched] = useState({ fechaInicio: false, fechaFin: false });
 
   const resetForm = () => {
     setArchivoVentas(null);
-    setArchivoStock(null);
-    setArchivoQuiebre(null);
+    setArchivoStockQuiebre(null);
     setFechaInicio(null);
     setFechaFin(null);
     setTouched({ fechaInicio: false, fechaFin: false });
@@ -175,7 +173,7 @@ const AgregarProyeccionModal = ({ open, onClose, onCreated, onError }) => {
     mutationFn: (payload) => proyeccionService.createProyeccion(payload),
   });
 
-  const canSubmit = Boolean(archivoVentas && archivoStock && fechaInicio && fechaFin);
+  const canSubmit = Boolean(archivoVentas && archivoStockQuiebre && fechaInicio && fechaFin);
 
   const fechaInicioHasError = touched.fechaInicio && !fechaInicio;
   const fechaFinHasError = touched.fechaFin && !fechaFin;
@@ -207,8 +205,7 @@ const AgregarProyeccionModal = ({ open, onClose, onCreated, onError }) => {
         fechaInicio: dayjs(fechaInicio).toISOString(),
         fechaFin: dayjs(fechaFin).toISOString(),
         archivoVentas,
-        archivoStock,
-        archivoQuiebre,
+        archivoStockQuiebre,
       });
       if (typeof onCreated === "function") {
         await onCreated();
@@ -284,17 +281,9 @@ const AgregarProyeccionModal = ({ open, onClose, onCreated, onError }) => {
             </Grid>
             <Grid item xs={12} md={6}>
               <DropZone
-                label="Excel de stock (.xlsx, .xls)"
-                file={archivoStock}
-                onFileChange={setArchivoStock}
-                accept=".xlsx,.xls"
-              />
-            </Grid>
-            <Grid item xs={12} md={6} sx={{ mx: { md: "auto" } }}>
-              <DropZone
-                label="Excel de quiebre de stock (opcional)"
-                file={archivoQuiebre}
-                onFileChange={setArchivoQuiebre}
+                label="Excel de stock/quiebre (.xlsx, .xls)"
+                file={archivoStockQuiebre}
+                onFileChange={setArchivoStockQuiebre}
                 accept=".xlsx,.xls"
               />
             </Grid>
