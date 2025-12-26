@@ -1,7 +1,9 @@
 import Papa from 'papaparse';
+import config from 'src/config/config';
 
-// Configuración del backend
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3003';
+// Configuración del backend - usar la misma config que los demás servicios
+// config.apiUrl ya incluye '/api' al final, así que lo removemos para construir la URL base
+const API_BASE_URL = config.apiUrl.replace(/\/api$/, '');
 
 /**
  * Service para manejar la importación masiva de movimientos desde CSV
