@@ -350,12 +350,17 @@ const MovementFormPage = () => {
     setIsReemplazandoImagen(true);
     try {
       if (isEditMode && movimiento?.url_imagen) {
-        await movimientosService.reemplazarImagen(movimientoId, nuevoArchivo);
-        setMovimiento(m => ({ ...m, url_imagen: (m?.url_imagen || '') + `?${Date.now()}` }));
+        const res = await movimientosService.reemplazarImagen(movimientoId, nuevoArchivo);
+        const nuevaUrl = res?.url_imagen || res?.url || movimiento.url_imagen;
+        const separator = nuevaUrl.includes('?') ? '&' : '?';
+        setMovimiento(m => ({ ...m, url_imagen: `${nuevaUrl}${separator}t=${Date.now()}` }));
       } else {
         const res = await movimientosService.subirImagenTemporal(nuevoArchivo);
-        setMovimiento(m => ({ ...m, url_imagen: (res.url_imagen || '') + `?${Date.now()}` }));
-        setUrlTemporal(res.url_imagen);
+        const nuevaUrl = res?.url_imagen || res?.url;
+        const separator = nuevaUrl.includes('?') ? '&' : '?';
+        const urlFinal = `${nuevaUrl}${separator}t=${Date.now()}`;
+        setMovimiento(m => ({ ...m, url_imagen: urlFinal }));
+        setUrlTemporal(urlFinal);
       }
       setAlert({ open: true, message: 'Imagen cargada con éxito!', severity: 'success' });
     } catch (e) {
@@ -1015,7 +1020,10 @@ function syncMaterialesWithMovs(currentMateriales = [], mmRows = [], { proyecto_
                     {(movimiento?.url_imagen || urlTemporal) && (
                       <Box mt={2}>
                         {String(movimiento?.url_imagen || urlTemporal).includes('.pdf') ? (
-                          <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, overflow: 'hidden', height: `${viewerHeightVh}vh` }} onDoubleClick={() => setFullOpen(true)}>
+                          <Box 
+                            sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, overflow: 'hidden', height: `${viewerHeightVh}vh` }} 
+                            onDoubleClick={() => setFullOpen(true)}
+                          >
                             <embed src={movimiento?.url_imagen || urlTemporal} width="100%" height="100%"/>
                           </Box>
                         ) : (
