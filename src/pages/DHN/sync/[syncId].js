@@ -8,6 +8,7 @@ import DhnDriveService from "src/services/dhn/cargarUrlDriveService";
 import ImagenModal from "src/components/ImagenModal";
 import ResolverTrabajadorModal from "src/components/dhn/ResolverTrabajadorModal";
 import ResolverLicenciaManualForm from "src/components/dhn/ResolverLicenciaManualForm";
+import ResolverParteManualForm from "src/components/dhn/ResolverParteManualForm";
 import {
   AccionesCell,
   ArchivoCell,
@@ -35,12 +36,14 @@ const SyncDetailPage = () => {
   const [resyncingId, setResyncingId] = useState(null);
   const [resolverLicenciaModalOpen, setResolverLicenciaModalOpen] = useState(false);
   const [resolverLicenciaRow, setResolverLicenciaRow] = useState(null);
+  const [resolverParteModalOpen, setResolverParteModalOpen] = useState(false);
+  const [resolverParteRow, setResolverParteRow] = useState(null);
 
   const [resolverModalOpen, setResolverModalOpen] = useState(false);
   const [trabajadorSeleccionado, setTrabajadorSeleccionado] = useState(null);
   const [urlStorageSeleccionado, setUrlStorageSeleccionado] = useState(null);
 
-  const tipo = useMemo(() => String(tipoQuery || "").toLowerCase(), [tipoQuery]);
+  const tipo = String(tipoQuery || "").toLowerCase()
   const isParte = tipo === "parte";
   const isLicencia = tipo === "licencia";
   const isHoras = tipo === "horas";
@@ -94,6 +97,17 @@ const SyncDetailPage = () => {
     setResolverLicenciaRow(null);
   };
 
+  const handleOpenResolverParte = (row) => {
+    if (!row?.url_storage) return;
+    setResolverParteRow(row);
+    setResolverParteModalOpen(true);
+  };
+
+  const handleCloseResolverParte = () => {
+    setResolverParteModalOpen(false);
+    setResolverParteRow(null);
+  };
+
   const handleTrabajadorResuelto = async () => {
     try {
       const data = await DhnDriveService.getSyncChildren(String(syncId));
@@ -116,6 +130,22 @@ const SyncDetailPage = () => {
       message: fechas ? `${baseMessage} (${fechas})` : baseMessage,
     });
     handleCloseResolverLicencia();
+    await fetchDetails();
+  };
+
+  const handleParteResuelta = async (resp) => {
+    const registros = resp?.registrosCreados ?? resp?.data?.registrosCreados ?? 0;
+    const baseMessage =
+      resp?.message ||
+      resp?.mensaje ||
+      `Parte resuelto manualmente (${registros} trabajador${registros === 1 ? "" : "es"})`;
+    const fechas = resp?.fechasDetectadas || resp?.data?.fechasDetectadas || "";
+    setAlert({
+      open: true,
+      severity: "success",
+      message: fechas ? `${baseMessage} (${fechas})` : baseMessage,
+    });
+    handleCloseResolverParte();
     await fetchDetails();
   };
 
@@ -196,6 +226,7 @@ const SyncDetailPage = () => {
           resyncingId={resyncingId}
           handleResyncUrlStorage={handleResyncUrlStorage}
           handleOpenResolverLicencia={handleOpenResolverLicencia}
+          handleOpenResolverParte={handleOpenResolverParte}
         />
       ),
     });
@@ -251,6 +282,7 @@ const SyncDetailPage = () => {
     handleResolverTrabajador,
     handleResyncUrlStorage,
     handleOpenResolverLicencia,
+    handleOpenResolverParte,
     setItems,
     setAlert,
     openImageModal,
@@ -402,6 +434,21 @@ const SyncDetailPage = () => {
                 urlStorage={resolverLicenciaRow.url_storage}
                 onResolved={handleLicenciaResuelta}
                 onCancel={handleCloseResolverLicencia}
+              />
+            ) : null
+          }
+        />
+        <ImagenModal
+          open={resolverParteModalOpen}
+          onClose={handleCloseResolverParte}
+          imagenUrl={resolverParteRow?.url_storage}
+          fileName={resolverParteRow?.file_name}
+          leftContent={
+            resolverParteRow ? (
+              <ResolverParteManualForm
+                urlStorage={resolverParteRow.url_storage}
+                onResolved={handleParteResuelta}
+                onCancel={handleCloseResolverParte}
               />
             ) : null
           }

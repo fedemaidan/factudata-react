@@ -96,6 +96,7 @@ export const AccionesCell = ({
   resyncingId,
   handleResyncUrlStorage,
   handleOpenResolverLicencia,
+  handleOpenResolverParte,
 }) => {
   const isError = row?.status === "error";
   const shouldShowButton = Boolean(isParte) || isError;
@@ -105,6 +106,7 @@ export const AccionesCell = ({
   const isProcessing = row?.status === "processing";
   const buttonColor = isError ? "error" : "primary";
   const isLicenciaRow = String(row?.tipo || "").toLowerCase() === "licencia";
+  const isParteRow = String(row?.tipo || "").toLowerCase() === "parte";
   return (
     <Box component="span" sx={{ display: "inline-flex", gap: 0.5, alignItems: "center" }}>
       <Tooltip
@@ -156,6 +158,38 @@ export const AccionesCell = ({
                 handleOpenResolverLicencia(row);
               }}
               disabled={Boolean(resyncingId) || isResyncing || isProcessing || !row?.url_storage}
+              sx={{
+                p: 0.5,
+                border: "1px solid",
+                borderColor: "success.main",
+                color: "success.main",
+                "&:hover": {
+                  backgroundColor: "success.light",
+                  borderColor: "success.dark",
+                },
+              }}
+            >
+              <EditIcon fontSize="small" />
+            </IconButton>
+          </span>
+        </Tooltip>
+      )}
+      {isParteRow && isError && (
+        <Tooltip title="Resolver parte manualmente" placement="top">
+          <span>
+            <IconButton
+              size="small"
+              color="success"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleOpenResolverParte?.(row);
+              }}
+              disabled={
+                Boolean(resyncingId) ||
+                isResyncing ||
+                isProcessing ||
+                !row?.url_storage
+              }
               sx={{
                 p: 0.5,
                 border: "1px solid",

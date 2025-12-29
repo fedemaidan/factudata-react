@@ -5,7 +5,6 @@ import {
   Typography,
   TextField,
   Button,
-  Autocomplete,
   CircularProgress,
   Snackbar,
   Alert,
@@ -22,8 +21,8 @@ import dayjs from "dayjs";
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
-import TrabajadorService from "src/services/dhn/TrabajadorService";
 import TrabajoRegistradoService from "src/services/dhn/TrabajoRegistradoService";
+import TrabajadorSelector from "src/components/dhn/TrabajadorSelector";
 
 const licenseTypes = [
   "PG",
@@ -55,9 +54,6 @@ const normalizeDayjs = (value) =>
 
 const INITIAL_FORM_STATE = {
   trabajadorSeleccionado: null,
-  busqueda: "",
-  modoCrear: false,
-  formData: { nombre: "", apellido: "", dni: "" },
   tipoLicencia: "FC",
   useRange: false,
   fechaIndividual: dayjs(),
@@ -73,38 +69,15 @@ const ResolverLicenciaManualForm = ({
   onCancel,
   onResolved,
 }) => {
-  const [trabajadores, setTrabajadores] = useState([]);
-  const [isLoadingTrabajadores, setIsLoadingTrabajadores] = useState(false);
   const [formState, setFormState] = useState(INITIAL_FORM_STATE);
   const [isSaving, setIsSaving] = useState(false);
   const [alert, setAlert] = useState({ open: false, severity: "error", message: "" });
-
-  const cargarTrabajadores = useCallback(async () => {
-    setIsLoadingTrabajadores(true);
-    try {
-      const data = await TrabajadorService.getAll({ limit: 10000, offset: 0 });
-      setTrabajadores(data.data || []);
-    } catch (error) {
-      console.error("Error al cargar trabajadores:", error);
-      setAlert({
-        open: true,
-        severity: "error",
-        message: "No se pudieron cargar los trabajadores",
-      });
-    } finally {
-      setIsLoadingTrabajadores(false);
-    }
-  }, []);
-
   const updateFormState = useCallback((patch) => {
     setFormState((prev) => ({ ...prev, ...patch }));
   }, []);
 
   const {
     trabajadorSeleccionado,
-    busqueda,
-    modoCrear,
-    formData,
     tipoLicencia,
     useRange,
     fechaIndividual,
@@ -114,34 +87,21 @@ const ResolverLicenciaManualForm = ({
 
   useEffect(() => {
     if (open === false) return;
-    cargarTrabajadores();
     const initialState = { ...INITIAL_FORM_STATE };
     if (trabajadorDetectado) {
-      initialState.formData = {
-        nombre: trabajadorDetectado.nombre || "",
-        apellido: trabajadorDetectado.apellido || "",
-        dni: trabajadorDetectado.dni || "",
-      };
+      initialState.trabajadorSeleccionado = trabajadorDetectado;
     }
     updateFormState(initialState);
-  }, [open, trabajadorDetectado, cargarTrabajadores, updateFormState]);
+  }, [open, trabajadorDetectado, updateFormState]);
 
-  const trabajadoresFiltrados = useMemo(() => {
-    const term = (busqueda || "").toString().trim().toLowerCase();
-    if (!term) return trabajadores;
-    return trabajadores.filter((t) => {
-      const nombre = (t?.nombre || "").toLowerCase();
-      const apellido = (t?.apellido || "").toLowerCase();
-      const dni = (t?.dni || "").replace(/\./g, "").toLowerCase();
-      return (
-        nombre.includes(term) ||
-        apellido.includes(term) ||
-        `${nombre} ${apellido}`.includes(term) ||
-        `${apellido} ${nombre}`.includes(term) ||
-        dni.includes(term)
-      );
-    });
-  }, [trabajadores, busqueda]);
+  const initialTrabajadorFormData = useMemo(
+    () => ({
+      nombre: trabajadorDetectado?.nombre || "",
+      apellido: trabajadorDetectado?.apellido || "",
+      dni: trabajadorDetectado?.dni || "",
+    }),
+    [trabajadorDetectado]
+  );
 
   const handleCloseAlert = useCallback(() => {
     setAlert((prev) => ({ ...prev, open: false }));
@@ -202,6 +162,7 @@ const ResolverLicenciaManualForm = ({
       tipoLicencia,
       desde: normalizeDayjs(desde),
       ...(useRange ? { hasta: normalizeDayjs(hasta) } : {}),
+      estado: "okManual",
     };
 
       setIsSaving(true);
@@ -242,79 +203,17 @@ const ResolverLicenciaManualForm = ({
     ]
   );
 
-  const handleCrearTrabajador = useCallback(async () => {
-    if (!formData.nombre || !formData.apellido || !formData.dni) {
-      setAlert({
-        open: true,
-        severity: "error",
-        message: "Completá nombre, apellido y DNI para crear el trabajador",
-      });
-      return null;
-    }
-
-    try {
-      const nuevo = await TrabajadorService.create({
-        ...formData,
-        desde: dayjs().toISOString().split("T")[0],
-        active: true,
-      });
-      const worker = nuevo?._id ? nuevo : nuevo?.data;
-      if (!worker) {
-        throw new Error("Respuesta inválida al crear trabajador");
-      }
-      updateFormState({ trabajadorSeleccionado: worker, modoCrear: false });
-      setAlert({
-        open: true,
-        severity: "success",
-        message: "Trabajador creado y seleccionado",
-      });
-      return worker;
-    } catch (error) {
-      console.error("Error al crear trabajador:", error);
-      setAlert({
-        open: true,
-        severity: "error",
-        message:
-          error?.response?.data?.error ||
-          error?.response?.data?.message ||
-          error?.message ||
-          "Error al crear el trabajador",
-      });
-      return null;
-    }
-  }, [formData]);
-
-  const handleAsignarTrabajador = useCallback(async () => {
-    const worker = trabajadorSeleccionado;
-    if (!worker) {
-      setAlert({
-        open: true,
-        severity: "error",
-        message: "Seleccioná un trabajador antes de resolver",
-      });
-      return;
-    }
-    await resolverLicencia(worker);
-  }, [resolverLicencia, trabajadorSeleccionado]);
-
   const handleEnviar = useCallback(
     async (event) => {
       event?.preventDefault();
       setIsSaving(true);
       try {
-        if (modoCrear) {
-          const worker = await handleCrearTrabajador();
-          if (worker) {
-            await resolverLicencia(worker);
-          }
-          return;
-        }
-        await handleAsignarTrabajador();
+        await resolverLicencia(trabajadorSeleccionado);
       } finally {
         setIsSaving(false);
       }
     },
-    [handleAsignarTrabajador, handleCrearTrabajador, modoCrear, resolverLicencia]
+    [resolverLicencia, trabajadorSeleccionado]
   );
 
   return (
@@ -345,85 +244,12 @@ const ResolverLicenciaManualForm = ({
 
         <Divider />
 
-        {!modoCrear ? (
-          <>
-            <Typography variant="subtitle2">Buscar trabajador</Typography>
-            <Autocomplete
-              options={trabajadoresFiltrados}
-              getOptionLabel={(option) =>
-                `${option.apellido || ""}, ${option.nombre || ""} (${option.dni || ""})`.trim()
-              }
-              loading={isLoadingTrabajadores}
-              value={trabajadorSeleccionado}
-              onChange={(_, newValue) => updateFormState({ trabajadorSeleccionado: newValue })}
-              inputValue={busqueda}
-              onInputChange={(_, newInputValue) => updateFormState({ busqueda: newInputValue })}
-              renderInput={(params) => (
-                <TextField
-                  {...params}
-                  label="Nombre, apellido o DNI"
-                  size="small"
-                  InputProps={{
-                    ...params.InputProps,
-                    endAdornment: (
-                      <>
-                        {isLoadingTrabajadores ? (
-                          <CircularProgress color="inherit" size={20} />
-                        ) : null}
-                        {params.InputProps.endAdornment}
-                      </>
-                    ),
-                  }}
-                />
-              )}
-            />
-
-            <Button
-              variant="text"
-              onClick={() => updateFormState({ modoCrear: true })}
-              size="small"
-            >
-              Crear nuevo trabajador
-            </Button>
-          </>
-        ) : (
-          <>
-            <Typography variant="subtitle2">Crear trabajador</Typography>
-            <TextField
-              label="Nombre"
-              size="small"
-              value={formData?.nombre}
-              onChange={(event) =>
-                updateFormState({ formData: { ...formData, nombre: event.target.value } })
-              }
-            />
-            <TextField
-              label="Apellido"
-              size="small"
-              value={formData?.apellido}
-              onChange={(event) =>
-                updateFormState({ formData: { ...formData?.apellido, apellido: event.target.value } })
-              }
-            />
-            <TextField
-              label="DNI"
-              size="small"
-              value={formData?.dni}
-              onChange={(event) =>
-                updateFormState({ formData: { ...formData, dni: event.target.value } })
-              }
-            />
-            <Button
-              variant="outlined"
-              size="small"
-              onClick={() => updateFormState({ modoCrear: false })}
-              disabled={isSaving}
-              fullWidth
-            >
-              Cancelar
-            </Button>
-          </>
-        )}
+        <TrabajadorSelector
+          value={trabajadorSeleccionado}
+          onChange={(selected) => updateFormState({ trabajadorSeleccionado: selected })}
+          setAlert={setAlert}
+          initialFormData={initialTrabajadorFormData}
+        />
 
         <Divider />
 
@@ -483,21 +309,10 @@ const ResolverLicenciaManualForm = ({
           variant="contained"
           color="primary"
           onClick={handleEnviar}
-          disabled={
-            isSaving ||
-            (modoCrear
-              ? !formData.nombre || !formData.apellido || !formData.dni
-              : !trabajadorSeleccionado)
-          }
+          disabled={isSaving || !trabajadorSeleccionado}
           fullWidth
         >
-          {isSaving ? (
-            <CircularProgress size={18} color="inherit" />
-          ) : modoCrear ? (
-            "Crear trabajador y resolver"
-          ) : (
-            "Enviar resolución"
-          )}
+          {isSaving ? <CircularProgress size={18} color="inherit" /> : "Enviar resolución"}
         </Button>
         <Button variant="text" onClick={handleClose} disabled={isSaving} fullWidth>
           Cancelar
