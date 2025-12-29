@@ -351,7 +351,8 @@ const MovementFormPage = () => {
     try {
       if (isEditMode && movimiento?.url_imagen) {
         const res = await movimientosService.reemplazarImagen(movimientoId, nuevoArchivo);
-        const nuevaUrl = res?.url_imagen || res?.url || movimiento.url_imagen;
+        // El backend devuelve { message, data: { url: ... } }
+        const nuevaUrl = res?.data?.url || res?.url || movimiento.url_imagen;
         const separator = nuevaUrl.includes('?') ? '&' : '?';
         setMovimiento(m => ({ ...m, url_imagen: `${nuevaUrl}${separator}t=${Date.now()}` }));
       } else {
