@@ -1,8 +1,9 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import {
   Box,
   IconButton,
+  Alert,
   Chip,
   Button,
   TextField,
@@ -15,6 +16,7 @@ import EditIcon from '@mui/icons-material/Edit';
 import AddIcon from '@mui/icons-material/Add';
 import HistoryIcon from '@mui/icons-material/History';
 import TableComponent from 'src/components/TableComponent';
+import useTrabajadoresPage from 'src/hooks/dhn/useTrabajadoresPage';
 import TrabajadorService from 'src/services/dhn/TrabajadorService';
 import { format } from 'date-fns';
 import { useRouter } from 'next/router';
@@ -24,32 +26,25 @@ import HistorialModal from 'src/components/dhn/HistorialModal';
 
 const TrabajadoresPage = () => {
   const router = useRouter();
-  const [trabajadores, setTrabajadores] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const {
+    trabajadores,
+    pagination,
+    isLoading,
+    isError,
+    error,
+    refetch,
+    searchInput,
+    setSearchInput,
+    handleChangePage,
+    handleChangeRowsPerPage,
+  } = useTrabajadoresPage();
   const [agregarModalOpen, setAgregarModalOpen] = useState(false);
   const [editarModalOpen, setEditarModalOpen] = useState(false);
   const [trabajadorSeleccionado, setTrabajadorSeleccionado] = useState(null);
-  const [busqueda, setBusqueda] = useState("");
   const [logsModalOpen, setLogsModalOpen] = useState(false);
   const [logsTrabajador, setLogsTrabajador] = useState(null);
   const [logsLoading, setLogsLoading] = useState(false);
   const [logsError, setLogsError] = useState("");
-
-  useEffect(() => {
-    cargarTrabajadores();
-  }, []);
-
-  const cargarTrabajadores = async () => {
-    try {
-      setIsLoading(true);
-      const data = await TrabajadorService.getAll();
-      setTrabajadores(data.data);
-    } catch (error) {
-      console.error('Error al cargar trabajadores:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   const handleEdit = (trabajador) => {
     setTrabajadorSeleccionado(trabajador);
@@ -88,7 +83,7 @@ const TrabajadoresPage = () => {
 
   const handleSaveNew = async () => {
     try {
-      await cargarTrabajadores();
+      await refetch();
     } catch (error) {
       console.error('Error al recargar trabajadores:', error);
     }
@@ -96,7 +91,7 @@ const TrabajadoresPage = () => {
 
   const handleSaveEdit = async () => {
     try {
-      await cargarTrabajadores(); 
+      await refetch();
     } catch (error) {
       console.error('Error al recargar trabajadores:', error);
     }
@@ -177,23 +172,6 @@ const TrabajadoresPage = () => {
     }
   ];
 
-  const trabajadoresFiltrados = useMemo(() => {
-    const term = (busqueda || "").toString().trim().toLowerCase();
-    if (!term) return trabajadores;
-    return (trabajadores || []).filter((t) => {
-      const nombre = (t?.nombre || "").toString().toLowerCase();
-      const apellido = (t?.apellido || "").toString().toLowerCase();
-      const dni = (t?.dni || "").toString().replace(/\./g, "").toLowerCase();
-      return (
-        nombre.includes(term) ||
-        apellido.includes(term) ||
-        `${nombre} ${apellido}`.includes(term) ||
-        `${apellido} ${nombre}`.includes(term) ||
-        dni.includes(term)
-      );
-    });
-  }, [trabajadores, busqueda]);
-
   return (
     <DashboardLayout title="Trabajadores">
       <Box sx={{ px: 2 }}>
@@ -201,14 +179,14 @@ const TrabajadoresPage = () => {
           <TextField
             label="Buscar"
             size="small"
-            value={busqueda}
-            onChange={(e) => setBusqueda(e.target.value)}
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
             sx={{ width: 200 }}
             InputProps={{
-              endAdornment: busqueda.length > 0 && (
+              endAdornment: searchInput.length > 0 && (
                 <InputAdornment position="end">
                   <IconButton
-                    onClick={() => setBusqueda("")}
+                    onClick={() => setSearchInput("")}
                     edge="end"
                     size="small"
                     sx={{ color: 'text.secondary' }}
@@ -237,11 +215,19 @@ const TrabajadoresPage = () => {
           </Button>
         </Box>
 
+        {isError && (
+          <Alert severity="error" sx={{ mb: 2 }}>
+            {error?.message || 'Error al cargar trabajadores'}
+          </Alert>
+        )}
         <TableComponent
-          data={trabajadoresFiltrados}
+          data={trabajadores}
           columns={columns}
           isLoading={isLoading}
           onRowClick={handleRowClick}
+          pagination={pagination}
+          onPageChange={handleChangePage}
+          onRowsPerPageChange={handleChangeRowsPerPage}
         />
       </Box>
 

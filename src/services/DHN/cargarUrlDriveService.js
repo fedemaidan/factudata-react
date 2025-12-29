@@ -21,6 +21,32 @@ export const validarUrlDrive = (v) => {
   return patterns.some((re) => re.test(s));
 };
 
+const DEFAULT_PAGE_LIMIT = 50;
+
+const normalizePageResponse = (page, defaults = {}) => ({
+  items: Array.isArray(page?.items) ? page.items : [],
+  total: Number.isFinite(page?.total) ? page.total : 0,
+  limit: Number.isFinite(page?.limit) ? page.limit : (defaults.limit ?? DEFAULT_PAGE_LIMIT),
+  offset: Number.isFinite(page?.offset) ? page.offset : (defaults.offset ?? 0),
+});
+
+const fetchUrlStoragePage = async (payload = {}, defaults = {}) => {
+  try {
+    const response = await api.post(`/dhn/sync/urls`, payload);
+    const pageData = response?.data?.data;
+    return normalizePageResponse(pageData, defaults);
+  } catch (error) {
+    const message = error?.response?.data?.message || error?.message || 'Error de red';
+    console.error('Error fetchUrlStoragePage:', message);
+    return {
+      items: [],
+      total: 0,
+      limit: defaults.limit ?? DEFAULT_PAGE_LIMIT,
+      offset: defaults.offset ?? 0,
+    };
+  }
+};
+
 const DhnDriveService = {
   /**
    * POST /dhn/sync
@@ -73,27 +99,26 @@ const DhnDriveService = {
    * @param {string} syncId
    * @returns {Promise<Array>} lista de items (o [])
    */
-  getSyncChildren: async (syncId) => {
-    if (!syncId) return [];
-    try {
-      // El backend espera el syncId en el body, no en query params
-      const response = await api.post(`/dhn/sync/urls`, { syncId: syncId });
-      console.log('response getSyncChildren', response.data);
-
-      const data = response.data;
-      if (!data) return [];
-
-      if (Array.isArray(data)) return data;
-      if (Array.isArray(data.data)) return data.data;
-      if (Array.isArray(data.data?.items)) return data.data.items;
-      if (Array.isArray(data.items)) return data.items;
-
-      return [];
-    } catch (error) {
-      const message = error?.response?.data?.message || error?.message || 'Error de red';
-      console.error('Error getSyncChildren:', message);
-      return [];
+  getSyncChildren: async (syncId, { limit = DEFAULT_PAGE_LIMIT, offset = 0 } = {}) => {
+    if (!syncId) {
+      return {
+        items: [],
+        total: 0,
+        limit,
+        offset,
+      };
     }
+    return fetchUrlStoragePage(
+      { syncId, limit, offset },
+      { limit, offset }
+    );
+  },
+
+  getErroredSyncChildren: async ({ limit = DEFAULT_PAGE_LIMIT, offset = 0 } = {}) => {
+    return fetchUrlStoragePage(
+      { status: 'error', limit, offset },
+      { limit, offset }
+    );
   },
 
   resyncUrlStorageById: async (urlStorageId, extra = {}) => {

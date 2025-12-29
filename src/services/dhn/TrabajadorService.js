@@ -14,6 +14,9 @@ const TrabajadorService = {
     if (params.offset !== undefined) {
       queryParams.append('offset', params.offset.toString());
     }
+    if (params.q) {
+      queryParams.append('q', params.q);
+    }
     const queryString = queryParams.toString();
     const url = queryString ? `/dhn/trabajadores?${queryString}` : `/dhn/trabajadores`;
     const response = await api.get(url);

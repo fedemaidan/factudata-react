@@ -19,9 +19,9 @@ import {
 
 const DEFAULT_PAGE_LIMIT = 100;
 
-const SyncDetailPage = () => {
+const SyncErrorsPage = () => {
   const router = useRouter();
-  const { syncId, tipo: tipoQuery } = router.query || {};
+  const tipoLabel = "errores";
 
   const [items, setItems] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -51,18 +51,10 @@ const SyncDetailPage = () => {
   const [trabajadorSeleccionado, setTrabajadorSeleccionado] = useState(null);
   const [urlStorageSeleccionado, setUrlStorageSeleccionado] = useState(null);
 
-  const tipo = String(tipoQuery || "").toLowerCase()
-  const isParte = tipo === "parte";
-  const isLicencia = tipo === "licencia";
-  const isHoras = tipo === "horas";
-  const shouldShowFecha = isParte || isLicencia;
-  const canEditFecha = isParte || isLicencia;
-
   const fetchDetails = useCallback(async () => {
-    if (!syncId) return;
     setIsLoading(true);
     try {
-      const page = await DhnDriveService.getSyncChildren(String(syncId), {
+      const page = await DhnDriveService.getErroredSyncChildren({
         limit: paginationLimit,
         offset: paginationOffset,
       });
@@ -73,13 +65,18 @@ const SyncDetailPage = () => {
         limit: page?.limit ?? prev.limit,
         offset: page?.offset ?? prev.offset,
       }));
-    } catch (e) {
+    } catch (error) {
+      console.error("Error cargando errores de sincronización:", error);
       setItems([]);
-      setAlert({ open: true, message: "Error cargando detalles", severity: "error" });
+      setAlert({
+        open: true,
+        severity: "error",
+        message: "Error cargando errores",
+      });
     } finally {
       setIsLoading(false);
     }
-  }, [syncId, paginationLimit, paginationOffset]);
+  }, [paginationLimit, paginationOffset, setPagination]);
 
   const openImageModal = (url, fileName) => {
     if (!url) return;
@@ -87,11 +84,13 @@ const SyncDetailPage = () => {
     setImageFileName(typeof fileName === "string" ? fileName : "");
     setImageModalOpen(true);
   };
+
   const closeImageModal = () => {
     setImageModalOpen(false);
     setImageUrl("");
     setImageFileName("");
   };
+
   const handleCloseAlert = (_, reason) => {
     if (reason === "clickaway") return;
     setAlert((prev) => ({ ...prev, open: false }));
@@ -125,13 +124,13 @@ const SyncDetailPage = () => {
     setResolverParteRow(null);
   };
 
-  const handleTrabajadorResuelto = useCallback(async () => {
+  const handleTrabajadorResuelto = async () => {
     try {
       await fetchDetails();
-    } catch (e) {
-      console.error("Error recargando datos:", e);
+    } catch (error) {
+      console.error("Error recargando datos de errores:", error);
     }
-  }, [fetchDetails]);
+  };
 
   const handleLicenciaResuelta = async (resp) => {
     const registros = resp?.registrosCreados ?? resp?.data?.registrosCreados ?? 0;
@@ -168,12 +167,12 @@ const SyncDetailPage = () => {
   const handleResyncUrlStorage = async (row) => {
     const urlStorageId = row?._id;
     if (!urlStorageId) return;
-    if (!syncId) return;
     if (resyncingId) return;
 
     const payload = {};
-    if (tipo && ["parte", "licencia", "horas"].includes(tipo)) {
-      payload.tipo = tipo;
+    const rowTipo = String(row?.tipo || "").toLowerCase();
+    if (["parte", "licencia", "horas"].includes(rowTipo)) {
+      payload.tipo = rowTipo;
     }
 
     try {
@@ -196,8 +195,7 @@ const SyncDetailPage = () => {
       });
 
       await new Promise((resolve) => setTimeout(resolve, 1000));
-      const data = await DhnDriveService.getSyncChildren(String(syncId));
-      setItems(Array.isArray(data) ? data : []);
+      await fetchDetails();
     } catch (error) {
       console.error("Error resincronizando urlStorage:", error);
       setAlert({
@@ -205,22 +203,14 @@ const SyncDetailPage = () => {
         severity: "error",
         message: error?.message || "Error al resincronizar",
       });
-      try {
-        const data = await DhnDriveService.getSyncChildren(String(syncId));
-        setItems(Array.isArray(data) ? data : []);
-      } catch (e) {
-        // noop
-      }
+      await fetchDetails();
     } finally {
       setResyncingId(null);
     }
   };
 
   useEffect(() => {
-    const run = async () => {
-      await fetchDetails();
-    };
-    run();
+    fetchDetails();
   }, [fetchDetails]);
 
   const handleChangePage = useCallback((direction) => {
@@ -242,33 +232,36 @@ const SyncDetailPage = () => {
         label: "Estado",
         render: (it) => <StatusChip status={it?.status} />,
       },
+      {
+        key: "acciones",
+        label: "Acciones",
+        render: (it) => (
+          <AccionesCell
+            row={it}
+            isParte={String(it?.tipo || "").toLowerCase() === "parte"}
+            resyncingId={resyncingId}
+            handleResyncUrlStorage={handleResyncUrlStorage}
+            handleOpenResolverLicencia={handleOpenResolverLicencia}
+            handleOpenResolverParte={handleOpenResolverParte}
+          />
+        ),
+      },
     ];
 
     cols.push({
-      key: "acciones",
-      label: "Acciones",
-      render: (it) => (
-        <AccionesCell
-          row={it}
-          isParte={isParte}
-          resyncingId={resyncingId}
-          handleResyncUrlStorage={handleResyncUrlStorage}
-          handleOpenResolverLicencia={handleOpenResolverLicencia}
-          handleOpenResolverParte={handleOpenResolverParte}
-        />
-      ),
-    });
-
-    if (shouldShowFecha) {
-      cols.push({
-        key: "fechasDetectadas",
-        label: "Fecha detectada",
-        render: (it) => (
+      key: "fechasDetectadas",
+      label: "Fecha detectada",
+      render: (it) => {
+        const rowTipo = String(it?.tipo || "").toLowerCase();
+        const rowIsParte = rowTipo === "parte";
+        const rowIsLicencia = rowTipo === "licencia";
+        const canEditFecha = rowIsParte || rowIsLicencia;
+        return (
           <FechaDetectadaCell
             row={it}
             canEditFecha={canEditFecha}
-            isParte={isParte}
-            isLicencia={isLicencia}
+            isParte={rowIsParte}
+            isLicencia={rowIsLicencia}
             editingId={editingId}
             editingValue={editingValue}
             setEditingId={setEditingId}
@@ -278,14 +271,14 @@ const SyncDetailPage = () => {
             setItems={setItems}
             setAlert={setAlert}
           />
-        ),
-      });
-    }
+        );
+      },
+    });
 
     cols.push({
       key: "archivo",
       label: "Archivo",
-      render: (it) => <ArchivoCell row={it} onOpenImage={openImageModal} />,
+      render: (it) => <ArchivoCell row={it} onOpenImage={openImageModal} />, 
     });
 
     cols.push({
@@ -298,14 +291,9 @@ const SyncDetailPage = () => {
 
     return cols;
   }, [
-    shouldShowFecha,
-    canEditFecha,
     editingId,
     editingValue,
     savingId,
-    isParte,
-    isLicencia,
-    isHoras,
     resyncingId,
     handleResolverTrabajador,
     handleResyncUrlStorage,
@@ -322,12 +310,11 @@ const SyncDetailPage = () => {
   const hasNextPage = pagination.offset + pagination.limit < pagination.total;
   const pageLabel =
     pagination.total > 0
-      ? `Página ${currentPage} de ${totalPages} (${pagination.total} registros)`
+      ? `Página ${currentPage} de ${totalPages} (${pagination.total} errores)`
       : "Sin registros";
 
-
   return (
-    <DashboardLayout title="Detalle de sincronización">
+    <DashboardLayout title="Errores de sincronización">
       <Container maxWidth="xl">
         <Snackbar
           anchorOrigin={{ vertical: "top", horizontal: "center" }}
@@ -356,11 +343,7 @@ const SyncDetailPage = () => {
             >
               Volver
             </Button>
-            <Button
-              variant="outlined"
-              onClick={fetchDetails}
-              disabled={isLoading}
-            >
+            <Button variant="outlined" onClick={fetchDetails} disabled={isLoading}>
               {isLoading ? "Actualizando..." : "Actualizar"}
             </Button>
           </Box>
@@ -403,7 +386,7 @@ const SyncDetailPage = () => {
                   Detalles del registro:
                 </Box>
                 <Box component="span" sx={{ textTransform: "uppercase" }}>
-                  {tipo || ""}
+                  {tipoLabel}
                 </Box>
               </Box>
 
@@ -446,7 +429,7 @@ const SyncDetailPage = () => {
                   columns={columns}
                   isLoading={isLoading}
                   onRowClick={(row) => {
-                    console.log("[DHN Sync] row click:", row);
+                    console.log("[DHN Errores] row click:", row);
                   }}
                 />
                 <Box
@@ -523,7 +506,7 @@ const SyncDetailPage = () => {
             ) : null
           }
         />
-        
+
         <ResolverTrabajadorModal
           open={resolverModalOpen}
           onClose={() => {
@@ -539,4 +522,5 @@ const SyncDetailPage = () => {
     </DashboardLayout>
   );
 };
-export default SyncDetailPage;
+
+export default SyncErrorsPage;
