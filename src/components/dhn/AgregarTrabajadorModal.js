@@ -26,7 +26,7 @@ const AgregarTrabajadorModal = ({ open, onClose, onSave }) => {
     nombre: "",
     apellido: "",
     dni: "",
-    desde: new Date().toISOString().split("T")[0], // Hoy por defecto
+    desde: new Date().toISOString().split("T")[0], 
     hasta: "",
   });
 
@@ -50,7 +50,12 @@ const AgregarTrabajadorModal = ({ open, onClose, onSave }) => {
 
     setIsLoading(true);
     try {
-      await TrabajadorService.create({ ...formData, user: getUser() });
+      const cleanedData = {
+        ...formData,
+        dni: formData.dni.replace(/[,.]/g, ""),
+        user: getUser()
+      };
+      await TrabajadorService.create(cleanedData);
       
       showAlert({ message: "Trabajador creado correctamente", severity: "success" });
 

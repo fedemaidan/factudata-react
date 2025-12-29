@@ -89,11 +89,13 @@ const TrabajadorSelector = ({
 
     try {
       setIsCreating(true);
-      const nuevo = await TrabajadorService.create({
+      const cleanedData = {
         ...formData,
+        dni: formData.dni?.replace(/[,.]/g, "") || "",
         desde: new Date().toISOString().split("T")[0],
         active: true,
-      });
+      };
+      const nuevo = await TrabajadorService.create(cleanedData);
       const worker = nuevo?._id ? nuevo : nuevo?.data;
       if (!worker) {
         throw new Error("Respuesta inválida al crear trabajador");
