@@ -130,6 +130,9 @@ export const CategoriasDetails = ({ empresa, refreshEmpresa }) => {
       let newCategorias = [...categorias];
       try {
         if (editingCategoria) {
+          const nombreAnterior = editingCategoria.name;
+          const nuevoNombre = values.name;
+
           newCategorias = newCategorias.map((cat) =>
             cat.id === editingCategoria.id ? { ...cat, name: values.name } : cat
           );
@@ -139,16 +142,43 @@ export const CategoriasDetails = ({ empresa, refreshEmpresa }) => {
           );
           }
 
+          // Actualizar proveedores si cambió el nombre de la categoría
+          let proveedoresActualizados = empresa.proveedores_data || [];
+          if (nombreAnterior !== nuevoNombre) {
+            proveedoresActualizados = proveedoresActualizados.map(prov => {
+              if (!prov.categorias) return prov;
+              
+              const nuevasCategoriasProv = prov.categorias.map(catString => {
+                // Si es exactamente la categoría
+                if (catString === nombreAnterior) return nuevoNombre;
+                // Si es una subcategoría "Categoria - Sub"
+                if (catString.startsWith(`${nombreAnterior} - `)) {
+                  return catString.replace(`${nombreAnterior} - `, `${nuevoNombre} - `);
+                }
+                return catString;
+              });
+
+              return { ...prov, categorias: nuevasCategoriasProv };
+            });
+          }
+
           setEditingCategoria(null);
           setSnackbarMessage('Categoría actualizada con éxito');
+          
+          setCategorias(newCategorias);
+          await updateEmpresaDetails(empresa.id, { 
+            categorias: newCategorias,
+            proveedores_data: proveedoresActualizados
+          });
         } else {
           const newCategoria = { id: Date.now(), name: values.name, subcategorias: [] };
           newCategorias = [...newCategorias, newCategoria];
           setSnackbarMessage('Categoría creada con éxito');
+          
+          setCategorias(newCategorias);
+          await updateEmpresaDetails(empresa.id, { categorias: newCategorias });
         }
 
-        setCategorias(newCategorias);
-        await updateEmpresaDetails(empresa.id, { categorias: newCategorias });
         await refreshEmpresa?.();
         setSnackbarSeverity('success');
       } catch (error) {
@@ -249,22 +279,44 @@ const handleImportarCSV = async (e) => {
     confirmarEliminacion(`¿Estás seguro de que deseas eliminar la subcategoría "${subcategoriaNombre}"?`, async () => {
       setIsLoading(true);
       try {
+        // 1. Actualizar categorías
+        const categoriaAfectada = categorias.find(c => c.id === categoriaId);
+        const nombreCategoria = categoriaAfectada?.name;
+
         const newCategorias = categorias.map((cat) =>
           cat.id === categoriaId 
             ? { 
                 ...cat, 
                 subcategorias: cat.subcategorias.filter(sub => {
-                  // Manejar tanto strings como objetos {id, name}
                   const subName = typeof sub === 'string' ? sub : sub?.name;
                   return subName !== subcategoriaNombre;
                 })
               } 
             : cat
         );
+
+        // 2. Actualizar proveedores que tengan esa subcategoría
+        // Formato esperado en proveedores: "Categoria - Subcategoria"
+        const stringBusqueda = `${nombreCategoria} - ${subcategoriaNombre}`;
+        
+        const proveedoresActualizados = (empresa.proveedores_data || []).map(prov => {
+          if (!prov.categorias || !prov.categorias.includes(stringBusqueda)) return prov;
+          
+          return {
+            ...prov,
+            categorias: prov.categorias.filter(c => c !== stringBusqueda)
+          };
+        });
+
+        // 3. Guardar todo junto
         setCategorias(newCategorias);
-        await updateEmpresaDetails(empresa.id, { categorias: newCategorias });
+        await updateEmpresaDetails(empresa.id, { 
+          categorias: newCategorias,
+          proveedores_data: proveedoresActualizados
+        });
+        
         await refreshEmpresa?.();
-        setSnackbarMessage('Subcategoría eliminada con éxito');
+        setSnackbarMessage('Subcategoría eliminada y proveedores actualizados');
         setSnackbarSeverity('success');
       } catch (error) {
         console.error('Error al eliminar subcategoría:', error);
@@ -281,11 +333,36 @@ const handleImportarCSV = async (e) => {
     confirmarEliminacion(`¿Estás seguro de que deseas eliminar la categoría?`, async () => {
       setIsLoading(true);
       try {
+        const categoriaAEliminar = categorias.find(c => c.id === id);
+        const nombreCategoria = categoriaAEliminar?.name;
+
+        // 1. Eliminar categoría
         const newCategorias = categorias.filter((cat) => cat.id !== id);
+
+        // 2. Limpiar proveedores
+        // Eliminar cualquier string que empiece con "NombreCategoria" o sea igual a "NombreCategoria"
+        const proveedoresActualizados = (empresa.proveedores_data || []).map(prov => {
+          if (!prov.categorias) return prov;
+          
+          const nuevasCategoriasProv = prov.categorias.filter(catString => {
+            // Si es exactamente la categoría
+            if (catString === nombreCategoria) return false;
+            // Si es una subcategoría "Categoria - Sub"
+            if (catString.startsWith(`${nombreCategoria} - `)) return false;
+            return true;
+          });
+
+          return { ...prov, categorias: nuevasCategoriasProv };
+        });
+
         setCategorias(newCategorias);
-        await updateEmpresaDetails(empresa.id, { categorias: newCategorias });
+        await updateEmpresaDetails(empresa.id, { 
+          categorias: newCategorias,
+          proveedores_data: proveedoresActualizados
+        });
+        
         await refreshEmpresa?.();
-        setSnackbarMessage('Categoría eliminada con éxito');
+        setSnackbarMessage('Categoría eliminada y proveedores actualizados');
         setSnackbarSeverity('success');
       } catch (error) {
         console.error('Error al eliminar categoría:', error);
