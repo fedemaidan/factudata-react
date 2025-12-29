@@ -60,7 +60,6 @@ const HORA_FIELDS = [
 
 const ResolverParteManualForm = ({ urlStorage, onResolved, onCancel }) => {
   const [fecha, setFecha] = useState(dayjs());
-  const [sector, setSector] = useState("");
   const [trabajadores, setTrabajadores] = useState([createEmptyTrabajadorRow()]);
   const [expandedAccordions, setExpandedAccordions] = useState(new Set());
   const [isSaving, setIsSaving] = useState(false);
@@ -124,7 +123,6 @@ const ResolverParteManualForm = ({ urlStorage, onResolved, onCancel }) => {
         const resp = await TrabajoRegistradoService.resolverParteManual({
           urlStorage,
           fecha: fecha.toISOString(),
-          sector: sector || undefined,
           trabajadores: payloadTrabajadores,
           estado: "okManual",
         });
@@ -149,7 +147,7 @@ const ResolverParteManualForm = ({ urlStorage, onResolved, onCancel }) => {
         setIsSaving(false);
       }
     },
-    [trabajadores, disabledEnviar, fecha, sector, urlStorage, validTrabajadores, onResolved, onCancel]
+    [trabajadores, disabledEnviar, fecha, urlStorage, validTrabajadores, onResolved, onCancel]
   );
 
   return (
@@ -170,13 +168,6 @@ const ResolverParteManualForm = ({ urlStorage, onResolved, onCancel }) => {
             slotProps={{ textField: { size: "small" } }}
           />
         </LocalizationProvider>
-
-        <TextField
-          label="Sector (opcional)"
-          size="small"
-          value={sector}
-          onChange={(event) => setSector(event.target.value)}
-        />
 
         <Divider />
 

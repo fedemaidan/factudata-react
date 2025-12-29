@@ -220,28 +220,30 @@ const CargarDrive = () => {
           </Alert>
         </Snackbar>
         <Box sx={{ py: 3 }}>
-          {/* Acciones principales: abrir modales y refrescar */}
-          <Box sx={{ display: "flex", gap: 2, mb: 2, alignItems: "center" }}>
-            <Button
-              variant="contained"
-              onClick={() => setSheetDialogOpen(true)}
-            >
-              Actualizar Google Sheet
-            </Button>
-            <Button
-              variant="contained"
-              onClick={() => setDriveDialogOpen(true)}
-              disabled={isSyncing}
-            >
-              {isSyncing ? "Sincronizando..." : "Sincronizar"}
-            </Button>
-            <Button
-              variant="outlined"
-              onClick={refreshSyncsAndDetails}
-              disabled={isLoading}
-            >
-              {isLoading ? "Actualizando..." : "Actualizar"}
-            </Button>
+          <Box sx={{ display: "flex", gap: 2, mb: 2, justifyContent: "space-between" }}>
+            <Box sx={{ display: "flex", gap: 2, alignItems: "flex-start" }}>
+              <Button
+                variant="contained"
+                onClick={() => setSheetDialogOpen(true)}
+              >
+                Actualizar Google Sheet
+              </Button>
+              <Button
+                variant="contained"
+                onClick={() => setDriveDialogOpen(true)}
+                disabled={isSyncing}
+              >
+                {isSyncing ? "Sincronizando..." : "Sincronizar"}
+              </Button>
+              <Button
+                variant="outlined"
+                onClick={refreshSyncsAndDetails}
+                disabled={isLoading}
+              >
+                {isLoading ? "Actualizando..." : "Actualizar"}
+              </Button>
+            </Box>
+            <Button variant="outlined" onClick={() => router.push("/dhn/sync/errores")}>Corregir errores</Button>
           </Box>
 
           {/* Tabla principal: pasamos onRowClick para que se active la subtabla */}
