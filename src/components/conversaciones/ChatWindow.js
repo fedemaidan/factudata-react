@@ -2,22 +2,24 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Box, Divider, Typography, IconButton, Button } from "@mui/material";
 import MenuIcon from "@mui/icons-material/Menu";
 import MessageBubble from "./MessageBubble";
+import MediaModal from "./MediaModal";
+import { useConversationsContext } from "src/contexts/conversations-context";
 
-export default function ChatWindow({
-  messages,
-  myNumber = "X",
-  title,
-  onOpenList,
-  onLoadMore,
-  hasMore,
-  scrollToBottom = true,
-  scrollToMessageId,
-  highlightedMessageId,
-  onScrollToMessageHandled,
-}) {
+export default function ChatWindow({ myNumber = "X", onOpenList }) {
   const bottomRef = useRef(null);
   const scrollContainerRef = useRef(null);
   const [atTop, setAtTop] = useState(false);
+  const [mediaModal, setMediaModal] = useState({ open: false, src: null, type: 'image' });
+  const {
+    messages,
+    hasMore,
+    scrollToBottom,
+    scrollToMessageId,
+    highlightedMessageId,
+    loadMore,
+    handleScrollToMessageHandled,
+  } = useConversationsContext();
+
   const items = useMemo(() => messages || [], [messages]);
 
   useEffect(() => {
@@ -31,10 +33,10 @@ export default function ChatWindow({
       if (target) {
         target.scrollIntoView({ behavior: "smooth", block: "center" });
       }
-      onScrollToMessageHandled?.();
+      handleScrollToMessageHandled();
     };
     requestAnimationFrame(handleScroll);
-  }, [scrollToMessageId, onScrollToMessageHandled]);
+  }, [scrollToMessageId, handleScrollToMessageHandled]);
 
   const handleScroll = (e) => {
     const scrollTop = e.currentTarget.scrollTop;
@@ -42,15 +44,15 @@ export default function ChatWindow({
   };
 
   const handleLoadMore = async () => {
-    if (!onLoadMore) return;
+    if (!loadMore) return;
     const el = scrollContainerRef.current;
     if (!el) {
-      await onLoadMore();
+      await loadMore();
       return;
     }
     const prevScrollHeight = el.scrollHeight;
     const prevScrollTop = el.scrollTop;
-    await Promise.resolve(onLoadMore());
+    await Promise.resolve(loadMore());
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         const newScrollHeight = el.scrollHeight;
@@ -60,9 +62,13 @@ export default function ChatWindow({
     });
   };
 
-  console.log(atTop)
-  console.log(hasMore)
-  console.log(onLoadMore)
+  const handleMediaClick = ({ src, type }) => {
+    setMediaModal({ open: true, src, type });
+  };
+
+  const handleMediaClose = () => {
+    setMediaModal({ open: false, src: null, type: 'image' });
+  };
 
   return (
     <Box display="flex" flexDirection="column" height="100%" minHeight={0}>
@@ -79,7 +85,7 @@ export default function ChatWindow({
       ) : null}
       <Divider />
 
-      {hasMore && atTop && onLoadMore ? (
+      {hasMore && atTop && loadMore ? (
         <Box textAlign="center" py={0.5} px={2}>
           <Button
             size="small"
@@ -114,11 +120,18 @@ export default function ChatWindow({
               isMine={m.emisor?.toLowerCase().includes(myNumber?.toLowerCase())}
               messageId={messageId}
               isHighlighted={messageId === highlightedMessageId}
+              onMediaClick={handleMediaClick}
             />
           );
         })}
         <div ref={bottomRef} />
       </Box>
+      <MediaModal
+        open={mediaModal.open}
+        src={mediaModal.src}
+        type={mediaModal.type}
+        onClose={handleMediaClose}
+      />
     </Box>
   );
 }

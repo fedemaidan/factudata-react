@@ -7,7 +7,14 @@ function getTextFromMessage(message) {
   return '';
 }
 
-export async function fetchConversations(params = {}) {
+export async function fetchConversations(filters = {}) {
+  const params = {};
+  if (filters?.fechaDesde) {
+    params.fechaDesde = filters.fechaDesde;
+  }
+  if (filters?.fechaHasta) {
+    params.fechaHasta = filters.fechaHasta;
+  }
   const response = await api.get('/conversaciones', { params });
   return response.data;
 }
@@ -30,8 +37,16 @@ export async function sendMessage({ conversationId, text }) {
   return response.data;
 }
 
-export async function searchConversations(query) {
-  return fetchConversations({ search: query });
+export async function searchConversations(query, filters = {}) {
+  const params = { search: query };
+  if (filters?.fechaDesde) {
+    params.fechaDesde = filters.fechaDesde;
+  }
+  if (filters?.fechaHasta) {
+    params.fechaHasta = filters.fechaHasta;
+  }
+  const response = await api.get('/conversaciones', { params });
+  return response.data;
 }
 
 export async function searchMessages(query, limit = 20) {

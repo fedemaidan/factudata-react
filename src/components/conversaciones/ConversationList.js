@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import {
   Box,
   Divider,
@@ -14,56 +14,48 @@ import {
 } from "@mui/material";
 import SearchIcon from "@mui/icons-material/Search";
 import RefreshIcon from "@mui/icons-material/Refresh";
-import dayjs from "dayjs";
 import useDebouncedValue from "src/hooks/useDebouncedValue";
+import ConversacionesFilter from "./ConversacionesFilter";
+import { formatFecha } from "src/utils/handleDates";
+import { useConversationsContext } from "src/contexts/conversations-context";
+import { getNombreCliente } from "src/utils/conversacionesUtils";
 
-const formatFecha = (fecha) => {
-  const date = dayjs(fecha);
-  const hoy = dayjs();
-  if (date.isSame(hoy, "day")) {
-    return date.format("HH:mm");
-  }
-  return date.format("D/M");
-};
+export default function ConversationList({ onSelect, onMessageSelect }) {
+  const {
+    conversations = [],
+    selected,
+    search,
+    messageResults = [],
+    onSearch,
+    onRefreshConversations,
+    onSelectConversation,
+    onMessageSelect: handleMessageSelect,
+  } = useConversationsContext();
 
-export default function ConversationList({
-  conversations,
-  selectedId,
-  onSelect,
-  search,
-  onSearch,
-  onRefresh,
-  messageMatches = [],
-  onMessageSelect,
-}) {
   const [localSearch, setLocalSearch] = useState(search || "");
   const debouncedSearch = useDebouncedValue(localSearch, 400);
 
   useEffect(() => {
-    setLocalSearch(search || "");
+    if (search !== localSearch) {
+      setLocalSearch(search || "");
+    }
   }, [search]);
 
   useEffect(() => {
-    if (typeof onSearch === "function" && debouncedSearch !== (search || "")) {
-      onSearch(debouncedSearch);
+    if (debouncedSearch !== search) {
+      onSearch?.(debouncedSearch);
     }
-  }, [debouncedSearch, onSearch, search]);
+  }, [debouncedSearch, search, onSearch]);
 
-  const items = conversations || []
-
-  const nombreCliente = (c) => {
-    return ((c.profile && c.empresa)
-      ? `${c.profile.firstName} ${c.profile.lastName} - (${c.empresa.nombre}) ${c.profile.phone.slice(-4)}`
-      : c.ultimoMensaje?.emisor.toLowerCase() == "sorby" ? c.ultimoMensaje?.receptor : c.ultimoMensaje?.emisor)
-  }
+  const selectedId = selected?.ultimoMensaje?.id_conversacion;
 
   const renderMessageSnippet = (match) => {
     const text = match?.matchMessage?.message || match?.matchMessage?.caption || "[Sin texto]";
     return text?.length > 80 ? `${text.slice(0, 80)}…` : text;
   };
 
-  const hasConversationResults = items.length > 0;
-  const hasMessageResults = messageMatches.length > 0;
+  const hasConversationResults = conversations.length > 0;
+  const hasMessageResults = messageResults.length > 0;
 
   return (
     <Box display="flex" flexDirection="column" height="100%">
@@ -94,8 +86,9 @@ export default function ConversationList({
             },
           }}
         />
+        <ConversacionesFilter />
         <IconButton
-          onClick={onRefresh}
+          onClick={onRefreshConversations}
           title="Refrescar lista"
           size="small"
           sx={{
@@ -109,22 +102,25 @@ export default function ConversationList({
 
       <Box flex={1} overflow="auto">
         <List dense sx={{ overflowY: "auto" }}>
-          {items.map((c) => (
+          {conversations.map((c) => (
             <ListItemButton
               key={c.ultimoMensaje?.id_conversacion}
               selected={c.ultimoMensaje?.id_conversacion === selectedId}
-              onClick={() => onSelect?.(c)}
+              onClick={() => {
+                onSelectConversation(c);
+                onSelect?.(c);
+              }}
             >
               <ListItemAvatar>
                 <Avatar>
-                  {nombreCliente(c)?.charAt(0).toUpperCase()}
+                  {getNombreCliente(c)?.charAt(0).toUpperCase()}
                 </Avatar>
               </ListItemAvatar>
               <ListItemText
                 primary={
                   <Box display="flex" alignItems="center" justifyContent="space-between">
                     <Typography fontWeight={600} noWrap>
-                      {nombreCliente(c)}
+                      {getNombreCliente(c)}
                     </Typography>
                     <Typography
                       variant="caption"
@@ -163,16 +159,19 @@ export default function ConversationList({
               <Typography variant="subtitle2" sx={{ mt: 1, fontWeight: 600 }}>
                 Mensajes
               </Typography>
-            </Box>
+            </Box> 
             <List dense>
-              {messageMatches.map((match, index) => {
-                const primaryLabel = nombreCliente(match.conversation);
+              {messageResults.map((match, index) => {
+                const primaryLabel = getNombreCliente(match.conversation);
                 const messageId = match.matchMessage?.id || match.matchMessage?._id;
                 const uniqueKey = `${match.conversationId}-${messageId || index}`;
                 return (
                   <ListItemButton
                     key={uniqueKey}
-                    onClick={() => onMessageSelect?.(match)}
+                    onClick={() => {
+                      handleMessageSelect(match);
+                      onMessageSelect?.(match);
+                    }}
                   >
                     <ListItemAvatar>
                       <Avatar>
