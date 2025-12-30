@@ -12,6 +12,7 @@ import { CategoriasDetails } from 'src/sections/empresa/categoriasDetails';
 import { EtapasDetails } from 'src/sections/empresa/etapasDetails';
 import { MediosPagoDetails } from 'src/sections/empresa/mediosPagoDetails';
 import { ImpuestosDetails } from 'src/sections/empresa/impuestosDetails';
+import { CategoriasMaterialesDetails } from 'src/sections/empresa/categoriasMaterialesDetails';
 
 const ConfiguracionBasicaPage = () => {
   const { user } = useAuthContext();
@@ -57,6 +58,7 @@ const ConfiguracionBasicaPage = () => {
               <Tab label="Proyectos" value="proyectos" />
               <Tab label="Proveedores" value="proveedores" />
               <Tab label="Categorias" value="categorias" />
+              <Tab label="Categorias Materiales" value="categorias_materiales" />
               <Tab label="Etapas" value="etapas" />
               <Tab label="Medios de pago" value="medios_pago" />
               <Tab label="Impuestos" value="impuestos" />
@@ -66,6 +68,7 @@ const ConfiguracionBasicaPage = () => {
             {currentTab === 'proyectos' && <ProyectosDetails empresa={empresa} onEmpresaChange={patchEmpresa} refreshEmpresa={refreshEmpresa}/>}
             {currentTab === 'proveedores' && <ProveedoresDetails empresa={empresa} onEmpresaChange={patchEmpresa} refreshEmpresa={refreshEmpresa}/>}
             {currentTab === 'categorias' && <CategoriasDetails empresa={empresa} onEmpresaChange={patchEmpresa} refreshEmpresa={refreshEmpresa}/>}
+            {currentTab === 'categorias_materiales' && <CategoriasMaterialesDetails empresa={empresa} refreshEmpresa={refreshEmpresa}/>}
             {currentTab === 'etapas' && <EtapasDetails empresa={empresa} onEmpresaChange={patchEmpresa} refreshEmpresa={refreshEmpresa}/>} 
             {currentTab === 'medios_pago' && <MediosPagoDetails empresa={empresa} onEmpresaChange={patchEmpresa} refreshEmpresa={refreshEmpresa}/>}
             {currentTab === 'impuestos' && <ImpuestosDetails empresa={empresa} onEmpresaChange={patchEmpresa} refreshEmpresa={refreshEmpresa}/>}
