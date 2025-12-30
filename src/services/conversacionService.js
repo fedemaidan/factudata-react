@@ -15,6 +15,9 @@ export async function fetchConversations(filters = {}) {
   if (filters?.fechaHasta) {
     params.fechaHasta = filters.fechaHasta;
   }
+  if (filters?.empresaId) {
+    params.empresaId = filters.empresaId;
+  }
   const response = await api.get('/conversaciones', { params });
   return response.data;
 }
@@ -44,6 +47,9 @@ export async function searchConversations(query, filters = {}) {
   }
   if (filters?.fechaHasta) {
     params.fechaHasta = filters.fechaHasta;
+  }
+  if (filters?.empresaId) {
+    params.empresaId = filters.empresaId;
   }
   const response = await api.get('/conversaciones', { params });
   return response.data;

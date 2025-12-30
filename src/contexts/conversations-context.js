@@ -82,8 +82,10 @@ const getFiltersFromQuery = (query) => {
   const filters = {};
   const fechaDesde = getStringParam(query.fechaDesde);
   const fechaHasta = getStringParam(query.fechaHasta);
+  const empresaId = getStringParam(query.empresaId);
   if (fechaDesde) filters.fechaDesde = fechaDesde;
   if (fechaHasta) filters.fechaHasta = fechaHasta;
+  if (empresaId) filters.empresaId = empresaId;
   return filters;
 };
 
@@ -103,7 +105,7 @@ export function ConversationsProvider({ children }) {
 
   const filters = useMemo(() => {
     return normalizeFilterDates(getFiltersFromQuery(router.query));
-  }, [router.query.fechaDesde, router.query.fechaHasta]);
+  }, [router.query.fechaDesde, router.query.fechaHasta, router.query.empresaId]);
 
   // Callbacks para los hooks
   const handleConversationsLoaded = useCallback((data) => {
@@ -265,6 +267,11 @@ export function ConversationsProvider({ children }) {
         newQuery.fechaHasta = normalizedFilters.fechaHasta.split("T")[0];
       } else {
         delete newQuery.fechaHasta;
+      }
+      if (normalizedFilters.empresaId) {
+        newQuery.empresaId = normalizedFilters.empresaId;
+      } else {
+        delete newQuery.empresaId;
       }
 
       router.replace({ pathname: router.pathname, query: newQuery }, undefined, { shallow: true });

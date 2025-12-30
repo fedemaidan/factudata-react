@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import {
   IconButton,
   Popover,
@@ -6,11 +6,13 @@ import {
   TextField,
   Stack,
   Button,
+  Autocomplete,
 } from "@mui/material";
 import FilterListIcon from "@mui/icons-material/FilterList";
 import CloseIcon from "@mui/icons-material/Close";
 import RestartAltIcon from "@mui/icons-material/RestartAlt";
 import { useConversationsContext } from "src/contexts/conversations-context";
+import { getAllEmpresas } from "src/services/empresaService";
 
 const getDateInputValue = (dateString = "") => {
   if (!dateString) return "";
@@ -21,6 +23,36 @@ const ConversacionesFilter = () => {
   const { filters = {}, onFiltersChange } = useConversationsContext();
   const anchorRef = useRef(null);
   const [open, setOpen] = useState(false);
+  const [empresas, setEmpresas] = useState([]);
+  const [loadingEmpresas, setLoadingEmpresas] = useState(false);
+
+  useEffect(() => {
+    const loadEmpresas = async () => {
+      setLoadingEmpresas(true);
+      try {
+        const empresasList = await getAllEmpresas();
+        setEmpresas(empresasList);
+      } catch (error) {
+        console.error("Error al cargar empresas:", error);
+      } finally {
+        setLoadingEmpresas(false);
+      }
+    };
+    loadEmpresas();
+  }, []);
+
+  const empresaOptions = useMemo(() => {
+    return (empresas || [])
+      .map((empresa) => {
+        const nombre = (empresa?.nombre || empresa?.id || "").toString().trim();
+        return {
+          value: empresa.id,
+          label: nombre,
+        };
+      })
+      .filter((opt) => opt.label && opt.label.length > 0)
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [empresas]);
 
   const handleFilterChange = (field, value) => {
     onFiltersChange?.({ ...filters, [field]: value });
@@ -29,10 +61,10 @@ const ConversacionesFilter = () => {
   const handleApply = () => setOpen(false);
 
   const handleRestart = () => {
-    onFiltersChange?.({ ...filters, fechaDesde: "", fechaHasta: "" });
+    onFiltersChange?.({ ...filters, fechaDesde: "", fechaHasta: "", empresaId: "" });
   };
 
-  const hasActiveFilters = filters?.fechaDesde || filters?.fechaHasta;
+  const hasActiveFilters = filters?.fechaDesde || filters?.fechaHasta || filters?.empresaId;
 
   return (
     <>
@@ -105,6 +137,32 @@ const ConversacionesFilter = () => {
             fullWidth
             size="small"
             variant="filled"
+          />
+
+          <Autocomplete
+            options={empresaOptions}
+            size="small"
+            loading={loadingEmpresas}
+            getOptionLabel={(option) => option?.label || ""}
+            value={
+              filters?.empresaId
+                ? empresaOptions.find((opt) => opt.value === filters.empresaId) || null
+                : null
+            }
+            onChange={(_, v) => handleFilterChange("empresaId", v?.value || "")}
+            renderInput={(params) => (
+              <TextField {...params} label="Empresa" variant="filled" />
+            )}
+            renderOption={(props, option) => {
+              const { key, ...optionProps } = props;
+              return (
+                <li key={option.value || key} {...optionProps}>
+                  {option.label}
+                </li>
+              );
+            }}
+            isOptionEqualToValue={(opt, v) => opt?.value === v?.value}
+            noOptionsText={loadingEmpresas ? "Cargando empresas..." : "Sin empresas"}
           />
 
           <Stack direction="row" spacing={1} sx={{ pt: 0.5 }}>
