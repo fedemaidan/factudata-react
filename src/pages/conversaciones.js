@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef } from "react";
+import { useRouter } from "next/router";
 import { Layout as DashboardLayout } from "src/layouts/dashboard/layout";
 import Head from "next/head";
 import { 
@@ -26,26 +27,30 @@ import {
   fetchConversations,
   fetchMessages,
   sendMessage,
-  getConversationTitle,
   searchConversations,
+  searchMessages,
+  getJumpInfo,
   downloadConversation
 } from "src/services/conversacionService";
 
 export default function ConversacionesPage() {
-  const [loading, setLoading] = useState(false);
+  const router = useRouter();
   const [conversations, setConversations] = useState([]);
   const [messages, setMessages] = useState([]);
   const [selected, setSelected] = useState(null);
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(router.query.q || "");
   const [isListOpenMobile, setIsListOpenMobile] = useState(false);
 
   const [offset, setOffset] = useState(0);
-  const [total, setTotal] = useState(0);
   const [hasMore, setHasMore] = useState(false);
   const [scrollToBottom, setScrollToBottom] = useState(true);
   
   const [downloadOpen, setDownloadOpen] = useState(false);
   const [downloadDates, setDownloadDates] = useState({ start: '', end: '' });
+  const [messageResults, setMessageResults] = useState([]);
+  const [scrollToMessageId, setScrollToMessageId] = useState(null);
+  const [highlightedMessageId, setHighlightedMessageId] = useState(null);
+  const skipDefaultLoadRef = useRef(false);
 
   const PAGE = 50;
 
@@ -58,11 +63,16 @@ export default function ConversacionesPage() {
   useEffect(() => {
     let active = true;
     (async () => {
-      setLoading(true);
-      const data = await fetchConversations();
+      const query = router.query.q || "";
+      const shouldSearchMessages = query.trim().length >= 2;
+      const [conversationData, messageMatchesData] = await Promise.all([
+        query ? searchConversations(query) : fetchConversations(),
+        shouldSearchMessages ? searchMessages(query) : Promise.resolve([]),
+      ]);
       if (!active) return;
-      setConversations(data);
-      setLoading(false);
+      setConversations(conversationData);
+      setMessageResults(messageMatchesData);
+      setSearch(query);
     })();
     return () => {
       active = false;
@@ -75,8 +85,13 @@ export default function ConversacionesPage() {
       if (!selected) {
         setMessages([]);
         setOffset(0);
-        setTotal(0);
         setHasMore(false);
+        setScrollToMessageId(null);
+        setHighlightedMessageId(null);
+        return;
+      }
+      if (skipDefaultLoadRef.current) {
+        skipDefaultLoadRef.current = false;
         return;
       }
       const { items, total } = await fetchMessages(selected.ultimoMensaje.id_conversacion, {
@@ -86,14 +101,21 @@ export default function ConversacionesPage() {
       if (!active) return;
       setMessages(items.reverse());
       setOffset(items.length);
-      setTotal(total);
       setHasMore(items.length < total);
       setScrollToBottom(true);
+      setScrollToMessageId(null);
+      setHighlightedMessageId(null);
     })();
     return () => {
       active = false;
     };
   }, [selected]);
+
+  useEffect(() => {
+    if (!highlightedMessageId) return;
+    const timeout = setTimeout(() => setHighlightedMessageId(null), 5000);
+    return () => clearTimeout(timeout);
+  }, [highlightedMessageId]);
 
   const loadMore = async () => {
     if (!selected || !hasMore) return;
@@ -104,11 +126,39 @@ export default function ConversacionesPage() {
     });
     setMessages((prev) => [...items.reverse(), ...prev]);
     setOffset((prev) => prev + items.length);
-    setTotal(t);
     setHasMore(offset + items.length < t);
   };
 
-  const onSelectConversation = (c) => setSelected(c);
+  const onSelectConversation = (c) => {
+    setScrollToMessageId(null);
+    setHighlightedMessageId(null);
+    skipDefaultLoadRef.current = false;
+    setSelected(c);
+  };
+
+  const handleSelectMessageResult = async (result) => {
+    if (!result) return;
+    const targetMessageId = result?.matchMessage?.id || result?.matchMessage?._id;
+    if (!targetMessageId) return;
+    try {
+      skipDefaultLoadRef.current = true;
+      setSelected(result.conversation);
+      setScrollToMessageId(targetMessageId);
+      setHighlightedMessageId(targetMessageId);
+      const { limitToFetch } = await getJumpInfo(result.conversationId, targetMessageId);
+      const { items, total } = await fetchMessages(result.conversationId, {
+        limit: limitToFetch,
+        offset: 0,
+        sort: "desc",
+      });
+      setMessages(items.reverse());
+      setOffset(items.length);
+      setHasMore(items.length < total);
+      setScrollToBottom(false);
+    } catch (error) {
+      console.error("Error al cargar el mensaje buscado:", error);
+    }
+  };
 
   const onSend = async (text) => {
     if (!selected) return;
@@ -122,20 +172,47 @@ export default function ConversacionesPage() {
         cv.id === selected.id ? { ...cv, lastMessage: text, updatedAt: message.fecha } : cv
       )
     );
-    setTotal((t) => t + 1);
     setScrollToBottom(true);
   };
 
-  const onSearch = async (q) => {
-    setSearch(q);
-    setConversations(await searchConversations(q));
-  };
+  const onSearch = useCallback(async (q) => {
+    const queryValue = q || "";
+    if (router.query.q !== queryValue) {
+      const newQuery = { ...router.query };
+      if (!queryValue) {
+        delete newQuery.q;
+      } else {
+        newQuery.q = queryValue;
+      }
+      router.replace({
+        pathname: router.pathname,
+        query: newQuery,
+      }, undefined, { shallow: true });
+    }
+    setSearch(queryValue);
+    const shouldSearchMessages = queryValue.trim().length >= 2;
+    try {
+      const [conversationData, messageMatchesData] = await Promise.all([
+        queryValue ? searchConversations(queryValue) : fetchConversations(),
+        shouldSearchMessages ? searchMessages(queryValue) : Promise.resolve([]),
+      ]);
+      setConversations(conversationData);
+      setMessageResults(messageMatchesData);
+    } catch (error) {
+      console.error("Error al buscar:", error);
+    }
+  }, [router]);
 
   const handleRefreshConversations = async () => {
-    setLoading(true);
-    const data = await fetchConversations();
-    setConversations(data);
-    setLoading(false);
+    try {
+      const data = await fetchConversations();
+      setConversations(data);
+      if (search.trim().length >= 2) {
+        setMessageResults(await searchMessages(search));
+      }
+    } catch (error) {
+      console.error("Error al refrescar conversaciones:", error);
+    }
   };
 
   const handleRefreshCurrentConversation = async () => {
@@ -146,7 +223,6 @@ export default function ConversacionesPage() {
     });
     setMessages(items.reverse());
     setOffset(items.length);
-    setTotal(total);
     setHasMore(items.length < total);
     setScrollToBottom(true);
   };
@@ -206,6 +282,8 @@ export default function ConversacionesPage() {
             search={search}
             onSearch={onSearch}
             onRefresh={handleRefreshConversations}
+            messageMatches={messageResults}
+            onMessageSelect={handleSelectMessageResult}
           />
         </Box>
         <Divider orientation="vertical" flexItem />
@@ -230,6 +308,11 @@ export default function ConversacionesPage() {
                 onLoadMore={loadMore}
                 hasMore={hasMore}
                 scrollToBottom={scrollToBottom}
+                scrollToMessageId={scrollToMessageId}
+                highlightedMessageId={highlightedMessageId}
+                onScrollToMessageHandled={() => {
+                  setScrollToMessageId(null);
+                }}
               />
               <MessageInput onSend={onSend} />
             </>
@@ -256,6 +339,11 @@ export default function ConversacionesPage() {
               search={search}
               onSearch={onSearch}
               onRefresh={handleRefreshConversations}
+            messageMatches={messageResults}
+            onMessageSelect={(match) => {
+              handleSelectMessageResult(match);
+              setIsListOpenMobile(false);
+            }}
             />
           </Box>
         </Drawer>

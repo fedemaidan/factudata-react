@@ -11,6 +11,9 @@ export default function ChatWindow({
   onLoadMore,
   hasMore,
   scrollToBottom = true,
+  scrollToMessageId,
+  highlightedMessageId,
+  onScrollToMessageHandled,
 }) {
   const bottomRef = useRef(null);
   const scrollContainerRef = useRef(null);
@@ -20,6 +23,18 @@ export default function ChatWindow({
   useEffect(() => {
     if (scrollToBottom) bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [items.length, scrollToBottom]);
+
+  useEffect(() => {
+    if (!scrollToMessageId) return;
+    const handleScroll = () => {
+      const target = document.getElementById(`message-${scrollToMessageId}`);
+      if (target) {
+        target.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+      onScrollToMessageHandled?.();
+    };
+    requestAnimationFrame(handleScroll);
+  }, [scrollToMessageId, onScrollToMessageHandled]);
 
   const handleScroll = (e) => {
     const scrollTop = e.currentTarget.scrollTop;
@@ -90,13 +105,18 @@ export default function ChatWindow({
         bgcolor={(t) => (t.palette.mode === "light" ? "#eceff1" : "background.default")}
         sx={{ overflowY: 'scroll', position: 'relative', minHeight: 0, pt: 1, pb: 2 }}
       >
-        {items.map((m, i) => (
-          <MessageBubble
-            key={(m.id || m.conversationId || m.id_conversacion) + "-" + i}
-            message={m}
-            isMine={m.emisor?.toLowerCase().includes(myNumber?.toLowerCase())}
-          />
-        ))}
+        {items.map((m, i) => {
+          const messageId = m.id || m._id || `${m.id_conversacion || m.conversationId || "msg"}-${i}`;
+          return (
+            <MessageBubble
+              key={`${messageId}-${i}`}
+              message={m}
+              isMine={m.emisor?.toLowerCase().includes(myNumber?.toLowerCase())}
+              messageId={messageId}
+              isHighlighted={messageId === highlightedMessageId}
+            />
+          );
+        })}
         <div ref={bottomRef} />
       </Box>
     </Box>

@@ -3,7 +3,7 @@ import { useState } from 'react';
 import MediaModal from './MediaModal';
 import AudioPlayer from './AudioPlayer';
 
-export default function MessageBubble({ message, isMine }) {
+export default function MessageBubble({ message, isMine, messageId, isHighlighted }) {
   const [open, setOpen] = useState(false);
   const [mediaType, setMediaType] = useState('image');
   const text = message?.type === 'text' || message?.type === 'text_extended' ? message?.message || '' : '';
@@ -23,8 +23,25 @@ export default function MessageBubble({ message, isMine }) {
 
   console.log(message)
 
+  const anchorId = (messageId || message?.id || message?._id)
+    ? `message-${messageId || message?.id || message?._id}`
+    : undefined;
+  const highlightSx = isHighlighted
+    ? {
+        border: 2,
+        borderColor: 'primary.main',
+        boxShadow: '0 0 0 1px rgba(25, 118, 210, 0.35)',
+      }
+    : {};
+
   return (
-    <Box display="flex" justifyContent={isMine ? 'flex-end' : 'flex-start'} px={2} py={0.5}>
+    <Box
+      display="flex"
+      justifyContent={isMine ? 'flex-end' : 'flex-start'}
+      px={2}
+      py={0.5}
+      id={anchorId}
+    >
       <Paper
         elevation={0}
         sx={{
@@ -32,6 +49,7 @@ export default function MessageBubble({ message, isMine }) {
           p: 1,
           bgcolor: isMine ? '#d1f4cc' : 'background.paper',
           borderRadius: 2,
+          ...highlightSx,
         }}
       >
         {message.type === 'image' ? (

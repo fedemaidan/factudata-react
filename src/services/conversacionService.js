@@ -34,6 +34,20 @@ export async function searchConversations(query) {
   return fetchConversations({ search: query });
 }
 
+export async function searchMessages(query, limit = 20) {
+  const { data } = await api.get("/conversaciones/search/messages", {
+    params: { query, limit },
+  });
+  return data;
+}
+
+export async function getJumpInfo(conversationId, messageId, windowSize = 50) {
+  const { data } = await api.get(`/conversaciones/${conversationId}/jump`, {
+    params: { messageId, window: windowSize },
+  });
+  return data;
+}
+
 export async function downloadConversation(id, fechaInicio, fechaFin) {
   const response = await api.get(`/conversaciones/${id}/download`, {
     params: { fechaInicio, fechaFin },
