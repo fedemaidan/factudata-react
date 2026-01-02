@@ -2,6 +2,7 @@ import { Box, Tooltip, IconButton, Button, CircularProgress, TextField, Chip } f
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import ReplayIcon from "@mui/icons-material/Replay";
+import RefreshIcon from "@mui/icons-material/Refresh";
 import EditIcon from "@mui/icons-material/Edit";
 import TrabajoRegistradoService from "src/services/dhn/TrabajoRegistradoService";
 import { getStatusChipConfig } from "src/utils/dhn/syncHelpers";
@@ -379,5 +380,48 @@ export const ObservacionCell = ({ row, handleResolverTrabajador }) => {
     >
       {observacion}
     </Box>
+  );
+};
+
+export const ResyncSyncCell = ({ row, resyncingId, onResync, getId }) => {
+  const id = getId ? getId(row) : row?.id || row?._id || row?.sync_id || null;
+  const isResyncing = resyncingId === id;
+  const isDone = row?.status === "done";
+  const hasUrlDrive = Boolean(row?.url_drive);
+
+  return (
+    <Tooltip title="Resincronizar" placement="top" arrow>
+      <span>
+        {isResyncing ? (
+          <IconButton
+            size="small"
+            disabled
+            onClick={(e) => e.stopPropagation()}
+            sx={{ p: 0.5 }}
+          >
+            <CircularProgress size={16} />
+          </IconButton>
+        ) : (
+          <IconButton
+            size="small"
+            color="primary"
+            onClick={(e) => {
+              e.stopPropagation();
+              onResync(row);
+            }}
+            disabled={!hasUrlDrive || Boolean(resyncingId) || isDone}
+            sx={{
+              p: 0.5,
+              "&:hover": {
+                backgroundColor: "primary.light",
+                color: "primary.contrastText",
+              },
+            }}
+          >
+            <RefreshIcon fontSize="small" />
+          </IconButton>
+        )}
+      </span>
+    </Tooltip>
   );
 };

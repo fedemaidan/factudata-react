@@ -114,6 +114,25 @@ const DhnDriveService = {
     );
   },
 
+  resyncSyncChildren: async (syncId) => {
+    if (!syncId) {
+      return { ok: false, error: { code: 400, message: 'syncId es requerido' } };
+    }
+    try {
+      const response = await api.post(`/dhn/sync/${syncId}/resync`);
+      return response?.data;
+    } catch (error) {
+      const code = error?.response?.status ?? 0;
+      const message =
+        error?.response?.data?.error?.message ||
+        error?.response?.data?.message ||
+        error?.message ||
+        'Error de red';
+      console.error('Error resyncSyncChildren:', message);
+      return { ok: false, error: { code, message } };
+    }
+  },
+
   getErroredSyncChildren: async ({ limit = DEFAULT_PAGE_LIMIT, offset = 0 } = {}) => {
     return fetchUrlStoragePage(
       { status: 'error', limit, offset },

@@ -169,3 +169,28 @@ export const formatDateToDDMMYYYY = (value) => {
   if (!parsed.isValid()) return "-";
   return parsed.format("DD/MM/YYYY");
 };
+
+// Convierte una fecha a formato "YYYY-MM" (año-mes) para períodos.
+// Acepta Date, ISO string, timestamp o null/undefined.
+// Retorna "YYYY-MM" o undefined si la fecha es inválida.
+export const formatDateToPeriod = (date) => {
+  if (!date) return undefined;
+  
+  let d = null;
+  
+  if (date instanceof Date) {
+    d = date;
+  } else if (typeof date === "number") {
+    d = new Date(date);
+  } else if (typeof date === "string") {
+    d = new Date(date);
+  } else {
+    return undefined;
+  }
+  
+  if (!d || Number.isNaN(d.getTime())) return undefined;
+  
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  return `${year}-${month}`;
+};

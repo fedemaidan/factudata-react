@@ -1,41 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/router";
 import { Layout as DashboardLayout } from "src/layouts/dashboard/layout";
-import { Container, Box, Chip, IconButton, TextField, Button, Dialog, DialogTitle, DialogContent, DialogActions, MenuItem, Stack, Snackbar, Alert } from "@mui/material";
+import { Container, Box, Chip, IconButton, TextField, Button, Dialog, DialogTitle, DialogContent, DialogActions, MenuItem, Stack, Snackbar, Alert, Typography } from "@mui/material";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import TableComponent from "src/components/TableComponent";
 import DhnDriveService from "src/services/dhn/cargarUrlDriveService";
-import { formatearFechaHora } from "src/utils/handleDates";
-
-const statusChip = (status) => {
-  const map = {
-    pending: { color: "#757575", label: "Pendiente" },
-    processing: { color: "#ed6c02", label: "Procesando" },
-    done: { color: "#2e7d32", label: "Completado" },
-    ok: { color: "#2e7d32", label: "OK" },
-    error: { color: "#d32f2f", label: "Error" },
-  };
-  const cfg = map[status] || { color: "#757575", label: status || "-" };
-  return (
-    <Chip
-      label={cfg.label}
-      size="small"
-      variant="outlined"
-      sx={{
-        borderColor: cfg.color,
-        color: cfg.color,
-        fontWeight: 500,
-        fontSize: "0.7rem",
-        height: "24px",
-        backgroundColor: "transparent",
-        "& .MuiChip-label": {
-          padding: "0 8px",
-        },
-      }}
-    />
-  );
-};
+import { formatearFechaHora, formatDateToPeriod } from "src/utils/handleDates";
+import { StatusChip, ResyncSyncCell } from "src/components/dhn/sync/cells";
 
 const CargarDrive = () => {
   const router = useRouter();
@@ -49,6 +21,9 @@ const CargarDrive = () => {
   const [driveDialogOpen, setDriveDialogOpen] = useState(false);
   const [periodDate, setPeriodDate] = useState(null); // Date | null
   const [tipo, setTipo] = useState("");
+  const [resyncingId, setResyncingId] = useState(null);
+  const [resyncConfirmOpen, setResyncConfirmOpen] = useState(false);
+  const [itemToResync, setItemToResync] = useState(null);
 
   const [alert, setAlert] = useState({
     open: false,
@@ -77,10 +52,6 @@ const CargarDrive = () => {
     }
   };
 
-  const refreshSyncsAndDetails = async () => {
-    await fetchSyncs();
-  };
-
   const handleSyncClick = async (options = {}) => {
     if (!urlDrive) {
       console.log('urlDrive is required');
@@ -98,7 +69,7 @@ const CargarDrive = () => {
         });
         return;
       }
-      await refreshSyncsAndDetails();
+      await fetchSyncs();
       setUrlDrive("");
     } catch (e) {
       console.error(e);
@@ -112,10 +83,7 @@ const CargarDrive = () => {
     }
   };
   const handleDriveSave = async () => {
-    const periodo =
-      periodDate instanceof Date && !Number.isNaN(periodDate.getTime())
-        ? `${periodDate.getFullYear()}-${String(periodDate.getMonth() + 1).padStart(2, "0")}`
-        : undefined;
+    const periodo = formatDateToPeriod(periodDate);
     const tipoValue = tipo || undefined;
     
     setDriveDialogOpen(false);
@@ -131,6 +99,71 @@ const CargarDrive = () => {
 
     const tipoParam = item?.tipo ? String(item.tipo).toLowerCase() : "";
     router.push(`/dhn/sync/${id}${tipoParam ? `?tipo=${tipoParam}` : ""}`);
+  };
+
+  const handleResync = (item) => {
+    const id = getId(item);
+    if (!id) return;
+    if (resyncingId) return;
+    
+    setItemToResync(item);
+    setResyncConfirmOpen(true);
+  };
+
+  const handleConfirmResync = async () => {
+    if (!itemToResync) return;
+    
+    const id = getId(itemToResync);
+    if (!id) return;
+
+    setResyncConfirmOpen(false);
+    
+    try {
+      setResyncingId(id);
+      setItems((prev) =>
+        prev.map((it) => {
+          const itId = getId(it);
+          return itId === id ? { ...it, status: "processing" } : it;
+        })
+      );
+
+      const resp = await DhnDriveService.resyncSyncChildren(id);
+
+      if (!resp?.ok) {
+        const msg = resp?.error?.message || "Error al resincronizar";
+        setAlert({
+          open: true,
+          message: msg,
+          severity: "error",
+        });
+        return;
+      }
+
+      setAlert({
+        open: true,
+        message: `Resincronización iniciada`,
+        severity: "success",
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await fetchSyncs();
+    } catch (e) {
+      console.error(e);
+      setAlert({
+        open: true,
+        message: "Error al resincronizar",
+        severity: "error",
+      });
+      await fetchSyncs();
+    } finally {
+      setResyncingId(null);
+      setItemToResync(null);
+    }
+  };
+
+  const handleCancelResync = () => {
+    setResyncConfirmOpen(false);
+    setItemToResync(null);
   };
 
   const columns = useMemo(
@@ -152,7 +185,7 @@ const CargarDrive = () => {
         key: "status",
         label: "Estado",
         sortable: true,
-        render: (item) => statusChip(item.status),
+        render: (item) => <StatusChip status={item.status} />,
       },
       {
         key: "observacion",
@@ -178,8 +211,21 @@ const CargarDrive = () => {
           </IconButton>
         ),
       },
+      {
+        key: "acciones",
+        label: "Acciones",
+        sortable: false,
+        render: (item) => (
+          <ResyncSyncCell
+            row={item}
+            resyncingId={resyncingId}
+            onResync={handleResync}
+            getId={getId}
+          />
+        ),
+      },
     ],
-    []
+    [resyncingId]
   );
 
   // Eliminado detalle embebido: redirect a pantalla de detalle
@@ -214,7 +260,12 @@ const CargarDrive = () => {
   return (
     <DashboardLayout title="Cargar Drive - Historial">
       <Container maxWidth="xl">
-        <Snackbar anchorOrigin={{ vertical: "top", horizontal: "center" }} open={alert.open} autoHideDuration={6000} onClose={handleCloseAlert}>
+        <Snackbar 
+          anchorOrigin={{ vertical: "top", horizontal: "center" }} 
+          open={alert.open} 
+          autoHideDuration={15000} 
+          onClose={handleCloseAlert}
+        >
           <Alert onClose={handleCloseAlert} severity={alert.severity} sx={{ width: "100%" }}>
             {alert.message}
           </Alert>
@@ -237,7 +288,7 @@ const CargarDrive = () => {
               </Button>
               <Button
                 variant="outlined"
-                onClick={refreshSyncsAndDetails}
+                onClick={fetchSyncs}
                 disabled={isLoading}
               >
                 {isLoading ? "Actualizando..." : "Actualizar"}
@@ -365,6 +416,36 @@ const CargarDrive = () => {
                 disabled={!urlDrive || isSyncing}
               >
                 {isSyncing ? "Sincronizando..." : "Guardar"}
+              </Button>
+            </DialogActions>
+          </Dialog>
+          {/* Modal: Confirmar Resincronización */}
+          <Dialog 
+            open={resyncConfirmOpen} 
+            onClose={handleCancelResync} 
+            maxWidth="sm" 
+            fullWidth
+          >
+            <DialogTitle>Confirmar Resincronización</DialogTitle>
+            <DialogContent>
+              <Box sx={{ py: 2 }}>
+                <Typography variant="body1" sx={{ mb: 1 }}>
+                  ¿Estás seguro de que deseas resincronizar esta sincronización?
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Este proceso reprocesará todos los archivos asociados pendientes de procesar y puede tardar varios minutos.
+                </Typography>
+              </Box>
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={handleCancelResync}>Cancelar</Button>
+              <Button
+                variant="contained"
+                color="warning"
+                onClick={handleConfirmResync}
+                disabled={resyncingId !== null}
+              >
+                Confirmar Resincronización
               </Button>
             </DialogActions>
           </Dialog>
