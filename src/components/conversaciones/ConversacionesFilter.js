@@ -7,6 +7,7 @@ import {
   Stack,
   Button,
   Autocomplete,
+  MenuItem,
 } from "@mui/material";
 import FilterListIcon from "@mui/icons-material/FilterList";
 import CloseIcon from "@mui/icons-material/Close";
@@ -61,10 +62,14 @@ const ConversacionesFilter = () => {
   const handleApply = () => setOpen(false);
 
   const handleRestart = () => {
-    onFiltersChange?.({ ...filters, fechaDesde: "", fechaHasta: "", empresaId: "" });
+    onFiltersChange?.({ ...filters, fechaDesde: "", fechaHasta: "", empresaId: "", tipoContacto: "todos" });
   };
 
-  const hasActiveFilters = filters?.fechaDesde || filters?.fechaHasta || filters?.empresaId;
+  const hasActiveFilters = 
+    filters?.fechaDesde || 
+    filters?.fechaHasta || 
+    filters?.empresaId || 
+    (filters?.tipoContacto && filters.tipoContacto !== "todos");
 
   return (
     <>
@@ -164,6 +169,20 @@ const ConversacionesFilter = () => {
             isOptionEqualToValue={(opt, v) => opt?.value === v?.value}
             noOptionsText={loadingEmpresas ? "Cargando empresas..." : "Sin empresas"}
           />
+
+          <TextField
+            select
+            label="Tipo de contacto"
+            value={filters?.tipoContacto || "todos"}
+            onChange={(e) => handleFilterChange("tipoContacto", e.target.value)}
+            fullWidth
+            size="small"
+            variant="filled"
+          >
+            <MenuItem value="todos">Todos</MenuItem>
+            <MenuItem value="cliente">Cliente</MenuItem>
+            <MenuItem value="noCliente">No cliente</MenuItem>
+          </TextField>
 
           <Stack direction="row" spacing={1} sx={{ pt: 0.5 }}>
             <Button

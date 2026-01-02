@@ -18,6 +18,9 @@ export async function fetchConversations(filters = {}) {
   if (filters?.empresaId) {
     params.empresaId = filters.empresaId;
   }
+  if (filters?.tipoContacto && filters.tipoContacto !== "todos") {
+    params.tipoContacto = filters.tipoContacto;
+  }
   const response = await api.get('/conversaciones', { params });
   return response.data;
 }
@@ -50,6 +53,9 @@ export async function searchConversations(query, filters = {}) {
   }
   if (filters?.empresaId) {
     params.empresaId = filters.empresaId;
+  }
+  if (filters?.tipoContacto && filters.tipoContacto !== "todos") {
+    params.tipoContacto = filters.tipoContacto;
   }
   const response = await api.get('/conversaciones', { params });
   return response.data;

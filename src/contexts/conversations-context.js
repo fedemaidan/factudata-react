@@ -1,5 +1,4 @@
 import { createContext, useCallback, useContext, useMemo, useReducer, useRef } from "react";
-import PropTypes from "prop-types";
 import { useRouter } from "next/router";
 import { useConversationsFetch } from "src/hooks/useConversationsFetch";
 import { useMessagesFetch } from "src/hooks/useMessagesFetch";
@@ -83,9 +82,11 @@ const getFiltersFromQuery = (query) => {
   const fechaDesde = getStringParam(query.fechaDesde);
   const fechaHasta = getStringParam(query.fechaHasta);
   const empresaId = getStringParam(query.empresaId);
+  const tipoContacto = getStringParam(query.tipoContacto);
   if (fechaDesde) filters.fechaDesde = fechaDesde;
   if (fechaHasta) filters.fechaHasta = fechaHasta;
   if (empresaId) filters.empresaId = empresaId;
+  if (tipoContacto) filters.tipoContacto = tipoContacto;
   return filters;
 };
 
@@ -105,7 +106,7 @@ export function ConversationsProvider({ children }) {
 
   const filters = useMemo(() => {
     return normalizeFilterDates(getFiltersFromQuery(router.query));
-  }, [router.query.fechaDesde, router.query.fechaHasta, router.query.empresaId]);
+  }, [router.query.fechaDesde, router.query.fechaHasta, router.query.empresaId, router.query.tipoContacto]);
 
   // Callbacks para los hooks
   const handleConversationsLoaded = useCallback((data) => {
@@ -214,7 +215,7 @@ export function ConversationsProvider({ children }) {
   const handleSend = useCallback(
     async (text) => {
       try {
-        const { updatedMessages, updatedConversations } = await sendNewMessage(text, messages, conversations);
+        const { updatedConversations } = await sendNewMessage(text, messages, conversations);
         if (updatedConversations) {
           dispatch({ type: ACTIONS.SET_CONVERSATIONS, payload: updatedConversations });
         }
@@ -241,7 +242,6 @@ export function ConversationsProvider({ children }) {
 
         router.replace({ pathname: router.pathname, query: newQuery }, undefined, { shallow: true });
       } else {
-        // Si ya está en la URL, solo ejecutar la búsqueda
         await performSearch(queryValue, filters);
       }
     },
@@ -272,6 +272,11 @@ export function ConversationsProvider({ children }) {
         newQuery.empresaId = normalizedFilters.empresaId;
       } else {
         delete newQuery.empresaId;
+      }
+      if (normalizedFilters.tipoContacto && normalizedFilters.tipoContacto !== "todos") {
+        newQuery.tipoContacto = normalizedFilters.tipoContacto;
+      } else {
+        delete newQuery.tipoContacto;
       }
 
       router.replace({ pathname: router.pathname, query: newQuery }, undefined, { shallow: true });
@@ -336,10 +341,6 @@ export function ConversationsProvider({ children }) {
 
   return <ConversationsContext.Provider value={value}>{children}</ConversationsContext.Provider>;
 }
-
-ConversationsProvider.propTypes = {
-  children: PropTypes.node.isRequired,
-};
 
 export const useConversationsContext = () => {
   const context = useContext(ConversationsContext);
