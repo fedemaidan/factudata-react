@@ -29,7 +29,7 @@ export function useConversationsFetch({
       try {
         const [conversationData, messageMatchesData] = await Promise.all([
           query ? searchConversations(query, filters) : fetchConversations(filters),
-          shouldSearchMessages ? searchMessages(query) : Promise.resolve([]),
+          shouldSearchMessages ? searchMessages(query, filters) : Promise.resolve([]),
         ]);
 
         if (!activeRef.current) {
@@ -62,7 +62,7 @@ export function useConversationsFetch({
       const q = router.query.q;
       const query = Array.isArray(q) ? q[0] : q || "";
       if (query.trim().length >= 2) {
-        const matches = await searchMessages(query);
+        const matches = await searchMessages(query, filters);
         onMessageResultsLoaded?.(matches);
       }
     } catch (error) {
@@ -76,7 +76,7 @@ export function useConversationsFetch({
         const shouldSearchMessages = queryValue.trim().length >= 3;
         const [conversationData, messageMatchesData] = await Promise.all([
           queryValue ? searchConversations(queryValue, currentFilters) : fetchConversations(currentFilters),
-          shouldSearchMessages ? searchMessages(queryValue) : Promise.resolve([]),
+          shouldSearchMessages ? searchMessages(queryValue, currentFilters) : Promise.resolve([]),
         ]);
 
         onConversationsLoaded?.(conversationData);

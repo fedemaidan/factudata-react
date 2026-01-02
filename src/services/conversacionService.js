@@ -1,13 +1,7 @@
 import api from './axiosConfig';
 const artificialDelay = (ms = 300) => new Promise((res) => setTimeout(res, ms));
 
-function getTextFromMessage(message) {
-  if (!message) return '';
-  if (typeof message.mensaje === 'string') return message.mensaje;
-  return '';
-}
-
-export async function fetchConversations(filters = {}) {
+function buildFilterParams(filters = {}) {
   const params = {};
   if (filters?.fechaDesde) {
     params.fechaDesde = filters.fechaDesde;
@@ -21,6 +15,17 @@ export async function fetchConversations(filters = {}) {
   if (filters?.tipoContacto && filters.tipoContacto !== "todos") {
     params.tipoContacto = filters.tipoContacto;
   }
+  return params;
+}
+
+function getTextFromMessage(message) {
+  if (!message) return '';
+  if (typeof message.mensaje === 'string') return message.mensaje;
+  return '';
+}
+
+export async function fetchConversations(filters = {}) {
+  const params = buildFilterParams(filters);
   const response = await api.get('/conversaciones', { params });
   return response.data;
 }
@@ -44,28 +49,17 @@ export async function sendMessage({ conversationId, text }) {
 }
 
 export async function searchConversations(query, filters = {}) {
-  const params = { search: query };
-  if (filters?.fechaDesde) {
-    params.fechaDesde = filters.fechaDesde;
-  }
-  if (filters?.fechaHasta) {
-    params.fechaHasta = filters.fechaHasta;
-  }
-  if (filters?.empresaId) {
-    params.empresaId = filters.empresaId;
-  }
-  if (filters?.tipoContacto && filters.tipoContacto !== "todos") {
-    params.tipoContacto = filters.tipoContacto;
-  }
+  const params = { search: query, ...buildFilterParams(filters) };
   const response = await api.get('/conversaciones', { params });
   return response.data;
 }
 
-export async function searchMessages(query, limit = 20) {
-  const { data } = await api.get("/conversaciones/search/messages", {
-    params: { query, limit },
+export async function searchMessages(query, filters = {}, limit = 100) {
+  const params = { query, limit, ...buildFilterParams(filters) };
+  const response = await api.get("/conversaciones/search/messages", {
+    params,
   });
-  return data;
+  return response.data;
 }
 
 export async function getJumpInfo(conversationId, messageId, windowSize = 50) {
