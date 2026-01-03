@@ -1,5 +1,15 @@
 import dayjs from 'dayjs';
 
+// 'DD/MM/YYYY' -> 'HH:mm' si es hoy, 'D/M' si es otro día
+export const formatFecha = (fecha) => {
+  const date = dayjs(fecha);
+  const hoy = dayjs();
+  if (date.isSame(hoy, "day")) {
+    return date.format("HH:mm");
+  }
+  return date.format("D/M");
+};
+
 export const formatDateDDMMYYYY = (fecha) => {
   if (!fecha) return '-';
   const fechaParsed = dayjs(fecha);

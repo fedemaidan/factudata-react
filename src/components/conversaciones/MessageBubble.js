@@ -1,11 +1,7 @@
 import { Box, Paper, Typography } from '@mui/material';
-import { useState } from 'react';
-import MediaModal from './MediaModal';
 import AudioPlayer from './AudioPlayer';
 
-export default function MessageBubble({ message, isMine }) {
-  const [open, setOpen] = useState(false);
-  const [mediaType, setMediaType] = useState('image');
+export default function MessageBubble({ message, isMine, messageId, isHighlighted, onMediaClick }) {
   const text = message?.type === 'text' || message?.type === 'text_extended' ? message?.message || '' : '';
   const date = message?.fecha ? new Date(message.fecha) : null;
   const pad = (n) => String(n).padStart(2, '0');
@@ -15,16 +11,31 @@ export default function MessageBubble({ message, isMine }) {
     : '';
   const timeStr = date ? `${pad(date.getHours())}:${pad(date.getMinutes())}` : '';
 
-  const handleOpen = (type = 'image') => {
-    setMediaType(type);
-    setOpen(true);
+  const handleMediaClick = (type = 'image') => {
+    if (onMediaClick && message?.message) {
+      onMediaClick({ src: message.message, type });
+    }
   };
-  const handleClose = () => setOpen(false);
 
-  console.log(message)
+  const anchorId = (messageId || message?.id || message?._id)
+    ? `message-${messageId || message?.id || message?._id}`
+    : undefined;
+  const highlightSx = isHighlighted
+    ? {
+        border: 2,
+        borderColor: 'primary.main',
+        boxShadow: '0 0 0 1px rgba(25, 118, 210, 0.35)',
+      }
+    : {};
 
   return (
-    <Box display="flex" justifyContent={isMine ? 'flex-end' : 'flex-start'} px={2} py={0.5}>
+    <Box
+      display="flex"
+      justifyContent={isMine ? 'flex-end' : 'flex-start'}
+      px={2}
+      py={0.5}
+      id={anchorId}
+    >
       <Paper
         elevation={0}
         sx={{
@@ -32,6 +43,7 @@ export default function MessageBubble({ message, isMine }) {
           p: 1,
           bgcolor: isMine ? '#d1f4cc' : 'background.paper',
           borderRadius: 2,
+          ...highlightSx,
         }}
       >
         {message.type === 'image' ? (
@@ -47,7 +59,7 @@ export default function MessageBubble({ message, isMine }) {
                 borderRadius: 8,
                 cursor: 'pointer',
               }}
-              onClick={() => handleOpen('image')}
+              onClick={() => handleMediaClick('image')}
             />
             {message.caption ? (
               <Typography variant="body2" whiteSpace="pre-wrap" mt={1}>
@@ -69,7 +81,7 @@ export default function MessageBubble({ message, isMine }) {
                 borderRadius: 8,
                 cursor: 'pointer',
               }}
-              onClick={() => handleOpen('video')}
+              onClick={() => handleMediaClick('video')}
               preload="metadata"
             />
             <Box
@@ -87,7 +99,7 @@ export default function MessageBubble({ message, isMine }) {
                 justifyContent: 'center',
                 cursor: 'pointer',
               }}
-              onClick={() => handleOpen('video')}
+              onClick={() => handleMediaClick('video')}
             >
               <Box
                 sx={{
@@ -142,9 +154,6 @@ export default function MessageBubble({ message, isMine }) {
             </Typography>
           ) : null}
         </Box>
-        {message.type === 'image' || message.type === 'video' ? (
-          <MediaModal open={open} src={message.message} type={mediaType} onClose={handleClose} />
-        ) : null}
       </Paper>
     </Box>
   );

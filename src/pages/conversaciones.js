@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useState } from "react";
 import { Layout as DashboardLayout } from "src/layouts/dashboard/layout";
 import Head from "next/head";
 import { 
@@ -22,165 +22,60 @@ import ConversationList from "src/components/conversaciones/ConversationList";
 import ChatWindow from "src/components/conversaciones/ChatWindow";
 import MessageInput from "src/components/conversaciones/MessageInput";
 import EmptyState from "src/components/conversaciones/EmptyState";
+import { downloadConversation } from "src/services/conversacionService";
 import {
-  fetchConversations,
-  fetchMessages,
-  sendMessage,
-  getConversationTitle,
-  searchConversations,
-  downloadConversation
-} from "src/services/conversacionService";
+  ConversationsProvider,
+  useConversationsContext,
+} from "src/contexts/conversations-context";
+import { getTitulo } from "src/utils/conversacionesUtils";
 
 export default function ConversacionesPage() {
-  const [loading, setLoading] = useState(false);
-  const [conversations, setConversations] = useState([]);
-  const [messages, setMessages] = useState([]);
-  const [selected, setSelected] = useState(null);
-  const [search, setSearch] = useState("");
+  return (
+    <ConversationsProvider>
+      <ConversacionesContent />
+    </ConversationsProvider>
+  );
+}
+
+function ConversacionesContent() {
   const [isListOpenMobile, setIsListOpenMobile] = useState(false);
-
-  const [offset, setOffset] = useState(0);
-  const [total, setTotal] = useState(0);
-  const [hasMore, setHasMore] = useState(false);
-  const [scrollToBottom, setScrollToBottom] = useState(true);
-  
   const [downloadOpen, setDownloadOpen] = useState(false);
-  const [downloadDates, setDownloadDates] = useState({ start: '', end: '' });
-
-  const PAGE = 50;
-
+  const [downloadDates, setDownloadDates] = useState({ start: "", end: "" });
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
   const myNumber = "sorby";
 
-  console.log(conversations);
-
-  useEffect(() => {
-    let active = true;
-    (async () => {
-      setLoading(true);
-      const data = await fetchConversations();
-      if (!active) return;
-      setConversations(data);
-      setLoading(false);
-    })();
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    let active = true;
-    (async () => {
-      if (!selected) {
-        setMessages([]);
-        setOffset(0);
-        setTotal(0);
-        setHasMore(false);
-        return;
-      }
-      const { items, total } = await fetchMessages(selected.ultimoMensaje.id_conversacion, {
-        limit: PAGE,
-        offset: 0,
-      });
-      if (!active) return;
-      setMessages(items.reverse());
-      setOffset(items.length);
-      setTotal(total);
-      setHasMore(items.length < total);
-      setScrollToBottom(true);
-    })();
-    return () => {
-      active = false;
-    };
-  }, [selected]);
-
-  const loadMore = async () => {
-    if (!selected || !hasMore) return;
-    setScrollToBottom(false);
-    const { items, total: t } = await fetchMessages(selected.ultimoMensaje.id_conversacion, {
-      limit: PAGE,
-      offset,
-    });
-    setMessages((prev) => [...items.reverse(), ...prev]);
-    setOffset((prev) => prev + items.length);
-    setTotal(t);
-    setHasMore(offset + items.length < t);
-  };
-
-  const onSelectConversation = (c) => setSelected(c);
-
-  const onSend = async (text) => {
-    if (!selected) return;
-    const { message } = await sendMessage({
-      conversationId: selected.ultimoMensaje.id_conversacion,
-      text,
-    });
-    setMessages((prev) => [...prev, message]);
-    setConversations((prev) =>
-      prev.map((cv) =>
-        cv.id === selected.id ? { ...cv, lastMessage: text, updatedAt: message.fecha } : cv
-      )
-    );
-    setTotal((t) => t + 1);
-    setScrollToBottom(true);
-  };
-
-  const onSearch = async (q) => {
-    setSearch(q);
-    setConversations(await searchConversations(q));
-  };
-
-  const handleRefreshConversations = async () => {
-    setLoading(true);
-    const data = await fetchConversations();
-    setConversations(data);
-    setLoading(false);
-  };
-
-  const handleRefreshCurrentConversation = async () => {
-    if (!selected) return;
-    const { items, total } = await fetchMessages(selected.ultimoMensaje.id_conversacion, {
-      limit: PAGE,
-      offset: 0,
-    });
-    setMessages(items.reverse());
-    setOffset(items.length);
-    setTotal(total);
-    setHasMore(items.length < total);
-    setScrollToBottom(true);
-  };
+  const {
+    selected,
+    onRefreshCurrentConversation,
+  } = useConversationsContext();
 
   const handleDownload = async () => {
-    if (!selected || !downloadDates.start || !downloadDates.end) return;
+    if (!selected || !downloadDates.start || !downloadDates.end) {
+      return;
+    }
+
     try {
-        const response = await downloadConversation(selected.ultimoMensaje.id_conversacion, downloadDates.start, downloadDates.end);
-        const url = window.URL.createObjectURL(new Blob([response.data]));
-        const link = document.createElement('a');
-        link.href = url;
-        link.setAttribute('download', `conversacion_${downloadDates.start}_${downloadDates.end}.txt`);
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        setDownloadOpen(false);
-    } catch (e) {
-        console.error(e);
+      const response = await downloadConversation(
+        selected.ultimoMensaje.id_conversacion,
+        downloadDates.start,
+        downloadDates.end
+      );
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute("download", `conversacion_${downloadDates.start}_${downloadDates.end}.txt`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setDownloadOpen(false);
+    } catch (error) {
+      console.error(error);
     }
   };
 
-  const nombreCliente = (c) => {
-    return ((c.profile && c.empresa)
-        ? `${c.profile.firstName} ${c.profile.lastName} - (${c.empresa.nombre}) ${c.profile.phone.slice(-4)}`
-        : c.ultimoMensaje.emisor.toLowerCase() == "sorby" ? c.ultimoMensaje.receptor : c.ultimoMensaje.emisor)
-  }
-
-  const getTitulo = useMemo(() => {
-    if (!selected) return "Conversaciones";
-    return nombreCliente(selected);
-  }, [selected]);
-
   return (
-    <DashboardLayout title={getTitulo}>
+    <DashboardLayout title={getTitulo(selected)}>
       <Head>
         <title>Conversaciones</title>
       </Head>
@@ -199,39 +94,32 @@ export default function ConversacionesPage() {
           display={{ xs: "none", sm: "none", md: "flex" }}
           flexDirection="column"
         >
-          <ConversationList
-            conversations={conversations}
-            selectedId={selected?.ultimoMensaje.id_conversacion}
-            onSelect={onSelectConversation}
-            search={search}
-            onSearch={onSearch}
-            onRefresh={handleRefreshConversations}
-          />
+          <ConversationList />
         </Box>
         <Divider orientation="vertical" flexItem />
         <Box flex={1} display="flex" flexDirection="column" minHeight={0}>
           {selected ? (
             <>
-              <Box p={2} display="flex" justifyContent="space-between" alignItems="center" borderBottom="1px solid" borderColor="divider">
-                  <Typography variant="h6">{getTitulo}</Typography>
-                  <Box>
-                    <IconButton onClick={handleRefreshCurrentConversation} title="Refrescar conversación">
-                        <RefreshIcon />
-                    </IconButton>
-                    <IconButton onClick={() => setDownloadOpen(true)} title="Descargar conversación">
-                        <DownloadIcon />
-                    </IconButton>
-                  </Box>
+              <Box
+                p={2}
+                display="flex"
+                justifyContent="space-between"
+                alignItems="center"
+                borderBottom="1px solid"
+                borderColor="divider"
+              >
+                <Typography variant="h6">{getTitulo(selected)}</Typography>
+                <Box>
+                  <IconButton onClick={onRefreshCurrentConversation} title="Refrescar conversación">
+                    <RefreshIcon />
+                  </IconButton>
+                  <IconButton onClick={() => setDownloadOpen(true)} title="Descargar conversación">
+                    <DownloadIcon />
+                  </IconButton>
+                </Box>
               </Box>
-              <ChatWindow
-                messages={messages}
-                myNumber={myNumber}
-                onOpenList={isMobile ? () => setIsListOpenMobile(true) : undefined}
-                onLoadMore={loadMore}
-                hasMore={hasMore}
-                scrollToBottom={scrollToBottom}
-              />
-              <MessageInput onSend={onSend} />
+              <ChatWindow myNumber={myNumber} onOpenList={isMobile ? () => setIsListOpenMobile(true) : undefined} />
+              <MessageInput />
             </>
           ) : (
             <EmptyState onOpenList={isMobile ? () => setIsListOpenMobile(true) : undefined} />
@@ -247,15 +135,8 @@ export default function ConversacionesPage() {
         >
           <Box height="100vh" display="flex" flexDirection="column">
             <ConversationList
-              conversations={conversations}
-              selectedId={selected?.ultimoMensaje.id_conversacion}
-              onSelect={(c) => {
-                onSelectConversation(c);
-                setIsListOpenMobile(false);
-              }}
-              search={search}
-              onSearch={onSearch}
-              onRefresh={handleRefreshConversations}
+              onSelect={() => setIsListOpenMobile(false)}
+              onMessageSelect={() => setIsListOpenMobile(false)}
             />
           </Box>
         </Drawer>
@@ -285,7 +166,11 @@ export default function ConversacionesPage() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setDownloadOpen(false)}>Cancelar</Button>
-          <Button onClick={handleDownload} variant="contained" disabled={!downloadDates.start || !downloadDates.end}>
+          <Button
+            onClick={handleDownload}
+            variant="contained"
+            disabled={!downloadDates.start || !downloadDates.end}
+          >
             Descargar
           </Button>
         </DialogActions>

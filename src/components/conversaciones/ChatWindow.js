@@ -2,24 +2,41 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Box, Divider, Typography, IconButton, Button } from "@mui/material";
 import MenuIcon from "@mui/icons-material/Menu";
 import MessageBubble from "./MessageBubble";
+import MediaModal from "./MediaModal";
+import { useConversationsContext } from "src/contexts/conversations-context";
 
-export default function ChatWindow({
-  messages,
-  myNumber = "X",
-  title,
-  onOpenList,
-  onLoadMore,
-  hasMore,
-  scrollToBottom = true,
-}) {
+export default function ChatWindow({ myNumber = "X", onOpenList }) {
   const bottomRef = useRef(null);
   const scrollContainerRef = useRef(null);
   const [atTop, setAtTop] = useState(false);
+  const [mediaModal, setMediaModal] = useState({ open: false, src: null, type: 'image' });
+  const {
+    messages,
+    hasMore,
+    scrollToBottom,
+    scrollToMessageId,
+    highlightedMessageId,
+    loadMore,
+    handleScrollToMessageHandled,
+  } = useConversationsContext();
+
   const items = useMemo(() => messages || [], [messages]);
 
   useEffect(() => {
     if (scrollToBottom) bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [items.length, scrollToBottom]);
+
+  useEffect(() => {
+    if (!scrollToMessageId) return;
+    const handleScroll = () => {
+      const target = document.getElementById(`message-${scrollToMessageId}`);
+      if (target) {
+        target.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+      handleScrollToMessageHandled();
+    };
+    requestAnimationFrame(handleScroll);
+  }, [scrollToMessageId, handleScrollToMessageHandled]);
 
   const handleScroll = (e) => {
     const scrollTop = e.currentTarget.scrollTop;
@@ -27,15 +44,15 @@ export default function ChatWindow({
   };
 
   const handleLoadMore = async () => {
-    if (!onLoadMore) return;
+    if (!loadMore) return;
     const el = scrollContainerRef.current;
     if (!el) {
-      await onLoadMore();
+      await loadMore();
       return;
     }
     const prevScrollHeight = el.scrollHeight;
     const prevScrollTop = el.scrollTop;
-    await Promise.resolve(onLoadMore());
+    await Promise.resolve(loadMore());
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         const newScrollHeight = el.scrollHeight;
@@ -45,9 +62,13 @@ export default function ChatWindow({
     });
   };
 
-  console.log(atTop)
-  console.log(hasMore)
-  console.log(onLoadMore)
+  const handleMediaClick = ({ src, type }) => {
+    setMediaModal({ open: true, src, type });
+  };
+
+  const handleMediaClose = () => {
+    setMediaModal({ open: false, src: null, type: 'image' });
+  };
 
   return (
     <Box display="flex" flexDirection="column" height="100%" minHeight={0}>
@@ -64,7 +85,7 @@ export default function ChatWindow({
       ) : null}
       <Divider />
 
-      {hasMore && atTop && onLoadMore ? (
+      {hasMore && atTop && loadMore ? (
         <Box textAlign="center" py={0.5} px={2}>
           <Button
             size="small"
@@ -90,15 +111,27 @@ export default function ChatWindow({
         bgcolor={(t) => (t.palette.mode === "light" ? "#eceff1" : "background.default")}
         sx={{ overflowY: 'scroll', position: 'relative', minHeight: 0, pt: 1, pb: 2 }}
       >
-        {items.map((m, i) => (
-          <MessageBubble
-            key={(m.id || m.conversationId || m.id_conversacion) + "-" + i}
-            message={m}
-            isMine={m.emisor?.toLowerCase().includes(myNumber?.toLowerCase())}
-          />
-        ))}
+        {items.map((m, i) => {
+          const messageId = m.id || m._id || `${m.id_conversacion || m.conversationId || "msg"}-${i}`;
+          return (
+            <MessageBubble
+              key={`${messageId}-${i}`}
+              message={m}
+              isMine={m.emisor?.toLowerCase().includes(myNumber?.toLowerCase())}
+              messageId={messageId}
+              isHighlighted={messageId === highlightedMessageId}
+              onMediaClick={handleMediaClick}
+            />
+          );
+        })}
         <div ref={bottomRef} />
       </Box>
+      <MediaModal
+        open={mediaModal.open}
+        src={mediaModal.src}
+        type={mediaModal.type}
+        onClose={handleMediaClose}
+      />
     </Box>
   );
 }

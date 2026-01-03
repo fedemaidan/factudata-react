@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { Box, IconButton, TextField } from "@mui/material";
 import SendIcon from "@mui/icons-material/Send";
+import { useConversationsContext } from "src/contexts/conversations-context";
 
-export default function MessageInput({ onSend }) {
+export default function MessageInput() {
   const [value, setValue] = useState("");
+  const { onSend } = useConversationsContext();
 
   const handleSend = () => {
     const text = value.trim();
