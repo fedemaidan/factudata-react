@@ -16,6 +16,7 @@ const ACTIONS = {
   SET_SCROLL_TO_BOTTOM: "SET_SCROLL_TO_BOTTOM",
   SET_SCROLL_TO_MESSAGE_ID: "SET_SCROLL_TO_MESSAGE_ID",
   SET_HIGHLIGHTED_MESSAGE_ID: "SET_HIGHLIGHTED_MESSAGE_ID",
+  SET_LOADING: "SET_LOADING",
 };
 
 const initialState = {
@@ -29,6 +30,7 @@ const initialState = {
   scrollToBottom: true,
   scrollToMessageId: null,
   highlightedMessageId: null,
+  loading: false,
 };
 
 const reducer = (state, action) => {
@@ -53,6 +55,8 @@ const reducer = (state, action) => {
       return { ...state, scrollToMessageId: action.payload };
     case ACTIONS.SET_HIGHLIGHTED_MESSAGE_ID:
       return { ...state, highlightedMessageId: action.payload };
+    case ACTIONS.SET_LOADING:
+      return { ...state, loading: action.payload };
     default:
       return state;
   }
@@ -96,7 +100,7 @@ export function ConversationsProvider({ children }) {
   const router = useRouter();
   const [state, dispatch] = useReducer(reducer, initialState);
   const skipDefaultLoadRef = useRef(false);
-  const { selected, conversations, messages, offset, hasMore, scrollToMessageId, highlightedMessageId, scrollToBottom, messageResults } =
+  const { selected, conversations, messages, offset, hasMore, scrollToMessageId, highlightedMessageId, scrollToBottom, messageResults, loading } =
     state;
 
   const search = useMemo(() => {
@@ -115,6 +119,10 @@ export function ConversationsProvider({ children }) {
 
   const handleMessageResultsLoaded = useCallback((data) => {
     dispatch({ type: ACTIONS.SET_MESSAGE_RESULTS, payload: data });
+  }, []);
+
+  const handleLoadingUpdated = useCallback((isLoading) => {
+    dispatch({ type: ACTIONS.SET_LOADING, payload: isLoading });
   }, []);
 
   const handleSearchUpdated = useCallback((query) => {
@@ -150,6 +158,7 @@ export function ConversationsProvider({ children }) {
     onConversationsLoaded: handleConversationsLoaded,
     onMessageResultsLoaded: handleMessageResultsLoaded,
     onSearchUpdated: handleSearchUpdated,
+    onLoadingUpdated: handleLoadingUpdated,
   });
 
   const { loadMore: loadMoreMessages, sendNewMessage, loadMessageById, refreshCurrentConversation } = useMessagesFetch({
@@ -228,20 +237,45 @@ export function ConversationsProvider({ children }) {
   );
 
   const handleSearch = useCallback(
-    async (value) => {
+    async (value, options = {}) => {
       const queryValue = value || "";
       const currentQ = Array.isArray(router.query.q) ? router.query.q[0] : router.query.q || "";
       
-      if (currentQ !== queryValue) {
-        const newQuery = { ...router.query };
-        if (!queryValue) {
-          delete newQuery.q;
+      const newQuery = { ...router.query };
+      
+      if (!queryValue) {
+        delete newQuery.q;
+        delete newQuery.searchInMessages;
+        delete newQuery.msgFechaDesde;
+        delete newQuery.msgFechaHasta;
+      } else {
+        newQuery.q = queryValue;
+        
+        if (options.searchInMessages) {
+          newQuery.searchInMessages = "true";
+          if (options.fechaDesde) newQuery.msgFechaDesde = options.fechaDesde;
+          if (options.fechaHasta) newQuery.msgFechaHasta = options.fechaHasta;
         } else {
-          newQuery.q = queryValue;
+          delete newQuery.searchInMessages;
+          delete newQuery.msgFechaDesde;
+          delete newQuery.msgFechaHasta;
         }
+      }
 
+      // Check if anything actually changed to avoid unnecessary replaces
+      const isDifferent = 
+        newQuery.q !== router.query.q ||
+        newQuery.searchInMessages !== router.query.searchInMessages ||
+        newQuery.msgFechaDesde !== router.query.msgFechaDesde ||
+        newQuery.msgFechaHasta !== router.query.msgFechaHasta;
+
+      if (isDifferent) {
         router.replace({ pathname: router.pathname, query: newQuery }, undefined, { shallow: true });
       } else {
+        // If URL is same, maybe force search? 
+        // performSearch relies on router state in our updated hook, so we might need to wait for router update if we used push/replace.
+        // But if params are same, performSearch won't see a change.
+        // We can call performSearch manually if needed, but usually not required if state matches.
         await performSearch(queryValue, filters);
       }
     },
@@ -306,6 +340,7 @@ export function ConversationsProvider({ children }) {
       scrollToBottom,
       scrollToMessageId,
       highlightedMessageId,
+      loading,
       onSelectConversation: handleSelectConversation,
       onMessageSelect: handleSelectMessageResult,
       onSearch: handleSearch,

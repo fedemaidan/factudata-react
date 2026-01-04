@@ -11,14 +11,21 @@ import {
   OutlinedInput,
   InputAdornment,
   IconButton,
+  Button,
+  FormControlLabel,
+  Checkbox,
+  TextField,
+  Alert,
+  Collapse,
+  CircularProgress
 } from "@mui/material";
 import SearchIcon from "@mui/icons-material/Search";
 import RefreshIcon from "@mui/icons-material/Refresh";
-import useDebouncedValue from "src/hooks/useDebouncedValue";
 import ConversacionesFilter from "./ConversacionesFilter";
 import { formatFecha } from "src/utils/handleDates";
 import { useConversationsContext } from "src/contexts/conversations-context";
 import { getNombreCliente } from "src/utils/conversacionesUtils";
+import { subDays, format, differenceInDays, parseISO } from "date-fns";
 
 export default function ConversationList({ onSelect, onMessageSelect }) {
   const {
@@ -30,10 +37,19 @@ export default function ConversationList({ onSelect, onMessageSelect }) {
     onRefreshConversations,
     onSelectConversation,
     onMessageSelect: handleMessageSelect,
+    loading
   } = useConversationsContext();
 
   const [localSearch, setLocalSearch] = useState(search || "");
-  const debouncedSearch = useDebouncedValue(localSearch, 400);
+  const [searchInMessages, setSearchInMessages] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
+  const [error, setError] = useState("");
+  
+  // Default dates: last 30 days
+  const [dates, setDates] = useState({
+    start: format(subDays(new Date(), 30), "yyyy-MM-dd"),
+    end: format(new Date(), "yyyy-MM-dd")
+  });
 
   useEffect(() => {
     if (search !== localSearch) {
@@ -41,11 +57,45 @@ export default function ConversationList({ onSelect, onMessageSelect }) {
     }
   }, [search]);
 
-  useEffect(() => {
-    if (debouncedSearch !== search) {
-      onSearch?.(debouncedSearch);
+  const handleSearchClick = () => {
+    setError("");
+    
+    if (searchInMessages) {
+      if (!dates.start || !dates.end) {
+        setError("Debes seleccionar un rango de fechas para buscar en mensajes.");
+        return;
+      }
+
+      const start = parseISO(dates.start);
+      const end = parseISO(dates.end);
+      const diff = differenceInDays(end, start);
+
+      if (diff > 30) {
+        setError("El rango máximo para buscar en mensajes es de 30 días.");
+        return;
+      }
+      
+      if (diff < 0) {
+        setError("La fecha de fin debe ser posterior a la de inicio.");
+        return;
+      }
     }
-  }, [debouncedSearch, search, onSearch]);
+
+    // Pass extra params via onSearch if supported, or handle via context update
+    // Assuming onSearch handles the query update. We might need to update context to handle filters too.
+    // For now, we'll pass the query. The context needs to be updated to handle message search flag.
+    onSearch?.(localSearch, { 
+      searchInMessages, 
+      fechaDesde: dates.start, 
+      fechaHasta: dates.end 
+    });
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      handleSearchClick();
+    }
+  };
 
   const selectedId = selected?.ultimoMensaje?.id_conversacion;
 
@@ -63,44 +113,112 @@ export default function ConversationList({ onSelect, onMessageSelect }) {
         sx={{
           p: 1.5,
           display: "flex",
-          alignItems: "center",
+          flexDirection: "column",
           gap: 1,
           borderBottom: 1,
           borderColor: "divider"
         }}
       >
-        <OutlinedInput
-          fullWidth
-          size="small"
-          placeholder="Buscar"
-          value={localSearch}
-          onChange={(e) => setLocalSearch(e.target.value)}
-          startAdornment={
-            <InputAdornment position="start">
-              <SearchIcon fontSize="small" sx={{ color: "action.active" }} />
-            </InputAdornment>
-          }
-          sx={{
-            "& .MuiOutlinedInput-input": {
-              py: 1,
-            },
-          }}
-        />
+        <Box display="flex" alignItems="center" gap={1}>
+          <OutlinedInput
+            fullWidth
+            size="small"
+            placeholder="Buscar conversación..."
+            value={localSearch}
+            onChange={(e) => setLocalSearch(e.target.value)}
+            onKeyDown={handleKeyDown}
+            startAdornment={
+              <InputAdornment position="start">
+                <SearchIcon fontSize="small" sx={{ color: "action.active" }} />
+              </InputAdornment>
+            }
+          />
+          <Button 
+            variant="contained" 
+            size="small" 
+            onClick={handleSearchClick}
+            sx={{ minWidth: 'auto', px: 2 }}
+            disabled={loading}
+          >
+            {loading ? <CircularProgress size={20} color="inherit" /> : "Buscar"}
+          </Button>
+          <IconButton
+            onClick={onRefreshConversations}
+            title="Refrescar lista"
+            size="small"
+            sx={{ flexShrink: 0, color: "action.active" }}
+            disabled={loading}
+          >
+            <RefreshIcon fontSize="small" />
+          </IconButton>
+        </Box>
+
+        {localSearch && (
+          <Box>
+             <Button 
+                size="small" 
+                onClick={() => {
+                    setSearchInMessages(!searchInMessages);
+                    if (!searchInMessages) setShowFilters(true);
+                }}
+                sx={{ textTransform: 'none', p: 0, justifyContent: 'flex-start' }}
+             >
+                {searchInMessages ? "No buscar en mensajes" : "¿Buscar también en mensajes?"}
+             </Button>
+          </Box>
+        )}
+
+        <Collapse in={searchInMessages}>
+            <Box display="flex" flexDirection="column" gap={1} mt={1} p={1} bgcolor="action.hover" borderRadius={1}>
+                <Typography variant="caption" color="text.secondary">
+                    Búsqueda en mensajes (Máx 30 días)
+                </Typography>
+                <Box display="flex" gap={1}>
+                    <TextField
+                        type="date"
+                        size="small"
+                        value={dates.start}
+                        onChange={(e) => setDates({...dates, start: e.target.value})}
+                        fullWidth
+                        InputLabelProps={{ shrink: true }}
+                    />
+                    <TextField
+                        type="date"
+                        size="small"
+                        value={dates.end}
+                        onChange={(e) => setDates({...dates, end: e.target.value})}
+                        fullWidth
+                        InputLabelProps={{ shrink: true }}
+                    />
+                </Box>
+                {error && (
+                    <Alert severity="warning" sx={{ py: 0, px: 1, '& .MuiAlert-message': { fontSize: '0.75rem' } }}>
+                        {error}
+                    </Alert>
+                )}
+            </Box>
+        </Collapse>
+        
         <ConversacionesFilter />
-        <IconButton
-          onClick={onRefreshConversations}
-          title="Refrescar lista"
-          size="small"
-          sx={{
-            flexShrink: 0,
-            color: "action.active"
-          }}
-        >
-          <RefreshIcon fontSize="small" />
-        </IconButton>
       </Box>
 
-      <Box flex={1} overflow="auto">
+      <Box flex={1} overflow="auto" position="relative">
+        {loading && (
+            <Box 
+                position="absolute" 
+                top={0} 
+                left={0} 
+                right={0} 
+                bottom={0} 
+                bgcolor="rgba(255,255,255,0.7)" 
+                zIndex={1} 
+                display="flex" 
+                alignItems="center" 
+                justifyContent="center"
+            >
+                <CircularProgress />
+            </Box>
+        )}
         <List dense sx={{ overflowY: "auto" }}>
           {conversations.map((c) => (
             <ListItemButton
