@@ -45,9 +45,9 @@ export default function ConversationList({ onSelect, onMessageSelect }) {
   const [showFilters, setShowFilters] = useState(false);
   const [error, setError] = useState("");
   
-  // Default dates: last 30 days
+  // Default dates: last 7 days
   const [dates, setDates] = useState({
-    start: format(subDays(new Date(), 30), "yyyy-MM-dd"),
+    start: format(subDays(new Date(), 7), "yyyy-MM-dd"),
     end: format(new Date(), "yyyy-MM-dd")
   });
 
@@ -70,8 +70,8 @@ export default function ConversationList({ onSelect, onMessageSelect }) {
       const end = parseISO(dates.end);
       const diff = differenceInDays(end, start);
 
-      if (diff > 30) {
-        setError("El rango máximo para buscar en mensajes es de 30 días.");
+      if (diff > 7) {
+        setError("El rango máximo para buscar en mensajes es de 7 días.");
         return;
       }
       
@@ -171,7 +171,7 @@ export default function ConversationList({ onSelect, onMessageSelect }) {
         <Collapse in={searchInMessages}>
             <Box display="flex" flexDirection="column" gap={1} mt={1} p={1} bgcolor="action.hover" borderRadius={1}>
                 <Typography variant="caption" color="text.secondary">
-                    Búsqueda en mensajes (Máx 30 días)
+                    Búsqueda en mensajes (Máx 7 días)
                 </Typography>
                 <Box display="flex" gap={1}>
                     <TextField
