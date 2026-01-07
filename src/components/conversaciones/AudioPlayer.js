@@ -1,8 +1,18 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { Box, IconButton, Slider, Typography } from "@mui/material";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import PauseIcon from "@mui/icons-material/Pause";
 import VolumeUpIcon from "@mui/icons-material/VolumeUp";
+import MicIcon from "@mui/icons-material/Mic";
+
+// Helper to check if src is a valid audio URL (not an internal event identifier)
+const isValidAudioUrl = (src) => {
+  if (!src || typeof src !== "string") return false;
+  // Internal event identifiers start with _event_
+  if (src.startsWith("_event_")) return false;
+  // Check if it looks like a URL (http, https, data:, blob:, or /)
+  return src.startsWith("http") || src.startsWith("data:") || src.startsWith("blob:") || src.startsWith("/");
+};
 
 export default function AudioPlayer({ src, duration, isMine }) {
   const [isPlaying, setIsPlaying] = useState(false);
@@ -11,6 +21,9 @@ export default function AudioPlayer({ src, duration, isMine }) {
   const [error, setError] = useState(false);
   const [actualDuration, setActualDuration] = useState(duration || 0);
   const audioRef = useRef(null);
+
+  // Check if src is a valid audio URL
+  const isValidSrc = useMemo(() => isValidAudioUrl(src), [src]);
 
   // Reset state when src changes
   useEffect(() => {
@@ -92,6 +105,29 @@ export default function AudioPlayer({ src, duration, isMine }) {
   };
 
   const progress = isLoaded && actualDuration > 0 ? (currentTime / actualDuration) * 100 : 0;
+
+  // If src is not a valid audio URL (e.g., internal event identifier), show unavailable state
+  if (!isValidSrc) {
+    return (
+      <Box
+        display="flex"
+        alignItems="center"
+        gap={1}
+        p={1}
+        minWidth={200}
+        maxWidth={280}
+        sx={{
+          bgcolor: isMine ? "rgba(255, 255, 255, 0.1)" : "rgba(0, 0, 0, 0.05)",
+          borderRadius: 2,
+        }}
+      >
+        <MicIcon sx={{ fontSize: 20, color: "text.secondary" }} />
+        <Typography variant="caption" color="text.secondary">
+          Nota de voz (no disponible)
+        </Typography>
+      </Box>
+    );
+  }
 
   if (error) {
     return (
