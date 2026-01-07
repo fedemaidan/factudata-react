@@ -40,6 +40,7 @@ import DateRangeIcon from "@mui/icons-material/DateRange";
 import CompareArrowsIcon from "@mui/icons-material/CompareArrows";
 import BackupIcon from "@mui/icons-material/Backup";
 import ScheduleIcon from "@mui/icons-material/Schedule";
+import AdminPanelSettingsIcon from "@mui/icons-material/AdminPanelSettings";
 
 export const SideNav = (props) => {
   const { open, onClose, collapsed = false, onToggleCollapsed, width = 280 } = props;
@@ -289,13 +290,13 @@ export const SideNav = (props) => {
         });
      }
 
-      if (permisosUsuario.includes("VER_CONVERSACIONES")) {
+      if (user?.admin) {
         baseItems.push({
-          title: "Conversaciones",
-          path: "/conversaciones",
+          title: "Panel de Control",
+          path: "/control-panel",
           icon: (
             <SvgIcon fontSize="small">
-              <DashboardIcon />
+              <AdminPanelSettingsIcon />
             </SvgIcon>
           ),
         });
