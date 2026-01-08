@@ -599,7 +599,7 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
                         color={getEstadoColor(notasEstados.indexOf(nota.estado)+1)}
                         onClick={() => handleChangeEstado(nota)}
                       >
-                        Macar en {getEstadoSiguiente(nota.estado)}
+                        Marcar en {getEstadoSiguiente(nota.estado)}
                       </Button>)}
                       <Button
                         startIcon={<EditIcon />}
@@ -707,7 +707,7 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
                         color={getEstadoColor(notasEstados.indexOf(nota.estado)+1)}
                         onClick={() => handleChangeEstado(nota)}
                       >
-                        Macar en {getEstadoSiguiente(nota.estado)}
+                        Marcar en {getEstadoSiguiente(nota.estado)}
                       </Button>)}
                       <Button
                         startIcon={<EditIcon />}
