@@ -195,56 +195,69 @@ const goNext = () => setCurrentIdx((i) => (i + 1) % (urls?.length || 0));
     }
   }, [productos, actualizacionAutomatica, valorTotal]);
 
-  // �💾 Guardar cambios
+  // 💾 Guardar cambios
   const guardarCambios = async () => {
     try {
       setGuardando(true);
 
-
-
-      // 3. Actualizar proveedores si es necesario
+      // 1. Actualizar proveedores si es necesario
       if (proveedor && !proveedoresOptions.includes(proveedor)) {
         const nuevos = [...proveedoresOptions, proveedor];
         await updateEmpresaDetails(empresaId, { proveedores: nuevos });
       }
 
-      // 1. Primero actualizar productos usando PUT
-      const datosProductos = {
+      // 2. Actualizar datos básicos del acopio (proveedor, proyecto, codigo)
+      const datosBasicos = {
         proveedor,
         proyecto_id: proyecto,
         codigo,
-        productos: productos.map((p) => ({
-          codigo: p.codigo,
-          descripcion: p.descripcion,
-          cantidad: Number(p.cantidad) || 0,
-          valorUnitario: Number(p.valorUnitario) || 0,
-          valorTotal: Number(p.valorTotal) || 0,
-        }))
       };
       
-      console.log('1. Actualizando productos:', datosProductos);
-      const resultadoProductos = await AcopioService.editarAcopio(acopioId, datosProductos);
-      console.log('1. Resultado actualización productos:', resultadoProductos);
+      console.log('1. Actualizando datos básicos:', datosBasicos);
+      const resultadoBasicos = await AcopioService.editarAcopio(acopioId, datosBasicos);
       
-      if (!resultadoProductos) {
-        throw new Error('Falló la actualización de productos');
+      if (!resultadoBasicos) {
+        throw new Error('Falló la actualización de datos básicos');
+      }
+
+      // 3. Sincronizar productos (una sola llamada - el backend gestiona crear/actualizar/eliminar)
+      const productosParaSync = productos.map((p) => ({
+        id: p.id,
+        codigo: p.codigo,
+        descripcion: p.descripcion,
+        cantidad: Number(p.cantidad) || 0,
+        valorUnitario: Number(p.valorUnitario) || 0,
+      }));
+      
+      console.log('2. Sincronizando productos:', productosParaSync.length);
+      const resultadoSync = await AcopioService.sincronizarProductosAcopio(acopioId, productosParaSync);
+      console.log('2. Resultado sincronización:', resultadoSync);
+      
+      if (!resultadoSync.success && resultadoSync.errores?.length > 0) {
+        console.warn('Algunos productos tuvieron errores:', resultadoSync.errores);
       }
       
-      // 2. Después actualizar campos del acopio (PATCH) - usando valor_acopio
+      // 4. Actualizar campos del acopio (PATCH) - tipo, valor_acopio, url_image
       const camposAcopio = {
         tipo: tipoLista,
         valor_acopio: Number(valorTotal) || 0,
         url_image: urls,
       };
       
-      console.log('2. Actualizando campos del acopio (incluyendo valor_acopio):', camposAcopio);
+      console.log('3. Actualizando campos del acopio:', camposAcopio);
       const resultadoCampos = await AcopioService.actualizarCamposAcopio(acopioId, camposAcopio);
-      console.log('2. Resultado actualización campos:', resultadoCampos);
       
       if (!resultadoCampos) {
         throw new Error('Falló la actualización de campos del acopio');
       }
-      setAlert({ open: true, message: '✅ Acopio actualizado con éxito.', severity: 'success' });
+
+      // Construir mensaje de resultado
+      let mensaje = '✅ Acopio actualizado con éxito.';
+      if (resultadoSync.creados > 0 || resultadoSync.actualizados > 0 || resultadoSync.eliminados > 0) {
+        mensaje += ` (${resultadoSync.creados} creados, ${resultadoSync.actualizados} actualizados, ${resultadoSync.eliminados} eliminados)`;
+      }
+      
+      setAlert({ open: true, message: mensaje, severity: 'success' });
       setTimeout(() => router.push(`/acopios?empresaId=${empresaId}`), 1500);
     } catch (err) {
       console.error(err);
@@ -254,7 +267,7 @@ const goNext = () => setCurrentIdx((i) => (i + 1) % (urls?.length || 0));
     }
   };
 
-  // ✏️ Edición de filas
+  // ✏️ Edición de filas (solo actualiza estado local, se guarda al tocar Guardar)
   const processRowUpdate = (newRow, oldRow) => {
     const updated = { ...newRow };
     const cantidad = toNumber(updated.cantidad);

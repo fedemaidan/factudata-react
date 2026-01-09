@@ -527,14 +527,14 @@ moverRemitoAotroAcopio: async (remitoId, origenAcopioId, destinoAcopioId) => {
 },
 
 /**
- * Edita los datos de un acopio existente
+ * Edita los datos básicos de un acopio (NO toca productos)
  * @param {string} acopioId - ID del acopio a editar
- * @param {Object} acopioData - Nuevos datos del acopio
+ * @param {Object} datos - { proveedor, proyecto_id, codigo }
  * @returns {Promise<boolean>}
  */
-editarAcopio: async (acopioId, acopioData) => {
+editarAcopio: async (acopioId, { proveedor, proyecto_id, codigo }) => {
   try {
-    const response = await api.put(`/acopio/${acopioId}`, acopioData);
+    const response = await api.put(`/acopio/${acopioId}`, { proveedor, proyecto_id, codigo });
     if (response.status === 200) {
       console.log('✅ Acopio actualizado con éxito');
       return true;
@@ -545,6 +545,102 @@ editarAcopio: async (acopioId, acopioData) => {
   } catch (error) {
     console.error('❌ Error en editarAcopio:', error);
     return false;
+  }
+},
+
+/**
+ * Edita un producto específico del acopio
+ * @param {string} acopioId - ID del acopio
+ * @param {string} productoId - ID del producto a editar
+ * @param {Object} datos - { codigo, descripcion, cantidad, valorUnitario }
+ * @returns {Promise<boolean>}
+ */
+editarProductoAcopio: async (acopioId, productoId, datos) => {
+  try {
+    const response = await api.put(`/acopio/${acopioId}/producto/${productoId}`, datos);
+    if (response.status === 200) {
+      console.log('✅ Producto actualizado con éxito');
+      return true;
+    } else {
+      console.error('❌ Error al actualizar producto');
+      return false;
+    }
+  } catch (error) {
+    console.error('❌ Error en editarProductoAcopio:', error);
+    return false;
+  }
+},
+
+/**
+ * Agrega un nuevo producto al acopio
+ * @param {string} acopioId - ID del acopio
+ * @param {Object} producto - { codigo, descripcion, cantidad, valorUnitario }
+ * @returns {Promise<{success: boolean, productoId?: string}>}
+ */
+agregarProductoAcopio: async (acopioId, producto) => {
+  try {
+    const response = await api.post(`/acopio/${acopioId}/producto`, producto);
+    if (response.status === 201) {
+      console.log('✅ Producto agregado con éxito');
+      return { success: true, productoId: response.data.productoId };
+    } else {
+      console.error('❌ Error al agregar producto');
+      return { success: false };
+    }
+  } catch (error) {
+    console.error('❌ Error en agregarProductoAcopio:', error);
+    return { success: false };
+  }
+},
+
+/**
+ * Elimina un producto del acopio
+ * @param {string} acopioId - ID del acopio
+ * @param {string} productoId - ID del producto a eliminar
+ * @returns {Promise<boolean>}
+ */
+eliminarProductoAcopio: async (acopioId, productoId) => {
+  try {
+    const response = await api.delete(`/acopio/${acopioId}/producto/${productoId}`);
+    if (response.status === 200) {
+      console.log('✅ Producto eliminado con éxito');
+      return true;
+    } else {
+      console.error('❌ Error al eliminar producto');
+      return false;
+    }
+  } catch (error) {
+    console.error('❌ Error en eliminarProductoAcopio:', error);
+    return false;
+  }
+},
+
+/**
+ * Sincroniza todos los productos del acopio en una sola llamada.
+ * El backend determina qué crear, actualizar o eliminar.
+ * @param {string} acopioId - ID del acopio
+ * @param {Array} productos - Array de productos con { id, codigo, descripcion, cantidad, valorUnitario }
+ * @returns {Promise<{success: boolean, creados?: number, actualizados?: number, eliminados?: number, errores?: string[]}>}
+ */
+sincronizarProductosAcopio: async (acopioId, productos) => {
+  try {
+    const response = await api.put(`/acopio/${acopioId}/productos`, { productos });
+    if (response.status === 200) {
+      console.log('✅ Productos sincronizados:', response.data.message);
+      return { 
+        success: true, 
+        creados: response.data.creados,
+        actualizados: response.data.actualizados,
+        eliminados: response.data.eliminados,
+        errores: response.data.errores || []
+      };
+    } else {
+      console.error('❌ Error al sincronizar productos');
+      return { success: false, errores: ['Error desconocido'] };
+    }
+  } catch (error) {
+    console.error('❌ Error en sincronizarProductosAcopio:', error);
+    return { success: false, errores: [error.message] };
   }
 },
 
