@@ -36,6 +36,7 @@ import LocalShippingIcon from '@mui/icons-material/LocalShipping';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import HourglassEmptyIcon from '@mui/icons-material/HourglassEmpty';
 import PendingIcon from '@mui/icons-material/Pending';
+import TuneIcon from '@mui/icons-material/Tune';
 
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import { useAuthContext } from 'src/contexts/auth-context';
@@ -119,6 +120,12 @@ export default function StockSolicitudes() {
 
   // ===== modal de egreso desde remito (IA)
   const [openEgresoRemito, setOpenEgresoRemito] = useState(false);
+
+  // ===== modal de AJUSTE DE STOCK
+  const [openAjusteModal, setOpenAjusteModal] = useState(false);
+  const [ajusteLineas, setAjusteLineas] = useState([]); // [{ id_material, nombre_item, stock_actual, cantidad_objetivo, proyecto_id, proyecto_nombre, motivo }]
+  const [ajusteLoading, setAjusteLoading] = useState(false);
+  const [ajusteProyecto, setAjusteProyecto] = useState(''); // proyecto para el ajuste
 
   // ===== menús desplegables para acciones
   const [anchorElNuevo, setAnchorElNuevo] = useState(null);
@@ -252,7 +259,7 @@ export default function StockSolicitudes() {
       case 'INGRESO': return <CallReceivedIcon color="success" />;
       case 'EGRESO': return <CallMadeIcon color="error" />;
       case 'TRANSFERENCIA': return <SwapHorizIcon color="info" />;
-      case 'AJUSTE': return <BuildIcon color="warning" />;
+      case 'AJUSTE': return <TuneIcon color="secondary" />;
       case 'COMPRA': return <ShoppingCartIcon color="primary" />;
       default: return null;
     }
@@ -395,6 +402,166 @@ export default function StockSolicitudes() {
     setTransProyectoIngreso('');
     setOpenModal(true);
   };
+
+  // ===== AJUSTE DE STOCK =====
+  const openCreateAjuste = () => {
+    setAjusteLineas([{ 
+      id_material: '', 
+      nombre_item: '', 
+      stock_actual: 0, 
+      cantidad_objetivo: 0, 
+      proyecto_id: '', 
+      proyecto_nombre: '',
+      motivo: '' 
+    }]);
+    setAjusteProyecto('');
+    setOpenAjusteModal(true);
+  };
+
+  const agregarLineaAjuste = () => {
+    setAjusteLineas(prev => [...prev, { 
+      id_material: '', 
+      nombre_item: '', 
+      stock_actual: 0, 
+      cantidad_objetivo: 0, 
+      proyecto_id: ajusteProyecto || '', 
+      proyecto_nombre: proyectos.find(p => p.id === ajusteProyecto)?.nombre || '',
+      motivo: '' 
+    }]);
+  };
+
+  const quitarLineaAjuste = (idx) => {
+    setAjusteLineas(prev => prev.filter((_, i) => i !== idx));
+  };
+
+  const patchAjusteLinea = (idx, field, value) => {
+    setAjusteLineas(prev => prev.map((l, i) => i === idx ? { ...l, [field]: value } : l));
+  };
+
+  // Cuando se selecciona un material, obtener su stock actual
+  const handleMaterialSelectAjuste = async (idx, mat) => {
+    if (!mat?.id) {
+      patchAjusteLinea(idx, 'id_material', null);
+      patchAjusteLinea(idx, 'nombre_item', mat?.label || '');
+      patchAjusteLinea(idx, 'stock_actual', 0);
+      return;
+    }
+
+    patchAjusteLinea(idx, 'id_material', mat.id);
+    patchAjusteLinea(idx, 'nombre_item', mat.label || mat.nombre || '');
+    
+    // Obtener stock actual del material
+    try {
+      const empresa = await getEmpresaDetailsFromUser(user);
+      const resp = await StockMaterialesService.listarMateriales({
+        empresa_id: empresa.id,
+        limit: 1,
+        nombre: mat.label || mat.nombre
+      });
+      
+      if (resp?.items?.length > 0) {
+        const material = resp.items.find(m => m._id === mat.id || m.id_material === mat.id);
+        if (material) {
+          // Si hay proyecto seleccionado, buscar stock específico del proyecto
+          const proyectoId = ajusteProyecto || ajusteLineas[idx]?.proyecto_id;
+          let stockActual = material.stock || 0;
+          
+          if (proyectoId && material.porProyecto?.length > 0) {
+            const stockProyecto = material.porProyecto.find(p => p.proyecto_id === proyectoId);
+            stockActual = stockProyecto?.stock || 0;
+          }
+          
+          patchAjusteLinea(idx, 'stock_actual', stockActual);
+          patchAjusteLinea(idx, 'cantidad_objetivo', stockActual); // Por defecto, objetivo = actual
+        }
+      }
+    } catch (e) {
+      console.error('Error obteniendo stock del material:', e);
+    }
+  };
+
+  // Guardar ajuste de stock
+  const guardarAjusteStock = async () => {
+    // Validar que haya al menos una línea con diferencia
+    const lineasConDiferencia = ajusteLineas.filter(l => {
+      const diferencia = (l.cantidad_objetivo || 0) - (l.stock_actual || 0);
+      return l.id_material && diferencia !== 0;
+    });
+
+    if (lineasConDiferencia.length === 0) {
+      setSnackbar({ open: true, message: 'No hay ajustes para procesar (sin diferencias)', severity: 'warning' });
+      return;
+    }
+
+    setAjusteLoading(true);
+    try {
+      const empresa = await getEmpresaDetailsFromUser(user);
+      const today = new Date();
+      today.setHours(11, 0, 0, 0);
+
+      // Crear movimientos de ajuste
+      const movimientos = lineasConDiferencia.map(linea => {
+        const diferencia = (linea.cantidad_objetivo || 0) - (linea.stock_actual || 0);
+        const proyectoId = linea.proyecto_id || ajusteProyecto || null;
+        const proyectoNombre = linea.proyecto_nombre || proyectos.find(p => p.id === proyectoId)?.nombre || 'Sin asignar';
+        
+        return {
+          id_material: linea.id_material,
+          nombre_item: linea.nombre_item,
+          cantidad: diferencia, // Positivo = ingreso, negativo = egreso
+          tipo: 'AJUSTE',
+          subtipo: diferencia > 0 ? 'AJUSTE_POSITIVO' : 'AJUSTE_NEGATIVO',
+          empresa_id: empresa.id, // Requerido por el backend
+          empresa_nombre: empresa.nombre,
+          proyecto_id: proyectoId,
+          proyecto_nombre: proyectoNombre,
+          observacion: linea.motivo || `Ajuste de stock: ${linea.stock_actual} → ${linea.cantidad_objetivo}`,
+          fecha_movimiento: today.toISOString(),
+        };
+      });
+
+      // Crear solicitud de tipo AJUSTE
+      const payload = {
+        tipo: 'AJUSTE',
+        subtipo: `Ajuste de ${movimientos.length} material(es)`,
+        fecha: today.toISOString(),
+        responsable: user?.email || '',
+        empresa_id: empresa.id,
+        empresa_nombre: empresa.nombre,
+        proyecto_id: ajusteProyecto || null,
+        proyecto_nombre: proyectos.find(p => p.id === ajusteProyecto)?.nombre || 'Sin asignar',
+        estado: 'ENTREGADO', // Los ajustes se consideran ya procesados
+        movimientos,
+      };
+
+      await StockSolicitudesService.crearSolicitud(payload);
+
+      setSnackbar({ 
+        open: true, 
+        message: `✅ Ajuste de stock registrado (${movimientos.length} movimiento(s))`, 
+        severity: 'success' 
+      });
+      setOpenAjusteModal(false);
+      setAjusteLineas([]);
+      await fetchAll();
+    } catch (e) {
+      console.error('Error guardando ajuste:', e);
+      setSnackbar({ 
+        open: true, 
+        message: `Error al guardar ajuste: ${e?.message || 'Error desconocido'}`, 
+        severity: 'error' 
+      });
+    } finally {
+      setAjusteLoading(false);
+    }
+  };
+
+  // Calcular diferencia para mostrar en UI
+  const calcularDiferenciaAjuste = (linea) => {
+    const diferencia = (linea.cantidad_objetivo || 0) - (linea.stock_actual || 0);
+    return diferencia;
+  };
+  // ===========================
 
   const openEdit = (entry) => {
     // entry: { solicitud, movimientos }
@@ -1113,6 +1280,11 @@ export default function StockSolicitudes() {
                   <MenuItem onClick={() => { setAnchorElNuevo(null); openCreateTransferencia(); }}>
                     <ListItemIcon><SwapHorizIcon color="info" /></ListItemIcon>
                     <ListItemText primary="Realizar transferencia" />
+                  </MenuItem>
+                  <Divider />
+                  <MenuItem onClick={() => { setAnchorElNuevo(null); openCreateAjuste(); }}>
+                    <ListItemIcon><TuneIcon color="secondary" /></ListItemIcon>
+                    <ListItemText primary="Ajustar stock" secondary="Corregir cantidades de inventario" />
                   </MenuItem>
                 </Menu>
               </Stack>
@@ -2169,6 +2341,196 @@ export default function StockSolicitudes() {
         user={user}
         proyectos={proyectos}
       />
+
+      {/* ===== DIÁLOGO DE AJUSTE DE STOCK ===== */}
+      <Dialog 
+        open={openAjusteModal} 
+        onClose={() => !ajusteLoading && setOpenAjusteModal(false)}
+        maxWidth="lg"
+        fullWidth
+      >
+        <DialogTitle>
+          <Stack direction="row" alignItems="center" spacing={1}>
+            <TuneIcon color="secondary" />
+            <span>Ajustar Stock</span>
+          </Stack>
+        </DialogTitle>
+        <DialogContent>
+          <Stack spacing={3} sx={{ mt: 1 }}>
+            <Alert severity="info">
+              Ajustá el stock de materiales indicando la <strong>cantidad real</strong> que tenés. 
+              El sistema calculará automáticamente la diferencia y generará los movimientos correspondientes.
+            </Alert>
+
+            {/* Selector de proyecto (opcional) */}
+            <FormControl fullWidth>
+              <InputLabel id="ajuste-proyecto-label">Proyecto (opcional)</InputLabel>
+              <Select
+                labelId="ajuste-proyecto-label"
+                label="Proyecto (opcional)"
+                value={ajusteProyecto}
+                onChange={(e) => {
+                  setAjusteProyecto(e.target.value);
+                  // Actualizar proyecto en todas las líneas
+                  const proyNombre = proyectos.find(p => p.id === e.target.value)?.nombre || '';
+                  setAjusteLineas(prev => prev.map(l => ({
+                    ...l,
+                    proyecto_id: e.target.value,
+                    proyecto_nombre: proyNombre
+                  })));
+                }}
+              >
+                <MenuItem value=""><em>Sin proyecto (stock general)</em></MenuItem>
+                {proyectos.map(p => (
+                  <MenuItem key={p.id} value={p.id}>{p.nombre}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+
+            {/* Tabla de ajustes */}
+            <Paper variant="outlined">
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell width={350}>Material</TableCell>
+                    <TableCell align="center" width={120}>Stock Actual</TableCell>
+                    <TableCell align="center" width={150}>Cantidad Real</TableCell>
+                    <TableCell align="center" width={120}>Diferencia</TableCell>
+                    <TableCell width={200}>Motivo</TableCell>
+                    <TableCell align="right" width={60}>Acción</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {ajusteLineas.map((linea, idx) => {
+                    const diferencia = calcularDiferenciaAjuste(linea);
+                    return (
+                      <TableRow key={idx}>
+                        <TableCell>
+                          <MaterialAutocomplete
+                            user={user}
+                            value={linea.id_material || ''}
+                            fallbackText={linea.nombre_item || ''}
+                            onTextChange={(text) => {
+                              patchAjusteLinea(idx, 'nombre_item', text);
+                              patchAjusteLinea(idx, 'id_material', null);
+                            }}
+                            onMaterialSelect={(mat) => handleMaterialSelectAjuste(idx, mat)}
+                            label="Buscar material..."
+                            fullWidth
+                            showCreateOption={false}
+                          />
+                        </TableCell>
+                        <TableCell align="center">
+                          <Chip 
+                            label={linea.stock_actual || 0} 
+                            size="small" 
+                            variant="outlined"
+                            color="default"
+                          />
+                        </TableCell>
+                        <TableCell align="center">
+                          <TextField
+                            type="number"
+                            value={linea.cantidad_objetivo || 0}
+                            onChange={(e) => patchAjusteLinea(idx, 'cantidad_objetivo', Number(e.target.value) || 0)}
+                            size="small"
+                            sx={{ width: 100 }}
+                            inputProps={{ min: 0, step: 1 }}
+                          />
+                        </TableCell>
+                        <TableCell align="center">
+                          {linea.id_material && diferencia !== 0 ? (
+                            <Chip 
+                              label={diferencia > 0 ? `+${diferencia}` : diferencia}
+                              size="small"
+                              color={diferencia > 0 ? 'success' : 'error'}
+                              variant="filled"
+                            />
+                          ) : (
+                            <Typography variant="body2" color="text.secondary">—</Typography>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <TextField
+                            value={linea.motivo || ''}
+                            onChange={(e) => patchAjusteLinea(idx, 'motivo', e.target.value)}
+                            size="small"
+                            fullWidth
+                            placeholder="Ej: Conteo físico"
+                          />
+                        </TableCell>
+                        <TableCell align="right">
+                          <IconButton 
+                            size="small" 
+                            color="error"
+                            onClick={() => quitarLineaAjuste(idx)}
+                            disabled={ajusteLineas.length === 1}
+                          >
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </Paper>
+
+            <Button 
+              onClick={agregarLineaAjuste} 
+              startIcon={<AddIcon />} 
+              variant="outlined"
+              fullWidth
+            >
+              Agregar otro material
+            </Button>
+
+            {/* Resumen de ajustes */}
+            {ajusteLineas.some(l => l.id_material && calcularDiferenciaAjuste(l) !== 0) && (
+              <Paper variant="outlined" sx={{ p: 2, bgcolor: 'grey.50' }}>
+                <Typography variant="subtitle2" gutterBottom>
+                  Resumen de ajustes:
+                </Typography>
+                <Stack spacing={1}>
+                  {ajusteLineas.filter(l => l.id_material && calcularDiferenciaAjuste(l) !== 0).map((l, i) => {
+                    const dif = calcularDiferenciaAjuste(l);
+                    return (
+                      <Stack key={i} direction="row" spacing={2} alignItems="center">
+                        <Typography variant="body2">
+                          <strong>{l.nombre_item}</strong>: {l.stock_actual} → {l.cantidad_objetivo}
+                        </Typography>
+                        <Chip 
+                          label={dif > 0 ? `Ingreso: +${dif}` : `Egreso: ${dif}`}
+                          size="small"
+                          color={dif > 0 ? 'success' : 'error'}
+                        />
+                      </Stack>
+                    );
+                  })}
+                </Stack>
+              </Paper>
+            )}
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button 
+            onClick={() => setOpenAjusteModal(false)} 
+            disabled={ajusteLoading}
+          >
+            Cancelar
+          </Button>
+          <Button 
+            variant="contained" 
+            color="secondary"
+            onClick={guardarAjusteStock}
+            disabled={ajusteLoading || !ajusteLineas.some(l => l.id_material && calcularDiferenciaAjuste(l) !== 0)}
+            startIcon={ajusteLoading ? null : <TuneIcon />}
+          >
+            {ajusteLoading ? 'Procesando...' : 'Aplicar Ajuste'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+      {/* ======================================= */}
     </>
   );
 }
