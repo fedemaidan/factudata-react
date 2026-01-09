@@ -450,33 +450,43 @@ export default function StockSolicitudes() {
     patchAjusteLinea(idx, 'id_material', mat.id);
     patchAjusteLinea(idx, 'nombre_item', mat.label || mat.nombre || '');
     
-    // Obtener stock actual del material
-    try {
-      const empresa = await getEmpresaDetailsFromUser(user);
-      const resp = await StockMaterialesService.listarMateriales({
-        empresa_id: empresa.id,
-        limit: 1,
-        nombre: mat.label || mat.nombre
-      });
+    // Si el material ya tiene stock en sus datos, usarlo directamente
+    if (mat.stock !== undefined) {
+      const proyectoId = ajusteProyecto || ajusteLineas[idx]?.proyecto_id;
+      let stockActual = mat.stock || 0;
       
-      if (resp?.items?.length > 0) {
-        const material = resp.items.find(m => m._id === mat.id || m.id_material === mat.id);
-        if (material) {
-          // Si hay proyecto seleccionado, buscar stock específico del proyecto
-          const proyectoId = ajusteProyecto || ajusteLineas[idx]?.proyecto_id;
-          let stockActual = material.stock || 0;
-          
-          if (proyectoId && material.porProyecto?.length > 0) {
-            const stockProyecto = material.porProyecto.find(p => p.proyecto_id === proyectoId);
-            stockActual = stockProyecto?.stock || 0;
-          }
-          
-          patchAjusteLinea(idx, 'stock_actual', stockActual);
-          patchAjusteLinea(idx, 'cantidad_objetivo', stockActual); // Por defecto, objetivo = actual
+      // Si hay proyecto seleccionado, buscar stock específico del proyecto
+      if (proyectoId && mat.porProyecto?.length > 0) {
+        const stockProyecto = mat.porProyecto.find(p => p.proyecto_id === proyectoId);
+        stockActual = stockProyecto?.stock || 0;
+      }
+      
+      patchAjusteLinea(idx, 'stock_actual', stockActual);
+      patchAjusteLinea(idx, 'cantidad_objetivo', stockActual);
+      return;
+    }
+    
+    // Si no tiene stock en los datos, obtenerlo del backend
+    try {
+      const resp = await StockMaterialesService.obtenerMaterialPorId(mat.id);
+      
+      if (resp?.data || resp) {
+        const material = resp.data || resp;
+        const proyectoId = ajusteProyecto || ajusteLineas[idx]?.proyecto_id;
+        let stockActual = material.stock || 0;
+        
+        if (proyectoId && material.porProyecto?.length > 0) {
+          const stockProyecto = material.porProyecto.find(p => p.proyecto_id === proyectoId);
+          stockActual = stockProyecto?.stock || 0;
         }
+        
+        patchAjusteLinea(idx, 'stock_actual', stockActual);
+        patchAjusteLinea(idx, 'cantidad_objetivo', stockActual);
       }
     } catch (e) {
       console.error('Error obteniendo stock del material:', e);
+      // Usar 0 como fallback
+      patchAjusteLinea(idx, 'stock_actual', 0);
     }
   };
 
@@ -534,6 +544,7 @@ export default function StockSolicitudes() {
         movimientos,
       };
 
+      console.log('[DEBUG] Payload ajuste:', JSON.stringify(payload, null, 2));
       await StockSolicitudesService.crearSolicitud(payload);
 
       setSnackbar({ 
@@ -796,6 +807,9 @@ export default function StockSolicitudes() {
     
     // Filtrar solo movimientos pendientes (no entregados completamente)
     const movsPendientes = movimientos.filter(m => {
+      // Si ya está entregado, no mostrarlo
+      if (m.estado === 'ENTREGADO') return false;
+      
       const cantOrig = m.cantidad_original || Math.abs(m.cantidad || 0);
       const cantEntr = m.cantidad_entregada || 0;
       return cantOrig > cantEntr;
@@ -846,7 +860,15 @@ export default function StockSolicitudes() {
     try {
       // Procesar cada movimiento
       for (const mov of confirmarIngresoSolicitud.movimientos) {
-        const cantidadAEntregar = cantidadesIngreso[mov._id] || 0;
+        const cantidadAEntregar = Number(cantidadesIngreso[mov._id]) || 0;
+        
+        console.log('[DEBUG] Entregando:', { 
+          movId: mov._id, 
+          nombre: mov.nombre_item,
+          cantidadAEntregar,
+          cantidadesIngreso: cantidadesIngreso[mov._id],
+          movEstado: mov.estado
+        });
         
         if (cantidadAEntregar <= 0) continue; // Saltar si no hay cantidad
         
