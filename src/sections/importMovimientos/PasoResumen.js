@@ -89,12 +89,13 @@ const PasoResumen = ({
   }, []);
 
   const calcularResumen = () => {
-    const { mapeosCategorias = [], mapeosProveedores = [], analisisCsv, tipoImportacion, proyectoSeleccionado } = wizardData;
+    const { mapeosCategorias = [], mapeosProveedores = [], analisisCsv, tipoImportacion, proyectoSeleccionado, aclaracionesUsuario } = wizardData;
 
     const resumen = {
       categorias: {
         nuevas: mapeosCategorias.filter(m => m.accion === 'crear_nueva').length,
         existentes: mapeosCategorias.filter(m => m.accion === 'usar_existente').length,
+        mapeadas: mapeosCategorias.filter(m => m.accion === 'mapear_a_existente').length,
         total: mapeosCategorias.length
       },
       proveedores: {
@@ -113,7 +114,8 @@ const PasoResumen = ({
         tipo: tipoImportacion,
         proyecto: proyectoSeleccionado,
         archivos: analisisCsv?.archivos?.length || 0
-      }
+      },
+      aclaraciones: aclaracionesUsuario || ''
     };
 
     return resumen;
@@ -156,12 +158,25 @@ const PasoResumen = ({
         ? wizardData.proyectoSeleccionado?.id 
         : null;
       
+      // Obtener aclaraciones del usuario (instrucciones prioritarias para el prompt)
+      const aclaracionesUsuario = wizardData.aclaracionesUsuario || '';
+      
+      // Obtener mapeo de categorías descartadas (para interpretación inteligente)
+      const mapeosCategoriasDescartadas = wizardData.mapeosCategorias
+        ?.filter(m => m.accion === 'mapear_a_existente' && m.categoriaDestino)
+        ?.map(m => ({
+          categoriaOriginal: m.nombre,
+          categoriaDestino: m.categoriaDestino
+        })) || [];
+      
       const inicioImportacion = await importMovimientosService.importarDirecto(
         archivosUrls,
         empresa.id,
         user.id,
         user.firstName + ' ' + user.lastName,
-        proyectoId
+        proyectoId,
+        aclaracionesUsuario,
+        mapeosCategoriasDescartadas
       );
 
       // inicioImportacion = { codigo: "N242R", resultado: null }
@@ -507,6 +522,53 @@ const PasoResumen = ({
             </CardContent>
           </Card>
         </Grid>
+
+        {/* Categorías mapeadas */}
+        {resumen.categorias.mapeadas > 0 && (
+          <Grid item xs={12}>
+            <Card sx={{ bgcolor: 'secondary.light' }}>
+              <CardContent sx={{ py: 2 }}>
+                <Typography variant="subtitle1" color="secondary.dark" gutterBottom>
+                  🔄 {resumen.categorias.mapeadas} categoría(s) se mapearán a existentes:
+                </Typography>
+                <Box sx={{ pl: 2 }}>
+                  {wizardData.mapeosCategorias
+                    ?.filter(m => m.accion === 'mapear_a_existente' && m.categoriaDestino)
+                    .map((m, idx) => (
+                      <Typography key={idx} variant="body2" color="text.secondary">
+                        • "{m.nombre}" → "{m.categoriaDestino?.name || m.categoriaDestino}"
+                      </Typography>
+                    ))
+                  }
+                </Box>
+              </CardContent>
+            </Card>
+          </Grid>
+        )}
+
+        {/* Aclaraciones del usuario */}
+        {resumen.aclaraciones && (
+          <Grid item xs={12}>
+            <Card sx={{ bgcolor: '#fff3e0', border: '1px solid #ffb74d' }}>
+              <CardContent sx={{ py: 2 }}>
+                <Typography variant="subtitle1" color="warning.dark" gutterBottom>
+                  📋 Instrucciones prioritarias para el análisis:
+                </Typography>
+                <Typography 
+                  variant="body2" 
+                  sx={{ 
+                    whiteSpace: 'pre-wrap',
+                    fontFamily: 'monospace',
+                    fontSize: '0.85rem',
+                    color: 'text.secondary'
+                  }}
+                >
+                  {resumen.aclaraciones}
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+        )}
       </Grid>
 
       {/* Advertencias */}

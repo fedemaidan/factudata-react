@@ -269,8 +269,19 @@ const PasoRevisarCategorias = ({
     
     if (nuevaAccion === 'crear_nueva') {
       nuevosMapeos[index].mapeoA = nuevosMapeos[index].nombre;
+      nuevosMapeos[index].categoriaDestino = null;
+    } else if (nuevaAccion === 'mapear_a_existente') {
+      // Limpiar mapeoA y preparar para seleccionar categoría destino
+      nuevosMapeos[index].mapeoA = null;
+      nuevosMapeos[index].categoriaDestino = null;
     }
     
+    setMapeosCategorias(nuevosMapeos);
+  };
+
+  const handleCambioCategoriaDestino = (index, categoriaDestino) => {
+    const nuevosMapeos = [...mapeosCategorias];
+    nuevosMapeos[index].categoriaDestino = categoriaDestino;
     setMapeosCategorias(nuevosMapeos);
   };
 
@@ -435,15 +446,17 @@ const PasoRevisarCategorias = ({
     switch (accion) {
       case 'usar_existente': return 'success';
       case 'crear_nueva': return 'info';
+      case 'mapear_a_existente': return 'secondary';
       default: return 'default';
     }
   };
 
   // Recalcular contadores dinámicamente basado en el estado actual
-  const categoriasACrear = mapeosCategorias.filter(m => m.accion === 'crear_nueva' || m.estado === 'nueva').length;
+  const categoriasACrear = mapeosCategorias.filter(m => m.accion === 'crear_nueva').length;
   const categoriasExistentes = mapeosCategorias.filter(m => m.accion === 'usar_existente' && m.estado !== 'nueva').length;
+  const categoriasMapeadas = mapeosCategorias.filter(m => m.accion === 'mapear_a_existente').length;
   const todasSubcategorias = mapeosCategorias.flatMap(cat => cat.subcategorias || []);
-  const subcategoriasACrear = todasSubcategorias.filter(m => m.accion === 'crear_nueva' || m.estado === 'nueva').length;
+  const subcategoriasACrear = todasSubcategorias.filter(m => m.accion === 'crear_nueva').length;
   const subcategoriasExistentes = todasSubcategorias.filter(m => m.accion === 'usar_existente' && m.estado !== 'nueva').length;
 
   return (
@@ -538,6 +551,20 @@ const PasoRevisarCategorias = ({
             </CardContent>
           </Card>
         </Grid>
+        {categoriasMapeadas > 0 && (
+          <Grid item xs={12}>
+            <Card sx={{ bgcolor: 'secondary.light' }}>
+              <CardContent sx={{ textAlign: 'center', py: 1 }}>
+                <Typography variant="h6" color="secondary.dark">
+                  🔄 {categoriasMapeadas} categoría(s) se mapearán a existentes
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Estas categorías del archivo se interpretarán como categorías existentes de tu empresa
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+        )}
       </Grid>
 
       {(categoriasACrear > 0 || subcategoriasACrear > 0) && (
@@ -623,12 +650,58 @@ const PasoRevisarCategorias = ({
                       </TableCell>
                       
                       <TableCell>
-                        <Chip
-                          icon={categoria.estado !== 'nueva' ? <CheckCircleIcon /> : <WarningIcon />}
-                          label={categoria.estado !== 'nueva' ? 'Existe en Sorby' : 'Nueva - Se creará'}
-                          color={getEstadoColor(categoria.estado)}
-                          size="small"
-                        />
+                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                          <Chip
+                            icon={categoria.estado !== 'nueva' ? <CheckCircleIcon /> : <WarningIcon />}
+                            label={
+                              categoria.accion === 'mapear_a_existente' 
+                                ? 'Mapear a existente' 
+                                : (categoria.estado !== 'nueva' ? 'Existe en Sorby' : 'Nueva - Se creará')
+                            }
+                            color={
+                              categoria.accion === 'mapear_a_existente' 
+                                ? 'secondary' 
+                                : getEstadoColor(categoria.estado)
+                            }
+                            size="small"
+                          />
+                          
+                          {/* Selector para categorías nuevas: crear o mapear */}
+                          {categoria.estado === 'nueva' && (
+                            <FormControl size="small" sx={{ minWidth: 150 }}>
+                              <Select
+                                value={categoria.accion || 'crear_nueva'}
+                                onChange={(e) => handleCambioAccion(categoriaIndex, e.target.value)}
+                                size="small"
+                              >
+                                <MenuItem value="crear_nueva">✨ Crear nueva</MenuItem>
+                                <MenuItem value="mapear_a_existente">🔄 Mapear a existente</MenuItem>
+                              </Select>
+                            </FormControl>
+                          )}
+                          
+                          {/* Selector de categoría destino cuando se elige mapear */}
+                          {categoria.accion === 'mapear_a_existente' && (
+                            <FormControl size="small" sx={{ minWidth: 180 }}>
+                              <InputLabel>Categoría destino</InputLabel>
+                              <Select
+                                value={categoria.categoriaDestino?.id || ''}
+                                onChange={(e) => {
+                                  const catDestino = empresa.categorias.find(c => c.id === e.target.value);
+                                  handleCambioCategoriaDestino(categoriaIndex, catDestino);
+                                }}
+                                label="Categoría destino"
+                                size="small"
+                              >
+                                {empresa.categorias?.map((cat) => (
+                                  <MenuItem key={cat.id} value={cat.id}>
+                                    {cat.name}
+                                  </MenuItem>
+                                ))}
+                              </Select>
+                            </FormControl>
+                          )}
+                        </Box>
                       </TableCell>
                       
                       <TableCell>
