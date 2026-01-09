@@ -241,8 +241,8 @@ const goNext = () => setCurrentIdx((i) => (i + 1) % (urls?.length || 0));
       const resultadoCampos = await AcopioService.actualizarCamposAcopio(acopioId, camposAcopio);
       console.log('2. Resultado actualización campos:', resultadoCampos);
       
-      if (resultadoCampos && resultadoCampos.error) {
-        throw new Error(`Error en campos: ${resultadoCampos.msg}`);
+      if (!resultadoCampos) {
+        throw new Error('Falló la actualización de campos del acopio');
       }
       setAlert({ open: true, message: '✅ Acopio actualizado con éxito.', severity: 'success' });
       setTimeout(() => router.push(`/acopios?empresaId=${empresaId}`), 1500);
