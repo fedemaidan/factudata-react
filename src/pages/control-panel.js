@@ -19,6 +19,7 @@ import SmartToyIcon from '@mui/icons-material/SmartToy';
 import ChatIcon from '@mui/icons-material/Chat';
 import PsychologyIcon from '@mui/icons-material/Psychology';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
+import CurrencyExchangeIcon from '@mui/icons-material/CurrencyExchange';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import BotService from 'src/services/botService';
 import ChatGptUsageService from 'src/services/chatGptUsageService';
@@ -173,6 +174,15 @@ const ControlPanelPage = () => {
       path: '/chatgpt-usage',
       metric: stats.chatgptMonth !== null ? `$${stats.chatgptMonth.toFixed(2)}` : null,
       metricLabel: 'este mes'
+    },
+    {
+      title: 'Monedas',
+      description: 'Valores de dólar (Oficial, Blue, MEP) e índices CAC',
+      icon: CurrencyExchangeIcon,
+      color: 'error',
+      path: '/monedas',
+      metric: null,
+      metricLabel: null
     }
   ];
 
@@ -270,6 +280,9 @@ const ControlPanelPage = () => {
                 </Typography>
                 <Typography variant="body2">
                   <strong>• ChatGPT Usage:</strong> Monitorea costos y uso de la API de OpenAI
+                </Typography>
+                <Typography variant="body2">
+                  <strong>• Monedas:</strong> Administra valores históricos del dólar e índices CAC
                 </Typography>
               </Stack>
             </CardContent>
