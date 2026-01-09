@@ -202,8 +202,8 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
     "CREAR_SOLICITUD_MATERIAL",
     "VER_STOCK_MOVIMIENTOS",
     "VER_INVENTARIO_PRODUCTOS",
-    "GUARDAR_CONFIRMANDO",
-    "FACTURAS_PROVEEDOR_NO_EDI",
+    "ODOO_GUARDAR_CONFIRMANDO",
+    "ODOO_FACTURAS_PROVEEDOR_NO_EDI",
   ];
 
   const celulandiaAcciones = [
