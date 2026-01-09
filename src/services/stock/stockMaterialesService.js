@@ -32,6 +32,8 @@ const StockMaterialesService = {
       ...(raw.nombre?.trim()        ? { nombre: raw.nombre.trim() } : {}),
       ...(raw.desc_material?.trim() ? { desc_material: raw.desc_material.trim() } : {}),
       ...(raw.SKU?.trim()           ? { SKU: raw.SKU.trim() } : {}),
+      ...(raw.categoria?.trim()     ? { categoria: raw.categoria.trim() } : {}),
+      ...(raw.subcategoria?.trim()  ? { subcategoria: raw.subcategoria.trim() } : {}),
 
       // alias puede venir como array o string; mandamos tal cual
       ...(Array.isArray(raw.alias) && raw.alias.length
@@ -41,6 +43,7 @@ const StockMaterialesService = {
             : {})),
 
       ...(raw.stockFilter && raw.stockFilter !== 'all' ? { stockFilter: raw.stockFilter } : {}),
+      ...(raw.estadoEntrega && raw.estadoEntrega !== 'all' ? { estadoEntrega: raw.estadoEntrega } : {}),
 
       sort: (typeof raw.sort === 'string' && raw.sort.includes(':')) ? raw.sort : 'nombre:asc',
       limit: Number.isFinite(raw.limit) ? Number(raw.limit) : 9999, // Traer todos los datos

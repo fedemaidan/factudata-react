@@ -146,9 +146,6 @@ const PasoResumen = ({
       if (!archivosUrls || archivosUrls.length === 0) {
         throw new Error('No hay archivos subidos para procesar');
       }
-
-      console.log('[PasoResumen] Archivos a procesar:', archivosUrls);
-      console.log('[PasoResumen] Proyecto seleccionado:', wizardData.proyectoSeleccionado);
       
       // 2. Iniciar importación (retorna inmediatamente con código)
       setEtapaActual('Iniciando procesamiento...');
@@ -167,7 +164,6 @@ const PasoResumen = ({
         proyectoId
       );
 
-      console.log('[PasoResumen] Importación iniciada:', inicioImportacion);
       // inicioImportacion = { codigo: "N242R", resultado: null }
 
       if (!inicioImportacion.codigo) {

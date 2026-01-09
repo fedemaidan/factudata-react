@@ -32,6 +32,10 @@ import ImageIcon from '@mui/icons-material/Image';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
+import LocalShippingIcon from '@mui/icons-material/LocalShipping';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import HourglassEmptyIcon from '@mui/icons-material/HourglassEmpty';
+import PendingIcon from '@mui/icons-material/Pending';
 
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import { useAuthContext } from 'src/contexts/auth-context';
@@ -45,10 +49,24 @@ import MaterialAutocomplete from 'src/components/MaterialAutocomplete';
 import IngresoDesdeFactura from 'src/components/stock/IngresoDesdeFactura';
 import EgresoDesdeRemito from 'src/components/stock/EgresoDesdeRemito';
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
-import LocalShippingIcon from '@mui/icons-material/LocalShipping';
 
 const TIPO_OPCIONES = ['INGRESO', 'EGRESO', 'TRANSFERENCIA', 'AJUSTE', 'COMPRA'];
-const ORDER_MAP = { fecha: 'fecha', tipo: 'tipo', subtipo: 'subtipo', responsable: 'responsable', updated: 'updatedAt' };
+const ESTADO_OPCIONES = ['PENDIENTE', 'PARCIALMENTE_ENTREGADO', 'ENTREGADO'];
+const ORDER_MAP = { fecha: 'fecha', tipo: 'tipo', subtipo: 'subtipo', responsable: 'responsable', updated: 'updatedAt', estado: 'estado' };
+
+// Helper para obtener color y etiqueta del estado
+const getEstadoChip = (estado) => {
+  switch (estado?.toUpperCase()) {
+    case 'ENTREGADO':
+      return { color: 'success', label: 'Entregado', icon: <CheckCircleIcon fontSize="small" /> };
+    case 'PARCIALMENTE_ENTREGADO':
+      return { color: 'warning', label: 'Parcial', icon: <HourglassEmptyIcon fontSize="small" /> };
+    case 'PENDIENTE':
+    default:
+      return { color: 'error', label: 'Pendiente', icon: <PendingIcon fontSize="small" /> };
+  }
+};
+
 function fmt(d) { 
   try { 
     const date = new Date(d);
@@ -79,7 +97,22 @@ export default function StockSolicitudes() {
   const [fSubtipo, setFSubtipo] = useState('');
   const [fDesde, setFDesde] = useState('');
   const [fHasta, setFHasta] = useState('');
+  const [fEstado, setFEstado] = useState(''); // Nuevo filtro por estado
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'info' });
+
+  // ===== modal de entrega parcial (1 movimiento)
+  const [openEntregaDialog, setOpenEntregaDialog] = useState(false);
+  const [entregaMovimiento, setEntregaMovimiento] = useState(null);
+  const [cantidadAEntregar, setCantidadAEntregar] = useState(0);
+  const [entregaLoading, setEntregaLoading] = useState(false);
+
+  // ===== modal de CONFIRMAR INGRESO (todos los movimientos de una solicitud)
+  const [openConfirmarIngreso, setOpenConfirmarIngreso] = useState(false);
+  const [confirmarIngresoSolicitud, setConfirmarIngresoSolicitud] = useState(null); // { solicitud, movimientos }
+  const [pasoConfirmacion, setPasoConfirmacion] = useState('tipo'); // 'tipo' | 'lista'
+  const [tipoConfirmacion, setTipoConfirmacion] = useState('total'); // 'total' | 'parcial'
+  const [cantidadesIngreso, setCantidadesIngreso] = useState({}); // { movId: cantidad }
+  const [confirmarIngresoLoading, setConfirmarIngresoLoading] = useState(false);
 
   // ===== modal de ingreso desde factura (IA)
   const [openIngresoFactura, setOpenIngresoFactura] = useState(false);
@@ -148,12 +181,14 @@ export default function StockSolicitudes() {
   const limpiarFiltros = () => {
     setFTipo(''); setFSubtipo('');
     setFDesde(''); setFHasta('');
+    setFEstado('');
     setPage(0);
   };
 
   const chips = [
     fTipo && { k: 'Tipo', v: `${fTipo} (${total})`, onDelete: () => setFTipo('') },
     fSubtipo && { k: 'Subtipo', v: `${fSubtipo} (${total})`, onDelete: () => setFSubtipo('') },
+    fEstado && { k: 'Estado', v: fEstado.replace('_', ' '), onDelete: () => setFEstado('') },
     fDesde && { k: 'Desde', v: fDesde, onDelete: () => setFDesde('') },
     fHasta && { k: 'Hasta', v: fHasta, onDelete: () => setFHasta('') },
   ].filter(Boolean);
@@ -280,6 +315,7 @@ export default function StockSolicitudes() {
         page,
         ...(fTipo ? { tipo: fTipo } : {}),
         ...(fSubtipo?.trim() ? { subtipo: fSubtipo.trim() } : {}),
+        ...(fEstado ? { estado: fEstado } : {}),
         ...(fDesde ? { fecha_desde: fDesde } : {}),
         ...(fHasta ? { fecha_hasta: fHasta } : {}),
       };
@@ -299,7 +335,7 @@ export default function StockSolicitudes() {
   useEffect(() => {
     fetchAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, fTipo, fSubtipo, fDesde, fHasta, sortParam, page, rpp]);
+  }, [user, fTipo, fSubtipo, fEstado, fDesde, fHasta, sortParam, page, rpp]);
 
   // ===== helpers modal
   const resetModal = () => {
@@ -448,6 +484,12 @@ export default function StockSolicitudes() {
         observacion: mm?.observacion || '',
         id_material: mm?.id_material || '',
         _id: mm?._id || undefined,
+        // ===== CAMPOS DE ESTADO DE ENTREGA =====
+        estado: mm?.estado || 'PENDIENTE',
+        cantidad_original: mm?.cantidad_original || Math.abs(mm?.cantidad ?? 0),
+        cantidad_entregada: mm?.cantidad_entregada || 0,
+        fecha_entrega: mm?.fecha_entrega || null,
+        // ========================================
       }));
       setMovs(normMovs);
     }
@@ -491,6 +533,231 @@ export default function StockSolicitudes() {
       alert('No se pudo eliminar el movimiento en el servidor. Revisá la consola para más detalles.');
     }
   };
+
+  // ===== FUNCIONES DE ENTREGA PARCIAL =====
+  const handleAbrirEntregaDialog = (mov, idx) => {
+    const cantidadOriginal = mov.cantidad_original || Math.abs(mov.cantidad || 0);
+    const cantidadEntregada = mov.cantidad_entregada || 0;
+    const pendiente = cantidadOriginal - cantidadEntregada;
+    
+    setEntregaMovimiento({ ...mov, idx, cantidadPendiente: pendiente });
+    setCantidadAEntregar(pendiente); // Por defecto, entregar todo lo pendiente
+    setOpenEntregaDialog(true);
+  };
+
+  const handleConfirmarEntrega = async () => {
+    if (!entregaMovimiento?._id) return;
+    
+    setEntregaLoading(true);
+    try {
+      const response = await api.post(`/movimiento-material/${entregaMovimiento._id}/entregar`, {
+        cantidad_entregada: cantidadAEntregar
+      });
+      
+      if (response.data?.ok) {
+        setSnackbar({
+          open: true,
+          message: response.data.data?.mensaje || 'Entrega registrada correctamente',
+          severity: 'success'
+        });
+        
+        // Actualizar la lista de movimientos localmente
+        const movActualizado = response.data.data?.movimiento_entregado;
+        const movPendiente = response.data.data?.movimiento_pendiente;
+        
+        setMovs(prev => {
+          let nuevosMovs = [...prev];
+          
+          // Actualizar el movimiento entregado
+          if (movActualizado) {
+            nuevosMovs = nuevosMovs.map((m, i) => 
+              i === entregaMovimiento.idx 
+                ? { ...m, 
+                    estado: movActualizado.estado, 
+                    cantidad: movActualizado.cantidad,
+                    cantidad_entregada: movActualizado.cantidad_entregada,
+                    fecha_entrega: movActualizado.fecha_entrega
+                  } 
+                : m
+            );
+          }
+          
+          // Agregar el movimiento pendiente si existe (entrega parcial)
+          if (movPendiente) {
+            nuevosMovs.push({
+              _id: movPendiente._id,
+              nombre_item: movPendiente.nombre_item,
+              cantidad: Math.abs(movPendiente.cantidad),
+              cantidad_original: movPendiente.cantidad_original,
+              cantidad_entregada: movPendiente.cantidad_entregada,
+              estado: movPendiente.estado,
+              tipo: movPendiente.tipo,
+              subtipo: movPendiente.subtipo,
+              id_material: movPendiente.id_material,
+              observacion: movPendiente.observacion,
+              proyecto_id: movPendiente.proyecto_id,
+              proyecto_nombre: movPendiente.proyecto_nombre,
+            });
+          }
+          
+          return nuevosMovs;
+        });
+        
+        // Refrescar la lista principal
+        await fetchAll();
+      }
+    } catch (err) {
+      console.error('[UI][solicitudes] entrega error', err?.response || err);
+      setSnackbar({
+        open: true,
+        message: err?.response?.data?.error?.message || 'Error al registrar la entrega',
+        severity: 'error'
+      });
+    } finally {
+      setEntregaLoading(false);
+      setOpenEntregaDialog(false);
+      setEntregaMovimiento(null);
+      setCantidadAEntregar(0);
+    }
+  };
+  // =========================================
+
+  // ===== FUNCIONES DE CONFIRMAR INGRESO (A NIVEL SOLICITUD) =====
+  const handleAbrirConfirmarIngreso = (rowData) => {
+    const solicitud = rowData?.solicitud || {};
+    const movimientos = Array.isArray(rowData?.movimientos) ? rowData.movimientos : [];
+    
+    // Filtrar solo movimientos pendientes (no entregados completamente)
+    const movsPendientes = movimientos.filter(m => {
+      const cantOrig = m.cantidad_original || Math.abs(m.cantidad || 0);
+      const cantEntr = m.cantidad_entregada || 0;
+      return cantOrig > cantEntr;
+    });
+    
+    if (movsPendientes.length === 0) {
+      setSnackbar({
+        open: true,
+        message: 'No hay movimientos pendientes de entrega en este ticket',
+        severity: 'info'
+      });
+      return;
+    }
+    
+    // Inicializar cantidades con el valor pendiente (por defecto entrega total)
+    const cantidadesInit = {};
+    movsPendientes.forEach(m => {
+      const cantOrig = m.cantidad_original || Math.abs(m.cantidad || 0);
+      const cantEntr = m.cantidad_entregada || 0;
+      cantidadesInit[m._id] = cantOrig - cantEntr;
+    });
+    
+    setConfirmarIngresoSolicitud({ solicitud, movimientos: movsPendientes });
+    setCantidadesIngreso(cantidadesInit);
+    setPasoConfirmacion('tipo');
+    setTipoConfirmacion('total');
+    setOpenConfirmarIngreso(true);
+  };
+
+  const handleSiguientePasoConfirmacion = () => {
+    if (pasoConfirmacion === 'tipo') {
+      if (tipoConfirmacion === 'total') {
+        // Entrega total: confirmar directamente
+        handleConfirmarIngreso();
+      } else {
+        // Entrega parcial: mostrar lista para editar cantidades
+        setPasoConfirmacion('lista');
+      }
+    }
+  };
+
+  const handleConfirmarIngreso = async () => {
+    if (!confirmarIngresoSolicitud?.movimientos?.length) return;
+    
+    setConfirmarIngresoLoading(true);
+    const resultados = { exitos: 0, errores: 0, mensajes: [] };
+    
+    try {
+      // Procesar cada movimiento
+      for (const mov of confirmarIngresoSolicitud.movimientos) {
+        const cantidadAEntregar = cantidadesIngreso[mov._id] || 0;
+        
+        if (cantidadAEntregar <= 0) continue; // Saltar si no hay cantidad
+        
+        try {
+          const response = await api.post(`/movimiento-material/${mov._id}/entregar`, {
+            cantidad_entregada: cantidadAEntregar
+          });
+          
+          if (response.data?.ok) {
+            resultados.exitos++;
+          } else {
+            resultados.errores++;
+            resultados.mensajes.push(`${mov.nombre_item}: Error desconocido`);
+          }
+        } catch (err) {
+          resultados.errores++;
+          resultados.mensajes.push(`${mov.nombre_item}: ${err?.response?.data?.error?.message || err.message}`);
+        }
+      }
+      
+      // Mostrar resultado
+      if (resultados.errores === 0) {
+        setSnackbar({
+          open: true,
+          message: `✅ ${resultados.exitos} movimiento(s) confirmado(s) exitosamente`,
+          severity: 'success'
+        });
+      } else if (resultados.exitos > 0) {
+        setSnackbar({
+          open: true,
+          message: `⚠️ ${resultados.exitos} exitoso(s), ${resultados.errores} con error`,
+          severity: 'warning'
+        });
+      } else {
+        setSnackbar({
+          open: true,
+          message: `❌ Error al confirmar ingresos: ${resultados.mensajes[0] || 'Error desconocido'}`,
+          severity: 'error'
+        });
+      }
+      
+      // Refrescar la lista
+      await fetchAll();
+      
+    } catch (err) {
+      console.error('[UI][solicitudes] confirmarIngreso error', err);
+      setSnackbar({
+        open: true,
+        message: 'Error al procesar la confirmación',
+        severity: 'error'
+      });
+    } finally {
+      setConfirmarIngresoLoading(false);
+      setOpenConfirmarIngreso(false);
+      setConfirmarIngresoSolicitud(null);
+      setCantidadesIngreso({});
+      setPasoConfirmacion('tipo');
+    }
+  };
+
+  const handleCantidadIngresoChange = (movId, value) => {
+    const cantidad = Math.max(0, parseInt(value) || 0);
+    setCantidadesIngreso(prev => ({ ...prev, [movId]: cantidad }));
+  };
+
+  const getTotalPendienteConfirmacion = () => {
+    if (!confirmarIngresoSolicitud?.movimientos) return 0;
+    return confirmarIngresoSolicitud.movimientos.reduce((acc, m) => {
+      const cantOrig = m.cantidad_original || Math.abs(m.cantidad || 0);
+      const cantEntr = m.cantidad_entregada || 0;
+      return acc + (cantOrig - cantEntr);
+    }, 0);
+  };
+
+  const getTotalAConfirmar = () => {
+    return Object.values(cantidadesIngreso).reduce((acc, val) => acc + (val || 0), 0);
+  };
+  // ==============================================================
 
   // Abrir popup para agregar movimiento
   const openAddMovDialog = () => {
@@ -863,6 +1130,21 @@ export default function StockSolicitudes() {
                     </Select>
                   </FormControl>
 
+                  <FormControl sx={{ minWidth: 180 }}>
+                    <InputLabel id="estado-label">Estado</InputLabel>
+                    <Select labelId="estado-label" label="Estado" value={fEstado} onChange={(e) => { setFEstado(e.target.value); setPage(0); }}>
+                      <MenuItem value=""><em>— Todos —</em></MenuItem>
+                      {ESTADO_OPCIONES.map(e => (
+                        <MenuItem key={e} value={e}>
+                          <Box display="flex" alignItems="center" gap={1}>
+                            {getEstadoChip(e).icon}
+                            {e.replace('_', ' ')}
+                          </Box>
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+
                   <TextField label="Subtipo" value={fSubtipo} onChange={(e) => { setFSubtipo(e.target.value); setPage(0); }} sx={{ minWidth: 200 }} />
 
                   <TextField
@@ -926,6 +1208,12 @@ export default function StockSolicitudes() {
                         <span>Subtipo</span>
                       </Stack>
                     </TableCell>
+                    <TableCell>
+                      <Stack direction="row" alignItems="center" spacing={1}>
+                        <LocalShippingIcon fontSize="small" />
+                        <span>Estado</span>
+                      </Stack>
+                    </TableCell>
 
                     <TableCell>
                       <Stack direction="row" alignItems="center" spacing={1}>
@@ -974,6 +1262,20 @@ export default function StockSolicitudes() {
                           </Box>
                         </TableCell>
                         <TableCell>{s.subtipo}</TableCell>
+                        <TableCell>
+                          {(() => {
+                            const estadoInfo = getEstadoChip(s.estado);
+                            return (
+                              <Chip
+                                icon={estadoInfo.icon}
+                                label={estadoInfo.label}
+                                size="small"
+                                color={estadoInfo.color}
+                                variant="filled"
+                              />
+                            );
+                          })()}
+                        </TableCell>
                         <TableCell>{fmt(s.fecha)}</TableCell>
                         <TableCell>{fmt(s.updatedAt)}</TableCell>
                         <TableCell align="right">
@@ -1060,6 +1362,18 @@ export default function StockSolicitudes() {
                               </IconButton>
                             </Tooltip>
                           )}
+                          {/* Botón Confirmar Ingreso - solo para INGRESO pendiente */}
+                          {s.tipo === 'INGRESO' && ['PENDIENTE', 'PARCIALMENTE_ENTREGADO'].includes(s.estado) && (
+                            <Tooltip title="Confirmar Ingreso">
+                              <IconButton 
+                                size="small" 
+                                color="success"
+                                onClick={(ev) => { ev.stopPropagation(); handleAbrirConfirmarIngreso(e); }}
+                              >
+                                <LocalShippingIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                          )}
                           <Tooltip title="Editar">
                             <IconButton onClick={() => openEdit(e)} size="small">
                               <EditIcon />
@@ -1076,7 +1390,7 @@ export default function StockSolicitudes() {
                   })}
                   {!loading && (!rows || rows.length === 0) && (
                     <TableRow>
-                      <TableCell colSpan={7} sx={{ textAlign: 'center', py: 4 }}>
+                      <TableCell colSpan={8} sx={{ textAlign: 'center', py: 4 }}>
                         <Stack spacing={2} alignItems="center">
                           <Typography variant="h6" color="text.secondary">
                             {chips.length > 0 
@@ -1378,6 +1692,10 @@ export default function StockSolicitudes() {
                   <TableRow>
                     <TableCell>MATERIAL / NOMBRE</TableCell>
                     <TableCell align="right">CANTIDAD</TableCell>
+                    {/* Mostrar columna de estado solo para INGRESO */}
+                    {(modalMode === 'ingreso' || form.tipo === 'INGRESO') && editMode && (
+                      <TableCell align="center">ESTADO</TableCell>
+                    )}
                     <TableCell>OBSERVACIÓN</TableCell>
                     <TableCell align="right">ACCIONES</TableCell>
                   </TableRow>
@@ -1385,7 +1703,7 @@ export default function StockSolicitudes() {
                 <TableBody>
                   {movs.map((m, idx) => (
                     <TableRow key={idx} hover>
-                      <TableCell width={400}>
+                      <TableCell width={350}>
                         <MaterialAutocomplete
                           user={user}
                           value={m.id_material || ''}
@@ -1413,17 +1731,46 @@ export default function StockSolicitudes() {
                         />
                       </TableCell>
 
-                      <TableCell align="right" width={120}>
+                      <TableCell align="right" width={100}>
                         <TextField
                           type="number"
                           value={m.cantidad || 0}
                           onChange={(e) => patchMov(idx, 'cantidad', e.target.value)}
                           size="small"
-                          sx={{ maxWidth: 100 }}
+                          sx={{ maxWidth: 80 }}
                         />
                       </TableCell>
 
-                      <TableCell width={240}>
+                      {/* Columna de estado solo para INGRESO en modo edición */}
+                      {(modalMode === 'ingreso' || form.tipo === 'INGRESO') && editMode && (
+                        <TableCell align="center" width={150}>
+                          {(() => {
+                            const estadoMov = m.estado || 'PENDIENTE';
+                            const estadoInfo = getEstadoChip(estadoMov);
+                            const cantidadOriginal = m.cantidad_original || Math.abs(m.cantidad || 0);
+                            const cantidadEntregada = m.cantidad_entregada || 0;
+                            
+                            return (
+                              <Stack spacing={0.5} alignItems="center">
+                                <Chip
+                                  icon={estadoInfo.icon}
+                                  label={estadoInfo.label}
+                                  size="small"
+                                  color={estadoInfo.color}
+                                  variant="filled"
+                                />
+                                {estadoMov === 'PARCIALMENTE_ENTREGADO' && (
+                                  <Typography variant="caption" color="text.secondary">
+                                    {cantidadEntregada}/{cantidadOriginal}
+                                  </Typography>
+                                )}
+                              </Stack>
+                            );
+                          })()}
+                        </TableCell>
+                      )}
+
+                      <TableCell width={200}>
                         <TextField
                           value={m.observacion || ''}
                           onChange={(e) => patchMov(idx, 'observacion', e.target.value)}
@@ -1445,7 +1792,7 @@ export default function StockSolicitudes() {
                   ))}
                   {movs.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={4}>
+                      <TableCell colSpan={5}>
                         <em>Sin movimientos. Agregá al menos uno (opcional).</em>
                       </TableCell>
                     </TableRow>
@@ -1493,6 +1840,303 @@ export default function StockSolicitudes() {
           {snackbar.message}
         </Alert>
       </Snackbar>
+
+      {/* ===== DIÁLOGO DE ENTREGA PARCIAL ===== */}
+      <Dialog 
+        open={openEntregaDialog} 
+        onClose={() => !entregaLoading && setOpenEntregaDialog(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>
+          <Stack direction="row" alignItems="center" spacing={1}>
+            <LocalShippingIcon color="success" />
+            <span>Registrar Entrega</span>
+          </Stack>
+        </DialogTitle>
+        <DialogContent>
+          {entregaMovimiento && (
+            <Stack spacing={3} sx={{ mt: 1 }}>
+              <Alert severity="info">
+                Registrá la cantidad de unidades que fueron entregadas para este material.
+                Si es una entrega parcial, se creará un nuevo movimiento con el pendiente.
+              </Alert>
+              
+              <Box sx={{ bgcolor: 'grey.100', p: 2, borderRadius: 1 }}>
+                <Typography variant="subtitle2" gutterBottom>
+                  Material: <strong>{entregaMovimiento.nombre_item}</strong>
+                </Typography>
+                <Stack direction="row" spacing={3}>
+                  <Typography variant="body2">
+                    Cantidad original: <strong>{entregaMovimiento.cantidad_original || Math.abs(entregaMovimiento.cantidad || 0)}</strong>
+                  </Typography>
+                  <Typography variant="body2">
+                    Ya entregado: <strong>{entregaMovimiento.cantidad_entregada || 0}</strong>
+                  </Typography>
+                  <Typography variant="body2" color="error.main">
+                    Pendiente: <strong>{entregaMovimiento.cantidadPendiente}</strong>
+                  </Typography>
+                </Stack>
+              </Box>
+
+              <TextField
+                label="Cantidad a entregar ahora"
+                type="number"
+                value={cantidadAEntregar}
+                onChange={(e) => {
+                  const val = Math.max(0, Math.min(Number(e.target.value), entregaMovimiento.cantidadPendiente));
+                  setCantidadAEntregar(val);
+                }}
+                inputProps={{ 
+                  min: 1, 
+                  max: entregaMovimiento.cantidadPendiente,
+                  step: 1
+                }}
+                fullWidth
+                helperText={
+                  cantidadAEntregar < entregaMovimiento.cantidadPendiente
+                    ? `Se creará un movimiento pendiente de ${entregaMovimiento.cantidadPendiente - cantidadAEntregar} unidades`
+                    : 'Entrega completa - el movimiento quedará como ENTREGADO'
+                }
+              />
+            </Stack>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button 
+            onClick={() => setOpenEntregaDialog(false)} 
+            disabled={entregaLoading}
+          >
+            Cancelar
+          </Button>
+          <Button 
+            variant="contained" 
+            color="success"
+            onClick={handleConfirmarEntrega}
+            disabled={entregaLoading || cantidadAEntregar <= 0}
+            startIcon={entregaLoading ? null : <CheckCircleIcon />}
+          >
+            {entregaLoading ? 'Registrando...' : 'Confirmar Entrega'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+      {/* ===================================== */}
+
+      {/* ===== DIÁLOGO DE CONFIRMAR INGRESO (A NIVEL SOLICITUD) ===== */}
+      <Dialog 
+        open={openConfirmarIngreso} 
+        onClose={() => !confirmarIngresoLoading && setOpenConfirmarIngreso(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>
+          <Stack direction="row" alignItems="center" spacing={1}>
+            <LocalShippingIcon color="success" />
+            <span>Confirmar Ingreso</span>
+          </Stack>
+        </DialogTitle>
+        <DialogContent>
+          {confirmarIngresoSolicitud && (
+            <Stack spacing={3} sx={{ mt: 1 }}>
+              {/* Paso 1: Elegir tipo de confirmación */}
+              {pasoConfirmacion === 'tipo' && (
+                <>
+                  <Alert severity="info">
+                    Seleccioná el tipo de confirmación para este ticket de ingreso.
+                  </Alert>
+                  
+                  <Box sx={{ bgcolor: 'grey.100', p: 2, borderRadius: 1 }}>
+                    <Typography variant="subtitle2" gutterBottom>
+                      Ticket: <strong>{confirmarIngresoSolicitud.solicitud?.subtipo || 'Sin subtipo'}</strong>
+                    </Typography>
+                    <Typography variant="body2">
+                      Materiales pendientes: <strong>{confirmarIngresoSolicitud.movimientos?.length || 0}</strong>
+                    </Typography>
+                    <Typography variant="body2">
+                      Unidades totales pendientes: <strong>{getTotalPendienteConfirmacion()}</strong>
+                    </Typography>
+                  </Box>
+
+                  <FormControl component="fieldset">
+                    <Typography variant="subtitle2" gutterBottom>
+                      ¿Cómo fue la entrega?
+                    </Typography>
+                    <Stack spacing={2}>
+                      <Paper 
+                        variant="outlined" 
+                        sx={{ 
+                          p: 2, 
+                          cursor: 'pointer',
+                          border: tipoConfirmacion === 'total' ? '2px solid' : '1px solid',
+                          borderColor: tipoConfirmacion === 'total' ? 'success.main' : 'divider',
+                          bgcolor: tipoConfirmacion === 'total' ? 'success.50' : 'transparent',
+                          '&:hover': { borderColor: 'success.main' }
+                        }}
+                        onClick={() => setTipoConfirmacion('total')}
+                      >
+                        <Stack direction="row" alignItems="center" spacing={2}>
+                          <Radio 
+                            checked={tipoConfirmacion === 'total'} 
+                            color="success"
+                            onChange={() => setTipoConfirmacion('total')}
+                          />
+                          <Box>
+                            <Typography variant="subtitle1" fontWeight={600}>
+                              ✅ Entrega Total
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary">
+                              Se recibieron TODOS los materiales en las cantidades solicitadas
+                            </Typography>
+                          </Box>
+                        </Stack>
+                      </Paper>
+
+                      <Paper 
+                        variant="outlined" 
+                        sx={{ 
+                          p: 2, 
+                          cursor: 'pointer',
+                          border: tipoConfirmacion === 'parcial' ? '2px solid' : '1px solid',
+                          borderColor: tipoConfirmacion === 'parcial' ? 'warning.main' : 'divider',
+                          bgcolor: tipoConfirmacion === 'parcial' ? 'warning.50' : 'transparent',
+                          '&:hover': { borderColor: 'warning.main' }
+                        }}
+                        onClick={() => setTipoConfirmacion('parcial')}
+                      >
+                        <Stack direction="row" alignItems="center" spacing={2}>
+                          <Radio 
+                            checked={tipoConfirmacion === 'parcial'} 
+                            color="warning"
+                            onChange={() => setTipoConfirmacion('parcial')}
+                          />
+                          <Box>
+                            <Typography variant="subtitle1" fontWeight={600}>
+                              ⚠️ Entrega Parcial
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary">
+                              Algunos materiales llegaron incompletos o no llegaron
+                            </Typography>
+                          </Box>
+                        </Stack>
+                      </Paper>
+                    </Stack>
+                  </FormControl>
+                </>
+              )}
+
+              {/* Paso 2: Lista de materiales (solo para parcial) */}
+              {pasoConfirmacion === 'lista' && (
+                <>
+                  <Alert severity="warning">
+                    Indicá la cantidad recibida para cada material. Los pendientes se mantendrán en el ticket.
+                  </Alert>
+
+                  <Box sx={{ maxHeight: 400, overflow: 'auto' }}>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>Material</TableCell>
+                          <TableCell align="center">Pendiente</TableCell>
+                          <TableCell align="center">Recibido</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {confirmarIngresoSolicitud.movimientos?.map((mov) => {
+                          const cantOrig = mov.cantidad_original || Math.abs(mov.cantidad || 0);
+                          const cantEntr = mov.cantidad_entregada || 0;
+                          const pendiente = cantOrig - cantEntr;
+                          return (
+                            <TableRow key={mov._id}>
+                              <TableCell>
+                                <Typography variant="body2" fontWeight={500}>
+                                  {mov.nombre_item}
+                                </Typography>
+                                {mov.observacion && (
+                                  <Typography variant="caption" color="text.secondary">
+                                    {mov.observacion}
+                                  </Typography>
+                                )}
+                              </TableCell>
+                              <TableCell align="center">
+                                <Chip 
+                                  label={pendiente} 
+                                  size="small" 
+                                  color="warning" 
+                                  variant="outlined"
+                                />
+                              </TableCell>
+                              <TableCell align="center" sx={{ width: 120 }}>
+                                <TextField
+                                  type="number"
+                                  size="small"
+                                  value={cantidadesIngreso[mov._id] || 0}
+                                  onChange={(e) => handleCantidadIngresoChange(mov._id, e.target.value)}
+                                  inputProps={{ min: 0, max: pendiente, step: 1 }}
+                                  sx={{ width: 80 }}
+                                />
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </Box>
+
+                  <Box sx={{ bgcolor: 'grey.100', p: 2, borderRadius: 1 }}>
+                    <Stack direction="row" justifyContent="space-between">
+                      <Typography variant="body2">
+                        Total pendiente: <strong>{getTotalPendienteConfirmacion()}</strong>
+                      </Typography>
+                      <Typography variant="body2" color="success.main">
+                        Total a confirmar: <strong>{getTotalAConfirmar()}</strong>
+                      </Typography>
+                    </Stack>
+                  </Box>
+                </>
+              )}
+            </Stack>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          {pasoConfirmacion === 'lista' && (
+            <Button 
+              onClick={() => setPasoConfirmacion('tipo')} 
+              disabled={confirmarIngresoLoading}
+            >
+              Volver
+            </Button>
+          )}
+          <Button 
+            onClick={() => setOpenConfirmarIngreso(false)} 
+            disabled={confirmarIngresoLoading}
+          >
+            Cancelar
+          </Button>
+          {pasoConfirmacion === 'tipo' && (
+            <Button 
+              variant="contained" 
+              color={tipoConfirmacion === 'total' ? 'success' : 'warning'}
+              onClick={handleSiguientePasoConfirmacion}
+              disabled={confirmarIngresoLoading}
+              startIcon={confirmarIngresoLoading ? null : (tipoConfirmacion === 'total' ? <CheckCircleIcon /> : <PendingIcon />)}
+            >
+              {confirmarIngresoLoading ? 'Procesando...' : (tipoConfirmacion === 'total' ? 'Confirmar Todo' : 'Siguiente')}
+            </Button>
+          )}
+          {pasoConfirmacion === 'lista' && (
+            <Button 
+              variant="contained" 
+              color="success"
+              onClick={handleConfirmarIngreso}
+              disabled={confirmarIngresoLoading || getTotalAConfirmar() <= 0}
+              startIcon={confirmarIngresoLoading ? null : <CheckCircleIcon />}
+            >
+              {confirmarIngresoLoading ? 'Procesando...' : 'Confirmar Ingreso'}
+            </Button>
+          )}
+        </DialogActions>
+      </Dialog>
+      {/* ============================================================= */}
 
       {/* Diálogo de Ingreso desde Factura (IA) */}
       <IngresoDesdeFactura

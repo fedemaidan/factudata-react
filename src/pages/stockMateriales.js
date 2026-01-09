@@ -18,6 +18,8 @@ import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import DownloadIcon from '@mui/icons-material/Download';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
 import ImportExportIcon from '@mui/icons-material/ImportExport';
+import LocalShippingIcon from '@mui/icons-material/LocalShipping';
+import HourglassEmptyIcon from '@mui/icons-material/HourglassEmpty';
 
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import StockMaterialesService from '../services/stock/stockMaterialesService';
@@ -105,6 +107,9 @@ const StockMateriales = () => {
   const [aliasText, setAliasText] = useState('');      // 🔎 alias como texto
   const [stockFilter, setStockFilter] = useState('all'); // all | gt0 | eq0 | lt0
   const [proyectoFilter, setProyectoFilter] = useState(''); // filtro por proyecto
+  const [estadoEntrega, setEstadoEntrega] = useState('all'); // all | entregado | no_entregado
+  const [categoriaFilter, setCategoriaFilter] = useState(''); // filtro por categoría
+  const [subcategoriaFilter, setSubcategoriaFilter] = useState(''); // filtro por subcategoría
 
   const [orderBy, setOrderBy] = useState('nombre'); // nombre | descripcion | sku | stock
   const [order, setOrder] = useState('asc'); // asc | desc
@@ -138,12 +143,19 @@ const StockMateriales = () => {
   // Estado para categorías de materiales de la empresa
   const [categoriasMateriales, setCategoriasMateriales] = useState([]);
   
-  // Subcategorías disponibles según la categoría seleccionada
+  // Subcategorías disponibles según la categoría seleccionada (para el form de crear/editar)
   const subcategoriasDisponibles = useMemo(() => {
     if (!form.categoria) return [];
     const cat = categoriasMateriales.find(c => c.name === form.categoria);
     return cat?.subcategorias || [];
   }, [form.categoria, categoriasMateriales]);
+
+  // Subcategorías disponibles para el FILTRO (basado en categoriaFilter)
+  const subcategoriasFilterDisponibles = useMemo(() => {
+    if (!categoriaFilter) return [];
+    const cat = categoriasMateriales.find(c => c.name === categoriaFilter);
+    return cat?.subcategorias || [];
+  }, [categoriaFilter, categoriasMateriales]);
 
   // construye el string sort "campo:asc|desc" para el back
   const sortParam = useMemo(() => {
@@ -171,6 +183,9 @@ const StockMateriales = () => {
       if (sku?.trim())           params.SKU           = sku.trim();
       if (aliasText?.trim())     params.alias         = aliasText.trim();
       if (stockFilter !== 'all') params.stockFilter   = stockFilter; // 'gt0' | 'eq0' | 'lt0'
+      if (estadoEntrega !== 'all') params.estadoEntrega = estadoEntrega; // 'entregado' | 'no_entregado'
+      if (categoriaFilter)         params.categoria     = categoriaFilter;
+      if (subcategoriaFilter)      params.subcategoria  = subcategoriaFilter;
 
       const resp = await StockMaterialesService.listarMateriales(params);
       const allData = mapItems(resp.items || []);
@@ -223,7 +238,7 @@ const StockMateriales = () => {
   useEffect(() => {
     fetchAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nombre, descripcion, sku, aliasText, stockFilter, proyectoFilter, sortParam]);
+  }, [nombre, descripcion, sku, aliasText, stockFilter, estadoEntrega, categoriaFilter, subcategoriaFilter, proyectoFilter, sortParam]);
 
   // Efecto separado para manejar cambios de paginación (solo client-side)
   useEffect(() => {
@@ -596,6 +611,65 @@ const StockMateriales = () => {
                     ))}
                   </Select>
                 </FormControl>
+
+                <FormControl sx={{ minWidth: 180 }}>
+                  <InputLabel id="entrega-filter-label">Estado Entrega</InputLabel>
+                  <Select
+                    labelId="entrega-filter-label"
+                    label="Estado Entrega"
+                    value={estadoEntrega}
+                    onChange={(e) => { setEstadoEntrega(e.target.value); setPage(0); }}
+                  >
+                    <MenuItem value="all">Todos</MenuItem>
+                    <MenuItem value="no_entregado">
+                      <Box display="flex" alignItems="center" gap={1}>
+                        <HourglassEmptyIcon color="warning" fontSize="small" />
+                        Pendientes de entrega
+                      </Box>
+                    </MenuItem>
+                    <MenuItem value="entregado">
+                      <Box display="flex" alignItems="center" gap={1}>
+                        <LocalShippingIcon color="success" fontSize="small" />
+                        Entregados
+                      </Box>
+                    </MenuItem>
+                  </Select>
+                </FormControl>
+
+                <FormControl sx={{ minWidth: 180 }}>
+                  <InputLabel id="categoria-filter-label">Categoría</InputLabel>
+                  <Select
+                    labelId="categoria-filter-label"
+                    label="Categoría"
+                    value={categoriaFilter}
+                    onChange={(e) => { 
+                      setCategoriaFilter(e.target.value); 
+                      setSubcategoriaFilter(''); // Reset subcategoría al cambiar categoría
+                      setPage(0); 
+                    }}
+                  >
+                    <MenuItem value="">Todas las categorías</MenuItem>
+                    {categoriasMateriales.map(cat => (
+                      <MenuItem key={cat.id || cat.name} value={cat.name}>{cat.name}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+
+                <FormControl sx={{ minWidth: 180 }}>
+                  <InputLabel id="subcategoria-filter-label">Subcategoría</InputLabel>
+                  <Select
+                    labelId="subcategoria-filter-label"
+                    label="Subcategoría"
+                    value={subcategoriaFilter}
+                    onChange={(e) => { setSubcategoriaFilter(e.target.value); setPage(0); }}
+                    disabled={!categoriaFilter}
+                  >
+                    <MenuItem value="">Todas las subcategorías</MenuItem>
+                    {subcategoriasFilterDisponibles.map(sub => (
+                      <MenuItem key={sub} value={sub}>{sub}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
               </Stack>            {/* Tabla */}
             <Paper>
               {/* 🔵 Barra fina de carga */}
@@ -643,6 +717,11 @@ const StockMateriales = () => {
                       >
                         Stock total
                       </TableSortLabel>
+                    </TableCell>
+                    <TableCell align="right">
+                      <Tooltip title="Cantidad de materiales con movimientos pendientes de entrega (comprados pero no recibidos)">
+                        <span>Pend. Entrega</span>
+                      </Tooltip>
                     </TableCell>
                     <TableCell>Último Proveedor</TableCell>
                     <TableCell>Última Fecha</TableCell>
@@ -703,6 +782,27 @@ const StockMateriales = () => {
                             </Typography>
                           );
                         })()} 
+                      </TableCell>
+                      <TableCell align="right">
+                        {row.tienePendientes ? (
+                          <Tooltip title={`${row.cantidadPendienteEntrega || 0} unidades pendientes de recibir`}>
+                            <Chip
+                              icon={<HourglassEmptyIcon />}
+                              label={row.cantidadPendienteEntrega || 0}
+                              size="small"
+                              color="warning"
+                              variant="filled"
+                            />
+                          </Tooltip>
+                        ) : (
+                          <Chip
+                            icon={<CheckCircleIcon />}
+                            label="—"
+                            size="small"
+                            color="success"
+                            variant="outlined"
+                          />
+                        )}
                       </TableCell>
                       <TableCell>
                         <Typography variant="body2">
