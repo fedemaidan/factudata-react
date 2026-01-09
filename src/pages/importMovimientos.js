@@ -23,12 +23,14 @@ import importMovimientosService from 'src/services/importMovimientosService';
 import PasoSubirCsv from 'src/sections/importMovimientos/PasoSubirCsv';
 import PasoRevisarCategorias from 'src/sections/importMovimientos/PasoRevisarCategorias';
 import PasoRevisarProveedores from 'src/sections/importMovimientos/PasoRevisarProveedores';
+import PasoAclaracionesMovimientos from 'src/sections/importMovimientos/PasoAclaracionesMovimientos';
 import PasoResumen from 'src/sections/importMovimientos/PasoResumen';
 
 const steps = [
   'Subir archivo CSV',
   'Revisar Categorías',
   'Revisar Proveedores',
+  'Aclaraciones',
   'Resumen y Confirmación'
 ];
 
@@ -51,6 +53,7 @@ const ImportMovimientosPage = () => {
     mapeosCategorias: [],
     mapeosSubcategorias: [],
     mapeosProveedores: [],
+    aclaracionesUsuario: '', // Instrucciones prioritarias para el prompt
     entidadesResueltas: null,
     resultadoFinal: null
   });
@@ -136,6 +139,18 @@ const ImportMovimientosPage = () => {
           />
         );
       case 3:
+        return (
+          <PasoAclaracionesMovimientos
+            empresa={empresa}
+            wizardData={wizardData}
+            updateWizardData={updateWizardData}
+            onNext={handleNext}
+            onBack={handleBack}
+            setLoading={setLoading}
+            setError={setError}
+          />
+        );
+      case 4:
         return (
           <PasoResumen
             empresa={empresa}
