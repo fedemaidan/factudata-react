@@ -78,7 +78,7 @@ export const getProyectosFromUser = async (user) => {
       }
     }));
     
-    return proyectos.filter(proyecto => proyecto !== null);
+    return proyectos.filter(proyecto => proyecto !== null && proyecto.eliminado !== true);
   } catch (err) {
     console.error('Error al obtener los proyectos del usuario:', err);
     return []; 
