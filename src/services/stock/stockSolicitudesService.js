@@ -17,6 +17,7 @@ function buildParams(raw = {}) {
   if (raw.empresa_id) out.empresa_id = String(raw.empresa_id);
   if (raw.tipo) out.tipo = raw.tipo;
   if (raw.subtipo?.trim()) out.subtipo = raw.subtipo.trim();
+  if (raw.estado) out.estado = raw.estado; // ✅ Filtro por estado
   if (raw.responsable?.trim()) out.responsable = raw.responsable.trim(); // email
   if (raw.proveedor?.trim()) out.proveedor = raw.proveedor.trim();
   if (raw.fecha_desde) out.fecha_desde = raw.fecha_desde;
