@@ -642,10 +642,20 @@ const getDayMs = (v) => {
   if (!v) return 0;
   let d;
   if (typeof v === 'number') d = new Date(v);
-  else if (typeof v === 'string') d = new Date(v);
+  else if (typeof v === 'string') {
+    // Manejar formato DD/MM/YYYY (común en Argentina)
+    const parts = v.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (parts) {
+      d = new Date(parseInt(parts[3]), parseInt(parts[2]) - 1, parseInt(parts[1]));
+    } else {
+      d = new Date(v);
+    }
+  }
   else if (v?.toDate) d = v.toDate();
   else if (v?.seconds) d = new Date(v.seconds * 1000);
+  else if (v?._seconds) d = new Date(v._seconds * 1000);
   else return 0;
+  if (!d || isNaN(d.getTime())) return 0;
   d.setHours(0, 0, 0, 0);
   return d.getTime();
 };
