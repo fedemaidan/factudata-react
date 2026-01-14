@@ -4,6 +4,7 @@ import { Box, Container, Stack, Typography, Tab, Tabs, TextField, Button, ListIt
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import { useRouter } from 'next/router';
 import OdooService from 'src/services/odooService';
+import { invalidateEmpresaCache } from 'src/services/empresaService';
 
 const OdooIntegrationPage = () => {
   const router = useRouter();
@@ -70,6 +71,9 @@ const OdooIntegrationPage = () => {
       await Promise.all(
         idsEnPagina.map((id) => OdooService.setActive(empresaId, tipo, id, activar))
       );
+
+      // Invalidar caché de la empresa
+      await invalidateEmpresaCache(empresaId);
   
     } catch (error) {
       console.error('Error al cambiar el estado global:', error);
@@ -90,6 +94,9 @@ const OdooIntegrationPage = () => {
   
       // Llamar al backend para actualizar todos
       await Promise.all(ids.map((id) => OdooService.setActive(empresaId, tipo, id, activar)));
+
+      // Invalidar caché de la empresa
+      await invalidateEmpresaCache(empresaId);
   
     } catch (error) {
       console.error('Error al cambiar el estado de todos los elementos:', error);
@@ -111,6 +118,8 @@ const OdooIntegrationPage = () => {
     // Llamar al backend
     try {
       await OdooService.setActive(empresaId, tipo, id, nuevoEstado);
+      // Invalidar caché de la empresa
+      await invalidateEmpresaCache(empresaId);
     } catch (error) {
       console.error('Error al cambiar estado:', error);
       alert('Error al cambiar el estado.');
@@ -144,6 +153,8 @@ const OdooIntegrationPage = () => {
       // Llamar al backend
       try {
         await OdooService.agregarAlias(empresaId, tipo, id, nuevoAlias);
+        // Invalidar caché de la empresa
+        await invalidateEmpresaCache(empresaId);
       } catch (error) {
         console.error('Error al agregar alias:', error);
         alert('Error al agregar el alias.');
@@ -163,6 +174,8 @@ const OdooIntegrationPage = () => {
     // Llamar al backend
     try {
       await OdooService.eliminarAlias(empresaId, tipo, id, aliasToRemove);
+      // Invalidar caché de la empresa
+      await invalidateEmpresaCache(empresaId);
     } catch (error) {
       console.error('Error al eliminar alias:', error);
       alert('Error al eliminar el alias.');
@@ -207,6 +220,8 @@ const OdooIntegrationPage = () => {
   
       const success = await OdooService.configurarEImportar(empresaId, payload);
       if (success) {
+        // Invalidar caché de la empresa
+        await invalidateEmpresaCache(empresaId);
         alert('Configuración guardada e importación iniciada correctamente');
         setIsEditingPassword(false);
       } else {
@@ -328,6 +343,8 @@ const OdooIntegrationPage = () => {
     try {
       const success = await OdooService.eliminarIntegracion(empresaId);
       if (success) {
+        // Invalidar caché de la empresa
+        await invalidateEmpresaCache(empresaId);
         alert("Integración eliminada con éxito.");
         setConfig({
           odooUrl: '',
@@ -404,6 +421,8 @@ const renderList = (items, tipo, title, fields) => (
           try {
             const nuevoNombre = nombresPersonalizados[item.id]?.trim();
             await OdooService.editarNombreDiario(empresaId, item.id, nuevoNombre);
+            // Invalidar caché de la empresa
+            await invalidateEmpresaCache(empresaId);
             setNombresOriginales((prev) => ({
               ...prev,
               [item.id]: nuevoNombre,
