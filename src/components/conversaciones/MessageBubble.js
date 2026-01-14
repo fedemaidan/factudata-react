@@ -1,5 +1,16 @@
 import { Box, Paper, Typography } from '@mui/material';
 import AudioPlayer from './AudioPlayer';
+import ImageIcon from '@mui/icons-material/Image';
+import VideocamIcon from '@mui/icons-material/Videocam';
+
+// Helper to check if src is a valid media URL (not an internal event identifier)
+const isValidMediaUrl = (src) => {
+  if (!src || typeof src !== 'string') return false;
+  // Internal event identifiers start with _event_
+  if (src.startsWith('_event_')) return false;
+  // Check if it looks like a URL (http, https, data:, blob:, or /)
+  return src.startsWith('http') || src.startsWith('data:') || src.startsWith('blob:') || src.startsWith('/');
+};
 
 export default function MessageBubble({ message, isMine, messageId, isHighlighted, onMediaClick }) {
   const text = message?.type === 'text' || message?.type === 'text_extended' ? message?.message || '' : '';
@@ -12,7 +23,7 @@ export default function MessageBubble({ message, isMine, messageId, isHighlighte
   const timeStr = date ? `${pad(date.getHours())}:${pad(date.getMinutes())}` : '';
 
   const handleMediaClick = (type = 'image') => {
-    if (onMediaClick && message?.message) {
+    if (onMediaClick && message?.message && isValidMediaUrl(message.message)) {
       onMediaClick({ src: message.message, type });
     }
   };
@@ -27,6 +38,9 @@ export default function MessageBubble({ message, isMine, messageId, isHighlighte
         boxShadow: '0 0 0 1px rgba(25, 118, 210, 0.35)',
       }
     : {};
+
+  // Check if media URL is valid
+  const hasValidMediaUrl = isValidMediaUrl(message?.message);
 
   return (
     <Box
@@ -48,19 +62,38 @@ export default function MessageBubble({ message, isMine, messageId, isHighlighte
       >
         {message.type === 'image' ? (
           <Box mb={text ? 1 : 0}>
-            <img
-              src={message.message}
-              alt="mensaje-imagen"
-              style={{
-                display: 'block',
-                width: 'min(420px, 100%)',
-                height: 'auto',
-                maxHeight: '220px',
-                borderRadius: 8,
-                cursor: 'pointer',
-              }}
-              onClick={() => handleMediaClick('image')}
-            />
+            {hasValidMediaUrl ? (
+              <img
+                src={message.message}
+                alt="mensaje-imagen"
+                style={{
+                  display: 'block',
+                  width: 'min(420px, 100%)',
+                  height: 'auto',
+                  maxHeight: '220px',
+                  borderRadius: 8,
+                  cursor: 'pointer',
+                }}
+                onClick={() => handleMediaClick('image')}
+              />
+            ) : (
+              <Box
+                display="flex"
+                alignItems="center"
+                gap={1}
+                p={2}
+                sx={{
+                  bgcolor: isMine ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)',
+                  borderRadius: 2,
+                  minWidth: 150,
+                }}
+              >
+                <ImageIcon sx={{ fontSize: 24, color: 'text.secondary' }} />
+                <Typography variant="caption" color="text.secondary">
+                  Imagen (no disponible)
+                </Typography>
+              </Box>
+            )}
             {message.caption ? (
               <Typography variant="body2" whiteSpace="pre-wrap" mt={1}>
                 {message.caption}
@@ -71,47 +104,68 @@ export default function MessageBubble({ message, isMine, messageId, isHighlighte
 
         {message.type === 'video' ? (
           <Box mb={text ? 1 : 0} position="relative">
-            <video
-              src={message.message}
-              style={{
-                display: 'block',
-                width: 'min(420px, 100%)',
-                height: 'auto',
-                maxHeight: '220px',
-                borderRadius: 8,
-                cursor: 'pointer',
-              }}
-              onClick={() => handleMediaClick('video')}
-              preload="metadata"
-            />
-            <Box
-              position="absolute"
-              top="50%"
-              left="50%"
-              sx={{
-                transform: 'translate(-50%, -50%)',
-                bgcolor: 'rgba(0, 0, 0, 0.6)',
-                borderRadius: '50%',
-                width: 48,
-                height: 48,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                cursor: 'pointer',
-              }}
-              onClick={() => handleMediaClick('video')}
-            >
+            {hasValidMediaUrl ? (
+              <>
+                <video
+                  src={message.message}
+                  style={{
+                    display: 'block',
+                    width: 'min(420px, 100%)',
+                    height: 'auto',
+                    maxHeight: '220px',
+                    borderRadius: 8,
+                    cursor: 'pointer',
+                  }}
+                  onClick={() => handleMediaClick('video')}
+                  preload="metadata"
+                />
+                <Box
+                  position="absolute"
+                  top="50%"
+                  left="50%"
+                  sx={{
+                    transform: 'translate(-50%, -50%)',
+                    bgcolor: 'rgba(0, 0, 0, 0.6)',
+                    borderRadius: '50%',
+                    width: 48,
+                    height: 48,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                  }}
+                  onClick={() => handleMediaClick('video')}
+                >
+                  <Box
+                    sx={{
+                      width: 0,
+                      height: 0,
+                      borderLeft: '12px solid white',
+                      borderTop: '8px solid transparent',
+                      borderBottom: '8px solid transparent',
+                      marginLeft: '4px',
+                    }}
+                  />
+                </Box>
+              </>
+            ) : (
               <Box
+                display="flex"
+                alignItems="center"
+                gap={1}
+                p={2}
                 sx={{
-                  width: 0,
-                  height: 0,
-                  borderLeft: '12px solid white',
-                  borderTop: '8px solid transparent',
-                  borderBottom: '8px solid transparent',
-                  marginLeft: '4px',
+                  bgcolor: isMine ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)',
+                  borderRadius: 2,
+                  minWidth: 150,
                 }}
-              />
-            </Box>
+              >
+                <VideocamIcon sx={{ fontSize: 24, color: 'text.secondary' }} />
+                <Typography variant="caption" color="text.secondary">
+                  Video (no disponible)
+                </Typography>
+              </Box>
+            )}
             {message.caption ? (
               <Typography variant="body2" whiteSpace="pre-wrap" mt={1}>
                 {message.caption}

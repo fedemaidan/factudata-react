@@ -98,10 +98,17 @@ const BotUsersPage = () => {
     }
   };
 
-  // Filtrado adicional en frontend si se desea
-  const usersFiltrados = users.filter(u => 
-    u.from?.toLowerCase().includes(filtroTexto.toLowerCase())
-  );
+  // Filtrado y ordenamiento en frontend
+  // Ordenamos por _id descendente (ObjectId contiene timestamp, los más recientes primero)
+  const usersFiltrados = users
+    .filter(u => u.from?.toLowerCase().includes(filtroTexto.toLowerCase()))
+    .sort((a, b) => {
+      // Ordenar por _id descendente (más reciente primero)
+      if (a._id && b._id) {
+        return b._id.localeCompare(a._id);
+      }
+      return 0;
+    });
 
   return (
     <Box component="main" sx={{ flexGrow: 1, py: 8 }}>
@@ -138,42 +145,49 @@ const BotUsersPage = () => {
             <CircularProgress />
           </Box>
         ) : (
-          <Card>
-            <Table>
+          <Card sx={{ overflowX: 'auto' }}>
+            <Table sx={{ minWidth: 650, tableLayout: 'fixed' }}>
               <TableHead>
                 <TableRow>
-                  <TableCell>Teléfono (ID)</TableCell>
+                  <TableCell sx={{ width: 180 }}>Teléfono (ID)</TableCell>
                   <TableCell>Datos de Estado</TableCell>
-                  <TableCell align="center">Acciones</TableCell>
+                  <TableCell align="center" sx={{ width: 130 }}>Acciones</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {usersFiltrados.length > 0 ? (
                   usersFiltrados.map((user) => (
                     <TableRow key={user._id || user.from}>
-                      <TableCell>
+                      <TableCell sx={{ width: 180 }}>
                         <Typography variant="subtitle2">{user.from}</Typography>
                       </TableCell>
-                      <TableCell>
+                      <TableCell sx={{ maxWidth: 0, overflow: 'hidden' }}>
                         {/* Mostramos algunas propiedades relevantes del estado */}
-                        <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                        <Box sx={{ 
+                          display: 'flex', 
+                          flexWrap: 'wrap', 
+                          gap: 0.5,
+                          maxHeight: 100,
+                          overflowY: 'auto'
+                        }}>
                           {Object.entries(user).map(([key, value]) => {
                             if (key === '_id' || key === 'from') return null;
                             // Convertir valor a string legible si es objeto
-                            const displayValue = typeof value === 'object' ? JSON.stringify(value).slice(0, 50) + '...' : String(value);
+                            const displayValue = typeof value === 'object' ? JSON.stringify(value).slice(0, 30) + '...' : String(value).slice(0, 30);
                             return (
-                              <Chip 
-                                key={key} 
-                                label={`${key}: ${displayValue}`} 
-                                size="small" 
-                                variant="outlined" 
-                                sx={{ mb: 1 }}
-                              />
+                              <Tooltip key={key} title={`${key}: ${typeof value === 'object' ? JSON.stringify(value) : String(value)}`}>
+                                <Chip 
+                                  label={`${key}: ${displayValue}`} 
+                                  size="small" 
+                                  variant="outlined" 
+                                  sx={{ maxWidth: 200 }}
+                                />
+                              </Tooltip>
                             );
                           })}
-                        </Stack>
+                        </Box>
                       </TableCell>
-                      <TableCell align="center">
+                      <TableCell align="center" sx={{ width: 130 }}>
                         <Button 
                           variant="outlined" 
                           color="error" 
