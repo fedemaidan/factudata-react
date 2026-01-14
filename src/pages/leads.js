@@ -153,7 +153,8 @@ const LeadsPage = () => {
         docId(r),
         r?.nombre,
         r?.phone,
-        r?.utm_campaign
+        r?.utm_campaign,
+        r?.saludoInicial
       ].map(x => (x || '').toString().toLowerCase());
       return values.some(v => v.includes(qq));
     });
