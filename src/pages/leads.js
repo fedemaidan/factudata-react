@@ -1276,6 +1276,9 @@ function getDefaultWeekFilter() {
 const LeadsPage = () => {
   const [rows, setRows] = useState([]);
   const [allLeads, setAllLeads] = useState([]); // Para estadísticas generales
+  const [matchLeads, setMatchLeads] = useState([]); // Para posibles matches (puede tener rango diferente)
+  const [matchDateRange, setMatchDateRange] = useState('7'); // Días para buscar matches
+  const [loadingMatches, setLoadingMatches] = useState(false);
   const [loading, setLoading] = useState(false);
   const [q, setQ] = useState('');
   const [alert, setAlert] = useState({ open: false, message: '', severity: 'info' });
@@ -1286,8 +1289,31 @@ const LeadsPage = () => {
   const [openDelete, setOpenDelete] = useState(false);
   const [toDelete, setToDelete] = useState(null);
   const [filters, setFilters] = useState(getDefaultWeekFilter());
-  const [activeTab, setActiveTab] = useState(0); // 0 = Dashboard, 1 = Listado
+  const [activeTab, setActiveTab] = useState(0); // 0 = Dashboard, 1 = Posibles Matches, 2 = Listado
   const [selectedPeriod, setSelectedPeriod] = useState(null); // Para filtrar detalle
+
+  // Cargar leads para posibles matches con rango configurable
+  const fetchLeadsForMatches = useCallback(async (days = 7) => {
+    setLoadingMatches(true);
+    try {
+      const today = new Date();
+      const fromDate = new Date(today);
+      fromDate.setDate(today.getDate() - parseInt(days));
+      
+      const params = {
+        field: 'created',
+        from: ymdLocal(fromDate),
+        to: ymdLocal(today)
+      };
+      
+      const data = await LeadsService.listar(params);
+      setMatchLeads(data);
+    } catch (e) {
+      console.error('Error cargando leads para matches:', e);
+    } finally {
+      setLoadingMatches(false);
+    }
+  }, []);
 
   // Cargar todos los leads de la última semana para estadísticas
   const fetchAllForStats = useCallback(async () => {
@@ -1405,7 +1431,8 @@ const LeadsPage = () => {
     setFilters(def);
     fetchBy(def);
     fetchAllForStats(); // Cargar datos para estadísticas
-  }, [fetchAllForStats]);
+    fetchLeadsForMatches(7); // Cargar leads para matches (última semana por defecto)
+  }, [fetchAllForStats, fetchLeadsForMatches]);
 
   const applyFilters = async () => { await fetchBy(filters); };
   const clearFilters = async () => {
@@ -1501,6 +1528,7 @@ const LeadsPage = () => {
       });
       // Refrescar los datos
       await fetchAllForStats();
+      await fetchLeadsForMatches(matchDateRange);
       return result;
     } catch (e) {
       console.error('Error en match manual:', e);
@@ -1812,11 +1840,41 @@ const LeadsPage = () => {
                   Esta herramienta busca coincidencias entre leads que tienen campaña pero no enviaron WhatsApp,
                   y leads que enviaron WhatsApp pero no tienen campaña asignada, basándose en la cercanía temporal.
                 </Alert>
+                
+                {/* Selector de rango de fechas */}
+                <Paper sx={{ p: 2 }}>
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="center">
+                    <DateRangeIcon color="action" />
+                    <Typography variant="body2">Buscar leads de:</Typography>
+                    <FormControl size="small" sx={{ minWidth: 180 }}>
+                      <Select
+                        value={matchDateRange}
+                        onChange={(e) => {
+                          setMatchDateRange(e.target.value);
+                          fetchLeadsForMatches(e.target.value);
+                        }}
+                      >
+                        <MenuItem value="7">Última semana</MenuItem>
+                        <MenuItem value="15">Últimos 15 días</MenuItem>
+                        <MenuItem value="30">Último mes</MenuItem>
+                        <MenuItem value="60">Últimos 2 meses</MenuItem>
+                        <MenuItem value="90">Últimos 3 meses</MenuItem>
+                      </Select>
+                    </FormControl>
+                    {loadingMatches && <CircularProgress size={20} />}
+                    <Chip 
+                      label={`${matchLeads.length} leads cargados`} 
+                      size="small"
+                      variant="outlined" 
+                    />
+                  </Stack>
+                </Paper>
+
                 <PotentialMatchesPanel 
-                  leads={allLeads} 
+                  leads={matchLeads} 
                   maxTimeDiff={10} 
                   onMatch={handleMatchManual}
-                  onRefresh={fetchAllForStats}
+                  onRefresh={() => fetchLeadsForMatches(matchDateRange)}
                 />
               </Stack>
             )}
