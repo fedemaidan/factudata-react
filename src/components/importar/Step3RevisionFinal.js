@@ -49,6 +49,15 @@ export default function Step3RevisionFinal({
         onChange={(e)=>setValorTotal(e.target.value)}
       />
     )}
+    {tipoLista === 'lista_precios' && valorTotal && (
+      <TextField
+        size="small"
+        label="Valor total estimado"
+        value={valorTotal}
+        disabled
+        helperText="Valor inicial (no editable)"
+      />
+    )}
   </Stack>
 )
      } else {   return (
@@ -61,6 +70,9 @@ export default function Step3RevisionFinal({
           <Typography variant="body2"><strong>Proyecto:</strong> {proyecto || '-'}</Typography>
           {tipoLista === 'materiales' && (
             <Typography variant="body2"><strong>Valor acopiado:</strong> {fmtMoney(Number(valorTotal) || 0)}</Typography>
+          )}
+          {tipoLista === 'lista_precios' && valorTotal && (
+            <Typography variant="body2"><strong>Valor total estimado:</strong> {fmtMoney(Number(valorTotal) || 0)}</Typography>
           )}
           <Typography variant="body2"><strong>Ítems:</strong> {withIds.length}</Typography>
         </Stack>

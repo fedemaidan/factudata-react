@@ -360,15 +360,17 @@ function onConfirmColumns({ includeHeaderAsRow: includeHdr }) {
     acopioId
   );
 
-  const merged = [...productos, ...nuevos];
-  setProductos(merged);
+  const merged = [...finalRows, ...nuevos];
+  setFinalRows(merged);
 
-  // recalcular valorTotal si es materiales
+  // recalcular valorTotal SOLO si es materiales
+  // para lista_precios, mantener el valor inicial ingresado por el usuario
   if (tipoLista === 'materiales') {
     const total = merged.reduce((acc, p) =>
       acc + (toNumberSafe(p.valorTotal) || (toNumberSafe(p.cantidad) * toNumberSafe(p.valorUnitario))), 0);
     setValorTotal(total);
   }
+  // Si es lista_precios, NO tocamos valorTotal - se mantiene el valor inicial
 
   setAlert({ open: true, message: `Se agregaron ${nuevos.length} ítems.`, severity: 'success' });
 }
