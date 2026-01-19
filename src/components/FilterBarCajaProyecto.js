@@ -51,6 +51,7 @@ export const FilterBarCajaProyecto = ({
     { name: 'montoMin', label: 'Monto mínimo', type: 'number', visibleIf: () => true },
     { name: 'montoMax', label: 'Monto máximo', type: 'number', visibleIf: () => true },
     { name: 'empresaFacturacion', label: 'Empresa facturación', type: 'selectMultiple', optionsKey: 'empresasFacturacion', visibleIf: () => empresa?.comprobante_info?.empresa_facturacion },
+    { name: 'tagsExtra', label: 'Tags extra', type: 'selectMultiple', optionsKey: 'tags', visibleIf: (empresa) => options?.tags?.length > 0 },
   ];
   
   function getFiltrosVisibles(empresa) {
