@@ -63,6 +63,7 @@ const COLS = {
   dolarReferencia: 140,
   totalDolar: 140,
   subtotalDolar: 140,
+  tagsExtra: 180,
   acciones: 96,
 };
 
@@ -334,6 +335,7 @@ const handleSaveCols = async () => {
     dolarReferencia: false,
     totalDolar: false,
     subtotalDolar: false,
+    tagsExtra: false,
   }), [compactCols, empresa]);
   
 
@@ -1343,6 +1345,9 @@ useEffect(() => {
     )}
     <FormControlLabel control={<Checkbox size="small" checked={visibleCols.empresaFacturacion} onChange={() => toggleCol('empresaFacturacion')} />} label="Empresa facturación" />
     <FormControlLabel control={<Checkbox size="small" checked={visibleCols.fechaPago} onChange={() => toggleCol('fechaPago')} />} label="Fecha de pago" />
+    {options?.tags?.length > 0 && (
+      <FormControlLabel control={<Checkbox size="small" checked={visibleCols.tagsExtra} onChange={() => toggleCol('tagsExtra')} />} label="Tags extra" />
+    )}
     <Divider sx={{ my: 1 }} />
     <Typography variant="caption" color="text.secondary" sx={{ px: 1 }}>Dólar de referencia</Typography>
     <FormControlLabel control={<Checkbox size="small" checked={visibleCols.dolarReferencia} onChange={() => toggleCol('dolarReferencia')} />} label="TC Referencia" />
@@ -1626,6 +1631,10 @@ useEffect(() => {
           <TableCell sx={{ ...cellBase, minWidth: COLS.fechaPago }}>FECHA PAGO</TableCell>
         )}
 
+        {visibleCols.tagsExtra && (
+          <TableCell sx={{ ...cellBase, minWidth: COLS.tagsExtra }}>TAGS EXTRA</TableCell>
+        )}
+
         {visibleCols.dolarReferencia && (
           <TableCell sx={{ ...cellBase, minWidth: COLS.dolarReferencia }}>TC REF.</TableCell>
         )}
@@ -1839,6 +1848,14 @@ useEffect(() => {
                     {visibleCols.fechaPago && (
                       <TableCell sx={{ ...cellBase, minWidth: COLS.fechaPago }}>
                         {mov.fecha_pago ? formatTimestamp(mov.fecha_pago, "DIA/MES/ANO") : '—'}
+                      </TableCell>
+                    )}
+
+                    {visibleCols.tagsExtra && (
+                      <TableCell sx={{ ...cellBase, minWidth: COLS.tagsExtra }}>
+                        {Array.isArray(mov.tags_extra) && mov.tags_extra.length > 0
+                          ? mov.tags_extra.map((tag, i) => <Chip key={i} size="small" label={tag} sx={{ mr: 0.5, mb: 0.25 }} />)
+                          : '—'}
                       </TableCell>
                     )}
 
@@ -2058,6 +2075,14 @@ useEffect(() => {
             {visibleCols.fechaPago && (
               <TableCell sx={{ ...cellBase, minWidth: COLS.fechaPago }}>
                 {mov.fecha_pago ? formatTimestamp(mov.fecha_pago, "DIA/MES/ANO") : '—'}
+              </TableCell>
+            )}
+
+            {visibleCols.tagsExtra && (
+              <TableCell sx={{ ...cellBase, minWidth: COLS.tagsExtra }}>
+                {Array.isArray(mov.tags_extra) && mov.tags_extra.length > 0
+                  ? mov.tags_extra.map((tag, i) => <Chip key={i} size="small" label={tag} sx={{ mr: 0.5, mb: 0.25 }} />)
+                  : '—'}
               </TableCell>
             )}
 
