@@ -113,13 +113,21 @@ const EditarEntregaModal = ({ open, onClose, data, onSaved, clientes = [], tipoD
 
   const tipoDeCambioGuardado = data?.tipoDeCambio || 1;
 
+
+  const tipoDeCambioManualParaCalculo =
+    tipoDeCambioManual !== null && toNumber(tipoDeCambioManual) > 0
+      ? tipoDeCambioManual
+      : toNumber(tipoDeCambioGuardado) > 0
+      ? toNumber(tipoDeCambioGuardado)
+      : null;
+
   const { tc, subtotalSinDescuentoRedondeado, totalConDescuentoRedondeado } = useMemo(
     () =>
       calcularMovimientoV2({
         montoEnviado: formData.montoEnviado,
         monedaDePago: formData.monedaDePago,
         cuentaCorriente: formData.CC,
-        tipoDeCambioManual,
+        tipoDeCambioManual: tipoDeCambioManualParaCalculo,
         tipoDeCambio,
         aplicarDescuento: toNumber(descuentoPorcentaje) > 0,
         descuentoPercent: descuentoPorcentaje,
@@ -130,6 +138,7 @@ const EditarEntregaModal = ({ open, onClose, data, onSaved, clientes = [], tipoD
       formData.monedaDePago,
       formData.CC,
       tipoDeCambioManual,
+      tipoDeCambioGuardado,
       tipoDeCambio,
       descuentoPorcentaje,
     ]
@@ -181,8 +190,20 @@ const EditarEntregaModal = ({ open, onClose, data, onSaved, clientes = [], tipoD
       const originalFactor =
         typeof data.descuentoAplicado === "number" ? data.descuentoAplicado : 1;
       const didChangeDescuento = Math.abs(originalFactor - factorDescuento) > 1e-6;
+      // Si el usuario editó el tipo de cambio manual, debe impactar en totales y persistirse.
+      const tcManualNum =
+        tipoDeCambioManual !== null && toNumber(tipoDeCambioManual) > 0
+          ? toNumber(tipoDeCambioManual)
+          : null;
+      const tcOriginal = toNumber(tipoDeCambioGuardado);
+      const didChangeTipoDeCambio =
+        tcManualNum !== null && Math.abs(tcManualNum - tcOriginal) > 1e-6;
       const cambiosAfectanTotales =
-        didChangeMonto || didChangeMoneda || didChangeCC || didChangeDescuento;
+        didChangeMonto ||
+        didChangeMoneda ||
+        didChangeCC ||
+        didChangeDescuento ||
+        didChangeTipoDeCambio;
 
       let datosParaGuardar = {
         descripcion: formData.concepto,
@@ -231,7 +252,7 @@ const EditarEntregaModal = ({ open, onClose, data, onSaved, clientes = [], tipoD
           montoEnviado: formData.montoEnviado,
           monedaDePago: formData.monedaDePago,
           cuentaCorriente: formData.CC,
-          tipoDeCambioManual,
+          tipoDeCambioManual: tipoDeCambioManualParaCalculo,
           tipoDeCambio,
           aplicarDescuento: toNumber(descuentoPorcentaje) > 0,
           descuentoPercent: descuentoPorcentaje,
