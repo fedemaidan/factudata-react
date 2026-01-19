@@ -104,6 +104,8 @@ export default function ResumenPage() {
     fetchData();
   }, []);
 
+  
+
   // Helper para formatear fechas a YYYY-MM-DD (zona local)
   const formatYMD = (d) => {
     const dt = new Date(d);
@@ -138,6 +140,7 @@ export default function ResumenPage() {
           fechaInicio,
           fechaFin,
           cajasIds,
+          categoriasToExclude: ["venta dolares", "compra dolares"],
           moneda: selectedCurrency,
         });
 
@@ -193,6 +196,7 @@ export default function ResumenPage() {
           fechaInicio,
           fechaFin,
           categorias: categoriasIds,
+          categoriasToExclude: ["venta dolares", "compra dolares"],
           moneda: selectedCurrency,
         });
 

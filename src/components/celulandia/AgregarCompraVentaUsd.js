@@ -20,6 +20,17 @@ import movimientosService from "src/services/celulandia/movimientosService";
 import { getUser } from "src/utils/celulandia/currentUser";
 
 const AgregarCompraVentaUsd = ({ open, onClose, onSave, cajas = [] }) => {
+  const formatNumberWithThousands = (value) => {
+    if (!value) return "";
+    const numericValue = value.replace(/[^\d.]/g, "");
+    return numericValue.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  };
+
+  const parseNumberFromFormatted = (formattedValue) => {
+    if (!formattedValue) return "";
+    return formattedValue.replace(/\./g, "");
+  };
+
   const [operacion, setOperacion] = useState("COMPRA");
   const [tipoCambio, setTipoCambio] = useState("");
   const [cantidadUsd, setCantidadUsd] = useState("");
@@ -33,6 +44,9 @@ const AgregarCompraVentaUsd = ({ open, onClose, onSave, cajas = [] }) => {
   const usdNumber = parseFloat(cantidadUsd) || 0;
   const tipoCambioNumber = parseFloat(tipoCambio) || 0;
   const totalPesos = usdNumber > 0 && tipoCambioNumber > 0 ? usdNumber * tipoCambioNumber : 0;
+
+  const cantidadUsdFormateada = formatNumberWithThousands(cantidadUsd);
+  const tipoCambioFormateado = formatNumberWithThousands(tipoCambio);
 
   const resetForm = () => {
     setOperacion("COMPRA");
@@ -165,10 +179,10 @@ const AgregarCompraVentaUsd = ({ open, onClose, onSave, cajas = [] }) => {
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
-                type="number"
                 label="Cantidad de USD *"
-                value={cantidadUsd}
-                onChange={(e) => setCantidadUsd(e.target.value)}
+                value={cantidadUsdFormateada}
+                onChange={(e) => setCantidadUsd(parseNumberFromFormatted(e.target.value))}
+                inputMode="decimal"
                 margin="normal"
                 inputProps={{ min: 0, step: "0.01" }}
                 required
@@ -177,10 +191,10 @@ const AgregarCompraVentaUsd = ({ open, onClose, onSave, cajas = [] }) => {
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
-                type="number"
                 label="Tipo de cambio (ARS por USD) *"
-                value={tipoCambio}
-                onChange={(e) => setTipoCambio(e.target.value)}
+                value={tipoCambioFormateado}
+                onChange={(e) => setTipoCambio(parseNumberFromFormatted(e.target.value))}
+                inputMode="decimal"
                 margin="normal"
                 inputProps={{ min: 0, step: "0.01" }}
                 required
