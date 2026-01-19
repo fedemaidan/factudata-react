@@ -23,7 +23,6 @@ import { getUser } from "src/utils/celulandia/currentUser";
 const AgregarChequeModal = ({ open, onClose, onSave, clientes, tipoDeCambio, cajas }) => {
   const [isSaving, setIsSaving] = useState(false);
   const [fechaCobro, setFechaCobro] = useState("");
-  const [descripcion, setDescripcion] = useState("");
 
   const {
     formData,
@@ -39,7 +38,7 @@ const AgregarChequeModal = ({ open, onClose, onSave, clientes, tipoDeCambio, caj
     handleInputChange,
     handleClienteChange,
     resetForm,
-  } = useMovimientoForm({ cuentaDestino: "CHEQUE" }, { clientes, tipoDeCambio, cajas });
+  } = useMovimientoForm({ cuentaDestino: "ECHEQ" }, { clientes, tipoDeCambio, cajas });
 
   const handleSave = async () => {
     if (!formData.cliente || !formData.montoEnviado || !formData.cuentaDestino) {
@@ -81,7 +80,7 @@ const AgregarChequeModal = ({ open, onClose, onSave, clientes, tipoDeCambio, caj
           nombreUsuario: getUser(),
           tipoDeCambio: tipoDeCambioCalculado,
           estado: "CONFIRMADO",
-          concepto: descripcion || null,
+          concepto: null,
           fechaCobro: fechaCobro ? new Date(`${fechaCobro}T00:00:00`) : null,
           camposBusqueda: `${formData.cliente} ${formData.cuentaDestino} ${formData.CC} ${
             formData.monedaDePago
@@ -107,9 +106,8 @@ const AgregarChequeModal = ({ open, onClose, onSave, clientes, tipoDeCambio, caj
   const handleClose = () => {
     resetForm();
     setFechaCobro("");
-    setDescripcion("");
-    // Volver a dejar por defecto la cuenta destino en CHEQUE después de resetear
-    setFormData((prev) => ({ ...prev, cuentaDestino: "CHEQUE" }));
+    // Volver a dejar por defecto la cuenta destino en ECHEQ después de resetear
+    setFormData((prev) => ({ ...prev, cuentaDestino: "ECHEQ" }));
     onClose();
   };
 
@@ -166,15 +164,6 @@ const AgregarChequeModal = ({ open, onClose, onSave, clientes, tipoDeCambio, caj
                     ))}
                 </Select>
               </FormControl>
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Descripción"
-                value={descripcion}
-                onChange={(e) => setDescripcion(e.target.value)}
-                margin="normal"
-              />
             </Grid>
             <Grid item xs={12} sm={6}>
               <TextField
