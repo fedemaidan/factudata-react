@@ -34,6 +34,53 @@ export const useProductos = ({
   const handleExportExcel = useCallback(async () => {
     setIsExporting(true);
     try {
+      const normalizeText = (value) =>
+        String(value ?? "")
+          .replace(/\r\n/g, "\n")
+          .replace(/\r/g, "\n")
+          .trim();
+
+      // Hard-wrap para que el texto no quede en una sola línea infinita en Excel.
+      // Esto también permite calcular altura de fila y “ver todo” al abrir el archivo.
+      const hardWrapText = (value, maxCharsPerLine = 70) => {
+        const raw = normalizeText(value);
+        if (!raw) return "";
+        const lines = raw.split("\n");
+        const wrapped = [];
+        lines.forEach((line) => {
+          const l = String(line ?? "");
+          if (!l) {
+            wrapped.push("");
+            return;
+          }
+          for (let i = 0; i < l.length; i += maxCharsPerLine) {
+            wrapped.push(l.slice(i, i + maxCharsPerLine));
+          }
+        });
+        return wrapped.join("\n");
+      };
+
+      const getNotasString = (notasValue) => {
+        if (!Array.isArray(notasValue) || notasValue.length === 0) return "";
+
+        const notasOrdenadas = [...notasValue].sort((a, b) => {
+          const ta = new Date(a?.updatedAt ?? a?.fecha ?? 0).getTime();
+          const tb = new Date(b?.updatedAt ?? b?.fecha ?? 0).getTime();
+          return (Number.isNaN(ta) ? 0 : ta) - (Number.isNaN(tb) ? 0 : tb);
+        });
+
+        const lines = notasOrdenadas
+          .map((n) => {
+            const texto = normalizeText(n?.nota);
+            if (!texto) return null;
+            const fecha = formatDateDDMMYYYY(n?.updatedAt ?? n?.fecha);
+            return fecha ? `- ${fecha}: ${texto}` : `- ${texto}`;
+          })
+          .filter(Boolean);
+
+        return hardWrapText(lines.join("\n"), 70);
+      };
+
       const getDiasHastaAgotar = (item) => {
         const raw = item?.diasSinStock ?? item?.diasHastaAgotarStock;
         const n = Number(raw);
@@ -102,6 +149,7 @@ export const useProductos = ({
           "Fecha agotamiento": formatDateDDMMYYYY(item?.fechaAgotamientoStock),
           "Cant. a comprar (100 días)": Number(item?.cantidadCompraSugerida ?? 0),
           "Fecha compra sugerida": formatDateDDMMYYYY(item?.fechaCompraSugerida),
+          Notas: getNotasString(item?.notas),
         };
       });
 
@@ -115,6 +163,7 @@ export const useProductos = ({
           : String(v ?? "");
 
       const colWidths = headers.map((h) => {
+        if (h === "Notas") return { wch: 70 };
         const maxLen = Math.max(
           String(h).length,
           ...data.map((row) => {
@@ -126,6 +175,24 @@ export const useProductos = ({
         return { wch: Math.min(Math.max(maxLen + 2, 10), 45) };
       });
       ws["!cols"] = colWidths;
+
+      const notasColIdx = headers.findIndex((h) => h === "Notas");
+      if (notasColIdx >= 0) {
+        ws["!rows"] = new Array(data.length + 1);
+        ws["!rows"][0] = { hpt: 20 };
+        for (let r = 1; r <= data.length; r++) {
+          const rowNotas = data[r - 1]?.Notas ?? "";
+          const hasNotas = String(rowNotas || "").trim().length > 0;
+          if (hasNotas) {
+            const lineCount = String(rowNotas || "").split("\n").length || 1;
+            ws["!rows"][r] = { hpt: 15 * Math.max(1, lineCount) };
+          }
+
+          const addr = XLSX.utils.encode_cell({ c: notasColIdx, r });
+          const cell = ws[addr];
+          if (cell) cell.t = "s";
+        }
+      }
 
       const numberCols = new Set([
         "Stock actual",
@@ -149,6 +216,7 @@ export const useProductos = ({
       });
 
       XLSX.utils.book_append_sheet(wb, ws, "Proyecciones");
+
       const filename = `proyecciones_${dayjs().format("YYYY-MM-DD_HHmm")}.xlsx`;
       XLSX.writeFile(wb, filename);
     } catch (error) {

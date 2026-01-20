@@ -15,6 +15,8 @@ const parseNumberFromFormatted = (formattedValue) => {
   return formattedValue.replace(/\./g, "");
 };
 
+const getDefaultCCByMoneda = (moneda) => (moneda === "USD" ? "USD BLUE" : "ARS");
+
 export const useMovimientoForm = (initialData = null, externalData = null) => {
   const {
     clientes = [],
@@ -88,6 +90,25 @@ export const useMovimientoForm = (initialData = null, externalData = null) => {
       }
     }
   }, [initialData, clientes, clienteSeleccionado, formData.CC]);
+
+  useEffect(() => {
+    const clienteNombre = formData.cliente?.trim();
+    if (!clienteNombre) return;
+
+    const clienteNombreLower = clienteNombre.toLowerCase();
+    const clienteValido = clientes.some(
+      (cliente) => cliente?.nombre?.toLowerCase() === clienteNombreLower
+    );
+    if (clienteValido) return;
+
+    const defaultCC = getDefaultCCByMoneda(formData.monedaDePago);
+    if (formData.CC !== defaultCC) {
+      setFormData((prev) => ({
+        ...prev,
+        CC: defaultCC,
+      }));
+    }
+  }, [formData.cliente, formData.monedaDePago, formData.CC, clientes]);
 
   useEffect(() => {
     if (externalTipoDeCambio) {
@@ -229,9 +250,10 @@ export const useMovimientoForm = (initialData = null, externalData = null) => {
     } else {
       setClienteSeleccionado(null);
       handleInputChange("cliente", newValue || "");
+      const defaultCC = getDefaultCCByMoneda(formData.monedaDePago);
       setFormData((prev) => ({
         ...prev,
-        CC: "ARS",
+        CC: defaultCC,
       }));
     }
   };

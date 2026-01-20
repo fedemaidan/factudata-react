@@ -39,6 +39,16 @@ const AgregarModal = ({ open, onClose, onSave, clientes, tipoDeCambio, cajas }) 
     resetForm,
   } = useMovimientoForm(null, { clientes, tipoDeCambio, cajas });
 
+  const clientesDisponibles = Array.isArray(clientes) ? clientes : [];
+  const clienteNombreIngresado = formData.cliente?.trim();
+  const clienteEstaEnListado =
+    Boolean(clienteNombreIngresado) &&
+    clientesDisponibles.some(
+      (cliente) => cliente?.nombre?.toLowerCase() === clienteNombreIngresado.toLowerCase()
+    );
+  const cuentaCorrienteDisabled =
+    Boolean(clienteNombreIngresado) && !clienteEstaEnListado;
+
   const handleSave = async () => {
     if (!formData.cliente || !formData.montoEnviado || !formData.cuentaDestino) {
       alert("Por favor complete todos los campos requeridos");
@@ -127,7 +137,7 @@ const AgregarModal = ({ open, onClose, onSave, clientes, tipoDeCambio, cajas }) 
             <Grid item xs={12} sm={6}>
               <Autocomplete
                 freeSolo
-                options={Array.isArray(clientes) ? clientes : []}
+                options={clientesDisponibles}
                 getOptionLabel={(option) => (typeof option === "string" ? option : option.nombre)}
                 value={formData.cliente}
                 inputValue={formData.cliente || ""}
@@ -227,6 +237,7 @@ const AgregarModal = ({ open, onClose, onSave, clientes, tipoDeCambio, cajas }) 
                   label="Cuenta Corriente *"
                   onChange={(e) => handleInputChange("CC", e.target.value)}
                   required
+                  disabled={cuentaCorrienteDisabled}
                 >
                   {getCCOptions().map((option) => (
                     <MenuItem key={option} value={option}>
