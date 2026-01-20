@@ -15,39 +15,24 @@ import {
   Tabs,
   Tab,
 } from "@mui/material";
-import TableComponent from "src/components/TableComponent";
+import { LoadingButton } from "@mui/lab";
+import PedidoDetalleProductosTab from "src/components/celulandia/proyecciones/PedidoDetalleProductosTab";
+import PedidoDetalleContenedoresTab from "src/components/celulandia/proyecciones/PedidoDetalleContenedoresTab";
+import PedidoDetalleEditarTab from "src/components/celulandia/proyecciones/PedidoDetalleEditarTab";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import pedidoService from "src/services/celulandia/pedidoService";
 import contenedorService from "src/services/celulandia/contenedorService";
+import { useContenedores } from "src/hooks/celulandia/useContenedores";
+import { useProductos } from "src/hooks/celulandia/useProductos";
 
 const PEDIDO_ESTADOS = ["PENDIENTE", "ENTREGADO", "CANCELADO"];
 const CONTENEDOR_ESTADOS = ["PENDIENTE", "ENTREGADO", "CANCELADO"];
-
-const PEDIDO_ESTADOS_LABELS = {
-  PENDIENTE: "Pendiente",
-  ENTREGADO: "Entregado",
-  CANCELADO: "Cancelado",
-};
 
 const CONTENEDOR_ESTADOS_LABELS = {
   PENDIENTE: "En tránsito",
   ENTREGADO: "Entregado",
   CANCELADO: "Cancelado",
 };
-
-const EstadoChip = ({ estado }) => {
-  const normalized = (estado || "").toUpperCase();
-  const config = {
-    PENDIENTE: { color: "warning", label: "Pendiente" },
-    ENTREGADO: { color: "success", label: "Entregado" },
-    CANCELADO: { color: "error", label: "Cancelado" },
-    RECIBIDO: { color: "success", label: "Recibido" },
-    EN_TRANSITO: { color: "info", label: "En tránsito" },
-  }[normalized] || { color: "default", label: estado || "N/D" };
-  return <Chip size="small" color={config.color} label={config.label} />;
-};
-
-const formatFecha = (date) => (date ? dayjs(date).format("DD/MM/YYYY") : "—");
 
 const PedidoDetalleModal = ({ open, onClose, resumen }) => {
   const queryClient = useQueryClient();
@@ -57,10 +42,55 @@ const PedidoDetalleModal = ({ open, onClose, resumen }) => {
 
   const [estadoPedido, setEstadoPedido] = useState(pedido?.estado || "PENDIENTE");
   const [estadosContenedores, setEstadosContenedores] = useState({});
+  const [asignacionesEdicion, setAsignacionesEdicion] = useState([]);
+  const [asignacionesOriginales, setAsignacionesOriginales] = useState([]);
+  const [asignacionesNuevas, setAsignacionesNuevas] = useState([]);
+  const [asignacionesEliminadas, setAsignacionesEliminadas] = useState([]);
+
+  const { data: contenedoresData } = useContenedores();
+  const contenedoresDisponibles = contenedoresData?.data ?? [];
+
+  const { data: productosResponse, isLoading: loadingProductos } = useProductos({
+    page: 0,
+    pageSize: 200,
+    sortField: "codigo",
+    sortDirection: "asc",
+  });
+  const productosDisponibles = productosResponse?.data ?? [];
 
   useEffect(() => {
     setEstadoPedido(pedido?.estado || "PENDIENTE");
     setEstadosContenedores({});
+    setAsignacionesEliminadas([]);
+    setAsignacionesNuevas([]);
+
+    const nuevosLotes = [];
+    contenedores.forEach((contenedorItem) => {
+      const contenedor = contenedorItem?.contenedor || null;
+      const productos = contenedorItem?.productos || [];
+      productos.forEach((productoItem) => {
+        if (!productoItem?.loteId) return;
+        nuevosLotes.push({
+          asignacionId: productoItem.loteId,
+          productoId: productoItem.producto?._id || productoItem.producto,
+          productoCodigo: productoItem.producto?.codigo || "-",
+          productoNombre: productoItem.producto?.nombre || productoItem.producto?.descripcion || "",
+          cantidad: String(productoItem.cantidad || 0),
+          tipoContenedor: contenedor ? "existente" : "sin",
+          contenedorId: contenedor?._id || "",
+          contenedorCodigo: contenedor?.codigo || "",
+          contenedorFechaEstimada:
+            contenedor?.fechaEstimadaLlegada
+              ? dayjs(contenedor.fechaEstimadaLlegada).format("YYYY-MM-DD")
+              : productoItem?.fechaEstimadaDeLlegada
+              ? dayjs(productoItem.fechaEstimadaDeLlegada).format("YYYY-MM-DD")
+              : "",
+        });
+      });
+    });
+
+    setAsignacionesEdicion(nuevosLotes);
+    setAsignacionesOriginales(nuevosLotes);
   }, [pedido?._id]);
 
   const normalizeContenedorEstado = useCallback((estado) => {
@@ -70,70 +100,208 @@ const PedidoDetalleModal = ({ open, onClose, resumen }) => {
     return upper || "PENDIENTE";
   }, []);
 
-  const contenedoresRows = useMemo(
-    () =>
-      contenedores.map((c) => {
-        const unidades = (c.productos || []).reduce((acc, p) => acc + (p.cantidad || 0), 0);
-        const normalizedEstado = normalizeContenedorEstado(c.estado);
+  const getContenedorRowId = useCallback((contenedorItem, index) => {
+    return (
+      contenedorItem?.contenedor?._id ||
+      contenedorItem?.contenedor?.codigo ||
+      `tmp-${index}`
+    );
+  }, []);
+
+  const cambiosContenedores = useMemo(() => {
+    return contenedores
+      .map((contenedorItem, index) => {
+        const contenedorId = contenedorItem?.contenedor?._id;
+        if (!contenedorId) return null;
+        const rowId = getContenedorRowId(contenedorItem, index);
+        const actual = normalizeContenedorEstado(contenedorItem?.estado || "PENDIENTE");
+        const desired = (estadosContenedores[rowId] || actual || "PENDIENTE").toUpperCase();
+        return { id: contenedorId, actual: actual.toUpperCase(), desired };
+      })
+      .filter(Boolean)
+      .filter((c) => c.desired !== c.actual);
+  }, [contenedores, estadosContenedores, getContenedorRowId, normalizeContenedorEstado]);
+
+  const asignacionesOriginalesMap = useMemo(() => {
+    return new Map(
+      (asignacionesOriginales || []).map((asignacion) => [
+        asignacion.asignacionId,
+        asignacion,
+      ])
+    );
+  }, [asignacionesOriginales]);
+
+  const asignacionesActualizadas = useMemo(() => {
+    return (asignacionesEdicion || [])
+      .map((asignacion) => {
+        const original = asignacionesOriginalesMap.get(asignacion.asignacionId);
+        if (!original) return null;
+
+        const cantidad = parseInt(String(asignacion.cantidad || ""), 10) || 0;
+        const cantidadOriginal = parseInt(String(original.cantidad || ""), 10) || 0;
+        const cambioCantidad = cantidad !== cantidadOriginal;
+
+        const cambioTipo = asignacion.tipoContenedor !== original.tipoContenedor;
+        const cambioContenedorId = asignacion.contenedorId !== original.contenedorId;
+        const cambioFecha =
+          asignacion.contenedorFechaEstimada !== original.contenedorFechaEstimada;
+
+        if (!cambioCantidad && !cambioTipo && !cambioContenedorId && !cambioFecha) return null;
+
+        const payload = { loteId: asignacion.asignacionId, cantidad };
+
+        if (
+          asignacion.tipoContenedor === "existente" &&
+          (cambioTipo || cambioContenedorId)
+        ) {
+          payload.contenedor = { tipo: "existente", id: asignacion.contenedorId };
+        }
+
+        if (asignacion.tipoContenedor === "nuevo") {
+          payload.contenedor = {
+            tipo: "nuevo",
+            codigo: asignacion.contenedorCodigo,
+            fechaEstimadaLlegada: asignacion.contenedorFechaEstimada,
+          };
+        }
+
+        if (asignacion.tipoContenedor === "sin" && (cambioTipo || cambioFecha)) {
+          payload.contenedor = { tipo: "sin" };
+          payload.fechaEstimadaLlegada = asignacion.contenedorFechaEstimada || null;
+        }
+
+        return payload;
+      })
+      .filter(Boolean);
+  }, [asignacionesEdicion, asignacionesOriginalesMap]);
+
+  const asignacionesCrear = useMemo(() => {
+    return (asignacionesNuevas || [])
+      .map((asignacion) => {
+        if (!asignacion.productoId) return null;
+        const cantidad = parseInt(String(asignacion.cantidad || ""), 10) || 0;
+        if (cantidad < 1) return null;
+
+        if (asignacion.tipoContenedor === "existente" && !asignacion.contenedorId) return null;
+        if (
+          asignacion.tipoContenedor === "nuevo" &&
+          (!asignacion.contenedorCodigo || !asignacion.contenedorFechaEstimada)
+        ) {
+          return null;
+        }
+        if (asignacion.tipoContenedor === "sin" && !asignacion.contenedorFechaEstimada) return null;
+
+        if (asignacion.tipoContenedor === "existente") {
+          return {
+            productoId: asignacion.productoId,
+            cantidad,
+            contenedor: { tipo: "existente", id: asignacion.contenedorId },
+          };
+        }
+        if (asignacion.tipoContenedor === "nuevo") {
+          return {
+            productoId: asignacion.productoId,
+            cantidad,
+            contenedor: {
+              tipo: "nuevo",
+              codigo: asignacion.contenedorCodigo,
+              fechaEstimadaLlegada: asignacion.contenedorFechaEstimada,
+            },
+          };
+        }
         return {
-          id: c?.contenedor?._id || c?.contenedor?.codigo || Math.random(),
-          contenedorId: c?.contenedor?._id,
-          codigo: c?.contenedor?.codigo || "Sin código",
-          estado: normalizedEstado,
-          eta: c?.contenedor?.fechaEstimadaLlegada,
-          unidades,
-          productosResumen: (c.productos || [])
-            .map((p) => `${p.producto?.codigo || "-"} (${p.cantidad || 0})`)
-            .join(", "),
+          productoId: asignacion.productoId,
+          cantidad,
+          fechaEstimadaLlegada: asignacion.contenedorFechaEstimada,
         };
-      }),
-    [contenedores, normalizeContenedorEstado]
+      })
+      .filter(Boolean);
+  }, [asignacionesNuevas]);
+
+  const asignacionesEliminar = useMemo(
+    () => (asignacionesEliminadas || []).filter(Boolean),
+    [asignacionesEliminadas]
   );
 
-  const productosRows = useMemo(
-    () =>
-      productosTotales.map((p) => ({
-        id: p.producto?._id || p.producto,
-        codigo: p.producto?.codigo || "-",
-        nombre: p.producto?.nombre || p.producto?.descripcion || "",
-        cantidad: p.cantidad || 0,
-      })),
-    [productosTotales]
-  );
+  const cambiosEstadoPedido = useMemo(() => {
+    const estadoPedidoActual = (pedido?.estado || "PENDIENTE").toUpperCase();
+    const desiredPedido = (estadoPedido || "PENDIENTE").toUpperCase();
+    return estadoPedidoActual !== desiredPedido;
+  }, [pedido?.estado, estadoPedido]);
+
+  const hasChanges = useMemo(() => {
+    if (cambiosEstadoPedido) return true;
+    if (cambiosContenedores.length > 0) return true;
+    if (asignacionesActualizadas.length > 0) return true;
+    if (asignacionesCrear.length > 0) return true;
+    if (asignacionesEliminar.length > 0) return true;
+    return false;
+  }, [
+    cambiosEstadoPedido,
+    cambiosContenedores,
+    asignacionesActualizadas,
+    asignacionesCrear,
+    asignacionesEliminar,
+  ]);
 
   const mutation = useMutation({
     mutationFn: async () => {
+      const payload = {
+        pedidoId: pedido?._id,
+        create: asignacionesCrear,
+        update: asignacionesActualizadas,
+        remove: asignacionesEliminar,
+      };
+      // #region agent log
+      fetch("http://127.0.0.1:7242/ingest/2d24a2b6-12a8-4d4d-9c21-afa4382deedb", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: "debug-session",
+          runId: "run1",
+          hypothesisId: "H1",
+          location: "PedidoDetalleModal.js:254",
+          message: "Payload previo al mutation",
+          data: payload,
+          timestamp: Date.now(),
+        }),
+      }).catch(() => {});
+      // #endregion
       const tasks = [];
 
-      const estadoPedidoActual = (pedido?.estado || "PENDIENTE").toUpperCase();
-      const desiredPedido = (estadoPedido || "PENDIENTE").toUpperCase();
-      if (pedido?._id && desiredPedido !== estadoPedidoActual) {
-        tasks.push(pedidoService.updateEstado(pedido._id, desiredPedido));
+      if (pedido?._id && cambiosEstadoPedido) {
+        tasks.push(pedidoService.updateEstado(pedido._id, estadoPedido));
       }
 
-      const contenedoresCambios = contenedoresRows
-        .filter((row) => row.contenedorId)
-        .map((row) => {
-          const actual = (row.estado || "PENDIENTE").toUpperCase();
-          const desired = (estadosContenedores[row.id] || row.estado || "PENDIENTE").toUpperCase();
-          return { id: row.contenedorId, actual, desired };
-        })
-        .filter((c) => c.desired !== c.actual);
-
-      if (contenedoresCambios.length > 0) {
+      if (cambiosContenedores.length > 0) {
         tasks.push(
           Promise.all(
-            contenedoresCambios.map((c) => contenedorService.updateEstado(c.id, c.desired))
+            cambiosContenedores.map((c) => contenedorService.updateEstado(c.id, c.desired))
           )
+        );
+      }
+
+      if (
+        pedido?._id &&
+        (asignacionesCrear.length > 0 ||
+          asignacionesActualizadas.length > 0 ||
+          asignacionesEliminar.length > 0)
+      ) {
+        tasks.push(
+          pedidoService.updateLotes(pedido._id, {
+            create: asignacionesCrear,
+            update: asignacionesActualizadas,
+            remove: asignacionesEliminar,
+          })
         );
       }
 
       await Promise.all(tasks);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["pedidos-resumen"] });
-      queryClient.invalidateQueries({ queryKey: ["contenedores"] });
-      onClose?.();
+    queryClient.invalidateQueries({ queryKey: ["pedidos-resumen"] });
+    queryClient.invalidateQueries({ queryKey: ["contenedores"] });
+    onClose?.();
     },
   });
 
@@ -142,55 +310,100 @@ const PedidoDetalleModal = ({ open, onClose, resumen }) => {
     mutation.mutate();
   };
 
+  const handleEstadoContenedorChange = (rowId, value) => {
+    setEstadosContenedores((prev) => ({
+      ...prev,
+      [rowId]: value,
+    }));
+  };
+
+  const asignacionesPorProducto = useMemo(() => {
+    const map = new Map();
+    asignacionesEdicion.forEach((asignacion) => {
+      const key = asignacion.productoId || asignacion.asignacionId;
+      const existing = map.get(key) || {
+        productoId: asignacion.productoId,
+        productoCodigo: asignacion.productoCodigo,
+        productoNombre: asignacion.productoNombre,
+        asignaciones: [],
+      };
+      existing.asignaciones.push(asignacion);
+      map.set(key, existing);
+    });
+    return Array.from(map.values());
+  }, [asignacionesEdicion]);
+
+  const hasInvalidEdicion = useMemo(() => {
+    const invalidCantidad = (value) => {
+      const parsed = parseInt(String(value || ""), 10);
+      return !Number.isFinite(parsed) || parsed < 1;
+    };
+
+    const invalidTipo = (asignacion) => {
+      if (asignacion.tipoContenedor === "existente") return !asignacion.contenedorId;
+      if (asignacion.tipoContenedor === "nuevo") {
+        return !asignacion.contenedorCodigo || !asignacion.contenedorFechaEstimada;
+      }
+      if (asignacion.tipoContenedor === "sin") return !asignacion.contenedorFechaEstimada;
+      return true;
+    };
+
+    const invalidEdit = (asignacionesEdicion || []).some(
+      (asignacion) => invalidCantidad(asignacion.cantidad) || invalidTipo(asignacion)
+    );
+    if (invalidEdit) return true;
+
+    const invalidCreate = (asignacionesNuevas || []).some((asignacion) => {
+      if (!asignacion.productoId) return true;
+      return invalidCantidad(asignacion.cantidad) || invalidTipo(asignacion);
+    });
+    return invalidCreate;
+  }, [asignacionesEdicion, asignacionesNuevas]);
+
   if (!resumen) return null;
 
-  const contenedorColumns = [
-    { key: "codigo", label: "Contenedor", sortable: false },
-    {
-      key: "estado",
-      label: "Estado",
-      render: (row) => <EstadoChip estado={estadosContenedores[row.id] ?? row.estado} />,
-    },
-    {
-      key: "eta",
-      label: "ETA",
-      render: (row) => formatFecha(row.eta),
-    },
-    { key: "unidades", label: "Unidades", sortable: false },
-    { key: "productosResumen", label: "Productos", sortable: false, sx: { minWidth: 200 } },
-    {
-      key: "cambiarEstado",
-      label: "Cambiar estado",
-      sortable: false,
-      render: (row) => (
-        <TextField
-          select
-          size="small"
-          label="Estado"
-          value={estadosContenedores[row.id] ?? row.estado ?? CONTENEDOR_ESTADOS[0]}
-          onChange={(e) =>
-            setEstadosContenedores((prev) => ({
-              ...prev,
-              [row.id]: e.target.value,
-            }))
-          }
-          sx={{ minWidth: 150 }}
-        >
-          {CONTENEDOR_ESTADOS.map((estado) => (
-            <MenuItem key={estado} value={estado}>
-              {CONTENEDOR_ESTADOS_LABELS[estado] || estado}
-            </MenuItem>
-          ))}
-        </TextField>
-      ),
-    },
-  ];
 
-  const productosColumns = [
-    { key: "codigo", label: "Código", sortable: false },
-    { key: "nombre", label: "Nombre", sortable: false, sx: { minWidth: 180 } },
-    { key: "cantidad", label: "Cantidad", sortable: false },
-  ];
+  const handleEditarAsignacion = (asignacionId, field, value) => {
+    setAsignacionesEdicion((prev) =>
+      prev.map((asignacion) =>
+        asignacion.asignacionId === asignacionId ? { ...asignacion, [field]: value } : asignacion
+      )
+    );
+  };
+
+  const handleEliminarAsignacion = (asignacionId) => {
+    setAsignacionesEdicion((prev) =>
+      prev.filter((asignacion) => asignacion.asignacionId !== asignacionId)
+    );
+    setAsignacionesEliminadas((prev) => [...prev, asignacionId]);
+  };
+
+  const agregarAsignacionNueva = () => {
+    setAsignacionesNuevas((prev) => [
+      ...prev,
+      {
+        id: `nuevo-${Date.now()}-${Math.random()}`,
+        productoId: "",
+        productoCodigo: "",
+        productoNombre: "",
+        cantidad: "1",
+        tipoContenedor: "existente",
+        contenedorId: "",
+        contenedorCodigo: "",
+        contenedorFechaEstimada: "",
+      },
+    ]);
+  };
+
+  const handleEditarAsignacionNueva = (id, field, value) => {
+    setAsignacionesNuevas((prev) =>
+      prev.map((asignacion) => (asignacion.id === id ? { ...asignacion, [field]: value } : asignacion))
+    );
+  };
+
+  const handleEliminarAsignacionNueva = (id) => {
+    setAsignacionesNuevas((prev) => prev.filter((asignacion) => asignacion.id !== id));
+  };
 
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="md">
@@ -234,32 +447,57 @@ const PedidoDetalleModal = ({ open, onClose, resumen }) => {
         <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 2 }}>
           <Tab label="Productos" />
           <Tab label="Contenedores" />
+          <Tab label="Editar" />
         </Tabs>
 
         {tab === 0 && (
-          <>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-              {productosRows.length} referencias, {unidadesTotales} unidades
-            </Typography>
-            <TableComponent data={productosRows} columns={productosColumns} />
-          </>
+          <PedidoDetalleProductosTab
+            contenedores={contenedores}
+            productosTotales={productosTotales}
+            unidadesTotales={unidadesTotales}
+          />
         )}
 
         {tab === 1 && (
-          <>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-              {contenedoresRows.length} contenedores
-            </Typography>
-            <TableComponent data={contenedoresRows} columns={contenedorColumns} />
-          </>
+          <PedidoDetalleContenedoresTab
+            contenedores={contenedores}
+            estadosContenedores={estadosContenedores}
+            onEstadoChange={handleEstadoContenedorChange}
+            contenedorEstados={CONTENEDOR_ESTADOS}
+            contenedorEstadosLabels={CONTENEDOR_ESTADOS_LABELS}
+            normalizeEstado={normalizeContenedorEstado}
+            getRowId={getContenedorRowId}
+          />
+        )}
+
+        {tab === 2 && (
+          <PedidoDetalleEditarTab
+            asignacionesEdicion={asignacionesEdicion}
+            asignacionesPorProducto={asignacionesPorProducto}
+            asignacionesNuevas={asignacionesNuevas}
+            contenedoresDisponibles={contenedoresDisponibles}
+            productosDisponibles={productosDisponibles}
+            loadingProductos={loadingProductos}
+            onAgregarAsignacion={agregarAsignacionNueva}
+            onEditarAsignacion={handleEditarAsignacion}
+            onEliminarAsignacion={handleEliminarAsignacion}
+            onEditarAsignacionNueva={handleEditarAsignacionNueva}
+            onEliminarAsignacionNueva={handleEliminarAsignacionNueva}
+          />
         )}
       </DialogContent>
       <DialogActions sx={{ justifyContent: "flex-end" }}>
         <Stack direction="row" spacing={1}>
           <Button onClick={onClose}>Cerrar</Button>
-          <Button variant="contained" color="primary" onClick={handleConfirm} disabled={mutation.isLoading}>
+          <LoadingButton
+            variant="contained"
+            color="primary"
+            onClick={handleConfirm}
+            loading={mutation.isLoading}
+            disabled={mutation.isLoading || hasInvalidEdicion || !hasChanges}
+          >
             {mutation.isLoading ? "Guardando..." : "Confirmar cambios"}
-          </Button>
+          </LoadingButton>
         </Stack>
       </DialogActions>
     </Dialog>

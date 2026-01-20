@@ -57,6 +57,11 @@ const pedidoService = {
     const response = await axiosCelulandia.patch(`/pedidos/${pedidoId}/estado`, { estado });
     return response.data;
   },
+
+  updateLotes: async (pedidoId, payload) => {
+    const response = await axiosCelulandia.patch(`/pedidos/${pedidoId}/lotes`, payload);
+    return response.data;
+  },
 };
 
 export default pedidoService;

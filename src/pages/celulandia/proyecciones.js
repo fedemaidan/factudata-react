@@ -120,7 +120,6 @@ const ProyeccionesV2Page = () => {
 
   const handleSortChange = useCallback((campo) => {
     setPage(0);
-    setSelectedProductsMap(new Map());
     setSortOptions((prev) => {
       const isSameField = prev.sortField === campo;
       return {
@@ -143,7 +142,6 @@ const ProyeccionesV2Page = () => {
 
   useEffect(() => {
     setPage(0);
-    setSelectedProductsMap(new Map());
   }, [debouncedBusqueda, selectedTagId]);
 
   const actionButtonProps = {
@@ -316,7 +314,7 @@ const ProyeccionesV2Page = () => {
       },
       {
         key: "fechaAgotamientoStock",
-        label: "Fecha agotamiento",
+        label: "Fecha agotamiento (Stock 0)",
         sortable: true,
         render: (item) => formatDateDDMMYYYY(item.fechaAgotamientoStock),
       },
@@ -349,6 +347,33 @@ const ProyeccionesV2Page = () => {
       .filter(Boolean)
       .map((id) => String(id));
     return Array.from(new Set(ids));
+  }, [productos]);
+
+  const proyeccionMayoritaria = useMemo(() => {
+    const counts = {};
+    let total = 0;
+    (Array.isArray(productos) ? productos : []).forEach((producto) => {
+      const id = producto?.idProyeccion;
+      if (!id) return;
+      const key = String(id);
+      counts[key] = (counts[key] || 0) + 1;
+      total += 1;
+    });
+    if (total === 0) return null;
+
+    let mejorId = null;
+    let mejorCuenta = 0;
+    Object.entries(counts).forEach(([id, cuenta]) => {
+      if (!mejorId || cuenta > mejorCuenta) {
+        mejorId = id;
+        mejorCuenta = cuenta;
+      }
+    });
+    if (!mejorId) return null;
+
+    return mejorCuenta / total >= 0.9
+      ? { id: mejorId, porcentaje: Math.round((mejorCuenta / total) * 100) }
+      : null;
   }, [productos]);
 
   useEffect(() => {
@@ -589,7 +614,11 @@ const ProyeccionesV2Page = () => {
           ) : proyeccionIdsEnPagina.length === 0 ? (
             ""
           ) : proyeccionIdsEnPagina.length > 1 ? (
-            `Esta lista incluye ${proyeccionIdsEnPagina.length} proyecciones distintas.`
+            proyeccionMayoritaria ? (
+              `Proyección mayoritaria (≥90%): ${proyeccionMayoritaria.id}`
+            ) : (
+              `Esta lista incluye ${proyeccionIdsEnPagina.length} proyecciones distintas.`
+            )
           ) : (
             <>
               {`Proyección: ${formatDateDDMMYYYY(proyeccionMeta?.fechaInicio)} → ${formatDateDDMMYYYY(

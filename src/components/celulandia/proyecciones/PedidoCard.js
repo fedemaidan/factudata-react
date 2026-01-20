@@ -53,9 +53,6 @@ const PedidoCard = ({
             <Typography variant="caption" color="text.secondary" display="block">
               Creado: {pedido.createdAt ? dayjs(pedido.createdAt).format("DD/MM/YYYY") : "-"}
             </Typography>
-            <Typography variant="caption" color="text.secondary" display="block">
-              Última actualización: {pedido.updatedAt ? dayjs(pedido.updatedAt).format("DD/MM/YYYY HH:mm") : "-"}
-            </Typography>
           </Box>
 
           <Stack direction="row" spacing={1} alignItems="center">
@@ -76,12 +73,53 @@ const PedidoCard = ({
             </Typography>
           </Grid>
           <Grid item xs={12} md={4}>
-            <Typography variant="subtitle2">Llegada estimada</Typography>
-            <Typography variant="body2" color="text.secondary">
-              {pedido.fechaEstimadaLlegada
-                ? dayjs(pedido.fechaEstimadaLlegada).format("DD/MM/YYYY")
-                : "No informada"}
-            </Typography>
+            <Typography variant="subtitle2">Llegadas estimadas</Typography>
+            {(() => {
+              const fechas = contenedores
+                .map((c) => c?.contenedor?.fechaEstimadaLlegada)
+                .filter(Boolean)
+                .map((date) => dayjs(date).format("DD/MM/YYYY"));
+              const uniqueFechas = [...new Set(fechas)];
+              const sinFecha = contenedores.filter(
+                (c) => !c?.contenedor?.fechaEstimadaLlegada
+              ).length;
+
+              if (uniqueFechas.length === 0 && sinFecha === 0) {
+                return (
+                  <Typography variant="body2" color="text.secondary">
+                    No informadas
+                  </Typography>
+                );
+              }
+
+              if (uniqueFechas.length === 1 && sinFecha === 0) {
+                return (
+                  <Typography variant="body2" color="text.secondary">
+                    {uniqueFechas[0]}
+                  </Typography>
+                );
+              }
+
+              const textParts = [];
+              if (uniqueFechas.length > 0) {
+                if (uniqueFechas.length === 2) {
+                  textParts.push(uniqueFechas.join(", "));
+                } else if (uniqueFechas.length > 2) {
+                  textParts.push(`${uniqueFechas[0]}, ${uniqueFechas[1]} +${uniqueFechas.length - 2}`);
+                } else {
+                  textParts.push(uniqueFechas[0]);
+                }
+              }
+              if (sinFecha > 0) {
+                textParts.push(`${sinFecha} sin fecha`);
+              }
+
+              return (
+                <Typography variant="body2" color="text.secondary">
+                  {textParts.join(" · ")}
+                </Typography>
+              );
+            })()}
           </Grid>
           <Grid item xs={12} md={4}>
             <Typography variant="subtitle2">Contenedores</Typography>

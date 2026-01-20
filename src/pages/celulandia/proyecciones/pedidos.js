@@ -39,6 +39,15 @@ const PedidosPage = () => {
     invalidatePedidosResumen();
   }, [invalidatePedidosResumen]);
 
+  const handleVolver = useCallback(() => {
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      router.back();
+      return;
+    }
+
+    router.push("/celulandia/proyecciones");
+  }, [router]);
+
   return (
     <>
       <Head>
@@ -48,11 +57,7 @@ const PedidosPage = () => {
         <Box component="main" sx={{ flexGrow: 1, pb: 2, minHeight: "100vh", bgcolor: "grey.50" }}>
           <Container maxWidth="xl" sx={{ py: 3 }}>
             <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2 }}>
-              <Button
-                startIcon={<ArrowBackIcon />}
-                variant="text"
-                onClick={() => router.push("/celulandia/proyecciones-v2")}
-              >
+              <Button startIcon={<ArrowBackIcon />} variant="text" onClick={handleVolver}>
                 Volver a proyecciones
               </Button>
               <Box flex={1} />
