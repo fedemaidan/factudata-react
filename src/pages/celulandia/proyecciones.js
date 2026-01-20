@@ -9,6 +9,9 @@ import {
   CircularProgress,
   TextField,
   InputAdornment,
+  FormControl,
+  InputLabel,
+  Select,
   Menu,
   MenuItem,
   Link,
@@ -22,6 +25,7 @@ import { Block as BlockIcon } from "@mui/icons-material";
 import ArrowDropDownIcon from "@mui/icons-material/ArrowDropDown";
 import { FileDownload as FileDownloadIcon } from "@mui/icons-material";
 import SearchIcon from "@mui/icons-material/Search";
+import { useQuery } from "@tanstack/react-query";
 import AgregarProyeccionModal from "src/components/celulandia/AgregarProyeccionModal";
 import AgregarPedidoModal from "src/components/celulandia/proyecciones/AgregarPedidoModal";
 import GestionarTagsModal from "src/components/celulandia/GestionarTagsModal";
@@ -70,6 +74,7 @@ const ProyeccionesV2Page = () => {
   const [rowsPerPage, setRowsPerPage] = useState(200);
   const [busquedaTexto, setBusquedaTexto] = useState("");
   const debouncedBusqueda = useDebouncedValue(busquedaTexto, 500);
+  const [selectedTagId, setSelectedTagId] = useState("");
 
   const [isNotaDialogOpen, setIsNotaDialogOpen] = useState(false);
   const [notaProducto, setNotaProducto] = useState(null);
@@ -88,7 +93,25 @@ const ProyeccionesV2Page = () => {
     refetch: refetchProductos,
     isExporting,
     handleExportExcel,
-  } = useProductos({ ...sortOptions, page, pageSize: rowsPerPage, text: debouncedBusqueda });
+  } = useProductos({
+    ...sortOptions,
+    page,
+    pageSize: rowsPerPage,
+    text: debouncedBusqueda,
+    tagId: selectedTagId,
+  });
+
+  const { data: tags = [], isLoading: isLoadingTags } = useQuery({
+    queryKey: ["productos-tags"],
+    queryFn: async () => {
+      const result = await productoService.getTags();
+      if (!result?.success) {
+        throw new Error(result?.error || "Error al cargar los tags");
+      }
+      return result.data || [];
+    },
+    retry: false,
+  });
 
   const {
     proximoArriboPorCodigo,
@@ -121,7 +144,7 @@ const ProyeccionesV2Page = () => {
   useEffect(() => {
     setPage(0);
     setSelectedProductsMap(new Map());
-  }, [debouncedBusqueda]);
+  }, [debouncedBusqueda, selectedTagId]);
 
   const actionButtonProps = {
     size: "small",
@@ -395,7 +418,7 @@ const ProyeccionesV2Page = () => {
     <DashboardLayout title="Proyecciones">
       <Container maxWidth="xl">
         <Stack direction="column" spacing={2} sx={{ mb: 3 }}>
-          <Stack direction="row" alignItems="center" spacing={2}>
+          <Stack direction="row" alignItems="center" spacing={2} useFlexGap flexWrap="wrap">
             <TextField
               id="proyecciones-v2-buscar-texto"
               value={busquedaTexto}
@@ -403,7 +426,6 @@ const ProyeccionesV2Page = () => {
               placeholder="Buscar por código, nombre o tag…"
               size="small"
               type="search"
-              fullWidth
               variant="outlined"
               InputProps={{
                 "aria-label": "Buscar productos",
@@ -419,7 +441,9 @@ const ProyeccionesV2Page = () => {
                 },
               }}
               sx={{
-                maxWidth: { xs: "100%", sm: 420 },
+                flexGrow: 1,
+                minWidth: { xs: "100%", sm: 320 },
+                maxWidth: { xs: "100%", sm: 520 },
                 "& .MuiOutlinedInput-notchedOutline": {
                   borderColor: "transparent",
                 },
@@ -431,6 +455,33 @@ const ProyeccionesV2Page = () => {
                 },
               }}
             />
+
+            <FormControl
+              size="small"
+              variant="filled"
+              sx={{ minWidth: { xs: "100%", sm: 260 } }}
+              disabled={isLoadingTags}
+            >
+              <InputLabel size="small" id="proyecciones-v2-tag-filter-label">
+                Tag
+              </InputLabel>
+              <Select
+                labelId="proyecciones-v2-tag-filter-label"
+                size="small"
+                value={selectedTagId}
+                label="Tag"
+                onChange={(e) => setSelectedTagId(e.target.value)}
+              >
+                <MenuItem value="">
+                  <em>(todos)</em>
+                </MenuItem>
+                {(Array.isArray(tags) ? tags : []).map((t) => (
+                  <MenuItem key={t?._id} value={t?._id}>
+                    {t?.nombre || "-"}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
           </Stack>
 
           <Stack direction="column" spacing={1} sx={{ width: "100%" }}>

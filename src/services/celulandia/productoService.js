@@ -10,6 +10,7 @@ const productoService = {
     sortField = "createdAt",
     sortDirection = "desc",
     text,
+    tagId,
   } = {}) => {
     const isAll = Boolean(all);
     const shouldUsePage = page !== undefined || pageSize !== undefined;
@@ -22,6 +23,7 @@ const productoService = {
         ? normalizedPageSize
         : limit;
     const safeText = typeof text === "string" ? text.trim() : "";
+    const safeTagId = typeof tagId === "string" ? tagId.trim() : "";
 
     const response = await axiosCelulandia.get("/productos", {
       params: {
@@ -33,6 +35,7 @@ const productoService = {
         sortField,
         sortOrder: sortDirection,
         ...(safeText ? { text: safeText } : {}),
+        ...(safeTagId ? { tagId: safeTagId } : {}),
       },
     });
     return response.data;

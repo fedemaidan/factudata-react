@@ -11,11 +11,12 @@ export const useProductos = ({
   page = 0,
   pageSize = 50,
   text = "",
+  tagId = "",
 } = {}) => {
   const queryClient = useQueryClient();
   const [isExporting, setIsExporting] = useState(false);
   const query = useQuery({
-    queryKey: ["productos", sortField, sortDirection, page, pageSize, text],
+    queryKey: ["productos", sortField, sortDirection, page, pageSize, text, tagId],
     queryFn: () =>
       productoService.getAll({
         page: page + 1,
@@ -23,6 +24,7 @@ export const useProductos = ({
         sortField,
         sortDirection,
         text,
+        tagId,
       }),
     retry: false,
   });
@@ -119,6 +121,7 @@ export const useProductos = ({
         sortField,
         sortDirection,
         text,
+        tagId,
       });
 
       const allProductos = Array.isArray(response?.data) ? response.data : [];
@@ -226,7 +229,7 @@ export const useProductos = ({
     } finally {
       setIsExporting(false);
     }
-  }, [sortField, sortDirection, text]);
+  }, [sortField, sortDirection, text, tagId]);
 
   return {
     ...query,
