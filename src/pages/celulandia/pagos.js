@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { Layout as DashboardLayout } from "src/layouts/dashboard/layout";
 import Head from "next/head";
 import { Container } from "@mui/material";
@@ -17,9 +17,10 @@ import AgregarPagoModal from "src/components/celulandia/AgregarPagoModal";
 import ConfirmarEliminacionModal from "src/components/celulandia/ConfirmarEliminacionModal";
 import { getEmpresaDetailsFromUser } from "src/services/empresaService";
 import { useAuthContext } from "src/contexts/auth-context";
-import { formatearMonto, parsearMonto } from "src/utils/celulandia/separacionMiles";
+import { formatearMonto } from "src/utils/celulandia/separacionMiles";
 import useDebouncedValue from "src/hooks/useDebouncedValue";
 import PagosFiltersBar from "src/components/celulandia/PagosFiltersBar";
+import { usersSistema } from "src/utils/celulandia/users";
 
 const PagosCelulandiaPage = () => {
   const { user } = useAuthContext();
@@ -42,6 +43,14 @@ const PagosCelulandiaPage = () => {
   const [cajas, setCajas] = useState([]);
   const [filtroMoneda, setFiltroMoneda] = useState("");
   const [selectedCajaNombre, setSelectedCajaNombre] = useState(""); // "" => Todas
+  const [filtroUsuario, setFiltroUsuario] = useState("");
+  const usuariosOptions = useMemo(
+    () => [
+      { value: "", label: "(todos)" },
+      ...[...usersSistema].sort().map((u) => ({ value: u, label: u })),
+    ],
+    []
+  );
   const [montoDesde, setMontoDesde] = useState("");
   const [montoHasta, setMontoHasta] = useState("");
   const debouncedMontoDesde = useDebouncedValue(montoDesde, 500);
@@ -49,8 +58,13 @@ const PagosCelulandiaPage = () => {
   const [busquedaTexto, setBusquedaTexto] = useState("");
   const debouncedBusqueda = useDebouncedValue(busquedaTexto, 500);
 
+  const prevDebouncedRef = useRef({
+    busqueda: debouncedBusqueda,
+    desde: debouncedMontoDesde,
+    hasta: debouncedMontoHasta,
+  });
+  const fetchRequestIdRef = useRef(0);
 
-  console.log('pagos', pagos);
   const movimientoHistorialConfig = useMemo(
     () => ({
       title: "Historial del Pago",
@@ -145,19 +159,41 @@ const PagosCelulandiaPage = () => {
   };
 
   useEffect(() => {
-    fetchData(paginaActual);
-  }, [paginaActual, sortField, sortDirection, filtroFecha, selectedCajaNombre, filtroMoneda, debouncedMontoDesde, debouncedMontoHasta, debouncedBusqueda]);
+    const prev = prevDebouncedRef.current;
+    const debouncedChanged =
+      prev.busqueda !== debouncedBusqueda ||
+      prev.desde !== debouncedMontoDesde ||
+      prev.hasta !== debouncedMontoHasta;
 
-  // Al cambiar los montos, resetear a página 1
-  useEffect(() => {
-    setPaginaActual(1);
-  }, [debouncedMontoDesde, debouncedMontoHasta]);
-  // Resetear a la primera página cuando cambia la búsqueda
-  useEffect(() => {
-    setPaginaActual(1);
-  }, [debouncedBusqueda]);
+    prevDebouncedRef.current = {
+      busqueda: debouncedBusqueda,
+      desde: debouncedMontoDesde,
+      hasta: debouncedMontoHasta,
+    };
+
+    // Evitar doble request: si cambió el debounce y estamos en otra página,
+    // primero reseteamos a página 1 y dejamos que el siguiente render fetchee.
+    if (debouncedChanged && paginaActual !== 1) {
+      setPaginaActual(1);
+      return;
+    }
+
+    fetchData(paginaActual);
+  }, [
+    paginaActual,
+    sortField,
+    sortDirection,
+    filtroFecha,
+    selectedCajaNombre,
+    filtroMoneda,
+    filtroUsuario,
+    debouncedMontoDesde,
+    debouncedMontoHasta,
+    debouncedBusqueda,
+  ]);
 
   const fetchData = async (pagina = 1) => {
+    const requestId = (fetchRequestIdRef.current += 1);
     setIsLoading(true);
     try {
       const offset = (pagina - 1) * limitePorPagina;
@@ -189,6 +225,7 @@ const PagosCelulandiaPage = () => {
           sortDirection,
           cajaNombre: selectedCajaNombre || undefined,
           moneda: filtroMoneda || undefined,
+          nombreUsuario: filtroUsuario || undefined,
           ...(montoDesdeNegativo !== undefined ? { montoDesde: montoDesdeNegativo } : {}),
           ...(montoHastaNegativo !== undefined ? { montoHasta: montoHastaNegativo } : {}),
           montoTipo: "enviado",
@@ -201,16 +238,19 @@ const PagosCelulandiaPage = () => {
         getEmpresaDetailsFromUser(user),
       ]);
 
+      if (requestId !== fetchRequestIdRef.current) return;
+
       setPagos(movimientosResponse.data.map(parseMovimiento));
       setTotalPagos(movimientosResponse.total || 0);
-      setPaginaActual(pagina);
       setCajas(cajasResponse.data);
       const cates = empresaResponse?.categorias || [];
       setCategorias(cates);
     } catch (error) {
       console.error("Error al cargar datos:", error);
     } finally {
-      setIsLoading(false);
+      if (requestId === fetchRequestIdRef.current) {
+        setIsLoading(false);
+      }
     }
   };
 
@@ -335,11 +375,12 @@ const PagosCelulandiaPage = () => {
     if (filtroFecha && filtroFecha !== "todos") chips.push(`Fecha: ${fechaLabels[filtroFecha] || filtroFecha}`);
     if (filtroMoneda) chips.push(`Moneda: ${filtroMoneda}`);
     if (selectedCajaNombre) chips.push(`Cuenta de Origen: ${selectedCajaNombre}`);
+    if (filtroUsuario) chips.push(`Usuario: ${filtroUsuario}`);
     if (montoDesde) chips.push(`Desde: $${formatearMonto(montoDesde)}`);
     if (montoHasta) chips.push(`Hasta: $${formatearMonto(montoHasta)}`);
     if (busquedaTexto) chips.push(`Buscar: ${busquedaTexto}`);
     return chips;
-  }, [filtroFecha, filtroMoneda, selectedCajaNombre, montoDesde, montoHasta, busquedaTexto]);
+  }, [filtroFecha, filtroMoneda, selectedCajaNombre, filtroUsuario, montoDesde, montoHasta, busquedaTexto]);
 
   return (
     <DashboardLayout title="Pagos">
@@ -382,6 +423,7 @@ const PagosCelulandiaPage = () => {
                 setPaginaActual(1);
               }}
               cajas={cajas}
+              usuariosOptions={usuariosOptions}
               filtroMoneda={filtroMoneda}
               setFiltroMoneda={(v) => {
                 setFiltroMoneda(v);
@@ -390,6 +432,11 @@ const PagosCelulandiaPage = () => {
               selectedCajaNombre={selectedCajaNombre}
               setSelectedCajaNombre={(v) => {
                 setSelectedCajaNombre(v);
+                setPaginaActual(1);
+              }}
+              filtroUsuario={filtroUsuario}
+              setFiltroUsuario={(v) => {
+                setFiltroUsuario(v);
                 setPaginaActual(1);
               }}
               montoDesde={montoDesde}

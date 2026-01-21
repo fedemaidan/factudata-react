@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect } from "react";
+import React, { useRef, useState, useEffect, useCallback } from "react";
 import {
   Box,
   Stack,
@@ -17,7 +17,6 @@ import ClearIcon from "@mui/icons-material/Clear";
 import FilterListIcon from "@mui/icons-material/FilterList";
 import CloseIcon from "@mui/icons-material/Close";
 import RestartAltIcon from "@mui/icons-material/RestartAlt";
-import useDebouncedValue from "src/hooks/useDebouncedValue";
 import { formatearMonto, parsearMonto } from "src/utils/celulandia/separacionMiles";
 
 const dateFilterOptions = [
@@ -37,26 +36,54 @@ const PagosFiltersBar = ({
   onFiltroFechaChange,
   // data
   cajas = [],
+  usuariosOptions = [{ value: "", label: "(todos)" }],
   // valores y setters
   filtroMoneda,
   setFiltroMoneda,
   selectedCajaNombre,
   setSelectedCajaNombre,
+  filtroUsuario,
+  setFiltroUsuario,
   montoDesde,
   setMontoDesde,
   montoHasta,
   setMontoHasta,
 }) => {
   const [searchLocal, setSearchLocal] = useState(initialSearch || "");
-  const debouncedSearch = useDebouncedValue(searchLocal, 500);
   const anchorRef = useRef(null);
   const [open, setOpen] = useState(false);
+  const lastEmittedSearchRef = useRef((initialSearch || "").trim());
 
   useEffect(() => {
-    if (typeof onSearchDebounced === "function") {
-      onSearchDebounced((debouncedSearch || "").trim());
-    }
-  }, [debouncedSearch, onSearchDebounced]);
+    const next = initialSearch || "";
+    setSearchLocal((prev) => (prev === next ? prev : next));
+    lastEmittedSearchRef.current = (next || "").trim();
+  }, [initialSearch]);
+
+  const emitSearch = useCallback(
+    (rawValue) => {
+      if (typeof onSearchDebounced !== "function") return;
+      const next = (rawValue || "").trim();
+      if (lastEmittedSearchRef.current === next) return;
+      lastEmittedSearchRef.current = next;
+      onSearchDebounced(next);
+    },
+    [onSearchDebounced]
+  );
+
+  const handleSearchChange = useCallback(
+    (e) => {
+      const rawValue = e?.target?.value ?? "";
+      setSearchLocal(rawValue);
+      emitSearch(rawValue);
+    },
+    [emitSearch]
+  );
+
+  const handleClearSearch = useCallback(() => {
+    setSearchLocal("");
+    emitSearch("");
+  }, [emitSearch]);
 
   return (
     <Box sx={{ mb: 1 }}>
@@ -66,13 +93,13 @@ const PagosFiltersBar = ({
           label="Buscar"
           size="small"
           value={searchLocal}
-          onChange={(e) => setSearchLocal(e.target.value)}
+          onChange={handleSearchChange}
           sx={{ width: 220 }}
           InputProps={{
             endAdornment: searchLocal.length > 0 && (
               <InputAdornment position="end">
                 <IconButton
-                  onClick={() => setSearchLocal("")}
+                  onClick={handleClearSearch}
                   edge="end"
                   size="small"
                   sx={{ color: "text.secondary" }}
@@ -168,6 +195,22 @@ const PagosFiltersBar = ({
               </Select>
             </FormControl>
 
+            <FormControl size="small" fullWidth variant="filled">
+              <InputLabel size="small">Usuario</InputLabel>
+              <Select
+                size="small"
+                value={filtroUsuario}
+                label="Usuario"
+                onChange={(e) => setFiltroUsuario(e.target.value)}
+              >
+                {usuariosOptions.map((opt) => (
+                  <MenuItem key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+
             <Divider />
 
             <Stack direction="row" spacing={1}>
@@ -210,6 +253,7 @@ const PagosFiltersBar = ({
                   onFiltroFechaChange && onFiltroFechaChange("todos");
                   setFiltroMoneda("");
                   setSelectedCajaNombre("");
+                  setFiltroUsuario("");
                   setMontoDesde("");
                   setMontoHasta("");
                 }}

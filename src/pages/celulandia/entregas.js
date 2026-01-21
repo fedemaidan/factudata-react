@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { Layout as DashboardLayout } from "src/layouts/dashboard/layout";
 import Head from "next/head";
 import { Container } from "@mui/material";
@@ -17,16 +17,15 @@ import dolarService from "src/services/celulandia/dolarService";
 import {
   calcularFechasFiltro,
   getFechaArgentina,
-  getHoraArgentina,
 } from "src/utils/celulandia/fechas";
 import { getCuentaPendienteHistorialConfig } from "src/utils/celulandia/historial";
 import { parseCuentaPendiente } from "src/utils/celulandia/cuentasPendientes/parseCuentasPendientes";
-import { EditarEntregaModalV2 } from "src/components/celulandia/EditarEntregaModalV2";
 import useDebouncedValue from "src/hooks/useDebouncedValue";
-import { formatearMonto, parsearMonto } from "src/utils/celulandia/separacionMiles";
+import { formatearMonto } from "src/utils/celulandia/separacionMiles";
 import EntregasFiltersBar from "src/components/celulandia/EntregasFiltersBar";
 import AgregarDevolucionModal from "src/components/celulandia/AgregarDevolucionModal";
 import AddIcon from "@mui/icons-material/Add";
+import { usersSistema } from "src/utils/celulandia/users";
 
 const EntregasCelulandiaPage = () => {
   const [entregas, setEntregas] = useState([]);
@@ -67,7 +66,33 @@ const EntregasCelulandiaPage = () => {
   const debouncedMontoDesde = useDebouncedValue(montoDesde, 500);
   const debouncedMontoHasta = useDebouncedValue(montoHasta, 500);
 
+  const prevDebouncedRef = useRef({
+    busqueda: debouncedBusqueda,
+    desde: debouncedMontoDesde,
+    hasta: debouncedMontoHasta,
+  });
+  const fetchRequestIdRef = useRef(0);
+
   useEffect(() => {
+    const prev = prevDebouncedRef.current;
+    const debouncedChanged =
+      prev.busqueda !== debouncedBusqueda ||
+      prev.desde !== debouncedMontoDesde ||
+      prev.hasta !== debouncedMontoHasta;
+
+    prevDebouncedRef.current = {
+      busqueda: debouncedBusqueda,
+      desde: debouncedMontoDesde,
+      hasta: debouncedMontoHasta,
+    };
+
+    // Evitar doble request: si cambió el debounce y estamos en otra página,
+    // primero reseteamos a página 1 y dejamos que el siguiente render fetchee.
+    if (debouncedChanged && paginaActual !== 1) {
+      setPaginaActual(1);
+      return;
+    }
+
     fetchData(paginaActual);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -85,12 +110,8 @@ const EntregasCelulandiaPage = () => {
     montoTipo,
   ]);
 
-  // Al cambiar el término de búsqueda, resetear a página 1
-  useEffect(() => {
-    setPaginaActual(1);
-  }, [debouncedBusqueda, debouncedMontoDesde, debouncedMontoHasta]);
-
   const fetchData = async (pagina = 1) => {
+    const requestId = (fetchRequestIdRef.current += 1);
     setIsLoading(true);
     try {
       const offset = (pagina - 1) * limitePorPagina;
@@ -127,25 +148,16 @@ const EntregasCelulandiaPage = () => {
         dolarService.getTipoDeCambio(),
       ]);
 
+      if (requestId !== fetchRequestIdRef.current) return;
+
       const cuentas = cuentasResp?.data || [];
       setTotalEntregas(cuentasResp?.total || 0);
-      setPaginaActual(pagina);
 
       setEntregas(cuentas.map(parseCuentaPendiente));
 
-      const uniqueUsers = Array.from(
-        new Set([
-          "ezequielszejman@gmail.com",
-          "matias_kat14@hotmail.com",
-          "lidnicolas@gmail.com",
-          "ventas@celulandiaweb.com.ar",
-          "info@celulandiaweb.com.ar",
-          "Sistema",
-        ])
-      ).sort();
       setUsuariosOptions([
         { value: "", label: "(todos)" },
-        ...uniqueUsers.map((u) => ({ value: u, label: u })),
+        ...usersSistema.sort().map((u) => ({ value: u, label: u })),
       ]);
 
       const clientesArray = Array.isArray(clientesResp) ? clientesResp : clientesResp?.data || [];
@@ -157,7 +169,9 @@ const EntregasCelulandiaPage = () => {
     } catch (e) {
       console.error(e);
     } finally {
-      setIsLoading(false);
+      if (requestId === fetchRequestIdRef.current) {
+        setIsLoading(false);
+      }
     }
   };
 

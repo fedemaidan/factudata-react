@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { Layout as DashboardLayout } from "src/layouts/dashboard/layout";
 import { Container } from "@mui/material";
 
@@ -20,7 +20,8 @@ import { getMovimientoHistorialConfig } from "src/utils/celulandia/historial";
 import Head from "next/head";
 import useDebouncedValue from "src/hooks/useDebouncedValue";
 import ComprobantesFiltersBar from "src/components/celulandia/ComprobantesFiltersBar";
-import { formatearMonto, parsearMonto } from "src/utils/celulandia/separacionMiles";
+import { formatearMonto } from "src/utils/celulandia/separacionMiles";
+import { usersSistema, usersBot } from "src/utils/celulandia/users";
 
 const ComprobantesCelulandiaPage = () => {
   const [movimientos, setMovimientos] = useState([]);
@@ -41,8 +42,12 @@ const ComprobantesCelulandiaPage = () => {
   const [filtroFecha, setFiltroFecha] = useState("todos");
   const [busquedaTexto, setBusquedaTexto] = useState("");
   const debouncedBusqueda = useDebouncedValue(busquedaTexto, 500);
-
-  console.log('movimientos', movimientos);
+  const prevDebouncedRef = useRef({
+    busqueda: debouncedBusqueda,
+    desde: "",
+    hasta: "",
+  });
+  const fetchRequestIdRef = useRef(0);
 
   // Nuevos estados para los datos compartidos
   const [clientes, setClientes] = useState([]);
@@ -69,6 +74,25 @@ const ComprobantesCelulandiaPage = () => {
   const movimientoHistorialConfig = useMemo(() => getMovimientoHistorialConfig(cajas), [cajas]);
 
   useEffect(() => {
+    const prev = prevDebouncedRef.current;
+    const debouncedChanged =
+      prev.busqueda !== debouncedBusqueda ||
+      prev.desde !== debouncedMontoDesde ||
+      prev.hasta !== debouncedMontoHasta;
+
+    prevDebouncedRef.current = {
+      busqueda: debouncedBusqueda,
+      desde: debouncedMontoDesde,
+      hasta: debouncedMontoHasta,
+    };
+
+    // Evitar doble request: si cambió el debounce y estamos en otra página,
+    // primero reseteamos a página 1 y dejamos que el siguiente render fetchee.
+    if (debouncedChanged && paginaActual !== 1) {
+      setPaginaActual(1);
+      return;
+    }
+
     fetchData(paginaActual);
   }, [
     paginaActual,
@@ -86,11 +110,8 @@ const ComprobantesCelulandiaPage = () => {
     debouncedBusqueda,
   ]);
 
-  useEffect(() => {
-    setPaginaActual(1);
-  }, [debouncedBusqueda, debouncedMontoDesde, debouncedMontoHasta]);
-
   const fetchData = async (pagina = 1) => {
+    const requestId = (fetchRequestIdRef.current += 1);
     setIsLoading(true);
     try {
       const offset = (pagina - 1) * limitePorPagina;
@@ -123,9 +144,10 @@ const ComprobantesCelulandiaPage = () => {
           cajasService.getAllCajas(),
         ]);
 
+      if (requestId !== fetchRequestIdRef.current) return;
+
       setMovimientos(movimientosResponse.data.map(parseMovimiento));
       setTotalMovimientos(movimientosResponse.total || 0);
-      setPaginaActual(pagina);
 
       const clientesArray = Array.isArray(clientesResponse)
         ? clientesResponse
@@ -139,25 +161,16 @@ const ComprobantesCelulandiaPage = () => {
 
       setCajas(cajasResponse.data);
 
-      // Opciones de usuarios (simple, como en entregas)
-      const uniqueUsers = Array.from(
-        new Set([
-          "ezequielszejman@gmail.com",
-          "matias_kat14@hotmail.com",
-          "lidnicolas@gmail.com",
-          "ventas@celulandiaweb.com.ar",
-          "info@celulandiaweb.com.ar",
-          "Sistema",
-        ])
-      ).sort();
       setUsuariosOptions([
         { value: "", label: "(todos)" },
-        ...uniqueUsers.map((u) => ({ value: u, label: u })),
+        ...[...usersSistema, ...usersBot].sort().map((u) => ({ value: u, label: u })),
       ]);
     } catch (error) {
       console.error("Error al cargar datos:", error);
     } finally {
-      setIsLoading(false);
+      if (requestId === fetchRequestIdRef.current) {
+        setIsLoading(false);
+      }
     }
   };
 
