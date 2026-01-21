@@ -102,7 +102,6 @@ const PedidosPage = () => {
                       productosTotales={item.productosTotales}
                       unidadesTotales={item.unidadesTotales}
                       onVerDetalle={() => setDetalleSeleccionado(item)}
-                      onAgregarContenedor={() => setContenedorDialogPedido(item)}
                     />
                   </Grid>
                 ))}
@@ -113,13 +112,6 @@ const PedidosPage = () => {
               open={Boolean(detalleSeleccionado)}
               onClose={() => setDetalleSeleccionado(null)}
               resumen={detalleSeleccionado}
-            />
-            <AgregarContenedorDialog
-              open={Boolean(contenedorDialogPedido)}
-              onClose={() => setContenedorDialogPedido(null)}
-              contenedores={contenedoresDisponibles}
-              pedidoId={contenedorDialogPedido?.pedido?._id}
-              onAsociado={() => invalidatePedidosResumen()}
             />
           </Container>
         </Box>

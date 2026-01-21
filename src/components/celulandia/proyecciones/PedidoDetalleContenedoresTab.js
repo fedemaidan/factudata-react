@@ -14,43 +14,74 @@ const PedidoDetalleContenedoresTab = ({
 }) => {
   const formatFecha = (date) => (date ? dayjs(date).format("DD/MM/YYYY") : "—");
 
+  const estadoLabels = useMemo(() => {
+    if (contenedorEstadosLabels) return contenedorEstadosLabels;
+    const defaults = {};
+    (contenedorEstados || []).forEach((estado) => {
+      defaults[estado] = estado;
+    });
+    return defaults;
+  }, [contenedorEstados, contenedorEstadosLabels]);
+
   const EstadoChip = ({ estado }) => {
     const normalized = (estado || "").toUpperCase();
     const config = {
       PENDIENTE: { color: "warning", label: "Pendiente" },
       ENTREGADO: { color: "success", label: "Entregado" },
-      CANCELADO: { color: "error", label: "Cancelado" },
-      RECIBIDO: { color: "success", label: "Recibido" },
-      EN_TRANSITO: { color: "info", label: "En tránsito" },
     }[normalized] || { color: "default", label: estado || "N/D" };
     return <Chip size="small" color={config.color} label={config.label} />;
   };
 
-  const contenedoresRows = useMemo(
-    () =>
-      (contenedores || []).map((contenedorItem, index) => {
-        const unidades = (contenedorItem.productos || []).reduce(
-          (acc, p) => acc + (p.cantidad || 0),
-          0
-        );
-        const normalizedEstado = normalizeEstado(contenedorItem.estado);
-        return {
-          id: getRowId(contenedorItem, index),
-          contenedorId: contenedorItem?.contenedor?._id,
-          codigo: contenedorItem?.contenedor?.codigo || "Sin código",
-          estado: normalizedEstado,
-          eta: contenedorItem?.contenedor?.fechaEstimadaLlegada,
-          unidades,
-          productosResumen: (contenedorItem.productos || [])
-            .map((p) => `${p.producto?.codigo || "-"} (${p.cantidad || 0})`)
-            .join(", "),
-        };
-      }),
-    [contenedores, getRowId, normalizeEstado]
-  );
+  const { itemsConContenedor, unidadesSinContenedor } = useMemo(() => {
+    const all = Array.isArray(contenedores) ? contenedores : [];
+    const withCont = [];
+    let sinContUnidades = 0;
 
-  const contenedorColumns = useMemo(
-    () => [
+    all.forEach((item) => {
+      const tieneContenedor = !!item?.contenedor?._id;
+      if (tieneContenedor) {
+        withCont.push(item);
+        return;
+      }
+
+      const unidades = (item?.productos || []).reduce((acc, p) => acc + (p?.cantidad || 0), 0);
+      sinContUnidades += unidades;
+    });
+
+    return { itemsConContenedor: withCont, unidadesSinContenedor: sinContUnidades };
+  }, [contenedores]);
+
+  const contenedoresRows = useMemo(() => {
+    return itemsConContenedor.map((contenedorItem, index) => {
+      const unidades = (contenedorItem.productos || []).reduce(
+        (acc, p) => acc + (p.cantidad || 0),
+        0
+      );
+      const normalizedEstado = normalizeEstado(contenedorItem.estado);
+      return {
+        id: getRowId(contenedorItem, index),
+        contenedorId: contenedorItem?.contenedor?._id,
+        codigo: contenedorItem?.contenedor?.codigo || "Sin código",
+        estado: normalizedEstado,
+        eta: contenedorItem?.contenedor?.fechaEstimadaLlegada,
+        unidades,
+        productosResumen: (contenedorItem.productos || [])
+          .map((p) => `${p.producto?.codigo || "-"} (${p.cantidad || 0})`)
+          .join(", "),
+      };
+    });
+  }, [getRowId, itemsConContenedor, normalizeEstado]);
+
+  const contenedorColumns = useMemo(() => {
+    const estadosDisponibles = contenedorEstados || [];
+    const resolveEstadoValue = (row) => {
+      const selectedOverride = estadosContenedores[row.id];
+      if (selectedOverride) return selectedOverride;
+      if (estadosDisponibles.includes(row.estado)) return row.estado;
+      return estadosDisponibles[0] ?? row.estado ?? "PENDIENTE";
+    };
+
+    return [
       { key: "codigo", label: "Contenedor", sortable: false },
       {
         key: "estado",
@@ -73,26 +104,26 @@ const PedidoDetalleContenedoresTab = ({
             select
             size="small"
             label="Estado"
-            value={estadosContenedores[row.id] ?? row.estado ?? contenedorEstados[0]}
+            value={resolveEstadoValue(row)}
             onChange={(e) => onEstadoChange(row.id, e.target.value)}
             sx={{ minWidth: 150 }}
           >
-            {contenedorEstados.map((estado) => (
+            {estadosDisponibles.map((estado) => (
               <MenuItem key={estado} value={estado}>
-                {contenedorEstadosLabels[estado] || estado}
+                {estadoLabels[estado] || estado}
               </MenuItem>
             ))}
           </TextField>
         ),
       },
-    ],
-    [contenedorEstados, contenedorEstadosLabels, estadosContenedores, onEstadoChange]
-  );
+    ];
+  }, [contenedorEstados, estadoLabels, estadosContenedores, onEstadoChange]);
 
   return (
     <>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
         {contenedoresRows.length} contenedores
+        {unidadesSinContenedor > 0 ? ` · ${unidadesSinContenedor} unidades sin contenedor` : ""}
       </Typography>
       <TableComponent data={contenedoresRows} columns={contenedorColumns} />
     </>

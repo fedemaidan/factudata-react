@@ -34,7 +34,7 @@ const AgregarPedidoModal = ({
   pedidos = [],
   contenedores = [],
 }) => {
-  const { mutateAsync: crearPedido, isLoading } = useMutation({
+  const { mutateAsync: crearPedido, isPending } = useMutation({
     mutationFn: async (payload) => {
       const { data } = await axiosCelulandia.post("/pedidos", payload);
       return data;
@@ -620,7 +620,7 @@ const AgregarPedidoModal = ({
                 onContenedorChange={setContenedorSeleccionado}
                 nuevoContenedorData={nuevoContenedorData}
                 onNuevoContenedorChange={setNuevoContenedorData}
-                contenedores={contenedores}
+                contenedores={contenedoresData || contenedores}
               />
             )}
           </Box>
@@ -628,14 +628,14 @@ const AgregarPedidoModal = ({
       </DialogContent>
 
       <DialogActions>
-        <Button onClick={handleClose} disabled={isLoading}>Cancelar</Button>
+        <Button onClick={handleClose} disabled={isPending}>Cancelar</Button>
         <Button
           variant="contained"
           onClick={handleSubmit}
-          disabled={!isFormValid() || isLoading}
+          disabled={!isFormValid() || isPending}
           startIcon={<AddIcon />}
         >
-          {isLoading
+          {isPending
             ? "Creando..."
             : tipoAgregar === "existente"
             ? "Agregar a Pedido"

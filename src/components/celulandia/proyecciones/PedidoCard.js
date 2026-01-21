@@ -1,16 +1,12 @@
 import React from "react";
 import dayjs from "dayjs";
 import { Card, CardContent, Stack, Box, Typography, Chip, Divider, Grid, Button } from "@mui/material";
-import LocalShippingIcon from "@mui/icons-material/LocalShipping";
 import ScheduleIcon from "@mui/icons-material/Schedule";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
-import ErrorIcon from "@mui/icons-material/Error";
 
 const estadoConfig = {
   PENDIENTE: { label: "Pendiente", color: "warning", icon: <ScheduleIcon fontSize="small" /> },
-  EN_TRANSITO: { label: "En tránsito", color: "info", icon: <LocalShippingIcon fontSize="small" /> },
   ENTREGADO: { label: "Entregado", color: "success", icon: <CheckCircleIcon fontSize="small" /> },
-  CANCELADO: { label: "Cancelado", color: "error", icon: <ErrorIcon fontSize="small" /> },
 };
 
 const getEstadoConfig = (estadoRaw) => {
@@ -24,17 +20,34 @@ const PedidoCard = ({
   productosTotales = [],
   unidadesTotales = 0,
   onVerDetalle,
-  onAgregarContenedor,
 }) => {
   const estado = getEstadoConfig(pedido?.estado);
   const productosCount = productosTotales.length || 0;
   const unidades = unidadesTotales || 0;
 
+  const { contenedoresReales, tieneSinContenedor, fechasPedidoSinContenedor } = (() => {
+    const all = Array.isArray(contenedores) ? contenedores : [];
+    const reales = all.filter((c) => !!c?.contenedor?._id);
+    const sinCont = all.filter((c) => !c?.contenedor?._id);
+
+    const fechasPedido = sinCont
+      .flatMap((c) => c?.productos || [])
+      .map((p) => p?.fechaEstimadaDeLlegada)
+      .filter(Boolean)
+      .map((date) => dayjs(date).format("DD/MM/YYYY"));
+
+    return {
+      contenedoresReales: reales,
+      tieneSinContenedor: sinCont.length > 0,
+      fechasPedidoSinContenedor: [...new Set(fechasPedido)],
+    };
+  })();
+
   const proximaEtaEnTransito = (() => {
-    const enTransito = contenedores
+    const enTransito = contenedoresReales
       .filter(
         (c) =>
-          c.estado === "EN_TRANSITO" &&
+          c.estado === "PENDIENTE" &&
           c?.contenedor?.fechaEstimadaLlegada
       )
       .map((c) => new Date(c.contenedor.fechaEstimadaLlegada).getTime());
@@ -75,16 +88,56 @@ const PedidoCard = ({
           <Grid item xs={12} md={4}>
             <Typography variant="subtitle2">Llegadas estimadas</Typography>
             {(() => {
-              const fechas = contenedores
-                .map((c) => c?.contenedor?.fechaEstimadaLlegada)
-                .filter(Boolean)
-                .map((date) => dayjs(date).format("DD/MM/YYYY"));
-              const uniqueFechas = [...new Set(fechas)];
-              const sinFecha = contenedores.filter(
-                (c) => !c?.contenedor?.fechaEstimadaLlegada
-              ).length;
+              const fechasContenedores = contenedoresReales.map((c) => {
+                const codigo = c?.contenedor?.codigo || "Contenedor";
+                const fecha = c?.contenedor?.fechaEstimadaLlegada
+                  ? dayjs(c.contenedor.fechaEstimadaLlegada).format("DD/MM/YYYY")
+                  : null;
+                return { codigo, fecha };
+              });
 
-              if (uniqueFechas.length === 0 && sinFecha === 0) {
+              const contenedoresSinFecha = fechasContenedores.filter((c) => !c.fecha).length;
+              const contenedoresConFecha = fechasContenedores.filter((c) => !!c.fecha);
+              const uniqueFechasCont = [...new Set(contenedoresConFecha.map((c) => c.fecha))];
+
+              const partes = [];
+
+              if (tieneSinContenedor) {
+                if (fechasPedidoSinContenedor.length === 0) {
+                  partes.push("Pedido: sin fecha");
+                } else if (fechasPedidoSinContenedor.length === 1) {
+                  partes.push(`Pedido: ${fechasPedidoSinContenedor[0]}`);
+                } else if (fechasPedidoSinContenedor.length === 2) {
+                  partes.push(`Pedido: ${fechasPedidoSinContenedor.join(", ")}`);
+                } else {
+                  partes.push(
+                    `Pedido: ${fechasPedidoSinContenedor[0]}, ${fechasPedidoSinContenedor[1]} +${
+                      fechasPedidoSinContenedor.length - 2
+                    }`
+                  );
+                }
+              }
+
+              if (contenedoresConFecha.length > 0) {
+                // Si hay muchas fechas distintas, resumimos sin perder el dato de que existen
+                if (uniqueFechasCont.length === 1) {
+                  // Mostramos códigos para que quede claro de dónde sale
+                  const codigos = contenedoresConFecha.map((c) => c.codigo).join(", ");
+                  partes.push(`${codigos}: ${uniqueFechasCont[0]}`);
+                } else {
+                  // Mostramos hasta 3 contenedores con fecha
+                  contenedoresConFecha.slice(0, 3).forEach((c) => partes.push(`${c.codigo}: ${c.fecha}`));
+                  if (contenedoresConFecha.length > 3) {
+                    partes.push(`+${contenedoresConFecha.length - 3} contenedor(es)`);
+                  }
+                }
+              }
+
+              if (contenedoresSinFecha > 0) {
+                partes.push(`${contenedoresSinFecha} contenedor(es) sin fecha`);
+              }
+
+              if (partes.length === 0) {
                 return (
                   <Typography variant="body2" color="text.secondary">
                     No informadas
@@ -92,55 +145,34 @@ const PedidoCard = ({
                 );
               }
 
-              if (uniqueFechas.length === 1 && sinFecha === 0) {
-                return (
-                  <Typography variant="body2" color="text.secondary">
-                    {uniqueFechas[0]}
-                  </Typography>
-                );
-              }
-
-              const textParts = [];
-              if (uniqueFechas.length > 0) {
-                if (uniqueFechas.length === 2) {
-                  textParts.push(uniqueFechas.join(", "));
-                } else if (uniqueFechas.length > 2) {
-                  textParts.push(`${uniqueFechas[0]}, ${uniqueFechas[1]} +${uniqueFechas.length - 2}`);
-                } else {
-                  textParts.push(uniqueFechas[0]);
-                }
-              }
-              if (sinFecha > 0) {
-                textParts.push(`${sinFecha} sin fecha`);
-              }
-
               return (
                 <Typography variant="body2" color="text.secondary">
-                  {textParts.join(" · ")}
+                  {partes.join(" · ")}
                 </Typography>
               );
             })()}
           </Grid>
           <Grid item xs={12} md={4}>
             <Typography variant="subtitle2">Contenedores</Typography>
-            {contenedores.length === 0 ? (
+            {contenedoresReales.length === 0 && !tieneSinContenedor ? (
               <Typography variant="body2" color="text.secondary">
                 Sin contenedores
               </Typography>
             ) : (
               <>
                 <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
-                  {contenedores.slice(0, 3).map((c) => (
+                  {contenedoresReales.slice(0, 3).map((c) => (
                     <Chip
                       key={c?.contenedor?._id || c?.contenedor?.codigo || c.contenedor || Math.random()}
                       size="small"
                       label={c?.contenedor?.codigo || "Sin código"}
-                      color={c.estado === "RECIBIDO" ? "success" : "info"}
+                      color={c.estado === "ENTREGADO" ? "success" : "info"}
                     />
                   ))}
-                  {contenedores.length > 3 && (
-                    <Chip size="small" label={`+${contenedores.length - 3}`} />
+                  {contenedoresReales.length > 3 && (
+                    <Chip size="small" label={`+${contenedoresReales.length - 3}`} />
                   )}
+                  {tieneSinContenedor && <Chip size="small" label="Sin contenedor" />}
                 </Stack>
                 {proximaEtaEnTransito && (
                   <Typography
@@ -160,9 +192,6 @@ const PedidoCard = ({
       <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
         <Button variant="outlined" size="small" onClick={onVerDetalle}>
           Ver detalle
-        </Button>
-        <Button variant="contained" color="secondary" size="small" onClick={onAgregarContenedor}>
-          Agregar contenedor
         </Button>
       </Stack>
       </CardContent>

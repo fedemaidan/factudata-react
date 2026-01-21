@@ -25,14 +25,8 @@ import contenedorService from "src/services/celulandia/contenedorService";
 import { useContenedores } from "src/hooks/celulandia/useContenedores";
 import { useProductos } from "src/hooks/celulandia/useProductos";
 
-const PEDIDO_ESTADOS = ["PENDIENTE", "ENTREGADO", "CANCELADO"];
-const CONTENEDOR_ESTADOS = ["PENDIENTE", "ENTREGADO", "CANCELADO"];
-
-const CONTENEDOR_ESTADOS_LABELS = {
-  PENDIENTE: "En tránsito",
-  ENTREGADO: "Entregado",
-  CANCELADO: "Cancelado",
-};
+const PEDIDO_ESTADOS = ["PENDIENTE", "ENTREGADO"];
+const CONTENEDOR_ESTADOS = ["PENDIENTE", "ENTREGADO"];
 
 const PedidoDetalleModal = ({ open, onClose, resumen }) => {
   const queryClient = useQueryClient();
@@ -95,8 +89,6 @@ const PedidoDetalleModal = ({ open, onClose, resumen }) => {
 
   const normalizeContenedorEstado = useCallback((estado) => {
     const upper = (estado || "").toUpperCase();
-    if (upper === "RECIBIDO") return "ENTREGADO";
-    if (upper === "EN_TRANSITO") return "PENDIENTE";
     return upper || "PENDIENTE";
   }, []);
 
@@ -464,7 +456,6 @@ const PedidoDetalleModal = ({ open, onClose, resumen }) => {
             estadosContenedores={estadosContenedores}
             onEstadoChange={handleEstadoContenedorChange}
             contenedorEstados={CONTENEDOR_ESTADOS}
-            contenedorEstadosLabels={CONTENEDOR_ESTADOS_LABELS}
             normalizeEstado={normalizeContenedorEstado}
             getRowId={getContenedorRowId}
           />
@@ -493,10 +484,10 @@ const PedidoDetalleModal = ({ open, onClose, resumen }) => {
             variant="contained"
             color="primary"
             onClick={handleConfirm}
-            loading={mutation.isLoading}
-            disabled={mutation.isLoading || hasInvalidEdicion || !hasChanges}
+            loading={mutation.isPending}
+            disabled={mutation.isPending || hasInvalidEdicion || !hasChanges}
           >
-            {mutation.isLoading ? "Guardando..." : "Confirmar cambios"}
+            {mutation.isPending ? "Guardando..." : "Confirmar cambios"}
           </LoadingButton>
         </Stack>
       </DialogActions>
