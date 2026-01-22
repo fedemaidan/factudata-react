@@ -142,6 +142,7 @@ export default function ResumenPage() {
           cajasIds,
           categoriasToExclude: ["venta dolares", "compra dolares"],
           moneda: selectedCurrency,
+          excludeAportes: true,
         });
 
         const rows = Array.isArray(resp?.data) ? resp.data : [];
@@ -198,6 +199,7 @@ export default function ResumenPage() {
           categorias: categoriasIds,
           categoriasToExclude: ["venta dolares", "compra dolares"],
           moneda: selectedCurrency,
+          excludeAportes: true,
         });
 
         const rows = Array.isArray(resp?.data) ? resp.data : [];
@@ -219,6 +221,8 @@ export default function ResumenPage() {
             categorias: categoriasIdsOrNull.join(","),
             type: "EGRESO",
             moneda: selectedCurrency,
+            excludeAportes: true,
+            categoriasToExclude: ["venta dolares", "compra dolares"],
           });
 
           const totalesCajas = await movimientosService.getTotalesAgrupados({
@@ -227,6 +231,8 @@ export default function ResumenPage() {
             cajasIds: cajasIdsOrNull.join(","),
             type: "INGRESO",
             moneda: selectedCurrency,
+            excludeAportes: true,
+            categoriasToExclude: ["venta dolares", "compra dolares"],
           });
 
           const agCat = totalesCategorias?.data?.porCategoria || [];

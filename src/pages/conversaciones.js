@@ -101,7 +101,7 @@ function ConversacionesContent() {
           {selected ? (
             <>
               <Box
-                p={2}
+                p={0.5}
                 display="flex"
                 justifyContent="space-between"
                 alignItems="center"

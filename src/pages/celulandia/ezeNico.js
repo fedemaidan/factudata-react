@@ -24,6 +24,8 @@ import { formatearCampo } from "src/utils/celulandia/formatearCampo";
 import cajasService from "src/services/celulandia/cajasService";
 import AgregarAporteModal from "src/components/celulandia/AgregarAporteModal";
 import AgregarCompraVentaUsd from "src/components/celulandia/AgregarCompraVentaUsd";
+import { getEmpresaDetailsFromUser } from "src/services/empresaService";
+import { useAuthContext } from "src/contexts/auth-context";
 
 const mapMovimientoToRow = (m) => {
   const fecha = m.fechaFactura || m.fechaCreacion;
@@ -72,10 +74,12 @@ const columns = [
 ];
 
 const EzeNicoPage = () => {
+  const { user } = useAuthContext()
   const [isLoading, setIsLoading] = useState(true);
   const [ezeRows, setEzeRows] = useState([]);
   const [nicoRows, setNicoRows] = useState([]);
   const [cajas, setCajas] = useState([]);
+  const [categorias, setCategorias] = useState([]);
   const [aporteModalOpen, setAporteModalOpen] = useState(false);
   const [compraVentaModalOpen, setCompraVentaModalOpen] = useState(false);
   const [totales, setTotales] = useState({
@@ -102,7 +106,7 @@ const EzeNicoPage = () => {
   const fetchData = async () => {
     setIsLoading(true);
     try {
-      const [ezeResp, nicoResp] = await Promise.all([
+      const [ezeResp, nicoResp, empresaResponse] = await Promise.all([
         movimientosService.getAllMovimientos({
           populate: "cliente",
           cajaNombre: "EZE",
@@ -115,12 +119,15 @@ const EzeNicoPage = () => {
           limit: 1000,
           totalMoneda: true,
         }),
+        getEmpresaDetailsFromUser(user)
       ]);
 
       const { sumaARS: ezeSumaARS, sumaUSD: ezeSumaUSD } = ezeResp;
       const { sumaARS: nicoSumaARS, sumaUSD: nicoSumaUSD } = nicoResp;
       const ezeData = Array.isArray(ezeResp?.data) ? ezeResp.data : ezeResp?.data || [];
       const nicoData = Array.isArray(nicoResp?.data) ? nicoResp.data : nicoResp?.data || [];
+      const categorias = empresaResponse?.categorias || [];
+      setCategorias(categorias);
 
       setEzeRows(ezeData.map(mapMovimientoToRow));
       setNicoRows(nicoData.map(mapMovimientoToRow));
@@ -375,6 +382,7 @@ const EzeNicoPage = () => {
           await fetchData();
         }}
         cajas={cajas}
+        categorias={categorias}
       />
       <AgregarCompraVentaUsd
         open={compraVentaModalOpen}

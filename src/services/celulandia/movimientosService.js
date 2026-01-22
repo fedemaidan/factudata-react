@@ -27,6 +27,7 @@ const movimientosService = {
     includeInactive = false,
     totalMoneda = false,
     text,
+    excludeAportes,
   }) => {
     const response = await axiosCelulandia.get("/movimientos", {
       params: {
@@ -55,6 +56,7 @@ const movimientosService = {
         includeInactive,
         totalMoneda,
         text,
+        excludeAportes,
       },
     });
     return response.data;
@@ -221,6 +223,8 @@ const movimientosService = {
     cajasIds,
     type,
     moneda,
+    excludeAportes,
+    categoriasToExclude,
   } = {}) => {
     const params = {
       fechaInicio,
@@ -229,6 +233,10 @@ const movimientosService = {
       cajasIds: Array.isArray(cajasIds) ? cajasIds.join(",") : cajasIds,
       type,
       moneda,
+      excludeAportes,
+      categoriasToExclude: Array.isArray(categoriasToExclude)
+        ? categoriasToExclude.join(",")
+        : categoriasToExclude,
     };
     const response = await axiosCelulandia.get("/movimientos/totales-agrupados", { params });
     return response.data;
