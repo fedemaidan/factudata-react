@@ -14,10 +14,13 @@ import {
   DialogContent,
   DialogActions,
   TextField,
-  Button
+  Button,
+  Badge,
+  Tooltip
 } from "@mui/material";
 import DownloadIcon from '@mui/icons-material/Download';
 import RefreshIcon from '@mui/icons-material/Refresh';
+import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import ConversationList from "src/components/conversaciones/ConversationList";
 import ChatWindow from "src/components/conversaciones/ChatWindow";
 import MessageInput from "src/components/conversaciones/MessageInput";
@@ -47,8 +50,14 @@ function ConversacionesContent() {
 
   const {
     selected,
+    filters,
+    errorMessageIds,
+    currentErrorIndex,
     onRefreshCurrentConversation,
+    onNavigateToError,
   } = useConversationsContext();
+
+  const hasErrors = errorMessageIds.length > 0;
 
   const handleDownload = async () => {
     if (!selected || !downloadDates.start || !downloadDates.end) {
@@ -116,6 +125,30 @@ function ConversacionesContent() {
                   <IconButton onClick={() => setDownloadOpen(true)} title="Descargar conversación">
                     <DownloadIcon />
                   </IconButton>
+                  {filters?.showErrors && (
+                    <Tooltip title={hasErrors ? `Siguiente error (${currentErrorIndex + 1}/${errorMessageIds.length})` : "No hay errores"}>
+                      <span>
+                        <IconButton 
+                          onClick={() => onNavigateToError('next')} 
+                          disabled={!hasErrors}
+                        >
+                          <Badge 
+                            badgeContent={errorMessageIds.length} 
+                            color="error"
+                            sx={{
+                              "& .MuiBadge-badge": {
+                                fontSize: "0.65rem",
+                                minWidth: 16,
+                                height: 16,
+                              }
+                            }}
+                          >
+                            <ErrorOutlineIcon />
+                          </Badge>
+                        </IconButton>
+                      </span>
+                    </Tooltip>
+                  )}
                 </Box>
               </Box>
               <ChatWindow myNumber={myNumber} onOpenList={isMobile ? () => setIsListOpenMobile(true) : undefined} />

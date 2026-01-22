@@ -15,6 +15,9 @@ function buildFilterParams(filters = {}) {
   if (filters?.tipoContacto && filters.tipoContacto !== "todos") {
     params.tipoContacto = filters.tipoContacto;
   }
+  if (filters?.showErrors) {
+    params.showErrors = filters.showErrors;
+  }
   return params;
 }
 
@@ -75,6 +78,11 @@ export async function downloadConversation(id, fechaInicio, fechaFin) {
     responseType: 'blob'
   });
   return response;
+}
+
+export async function getErrorMessageIds(conversationId) {
+  const { data } = await api.get(`/conversaciones/${conversationId}/errors`);
+  return data.errorIds || [];
 }
 
 export function getMessagePreview(message) {

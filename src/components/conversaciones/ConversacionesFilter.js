@@ -8,6 +8,8 @@ import {
   Button,
   Autocomplete,
   MenuItem,
+  FormControlLabel,
+  Switch,
 } from "@mui/material";
 import FilterListIcon from "@mui/icons-material/FilterList";
 import CloseIcon from "@mui/icons-material/Close";
@@ -62,14 +64,15 @@ const ConversacionesFilter = () => {
   const handleApply = () => setOpen(false);
 
   const handleRestart = () => {
-    onFiltersChange?.({ ...filters, fechaDesde: "", fechaHasta: "", empresaId: "", tipoContacto: "todos" });
+    onFiltersChange?.({ ...filters, fechaDesde: "", fechaHasta: "", empresaId: "", tipoContacto: "todos", showErrors: false });
   };
 
   const hasActiveFilters = 
     filters?.fechaDesde || 
     filters?.fechaHasta || 
     filters?.empresaId || 
-    (filters?.tipoContacto && filters.tipoContacto !== "todos");
+    (filters?.tipoContacto && filters.tipoContacto !== "todos") ||
+    filters?.showErrors;
 
   return (
     <>
@@ -183,6 +186,18 @@ const ConversacionesFilter = () => {
             <MenuItem value="cliente">Cliente</MenuItem>
             <MenuItem value="noCliente">No cliente</MenuItem>
           </TextField>
+
+          <FormControlLabel
+            control={
+              <Switch
+                checked={filters?.showErrors || false}
+                onChange={(e) => handleFilterChange("showErrors", e.target.checked)}
+                size="small"
+              />
+            }
+            label="Mostrar errores"
+            sx={{ ml: 0, mt: 0.5 }}
+          />
 
           <Stack direction="row" spacing={1} sx={{ pt: 0.5 }}>
             <Button

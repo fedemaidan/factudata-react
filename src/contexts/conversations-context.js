@@ -3,6 +3,7 @@ import { useRouter } from "next/router";
 import { useConversationsFetch } from "src/hooks/useConversationsFetch";
 import { useMessagesFetch } from "src/hooks/useMessagesFetch";
 import { useMessageScroll } from "src/hooks/useMessageScroll";
+import { useErrorNavigation } from "src/hooks/useErrorNavigation";
 
 const ACTIONS = {
   SET_CONVERSATIONS: "SET_CONVERSATIONS",
@@ -17,6 +18,8 @@ const ACTIONS = {
   SET_SCROLL_TO_MESSAGE_ID: "SET_SCROLL_TO_MESSAGE_ID",
   SET_HIGHLIGHTED_MESSAGE_ID: "SET_HIGHLIGHTED_MESSAGE_ID",
   SET_LOADING: "SET_LOADING",
+  SET_ERROR_MESSAGE_IDS: "SET_ERROR_MESSAGE_IDS",
+  SET_CURRENT_ERROR_INDEX: "SET_CURRENT_ERROR_INDEX",
 };
 
 const initialState = {
@@ -31,6 +34,8 @@ const initialState = {
   scrollToMessageId: null,
   highlightedMessageId: null,
   loading: false,
+  errorMessageIds: [],
+  currentErrorIndex: -1,
 };
 
 const reducer = (state, action) => {
@@ -57,6 +62,10 @@ const reducer = (state, action) => {
       return { ...state, highlightedMessageId: action.payload };
     case ACTIONS.SET_LOADING:
       return { ...state, loading: action.payload };
+    case ACTIONS.SET_ERROR_MESSAGE_IDS:
+      return { ...state, errorMessageIds: action.payload };
+    case ACTIONS.SET_CURRENT_ERROR_INDEX:
+      return { ...state, currentErrorIndex: action.payload };
     default:
       return state;
   }
@@ -87,10 +96,12 @@ const getFiltersFromQuery = (query) => {
   const fechaHasta = getStringParam(query.fechaHasta);
   const empresaId = getStringParam(query.empresaId);
   const tipoContacto = getStringParam(query.tipoContacto);
+  const showErrors = query.showErrors === 'true';
   if (fechaDesde) filters.fechaDesde = fechaDesde;
   if (fechaHasta) filters.fechaHasta = fechaHasta;
   if (empresaId) filters.empresaId = empresaId;
   if (tipoContacto) filters.tipoContacto = tipoContacto;
+  if (showErrors) filters.showErrors = true;
   return filters;
 };
 
@@ -100,7 +111,7 @@ export function ConversationsProvider({ children }) {
   const router = useRouter();
   const [state, dispatch] = useReducer(reducer, initialState);
   const skipDefaultLoadRef = useRef(false);
-  const { selected, conversations, messages, offset, hasMore, scrollToMessageId, highlightedMessageId, scrollToBottom, messageResults, loading } =
+  const { selected, conversations, messages, offset, hasMore, scrollToMessageId, highlightedMessageId, scrollToBottom, messageResults, loading, errorMessageIds, currentErrorIndex } =
     state;
 
   const search = useMemo(() => {
@@ -110,7 +121,7 @@ export function ConversationsProvider({ children }) {
 
   const filters = useMemo(() => {
     return normalizeFilterDates(getFiltersFromQuery(router.query));
-  }, [router.query.fechaDesde, router.query.fechaHasta, router.query.empresaId, router.query.tipoContacto]);
+  }, [router.query.fechaDesde, router.query.fechaHasta, router.query.empresaId, router.query.tipoContacto, router.query.showErrors]);
 
   // Callbacks para los hooks
   const handleConversationsLoaded = useCallback((data) => {
@@ -153,6 +164,11 @@ export function ConversationsProvider({ children }) {
     dispatch({ type: ACTIONS.SET_HIGHLIGHTED_MESSAGE_ID, payload: null });
   }, []);
 
+  const handleErrorMessageIdsLoaded = useCallback((ids) => {
+    dispatch({ type: ACTIONS.SET_ERROR_MESSAGE_IDS, payload: ids });
+    dispatch({ type: ACTIONS.SET_CURRENT_ERROR_INDEX, payload: -1 });
+  }, []);
+
   const { refreshConversations, performSearch } = useConversationsFetch({
     filters,
     onConversationsLoaded: handleConversationsLoaded,
@@ -178,6 +194,13 @@ export function ConversationsProvider({ children }) {
     onHighlightedMessageIdCleared: handleHighlightedMessageIdCleared,
   });
 
+  // Hook para cargar IDs de errores
+  useErrorNavigation({
+    selected,
+    filters,
+    onErrorIdsLoaded: handleErrorMessageIdsLoaded,
+  });
+
   const handleSelectConversation = useCallback(
     (conversation) => {
       if (!conversation) {
@@ -186,6 +209,8 @@ export function ConversationsProvider({ children }) {
 
       dispatch({ type: ACTIONS.SET_SCROLL_TO_MESSAGE_ID, payload: null });
       dispatch({ type: ACTIONS.SET_HIGHLIGHTED_MESSAGE_ID, payload: null });
+      dispatch({ type: ACTIONS.SET_ERROR_MESSAGE_IDS, payload: [] });
+      dispatch({ type: ACTIONS.SET_CURRENT_ERROR_INDEX, payload: -1 });
       skipDefaultLoadRef.current = false;
       dispatch({ type: ACTIONS.SET_SELECTED, payload: conversation });
     },
@@ -220,6 +245,39 @@ export function ConversationsProvider({ children }) {
   const loadMore = useCallback(async () => {
     await loadMoreMessages(messages, offset, hasMore);
   }, [loadMoreMessages, messages, offset, hasMore]);
+
+  const handleNavigateToError = useCallback(async (direction = 'next') => {
+    const errorIds = state.errorMessageIds;
+    if (!errorIds || errorIds.length === 0 || !selected) return;
+
+    let newIndex;
+    if (direction === 'next') {
+      newIndex = (state.currentErrorIndex + 1) % errorIds.length;
+    } else {
+      newIndex = state.currentErrorIndex <= 0 ? errorIds.length - 1 : state.currentErrorIndex - 1;
+    }
+
+    const targetMessageId = errorIds[newIndex];
+    dispatch({ type: ACTIONS.SET_CURRENT_ERROR_INDEX, payload: newIndex });
+
+    const isMessageLoaded = messages.some(m => (m.id || m._id) === targetMessageId);
+
+    if (isMessageLoaded) {
+      // Si está cargado, solo hacer scroll
+      dispatch({ type: ACTIONS.SET_SCROLL_TO_MESSAGE_ID, payload: targetMessageId });
+      dispatch({ type: ACTIONS.SET_HIGHLIGHTED_MESSAGE_ID, payload: targetMessageId });
+      dispatch({ type: ACTIONS.SET_SCROLL_TO_BOTTOM, payload: false });
+    } else {
+      // Si no está cargado, usar loadMessageById como la búsqueda
+      try {
+        dispatch({ type: ACTIONS.SET_SCROLL_TO_MESSAGE_ID, payload: targetMessageId });
+        dispatch({ type: ACTIONS.SET_HIGHLIGHTED_MESSAGE_ID, payload: targetMessageId });
+        await loadMessageById(selected.ultimoMensaje.id_conversacion, targetMessageId, selected);
+      } catch (error) {
+        console.error("Error al cargar mensaje de error:", error);
+      }
+    }
+  }, [state.errorMessageIds, state.currentErrorIndex, selected, messages, loadMessageById]);
 
   const handleSend = useCallback(
     async (text) => {
@@ -312,6 +370,11 @@ export function ConversationsProvider({ children }) {
       } else {
         delete newQuery.tipoContacto;
       }
+      if (normalizedFilters.showErrors) {
+        newQuery.showErrors = 'true';
+      } else {
+        delete newQuery.showErrors;
+      }
 
       router.replace({ pathname: router.pathname, query: newQuery }, undefined, { shallow: true });
       const query = search || "";
@@ -341,6 +404,8 @@ export function ConversationsProvider({ children }) {
       scrollToMessageId,
       highlightedMessageId,
       loading,
+      errorMessageIds,
+      currentErrorIndex,
       onSelectConversation: handleSelectConversation,
       onMessageSelect: handleSelectMessageResult,
       onSearch: handleSearch,
@@ -350,6 +415,8 @@ export function ConversationsProvider({ children }) {
       onSend: handleSend,
       loadMore,
       handleScrollToMessageHandled,
+      onErrorMessageIdsLoaded: handleErrorMessageIdsLoaded,
+      onNavigateToError: handleNavigateToError,
     }),
     [
       conversations,
@@ -362,6 +429,8 @@ export function ConversationsProvider({ children }) {
       scrollToBottom,
       scrollToMessageId,
       highlightedMessageId,
+      errorMessageIds,
+      currentErrorIndex,
       handleSelectConversation,
       handleSelectMessageResult,
       handleSearch,
@@ -371,6 +440,8 @@ export function ConversationsProvider({ children }) {
       handleSend,
       loadMore,
       handleScrollToMessageHandled,
+      handleErrorMessageIdsLoaded,
+      handleNavigateToError,
     ]
   );
 

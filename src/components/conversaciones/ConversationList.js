@@ -8,6 +8,7 @@ import {
   ListItemAvatar,
   Avatar,
   Typography,
+  Badge,
   OutlinedInput,
   InputAdornment,
   IconButton,
@@ -32,6 +33,7 @@ export default function ConversationList({ onSelect, onMessageSelect }) {
     conversations = [],
     selected,
     search,
+    filters = {},
     messageResults = [],
     onSearch,
     onRefreshConversations,
@@ -98,6 +100,30 @@ export default function ConversationList({ onSelect, onMessageSelect }) {
   };
 
   const selectedId = selected?.ultimoMensaje?.id_conversacion;
+
+  const renderErrorBadge = (count) => {
+    const errorCount = Number(count || 0);
+    if (!errorCount) {
+      return null;
+    }
+
+    return (
+      <Badge
+        color="error"
+        badgeContent={errorCount}
+        sx={{
+          "& .MuiBadge-badge": {
+            fontSize: "0.65rem",
+            minWidth: 16,
+            height: 16,
+            px: 0.5
+          }
+        }}
+      >
+        <Box sx={{ width: 8, height: 8 }} />
+      </Badge>
+    );
+  };
 
   const renderMessageSnippet = (match) => {
     const text = match?.matchMessage?.message || match?.matchMessage?.caption || "[Sin texto]";
@@ -240,13 +266,16 @@ export default function ConversationList({ onSelect, onMessageSelect }) {
                     <Typography fontWeight={600} noWrap>
                       {getNombreCliente(c)}
                     </Typography>
-                    <Typography
-                      variant="caption"
-                      color="text.secondary"
-                      sx={{ minWidth: 45, textAlign: "right" }}
-                    >
-                      {formatFecha(c.ultimoMensaje?.fecha)}
-                    </Typography>
+                    <Box display="flex" alignItems="center" gap={1}>
+                      {filters?.showErrors && renderErrorBadge(c.errorCount)}
+                      <Typography
+                        variant="caption"
+                        color="text.secondary"
+                        sx={{ minWidth: 45, textAlign: "right" }}
+                      >
+                        {formatFecha(c.ultimoMensaje?.fecha)}
+                      </Typography>
+                    </Box>
                   </Box>
                 }
                 secondary={

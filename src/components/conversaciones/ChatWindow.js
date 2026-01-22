@@ -1,5 +1,16 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Box, Divider, Typography, IconButton, Button } from "@mui/material";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Box,
+  Divider,
+  Typography,
+  IconButton,
+  Button,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+} from "@mui/material";
 import MenuIcon from "@mui/icons-material/Menu";
 import MessageBubble from "./MessageBubble";
 import MediaModal from "./MediaModal";
@@ -10,6 +21,13 @@ export default function ChatWindow({ myNumber = "X", onOpenList }) {
   const scrollContainerRef = useRef(null);
   const [atTop, setAtTop] = useState(false);
   const [mediaModal, setMediaModal] = useState({ open: false, src: null, type: 'image' });
+  const [annotationDialog, setAnnotationDialog] = useState({
+    open: false,
+    messageId: null,
+    message: null,
+  });
+  const [annotationText, setAnnotationText] = useState("");
+  const [annotationsByMessageId, setAnnotationsByMessageId] = useState({});
   const {
     messages,
     hasMore,
@@ -70,6 +88,40 @@ export default function ChatWindow({ myNumber = "X", onOpenList }) {
     setMediaModal({ open: false, src: null, type: 'image' });
   };
 
+  const handleOpenAnnotationDialog = useCallback(({ messageId, message }) => {
+    if (!messageId) return;
+    setAnnotationDialog({ open: true, messageId, message: message || null });
+    setAnnotationText("");
+  }, []);
+
+  const handleCloseAnnotationDialog = useCallback(() => {
+    setAnnotationDialog({ open: false, messageId: null, message: null });
+    setAnnotationText("");
+  }, []);
+
+  const handleSaveAnnotation = useCallback(() => {
+    if (!annotationDialog?.messageId) return;
+    const trimmed = (annotationText || "").trim();
+    if (!trimmed) {
+      handleCloseAnnotationDialog();
+      return;
+    }
+
+    setAnnotationsByMessageId((prev) => ({
+      ...prev,
+      [annotationDialog.messageId]: [
+        ...(prev?.[annotationDialog.messageId] || []),
+        {
+          text: trimmed,
+          createdAt: new Date().toISOString(),
+          messageSnapshot: annotationDialog.message || null,
+        },
+      ],
+    }));
+
+    handleCloseAnnotationDialog();
+  }, [annotationDialog, annotationText, handleCloseAnnotationDialog]);
+
   return (
     <Box display="flex" flexDirection="column" height="100%" minHeight={0}>
       {onOpenList ? (
@@ -121,6 +173,8 @@ export default function ChatWindow({ myNumber = "X", onOpenList }) {
               messageId={messageId}
               isHighlighted={messageId === highlightedMessageId}
               onMediaClick={handleMediaClick}
+              onAddAnnotation={handleOpenAnnotationDialog}
+              annotationsCount={(annotationsByMessageId?.[messageId] || []).length}
             />
           );
         })}
@@ -132,6 +186,33 @@ export default function ChatWindow({ myNumber = "X", onOpenList }) {
         type={mediaModal.type}
         onClose={handleMediaClose}
       />
+      <Dialog open={annotationDialog.open} onClose={handleCloseAnnotationDialog} fullWidth maxWidth="sm">
+        <DialogTitle>Agregar anotación</DialogTitle>
+        <DialogContent>
+          <Box mt={1}>
+            <TextField
+              label="Anotación"
+              value={annotationText}
+              onChange={(e) => setAnnotationText(e.target.value)}
+              fullWidth
+              multiline
+              minRows={3}
+              autoFocus
+            />
+          </Box>
+          {annotationDialog?.messageId ? (
+            <Typography variant="caption" color="text.secondary" display="block" mt={1}>
+              Mensaje: {annotationDialog.messageId}
+            </Typography>
+          ) : null}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseAnnotationDialog}>Cancelar</Button>
+          <Button onClick={handleSaveAnnotation} variant="contained" disabled={!annotationText.trim()}>
+            Guardar
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

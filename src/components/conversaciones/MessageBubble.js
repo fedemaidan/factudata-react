@@ -1,7 +1,8 @@
-import { Box, Paper, Typography } from '@mui/material';
+import { Badge, Box, IconButton, Paper, Tooltip, Typography } from '@mui/material';
 import AudioPlayer from './AudioPlayer';
 import ImageIcon from '@mui/icons-material/Image';
 import VideocamIcon from '@mui/icons-material/Videocam';
+import AddIcon from '@mui/icons-material/Add';
 
 // Helper to check if src is a valid media URL (not an internal event identifier)
 const isValidMediaUrl = (src) => {
@@ -12,7 +13,15 @@ const isValidMediaUrl = (src) => {
   return src.startsWith('http') || src.startsWith('data:') || src.startsWith('blob:') || src.startsWith('/');
 };
 
-export default function MessageBubble({ message, isMine, messageId, isHighlighted, onMediaClick }) {
+export default function MessageBubble({
+  message,
+  isMine,
+  messageId,
+  isHighlighted,
+  onMediaClick,
+  onAddAnnotation,
+  annotationsCount = 0,
+}) {
   const text = message?.type === 'text' || message?.type === 'text_extended' ? message?.message || '' : '';
   const date = message?.fecha ? new Date(message.fecha) : null;
   const pad = (n) => String(n).padStart(2, '0');
@@ -28,8 +37,9 @@ export default function MessageBubble({ message, isMine, messageId, isHighlighte
     }
   };
 
-  const anchorId = (messageId || message?.id || message?._id)
-    ? `message-${messageId || message?.id || message?._id}`
+  const resolvedMessageId = messageId || message?.id || message?._id;
+  const anchorId = resolvedMessageId
+    ? `message-${resolvedMessageId}`
     : undefined;
   const highlightSx = isHighlighted
     ? {
@@ -42,6 +52,46 @@ export default function MessageBubble({ message, isMine, messageId, isHighlighte
   // Check if media URL is valid
   const hasValidMediaUrl = isValidMediaUrl(message?.message);
 
+  const handleAddAnnotationClick = () => {
+    if (!onAddAnnotation) return;
+    if (!resolvedMessageId) return;
+    onAddAnnotation({ messageId: resolvedMessageId, message });
+  };
+
+  const annotationButton = (
+    <Tooltip title="Agregar anotación">
+      <span>
+        <IconButton
+          size="small"
+          onClick={handleAddAnnotationClick}
+          aria-label="Agregar anotación"
+          disabled={!resolvedMessageId}
+          sx={{
+            bgcolor: 'background.paper',
+            border: 1,
+            borderColor: 'divider',
+            '&:hover': { bgcolor: 'action.hover' },
+          }}
+        >
+          <Badge
+            color="primary"
+            badgeContent={annotationsCount > 0 ? annotationsCount : 0}
+            invisible={!annotationsCount}
+            sx={{
+              '& .MuiBadge-badge': {
+                fontSize: '0.65rem',
+                minWidth: 16,
+                height: 16,
+              },
+            }}
+          >
+            <AddIcon fontSize="small" />
+          </Badge>
+        </IconButton>
+      </span>
+    </Tooltip>
+  );
+
   return (
     <Box
       display="flex"
@@ -50,57 +100,59 @@ export default function MessageBubble({ message, isMine, messageId, isHighlighte
       py={0.5}
       id={anchorId}
     >
-      <Paper
-        elevation={0}
-        sx={{
-          maxWidth: '75%',
-          p: 1,
-          bgcolor: isMine ? '#d1f4cc' : 'background.paper',
-          borderRadius: 2,
-          ...highlightSx,
-        }}
-      >
-        {message.type === 'image' ? (
-          <Box mb={text ? 1 : 0}>
-            {hasValidMediaUrl ? (
-              <img
-                src={message.message}
-                alt="mensaje-imagen"
-                style={{
-                  display: 'block',
-                  width: 'min(420px, 100%)',
-                  height: 'auto',
-                  maxHeight: '220px',
-                  borderRadius: 8,
-                  cursor: 'pointer',
-                }}
-                onClick={() => handleMediaClick('image')}
-              />
-            ) : (
-              <Box
-                display="flex"
-                alignItems="center"
-                gap={1}
-                p={2}
-                sx={{
-                  bgcolor: isMine ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)',
-                  borderRadius: 2,
-                  minWidth: 150,
-                }}
-              >
-                <ImageIcon sx={{ fontSize: 24, color: 'text.secondary' }} />
-                <Typography variant="caption" color="text.secondary">
-                  Imagen (no disponible)
+      <Box display="flex" alignItems="center" gap={0.75}>
+        {isMine ? annotationButton : null}
+        <Paper
+          elevation={0}
+          sx={{
+            maxWidth: '75%',
+            p: 1,
+            bgcolor: isMine ? '#d1f4cc' : 'background.paper',
+            borderRadius: 2,
+            ...highlightSx,
+          }}
+        >
+          {message.type === 'image' ? (
+            <Box mb={text ? 1 : 0}>
+              {hasValidMediaUrl ? (
+                <img
+                  src={message.message}
+                  alt="mensaje-imagen"
+                  style={{
+                    display: 'block',
+                    width: 'min(420px, 100%)',
+                    height: 'auto',
+                    maxHeight: '220px',
+                    borderRadius: 8,
+                    cursor: 'pointer',
+                  }}
+                  onClick={() => handleMediaClick('image')}
+                />
+              ) : (
+                <Box
+                  display="flex"
+                  alignItems="center"
+                  gap={1}
+                  p={2}
+                  sx={{
+                    bgcolor: isMine ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)',
+                    borderRadius: 2,
+                    minWidth: 150,
+                  }}
+                >
+                  <ImageIcon sx={{ fontSize: 24, color: 'text.secondary' }} />
+                  <Typography variant="caption" color="text.secondary">
+                    Imagen (no disponible)
+                  </Typography>
+                </Box>
+              )}
+              {message.caption ? (
+                <Typography variant="body2" whiteSpace="pre-wrap" mt={1}>
+                  {message.caption}
                 </Typography>
-              </Box>
-            )}
-            {message.caption ? (
-              <Typography variant="body2" whiteSpace="pre-wrap" mt={1}>
-                {message.caption}
-              </Typography>
-            ) : null}
-          </Box>
-        ) : null}
+              ) : null}
+            </Box>
+          ) : null}
 
         {message.type === 'video' ? (
           <Box mb={text ? 1 : 0} position="relative">
@@ -196,19 +248,21 @@ export default function MessageBubble({ message, isMine, messageId, isHighlighte
             {text}
           </Typography>
         ) : null}
-        <Box mt={0.5} display="flex" justifyContent="flex-end" gap={1}>
-          {dateStr ? (
-            <Typography variant="caption" color="text.secondary">
-              {dateStr}
-            </Typography>
-          ) : null}
-          {timeStr ? (
-            <Typography variant="caption" color="text.secondary">
-              {timeStr}
-            </Typography>
-          ) : null}
-        </Box>
-      </Paper>
+          <Box mt={0.5} display="flex" justifyContent="flex-end" gap={1}>
+            {dateStr ? (
+              <Typography variant="caption" color="text.secondary">
+                {dateStr}
+              </Typography>
+            ) : null}
+            {timeStr ? (
+              <Typography variant="caption" color="text.secondary">
+                {timeStr}
+              </Typography>
+            ) : null}
+          </Box>
+        </Paper>
+        {!isMine ? annotationButton : null}
+      </Box>
     </Box>
   );
 }
