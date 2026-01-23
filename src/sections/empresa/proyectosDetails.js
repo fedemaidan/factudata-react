@@ -13,7 +13,6 @@ import {
   List,
   ListItem,
   ListItemText,
-  ListItemSecondaryAction,
   LinearProgress,
   Dialog,
   DialogTitle,
@@ -332,136 +331,210 @@ export const ProyectosDetails = ({ empresa, refreshEmpresa }) => {
         <CardContent>
           <List>
             {proyectos.map((proyecto) => (
-              <ListItem key={proyecto.id} divider>
-                <ListItemText
-                  primary={
-                    <a href={`/cajaProyecto/?proyectoId=${proyecto.id}`} target="_blank" rel="noopener noreferrer">
-                      {proyecto.nombre}
-                    </a>
-                  }
-                  secondary={
-                    <>
-                      <Typography variant="body2">Caja central: {findProyectoNombreById(proyecto.proyecto_default_id)}</Typography>
-                      <Typography variant="body2">
-                         
-                        {proyecto.carpetaRef ? (
-                          <a 
-                            href={`https://drive.google.com/drive/folders/${proyecto.carpetaRef}`} 
-                            target="_blank" 
-                            rel="noopener noreferrer"
-                            style={{ marginLeft: '5px', textDecoration: 'none', color: '#1a73e8', fontWeight: 'bold' }}
-                          >
-                            Link Carpeta
-                          </a>
-                        ) : "Carpeta: No asignada"}
-                      </Typography>
+              <ListItem
+                key={proyecto.id}
+                divider
+                alignItems="flex-start"
+                sx={{
+                  py: 2,
+                  alignItems: 'stretch'
+                }}
+              >
+                <Box
+                  sx={{
+                    display: 'flex',
+                    flexDirection: { xs: 'column', sm: 'row' },
+                    gap: { xs: 1.5, sm: 2 },
+                    width: '100%'
+                  }}
+                >
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <ListItemText
+                      primary={
+                        <a href={`/cajaProyecto/?proyectoId=${proyecto.id}`} target="_blank" rel="noopener noreferrer">
+                          {proyecto.nombre}
+                        </a>
+                      }
+                      secondary={
+                        <>
+                          <Typography variant="body2">
+                            Caja central: {findProyectoNombreById(proyecto.proyecto_default_id)}
+                          </Typography>
+                          <Typography variant="body2">
+                            {proyecto.carpetaRef ? (
+                              <a
+                                href={`https://drive.google.com/drive/folders/${proyecto.carpetaRef}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                style={{
+                                  marginLeft: '5px',
+                                  textDecoration: 'none',
+                                  color: '#1a73e8',
+                                  fontWeight: 'bold'
+                                }}
+                              >
+                                Link Carpeta
+                              </a>
+                            ) : (
+                              'Carpeta: No asignada'
+                            )}
+                          </Typography>
 
-                      <Typography variant="body2">
-                        
-                        {proyecto.sheetWithClient ? (
-                          <a 
-                            href={`https://docs.google.com/spreadsheets/d/${proyecto.sheetWithClient}`} 
-                            target="_blank" 
-                            rel="noopener noreferrer"
-                            style={{ marginLeft: '5px', textDecoration: 'none', color: '#1a73e8', fontWeight: 'bold' }}
-                          >
-                            Link Google Sheet
-                          </a>
-                        ) : "Google Sheet No asignado"}
-                      </Typography>
+                          <Typography variant="body2">
+                            {proyecto.sheetWithClient ? (
+                              <a
+                                href={`https://docs.google.com/spreadsheets/d/${proyecto.sheetWithClient}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                style={{
+                                  marginLeft: '5px',
+                                  textDecoration: 'none',
+                                  color: '#1a73e8',
+                                  fontWeight: 'bold'
+                                }}
+                              >
+                                Link Google Sheet
+                              </a>
+                            ) : (
+                              'Google Sheet No asignado'
+                            )}
+                          </Typography>
 
-                      <Typography variant="body2">Estado: {proyecto.activo ? 'Activo' : 'Inactivo'}</Typography>
-                      <Typography variant="body2">
-                          Sheets Adicionales:
-                          {proyecto.extraSheets && proyecto.extraSheets?.length > 0
-                            ? proyecto.extraSheets?.map((sheetId, index) => (
-                                <a
-                                  key={index}
-                                  href={`https://docs.google.com/spreadsheets/d/${sheetId}`}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  style={{ marginLeft: '5px', textDecoration: 'none', color: '#1a73e8', fontWeight: 'bold' }}
-                                >
-                                  {` Sheet ${index + 1} `}
-                                </a>
-                              ))
-                            : ' No asignados'}
-                        </Typography>
+                          <Typography variant="body2">
+                            Estado: {proyecto.activo ? 'Activo' : 'Inactivo'}
+                          </Typography>
 
-                    </>
-                  }
-                />
-                <ListItemSecondaryAction>
-  <Switch
-    checked={proyecto.activo}
-    onChange={() => toggleProyectoActivo(proyecto)}
-    color="primary"
-  />
-  <IconButton edge="end" onClick={() => iniciarEdicionProyecto(proyecto)}>
-    <EditIcon />
-  </IconButton>
-  <input
-    accept=".csv"
-    style={{ display: 'none' }}
-    id={`upload-csv-${proyecto.id}`}
-    type="file"
-    onChange={(event) => handleFileChange(event, proyecto.id, proyecto.nombre)}
-  />
-  <label htmlFor={`upload-csv-${proyecto.id}`}>
-    <Button
-      variant="contained"
-      component="span"
-      color="secondary"
-      size="small"
-      disabled={uploading}
-      sx={{ ml: 2 }}
-    >
-      Subir CSV
-    </Button>
-    <Button
-      variant="outlined"
-      color="error"
-      size="small"
-      sx={{ ml: 2 }}
-      onClick={() => setProyectoAEliminar(proyecto)}
-    >
-      Eliminar
-    </Button>
-    <Button
-  variant="outlined"
-  size="small"
-  sx={{ ml: 2 }}
-  onClick={() => handleRestablecerPermisos(proyecto.id)}
-  disabled={restableciendoId === proyecto.id}
->
-  {restableciendoId === proyecto.id ? 'Procesando…' : 'Restablecer permisos'}
-</Button>
-  </label>
-  {selectedFile && uploadProjectId === proyecto.id && (
-    <Button
-      variant="contained"
-      color="primary"
-      size="small"
-      onClick={handleUploadCSV}
-      disabled={uploading}
-      sx={{ ml: 2 }}
-    >
-      {uploading ? 'Subiendo...' : 'Cargar'}
-    </Button>
-  )}
-</ListItemSecondaryAction>
+                          <Typography variant="body2">
+                            Sheets Adicionales:
+                            {proyecto.extraSheets && proyecto.extraSheets?.length > 0
+                              ? proyecto.extraSheets?.map((sheetId, index) => (
+                                  <a
+                                    key={index}
+                                    href={`https://docs.google.com/spreadsheets/d/${sheetId}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    style={{
+                                      marginLeft: '5px',
+                                      textDecoration: 'none',
+                                      color: '#1a73e8',
+                                      fontWeight: 'bold'
+                                    }}
+                                  >
+                                    {` Sheet ${index + 1} `}
+                                  </a>
+                                ))
+                              : ' No asignados'}
+                          </Typography>
+                        </>
+                      }
+                    />
+                  </Box>
+
+                  <Box
+                    sx={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: { xs: 'stretch', sm: 'flex-end' },
+                      gap: 1,
+                      minWidth: { xs: 'auto', sm: 360 }
+                    }}
+                  >
+                    <Box
+                      sx={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: { xs: 'flex-start', sm: 'flex-end' }
+                      }}
+                    >
+                      <Switch
+                        checked={proyecto.activo}
+                        onChange={() => toggleProyectoActivo(proyecto)}
+                        color="primary"
+                      />
+                      <IconButton edge="end" onClick={() => iniciarEdicionProyecto(proyecto)}>
+                        <EditIcon />
+                      </IconButton>
+                    </Box>
+
+                    <Box
+                      sx={{
+                        display: 'flex',
+                        flexWrap: 'wrap',
+                        gap: 1,
+                        justifyContent: { xs: 'flex-start', sm: 'flex-end' }
+                      }}
+                    >
+                      <input
+                        accept=".csv"
+                        style={{ display: 'none' }}
+                        id={`upload-csv-${proyecto.id}`}
+                        type="file"
+                        onChange={(event) => handleFileChange(event, proyecto.id, proyecto.nombre)}
+                      />
+                      <label htmlFor={`upload-csv-${proyecto.id}`}>
+                        <Button
+                          variant="contained"
+                          component="span"
+                          color="secondary"
+                          size="small"
+                          disabled={uploading}
+                        >
+                          Subir CSV
+                        </Button>
+                      </label>
+
+                      {selectedFile && uploadProjectId === proyecto.id && (
+                        <Button
+                          variant="contained"
+                          color="primary"
+                          size="small"
+                          onClick={handleUploadCSV}
+                          disabled={uploading}
+                        >
+                          {uploading ? 'Subiendo...' : 'Cargar'}
+                        </Button>
+                      )}
+
+                      <Button
+                        variant="outlined"
+                        color="error"
+                        size="small"
+                        onClick={() => setProyectoAEliminar(proyecto)}
+                      >
+                        Eliminar
+                      </Button>
+
+                      <Button
+                        variant="outlined"
+                        size="small"
+                        onClick={() => handleRestablecerPermisos(proyecto.id)}
+                        disabled={restableciendoId === proyecto.id}
+                      >
+                        {restableciendoId === proyecto.id ? 'Procesando…' : 'Restablecer permisos'}
+                      </Button>
+                    </Box>
+                  </Box>
+                </Box>
 
               </ListItem>
             ))}
           </List>
         </CardContent>
         <Divider />
-        <CardActions sx={{ justifyContent: 'space-between' }}>
+        <CardActions
+          sx={{
+            justifyContent: 'space-between',
+            flexDirection: { xs: 'column', sm: 'row' },
+            alignItems: { xs: 'stretch', sm: 'center' },
+            gap: { xs: 1, sm: 0 }
+          }}
+        >
           <Button
             color="secondary"
             variant="outlined"
             startIcon={<CloudUploadIcon />}
             onClick={handleImportarCSV}
+            sx={{ width: { xs: '100%', sm: 'auto' } }}
           >
             Importar CSV
           </Button>
@@ -470,6 +543,7 @@ export const ProyectosDetails = ({ empresa, refreshEmpresa }) => {
             variant="contained"
             startIcon={<AddCircleIcon />}
             onClick={iniciarCreacionProyecto}
+            sx={{ width: { xs: '100%', sm: 'auto' } }}
           >
             Agregar Proyecto
           </Button>

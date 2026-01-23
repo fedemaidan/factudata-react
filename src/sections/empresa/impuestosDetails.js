@@ -2,10 +2,10 @@
 import React, { useState } from 'react';
 import {
   Card, CardHeader, CardContent, CardActions, Divider,
-  List, ListItem, ListItemText, ListItemSecondaryAction,
+  List, ListItem, ListItemText,
   IconButton, Dialog, DialogTitle, DialogContent, DialogActions,
   TextField, Button, Snackbar, Alert, Select, MenuItem, FormControl,
-  InputLabel, Switch, Typography
+  InputLabel, Switch, Typography, Box
 } from '@mui/material';
 import { updateEmpresaDetails } from 'src/services/empresaService';
 import AddCircleIcon from '@mui/icons-material/AddCircle';
@@ -15,7 +15,6 @@ import SaveIcon from '@mui/icons-material/Save';
 import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
 import { v4 as uuidv4 } from 'uuid';
-import { Box } from '@mui/system';
 
 const impuestosDefault = [
   { id: uuidv4(), nombre: "IVA 21%", tipo: "porcentaje", valor: 21, aplicacion: "ambos", incluir_en_total: false, activo: true },
@@ -105,24 +104,53 @@ export const ImpuestosDetails = ({ empresa, refreshEmpresa }) => {
           <List>
             {impuestos.map((imp, i) => (
               <ListItem key={i} divider>
-                <ListItemText
-                  primary={imp.nombre}
-                  secondary={`Tipo: ${imp.tipo} - Valor: ${imp.valor} - Aplicación: ${imp.aplicacion}${imp.incluir_en_total ? ' (Incluido en total)' : ''}`}
-                />
-                <ListItemSecondaryAction>
-                  <IconButton onClick={() => moverImpuesto(i, 'arriba')}><ArrowUpwardIcon /></IconButton>
-                  <IconButton onClick={() => moverImpuesto(i, 'abajo')}><ArrowDownwardIcon /></IconButton>
-                  <IconButton onClick={() => {
-                    setEditingIndex(i);
-                    setForm(imp);
-                    setOpen(true);
-                  }}>
-                    <EditIcon />
-                  </IconButton>
-                  <IconButton onClick={() => eliminarImpuesto(i)}>
-                    <DeleteIcon />
-                  </IconButton>
-                </ListItemSecondaryAction>
+                <Box
+                  sx={{
+                    display: 'flex',
+                    flexDirection: { xs: 'column', sm: 'row' },
+                    gap: { xs: 1.5, sm: 2 },
+                    width: '100%',
+                    alignItems: 'stretch'
+                  }}
+                >
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <ListItemText
+                      primary={imp.nombre}
+                      secondary={`Tipo: ${imp.tipo} - Valor: ${imp.valor} - Aplicación: ${imp.aplicacion}${imp.incluir_en_total ? ' (Incluido en total)' : ''}`}
+                    />
+                  </Box>
+                  <Box
+                    sx={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: { xs: 'flex-start', sm: 'flex-end' },
+                      gap: 1,
+                      flexWrap: 'nowrap',
+                      overflowX: 'auto',
+                      minWidth: { xs: 'auto', sm: 240 }
+                    }}
+                  >
+                    <IconButton size="small" onClick={() => moverImpuesto(i, 'arriba')}>
+                      <ArrowUpwardIcon fontSize="small" />
+                    </IconButton>
+                    <IconButton size="small" onClick={() => moverImpuesto(i, 'abajo')}>
+                      <ArrowDownwardIcon fontSize="small" />
+                    </IconButton>
+                    <IconButton
+                      size="small"
+                      onClick={() => {
+                        setEditingIndex(i);
+                        setForm(imp);
+                        setOpen(true);
+                      }}
+                    >
+                      <EditIcon fontSize="small" />
+                    </IconButton>
+                    <IconButton size="small" onClick={() => eliminarImpuesto(i)}>
+                      <DeleteIcon fontSize="small" />
+                    </IconButton>
+                  </Box>
+                </Box>
               </ListItem>
             ))}
           </List>

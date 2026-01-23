@@ -181,7 +181,7 @@ const HistorialModal = ({
                                 <Typography variant="body2" color="error">
                                   <strong>Antes:</strong>
                                 </Typography>
-                                {renderFieldValue(registro.campo, registro.valorAnterior)}
+                                {renderFieldValue(registro.campo, registro?.valorAnterior)}
                               </Grid>
                               <Grid item xs={12} sm={1}>
                                 <Typography variant="body2" color="text.secondary">

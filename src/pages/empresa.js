@@ -104,7 +104,7 @@ const EmpresaPage = () => {
           py: 8
         }}
       >
-        <Container maxWidth="lg">
+        <Container maxWidth={false}>
           <Stack spacing={3}>
             {isEditing ? (
               <>
@@ -126,14 +126,26 @@ const EmpresaPage = () => {
             ) : (
               <>
                 <Stack direction="row" justifyContent="space-between" alignItems="center">
-                  <Typography variant="h4">
+                  <Typography
+                    variant="h4"
+                    sx={{
+                      fontSize: { xs: '1.25rem', sm: '2.125rem' },
+                      lineHeight: { xs: 1.2, sm: 1.235 }
+                    }}
+                  >
                     {empresa?.nombre}
                   </Typography>
-                  <Stack direction="row" spacing={2}>
+                  <Stack direction="row" spacing={{ xs: 1, sm: 2 }}>
                     <Button
                       color="warning"
                       variant="outlined"
                       onClick={handleInvalidateCache}
+                      sx={{
+                        fontSize: { xs: '0.75rem', sm: '0.875rem' },
+                        px: { xs: 0.75, sm: 1.5 },
+                        py: { xs: 0.25, sm: 0.75 },
+                        minHeight: { xs: 32, sm: 36 }
+                      }}
                     >
                       Invalidar Caché
                     </Button>
@@ -141,6 +153,12 @@ const EmpresaPage = () => {
                       color="primary"
                       variant="outlined"
                       onClick={handleEdit}
+                      sx={{
+                        fontSize: { xs: '0.75rem', sm: '0.875rem' },
+                        px: { xs: 0.75, sm: 1.5 },
+                        py: { xs: 0.25, sm: 0.75 },
+                        minHeight: { xs: 32, sm: 36 }
+                      }}
                     >
                       Editar nombre empresa
                     </Button>
@@ -151,6 +169,15 @@ const EmpresaPage = () => {
                   onChange={handleTabsChange}
                   textColor="primary"
                   indicatorColor="primary"
+                  variant="scrollable"
+                  scrollButtons="auto"
+                  allowScrollButtonsMobile
+                  aria-label="Secciones de empresa"
+                  sx={{
+                    maxWidth: '100%',
+                    '& .MuiTabs-scroller': { overflowX: 'auto !important' },
+                    '& .MuiTabs-flexContainer': { flexWrap: 'nowrap' }
+                  }}
                 >
                   {tabs.map((tab) => (
                     <Tab key={tab.value} label={tab.label} value={tab.value} />
