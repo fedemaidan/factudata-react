@@ -61,7 +61,6 @@ const EditarChequeModal = ({ open, onClose, data, onSave, clientes, tipoDeCambio
     setIsSaving(true);
     try {
       let clienteData;
-      let clienteId;
 
       if (clienteSeleccionado) {
         clienteData = {
@@ -69,19 +68,16 @@ const EditarChequeModal = ({ open, onClose, data, onSave, clientes, tipoDeCambio
           ccActivas: clienteSeleccionado.ccActivas,
           descuento: clienteSeleccionado.descuento,
         };
-        clienteId = clienteSeleccionado._id;
       } else {
         clienteData = {
           nombre: formData.cliente,
         };
-        clienteId = null;
       }
 
       const cajaId = cajas.find((caja) => caja.nombre === formData.cuentaDestino)?._id;
       const tipoDeCambioCalculado = getTipoDeCambio(formData.monedaDePago, formData.CC);
 
       const datosParaGuardar = {
-        clienteId: clienteId || null,
         cliente: clienteData,
         cuentaCorriente: formData.CC,
         moneda: formData.monedaDePago,
@@ -99,21 +95,26 @@ const EditarChequeModal = ({ open, onClose, data, onSave, clientes, tipoDeCambio
       const camposModificados = {};
       Object.keys(datosParaGuardar).forEach((key) => {
         if (key === "cliente") {
-          if (datosParaGuardar[key].nombre !== data.cliente?.nombre) {
-            camposModificados[key] = datosParaGuardar[key];
+          const nombreNuevo = (datosParaGuardar[key]?.nombre || "").trim();
+          const nombreOriginal = (data?.cliente?.nombre || "").trim();
+
+          if (nombreNuevo !== nombreOriginal) {
+            camposModificados.clienteNombre = nombreNuevo;
           }
         } else if (key === "caja") {
           if (datosParaGuardar[key] !== data.caja?._id) {
-            camposModificados[key] = datosParaGuardar[key];
-          }
-        } else if (key === "clienteId") {
-          if (datosParaGuardar[key] !== data.cliente?._id) {
             camposModificados[key] = datosParaGuardar[key];
           }
         } else if (key === "fechaCobro") {
           const original = data.fechaCobro ? toDateInputValue(data.fechaCobro) : "";
           if ((fechaCobro || "") !== original) {
             camposModificados[key] = datosParaGuardar[key];
+          }
+        } else if (key === "montoEnviado" || key === "montoCC" || key === "tipoDeCambio") {
+          const nuevo = Number(datosParaGuardar[key] ?? 0);
+          const original = Number(data?.[key] ?? 0);
+          if (nuevo !== original) {
+            camposModificados[key] = nuevo;
           }
         } else {
           if (datosParaGuardar[key] !== data[key]) {
