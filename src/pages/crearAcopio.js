@@ -1,6 +1,10 @@
 import React, { useRef, useState } from 'react';
 import { Box, Button, Container, Stack, Stepper, Step, StepLabel, Typography, Paper } from '@mui/material';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
+import { useBreadcrumbs } from 'src/contexts/breadcrumbs-context';
+import HomeIcon from '@mui/icons-material/Home';
+import InventoryIcon from '@mui/icons-material/Inventory';
+import AddIcon from '@mui/icons-material/Add';
 
 import ProgressBackdrop from 'src/components/importar/ProgressBackdrop';
 import { Backdrop, CircularProgress } from '@mui/material';
@@ -30,13 +34,14 @@ import {
 
 
 const ImportarPage = () => {
-    const router = useRouter();
-const { empresaId, acopioId } = router.query;
+  const router = useRouter();
+  const { empresaId, acopioId } = router.query;
+  const { setBreadcrumbs } = useBreadcrumbs();
 
-const [alert, setAlert] = useState({ open: false, message: '', severity: 'info' });
+  const [alert, setAlert] = useState({ open: false, message: '', severity: 'info' });
 
-const [proveedoresOptions, setProveedoresOptions] = useState([]);
-const [proyectosOptions, setProyectosOptions] = useState([]);
+  const [proveedoresOptions, setProveedoresOptions] = useState([]);
+  const [proyectosOptions, setProyectosOptions] = useState([]);
 
   const [activeStep, setActiveStep] = useState(0);
   const [tipoLista, setTipoLista] = useState('');
@@ -57,6 +62,17 @@ const [proyectosOptions, setProyectosOptions] = useState([]);
 
   const [guardando, setGuardando] = useState(false);
   const [editando, setEditando] = useState(false);
+
+  // Setear breadcrumbs
+  React.useEffect(() => {
+    setBreadcrumbs([
+      { label: 'Inicio', href: '/', icon: <HomeIcon fontSize="small" /> },
+      { label: 'Acopios', href: `/acopios?empresaId=${empresaId}`, icon: <InventoryIcon fontSize="small" /> },
+      { label: acopioId ? 'Editar Acopio' : 'Crear Acopio', icon: <AddIcon fontSize="small" /> }
+    ]);
+    return () => setBreadcrumbs([]);
+  }, [acopioId, empresaId, setBreadcrumbs]);
+
   const { cargando, progreso, procesar } = useExtractionProcess();
 const {
   previewCols, setPreviewCols,

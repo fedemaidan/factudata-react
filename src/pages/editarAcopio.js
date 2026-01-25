@@ -16,7 +16,11 @@ import {
 } from '@mui/material';
 import { DataGrid, GridToolbar } from '@mui/x-data-grid';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
+import { useBreadcrumbs } from 'src/contexts/breadcrumbs-context';
 import { useRouter } from 'next/router';
+import HomeIcon from '@mui/icons-material/Home';
+import InventoryIcon from '@mui/icons-material/Inventory';
+import EditIcon from '@mui/icons-material/Edit';
 
 import AcopioService from 'src/services/acopioService';
 import { getEmpresaById, updateEmpresaDetails } from 'src/services/empresaService';
@@ -30,6 +34,7 @@ import { codeFromDescription } from 'src/utils/importar/codeFromDescription';
 export default function EditarAcopioPage() {
   const router = useRouter();
   const { empresaId, acopioId } = router.query;
+  const { setBreadcrumbs } = useBreadcrumbs();
 
   const [guardando, setGuardando] = useState(false);
   const [cargando, setCargando] = useState(true);
@@ -39,6 +44,16 @@ export default function EditarAcopioPage() {
   const [proyectosOptions, setProyectosOptions] = useState([]);
 
   const [codigo, setCodigo] = useState('');
+
+  // Setear breadcrumbs
+  useEffect(() => {
+    setBreadcrumbs([
+      { label: 'Inicio', href: '/', icon: <HomeIcon fontSize="small" /> },
+      { label: 'Acopios', href: `/acopios?empresaId=${empresaId}`, icon: <InventoryIcon fontSize="small" /> },
+      { label: codigo || 'Editar Acopio', icon: <EditIcon fontSize="small" /> }
+    ]);
+    return () => setBreadcrumbs([]);
+  }, [codigo, empresaId, setBreadcrumbs]);
   const [proveedor, setProveedor] = useState('');
   const [proyecto, setProyecto] = useState('');
   const [tipoLista, setTipoLista] = useState('');

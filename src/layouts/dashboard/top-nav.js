@@ -11,19 +11,24 @@ import {
   Button,
   Alert,
   Collapse,
+  Breadcrumbs,
+  Link,
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import { usePopover } from "src/hooks/use-popover";
 import { AccountPopover } from "./account-popover";
 import { useAuthContext } from "src/contexts/auth-context";
+import { useBreadcrumbs } from "src/contexts/breadcrumbs-context";
 import Bars3Icon from "@heroicons/react/24/solid/Bars3Icon";
+import NavigateNextIcon from "@mui/icons-material/NavigateNext";
 import { useRouter } from "next/router";
 
 const SIDE_NAV_WIDTH = 280;
 const TOP_NAV_HEIGHT = 64;
 
 export const TopNav = (props) => {
-  const { onNavOpen, title, updateAvailable, onUpdateClick, navWidth = SIDE_NAV_WIDTH } = props; // <-- NUEVO
+  const { onNavOpen, title, updateAvailable, onUpdateClick, navWidth = SIDE_NAV_WIDTH } = props;
+  const { breadcrumbs } = useBreadcrumbs();
   const lgUp = useMediaQuery((theme) => theme.breakpoints.up("lg"));
   const accountPopover = usePopover();
   const { user, isSpying, originalUser } = useAuthContext();
@@ -58,27 +63,87 @@ export const TopNav = (props) => {
           spacing={2}
           sx={{ minHeight: TOP_NAV_HEIGHT, px: 2 }}
         >
-          <Typography variant="h6">
-            {isSpying()
-              ? `${title} - Soy ${user.email}`
-              : title}
-          </Typography>
-
-          <Stack alignItems="center" direction="row-reverse" spacing={2}>
+          {/* Lado izquierdo: Menú hamburguesa + Título o Breadcrumbs */}
+          <Stack alignItems="center" direction="row" spacing={1} sx={{ minWidth: 0, flex: 1 }}>
             {!lgUp && (
-              <IconButton onClick={onNavOpen}>
+              <IconButton onClick={onNavOpen} edge="start">
                 <SvgIcon fontSize="small">
                   <Bars3Icon />
                 </SvgIcon>
               </IconButton>
             )}
+            {breadcrumbs && breadcrumbs.length > 0 ? (
+              <Breadcrumbs 
+                separator={<NavigateNextIcon fontSize="small" sx={{ color: 'text.secondary' }} />}
+                sx={{ 
+                  '& .MuiBreadcrumbs-ol': { flexWrap: 'nowrap' },
+                  '& .MuiBreadcrumbs-li': { whiteSpace: 'nowrap' },
+                  overflow: 'hidden'
+                }}
+              >
+                {breadcrumbs.map((crumb, index) => {
+                  const isLast = index === breadcrumbs.length - 1;
+                  return isLast ? (
+                    <Typography 
+                      key={index} 
+                      color="text.primary" 
+                      sx={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        gap: 0.5,
+                        fontSize: { xs: '0.8rem', sm: '0.875rem' },
+                        fontWeight: 500,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis'
+                      }}
+                    >
+                      {crumb.icon}
+                      {!lgUp && breadcrumbs.length > 2 ? null : crumb.label}
+                    </Typography>
+                  ) : (
+                    <Link 
+                      key={index}
+                      underline="hover" 
+                      color="inherit" 
+                      href={crumb.href}
+                      sx={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        gap: 0.5,
+                        fontSize: { xs: '0.8rem', sm: '0.875rem' }
+                      }}
+                    >
+                      {crumb.icon}
+                      {lgUp && crumb.label}
+                    </Link>
+                  );
+                })}
+              </Breadcrumbs>
+            ) : (
+              <Typography 
+                variant="h6"
+                sx={{
+                  fontSize: { xs: '0.9rem', sm: '1.25rem' },
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  maxWidth: { xs: '180px', sm: '100%' }
+                }}
+              >
+                {isSpying()
+                  ? `${title} - Soy ${user.email}`
+                  : title}
+              </Typography>
+            )}
           </Stack>
 
+          {/* Lado derecho: Acciones + Avatar */}
           <Stack alignItems="center" direction="row" spacing={2}>
             {requiereCargarDatos && (
               <Button
                 style={{ textTransform: "none", padding: 0 }}
                 onClick={handleCompleteAccountData}
+                sx={{ display: { xs: 'none', sm: 'block' } }}
               >
                 <Typography variant="body1" color="primary">
                   Completar datos de la cuenta
@@ -130,6 +195,11 @@ export const TopNav = (props) => {
 TopNav.propTypes = {
   onNavOpen: PropTypes.func,
   title: PropTypes.string,
+  breadcrumbs: PropTypes.arrayOf(PropTypes.shape({
+    label: PropTypes.string,
+    href: PropTypes.string,
+    icon: PropTypes.node
+  })),
   updateAvailable: PropTypes.bool,
   onUpdateClick: PropTypes.func,
   navWidth: PropTypes.number,

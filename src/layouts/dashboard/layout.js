@@ -74,8 +74,8 @@ export const Layout = withAuthGuard((props) => {
         title={title || ""}
         collapsed={collapsed}
         navWidth={navWidth}
-        updateAvailable={updateAvailable}   // boolean
-        onUpdateClick={triggerReload}       // función que hace reload
+        updateAvailable={updateAvailable}
+        onUpdateClick={triggerReload}
       />
       <SideNav
         onClose={() => setOpenNav(false)}

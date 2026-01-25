@@ -29,7 +29,11 @@ import movimientosService from 'src/services/movimientosService';
 import Snackbar from '@mui/material/Snackbar';
 import Alert from '@mui/material/Alert';
 import { useAuthContext } from 'src/contexts/auth-context';
-import { getEmpresaDetailsFromUser, updateEmpresaDetails } from 'src/services/empresaService'; 
+import { useBreadcrumbs } from 'src/contexts/breadcrumbs-context';
+import { getEmpresaDetailsFromUser, updateEmpresaDetails } from 'src/services/empresaService';
+import HomeIcon from '@mui/icons-material/Home';
+import FolderIcon from '@mui/icons-material/Folder';
+import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet'; 
 import { getProyectosByEmpresa } from 'src/services/proyectosService';
 import { formatTimestamp } from 'src/utils/formatters';
 import { useMovimientosFilters } from 'src/hooks/useMovimientosFilters';
@@ -137,6 +141,7 @@ const TotalesFiltrados = ({ t, fmt, moneda, showUsdBlue = false, usdBlue = null 
 
 const ProyectoMovimientosPage = () => {
   const { user } = useAuthContext();
+  const { setBreadcrumbs } = useBreadcrumbs();
   const [movimientos, setMovimientos] = useState([]);
   const [movimientosUSD, setMovimientosUSD] = useState([]);
   const [tablaActiva, setTablaActiva] = useState('ARS');
@@ -161,6 +166,17 @@ const ProyectoMovimientosPage = () => {
   const { proyectoId } = router.query;
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+
+  // Setear breadcrumbs
+  useEffect(() => {
+    setBreadcrumbs([
+      { label: 'Inicio', href: '/', icon: <HomeIcon fontSize="small" /> },
+      { label: 'Proyectos', href: '/vistaResumen', icon: <FolderIcon fontSize="small" /> },
+      { label: proyecto?.nombre || 'Caja', icon: <AccountBalanceWalletIcon fontSize="small" /> }
+    ]);
+    return () => setBreadcrumbs([]);
+  }, [proyecto?.nombre, setBreadcrumbs]);
+
   const [anchorEl, setAnchorEl] = useState(null);
   const [cajasVirtuales, setCajasVirtuales] = useState([
     { nombre: 'Caja en Pesos', moneda: 'ARS', medio_pago: "" , equivalencia: 'none', type: '' },

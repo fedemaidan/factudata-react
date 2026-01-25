@@ -17,7 +17,11 @@ import { useRouter } from 'next/router';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 
 import { useAuthContext } from 'src/contexts/auth-context';
+import { useBreadcrumbs } from 'src/contexts/breadcrumbs-context';
 import AcopioService from 'src/services/acopioService';
+import HomeIcon from '@mui/icons-material/Home';
+import InventoryIcon from '@mui/icons-material/Inventory';
+import VisibilityIcon from '@mui/icons-material/Visibility';
 
 // Nuevos componentes:
 import HeaderAcopioSummary from 'src/components/headerAcopioSummary';
@@ -40,6 +44,7 @@ const MovimientosAcopioPage = () => {
   const router = useRouter();
   const { acopioId } = router.query;
   const { user } = useAuthContext();
+  const { setBreadcrumbs } = useBreadcrumbs();
 
   // Estado principal
   const [tabActiva, setTabActiva] = useState('acopio');
@@ -47,6 +52,16 @@ const MovimientosAcopioPage = () => {
   const [alert, setAlert] = useState({ open: false, message: '', severity: 'info' });
 
   const [acopio, setAcopio] = useState(null);
+
+  // Setear breadcrumbs
+  useEffect(() => {
+    setBreadcrumbs([
+      { label: 'Inicio', href: '/', icon: <HomeIcon fontSize="small" /> },
+      { label: 'Acopios', href: `/acopios?empresaId=${acopio?.empresaId || ''}`, icon: <InventoryIcon fontSize="small" /> },
+      { label: acopio?.codigo || 'Movimientos', icon: <VisibilityIcon fontSize="small" /> }
+    ]);
+    return () => setBreadcrumbs([]);
+  }, [acopio?.codigo, acopio?.empresaId, setBreadcrumbs]);
   const [compras, setCompras] = useState([]);
   const [remitos, setRemitos] = useState([]);
   const [remitoMovimientos, setRemitoMovimientos] = useState({});

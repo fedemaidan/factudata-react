@@ -12,8 +12,6 @@ import {
   IconButton,
   Tooltip,
   Skeleton,
-  Breadcrumbs,
-  Link,
   Avatar,
   Chip,
   useTheme,
@@ -34,6 +32,7 @@ import { ConfiguracionGeneral } from 'src/sections/empresa/configuracionGeneral'
 import { updateEmpresaDetails, getEmpresaById, invalidateEmpresaCache } from 'src/services/empresaService'; 
 import { getProyectosByEmpresa, hasPermission } from 'src/services/proyectosService'; 
 import { useAuthContext } from 'src/contexts/auth-context';
+import { useBreadcrumbs } from 'src/contexts/breadcrumbs-context';
 import { useRouter } from 'next/router';
 import { PermisosUsuarios } from 'src/sections/empresa/PermisosUsuarios';
 import { EtapasDetails } from 'src/sections/empresa/etapasDetails';
@@ -59,13 +58,13 @@ import PeopleIcon from '@mui/icons-material/People';
 import SecurityIcon from '@mui/icons-material/Security';
 import ConstructionIcon from '@mui/icons-material/Construction';
 import CorporateFareIcon from '@mui/icons-material/CorporateFare';
-import NavigateNextIcon from '@mui/icons-material/NavigateNext';
 import MoreHorizIcon from '@mui/icons-material/MoreHoriz';
 
 
 const EmpresaPage = () => {
   const router = useRouter();
   const { user } = useAuthContext();
+  const { setBreadcrumbs } = useBreadcrumbs();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const isTablet = useMediaQuery(theme.breakpoints.down('md'));
@@ -75,7 +74,19 @@ const EmpresaPage = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [moreMenuAnchor, setMoreMenuAnchor] = useState(null);
-  const { empresaId } = router.query; 
+  const { empresaId } = router.query;
+
+  // Setear breadcrumbs cuando cambia la empresa
+  useEffect(() => {
+    setBreadcrumbs([
+      { label: 'Inicio', href: '/', icon: <HomeIcon fontSize="small" /> },
+      { label: 'Empresas', href: '/empresas', icon: <BusinessIcon fontSize="small" /> },
+      { label: empresa?.nombre || 'Cargando...', icon: <BusinessIcon fontSize="small" /> }
+    ]);
+    
+    // Limpiar breadcrumbs al desmontar
+    return () => setBreadcrumbs([]);
+  }, [empresa?.nombre, setBreadcrumbs]); 
 
   // Tabs principales (siempre visibles)
   const mainTabs = [
@@ -175,34 +186,6 @@ const EmpresaPage = () => {
         }}
       >
         <Container maxWidth={false} sx={{ px: { xs: 1, sm: 2, md: 3 } }}>
-          {/* Breadcrumbs */}
-          <Breadcrumbs 
-            separator={<NavigateNextIcon fontSize="small" />}
-            sx={{ mb: 2, display: { xs: 'none', sm: 'flex' } }}
-          >
-            <Link 
-              underline="hover" 
-              color="inherit" 
-              href="/"
-              sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}
-            >
-              <HomeIcon fontSize="small" />
-              Inicio
-            </Link>
-            <Link 
-              underline="hover" 
-              color="inherit" 
-              href="/empresas"
-              sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}
-            >
-              <BusinessIcon fontSize="small" />
-              Empresas
-            </Link>
-            <Typography color="text.primary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-              {empresa?.nombre || 'Cargando...'}
-            </Typography>
-          </Breadcrumbs>
-
           <Stack spacing={{ xs: 2, sm: 3 }}>
             {/* Header Card */}
             <Card 
