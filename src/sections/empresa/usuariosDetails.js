@@ -1,12 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import profileService from 'src/services/profileService';
 import {
   Typography, Button, Card, CardContent, CardActions, CardHeader, Divider, IconButton, LinearProgress, TextField, Select, MenuItem, InputLabel, FormControl,
-  Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Dialog, DialogActions, DialogContent, DialogTitle, Snackbar, Alert, Box
+  Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Dialog, DialogActions, DialogContent, DialogTitle, Snackbar, Alert, Box, Autocomplete
 } from '@mui/material';
 import AddCircleIcon from '@mui/icons-material/AddCircle';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
+import SendIcon from '@mui/icons-material/Send';
 import { useFormik } from 'formik';
 import * as Yup from 'yup';
 import { getProyectosByEmpresa, getProyectosFromUser } from 'src/services/proyectosService';
@@ -17,6 +18,7 @@ import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import Link from '@mui/material/Link';
 import Tooltip from '@mui/material/Tooltip';
 import { green } from '@mui/material/colors';
+import templateService from 'src/services/templateService';
 
 const normalizePhone = (phone) => (phone || '').toString().replace(/[^\d]/g, '');
 
@@ -56,6 +58,30 @@ export const UsuariosDetails = ({ empresa }) => {
   const [dupEmpresaLink, setDupEmpresaLink] = useState(null);
   const [dupEmpresaName, setDupEmpresaName] = useState('');
 
+  // Estados para envío de templates
+  const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
+  const [templateUsuario, setTemplateUsuario] = useState(null);
+  const [templateForm, setTemplateForm] = useState({
+    nombre: '',
+    proveedorEjemplo: '',
+    proyectoEjemplo: '',
+    fechaEnvio: '',
+    horaEnvio: '',
+    enviarAhora: true
+  });
+
+  // Opciones de proveedores desde la empresa
+  const proveedoresOptions = useMemo(() => {
+    if (empresa?.proveedores_data?.length > 0) {
+      return empresa.proveedores_data.map(p => p?.nombre).filter(Boolean);
+    }
+    return (empresa?.proveedores || []).filter(Boolean);
+  }, [empresa]);
+
+  // Opciones de proyectos (nombres)
+  const proyectosOptions = useMemo(() => {
+    return proyectos.filter(p => p?.nombre).map(p => p.nombre).filter(Boolean);
+  }, [proyectos]);
 
   const { user } = useAuthContext();
   useEffect(() => {
@@ -229,6 +255,76 @@ export const UsuariosDetails = ({ empresa }) => {
     setDupEmpresaName('');
   };
 
+  // Funciones para envío de templates
+  const openTemplateDialog = (usuario) => {
+    // Pre-cargar datos del usuario y empresa
+    const primerProyecto = usuario.proyectosData?.find(p => p?.nombre)?.nombre || '';
+    setTemplateUsuario(usuario);
+    setTemplateForm({
+      nombre: usuario.firstName || '',
+      proveedorEjemplo: empresa?.proveedores?.[0]?.nombre || 'Proveedor Ejemplo',
+      proyectoEjemplo: primerProyecto || 'Proyecto Ejemplo',
+      fechaEnvio: '',
+      horaEnvio: '',
+      enviarAhora: true
+    });
+    setTemplateDialogOpen(true);
+  };
+
+  const closeTemplateDialog = () => {
+    setTemplateDialogOpen(false);
+    setTemplateUsuario(null);
+  };
+
+  const handleTemplateFormChange = (field) => (e) => {
+    const value = field === 'enviarAhora' ? e.target.value === 'true' : e.target.value;
+    setTemplateForm(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleSendTemplate = async () => {
+    if (!templateUsuario) return;
+
+    const { nombre, proveedorEjemplo, proyectoEjemplo, fechaEnvio, horaEnvio, enviarAhora } = templateForm;
+
+    if (!nombre || !proveedorEjemplo || !proyectoEjemplo) {
+      setSnackbarMessage('Todos los campos son requeridos');
+      setSnackbarSeverity('error');
+      setSnackbarOpen(true);
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const payload = {
+        phone: normalizePhone(templateUsuario.phone),
+        nombre,
+        proveedorEjemplo,
+        proyectoEjemplo
+      };
+
+      // Si no es envío inmediato, agregar fecha programada
+      if (!enviarAhora && fechaEnvio && horaEnvio) {
+        payload.fechaEnvio = new Date(`${fechaEnvio}T${horaEnvio}:00`).toISOString();
+      }
+
+      await templateService.sendBienvenidaPrimerEgreso(payload);
+
+      setSnackbarMessage(enviarAhora 
+        ? 'Template enviado correctamente' 
+        : `Template programado para ${fechaEnvio} a las ${horaEnvio}`
+      );
+      setSnackbarSeverity('success');
+      closeTemplateDialog();
+    } catch (error) {
+      console.error('Error enviando template:', error);
+      setSnackbarMessage(error.response?.data?.error || 'Error al enviar el template');
+      setSnackbarSeverity('error');
+    } finally {
+      setSnackbarOpen(true);
+      setIsLoading(false);
+    }
+  };
+
   return (
     <div>
       <Card>
@@ -296,12 +392,21 @@ export const UsuariosDetails = ({ empresa }) => {
                     <TableCell>{usuario.default_caja_chica ? "Si" : (usuario.default_caja_chica == false ? "No": "No definido")}</TableCell>
                     <TableCell>{usuario.notificacion_nota_pedido ? "Si" : (usuario.notificacion_nota_pedido == false ? "No": "No definido")}</TableCell>
                     <TableCell>
-                      <IconButton onClick={() => startEditUsuario(usuario)}>
-                        <EditIcon />
-                      </IconButton>
-                      <IconButton onClick={() => eliminarUsuario(usuario.id)}>
-                        <DeleteIcon />
-                      </IconButton>
+                      <Tooltip title="Editar usuario">
+                        <IconButton onClick={() => startEditUsuario(usuario)}>
+                          <EditIcon />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Enviar template de bienvenida">
+                        <IconButton onClick={() => openTemplateDialog(usuario)} color="primary">
+                          <SendIcon />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Eliminar usuario">
+                        <IconButton onClick={() => eliminarUsuario(usuario.id)} color="error">
+                          <DeleteIcon />
+                        </IconButton>
+                      </Tooltip>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -445,6 +550,131 @@ export const UsuariosDetails = ({ empresa }) => {
             variant="contained"
           >
             Confirmar
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Dialog para enviar template de bienvenida */}
+      <Dialog open={templateDialogOpen} onClose={closeTemplateDialog} maxWidth="sm" fullWidth>
+        <DialogTitle>Enviar Template de Bienvenida</DialogTitle>
+        <DialogContent>
+          <Box sx={{ mt: 1 }}>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              Enviar a: <strong>{templateUsuario?.firstName} {templateUsuario?.lastName}</strong> ({templateUsuario?.phone})
+            </Typography>
+
+            <TextField
+              fullWidth
+              margin="dense"
+              label="Nombre del usuario ({{1}})"
+              value={templateForm.nombre}
+              onChange={handleTemplateFormChange('nombre')}
+              helperText="Cómo se va a saludar al usuario"
+            />
+
+            <Autocomplete
+              freeSolo
+              options={proveedoresOptions}
+              value={templateForm.proveedorEjemplo}
+              onChange={(_, newValue) => setTemplateForm(prev => ({ ...prev, proveedorEjemplo: newValue || '' }))}
+              onInputChange={(_, newValue) => setTemplateForm(prev => ({ ...prev, proveedorEjemplo: newValue || '' }))}
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  fullWidth
+                  margin="dense"
+                  label="Proveedor de ejemplo ({{2}})"
+                  helperText={proveedoresOptions.length > 0 
+                    ? "Seleccioná uno existente o escribí uno nuevo" 
+                    : "Ej: Ferretería López, Corralón Norte"}
+                />
+              )}
+            />
+
+            <Autocomplete
+              freeSolo
+              options={proyectosOptions}
+              value={templateForm.proyectoEjemplo}
+              onChange={(_, newValue) => setTemplateForm(prev => ({ ...prev, proyectoEjemplo: newValue || '' }))}
+              onInputChange={(_, newValue) => setTemplateForm(prev => ({ ...prev, proyectoEjemplo: newValue || '' }))}
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  fullWidth
+                  margin="dense"
+                  label="Proyecto de ejemplo ({{3}})"
+                  helperText={proyectosOptions.length > 0 
+                    ? "Seleccioná uno existente o escribí uno nuevo" 
+                    : "Ej: Obra Av. Corrientes, Edificio Centro"}
+                />
+              )}
+            />
+
+            <FormControl fullWidth margin="dense" sx={{ mt: 2 }}>
+              <InputLabel>¿Cuándo enviar?</InputLabel>
+              <Select
+                value={templateForm.enviarAhora}
+                onChange={handleTemplateFormChange('enviarAhora')}
+                label="¿Cuándo enviar?"
+              >
+                <MenuItem value={true}>Enviar ahora</MenuItem>
+                <MenuItem value={false}>Programar envío</MenuItem>
+              </Select>
+            </FormControl>
+
+            {!templateForm.enviarAhora && (
+              <Box sx={{ display: 'flex', gap: 2, mt: 1 }}>
+                <TextField
+                  type="date"
+                  label="Fecha"
+                  value={templateForm.fechaEnvio}
+                  onChange={handleTemplateFormChange('fechaEnvio')}
+                  InputLabelProps={{ shrink: true }}
+                  sx={{ flex: 1 }}
+                />
+                <TextField
+                  type="time"
+                  label="Hora"
+                  value={templateForm.horaEnvio}
+                  onChange={handleTemplateFormChange('horaEnvio')}
+                  InputLabelProps={{ shrink: true }}
+                  sx={{ flex: 1 }}
+                />
+              </Box>
+            )}
+
+            <Box sx={{ mt: 3, p: 2, bgcolor: 'grey.100', borderRadius: 1 }}>
+              <Typography variant="caption" color="text.secondary">Vista previa:</Typography>
+              <Typography variant="body2" sx={{ mt: 1, whiteSpace: 'pre-line' }}>
+                {`¡Hola ${templateForm.nombre || '{{1}}'}! Soy Sorby 👋
+
+Voy a ser tu asistente para registrar gastos y egresos de forma simple.
+
+¿Arrancamos con tu primer registro? Es muy fácil 🙌
+
+Simplemente mandame:
+
+📸 Una foto de un ticket, factura o comprobante
+🎙️ Un audio contándome el gasto
+✍️ O escribime algo como: "Pagué 15.000 a ${templateForm.proveedorEjemplo || '{{2}}'} para ${templateForm.proyectoEjemplo || '{{3}}'}"
+
+Probá ahora, te espero acá 👇`}
+              </Typography>
+            </Box>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closeTemplateDialog} color="secondary">
+            Cancelar
+          </Button>
+          <Button 
+            onClick={handleSendTemplate} 
+            color="primary" 
+            variant="contained"
+            startIcon={<SendIcon />}
+            disabled={isLoading}
+          >
+            {templateForm.enviarAhora ? 'Enviar ahora' : 'Programar envío'}
           </Button>
         </DialogActions>
       </Dialog>
