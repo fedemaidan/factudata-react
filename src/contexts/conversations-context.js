@@ -303,7 +303,7 @@ export function ConversationsProvider({ children }) {
     const targetMessageId = insightIds[newIndex];
     dispatch({ type: ACTIONS.SET_CURRENT_INSIGHT_INDEX, payload: newIndex });
 
-    const isMessageLoaded = messages.some(m => (m.id || m._id) === targetMessageId);
+    const isMessageLoaded = messages.some(m => String(m._id || m.id) === String(targetMessageId));
 
     if (isMessageLoaded) {
       dispatch({ type: ACTIONS.SET_SCROLL_TO_MESSAGE_ID, payload: targetMessageId });

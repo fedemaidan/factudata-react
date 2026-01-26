@@ -46,15 +46,20 @@ export default function ChatWindow({ myNumber = "X", onOpenList }) {
 
   useEffect(() => {
     if (!scrollToMessageId) return;
-    const handleScroll = () => {
-      const target = document.getElementById(`message-${scrollToMessageId}`);
+    const attemptScroll = (retries = 0) => {
+      const targetId = `message-${scrollToMessageId}`;
+      const target = document.getElementById(targetId);
       if (target) {
         target.scrollIntoView({ behavior: "smooth", block: "center" });
+        handleScrollToMessageHandled();
+      } else if (retries < 5) {
+        setTimeout(() => attemptScroll(retries + 1), 100);
+      } else {
+        handleScrollToMessageHandled();
       }
-      handleScrollToMessageHandled();
     };
-    requestAnimationFrame(handleScroll);
-  }, [scrollToMessageId, handleScrollToMessageHandled]);
+    requestAnimationFrame(() => attemptScroll());
+  }, [scrollToMessageId, handleScrollToMessageHandled, items.length]);
 
   const handleScroll = (e) => {
     const scrollTop = e.currentTarget.scrollTop;
@@ -164,14 +169,14 @@ export default function ChatWindow({ myNumber = "X", onOpenList }) {
         sx={{ overflowY: 'scroll', position: 'relative', minHeight: 0, pt: 1, pb: 2 }}
       >
         {items.map((m, i) => {
-          const messageId = m.id || m._id || `${m.id_conversacion || m.conversationId || "msg"}-${i}`;
+          const messageId = m._id || m.id || `${m.id_conversacion || m.conversationId || "msg"}-${i}`;
           return (
             <MessageBubble
               key={`${messageId}-${i}`}
               message={m}
               isMine={m.emisor?.toLowerCase().includes(myNumber?.toLowerCase())}
               messageId={messageId}
-              isHighlighted={messageId === highlightedMessageId}
+              isHighlighted={String(messageId) === String(highlightedMessageId)}
               onMediaClick={handleMediaClick}
               onAddAnnotation={handleOpenAnnotationDialog}
               annotationsCount={(annotationsByMessageId?.[messageId] || []).length}

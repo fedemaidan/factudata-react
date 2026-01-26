@@ -37,7 +37,7 @@ export default function MessageBubble({
     }
   };
 
-  const resolvedMessageId = messageId || message?.id || message?._id;
+  const resolvedMessageId = messageId || message?._id || message?.id;
   const anchorId = resolvedMessageId
     ? `message-${resolvedMessageId}`
     : undefined;

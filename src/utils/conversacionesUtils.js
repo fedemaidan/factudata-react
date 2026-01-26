@@ -1,5 +1,4 @@
 export const getNombreCliente = (c) => {
-  console.log('c', c)
   if (c?.profile && c?.empresa) {
     return `${c.profile.firstName} ${c.profile.lastName} - (${c.empresa.nombre}) ${c.profile.phone.slice(-4)}`;
   }
