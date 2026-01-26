@@ -23,7 +23,7 @@ const SIDE_NAV_WIDTH = 280;
 const TOP_NAV_HEIGHT = 64;
 
 export const TopNav = (props) => {
-  const { onNavOpen, title, updateAvailable, onUpdateClick, navWidth = SIDE_NAV_WIDTH } = props; // <-- NUEVO
+  const { onNavOpen, title, updateAvailable, onUpdateClick, navWidth = SIDE_NAV_WIDTH, headerActions } = props; 
   const lgUp = useMediaQuery((theme) => theme.breakpoints.up("lg"));
   const accountPopover = usePopover();
   const { user, isSpying, originalUser } = useAuthContext();
@@ -58,11 +58,34 @@ export const TopNav = (props) => {
           spacing={2}
           sx={{ minHeight: TOP_NAV_HEIGHT, px: 2 }}
         >
-          <Typography variant="h6">
-            {isSpying()
-              ? `${title} - Soy ${user.email}`
-              : title}
-          </Typography>
+          <Stack direction="row" alignItems="center" spacing={2} flex={1}>
+            <Typography 
+              variant="h6"
+              sx={{
+                fontSize: { xs: '1rem', sm: '1.25rem' }
+              }}
+            >
+              {isSpying()
+                ? `${title} - Soy ${user.email}`
+                : title}
+            </Typography>
+            {headerActions && (
+              <Box 
+                display="flex" 
+                alignItems="center"
+                sx={{
+                  '& .MuiIconButton-root': {
+                    fontSize: { xs: '1.25rem', sm: '1.5rem' }
+                  },
+                  '& .MuiSvgIcon-root': {
+                    fontSize: { xs: '1.25rem', sm: '1.5rem' }
+                  }
+                }}
+              >
+                {headerActions}
+              </Box>
+            )}
+          </Stack>
 
           <Stack alignItems="center" direction="row-reverse" spacing={2}>
             {!lgUp && (
@@ -133,4 +156,5 @@ TopNav.propTypes = {
   updateAvailable: PropTypes.bool,
   onUpdateClick: PropTypes.func,
   navWidth: PropTypes.number,
+  headerActions: PropTypes.node,
 };

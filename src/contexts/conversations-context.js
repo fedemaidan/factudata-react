@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useMemo, useReducer, useRef } from "react";
+import { createContext, useCallback, useContext, useMemo, useReducer, useRef, useEffect } from "react";
 import { useRouter } from "next/router";
 import { useConversationsFetch } from "src/hooks/useConversationsFetch";
 import { useMessagesFetch } from "src/hooks/useMessagesFetch";
@@ -111,6 +111,7 @@ export function ConversationsProvider({ children }) {
   const router = useRouter();
   const [state, dispatch] = useReducer(reducer, initialState);
   const skipDefaultLoadRef = useRef(false);
+  const isManualSelectionRef = useRef(false);
   const { selected, conversations, messages, offset, hasMore, scrollToMessageId, highlightedMessageId, scrollToBottom, messageResults, loading, insightMessageIds, currentInsightIndex } =
     state;
 
@@ -134,10 +135,6 @@ export function ConversationsProvider({ children }) {
 
   const handleLoadingUpdated = useCallback((isLoading) => {
     dispatch({ type: ACTIONS.SET_LOADING, payload: isLoading });
-  }, []);
-
-  const handleSearchUpdated = useCallback((query) => {
-    // Ya no necesitamos actualizar el estado, viene de query params
   }, []);
 
   const handleMessagesLoaded = useCallback((data) => {
@@ -173,9 +170,37 @@ export function ConversationsProvider({ children }) {
     filters,
     onConversationsLoaded: handleConversationsLoaded,
     onMessageResultsLoaded: handleMessageResultsLoaded,
-    onSearchUpdated: handleSearchUpdated,
     onLoadingUpdated: handleLoadingUpdated,
   });
+
+  useEffect(() => {
+    if (!router.isReady || conversations.length === 0) {
+      return;
+    }
+
+    if (isManualSelectionRef.current) {
+      isManualSelectionRef.current = false;
+      return;
+    }
+
+    const urlConversationId = getStringParam(router.query.conversationId);
+    const currentSelectedId = selected?.ultimoMensaje?.id_conversacion;
+
+    if (urlConversationId && urlConversationId !== currentSelectedId) {
+      const conversationToSelect = conversations.find(
+        (conv) => conv.ultimoMensaje?.id_conversacion === urlConversationId
+      );
+
+      if (conversationToSelect) {
+        dispatch({ type: ACTIONS.SET_SCROLL_TO_MESSAGE_ID, payload: null });
+        dispatch({ type: ACTIONS.SET_HIGHLIGHTED_MESSAGE_ID, payload: null });
+        dispatch({ type: ACTIONS.SET_INSIGHT_MESSAGE_IDS, payload: [] });
+        dispatch({ type: ACTIONS.SET_CURRENT_INSIGHT_INDEX, payload: -1 });
+        skipDefaultLoadRef.current = false;
+        dispatch({ type: ACTIONS.SET_SELECTED, payload: conversationToSelect });
+      }
+    }
+  }, [router.isReady, router.query.conversationId, conversations, selected]);
 
   const { loadMore: loadMoreMessages, sendNewMessage, loadMessageById, refreshCurrentConversation } = useMessagesFetch({
     selected,
@@ -207,14 +232,23 @@ export function ConversationsProvider({ children }) {
         return;
       }
 
+      // Marcar como selección manual para evitar que el useEffect se dispare
+      isManualSelectionRef.current = true;
+
       dispatch({ type: ACTIONS.SET_SCROLL_TO_MESSAGE_ID, payload: null });
       dispatch({ type: ACTIONS.SET_HIGHLIGHTED_MESSAGE_ID, payload: null });
       dispatch({ type: ACTIONS.SET_INSIGHT_MESSAGE_IDS, payload: [] });
       dispatch({ type: ACTIONS.SET_CURRENT_INSIGHT_INDEX, payload: -1 });
       skipDefaultLoadRef.current = false;
       dispatch({ type: ACTIONS.SET_SELECTED, payload: conversation });
+
+      const conversationId = conversation.ultimoMensaje?.id_conversacion;
+      if (conversationId) {
+        const newQuery = { ...router.query, conversationId };
+        router.replace({ pathname: router.pathname, query: newQuery }, undefined, { shallow: true });
+      }
     },
-    [dispatch]
+    [dispatch, router]
   );
 
   const handleSelectMessageResult = useCallback(
@@ -229,17 +263,26 @@ export function ConversationsProvider({ children }) {
       }
 
       try {
+        // Marcar como selección manual para evitar que el useEffect se dispare
+        isManualSelectionRef.current = true;
+        
         skipDefaultLoadRef.current = true;
         dispatch({ type: ACTIONS.SET_SELECTED, payload: result.conversation });
         dispatch({ type: ACTIONS.SET_SCROLL_TO_MESSAGE_ID, payload: targetMessageId });
         dispatch({ type: ACTIONS.SET_HIGHLIGHTED_MESSAGE_ID, payload: targetMessageId });
+
+        const conversationId = result.conversationId;
+        if (conversationId) {
+          const newQuery = { ...router.query, conversationId };
+          router.replace({ pathname: router.pathname, query: newQuery }, undefined, { shallow: true });
+        }
 
         await loadMessageById(result.conversationId, targetMessageId, result.conversation);
       } catch (error) {
         console.error("Error al cargar el mensaje buscado:", error);
       }
     },
-    [loadMessageById]
+    [loadMessageById, router]
   );
 
   const loadMore = useCallback(async () => {

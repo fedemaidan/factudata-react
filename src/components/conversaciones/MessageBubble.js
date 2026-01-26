@@ -100,12 +100,11 @@ export default function MessageBubble({
       py={0.5}
       id={anchorId}
     >
-      <Box display="flex" alignItems="center" gap={0.75}>
+      <Box display="flex" alignItems="flex-start" gap={0.75} maxWidth="75%">
         {isMine ? annotationButton : null}
         <Paper
           elevation={0}
           sx={{
-            maxWidth: '75%',
             p: 1,
             bgcolor: isMine ? '#d1f4cc' : 'background.paper',
             borderRadius: 2,
@@ -260,7 +259,7 @@ export default function MessageBubble({
               </Typography>
             ) : null}
           </Box>
-        </Paper>
+          </Paper>
         {!isMine ? annotationButton : null}
       </Box>
     </Box>
