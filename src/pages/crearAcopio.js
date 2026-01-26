@@ -8,7 +8,15 @@ import AddIcon from '@mui/icons-material/Add';
 
 import ProgressBackdrop from 'src/components/importar/ProgressBackdrop';
 import { Backdrop, CircularProgress } from '@mui/material';
-import Step0DatosIniciales from 'src/components/importar/Step0DatosIniciales';
+// Nuevos componentes de pasos atómicos
+import StepTipoAcopio from 'src/components/importar/StepTipoAcopio';
+import StepProveedor from 'src/components/importar/StepProveedor';
+import StepProyecto from 'src/components/importar/StepProyecto';
+import StepIdentificacion from 'src/components/importar/StepIdentificacion';
+import StepMetodoCarga from 'src/components/importar/StepMetodoCarga';
+import StepCopiarAcopio from 'src/components/importar/StepCopiarAcopio';
+import StepDesdeFactura from 'src/components/importar/StepDesdeFactura';
+// Componentes existentes para subir archivo y ajustar columnas
 import Step1SubirAjustar from 'src/components/importar/Step1SubirAjustar';
 import Step2AjustarColumnas from 'src/components/importar/Step2AjustarColumnas';
 import Step3RevisionFinal from 'src/components/importar/Step3RevisionFinal';
@@ -16,7 +24,7 @@ import useExtractionProcess from 'src/hooks/importar/useExtractionProcess';
 import useColumnMapping from 'src/hooks/importar/useColumnMapping';
 import { fmtMoney } from 'src/utils/importar/money';
 import { toNumber } from 'src/utils/importar/numbers';
-import { steps } from 'src/constant/importarSteps';
+import { steps, METODO_CARGA, getStepsToSkip } from 'src/constant/importarSteps';
 import { applyPriceFormulaToValue } from 'src/utils/importar/priceFormula';
 import { codeFromDescription } from 'src/utils/importar/codeFromDescription';
 import { formatCurrency } from 'src/utils/formatters';
@@ -54,6 +62,7 @@ const ImportarPage = () => {
   const [rotation, setRotation] = useState(0);
   const [guideY, setGuideY] = useState(50);
   const [showGuide, setShowGuide] = useState(true);
+  const [totalFacturaOriginal, setTotalFacturaOriginal] = useState(0); // Total original de factura importada
   const containerRef = useRef(null);
   const [draggingGuide, setDraggingGuide] = useState(false);
 
@@ -62,6 +71,9 @@ const ImportarPage = () => {
 
   const [guardando, setGuardando] = useState(false);
   const [editando, setEditando] = useState(false);
+
+  // Nuevo estado para método de carga (ARCHIVO, MANUAL, COPIAR_ACOPIO, DESDE_FACTURA)
+  const [metodoCarga, setMetodoCarga] = useState(null);
 
   // Setear breadcrumbs
   React.useEffect(() => {
@@ -86,9 +98,26 @@ const [archivoTabla, setArchivoTabla] = useState(null);
 
 const [includeHeaderAsRow, setIncludeHeaderAsRow] = useState(false);
 
+  // Calcula qué steps saltar según el método de carga
+  const stepsToSkip = React.useMemo(() => getStepsToSkip(metodoCarga), [metodoCarga]);
 
-  const handleNext = () => setActiveStep((s) => Math.min(s + 1, steps.length - 1));
-  const handleBack = () => setActiveStep((s) => Math.max(s - 1, 0));
+  // Avanza al siguiente step saltando los que corresponda
+  const handleNext = () => {
+    let next = activeStep + 1;
+    while (next < steps.length && stepsToSkip.includes(next)) {
+      next++;
+    }
+    setActiveStep(Math.min(next, steps.length - 1));
+  };
+
+  // Retrocede al step anterior saltando los que corresponda
+  const handleBack = () => {
+    let prev = activeStep - 1;
+    while (prev >= 0 && stepsToSkip.includes(prev)) {
+      prev--;
+    }
+    setActiveStep(Math.max(prev, 0));
+  };
 
   // guía: helpers de eventos
   const yToPercentInContainer = (pageY) => {
@@ -119,7 +148,7 @@ const onProcesar = async () => {
   // Si es Excel o CSV, procesamos directo desde frontend
   if (nombre.endsWith('.xlsx') || nombre.endsWith('.csv')) {
     await onProcesarTabla(archivo); // 👈 esta función ya la tenés más abajo
-    setActiveStep(2);
+    setActiveStep(6); // Ir a ajustar columnas
     return;
   }
 
@@ -131,7 +160,7 @@ const onProcesar = async () => {
     meta: { tipoLista, proveedor, proyecto, valorTotal },
     onPreviewReady: ({ rawRows, cols, rows, mapping, urls }) => {
       loadPreview({ rawRows, cols, rows, mapping });
-      setActiveStep(2);
+      setActiveStep(6); // Ir a ajustar columnas
       setUrls(urls);
     },
   });
@@ -205,7 +234,7 @@ React.useEffect(() => {
           valorTotal: m.valorTotal || 0,
         }))
       );
-      setActiveStep(3);
+      setActiveStep(7); // Ir directo a revisión final cuando editamos
 
     } catch (error) {
       console.error('Error al cargar acopio:', error);
@@ -452,7 +481,7 @@ const onConfirmMapping = ({ includeHeaderAsRow } = {}) => {
   }
 
   setFinalRows(normalized);
-  setActiveStep(3);
+  setActiveStep(7); // Ir a revisión final
 };
 
   const handleBulkDelete = () => {
@@ -494,9 +523,12 @@ const onConfirmMapping = ({ includeHeaderAsRow } = {}) => {
       })
     );
   };
-const handleAddItem = (position = 'end') => {
+const handleAddItem = (position = 'end', datosDefecto = null) => {
   setFinalRows((rows) => {
-    const nuevo = {
+    const nuevo = datosDefecto ? {
+      id: `nuevo-${Date.now()}`,
+      ...datosDefecto
+    } : {
       id: `nuevo-${Date.now()}`,
       codigo: '',
       descripcion: '',
@@ -515,20 +547,149 @@ const handleAddItem = (position = 'end') => {
   });
 };
   const renderStep = () => {
+    // Step 0: Tipo de acopio (lista_precios o materiales)
     if (activeStep === 0) {
       return (
-        <Step0DatosIniciales
-          tipoLista={tipoLista} setTipoLista={setTipoLista}
-          proveedor={proveedor} setProveedor={setProveedor}
-          proyecto={proyecto} setProyecto={setProyecto}
-          valorTotal={valorTotal} setValorTotal={setValorTotal}
-          codigo={codigo} setCodigo={setCodigo}
-          proveedoresOptions={proveedoresOptions}
-          proyectosOptions={proyectosOptions}
+        <StepTipoAcopio
+          tipoLista={tipoLista}
+          setTipoLista={setTipoLista}
+          onNext={handleNext}
         />
       );
     }
+
+    // Step 1: Proveedor
     if (activeStep === 1) {
+      return (
+        <StepProveedor
+          proveedor={proveedor}
+          setProveedor={setProveedor}
+          proveedoresOptions={proveedoresOptions}
+          onNext={handleNext}
+        />
+      );
+    }
+
+    // Step 2: Proyecto
+    if (activeStep === 2) {
+      return (
+        <StepProyecto
+          proyecto={proyecto}
+          setProyecto={setProyecto}
+          proyectosOptions={proyectosOptions}
+          onNext={handleNext}
+        />
+      );
+    }
+
+    // Step 3: Identificación (código y valor total)
+    if (activeStep === 3) {
+      return (
+        <StepIdentificacion
+          codigo={codigo}
+          setCodigo={setCodigo}
+          valorTotal={valorTotal}
+          setValorTotal={setValorTotal}
+          proveedor={proveedor}
+          tipoLista={tipoLista}
+          onNext={handleNext}
+        />
+      );
+    }
+
+    // Step 4: Método de carga
+    if (activeStep === 4) {
+      return (
+        <StepMetodoCarga
+          tipoLista={tipoLista}
+          metodoCarga={metodoCarga}
+          onSelect={(metodo) => {
+            setMetodoCarga(metodo);
+            // Avanzar al siguiente step según el método elegido
+            setActiveStep(5);
+          }}
+        />
+      );
+    }
+
+    // Step 5: Subir archivo / Manual / Copiar acopio / Desde factura
+    if (activeStep === 5) {
+      // Según el método de carga, mostrar el componente adecuado
+      if (metodoCarga === METODO_CARGA.COPIAR_ACOPIO) {
+        return (
+          <StepCopiarAcopio
+            empresaId={empresaId}
+            proveedor={proveedor}
+            tipoLista={tipoLista}
+            onSelectAcopio={(items) => {
+              setFinalRows(items.map((item, i) => ({
+                id: item.id || `copy-${i}`,
+                codigo: item.codigo || '',
+                descripcion: item.descripcion || '',
+                cantidad: item.cantidad || 1,
+                valorUnitario: item.valorUnitario || 0,
+                valorTotal: item.valorTotal || 0,
+              })));
+              // Calcular valorTotal si es materiales
+              if (tipoLista === 'materiales') {
+                const total = items.reduce((acc, p) => 
+                  acc + (toNumberSafe(p.valorTotal) || (toNumberSafe(p.cantidad) * toNumberSafe(p.valorUnitario))), 0);
+                setValorTotal(total);
+              }
+              // Ir directo a revisión final
+              setActiveStep(7);
+            }}
+          />
+        );
+      }
+
+      if (metodoCarga === METODO_CARGA.DESDE_FACTURA) {
+        return (
+          <StepDesdeFactura
+            empresaId={empresaId}
+            proveedor={proveedor}
+            proyecto={proyecto}
+            onSelectFacturas={(items, totalOriginal) => {
+              setFinalRows(items.map((item, i) => ({
+                id: item.id || `factura-${i}`,
+                codigo: item.codigo || '',
+                descripcion: item.descripcion || '',
+                cantidad: item.cantidad || 1,
+                valorUnitario: item.valorUnitario || 0,
+                valorTotal: item.valorTotal || 0,
+              })));
+              // Guardar el total original de la factura
+              if (totalOriginal) {
+                setTotalFacturaOriginal(totalOriginal);
+                setValorTotal(totalOriginal);
+              } else {
+                // Calcular valorTotal si no hay total original
+                const total = items.reduce((acc, p) => 
+                  acc + (toNumberSafe(p.valorTotal) || (toNumberSafe(p.cantidad) * toNumberSafe(p.valorUnitario))), 0);
+                setValorTotal(total);
+              }
+              // Ir directo a revisión final
+              setActiveStep(7);
+            }}
+          />
+        );
+      }
+
+      if (metodoCarga === METODO_CARGA.MANUAL) {
+        // Para carga manual, agregar una fila vacía y pasar a revisión final
+        setFinalRows([{
+          id: `nuevo-${Date.now()}`,
+          codigo: '',
+          descripcion: '',
+          cantidad: tipoLista === 'materiales' ? 1 : undefined,
+          valorUnitario: 0,
+          valorTotal: tipoLista === 'materiales' ? 0 : undefined,
+        }]);
+        setActiveStep(7);
+        return null;
+      }
+
+      // METODO_CARGA.ARCHIVO - mostrar componente para subir archivo
       return (
         <Step1SubirAjustar
           archivo={archivo} setArchivo={setArchivo}
@@ -547,7 +708,9 @@ const handleAddItem = (position = 'end') => {
         />
       );
     }
-    if (activeStep === 2) {
+
+    // Step 6: Ajustar columnas
+    if (activeStep === 6) {
       return (
         <Step2AjustarColumnas
           tipoLista={tipoLista}
@@ -559,6 +722,8 @@ const handleAddItem = (position = 'end') => {
         />
       );
     }
+
+    // Step 7: Revisión final
     return (
      <Step3RevisionFinal
   // datos
@@ -567,6 +732,8 @@ const handleAddItem = (position = 'end') => {
   proyecto={proyecto}
   valorTotal={valorTotal}
   codigo={codigo}
+  totalFacturaOriginal={totalFacturaOriginal}
+  setTotalFacturaOriginal={setTotalFacturaOriginal}
   // setters para edición inline
   setProveedor={setProveedor}
   setProyecto={setProyecto}
