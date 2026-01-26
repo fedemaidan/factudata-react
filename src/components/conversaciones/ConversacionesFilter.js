@@ -64,7 +64,7 @@ const ConversacionesFilter = () => {
   const handleApply = () => setOpen(false);
 
   const handleRestart = () => {
-    onFiltersChange?.({ ...filters, fechaDesde: "", fechaHasta: "", empresaId: "", tipoContacto: "todos", showErrors: false });
+    onFiltersChange?.({ ...filters, fechaDesde: "", fechaHasta: "", empresaId: "", tipoContacto: "todos", showInsight: false });
   };
 
   const hasActiveFilters = 
@@ -72,7 +72,7 @@ const ConversacionesFilter = () => {
     filters?.fechaHasta || 
     filters?.empresaId || 
     (filters?.tipoContacto && filters.tipoContacto !== "todos") ||
-    filters?.showErrors;
+    filters?.showInsight;
 
   return (
     <>
@@ -190,12 +190,12 @@ const ConversacionesFilter = () => {
           <FormControlLabel
             control={
               <Switch
-                checked={filters?.showErrors || false}
-                onChange={(e) => handleFilterChange("showErrors", e.target.checked)}
+                checked={filters?.showInsight || false}
+                onChange={(e) => handleFilterChange("showInsight", e.target.checked)}
                 size="small"
               />
             }
-            label="Mostrar errores"
+            label="Mostrar insights"
             sx={{ ml: 0, mt: 0.5 }}
           />
 

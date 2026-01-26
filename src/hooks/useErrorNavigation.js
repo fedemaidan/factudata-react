@@ -1,23 +1,23 @@
 import { useEffect } from "react";
-import { getErrorMessageIds } from "src/services/conversacionService";
+import { getInsightMessageIds } from "src/services/conversacionService";
 
-export function useErrorNavigation({ selected, filters, onErrorIdsLoaded }) {
+export function useInsightNavigation({ selected, filters, onInsightIdsLoaded }) {
   useEffect(() => {
-    if (!selected || !filters?.showErrors) {
-      onErrorIdsLoaded?.([]);
+    if (!selected || !filters?.showInsight) {
+      onInsightIdsLoaded?.([]);
       return;
     }
 
-    const loadErrorIds = async () => {
+    const loadInsightIds = async () => {
       try {
-        const ids = await getErrorMessageIds(selected.ultimoMensaje.id_conversacion);
-        onErrorIdsLoaded?.(ids);
+        const ids = await getInsightMessageIds(selected.ultimoMensaje.id_conversacion, filters);
+        onInsightIdsLoaded?.(ids);
       } catch (error) {
-        console.error("Error al cargar IDs de errores:", error);
-        onErrorIdsLoaded?.([]);
+        console.error("Error al cargar IDs de insights:", error);
+        onInsightIdsLoaded?.([]);
       }
     };
 
-    loadErrorIds();
-  }, [selected, filters?.showErrors, onErrorIdsLoaded]);
+    loadInsightIds();
+  }, [selected, filters?.showInsight, onInsightIdsLoaded]);
 }

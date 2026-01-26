@@ -101,16 +101,16 @@ export default function ConversationList({ onSelect, onMessageSelect }) {
 
   const selectedId = selected?.ultimoMensaje?.id_conversacion;
 
-  const renderErrorBadge = (count) => {
-    const errorCount = Number(count || 0);
-    if (!errorCount) {
+  const renderInsightBadge = (count) => {
+    const insightCount = Number(count || 0);
+    if (!insightCount) {
       return null;
     }
 
     return (
       <Badge
-        color="error"
-        badgeContent={errorCount}
+        color="warning"
+        badgeContent={insightCount}
         sx={{
           "& .MuiBadge-badge": {
             fontSize: "0.65rem",
@@ -267,7 +267,7 @@ export default function ConversationList({ onSelect, onMessageSelect }) {
                       {getNombreCliente(c)}
                     </Typography>
                     <Box display="flex" alignItems="center" gap={1}>
-                      {filters?.showErrors && renderErrorBadge(c.errorCount)}
+                      {filters?.showInsight && renderInsightBadge(c.insightCount)}
                       <Typography
                         variant="caption"
                         color="text.secondary"

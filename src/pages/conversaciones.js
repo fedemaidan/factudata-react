@@ -51,13 +51,13 @@ function ConversacionesContent() {
   const {
     selected,
     filters,
-    errorMessageIds,
-    currentErrorIndex,
+    insightMessageIds,
+    currentInsightIndex,
     onRefreshCurrentConversation,
-    onNavigateToError,
+    onNavigateToInsight,
   } = useConversationsContext();
 
-  const hasErrors = errorMessageIds.length > 0;
+  const hasInsights = insightMessageIds.length > 0;
 
   const handleDownload = async () => {
     if (!selected || !downloadDates.start || !downloadDates.end) {
@@ -125,16 +125,16 @@ function ConversacionesContent() {
                   <IconButton onClick={() => setDownloadOpen(true)} title="Descargar conversación">
                     <DownloadIcon />
                   </IconButton>
-                  {filters?.showErrors && (
-                    <Tooltip title={hasErrors ? `Siguiente error (${currentErrorIndex + 1}/${errorMessageIds.length})` : "No hay errores"}>
+                  {filters?.showInsight && (
+                    <Tooltip title={hasInsights ? `Siguiente insight (${currentInsightIndex + 1}/${insightMessageIds.length})` : "No hay insights"}>
                       <span>
                         <IconButton 
-                          onClick={() => onNavigateToError('next')} 
-                          disabled={!hasErrors}
+                          onClick={() => onNavigateToInsight('next')} 
+                          disabled={!hasInsights}
                         >
                           <Badge 
-                            badgeContent={errorMessageIds.length} 
-                            color="error"
+                            badgeContent={insightMessageIds.length} 
+                            color="warning"
                             sx={{
                               "& .MuiBadge-badge": {
                                 fontSize: "0.65rem",

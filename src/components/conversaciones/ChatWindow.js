@@ -200,11 +200,6 @@ export default function ChatWindow({ myNumber = "X", onOpenList }) {
               autoFocus
             />
           </Box>
-          {annotationDialog?.messageId ? (
-            <Typography variant="caption" color="text.secondary" display="block" mt={1}>
-              Mensaje: {annotationDialog.messageId}
-            </Typography>
-          ) : null}
         </DialogContent>
         <DialogActions>
           <Button onClick={handleCloseAnnotationDialog}>Cancelar</Button>

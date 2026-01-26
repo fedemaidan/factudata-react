@@ -15,8 +15,8 @@ function buildFilterParams(filters = {}) {
   if (filters?.tipoContacto && filters.tipoContacto !== "todos") {
     params.tipoContacto = filters.tipoContacto;
   }
-  if (filters?.showErrors) {
-    params.showErrors = filters.showErrors;
+  if (filters?.showInsight) {
+    params.showInsight = filters.showInsight;
   }
   return params;
 }
@@ -80,9 +80,12 @@ export async function downloadConversation(id, fechaInicio, fechaFin) {
   return response;
 }
 
-export async function getErrorMessageIds(conversationId) {
-  const { data } = await api.get(`/conversaciones/${conversationId}/errors`);
-  return data.errorIds || [];
+export async function getInsightMessageIds(conversationId, filters = {}) {
+  const params = {};
+  if (filters?.fechaDesde) params.fechaDesde = filters.fechaDesde;
+  if (filters?.fechaHasta) params.fechaHasta = filters.fechaHasta;
+  const { data } = await api.get(`/conversaciones/${conversationId}/insights`, { params });
+  return data || [];
 }
 
 export function getMessagePreview(message) {
