@@ -188,6 +188,7 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
     "MODIFICAR_PRESUPUESTO",
     "ELIMINAR_PRESUPUESTO",
     "VER_ACOPIO",
+    "DESACOPIAR_MANUAL",
     "INTEGRACION_ODOO",
     "VER_CUENTAS_PENDIENTES",
     "VER_UNIDADES",

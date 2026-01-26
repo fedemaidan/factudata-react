@@ -2,13 +2,19 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   Box, Button, Container, Stack, Typography, Tabs, Tab, Paper, Grid, Snackbar, Alert,
-  Dialog, DialogContent, TextField, Divider, LinearProgress, IconButton, Tooltip
+  Dialog, DialogContent, TextField, Divider, LinearProgress, IconButton, Tooltip,
+  List, ListItem, ListItemIcon, ListItemText, ListItemSecondaryAction
 } from '@mui/material';
 import CircularProgress from '@mui/material/CircularProgress';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import ArrowForwardIosIcon from '@mui/icons-material/ArrowForwardIos';
 import ArrowBackIosNewIcon from '@mui/icons-material/ArrowBackIosNew';
+import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
+import ImageIcon from '@mui/icons-material/Image';
+import OpenInNewIcon from '@mui/icons-material/OpenInNew';
+import EditIcon from '@mui/icons-material/Edit';
+import SaveIcon from '@mui/icons-material/Save';
 import Chip from '@mui/material/Chip';
 import Switch from '@mui/material/Switch';
 import FormControlLabel from '@mui/material/FormControlLabel';
@@ -22,6 +28,9 @@ import AcopioService from 'src/services/acopioService';
 import HomeIcon from '@mui/icons-material/Home';
 import InventoryIcon from '@mui/icons-material/Inventory';
 import VisibilityIcon from '@mui/icons-material/Visibility';
+import AttachFileIcon from '@mui/icons-material/AttachFile';
+import UploadFileIcon from '@mui/icons-material/UploadFile';
+import DescriptionIcon from '@mui/icons-material/Description';
 
 // Nuevos componentes:
 import HeaderAcopioSummary from 'src/components/headerAcopioSummary';
@@ -69,6 +78,12 @@ const MovimientosAcopioPage = () => {
 
   const [materialesAgrupados, setMaterialesAgrupados] = useState({});
   const [estadoLoading, setEstadoLoading] = useState(false);
+
+  // Documentos complementarios
+  const [documentosComplementarios, setDocumentosComplementarios] = useState([]);
+  const [docPageIdx, setDocPageIdx] = useState(0);
+  const [editandoDescripcionIdx, setEditandoDescripcionIdx] = useState(null);
+  const [descripcionEditando, setDescripcionEditando] = useState('');
 
   // Editor ya no se necesita - la edición se hace en página separada
 
@@ -180,6 +195,22 @@ const MovimientosAcopioPage = () => {
     }
   }, [acopioId]);
 
+  // Fetch documentos complementarios
+  const fetchDocumentosComplementarios = useCallback(async () => {
+    if (!acopioId) return;
+    try {
+      setLoading(true);
+      const resp = await AcopioService.obtenerDocumentosComplementarios(acopioId);
+      setDocumentosComplementarios(resp?.documentos || []);
+      setDocPageIdx(0);
+    } catch (err) {
+      console.error(err);
+      setAlert({ open: true, message: 'Error al obtener documentos complementarios', severity: 'error' });
+    } finally {
+      setLoading(false);
+    }
+  }, [acopioId]);
+
   // Duplicados por número y por valor/fecha
   const detectarDuplicados = (lista) => {
     const porNumero = {};
@@ -236,13 +267,79 @@ const MovimientosAcopioPage = () => {
     }
   };
 
+  // Handler para subir documentos complementarios
+  const handleSubirDocumentosComplementarios = async (e) => {
+    const files = e.target?.files;
+    if (!files || files.length === 0) return;
+    try {
+      setLoading(true);
+      await AcopioService.subirDocumentosComplementarios(acopioId, files);
+      setAlert({ open: true, message: 'Documentos complementarios subidos correctamente', severity: 'success' });
+      await fetchDocumentosComplementarios();
+    } catch (err) {
+      console.error(err);
+      setAlert({ open: true, message: 'No se pudieron subir los documentos complementarios', severity: 'error' });
+    } finally {
+      if (e.target) e.target.value = '';
+      setLoading(false);
+    }
+  };
+
+  // Handler para eliminar documento complementario
+  const handleEliminarDocumentoComplementario = async (index) => {
+    try {
+      setLoading(true);
+      const exito = await AcopioService.eliminarDocumentoComplementario(acopioId, index);
+      if (exito) {
+        setAlert({ open: true, message: 'Documento eliminado correctamente', severity: 'success' });
+        const wasLast = index === (documentosComplementarios.length - 1);
+        await fetchDocumentosComplementarios();
+        if (wasLast) setDocPageIdx((p) => Math.max(0, p - 1));
+      } else {
+        setAlert({ open: true, message: 'No se pudo eliminar el documento', severity: 'error' });
+      }
+    } catch (err) {
+      console.error(err);
+      setAlert({ open: true, message: 'Error al eliminar documento', severity: 'error' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Handler para guardar descripción de documento complementario
+  const handleGuardarDescripcion = async (index) => {
+    try {
+      const exito = await AcopioService.actualizarDescripcionDocumentoComplementario(
+        acopioId, 
+        index, 
+        descripcionEditando
+      );
+      if (exito) {
+        // Actualizar localmente sin refetch
+        setDocumentosComplementarios(prev => 
+          prev.map((doc, i) => i === index ? { ...doc, descripcion: descripcionEditando } : doc)
+        );
+        setAlert({ open: true, message: 'Descripción actualizada', severity: 'success' });
+      } else {
+        setAlert({ open: true, message: 'No se pudo actualizar la descripción', severity: 'error' });
+      }
+    } catch (err) {
+      console.error(err);
+      setAlert({ open: true, message: 'Error al actualizar descripción', severity: 'error' });
+    } finally {
+      setEditandoDescripcionIdx(null);
+      setDescripcionEditando('');
+    }
+  };
+
   // Tabs: lazy fetch
   useEffect(() => {
     if (!acopioId) return;
     if (tabActiva === 'acopio') fetchAcopio();
     if (tabActiva === 'remitos') fetchRemitos();
     if (tabActiva === 'materiales') fetchMovimientos();
-  }, [tabActiva, acopioId, fetchAcopio, fetchRemitos, fetchMovimientos]);
+    if (tabActiva === 'documentos') fetchDocumentosComplementarios();
+  }, [tabActiva, acopioId, fetchAcopio, fetchRemitos, fetchMovimientos, fetchDocumentosComplementarios]);
 
   const handleChangeTab = (_e, v) => setTabActiva(v);
 
@@ -293,6 +390,7 @@ const MovimientosAcopioPage = () => {
     if (tabActiva === 'remitos') fetchRemitos();
     else if (tabActiva === 'materiales') fetchMovimientos();
     else if (tabActiva === 'acopio') fetchAcopio();
+    else if (tabActiva === 'documentos') fetchDocumentosComplementarios();
   };
 
   // Navegación con teclado en HOJAS
@@ -332,6 +430,12 @@ const MovimientosAcopioPage = () => {
           {hasAcopioPages && (
             <Tab label={acopio?.tipo === 'lista_precios' ? 'Lista original' : 'Comprobante original'} value="hojas" />
           )}
+          <Tab 
+            label="Documentos complementarios" 
+            value="documentos" 
+            icon={<AttachFileIcon fontSize="small" />} 
+            iconPosition="start"
+          />
         </Tabs>
 
         {loading && (
@@ -449,6 +553,169 @@ const MovimientosAcopioPage = () => {
               enableDelete={ENABLE_HOJA_DELETE}
               nextPreviewUrl={nextUrl}
             />
+          </Box>
+        )}
+
+        {/* DOCUMENTOS COMPLEMENTARIOS */}
+        {tabActiva === 'documentos' && (
+          <Box sx={{ mt: 2 }}>
+            <Paper elevation={2} sx={{ p: 3 }}>
+              <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
+                <Typography variant="h6">
+                  <DescriptionIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
+                  Documentos Complementarios ({documentosComplementarios.length})
+                </Typography>
+                <Box>
+                  <input
+                    id="input-docs-complementarios"
+                    type="file"
+                    multiple
+                    accept="image/*,application/pdf"
+                    style={{ display: 'none' }}
+                    onChange={handleSubirDocumentosComplementarios}
+                  />
+                  <label htmlFor="input-docs-complementarios">
+                    <Button 
+                      variant="contained" 
+                      component="span" 
+                      startIcon={<UploadFileIcon />}
+                      disabled={loading}
+                    >
+                      Subir documentos
+                    </Button>
+                  </label>
+                </Box>
+              </Stack>
+
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Agregá documentos adicionales como vencimientos, direcciones, condiciones comerciales u otros datos relevantes.
+              </Typography>
+
+              <Divider sx={{ mb: 2 }} />
+
+              {documentosComplementarios.length === 0 ? (
+                <Box sx={{ textAlign: 'center', py: 4 }}>
+                  <AttachFileIcon sx={{ fontSize: 48, color: 'text.disabled', mb: 1 }} />
+                  <Typography color="text.secondary">
+                    No hay documentos complementarios cargados
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Subí imágenes o PDFs con información adicional del acopio
+                  </Typography>
+                </Box>
+              ) : (
+                <List sx={{ bgcolor: 'background.paper' }}>
+                  {documentosComplementarios.map((doc, index) => {
+                    const isPdf = doc.tipo === 'pdf' || doc.url?.toLowerCase().includes('.pdf');
+                    return (
+                      <ListItem
+                        key={index}
+                        sx={{
+                          border: '1px solid',
+                          borderColor: 'divider',
+                          borderRadius: 1,
+                          mb: 1,
+                          '&:hover': { bgcolor: 'action.hover' }
+                        }}
+                      >
+                        <ListItemIcon>
+                          {isPdf ? (
+                            <PictureAsPdfIcon color="error" />
+                          ) : (
+                            <ImageIcon color="primary" />
+                          )}
+                        </ListItemIcon>
+                        <ListItemText
+                          primary={
+                            <Stack direction="row" alignItems="center" spacing={1}>
+                              <Typography variant="subtitle2">
+                                {doc.nombre || `Documento ${index + 1}`}
+                              </Typography>
+                              <Chip 
+                                size="small" 
+                                label={isPdf ? 'PDF' : 'Imagen'} 
+                                variant="outlined"
+                                sx={{ fontSize: 10 }}
+                              />
+                            </Stack>
+                          }
+                          secondary={
+                            <Stack spacing={0.5} sx={{ mt: 0.5 }}>
+                              {editandoDescripcionIdx === index ? (
+                                <Stack direction="row" spacing={1} alignItems="center">
+                                  <TextField
+                                    size="small"
+                                    fullWidth
+                                    placeholder="Agregar descripción..."
+                                    value={descripcionEditando}
+                                    onChange={(e) => setDescripcionEditando(e.target.value)}
+                                    autoFocus
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter') handleGuardarDescripcion(index);
+                                      if (e.key === 'Escape') setEditandoDescripcionIdx(null);
+                                    }}
+                                  />
+                                  <IconButton 
+                                    size="small" 
+                                    color="primary"
+                                    onClick={() => handleGuardarDescripcion(index)}
+                                  >
+                                    <SaveIcon fontSize="small" />
+                                  </IconButton>
+                                </Stack>
+                              ) : (
+                                <Stack direction="row" alignItems="center" spacing={1}>
+                                  <Typography variant="body2" color="text.secondary">
+                                    {doc.descripcion || 'Sin descripción'}
+                                  </Typography>
+                                  <IconButton 
+                                    size="small" 
+                                    onClick={() => {
+                                      setEditandoDescripcionIdx(index);
+                                      setDescripcionEditando(doc.descripcion || '');
+                                    }}
+                                  >
+                                    <EditIcon fontSize="small" />
+                                  </IconButton>
+                                </Stack>
+                              )}
+                              <Typography variant="caption" color="text.disabled">
+                                {doc.fecha 
+                                  ? new Date(doc.fecha).toLocaleDateString('es-AR', { 
+                                      day: '2-digit', month: 'short', year: 'numeric' 
+                                    })
+                                  : ''}
+                              </Typography>
+                            </Stack>
+                          }
+                        />
+                        <ListItemSecondaryAction>
+                          <Stack direction="row" spacing={1}>
+                            <Tooltip title="Abrir documento">
+                              <IconButton 
+                                edge="end" 
+                                onClick={() => window.open(doc.url, '_blank')}
+                              >
+                                <OpenInNewIcon />
+                              </IconButton>
+                            </Tooltip>
+                            <Tooltip title="Eliminar">
+                              <IconButton 
+                                edge="end" 
+                                color="error"
+                                onClick={() => handleEliminarDocumentoComplementario(index)}
+                              >
+                                <DeleteOutlineIcon />
+                              </IconButton>
+                            </Tooltip>
+                          </Stack>
+                        </ListItemSecondaryAction>
+                      </ListItem>
+                    );
+                  })}
+                </List>
+              )}
+            </Paper>
           </Box>
         )}
 

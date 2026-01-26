@@ -29,6 +29,13 @@ export default function AcopioVisor({
   const prevIdx = hasPages ? (pageIdx - 1 + totalPages) % totalPages : 0;
   const nextUrl = hasPages ? pages[nextIdx] : null;
 
+  // Helper para detectar si es PDF
+  const isPdf = (url) => {
+    if (!url) return false;
+    const lower = url.toLowerCase();
+    return lower.endsWith('.pdf') || lower.includes('.pdf?') || lower.includes('application/pdf');
+  };
+
   const goNext = useCallback(() => setPageIdx(prev => (prev + 1) % (totalPages || 1)), [setPageIdx, totalPages]);
   const goPrev = useCallback(() => setPageIdx(prev => (prev - 1 + (totalPages || 1)) % (totalPages || 1)), [setPageIdx, totalPages]);
 
@@ -149,25 +156,39 @@ export default function AcopioVisor({
           <ArrowBackIosNewIcon />
         </IconButton>
 
-        {/* Image */}
+        {/* Image or PDF */}
         {currentUrl && (
-          <a href={currentUrl} target="_blank" rel="noreferrer" style={{ width: '100%', height: '100%', display: 'block' }}>
-            <img
-              src={currentUrl}
-              alt={`Acopio - Página ${pageIdx + 1}`}
-              style={{
-                transform: `translate(${translate.x}px, ${translate.y}px) scale(${scale})`,
-                transformOrigin: 'center center',
-                maxWidth: '100%',
-                maxHeight: '100%',
-                width: '100%',
-                height: '100%',
-                objectFit: 'contain',
-                userSelect: 'none',
-                pointerEvents: 'none' // panning en contenedor
-              }}
-            />
-          </a>
+          isPdf(currentUrl) ? (
+            // PDF: mostrar con embed/iframe
+            <Box sx={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <embed
+                src={currentUrl}
+                type="application/pdf"
+                width="100%"
+                height="100%"
+                style={{ border: 'none' }}
+              />
+            </Box>
+          ) : (
+            // Imagen: mostrar con zoom y pan
+            <a href={currentUrl} target="_blank" rel="noreferrer" style={{ width: '100%', height: '100%', display: 'block' }}>
+              <img
+                src={currentUrl}
+                alt={`Acopio - Página ${pageIdx + 1}`}
+                style={{
+                  transform: `translate(${translate.x}px, ${translate.y}px) scale(${scale})`,
+                  transformOrigin: 'center center',
+                  maxWidth: '100%',
+                  maxHeight: '100%',
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'contain',
+                  userSelect: 'none',
+                  pointerEvents: 'none' // panning en contenedor
+                }}
+              />
+            </a>
+          )
         )}
 
         {/* Next */}
@@ -198,11 +219,19 @@ export default function AcopioVisor({
               overflow: 'hidden',
               border: '1px solid',
               borderColor: 'divider',
-              backgroundImage: `url("${nextUrl}")`,
+              backgroundImage: isPdf(nextUrl) ? 'none' : `url("${nextUrl}")`,
               backgroundSize: 'cover',
-              backgroundPosition: 'center'
+              backgroundPosition: 'center',
+              bgcolor: isPdf(nextUrl) ? 'grey.200' : 'transparent',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
             }}
-          />
+          >
+            {isPdf(nextUrl) && (
+              <Typography variant="caption" sx={{ fontSize: 10, color: 'text.secondary' }}>PDF</Typography>
+            )}
+          </Box>
         </Button>
       </Box>
 
@@ -219,13 +248,23 @@ export default function AcopioVisor({
               borderRadius: 1,
               border: '2px solid',
               borderColor: i === pageIdx ? 'primary.main' : 'divider',
-              backgroundImage: `url("${u}")`,
+              backgroundImage: isPdf(u) ? 'none' : `url("${u}")`,
               backgroundSize: 'cover',
               backgroundPosition: 'center',
+              bgcolor: isPdf(u) ? 'grey.100' : 'transparent',
               cursor: 'pointer',
-              flex: '0 0 auto'
+              flex: '0 0 auto',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
             }}
-          />
+          >
+            {isPdf(u) && (
+              <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 600 }}>
+                PDF
+              </Typography>
+            )}
+          </Box>
         ))}
       </Stack>
 

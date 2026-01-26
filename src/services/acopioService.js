@@ -719,6 +719,92 @@ actualizarCamposAcopio: async (acopioId, updates) => {
     }
   },
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // DOCUMENTOS COMPLEMENTARIOS
+  // Documentos adicionales como vencimientos, direcciones, datos relevantes, etc.
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Sube documentos complementarios al acopio (imágenes o PDFs)
+   * POST /acopio/:acopioId/documentos-complementarios (multipart)
+   * @param {string} acopioId - ID del acopio
+   * @param {FileList|File[]} files - Archivos a subir
+   * @param {string} descripcion - Descripción opcional de los documentos
+   * @returns {Promise<{ok: boolean, documentos: Array}>}
+   */
+  subirDocumentosComplementarios: async (acopioId, files, descripcion = '') => {
+    try {
+      if (!acopioId) throw new Error('Falta acopioId');
+      const formData = new FormData();
+      [...files].forEach((f) => formData.append('archivos', f));
+      if (descripcion) formData.append('descripcion', descripcion);
+      
+      const resp = await api.post(`/acopio/${acopioId}/documentos-complementarios`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      if (resp.status === 200) return resp.data;
+      throw new Error('No se pudieron subir los documentos complementarios');
+    } catch (err) {
+      console.error('❌ subirDocumentosComplementarios', err);
+      throw err;
+    }
+  },
+
+  /**
+   * Obtiene los documentos complementarios de un acopio
+   * GET /acopio/:acopioId/documentos-complementarios
+   * @param {string} acopioId - ID del acopio
+   * @returns {Promise<{ok: boolean, documentos: Array}>}
+   */
+  obtenerDocumentosComplementarios: async (acopioId) => {
+    try {
+      if (!acopioId) throw new Error('Falta acopioId');
+      const resp = await api.get(`/acopio/${acopioId}/documentos-complementarios`);
+      if (resp.status === 200) return resp.data;
+      throw new Error('No se pudieron obtener los documentos complementarios');
+    } catch (err) {
+      console.error('❌ obtenerDocumentosComplementarios', err);
+      throw err;
+    }
+  },
+
+  /**
+   * Elimina un documento complementario por índice
+   * DELETE /acopio/:acopioId/documentos-complementarios/:index
+   * @param {string} acopioId - ID del acopio
+   * @param {number} index - Índice del documento a eliminar
+   * @returns {Promise<boolean>}
+   */
+  eliminarDocumentoComplementario: async (acopioId, index) => {
+    try {
+      const resp = await api.delete(`/acopio/${acopioId}/documentos-complementarios/${index}`);
+      if (resp.status === 200) return true;
+      return false;
+    } catch (err) {
+      console.error('❌ eliminarDocumentoComplementario', err);
+      return false;
+    }
+  },
+
+  /**
+   * Actualiza la descripción de un documento complementario
+   * PATCH /acopio/:acopioId/documentos-complementarios/:index
+   * @param {string} acopioId - ID del acopio
+   * @param {number} index - Índice del documento
+   * @param {string} descripcion - Nueva descripción
+   * @returns {Promise<boolean>}
+   */
+  actualizarDescripcionDocumentoComplementario: async (acopioId, index, descripcion) => {
+    try {
+      const resp = await api.patch(`/acopio/${acopioId}/documentos-complementarios/${index}`, { descripcion });
+      if (resp.status === 200) return true;
+      return false;
+    } catch (err) {
+      console.error('❌ actualizarDescripcionDocumentoComplementario', err);
+      return false;
+    }
+  },
+
 };
 
 export default AcopioService;
