@@ -63,36 +63,7 @@ export const TopNav = (props) => {
           spacing={2}
           sx={{ minHeight: TOP_NAV_HEIGHT, px: 2 }}
         >
-          <Stack direction="row" alignItems="center" spacing={2} flex={1}>
-            <Typography 
-              variant="h6"
-              sx={{
-                fontSize: { xs: '1rem', sm: '1.25rem' }
-              }}
-            >
-              {isSpying()
-                ? `${title} - Soy ${user.email}`
-                : title}
-            </Typography>
-            {headerActions && (
-              <Box 
-                display="flex" 
-                alignItems="center"
-                sx={{
-                  '& .MuiIconButton-root': {
-                    fontSize: { xs: '1.25rem', sm: '1.5rem' }
-                  },
-                  '& .MuiSvgIcon-root': {
-                    fontSize: { xs: '1.25rem', sm: '1.5rem' }
-                  }
-                }}
-              >
-                {headerActions}
-              </Box>
-            )}
-          </Stack>
           <Stack alignItems="center" direction="row" spacing={1} sx={{ minWidth: 0, flex: 1 }}>
-          <Stack alignItems="center" direction="row-reverse" spacing={2}>
             {!lgUp && (
               <IconButton onClick={onNavOpen} edge="start">
                 <SvgIcon fontSize="small">
@@ -148,20 +119,34 @@ export const TopNav = (props) => {
                 })}
               </Breadcrumbs>
             ) : (
-              <Typography 
-                variant="h6"
-                sx={{
-                  fontSize: { xs: '0.9rem', sm: '1.25rem' },
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  maxWidth: { xs: '180px', sm: '100%' }
-                }}
-              >
-                {isSpying()
-                  ? `${title} - Soy ${user.email}`
-                  : title}
-              </Typography>
+              <Stack direction="row" alignItems="center" spacing={2} flex={1}>
+                <Typography 
+                  variant="h6"
+                  sx={{
+                    fontSize: { xs: '1rem', sm: '1.25rem' }
+                  }}
+                >
+                  {isSpying()
+                    ? `${title} - Soy ${user.email}`
+                    : title}
+                </Typography>
+                {headerActions && (
+                  <Box 
+                    display="flex" 
+                    alignItems="center"
+                    sx={{
+                      '& .MuiIconButton-root': {
+                        fontSize: { xs: '1.25rem', sm: '1.5rem' }
+                      },
+                      '& .MuiSvgIcon-root': {
+                        fontSize: { xs: '1.25rem', sm: '1.5rem' }
+                      }
+                    }}
+                  >
+                    {headerActions}
+                  </Box>
+                )}
+              </Stack>
             )}
           </Stack>
 
