@@ -31,7 +31,7 @@ const LayoutContainer = styled('div')({
 });
 
 export const Layout = withAuthGuard((props) => {
-  const { children, title } = props;
+  const { children, title, headerActions } = props;
   const pathname = usePathname();
   const [openNav, setOpenNav] = useState(false); // mobile
   const [collapsed, setCollapsed] = useState(() => {
@@ -74,8 +74,9 @@ export const Layout = withAuthGuard((props) => {
         title={title || ""}
         collapsed={collapsed}
         navWidth={navWidth}
-        updateAvailable={updateAvailable}
-        onUpdateClick={triggerReload}
+        updateAvailable={updateAvailable}   // boolean
+        onUpdateClick={triggerReload}       // función que hace reload
+        headerActions={headerActions}
       />
       <SideNav
         onClose={() => setOpenNav(false)}

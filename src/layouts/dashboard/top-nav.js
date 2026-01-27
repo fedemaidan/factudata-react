@@ -27,7 +27,7 @@ const SIDE_NAV_WIDTH = 280;
 const TOP_NAV_HEIGHT = 64;
 
 export const TopNav = (props) => {
-  const { onNavOpen, title, updateAvailable, onUpdateClick, navWidth = SIDE_NAV_WIDTH } = props;
+  const { onNavOpen, title, updateAvailable, onUpdateClick, navWidth = SIDE_NAV_WIDTH, headerActions } = props; // <-- NUEVO
   const { breadcrumbs } = useBreadcrumbs();
   const lgUp = useMediaQuery((theme) => theme.breakpoints.up("lg"));
   const accountPopover = usePopover();
@@ -63,7 +63,6 @@ export const TopNav = (props) => {
           spacing={2}
           sx={{ minHeight: TOP_NAV_HEIGHT, px: 2 }}
         >
-          {/* Lado izquierdo: Menú hamburguesa + Título o Breadcrumbs */}
           <Stack alignItems="center" direction="row" spacing={1} sx={{ minWidth: 0, flex: 1 }}>
             {!lgUp && (
               <IconButton onClick={onNavOpen} edge="start">
@@ -120,20 +119,34 @@ export const TopNav = (props) => {
                 })}
               </Breadcrumbs>
             ) : (
-              <Typography 
-                variant="h6"
-                sx={{
-                  fontSize: { xs: '0.9rem', sm: '1.25rem' },
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  maxWidth: { xs: '180px', sm: '100%' }
-                }}
-              >
-                {isSpying()
-                  ? `${title} - Soy ${user.email}`
-                  : title}
-              </Typography>
+              <Stack direction="row" alignItems="center" spacing={2} flex={1}>
+                <Typography 
+                  variant="h6"
+                  sx={{
+                    fontSize: { xs: '1rem', sm: '1.25rem' }
+                  }}
+                >
+                  {isSpying()
+                    ? `${title} - Soy ${user.email}`
+                    : title}
+                </Typography>
+                {headerActions && (
+                  <Box 
+                    display="flex" 
+                    alignItems="center"
+                    sx={{
+                      '& .MuiIconButton-root': {
+                        fontSize: { xs: '1.25rem', sm: '1.5rem' }
+                      },
+                      '& .MuiSvgIcon-root': {
+                        fontSize: { xs: '1.25rem', sm: '1.5rem' }
+                      }
+                    }}
+                  >
+                    {headerActions}
+                  </Box>
+                )}
+              </Stack>
             )}
           </Stack>
 
@@ -203,4 +216,5 @@ TopNav.propTypes = {
   updateAvailable: PropTypes.bool,
   onUpdateClick: PropTypes.func,
   navWidth: PropTypes.number,
+  headerActions: PropTypes.node,
 };

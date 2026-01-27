@@ -1,8 +1,10 @@
-import { createContext, useCallback, useContext, useMemo, useReducer, useRef } from "react";
+import { createContext, useCallback, useContext, useMemo, useReducer, useRef, useEffect } from "react";
 import { useRouter } from "next/router";
 import { useConversationsFetch } from "src/hooks/useConversationsFetch";
 import { useMessagesFetch } from "src/hooks/useMessagesFetch";
 import { useMessageScroll } from "src/hooks/useMessageScroll";
+import { useInsightNavigation } from "src/hooks/useErrorNavigation";
+import { addNoteToMessage } from "src/services/conversacionService";
 
 const ACTIONS = {
   SET_CONVERSATIONS: "SET_CONVERSATIONS",
@@ -17,6 +19,9 @@ const ACTIONS = {
   SET_SCROLL_TO_MESSAGE_ID: "SET_SCROLL_TO_MESSAGE_ID",
   SET_HIGHLIGHTED_MESSAGE_ID: "SET_HIGHLIGHTED_MESSAGE_ID",
   SET_LOADING: "SET_LOADING",
+  SET_INSIGHT_MESSAGE_IDS: "SET_INSIGHT_MESSAGE_IDS",
+  SET_CURRENT_INSIGHT_INDEX: "SET_CURRENT_INSIGHT_INDEX",
+  UPDATE_MESSAGE_NOTES: "UPDATE_MESSAGE_NOTES",
 };
 
 const initialState = {
@@ -31,6 +36,8 @@ const initialState = {
   scrollToMessageId: null,
   highlightedMessageId: null,
   loading: false,
+  insightMessageIds: [],
+  currentInsightIndex: -1,
 };
 
 const reducer = (state, action) => {
@@ -57,6 +64,22 @@ const reducer = (state, action) => {
       return { ...state, highlightedMessageId: action.payload };
     case ACTIONS.SET_LOADING:
       return { ...state, loading: action.payload };
+    case ACTIONS.SET_INSIGHT_MESSAGE_IDS:
+      return { ...state, insightMessageIds: action.payload };
+    case ACTIONS.SET_CURRENT_INSIGHT_INDEX:
+      return { ...state, currentInsightIndex: action.payload };
+    case ACTIONS.UPDATE_MESSAGE_NOTES:
+      return {
+        ...state,
+        messages: state.messages.map(msg => {
+          const msgId = String(msg._id || msg.id);
+          const targetId = String(action.payload.messageId);
+          if (msgId === targetId) {
+            return { ...msg, notas: action.payload.notas };
+          }
+          return msg;
+        })
+      };
     default:
       return state;
   }
@@ -73,6 +96,8 @@ const normalizeFilterDates = (filters) => {
 
   safeFilters.fechaDesde = toDateTime(filters?.fechaDesde, false);
   safeFilters.fechaHasta = toDateTime(filters?.fechaHasta, true);
+  safeFilters.creadaDesde = toDateTime(filters?.creadaDesde, false);
+  safeFilters.creadaHasta = toDateTime(filters?.creadaHasta, true);
   return safeFilters;
 };
 
@@ -85,12 +110,22 @@ const getFiltersFromQuery = (query) => {
   const filters = {};
   const fechaDesde = getStringParam(query.fechaDesde);
   const fechaHasta = getStringParam(query.fechaHasta);
+  const creadaDesde = getStringParam(query.creadaDesde);
+  const creadaHasta = getStringParam(query.creadaHasta);
   const empresaId = getStringParam(query.empresaId);
   const tipoContacto = getStringParam(query.tipoContacto);
+  const showInsight = query.showInsight === 'true';
+  const insightCategory = getStringParam(query.insightCategory);
+  const insightTypesRaw = getStringParam(query.insightTypes);
   if (fechaDesde) filters.fechaDesde = fechaDesde;
   if (fechaHasta) filters.fechaHasta = fechaHasta;
+  if (creadaDesde) filters.creadaDesde = creadaDesde;
+  if (creadaHasta) filters.creadaHasta = creadaHasta;
   if (empresaId) filters.empresaId = empresaId;
   if (tipoContacto) filters.tipoContacto = tipoContacto;
+  if (showInsight) filters.showInsight = true;
+  if (insightCategory) filters.insightCategory = insightCategory;
+  if (insightTypesRaw) filters.insightTypes = insightTypesRaw.split(',').filter(Boolean);
   return filters;
 };
 
@@ -100,7 +135,8 @@ export function ConversationsProvider({ children }) {
   const router = useRouter();
   const [state, dispatch] = useReducer(reducer, initialState);
   const skipDefaultLoadRef = useRef(false);
-  const { selected, conversations, messages, offset, hasMore, scrollToMessageId, highlightedMessageId, scrollToBottom, messageResults, loading } =
+  const isManualSelectionRef = useRef(false);
+  const { selected, conversations, messages, offset, hasMore, scrollToMessageId, highlightedMessageId, scrollToBottom, messageResults, loading, insightMessageIds, currentInsightIndex } =
     state;
 
   const search = useMemo(() => {
@@ -110,7 +146,7 @@ export function ConversationsProvider({ children }) {
 
   const filters = useMemo(() => {
     return normalizeFilterDates(getFiltersFromQuery(router.query));
-  }, [router.query.fechaDesde, router.query.fechaHasta, router.query.empresaId, router.query.tipoContacto]);
+  }, [router.query.fechaDesde, router.query.fechaHasta, router.query.creadaDesde, router.query.creadaHasta, router.query.empresaId, router.query.tipoContacto, router.query.showInsight, router.query.insightCategory, router.query.insightTypes]);
 
   // Callbacks para los hooks
   const handleConversationsLoaded = useCallback((data) => {
@@ -123,10 +159,6 @@ export function ConversationsProvider({ children }) {
 
   const handleLoadingUpdated = useCallback((isLoading) => {
     dispatch({ type: ACTIONS.SET_LOADING, payload: isLoading });
-  }, []);
-
-  const handleSearchUpdated = useCallback((query) => {
-    // Ya no necesitamos actualizar el estado, viene de query params
   }, []);
 
   const handleMessagesLoaded = useCallback((data) => {
@@ -153,13 +185,46 @@ export function ConversationsProvider({ children }) {
     dispatch({ type: ACTIONS.SET_HIGHLIGHTED_MESSAGE_ID, payload: null });
   }, []);
 
+  const handleInsightMessageIdsLoaded = useCallback((ids) => {
+    dispatch({ type: ACTIONS.SET_INSIGHT_MESSAGE_IDS, payload: ids });
+    dispatch({ type: ACTIONS.SET_CURRENT_INSIGHT_INDEX, payload: -1 });
+  }, []);
+
   const { refreshConversations, performSearch } = useConversationsFetch({
     filters,
     onConversationsLoaded: handleConversationsLoaded,
     onMessageResultsLoaded: handleMessageResultsLoaded,
-    onSearchUpdated: handleSearchUpdated,
     onLoadingUpdated: handleLoadingUpdated,
   });
+
+  useEffect(() => {
+    if (!router.isReady || conversations.length === 0) {
+      return;
+    }
+
+    if (isManualSelectionRef.current) {
+      isManualSelectionRef.current = false;
+      return;
+    }
+
+    const urlConversationId = getStringParam(router.query.conversationId);
+    const currentSelectedId = selected?.ultimoMensaje?.id_conversacion;
+
+    if (urlConversationId && urlConversationId !== currentSelectedId) {
+      const conversationToSelect = conversations.find(
+        (conv) => conv.ultimoMensaje?.id_conversacion === urlConversationId
+      );
+
+      if (conversationToSelect) {
+        dispatch({ type: ACTIONS.SET_SCROLL_TO_MESSAGE_ID, payload: null });
+        dispatch({ type: ACTIONS.SET_HIGHLIGHTED_MESSAGE_ID, payload: null });
+        dispatch({ type: ACTIONS.SET_INSIGHT_MESSAGE_IDS, payload: [] });
+        dispatch({ type: ACTIONS.SET_CURRENT_INSIGHT_INDEX, payload: -1 });
+        skipDefaultLoadRef.current = false;
+        dispatch({ type: ACTIONS.SET_SELECTED, payload: conversationToSelect });
+      }
+    }
+  }, [router.isReady, router.query.conversationId, conversations, selected]);
 
   const { loadMore: loadMoreMessages, sendNewMessage, loadMessageById, refreshCurrentConversation } = useMessagesFetch({
     selected,
@@ -178,18 +243,36 @@ export function ConversationsProvider({ children }) {
     onHighlightedMessageIdCleared: handleHighlightedMessageIdCleared,
   });
 
+  // Hook para cargar IDs de insights
+  useInsightNavigation({
+    selected,
+    filters,
+    onInsightIdsLoaded: handleInsightMessageIdsLoaded,
+  });
+
   const handleSelectConversation = useCallback(
     (conversation) => {
       if (!conversation) {
         return;
       }
 
+      // Marcar como selección manual para evitar que el useEffect se dispare
+      isManualSelectionRef.current = true;
+
       dispatch({ type: ACTIONS.SET_SCROLL_TO_MESSAGE_ID, payload: null });
       dispatch({ type: ACTIONS.SET_HIGHLIGHTED_MESSAGE_ID, payload: null });
+      dispatch({ type: ACTIONS.SET_INSIGHT_MESSAGE_IDS, payload: [] });
+      dispatch({ type: ACTIONS.SET_CURRENT_INSIGHT_INDEX, payload: -1 });
       skipDefaultLoadRef.current = false;
       dispatch({ type: ACTIONS.SET_SELECTED, payload: conversation });
+
+      const conversationId = conversation.ultimoMensaje?.id_conversacion;
+      if (conversationId) {
+        const newQuery = { ...router.query, conversationId };
+        router.replace({ pathname: router.pathname, query: newQuery }, undefined, { shallow: true });
+      }
     },
-    [dispatch]
+    [dispatch, router]
   );
 
   const handleSelectMessageResult = useCallback(
@@ -204,22 +287,62 @@ export function ConversationsProvider({ children }) {
       }
 
       try {
+        // Marcar como selección manual para evitar que el useEffect se dispare
+        isManualSelectionRef.current = true;
+        
         skipDefaultLoadRef.current = true;
         dispatch({ type: ACTIONS.SET_SELECTED, payload: result.conversation });
         dispatch({ type: ACTIONS.SET_SCROLL_TO_MESSAGE_ID, payload: targetMessageId });
         dispatch({ type: ACTIONS.SET_HIGHLIGHTED_MESSAGE_ID, payload: targetMessageId });
+
+        const conversationId = result.conversationId;
+        if (conversationId) {
+          const newQuery = { ...router.query, conversationId };
+          router.replace({ pathname: router.pathname, query: newQuery }, undefined, { shallow: true });
+        }
 
         await loadMessageById(result.conversationId, targetMessageId, result.conversation);
       } catch (error) {
         console.error("Error al cargar el mensaje buscado:", error);
       }
     },
-    [loadMessageById]
+    [loadMessageById, router]
   );
 
   const loadMore = useCallback(async () => {
     await loadMoreMessages(messages, offset, hasMore);
   }, [loadMoreMessages, messages, offset, hasMore]);
+
+  const handleNavigateToInsight = useCallback(async (direction = 'next') => {
+    const insightIds = state.insightMessageIds;
+    if (!insightIds || insightIds.length === 0 || !selected) return;
+
+    let newIndex;
+    if (direction === 'next') {
+      newIndex = (state.currentInsightIndex + 1) % insightIds.length;
+    } else {
+      newIndex = state.currentInsightIndex <= 0 ? insightIds.length - 1 : state.currentInsightIndex - 1;
+    }
+
+    const targetMessageId = insightIds[newIndex];
+    dispatch({ type: ACTIONS.SET_CURRENT_INSIGHT_INDEX, payload: newIndex });
+
+    const isMessageLoaded = messages.some(m => String(m._id || m.id) === String(targetMessageId));
+
+    if (isMessageLoaded) {
+      dispatch({ type: ACTIONS.SET_SCROLL_TO_MESSAGE_ID, payload: targetMessageId });
+      dispatch({ type: ACTIONS.SET_HIGHLIGHTED_MESSAGE_ID, payload: targetMessageId });
+      dispatch({ type: ACTIONS.SET_SCROLL_TO_BOTTOM, payload: false });
+    } else {
+      try {
+        dispatch({ type: ACTIONS.SET_SCROLL_TO_MESSAGE_ID, payload: targetMessageId });
+        dispatch({ type: ACTIONS.SET_HIGHLIGHTED_MESSAGE_ID, payload: targetMessageId });
+        await loadMessageById(selected.ultimoMensaje.id_conversacion, targetMessageId, selected);
+      } catch (error) {
+        console.error("Error al cargar mensaje de insight:", error);
+      }
+    }
+  }, [state.insightMessageIds, state.currentInsightIndex, selected, messages, loadMessageById]);
 
   const handleSend = useCallback(
     async (text) => {
@@ -302,6 +425,16 @@ export function ConversationsProvider({ children }) {
       } else {
         delete newQuery.fechaHasta;
       }
+      if (normalizedFilters.creadaDesde) {
+        newQuery.creadaDesde = normalizedFilters.creadaDesde.split("T")[0];
+      } else {
+        delete newQuery.creadaDesde;
+      }
+      if (normalizedFilters.creadaHasta) {
+        newQuery.creadaHasta = normalizedFilters.creadaHasta.split("T")[0];
+      } else {
+        delete newQuery.creadaHasta;
+      }
       if (normalizedFilters.empresaId) {
         newQuery.empresaId = normalizedFilters.empresaId;
       } else {
@@ -311,6 +444,21 @@ export function ConversationsProvider({ children }) {
         newQuery.tipoContacto = normalizedFilters.tipoContacto;
       } else {
         delete newQuery.tipoContacto;
+      }
+      if (normalizedFilters.showInsight) {
+        newQuery.showInsight = 'true';
+      } else {
+        delete newQuery.showInsight;
+      }
+      if (normalizedFilters.insightCategory && normalizedFilters.insightCategory !== 'todos') {
+        newQuery.insightCategory = normalizedFilters.insightCategory;
+      } else {
+        delete newQuery.insightCategory;
+      }
+      if (normalizedFilters.insightTypes?.length) {
+        newQuery.insightTypes = normalizedFilters.insightTypes.join(',');
+      } else {
+        delete newQuery.insightTypes;
       }
 
       router.replace({ pathname: router.pathname, query: newQuery }, undefined, { shallow: true });
@@ -328,6 +476,20 @@ export function ConversationsProvider({ children }) {
     dispatch({ type: ACTIONS.SET_SCROLL_TO_MESSAGE_ID, payload: null });
   }, []);
 
+  const handleAddNote = useCallback(async ({ messageId, content, userEmail }) => {
+    try {
+      const response = await addNoteToMessage({ messageId, content, userEmail });
+      dispatch({ 
+        type: ACTIONS.UPDATE_MESSAGE_NOTES, 
+        payload: { messageId, notas: response.notas } 
+      });
+      return { success: true };
+    } catch (error) {
+      console.error("Error al agregar nota:", error);
+      return { success: false, error: error.message || 'Error al agregar nota' };
+    }
+  }, []);
+
   const value = useMemo(
     () => ({
       conversations,
@@ -341,6 +503,8 @@ export function ConversationsProvider({ children }) {
       scrollToMessageId,
       highlightedMessageId,
       loading,
+      insightMessageIds,
+      currentInsightIndex,
       onSelectConversation: handleSelectConversation,
       onMessageSelect: handleSelectMessageResult,
       onSearch: handleSearch,
@@ -350,6 +514,9 @@ export function ConversationsProvider({ children }) {
       onSend: handleSend,
       loadMore,
       handleScrollToMessageHandled,
+      onInsightMessageIdsLoaded: handleInsightMessageIdsLoaded,
+      onNavigateToInsight: handleNavigateToInsight,
+      onAddNote: handleAddNote,
     }),
     [
       conversations,
@@ -362,6 +529,8 @@ export function ConversationsProvider({ children }) {
       scrollToBottom,
       scrollToMessageId,
       highlightedMessageId,
+      insightMessageIds,
+      currentInsightIndex,
       handleSelectConversation,
       handleSelectMessageResult,
       handleSearch,
@@ -371,6 +540,9 @@ export function ConversationsProvider({ children }) {
       handleSend,
       loadMore,
       handleScrollToMessageHandled,
+      handleInsightMessageIdsLoaded,
+      handleNavigateToInsight,
+      handleAddNote,
     ]
   );
 

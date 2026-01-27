@@ -14,10 +14,13 @@ import {
   DialogContent,
   DialogActions,
   TextField,
-  Button
+  Button,
+  Badge,
+  Tooltip
 } from "@mui/material";
 import DownloadIcon from '@mui/icons-material/Download';
 import RefreshIcon from '@mui/icons-material/Refresh';
+import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import ConversationList from "src/components/conversaciones/ConversationList";
 import ChatWindow from "src/components/conversaciones/ChatWindow";
 import MessageInput from "src/components/conversaciones/MessageInput";
@@ -47,8 +50,61 @@ function ConversacionesContent() {
 
   const {
     selected,
+    filters,
+    insightMessageIds,
+    currentInsightIndex,
     onRefreshCurrentConversation,
+    onNavigateToInsight,
   } = useConversationsContext();
+
+  const hasInsights = insightMessageIds.length > 0;
+
+  const headerActions = selected ? (
+    <Box display="flex" alignItems="center" gap={{ xs: 0.25, sm: 0.5 }}>
+      <IconButton 
+        onClick={onRefreshCurrentConversation} 
+        title="Refrescar conversación" 
+        size="small"
+        sx={{ p: { xs: 0.5, sm: 1 } }}
+      >
+        <RefreshIcon sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }} />
+      </IconButton>
+      <IconButton 
+        onClick={() => setDownloadOpen(true)} 
+        title="Descargar conversación" 
+        size="small"
+        sx={{ p: { xs: 0.5, sm: 1 } }}
+      >
+        <DownloadIcon sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }} />
+      </IconButton>
+      {filters?.showInsight && (
+        <Tooltip title={hasInsights ? `Siguiente insight (${currentInsightIndex + 1}/${insightMessageIds.length})` : "No hay insights"}>
+          <span>
+            <IconButton 
+              onClick={() => onNavigateToInsight('next')} 
+              disabled={!hasInsights}
+              size="small"
+              sx={{ p: { xs: 0.5, sm: 1 } }}
+            >
+              <Badge 
+                badgeContent={insightMessageIds.length} 
+                color="warning"
+                sx={{
+                  "& .MuiBadge-badge": {
+                    fontSize: { xs: "0.6rem", sm: "0.65rem" },
+                    minWidth: { xs: 14, sm: 16 },
+                    height: { xs: 14, sm: 16 },
+                  }
+                }}
+              >
+                <ErrorOutlineIcon sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }} />
+              </Badge>
+            </IconButton>
+          </span>
+        </Tooltip>
+      )}
+    </Box>
+  ) : null;
 
   const handleDownload = async () => {
     if (!selected || !downloadDates.start || !downloadDates.end) {
@@ -75,7 +131,7 @@ function ConversacionesContent() {
   };
 
   return (
-    <DashboardLayout title={getTitulo(selected)}>
+    <DashboardLayout title={getTitulo(selected)} headerActions={headerActions}>
       <Head>
         <title>Conversaciones</title>
       </Head>
@@ -100,24 +156,6 @@ function ConversacionesContent() {
         <Box flex={1} display="flex" flexDirection="column" minHeight={0}>
           {selected ? (
             <>
-              <Box
-                p={0.5}
-                display="flex"
-                justifyContent="space-between"
-                alignItems="center"
-                borderBottom="1px solid"
-                borderColor="divider"
-              >
-                <Typography variant="h6">{getTitulo(selected)}</Typography>
-                <Box>
-                  <IconButton onClick={onRefreshCurrentConversation} title="Refrescar conversación">
-                    <RefreshIcon />
-                  </IconButton>
-                  <IconButton onClick={() => setDownloadOpen(true)} title="Descargar conversación">
-                    <DownloadIcon />
-                  </IconButton>
-                </Box>
-              </Box>
               <ChatWindow myNumber={myNumber} onOpenList={isMobile ? () => setIsListOpenMobile(true) : undefined} />
               <MessageInput />
             </>

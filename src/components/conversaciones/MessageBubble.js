@@ -1,7 +1,8 @@
-import { Box, Paper, Typography } from '@mui/material';
+import { Badge, Box, IconButton, Paper, Tooltip, Typography, CircularProgress, Divider } from '@mui/material';
 import AudioPlayer from './AudioPlayer';
 import ImageIcon from '@mui/icons-material/Image';
 import VideocamIcon from '@mui/icons-material/Videocam';
+import AddIcon from '@mui/icons-material/Add';
 
 // Helper to check if src is a valid media URL (not an internal event identifier)
 const isValidMediaUrl = (src) => {
@@ -12,7 +13,17 @@ const isValidMediaUrl = (src) => {
   return src.startsWith('http') || src.startsWith('data:') || src.startsWith('blob:') || src.startsWith('/');
 };
 
-export default function MessageBubble({ message, isMine, messageId, isHighlighted, onMediaClick }) {
+export default function MessageBubble({
+  message,
+  isMine,
+  messageId,
+  isHighlighted,
+  isFilteredInsight = false,
+  onMediaClick,
+  onAddAnnotation,
+  notes = [],
+  isLoadingNote = false,
+}) {
   const text = message?.type === 'text' || message?.type === 'text_extended' ? message?.message || '' : '';
   const date = message?.fecha ? new Date(message.fecha) : null;
   const pad = (n) => String(n).padStart(2, '0');
@@ -28,8 +39,9 @@ export default function MessageBubble({ message, isMine, messageId, isHighlighte
     }
   };
 
-  const anchorId = (messageId || message?.id || message?._id)
-    ? `message-${messageId || message?.id || message?._id}`
+  const resolvedMessageId = messageId || message?._id || message?.id;
+  const anchorId = resolvedMessageId
+    ? `message-${resolvedMessageId}`
     : undefined;
   const highlightSx = isHighlighted
     ? {
@@ -39,8 +51,56 @@ export default function MessageBubble({ message, isMine, messageId, isHighlighte
       }
     : {};
 
+  const insightMarkerSx = isFilteredInsight && !isHighlighted
+    ? { borderLeft: 3, borderColor: 'warning.main' }
+    : {};
+
   // Check if media URL is valid
   const hasValidMediaUrl = isValidMediaUrl(message?.message);
+
+  const handleAddAnnotationClick = () => {
+    if (!onAddAnnotation) return;
+    if (!resolvedMessageId) return;
+    onAddAnnotation({ messageId: resolvedMessageId, message });
+  };
+
+  const annotationButton = (
+    <Tooltip title="Agregar nota">
+      <span>
+        <IconButton
+          size="small"
+          onClick={handleAddAnnotationClick}
+          aria-label="Agregar nota"
+          disabled={!resolvedMessageId || isLoadingNote}
+          sx={{
+            bgcolor: 'background.paper',
+            border: 1,
+            borderColor: 'divider',
+            '&:hover': { bgcolor: 'action.hover' },
+          }}
+        >
+          {isLoadingNote ? (
+            <CircularProgress size={16} />
+          ) : (
+            <Badge
+              color="primary"
+              badgeContent={notes.length > 0 ? notes.length : 0}
+              invisible={!notes.length}
+              sx={{
+                '& .MuiBadge-badge': {
+                  fontSize: '0.65rem',
+                  minWidth: 16,
+                  height: 16,
+                },
+              }}
+            >
+              <AddIcon fontSize="small" />
+            </Badge>
+          )}
+        </IconButton>
+      </span>
+    </Tooltip>
+  );
 
   return (
     <Box
@@ -50,57 +110,88 @@ export default function MessageBubble({ message, isMine, messageId, isHighlighte
       py={0.5}
       id={anchorId}
     >
-      <Paper
-        elevation={0}
-        sx={{
-          maxWidth: '75%',
-          p: 1,
-          bgcolor: isMine ? '#d1f4cc' : 'background.paper',
-          borderRadius: 2,
-          ...highlightSx,
-        }}
-      >
-        {message.type === 'image' ? (
-          <Box mb={text ? 1 : 0}>
-            {hasValidMediaUrl ? (
-              <img
-                src={message.message}
-                alt="mensaje-imagen"
-                style={{
-                  display: 'block',
-                  width: 'min(420px, 100%)',
-                  height: 'auto',
-                  maxHeight: '220px',
-                  borderRadius: 8,
-                  cursor: 'pointer',
-                }}
-                onClick={() => handleMediaClick('image')}
-              />
-            ) : (
-              <Box
-                display="flex"
-                alignItems="center"
-                gap={1}
-                p={2}
-                sx={{
-                  bgcolor: isMine ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)',
-                  borderRadius: 2,
-                  minWidth: 150,
-                }}
-              >
-                <ImageIcon sx={{ fontSize: 24, color: 'text.secondary' }} />
-                <Typography variant="caption" color="text.secondary">
-                  Imagen (no disponible)
+      <Box display="flex" alignItems="flex-start" maxWidth="75%">
+        <Box
+          sx={{
+            position: 'relative',
+            display: 'inline-flex',
+            alignItems: 'flex-start',
+            overflow: 'visible',
+            '&::before': {
+              content: '""',
+              position: 'absolute',
+              top: -8,
+              bottom: -8,
+              width: 44,
+              ...(isMine ? { left: -44 } : { right: -44 }),
+              zIndex: 0,
+            },
+            '& .MessageBubble-annotationButton': {
+              opacity: 0,
+              pointerEvents: 'none',
+              transform: 'translateY(-2px)',
+              transition: 'opacity 120ms ease, transform 120ms ease',
+            },
+            '&:hover .MessageBubble-annotationButton, &:focus-within .MessageBubble-annotationButton': {
+              opacity: 1,
+              pointerEvents: 'auto',
+              transform: 'translateY(0px)',
+            },
+          }}
+        >
+          <Paper
+            elevation={0}
+            sx={{
+              p: 1,
+              bgcolor: isMine ? '#d1f4cc' : 'background.paper',
+              borderRadius: 2,
+              position: 'relative',
+              zIndex: 1,
+              ...highlightSx,
+              ...insightMarkerSx,
+            }}
+          >
+          {message.type === 'image' ? (
+            <Box mb={text ? 1 : 0}>
+              {hasValidMediaUrl ? (
+                <img
+                  src={message.message}
+                  alt="mensaje-imagen"
+                  style={{
+                    display: 'block',
+                    width: 'min(420px, 100%)',
+                    height: 'auto',
+                    maxHeight: '220px',
+                    borderRadius: 8,
+                    cursor: 'pointer',
+                  }}
+                  onClick={() => handleMediaClick('image')}
+                />
+              ) : (
+                <Box
+                  display="flex"
+                  alignItems="center"
+                  gap={1}
+                  p={2}
+                  sx={{
+                    bgcolor: isMine ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)',
+                    borderRadius: 2,
+                    minWidth: 150,
+                  }}
+                >
+                  <ImageIcon sx={{ fontSize: 24, color: 'text.secondary' }} />
+                  <Typography variant="caption" color="text.secondary">
+                    Imagen (no disponible)
+                  </Typography>
+                </Box>
+              )}
+              {message.caption ? (
+                <Typography variant="body2" whiteSpace="pre-wrap" mt={1}>
+                  {message.caption}
                 </Typography>
-              </Box>
-            )}
-            {message.caption ? (
-              <Typography variant="body2" whiteSpace="pre-wrap" mt={1}>
-                {message.caption}
-              </Typography>
-            ) : null}
-          </Box>
-        ) : null}
+              ) : null}
+            </Box>
+          ) : null}
 
         {message.type === 'video' ? (
           <Box mb={text ? 1 : 0} position="relative">
@@ -196,19 +287,75 @@ export default function MessageBubble({ message, isMine, messageId, isHighlighte
             {text}
           </Typography>
         ) : null}
-        <Box mt={0.5} display="flex" justifyContent="flex-end" gap={1}>
-          {dateStr ? (
-            <Typography variant="caption" color="text.secondary">
-              {dateStr}
-            </Typography>
+          <Box mt={0.5} display="flex" justifyContent="flex-end" gap={1}>
+            {dateStr ? (
+              <Typography variant="caption" color="text.secondary">
+                {dateStr}
+              </Typography>
+            ) : null}
+            {timeStr ? (
+              <Typography variant="caption" color="text.secondary">
+                {timeStr}
+              </Typography>
+            ) : null}
+          </Box>
+
+          {notes && notes.length > 0 ? (
+            <Box mt={1}>
+              <Divider sx={{ mb: 1 }} />
+              <Box
+                sx={{
+                  bgcolor: 'rgba(255, 193, 7, 0.08)',
+                  borderRadius: 1,
+                  p: 1,
+                }}
+              >
+                {notes.map((note, idx) => {
+                  const noteDate = note.timestamp ? new Date(note.timestamp) : null;
+                  const noteDateStr = noteDate
+                    ? `${pad(noteDate.getDate())}/${pad(noteDate.getMonth() + 1)}/${noteDate.getFullYear()}`
+                    : '';
+                  const noteTimeStr = noteDate
+                    ? `${pad(noteDate.getHours())}:${pad(noteDate.getMinutes())}`
+                    : '';
+                  
+                  return (
+                    <Box key={idx} mb={idx < notes.length - 1 ? 1 : 0}>
+                      <Typography variant="body2" sx={{ mb: 0.5 }}>
+                        {note.content}
+                      </Typography>
+                      <Box display="flex" gap={1} alignItems="center">
+                        <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                          {note.user}
+                        </Typography>
+                        {noteDateStr && noteTimeStr ? (
+                          <Typography variant="caption" color="text.secondary">
+                            • {noteDateStr} {noteTimeStr}
+                          </Typography>
+                        ) : null}
+                      </Box>
+                      {idx < notes.length - 1 ? <Divider sx={{ mt: 1 }} /> : null}
+                    </Box>
+                  );
+                })}
+              </Box>
+            </Box>
           ) : null}
-          {timeStr ? (
-            <Typography variant="caption" color="text.secondary">
-              {timeStr}
-            </Typography>
-          ) : null}
+          </Paper>
+
+          <Box
+            className="MessageBubble-annotationButton"
+            sx={{
+              position: 'absolute',
+              top: 6,
+              ...(isMine ? { left: -38 } : { right: -38 }),
+              zIndex: 2,
+            }}
+          >
+            {annotationButton}
+          </Box>
         </Box>
-      </Paper>
+      </Box>
     </Box>
   );
 }
