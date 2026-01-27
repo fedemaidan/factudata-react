@@ -3,21 +3,15 @@ const artificialDelay = (ms = 300) => new Promise((res) => setTimeout(res, ms));
 
 function buildFilterParams(filters = {}) {
   const params = {};
-  if (filters?.fechaDesde) {
-    params.fechaDesde = filters.fechaDesde;
-  }
-  if (filters?.fechaHasta) {
-    params.fechaHasta = filters.fechaHasta;
-  }
-  if (filters?.empresaId) {
-    params.empresaId = filters.empresaId;
-  }
-  if (filters?.tipoContacto && filters.tipoContacto !== "todos") {
-    params.tipoContacto = filters.tipoContacto;
-  }
-  if (filters?.showInsight) {
-    params.showInsight = filters.showInsight;
-  }
+  if (filters?.fechaDesde) params.fechaDesde = filters.fechaDesde;
+  if (filters?.fechaHasta) params.fechaHasta = filters.fechaHasta;
+  if (filters?.creadaDesde) params.creadaDesde = filters.creadaDesde;
+  if (filters?.creadaHasta) params.creadaHasta = filters.creadaHasta;
+  if (filters?.empresaId) params.empresaId = filters.empresaId;
+  if (filters?.tipoContacto && filters.tipoContacto !== "todos") params.tipoContacto = filters.tipoContacto;
+  if (filters?.showInsight) params.showInsight = filters.showInsight;
+  if (filters?.insightCategory && filters.insightCategory !== 'todos') params.insightCategory = filters.insightCategory;
+  if (filters?.insightTypes?.length) params.insightTypes = filters.insightTypes.join(',');
   return params;
 }
 
@@ -84,6 +78,8 @@ export async function getInsightMessageIds(conversationId, filters = {}) {
   const params = {};
   if (filters?.fechaDesde) params.fechaDesde = filters.fechaDesde;
   if (filters?.fechaHasta) params.fechaHasta = filters.fechaHasta;
+  if (filters?.insightCategory && filters.insightCategory !== 'todos') params.insightCategory = filters.insightCategory;
+  if (filters?.insightTypes?.length) params.insightTypes = filters.insightTypes.join(',');
   const { data } = await api.get(`/conversaciones/${conversationId}/insights`, { params });
   return data || [];
 }

@@ -37,12 +37,14 @@ export default function ChatWindow({ myNumber = "X", onOpenList }) {
     scrollToBottom,
     scrollToMessageId,
     highlightedMessageId,
+    insightMessageIds,
     loadMore,
     handleScrollToMessageHandled,
     onAddNote,
   } = useConversationsContext();
 
   const items = useMemo(() => messages || [], [messages]);
+  const insightIdsSet = useMemo(() => new Set((insightMessageIds || []).map(String)), [insightMessageIds]);
 
   useEffect(() => {
     if (scrollToBottom) bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -196,6 +198,7 @@ export default function ChatWindow({ myNumber = "X", onOpenList }) {
               isMine={m.emisor?.toLowerCase().includes(myNumber?.toLowerCase())}
               messageId={messageId}
               isHighlighted={String(messageId) === String(highlightedMessageId)}
+              isFilteredInsight={insightIdsSet.has(String(messageId))}
               onMediaClick={handleMediaClick}
               onAddAnnotation={handleOpenAnnotationDialog}
               notes={m.notas || []}

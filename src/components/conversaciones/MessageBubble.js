@@ -18,6 +18,7 @@ export default function MessageBubble({
   isMine,
   messageId,
   isHighlighted,
+  isFilteredInsight = false,
   onMediaClick,
   onAddAnnotation,
   notes = [],
@@ -48,6 +49,10 @@ export default function MessageBubble({
         borderColor: 'primary.main',
         boxShadow: '0 0 0 1px rgba(25, 118, 210, 0.35)',
       }
+    : {};
+
+  const insightMarkerSx = isFilteredInsight && !isHighlighted
+    ? { borderLeft: 3, borderColor: 'warning.main' }
     : {};
 
   // Check if media URL is valid
@@ -105,17 +110,47 @@ export default function MessageBubble({
       py={0.5}
       id={anchorId}
     >
-      <Box display="flex" alignItems="flex-start" gap={0.75} maxWidth="75%">
-        {isMine ? annotationButton : null}
-        <Paper
-          elevation={0}
+      <Box display="flex" alignItems="flex-start" maxWidth="75%">
+        <Box
           sx={{
-            p: 1,
-            bgcolor: isMine ? '#d1f4cc' : 'background.paper',
-            borderRadius: 2,
-            ...highlightSx,
+            position: 'relative',
+            display: 'inline-flex',
+            alignItems: 'flex-start',
+            overflow: 'visible',
+            '&::before': {
+              content: '""',
+              position: 'absolute',
+              top: -8,
+              bottom: -8,
+              width: 44,
+              ...(isMine ? { left: -44 } : { right: -44 }),
+              zIndex: 0,
+            },
+            '& .MessageBubble-annotationButton': {
+              opacity: 0,
+              pointerEvents: 'none',
+              transform: 'translateY(-2px)',
+              transition: 'opacity 120ms ease, transform 120ms ease',
+            },
+            '&:hover .MessageBubble-annotationButton, &:focus-within .MessageBubble-annotationButton': {
+              opacity: 1,
+              pointerEvents: 'auto',
+              transform: 'translateY(0px)',
+            },
           }}
         >
+          <Paper
+            elevation={0}
+            sx={{
+              p: 1,
+              bgcolor: isMine ? '#d1f4cc' : 'background.paper',
+              borderRadius: 2,
+              position: 'relative',
+              zIndex: 1,
+              ...highlightSx,
+              ...insightMarkerSx,
+            }}
+          >
           {message.type === 'image' ? (
             <Box mb={text ? 1 : 0}>
               {hasValidMediaUrl ? (
@@ -307,7 +342,19 @@ export default function MessageBubble({
             </Box>
           ) : null}
           </Paper>
-        {!isMine ? annotationButton : null}
+
+          <Box
+            className="MessageBubble-annotationButton"
+            sx={{
+              position: 'absolute',
+              top: 6,
+              ...(isMine ? { left: -38 } : { right: -38 }),
+              zIndex: 2,
+            }}
+          >
+            {annotationButton}
+          </Box>
+        </Box>
       </Box>
     </Box>
   );
