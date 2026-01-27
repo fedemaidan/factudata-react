@@ -95,3 +95,11 @@ export function getMessagePreview(message) {
 export function getConversationTitle(conversation) {
   return conversation.displayName || conversation.userId || '';
 }
+
+export async function addNoteToMessage({ messageId, content, userEmail }) {
+  const response = await api.post(`/conversaciones/messages/${messageId}/notes`, {
+    content,
+    userEmail
+  });
+  return response.data;
+}

@@ -4,6 +4,7 @@ import { useConversationsFetch } from "src/hooks/useConversationsFetch";
 import { useMessagesFetch } from "src/hooks/useMessagesFetch";
 import { useMessageScroll } from "src/hooks/useMessageScroll";
 import { useInsightNavigation } from "src/hooks/useErrorNavigation";
+import { addNoteToMessage } from "src/services/conversacionService";
 
 const ACTIONS = {
   SET_CONVERSATIONS: "SET_CONVERSATIONS",
@@ -20,6 +21,7 @@ const ACTIONS = {
   SET_LOADING: "SET_LOADING",
   SET_INSIGHT_MESSAGE_IDS: "SET_INSIGHT_MESSAGE_IDS",
   SET_CURRENT_INSIGHT_INDEX: "SET_CURRENT_INSIGHT_INDEX",
+  UPDATE_MESSAGE_NOTES: "UPDATE_MESSAGE_NOTES",
 };
 
 const initialState = {
@@ -66,6 +68,18 @@ const reducer = (state, action) => {
       return { ...state, insightMessageIds: action.payload };
     case ACTIONS.SET_CURRENT_INSIGHT_INDEX:
       return { ...state, currentInsightIndex: action.payload };
+    case ACTIONS.UPDATE_MESSAGE_NOTES:
+      return {
+        ...state,
+        messages: state.messages.map(msg => {
+          const msgId = String(msg._id || msg.id);
+          const targetId = String(action.payload.messageId);
+          if (msgId === targetId) {
+            return { ...msg, notas: action.payload.notas };
+          }
+          return msg;
+        })
+      };
     default:
       return state;
   }
@@ -432,6 +446,20 @@ export function ConversationsProvider({ children }) {
     dispatch({ type: ACTIONS.SET_SCROLL_TO_MESSAGE_ID, payload: null });
   }, []);
 
+  const handleAddNote = useCallback(async ({ messageId, content, userEmail }) => {
+    try {
+      const response = await addNoteToMessage({ messageId, content, userEmail });
+      dispatch({ 
+        type: ACTIONS.UPDATE_MESSAGE_NOTES, 
+        payload: { messageId, notas: response.notas } 
+      });
+      return { success: true };
+    } catch (error) {
+      console.error("Error al agregar nota:", error);
+      return { success: false, error: error.message || 'Error al agregar nota' };
+    }
+  }, []);
+
   const value = useMemo(
     () => ({
       conversations,
@@ -458,6 +486,7 @@ export function ConversationsProvider({ children }) {
       handleScrollToMessageHandled,
       onInsightMessageIdsLoaded: handleInsightMessageIdsLoaded,
       onNavigateToInsight: handleNavigateToInsight,
+      onAddNote: handleAddNote,
     }),
     [
       conversations,
@@ -483,6 +512,7 @@ export function ConversationsProvider({ children }) {
       handleScrollToMessageHandled,
       handleInsightMessageIdsLoaded,
       handleNavigateToInsight,
+      handleAddNote,
     ]
   );
 

@@ -1,4 +1,4 @@
-import { Badge, Box, IconButton, Paper, Tooltip, Typography } from '@mui/material';
+import { Badge, Box, IconButton, Paper, Tooltip, Typography, CircularProgress, Divider } from '@mui/material';
 import AudioPlayer from './AudioPlayer';
 import ImageIcon from '@mui/icons-material/Image';
 import VideocamIcon from '@mui/icons-material/Videocam';
@@ -20,7 +20,8 @@ export default function MessageBubble({
   isHighlighted,
   onMediaClick,
   onAddAnnotation,
-  annotationsCount = 0,
+  notes = [],
+  isLoadingNote = false,
 }) {
   const text = message?.type === 'text' || message?.type === 'text_extended' ? message?.message || '' : '';
   const date = message?.fecha ? new Date(message.fecha) : null;
@@ -59,13 +60,13 @@ export default function MessageBubble({
   };
 
   const annotationButton = (
-    <Tooltip title="Agregar anotación">
+    <Tooltip title="Agregar nota">
       <span>
         <IconButton
           size="small"
           onClick={handleAddAnnotationClick}
-          aria-label="Agregar anotación"
-          disabled={!resolvedMessageId}
+          aria-label="Agregar nota"
+          disabled={!resolvedMessageId || isLoadingNote}
           sx={{
             bgcolor: 'background.paper',
             border: 1,
@@ -73,20 +74,24 @@ export default function MessageBubble({
             '&:hover': { bgcolor: 'action.hover' },
           }}
         >
-          <Badge
-            color="primary"
-            badgeContent={annotationsCount > 0 ? annotationsCount : 0}
-            invisible={!annotationsCount}
-            sx={{
-              '& .MuiBadge-badge': {
-                fontSize: '0.65rem',
-                minWidth: 16,
-                height: 16,
-              },
-            }}
-          >
-            <AddIcon fontSize="small" />
-          </Badge>
+          {isLoadingNote ? (
+            <CircularProgress size={16} />
+          ) : (
+            <Badge
+              color="primary"
+              badgeContent={notes.length > 0 ? notes.length : 0}
+              invisible={!notes.length}
+              sx={{
+                '& .MuiBadge-badge': {
+                  fontSize: '0.65rem',
+                  minWidth: 16,
+                  height: 16,
+                },
+              }}
+            >
+              <AddIcon fontSize="small" />
+            </Badge>
+          )}
         </IconButton>
       </span>
     </Tooltip>
@@ -259,6 +264,48 @@ export default function MessageBubble({
               </Typography>
             ) : null}
           </Box>
+
+          {notes && notes.length > 0 ? (
+            <Box mt={1}>
+              <Divider sx={{ mb: 1 }} />
+              <Box
+                sx={{
+                  bgcolor: 'rgba(255, 193, 7, 0.08)',
+                  borderRadius: 1,
+                  p: 1,
+                }}
+              >
+                {notes.map((note, idx) => {
+                  const noteDate = note.timestamp ? new Date(note.timestamp) : null;
+                  const noteDateStr = noteDate
+                    ? `${pad(noteDate.getDate())}/${pad(noteDate.getMonth() + 1)}/${noteDate.getFullYear()}`
+                    : '';
+                  const noteTimeStr = noteDate
+                    ? `${pad(noteDate.getHours())}:${pad(noteDate.getMinutes())}`
+                    : '';
+                  
+                  return (
+                    <Box key={idx} mb={idx < notes.length - 1 ? 1 : 0}>
+                      <Typography variant="body2" sx={{ mb: 0.5 }}>
+                        {note.content}
+                      </Typography>
+                      <Box display="flex" gap={1} alignItems="center">
+                        <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                          {note.user}
+                        </Typography>
+                        {noteDateStr && noteTimeStr ? (
+                          <Typography variant="caption" color="text.secondary">
+                            • {noteDateStr} {noteTimeStr}
+                          </Typography>
+                        ) : null}
+                      </Box>
+                      {idx < notes.length - 1 ? <Divider sx={{ mt: 1 }} /> : null}
+                    </Box>
+                  );
+                })}
+              </Box>
+            </Box>
+          ) : null}
           </Paper>
         {!isMine ? annotationButton : null}
       </Box>
