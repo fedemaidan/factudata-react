@@ -267,6 +267,7 @@ const ResolverLicenciaManualForm = ({
           {!useRange ? (
             <DatePicker
               label="Fecha única"
+              format="DD/MM/YYYY"
               value={fechaIndividual}
               onChange={(value) => updateFormState({ fechaIndividual: value || dayjs() })}
               slotProps={{ textField: { size: "small" } }}
@@ -275,12 +276,14 @@ const ResolverLicenciaManualForm = ({
             <Stack direction="row" flexWrap="wrap" sx={{ gap: 2 }}>
               <DatePicker
                 label="Desde"
+                format="DD/MM/YYYY"
                 value={fechaDesde}
                 onChange={(value) => updateFormState({ fechaDesde: value || dayjs() })}
                 slotProps={{ textField: { size: "small", sx: { flex: 1, minWidth: 140 } } }}
               />
               <DatePicker
                 label="Hasta"
+                format="DD/MM/YYYY"
                 value={fechaHasta}
                 onChange={(value) => updateFormState({ fechaHasta: value || dayjs() })}
                 slotProps={{ textField: { size: "small", sx: { flex: 1, minWidth: 140 } } }}

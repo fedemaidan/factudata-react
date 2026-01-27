@@ -163,6 +163,7 @@ const ResolverParteManualForm = ({ urlStorage, onResolved, onCancel }) => {
         <LocalizationProvider dateAdapter={AdapterDayjs}>
           <DatePicker
             label="Fecha del parte"
+            format="DD/MM/YYYY"
             value={fecha}
             onChange={(newFecha) => setFecha(newFecha || dayjs())}
             slotProps={{ textField: { size: "small" } }}
