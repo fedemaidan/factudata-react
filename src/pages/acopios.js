@@ -30,7 +30,10 @@ import AddIcon from '@mui/icons-material/Add';
 import SearchIcon from '@mui/icons-material/Search';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import { useAuthContext } from 'src/contexts/auth-context';
+import { useBreadcrumbs } from 'src/contexts/breadcrumbs-context';
 import { useRouter } from 'next/router';
+import HomeIcon from '@mui/icons-material/Home';
+import InventoryIcon from '@mui/icons-material/Inventory';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import AcopioService from 'src/services/acopioService';
 import { getProyectosByEmpresa } from 'src/services/proyectosService';
@@ -41,6 +44,7 @@ import { saveAs } from 'file-saver';
 
 const AcopiosPage = () => {
   const { user } = useAuthContext();
+  const { setBreadcrumbs } = useBreadcrumbs();
   const router = useRouter();
   const { empresaId } = router.query; 
   const [acopios, setAcopios] = useState([]);
@@ -54,6 +58,15 @@ const AcopiosPage = () => {
   const [anchorEl, setAnchorEl] = useState(null);
   const [selectedAcopio, setSelectedAcopio] = useState(null);
   const openMenu = Boolean(anchorEl);
+
+  // Setear breadcrumbs
+  useEffect(() => {
+    setBreadcrumbs([
+      { label: 'Inicio', href: '/', icon: <HomeIcon fontSize="small" /> },
+      { label: 'Acopios', icon: <InventoryIcon fontSize="small" /> }
+    ]);
+    return () => setBreadcrumbs([]);
+  }, [setBreadcrumbs]);
 
   const handleMenuClick = (event, acopio) => {
     setAnchorEl(event.currentTarget);

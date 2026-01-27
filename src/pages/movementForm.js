@@ -13,7 +13,11 @@ import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import movimientosService from 'src/services/movimientosService';
 import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
 import { useAuthContext } from 'src/contexts/auth-context';
+import { useBreadcrumbs } from 'src/contexts/breadcrumbs-context';
 import { dateToTimestamp, formatCurrency, formatTimestamp } from 'src/utils/formatters';
+import HomeIcon from '@mui/icons-material/Home';
+import FolderIcon from '@mui/icons-material/Folder';
+import ReceiptIcon from '@mui/icons-material/Receipt';
 import MovementFields from 'src/components/movementFields';
 import profileService from 'src/services/profileService';
 import MaterialesEditor from 'src/components/materiales/MaterialesEditor';
@@ -140,6 +144,7 @@ const ProrrateoInfo = ({ movimiento, onVerRelacionados }) => {
 
 const MovementFormPage = () => {
   const { user } = useAuthContext();
+  const { setBreadcrumbs } = useBreadcrumbs();
   const router = useRouter();
   const { movimientoId, proyectoId, proyectoName, lastPageUrl, lastPageName } = router.query;
   const isEditMode = Boolean(movimientoId);
@@ -169,6 +174,17 @@ const MovementFormPage = () => {
   const [viewerHeightVh, setViewerHeightVh] = useState(70);
   const [isWide, setIsWide] = useState(false);
   const [fullOpen, setFullOpen] = useState(false);
+
+  // Setear breadcrumbs
+  useEffect(() => {
+    const titulo = isEditMode ? `Editar (${movimiento?.codigo_operacion || ''})` : 'Nuevo Movimiento';
+    setBreadcrumbs([
+      { label: 'Inicio', href: '/', icon: <HomeIcon fontSize="small" /> },
+      { label: proyectoName || 'Proyecto', href: proyectoId ? `/cajaProyecto?proyectoId=${proyectoId}` : '/proyectos', icon: <FolderIcon fontSize="small" /> },
+      { label: titulo, icon: <ReceiptIcon fontSize="small" /> }
+    ]);
+    return () => setBreadcrumbs([]);
+  }, [isEditMode, movimiento?.codigo_operacion, proyectoId, proyectoName, setBreadcrumbs]);
   const [tab, setTab] = useState(0);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [pendingPayload, setPendingPayload] = useState(null);

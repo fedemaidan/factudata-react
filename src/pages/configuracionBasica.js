@@ -49,11 +49,31 @@ const ConfiguracionBasicaPage = () => {
       <Head>
         <title>Configuración Básica</title>
       </Head>
-      <Box component="main" sx={{ flexGrow: 1, py: 8 }}>
-      <Container maxWidth={false} sx={{ px: 6 }}>
-          <Stack spacing={3}>
+      <Box
+        component="main"
+        sx={{
+          flexGrow: 1,
+          py: { xs: 4, sm: 8 }
+        }}
+      >
+        <Container maxWidth={false} sx={{ px: { xs: 2, sm: 6 } }}>
+          <Stack spacing={{ xs: 2, sm: 3 }}>
             <Typography variant="h4">Configuración Básica</Typography>
-            <Tabs value={currentTab} onChange={handleTabChange}>
+            <Tabs
+              value={currentTab}
+              onChange={handleTabChange}
+              textColor="primary"
+              indicatorColor="primary"
+              variant="scrollable"
+              scrollButtons="auto"
+              allowScrollButtonsMobile
+              aria-label="Secciones de configuración básica"
+              sx={{
+                maxWidth: '100%',
+                '& .MuiTabs-scroller': { overflowX: 'auto !important' },
+                '& .MuiTabs-flexContainer': { flexWrap: 'nowrap' }
+              }}
+            >
               <Tab label="Usuarios" value="usuarios" />
               <Tab label="Proyectos" value="proyectos" />
               <Tab label="Proveedores" value="proveedores" />

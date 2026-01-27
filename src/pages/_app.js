@@ -9,6 +9,7 @@ import { AuthConsumer, AuthProvider } from 'src/contexts/auth-context';
 import { useNProgress } from 'src/hooks/use-nprogress';
 import { createTheme } from 'src/theme';
 import { createEmotionCache } from 'src/utils/create-emotion-cache';
+import { BreadcrumbsProvider } from 'src/contexts/breadcrumbs-context';
 import 'simplebar-react/dist/simplebar.min.css';
 import 'src/styles/react-datepicker.css';
 import { QueryCache, QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -65,17 +66,19 @@ const App = (props) => {
           <ThemeProvider theme={theme}>
             <CssBaseline />
             <AlertProvider>
-              <ReactQueryProvider>
-                <AuthConsumer>
-                  {(auth) =>
-                    auth.isLoading ? (
-                      <SplashScreen />
-                    ) : (
-                      getLayout(<Component {...pageProps} />)
-                    )
-                  }
-                </AuthConsumer>
-              </ReactQueryProvider>
+              <BreadcrumbsProvider>
+                <ReactQueryProvider>
+                  <AuthConsumer>
+                    {(auth) =>
+                      auth.isLoading ? (
+                        <SplashScreen />
+                      ) : (
+                        getLayout(<Component {...pageProps} />)
+                      )
+                    }
+                  </AuthConsumer>
+                </ReactQueryProvider>
+              </BreadcrumbsProvider>
             </AlertProvider>
           </ThemeProvider>
         </AuthProvider>
