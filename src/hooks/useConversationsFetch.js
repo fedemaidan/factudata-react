@@ -10,7 +10,6 @@ export function useConversationsFetch({
   filters,
   onConversationsLoaded,
   onMessageResultsLoaded,
-  onSearchUpdated,
   onLoadingUpdated,
 }) {
   const router = useRouter();
@@ -48,7 +47,6 @@ export function useConversationsFetch({
 
         onConversationsLoaded?.(conversationData);
         onMessageResultsLoaded?.(messageMatchesData);
-        onSearchUpdated?.(query);
       } catch (error) {
         console.error("Error al cargar conversaciones:", error);
       } finally {
@@ -63,7 +61,7 @@ export function useConversationsFetch({
     return () => {
       activeRef.current = false;
     };
-  }, [filters, router.isReady, router.query.q, router.query.searchInMessages, router.query.msgFechaDesde, router.query.msgFechaHasta, onConversationsLoaded, onMessageResultsLoaded, onSearchUpdated, onLoadingUpdated]);
+  }, [filters, router.isReady, router.query.q, router.query.searchInMessages, router.query.msgFechaDesde, router.query.msgFechaHasta, onConversationsLoaded, onMessageResultsLoaded, onLoadingUpdated]);
 
   const refreshConversations = useCallback(async () => {
     if (!router.isReady) {
@@ -123,14 +121,13 @@ export function useConversationsFetch({
 
         onConversationsLoaded?.(conversationData);
         onMessageResultsLoaded?.(messageMatchesData);
-        onSearchUpdated?.(queryValue);
       } catch (error) {
         console.error("Error al buscar:", error);
       } finally {
         onLoadingUpdated?.(false);
       }
     },
-    [onConversationsLoaded, onMessageResultsLoaded, onSearchUpdated, router.query, onLoadingUpdated]
+    [onConversationsLoaded, onMessageResultsLoaded, router.query, onLoadingUpdated]
   );
 
   return {
