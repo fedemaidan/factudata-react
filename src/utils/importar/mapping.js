@@ -45,6 +45,11 @@ export const applyMappingToRows = (rows, cols, mapping, tipoLista) => {
       valorTotal: 0,
     };
 
+    // Preservar campo de verificación si existe (para mostrar discrepancias en la UI)
+    if (row && typeof row === 'object' && row._verificacion) {
+      out._verificacion = row._verificacion;
+    }
+
     cols.forEach((colName, colIdx) => {
       const role = mapping[colName];
       if (!role || role === 'ignorar') return;

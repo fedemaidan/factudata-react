@@ -1,10 +1,19 @@
 import React, { useRef, useState } from 'react';
-import { Box, Button, Container, Stack, Stepper, Step, StepLabel, Typography, Paper } from '@mui/material';
+import { Box, Button, Container, Stack, Stepper, Step, StepLabel, Typography, Paper,
+  Dialog, DialogTitle, DialogContent, DialogActions, Radio, RadioGroup, FormControlLabel,
+  TextField, IconButton, Grid, Tooltip, Chip, Collapse
+} from '@mui/material';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import { useBreadcrumbs } from 'src/contexts/breadcrumbs-context';
 import HomeIcon from '@mui/icons-material/Home';
 import InventoryIcon from '@mui/icons-material/Inventory';
 import AddIcon from '@mui/icons-material/Add';
+import WarningAmberIcon from '@mui/icons-material/WarningAmber';
+import ImageIcon from '@mui/icons-material/Image';
+import EditIcon from '@mui/icons-material/Edit';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import ExpandLessIcon from '@mui/icons-material/ExpandLess';
+import CloseIcon from '@mui/icons-material/Close';
 
 import ProgressBackdrop from 'src/components/importar/ProgressBackdrop';
 import { Backdrop, CircularProgress } from '@mui/material';
@@ -65,6 +74,21 @@ const ImportarPage = () => {
   const [totalFacturaOriginal, setTotalFacturaOriginal] = useState(0); // Total original de factura importada
   const containerRef = useRef(null);
   const [draggingGuide, setDraggingGuide] = useState(false);
+
+  // Estado para modo de extracción: 'rapido', 'balanceado', 'preciso'
+  const [modoExtraccion, setModoExtraccion] = useState('balanceado');
+
+  // Estados para diálogo de discrepancias
+  const [discrepanciasDialogOpen, setDiscrepanciasDialogOpen] = useState(false);
+  const [materialesConDiscrepancia, setMaterialesConDiscrepancia] = useState([]);
+  const [confirmaciones, setConfirmaciones] = useState({});
+  const [pendingPreviewData, setPendingPreviewData] = useState(null);
+  // Estado para visor de imagen original
+  const [imagenVisorOpen, setImagenVisorOpen] = useState(false);
+  const [imagenVisorIndex, setImagenVisorIndex] = useState(0);
+  // Estado para valores manuales (cuando el usuario quiere ingresar otro valor)
+  const [valoresManuales, setValoresManuales] = useState({});
+  const [mostrarManual, setMostrarManual] = useState({});
 
   const [finalRows, setFinalRows] = useState([]);
   const [selectionModel, setSelectionModel] = useState([]);
@@ -157,9 +181,49 @@ const onProcesar = async () => {
     archivo,
     rotation,
     guideY,
-    meta: { tipoLista, proveedor, proyecto, valorTotal },
-    onPreviewReady: ({ rawRows, cols, rows, mapping, urls }) => {
-      loadPreview({ rawRows, cols, rows, mapping });
+    meta: { tipoLista, proveedor, proyecto, valorTotal, modo: modoExtraccion },
+    onPreviewReady: ({ rawRows, cols, rows, mapping, urls, tieneDiscrepancias }) => {
+      // Función para limpiar campos internos de los materiales
+      const limpiarMateriales = (materiales) => materiales.map(mat => {
+        const { _verificacion, _extraccion_inicial, _requiere_confirmacion_usuario, materiales_requieren_input, resumen_verificacion, ...limpio } = mat;
+        return limpio;
+      });
+      
+      // DEBUG: Log para entender qué llega del backend
+      console.log('[crearAcopio] tieneDiscrepancias del backend:', tieneDiscrepancias);
+      console.log('[crearAcopio] rawRows recibidos:', rawRows?.length, 'materiales');
+      console.log('[crearAcopio] Materiales con _verificacion:', rawRows?.filter(m => m._verificacion).length);
+      console.log('[crearAcopio] Materiales con requiere_input:', rawRows?.filter(m => m._verificacion?.requiere_input).length);
+      
+      // Log detallado de cada material
+      rawRows?.forEach((m, i) => {
+        console.log(`[crearAcopio] Material ${i}: ${m.Nombre || m.nombre || 'Sin nombre'}`, {
+          tiene_verificacion: !!m._verificacion,
+          requiere_input: m._verificacion?.requiere_input,
+          requiere_cantidad_input: m._verificacion?.requiere_cantidad_input,
+          requiere_precio_input: m._verificacion?.requiere_precio_input,
+          cantidad: m.cantidad,
+          cant_original: m._verificacion?.cantidad_original,
+          cant_verificada: m._verificacion?.cantidad_verificada,
+          precio: m.precio_unitario,
+          precio_original: m._verificacion?.precio_original,
+          precio_verificado: m._verificacion?.precio_verificado
+        });
+      });
+      
+      // Las discrepancias ahora se manejan en el paso final (Step3RevisionFinal)
+      // NO abrimos diálogo, sino que pasamos los materiales con sus discrepancias marcadas
+      // El campo _verificacion contiene la info de discrepancias para mostrar en la grilla
+      console.log('[crearAcopio] Continuando al preview. Discrepancias se validarán en paso final.');
+      
+      // Mantener los campos de verificación para mostrar en la grilla final
+      const rawRowsConDiscrepancias = rawRows.map(mat => {
+        const { _extraccion_inicial, _requiere_confirmacion_usuario, materiales_requieren_input, ...matLimpio } = mat;
+        // Mantener _verificacion para que Step3RevisionFinal pueda mostrar las discrepancias
+        return matLimpio;
+      });
+      
+      loadPreview({ rawRows: rawRowsConDiscrepancias, cols, rows, mapping });
       setActiveStep(6); // Ir a ajustar columnas
       setUrls(urls);
     },
@@ -184,6 +248,75 @@ const moveColumnValues = (field, fromIndex, direction = 'up') => {
     return newRows;
   });
 };
+
+// Confirmar las cantidades y/o precios seleccionados por el usuario
+const handleConfirmarDiscrepancias = () => {
+  if (!pendingPreviewData) return;
+  
+  // Aplicar las confirmaciones a los materiales y limpiar campos internos
+  const materialesConfirmados = materialesConDiscrepancia.map(mat => {
+    // Limpiar campos internos que no deben ir al DataGrid
+    const { _verificacion, _extraccion_inicial, _requiere_confirmacion_usuario, materiales_requieren_input, ...matLimpio } = mat;
+    const nombreMat = mat.nombre || mat.Nombre || mat.descripcion;
+    
+    // Aplicar confirmación de código si hay discrepancia
+    if (mat._verificacion?.requiere_codigo_input) {
+      const codigoManual = valoresManuales[`${nombreMat}_codigo`];
+      const codigoElegido = codigoManual !== undefined && codigoManual !== '' 
+        ? codigoManual 
+        : confirmaciones[`${nombreMat}_codigo`];
+      if (codigoElegido !== undefined && codigoElegido !== '') {
+        matLimpio.SKU = codigoElegido;
+        matLimpio.codigo = codigoElegido;
+        matLimpio._codigo_confirmado = true;
+      }
+    }
+    
+    // Aplicar confirmación de cantidad si hay discrepancia
+    if (mat._verificacion?.requiere_cantidad_input) {
+      // Primero revisar si hay valor manual
+      const cantidadManual = valoresManuales[`${nombreMat}_cantidad`];
+      const cantidadElegida = cantidadManual !== undefined && cantidadManual !== '' 
+        ? cantidadManual 
+        : confirmaciones[`${nombreMat}_cantidad`];
+      if (cantidadElegida !== undefined && cantidadElegida !== '') {
+        matLimpio.cantidad = parseFloat(cantidadElegida);
+        matLimpio._cantidad_confirmada = true;
+      }
+    }
+    
+    // Aplicar confirmación de precio si hay discrepancia
+    if (mat._verificacion?.requiere_precio_input) {
+      // Primero revisar si hay valor manual
+      const precioManual = valoresManuales[`${nombreMat}_precio`];
+      const precioElegido = precioManual !== undefined && precioManual !== ''
+        ? precioManual
+        : confirmaciones[`${nombreMat}_precio`];
+      if (precioElegido !== undefined && precioElegido !== '') {
+        matLimpio.precio_unitario = parseFloat(precioElegido);
+        matLimpio.Precio = parseFloat(precioElegido);
+        matLimpio._precio_confirmado = true;
+      }
+    }
+    
+    return matLimpio;
+  });
+
+  // Continuar con el flujo normal
+  const { cols, rows, mapping, urls } = pendingPreviewData;
+  loadPreview({ rawRows: materialesConfirmados, cols, rows, mapping });
+  setActiveStep(6);
+  setUrls(urls);
+  
+  // Limpiar estados
+  setDiscrepanciasDialogOpen(false);
+  setMaterialesConDiscrepancia([]);
+  setConfirmaciones({});
+  setValoresManuales({});
+  setMostrarManual({});
+  setPendingPreviewData(null);
+};
+
 // NUEVO useEffect: carga empresa -> proveedores y proyectos
 React.useEffect(() => {
   const cargar = async () => {
@@ -247,8 +380,83 @@ React.useEffect(() => {
 }, [acopioId]);
 
 const columns = React.useMemo(() => {
+  // Función para renderizar celdas con indicador de discrepancia MUY VISIBLE
+  const renderCellConDiscrepancia = (params, campo) => {
+    const verif = params.row._verificacion;
+    const tieneDiscrepancia = campo === 'codigo' 
+      ? verif?.requiere_codigo_input
+      : campo === 'cantidad' 
+        ? verif?.requiere_cantidad_input 
+        : verif?.requiere_precio_input;
+    
+    if (!tieneDiscrepancia) {
+      return params.formattedValue ?? params.value;
+    }
+    
+    // Mostrar con indicador visual de discrepancia MUY VISIBLE
+    const valorOriginal = campo === 'codigo' 
+      ? verif?.codigo_original 
+      : campo === 'cantidad' 
+        ? verif?.cantidad_original 
+        : verif?.precio_original;
+    const valorVerificado = campo === 'codigo' 
+      ? verif?.codigo_verificado 
+      : campo === 'cantidad' 
+        ? verif?.cantidad_verificada 
+        : verif?.precio_verificado;
+    
+    return (
+      <Tooltip 
+        title={
+          <Box sx={{ p: 0.5 }}>
+            <Typography variant="caption" fontWeight="bold">⚠️ Discrepancia detectada</Typography>
+            <br />
+            <Typography variant="caption">Lectura 1: {valorOriginal}</Typography>
+            <br />
+            <Typography variant="caption">Lectura 2: {valorVerificado}</Typography>
+            <br />
+            <Typography variant="caption" color="warning.light">Hacé clic para editar</Typography>
+          </Box>
+        }
+        arrow
+      >
+        <Box sx={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          gap: 1,
+          width: '100%',
+          bgcolor: '#fff3cd',
+          borderRadius: 1,
+          px: 1,
+          py: 0.5,
+          border: '2px solid #ffc107',
+          boxShadow: '0 0 8px rgba(255, 193, 7, 0.5)',
+          animation: 'pulse 2s infinite',
+          cursor: 'pointer',
+          '@keyframes pulse': {
+            '0%': { boxShadow: '0 0 4px rgba(255, 193, 7, 0.3)' },
+            '50%': { boxShadow: '0 0 12px rgba(255, 193, 7, 0.7)' },
+            '100%': { boxShadow: '0 0 4px rgba(255, 193, 7, 0.3)' }
+          }
+        }}>
+          <WarningAmberIcon sx={{ fontSize: 18, color: '#ff9800' }} />
+          <Typography variant="body2" fontWeight={600} sx={{ color: '#856404' }}>
+            {params.formattedValue ?? params.value}
+          </Typography>
+        </Box>
+      </Tooltip>
+    );
+  };
+
   const common = [
-    { field: 'codigo', headerName: 'Código', flex: 1, minWidth: 120, editable: true },
+    { 
+      field: 'codigo', 
+      headerName: 'Código', 
+      flex: 1, 
+      minWidth: 120, 
+      editable: true,
+      renderCell: (params) => renderCellConDiscrepancia(params, 'codigo')
+    },
     { field: 'descripcion', headerName: 'Descripción', flex: 2, minWidth: 220, editable: true },
   ];
 
@@ -265,6 +473,7 @@ const columns = React.useMemo(() => {
         minWidth: 120,
         editable: true,
         valueGetter: (p) => toNumber(p.row.cantidad),
+        renderCell: (params) => renderCellConDiscrepancia(params, 'cantidad')
       },
       {
         field: 'valorUnitario',
@@ -276,6 +485,7 @@ const columns = React.useMemo(() => {
         editable: true,
         valueGetter: (p) => toNumber(p.row.valorUnitario),
         valueFormatter: ({ value }) => formatCurrency(value),
+        renderCell: (params) => renderCellConDiscrepancia(params, 'precio')
       },
       {
         field: 'valorTotal',
@@ -304,6 +514,7 @@ const columns = React.useMemo(() => {
       editable: true,
       valueGetter: (p) => toNumber(p.row.valorUnitario),
       valueFormatter: ({ value }) => formatCurrency(value),
+      renderCell: (params) => renderCellConDiscrepancia(params, 'precio')
     },
   ];
 }, [tipoLista]);
@@ -337,15 +548,25 @@ const guardarAcopio = async () => {
     }
     console.log(acopio, "acopio a guardar");
 
+    let nuevoAcopioId = acopioId;
+    
     if (editando) {
       await AcopioService.editarAcopio(acopioId, acopio);
       setAlert({ open: true, message: '✏️ Acopio actualizado con éxito.', severity: 'success' });
     } else {
-      await AcopioService.crearAcopio(acopio);
+      const result = await AcopioService.crearAcopio(acopio);
+      nuevoAcopioId = result?.acopioId;
       setAlert({ open: true, message: '✅ Acopio creado con éxito.', severity: 'success' });
     }
 
-    setTimeout(() => router.push(`/acopios?empresaId=${empresaId}`), 1500);
+    // Redirigir al detalle del acopio
+    setTimeout(() => {
+      if (nuevoAcopioId) {
+        router.push(`/movimientosAcopio?acopioId=${nuevoAcopioId}`);
+      } else {
+        router.push(`/acopios?empresaId=${empresaId}`);
+      }
+    }, 1500);
   } catch (error) {
     console.error('Error al guardar acopio:', error);
     setAlert({ open: true, message: '❌ Error al guardar acopio', severity: 'error' });
@@ -424,6 +645,27 @@ function onConfirmColumns({ includeHeaderAsRow: includeHdr }) {
 
   const processRowUpdate = (newRow, oldRow) => {
     const updated = { ...newRow };
+    
+    // Limpiar flags de discrepancia cuando el usuario edita un campo
+    if (updated._verificacion) {
+      const verif = { ...updated._verificacion };
+      // Si editó código, limpiar discrepancia de código
+      if (newRow.codigo !== oldRow.codigo) {
+        verif.requiere_codigo_input = false;
+      }
+      // Si editó cantidad, limpiar discrepancia de cantidad
+      if (newRow.cantidad !== oldRow.cantidad) {
+        verif.requiere_cantidad_input = false;
+      }
+      // Si editó precio, limpiar discrepancia de precio
+      if (newRow.valorUnitario !== oldRow.valorUnitario) {
+        verif.requiere_precio_input = false;
+      }
+      // Actualizar requiere_input general
+      verif.requiere_input = verif.requiere_codigo_input || verif.requiere_cantidad_input || verif.requiere_precio_input;
+      updated._verificacion = verif;
+    }
+    
     if (tipoLista === 'materiales') {
       const cantidad = toNumber(updated.cantidad);
       const valorUnitario = toNumber(updated.valorUnitario);
@@ -488,6 +730,33 @@ const onConfirmMapping = ({ includeHeaderAsRow } = {}) => {
     if (!selectionModel?.length) return;
     setFinalRows((rows) => rows.filter((r, idx) => !selectionModel.includes(String(r.id ?? `${idx}`))));
     setSelectionModel([]);
+  };
+
+  // Importar materiales desde Excel (reemplaza los actuales)
+  const handleImportFromExcel = (materialesImportados) => {
+    if (!materialesImportados?.length) {
+      setAlert({ open: true, severity: 'warning', message: 'No se encontraron materiales en el archivo' });
+      return;
+    }
+    
+    // Reemplazar filas con los datos importados
+    const nuevasFilas = materialesImportados.map((mat, idx) => ({
+      id: mat.id || `excel-${idx}`,
+      codigo: mat.codigo || '',
+      descripcion: mat.descripcion || '',
+      cantidad: mat.cantidad || 0,
+      unidad: mat.unidad || '',
+      valorUnitario: mat.valorUnitario || 0,
+      valorTotal: mat.valorTotal || (mat.cantidad * mat.valorUnitario) || 0
+    }));
+    
+    setFinalRows(nuevasFilas);
+    setSelectionModel([]);
+    setAlert({ 
+      open: true, 
+      severity: 'success', 
+      message: `Se importaron ${nuevasFilas.length} materiales desde Excel` 
+    });
   };
 
   const handleBulkPriceUpdate = () => {
@@ -705,6 +974,8 @@ const handleAddItem = (position = 'end', datosDefecto = null) => {
           onContainerTouchMove={onContainerTouchMove}
           onGuideMouseDown={onGuideMouseDown}
           onProcesar={onProcesar}
+          modoExtraccion={modoExtraccion}
+          setModoExtraccion={setModoExtraccion}
         />
       );
     }
@@ -724,6 +995,9 @@ const handleAddItem = (position = 'end', datosDefecto = null) => {
     }
 
     // Step 7: Revisión final
+    // Contar materiales con discrepancias pendientes
+    const discrepanciasPendientes = finalRows.filter(r => r._verificacion?.requiere_input).length;
+    
     return (
      <Step3RevisionFinal
   // datos
@@ -760,9 +1034,15 @@ const handleAddItem = (position = 'end', datosDefecto = null) => {
   moveColumnValues={moveColumnValues}
   handleAddItem={handleAddItem}
   onGuardarAcopio={guardarAcopio}
+  onImportFromExcel={handleImportFromExcel}
   // flags
   guardando={guardando}
   editando={editando}
+  // discrepancias
+  discrepanciasPendientes={discrepanciasPendientes}
+  // imágenes del documento
+  imageUrls={urls}
+  archivoPreview={archivo}
 />
     );
   };
@@ -776,18 +1056,21 @@ React.useEffect(() => {
 }, [previewUrl]);
 
 return (
-  <Box component="main" sx={{ flexGrow: 1, py: 6 }}>
-    <Container maxWidth="lg">
+  <Box component="main" sx={{ flexGrow: 1, py: 4 }}>
+    <Container maxWidth={false} sx={{ px: { xs: 2, sm: 3, md: 4 } }}>
       <Typography variant="h5" gutterBottom>
         Importar lista de precios o materiales
       </Typography>
 
       <Stack direction="row" spacing={2} alignItems="flex-start">
-{(archivo || (urls?.length > 0)) && activeStep >= 1 && (
+{/* Panel de vista previa - ocultar en revisión final (step 7) porque ya tiene su propio visor */}
+{(archivo || (urls?.length > 0)) && activeStep > 5 && activeStep !== 7 && (
   <Paper
     sx={{
-      width: { xs: '100%', md: '35%' },
-      height: { xs: 360, md: 'calc(100vh - 140px)' },
+      width: { xs: '100%', md: '22%', lg: '18%' },
+      minWidth: { md: 220 },
+      maxWidth: { md: 320 },
+      height: { xs: 280, md: 'calc(100vh - 140px)' },
       position: { md: 'sticky' },
       top: { md: 80 },
       overflow: 'hidden',
@@ -797,6 +1080,7 @@ return (
       bgcolor: '#fafafa',
       border: '1px solid #ddd',
       flexShrink: 0,
+      borderRadius: 2,
     }}
   >
     {archivo ? (
@@ -854,8 +1138,17 @@ return (
 
 
         {/* Contenido principal (columna derecha) */}
-        <Box sx={{ flex: 1, minWidth: 0 }}>
-          <Stepper activeStep={activeStep} sx={{ mb: 3 }}>
+        <Box sx={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
+          <Stepper 
+            activeStep={activeStep} 
+            sx={{ 
+              mb: 3, 
+              overflowX: 'auto',
+              '& .MuiStepLabel-label': {
+                fontSize: { xs: '0.75rem', md: '0.875rem' }
+              }
+            }}
+          >
             {steps.map((label) => (
               <Step key={label}>
                 <StepLabel>{label}</StepLabel>
@@ -889,6 +1182,410 @@ return (
 >
   <CircularProgress color="inherit" />
 </Backdrop>
+
+    {/* Diálogo para confirmar discrepancias en cantidades y/o precios */}
+    <Dialog 
+      open={discrepanciasDialogOpen} 
+      onClose={() => {}}
+      maxWidth="xl"
+      fullWidth
+      PaperProps={{ sx: { height: '90vh' } }}
+    >
+      <DialogTitle>
+        <Stack direction="row" alignItems="center" justifyContent="space-between">
+          <Stack direction="row" alignItems="center" spacing={1}>
+            <WarningAmberIcon color="warning" />
+            <Typography variant="h6">Verificar datos con discrepancias</Typography>
+            <Chip 
+              label={`${materialesConDiscrepancia.filter(m => m._verificacion?.requiere_input).length} materiales`}
+              color="warning"
+              size="small"
+            />
+          </Stack>
+          <Tooltip title="Ver documento original">
+            <IconButton 
+              onClick={() => setImagenVisorOpen(!imagenVisorOpen)}
+              color={imagenVisorOpen ? 'primary' : 'default'}
+            >
+              <ImageIcon />
+            </IconButton>
+          </Tooltip>
+        </Stack>
+      </DialogTitle>
+      <DialogContent sx={{ p: 0 }}>
+        <Grid container sx={{ height: '100%' }}>
+          {/* Panel izquierdo: Lista de discrepancias */}
+          <Grid item xs={imagenVisorOpen ? 6 : 12} sx={{ p: 3, overflowY: 'auto', height: '100%' }}>
+            <Alert severity="info" sx={{ mb: 3 }}>
+              Solo se muestran los materiales donde la IA detectó diferencias entre lecturas.
+              Podés elegir uno de los valores detectados o ingresar el valor correcto manualmente.
+            </Alert>
+
+            <Stack spacing={2}>
+              {materialesConDiscrepancia
+                .filter(mat => mat._verificacion?.requiere_input)
+                .map((mat, idx) => {
+                  const nombreMat = mat.nombre || mat.Nombre || mat.descripcion || `Material ${idx + 1}`;
+                  const requiereCodigoInput = mat._verificacion?.requiere_codigo_input;
+                  const requiereCantidadInput = mat._verificacion?.requiere_cantidad_input;
+                  const requierePrecioInput = mat._verificacion?.requiere_precio_input;
+                  
+                  // Códigos
+                  const codigoOriginal = mat._verificacion?.codigo_original || mat.SKU || mat.codigo || '';
+                  const codigoVerificado = mat._verificacion?.codigo_verificado;
+                  const opcionesCodigo = [codigoOriginal, codigoVerificado].filter(c => c != null && c !== '');
+                  const opcionesCodigoUnicas = [...new Set(opcionesCodigo)];
+                  
+                  // Cantidades
+                  const cantOriginal = mat._verificacion?.cantidad_original;
+                  const cantVerificada = mat._verificacion?.cantidad_verificada;
+                  const opcionesCantidad = [cantOriginal, cantVerificada].filter(c => c != null && !isNaN(c));
+                  const opcionesCantidadUnicas = [...new Set(opcionesCantidad)];
+                  
+                  // Precios
+                  const precioOriginal = mat._verificacion?.precio_original;
+                  const precioVerificado = mat._verificacion?.precio_verificado;
+                  const opcionesPrecio = [precioOriginal, precioVerificado].filter(p => p != null && !isNaN(p));
+                  const opcionesPrecioUnicas = [...new Set(opcionesPrecio)];
+                  
+                  return (
+                    <Paper 
+                      key={idx} 
+                      sx={{ 
+                        p: 2, 
+                        bgcolor: 'warning.50',
+                        border: '2px solid',
+                        borderColor: 'warning.main'
+                      }}
+                    >
+                      <Box sx={{ mb: 2 }}>
+                        <Typography variant="subtitle1" fontWeight="bold">
+                          {nombreMat}
+                        </Typography>
+                        {(mat.codigo || mat.SKU) && !requiereCodigoInput && (
+                          <Typography variant="caption" color="text.secondary">
+                            SKU: {mat.codigo || mat.SKU}
+                          </Typography>
+                        )}
+                      </Box>
+                      
+                      <Stack direction={{ xs: 'column', md: 'row' }} spacing={3} flexWrap="wrap">
+                        {/* Sección de Código */}
+                        {requiereCodigoInput && (
+                          <Box sx={{ flex: 1, minWidth: 200 }}>
+                            <Typography variant="caption" color="warning.main" fontWeight="bold" sx={{ display: 'block', mb: 1 }}>
+                              ⚠️ Seleccionar código/SKU correcto:
+                            </Typography>
+                            <RadioGroup
+                              value={valoresManuales[`${nombreMat}_codigo`] !== undefined && valoresManuales[`${nombreMat}_codigo`] !== '' ? 'manual' : (confirmaciones[`${nombreMat}_codigo`] || '')}
+                              onChange={(e) => {
+                                if (e.target.value !== 'manual') {
+                                  setConfirmaciones(prev => ({
+                                    ...prev,
+                                    [`${nombreMat}_codigo`]: e.target.value
+                                  }));
+                                  setValoresManuales(prev => ({
+                                    ...prev,
+                                    [`${nombreMat}_codigo`]: ''
+                                  }));
+                                }
+                              }}
+                            >
+                              {opcionesCodigoUnicas.map((opcion, opIdx) => (
+                                <FormControlLabel 
+                                  key={opIdx}
+                                  value={String(opcion)} 
+                                  control={<Radio size="small" />} 
+                                  label={
+                                    <Typography variant="body2">
+                                      <strong>{opcion}</strong>
+                                      {opcion === codigoOriginal && ' (1ra lectura)'}
+                                      {opcion === codigoVerificado && opcion !== codigoOriginal && ' (2da lectura)'}
+                                    </Typography>
+                                  }
+                                />
+                              ))}
+                              <FormControlLabel 
+                                value="manual"
+                                control={<Radio size="small" />} 
+                                label={
+                                  <Stack direction="row" alignItems="center" spacing={1}>
+                                    <EditIcon fontSize="small" color="action" />
+                                    <Typography variant="body2">Otro:</Typography>
+                                    <TextField
+                                      size="small"
+                                      placeholder="Ingresar código"
+                                      value={valoresManuales[`${nombreMat}_codigo`] || ''}
+                                      onClick={(e) => e.stopPropagation()}
+                                      onChange={(e) => {
+                                        setValoresManuales(prev => ({
+                                          ...prev,
+                                          [`${nombreMat}_codigo`]: e.target.value
+                                        }));
+                                        setConfirmaciones(prev => ({
+                                          ...prev,
+                                          [`${nombreMat}_codigo`]: ''
+                                        }));
+                                      }}
+                                      sx={{ width: 150 }}
+                                    />
+                                  </Stack>
+                                }
+                              />
+                            </RadioGroup>
+                          </Box>
+                        )}
+                        
+                        {/* Sección de Cantidad */}
+                        {requiereCantidadInput && (
+                          <Box sx={{ flex: 1, minWidth: 200 }}>
+                            <Typography variant="caption" color="warning.main" fontWeight="bold" sx={{ display: 'block', mb: 1 }}>
+                              ⚠️ Seleccionar cantidad correcta:
+                            </Typography>
+                            <RadioGroup
+                              value={valoresManuales[`${nombreMat}_cantidad`] !== undefined && valoresManuales[`${nombreMat}_cantidad`] !== '' ? 'manual' : (confirmaciones[`${nombreMat}_cantidad`] || '')}
+                              onChange={(e) => {
+                                if (e.target.value !== 'manual') {
+                                  setConfirmaciones(prev => ({
+                                    ...prev,
+                                    [`${nombreMat}_cantidad`]: e.target.value
+                                  }));
+                                  setValoresManuales(prev => ({
+                                    ...prev,
+                                    [`${nombreMat}_cantidad`]: ''
+                                  }));
+                                }
+                              }}
+                            >
+                              {opcionesCantidadUnicas.map((opcion, opIdx) => (
+                                <FormControlLabel 
+                                  key={opIdx}
+                                  value={String(opcion)} 
+                                  control={<Radio size="small" />} 
+                                  label={
+                                    <Typography variant="body2">
+                                      <strong>{opcion}</strong> {mat.unidad || 'u'}
+                                      {opcion === cantOriginal && ' (1ra lectura)'}
+                                      {opcion === cantVerificada && opcion !== cantOriginal && ' (2da lectura)'}
+                                    </Typography>
+                                  }
+                                />
+                              ))}
+                              <FormControlLabel 
+                                value="manual"
+                                control={<Radio size="small" />} 
+                                label={
+                                  <Stack direction="row" alignItems="center" spacing={1}>
+                                    <EditIcon fontSize="small" color="action" />
+                                    <Typography variant="body2">Otro valor:</Typography>
+                                    <TextField
+                                      size="small"
+                                      type="number"
+                                      placeholder="Ingresar"
+                                      value={valoresManuales[`${nombreMat}_cantidad`] || ''}
+                                      onClick={(e) => e.stopPropagation()}
+                                      onChange={(e) => {
+                                        setValoresManuales(prev => ({
+                                          ...prev,
+                                          [`${nombreMat}_cantidad`]: e.target.value
+                                        }));
+                                        setConfirmaciones(prev => ({
+                                          ...prev,
+                                          [`${nombreMat}_cantidad`]: ''
+                                        }));
+                                      }}
+                                      sx={{ width: 100 }}
+                                      InputProps={{
+                                        endAdornment: <Typography variant="caption" sx={{ ml: 0.5 }}>{mat.unidad || 'u'}</Typography>
+                                      }}
+                                    />
+                                  </Stack>
+                                }
+                              />
+                            </RadioGroup>
+                          </Box>
+                        )}
+                        
+                        {/* Sección de Precio */}
+                        {requierePrecioInput && (
+                          <Box sx={{ flex: 1, minWidth: 200 }}>
+                            <Typography variant="caption" color="warning.main" fontWeight="bold" sx={{ display: 'block', mb: 1 }}>
+                              ⚠️ Seleccionar precio correcto:
+                            </Typography>
+                            <RadioGroup
+                              value={valoresManuales[`${nombreMat}_precio`] !== undefined && valoresManuales[`${nombreMat}_precio`] !== '' ? 'manual' : (confirmaciones[`${nombreMat}_precio`] || '')}
+                              onChange={(e) => {
+                                if (e.target.value !== 'manual') {
+                                  setConfirmaciones(prev => ({
+                                    ...prev,
+                                    [`${nombreMat}_precio`]: e.target.value
+                                  }));
+                                  setValoresManuales(prev => ({
+                                    ...prev,
+                                    [`${nombreMat}_precio`]: ''
+                                  }));
+                                }
+                              }}
+                            >
+                              {opcionesPrecioUnicas.map((opcion, opIdx) => (
+                                <FormControlLabel 
+                                  key={opIdx}
+                                  value={String(opcion)} 
+                                  control={<Radio size="small" />} 
+                                  label={
+                                    <Typography variant="body2">
+                                      <strong>${opcion.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</strong>
+                                      {opcion === precioOriginal && ' (1ra lectura)'}
+                                      {opcion === precioVerificado && opcion !== precioOriginal && ' (2da lectura)'}
+                                    </Typography>
+                                  }
+                                />
+                              ))}
+                              <FormControlLabel 
+                                value="manual"
+                                control={<Radio size="small" />} 
+                                label={
+                                  <Stack direction="row" alignItems="center" spacing={1}>
+                                    <EditIcon fontSize="small" color="action" />
+                                    <Typography variant="body2">Otro valor: $</Typography>
+                                    <TextField
+                                      size="small"
+                                      type="number"
+                                      placeholder="Ingresar"
+                                      value={valoresManuales[`${nombreMat}_precio`] || ''}
+                                      onClick={(e) => e.stopPropagation()}
+                                      onChange={(e) => {
+                                        setValoresManuales(prev => ({
+                                          ...prev,
+                                          [`${nombreMat}_precio`]: e.target.value
+                                        }));
+                                        setConfirmaciones(prev => ({
+                                          ...prev,
+                                          [`${nombreMat}_precio`]: ''
+                                        }));
+                                      }}
+                                      sx={{ width: 120 }}
+                                    />
+                                  </Stack>
+                                }
+                              />
+                            </RadioGroup>
+                          </Box>
+                        )}
+                      </Stack>
+                    </Paper>
+                  );
+                })}
+            </Stack>
+          </Grid>
+          
+          {/* Panel derecho: Visor de imagen original */}
+          {imagenVisorOpen && (
+            <Grid item xs={6} sx={{ 
+              borderLeft: '1px solid', 
+              borderColor: 'divider',
+              bgcolor: 'grey.100',
+              display: 'flex',
+              flexDirection: 'column',
+              height: '100%'
+            }}>
+              <Box sx={{ p: 2, borderBottom: '1px solid', borderColor: 'divider', bgcolor: 'background.paper' }}>
+                <Stack direction="row" alignItems="center" justifyContent="space-between">
+                  <Typography variant="subtitle2">
+                    Documento Original ({imagenVisorIndex + 1} de {pendingPreviewData?.urls?.length || 1})
+                  </Typography>
+                  <Stack direction="row" spacing={1}>
+                    {(pendingPreviewData?.urls?.length || 0) > 1 && (
+                      <>
+                        <Button 
+                          size="small" 
+                          disabled={imagenVisorIndex === 0}
+                          onClick={() => setImagenVisorIndex(prev => prev - 1)}
+                        >
+                          ← Anterior
+                        </Button>
+                        <Button 
+                          size="small"
+                          disabled={imagenVisorIndex >= (pendingPreviewData?.urls?.length || 1) - 1}
+                          onClick={() => setImagenVisorIndex(prev => prev + 1)}
+                        >
+                          Siguiente →
+                        </Button>
+                      </>
+                    )}
+                    <IconButton size="small" onClick={() => setImagenVisorOpen(false)}>
+                      <CloseIcon fontSize="small" />
+                    </IconButton>
+                  </Stack>
+                </Stack>
+              </Box>
+              <Box sx={{ flex: 1, overflow: 'auto', p: 2, display: 'flex', justifyContent: 'center' }}>
+                {pendingPreviewData?.urls?.[imagenVisorIndex] ? (
+                  <img 
+                    src={pendingPreviewData.urls[imagenVisorIndex]}
+                    alt={`Página ${imagenVisorIndex + 1}`}
+                    style={{ 
+                      maxWidth: '100%', 
+                      height: 'auto',
+                      boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                      borderRadius: 4
+                    }}
+                  />
+                ) : (
+                  <Typography color="text.secondary">No hay imagen disponible</Typography>
+                )}
+              </Box>
+            </Grid>
+          )}
+        </Grid>
+      </DialogContent>
+      <DialogActions sx={{ p: 3, borderTop: '1px solid', borderColor: 'divider' }}>
+        <Button 
+          onClick={() => {
+            setDiscrepanciasDialogOpen(false);
+            setMaterialesConDiscrepancia([]);
+            setConfirmaciones({});
+            setValoresManuales({});
+            setMostrarManual({});
+            setPendingPreviewData(null);
+            setImagenVisorOpen(false);
+          }}
+          color="inherit"
+        >
+          Cancelar
+        </Button>
+        <Button 
+          onClick={handleConfirmarDiscrepancias}
+          variant="contained"
+          disabled={
+            // Verificar que todas las discrepancias tengan confirmación (radio o manual)
+            materialesConDiscrepancia
+              .filter(m => m._verificacion?.requiere_input)
+              .some(m => {
+                const nombreMat = m.nombre || m.Nombre || m.descripcion;
+                if (m._verificacion?.requiere_codigo_input) {
+                  const tieneRadio = confirmaciones[`${nombreMat}_codigo`];
+                  const tieneManual = valoresManuales[`${nombreMat}_codigo`] && valoresManuales[`${nombreMat}_codigo`] !== '';
+                  if (!tieneRadio && !tieneManual) return true;
+                }
+                if (m._verificacion?.requiere_cantidad_input) {
+                  const tieneRadio = confirmaciones[`${nombreMat}_cantidad`];
+                  const tieneManual = valoresManuales[`${nombreMat}_cantidad`] && valoresManuales[`${nombreMat}_cantidad`] !== '';
+                  if (!tieneRadio && !tieneManual) return true;
+                }
+                if (m._verificacion?.requiere_precio_input) {
+                  const tieneRadio = confirmaciones[`${nombreMat}_precio`];
+                  const tieneManual = valoresManuales[`${nombreMat}_precio`] && valoresManuales[`${nombreMat}_precio`] !== '';
+                  if (!tieneRadio && !tieneManual) return true;
+                }
+                return false;
+              })
+          }
+        >
+          Confirmar y continuar
+        </Button>
+      </DialogActions>
+    </Dialog>
   </Box>
 );
 
