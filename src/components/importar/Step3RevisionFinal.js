@@ -53,8 +53,8 @@ export default function Step3RevisionFinal({
   const discrepanciasRef = React.useRef(null);
   const [valoresEditando, setValoresEditando] = React.useState({});
   
-  // Estados para modo revisión
-  const [modoRevision, setModoRevision] = React.useState(true); // Arranca en modo revisión si hay discrepancias
+  // Estados para modo revisión (visor de documento)
+  const [modoRevision, setModoRevision] = React.useState(discrepanciasPendientes > 0); // Arranca en modo revisión si hay discrepancias
   const [zoom, setZoom] = React.useState(100);
   const [rotation, setRotation] = React.useState(0);
   const [paginaActual, setPaginaActual] = React.useState(0);
@@ -154,20 +154,13 @@ export default function Step3RevisionFinal({
     // Limpiar selecciones pendientes
     setSeleccionesDiscrepancia({});
     
-    // Si no quedan más, salir del modo revisión
+    // Si no quedan más discrepancias, salir del modo revisión
     setTimeout(() => {
       if (materialesConDiscrepancia.length === 0) {
         setModoRevision(false);
       }
     }, 100);
   };
-
-  // Auto-desactivar modo revisión cuando no hay discrepancias
-  React.useEffect(() => {
-    if (materialesConDiscrepancia.length === 0) {
-      setModoRevision(false);
-    }
-  }, [materialesConDiscrepancia.length]);
 
   // Scroll a la sección de discrepancias
   const scrollToDiscrepancias = () => {
@@ -817,6 +810,124 @@ export default function Step3RevisionFinal({
               </Stack>
             </Box>
           </Stack>
+        </Paper>
+      )}
+
+      {/* ========== VISOR DE DOCUMENTO (sin discrepancias) ========== */}
+      {modoRevision && materialesConDiscrepancia.length === 0 && imagenActual && (
+        <Paper sx={{ p: 2, border: '2px solid #1976d2', borderRadius: 2 }}>
+          <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
+            <Stack direction="row" spacing={1} alignItems="center">
+              <VisibilityIcon color="primary" />
+              <Typography variant="h6" fontWeight={600}>
+                Vista del documento
+              </Typography>
+            </Stack>
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={<TableChartIcon />}
+              onClick={() => setModoRevision(false)}
+            >
+              Cerrar
+            </Button>
+          </Stack>
+
+          <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: 500 }}>
+            {archivoPreview?.type === 'application/pdf' ? (
+              <PdfViewer file={archivoPreview} height={480} />
+            ) : (
+              <>
+                {/* Controles de zoom */}
+                <Paper sx={{ p: 1, mb: 1, display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                  <Tooltip title="Alejar">
+                    <IconButton size="small" onClick={() => setZoom(z => Math.max(25, z - 25))}>
+                      <ZoomOutIcon />
+                    </IconButton>
+                  </Tooltip>
+                  <Slider
+                    value={zoom}
+                    onChange={(_, v) => setZoom(v)}
+                    min={25}
+                    max={300}
+                    step={25}
+                    sx={{ width: 100 }}
+                    valueLabelDisplay="auto"
+                    valueLabelFormat={v => `${v}%`}
+                  />
+                  <Tooltip title="Acercar">
+                    <IconButton size="small" onClick={() => setZoom(z => Math.min(300, z + 25))}>
+                      <ZoomInIcon />
+                    </IconButton>
+                  </Tooltip>
+                  <Divider orientation="vertical" flexItem />
+                  <Tooltip title="Rotar izquierda">
+                    <IconButton size="small" onClick={() => setRotation(r => r - 90)}>
+                      <RotateLeftIcon />
+                    </IconButton>
+                  </Tooltip>
+                  <Tooltip title="Rotar derecha">
+                    <IconButton size="small" onClick={() => setRotation(r => r + 90)}>
+                      <RotateRightIcon />
+                    </IconButton>
+                  </Tooltip>
+                  <Tooltip title="Resetear vista">
+                    <IconButton size="small" onClick={() => { setZoom(100); setRotation(0); }}>
+                      <RestartAltIcon />
+                    </IconButton>
+                  </Tooltip>
+                  {totalPaginas > 1 && (
+                    <>
+                      <Divider orientation="vertical" flexItem />
+                      <IconButton 
+                        size="small" 
+                        disabled={paginaActual === 0}
+                        onClick={() => setPaginaActual(p => p - 1)}
+                      >
+                        <NavigateBeforeIcon />
+                      </IconButton>
+                      <Typography variant="body2">
+                        {paginaActual + 1} / {totalPaginas}
+                      </Typography>
+                      <IconButton 
+                        size="small" 
+                        disabled={paginaActual >= totalPaginas - 1}
+                        onClick={() => setPaginaActual(p => p + 1)}
+                      >
+                        <NavigateNextIcon />
+                      </IconButton>
+                    </>
+                  )}
+                </Paper>
+
+                {/* Imagen del documento */}
+                <Box
+                  sx={{
+                    flex: 1,
+                    overflow: 'auto',
+                    display: 'flex',
+                    justifyContent: 'center',
+                    alignItems: 'flex-start',
+                    bgcolor: '#f5f5f5',
+                    borderRadius: 1,
+                    p: 2,
+                    minHeight: 400
+                  }}
+                >
+                  <img
+                    src={imagenActual}
+                    alt="Documento"
+                    style={{
+                      transform: `scale(${zoom / 100}) rotate(${rotation}deg)`,
+                      transformOrigin: 'center center',
+                      maxWidth: zoom > 100 ? 'none' : '100%',
+                      transition: 'transform 0.2s ease'
+                    }}
+                  />
+                </Box>
+              </>
+            )}
+          </Box>
         </Paper>
       )}
 

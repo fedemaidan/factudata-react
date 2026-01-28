@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import {
   Box,
   Container,
@@ -13,7 +13,38 @@ import {
   TextField,
   MenuItem,
   Dialog,
+  Chip,
+  Popover,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableRow,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
+  Divider,
+  IconButton,
+  Tooltip,
+  Slider,
 } from '@mui/material';
+import WarningAmberIcon from '@mui/icons-material/WarningAmber';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import PercentIcon from '@mui/icons-material/Percent';
+import CalculateIcon from '@mui/icons-material/Calculate';
+import AddIcon from '@mui/icons-material/Add';
+import DeleteIcon from '@mui/icons-material/Delete';
+import SaveIcon from '@mui/icons-material/Save';
+import VisibilityIcon from '@mui/icons-material/Visibility';
+import FileDownloadIcon from '@mui/icons-material/FileDownload';
+import ZoomInIcon from '@mui/icons-material/ZoomIn';
+import ZoomOutIcon from '@mui/icons-material/ZoomOut';
+import RotateLeftIcon from '@mui/icons-material/RotateLeft';
+import RotateRightIcon from '@mui/icons-material/RotateRight';
+import RestartAltIcon from '@mui/icons-material/RestartAlt';
+import NavigateBeforeIcon from '@mui/icons-material/NavigateBefore';
+import NavigateNextIcon from '@mui/icons-material/NavigateNext';
+import OpenInFullIcon from '@mui/icons-material/OpenInFull';
 import { DataGrid, GridToolbar } from '@mui/x-data-grid';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import { useBreadcrumbs } from 'src/contexts/breadcrumbs-context';
@@ -68,6 +99,23 @@ export default function EditarAcopioPage() {
   const [maxLen, setMaxLen] = useState(16);
 
   const [openPreview, setOpenPreview] = useState(false);
+
+  // Estado para tracking de cambios no guardados
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [originalData, setOriginalData] = useState(null);
+  
+  // Estado para preview de fórmula
+  const [formulaPreviewAnchor, setFormulaPreviewAnchor] = useState(null);
+  const [formulaPreviewData, setFormulaPreviewData] = useState([]);
+  
+  // Estados para acciones rápidas
+  const [porcentaje, setPorcentaje] = useState('');
+  const [montoFijo, setMontoFijo] = useState('');
+  const [accionesExpanded, setAccionesExpanded] = useState(false);
+  
+  // Estados para visor de documento
+  const [zoom, setZoom] = useState(100);
+  const [rotation, setRotation] = useState(0);
 
 const [currentIdx, setCurrentIdx] = useState(0);
 
@@ -165,6 +213,17 @@ const goNext = () => setCurrentIdx((i) => (i + 1) % (urls?.length || 0));
 
         setProductos(productosFinales);
 
+        // Guardar datos originales para detectar cambios
+        setOriginalData({
+          codigo: acopioData.codigo || '',
+          proveedor: acopioData.proveedor || '',
+          proyecto: acopioData.proyecto_id || acopioData.proyectoId || '',
+          tipoLista: acopioData.tipo || acopioData.tipoLista || 'materiales',
+          valorTotal: valorAcopio,
+          productos: JSON.stringify(productosFinales),
+        });
+        setHasUnsavedChanges(false);
+
         // Verificar si el valor del backend coincide con la suma calculada
         const sumaCalculada = productosFinales.reduce(
           (acc, r) => acc + toNumber(r.valorTotal || r.cantidad * r.valorUnitario),
@@ -209,6 +268,57 @@ const goNext = () => setCurrentIdx((i) => (i + 1) % (urls?.length || 0));
       }
     }
   }, [productos, actualizacionAutomatica, valorTotal]);
+
+  // 🔍 Detectar cambios no guardados
+  useEffect(() => {
+    if (!originalData) return;
+    
+    const currentData = {
+      codigo,
+      proveedor,
+      proyecto,
+      tipoLista,
+      valorTotal,
+      productos: JSON.stringify(productos),
+    };
+    
+    const hasChanges = 
+      currentData.codigo !== originalData.codigo ||
+      currentData.proveedor !== originalData.proveedor ||
+      currentData.proyecto !== originalData.proyecto ||
+      currentData.tipoLista !== originalData.tipoLista ||
+      Math.abs(currentData.valorTotal - originalData.valorTotal) > 0.01 ||
+      currentData.productos !== originalData.productos;
+    
+    setHasUnsavedChanges(hasChanges);
+  }, [codigo, proveedor, proyecto, tipoLista, valorTotal, productos, originalData]);
+
+  // ⚠️ Confirmación al salir con cambios no guardados
+  useEffect(() => {
+    const handleBeforeUnload = (e) => {
+      if (hasUnsavedChanges) {
+        e.preventDefault();
+        e.returnValue = 'Tenés cambios sin guardar. ¿Estás seguro de que querés salir?';
+        return e.returnValue;
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [hasUnsavedChanges]);
+
+  // 🔍 Interceptar navegación de Next.js
+  useEffect(() => {
+    const handleRouteChange = (url) => {
+      if (hasUnsavedChanges && !window.confirm('Tenés cambios sin guardar. ¿Estás seguro de que querés salir?')) {
+        router.events.emit('routeChangeError');
+        throw 'Navegación cancelada por el usuario';
+      }
+    };
+
+    router.events.on('routeChangeStart', handleRouteChange);
+    return () => router.events.off('routeChangeStart', handleRouteChange);
+  }, [hasUnsavedChanges, router]);
 
   // 💾 Guardar cambios
   const guardarCambios = async () => {
@@ -273,7 +383,8 @@ const goNext = () => setCurrentIdx((i) => (i + 1) % (urls?.length || 0));
       }
       
       setAlert({ open: true, message: mensaje, severity: 'success' });
-      setTimeout(() => router.push(`/acopios?empresaId=${empresaId}`), 1500);
+      setHasUnsavedChanges(false); // Marcar como guardado
+      setTimeout(() => router.push(`/movimientosAcopio?acopioId=${acopioId}&empresaId=${empresaId}`), 1500);
     } catch (err) {
       console.error(err);
       setAlert({ open: true, message: '❌ Error al guardar cambios', severity: 'error' });
@@ -312,6 +423,7 @@ const goNext = () => setCurrentIdx((i) => (i + 1) % (urls?.length || 0));
   // ⚙️ Ediciones masivas
   const onApplyPriceFormula = (formula, scope = 'all') => {
     if (!formula?.trim()) return;
+    setFormulaPreviewAnchor(null); // Cerrar preview al aplicar
     setProductos((rows) => {
       const setSelected = new Set(selectionModel.map(String));
       const updatedRows = rows.map((r, i) => {
@@ -381,6 +493,61 @@ const goNext = () => setCurrentIdx((i) => (i + 1) % (urls?.length || 0));
       })
     );
   };
+
+  // 🔍 Generar preview de fórmula
+  const handleFormulaPreview = (event, scope = 'all') => {
+    if (!formula?.trim()) return;
+    
+    const setSelected = new Set(selectionModel.map(String));
+    const filteredProducts = scope === 'selected' && selectionModel.length > 0
+      ? productos.filter((r, i) => setSelected.has(String(r.id ?? `${i}`)))
+      : productos;
+    
+    const previewRows = filteredProducts
+      .slice(0, 10) // Mostrar máximo 10 filas en preview
+      .map((r) => {
+        const valorActual = toNumber(r.valorUnitario);
+        const valorNuevo = applyPriceFormulaToValue(valorActual, formula);
+        const diferencia = valorNuevo - valorActual;
+        const porcentajeCambio = valorActual > 0 ? ((diferencia / valorActual) * 100) : 0;
+        return {
+          codigo: r.codigo || 'Sin código',
+          descripcion: (r.descripcion || '').substring(0, 30) + ((r.descripcion || '').length > 30 ? '...' : ''),
+          valorActual,
+          valorNuevo,
+          diferencia,
+          porcentajeCambio,
+        };
+      });
+    
+    setFormulaPreviewData(previewRows);
+    setFormulaPreviewAnchor(event.currentTarget);
+  };
+
+  // Acciones rápidas de IVA
+  const aplicarIVA = (quitar = false) => {
+    const formula = quitar ? '/1.21' : '*1.21';
+    onApplyPriceFormula(formula, selectionModel.length ? 'selected' : 'all');
+  };
+
+  // Aplicar porcentaje
+  const aplicarPorcentaje = (aumentar = true) => {
+    if (!porcentaje) return;
+    const formula = aumentar ? `%${porcentaje}` : `%-${porcentaje}`;
+    onApplyPriceFormula(formula, selectionModel.length ? 'selected' : 'all');
+  };
+
+  // Aplicar monto fijo
+  const aplicarMontoFijo = (sumar = true) => {
+    if (!montoFijo) return;
+    const formula = sumar ? `+${montoFijo}` : `-${montoFijo}`;
+    onApplyPriceFormula(formula, selectionModel.length ? 'selected' : 'all');
+  };
+
+  const cantidadSeleccionados = selectionModel.length;
+  const textoAplicar = cantidadSeleccionados > 0 
+    ? `a ${cantidadSeleccionados} seleccionados` 
+    : 'a todos';
 
   const handleAddItem = (position = 'end') => {
     setProductos((rows) => {
@@ -504,59 +671,171 @@ const goNext = () => setCurrentIdx((i) => (i + 1) % (urls?.length || 0));
   }
 
   return (
-    <Box component="main" sx={{ flexGrow: 1, py: 6 }}>
-      <Container maxWidth="lg">
-        <Typography variant="h5" gutterBottom>
-          ✏️ Editar Acopio {codigo ? `(${codigo})` : ''}
-        </Typography>
+    <Box component="main" sx={{ flexGrow: 1, py: 3 }}>
+      <Container maxWidth="xl">
+        <Stack direction="row" alignItems="center" spacing={2} sx={{ mb: 2 }}>
+          <Typography variant="h5">
+            ✏️ Editar Acopio {codigo ? `(${codigo})` : ''}
+          </Typography>
+          {hasUnsavedChanges && (
+            <Chip 
+              icon={<WarningAmberIcon />}
+              label="Cambios sin guardar" 
+              color="warning" 
+              size="small"
+              variant="outlined"
+            />
+          )}
+        </Stack>
 
         <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems="flex-start">
+{/* Panel izquierdo: Visor de documento mejorado */}
 {urls?.length > 0 && (
-  <Stack sx={{ width: { xs: '100%', md: '40%' } }} spacing={1}>
-    {urls.length > 1 && (
-  <Stack direction="row" spacing={1} sx={{ mb: 1 }}>
-    <Button size="small" variant="outlined" onClick={goPrev}>Anterior</Button>
-    <Button size="small" variant="outlined" onClick={goNext}>Siguiente</Button>
-  </Stack>
-)}
+  <Paper
+    sx={{
+      width: { xs: '100%', md: '35%' },
+      minWidth: { md: 300 },
+      maxWidth: { md: 450 },
+      position: { md: 'sticky' },
+      top: { md: 80 },
+      display: 'flex',
+      flexDirection: 'column',
+      border: '1px solid #e0e0e0',
+      borderRadius: 2,
+      overflow: 'hidden',
+      flexShrink: 0,
+    }}
+  >
+    {/* Barra de herramientas del visor */}
+    <Box sx={{ 
+      p: 1, 
+      bgcolor: '#f5f5f5', 
+      borderBottom: '1px solid #e0e0e0',
+      display: 'flex',
+      alignItems: 'center',
+      gap: 0.5,
+      flexWrap: 'wrap'
+    }}>
+      <Tooltip title="Alejar">
+        <IconButton size="small" onClick={() => setZoom(z => Math.max(25, z - 25))}>
+          <ZoomOutIcon fontSize="small" />
+        </IconButton>
+      </Tooltip>
+      <Slider
+        value={zoom}
+        onChange={(_, v) => setZoom(v)}
+        min={25}
+        max={200}
+        step={25}
+        sx={{ width: 60, mx: 1 }}
+        size="small"
+      />
+      <Tooltip title="Acercar">
+        <IconButton size="small" onClick={() => setZoom(z => Math.min(200, z + 25))}>
+          <ZoomInIcon fontSize="small" />
+        </IconButton>
+      </Tooltip>
+      <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
+      <Tooltip title="Rotar izquierda">
+        <IconButton size="small" onClick={() => setRotation(r => r - 90)}>
+          <RotateLeftIcon fontSize="small" />
+        </IconButton>
+      </Tooltip>
+      <Tooltip title="Rotar derecha">
+        <IconButton size="small" onClick={() => setRotation(r => r + 90)}>
+          <RotateRightIcon fontSize="small" />
+        </IconButton>
+      </Tooltip>
+      <Tooltip title="Resetear">
+        <IconButton size="small" onClick={() => { setZoom(100); setRotation(0); }}>
+          <RestartAltIcon fontSize="small" />
+        </IconButton>
+      </Tooltip>
+      <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
+      <Tooltip title="Pantalla completa">
+        <IconButton size="small" onClick={() => openAt(currentIdx)}>
+          <OpenInFullIcon fontSize="small" />
+        </IconButton>
+      </Tooltip>
+    </Box>
 
-    <Paper
-      onClick={() => openAt(currentIdx)}
+    {/* Contenedor de imagen/PDF */}
+    <Box
       sx={{
-        height: { xs: 360, md: 'calc(100vh - 200px)' },
-        position: { md: 'sticky' },
-        top: { md: 80 },
-        overflow: 'hidden',
+        height: { xs: 300, md: 'calc(100vh - 280px)' },
+        overflow: 'auto',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         bgcolor: '#fafafa',
-        border: '1px solid #ddd',
-        cursor: 'zoom-in',
+        cursor: 'grab',
+        '&:active': { cursor: 'grabbing' },
       }}
     >
       {isPdf(urls[currentIdx]) ? (
-        <embed src={safeSrc(urls[currentIdx])} type="application/pdf" width="100%" height="100%" />
+        <embed 
+          src={safeSrc(urls[currentIdx])} 
+          type="application/pdf" 
+          width="100%" 
+          height="100%" 
+        />
       ) : (
         <img
           src={safeSrc(urls[currentIdx])}
           alt={`Vista previa ${currentIdx + 1}/${urls.length}`}
-          style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+          style={{
+            transform: `scale(${zoom / 100}) rotate(${rotation}deg)`,
+            transformOrigin: 'center center',
+            maxWidth: zoom > 100 ? 'none' : '100%',
+            maxHeight: zoom > 100 ? 'none' : '100%',
+            objectFit: 'contain',
+            transition: 'transform 0.2s ease',
+          }}
         />
       )}
-    </Paper>
+    </Box>
+
+    {/* Navegación de páginas */}
+    {urls.length > 1 && (
+      <Box sx={{ 
+        p: 1, 
+        bgcolor: '#f5f5f5', 
+        borderTop: '1px solid #e0e0e0',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 1
+      }}>
+        <IconButton 
+          size="small" 
+          onClick={goPrev}
+          disabled={currentIdx === 0}
+        >
+          <NavigateBeforeIcon />
+        </IconButton>
+        <Typography variant="body2" sx={{ minWidth: 60, textAlign: 'center' }}>
+          {currentIdx + 1} / {urls.length}
+        </Typography>
+        <IconButton 
+          size="small" 
+          onClick={goNext}
+          disabled={currentIdx >= urls.length - 1}
+        >
+          <NavigateNextIcon />
+        </IconButton>
+      </Box>
+    )}
 
     {/* Tira de miniaturas */}
     {urls.length > 1 && (
       <Box
         sx={{
           display: 'flex',
-          gap: 1,
+          gap: 0.5,
           overflowX: 'auto',
           p: 1,
-          border: '1px solid #eee',
-          borderRadius: 1,
           bgcolor: '#fff',
+          borderTop: '1px solid #eee',
         }}
       >
         {urls.map((u, idx) => (
@@ -565,8 +844,8 @@ const goNext = () => setCurrentIdx((i) => (i + 1) % (urls?.length || 0));
             onClick={() => setCurrentIdx(idx)}
             sx={{
               flex: '0 0 auto',
-              width: 84,
-              height: 84,
+              width: 56,
+              height: 56,
               borderRadius: 1,
               border: idx === currentIdx ? '2px solid #1976d2' : '1px solid #ddd',
               overflow: 'hidden',
@@ -575,13 +854,12 @@ const goNext = () => setCurrentIdx((i) => (i + 1) % (urls?.length || 0));
               alignItems: 'center',
               justifyContent: 'center',
               bgcolor: '#fafafa',
+              transition: 'border-color 0.2s',
+              '&:hover': { borderColor: '#1976d2' },
             }}
-            title={`Abrir ${idx + 1}/${urls.length}`}
           >
             {isPdf(u) ? (
-              <Typography variant="caption" sx={{ p: 1, textAlign: 'center' }}>
-                PDF
-              </Typography>
+              <Typography variant="caption" sx={{ fontSize: 10 }}>PDF</Typography>
             ) : (
               <img
                 src={safeSrc(u)}
@@ -593,7 +871,7 @@ const goNext = () => setCurrentIdx((i) => (i + 1) % (urls?.length || 0));
         ))}
       </Box>
     )}
-  </Stack>
+  </Paper>
 )}
 
 
@@ -769,149 +1047,313 @@ const goNext = () => setCurrentIdx((i) => (i + 1) % (urls?.length || 0));
                 </Button>
               </Stack>
 
-              {/* Acciones masivas */}
-              <Stack spacing={1}>
-                <Stack direction="row" spacing={2}>
-                  <TextField
-                    label="Fórmula"
-                    placeholder="%10 | -100 | *1.21"
-                    value={formula}
-                    onChange={(e) => setFormula(e.target.value)}
-                    size="small"
-                    fullWidth
-                  />
-                  <Button
-                    variant="contained"
-                    onClick={() => onApplyPriceFormula(formula, 'selected')}
-                    disabled={!selectionModel.length}
-                  >
-                    Aplicar a seleccionados
-                  </Button>
-                  <Button variant="outlined" onClick={() => onApplyPriceFormula(formula, 'all')}>
-                    Aplicar a todos
-                  </Button>
-                </Stack>
+              {/* Acciones masivas - Accordion colapsable */}
+              <Accordion 
+                expanded={accionesExpanded} 
+                onChange={() => setAccionesExpanded(!accionesExpanded)}
+                sx={{ 
+                  border: '1px solid #e0e0e0',
+                  '&:before': { display: 'none' },
+                  boxShadow: 'none'
+                }}
+              >
+                <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                  <Stack direction="row" spacing={2} alignItems="center">
+                    <CalculateIcon color="primary" />
+                    <Typography fontWeight={600}>Acciones rápidas</Typography>
+                    {cantidadSeleccionados > 0 && (
+                      <Chip 
+                        size="small" 
+                        label={`${cantidadSeleccionados} seleccionados`} 
+                        color="primary" 
+                        variant="outlined"
+                      />
+                    )}
+                  </Stack>
+                </AccordionSummary>
+                <AccordionDetails>
+                  <Stack spacing={2}>
+                    {/* IVA rápido */}
+                    <Paper sx={{ p: 1.5, bgcolor: '#f5f5f5' }}>
+                      <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+                        <PercentIcon fontSize="small" color="action" />
+                        <Typography variant="body2" fontWeight={500}>IVA:</Typography>
+                        <Button size="small" variant="outlined" onClick={() => aplicarIVA(false)}>
+                          +21% {textoAplicar}
+                        </Button>
+                        <Button size="small" variant="outlined" onClick={() => aplicarIVA(true)}>
+                          -21% {textoAplicar}
+                        </Button>
+                        <Divider orientation="vertical" flexItem sx={{ mx: 1 }} />
+                        <TextField
+                          size="small"
+                          label="% personalizado"
+                          placeholder="10"
+                          value={porcentaje}
+                          onChange={(e) => setPorcentaje(e.target.value)}
+                          sx={{ width: 100 }}
+                        />
+                        <Button size="small" variant="outlined" onClick={() => aplicarPorcentaje(true)} disabled={!porcentaje}>
+                          +{porcentaje || '?'}%
+                        </Button>
+                        <Button size="small" variant="outlined" onClick={() => aplicarPorcentaje(false)} disabled={!porcentaje}>
+                          -{porcentaje || '?'}%
+                        </Button>
+                      </Stack>
+                    </Paper>
 
-                <Stack direction="row" spacing={2}>
-                  <TextField
-                    label="Prefijo código"
-                    value={prefix}
-                    onChange={(e) => setPrefix(e.target.value)}
-                    size="small"
-                  />
-                  <TextField
-                    type="number"
-                    label="Largo máx"
-                    value={maxLen}
-                    onChange={(e) => setMaxLen(parseInt(e.target.value || '16', 10))}
-                    size="small"
-                  />
-                  <Button variant="outlined" onClick={onGenerateMissingCodes}>
-                    Generar códigos faltantes
-                  </Button>
-                </Stack>
+                    {/* Monto fijo */}
+                    <Paper sx={{ p: 1.5, bgcolor: '#f5f5f5' }}>
+                      <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+                        <CalculateIcon fontSize="small" color="action" />
+                        <Typography variant="body2" fontWeight={500}>Monto fijo:</Typography>
+                        <TextField
+                          size="small"
+                          label="Monto"
+                          placeholder="100"
+                          value={montoFijo}
+                          onChange={(e) => setMontoFijo(e.target.value)}
+                          sx={{ width: 100 }}
+                        />
+                        <Button size="small" variant="outlined" onClick={() => aplicarMontoFijo(true)} disabled={!montoFijo}>
+                          +${montoFijo || '?'} {textoAplicar}
+                        </Button>
+                        <Button size="small" variant="outlined" onClick={() => aplicarMontoFijo(false)} disabled={!montoFijo}>
+                          -${montoFijo || '?'} {textoAplicar}
+                        </Button>
+                      </Stack>
+                    </Paper>
 
-                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} flexWrap="wrap">
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    disabled={!selectionModel.length}
-                    onClick={() => {
-                      const firstId = selectionModel[0];
-                      const fromIndex = productos.findIndex(
-                        (p) => String(p.id) === String(firstId)
-                      );
-                      moveColumnValues('valorUnitario', fromIndex, 'up');
-                    }}
-                  >
-                    ⬆️ Subir precios desde aquí
-                  </Button>
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    disabled={!selectionModel.length}
-                    onClick={() => {
-                      const firstId = selectionModel[0];
-                      const fromIndex = productos.findIndex(
-                        (p) => String(p.id) === String(firstId)
-                      );
-                      moveColumnValues('valorUnitario', fromIndex, 'down');
-                    }}
-                  >
-                    ⬇️ Bajar precios desde aquí
-                  </Button>
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    disabled={!selectionModel.length}
-                    onClick={() => {
-                      const firstId = selectionModel[0];
-                      const fromIndex = productos.findIndex(
-                        (p) => String(p.id) === String(firstId)
-                      );
-                      moveColumnValues('codigo', fromIndex, 'up');
-                    }}
-                  >
-                    ⬆️ Subir códigos desde aquí
-                  </Button>
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    disabled={!selectionModel.length}
-                    onClick={() => {
-                      const firstId = selectionModel[0];
-                      const fromIndex = productos.findIndex(
-                        (p) => String(p.id) === String(firstId)
-                      );
-                      moveColumnValues('codigo', fromIndex, 'down');
-                    }}
-                  >
-                    ⬇️ Bajar códigos desde aquí
-                  </Button>
-                </Stack>
+                    {/* Fórmula personalizada */}
+                    <Paper sx={{ p: 1.5, bgcolor: '#e3f2fd' }}>
+                      <Stack spacing={1}>
+                        <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+                          <TextField
+                            label="Fórmula"
+                            placeholder="%10 | -100 | *1.21 | /2"
+                            value={formula}
+                            onChange={(e) => setFormula(e.target.value)}
+                            size="small"
+                            sx={{ minWidth: 200 }}
+                          />
+                          <Button
+                            variant="outlined"
+                            size="small"
+                            startIcon={<VisibilityIcon />}
+                            onClick={(e) => handleFormulaPreview(e, selectionModel.length ? 'selected' : 'all')}
+                            disabled={!formula?.trim()}
+                          >
+                            Preview
+                          </Button>
+                          <Button
+                            variant="contained"
+                            size="small"
+                            onClick={() => onApplyPriceFormula(formula, 'selected')}
+                            disabled={!selectionModel.length || !formula?.trim()}
+                          >
+                            Aplicar a seleccionados
+                          </Button>
+                          <Button 
+                            variant="outlined"
+                            size="small"
+                            onClick={() => onApplyPriceFormula(formula, 'all')}
+                            disabled={!formula?.trim()}
+                          >
+                            Aplicar a todos
+                          </Button>
+                        </Stack>
+                        <Typography variant="caption" color="text.secondary">
+                          Ejemplos: %10 (aumenta 10%), *1.21 (multiplica), +500 (suma), -100 (resta), /2 (divide)
+                        </Typography>
+                      </Stack>
+                    </Paper>
 
-                <Stack direction="row" spacing={1} flexWrap="wrap">
-                  <Button
-                    variant="outlined"
-                    size="small"
-                    disabled={!selectionModel.length}
-                    onClick={handleBulkDelete}
-                  >
-                    🗑️ Eliminar seleccionados
-                  </Button>
-                  <Button
-                    variant="outlined"
-                    size="small"
-                    disabled={!selectionModel.length}
-                    onClick={handleBulkPriceUpdate}
-                  >
-                    💲 Actualizar precio…
-                  </Button>
-                  <Button variant="outlined" size="small" onClick={() => handleAddItem('start')}>
-                    ➕ Agregar al inicio
-                  </Button>
-                  <Button
-                    variant="outlined"
-                    size="small"
-                    disabled={!selectionModel.length}
-                    onClick={() => {
-                      const firstId = selectionModel[0];
-                      const firstIndex = productos.findIndex(
-                        (p) => String(p.id) === String(firstId)
-                      );
-                      handleAddItem(firstIndex);
-                    }}
-                  >
-                    ➕ Agregar debajo del seleccionado
-                  </Button>
-                  <Button variant="outlined" size="small" onClick={() => handleAddItem('end')}>
-                    ➕ Agregar al final
-                  </Button>
-                </Stack>
-              </Stack>
+                    <Divider />
+
+                    {/* Códigos */}
+                    <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+                      <TextField
+                        label="Prefijo código"
+                        value={prefix}
+                        onChange={(e) => setPrefix(e.target.value)}
+                        size="small"
+                        sx={{ width: 120 }}
+                      />
+                      <TextField
+                        type="number"
+                        label="Largo máx"
+                        value={maxLen}
+                        onChange={(e) => setMaxLen(parseInt(e.target.value || '16', 10))}
+                        size="small"
+                        sx={{ width: 80 }}
+                      />
+                      <Button variant="outlined" size="small" onClick={onGenerateMissingCodes}>
+                        Generar códigos faltantes
+                      </Button>
+                    </Stack>
+
+                    {/* Mover valores */}
+                    <Stack direction="row" spacing={1} flexWrap="wrap">
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        disabled={!selectionModel.length}
+                        onClick={() => {
+                          const firstId = selectionModel[0];
+                          const fromIndex = productos.findIndex((p) => String(p.id) === String(firstId));
+                          moveColumnValues('valorUnitario', fromIndex, 'up');
+                        }}
+                      >
+                        ⬆️ Subir precios
+                      </Button>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        disabled={!selectionModel.length}
+                        onClick={() => {
+                          const firstId = selectionModel[0];
+                          const fromIndex = productos.findIndex((p) => String(p.id) === String(firstId));
+                          moveColumnValues('valorUnitario', fromIndex, 'down');
+                        }}
+                      >
+                        ⬇️ Bajar precios
+                      </Button>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        disabled={!selectionModel.length}
+                        onClick={() => {
+                          const firstId = selectionModel[0];
+                          const fromIndex = productos.findIndex((p) => String(p.id) === String(firstId));
+                          moveColumnValues('codigo', fromIndex, 'up');
+                        }}
+                      >
+                        ⬆️ Subir códigos
+                      </Button>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        disabled={!selectionModel.length}
+                        onClick={() => {
+                          const firstId = selectionModel[0];
+                          const fromIndex = productos.findIndex((p) => String(p.id) === String(firstId));
+                          moveColumnValues('codigo', fromIndex, 'down');
+                        }}
+                      >
+                        ⬇️ Bajar códigos
+                      </Button>
+                    </Stack>
+
+                    {/* Agregar/Eliminar */}
+                    <Stack direction="row" spacing={1} flexWrap="wrap">
+                      <Button
+                        variant="outlined"
+                        size="small"
+                        color="error"
+                        startIcon={<DeleteIcon />}
+                        disabled={!selectionModel.length}
+                        onClick={handleBulkDelete}
+                      >
+                        Eliminar ({cantidadSeleccionados})
+                      </Button>
+                      <Button 
+                        variant="outlined" 
+                        size="small" 
+                        startIcon={<AddIcon />}
+                        onClick={() => handleAddItem('start')}
+                      >
+                        Al inicio
+                      </Button>
+                      <Button
+                        variant="outlined"
+                        size="small"
+                        startIcon={<AddIcon />}
+                        disabled={!selectionModel.length}
+                        onClick={() => {
+                          const firstId = selectionModel[0];
+                          const firstIndex = productos.findIndex((p) => String(p.id) === String(firstId));
+                          handleAddItem(firstIndex);
+                        }}
+                      >
+                        Debajo del seleccionado
+                      </Button>
+                      <Button 
+                        variant="outlined" 
+                        size="small" 
+                        startIcon={<AddIcon />}
+                        onClick={() => handleAddItem('end')}
+                      >
+                        Al final
+                      </Button>
+                    </Stack>
+                  </Stack>
+                </AccordionDetails>
+              </Accordion>
+
+              {/* Popover de preview de fórmula */}
+              <Popover
+                open={Boolean(formulaPreviewAnchor)}
+                anchorEl={formulaPreviewAnchor}
+                onClose={() => setFormulaPreviewAnchor(null)}
+                anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+                transformOrigin={{ vertical: 'top', horizontal: 'left' }}
+              >
+                <Box sx={{ p: 2, maxWidth: 600 }}>
+                  <Typography variant="subtitle2" gutterBottom>
+                    🔍 Preview: Fórmula "{formula}" ({formulaPreviewData.length} de {productos.length} items)
+                  </Typography>
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Código</TableCell>
+                        <TableCell>Descripción</TableCell>
+                        <TableCell align="right">Actual</TableCell>
+                        <TableCell align="right">Nuevo</TableCell>
+                        <TableCell align="right">Cambio</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {formulaPreviewData.map((row, idx) => (
+                        <TableRow key={idx}>
+                          <TableCell>{row.codigo}</TableCell>
+                          <TableCell>{row.descripcion}</TableCell>
+                          <TableCell align="right">{fmtMoney(row.valorActual)}</TableCell>
+                          <TableCell align="right" sx={{ fontWeight: 'bold' }}>
+                            {fmtMoney(row.valorNuevo)}
+                          </TableCell>
+                          <TableCell 
+                            align="right" 
+                            sx={{ 
+                              color: row.diferencia >= 0 ? 'success.main' : 'error.main',
+                              fontWeight: 'bold' 
+                            }}
+                          >
+                            {row.diferencia >= 0 ? '+' : ''}{row.porcentajeCambio.toFixed(1)}%
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                  <Stack direction="row" spacing={1} sx={{ mt: 2 }} justifyContent="flex-end">
+                    <Button size="small" onClick={() => setFormulaPreviewAnchor(null)}>
+                      Cancelar
+                    </Button>
+                    <Button 
+                      size="small" 
+                      variant="contained" 
+                      onClick={() => {
+                        onApplyPriceFormula(formula, selectionModel.length ? 'selected' : 'all');
+                        setFormulaPreviewAnchor(null);
+                      }}
+                    >
+                      ✅ Aplicar
+                    </Button>
+                  </Stack>
+                </Box>
+              </Popover>
 
               {/* Grilla */}
-              <Box sx={{ height: 520 }}>
+              <Box sx={{ height: { xs: 450, md: 'calc(100vh - 320px)' }, minHeight: 400 }}>
                 <DataGrid
                   rows={productos}
                   getRowId={(r) => r.id}
@@ -926,6 +1368,7 @@ const goNext = () => setCurrentIdx((i) => (i + 1) % (urls?.length || 0));
                   slotProps={{
                     toolbar: { showQuickFilter: true, quickFilterProps: { debounceMs: 300 } },
                   }}
+                  density="compact"
                 />
               </Box>
 

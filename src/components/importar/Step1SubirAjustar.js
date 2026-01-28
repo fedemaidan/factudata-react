@@ -18,7 +18,7 @@ const MODOS_INFO = {
     icon: <BoltIcon sx={{ fontSize: 28 }} />,
     label: 'Rápido',
     emoji: '⚡',
-    descripcion: 'Corto y validás manual',
+    descripcion: 'Ideal para acopios cortos. Recomendamos revisión manual al final.',
     tiempo: '~1 min/pág',
     color: '#f59e0b'
   },
@@ -26,24 +26,24 @@ const MODOS_INFO = {
     icon: <SpeedIcon sx={{ fontSize: 28 }} />,
     label: 'Ágil',
     emoji: '🚀',
-    descripcion: 'Preferís validar manual',
-    tiempo: '~3 min/pág',
+    descripcion: 'Ideal para acopios cortos. Más preciso, pero recomendamos revisión manual.',
+    tiempo: '~2 min/pág',
     color: '#10b981'
   },
   balanceado: {
     icon: <BalanceIcon sx={{ fontSize: 28 }} />,
     label: 'Balanceado',
     emoji: '⚖️',
-    descripcion: 'Largo, validación mínima',
-    tiempo: '~5 min/pág',
+    descripcion: 'Ideal para acopios medios. Un asistente te ayuda a validar marcando dónde revisar.',
+    tiempo: '~3 min/pág',
     color: '#6366f1'
   },
   preciso: {
     icon: <GpsFixedIcon sx={{ fontSize: 28 }} />,
     label: 'Preciso',
     emoji: '🎯',
-    descripcion: 'Largo, sin validar, con tiempo',
-    tiempo: '~8 min/pág',
+    descripcion: 'Ideal para acopios medios o largos. Un poco más lento pero el asistente es mucho más preciso.',
+    tiempo: '~4 min/pág',
     color: '#ec4899'
   }
 };
