@@ -2,6 +2,92 @@ import api from './axiosConfig';
 
 const AcopioService = {
   /**
+   * Extrae datos de una factura con validación doble de cantidades
+   * Los materiales con discrepancia tendrán _requiere_confirmacion_usuario = true
+   * @param {string} urlFactura - URL de la imagen de la factura
+   * @param {function} onProgress - Callback para progreso
+   * @returns {Promise<Object>} - { success, materiales, tieneDiscrepancias }
+   */
+  extraerDatosFacturaConValidacion: async (urlFactura, onProgress) => {
+    if (!urlFactura) throw new Error('URL de factura requerida');
+    
+    const endpoint = '/acopio/factura/extraer-validacion/init';
+    console.log('[AcopioSvc][extraerDatosFacturaConValidacion] URL:', urlFactura);
+
+    try {
+      // 1) Iniciar la tarea
+      const initRes = await api.post(endpoint, { archivo_url: urlFactura });
+      console.log(`[AcopioSvc][extraerDatosFacturaConValidacion] Init status=${initRes.status}`);
+
+      const initData = initRes.data;
+      const taskId = initData?.taskId;
+
+      if (!taskId) {
+        // Respuesta síncrona
+        return { success: true, ...initData };
+      }
+
+      // 2) Polling para obtener resultado
+      const statusEndpoint = `/acopio/factura/extraer-validacion/status/${taskId}`;
+      const maxAttempts = 60;
+      
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        await new Promise(r => setTimeout(r, 3000));
+        
+        if (onProgress) {
+          onProgress({ attempt, maxAttempts, status: 'polling' });
+        }
+
+        const statusRes = await api.get(statusEndpoint);
+        const statusData = statusRes.data;
+        
+        console.log(`[AcopioSvc][extraerDatosFacturaConValidacion] Poll ${attempt}/${maxAttempts} status=${statusData?.status}`);
+
+        if (statusData?.status === 'completado') {
+          return {
+            success: true,
+            materiales: statusData.materiales || [],
+            tieneDiscrepancias: statusData.tieneDiscrepancias || false,
+            urls: statusData.urls
+          };
+        }
+
+        if (statusData?.status === 'error') {
+          throw new Error(statusData?.error || 'Error en la extracción de datos');
+        }
+      }
+
+      throw new Error('Tiempo de espera agotado para la extracción de datos');
+    } catch (error) {
+      console.error('[AcopioSvc][extraerDatosFacturaConValidacion ERR]', error?.response?.data || error);
+      throw new Error(
+        error?.response?.data?.message || 
+        error?.message || 
+        'Error al extraer datos de la factura'
+      );
+    }
+  },
+
+  /**
+   * Aplica las confirmaciones del usuario para materiales con discrepancia
+   * @param {Array} materiales - Lista de materiales con posibles discrepancias
+   * @param {Object} confirmaciones - { "Nombre Material": "cantidad_elegida" }
+   * @returns {Promise<Array>} - Materiales con cantidades confirmadas
+   */
+  confirmarCantidades: async (materiales, confirmaciones) => {
+    try {
+      const response = await api.post('/acopio/factura/confirmar-cantidades', {
+        materiales,
+        confirmaciones
+      });
+      return response.data.materiales;
+    } catch (error) {
+      console.error('[AcopioSvc][confirmarCantidades ERR]', error);
+      throw error;
+    }
+  },
+
+  /**
    * Crea un nuevo acopio a partir de datos (sin archivo CSV)
    * @param {Object} acopioData - Datos del acopio
    * @param {string} acopioData.empresaId
@@ -120,7 +206,10 @@ cambiarEstadoAcopio: async (acopioId, activo) => {
   
       if (response.status === 200) {
         console.log('✅ Datos de compra extraídos con éxito');
-        return response.data.materiales;
+        return {
+          materiales: response.data.materiales || [],
+          tieneDiscrepancias: response.data.tieneDiscrepancias || false
+        };
       } else {
         console.error('❌ Error al extraer datos de la compra');
         throw new Error('No se pudo extraer la información de la compra.');
@@ -151,11 +240,14 @@ cambiarEstadoAcopio: async (acopioId, activo) => {
   },
     
   
-  extraerCompraInit: async (archivo, archivo_url) => {
+  extraerCompraInit: async (archivo, meta = {}) => {
     try {
       const formData = new FormData();
       if (archivo) formData.append('archivo', archivo);
-      if (archivo_url) formData.append('archivo_url', archivo_url);
+      // Pasar tipoLista para que el backend sepa si verificar cantidades
+      if (meta.tipoLista) formData.append('tipoLista', meta.tipoLista);
+      // Pasar modo de extracción: 'rapido', 'balanceado', 'preciso'
+      if (meta.modo) formData.append('modo', meta.modo);
   
       const response = await api.post(`/acopio/compra/extraer/init`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
@@ -167,14 +259,66 @@ cambiarEstadoAcopio: async (acopioId, activo) => {
       throw error;
     }
   },
+
+  /**
+   * Obtiene los modos de extracción disponibles con sus tiempos estimados
+   * @param {number} cantidadHojas - Cantidad de hojas del documento
+   * @returns {Promise<Object>} - { ok, modos: [{ id, nombre, descripcion, tiempoEstimado }] }
+   */
+  obtenerModosExtraccion: async (cantidadHojas = 1) => {
+    try {
+      const response = await api.get('/acopio/compra/modos-extraccion', {
+        params: { cantidadHojas }
+      });
+      return response.data;
+    } catch (error) {
+      console.error('❌ Error al obtener modos de extracción:', error);
+      // Devolver modos por defecto en caso de error
+      return {
+        ok: false,
+        modos: [
+          { id: 'rapido', nombre: '⚡ Rápido', descripcion: 'OCR + IA estructuración', tiempoEstimado: '~15s' },
+          { id: 'agil', nombre: '🚀 Ágil', descripcion: 'OCR + IA + verificación completa', tiempoEstimado: '~25s' },
+          { id: 'balanceado', nombre: '⚖️ Balanceado', descripcion: 'GPT-4o paralelo + O3 verificación', tiempoEstimado: '~30s' },
+          { id: 'preciso', nombre: '🎯 Preciso', descripcion: 'O3 paralelo + O3 verificación', tiempoEstimado: '~1min' }
+        ]
+      };
+    }
+  },
   
   consultarEstadoExtraccion: async (taskId) => {
     try {
       const response = await api.get(`/acopio/compra/extraer/status/${taskId}`);
-      console.log(response.data)
-      return response.data;
+      console.log(response.data);
+      // Ahora incluye tieneDiscrepancias
+      return {
+        status: response.data.status,
+        materiales: response.data.materiales,
+        tieneDiscrepancias: response.data.tieneDiscrepancias || false,
+        urls: response.data.urls,
+        error: response.data.error
+      };
     } catch (error) {
       console.error('❌ Error al consultar estado de extracción:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Aplica las confirmaciones del usuario para materiales con discrepancia (flujo compra)
+   * @param {Array} materiales - Lista de materiales con posibles discrepancias
+   * @param {Object} confirmaciones - { "Nombre Material": "cantidad_elegida" }
+   * @returns {Promise<Array>} - Materiales con cantidades confirmadas
+   */
+  confirmarCantidadesCompra: async (materiales, confirmaciones) => {
+    try {
+      const response = await api.post('/acopio/compra/confirmar-cantidades', {
+        materiales,
+        confirmaciones
+      });
+      return response.data.materiales;
+    } catch (error) {
+      console.error('[AcopioSvc][confirmarCantidadesCompra ERR]', error);
       throw error;
     }
   },

@@ -3,8 +3,9 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import {
   Box, Button, Container, Stack, Typography, Tabs, Tab, Paper, Grid, Snackbar, Alert,
   Dialog, DialogContent, TextField, Divider, LinearProgress, IconButton, Tooltip,
-  List, ListItem, ListItemIcon, ListItemText, ListItemSecondaryAction
+  List, ListItem, ListItemIcon, ListItemText, ListItemSecondaryAction, Skeleton, Chip, ButtonGroup
 } from '@mui/material';
+import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import CircularProgress from '@mui/material/CircularProgress';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
@@ -15,7 +16,6 @@ import ImageIcon from '@mui/icons-material/Image';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import EditIcon from '@mui/icons-material/Edit';
 import SaveIcon from '@mui/icons-material/Save';
-import Chip from '@mui/material/Chip';
 import Switch from '@mui/material/Switch';
 import FormControlLabel from '@mui/material/FormControlLabel';
 
@@ -58,9 +58,16 @@ const MovimientosAcopioPage = () => {
   // Estado principal
   const [tabActiva, setTabActiva] = useState('acopio');
   const [loading, setLoading] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true); // Para skeleton loaders
   const [alert, setAlert] = useState({ open: false, message: '', severity: 'info' });
 
   const [acopio, setAcopio] = useState(null);
+  
+  // Conteo para badges en tabs
+  const [remitosCount, setRemitosCount] = useState(null); // null = no cargado, 0+ = cargado
+  const [materialesCount, setMaterialesCount] = useState(null);
+  const [documentosCount, setDocumentosCount] = useState(null);
+  const [countsLoading, setCountsLoading] = useState(false);
 
   // Setear breadcrumbs
   useEffect(() => {
@@ -129,11 +136,53 @@ const MovimientosAcopioPage = () => {
       const comprasData = await AcopioService.obtenerCompras(acopioId);
       setCompras(comprasData || []);
       setPageIdx(0);
+      
+      // Cargar conteos en background para los badges
+      loadCountsInBackground();
     } catch (err) {
       console.error(err);
       setAlert({ open: true, message: 'Error al obtener información del acopio', severity: 'error' });
     } finally {
       setLoading(false);
+      setInitialLoading(false);
+    }
+  }, [acopioId]);
+
+  // Cargar conteos en background para badges (sin bloquear UI)
+  const loadCountsInBackground = useCallback(async () => {
+    if (!acopioId) return;
+    
+    try {
+      // Cargar todos los conteos en paralelo
+      const [remitosResp, movimientosResp, docsResp] = await Promise.allSettled([
+        AcopioService.obtenerRemitos(acopioId),
+        AcopioService.obtenerMovimientos(acopioId),
+        AcopioService.obtenerDocumentosComplementarios(acopioId)
+      ]);
+      
+      // Actualizar conteos
+      if (remitosResp.status === 'fulfilled') {
+        setRemitosCount((remitosResp.value || []).length);
+      }
+      
+      if (movimientosResp.status === 'fulfilled') {
+        const { movimientos: movs } = movimientosResp.value || {};
+        // Contar materiales únicos
+        const comprasData = await AcopioService.obtenerCompras(acopioId);
+        const union = [...(movs || []), ...(comprasData || [])];
+        const uniqueKeys = new Set();
+        union.forEach(mov => {
+          const key = (mov.codigo || '—') + "_" + (mov.descripcion || '');
+          uniqueKeys.add(key);
+        });
+        setMaterialesCount(uniqueKeys.size);
+      }
+      
+      if (docsResp.status === 'fulfilled') {
+        setDocumentosCount((docsResp.value?.documentos || []).length);
+      }
+    } catch (err) {
+      console.error('Error cargando conteos en background:', err);
     }
   }, [acopioId]);
 
@@ -143,6 +192,7 @@ const MovimientosAcopioPage = () => {
       setLoading(true);
       const remitosResp = await AcopioService.obtenerRemitos(acopioId);
       setRemitos(remitosResp || []);
+      setRemitosCount((remitosResp || []).length);
       setRemitosDuplicados(detectarDuplicados(remitosResp || []));
     } catch (err) {
       console.error(err);
@@ -187,6 +237,7 @@ const MovimientosAcopioPage = () => {
         return acc;
       }, {});
       setMaterialesAgrupados(agrupados);
+      setMaterialesCount(Object.keys(agrupados).length);
     } catch (err) {
       console.error(err);
       setAlert({ open: true, message: 'Error al obtener los movimientos', severity: 'error' });
@@ -202,6 +253,7 @@ const MovimientosAcopioPage = () => {
       setLoading(true);
       const resp = await AcopioService.obtenerDocumentosComplementarios(acopioId);
       setDocumentosComplementarios(resp?.documentos || []);
+      setDocumentosCount((resp?.documentos || []).length);
       setDocPageIdx(0);
     } catch (err) {
       console.error(err);
@@ -421,39 +473,92 @@ const MovimientosAcopioPage = () => {
           isAdmin={Boolean(user?.admin)}
         />
 
-        {/* TABS */}
-        <Tabs value={tabActiva} onChange={handleChangeTab}>
-          <Tab label="Info Acopio" value="acopio" />
-          <Tab label="Remitos" value="remitos" />
-          <Tab label="Materiales" value="materiales" />
-          {acopio?.tipo === 'lista_precios' && <Tab label="Buscar materiales" value="buscar" />}
-          {hasAcopioPages && (
-            <Tab label={acopio?.tipo === 'lista_precios' ? 'Lista original' : 'Comprobante original'} value="hojas" />
+        {/* NAVEGACIÓN - Botones con contadores */}
+        <ButtonGroup variant="outlined" sx={{ flexWrap: 'wrap', gap: 1, mb: 2 }}>
+          <Button
+            variant={tabActiva === 'acopio' ? 'contained' : 'outlined'}
+            onClick={() => handleChangeTab(null, 'acopio')}
+          >
+            Info Acopio
+          </Button>
+          <Button
+            variant={tabActiva === 'remitos' ? 'contained' : 'outlined'}
+            onClick={() => handleChangeTab(null, 'remitos')}
+          >
+            Remitos{remitosCount > 0 ? ` (${remitosCount})` : ''}
+          </Button>
+          <Button
+            variant={tabActiva === 'materiales' ? 'contained' : 'outlined'}
+            onClick={() => handleChangeTab(null, 'materiales')}
+          >
+            Materiales{materialesCount > 0 ? ` (${materialesCount})` : ''}
+          </Button>
+          {acopio?.tipo === 'lista_precios' && (
+            <Button
+              variant={tabActiva === 'buscar' ? 'contained' : 'outlined'}
+              onClick={() => handleChangeTab(null, 'buscar')}
+            >
+              Buscar materiales
+            </Button>
           )}
-          <Tab 
-            label="Documentos complementarios" 
-            value="documentos" 
-            icon={<AttachFileIcon fontSize="small" />} 
-            iconPosition="start"
-          />
-        </Tabs>
+          {hasAcopioPages && (
+            <Button
+              variant={tabActiva === 'hojas' ? 'contained' : 'outlined'}
+              onClick={() => handleChangeTab(null, 'hojas')}
+            >
+              {acopio?.tipo === 'lista_precios' ? 'Lista original' : 'Comprobante'}
+            </Button>
+          )}
+          <Button
+            variant={tabActiva === 'documentos' ? 'contained' : 'outlined'}
+            onClick={() => handleChangeTab(null, 'documentos')}
+            startIcon={<AttachFileIcon fontSize="small" />}
+          >
+            Docs{documentosCount > 0 ? ` (${documentosCount})` : ''}
+          </Button>
+        </ButtonGroup>
 
-        {loading && (
-          <Stack direction="row" spacing={1} alignItems="center" sx={{ my: 2 }}>
-            <CircularProgress size={20} />
-            <Typography variant="body2">Cargando...</Typography>
-          </Stack>
+        {/* Alerta de acopio bajo */}
+        {acopio && porcentajeDisponible < 10 && porcentajeDisponible >= 0 && (
+          <Alert 
+            severity="warning" 
+            icon={<WarningAmberIcon />}
+            sx={{ my: 2 }}
+          >
+            <strong>⚠️ Acopio casi agotado:</strong> Solo queda el {porcentajeDisponible.toFixed(1)}% disponible 
+            ({formatCurrency(va - vd)} de {formatCurrency(va)})
+          </Alert>
+        )}
+
+        {/* Skeleton loaders durante carga inicial */}
+        {initialLoading && (
+          <Box sx={{ mt: 2 }}>
+            <Stack spacing={2}>
+              <Skeleton variant="rectangular" height={60} sx={{ borderRadius: 1 }} />
+              <Stack direction="row" spacing={2}>
+                <Skeleton variant="rectangular" width="33%" height={100} sx={{ borderRadius: 1 }} />
+                <Skeleton variant="rectangular" width="33%" height={100} sx={{ borderRadius: 1 }} />
+                <Skeleton variant="rectangular" width="33%" height={100} sx={{ borderRadius: 1 }} />
+              </Stack>
+              <Skeleton variant="rectangular" height={200} sx={{ borderRadius: 1 }} />
+            </Stack>
+          </Box>
+        )}
+
+        {/* Loading indicator para recargas (no inicial) */}
+        {loading && !initialLoading && (
+          <LinearProgress sx={{ my: 1 }} />
         )}
 
         {/* MATERIALS */}
-        {tabActiva === 'materiales' && (
+        {tabActiva === 'materiales' && !initialLoading && (
           <Box sx={{ mt: 2 }}>
             <MaterialesTableV2 materialesAgrupados={materialesAgrupados} loading={loading} tipo={acopio?.tipo || 'materiales'} />
           </Box>
         )}
 
         {/* REMITOS */}
-        {tabActiva === 'remitos' && (
+        {tabActiva === 'remitos' && !initialLoading && (
           <Box sx={{ mt: 2 }}>
             <RemitosTable
               remitos={remitos}
@@ -470,14 +575,14 @@ const MovimientosAcopioPage = () => {
         )}
 
         {/* BUSCAR (para lista de precios) */}
-        {tabActiva === 'buscar' && acopio?.tipo === 'lista_precios' && (
+        {tabActiva === 'buscar' && acopio?.tipo === 'lista_precios' && !initialLoading && (
           <Box sx={{ mt: 2 }}>
             <ListaPreciosBuscador acopioId={acopioId} />
           </Box>
         )}
 
         {/* INFO ACOPIO + editor */}
-        {tabActiva === 'acopio' && (
+        {tabActiva === 'acopio' && !initialLoading && (
           <Box sx={{ mt: 2 }}>
             {acopio && (
               <Paper elevation={2} sx={{ p: 3 }}>
@@ -541,7 +646,7 @@ const MovimientosAcopioPage = () => {
         )}
 
         {/* VISOR */}
-        {tabActiva === 'hojas' && hasAcopioPages && (
+        {tabActiva === 'hojas' && hasAcopioPages && !initialLoading && (
           <Box sx={{ mt: 2 }}>
             <AcopioVisor
               pages={pages}
@@ -557,7 +662,7 @@ const MovimientosAcopioPage = () => {
         )}
 
         {/* DOCUMENTOS COMPLEMENTARIOS */}
-        {tabActiva === 'documentos' && (
+        {tabActiva === 'documentos' && !initialLoading && (
           <Box sx={{ mt: 2 }}>
             <Paper elevation={2} sx={{ p: 3 }}>
               <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>

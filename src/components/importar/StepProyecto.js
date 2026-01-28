@@ -39,10 +39,10 @@ export default function StepProyecto({ proyecto, setProyecto, proyectosOptions =
             <PublicIcon color={proyecto === '' ? 'primary' : 'action'} />
             <Box>
               <Typography variant="subtitle2" fontWeight="bold">
-                Todos los proyectos
+                General
               </Typography>
               <Typography variant="caption" color="text.secondary">
-                Disponible para cualquier obra
+                Sin proyecto asignado
               </Typography>
             </Box>
           </Stack>

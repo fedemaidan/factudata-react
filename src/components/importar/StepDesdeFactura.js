@@ -4,7 +4,8 @@ import {
   CircularProgress, Chip, InputAdornment, Checkbox,
   Button, Divider, FormControlLabel, MenuItem, Select,
   FormControl, InputLabel, Dialog, DialogTitle, DialogContent,
-  DialogActions, Alert, LinearProgress, IconButton, Backdrop
+  DialogActions, Alert, LinearProgress, IconButton, Backdrop,
+  Radio, RadioGroup
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import ReceiptIcon from '@mui/icons-material/Receipt';
@@ -13,7 +14,8 @@ import ImageIcon from '@mui/icons-material/Image';
 import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import CloseIcon from '@mui/icons-material/Close';
-import StockSolicitudesService from 'src/services/stock/stockSolicitudesService';
+import WarningAmberIcon from '@mui/icons-material/WarningAmber';
+import AcopioService from 'src/services/acopioService';
 import { formatCurrency } from 'src/utils/formatters';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
@@ -44,6 +46,12 @@ export default function StepDesdeFactura({
   const [extrayendo, setExtrayendo] = useState(false);
   const [errorExtraccion, setErrorExtraccion] = useState('');
   const [progresoExtraccion, setProgresoExtraccion] = useState('');
+  
+  // Estados para diálogo de discrepancias
+  const [discrepanciasDialogOpen, setDiscrepanciasDialogOpen] = useState(false);
+  const [materialesConDiscrepancia, setMaterialesConDiscrepancia] = useState([]);
+  const [confirmaciones, setConfirmaciones] = useState({});
+  const [movimientoParaDiscrepancias, setMovimientoParaDiscrepancias] = useState(null);
 
   // Cargar lista de proyectos
   useEffect(() => {
@@ -192,7 +200,7 @@ export default function StepDesdeFactura({
     setMovimientoActual(null);
   };
 
-  // Extraer materiales de la imagen con IA
+  // Extraer materiales de la imagen con IA (con validación doble)
   const handleExtraerMateriales = async (mov) => {
     const movimiento = mov || movimientoActual;
     if (!movimiento?.url_imagen) {
@@ -203,14 +211,15 @@ export default function StepDesdeFactura({
     try {
       setExtrayendo(true);
       setErrorExtraccion('');
-      setProgresoExtraccion('Analizando imagen con IA...');
+      setProgresoExtraccion('Analizando imagen con IA (validación doble)...');
 
       const onProgress = ({ attempt }) => {
         const segundos = attempt * 3;
-        setProgresoExtraccion(`Analizando imagen con IA... (${segundos}s)`);
+        setProgresoExtraccion(`Analizando con validación doble... (${segundos}s)`);
       };
 
-      const datos = await StockSolicitudesService.extraerDatosFactura(movimiento.url_imagen, onProgress);
+      // Usar el nuevo servicio con validación doble
+      const datos = await AcopioService.extraerDatosFacturaConValidacion(movimiento.url_imagen, onProgress);
       
       if (!datos || !datos.success) {
         throw new Error(datos?.error || 'No se pudieron extraer datos de la imagen');
@@ -219,7 +228,7 @@ export default function StepDesdeFactura({
       // Crear materiales extraídos
       const materialesExtraidos = (datos.materiales || []).map((mat, idx) => ({
         id: `caja-${movimiento.id}-mat-${idx}`,
-        codigo: mat.SKU || '',
+        codigo: mat.SKU || mat.sku || '',
         descripcion: mat.Nombre || mat.nombre || 'Material extraído',
         cantidad: parseFloat(mat.cantidad) || 1,
         valorUnitario: mat.precio_unitario || 0,
@@ -229,25 +238,34 @@ export default function StepDesdeFactura({
         numero_factura: datos.numero_factura || movimiento.numero_factura,
         proveedor_original: datos.proveedor || movimiento.nombre_proveedor || movimiento.proveedor,
         extraido_con_ia: true,
-        total_factura_original: movimiento.total || 0
+        total_factura_original: movimiento.total || 0,
+        // Campos de validación doble
+        _requiere_confirmacion_usuario: mat._requiere_confirmacion_usuario || false,
+        _cantidad_extraccion_1: mat._cantidad_extraccion_1,
+        _cantidad_extraccion_2: mat._cantidad_extraccion_2
       }));
 
       if (materialesExtraidos.length === 0) {
         throw new Error('No se encontraron materiales en la imagen');
       }
 
-      // Agregar a seleccionados con flag especial
-      const movConMateriales = {
-        ...movimiento,
-        _materialesExtraidos: materialesExtraidos,
-        _totalOriginal: movimiento.total || 0
-      };
+      // Verificar si hay discrepancias que requieran confirmación
+      const conDiscrepancia = materialesExtraidos.filter(m => m._requiere_confirmacion_usuario);
       
-      // Importar directamente y pasar al siguiente paso
-      const itemsImportados = materialesExtraidos;
-      
+      if (conDiscrepancia.length > 0) {
+        // Mostrar diálogo para confirmar cantidades
+        setMaterialesConDiscrepancia(materialesExtraidos);
+        setMovimientoParaDiscrepancias(movimiento);
+        setConfirmaciones({});
+        setDiscrepanciasDialogOpen(true);
+        setExtrayendo(false);
+        setProgresoExtraccion('');
+        return;
+      }
+
+      // No hay discrepancias, importar directamente
       if (onSelectFacturas) {
-        onSelectFacturas(itemsImportados, movimiento.total || 0);
+        onSelectFacturas(materialesExtraidos, movimiento.total || 0);
       }
       if (onNext) onNext();
       
@@ -259,6 +277,39 @@ export default function StepDesdeFactura({
     } finally {
       setExtrayendo(false);
     }
+  };
+
+  // Confirmar las cantidades seleccionadas por el usuario
+  const handleConfirmarDiscrepancias = () => {
+    // Aplicar las confirmaciones a los materiales
+    const materialesConfirmados = materialesConDiscrepancia.map(mat => {
+      if (mat._requiere_confirmacion_usuario) {
+        const cantidadElegida = confirmaciones[mat.descripcion];
+        if (cantidadElegida !== undefined) {
+          const cantidad = parseFloat(cantidadElegida);
+          return {
+            ...mat,
+            cantidad,
+            valorTotal: cantidad * (mat.valorUnitario || 0),
+            _requiere_confirmacion_usuario: false,
+            _cantidad_confirmada: true
+          };
+        }
+      }
+      return mat;
+    });
+
+    // Importar los materiales confirmados
+    if (onSelectFacturas) {
+      onSelectFacturas(materialesConfirmados, movimientoParaDiscrepancias?.total || 0);
+    }
+    
+    setDiscrepanciasDialogOpen(false);
+    setMaterialesConDiscrepancia([]);
+    setConfirmaciones({});
+    setMovimientoParaDiscrepancias(null);
+    
+    if (onNext) onNext();
   };
 
   const handleContinue = () => {
@@ -600,6 +651,121 @@ export default function StepDesdeFactura({
               </Button>
             </Stack>
           </DialogContent>
+        </Dialog>
+
+        {/* Diálogo para confirmar discrepancias en cantidades */}
+        <Dialog 
+          open={discrepanciasDialogOpen} 
+          onClose={() => {}}
+          maxWidth="md"
+          fullWidth
+        >
+          <DialogTitle>
+            <Stack direction="row" alignItems="center" spacing={1}>
+              <WarningAmberIcon color="warning" />
+              <Typography variant="h6">Verificar cantidades</Typography>
+            </Stack>
+          </DialogTitle>
+          <DialogContent>
+            <Alert severity="warning" sx={{ mb: 3 }}>
+              La IA detectó diferencias en algunas cantidades al hacer dos lecturas. 
+              Por favor, seleccioná el valor correcto para cada material marcado.
+            </Alert>
+
+            <Stack spacing={2}>
+              {materialesConDiscrepancia.map((mat, idx) => (
+                <Paper 
+                  key={idx} 
+                  sx={{ 
+                    p: 2, 
+                    bgcolor: mat._requiere_confirmacion_usuario ? 'warning.50' : 'background.paper',
+                    border: mat._requiere_confirmacion_usuario ? '2px solid' : '1px solid',
+                    borderColor: mat._requiere_confirmacion_usuario ? 'warning.main' : 'divider'
+                  }}
+                >
+                  <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
+                    <Box flex={1}>
+                      <Typography variant="subtitle1" fontWeight="bold">
+                        {mat.descripcion}
+                      </Typography>
+                      {mat.codigo && (
+                        <Typography variant="caption" color="text.secondary">
+                          SKU: {mat.codigo}
+                        </Typography>
+                      )}
+                    </Box>
+                    
+                    {mat._requiere_confirmacion_usuario ? (
+                      <Box sx={{ minWidth: 200 }}>
+                        <Typography variant="caption" color="warning.main" fontWeight="bold" gutterBottom>
+                          ⚠️ Seleccionar cantidad correcta:
+                        </Typography>
+                        <RadioGroup
+                          value={confirmaciones[mat.descripcion] || ''}
+                          onChange={(e) => setConfirmaciones(prev => ({
+                            ...prev,
+                            [mat.descripcion]: e.target.value
+                          }))}
+                        >
+                          <FormControlLabel 
+                            value={String(mat._cantidad_extraccion_1)} 
+                            control={<Radio size="small" />} 
+                            label={
+                              <Typography variant="body2">
+                                <strong>{mat._cantidad_extraccion_1}</strong> {mat.unidad}
+                              </Typography>
+                            }
+                          />
+                          <FormControlLabel 
+                            value={String(mat._cantidad_extraccion_2)} 
+                            control={<Radio size="small" />} 
+                            label={
+                              <Typography variant="body2">
+                                <strong>{mat._cantidad_extraccion_2}</strong> {mat.unidad}
+                              </Typography>
+                            }
+                          />
+                        </RadioGroup>
+                      </Box>
+                    ) : (
+                      <Box sx={{ textAlign: 'right' }}>
+                        <Typography variant="h6" fontWeight="bold" color="success.main">
+                          ✓ {mat.cantidad} {mat.unidad}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          Cantidad confirmada
+                        </Typography>
+                      </Box>
+                    )}
+                  </Stack>
+                </Paper>
+              ))}
+            </Stack>
+          </DialogContent>
+          <DialogActions sx={{ p: 3 }}>
+            <Button 
+              onClick={() => {
+                setDiscrepanciasDialogOpen(false);
+                setMaterialesConDiscrepancia([]);
+                setConfirmaciones({});
+              }}
+              color="inherit"
+            >
+              Cancelar
+            </Button>
+            <Button 
+              onClick={handleConfirmarDiscrepancias}
+              variant="contained"
+              disabled={
+                // Verificar que todas las discrepancias tengan confirmación
+                materialesConDiscrepancia
+                  .filter(m => m._requiere_confirmacion_usuario)
+                  .some(m => !confirmaciones[m.descripcion])
+              }
+            >
+              Confirmar y continuar
+            </Button>
+          </DialogActions>
         </Dialog>
       </Box>
     </LocalizationProvider>

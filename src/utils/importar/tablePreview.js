@@ -13,9 +13,15 @@ export const buildPreview = (rows, max = 10) => {
   }
 
   // Si las filas son objetos (con claves)
+  // Filtrar campos internos (empiezan con _) que no deben mostrarse en el preview
   const keys = Array.from(
     sample.reduce((s, r) => {
-      Object.keys(r || {}).forEach((k) => s.add(k));
+      Object.keys(r || {}).forEach((k) => {
+        // Ignorar campos internos que empiezan con _ (ej: _verificacion, _extraccion_inicial)
+        if (!k.startsWith('_')) {
+          s.add(k);
+        }
+      });
       return s;
     }, new Set())
   );
