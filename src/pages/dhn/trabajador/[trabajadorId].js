@@ -14,6 +14,7 @@ import EditarTrabajoDiarioModal from 'src/components/dhn/EditarTrabajoDiarioModa
 import FiltroTrabajoDiario from 'src/components/dhn/FiltroTrabajoDiario';
 import HistorialModal from 'src/components/dhn/HistorialModal';
 import { parseDDMMYYYYAnyToISO } from 'src/utils/handleDates';
+import { formatDateDDMMYYYY } from 'src/utils/handleDates';
 
 const TrabajadorPage = () => {
   const router = useRouter();
@@ -67,6 +68,8 @@ const TrabajadorPage = () => {
     incluirTrabajador: false,
     defaultLimit: 200,
   });
+
+  const formatters = { fecha: formatDateDDMMYYYY };
 
   const trabajador = useMemo(() => {
     const first = Array.isArray(data) && data.length > 0 ? data[0] : null;
@@ -158,6 +161,7 @@ const TrabajadorPage = () => {
               pagination={table.pagination}
               onPageChange={table.onPageChange}
               onRowsPerPageChange={table.onRowsPerPageChange}
+              formatters={formatters}
             />
           </Stack>
         </Stack>
