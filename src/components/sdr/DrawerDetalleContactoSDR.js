@@ -324,23 +324,30 @@ const DrawerDetalleContactoSDR = ({
 
     // ==================== NAVEGACIÓN CON CONFIRMACIÓN ====================
     
+    // Verificar si próximo contacto está vencido o vacío
+    const proximoVencidoOVacio = () => {
+        const proximo = proximoContactoLocal || contacto?.proximoContacto;
+        if (!proximo) return true; // Vacío
+        return new Date(proximo) < new Date(); // Vencido
+    };
+    
     const handleNavegar = (direccion) => {
         const nuevoIndice = direccion === 'anterior' ? indiceActual - 1 : indiceActual + 1;
         
-        // Si no tiene próximo contacto, preguntar
-        if (!proximoContactoLocal && !contacto?.proximoContacto) {
+        // Si no tiene próximo contacto o está vencido, preguntar
+        if (proximoVencidoOVacio()) {
             setModalProximoContacto({ open: true, direccion, nuevoIndice });
         } else {
             onCambiarIndice?.(nuevoIndice);
         }
     };
 
-    const handleConfirmarNavegacion = async (establecerProximo) => {
-        const { direccion, nuevoIndice } = modalProximoContacto;
+    const handleConfirmarNavegacion = async (fechaProximo) => {
+        const { nuevoIndice } = modalProximoContacto;
         
-        if (establecerProximo) {
-            // Establecer próximo contacto en 24 horas por defecto y navegar
-            await handleGuardarProximoContacto(calcularFecha(24, 'horas'));
+        if (fechaProximo) {
+            // Guardar la fecha seleccionada
+            await handleGuardarProximoContacto(fechaProximo);
         }
         
         setModalProximoContacto({ open: false, direccion: null, nuevoIndice: null });
@@ -740,7 +747,15 @@ const DrawerDetalleContactoSDR = ({
                 >
                     <DialogTitle sx={{ textAlign: 'center', pt: 3 }}>
                         <AccessTimeIcon color="warning" sx={{ fontSize: 48, mb: 1 }} />
-                        <Typography variant="h6">¿Cuándo lo contactamos?</Typography>
+                        <Typography variant="h6">
+                            {proximoContactoLocal || contacto?.proximoContacto 
+                                ? '⚠️ Próximo contacto vencido' 
+                                : '¿Cuándo lo contactamos?'
+                            }
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                            {contacto?.nombre}
+                        </Typography>
                     </DialogTitle>
                     <DialogContent>
                         <Stack spacing={1.5}>
@@ -750,10 +765,7 @@ const DrawerDetalleContactoSDR = ({
                                     fullWidth
                                     variant="outlined"
                                     size="large"
-                                    onClick={async () => {
-                                        await handleGuardarProximoContacto(calcularFecha(btn.cantidad, btn.unidad));
-                                        handleConfirmarNavegacion(false);
-                                    }}
+                                    onClick={() => handleConfirmarNavegacion(calcularFecha(btn.cantidad, btn.unidad))}
                                     sx={{ borderRadius: 2, py: 1.5 }}
                                 >
                                     {btn.label}
@@ -765,7 +777,7 @@ const DrawerDetalleContactoSDR = ({
                                 variant="text"
                                 color="inherit"
                                 size="large"
-                                onClick={() => handleConfirmarNavegacion(false)}
+                                onClick={() => handleConfirmarNavegacion(null)}
                             >
                                 Omitir
                             </Button>
@@ -1175,13 +1187,20 @@ const DrawerDetalleContactoSDR = ({
                 <DialogTitle>
                     <Stack direction="row" spacing={1} alignItems="center">
                         <AccessTimeIcon color="warning" />
-                        <Typography>¿Cuándo lo contactamos?</Typography>
+                        <Typography>
+                            {proximoContactoLocal || contacto?.proximoContacto 
+                                ? '⚠️ Próximo contacto vencido' 
+                                : '¿Cuándo lo contactamos?'
+                            }
+                        </Typography>
                     </Stack>
                 </DialogTitle>
                 <DialogContent>
                     <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                        No definiste un próximo contacto para <strong>{contacto?.nombre}</strong>. 
-                        ¿Cuándo debemos volver a contactarlo?
+                        {proximoContactoLocal || contacto?.proximoContacto 
+                            ? `El próximo contacto de ${contacto?.nombre} está vencido. ¿Cuándo debemos volver a contactarlo?`
+                            : `No definiste un próximo contacto para ${contacto?.nombre}. ¿Cuándo debemos volver a contactarlo?`
+                        }
                     </Typography>
                     <Stack spacing={1}>
                         {botonesProximoContacto.map((btn) => (
@@ -1190,10 +1209,7 @@ const DrawerDetalleContactoSDR = ({
                                 fullWidth
                                 variant="outlined"
                                 startIcon={<ScheduleIcon />}
-                                onClick={async () => {
-                                    await handleGuardarProximoContacto(calcularFecha(btn.cantidad, btn.unidad));
-                                    handleConfirmarNavegacion(false);
-                                }}
+                                onClick={() => handleConfirmarNavegacion(calcularFecha(btn.cantidad, btn.unidad))}
                             >
                                 {btn.label}
                             </Button>
@@ -1203,7 +1219,7 @@ const DrawerDetalleContactoSDR = ({
                             fullWidth
                             variant="text"
                             color="inherit"
-                            onClick={() => handleConfirmarNavegacion(false)}
+                            onClick={() => handleConfirmarNavegacion(null)}
                         >
                             Omitir por ahora
                         </Button>

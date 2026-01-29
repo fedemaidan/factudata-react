@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import Head from 'next/head';
 import {
     Box, Container, Paper, Stack, Typography, Button, TextField, MenuItem,
@@ -6,7 +6,7 @@ import {
     Chip, IconButton, Tooltip, Dialog, DialogTitle, DialogContent, DialogActions,
     Table, TableBody, TableCell, TableHead, TableRow, TableContainer, TableSortLabel,
     Checkbox, Alert, Snackbar, CircularProgress, Avatar, Divider,
-    InputAdornment, LinearProgress, useMediaQuery, useTheme
+    InputAdornment, LinearProgress, useMediaQuery, useTheme, Fab, Badge, Collapse, Menu
 } from '@mui/material';
 
 // Firebase
@@ -35,6 +35,8 @@ import PersonOffIcon from '@mui/icons-material/PersonOff';
 import DeleteIcon from '@mui/icons-material/Delete';
 import PhoneMissedIcon from '@mui/icons-material/PhoneMissed';
 import DoNotDisturbIcon from '@mui/icons-material/DoNotDisturb';
+import MoreVertIcon from '@mui/icons-material/MoreVert';
+import FilterListIcon from '@mui/icons-material/FilterList';
 
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import SDRService from 'src/services/sdrService';
@@ -450,17 +452,17 @@ const GestionSDRPage = () => {
     const renderDashboard = () => (
         <Box>
             <Typography variant="h6" sx={{ mb: 2 }}>Métricas del equipo - Hoy</Typography>
-            <Grid container spacing={2} sx={{ mb: 4 }}>
-                <Grid item xs={12} sm={6} md={2.4}>
+            <Grid container spacing={isMobile ? 1 : 2} sx={{ mb: 4 }}>
+                <Grid item xs={6} sm={6} md={2.4}>
                     <MetricCard
                         title="Llamadas"
                         value={metricas?.llamadasRealizadas || 0}
-                        subtitle={`${metricas?.llamadasAtendidas || 0} atendidas`}
+                        subtitle={!isMobile ? `${metricas?.llamadasAtendidas || 0} atendidas` : null}
                         icon={<PhoneIcon />}
                         color="primary"
                     />
                 </Grid>
-                <Grid item xs={12} sm={6} md={2.4}>
+                <Grid item xs={6} sm={6} md={2.4}>
                     <MetricCard
                         title="WhatsApp"
                         value={metricas?.whatsappEnviados || 0}
@@ -468,35 +470,37 @@ const GestionSDRPage = () => {
                         color="success"
                     />
                 </Grid>
-                <Grid item xs={12} sm={6} md={2.4}>
+                <Grid item xs={6} sm={6} md={2.4}>
                     <MetricCard
                         title="Reuniones"
                         value={metricas?.reunionesCoordinadas || 0}
-                        subtitle={`${metricas?.reunionesAprobadas || 0} aprobadas`}
+                        subtitle={!isMobile ? `${metricas?.reunionesAprobadas || 0} aprobadas` : null}
                         icon={<EventIcon />}
                         color="warning"
                     />
                 </Grid>
-                <Grid item xs={12} sm={6} md={2.4}>
+                <Grid item xs={6} sm={6} md={2.4}>
                     <MetricCard
                         title="Pendientes"
                         value={metricas?.reunionesPendientes || 0}
-                        subtitle="por evaluar"
+                        subtitle={!isMobile ? "por evaluar" : null}
                         icon={<ScheduleIcon />}
                         color="info"
                         onClick={() => setTabActual(2)}
                     />
                 </Grid>
-                <Grid item xs={12} sm={6} md={2.4}>
-                    <MetricCard
-                        title="Sin asignar"
-                        value={metricas?.contactosSinAsignar || 0}
-                        subtitle="en pool"
-                        icon={<PeopleOutlineIcon />}
-                        color="secondary"
-                        onClick={() => { setFiltros({ ...filtros, soloSinAsignar: true }); setTabActual(1); }}
-                    />
-                </Grid>
+                {!isMobile && (
+                    <Grid item xs={6} sm={6} md={2.4}>
+                        <MetricCard
+                            title="Sin asignar"
+                            value={metricas?.contactosSinAsignar || 0}
+                            subtitle="en pool"
+                            icon={<PeopleOutlineIcon />}
+                            color="secondary"
+                            onClick={() => { setFiltros({ ...filtros, soloSinAsignar: true }); setTabActual(1); }}
+                        />
+                    </Grid>
+                )}
             </Grid>
             
             {/* Métricas por SDR */}
@@ -597,57 +601,125 @@ const GestionSDRPage = () => {
     
     // ==================== RENDER CONTACTOS ====================
     
+    // Estado para menú mobile
+    const [menuAnchor, setMenuAnchor] = React.useState(null);
+    
     const renderContactos = () => (
         <Box>
-            {/* Barra de filtros */}
-            <Paper sx={{ p: 2, mb: 2 }}>
-                <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems="center">
-                    <TextField
-                        size="small"
-                        placeholder="Buscar..."
-                        value={filtros.busqueda}
-                        onChange={(e) => setFiltros({ ...filtros, busqueda: e.target.value })}
-                        InputProps={{
-                            startAdornment: <InputAdornment position="start"><SearchIcon /></InputAdornment>
-                        }}
-                        sx={{ minWidth: 200 }}
-                    />
-                    <FormControl size="small" sx={{ minWidth: 150 }}>
-                        <InputLabel>Estado</InputLabel>
-                        <Select
-                            value={filtros.estado}
-                            label="Estado"
-                            onChange={(e) => setFiltros({ ...filtros, estado: e.target.value })}
-                        >
-                            <MenuItem value="">Todos</MenuItem>
-                            {Object.entries(ESTADOS_CONTACTO).map(([key, { label }]) => (
-                                <MenuItem key={key} value={key}>{label}</MenuItem>
-                            ))}
-                        </Select>
-                    </FormControl>
-                    <Button
-                        variant={filtros.soloSinAsignar ? 'contained' : 'outlined'}
-                        size="small"
-                        startIcon={<PeopleOutlineIcon />}
-                        onClick={() => setFiltros({ ...filtros, soloSinAsignar: !filtros.soloSinAsignar })}
+            {/* Barra de filtros - MOBILE */}
+            {isMobile ? (
+                <Box sx={{ mb: 2 }}>
+                    <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
+                        <TextField
+                            size="small"
+                            placeholder="Buscar..."
+                            value={filtros.busqueda}
+                            onChange={(e) => setFiltros({ ...filtros, busqueda: e.target.value })}
+                            InputProps={{
+                                startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment>
+                            }}
+                            sx={{ flex: 1 }}
+                        />
+                        <IconButton onClick={() => setModalImportar(true)}>
+                            <UploadFileIcon />
+                        </IconButton>
+                        <IconButton onClick={(e) => setMenuAnchor(e.currentTarget)}>
+                            <MoreVertIcon />
+                        </IconButton>
+                    </Stack>
+                    <Stack direction="row" spacing={1} sx={{ overflowX: 'auto', pb: 1 }}>
+                        <Chip
+                            label="Todos"
+                            size="small"
+                            color={!filtros.estado ? 'primary' : 'default'}
+                            variant={!filtros.estado ? 'filled' : 'outlined'}
+                            onClick={() => setFiltros({ ...filtros, estado: '' })}
+                        />
+                        {Object.entries(ESTADOS_CONTACTO).map(([key, { label, color }]) => (
+                            <Chip
+                                key={key}
+                                label={label}
+                                size="small"
+                                color={filtros.estado === key ? color : 'default'}
+                                variant={filtros.estado === key ? 'filled' : 'outlined'}
+                                onClick={() => setFiltros({ ...filtros, estado: key })}
+                            />
+                        ))}
+                        <Chip
+                            label="Sin asignar"
+                            size="small"
+                            color={filtros.soloSinAsignar ? 'secondary' : 'default'}
+                            variant={filtros.soloSinAsignar ? 'filled' : 'outlined'}
+                            onClick={() => setFiltros({ ...filtros, soloSinAsignar: !filtros.soloSinAsignar })}
+                        />
+                    </Stack>
+                    <Menu
+                        anchorEl={menuAnchor}
+                        open={Boolean(menuAnchor)}
+                        onClose={() => setMenuAnchor(null)}
                     >
-                        Sin asignar
-                    </Button>
-                    <Box sx={{ flexGrow: 1 }} />
-                    <Button startIcon={<RefreshIcon />} onClick={refrescar}>
-                        Actualizar
-                    </Button>
-                    <Button startIcon={<DownloadIcon />} onClick={handleExportar}>
-                        Exportar
-                    </Button>
-                    <Button startIcon={<UploadFileIcon />} onClick={() => setModalImportar(true)}>
-                        Importar
-                    </Button>
-                    <Button variant="contained" startIcon={<AddIcon />} onClick={() => setModalCrear(true)}>
-                        Nuevo
-                    </Button>
-                </Stack>
-            </Paper>
+                        <MenuItem onClick={() => { refrescar(); setMenuAnchor(null); }}>
+                            <RefreshIcon sx={{ mr: 1 }} /> Actualizar
+                        </MenuItem>
+                        <MenuItem onClick={() => { handleExportar(); setMenuAnchor(null); }}>
+                            <DownloadIcon sx={{ mr: 1 }} /> Exportar
+                        </MenuItem>
+                        <MenuItem onClick={() => { setModalCrear(true); setMenuAnchor(null); }}>
+                            <AddIcon sx={{ mr: 1 }} /> Nuevo contacto
+                        </MenuItem>
+                    </Menu>
+                </Box>
+            ) : (
+                /* Barra de filtros - DESKTOP */
+                <Paper sx={{ p: 2, mb: 2 }}>
+                    <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems="center">
+                        <TextField
+                            size="small"
+                            placeholder="Buscar..."
+                            value={filtros.busqueda}
+                            onChange={(e) => setFiltros({ ...filtros, busqueda: e.target.value })}
+                            InputProps={{
+                                startAdornment: <InputAdornment position="start"><SearchIcon /></InputAdornment>
+                            }}
+                            sx={{ minWidth: 200 }}
+                        />
+                        <FormControl size="small" sx={{ minWidth: 150 }}>
+                            <InputLabel>Estado</InputLabel>
+                            <Select
+                                value={filtros.estado}
+                                label="Estado"
+                                onChange={(e) => setFiltros({ ...filtros, estado: e.target.value })}
+                            >
+                                <MenuItem value="">Todos</MenuItem>
+                                {Object.entries(ESTADOS_CONTACTO).map(([key, { label }]) => (
+                                    <MenuItem key={key} value={key}>{label}</MenuItem>
+                                ))}
+                            </Select>
+                        </FormControl>
+                        <Button
+                            variant={filtros.soloSinAsignar ? 'contained' : 'outlined'}
+                            size="small"
+                            startIcon={<PeopleOutlineIcon />}
+                            onClick={() => setFiltros({ ...filtros, soloSinAsignar: !filtros.soloSinAsignar })}
+                        >
+                            Sin asignar
+                        </Button>
+                        <Box sx={{ flexGrow: 1 }} />
+                        <Button startIcon={<RefreshIcon />} onClick={refrescar}>
+                            Actualizar
+                        </Button>
+                        <Button startIcon={<DownloadIcon />} onClick={handleExportar}>
+                            Exportar
+                        </Button>
+                        <Button startIcon={<UploadFileIcon />} onClick={() => setModalImportar(true)}>
+                            Importar
+                        </Button>
+                        <Button variant="contained" startIcon={<AddIcon />} onClick={() => setModalCrear(true)}>
+                            Nuevo
+                        </Button>
+                    </Stack>
+                </Paper>
+            )}
             
             {/* Acciones masivas */}
             {contactosSeleccionados.length > 0 && (
@@ -655,94 +727,66 @@ const GestionSDRPage = () => {
                     severity="info" 
                     sx={{ mb: 2 }}
                     action={
-                        <Stack direction="row" spacing={1}>
-                            <Button size="small" startIcon={<AssignmentIndIcon />} onClick={() => setModalAsignar(true)}>
-                                Asignar
-                            </Button>
-                            <Button size="small" startIcon={<PersonOffIcon />} onClick={handleDesasignarContactos}>
-                                Desasignar
-                            </Button>
-                            <Button size="small" color="error" startIcon={<DeleteIcon />} onClick={handleEliminarContactos}>
-                                Eliminar
-                            </Button>
-                            <Button size="small" onClick={() => setContactosSeleccionados([])}>
-                                Limpiar
-                            </Button>
-                        </Stack>
+                        isMobile ? (
+                            <Stack direction="row" spacing={0.5}>
+                                <IconButton size="small" color="primary" onClick={() => setModalAsignar(true)}>
+                                    <AssignmentIndIcon fontSize="small" />
+                                </IconButton>
+                                <IconButton size="small" onClick={handleDesasignarContactos}>
+                                    <PersonOffIcon fontSize="small" />
+                                </IconButton>
+                                <IconButton size="small" color="error" onClick={handleEliminarContactos}>
+                                    <DeleteIcon fontSize="small" />
+                                </IconButton>
+                            </Stack>
+                        ) : (
+                            <Stack direction="row" spacing={1}>
+                                <Button size="small" startIcon={<AssignmentIndIcon />} onClick={() => setModalAsignar(true)}>
+                                    Asignar
+                                </Button>
+                                <Button size="small" startIcon={<PersonOffIcon />} onClick={handleDesasignarContactos}>
+                                    Desasignar
+                                </Button>
+                                <Button size="small" color="error" startIcon={<DeleteIcon />} onClick={handleEliminarContactos}>
+                                    Eliminar
+                                </Button>
+                                <Button size="small" onClick={() => setContactosSeleccionados([])}>
+                                    Limpiar
+                                </Button>
+                            </Stack>
+                        )
                     }
                 >
-                    {contactosSeleccionados.length} contacto(s) seleccionado(s)
+                    {contactosSeleccionados.length} seleccionado(s)
                 </Alert>
             )}
             
-            {/* Tabla de contactos */}
-            <TableContainer component={Paper}>
-                {loading && <LinearProgress />}
-                <Table size="small">
-                    <TableHead>
-                        <TableRow>
-                            <TableCell padding="checkbox">
-                                <Checkbox
-                                    indeterminate={contactosSeleccionados.length > 0 && contactosSeleccionados.length < contactos.length}
-                                    checked={contactos.length > 0 && contactosSeleccionados.length === contactos.length}
-                                    onChange={(e) => {
-                                        if (e.target.checked) {
-                                            setContactosSeleccionados(contactos.map(c => c._id));
-                                        } else {
-                                            setContactosSeleccionados([]);
-                                        }
-                                    }}
-                                />
-                            </TableCell>
-                            <TableCell>Nombre</TableCell>
-                            <TableCell>Empresa</TableCell>
-                            <TableCell>Teléfono</TableCell>
-                            <TableCell>Estado</TableCell>
-                            <TableCell>SDR</TableCell>
-                            <TableCell>
-                                <TableSortLabel
-                                    active={filtros.ordenarPor === 'ultimaAccion'}
-                                    direction={filtros.ordenarPor === 'ultimaAccion' ? filtros.ordenDir : 'desc'}
-                                    onClick={() => setFiltros({
-                                        ...filtros,
-                                        ordenarPor: 'ultimaAccion',
-                                        ordenDir: filtros.ordenarPor === 'ultimaAccion' && filtros.ordenDir === 'desc' ? 'asc' : 'desc'
-                                    })}
-                                >
-                                    Última
-                                </TableSortLabel>
-                            </TableCell>
-                            <TableCell>
-                                <TableSortLabel
-                                    active={filtros.ordenarPor === 'proximoContacto'}
-                                    direction={filtros.ordenarPor === 'proximoContacto' ? filtros.ordenDir : 'asc'}
-                                    onClick={() => setFiltros({
-                                        ...filtros,
-                                        ordenarPor: 'proximoContacto',
-                                        ordenDir: filtros.ordenarPor === 'proximoContacto' && filtros.ordenDir === 'asc' ? 'desc' : 'asc'
-                                    })}
-                                >
-                                    Próximo
-                                </TableSortLabel>
-                            </TableCell>
-                            <TableCell align="right">Acciones</TableCell>
-                        </TableRow>
-                    </TableHead>
-                    <TableBody>
-                        {contactos.map((contacto, idx) => (
-                            <TableRow 
-                                key={contacto._id} 
-                                hover 
-                                sx={{ cursor: 'pointer' }}
-                                onClick={() => { 
-                                    setContactoSeleccionado(contacto); 
+            {/* Lista de contactos - MOBILE: Cards */}
+            {isMobile ? (
+                <Stack spacing={1.5}>
+                    {loading && <LinearProgress />}
+                    {contactos.map((contacto, idx) => {
+                        const vencido = contacto.proximoContacto && new Date(contacto.proximoContacto) < new Date();
+                        return (
+                            <Paper
+                                key={contacto._id}
+                                sx={{
+                                    p: 2,
+                                    borderLeft: 4,
+                                    borderColor: vencido ? 'error.main' : (contacto.estado === 'nuevo' ? 'info.main' : 'grey.300'),
+                                    cursor: 'pointer'
+                                }}
+                                onClick={() => {
+                                    setContactoSeleccionado(contacto);
                                     setIndiceContactoActual(idx);
-                                    setModalDetalle(true); 
+                                    setModalDetalle(true);
                                 }}
                             >
-                                <TableCell padding="checkbox" onClick={(e) => e.stopPropagation()}>
+                                <Stack direction="row" alignItems="flex-start" spacing={1}>
                                     <Checkbox
+                                        size="small"
                                         checked={contactosSeleccionados.includes(contacto._id)}
+                                        onClick={(e) => e.stopPropagation()}
                                         onChange={(e) => {
                                             if (e.target.checked) {
                                                 setContactosSeleccionados([...contactosSeleccionados, contacto._id]);
@@ -751,62 +795,181 @@ const GestionSDRPage = () => {
                                             }
                                         }}
                                     />
-                                </TableCell>
-                                <TableCell>
-                                    <Typography variant="body2" fontWeight={600}>{contacto.nombre}</Typography>
-                                    {contacto.cargo && (
-                                        <Typography variant="caption" color="text.secondary">
-                                            {contacto.cargo}
-                                        </Typography>
-                                    )}
-                                </TableCell>
-                                <TableCell>{contacto.empresa || '-'}</TableCell>
-                                <TableCell>{contacto.telefono}</TableCell>
-                                <TableCell><EstadoChip estado={contacto.estado} /></TableCell>
-                                <TableCell>
-                                    {contacto.sdrAsignadoNombre || <Chip label="Pool" size="small" variant="outlined" color="secondary" />}
-                                </TableCell>
-                                <TableCell>
-                                    {contacto.ultimaAccion 
-                                        ? new Date(contacto.ultimaAccion).toLocaleDateString('es-AR') 
-                                        : '-'
-                                    }
-                                </TableCell>
-                                <TableCell>
-                                    {contacto.proximoContacto ? (
-                                        <Tooltip title={new Date(contacto.proximoContacto).toLocaleString('es-AR')}>
-                                            <Chip 
-                                                size="small" 
-                                                label={new Date(contacto.proximoContacto).toLocaleString('es-AR', {
-                                                    day: '2-digit',
-                                                    month: '2-digit',
-                                                    hour: '2-digit',
-                                                    minute: '2-digit'
-                                                })}
-                                                color={new Date(contacto.proximoContacto) < new Date() ? 'error' : 'success'}
-                                                variant="outlined"
+                                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                                        <Stack direction="row" justifyContent="space-between" alignItems="center">
+                                            <Typography variant="subtitle2" fontWeight={700} noWrap>
+                                                {contacto.nombre}
+                                            </Typography>
+                                            <EstadoChip estado={contacto.estado} />
+                                        </Stack>
+                                        {contacto.empresa && (
+                                            <Typography variant="caption" color="text.secondary" noWrap>
+                                                {contacto.empresa}
+                                            </Typography>
+                                        )}
+                                        <Stack direction="row" spacing={1} sx={{ mt: 1 }} alignItems="center">
+                                            {contacto.sdrAsignadoNombre ? (
+                                                <Chip label={contacto.sdrAsignadoNombre} size="small" variant="outlined" />
+                                            ) : (
+                                                <Chip label="Pool" size="small" variant="outlined" color="secondary" />
+                                            )}
+                                            {contacto.proximoContacto && (
+                                                <Chip
+                                                    size="small"
+                                                    icon={<ScheduleIcon />}
+                                                    label={new Date(contacto.proximoContacto).toLocaleString('es-AR', {
+                                                        day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
+                                                    })}
+                                                    color={vencido ? 'error' : 'success'}
+                                                    variant="outlined"
+                                                />
+                                            )}
+                                        </Stack>
+                                    </Box>
+                                </Stack>
+                            </Paper>
+                        );
+                    })}
+                    <Typography variant="body2" color="text.secondary" textAlign="center" sx={{ py: 2 }}>
+                        Mostrando {contactos.length} de {totalContactos}
+                    </Typography>
+                </Stack>
+            ) : (
+                /* Tabla de contactos - DESKTOP */
+                <>
+                    <TableContainer component={Paper}>
+                        {loading && <LinearProgress />}
+                        <Table size="small">
+                            <TableHead>
+                                <TableRow>
+                                    <TableCell padding="checkbox">
+                                        <Checkbox
+                                            indeterminate={contactosSeleccionados.length > 0 && contactosSeleccionados.length < contactos.length}
+                                            checked={contactos.length > 0 && contactosSeleccionados.length === contactos.length}
+                                            onChange={(e) => {
+                                                if (e.target.checked) {
+                                                    setContactosSeleccionados(contactos.map(c => c._id));
+                                                } else {
+                                                    setContactosSeleccionados([]);
+                                                }
+                                            }}
+                                        />
+                                    </TableCell>
+                                    <TableCell>Nombre</TableCell>
+                                    <TableCell>Empresa</TableCell>
+                                    <TableCell>Teléfono</TableCell>
+                                    <TableCell>Estado</TableCell>
+                                    <TableCell>SDR</TableCell>
+                                    <TableCell>
+                                        <TableSortLabel
+                                            active={filtros.ordenarPor === 'ultimaAccion'}
+                                            direction={filtros.ordenarPor === 'ultimaAccion' ? filtros.ordenDir : 'desc'}
+                                            onClick={() => setFiltros({
+                                                ...filtros,
+                                                ordenarPor: 'ultimaAccion',
+                                                ordenDir: filtros.ordenarPor === 'ultimaAccion' && filtros.ordenDir === 'desc' ? 'asc' : 'desc'
+                                            })}
+                                        >
+                                            Última
+                                        </TableSortLabel>
+                                    </TableCell>
+                                    <TableCell>
+                                        <TableSortLabel
+                                            active={filtros.ordenarPor === 'proximoContacto'}
+                                            direction={filtros.ordenarPor === 'proximoContacto' ? filtros.ordenDir : 'asc'}
+                                            onClick={() => setFiltros({
+                                                ...filtros,
+                                                ordenarPor: 'proximoContacto',
+                                                ordenDir: filtros.ordenarPor === 'proximoContacto' && filtros.ordenDir === 'asc' ? 'desc' : 'asc'
+                                            })}
+                                        >
+                                            Próximo
+                                        </TableSortLabel>
+                                    </TableCell>
+                                    <TableCell align="right">Acciones</TableCell>
+                                </TableRow>
+                            </TableHead>
+                            <TableBody>
+                                {contactos.map((contacto, idx) => (
+                                    <TableRow 
+                                        key={contacto._id} 
+                                        hover 
+                                        sx={{ cursor: 'pointer' }}
+                                        onClick={() => { 
+                                            setContactoSeleccionado(contacto); 
+                                            setIndiceContactoActual(idx);
+                                            setModalDetalle(true); 
+                                        }}
+                                    >
+                                        <TableCell padding="checkbox" onClick={(e) => e.stopPropagation()}>
+                                            <Checkbox
+                                                checked={contactosSeleccionados.includes(contacto._id)}
+                                                onChange={(e) => {
+                                                    if (e.target.checked) {
+                                                        setContactosSeleccionados([...contactosSeleccionados, contacto._id]);
+                                                    } else {
+                                                        setContactosSeleccionados(contactosSeleccionados.filter(id => id !== contacto._id));
+                                                    }
+                                                }}
                                             />
-                                        </Tooltip>
-                                    ) : '-'}
-                                </TableCell>
-                                <TableCell align="right">
-                                    <AccionesRapidas 
-                                        contacto={contacto} 
-                                        onAccion={handleAccion}
-                                        loading={actionLoading}
-                                    />
-                                </TableCell>
-                            </TableRow>
-                        ))}
-                    </TableBody>
-                </Table>
-            </TableContainer>
-            
-            <Stack direction="row" justifyContent="center" sx={{ mt: 2 }}>
-                <Typography variant="body2" color="text.secondary">
-                    Mostrando {contactos.length} de {totalContactos} contactos
-                </Typography>
-            </Stack>
+                                        </TableCell>
+                                        <TableCell>
+                                            <Typography variant="body2" fontWeight={600}>{contacto.nombre}</Typography>
+                                            {contacto.cargo && (
+                                                <Typography variant="caption" color="text.secondary">
+                                                    {contacto.cargo}
+                                                </Typography>
+                                            )}
+                                        </TableCell>
+                                        <TableCell>{contacto.empresa || '-'}</TableCell>
+                                        <TableCell>{contacto.telefono}</TableCell>
+                                        <TableCell><EstadoChip estado={contacto.estado} /></TableCell>
+                                        <TableCell>
+                                            {contacto.sdrAsignadoNombre || <Chip label="Pool" size="small" variant="outlined" color="secondary" />}
+                                        </TableCell>
+                                        <TableCell>
+                                            {contacto.ultimaAccion 
+                                                ? new Date(contacto.ultimaAccion).toLocaleDateString('es-AR') 
+                                                : '-'
+                                            }
+                                        </TableCell>
+                                        <TableCell>
+                                            {contacto.proximoContacto ? (
+                                                <Tooltip title={new Date(contacto.proximoContacto).toLocaleString('es-AR')}>
+                                                    <Chip 
+                                                        size="small" 
+                                                        label={new Date(contacto.proximoContacto).toLocaleString('es-AR', {
+                                                            day: '2-digit',
+                                                            month: '2-digit',
+                                                            hour: '2-digit',
+                                                            minute: '2-digit'
+                                                        })}
+                                                        color={new Date(contacto.proximoContacto) < new Date() ? 'error' : 'success'}
+                                                        variant="outlined"
+                                                    />
+                                                </Tooltip>
+                                            ) : '-'}
+                                        </TableCell>
+                                        <TableCell align="right">
+                                            <AccionesRapidas 
+                                                contacto={contacto} 
+                                                onAccion={handleAccion}
+                                                loading={actionLoading}
+                                            />
+                                        </TableCell>
+                                    </TableRow>
+                                ))}
+                            </TableBody>
+                        </Table>
+                    </TableContainer>
+                    
+                    <Stack direction="row" justifyContent="center" sx={{ mt: 2 }}>
+                        <Typography variant="body2" color="text.secondary">
+                            Mostrando {contactos.length} de {totalContactos} contactos
+                        </Typography>
+                    </Stack>
+                </>
+            )}
         </Box>
     );
     
@@ -1430,32 +1593,70 @@ const GestionSDRPage = () => {
             <Head>
                 <title>Gestión SDR | Sorby</title>
             </Head>
-            <Box component="main" sx={{ flexGrow: 1, py: 3 }}>
-                <Container maxWidth="xl">
-                    <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 3 }}>
-                        <Typography variant="h4">Gestión SDR</Typography>
-                        <Stack direction="row" spacing={1}>
-                            <Button startIcon={<RefreshIcon />} onClick={refrescar}>
-                                Actualizar
-                            </Button>
-                            <Button variant="outlined" startIcon={<PersonIcon />} onClick={() => setModalAgregarSDR(true)}>
-                                Gestionar SDRs
-                            </Button>
+            <Box component="main" sx={{ flexGrow: 1, py: isMobile ? 1 : 3 }}>
+                <Container maxWidth="xl" sx={{ px: isMobile ? 1 : 3 }}>
+                    {/* Header */}
+                    {isMobile ? (
+                        <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2, px: 1 }}>
+                            <Typography variant="h5" fontWeight={700}>Gestión SDR</Typography>
+                            <Stack direction="row" spacing={0.5}>
+                                <IconButton size="small" onClick={refrescar}>
+                                    <RefreshIcon />
+                                </IconButton>
+                                <IconButton size="small" onClick={() => setModalAgregarSDR(true)}>
+                                    <PersonIcon />
+                                </IconButton>
+                            </Stack>
                         </Stack>
-                    </Stack>
+                    ) : (
+                        <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 3 }}>
+                            <Typography variant="h4">Gestión SDR</Typography>
+                            <Stack direction="row" spacing={1}>
+                                <Button startIcon={<RefreshIcon />} onClick={refrescar}>
+                                    Actualizar
+                                </Button>
+                                <Button variant="outlined" startIcon={<PersonIcon />} onClick={() => setModalAgregarSDR(true)}>
+                                    Gestionar SDRs
+                                </Button>
+                            </Stack>
+                        </Stack>
+                    )}
                     
-                    <Tabs value={tabActual} onChange={(_, v) => setTabActual(v)} sx={{ mb: 3 }}>
-                        <Tab icon={<TrendingUpIcon />} label="Dashboard" iconPosition="start" />
-                        <Tab icon={<GroupsIcon />} label="Contactos" iconPosition="start" />
+                    {/* Tabs */}
+                    <Tabs 
+                        value={tabActual} 
+                        onChange={(_, v) => setTabActual(v)} 
+                        sx={{ mb: isMobile ? 2 : 3 }}
+                        variant={isMobile ? "fullWidth" : "standard"}
+                    >
                         <Tab 
-                            icon={<EventIcon />} 
+                            icon={<TrendingUpIcon />} 
+                            label={isMobile ? "" : "Dashboard"} 
+                            iconPosition="start" 
+                            sx={{ minWidth: isMobile ? 0 : 'auto' }}
+                        />
+                        <Tab 
+                            icon={<GroupsIcon />} 
+                            label={isMobile ? "" : "Contactos"} 
+                            iconPosition="start" 
+                            sx={{ minWidth: isMobile ? 0 : 'auto' }}
+                        />
+                        <Tab 
+                            icon={
+                                <Badge badgeContent={reuniones.length} color="warning">
+                                    <EventIcon />
+                                </Badge>
+                            } 
                             label={
-                                <Stack direction="row" alignItems="center" spacing={1}>
-                                    <span>Reuniones</span>
-                                    {reuniones.length > 0 && <Chip label={reuniones.length} size="small" color="warning" />}
-                                </Stack>
+                                isMobile ? "" : (
+                                    <Stack direction="row" alignItems="center" spacing={1}>
+                                        <span>Reuniones</span>
+                                        {reuniones.length > 0 && <Chip label={reuniones.length} size="small" color="warning" />}
+                                    </Stack>
+                                )
                             } 
                             iconPosition="start" 
+                            sx={{ minWidth: isMobile ? 0 : 'auto' }}
                         />
                     </Tabs>
                     
