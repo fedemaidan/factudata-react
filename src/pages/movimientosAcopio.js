@@ -6,6 +6,9 @@ import {
   List, ListItem, ListItemIcon, ListItemText, ListItemSecondaryAction, Skeleton, Chip, ButtonGroup
 } from '@mui/material';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
+import AccessTimeIcon from '@mui/icons-material/AccessTime';
+import SendIcon from '@mui/icons-material/Send';
+import CommentIcon from '@mui/icons-material/Comment';
 import CircularProgress from '@mui/material/CircularProgress';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
@@ -31,6 +34,10 @@ import VisibilityIcon from '@mui/icons-material/Visibility';
 import AttachFileIcon from '@mui/icons-material/AttachFile';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
 import DescriptionIcon from '@mui/icons-material/Description';
+import DownloadIcon from '@mui/icons-material/Download';
+import ExcelJS from 'exceljs';
+import { saveAs } from 'file-saver';
+import { formatCurrency } from 'src/utils/formatters';
 
 // Nuevos componentes:
 import HeaderAcopioSummary from 'src/components/headerAcopioSummary';
@@ -68,6 +75,10 @@ const MovimientosAcopioPage = () => {
   const [materialesCount, setMaterialesCount] = useState(null);
   const [documentosCount, setDocumentosCount] = useState(null);
   const [countsLoading, setCountsLoading] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState(null); // Timestamp de última actualización
+  const [eventos, setEventos] = useState([]); // Historial de eventos
+  const [nuevoComentario, setNuevoComentario] = useState(''); // Input de comentario
+  const [enviandoComentario, setEnviandoComentario] = useState(false);
 
   // Setear breadcrumbs
   useEffect(() => {
@@ -116,6 +127,21 @@ const MovimientosAcopioPage = () => {
   const vd = Number(acopio?.valor_desacopio) || 0;
   const porcentajeDisponible = va > 0 ? Math.max(0, Math.min(100, (1 - vd / va) * 100)) : 0;
 
+  // Formatear tiempo relativo
+  const formatTimeAgo = (date) => {
+    if (!date) return null;
+    const now = new Date();
+    const diffMs = now - date;
+    const diffSec = Math.floor(diffMs / 1000);
+    const diffMin = Math.floor(diffSec / 60);
+    const diffHr = Math.floor(diffMin / 60);
+    
+    if (diffSec < 60) return 'Ahora';
+    if (diffMin < 60) return `Hace ${diffMin} min`;
+    if (diffHr < 24) return `Hace ${diffHr}h`;
+    return date.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  };
+
   const formatCurrency = (amount) =>
     amount ? Number(amount).toLocaleString('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0 }) : '$ 0';
 
@@ -132,6 +158,10 @@ const MovimientosAcopioPage = () => {
       }
 
       setAcopio(acopioData);
+      setLastUpdated(new Date()); // Marcar momento de actualización
+      
+      // Cargar eventos del historial
+      setEventos(acopioData.eventos || []);
 
       const comprasData = await AcopioService.obtenerCompras(acopioId);
       setCompras(comprasData || []);
@@ -201,6 +231,249 @@ const MovimientosAcopioPage = () => {
       setLoading(false);
     }
   }, [acopioId]);
+
+  // Función para exportar informe de remitos a Excel con estilos
+  const exportarInformeRemitos = async () => {
+    if (!acopioId || !acopio) return;
+    
+    try {
+      setLoading(true);
+      setAlert({ open: true, message: 'Generando informe...', severity: 'info' });
+
+      // Ordenar remitos por fecha (más antiguo primero para calcular saldo parcial)
+      const remitosOrdenados = [...remitos].sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
+      
+      // Obtener movimientos de cada remito
+      const remitosConMovimientos = await Promise.all(
+        remitosOrdenados.map(async (remito) => {
+          const movs = await AcopioService.obtenerMovimientosDeRemito(acopioId, remito.id);
+          return { ...remito, movimientos: movs || [] };
+        })
+      );
+
+      // Calcular saldo inicial (valor_acopio)
+      const saldoInicial = acopio?.valor_acopio || 0;
+      let saldoAcumulado = saldoInicial;
+
+      // Crear workbook con ExcelJS
+      const workbook = new ExcelJS.Workbook();
+      workbook.creator = 'Factudata';
+      workbook.created = new Date();
+
+      // ========== HOJA PRINCIPAL: INFORME REMITOS ==========
+      const ws = workbook.addWorksheet('Informe Remitos');
+
+      // Definir columnas
+      ws.columns = [
+        { header: 'Fecha', key: 'fecha', width: 14 },
+        { header: 'Nº Remito', key: 'remito', width: 22 },
+        { header: 'Estado', key: 'estado', width: 14 },
+        { header: 'Material', key: 'material', width: 45 },
+        { header: 'Cantidad', key: 'cantidad', width: 12 },
+        { header: 'Valor Unit.', key: 'valorUnit', width: 14 },
+        { header: 'Impacto', key: 'impacto', width: 16 },
+        { header: 'Saldo Parcial', key: 'saldo', width: 18 },
+      ];
+
+      // ===== ENCABEZADO DEL ACOPIO (primeras filas) =====
+      // Fila 1: Título
+      ws.insertRow(1, []);
+      ws.mergeCells('A1:H1');
+      const tituloCell = ws.getCell('A1');
+      tituloCell.value = `INFORME DE REMITOS - ${acopio.codigo || 'Acopio'}`;
+      tituloCell.font = { bold: true, size: 16, color: { argb: 'FF2E7D32' } };
+      tituloCell.alignment = { horizontal: 'center' };
+
+      // Fila 2: Info del acopio
+      ws.insertRow(2, []);
+      ws.mergeCells('A2:D2');
+      ws.getCell('A2').value = `Proveedor: ${acopio.proveedor || '-'} | Proyecto: ${acopio.proyecto_nombre || '-'}`;
+      ws.getCell('A2').font = { italic: true, size: 11 };
+
+      // Fila 3: Saldo inicial destacado
+      ws.insertRow(3, []);
+      ws.mergeCells('A3:C3');
+      ws.getCell('A3').value = 'VALOR INICIAL ACOPIADO:';
+      ws.getCell('A3').font = { bold: true, size: 12 };
+      ws.mergeCells('D3:E3');
+      ws.getCell('D3').value = saldoInicial;
+      ws.getCell('D3').numFmt = '"$"#,##0.00';
+      ws.getCell('D3').font = { bold: true, size: 14, color: { argb: 'FF1565C0' } };
+      ws.getCell('D3').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE3F2FD' } };
+
+      // Fila 4: Espacio
+      ws.insertRow(4, []);
+
+      // Fila 5: Encabezados de columna (ya definidos, pero mover a fila 5)
+      const headerRow = ws.getRow(5);
+      headerRow.values = ['Fecha', 'Nº Remito', 'Estado', 'Material', 'Cantidad', 'Valor Unit.', 'Impacto', 'Saldo Parcial'];
+      headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF424242' } };
+      headerRow.alignment = { horizontal: 'center' };
+      headerRow.height = 22;
+
+      let currentRow = 6;
+
+      // Agregar remitos
+      remitosConMovimientos.forEach((remito, remitoIdx) => {
+        const impactoRemito = remito.movimientos.reduce((acc, mov) => {
+          const valor = mov.valorOperacion || (mov.cantidad * mov.valorUnitario) || 0;
+          return acc + valor;
+        }, 0);
+        
+        // Restar del saldo
+        saldoAcumulado -= impactoRemito;
+
+        // Determinar color del saldo
+        const porcentajeRestante = saldoInicial > 0 ? (saldoAcumulado / saldoInicial) * 100 : 0;
+        let saldoColor = 'FF2E7D32'; // Verde por defecto
+        let saldoBgColor = 'FFE8F5E9';
+        if (saldoAcumulado < 0) {
+          saldoColor = 'FFC62828'; // Rojo
+          saldoBgColor = 'FFFFEBEE';
+        } else if (porcentajeRestante <= 20) {
+          saldoColor = 'FFF57C00'; // Naranja
+          saldoBgColor = 'FFFFF3E0';
+        } else if (porcentajeRestante <= 40) {
+          saldoColor = 'FFFBC02D'; // Amarillo
+          saldoBgColor = 'FFFFFDE7';
+        }
+
+        if (remito.movimientos.length > 0) {
+          remito.movimientos.forEach((mov, idx) => {
+            const valorOperacion = mov.valorOperacion || (mov.cantidad * mov.valorUnitario) || 0;
+            const row = ws.addRow({
+              fecha: idx === 0 ? new Date(remito.fecha).toLocaleDateString('es-AR') : '',
+              remito: idx === 0 ? (remito.numero_remito || remito.id?.slice(0, 8)) : '',
+              estado: idx === 0 ? (remito.estado || '') : '',
+              material: `${mov.codigo || ''} - ${mov.descripcion || 'Sin descripción'}`.trim(),
+              cantidad: mov.cantidad || 0,
+              valorUnit: mov.valorUnitario || 0,
+              impacto: valorOperacion,
+              saldo: idx === remito.movimientos.length - 1 ? saldoAcumulado : null
+            });
+
+            // Estilo de primera fila del remito (encabezado del remito)
+            if (idx === 0) {
+              row.getCell('fecha').font = { bold: true };
+              row.getCell('remito').font = { bold: true, size: 11 };
+              row.getCell('estado').font = { bold: true };
+              // Color de fondo para la fila principal del remito
+              row.eachCell((cell) => {
+                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF5F5F5' } };
+              });
+            }
+
+            // Formato de números
+            row.getCell('valorUnit').numFmt = '"$"#,##0.00';
+            row.getCell('impacto').numFmt = '"$"#,##0.00';
+            row.getCell('impacto').font = { color: { argb: 'FFC62828' } }; // Rojo para impacto
+
+            // Última fila del remito: mostrar saldo con color
+            if (idx === remito.movimientos.length - 1) {
+              const saldoCell = row.getCell('saldo');
+              saldoCell.numFmt = '"$"#,##0.00';
+              saldoCell.font = { bold: true, color: { argb: saldoColor } };
+              saldoCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: saldoBgColor } };
+            }
+
+            currentRow++;
+          });
+        } else {
+          // Remito sin movimientos
+          const row = ws.addRow({
+            fecha: new Date(remito.fecha).toLocaleDateString('es-AR'),
+            remito: remito.numero_remito || remito.id?.slice(0, 8),
+            estado: remito.estado || '',
+            material: '(Sin materiales)',
+            cantidad: '',
+            valorUnit: '',
+            impacto: 0,
+            saldo: saldoAcumulado
+          });
+          row.getCell('fecha').font = { bold: true };
+          row.getCell('remito').font = { bold: true };
+          row.getCell('saldo').numFmt = '"$"#,##0.00';
+          row.getCell('saldo').font = { bold: true, color: { argb: saldoColor } };
+          row.getCell('saldo').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: saldoBgColor } };
+          currentRow++;
+        }
+
+        // Agregar fila vacía entre remitos (separador)
+        if (remitoIdx < remitosConMovimientos.length - 1) {
+          const separadorRow = ws.addRow([]);
+          separadorRow.height = 8;
+          currentRow++;
+        }
+      });
+
+      // Fila final: Resumen
+      ws.addRow([]);
+      const resumenRow = ws.addRow(['', '', '', '', '', '', 'SALDO FINAL:', saldoAcumulado]);
+      resumenRow.getCell(7).font = { bold: true, size: 12 };
+      resumenRow.getCell(8).numFmt = '"$"#,##0.00';
+      resumenRow.getCell(8).font = { bold: true, size: 14, color: { argb: saldoAcumulado < 0 ? 'FFC62828' : 'FF2E7D32' } };
+      resumenRow.getCell(8).fill = { 
+        type: 'pattern', 
+        pattern: 'solid', 
+        fgColor: { argb: saldoAcumulado < 0 ? 'FFFFEBEE' : 'FFE8F5E9' } 
+      };
+
+      // ========== HOJA DE RESUMEN ==========
+      const wsResumen = workbook.addWorksheet('Resumen');
+      wsResumen.columns = [
+        { header: 'Concepto', key: 'concepto', width: 30 },
+        { header: 'Valor', key: 'valor', width: 35 },
+      ];
+
+      // Título
+      wsResumen.insertRow(1, []);
+      wsResumen.mergeCells('A1:B1');
+      wsResumen.getCell('A1').value = 'RESUMEN DEL ACOPIO';
+      wsResumen.getCell('A1').font = { bold: true, size: 14 };
+      wsResumen.getCell('A1').alignment = { horizontal: 'center' };
+
+      wsResumen.addRow([]);
+      wsResumen.addRow({ concepto: 'Código Acopio', valor: acopio.codigo });
+      wsResumen.addRow({ concepto: 'Descripción', valor: acopio.descripcion || '-' });
+      wsResumen.addRow({ concepto: 'Proveedor', valor: acopio.proveedor || '-' });
+      wsResumen.addRow({ concepto: 'Proyecto', valor: acopio.proyecto_nombre || '-' });
+      wsResumen.addRow([]);
+
+      const valorAcopiadoRow = wsResumen.addRow({ concepto: 'Valor Acopiado', valor: saldoInicial });
+      valorAcopiadoRow.getCell('valor').numFmt = '"$"#,##0.00';
+      valorAcopiadoRow.getCell('valor').font = { bold: true, color: { argb: 'FF1565C0' } };
+
+      const totalDesRow = wsResumen.addRow({ concepto: 'Total Desacopiado', valor: saldoInicial - saldoAcumulado });
+      totalDesRow.getCell('valor').numFmt = '"$"#,##0.00';
+      totalDesRow.getCell('valor').font = { color: { argb: 'FFC62828' } };
+
+      const saldoDispRow = wsResumen.addRow({ concepto: 'Saldo Disponible', valor: saldoAcumulado });
+      saldoDispRow.getCell('valor').numFmt = '"$"#,##0.00';
+      saldoDispRow.getCell('valor').font = { bold: true, size: 12, color: { argb: saldoAcumulado < 0 ? 'FFC62828' : 'FF2E7D32' } };
+      saldoDispRow.getCell('valor').fill = { 
+        type: 'pattern', 
+        pattern: 'solid', 
+        fgColor: { argb: saldoAcumulado < 0 ? 'FFFFEBEE' : 'FFE8F5E9' } 
+      };
+
+      wsResumen.addRow([]);
+      wsResumen.addRow({ concepto: 'Cantidad de Remitos', valor: remitos.length });
+      wsResumen.addRow({ concepto: 'Fecha del Informe', valor: new Date().toLocaleString('es-AR') });
+
+      // Exportar
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      saveAs(blob, `informe-${acopio.codigo || 'acopio'}-${new Date().toISOString().split('T')[0]}.xlsx`);
+
+      setAlert({ open: true, message: '✅ Informe generado correctamente', severity: 'success' });
+    } catch (error) {
+      console.error('Error al generar informe:', error);
+      setAlert({ open: true, message: 'Error al generar el informe', severity: 'error' });
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const fetchMovimientos = useCallback(async () => {
     if (!acopioId) return;
@@ -316,6 +589,34 @@ const MovimientosAcopioPage = () => {
     } finally {
       setDialogoEliminarAbierto(false);
       setRemitoAEliminar(null);
+    }
+  };
+
+  // Enviar comentario
+  const handleEnviarComentario = async () => {
+    if (!nuevoComentario.trim()) return;
+    
+    try {
+      setEnviandoComentario(true);
+      const exito = await AcopioService.agregarComentario(
+        acopioId, 
+        nuevoComentario.trim(),
+        user?.name || user?.email || 'Usuario'
+      );
+      
+      if (exito) {
+        setNuevoComentario('');
+        // Recargar eventos
+        await fetchAcopio();
+        setAlert({ open: true, message: 'Comentario agregado', severity: 'success' });
+      } else {
+        setAlert({ open: true, message: 'No se pudo agregar el comentario', severity: 'error' });
+      }
+    } catch (error) {
+      console.error('Error al enviar comentario:', error);
+      setAlert({ open: true, message: 'Error al enviar comentario', severity: 'error' });
+    } finally {
+      setEnviandoComentario(false);
     }
   };
 
@@ -469,9 +770,17 @@ const MovimientosAcopioPage = () => {
           onEditar={handleEditAcopio}
           onUploadClick={handleUploadFromHeader}
           onRecalibrarImagenes={() => AcopioService.recalibrarImagenes(acopioId)}
-          onRefrescar={fetchActualTab}
+          onRefrescar={() => { fetchActualTab(); setLastUpdated(new Date()); }}
           isAdmin={Boolean(user?.admin)}
         />
+
+        {/* Indicador de última sincronización */}
+        {lastUpdated && (
+          <Stack direction="row" alignItems="center" spacing={0.5} sx={{ mb: 1, color: 'text.secondary' }}>
+            <AccessTimeIcon sx={{ fontSize: 14 }} />
+            <Typography variant="caption">{formatTimeAgo(lastUpdated)}</Typography>
+          </Stack>
+        )}
 
         {/* NAVEGACIÓN - Botones con contadores */}
         <ButtonGroup variant="outlined" sx={{ flexWrap: 'wrap', gap: 1, mb: 2 }}>
@@ -560,6 +869,16 @@ const MovimientosAcopioPage = () => {
         {/* REMITOS */}
         {tabActiva === 'remitos' && !initialLoading && (
           <Box sx={{ mt: 2 }}>
+            <Stack direction="row" justifyContent="flex-end" sx={{ mb: 2 }}>
+              <Button
+                variant="outlined"
+                startIcon={<DownloadIcon />}
+                onClick={exportarInformeRemitos}
+                disabled={loading || remitos.length === 0}
+              >
+                Exportar Informe
+              </Button>
+            </Stack>
             <RemitosTable
               remitos={remitos}
               remitoMovimientos={remitoMovimientos}
@@ -587,7 +906,7 @@ const MovimientosAcopioPage = () => {
             {acopio && (
               <Paper elevation={2} sx={{ p: 3 }}>
                 {/* Estado + toggle + edición */}
-                <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 1 }}>
+                <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 3 }}>
                   <Chip
                     size="small"
                     label={acopio?.activo === false ? 'Inactivo' : 'Activo'}
@@ -607,39 +926,148 @@ const MovimientosAcopioPage = () => {
                   <Button variant="outlined" onClick={handleEditAcopio}>Editar Acopio</Button>
                 </Stack>
 
-                <Typography variant="h6" gutterBottom>Resumen del Acopio</Typography>
-                <Grid container spacing={2}>
-                  <Grid item xs={12} sm={6} md={4}>
-                    <Typography variant="subtitle2">Código</Typography>
-                    <Typography>{acopio.codigo || '—'}</Typography>
-                  </Grid>
-                  <Grid item xs={12} sm={6} md={4}>
-                    <Typography variant="subtitle2">Proveedor</Typography>
-                    <Typography>{acopio.proveedor || '—'}</Typography>
-                  </Grid>
-                  <Grid item xs={12} sm={6} md={4}>
-                    <Typography variant="subtitle2">Proyecto</Typography>
-                    <Typography>{acopio.proyecto_nombre || '—'}</Typography>
-                  </Grid>
-                  <Grid item xs={12} sm={6} md={4}>
-                    <Typography variant="subtitle2">Tipo</Typography>
-                    <Typography>{(acopio.tipo || 'materiales').replace('_', ' ')}</Typography>
-                  </Grid>
+                {/* Descripción destacada (si existe) */}
+                {acopio.descripcion && (
+                  <Box sx={{ mb: 3, p: 2, bgcolor: 'grey.50', borderRadius: 1, borderLeft: '4px solid', borderColor: 'primary.main' }}>
+                    <Typography variant="body1" color="text.secondary">
+                      {acopio.descripcion}
+                    </Typography>
+                  </Box>
+                )}
 
-                  {/* KPIs */}
-                  <Grid item xs={12} sm={4}>
-                    <Typography variant="subtitle2">Valor Total Acopiado</Typography>
-                    <Typography>{formatCurrency(acopio?.valor_acopio)}</Typography>
+                {/* Datos del Acopio */}
+                <Typography variant="h6" gutterBottom>Información General</Typography>
+                <Grid container spacing={2} sx={{ mb: 3 }}>
+                  <Grid item xs={6} sm={3}>
+                    <Typography variant="caption" color="text.secondary">Código</Typography>
+                    <Typography variant="body1" fontWeight="medium">{acopio.codigo || '—'}</Typography>
                   </Grid>
-                  <Grid item xs={12} sm={4}>
-                    <Typography variant="subtitle2">Valor Total Desacopiado</Typography>
-                    <Typography>{formatCurrency(acopio?.valor_desacopio)}</Typography>
+                  <Grid item xs={6} sm={3}>
+                    <Typography variant="caption" color="text.secondary">Proveedor</Typography>
+                    <Typography variant="body1" fontWeight="medium">{acopio.proveedor || '—'}</Typography>
                   </Grid>
-                  <Grid item xs={12} sm={4}>
-                    <Typography variant="subtitle2">Disponible {porcentajeDisponible.toFixed(2)}%</Typography>
-                    <LinearProgress variant="determinate" value={porcentajeDisponible} />
+                  <Grid item xs={6} sm={3}>
+                    <Typography variant="caption" color="text.secondary">Proyecto</Typography>
+                    <Typography variant="body1" fontWeight="medium">{acopio.proyecto_nombre || '—'}</Typography>
+                  </Grid>
+                  <Grid item xs={6} sm={3}>
+                    <Typography variant="caption" color="text.secondary">Tipo</Typography>
+                    <Typography variant="body1" fontWeight="medium" sx={{ textTransform: 'capitalize' }}>
+                      {(acopio.tipo || 'materiales').replace('_', ' ')}
+                    </Typography>
                   </Grid>
                 </Grid>
+
+                {/* KPIs en cards */}
+                <Typography variant="h6" gutterBottom>Resumen Financiero</Typography>
+                <Grid container spacing={2}>
+                  <Grid item xs={12} sm={4}>
+                    <Box sx={{ p: 2, bgcolor: 'success.lighter', borderRadius: 1, textAlign: 'center' }}>
+                      <Typography variant="caption" color="text.secondary">Valor Acopiado</Typography>
+                      <Typography variant="h5" color="success.main" fontWeight="bold">
+                        {formatCurrency(acopio?.valor_acopio)}
+                      </Typography>
+                    </Box>
+                  </Grid>
+                  <Grid item xs={12} sm={4}>
+                    <Box sx={{ p: 2, bgcolor: 'error.lighter', borderRadius: 1, textAlign: 'center' }}>
+                      <Typography variant="caption" color="text.secondary">Valor Desacopiado</Typography>
+                      <Typography variant="h5" color="error.main" fontWeight="bold">
+                        {formatCurrency(acopio?.valor_desacopio)}
+                      </Typography>
+                    </Box>
+                  </Grid>
+                  <Grid item xs={12} sm={4}>
+                    <Box sx={{ p: 2, bgcolor: porcentajeDisponible < 20 ? 'warning.lighter' : 'info.lighter', borderRadius: 1, textAlign: 'center' }}>
+                      <Typography variant="caption" color="text.secondary">Disponible</Typography>
+                      <Typography variant="h5" color={porcentajeDisponible < 20 ? 'warning.main' : 'info.main'} fontWeight="bold">
+                        {porcentajeDisponible.toFixed(1)}%
+                      </Typography>
+                      <LinearProgress 
+                        variant="determinate" 
+                        value={Math.max(0, Math.min(100, porcentajeDisponible))} 
+                        sx={{ mt: 1, height: 6, borderRadius: 3 }}
+                        color={porcentajeDisponible < 20 ? 'warning' : 'info'}
+                      />
+                    </Box>
+                  </Grid>
+                </Grid>
+
+                {/* Historial de eventos */}
+                <>
+                  <Divider sx={{ my: 3 }} />
+                  <Typography variant="h6" gutterBottom>
+                    <AccessTimeIcon sx={{ mr: 1, verticalAlign: 'middle', fontSize: 20 }} />
+                    Actividad Reciente
+                  </Typography>
+                  
+                  {/* Input para agregar comentario */}
+                  <Stack direction="row" spacing={1} sx={{ mb: 2 }}>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      placeholder="Agregar una nota o comentario..."
+                      value={nuevoComentario}
+                      onChange={(e) => setNuevoComentario(e.target.value)}
+                      onKeyPress={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault();
+                          handleEnviarComentario();
+                        }
+                      }}
+                      disabled={enviandoComentario}
+                      InputProps={{
+                        startAdornment: <CommentIcon sx={{ mr: 1, color: 'text.secondary', fontSize: 18 }} />
+                      }}
+                    />
+                    <IconButton 
+                      color="primary" 
+                      onClick={handleEnviarComentario}
+                      disabled={!nuevoComentario.trim() || enviandoComentario}
+                    >
+                      {enviandoComentario ? <CircularProgress size={20} /> : <SendIcon />}
+                    </IconButton>
+                  </Stack>
+
+                  {eventos.length > 0 ? (
+                    <List dense sx={{ bgcolor: '#fafafa', borderRadius: 1 }}>
+                      {[...eventos].sort((a, b) => new Date(b.fecha) - new Date(a.fecha)).slice(0, 5).map((evento, idx) => (
+                        <ListItem key={idx} sx={{ py: 0.5 }}>
+                          <ListItemIcon sx={{ minWidth: 36 }}>
+                            {evento.tipo === 'creacion' && <Chip size="small" label="Creado" color="success" sx={{ fontSize: 10 }} />}
+                            {evento.tipo === 'edicion' && <Chip size="small" label="Editado" color="info" sx={{ fontSize: 10 }} />}
+                            {evento.tipo === 'remito_creado' && <Chip size="small" label="Remito+" color="primary" sx={{ fontSize: 10 }} />}
+                            {evento.tipo === 'remito_editado' && <Chip size="small" label="Remito" color="warning" sx={{ fontSize: 10 }} />}
+                            {evento.tipo === 'remito_eliminado' && <Chip size="small" label="Remito-" color="error" sx={{ fontSize: 10 }} />}
+                            {evento.tipo === 'estado_cambio' && <Chip size="small" label="Estado" color="default" sx={{ fontSize: 10 }} />}
+                            {evento.tipo === 'comentario' && <Chip size="small" label="Nota" color="secondary" sx={{ fontSize: 10 }} />}
+                          </ListItemIcon>
+                          <ListItemText
+                            primary={evento.texto}
+                            secondary={`${evento.usuario ? evento.usuario + ' · ' : ''}${evento.fecha ? new Date(evento.fecha).toLocaleString('es-AR', {
+                              day: '2-digit',
+                              month: '2-digit',
+                              year: '2-digit',
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            }) : ''}`}
+                            primaryTypographyProps={{ variant: 'body2' }}
+                            secondaryTypographyProps={{ variant: 'caption' }}
+                          />
+                        </ListItem>
+                      ))}
+                    </List>
+                  ) : (
+                    <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                      No hay actividad registrada aún.
+                    </Typography>
+                  )}
+                  {eventos.length > 5 && (
+                    <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                      ... y {eventos.length - 5} eventos más
+                    </Typography>
+                  )}
+                </>
               </Paper>
             )}
           </Box>

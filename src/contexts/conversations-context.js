@@ -113,6 +113,7 @@ const getFiltersFromQuery = (query) => {
   const creadaDesde = getStringParam(query.creadaDesde);
   const creadaHasta = getStringParam(query.creadaHasta);
   const empresaId = getStringParam(query.empresaId);
+  const estadoCliente = getStringParam(query.estadoCliente);
   const tipoContacto = getStringParam(query.tipoContacto);
   const showInsight = query.showInsight === 'true';
   const insightCategory = getStringParam(query.insightCategory);
@@ -122,6 +123,7 @@ const getFiltersFromQuery = (query) => {
   if (creadaDesde) filters.creadaDesde = creadaDesde;
   if (creadaHasta) filters.creadaHasta = creadaHasta;
   if (empresaId) filters.empresaId = empresaId;
+  if (estadoCliente) filters.estadoCliente = estadoCliente;
   if (tipoContacto) filters.tipoContacto = tipoContacto;
   if (showInsight) filters.showInsight = true;
   if (insightCategory) filters.insightCategory = insightCategory;
@@ -146,7 +148,7 @@ export function ConversationsProvider({ children }) {
 
   const filters = useMemo(() => {
     return normalizeFilterDates(getFiltersFromQuery(router.query));
-  }, [router.query.fechaDesde, router.query.fechaHasta, router.query.creadaDesde, router.query.creadaHasta, router.query.empresaId, router.query.tipoContacto, router.query.showInsight, router.query.insightCategory, router.query.insightTypes]);
+  }, [router.query.fechaDesde, router.query.fechaHasta, router.query.creadaDesde, router.query.creadaHasta, router.query.empresaId, router.query.estadoCliente, router.query.tipoContacto, router.query.showInsight, router.query.insightCategory, router.query.insightTypes]);
 
   // Callbacks para los hooks
   const handleConversationsLoaded = useCallback((data) => {

@@ -82,6 +82,7 @@ const AcopiosPage = () => {
     const data = acopios.map(a => ({
       Fecha: new Date(a.fecha).toLocaleDateString(),
       Código: a.codigo,
+      Descripción: a.descripcion || '',
       Proveedor: a.proveedor,
       Proyecto: a.proyecto_nombre,
       Total: a.totalValor || 0
@@ -147,7 +148,8 @@ const AcopiosPage = () => {
   const acopiosFiltrados = acopios.filter(a =>
     a.codigo?.toLowerCase().includes(filtroTexto.toLowerCase()) ||
     a.proveedor?.toLowerCase().includes(filtroTexto.toLowerCase()) ||
-    a.proyecto_nombre?.toLowerCase().includes(filtroTexto.toLowerCase())
+    a.proyecto_nombre?.toLowerCase().includes(filtroTexto.toLowerCase()) ||
+    a.descripcion?.toLowerCase().includes(filtroTexto.toLowerCase())
   );
 
   if (loading) {
@@ -175,7 +177,7 @@ const AcopiosPage = () => {
         </Stack>
 
         <TextField
-          placeholder="Buscar por código, proveedor o proyecto"
+          placeholder="Buscar por código, proveedor, proyecto o descripción"
           value={filtroTexto}
           onChange={(e) => setFiltroTexto(e.target.value)}
           fullWidth
@@ -206,7 +208,16 @@ const AcopiosPage = () => {
             {acopiosFiltrados.map((acopio) => (
               <TableRow key={acopio.id}>
                 <TableCell>{new Date(acopio.fecha).toLocaleDateString()}</TableCell>
-                <TableCell>{acopio.codigo}</TableCell>
+                <TableCell>
+                  <Box>
+                    <Typography variant="body2" fontWeight="medium">{acopio.codigo}</Typography>
+                    {acopio.descripcion && (
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                        {acopio.descripcion}
+                      </Typography>
+                    )}
+                  </Box>
+                </TableCell>
                 <TableCell>{acopio.proveedor}</TableCell>
                 <TableCell>{acopio.proyecto_nombre}</TableCell>
                 <TableCell>

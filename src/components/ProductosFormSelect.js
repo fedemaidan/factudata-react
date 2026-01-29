@@ -8,7 +8,8 @@ import {
   TableCell,
   TableHead,
   TableRow,
-  Tooltip
+  Tooltip,
+  Box
 } from '@mui/material';
 import { Add, Delete } from '@mui/icons-material';
 import { Autocomplete } from '@mui/material';
@@ -92,16 +93,15 @@ const ProductosFormSelect = ({
 
   return (
     <>
-      <Button startIcon={<Add />} onClick={agregarProducto} sx={{ mb: 2 }}>
-        Agregar material
-      </Button>
-
-      <Table>
+      <Box sx={{ overflowX: 'auto' }}>
+      <Table size="small" sx={{ minWidth: 650 }}>
         <TableHead>
           <TableRow>
-            <TableCell>Material</TableCell>
-            <TableCell width="120">Cantidad</TableCell>
-            <TableCell width="160">Valor Unitario</TableCell>
+            <TableCell width="140">Código</TableCell>
+            <TableCell>Descripción</TableCell>
+            <TableCell width="100">Cantidad</TableCell>
+            <TableCell width="130">V. Unitario</TableCell>
+            <TableCell width="100">Total</TableCell>
             <TableCell width="56" />
           </TableRow>
         </TableHead>
@@ -110,15 +110,45 @@ const ProductosFormSelect = ({
             <TableRow key={index}>
               <TableCell>
                 <Autocomplete
-                  value={opcionesMateriales.find(opt => opt.codigo === prod.codigo) || null}
+                  freeSolo
+                  value={prod.codigo || ''}
                   onChange={(_, newValue) => {
-                    if (newValue) actualizarProducto(index, 'codigo', newValue.codigo);
+                    if (typeof newValue === 'string') {
+                      // Texto libre
+                      actualizarProducto(index, 'codigo', newValue);
+                    } else if (newValue && newValue.codigo) {
+                      // Selección de opción
+                      actualizarProducto(index, 'codigo', newValue.codigo);
+                    }
+                  }}
+                  onInputChange={(_, newInputValue, reason) => {
+                    if (reason === 'input') {
+                      actualizarProducto(index, 'codigo', newInputValue);
+                    }
                   }}
                   options={opcionesMateriales}
-                  getOptionLabel={(option) => `${option.codigo} - ${option.descripcion}`}
-                  renderInput={(params) => <TextField {...params} label="Material" fullWidth />}
+                  getOptionLabel={(option) => {
+                    if (typeof option === 'string') return option;
+                    return option.codigo || '';
+                  }}
+                  renderOption={(props, option) => (
+                    <li {...props} key={option.codigo}>
+                      <strong>{option.codigo}</strong>&nbsp;- {option.descripcion}
+                    </li>
+                  )}
+                  renderInput={(params) => <TextField {...params} placeholder="Código" size="small" />}
                   fullWidth
-                  isOptionEqualToValue={(option, value) => option.codigo === value.codigo}
+                  size="small"
+                />
+              </TableCell>
+
+              <TableCell>
+                <TextField
+                  value={prod.descripcion || ''}
+                  onChange={(e) => actualizarProducto(index, 'descripcion', e.target.value)}
+                  placeholder="Descripción del material"
+                  fullWidth
+                  size="small"
                 />
               </TableCell>
 
@@ -129,6 +159,7 @@ const ProductosFormSelect = ({
                   onChange={(e) => actualizarProducto(index, 'cantidad', e.target.value)}
                   inputProps={{ min: 0, step: 'any' }}
                   fullWidth
+                  size="small"
                 />
               </TableCell>
 
@@ -137,12 +168,23 @@ const ProductosFormSelect = ({
                   title={`Total línea: ${formatCurrency(safeNumber(prod.valorUnitario) * safeNumber(prod.cantidad))}`}
                   arrow
                 >
-                  <span>{formatCurrency(safeNumber(prod.valorUnitario))}</span>
+                  <TextField
+                    type="number"
+                    value={prod.valorUnitario ?? 0}
+                    onChange={(e) => actualizarProducto(index, 'valorUnitario', e.target.value)}
+                    inputProps={{ min: 0, step: 'any' }}
+                    fullWidth
+                    size="small"
+                  />
                 </Tooltip>
               </TableCell>
 
               <TableCell align="right">
-                <IconButton onClick={() => eliminarProducto(index)} size="small">
+                <strong>{formatCurrency(safeNumber(prod.valorUnitario) * safeNumber(prod.cantidad))}</strong>
+              </TableCell>
+
+              <TableCell align="right">
+                <IconButton onClick={() => eliminarProducto(index)} size="small" color="error">
                   <Delete />
                 </IconButton>
               </TableCell>
@@ -150,6 +192,7 @@ const ProductosFormSelect = ({
           ))}
         </TableBody>
       </Table>
+      </Box>
     </>
   );
 };

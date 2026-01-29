@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import { Box, Typography, TextField, Stack, InputAdornment } from '@mui/material';
 import TagIcon from '@mui/icons-material/Tag';
 import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
+import DescriptionIcon from '@mui/icons-material/Description';
 import { formatCurrency } from 'src/utils/formatters';
 
 export default function StepIdentificacion({ 
@@ -9,6 +10,8 @@ export default function StepIdentificacion({
   setCodigo, 
   valorTotal, 
   setValorTotal, 
+  descripcion,
+  setDescripcion,
   tipoLista,
   proveedor,
   onNext 
@@ -46,6 +49,22 @@ export default function StepIdentificacion({
             startAdornment: (
               <InputAdornment position="start">
                 <TagIcon color="action" />
+              </InputAdornment>
+            ),
+          }}
+        />
+
+        <TextField
+          label="Descripción (opcional)"
+          value={descripcion || ''}
+          onChange={(e) => setDescripcion(e.target.value)}
+          fullWidth
+          placeholder="Ej: Materiales para obra X, Lista general de ferretería"
+          helperText="Esta descripción se mostrará en el listado de acopios"
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <DescriptionIcon color="action" />
               </InputAdornment>
             ),
           }}

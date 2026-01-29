@@ -8,6 +8,7 @@ function buildFilterParams(filters = {}) {
   if (filters?.creadaDesde) params.creadaDesde = filters.creadaDesde;
   if (filters?.creadaHasta) params.creadaHasta = filters.creadaHasta;
   if (filters?.empresaId) params.empresaId = filters.empresaId;
+  if (filters?.estadoCliente && filters.estadoCliente !== "todos") params.estadoCliente = filters.estadoCliente;
   if (filters?.tipoContacto && filters.tipoContacto !== "todos") params.tipoContacto = filters.tipoContacto;
   if (filters?.showInsight) params.showInsight = filters.showInsight;
   if (filters?.insightCategory && filters.insightCategory !== 'todos') params.insightCategory = filters.insightCategory;
@@ -97,5 +98,15 @@ export async function addNoteToMessage({ messageId, content, userEmail }) {
     content,
     userEmail
   });
+  return response.data;
+}
+
+/**
+ * Actualiza el estado de cliente en todas las conversaciones de una empresa
+ * @param {string} empresaId - ID de la empresa
+ * @param {object} data - Datos a actualizar (esCliente, estaDadoDeBaja, etc)
+ */
+export async function updateConversacionesEmpresa(empresaId, data) {
+  const response = await api.patch(`/conversaciones/empresa/${empresaId}`, data);
   return response.data;
 }
