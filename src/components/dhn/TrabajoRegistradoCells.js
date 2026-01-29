@@ -1,8 +1,8 @@
 import React from 'react';
 import { Box, Chip, Typography } from '@mui/material';
-import TableViewIcon from '@mui/icons-material/TableView';
-import AssignmentIcon from '@mui/icons-material/Assignment';
-import SickIcon from '@mui/icons-material/Sick';
+import AccessTimeRoundedIcon from '@mui/icons-material/AccessTimeRounded';
+import DescriptionRoundedIcon from '@mui/icons-material/DescriptionRounded';
+import MedicalInformationRoundedIcon from '@mui/icons-material/MedicalInformationRounded';
 
 export const TrabajadorCell = ({ item }) => {
   if (!item.trabajadorId) {
@@ -113,6 +113,9 @@ export const PartesCell = ({ item }) => {
     { key: 'horasAltura', label: 'Altura', color: 'warning' },
     { key: 'horasHormigon', label: 'Hormigón', color: 'info' },
     { key: 'horasZanjeo', label: 'Zanjeo', color: 'secondary' },
+    { key: 'horasNocturnas', label: 'Nocturnas', color: 'default', sx: { borderColor: '#5c6bc0', color: '#5c6bc0' } },
+    { key: 'horasNocturnas50', label: 'Noct. 50%', color: 'default', sx: { borderColor: '#ab47bc', color: '#ab47bc' } },
+    { key: 'horasNocturnas100', label: 'Noct. 100%', color: 'default', sx: { borderColor: '#ec407a', color: '#ec407a' } },
   ];
   const horasConValor = tiposHoras.filter((tipo) => item[tipo.key] != null && item[tipo.key] > 0);
   if (horasConValor.length === 0) {
@@ -127,7 +130,7 @@ export const PartesCell = ({ item }) => {
           size="small"
           color={tipo.color}
           variant="outlined"
-          sx={{ fontSize: '0.65rem', height: 20, width: 'fit-content', '& .MuiChip-label': { px: 2 } }}
+          sx={{ fontSize: '0.65rem', height: 20, width: 'fit-content', '& .MuiChip-label': { px: 2 }, ...tipo.sx }}
         />
       ))}
     </Box>
@@ -137,28 +140,42 @@ export const PartesCell = ({ item }) => {
 export const ComprobantesCell = ({ item }) => (
   <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
     {item.comprobantes && item.comprobantes.length > 0 ? (
-      item.comprobantes.map((comp) => (
+      item.comprobantes.map((comp, compIndex) => (
         <Chip
-          key={comp.type}
-          label={comp.type}
+          key={`${comp.type}-${comp.url || comp.id || compIndex}`}
+          label={comp.type.charAt(0).toUpperCase() + comp.type.slice(1).toLowerCase()}
           size="small"
           color={
             comp.type === 'horas' ? 'primary' :
             comp.type === 'parte' ? 'success' :
             comp.type === 'licencia' ? 'warning' : 'default'
           }
-          variant="outlined"
+          variant="filled"
           component="a"
           href={comp.url}
           target="_blank"
           rel="noopener noreferrer"
           clickable
           icon={
-            comp.type === 'horas' ? <TableViewIcon fontSize="small" /> :
-            comp.type === 'parte' ? <AssignmentIcon fontSize="small" /> :
-            comp.type === 'licencia' ? <SickIcon fontSize="small" /> : null
+            comp.type === 'horas' ? <AccessTimeRoundedIcon fontSize="small" /> :
+            comp.type === 'parte' ? <DescriptionRoundedIcon fontSize="small" /> :
+            comp.type === 'licencia' ? <MedicalInformationRoundedIcon fontSize="small" /> : null
           }
-          sx={{ cursor: 'pointer', textDecoration: 'none', '&:hover': { backgroundColor: 'action.hover' }, '& .MuiChip-icon': { fontSize: '1rem' } }}
+          sx={{
+            cursor: 'pointer',
+            textDecoration: 'none',
+            fontWeight: 600,
+            boxShadow: 1,
+            transition: 'transform 120ms ease, box-shadow 120ms ease, filter 120ms ease',
+            '&:hover': {
+              boxShadow: 3,
+              transform: 'translateY(-1px)',
+              filter: 'brightness(1.02)',
+            },
+            '&:active': { transform: 'translateY(0)' },
+            '& .MuiChip-icon': { fontSize: '1rem' },
+            '& .MuiChip-label': { px: 1.5 },
+          }}
         />
       ))
     ) : (
@@ -175,8 +192,7 @@ export const buildTrabajoRegistradoColumns = (onEdit, incluirTrabajador = false)
   { key: 'estado', label: 'Estado', sortable: true, render: (item) => <EstadoCell item={item} /> },
   { key: 'licencia', label: 'Licencia', sortable: true, render: (item) => <LicenciaCell item={item} /> },
   { key: 'fecha', label: 'Fecha', sortable: true },
-  { key: 'horasExcel', label: 'Horas Excel', sortable: false, render: (item) => <HorasExcelCell item={item} /> },
-  { key: 'partes', label: 'Partes', sortable: false, render: (item) => <PartesCell item={item} /> },
+  { key: 'horas', label: 'Horas', sortable: false, render: (item) => <PartesCell item={item} /> },
   { key: 'comprobantes', label: 'Comprobantes', sortable: false, render: (item) => <ComprobantesCell item={item} /> },
   ...(onEdit ? [{ 
     key: 'acciones', 
