@@ -240,6 +240,100 @@ const SDRService = {
     obtenerSDRsDisponibles: async (empresaId) => {
         const res = await api.get('/sdr/sdrs', { params: { empresaId } });
         return res.data;
+    },
+
+    // ==================== TEMPLATES WHATSAPP ====================
+
+    /**
+     * Listar templates de WhatsApp por empresa
+     */
+    listarTemplatesWhatsApp: async (empresaId) => {
+        try {
+            const res = await api.get('/sdr/templates/whatsapp', { params: { empresaId } });
+            return res.data;
+        } catch (error) {
+            // Si no existe el endpoint, retornar templates por defecto
+            console.log('Templates endpoint no disponible, usando defaults');
+            return {
+                templates: [
+                    {
+                        _id: 'default-1',
+                        empresaId,
+                        cadencia_step: 1,
+                        label: 'Primer contacto',
+                        body: '¡Hola {{first_name}}! 👋\n\nSoy {{assigned_to}} de Sorby. Vi que podrías estar interesado en optimizar la gestión de tu negocio.\n\n¿Tenés 5 minutos para que te cuente cómo podemos ayudarte?',
+                        active: true
+                    },
+                    {
+                        _id: 'default-2',
+                        empresaId,
+                        cadencia_step: 2,
+                        label: 'Follow-up',
+                        body: '¡Hola {{first_name}}! 👋\n\nTe escribo de nuevo porque no quería que te pierdas la oportunidad de conocer Sorby.\n\n¿Te gustaría agendar una llamada rápida esta semana?',
+                        active: true
+                    },
+                    {
+                        _id: 'default-3',
+                        empresaId,
+                        cadencia_step: 3,
+                        label: 'Último intento',
+                        body: 'Hola {{first_name}},\n\nÚltimo mensaje 😊 No quiero ser insistente, pero realmente creo que Sorby podría ayudarte.\n\nSi en algún momento querés conocer más, acá estoy.\n\n¡Éxitos!',
+                        active: true
+                    }
+                ]
+            };
+        }
+    },
+
+    /**
+     * Crear template de WhatsApp
+     */
+    crearTemplateWhatsApp: async (empresaId, data) => {
+        const res = await api.post('/sdr/templates/whatsapp', { ...data, empresaId });
+        return res.data;
+    },
+
+    /**
+     * Actualizar template de WhatsApp
+     */
+    actualizarTemplateWhatsApp: async (templateId, data) => {
+        const res = await api.put(`/sdr/templates/whatsapp/${templateId}`, data);
+        return res.data;
+    },
+
+    /**
+     * Eliminar template de WhatsApp
+     */
+    eliminarTemplateWhatsApp: async (templateId) => {
+        const res = await api.delete(`/sdr/templates/whatsapp/${templateId}`);
+        return res.data;
+    },
+
+    // ==================== IMPORTACIÓN EXCEL MEJORADA ====================
+
+    /**
+     * Importar contactos desde Excel con validación y deduplicación
+     * @param {Array} contactos - Array de contactos a importar
+     * @param {string} empresaId - ID de la empresa
+     * @param {Object} options - Opciones de importación
+     */
+    importarContactosExcel: async (contactos, empresaId, options = {}) => {
+        const res = await api.post('/sdr/importar/excel', { 
+            contactos, 
+            empresaId,
+            normalizePhone: options.normalizePhone !== false,
+            deduplicateByPhone: options.deduplicateByPhone !== false,
+            upsert: options.upsert || false
+        });
+        return res.data;
+    },
+
+    /**
+     * Validar archivo Excel antes de importar
+     */
+    validarExcel: async (contactos, empresaId) => {
+        const res = await api.post('/sdr/importar/validar', { contactos, empresaId });
+        return res.data;
     }
 };
 

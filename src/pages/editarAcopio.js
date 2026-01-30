@@ -61,6 +61,8 @@ import { toNumber } from 'src/utils/importar/numbers';
 import { fmtMoney } from 'src/utils/importar/money';
 import { applyPriceFormulaToValue } from 'src/utils/importar/priceFormula';
 import { codeFromDescription } from 'src/utils/importar/codeFromDescription';
+import TooltipHelp from 'src/components/TooltipHelp';
+import { TOOLTIP_EDITAR_ACOPIO, TOOLTIP_REVISION_FINAL } from 'src/constant/tooltipTexts';
 
 export default function EditarAcopioPage() {
   const router = useRouter();
@@ -1431,15 +1433,19 @@ const goNext = () => setCurrentIdx((i) => (i + 1) % (urls?.length || 0));
               )}
 
               {/* Botón guardar */}
-              <Button
-                variant="contained"
-                color="primary"
-                disabled={guardando}
-                startIcon={guardando ? <CircularProgress size={20} color="inherit" /> : null}
-                onClick={guardarCambios}
-              >
-                {guardando ? 'Guardando...' : 'Guardar cambios'}
-              </Button>
+              <TooltipHelp {...TOOLTIP_EDITAR_ACOPIO.guardar}>
+                <span>
+                  <Button
+                    variant="contained"
+                    color="primary"
+                    disabled={guardando}
+                    startIcon={guardando ? <CircularProgress size={20} color="inherit" /> : null}
+                    onClick={guardarCambios}
+                  >
+                    {guardando ? 'Guardando...' : 'Guardar cambios'}
+                  </Button>
+                </span>
+              </TooltipHelp>
             </Stack>
           </Box>
         </Stack>

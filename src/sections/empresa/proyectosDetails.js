@@ -26,16 +26,22 @@ import {
   Typography,
   Snackbar,
   Alert,
-  Autocomplete
+  Autocomplete,
+  Checkbox,
+  FormControlLabel,
+  FormGroup
 } from '@mui/material';
 import { useFormik } from 'formik';
 import * as Yup from 'yup';
 import EditIcon from '@mui/icons-material/Edit';
 import SaveIcon from '@mui/icons-material/Save';
 import AddCircleIcon from '@mui/icons-material/AddCircle';
-import { getProyectosByEmpresa, hasPermission, updateProyecto, crearProyecto, subirCSVProyecto, otorgarPermisosDriveProyecto  } from 'src/services/proyectosService';
+import { getProyectosByEmpresa, getProyectosFromUser, hasPermission, updateProyecto, crearProyecto, subirCSVProyecto, otorgarPermisosDriveProyecto  } from 'src/services/proyectosService';
+import { getEmpresaById } from 'src/services/empresaService';
 import { useRouter } from 'next/router';
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
+import PersonAddIcon from '@mui/icons-material/PersonAdd';
+import profileService from 'src/services/profileService';
 
 export const ProyectosDetails = ({ empresa, refreshEmpresa }) => {
   const router = useRouter();
@@ -55,6 +61,7 @@ export const ProyectosDetails = ({ empresa, refreshEmpresa }) => {
   const [sheetsPermissions, setSheetsPermissions] = useState({});
   const [proyectoAEliminar, setProyectoAEliminar] = useState(null);
   const [restableciendoId, setRestableciendoId] = useState(null);
+  const [usuariosEmpresa, setUsuariosEmpresa] = useState([]);
 
   const handleSnackbarClose = () => {
     setSnackbarOpen(false);
@@ -165,7 +172,18 @@ export const ProyectosDetails = ({ empresa, refreshEmpresa }) => {
       setProyectos(proyectosData);
     };
 
+    const fetchUsuarios = async () => {
+      const usuarios = await profileService.getProfileByEmpresa(empresa.id);
+      // Resolver proyectosData para cada usuario (como en usuariosDetails.js)
+      const usuariosConProyectos = await Promise.all(usuarios.map(async (prof) => {
+        prof.proyectosData = await getProyectosFromUser(prof);
+        return prof;
+      }));
+      setUsuariosEmpresa(usuariosConProyectos);
+    };
+
     fetchEmpresaData();
+    fetchUsuarios();
   }, [empresa]);
 
   const formik = useFormik({
@@ -175,7 +193,8 @@ export const ProyectosDetails = ({ empresa, refreshEmpresa }) => {
       proyecto_default_id: '',
       sheetWithClient: '',
       extraSheets: [],
-      subproyectos: []
+      subproyectos: [],
+      usuariosAsignados: []
     },
     enableReinitialize: true,
     validationSchema: Yup.object({
@@ -195,35 +214,165 @@ export const ProyectosDetails = ({ empresa, refreshEmpresa }) => {
       };
 
       try {
+        let proyectoId = editingProyecto?.id;
+        let proyectoCreado = null;
+        
         if (editingProyecto) {
           await updateProyecto(editingProyecto.id, proyectoData);
+          
+          // Sincronizar usuarios: agregar a los seleccionados, quitar a los no seleccionados
+          const usuariosSeleccionados = values.usuariosAsignados || [];
+          
+          console.log('=== DEBUG SINCRONIZACIÓN USUARIOS ===');
+          console.log('proyectoId:', proyectoId);
+          console.log('usuariosSeleccionados:', usuariosSeleccionados);
+          
+          const updatePromises = usuariosEmpresa.map(async (usuario) => {
+            const currentProjects = usuario.proyectosData?.map(p => p?.id).filter(Boolean) || [];
+            const tieneProyecto = currentProjects.includes(proyectoId);
+            const deberíaTener = usuariosSeleccionados.includes(usuario.id);
+            
+            console.log(`Usuario ${usuario.id} (${usuario.firstName}): tiene=${tieneProyecto}, debería=${deberíaTener}`);
+            
+            if (deberíaTener && !tieneProyecto) {
+              // Agregar proyecto al usuario
+              console.log(`  -> AGREGANDO proyecto a ${usuario.firstName}`);
+              return profileService.updateProfile(usuario.id, {
+                proyectos: [...currentProjects, proyectoId]
+              });
+            } else if (!deberíaTener && tieneProyecto) {
+              // Quitar proyecto del usuario
+              console.log(`  -> QUITANDO proyecto de ${usuario.firstName}`);
+              return profileService.updateProfile(usuario.id, {
+                proyectos: currentProjects.filter(id => id !== proyectoId)
+              });
+            }
+            return null;
+          });
+          await Promise.all(updatePromises);
+          
           setSnackbarMessage('Proyecto actualizado con éxito');
+          setSnackbarSeverity('success');
+          setOpenModal(false);
+          resetForm();
+          setEditingProyecto(null);
+          
+          // Refrescar datos
+          const proyectosData = await getProyectosByEmpresa(empresa);
+          setProyectos(proyectosData);
+          const usuarios = await profileService.getProfileByEmpresa(empresa.id);
+          const usuariosConProyectos = await Promise.all(usuarios.map(async (prof) => {
+            prof.proyectosData = await getProyectosFromUser(prof);
+            return prof;
+          }));
+          setUsuariosEmpresa(usuariosConProyectos);
+          
         } else {
+          // Crear proyecto nuevo
+          console.log('=== CREANDO PROYECTO NUEVO ===');
+          console.log('proyectoData:', proyectoData);
+          
           await crearProyecto(proyectoData, empresa.id);
+          console.log('Proyecto creado en backend');
+          
           await refreshEmpresa?.();
-          setSnackbarMessage('Proyecto creado con éxito');
+          console.log('Empresa refrescada');
+          
+          // Obtener empresa FRESCA del servidor (el prop empresa tiene datos viejos)
+          console.log('Obteniendo empresa fresca...');
+          const empresaFresca = await getEmpresaById(empresa.id);
+          console.log('Empresa fresca:', empresaFresca);
+          
+          // Refrescar proyectos y usuarios ANTES de abrir el step 2
+          console.log('Refrescando proyectos...');
+          const proyectosActualizados = await getProyectosByEmpresa(empresaFresca);
+          console.log('Proyectos actualizados:', proyectosActualizados);
+          setProyectos(proyectosActualizados);
+          
+          console.log('Refrescando usuarios...');
+          const usuariosActualizados = await profileService.getProfileByEmpresa(empresa.id);
+          const usuariosConProyectos = await Promise.all(usuariosActualizados.map(async (prof) => {
+            prof.proyectosData = await getProyectosFromUser(prof);
+            return prof;
+          }));
+          setUsuariosEmpresa(usuariosConProyectos);
+          console.log('Usuarios actualizados:', usuariosConProyectos);
+          
+          // Buscar el proyecto recién creado por nombre
+          console.log('Buscando proyecto por nombre:', values.nombre);
+          const proyectoCreado = proyectosActualizados.find(p => p.nombre === values.nombre);
+          console.log('Proyecto encontrado:', proyectoCreado);
+          
+          if (proyectoCreado) {
+            console.log('=== ABRIENDO STEP 2 ===');
+            
+            // Encontrar usuarios que ya tienen este proyecto asignado
+            const usuariosConEsteProyecto = usuariosConProyectos.filter(usuario => {
+              const proyectosUsuario = usuario.proyectosData?.map(p => p?.id).filter(Boolean) || [];
+              return proyectosUsuario.includes(proyectoCreado.id);
+            }).map(u => u.id);
+            console.log('Usuarios con este proyecto:', usuariosConEsteProyecto);
+            
+            // Primero resetear y cerrar
+            resetForm();
+            setOpenModal(false);
+            
+            // Mostrar snackbar
+            setSnackbarMessage('Proyecto creado. Ahora asigná los usuarios.');
+            setSnackbarSeverity('info');
+            setSnackbarOpen(true);
+            setIsLoading(false);
+            
+            // Usar setTimeout para dar tiempo al React de procesar los cambios
+            setTimeout(() => {
+              console.log('Abriendo modal de edición...');
+              setEditingProyecto(proyectoCreado);
+              formik.setValues({
+                ...proyectoCreado,
+                usuariosAsignados: usuariosConEsteProyecto
+              });
+              setOpenModal(true);
+            }, 300);
+            
+            return; // Salir aquí, no ejecutar el código de abajo
+          } else {
+            console.log('No se encontró el proyecto creado');
+            setSnackbarMessage('Proyecto creado con éxito.');
+            setSnackbarSeverity('success');
+            setOpenModal(false);
+            resetForm();
+            setEditingProyecto(null);
+          }
         }
-        setSnackbarSeverity('success');
+        
       } catch (error) {
         console.error('Error al crear/actualizar el proyecto:', error);
         setSnackbarMessage('Error al crear/actualizar el proyecto');
         setSnackbarSeverity('error');
-      } finally {
-        setSnackbarOpen(true);
-        const proyectosData = await getProyectosByEmpresa(empresa);
-        setProyectos(proyectosData);
         setOpenModal(false);
         resetForm();
         setEditingProyecto(null);
-        setIsLoading(false);
       }
+      
+      setSnackbarOpen(true);
+      setIsLoading(false);
     }
   });
  
 
   const iniciarEdicionProyecto = (proyecto) => {
     setEditingProyecto(proyecto);
-    formik.setValues(proyecto);
+    
+    // Encontrar usuarios que ya tienen este proyecto asignado (usando proyectosData)
+    const usuariosConProyecto = usuariosEmpresa.filter(usuario => {
+      const proyectosUsuario = usuario.proyectosData?.map(p => p?.id).filter(Boolean) || [];
+      return proyectosUsuario.includes(proyecto.id);
+    }).map(u => u.id);
+    
+    formik.setValues({
+      ...proyecto,
+      usuariosAsignados: usuariosConProyecto
+    });
     setOpenModal(true);
   };
 
@@ -356,11 +505,11 @@ export const ProyectosDetails = ({ empresa, refreshEmpresa }) => {
                         </a>
                       }
                       secondary={
-                        <>
-                          <Typography variant="body2">
+                        <Box component="span" sx={{ display: 'block' }}>
+                          <Typography component="span" variant="body2" display="block">
                             Caja central: {findProyectoNombreById(proyecto.proyecto_default_id)}
                           </Typography>
-                          <Typography variant="body2">
+                          <Typography component="span" variant="body2" display="block">
                             {proyecto.carpetaRef ? (
                               <a
                                 href={`https://drive.google.com/drive/folders/${proyecto.carpetaRef}`}
@@ -380,7 +529,7 @@ export const ProyectosDetails = ({ empresa, refreshEmpresa }) => {
                             )}
                           </Typography>
 
-                          <Typography variant="body2">
+                          <Typography component="span" variant="body2" display="block">
                             {proyecto.sheetWithClient ? (
                               <a
                                 href={`https://docs.google.com/spreadsheets/d/${proyecto.sheetWithClient}`}
@@ -400,11 +549,11 @@ export const ProyectosDetails = ({ empresa, refreshEmpresa }) => {
                             )}
                           </Typography>
 
-                          <Typography variant="body2">
+                          <Typography component="span" variant="body2" display="block">
                             Estado: {proyecto.activo ? 'Activo' : 'Inactivo'}
                           </Typography>
 
-                          <Typography variant="body2">
+                          <Typography component="span" variant="body2" display="block">
                             Sheets Adicionales:
                             {proyecto.extraSheets && proyecto.extraSheets?.length > 0
                               ? proyecto.extraSheets?.map((sheetId, index) => (
@@ -425,7 +574,7 @@ export const ProyectosDetails = ({ empresa, refreshEmpresa }) => {
                                 ))
                               : ' No asignados'}
                           </Typography>
-                        </>
+                        </Box>
                       }
                     />
                   </Box>
@@ -761,6 +910,89 @@ export const ProyectosDetails = ({ empresa, refreshEmpresa }) => {
     onKeyDown={handleAddExtraSheet}
     sx={{ mt: 1 }}
   />
+
+  {/* Solo mostrar sección de usuarios al EDITAR, no al crear */}
+  {editingProyecto && (
+  <Box sx={{ mt: 3 }}>
+    <Typography variant="subtitle1" gutterBottom>
+      <PersonAddIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
+      Asignar Usuarios al Proyecto
+    </Typography>
+    <Box sx={{ display: 'flex', gap: 1, mb: 1 }}>
+      <Button
+        size="small"
+        variant="outlined"
+        onClick={() => formik.setFieldValue('usuariosAsignados', usuariosEmpresa.map(u => u.id))}
+      >
+        Marcar todos
+      </Button>
+      <Button
+        size="small"
+        variant="outlined"
+        color="secondary"
+        onClick={() => formik.setFieldValue('usuariosAsignados', [])}
+      >
+        Desmarcar todos
+      </Button>
+    </Box>
+    <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block' }}>
+      {formik.values.usuariosAsignados?.length || 0} de {usuariosEmpresa.length} usuarios seleccionados
+    </Typography>
+    <Box 
+      sx={{ 
+        maxHeight: 200, 
+        overflowY: 'auto', 
+        border: '1px solid #ccc', 
+        borderRadius: 1, 
+        p: 1,
+        backgroundColor: '#fafafa'
+      }}
+    >
+      <FormGroup>
+        {usuariosEmpresa.map((usuario) => {
+          const nombre = usuario.firstName || usuario.nombre || '';
+          const apellido = usuario.lastName || usuario.apellido || '';
+          const email = usuario.email || '';
+          const label = `${nombre} ${apellido}`.trim() || email;
+          const isChecked = formik.values.usuariosAsignados?.includes(usuario.id) || false;
+          
+          return (
+            <FormControlLabel
+              key={usuario.id}
+              control={
+                <Checkbox
+                  checked={isChecked}
+                  onChange={(e) => {
+                    const currentSelected = formik.values.usuariosAsignados || [];
+                    if (e.target.checked) {
+                      formik.setFieldValue('usuariosAsignados', [...currentSelected, usuario.id]);
+                    } else {
+                      formik.setFieldValue('usuariosAsignados', currentSelected.filter(id => id !== usuario.id));
+                    }
+                  }}
+                  size="small"
+                />
+              }
+              label={
+                <Box>
+                  <Typography variant="body2">{label}</Typography>
+                  {email && nombre && <Typography variant="caption" color="text.secondary">{email}</Typography>}
+                </Box>
+              }
+              sx={{ 
+                width: '100%', 
+                m: 0, 
+                py: 0.5,
+                '&:hover': { backgroundColor: '#f0f0f0' },
+                borderRadius: 1
+              }}
+            />
+          );
+        })}
+      </FormGroup>
+    </Box>
+  </Box>
+  )}
 </Box>
 
           </DialogContent>
@@ -774,7 +1006,7 @@ export const ProyectosDetails = ({ empresa, refreshEmpresa }) => {
               type="submit"
               sx={{ ml: 2 }}
             >
-              {editingProyecto ? 'Guardar Cambios' : 'Agregar Proyecto'}
+              {editingProyecto ? 'Guardar Cambios' : 'Crear Proyecto'}
             </Button>
           </DialogActions>
         </form>

@@ -32,9 +32,13 @@ import {
     ExpandMore as ExpandMoreIcon,
     ExpandLess as ExpandLessIcon,
     NavigateNext as NavigateNextIcon,
-    Call as CallIcon
+    Call as CallIcon,
+    Add as AddIcon
 } from '@mui/icons-material';
 import SDRService from '../../services/sdrService';
+import ModalSelectorTemplate from './ModalSelectorTemplate';
+import ModalRegistrarAccion from './ModalRegistrarAccion';
+import { getWhatsAppLink, getTelLink } from '../../utils/phoneUtils';
 
 // ==================== CONSTANTES DE COLORES ====================
 
@@ -138,6 +142,7 @@ const DrawerDetalleContactoSDR = ({
     mostrarSnackbar,
     empresaId,
     historialVersion = 0,
+    user = {}, // Usuario actual para templates
 }) => {
     const [historial, setHistorial] = useState([]);
     const [loadingHistorial, setLoadingHistorial] = useState(false);
@@ -148,6 +153,10 @@ const DrawerDetalleContactoSDR = ({
     const [proximoContactoLocal, setProximoContactoLocal] = useState(null);
     const [guardandoProximo, setGuardandoProximo] = useState(false);
     const [modalProximoContacto, setModalProximoContacto] = useState({ open: false, direccion: null });
+    
+    // Modales nuevos
+    const [modalTemplateWhatsApp, setModalTemplateWhatsApp] = useState(false);
+    const [modalRegistrarAccion, setModalRegistrarAccion] = useState(false);
     
     const theme = useTheme();
     const isMobile = useMediaQuery(theme.breakpoints.down('md'));
@@ -205,14 +214,39 @@ const DrawerDetalleContactoSDR = ({
         return tel.replace(/\D/g, '');
     };
 
-    // Abrir WhatsApp
+    // Abrir WhatsApp con selector de templates
     const handleWhatsApp = () => {
+        console.log('handleWhatsApp llamado, abriendo modal...');
+        console.log('Estado actual modalTemplateWhatsApp:', modalTemplateWhatsApp);
+        setModalTemplateWhatsApp(true);
+    };
+    
+    // WhatsApp directo (sin template)
+    const handleWhatsAppDirecto = () => {
         const tel = formatTelefono(contacto?.telefono);
         if (!tel) return;
         const mensaje = encodeURIComponent(
-            `¡Hola ${contacto.nombre}! Soy de Sorby, ¿cómo estás?`
+            `¡Hola ${contacto.nombre?.split(' ')[0] || contacto.nombre}! Soy de Sorby, ¿cómo estás?`
         );
         window.open(`https://wa.me/${tel}?text=${mensaje}`, '_blank');
+    };
+
+    // Callback cuando se usa un template de WhatsApp
+    const handleTemplateUsed = async (template, mensaje) => {
+        // Registrar que se envió WhatsApp
+        try {
+            await SDRService.registrarIntento(contacto._id, {
+                tipo: 'whatsapp_enviado',
+                canal: 'whatsapp',
+                nota: `Template: ${template?.label || 'personalizado'}`,
+                empresaId
+            });
+            await cargarHistorial();
+            onRefresh?.();
+            mostrarSnackbar?.('WhatsApp registrado', 'success');
+        } catch (error) {
+            console.error('Error registrando WhatsApp:', error);
+        }
     };
 
     // Llamar
@@ -220,6 +254,31 @@ const DrawerDetalleContactoSDR = ({
         const tel = formatTelefono(contacto?.telefono);
         if (!tel) return;
         window.open(`tel:${tel}`, '_self');
+    };
+    
+    // Abrir modal de registrar acción
+    const handleAbrirRegistrarAccion = () => {
+        setModalRegistrarAccion(true);
+    };
+    
+    // Callback cuando se registra una acción
+    const handleAccionRegistrada = (resultado) => {
+        if (resultado?.abrirModalReunion) {
+            // El padre debe manejar esto
+            onAccion?.(contacto, 'reunion');
+            return;
+        }
+        
+        cargarHistorial();
+        onRefresh?.();
+    };
+    
+    // Navegar al siguiente contacto
+    const handleNavegarSiguiente = () => {
+        if (puedeSiguiente) {
+            handleNavegar('siguiente');
+        }
+        setModalRegistrarAccion(false);
     };
 
     // Agregar comentario
@@ -370,6 +429,7 @@ const DrawerDetalleContactoSDR = ({
     // ==================== VISTA MOBILE ====================
     if (isMobile) {
         return (
+            <>
             <Drawer
                 anchor="bottom"
                 open={open}
@@ -419,11 +479,11 @@ const DrawerDetalleContactoSDR = ({
                     </Box>
 
                     {/* Contenido scrolleable */}
-                    <Box sx={{ flex: 1, overflow: 'auto', p: 2 }}>
+                    <Box sx={{ flex: 1, overflow: 'auto', p: 2, pb: 20 }}>
                         
                         {/* Card principal de contacto */}
                         <Paper elevation={0} sx={{ p: 2.5, mb: 2, borderRadius: 3 }}>
-                            {/* Botones grandes de acción */}
+                            {/* Botones grandes de acción - LLAMAR y WHATSAPP */}
                             <Stack direction="row" spacing={2} sx={{ mb: 3 }}>
                                 <Button
                                     fullWidth
@@ -540,70 +600,6 @@ const DrawerDetalleContactoSDR = ({
                             />
                         </Paper>
 
-                        {/* Registrar acción - Colapsable */}
-                        <Paper elevation={0} sx={{ mb: 2, borderRadius: 3, overflow: 'hidden' }}>
-                            <Box 
-                                onClick={() => setMostrarAcciones(!mostrarAcciones)}
-                                sx={{ 
-                                    p: 2, 
-                                    display: 'flex', 
-                                    alignItems: 'center', 
-                                    justifyContent: 'space-between',
-                                    cursor: 'pointer',
-                                    '&:active': { bgcolor: 'grey.100' }
-                                }}
-                            >
-                                <Typography variant="subtitle2">Registrar acción</Typography>
-                                {mostrarAcciones ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-                            </Box>
-                            <Collapse in={mostrarAcciones}>
-                                <Box sx={{ px: 2, pb: 2 }}>
-                                    <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                                        <Chip 
-                                            icon={<PhoneIcon />} 
-                                            label="Atendió" 
-                                            color="success" 
-                                            onClick={() => onAccion?.(contacto, 'llamada', true)}
-                                        />
-                                        <Chip 
-                                            icon={<PhoneMissedIcon />} 
-                                            label="No atendió" 
-                                            color="warning"
-                                            onClick={() => onAccion?.(contacto, 'llamada', false)}
-                                        />
-                                        <Chip 
-                                            icon={<WhatsAppIcon />} 
-                                            label="WhatsApp" 
-                                            color="info"
-                                            onClick={() => onAccion?.(contacto, 'whatsapp')}
-                                        />
-                                        <Chip 
-                                            icon={<EventIcon />} 
-                                            label="Reunión" 
-                                            color="primary"
-                                            onClick={() => onAccion?.(contacto, 'reunion')}
-                                        />
-                                        <Chip 
-                                            icon={<PhoneMissedIcon />} 
-                                            label="No responde" 
-                                            variant="outlined"
-                                            onClick={() => onAccion?.(contacto, 'no_responde')}
-                                        />
-                                        <Chip 
-                                            icon={<DoNotDisturbIcon />} 
-                                            label="No califica" 
-                                            color="error"
-                                            variant="outlined"
-                                            onClick={() => {
-                                                const motivo = window.prompt('Motivo por el que no califica:');
-                                                if (motivo) onMarcarNoCalifica?.(contacto, motivo);
-                                            }}
-                                        />
-                                    </Stack>
-                                </Box>
-                            </Collapse>
-                        </Paper>
-
                         {/* Comentario rápido */}
                         <Paper elevation={0} sx={{ p: 2, mb: 2, borderRadius: 3 }}>
                             <Stack direction="row" spacing={1}>
@@ -662,7 +658,7 @@ const DrawerDetalleContactoSDR = ({
                                         </Typography>
                                     ) : (
                                         <Stack spacing={1}>
-                                            {historial.slice(0, 5).map((evento) => {
+                                            {historial.slice(0, 10).map((evento) => {
                                                 const colors = getEventoColor(evento.tipo);
                                                 return (
                                                     <Box
@@ -678,6 +674,11 @@ const DrawerDetalleContactoSDR = ({
                                                         <Typography variant="body2" fontWeight={500}>
                                                             {evento.descripcion}
                                                         </Typography>
+                                                        {evento.nota && (
+                                                            <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic', mt: 0.5 }}>
+                                                                "{evento.nota}"
+                                                            </Typography>
+                                                        )}
                                                         <Typography variant="caption" color="text.secondary">
                                                             {new Date(evento.createdAt).toLocaleString('es-AR', {
                                                                 day: '2-digit',
@@ -689,9 +690,9 @@ const DrawerDetalleContactoSDR = ({
                                                     </Box>
                                                 );
                                             })}
-                                            {historial.length > 5 && (
+                                            {historial.length > 10 && (
                                                 <Typography variant="caption" color="text.secondary" textAlign="center">
-                                                    +{historial.length - 5} eventos más
+                                                    +{historial.length - 10} eventos más
                                                 </Typography>
                                             )}
                                         </Stack>
@@ -701,41 +702,65 @@ const DrawerDetalleContactoSDR = ({
                         </Paper>
                     </Box>
 
-                    {/* Barra inferior fija - Navegación */}
-                    {contactos.length > 1 && (
-                        <Box sx={{ 
-                            p: 2, 
-                            bgcolor: 'white',
-                            borderTop: 1, 
-                            borderColor: 'divider',
-                            pb: 'calc(env(safe-area-inset-bottom) + 16px)'
-                        }}>
-                            <Stack direction="row" spacing={2}>
+                    {/* ========== BARRA STICKY INFERIOR - CTA PRINCIPAL ========== */}
+                    <Box sx={{ 
+                        position: 'fixed',
+                        bottom: 0,
+                        left: 0,
+                        right: 0,
+                        p: 2, 
+                        bgcolor: 'white',
+                        borderTop: 1, 
+                        borderColor: 'divider',
+                        boxShadow: '0 -4px 20px rgba(0,0,0,0.1)',
+                        pb: 'calc(env(safe-area-inset-bottom) + 16px)',
+                        zIndex: 1300
+                    }}>
+                        {/* Botón principal: REGISTRAR ACCIÓN */}
+                        <Button
+                            fullWidth
+                            variant="contained"
+                            size="large"
+                            startIcon={<AddIcon />}
+                            onClick={handleAbrirRegistrarAccion}
+                            sx={{ 
+                                py: 2,
+                                borderRadius: 3,
+                                fontSize: '1.1rem',
+                                fontWeight: 700,
+                                mb: contactos.length > 1 ? 1.5 : 0
+                            }}
+                        >
+                            Registrar Acción
+                        </Button>
+                        
+                        {/* Navegación */}
+                        {contactos.length > 1 && (
+                            <Stack direction="row" spacing={1.5}>
                                 <Button
                                     fullWidth
                                     variant="outlined"
-                                    size="large"
                                     startIcon={<ChevronLeftIcon />}
                                     onClick={() => handleNavegar('anterior')}
                                     disabled={!puedeAnterior}
-                                    sx={{ borderRadius: 2, py: 1.5 }}
+                                    sx={{ borderRadius: 2, py: 1 }}
                                 >
                                     Anterior
                                 </Button>
                                 <Button
                                     fullWidth
-                                    variant="contained"
-                                    size="large"
+                                    variant="outlined"
+                                    color="primary"
                                     endIcon={<NavigateNextIcon />}
                                     onClick={() => handleNavegar('siguiente')}
                                     disabled={!puedeSiguiente}
-                                    sx={{ borderRadius: 2, py: 1.5 }}
+                                    sx={{ borderRadius: 2, py: 1 }}
                                 >
                                     Siguiente
                                 </Button>
                             </Stack>
-                        </Box>
-                    )}
+                        )}
+                    </Box>
                 </Box>
 
                 {/* Modal de confirmación de próximo contacto */}
@@ -785,11 +810,34 @@ const DrawerDetalleContactoSDR = ({
                     </DialogContent>
                 </Dialog>
             </Drawer>
+            
+            {/* Modal Selector de Templates WhatsApp */}
+            <ModalSelectorTemplate
+                open={modalTemplateWhatsApp}
+                onClose={() => setModalTemplateWhatsApp(false)}
+                contacto={contacto}
+                user={user}
+                empresaId={empresaId}
+                onTemplateUsed={handleTemplateUsed}
+            />
+            
+            {/* Modal Registrar Acción */}
+            <ModalRegistrarAccion
+                open={modalRegistrarAccion}
+                onClose={() => setModalRegistrarAccion(false)}
+                contacto={contacto}
+                empresaId={empresaId}
+                onSuccess={handleAccionRegistrada}
+                onNavegarSiguiente={handleNavegarSiguiente}
+                mostrarBotonSiguiente={puedeSiguiente}
+            />
+            </>
         );
     }
 
     // ==================== VISTA DESKTOP ====================
     return (
+        <>
         <Drawer
             anchor="right"
             open={open}
@@ -1227,6 +1275,28 @@ const DrawerDetalleContactoSDR = ({
                 </DialogContent>
             </Dialog>
         </Drawer>
+        
+        {/* Modal Selector de Templates WhatsApp - Desktop */}
+        <ModalSelectorTemplate
+            open={modalTemplateWhatsApp}
+            onClose={() => setModalTemplateWhatsApp(false)}
+            contacto={contacto}
+            user={user}
+            empresaId={empresaId}
+            onTemplateUsed={handleTemplateUsed}
+        />
+        
+        {/* Modal Registrar Acción - Desktop */}
+        <ModalRegistrarAccion
+            open={modalRegistrarAccion}
+            onClose={() => setModalRegistrarAccion(false)}
+            contacto={contacto}
+            empresaId={empresaId}
+            onSuccess={handleAccionRegistrada}
+            onNavegarSiguiente={handleNavegarSiguiente}
+            mostrarBotonSiguiente={puedeSiguiente}
+        />
+        </>
     );
 };
 

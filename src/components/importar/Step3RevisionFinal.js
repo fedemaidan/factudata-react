@@ -32,6 +32,8 @@ import SearchIcon from '@mui/icons-material/Search';
 import DoneAllIcon from '@mui/icons-material/DoneAll';
 import * as XLSX from 'xlsx';
 import PdfViewer from './PdfViewer';
+import TooltipHelp from 'src/components/TooltipHelp';
+import { TOOLTIP_REVISION_FINAL } from 'src/constant/tooltipTexts';
 
 export default function Step3RevisionFinal({
   tipoLista, proveedor, proyecto, valorTotal, rows, columns, codigo,
@@ -216,39 +218,49 @@ export default function Step3RevisionFinal({
         <GridToolbarFilterButton />
       </Stack>
       <Stack direction="row" spacing={1} alignItems="center">
-        <Button
-          size="small"
-          startIcon={<AddIcon />}
-          onClick={() => handleAddItem('end')}
-        >
-          Agregar
-        </Button>
-        <Button
-          size="small"
-          color="error"
-          startIcon={<DeleteIcon />}
-          onClick={onBulkDelete}
-          disabled={!cantidadSeleccionados}
-        >
-          Eliminar ({cantidadSeleccionados})
-        </Button>
+        <TooltipHelp {...TOOLTIP_REVISION_FINAL.agregar}>
+          <Button
+            size="small"
+            startIcon={<AddIcon />}
+            onClick={() => handleAddItem('end')}
+          >
+            Agregar
+          </Button>
+        </TooltipHelp>
+        <TooltipHelp {...TOOLTIP_REVISION_FINAL.eliminar}>
+          <span>
+            <Button
+              size="small"
+              color="error"
+              startIcon={<DeleteIcon />}
+              onClick={onBulkDelete}
+              disabled={!cantidadSeleccionados}
+            >
+              Eliminar ({cantidadSeleccionados})
+            </Button>
+          </span>
+        </TooltipHelp>
         <Divider orientation="vertical" flexItem />
-        <Button
-          size="small"
-          color="secondary"
-          startIcon={<FileDownloadIcon />}
-          onClick={exportarAExcel}
-        >
-          Excel
-        </Button>
-        <Button
-          size="small"
-          color="secondary"
-          startIcon={<FileUploadIcon />}
-          onClick={triggerFileInput}
-        >
-          Importar
-        </Button>
+        <TooltipHelp {...TOOLTIP_REVISION_FINAL.exportarExcel}>
+          <Button
+            size="small"
+            color="secondary"
+            startIcon={<FileDownloadIcon />}
+            onClick={exportarAExcel}
+          >
+            Excel
+          </Button>
+        </TooltipHelp>
+        <TooltipHelp {...TOOLTIP_REVISION_FINAL.importarExcel}>
+          <Button
+            size="small"
+            color="secondary"
+            startIcon={<FileUploadIcon />}
+            onClick={triggerFileInput}
+          >
+            Importar
+          </Button>
+        </TooltipHelp>
       </Stack>
     </GridToolbarContainer>
   );
@@ -1209,51 +1221,59 @@ export default function Step3RevisionFinal({
       <Stack direction="row" spacing={1} alignItems="flex-start">
         {/* Botón para ver documento */}
         {(archivoPreview || imageUrls?.length > 0) && (
-          <Button
-            variant="outlined"
-            size="small"
-            startIcon={<VisibilityIcon />}
-            onClick={() => setModoRevision(true)}
-            sx={{ height: 40, whiteSpace: 'nowrap' }}
-          >
-            Ver documento
-          </Button>
+          <TooltipHelp {...TOOLTIP_REVISION_FINAL.verDocumento}>
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={<VisibilityIcon />}
+              onClick={() => setModoRevision(true)}
+              sx={{ height: 40, whiteSpace: 'nowrap' }}
+            >
+              Ver documento
+            </Button>
+          </TooltipHelp>
         )}
 
         {/* Acciones rápidas - Colapsable */}
         <Accordion defaultExpanded={false} sx={{ flex: 1, '&:before': { display: 'none' } }}>
-          <AccordionSummary 
-            expandIcon={<ExpandMoreIcon />}
-            sx={{ bgcolor: 'grey.50', minHeight: 40, '& .MuiAccordionSummary-content': { my: 0.5 } }}
-          >
-            <Stack direction="row" spacing={1} alignItems="center">
-              <Typography variant="body2" fontWeight={500}>
-                ⚡ Acciones rápidas
-              </Typography>
-              {cantidadSeleccionados > 0 && (
-                <Chip label={`${cantidadSeleccionados} selec.`} size="small" color="primary" />
-              )}
-            </Stack>
-          </AccordionSummary>
+          <TooltipHelp {...TOOLTIP_REVISION_FINAL.accionesRapidas} placement="top">
+            <AccordionSummary 
+              expandIcon={<ExpandMoreIcon />}
+              sx={{ bgcolor: 'grey.50', minHeight: 40, '& .MuiAccordionSummary-content': { my: 0.5 } }}
+            >
+              <Stack direction="row" spacing={1} alignItems="center">
+                <Typography variant="body2" fontWeight={500}>
+                  ⚡ Acciones rápidas
+                </Typography>
+                {cantidadSeleccionados > 0 && (
+                  <Chip label={`${cantidadSeleccionados} selec.`} size="small" color="primary" />
+                )}
+              </Stack>
+            </AccordionSummary>
+          </TooltipHelp>
         <AccordionDetails sx={{ pt: 2 }}>
         
         {/* Fila 1: IVA */}
         <Stack direction="row" spacing={1} mb={2} flexWrap="wrap" useFlexGap>
-          <Button 
-            variant="contained" 
-            size="small" 
-            onClick={() => aplicarIVA(false)}
-            startIcon={<PercentIcon />}
-          >
-            + IVA 21% {textoAplicar}
-          </Button>
-          <Button 
-            variant="outlined" 
-            size="small" 
-            onClick={() => aplicarIVA(true)}
-          >
-            − Quitar IVA {textoAplicar}
-          </Button>
+          <TooltipHelp {...TOOLTIP_REVISION_FINAL.ivaAgregar}>
+            <Button 
+              variant="contained" 
+              size="small" 
+              onClick={() => aplicarIVA(false)}
+              startIcon={<PercentIcon />}
+            >
+              + IVA 21% {textoAplicar}
+            </Button>
+          </TooltipHelp>
+          <TooltipHelp {...TOOLTIP_REVISION_FINAL.ivaQuitar}>
+            <Button 
+              variant="outlined" 
+              size="small" 
+              onClick={() => aplicarIVA(true)}
+            >
+              − Quitar IVA {textoAplicar}
+            </Button>
+          </TooltipHelp>
           <Button 
             variant="outlined" 
             size="small" 
@@ -1274,66 +1294,70 @@ export default function Step3RevisionFinal({
         <Divider sx={{ my: 2 }} />
 
         {/* Fila 2: Porcentaje */}
-        <Stack direction="row" spacing={1} mb={2} alignItems="center" flexWrap="wrap" useFlexGap>
-          <TextField
-            size="small"
-            label="Porcentaje %"
-            type="number"
-            value={porcentaje}
-            onChange={(e) => setPorcentaje(e.target.value)}
-            sx={{ width: 120 }}
-            placeholder="10"
-          />
-          <Button 
-            variant="contained" 
-            size="small" 
-            color="success"
-            onClick={() => aplicarPorcentaje(true)}
-            disabled={!porcentaje}
-          >
-            + Aumentar
-          </Button>
-          <Button 
-            variant="outlined" 
-            size="small" 
-            color="error"
-            onClick={() => aplicarPorcentaje(false)}
-            disabled={!porcentaje}
-          >
-            − Reducir
-          </Button>
-        </Stack>
+        <TooltipHelp {...TOOLTIP_REVISION_FINAL.porcentaje} placement="top">
+          <Stack direction="row" spacing={1} mb={2} alignItems="center" flexWrap="wrap" useFlexGap>
+            <TextField
+              size="small"
+              label="Porcentaje %"
+              type="number"
+              value={porcentaje}
+              onChange={(e) => setPorcentaje(e.target.value)}
+              sx={{ width: 120 }}
+              placeholder="10"
+            />
+            <Button 
+              variant="contained" 
+              size="small" 
+              color="success"
+              onClick={() => aplicarPorcentaje(true)}
+              disabled={!porcentaje}
+            >
+              + Aumentar
+            </Button>
+            <Button 
+              variant="outlined" 
+              size="small" 
+              color="error"
+              onClick={() => aplicarPorcentaje(false)}
+              disabled={!porcentaje}
+            >
+              − Reducir
+            </Button>
+          </Stack>
+        </TooltipHelp>
 
         {/* Fila 3: Monto fijo */}
-        <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
-          <TextField
-            size="small"
-            label="Monto fijo $"
-            type="number"
-            value={montoFijo}
-            onChange={(e) => setMontoFijo(e.target.value)}
-            sx={{ width: 120 }}
-            placeholder="100"
-          />
-          <Button 
-            variant="contained" 
-            size="small" 
-            color="success"
-            onClick={() => aplicarMontoFijo(true)}
-            disabled={!montoFijo}
-          >
-            + Sumar
-          </Button>
-          <Button 
-            variant="outlined" 
-            size="small" 
-            color="error"
-            onClick={() => aplicarMontoFijo(false)}
-            disabled={!montoFijo}
-          >
-            − Restar
-          </Button>
-        </Stack>
+        <TooltipHelp {...TOOLTIP_REVISION_FINAL.montoFijo} placement="top">
+          <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+            <TextField
+              size="small"
+              label="Monto fijo $"
+              type="number"
+              value={montoFijo}
+              onChange={(e) => setMontoFijo(e.target.value)}
+              sx={{ width: 120 }}
+              placeholder="100"
+            />
+            <Button 
+              variant="contained" 
+              size="small" 
+              color="success"
+              onClick={() => aplicarMontoFijo(true)}
+              disabled={!montoFijo}
+            >
+              + Sumar
+            </Button>
+            <Button 
+              variant="outlined" 
+              size="small" 
+              color="error"
+              onClick={() => aplicarMontoFijo(false)}
+              disabled={!montoFijo}
+            >
+              − Restar
+            </Button>
+          </Stack>
+        </TooltipHelp>
 
         <Divider sx={{ my: 2 }} />
 

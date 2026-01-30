@@ -19,17 +19,24 @@ import {
     AccessTime as AccessTimeIcon,
     ChevronRight as ChevronRightIcon,
     Warning as WarningIcon,
-    ArrowUpward as ArrowUpwardIcon
+    ArrowUpward as ArrowUpwardIcon,
+    Add as AddIcon,
+    UploadFile as UploadFileIcon
 } from '@mui/icons-material';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import { useAuthContext } from 'src/contexts/auth-context';
 import SDRService from 'src/services/sdrService';
 import DrawerDetalleContactoSDR, { EstadoChip } from 'src/components/sdr/DrawerDetalleContactoSDR';
+import ModalAgregarContacto from 'src/components/sdr/ModalAgregarContacto';
+import ModalImportarExcel from 'src/components/sdr/ModalImportarExcel';
+import ModalAdminTemplates from 'src/components/sdr/ModalAdminTemplates';
+import SettingsIcon from '@mui/icons-material/Settings';
 
 const ContactosSDRPage = () => {
     const { user } = useAuthContext();
     const empresaId = user?.empresa?.id || 'demo-empresa';
     const sdrId = user?.user_id || user?.id;
+    const sdrNombre = `${user?.firstName || ''} ${user?.lastName || ''}`.trim() || user?.email || 'SDR';
     
     const theme = useTheme();
     const isMobile = useMediaQuery(theme.breakpoints.down('md'));
@@ -41,10 +48,16 @@ const ContactosSDRPage = () => {
     // Filtros
     const [busqueda, setBusqueda] = useState('');
     const [filtroEstado, setFiltroEstado] = useState('');
+    const [filtroTipo, setFiltroTipo] = useState('activos'); // 'activos' | 'vencidos' | 'no_calificados' | 'todos'
     
     // Drawer de contacto
     const [drawerOpen, setDrawerOpen] = useState(false);
     const [contactoSeleccionado, setContactoSeleccionado] = useState(null);
+    
+    // Modales
+    const [modalAgregarContacto, setModalAgregarContacto] = useState(false);
+    const [modalImportarExcel, setModalImportarExcel] = useState(false);
+    const [modalAdminTemplates, setModalAdminTemplates] = useState(false);
     
     // Métricas del SDR
     const [metricas, setMetricas] = useState(null);
@@ -65,7 +78,20 @@ const ContactosSDRPage = () => {
                 empresaId,
                 sdrAsignado: sdrId // Solo contactos del SDR logueado
             };
-            if (filtroEstado) params.estado = filtroEstado;
+            
+            // Filtros de tipo
+            if (filtroTipo === 'no_calificados') {
+                params.estado = 'no_califica';
+            } else if (filtroTipo === 'activos') {
+                // Excluir no_califica por defecto
+                params.excluirEstados = 'no_califica';
+            } else if (filtroTipo === 'vencidos') {
+                params.excluirEstados = 'no_califica';
+                params.soloVencidos = true;
+            }
+            // 'todos' no agrega filtros adicionales
+            
+            if (filtroEstado && filtroTipo !== 'no_calificados') params.estado = filtroEstado;
             if (busqueda) params.busqueda = busqueda;
             
             const data = await SDRService.listarContactos(params);
@@ -76,7 +102,7 @@ const ContactosSDRPage = () => {
         } finally {
             setLoading(false);
         }
-    }, [empresaId, sdrId, filtroEstado, busqueda]);
+    }, [empresaId, sdrId, filtroEstado, filtroTipo, busqueda]);
 
     // Cargar métricas del SDR
     const cargarMetricas = useCallback(async () => {
@@ -163,16 +189,21 @@ const ContactosSDRPage = () => {
     const handleMarcarNoCalifica = async (contacto, motivo) => {
         try {
             await SDRService.marcarNoCalifica(contacto._id, { motivo, empresaId });
-            setSnackbar({ open: true, message: 'Marcado como No califica', severity: 'success' });
+            setSnackbar({ open: true, message: 'Marcado como No califica - Removido de lista principal', severity: 'success' });
             cargarContactos();
         } catch (error) {
             setSnackbar({ open: true, message: 'Error', severity: 'error' });
         }
     };
 
-    // Contar por estado
+    // Contar por estado (para mostrar en filtros)
     const contarPorEstado = (estado) => {
         return contactos.filter(c => c.estado === estado).length;
+    };
+    
+    // Contar vencidos
+    const contarVencidos = () => {
+        return contactos.filter(c => c.proximoContacto && new Date(c.proximoContacto) < new Date()).length;
     };
     
     // Verificar si un contacto tiene próximo contacto vencido
@@ -181,7 +212,7 @@ const ContactosSDRPage = () => {
         return new Date(contacto.proximoContacto) < new Date();
     };
     
-    // Ordenar contactos: vencidos primero, luego por próximo contacto
+    // Ordenar contactos: vencidos primero, luego por próximo contacto (ascendente)
     const contactosOrdenados = [...contactos].sort((a, b) => {
         const aVencido = estaVencido(a);
         const bVencido = estaVencido(b);
@@ -246,8 +277,32 @@ const ContactosSDRPage = () => {
             }}>
                 <Stack direction="row" justifyContent="space-between" alignItems="center">
                     <Typography variant="h6" fontWeight={700}>Mis Contactos</Typography>
-                    <Stack direction="row" spacing={1} alignItems="center">
+                    <Stack direction="row" spacing={0.5} alignItems="center">
                         {loading && <CircularProgress size={20} />}
+                        <IconButton 
+                            onClick={() => setModalAgregarContacto(true)} 
+                            size="small"
+                            color="primary"
+                            title="Agregar contacto"
+                        >
+                            <AddIcon />
+                        </IconButton>
+                        <IconButton 
+                            onClick={() => setModalImportarExcel(true)} 
+                            size="small"
+                            color="primary"
+                            title="Importar Excel"
+                        >
+                            <UploadFileIcon />
+                        </IconButton>
+                        <IconButton 
+                            onClick={() => setModalAdminTemplates(true)} 
+                            size="small"
+                            color="default"
+                            title="Configurar templates WhatsApp"
+                        >
+                            <SettingsIcon />
+                        </IconButton>
                         <IconButton onClick={() => { cargarContactos(); cargarMetricas(); }} size="small">
                             <RefreshIcon />
                         </IconButton>
@@ -255,7 +310,42 @@ const ContactosSDRPage = () => {
                 </Stack>
             </Box>
 
-            {/* Filtros por estado */}
+            {/* Filtros principales: Activos / Vencidos / No Calificados */}
+            <Box sx={{ px: 2, pb: 1 }}>
+                <Stack direction="row" spacing={1}>
+                    <Chip 
+                        label="Activos" 
+                        color={filtroTipo === 'activos' ? 'primary' : 'default'}
+                        size="small"
+                        variant={filtroTipo === 'activos' ? 'filled' : 'outlined'}
+                        onClick={() => setFiltroTipo('activos')}
+                    />
+                    <Chip 
+                        label={`Vencidos (${contarVencidos()})`}
+                        color={filtroTipo === 'vencidos' ? 'error' : 'default'}
+                        size="small"
+                        variant={filtroTipo === 'vencidos' ? 'filled' : 'outlined'}
+                        onClick={() => setFiltroTipo('vencidos')}
+                        icon={<WarningIcon sx={{ fontSize: 14 }} />}
+                    />
+                    <Chip 
+                        label="No calificados" 
+                        color={filtroTipo === 'no_calificados' ? 'error' : 'default'}
+                        size="small"
+                        variant={filtroTipo === 'no_calificados' ? 'filled' : 'outlined'}
+                        onClick={() => setFiltroTipo('no_calificados')}
+                    />
+                    <Chip 
+                        label="Todos" 
+                        size="small"
+                        variant={filtroTipo === 'todos' ? 'filled' : 'outlined'}
+                        onClick={() => setFiltroTipo('todos')}
+                    />
+                </Stack>
+            </Box>
+
+            {/* Filtros por estado (solo si no es "no_calificados") */}
+            {filtroTipo !== 'no_calificados' && (
             <Box sx={{ px: 2, pb: 2, overflowX: 'auto' }}>
                 <Stack direction="row" spacing={1} sx={{ minWidth: 'max-content' }}>
                     <Chip 
@@ -287,13 +377,6 @@ const ContactosSDRPage = () => {
                         onClick={() => setFiltroEstado(filtroEstado === 'calificado' ? '' : 'calificado')}
                     />
                     <Chip 
-                        label={`No Califica: ${contarPorEstado('no_califica')}`} 
-                        color="error" 
-                        size="small"
-                        variant={filtroEstado === 'no_califica' ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroEstado(filtroEstado === 'no_califica' ? '' : 'no_califica')}
-                    />
-                    <Chip 
                         label={`No Responde: ${contarPorEstado('no_responde')}`} 
                         size="small"
                         variant={filtroEstado === 'no_responde' ? 'filled' : 'outlined'}
@@ -301,6 +384,7 @@ const ContactosSDRPage = () => {
                     />
                 </Stack>
             </Box>
+            )}
 
             {/* Búsqueda */}
             <Box sx={{ px: 2, pb: 2 }}>
@@ -458,13 +542,38 @@ const ContactosSDRPage = () => {
                 {/* Header */}
                 <Stack direction="row" justifyContent="space-between" alignItems="center">
                     <Typography variant="h4">Mis Contactos</Typography>
-                    <Button
-                        startIcon={<RefreshIcon />}
-                        onClick={() => { cargarContactos(); cargarMetricas(); }}
-                        disabled={loading}
-                    >
-                        Actualizar
-                    </Button>
+                    <Stack direction="row" spacing={1}>
+                        <Button
+                            startIcon={<AddIcon />}
+                            onClick={() => setModalAgregarContacto(true)}
+                            variant="contained"
+                            color="primary"
+                        >
+                            Agregar
+                        </Button>
+                        <Button
+                            startIcon={<UploadFileIcon />}
+                            onClick={() => setModalImportarExcel(true)}
+                            variant="outlined"
+                        >
+                            Importar Excel
+                        </Button>
+                        <Button
+                            startIcon={<SettingsIcon />}
+                            onClick={() => setModalAdminTemplates(true)}
+                            variant="outlined"
+                            color="inherit"
+                        >
+                            Templates
+                        </Button>
+                        <Button
+                            startIcon={<RefreshIcon />}
+                            onClick={() => { cargarContactos(); cargarMetricas(); }}
+                            disabled={loading}
+                        >
+                            Actualizar
+                        </Button>
+                    </Stack>
                 </Stack>
 
                 {/* Métricas del día (del SDR) */}
@@ -680,9 +789,9 @@ const ContactosSDRPage = () => {
                 open={drawerOpen}
                 onClose={() => setDrawerOpen(false)}
                 contacto={contactoSeleccionado}
-                contactos={contactos}
-                indiceActual={contactos.findIndex(c => c._id === contactoSeleccionado?._id)}
-                onCambiarIndice={(nuevoIndice) => setContactoSeleccionado(contactos[nuevoIndice])}
+                contactos={contactosOrdenados}
+                indiceActual={contactosOrdenados.findIndex(c => c._id === contactoSeleccionado?._id)}
+                onCambiarIndice={(nuevoIndice) => setContactoSeleccionado(contactosOrdenados[nuevoIndice])}
                 onAccion={handleAccion}
                 onAgregarComentario={handleAgregarComentario}
                 onMarcarNoCalifica={handleMarcarNoCalifica}
@@ -690,6 +799,7 @@ const ContactosSDRPage = () => {
                 mostrarSnackbar={(msg, sev) => setSnackbar({ open: true, message: msg, severity: sev || 'success' })}
                 empresaId={empresaId}
                 historialVersion={historialVersion}
+                user={user}
             />
 
             {/* Snackbar */}
@@ -702,6 +812,41 @@ const ContactosSDRPage = () => {
                     {snackbar.message}
                 </Alert>
             </Snackbar>
+
+            {/* Modal Agregar Contacto Manual */}
+            <ModalAgregarContacto
+                open={modalAgregarContacto}
+                onClose={() => setModalAgregarContacto(false)}
+                empresaId={empresaId}
+                sdrId={sdrId}
+                sdrNombre={sdrNombre}
+                onSuccess={() => {
+                    cargarContactos();
+                    cargarMetricas();
+                    setSnackbar({ open: true, message: 'Contacto agregado correctamente', severity: 'success' });
+                }}
+            />
+
+            {/* Modal Importar Excel */}
+            <ModalImportarExcel
+                open={modalImportarExcel}
+                onClose={() => setModalImportarExcel(false)}
+                empresaId={empresaId}
+                sdrId={sdrId}
+                sdrNombre={sdrNombre}
+                onSuccess={(cantidad) => {
+                    cargarContactos();
+                    cargarMetricas();
+                    setSnackbar({ open: true, message: `${cantidad} contactos importados correctamente`, severity: 'success' });
+                }}
+            />
+
+            {/* Modal Admin Templates WhatsApp */}
+            <ModalAdminTemplates
+                open={modalAdminTemplates}
+                onClose={() => setModalAdminTemplates(false)}
+                empresaId={empresaId}
+            />
         </>
     );
 };

@@ -41,6 +41,8 @@ import { getEmpresaById } from 'src/services/empresaService';
 import { CircularProgress } from '@mui/material';
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
+import TooltipHelp from 'src/components/TooltipHelp';
+import { TOOLTIP_ACOPIOS } from 'src/constant/tooltipTexts';
 
 const AcopiosPage = () => {
   const { user } = useAuthContext();
@@ -166,12 +168,18 @@ const AcopiosPage = () => {
         <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={2} mb={2}>
           <Typography variant="h6">Total General de Acopios: {formatCurrency(totalAcopios)}</Typography>
           <Stack direction="row" spacing={2}>
-            <Button variant="outlined" onClick={exportarExcel}>Exportar Excel</Button>
-            <Button variant="contained" startIcon={<RefreshIcon />} onClick={fetchAcopios}>Actualizar</Button>
+            <TooltipHelp {...TOOLTIP_ACOPIOS.exportarExcel}>
+              <Button variant="outlined" onClick={exportarExcel}>Exportar Excel</Button>
+            </TooltipHelp>
+            <TooltipHelp {...TOOLTIP_ACOPIOS.actualizar}>
+              <Button variant="contained" startIcon={<RefreshIcon />} onClick={fetchAcopios}>Actualizar</Button>
+            </TooltipHelp>
             {!isMobile && (
-              <Button variant="contained" startIcon={<AddIcon />} onClick={() => router.push(`/crearAcopio?empresaId=${empresaId}`)}>
-                Crear Acopio
-              </Button>
+              <TooltipHelp {...TOOLTIP_ACOPIOS.crearAcopio}>
+                <Button variant="contained" startIcon={<AddIcon />} onClick={() => router.push(`/crearAcopio?empresaId=${empresaId}`)}>
+                  Crear Acopio
+                </Button>
+              </TooltipHelp>
             )}
           </Stack>
         </Stack>

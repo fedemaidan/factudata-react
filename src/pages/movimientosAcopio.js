@@ -50,6 +50,10 @@ import RemitosTable from 'src/components/remitosTable';
 // Buscador (para lista de precios)
 import ListaPreciosBuscador from 'src/components/listaPreciosBuscador';
 
+// Tooltips de ayuda
+import TooltipHelp from 'src/components/TooltipHelp';
+import { TOOLTIP_MOVIMIENTOS } from 'src/constant/tooltipTexts';
+
 /** ------------------------------
  *  FLAGS DE FUNCIONALIDAD (configurables)
  *  ------------------------------ */
@@ -870,14 +874,18 @@ const MovimientosAcopioPage = () => {
         {tabActiva === 'remitos' && !initialLoading && (
           <Box sx={{ mt: 2 }}>
             <Stack direction="row" justifyContent="flex-end" sx={{ mb: 2 }}>
-              <Button
-                variant="outlined"
-                startIcon={<DownloadIcon />}
-                onClick={exportarInformeRemitos}
-                disabled={loading || remitos.length === 0}
-              >
-                Exportar Informe
-              </Button>
+              <TooltipHelp {...TOOLTIP_MOVIMIENTOS.exportarInforme}>
+                <span>
+                  <Button
+                    variant="outlined"
+                    startIcon={<DownloadIcon />}
+                    onClick={exportarInformeRemitos}
+                    disabled={loading || remitos.length === 0}
+                  >
+                    Exportar Informe
+                  </Button>
+                </span>
+              </TooltipHelp>
             </Stack>
             <RemitosTable
               remitos={remitos}
