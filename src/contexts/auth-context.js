@@ -147,6 +147,43 @@ export const AuthProvider = (props) => {
     initialize();
   }, []);
 
+  // Refresh automático del usuario cada 30 minutos (transparente)
+  useEffect(() => {
+    const REFRESH_INTERVAL = 30 * 60 * 1000; // 30 minutos
+
+    const refreshUserData = async () => {
+      const currentUser = auth.currentUser;
+      if (!currentUser || !state.isAuthenticated) return;
+
+      try {
+        console.log('🔄 [Auth] Refrescando datos de usuario...');
+        const idToken = await currentUser.getIdToken(true);
+        const freshUser = await getPayloadUserByUid(currentUser.uid, idToken);
+
+        dispatch({
+          type: HANDLERS.UPDATE_USER,
+          payload: { user: freshUser, originalUser: state.originalUser || freshUser },
+        });
+        console.log('✅ [Auth] Usuario actualizado correctamente');
+      } catch (error) {
+        console.error('❌ [Auth] Error refrescando usuario:', error);
+
+        // Si el usuario fue eliminado o hay error grave, hacer logout
+        if (error.code === 'sorby/deleted-user' || error.code === 'auth/user-not-found') {
+          console.warn('⚠️ [Auth] Usuario eliminado o no encontrado, cerrando sesión...');
+          firebaseSignOut(auth).then(() => {
+            dispatch({ type: HANDLERS.SIGN_OUT });
+          });
+        }
+      }
+    };
+
+    const intervalId = setInterval(refreshUserData, REFRESH_INTERVAL);
+
+    // Cleanup al desmontar
+    return () => clearInterval(intervalId);
+  }, [state.isAuthenticated, state.originalUser]);
+
   const getPayloadUserByUid = async (uid, idToken) => {
     const userRef = collection(db, 'profile');
     const q = query(userRef, where('user_id', '==', uid));
