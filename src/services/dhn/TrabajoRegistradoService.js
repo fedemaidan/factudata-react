@@ -113,6 +113,14 @@ const TrabajoRegistradoService = {
     const response = await api.post("/dhn/trabajo-diario-registrado/resolver-parte-manual", payload);
     return response.data;
   },
+
+  getByComprobante: async (urlComprobante) => {
+    if (!urlComprobante) return { ok: false, data: [] };
+    const response = await api.get(
+      `/dhn/trabajo-diario-registrado/by-comprobante?urlComprobante=${encodeURIComponent(urlComprobante)}`
+    );
+    return response.data;
+  },
 };
 
 export default TrabajoRegistradoService;

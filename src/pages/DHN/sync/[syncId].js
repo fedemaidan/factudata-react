@@ -9,6 +9,7 @@ import ImagenModal from "src/components/ImagenModal";
 import ResolverTrabajadorModal from "src/components/dhn/ResolverTrabajadorModal";
 import ResolverLicenciaManualForm from "src/components/dhn/ResolverLicenciaManualForm";
 import ResolverParteManualForm from "src/components/dhn/ResolverParteManualForm";
+import TrabajosDetectadosList from "src/components/dhn/TrabajosDetectadosList";
 import {
   AccionesCell,
   ArchivoCell,
@@ -263,6 +264,12 @@ const SyncDetailPage = () => {
       cols.push({
         key: "fechasDetectadas",
         label: "Fecha detectada",
+        sx: {
+          minWidth: 180,
+          maxWidth: 260,
+          whiteSpace: "normal",
+          overflow: "visible",
+        },
         render: (it) => (
           <FechaDetectadaCell
             row={it}
@@ -492,6 +499,11 @@ const SyncDetailPage = () => {
           onClose={closeImageModal}
           imagenUrl={imageUrl}
           fileName={imageFileName}
+          leftContent={
+            isParte && imageUrl ? (
+              <TrabajosDetectadosList urlStorage={imageUrl} />
+            ) : null
+          }
         />
         <ImagenModal
           open={resolverLicenciaModalOpen}

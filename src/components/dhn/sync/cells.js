@@ -1,4 +1,4 @@
-import { Box, Tooltip, IconButton, Button, CircularProgress, TextField, Chip } from "@mui/material";
+import { Box, Stack, Tooltip, IconButton, Button, CircularProgress, TextField, Chip } from "@mui/material";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import ReplayIcon from "@mui/icons-material/Replay";
@@ -277,37 +277,52 @@ export const FechaDetectadaCell = ({
 
   if (isEditing) {
     return (
-      <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+      <Stack direction="row" alignItems="center" spacing={0.5} sx={{ minWidth: 0 }}>
         <TextField
           value={editingValue}
           onChange={(e) => setEditingValue(e.target.value)}
           size="small"
           variant="standard"
-          sx={{ maxWidth: isRange ? 220 : 110 }}
           placeholder={
             isLicencia ? (isRange ? "DD/MM/AAAA - DD/MM/AAAA" : "DD/MM/AAAA") : "DD/MM/AAAA"
           }
-        />
-        <IconButton
-          size="small"
-          onClick={handleSave}
-          disabled={savingId === row?._id}
-          sx={{ p: 0.5 }}
-        >
-          ✓
-        </IconButton>
-        <IconButton
-          size="small"
-          onClick={(e) => {
-            e.stopPropagation();
-            setEditingId(null);
-            setEditingValue("");
+          sx={{
+            flexGrow: 1,
+            minWidth: isRange ? 180 : 140,
+            maxWidth: isRange ? 260 : 200,
+            "& .MuiInputBase-root": {
+              px: 0.5,
+              py: 0.25,
+            },
+            "& .MuiInputBase-input": {
+              px: 0,
+              py: 0.25,
+              textAlign: "left",
+            },
           }}
-          sx={{ p: 0.5 }}
-        >
-          ✕
-        </IconButton>
-      </Box>
+        />
+        <Stack direction="row" spacing={0.25} alignItems="center">
+          <IconButton
+            size="small"
+            onClick={handleSave}
+            disabled={savingId === row?._id}
+            sx={{ p: 0.5 }}
+          >
+            ✓
+          </IconButton>
+          <IconButton
+            size="small"
+            onClick={(e) => {
+              e.stopPropagation();
+              setEditingId(null);
+              setEditingValue("");
+            }}
+            sx={{ p: 0.5 }}
+          >
+            ✕
+          </IconButton>
+        </Stack>
+      </Stack>
     );
   }
 

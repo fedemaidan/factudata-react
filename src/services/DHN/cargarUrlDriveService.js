@@ -133,11 +133,18 @@ const DhnDriveService = {
     }
   },
 
-  getErroredSyncChildren: async ({ limit = DEFAULT_PAGE_LIMIT, offset = 0 } = {}) => {
-    return fetchUrlStoragePage(
-      { status: 'error', limit, offset },
-      { limit, offset }
-    );
+  getErroredSyncChildren: async ({ 
+    limit = DEFAULT_PAGE_LIMIT, 
+    offset = 0,
+    createdAtFrom,
+    createdAtTo,
+    tipo,
+  } = {}) => {
+    const payload = { status: 'error', limit, offset };
+    if (createdAtFrom) payload.createdAtFrom = createdAtFrom;
+    if (createdAtTo) payload.createdAtTo = createdAtTo;
+    if (tipo) payload.tipo = tipo;
+    return fetchUrlStoragePage(payload, { limit, offset });
   },
 
   resyncUrlStorageById: async (urlStorageId, extra = {}) => {

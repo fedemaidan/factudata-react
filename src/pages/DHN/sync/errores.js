@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { useRouter } from "next/router";
-import { Container, Box, Snackbar, Alert, Button, Stack, Typography } from "@mui/material";
+import { Container, Box, Snackbar, Alert, Button, Stack, Typography, TextField, MenuItem } from "@mui/material";
+import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import { Layout as DashboardLayout } from "src/layouts/dashboard/layout";
 import TableComponent from "src/components/TableComponent";
@@ -51,12 +52,20 @@ const SyncErrorsPage = () => {
   const [trabajadorSeleccionado, setTrabajadorSeleccionado] = useState(null);
   const [urlStorageSeleccionado, setUrlStorageSeleccionado] = useState(null);
 
+  // Estados para filtros
+  const [fechaDesde, setFechaDesde] = useState(null);
+  const [fechaHasta, setFechaHasta] = useState(null);
+  const [tipoFiltro, setTipoFiltro] = useState("");
+
   const fetchDetails = useCallback(async () => {
     setIsLoading(true);
     try {
       const page = await DhnDriveService.getErroredSyncChildren({
         limit: paginationLimit,
         offset: paginationOffset,
+        createdAtFrom: fechaDesde ? fechaDesde.toISOString() : undefined,
+        createdAtTo: fechaHasta ? fechaHasta.toISOString() : undefined,
+        tipo: tipoFiltro || undefined,
       });
       setItems(Array.isArray(page?.items) ? page.items : []);
       setPagination((prev) => ({
@@ -76,7 +85,7 @@ const SyncErrorsPage = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [paginationLimit, paginationOffset, setPagination]);
+  }, [paginationLimit, paginationOffset, fechaDesde, fechaHasta, tipoFiltro]);
 
   const openImageModal = (url, fileName) => {
     if (!url) return;
@@ -347,6 +356,46 @@ const SyncErrorsPage = () => {
               {isLoading ? "Actualizando..." : "Actualizar"}
             </Button>
           </Box>
+
+          <Stack direction="row" spacing={2} sx={{ mt: 2, mb: 1, alignItems: "center" }}>
+            <DatePicker
+              label="Desde"
+              value={fechaDesde}
+              onChange={setFechaDesde}
+              slotProps={{ textField: { size: "small" } }}
+            />
+            <DatePicker
+              label="Hasta"
+              value={fechaHasta}
+              onChange={setFechaHasta}
+              slotProps={{ textField: { size: "small" } }}
+            />
+            <TextField
+              select
+              label="Tipo"
+              value={tipoFiltro}
+              onChange={(e) => setTipoFiltro(e.target.value)}
+              size="small"
+              sx={{ minWidth: 150 }}
+            >
+              <MenuItem value="">Todos</MenuItem>
+              <MenuItem value="parte">Parte</MenuItem>
+              <MenuItem value="licencia">Licencia</MenuItem>
+              <MenuItem value="horas">Horas</MenuItem>
+            </TextField>
+            <Button
+              variant="outlined"
+              size="small"
+              onClick={() => {
+                setFechaDesde(null);
+                setFechaHasta(null);
+                setTipoFiltro("");
+              }}
+              disabled={!fechaDesde && !fechaHasta && !tipoFiltro}
+            >
+              Limpiar filtros
+            </Button>
+          </Stack>
 
           <Box>
             <Box
