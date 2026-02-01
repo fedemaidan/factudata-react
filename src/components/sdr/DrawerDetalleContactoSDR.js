@@ -541,7 +541,7 @@ const DrawerDetalleContactoSDR = ({
     const [mostrarHistorial, setMostrarHistorial] = useState(false);
     const [mostrarAcciones, setMostrarAcciones] = useState(false);
 
-    if (!contacto) return null;
+    if (!contacto || !contactoLocal) return null;
 
     // Info de próximo contacto formateada
     const proximoInfo = formatearProximoContacto(proximoContactoLocal || contacto?.proximoContacto);
