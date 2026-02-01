@@ -291,8 +291,8 @@ export const SideNav = (props) => {
         });
      }
 
-      // SDR - Mostrar a admins y a usuarios con permiso VER_SDR
-      if (permisosUsuario.includes("VER_SDR")) {
+      // SDR - Mostrar a usuarios marcados como SDR (sdr: true en su perfil)
+      if (user?.sdr === true) {
         baseItems.push({
           title: "Contactos SDR",
           path: "/contactosSDR",

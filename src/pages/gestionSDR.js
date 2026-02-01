@@ -41,8 +41,6 @@ import FilterListIcon from '@mui/icons-material/FilterList';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import SDRService from 'src/services/sdrService';
 import { useAuthContext } from 'src/contexts/auth-context';
-import { getEmpresaById, updateEmpresaDetails } from 'src/services/empresaService';
-import profileService from 'src/services/profileService';
 import * as XLSX from 'xlsx';
 
 // Componente compartido del Drawer
@@ -1815,33 +1813,22 @@ const GestionSDRPage = () => {
                 const fetchSDRs = async () => {
                     setLoadingSDRs(true);
                     try {
-                        // Obtener la empresa para saber sus acciones
-                        const empresa = await getEmpresaById(empresaId);
-                        const empresaAcciones = empresa?.acciones || [];
+                        // Buscar usuarios de esta empresa con sdr: true
+                        const snapshot = await getDocs(query(
+                            collection(db, 'profile'), 
+                            where('empresaId', '==', empresaId),
+                            where('sdr', '==', true)
+                        ));
                         
-                        // Obtener usuarios de esta empresa
-                        const perfiles = await profileService.getProfileByEmpresa(empresaId);
-                        
-                        // Filtrar usuarios que tengan VER_SDR como permiso visible o sdr: true
-                        const sdrs = perfiles.filter(perfil => {
-                            // Si tiene sdr: true, es SDR (compatibilidad hacia atrás)
-                            if (perfil.sdr === true) return true;
-                            
-                            // Si la empresa tiene VER_SDR y el usuario no lo tiene oculto, es SDR
-                            const permisosOcultos = perfil.permisosOcultos || [];
-                            if (empresaAcciones.includes('VER_SDR') && !permisosOcultos.includes('VER_SDR')) {
-                                return true;
-                            }
-                            
-                            return false;
-                        });
-                        
-                        setSdrsDisponibles(sdrs.map(data => ({
-                            id: data.id,
-                            visibleId: data.user_id || data.id,
-                            nombre: `${data.firstName || ''} ${data.lastName || ''}`.trim() || data.email,
-                            email: data.email
-                        })));
+                        setSdrsDisponibles(snapshot.docs.map(doc => {
+                            const data = doc.data();
+                            return {
+                                id: doc.id,
+                                visibleId: data.user_id || doc.id,
+                                nombre: `${data.firstName || ''} ${data.lastName || ''}`.trim() || data.email,
+                                email: data.email
+                            };
+                        }));
                     } catch (error) {
                         console.error('Error al cargar SDRs:', error);
                     } finally {
@@ -1925,30 +1912,27 @@ const GestionSDRPage = () => {
         const [sdrsActuales, setSdrsActuales] = useState([]);
         const [loadingLista, setLoadingLista] = useState(false);
         
-        // Cargar lista de SDRs actuales
+        // Cargar lista de SDRs actuales (usuarios con sdr: true)
         useEffect(() => {
             if (modalAgregarSDR) {
                 const fetchSDRsActuales = async () => {
                     setLoadingLista(true);
                     try {
-                        const empresa = await getEmpresaById(empresaId);
-                        const empresaAcciones = empresa?.acciones || [];
-                        const perfiles = await profileService.getProfileByEmpresa(empresaId);
+                        // Buscar usuarios de esta empresa con sdr: true
+                        const snapshot = await getDocs(query(
+                            collection(db, 'profile'), 
+                            where('empresaId', '==', empresaId),
+                            where('sdr', '==', true)
+                        ));
                         
-                        const sdrs = perfiles.filter(perfil => {
-                            if (perfil.sdr === true) return true;
-                            const permisosOcultos = perfil.permisosOcultos || [];
-                            if (empresaAcciones.includes('VER_SDR') && !permisosOcultos.includes('VER_SDR')) {
-                                return true;
-                            }
-                            return false;
-                        });
-                        
-                        setSdrsActuales(sdrs.map(data => ({
-                            id: data.id,
-                            nombre: `${data.firstName || ''} ${data.lastName || ''}`.trim() || data.email,
-                            email: data.email
-                        })));
+                        setSdrsActuales(snapshot.docs.map(doc => {
+                            const data = doc.data();
+                            return {
+                                id: doc.id,
+                                nombre: `${data.firstName || ''} ${data.lastName || ''}`.trim() || data.email,
+                                email: data.email
+                            };
+                        }));
                     } catch (error) {
                         console.error('Error al cargar SDRs:', error);
                     } finally {
@@ -1979,33 +1963,16 @@ const GestionSDRPage = () => {
                     return;
                 }
                 
-                // Obtener empresa actual
-                const empresa = await getEmpresaById(empresaId);
-                if (!empresa) {
-                    setResultado({ tipo: 'error', mensaje: 'No se encontró la empresa' });
+                // Verificar si ya es SDR
+                if (userData.sdr === true) {
+                    setResultado({ tipo: 'warning', mensaje: 'Este usuario ya es SDR' });
                     return;
                 }
                 
-                // Agregar VER_SDR a las acciones de la empresa si no existe
-                const accionesEmpresa = empresa.acciones || [];
-                if (!accionesEmpresa.includes('VER_SDR')) {
-                    await updateEmpresaDetails(empresaId, { 
-                        acciones: [...accionesEmpresa, 'VER_SDR'] 
-                    });
-                }
-                
-                // Quitar VER_SDR de los permisosOcultos del usuario (si estaba oculto)
-                const permisosOcultos = userData.permisosOcultos || [];
-                if (permisosOcultos.includes('VER_SDR')) {
-                    await updateDoc(doc(db, 'profile', userDoc.id), { 
-                        permisosOcultos: permisosOcultos.filter(p => p !== 'VER_SDR')
-                    });
-                }
-                
-                // También mantener el campo sdr:true para compatibilidad
+                // Marcar usuario como SDR
                 await updateDoc(doc(db, 'profile', userDoc.id), { sdr: true });
                 
-                setResultado({ tipo: 'success', mensaje: 'SDR agregado correctamente. El usuario ahora tiene acceso a Contactos SDR.' });
+                setResultado({ tipo: 'success', mensaje: 'SDR agregado correctamente' });
                 setEmailSDR('');
                 
                 // Refrescar lista de SDRs
@@ -2025,25 +1992,8 @@ const GestionSDRPage = () => {
         const handleQuitarSDR = async (sdr) => {
             setLoadingAgregar(true);
             try {
-                const snapshot = await getDocs(query(collection(db, 'profile'), where('email', '==', sdr.email)));
-                if (snapshot.empty) {
-                    setResultado({ tipo: 'error', mensaje: 'No se encontró el usuario' });
-                    return;
-                }
-                
-                const userDoc = snapshot.docs[0];
-                const userData = userDoc.data();
-                const permisosOcultos = userData.permisosOcultos || [];
-                
-                // Agregar VER_SDR a permisosOcultos para ocultarle el acceso
-                if (!permisosOcultos.includes('VER_SDR')) {
-                    await updateDoc(doc(db, 'profile', userDoc.id), { 
-                        permisosOcultos: [...permisosOcultos, 'VER_SDR'],
-                        sdr: false
-                    });
-                } else {
-                    await updateDoc(doc(db, 'profile', userDoc.id), { sdr: false });
-                }
+                // Quitar el flag sdr del usuario
+                await updateDoc(doc(db, 'profile', sdr.id), { sdr: false });
                 
                 setResultado({ tipo: 'success', mensaje: `${sdr.nombre} ya no es SDR` });
                 setSdrsActuales(prev => prev.filter(s => s.id !== sdr.id));
