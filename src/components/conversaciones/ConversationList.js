@@ -18,7 +18,9 @@ import {
   TextField,
   Alert,
   Collapse,
-  CircularProgress
+  CircularProgress,
+  Chip,
+  Tooltip
 } from "@mui/material";
 import SearchIcon from "@mui/icons-material/Search";
 import RefreshIcon from "@mui/icons-material/Refresh";
@@ -27,6 +29,23 @@ import { formatFecha } from "src/utils/handleDates";
 import { useConversationsContext } from "src/contexts/conversations-context";
 import { getNombreCliente } from "src/utils/conversacionesUtils";
 import { subDays, format, differenceInDays, parseISO } from "date-fns";
+
+// Colores para los estados de cliente
+const ESTADO_CLIENTE_COLORS = {
+  cliente_activo: { border: '#4caf50', bg: '#e8f5e9', label: 'Activo' },      // Verde
+  dado_de_baja: { border: '#ef5350', bg: '#ffebee', label: 'Baja' },          // Rojo sutil
+  no_cliente: { border: '#2196f3', bg: '#e3f2fd', label: 'Nuevo' },           // Azul
+  sin_empresa: { border: '#ff9800', bg: '#fff3e0', label: 'Sin empresa' },    // Naranja
+};
+
+// Obtiene el estado de cliente de una conversación
+const getEstadoCliente = (conversation) => {
+  const empresa = conversation?.empresa;
+  if (!empresa) return 'sin_empresa';
+  if (!empresa.esCliente) return 'no_cliente';
+  if (empresa.estaDadoDeBaja) return 'dado_de_baja';
+  return 'cliente_activo';
+};
 
 export default function ConversationList({ onSelect, onMessageSelect }) {
   const {
@@ -39,6 +58,7 @@ export default function ConversationList({ onSelect, onMessageSelect }) {
     onRefreshConversations,
     onSelectConversation,
     onMessageSelect: handleMessageSelect,
+    onFiltersChange,
     loading
   } = useConversationsContext();
 
@@ -226,6 +246,30 @@ export default function ConversationList({ onSelect, onMessageSelect }) {
         </Collapse>
         
         <ConversacionesFilter />
+
+        {/* Chips de filtro rápido por estado de cliente */}
+        <Box display="flex" gap={0.5} flexWrap="wrap" mt={0.5}>
+          {[
+            { value: 'todos', label: 'Todos', color: 'default' },
+            { value: 'cliente_activo', label: 'Activos', color: 'success' },
+            { value: 'dado_de_baja', label: 'Bajas', color: 'default' },
+            { value: 'no_cliente', label: 'Nuevos', color: 'info' },
+          ].map((option) => (
+            <Chip
+              key={option.value}
+              label={option.label}
+              size="small"
+              color={filters?.estadoCliente === option.value || (!filters?.estadoCliente && option.value === 'todos') ? option.color : 'default'}
+              variant={filters?.estadoCliente === option.value || (!filters?.estadoCliente && option.value === 'todos') ? 'filled' : 'outlined'}
+              onClick={() => onFiltersChange?.({ ...filters, estadoCliente: option.value, empresaId: '' })}
+              sx={{ 
+                cursor: 'pointer',
+                fontSize: '0.7rem',
+                height: 24,
+              }}
+            />
+          ))}
+        </Box>
       </Box>
 
       <Box flex={1} overflow="auto" position="relative">
@@ -246,20 +290,38 @@ export default function ConversationList({ onSelect, onMessageSelect }) {
             </Box>
         )}
         <List dense sx={{ overflowY: "auto" }}>
-          {conversations.map((c) => (
-            <ListItemButton
+          {conversations.map((c) => {
+            const estadoCliente = getEstadoCliente(c);
+            const estadoConfig = ESTADO_CLIENTE_COLORS[estadoCliente];
+            
+            return (
+            <Tooltip 
               key={c.ultimoMensaje?.id_conversacion}
-              selected={c.ultimoMensaje?.id_conversacion === selectedId}
-              onClick={() => {
-                onSelectConversation(c);
-                onSelect?.(c);
-              }}
+              title={estadoConfig?.label || ''}
+              placement="left"
+              arrow
             >
-              <ListItemAvatar>
-                <Avatar>
-                  {getNombreCliente(c)?.charAt(0).toUpperCase()}
-                </Avatar>
-              </ListItemAvatar>
+              <ListItemButton
+                selected={c.ultimoMensaje?.id_conversacion === selectedId}
+                onClick={() => {
+                  onSelectConversation(c);
+                  onSelect?.(c);
+                }}
+                sx={{
+                  borderLeft: `4px solid ${estadoConfig?.border || 'transparent'}`,
+                  '&:hover': {
+                    bgcolor: estadoConfig?.bg || 'action.hover',
+                  },
+                  '&.Mui-selected': {
+                    borderLeft: `4px solid ${estadoConfig?.border || 'transparent'}`,
+                  }
+                }}
+              >
+                <ListItemAvatar>
+                  <Avatar>
+                    {getNombreCliente(c)?.charAt(0).toUpperCase()}
+                  </Avatar>
+                </ListItemAvatar>
               <ListItemText
                 primary={
                   <Box display="flex" alignItems="center" justifyContent="space-between">
@@ -288,8 +350,10 @@ export default function ConversationList({ onSelect, onMessageSelect }) {
                   </Typography>
                 }
               />
-            </ListItemButton>
-          ))}
+              </ListItemButton>
+            </Tooltip>
+          );
+          })}
           {!hasConversationResults && !hasMessageResults && (
             <Box p={2}>
               <Typography variant="body2" color="text.secondary">
