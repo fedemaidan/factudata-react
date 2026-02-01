@@ -41,6 +41,7 @@ import CompareArrowsIcon from "@mui/icons-material/CompareArrows";
 import BackupIcon from "@mui/icons-material/Backup";
 import ScheduleIcon from "@mui/icons-material/Schedule";
 import AdminPanelSettingsIcon from "@mui/icons-material/AdminPanelSettings";
+import ContactsIcon from "@mui/icons-material/Contacts";
 
 export const SideNav = (props) => {
   const { open, onClose, collapsed = false, onToggleCollapsed, width = 280 } = props;
@@ -289,6 +290,19 @@ export const SideNav = (props) => {
           icon: <SvgIcon fontSize="small"><BackupIcon /></SvgIcon>,
         });
      }
+
+      // SDR - Mostrar a admins y a usuarios con permiso VER_SDR
+      if (permisosUsuario.includes("VER_SDR")) {
+        baseItems.push({
+          title: "Contactos SDR",
+          path: "/contactosSDR",
+          icon: (
+            <SvgIcon fontSize="small">
+              <ContactsIcon />
+            </SvgIcon>
+          ),
+        });
+      }
 
       if (user?.admin) {
         baseItems.push({

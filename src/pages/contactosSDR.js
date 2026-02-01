@@ -1051,7 +1051,6 @@ const ContactosSDRPage = () => {
                                     <TableCell>Teléfono</TableCell>
                                     <TableCell>Estado</TableCell>
                                     <TableCell>Próximo</TableCell>
-                                    <TableCell>Acciones</TableCell>
                                 </TableRow>
                             </TableHead>
                             <TableBody>
@@ -1097,30 +1096,12 @@ const ContactosSDRPage = () => {
                                                     />
                                                 ) : '-'}
                                             </TableCell>
-                                            <TableCell onClick={(e) => e.stopPropagation()}>
-                                                <Stack direction="row" spacing={0.5}>
-                                                    <IconButton 
-                                                        size="small"
-                                                        onClick={(e) => handleLlamarDirecto(e, contacto)}
-                                                        sx={{ color: '#4caf50' }}
-                                                    >
-                                                        <PhoneIcon fontSize="small" />
-                                                    </IconButton>
-                                                    <IconButton 
-                                                        size="small"
-                                                        onClick={(e) => handleWhatsAppDirecto(e, contacto)}
-                                                        sx={{ color: '#25D366' }}
-                                                    >
-                                                        <WhatsAppIcon fontSize="small" />
-                                                    </IconButton>
-                                                </Stack>
-                                            </TableCell>
                                         </TableRow>
                                     );
                                 })}
                                 {contactos.length === 0 && (
                                     <TableRow>
-                                        <TableCell colSpan={6} align="center" sx={{ py: 4 }}>
+                                        <TableCell colSpan={5} align="center" sx={{ py: 4 }}>
                                             <Typography color="text.secondary">
                                                 {filtroEstado 
                                                     ? `No hay contactos con estado "${filtroEstado}"`

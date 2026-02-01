@@ -20,6 +20,8 @@ import ChatIcon from '@mui/icons-material/Chat';
 import PsychologyIcon from '@mui/icons-material/Psychology';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import CurrencyExchangeIcon from '@mui/icons-material/CurrencyExchange';
+import ContactsIcon from '@mui/icons-material/Contacts';
+import SupportAgentIcon from '@mui/icons-material/SupportAgent';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import BotService from 'src/services/botService';
 import ChatGptUsageService from 'src/services/chatGptUsageService';
@@ -136,6 +138,24 @@ const ControlPanelPage = () => {
       icon: BusinessIcon,
       color: 'primary',
       path: '/empresas',
+      metric: null,
+      metricLabel: null
+    },
+    {
+      title: 'Contactos SDR',
+      description: 'Gestión de contactos y prospectos comerciales',
+      icon: ContactsIcon,
+      color: 'info',
+      path: '/contactosSDR',
+      metric: null,
+      metricLabel: null
+    },
+    {
+      title: 'Panel SDR',
+      description: 'Dashboard de seguimiento y métricas SDR',
+      icon: SupportAgentIcon,
+      color: 'success',
+      path: '/gestionSDR',
       metric: null,
       metricLabel: null
     },

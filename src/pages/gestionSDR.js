@@ -41,6 +41,8 @@ import FilterListIcon from '@mui/icons-material/FilterList';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import SDRService from 'src/services/sdrService';
 import { useAuthContext } from 'src/contexts/auth-context';
+import { getEmpresaById, updateEmpresaDetails } from 'src/services/empresaService';
+import profileService from 'src/services/profileService';
 import * as XLSX from 'xlsx';
 
 // Componente compartido del Drawer
@@ -559,7 +561,6 @@ const GestionSDRPage = () => {
                                 <TableCell>Tamaño</TableCell>
                                 <TableCell>Fecha reunión</TableCell>
                                 <TableCell>SDR</TableCell>
-                                <TableCell align="right">Acciones</TableCell>
                             </TableRow>
                         </TableHead>
                         <TableBody>
@@ -574,15 +575,6 @@ const GestionSDRPage = () => {
                                         })}
                                     </TableCell>
                                     <TableCell>{reunion.registradoPorNombre}</TableCell>
-                                    <TableCell align="right">
-                                        <Button 
-                                            size="small" 
-                                            variant="outlined"
-                                            onClick={() => setModalEvaluar({ open: true, reunion })}
-                                        >
-                                            Evaluar
-                                        </Button>
-                                    </TableCell>
                                 </TableRow>
                             ))}
                         </TableBody>
@@ -886,7 +878,6 @@ const GestionSDRPage = () => {
                                             Próximo
                                         </TableSortLabel>
                                     </TableCell>
-                                    <TableCell align="right">Acciones</TableCell>
                                 </TableRow>
                             </TableHead>
                             <TableBody>
@@ -949,13 +940,6 @@ const GestionSDRPage = () => {
                                                     />
                                                 </Tooltip>
                                             ) : '-'}
-                                        </TableCell>
-                                        <TableCell align="right">
-                                            <AccionesRapidas 
-                                                contacto={contacto} 
-                                                onAccion={handleAccion}
-                                                loading={actionLoading}
-                                            />
                                         </TableCell>
                                     </TableRow>
                                 ))}
@@ -1828,22 +1812,45 @@ const GestionSDRPage = () => {
         
         useEffect(() => {
             if (modalAsignar) {
-                setLoadingSDRs(true);
-                getDocs(query(collection(db, 'profile'), where('sdr', '==', true)))
-                    .then(snapshot => {
-                        setSdrsDisponibles(snapshot.docs.map(doc => {
-                            const data = doc.data();
-                            return {
-                                id: doc.id,
-                                visibleId: data.user_id || doc.id,
-                                nombre: `${data.firstName || ''} ${data.lastName || ''}`.trim() || data.email,
-                                email: data.email
-                            };
-                        }));
-                    })
-                    .finally(() => setLoadingSDRs(false));
+                const fetchSDRs = async () => {
+                    setLoadingSDRs(true);
+                    try {
+                        // Obtener la empresa para saber sus acciones
+                        const empresa = await getEmpresaById(empresaId);
+                        const empresaAcciones = empresa?.acciones || [];
+                        
+                        // Obtener usuarios de esta empresa
+                        const perfiles = await profileService.getProfileByEmpresa(empresaId);
+                        
+                        // Filtrar usuarios que tengan VER_SDR como permiso visible o sdr: true
+                        const sdrs = perfiles.filter(perfil => {
+                            // Si tiene sdr: true, es SDR (compatibilidad hacia atrás)
+                            if (perfil.sdr === true) return true;
+                            
+                            // Si la empresa tiene VER_SDR y el usuario no lo tiene oculto, es SDR
+                            const permisosOcultos = perfil.permisosOcultos || [];
+                            if (empresaAcciones.includes('VER_SDR') && !permisosOcultos.includes('VER_SDR')) {
+                                return true;
+                            }
+                            
+                            return false;
+                        });
+                        
+                        setSdrsDisponibles(sdrs.map(data => ({
+                            id: data.id,
+                            visibleId: data.user_id || data.id,
+                            nombre: `${data.firstName || ''} ${data.lastName || ''}`.trim() || data.email,
+                            email: data.email
+                        })));
+                    } catch (error) {
+                        console.error('Error al cargar SDRs:', error);
+                    } finally {
+                        setLoadingSDRs(false);
+                    }
+                };
+                fetchSDRs();
             }
-        }, [modalAsignar]);
+        }, [modalAsignar, empresaId]);
         
         return (
             <Dialog open={modalAsignar} onClose={() => setModalAsignar(false)} maxWidth="xs" fullWidth>
@@ -1915,21 +1922,134 @@ const GestionSDRPage = () => {
         const [emailSDR, setEmailSDR] = useState('');
         const [loadingAgregar, setLoadingAgregar] = useState(false);
         const [resultado, setResultado] = useState(null);
+        const [sdrsActuales, setSdrsActuales] = useState([]);
+        const [loadingLista, setLoadingLista] = useState(false);
+        
+        // Cargar lista de SDRs actuales
+        useEffect(() => {
+            if (modalAgregarSDR) {
+                const fetchSDRsActuales = async () => {
+                    setLoadingLista(true);
+                    try {
+                        const empresa = await getEmpresaById(empresaId);
+                        const empresaAcciones = empresa?.acciones || [];
+                        const perfiles = await profileService.getProfileByEmpresa(empresaId);
+                        
+                        const sdrs = perfiles.filter(perfil => {
+                            if (perfil.sdr === true) return true;
+                            const permisosOcultos = perfil.permisosOcultos || [];
+                            if (empresaAcciones.includes('VER_SDR') && !permisosOcultos.includes('VER_SDR')) {
+                                return true;
+                            }
+                            return false;
+                        });
+                        
+                        setSdrsActuales(sdrs.map(data => ({
+                            id: data.id,
+                            nombre: `${data.firstName || ''} ${data.lastName || ''}`.trim() || data.email,
+                            email: data.email
+                        })));
+                    } catch (error) {
+                        console.error('Error al cargar SDRs:', error);
+                    } finally {
+                        setLoadingLista(false);
+                    }
+                };
+                fetchSDRsActuales();
+            }
+        }, [modalAgregarSDR, empresaId]);
         
         const handleAgregarSDR = async () => {
             if (!emailSDR.trim()) return;
             setLoadingAgregar(true);
             try {
+                // Buscar usuario por email
                 const snapshot = await getDocs(query(collection(db, 'profile'), where('email', '==', emailSDR.trim().toLowerCase())));
                 if (snapshot.empty) {
                     setResultado({ tipo: 'error', mensaje: 'No se encontró el usuario' });
                     return;
                 }
-                await updateDoc(doc(db, 'profile', snapshot.docs[0].id), { sdr: true });
-                setResultado({ tipo: 'success', mensaje: 'SDR agregado correctamente' });
+                
+                const userDoc = snapshot.docs[0];
+                const userData = userDoc.data();
+                
+                // Verificar que el usuario pertenezca a la misma empresa
+                if (userData.empresaId !== empresaId) {
+                    setResultado({ tipo: 'error', mensaje: 'El usuario no pertenece a esta empresa' });
+                    return;
+                }
+                
+                // Obtener empresa actual
+                const empresa = await getEmpresaById(empresaId);
+                if (!empresa) {
+                    setResultado({ tipo: 'error', mensaje: 'No se encontró la empresa' });
+                    return;
+                }
+                
+                // Agregar VER_SDR a las acciones de la empresa si no existe
+                const accionesEmpresa = empresa.acciones || [];
+                if (!accionesEmpresa.includes('VER_SDR')) {
+                    await updateEmpresaDetails(empresaId, { 
+                        acciones: [...accionesEmpresa, 'VER_SDR'] 
+                    });
+                }
+                
+                // Quitar VER_SDR de los permisosOcultos del usuario (si estaba oculto)
+                const permisosOcultos = userData.permisosOcultos || [];
+                if (permisosOcultos.includes('VER_SDR')) {
+                    await updateDoc(doc(db, 'profile', userDoc.id), { 
+                        permisosOcultos: permisosOcultos.filter(p => p !== 'VER_SDR')
+                    });
+                }
+                
+                // También mantener el campo sdr:true para compatibilidad
+                await updateDoc(doc(db, 'profile', userDoc.id), { sdr: true });
+                
+                setResultado({ tipo: 'success', mensaje: 'SDR agregado correctamente. El usuario ahora tiene acceso a Contactos SDR.' });
                 setEmailSDR('');
+                
+                // Refrescar lista de SDRs
+                setSdrsActuales(prev => [...prev, {
+                    id: userDoc.id,
+                    nombre: `${userData.firstName || ''} ${userData.lastName || ''}`.trim() || userData.email,
+                    email: userData.email
+                }]);
             } catch (error) {
+                console.error('Error al agregar SDR:', error);
                 setResultado({ tipo: 'error', mensaje: 'Error al actualizar' });
+            } finally {
+                setLoadingAgregar(false);
+            }
+        };
+        
+        const handleQuitarSDR = async (sdr) => {
+            setLoadingAgregar(true);
+            try {
+                const snapshot = await getDocs(query(collection(db, 'profile'), where('email', '==', sdr.email)));
+                if (snapshot.empty) {
+                    setResultado({ tipo: 'error', mensaje: 'No se encontró el usuario' });
+                    return;
+                }
+                
+                const userDoc = snapshot.docs[0];
+                const userData = userDoc.data();
+                const permisosOcultos = userData.permisosOcultos || [];
+                
+                // Agregar VER_SDR a permisosOcultos para ocultarle el acceso
+                if (!permisosOcultos.includes('VER_SDR')) {
+                    await updateDoc(doc(db, 'profile', userDoc.id), { 
+                        permisosOcultos: [...permisosOcultos, 'VER_SDR'],
+                        sdr: false
+                    });
+                } else {
+                    await updateDoc(doc(db, 'profile', userDoc.id), { sdr: false });
+                }
+                
+                setResultado({ tipo: 'success', mensaje: `${sdr.nombre} ya no es SDR` });
+                setSdrsActuales(prev => prev.filter(s => s.id !== sdr.id));
+            } catch (error) {
+                console.error('Error al quitar SDR:', error);
+                setResultado({ tipo: 'error', mensaje: 'Error al quitar SDR' });
             } finally {
                 setLoadingAgregar(false);
             }
@@ -1939,13 +2059,40 @@ const GestionSDRPage = () => {
             <Dialog open={modalAgregarSDR} onClose={() => { setModalAgregarSDR(false); setResultado(null); }} maxWidth="sm" fullWidth>
                 <DialogTitle>Gestionar SDRs</DialogTitle>
                 <DialogContent>
-                    <TextField label="Email del usuario" value={emailSDR} onChange={(e) => setEmailSDR(e.target.value)} fullWidth type="email" sx={{ mt: 1 }} />
+                    {/* Lista de SDRs actuales */}
+                    <Typography variant="subtitle2" sx={{ mt: 1, mb: 1 }}>SDRs actuales</Typography>
+                    {loadingLista ? (
+                        <CircularProgress size={24} />
+                    ) : sdrsActuales.length === 0 ? (
+                        <Typography variant="body2" color="text.secondary">No hay SDRs configurados</Typography>
+                    ) : (
+                        <Stack spacing={1} sx={{ mb: 2 }}>
+                            {sdrsActuales.map(sdr => (
+                                <Stack key={sdr.id} direction="row" alignItems="center" justifyContent="space-between" 
+                                    sx={{ p: 1, bgcolor: 'grey.50', borderRadius: 1 }}>
+                                    <Box>
+                                        <Typography variant="body2" fontWeight={500}>{sdr.nombre}</Typography>
+                                        <Typography variant="caption" color="text.secondary">{sdr.email}</Typography>
+                                    </Box>
+                                    <IconButton size="small" color="error" onClick={() => handleQuitarSDR(sdr)} disabled={loadingAgregar}>
+                                        <DeleteIcon fontSize="small" />
+                                    </IconButton>
+                                </Stack>
+                            ))}
+                        </Stack>
+                    )}
+                    
+                    <Divider sx={{ my: 2 }} />
+                    
+                    {/* Agregar nuevo SDR */}
+                    <Typography variant="subtitle2" sx={{ mb: 1 }}>Agregar nuevo SDR</Typography>
+                    <TextField label="Email del usuario" value={emailSDR} onChange={(e) => setEmailSDR(e.target.value)} fullWidth type="email" size="small" />
                     {resultado && <Alert severity={resultado.tipo} sx={{ mt: 2 }}>{resultado.mensaje}</Alert>}
                 </DialogContent>
                 <DialogActions>
                     <Button onClick={() => setModalAgregarSDR(false)}>Cerrar</Button>
                     <Button variant="contained" onClick={handleAgregarSDR} disabled={!emailSDR.trim() || loadingAgregar}>
-                        Agregar como SDR
+                        {loadingAgregar ? <CircularProgress size={20} /> : 'Agregar como SDR'}
                     </Button>
                 </DialogActions>
             </Dialog>
