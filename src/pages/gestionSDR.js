@@ -381,8 +381,7 @@ const GestionSDRPage = () => {
             await SDRService.evaluarReunion(modalEvaluar.reunion._id, {
                 estado,
                 motivoRechazo,
-                notasEvaluador,
-                empresaId
+                notasEvaluador
             });
             mostrarSnackbar(`Reunión ${estado === 'aprobada' ? 'aprobada' : 'rechazada'}`);
             setModalEvaluar({ open: false, reunion: null });
@@ -1813,10 +1812,9 @@ const GestionSDRPage = () => {
                 const fetchSDRs = async () => {
                     setLoadingSDRs(true);
                     try {
-                        // Buscar usuarios de esta empresa con sdr: true
+                        // Buscar usuarios con sdr: true
                         const snapshot = await getDocs(query(
                             collection(db, 'profile'), 
-                            where('empresaId', '==', empresaId),
                             where('sdr', '==', true)
                         ));
                         
@@ -1837,7 +1835,7 @@ const GestionSDRPage = () => {
                 };
                 fetchSDRs();
             }
-        }, [modalAsignar, empresaId]);
+        }, [modalAsignar]);
         
         return (
             <Dialog open={modalAsignar} onClose={() => setModalAsignar(false)} maxWidth="xs" fullWidth>
@@ -1918,10 +1916,9 @@ const GestionSDRPage = () => {
                 const fetchSDRsActuales = async () => {
                     setLoadingLista(true);
                     try {
-                        // Buscar usuarios de esta empresa con sdr: true
+                        // Buscar usuarios con sdr: true
                         const snapshot = await getDocs(query(
                             collection(db, 'profile'), 
-                            where('empresaId', '==', empresaId),
                             where('sdr', '==', true)
                         ));
                         
@@ -1941,7 +1938,7 @@ const GestionSDRPage = () => {
                 };
                 fetchSDRsActuales();
             }
-        }, [modalAgregarSDR, empresaId]);
+        }, [modalAgregarSDR]);
         
         const handleAgregarSDR = async () => {
             if (!emailSDR.trim()) return;
@@ -1956,12 +1953,6 @@ const GestionSDRPage = () => {
                 
                 const userDoc = snapshot.docs[0];
                 const userData = userDoc.data();
-                
-                // Verificar que el usuario pertenezca a la misma empresa
-                if (userData.empresaId !== empresaId) {
-                    setResultado({ tipo: 'error', mensaje: 'El usuario no pertenece a esta empresa' });
-                    return;
-                }
                 
                 // Verificar si ya es SDR
                 if (userData.sdr === true) {
