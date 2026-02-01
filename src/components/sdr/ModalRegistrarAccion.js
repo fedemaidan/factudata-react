@@ -103,6 +103,7 @@ const ModalRegistrarAccion = ({
     const [nota, setNota] = useState('');
     const [motivoNoCalifica, setMotivoNoCalifica] = useState('');
     const [proximoContacto, setProximoContacto] = useState(null);
+    const [proximoContactoLabel, setProximoContactoLabel] = useState(null); // Para mostrar selección visual
     const [loading, setLoading] = useState(false);
     const [exito, setExito] = useState(false);
     const [error, setError] = useState(null);
@@ -141,6 +142,7 @@ const ModalRegistrarAccion = ({
             setNota('');
             setMotivoNoCalifica('');
             setProximoContacto(null);
+            setProximoContactoLabel(null);
             setExito(false);
             setError(null);
             setTemplateSeleccionado(null);
@@ -155,6 +157,7 @@ const ModalRegistrarAccion = ({
             const opcion = OPCIONES_PROXIMO.find(o => o.label === tipoSeleccionado.seguimientoDefault);
             if (opcion) {
                 setProximoContacto(calcularFecha(opcion.valor, opcion.unidad));
+                setProximoContactoLabel(opcion.label);
             }
         }
     }, [tipoSeleccionado]);
@@ -624,8 +627,7 @@ const ModalRegistrarAccion = ({
                                     </Stack>
                                     <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
                                         {OPCIONES_PROXIMO.map(opcion => {
-                                            const fecha = calcularFecha(opcion.valor, opcion.unidad);
-                                            const isSelected = proximoContacto?.getTime() === fecha.getTime();
+                                            const isSelected = proximoContactoLabel === opcion.label;
                                             return (
                                                 <Chip
                                                     key={opcion.label}
@@ -633,7 +635,10 @@ const ModalRegistrarAccion = ({
                                                     size="small"
                                                     color={isSelected ? 'primary' : 'default'}
                                                     variant={isSelected ? 'filled' : 'outlined'}
-                                                    onClick={() => setProximoContacto(fecha)}
+                                                    onClick={() => {
+                                                        setProximoContacto(calcularFecha(opcion.valor, opcion.unidad));
+                                                        setProximoContactoLabel(opcion.label);
+                                                    }}
                                                     sx={{ cursor: 'pointer' }}
                                                 />
                                             );
@@ -641,8 +646,11 @@ const ModalRegistrarAccion = ({
                                         <Chip
                                             label="Sin definir"
                                             size="small"
-                                            variant={!proximoContacto ? 'filled' : 'outlined'}
-                                            onClick={() => setProximoContacto(null)}
+                                            variant={!proximoContactoLabel ? 'filled' : 'outlined'}
+                                            onClick={() => {
+                                                setProximoContacto(null);
+                                                setProximoContactoLabel(null);
+                                            }}
                                             sx={{ cursor: 'pointer' }}
                                         />
                                     </Stack>

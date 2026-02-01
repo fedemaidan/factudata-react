@@ -389,6 +389,14 @@ const DrawerDetalleContactoSDR = ({
             return;
         }
         
+        // Actualizar contacto local con el próximo contacto si se definió
+        if (resultado?.proximoContacto) {
+            setContactoLocal(prev => ({
+                ...prev,
+                proximoContacto: resultado.proximoContacto
+            }));
+        }
+        
         cargarHistorial();
         onRefresh?.();
     };
