@@ -35,13 +35,12 @@ const ESTADO_CLIENTE_COLORS = {
   cliente_activo: { border: '#4caf50', bg: '#e8f5e9', label: 'Activo' },      // Verde
   dado_de_baja: { border: '#ef5350', bg: '#ffebee', label: 'Baja' },          // Rojo sutil
   no_cliente: { border: '#2196f3', bg: '#e3f2fd', label: 'Nuevo' },           // Azul
-  sin_empresa: { border: '#ff9800', bg: '#fff3e0', label: 'Sin empresa' },    // Naranja
 };
 
 // Obtiene el estado de cliente de una conversación
 const getEstadoCliente = (conversation) => {
   const empresa = conversation?.empresa;
-  if (!empresa) return 'sin_empresa';
+  if (!empresa) return 'no_cliente';  // Sin empresa = Nuevo
   if (!empresa.esCliente) return 'no_cliente';
   if (empresa.estaDadoDeBaja) return 'dado_de_baja';
   return 'cliente_activo';
