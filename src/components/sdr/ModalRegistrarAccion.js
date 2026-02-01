@@ -63,15 +63,6 @@ const TIPOS_ACCION = [
         abreModalReunion: true
     },
     { 
-        id: 'no_responde', 
-        label: 'No responde', 
-        shortLabel: 'No responde',
-        icon: <PhoneMissedIcon />, 
-        color: 'default',
-        requiereSeguimiento: true,
-        seguimientoDefault: '3d'
-    },
-    { 
         id: 'no_califica', 
         label: 'No califica', 
         shortLabel: 'No califica',
@@ -99,6 +90,30 @@ const OPCIONES_PROXIMO = [
     { label: '1 sem', valor: 7, unidad: 'dias' },
 ];
 
+// Templates de WhatsApp para post llamada no atendida
+const TEMPLATES_POST_LLAMADA = [
+    {
+        id: 'intentamos_contactar',
+        label: 'Intentamos contactarte',
+        mensaje: (nombre) => `Hola ${nombre}! 👋 Te estuvimos llamando pero no pudimos comunicarnos. ¿Tenés un momento para conversar sobre cómo podemos ayudarte con la facturación de tu negocio?`
+    },
+    {
+        id: 'seguimiento_corto',
+        label: 'Mensaje corto',
+        mensaje: (nombre) => `Hola ${nombre}! Te llamé recién pero no pude comunicarme. ¿Cuándo te queda bien que hablemos?`
+    },
+    {
+        id: 'reagendar',
+        label: 'Proponer horario',
+        mensaje: (nombre) => `Hola ${nombre}! Intenté llamarte sin éxito. ¿Te parece si coordinamos un horario que te quede cómodo? Estoy disponible hoy por la tarde o mañana por la mañana.`
+    },
+    {
+        id: 'personalizado',
+        label: 'Escribir mensaje',
+        mensaje: () => ''
+    }
+];
+
 const ModalRegistrarAccion = ({
     open,
     onClose,
@@ -115,6 +130,10 @@ const ModalRegistrarAccion = ({
     const [loading, setLoading] = useState(false);
     const [exito, setExito] = useState(false);
     const [error, setError] = useState(null);
+    
+    // Estado para selector de template WhatsApp
+    const [templateSeleccionado, setTemplateSeleccionado] = useState(null);
+    const [mensajePersonalizado, setMensajePersonalizado] = useState('');
 
     // Reset al abrir
     useEffect(() => {
@@ -240,11 +259,49 @@ const ModalRegistrarAccion = ({
 
     const handleCerrar = () => {
         setExito(false);
+        setTemplateSeleccionado(null);
+        setMensajePersonalizado('');
         onClose();
+    };
+
+    // Abrir WhatsApp con mensaje del template y registrar acción
+    const handleEnviarWhatsApp = async () => {
+        const tel = contacto?.telefono?.replace(/\D/g, '');
+        if (tel && templateSeleccionado) {
+            const mensaje = templateSeleccionado.id === 'personalizado'
+                ? mensajePersonalizado
+                : templateSeleccionado.mensaje(contacto?.nombre?.split(' ')[0] || 'Hola');
+            
+            // Abrir WhatsApp
+            const mensajeEncoded = encodeURIComponent(mensaje);
+            window.open(`https://wa.me/${tel}?text=${mensajeEncoded}`, '_blank');
+            
+            // Registrar la acción de WhatsApp
+            try {
+                await SDRService.registrarIntento(contacto._id, {
+                    tipo: 'whatsapp',
+                    canal: 'whatsapp',
+                    nota: `[Post llamada no atendida - ${templateSeleccionado.label}] ${mensaje.substring(0, 100)}${mensaje.length > 100 ? '...' : ''}`,
+                    empresaId
+                });
+                
+                // Notificar que se registró
+                onSuccess?.({ 
+                    tipo: 'whatsapp', 
+                    contactoId: contacto._id,
+                    template: templateSeleccionado.id 
+                });
+            } catch (err) {
+                console.error('Error registrando WhatsApp:', err);
+                // No bloqueamos si falla el registro, el WhatsApp ya se abrió
+            }
+        }
     };
 
     // Vista de éxito
     if (exito) {
+        const sugerirWhatsApp = tipoSeleccionado?.id === 'llamada_no_atendida';
+        
         return (
             <Dialog 
                 open={open} 
@@ -266,8 +323,8 @@ const ModalRegistrarAccion = ({
                 TransitionComponent={Slide}
                 TransitionProps={{ direction: 'up' }}
             >
-                <DialogContent sx={{ textAlign: 'center', py: 4 }}>
-                    <CheckCircleIcon sx={{ fontSize: 64, color: 'success.main', mb: 2 }} />
+                <DialogContent sx={{ textAlign: 'center', py: 3 }}>
+                    <CheckCircleIcon sx={{ fontSize: 48, color: 'success.main', mb: 1 }} />
                     <Typography variant="h6" gutterBottom>
                         ¡Acción registrada!
                     </Typography>
@@ -284,15 +341,96 @@ const ModalRegistrarAccion = ({
                                 minute: '2-digit'
                             })}`}
                             color="primary"
-                            sx={{ mt: 2 }}
+                            size="small"
+                            sx={{ mt: 1 }}
                         />
+                    )}
+                    
+                    {/* Selector de template de WhatsApp */}
+                    {sugerirWhatsApp && (
+                        <Box sx={{ mt: 2, textAlign: 'left' }}>
+                            <Typography variant="subtitle2" sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                <WhatsAppIcon sx={{ fontSize: 18, color: '#25D366' }} />
+                                Enviar WhatsApp
+                            </Typography>
+                            <Stack spacing={1}>
+                                {TEMPLATES_POST_LLAMADA.map((template) => (
+                                    <Paper
+                                        key={template.id}
+                                        elevation={templateSeleccionado?.id === template.id ? 3 : 0}
+                                        onClick={() => setTemplateSeleccionado(template)}
+                                        sx={{
+                                            p: 1.5,
+                                            cursor: 'pointer',
+                                            border: '1px solid',
+                                            borderColor: templateSeleccionado?.id === template.id ? '#25D366' : 'divider',
+                                            borderRadius: 2,
+                                            bgcolor: templateSeleccionado?.id === template.id ? 'rgba(37, 211, 102, 0.08)' : 'background.paper',
+                                            transition: 'all 0.2s',
+                                            '&:hover': {
+                                                borderColor: '#25D366',
+                                                bgcolor: 'rgba(37, 211, 102, 0.04)'
+                                            }
+                                        }}
+                                    >
+                                        <Typography variant="body2" fontWeight={500}>
+                                            {template.label}
+                                        </Typography>
+                                        {template.id !== 'personalizado' && (
+                                            <Typography variant="caption" color="text.secondary" sx={{ 
+                                                display: '-webkit-box',
+                                                WebkitLineClamp: 2,
+                                                WebkitBoxOrient: 'vertical',
+                                                overflow: 'hidden'
+                                            }}>
+                                                {template.mensaje(contacto?.nombre?.split(' ')[0] || 'Nombre')}
+                                            </Typography>
+                                        )}
+                                    </Paper>
+                                ))}
+                            </Stack>
+                            
+                            {/* Campo para mensaje personalizado */}
+                            {templateSeleccionado?.id === 'personalizado' && (
+                                <TextField
+                                    fullWidth
+                                    multiline
+                                    rows={3}
+                                    placeholder="Escribí tu mensaje..."
+                                    value={mensajePersonalizado}
+                                    onChange={(e) => setMensajePersonalizado(e.target.value)}
+                                    sx={{ mt: 1 }}
+                                    size="small"
+                                />
+                            )}
+                        </Box>
                     )}
                 </DialogContent>
                 <DialogActions sx={{ p: 2, pt: 0, flexDirection: 'column', gap: 1 }}>
-                    {mostrarBotonSiguiente && (
+                    {/* Botón de WhatsApp - solo si hay template seleccionado */}
+                    {sugerirWhatsApp && templateSeleccionado && (
                         <Button
                             fullWidth
                             variant="contained"
+                            size="large"
+                            startIcon={<WhatsAppIcon />}
+                            onClick={handleEnviarWhatsApp}
+                            disabled={templateSeleccionado.id === 'personalizado' && !mensajePersonalizado.trim()}
+                            sx={{ 
+                                borderRadius: 2, 
+                                py: 1.5,
+                                bgcolor: '#25D366',
+                                '&:hover': { bgcolor: '#128C7E' }
+                            }}
+                        >
+                            Enviar WhatsApp
+                        </Button>
+                    )}
+                    
+                    {mostrarBotonSiguiente && (
+                        <Button
+                            fullWidth
+                            variant={sugerirWhatsApp && templateSeleccionado ? "outlined" : "contained"}
                             size="large"
                             endIcon={<NavigateNextIcon />}
                             onClick={handleSiguiente}
@@ -303,11 +441,11 @@ const ModalRegistrarAccion = ({
                     )}
                     <Button
                         fullWidth
-                        variant="outlined"
+                        variant="text"
                         onClick={handleCerrar}
                         sx={{ borderRadius: 2 }}
                     >
-                        Volver
+                        {sugerirWhatsApp && !templateSeleccionado ? 'Omitir WhatsApp' : 'Volver'}
                     </Button>
                 </DialogActions>
             </Dialog>

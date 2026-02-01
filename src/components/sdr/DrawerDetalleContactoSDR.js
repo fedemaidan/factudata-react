@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react';
 import {
     Drawer, Box, Typography, IconButton, Divider, Chip, Stack,
     Button, TextField, CircularProgress, Paper, Tooltip, Avatar, useMediaQuery, useTheme,
-    Dialog, DialogTitle, DialogContent, DialogActions, Collapse, Fab, Badge
+    Dialog, DialogTitle, DialogContent, DialogActions, Collapse, Fab, Badge,
+    Menu, MenuItem, ListItemIcon, ListItemText, Select, FormControl, InputLabel
 } from '@mui/material';
 import {
     Close as CloseIcon,
@@ -33,12 +34,31 @@ import {
     ExpandLess as ExpandLessIcon,
     NavigateNext as NavigateNextIcon,
     Call as CallIcon,
-    Add as AddIcon
+    Add as AddIcon,
+    Edit as EditIcon,
+    FiberNew as NewIcon,
+    Work as WorkIcon,
+    EventAvailable as MeetIcon,
+    Verified as VerifiedIcon,
+    Block as BlockIcon,
+    PhoneDisabled as PhoneDisabledIcon,
+    Delete as DeleteIcon,
+    Save as SaveIcon,
+    Refresh as RefreshIcon
 } from '@mui/icons-material';
 import SDRService from '../../services/sdrService';
 import ModalSelectorTemplate from './ModalSelectorTemplate';
 import ModalRegistrarAccion from './ModalRegistrarAccion';
 import { getWhatsAppLink, getTelLink } from '../../utils/phoneUtils';
+
+// Opciones de tamaño de empresa
+const TAMANO_EMPRESA_OPTIONS = [
+    { value: '', label: 'Sin especificar' },
+    { value: '1-10', label: '1-10 empleados' },
+    { value: '11-50', label: '11-50 empleados' },
+    { value: '51-200', label: '51-200 empleados' },
+    { value: '200+', label: '200+ empleados' },
+];
 
 // ==================== CONSTANTES DE COLORES ====================
 
@@ -79,6 +99,7 @@ const getEventoColor = (tipo) => {
         'comentario': { bg: '#fffde7', border: '#ffee58', icon: '#f9a825' },
         'proximo_contacto_programado': { bg: '#e1f5fe', border: '#29b6f6', icon: '#0277bd' },
         'contacto_editado': { bg: '#eceff1', border: '#90a4ae', icon: '#546e7a' },
+        'estado_cambiado': { bg: '#e8eaf6', border: '#5c6bc0', icon: '#3949ab' },
     };
     return colores[tipo] || { bg: '#f5f5f5', border: '#bdbdbd', icon: '#757575' };
 };
@@ -107,23 +128,109 @@ const getEventoIcon = (tipo) => {
         'comentario': <CommentIcon fontSize="small" />,
         'proximo_contacto_programado': <EventIcon fontSize="small" />,
         'contacto_editado': <PersonIcon fontSize="small" />,
+        'estado_cambiado': <EditIcon fontSize="small" />,
     };
     return iconos[tipo] || <HistoryIcon fontSize="small" />;
 };
 
 // ==================== CHIP DE ESTADO (EXPORT NAMED) ====================
 
+// Configuración de estados
+const ESTADOS_CONFIG = {
+    'nuevo': { color: 'info', label: 'Nuevo', icon: <NewIcon fontSize="small" /> },
+    'en_gestion': { color: 'warning', label: 'En Gestión', icon: <WorkIcon fontSize="small" /> },
+    'meet': { color: 'secondary', label: 'Reunión', icon: <MeetIcon fontSize="small" /> },
+    'calificado': { color: 'success', label: 'Calificado', icon: <VerifiedIcon fontSize="small" /> },
+    'no_califica': { color: 'error', label: 'No Califica', icon: <BlockIcon fontSize="small" /> },
+    'no_responde': { color: 'default', label: 'No Responde', icon: <PhoneDisabledIcon fontSize="small" /> },
+};
+
 export const EstadoChip = ({ estado }) => {
-    const config = {
-        'nuevo': { color: 'info', label: 'Nuevo' },
-        'en_gestion': { color: 'warning', label: 'En Gestión' },
-        'meet': { color: 'secondary', label: 'Reunión' },
-        'calificado': { color: 'success', label: 'Calificado' },
-        'no_califica': { color: 'error', label: 'No Califica' },
-        'no_responde': { color: 'default', label: 'No Responde' },
-    };
-    const { color, label } = config[estado] || { color: 'default', label: estado };
+    const { color, label } = ESTADOS_CONFIG[estado] || { color: 'default', label: estado };
     return <Chip size="small" color={color} label={label} />;
+};
+
+// Chip de estado editable (con menú desplegable)
+export const EstadoChipEditable = ({ estado, contactoId, onEstadoCambiado, mostrarSnackbar }) => {
+    const [anchorEl, setAnchorEl] = useState(null);
+    const [loading, setLoading] = useState(false);
+    const [estadoLocal, setEstadoLocal] = useState(estado);
+    const open = Boolean(anchorEl);
+    
+    // Sincronizar con prop cuando cambia el contacto
+    useEffect(() => {
+        setEstadoLocal(estado);
+    }, [estado, contactoId]);
+    
+    const handleClick = (event) => {
+        setAnchorEl(event.currentTarget);
+    };
+    
+    const handleClose = () => {
+        setAnchorEl(null);
+    };
+    
+    const handleCambiarEstado = async (nuevoEstado) => {
+        if (nuevoEstado === estadoLocal) {
+            handleClose();
+            return;
+        }
+        
+        setLoading(true);
+        try {
+            await SDRService.cambiarEstado(contactoId, nuevoEstado);
+            setEstadoLocal(nuevoEstado); // Actualizar visualmente inmediatamente
+            onEstadoCambiado?.(nuevoEstado);
+            mostrarSnackbar?.(`Estado cambiado a "${ESTADOS_CONFIG[nuevoEstado]?.label}"`, 'success');
+        } catch (error) {
+            console.error('Error cambiando estado:', error);
+            mostrarSnackbar?.('Error al cambiar estado', 'error');
+        } finally {
+            setLoading(false);
+            handleClose();
+        }
+    };
+    
+    const { color, label } = ESTADOS_CONFIG[estadoLocal] || { color: 'default', label: estadoLocal };
+    
+    return (
+        <>
+            <Chip 
+                size="small" 
+                color={color} 
+                label={loading ? 'Cambiando...' : label}
+                onClick={handleClick}
+                onDelete={handleClick}
+                deleteIcon={<EditIcon sx={{ fontSize: '14px !important' }} />}
+                sx={{ 
+                    cursor: 'pointer',
+                    '&:hover': { opacity: 0.85 }
+                }}
+            />
+            <Menu
+                anchorEl={anchorEl}
+                open={open}
+                onClose={handleClose}
+                anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+                transformOrigin={{ vertical: 'top', horizontal: 'left' }}
+            >
+                {Object.entries(ESTADOS_CONFIG).map(([key, config]) => (
+                    <MenuItem 
+                        key={key} 
+                        onClick={() => handleCambiarEstado(key)}
+                        selected={key === estadoLocal}
+                        disabled={loading}
+                    >
+                        <ListItemIcon sx={{ color: `${config.color}.main` }}>
+                            {config.icon}
+                        </ListItemIcon>
+                        <ListItemText>{config.label}</ListItemText>
+                        {key === estadoLocal && <CheckCircleIcon sx={{ ml: 1, fontSize: 16, color: 'success.main' }} />}
+                    </MenuItem>
+                ))}
+            </Menu>
+        </>
+    );
 };
 
 // ==================== DRAWER PRINCIPAL ====================
@@ -157,25 +264,38 @@ const DrawerDetalleContactoSDR = ({
     // Modales nuevos
     const [modalTemplateWhatsApp, setModalTemplateWhatsApp] = useState(false);
     const [modalRegistrarAccion, setModalRegistrarAccion] = useState(false);
+    const [modalEditarContacto, setModalEditarContacto] = useState(false);
+    
+    // Estado para historial expandido
+    const [mostrarTodosEventos, setMostrarTodosEventos] = useState(false);
+    
+    // Estado local del contacto para poder actualizarlo sin refrescar
+    const [contactoLocal, setContactoLocal] = useState(contacto);
+    
+    // Sincronizar contactoLocal cuando cambia el prop
+    useEffect(() => {
+        setContactoLocal(contacto);
+    }, [contacto?._id, contacto]);
     
     const theme = useTheme();
     const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
     // Sincronizar próximo contacto con el contacto actual
     useEffect(() => {
-        if (contacto?.proximoContacto) {
-            setProximoContactoLocal(new Date(contacto.proximoContacto));
+        if (contactoLocal?.proximoContacto) {
+            setProximoContactoLocal(new Date(contactoLocal.proximoContacto));
         } else {
             setProximoContactoLocal(null);
         }
-    }, [contacto?._id, contacto?.proximoContacto]);
+    }, [contactoLocal?._id, contactoLocal?.proximoContacto]);
 
     // Cargar historial cuando cambia el contacto o historialVersion
     useEffect(() => {
-        if (open && contacto?._id) {
+        if (open && contactoLocal?._id) {
             cargarHistorial();
+            setMostrarTodosEventos(false); // Resetear al cambiar de contacto
         }
-    }, [open, contacto?._id, historialVersion]);
+    }, [open, contactoLocal?._id, historialVersion]);
 
     // Atajos de teclado para navegar
     useEffect(() => {
@@ -196,10 +316,10 @@ const DrawerDetalleContactoSDR = ({
     }, [open, indiceActual, contactos.length, onCambiarIndice]);
 
     const cargarHistorial = async () => {
-        if (!contacto?._id) return;
+        if (!contactoLocal?._id) return;
         setLoadingHistorial(true);
         try {
-            const data = await SDRService.obtenerHistorial(contacto._id);
+            const data = await SDRService.obtenerHistorial(contactoLocal._id);
             setHistorial(data.historial || []);
         } catch (err) {
             console.error('Error cargando historial:', err);
@@ -223,10 +343,10 @@ const DrawerDetalleContactoSDR = ({
     
     // WhatsApp directo (sin template)
     const handleWhatsAppDirecto = () => {
-        const tel = formatTelefono(contacto?.telefono);
+        const tel = formatTelefono(contactoLocal?.telefono);
         if (!tel) return;
         const mensaje = encodeURIComponent(
-            `¡Hola ${contacto.nombre?.split(' ')[0] || contacto.nombre}! Soy de Sorby, ¿cómo estás?`
+            `¡Hola ${contactoLocal.nombre?.split(' ')[0] || contactoLocal.nombre}! Soy de Sorby, ¿cómo estás?`
         );
         window.open(`https://wa.me/${tel}?text=${mensaje}`, '_blank');
     };
@@ -235,7 +355,7 @@ const DrawerDetalleContactoSDR = ({
     const handleTemplateUsed = async (template, mensaje) => {
         // Registrar que se envió WhatsApp
         try {
-            await SDRService.registrarIntento(contacto._id, {
+            await SDRService.registrarIntento(contactoLocal._id, {
                 tipo: 'whatsapp_enviado',
                 canal: 'whatsapp',
                 nota: `Template: ${template?.label || 'personalizado'}`,
@@ -283,10 +403,10 @@ const DrawerDetalleContactoSDR = ({
 
     // Agregar comentario
     const handleEnviarComentario = async () => {
-        if (!nuevoComentario.trim() || !contacto?._id) return;
+        if (!nuevoComentario.trim() || !contactoLocal?._id) return;
         setEnviandoComentario(true);
         try {
-            const success = await onAgregarComentario?.(contacto._id, nuevoComentario.trim());
+            const success = await onAgregarComentario?.(contactoLocal._id, nuevoComentario.trim());
             if (success) {
                 setNuevoComentario('');
                 await cargarHistorial();
@@ -313,10 +433,10 @@ const DrawerDetalleContactoSDR = ({
 
     // Guardar próximo contacto
     const handleGuardarProximoContacto = async (fecha) => {
-        if (!contacto?._id) return;
+        if (!contactoLocal?._id) return;
         setGuardandoProximo(true);
         try {
-            await SDRService.actualizarProximoContacto(contacto._id, fecha);
+            await SDRService.actualizarProximoContacto(contactoLocal._id, fecha);
             setProximoContactoLocal(fecha);
             mostrarSnackbar?.('Próximo contacto actualizado', 'success');
             onRefresh?.();
@@ -455,13 +575,21 @@ const DrawerDetalleContactoSDR = ({
                     }}>
                         <Box sx={{ flex: 1 }}>
                             <Typography variant="h6" fontWeight={700} noWrap>
-                                {contacto.nombre}
+                                {contactoLocal.nombre}
                             </Typography>
                             <Stack direction="row" spacing={0.5} alignItems="center">
-                                <EstadoChip estado={contacto.estado} />
-                                {contacto.empresa && (
+                                <EstadoChipEditable 
+                                    estado={contactoLocal.estado} 
+                                    contactoId={contactoLocal._id}
+                                    onEstadoCambiado={() => {
+                                        onRefresh?.();
+                                        cargarHistorial();
+                                    }}
+                                    mostrarSnackbar={mostrarSnackbar}
+                                />
+                                {contactoLocal.empresa && (
                                     <Typography variant="caption" color="text.secondary" noWrap>
-                                        • {contacto.empresa}
+                                        • {contactoLocal.empresa}
                                     </Typography>
                                 )}
                             </Stack>
@@ -473,6 +601,19 @@ const DrawerDetalleContactoSDR = ({
                                 sx={{ mr: 1 }}
                             />
                         )}
+                        <Tooltip title="Refrescar datos">
+                            <IconButton 
+                                onClick={() => {
+                                    onRefresh?.();
+                                    cargarHistorial();
+                                    mostrarSnackbar?.('Datos actualizados', 'success');
+                                }}
+                                size="small"
+                                sx={{ mr: 0.5 }}
+                            >
+                                <RefreshIcon fontSize="small" />
+                            </IconButton>
+                        </Tooltip>
                         <IconButton onClick={onClose} edge="end">
                             <CloseIcon />
                         </IconButton>
@@ -519,22 +660,50 @@ const DrawerDetalleContactoSDR = ({
                                 </Button>
                             </Stack>
 
-                            {/* Info de contacto */}
-                            <Stack spacing={1} sx={{ mb: 2 }}>
-                                <Typography variant="body1" fontWeight={500}>
-                                    📞 {contacto.telefono}
-                                </Typography>
-                                {contacto.cargo && (
-                                    <Typography variant="body2" color="text.secondary">
-                                        👤 {contacto.cargo}
+                            {/* Info de contacto con botón editar */}
+                            <Box sx={{ mb: 2 }}>
+                                <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
+                                    <Typography variant="subtitle2" color="text.secondary">
+                                        Información
                                     </Typography>
-                                )}
-                                {contacto.email && (
-                                    <Typography variant="body2" color="text.secondary">
-                                        ✉️ {contacto.email}
+                                    <Button
+                                        size="small"
+                                        startIcon={<EditIcon />}
+                                        onClick={() => setModalEditarContacto(true)}
+                                    >
+                                        Editar
+                                    </Button>
+                                </Stack>
+                                <Stack spacing={0.5}>
+                                    <Typography variant="body1" fontWeight={500}>
+                                        📞 {contactoLocal.telefono}
                                     </Typography>
-                                )}
-                            </Stack>
+                                    {/* Teléfonos secundarios */}
+                                    {contactoLocal.telefonosSecundarios?.map((tel, i) => (
+                                        <Typography key={i} variant="body2" color="text.secondary">
+                                            📱 {tel.numero} <Chip size="small" label={tel.etiqueta} sx={{ ml: 0.5, height: 18, fontSize: '0.7rem' }} />
+                                        </Typography>
+                                    ))}
+                                    {contactoLocal.cargo && (
+                                        <Typography variant="body2" color="text.secondary">
+                                            👤 {contactoLocal.cargo}
+                                        </Typography>
+                                    )}
+                                    {(contactoLocal.empresa || contactoLocal.tamanoEmpresa) && (
+                                        <Typography variant="body2" color="text.secondary">
+                                            🏢 {contactoLocal.empresa || 'Sin empresa'}
+                                            {contactoLocal.tamanoEmpresa && (
+                                                <Chip size="small" label={contactoLocal.tamanoEmpresa} sx={{ ml: 0.5, height: 18, fontSize: '0.7rem' }} />
+                                            )}
+                                        </Typography>
+                                    )}
+                                    {contactoLocal.email && (
+                                        <Typography variant="body2" color="text.secondary">
+                                            ✉️ {contactoLocal.email}
+                                        </Typography>
+                                    )}
+                                </Stack>
+                            </Box>
                         </Paper>
 
                         {/* Próximo contacto */}
@@ -658,7 +827,7 @@ const DrawerDetalleContactoSDR = ({
                                         </Typography>
                                     ) : (
                                         <Stack spacing={1}>
-                                            {historial.slice(0, 10).map((evento) => {
+                                            {(mostrarTodosEventos ? historial : historial.slice(0, 10)).map((evento) => {
                                                 const colors = getEventoColor(evento.tipo);
                                                 return (
                                                     <Box
@@ -691,9 +860,17 @@ const DrawerDetalleContactoSDR = ({
                                                 );
                                             })}
                                             {historial.length > 10 && (
-                                                <Typography variant="caption" color="text.secondary" textAlign="center">
-                                                    +{historial.length - 10} eventos más
-                                                </Typography>
+                                                <Button
+                                                    size="small"
+                                                    variant="text"
+                                                    onClick={() => setMostrarTodosEventos(!mostrarTodosEventos)}
+                                                    sx={{ alignSelf: 'center' }}
+                                                >
+                                                    {mostrarTodosEventos 
+                                                        ? 'Ver menos' 
+                                                        : `+${historial.length - 10} eventos más`
+                                                    }
+                                                </Button>
                                             )}
                                         </Stack>
                                     )}
@@ -831,6 +1008,25 @@ const DrawerDetalleContactoSDR = ({
                 onNavegarSiguiente={handleNavegarSiguiente}
                 mostrarBotonSiguiente={puedeSiguiente}
             />
+            
+            {/* Modal Editar Contacto - Mobile */}
+            <ModalEditarContacto
+                open={modalEditarContacto}
+                onClose={() => setModalEditarContacto(false)}
+                contacto={contactoLocal}
+                empresaId={empresaId}
+                onSuccess={(contactoActualizado) => {
+                    // Actualizar estado local inmediatamente
+                    if (contactoActualizado) {
+                        setContactoLocal(contactoActualizado);
+                    }
+                    cargarHistorial();
+                    setModalEditarContacto(false);
+                    mostrarSnackbar?.('Contacto actualizado', 'success');
+                    // Refrescar lista en background
+                    onRefresh?.();
+                }}
+            />
             </>
         );
     }
@@ -882,6 +1078,18 @@ const DrawerDetalleContactoSDR = ({
                                     <KeyboardIcon fontSize="small" color="action" />
                                 </Tooltip>
                             )}
+                            <Tooltip title="Refrescar datos">
+                                <IconButton 
+                                    onClick={() => {
+                                        onRefresh?.();
+                                        cargarHistorial();
+                                        mostrarSnackbar?.('Datos actualizados', 'success');
+                                    }}
+                                    size="small"
+                                >
+                                    <RefreshIcon fontSize="small" />
+                                </IconButton>
+                            </Tooltip>
                             <IconButton onClick={onClose}>
                                 <CloseIcon />
                             </IconButton>
@@ -890,22 +1098,30 @@ const DrawerDetalleContactoSDR = ({
                     
                     {/* Nombre y estado */}
                     <Typography variant="h6" sx={{ mt: 1, fontWeight: 600 }}>
-                        {contacto.nombre}
+                        {contactoLocal.nombre}
                     </Typography>
                     <Stack direction="row" spacing={1} mt={1} alignItems="center" flexWrap="wrap">
-                        <EstadoChip estado={contacto.estado} />
-                        {contacto.segmento && (
+                        <EstadoChipEditable 
+                            estado={contactoLocal.estado} 
+                            contactoId={contactoLocal._id}
+                            onEstadoCambiado={() => {
+                                onRefresh?.();
+                                cargarHistorial();
+                            }}
+                            mostrarSnackbar={mostrarSnackbar}
+                        />
+                        {contactoLocal.segmento && (
                             <Chip 
                                 size="small" 
                                 variant="outlined"
-                                label={contacto.segmento === 'outbound' ? 'Outbound' : 'Inbound'} 
+                                label={contactoLocal.segmento === 'outbound' ? 'Outbound' : 'Inbound'} 
                             />
                         )}
-                        {contacto.sdrAsignadoNombre && (
+                        {contactoLocal.sdrAsignadoNombre && (
                             <Chip 
                                 size="small" 
                                 icon={<PersonIcon />}
-                                label={contacto.sdrAsignadoNombre}
+                                label={contactoLocal.sdrAsignadoNombre}
                                 color="primary"
                                 variant="outlined"
                             />
@@ -915,27 +1131,52 @@ const DrawerDetalleContactoSDR = ({
 
                 {/* Info del contacto */}
                 <Box sx={{ p: 2 }}>
+                    <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
+                        <Typography variant="subtitle2" color="text.secondary">Información</Typography>
+                        <Button
+                            size="small"
+                            startIcon={<EditIcon />}
+                            onClick={() => setModalEditarContacto(true)}
+                        >
+                            Editar
+                        </Button>
+                    </Stack>
                     <Stack spacing={1.5}>
-                        {contacto.empresa && (
+                        {(contactoLocal.empresa || contactoLocal.tamanoEmpresa) && (
                             <Stack direction="row" spacing={1} alignItems="center">
                                 <BusinessIcon fontSize="small" color="action" />
-                                <Typography variant="body2">{contacto.empresa}</Typography>
+                                <Typography variant="body2">
+                                    {contactoLocal.empresa || 'Sin empresa'}
+                                    {contactoLocal.tamanoEmpresa && (
+                                        <Chip size="small" label={contactoLocal.tamanoEmpresa} sx={{ ml: 0.5, height: 18, fontSize: '0.7rem' }} />
+                                    )}
+                                </Typography>
                             </Stack>
                         )}
-                        {contacto.cargo && (
+                        {contactoLocal.cargo && (
                             <Stack direction="row" spacing={1} alignItems="center">
                                 <PersonIcon fontSize="small" color="action" />
-                                <Typography variant="body2">{contacto.cargo}</Typography>
+                                <Typography variant="body2">{contactoLocal.cargo}</Typography>
                             </Stack>
                         )}
                         <Stack direction="row" spacing={1} alignItems="center">
                             <PhoneIcon fontSize="small" color="action" />
-                            <Typography variant="body2">{contacto.telefono}</Typography>
+                            <Typography variant="body2">{contactoLocal.telefono}</Typography>
                         </Stack>
-                        {contacto.email && (
+                        {/* Teléfonos secundarios */}
+                        {contactoLocal.telefonosSecundarios?.map((tel, i) => (
+                            <Stack key={i} direction="row" spacing={1} alignItems="center">
+                                <PhoneIcon fontSize="small" color="action" sx={{ opacity: 0.5 }} />
+                                <Typography variant="body2">
+                                    {tel.numero}
+                                    <Chip size="small" label={tel.etiqueta} sx={{ ml: 0.5, height: 18, fontSize: '0.7rem' }} />
+                                </Typography>
+                            </Stack>
+                        ))}
+                        {contactoLocal.email && (
                             <Stack direction="row" spacing={1} alignItems="center">
                                 <EmailIcon fontSize="small" color="action" />
-                                <Typography variant="body2">{contacto.email}</Typography>
+                                <Typography variant="body2">{contactoLocal.email}</Typography>
                             </Stack>
                         )}
                     </Stack>
@@ -1296,7 +1537,265 @@ const DrawerDetalleContactoSDR = ({
             onNavegarSiguiente={handleNavegarSiguiente}
             mostrarBotonSiguiente={puedeSiguiente}
         />
+        
+        {/* Modal Editar Contacto */}
+        <ModalEditarContacto
+            open={modalEditarContacto}
+            onClose={() => setModalEditarContacto(false)}
+            contacto={contactoLocal}
+            empresaId={empresaId}
+            onSuccess={(contactoActualizado) => {
+                // Actualizar estado local inmediatamente
+                if (contactoActualizado) {
+                    setContactoLocal(contactoActualizado);
+                }
+                cargarHistorial();
+                setModalEditarContacto(false);
+                mostrarSnackbar?.('Contacto actualizado', 'success');
+                // Refrescar lista en background
+                onRefresh?.();
+            }}
+        />
         </>
+    );
+};
+
+// ==================== MODAL EDITAR CONTACTO ====================
+const ModalEditarContacto = ({ open, onClose, contacto, empresaId, onSuccess }) => {
+    const theme = useTheme();
+    const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+    
+    const [formData, setFormData] = useState({
+        nombre: '',
+        telefono: '',
+        email: '',
+        empresa: '',
+        cargo: '',
+        tamanoEmpresa: '',
+        telefonosSecundarios: []
+    });
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState(null);
+    
+    // Sincronizar con contacto cuando se abre
+    useEffect(() => {
+        if (open && contacto) {
+            setFormData({
+                nombre: contacto.nombre || '',
+                telefono: contacto.telefono || '',
+                email: contacto.email || '',
+                empresa: contacto.empresa || '',
+                cargo: contacto.cargo || '',
+                tamanoEmpresa: contacto.tamanoEmpresa || '',
+                telefonosSecundarios: contacto.telefonosSecundarios || []
+            });
+            setError(null);
+        }
+    }, [open, contacto]);
+    
+    const handleChange = (field, value) => {
+        setFormData(prev => ({ ...prev, [field]: value }));
+    };
+    
+    const handleAgregarTelefono = () => {
+        setFormData(prev => ({
+            ...prev,
+            telefonosSecundarios: [...prev.telefonosSecundarios, { numero: '', etiqueta: 'Secundario' }]
+        }));
+    };
+    
+    const handleTelefonoSecundarioChange = (index, field, value) => {
+        setFormData(prev => ({
+            ...prev,
+            telefonosSecundarios: prev.telefonosSecundarios.map((tel, i) => 
+                i === index ? { ...tel, [field]: value } : tel
+            )
+        }));
+    };
+    
+    const handleEliminarTelefono = (index) => {
+        setFormData(prev => ({
+            ...prev,
+            telefonosSecundarios: prev.telefonosSecundarios.filter((_, i) => i !== index)
+        }));
+    };
+    
+    const handleGuardar = async () => {
+        if (!formData.nombre.trim()) {
+            setError('El nombre es requerido');
+            return;
+        }
+        if (!formData.telefono.trim()) {
+            setError('El teléfono principal es requerido');
+            return;
+        }
+        
+        setLoading(true);
+        setError(null);
+        
+        try {
+            // Filtrar teléfonos secundarios vacíos
+            const telefonosLimpios = formData.telefonosSecundarios.filter(t => t.numero.trim());
+            
+            const contactoActualizado = await SDRService.actualizarContacto(contacto._id, {
+                ...formData,
+                telefonosSecundarios: telefonosLimpios,
+                empresaId
+            });
+            
+            // Pasar el contacto actualizado al callback
+            onSuccess?.(contactoActualizado);
+        } catch (err) {
+            console.error('Error actualizando contacto:', err);
+            setError(err.response?.data?.error || 'Error al actualizar');
+        } finally {
+            setLoading(false);
+        }
+    };
+    
+    return (
+        <Dialog 
+            open={open} 
+            onClose={onClose}
+            fullWidth
+            fullScreen={isMobile}
+            maxWidth="sm"
+            PaperProps={{ sx: { borderRadius: isMobile ? 0 : 3 } }}
+        >
+            <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Typography variant="h6">Editar contacto</Typography>
+                <IconButton onClick={onClose} size="small">
+                    <CloseIcon />
+                </IconButton>
+            </DialogTitle>
+            <DialogContent dividers>
+                <Stack spacing={2} sx={{ pt: 1 }}>
+                    {error && (
+                        <Typography color="error" variant="body2">{error}</Typography>
+                    )}
+                    
+                    {/* Datos básicos */}
+                    <TextField
+                        fullWidth
+                        label="Nombre *"
+                        value={formData.nombre}
+                        onChange={(e) => handleChange('nombre', e.target.value)}
+                        size="small"
+                    />
+                    
+                    <TextField
+                        fullWidth
+                        label="Teléfono principal *"
+                        value={formData.telefono}
+                        onChange={(e) => handleChange('telefono', e.target.value)}
+                        size="small"
+                    />
+                    
+                    <TextField
+                        fullWidth
+                        label="Email"
+                        type="email"
+                        value={formData.email}
+                        onChange={(e) => handleChange('email', e.target.value)}
+                        size="small"
+                    />
+                    
+                    <Stack direction="row" spacing={2}>
+                        <TextField
+                            fullWidth
+                            label="Empresa"
+                            value={formData.empresa}
+                            onChange={(e) => handleChange('empresa', e.target.value)}
+                            size="small"
+                        />
+                        <TextField
+                            fullWidth
+                            label="Cargo"
+                            value={formData.cargo}
+                            onChange={(e) => handleChange('cargo', e.target.value)}
+                            size="small"
+                        />
+                    </Stack>
+                    
+                    <FormControl fullWidth size="small">
+                        <InputLabel>Tamaño de empresa</InputLabel>
+                        <Select
+                            value={formData.tamanoEmpresa}
+                            label="Tamaño de empresa"
+                            onChange={(e) => handleChange('tamanoEmpresa', e.target.value)}
+                        >
+                            {TAMANO_EMPRESA_OPTIONS.map(opt => (
+                                <MenuItem key={opt.value} value={opt.value}>
+                                    {opt.label}
+                                </MenuItem>
+                            ))}
+                        </Select>
+                    </FormControl>
+                    
+                    {/* Teléfonos secundarios */}
+                    <Divider sx={{ my: 1 }} />
+                    <Box>
+                        <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
+                            <Typography variant="subtitle2">Teléfonos secundarios</Typography>
+                            <Button
+                                size="small"
+                                startIcon={<AddIcon />}
+                                onClick={handleAgregarTelefono}
+                            >
+                                Agregar
+                            </Button>
+                        </Stack>
+                        
+                        {formData.telefonosSecundarios.length === 0 ? (
+                            <Typography variant="body2" color="text.secondary">
+                                Sin teléfonos secundarios
+                            </Typography>
+                        ) : (
+                            <Stack spacing={1}>
+                                {formData.telefonosSecundarios.map((tel, index) => (
+                                    <Stack key={index} direction="row" spacing={1} alignItems="center">
+                                        <TextField
+                                            size="small"
+                                            placeholder="Número"
+                                            value={tel.numero}
+                                            onChange={(e) => handleTelefonoSecundarioChange(index, 'numero', e.target.value)}
+                                            sx={{ flex: 2 }}
+                                        />
+                                        <TextField
+                                            size="small"
+                                            placeholder="Etiqueta"
+                                            value={tel.etiqueta}
+                                            onChange={(e) => handleTelefonoSecundarioChange(index, 'etiqueta', e.target.value)}
+                                            sx={{ flex: 1 }}
+                                        />
+                                        <IconButton 
+                                            size="small" 
+                                            color="error"
+                                            onClick={() => handleEliminarTelefono(index)}
+                                        >
+                                            <DeleteIcon fontSize="small" />
+                                        </IconButton>
+                                    </Stack>
+                                ))}
+                            </Stack>
+                        )}
+                    </Box>
+                </Stack>
+            </DialogContent>
+            <DialogActions sx={{ p: 2 }}>
+                <Button onClick={onClose} disabled={loading}>
+                    Cancelar
+                </Button>
+                <Button 
+                    variant="contained" 
+                    onClick={handleGuardar}
+                    disabled={loading}
+                    startIcon={loading ? <CircularProgress size={16} /> : <SaveIcon />}
+                >
+                    Guardar
+                </Button>
+            </DialogActions>
+        </Dialog>
     );
 };
 

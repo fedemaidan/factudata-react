@@ -486,7 +486,7 @@ const GestionSDRPage = () => {
                         subtitle={!isMobile ? "por evaluar" : null}
                         icon={<ScheduleIcon />}
                         color="info"
-                        onClick={() => setTabActual(2)}
+                        onClick={() => setTabActual(3)}
                     />
                 </Grid>
                 {!isMobile && (
@@ -497,7 +497,7 @@ const GestionSDRPage = () => {
                             subtitle="en pool"
                             icon={<PeopleOutlineIcon />}
                             color="secondary"
-                            onClick={() => { setFiltros({ ...filtros, soloSinAsignar: true }); setTabActual(1); }}
+                            onClick={() => setTabActual(1)}
                         />
                     </Grid>
                 )}
@@ -589,7 +589,7 @@ const GestionSDRPage = () => {
                     </Table>
                     {reuniones.length > 5 && (
                         <Box sx={{ p: 1, textAlign: 'center' }}>
-                            <Button size="small" onClick={() => setTabActual(2)}>
+                            <Button size="small" onClick={() => setTabActual(3)}>
                                 Ver todas ({reuniones.length})
                             </Button>
                         </Box>
@@ -1046,6 +1046,372 @@ const GestionSDRPage = () => {
                     ))}
                 </Grid>
             )}
+        </Box>
+    );
+    
+    // ==================== RENDER ASIGNACIÓN (VISTA KANBAN) ====================
+    
+    const [sdrsConContactos, setSdrsConContactos] = useState([]);
+    const [contactosSinAsignar, setContactosSinAsignar] = useState([]);
+    const [loadingAsignacion, setLoadingAsignacion] = useState(false);
+    const [seleccionAsignacion, setSeleccionAsignacion] = useState([]); // IDs seleccionados para mover
+    
+    const cargarVistaAsignacion = async () => {
+        setLoadingAsignacion(true);
+        try {
+            // Cargar todos los contactos
+            const params = { limit: 500 };
+            const data = await SDRService.listarContactos(params);
+            const todosContactos = data.contactos || [];
+            
+            // Cargar SDRs disponibles
+            const snapshot = await getDocs(query(collection(db, 'profile'), where('sdr', '==', true)));
+            const sdrsBase = snapshot.docs.map(doc => {
+                const d = doc.data();
+                return {
+                    id: d.user_id || doc.id,
+                    docId: doc.id,
+                    nombre: `${d.firstName || ''} ${d.lastName || ''}`.trim() || d.email,
+                    email: d.email,
+                    contactos: [],
+                    metricas: { llamadas: 0, whatsapp: 0, reuniones: 0 }
+                };
+            });
+            
+            // Separar sin asignar y agrupar por SDR
+            const sinAsignar = todosContactos.filter(c => !c.sdrAsignado);
+            setContactosSinAsignar(sinAsignar);
+            
+            // Asignar contactos a cada SDR
+            const sdrsConData = sdrsBase.map(sdr => ({
+                ...sdr,
+                contactos: todosContactos.filter(c => c.sdrAsignado === sdr.id)
+            }));
+            
+            // Obtener métricas del día para cada SDR
+            if (metricas?.metricasPorSDR) {
+                sdrsConData.forEach(sdr => {
+                    const metricaSDR = metricas.metricasPorSDR.find(m => m.sdrId === sdr.id);
+                    if (metricaSDR) {
+                        sdr.metricas = {
+                            llamadas: metricaSDR.llamadasRealizadas || 0,
+                            whatsapp: metricaSDR.whatsappEnviados || 0,
+                            reuniones: metricaSDR.reunionesCoordinadas || 0
+                        };
+                    }
+                });
+            }
+            
+            setSdrsConContactos(sdrsConData);
+        } catch (error) {
+            console.error('Error cargando vista asignación:', error);
+            mostrarSnackbar('Error cargando vista de asignación', 'error');
+        } finally {
+            setLoadingAsignacion(false);
+        }
+    };
+    
+    // Cargar vista asignación cuando se entra al tab
+    useEffect(() => {
+        if (tabActual === 1) {
+            cargarVistaAsignacion();
+        }
+    }, [tabActual, metricas]);
+    
+    const handleSeleccionarParaAsignar = (contactoId) => {
+        setSeleccionAsignacion(prev => 
+            prev.includes(contactoId) 
+                ? prev.filter(id => id !== contactoId)
+                : [...prev, contactoId]
+        );
+    };
+    
+    const handleAsignarASDR = async (sdrId, sdrNombre) => {
+        if (seleccionAsignacion.length === 0) return;
+        try {
+            await SDRService.asignarContactos(seleccionAsignacion, sdrId, sdrNombre, empresaId, null);
+            mostrarSnackbar(`${seleccionAsignacion.length} contacto(s) asignado(s) a ${sdrNombre}`);
+            setSeleccionAsignacion([]);
+            cargarVistaAsignacion();
+            cargarMetricas();
+        } catch (error) {
+            mostrarSnackbar('Error al asignar', 'error');
+        }
+    };
+    
+    const handleMoverAPool = async (contactoIds) => {
+        try {
+            await SDRService.desasignarContactos(contactoIds, empresaId);
+            mostrarSnackbar(`${contactoIds.length} contacto(s) movido(s) al pool`);
+            setSeleccionAsignacion([]);
+            cargarVistaAsignacion();
+        } catch (error) {
+            mostrarSnackbar('Error al desasignar', 'error');
+        }
+    };
+    
+    const renderAsignacion = () => (
+        <Box>
+            {/* Header con acciones */}
+            <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
+                <Typography variant="h6">
+                    Asignación de Contactos
+                    {seleccionAsignacion.length > 0 && (
+                        <Chip label={`${seleccionAsignacion.length} seleccionados`} color="primary" size="small" sx={{ ml: 1 }} />
+                    )}
+                </Typography>
+                <Stack direction="row" spacing={1}>
+                    {seleccionAsignacion.length > 0 && (
+                        <Button size="small" onClick={() => setSeleccionAsignacion([])}>
+                            Limpiar selección
+                        </Button>
+                    )}
+                    <Button startIcon={<RefreshIcon />} onClick={cargarVistaAsignacion} disabled={loadingAsignacion}>
+                        Actualizar
+                    </Button>
+                </Stack>
+            </Stack>
+            
+            {loadingAsignacion && <LinearProgress sx={{ mb: 2 }} />}
+            
+            {/* Vista de columnas */}
+            <Box sx={{ 
+                display: 'flex', 
+                gap: 2, 
+                overflowX: 'auto', 
+                pb: 2,
+                minHeight: 400
+            }}>
+                {/* Columna Pool (sin asignar) */}
+                <Paper 
+                    sx={{ 
+                        minWidth: 280, 
+                        maxWidth: 320,
+                        bgcolor: 'grey.50',
+                        display: 'flex',
+                        flexDirection: 'column'
+                    }}
+                >
+                    <Box sx={{ p: 2, bgcolor: 'secondary.main', color: 'white' }}>
+                        <Stack direction="row" justifyContent="space-between" alignItems="center">
+                            <Typography variant="subtitle1" fontWeight={700}>
+                                🗂️ Pool (Sin asignar)
+                            </Typography>
+                            <Chip label={contactosSinAsignar.length} size="small" sx={{ bgcolor: 'white', fontWeight: 700 }} />
+                        </Stack>
+                    </Box>
+                    <Box sx={{ p: 1, flex: 1, overflowY: 'auto', maxHeight: 500 }}>
+                        {contactosSinAsignar.length === 0 ? (
+                            <Typography variant="body2" color="text.secondary" sx={{ p: 2, textAlign: 'center' }}>
+                                No hay contactos sin asignar
+                            </Typography>
+                        ) : (
+                            <Stack spacing={1}>
+                                {contactosSinAsignar.slice(0, 50).map(contacto => (
+                                    <Paper
+                                        key={contacto._id}
+                                        elevation={seleccionAsignacion.includes(contacto._id) ? 4 : 1}
+                                        sx={{
+                                            p: 1.5,
+                                            cursor: 'pointer',
+                                            border: seleccionAsignacion.includes(contacto._id) ? 2 : 0,
+                                            borderColor: 'primary.main',
+                                            '&:hover': { bgcolor: 'grey.100' }
+                                        }}
+                                        onClick={() => handleSeleccionarParaAsignar(contacto._id)}
+                                    >
+                                        <Stack direction="row" spacing={1} alignItems="center">
+                                            <Checkbox 
+                                                size="small" 
+                                                checked={seleccionAsignacion.includes(contacto._id)}
+                                                onClick={(e) => e.stopPropagation()}
+                                                onChange={() => handleSeleccionarParaAsignar(contacto._id)}
+                                            />
+                                            <Box sx={{ flex: 1, minWidth: 0 }}>
+                                                <Typography variant="body2" fontWeight={600} noWrap>
+                                                    {contacto.nombre}
+                                                </Typography>
+                                                <Typography variant="caption" color="text.secondary" noWrap>
+                                                    {contacto.empresa || contacto.telefono}
+                                                </Typography>
+                                            </Box>
+                                            <EstadoChip estado={contacto.estado} />
+                                        </Stack>
+                                    </Paper>
+                                ))}
+                                {contactosSinAsignar.length > 50 && (
+                                    <Typography variant="caption" color="text.secondary" sx={{ textAlign: 'center', py: 1 }}>
+                                        +{contactosSinAsignar.length - 50} más
+                                    </Typography>
+                                )}
+                            </Stack>
+                        )}
+                    </Box>
+                </Paper>
+                
+                {/* Columnas por SDR */}
+                {sdrsConContactos.map(sdr => (
+                    <Paper 
+                        key={sdr.id}
+                        sx={{ 
+                            minWidth: 280, 
+                            maxWidth: 320,
+                            display: 'flex',
+                            flexDirection: 'column'
+                        }}
+                    >
+                        {/* Header del SDR */}
+                        <Box sx={{ p: 2, bgcolor: 'primary.main', color: 'white' }}>
+                            <Stack direction="row" justifyContent="space-between" alignItems="center">
+                                <Box>
+                                    <Typography variant="subtitle1" fontWeight={700}>
+                                        {sdr.nombre}
+                                    </Typography>
+                                    <Typography variant="caption" sx={{ opacity: 0.8 }}>
+                                        {sdr.email}
+                                    </Typography>
+                                </Box>
+                                <Chip label={sdr.contactos.length} size="small" sx={{ bgcolor: 'white', fontWeight: 700 }} />
+                            </Stack>
+                            {/* Métricas del día */}
+                            <Stack direction="row" spacing={2} sx={{ mt: 1 }}>
+                                <Stack direction="row" spacing={0.5} alignItems="center">
+                                    <PhoneIcon sx={{ fontSize: 14 }} />
+                                    <Typography variant="caption">{sdr.metricas.llamadas}</Typography>
+                                </Stack>
+                                <Stack direction="row" spacing={0.5} alignItems="center">
+                                    <WhatsAppIcon sx={{ fontSize: 14 }} />
+                                    <Typography variant="caption">{sdr.metricas.whatsapp}</Typography>
+                                </Stack>
+                                <Stack direction="row" spacing={0.5} alignItems="center">
+                                    <EventIcon sx={{ fontSize: 14 }} />
+                                    <Typography variant="caption">{sdr.metricas.reuniones}</Typography>
+                                </Stack>
+                            </Stack>
+                        </Box>
+                        
+                        {/* Botón para asignar seleccionados a este SDR */}
+                        {seleccionAsignacion.length > 0 && (
+                            <Box sx={{ p: 1, bgcolor: 'primary.light' }}>
+                                <Button 
+                                    fullWidth 
+                                    size="small" 
+                                    variant="contained"
+                                    onClick={() => handleAsignarASDR(sdr.id, sdr.nombre)}
+                                >
+                                    Asignar {seleccionAsignacion.length} aquí
+                                </Button>
+                            </Box>
+                        )}
+                        
+                        {/* Lista de contactos del SDR */}
+                        <Box sx={{ p: 1, flex: 1, overflowY: 'auto', maxHeight: 450 }}>
+                            {sdr.contactos.length === 0 ? (
+                                <Typography variant="body2" color="text.secondary" sx={{ p: 2, textAlign: 'center' }}>
+                                    Sin contactos asignados
+                                </Typography>
+                            ) : (
+                                <Stack spacing={1}>
+                                    {sdr.contactos.slice(0, 30).map(contacto => {
+                                        const vencido = contacto.proximoContacto && new Date(contacto.proximoContacto) < new Date();
+                                        return (
+                                            <Paper
+                                                key={contacto._id}
+                                                elevation={0}
+                                                sx={{
+                                                    p: 1.5,
+                                                    bgcolor: vencido ? 'error.50' : 'grey.50',
+                                                    borderLeft: 3,
+                                                    borderColor: vencido ? 'error.main' : 'primary.light'
+                                                }}
+                                            >
+                                                <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
+                                                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                                                        <Typography variant="body2" fontWeight={600} noWrap>
+                                                            {contacto.nombre}
+                                                        </Typography>
+                                                        <Typography variant="caption" color="text.secondary" noWrap>
+                                                            {contacto.empresa || contacto.telefono}
+                                                        </Typography>
+                                                        {contacto.proximoContacto && (
+                                                            <Typography variant="caption" color={vencido ? 'error.main' : 'text.secondary'} display="block">
+                                                                ⏰ {new Date(contacto.proximoContacto).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })}
+                                                            </Typography>
+                                                        )}
+                                                    </Box>
+                                                    <Stack direction="row" spacing={0.5}>
+                                                        <EstadoChip estado={contacto.estado} />
+                                                        <Tooltip title="Mover al pool">
+                                                            <IconButton 
+                                                                size="small" 
+                                                                onClick={() => handleMoverAPool([contacto._id])}
+                                                            >
+                                                                <PersonOffIcon fontSize="small" />
+                                                            </IconButton>
+                                                        </Tooltip>
+                                                    </Stack>
+                                                </Stack>
+                                            </Paper>
+                                        );
+                                    })}
+                                    {sdr.contactos.length > 30 && (
+                                        <Typography variant="caption" color="text.secondary" sx={{ textAlign: 'center', py: 1 }}>
+                                            +{sdr.contactos.length - 30} más
+                                        </Typography>
+                                    )}
+                                </Stack>
+                            )}
+                        </Box>
+                    </Paper>
+                ))}
+                
+                {/* Columna para agregar SDR */}
+                <Paper 
+                    sx={{ 
+                        minWidth: 200, 
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        bgcolor: 'grey.100',
+                        border: '2px dashed',
+                        borderColor: 'grey.300',
+                        cursor: 'pointer',
+                        '&:hover': { borderColor: 'primary.main', bgcolor: 'grey.50' }
+                    }}
+                    onClick={() => setModalAgregarSDR(true)}
+                >
+                    <Stack alignItems="center" spacing={1}>
+                        <AddIcon sx={{ fontSize: 40, color: 'grey.400' }} />
+                        <Typography color="text.secondary">Agregar SDR</Typography>
+                    </Stack>
+                </Paper>
+            </Box>
+            
+            {/* Resumen rápido */}
+            <Paper sx={{ p: 2, mt: 2, bgcolor: 'grey.50' }}>
+                <Stack direction="row" spacing={4} justifyContent="center">
+                    <Box textAlign="center">
+                        <Typography variant="h5" color="secondary.main" fontWeight={700}>
+                            {contactosSinAsignar.length}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">Sin asignar</Typography>
+                    </Box>
+                    <Divider orientation="vertical" flexItem />
+                    <Box textAlign="center">
+                        <Typography variant="h5" color="primary.main" fontWeight={700}>
+                            {sdrsConContactos.reduce((acc, sdr) => acc + sdr.contactos.length, 0)}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">Asignados</Typography>
+                    </Box>
+                    <Divider orientation="vertical" flexItem />
+                    <Box textAlign="center">
+                        <Typography variant="h5" fontWeight={700}>
+                            {sdrsConContactos.length}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">SDRs activos</Typography>
+                    </Box>
+                </Stack>
+            </Paper>
         </Box>
     );
     
@@ -1636,6 +2002,12 @@ const GestionSDRPage = () => {
                             sx={{ minWidth: isMobile ? 0 : 'auto' }}
                         />
                         <Tab 
+                            icon={<AssignmentIndIcon />} 
+                            label={isMobile ? "" : "Asignación"} 
+                            iconPosition="start" 
+                            sx={{ minWidth: isMobile ? 0 : 'auto' }}
+                        />
+                        <Tab 
                             icon={<GroupsIcon />} 
                             label={isMobile ? "" : "Contactos"} 
                             iconPosition="start" 
@@ -1661,8 +2033,9 @@ const GestionSDRPage = () => {
                     </Tabs>
                     
                     {tabActual === 0 && renderDashboard()}
-                    {tabActual === 1 && renderContactos()}
-                    {tabActual === 2 && renderReuniones()}
+                    {tabActual === 1 && renderAsignacion()}
+                    {tabActual === 2 && renderContactos()}
+                    {tabActual === 3 && renderReuniones()}
                 </Container>
             </Box>
             

@@ -92,6 +92,14 @@ const SDRService = {
     },
 
     /**
+     * Cambiar estado de un contacto
+     */
+    cambiarEstado: async (contactoId, estado, motivo = null) => {
+        const res = await api.post('/sdr/acciones/cambiar-estado', { contactoId, estado, motivo });
+        return res.data;
+    },
+
+    /**
      * Marcar como "No responde"
      */
     marcarNoResponde: async (contactoId, data) => {
