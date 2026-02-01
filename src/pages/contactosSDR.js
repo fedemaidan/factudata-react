@@ -315,9 +315,8 @@ const ContactosSDRPage = () => {
         if (!contactoSeleccionado) return;
         setActionLoading(true);
         try {
-            await SDRService.registrarReunion({
+            await SDRService.registrarReunion(contactoSeleccionado._id, {
                 ...data,
-                contactoId: contactoSeleccionado._id,
                 empresaId
             });
             setSnackbar({ open: true, message: '¡Reunión registrada con éxito!', severity: 'success' });

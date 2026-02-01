@@ -759,11 +759,21 @@ const DrawerDetalleContactoSDR = ({
                                     }
                                 }}
                                 disabled={guardandoProximo}
-                                InputLabelProps={{ shrink: true }}
+                                InputLabelProps={{ 
+                                    shrink: true,
+                                    sx: { 
+                                        bgcolor: 'white', 
+                                        px: 0.5,
+                                        ml: -0.5
+                                    }
+                                }}
                                 sx={{ 
                                     '& .MuiOutlinedInput-root': { 
                                         borderRadius: 2,
                                         bgcolor: 'grey.50'
+                                    },
+                                    '& .MuiOutlinedInput-input': {
+                                        pt: 1.5
                                     }
                                 }}
                             />

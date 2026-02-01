@@ -254,41 +254,76 @@ const SDRService = {
 
     /**
      * Listar templates de WhatsApp por empresa
+     * @param {string} empresaId 
+     * @param {string} tipo - Opcional: 'cadencia' o 'post_llamada'
      */
-    listarTemplatesWhatsApp: async (empresaId) => {
+    listarTemplatesWhatsApp: async (empresaId, tipo = null) => {
         try {
-            const res = await api.get('/sdr/templates/whatsapp', { params: { empresaId } });
+            const params = { empresaId };
+            if (tipo) params.tipo = tipo;
+            const res = await api.get('/sdr/templates/whatsapp', { params });
             return res.data;
         } catch (error) {
             // Si no existe el endpoint, retornar templates por defecto
             console.log('Templates endpoint no disponible, usando defaults');
+            const allTemplates = [
+                // Cadencia
+                {
+                    _id: 'default-cadencia-1',
+                    empresaId,
+                    tipo: 'cadencia',
+                    cadencia_step: 1,
+                    label: 'Primer contacto',
+                    body: '¡Hola {{first_name}}! 👋\n\nSoy {{assigned_to}} de Sorby. Vi que podrías estar interesado en optimizar la gestión de tu negocio.\n\n¿Tenés 5 minutos para que te cuente cómo podemos ayudarte?',
+                    active: true
+                },
+                {
+                    _id: 'default-cadencia-2',
+                    empresaId,
+                    tipo: 'cadencia',
+                    cadencia_step: 2,
+                    label: 'Follow-up',
+                    body: '¡Hola {{first_name}}! 👋\n\nTe escribo de nuevo porque no quería que te pierdas la oportunidad de conocer Sorby.\n\n¿Te gustaría agendar una llamada rápida esta semana?',
+                    active: true
+                },
+                {
+                    _id: 'default-cadencia-3',
+                    empresaId,
+                    tipo: 'cadencia',
+                    cadencia_step: 3,
+                    label: 'Último intento',
+                    body: 'Hola {{first_name}},\n\nÚltimo mensaje 😊 No quiero ser insistente, pero realmente creo que Sorby podría ayudarte.\n\nSi en algún momento querés conocer más, acá estoy.\n\n¡Éxitos!',
+                    active: true
+                },
+                // Post llamada
+                {
+                    _id: 'default-post-1',
+                    empresaId,
+                    tipo: 'post_llamada',
+                    label: 'Intentamos contactarte',
+                    body: 'Hola {{first_name}}! 👋 Te estuvimos llamando pero no pudimos comunicarnos. ¿Tenés un momento para conversar?',
+                    active: true
+                },
+                {
+                    _id: 'default-post-2',
+                    empresaId,
+                    tipo: 'post_llamada',
+                    label: 'Mensaje corto',
+                    body: 'Hola {{first_name}}! Te llamé recién pero no pude comunicarme. ¿Cuándo te queda bien que hablemos?',
+                    active: true
+                },
+                {
+                    _id: 'default-post-3',
+                    empresaId,
+                    tipo: 'post_llamada',
+                    label: 'Proponer horario',
+                    body: 'Hola {{first_name}}! Intenté llamarte sin éxito. ¿Te parece si coordinamos un horario que te quede cómodo?',
+                    active: true
+                }
+            ];
+            
             return {
-                templates: [
-                    {
-                        _id: 'default-1',
-                        empresaId,
-                        cadencia_step: 1,
-                        label: 'Primer contacto',
-                        body: '¡Hola {{first_name}}! 👋\n\nSoy {{assigned_to}} de Sorby. Vi que podrías estar interesado en optimizar la gestión de tu negocio.\n\n¿Tenés 5 minutos para que te cuente cómo podemos ayudarte?',
-                        active: true
-                    },
-                    {
-                        _id: 'default-2',
-                        empresaId,
-                        cadencia_step: 2,
-                        label: 'Follow-up',
-                        body: '¡Hola {{first_name}}! 👋\n\nTe escribo de nuevo porque no quería que te pierdas la oportunidad de conocer Sorby.\n\n¿Te gustaría agendar una llamada rápida esta semana?',
-                        active: true
-                    },
-                    {
-                        _id: 'default-3',
-                        empresaId,
-                        cadencia_step: 3,
-                        label: 'Último intento',
-                        body: 'Hola {{first_name}},\n\nÚltimo mensaje 😊 No quiero ser insistente, pero realmente creo que Sorby podría ayudarte.\n\nSi en algún momento querés conocer más, acá estoy.\n\n¡Éxitos!',
-                        active: true
-                    }
-                ]
+                templates: tipo ? allTemplates.filter(t => t.tipo === tipo) : allTemplates
             };
         }
     },
@@ -341,6 +376,50 @@ const SDRService = {
      */
     validarExcel: async (contactos, empresaId) => {
         const res = await api.post('/sdr/importar/validar', { contactos, empresaId });
+        return res.data;
+    },
+
+    // ==================== TIPOS DE TEMPLATES ====================
+
+    /**
+     * Listar tipos de templates por empresa
+     */
+    listarTiposTemplate: async (empresaId) => {
+        try {
+            const res = await api.get('/sdr/templates/tipos', { params: { empresaId } });
+            return res.data;
+        } catch (error) {
+            console.log('Tipos endpoint no disponible, usando defaults');
+            return {
+                tipos: [
+                    { _id: 'tipo-cadencia', id: 'cadencia', label: 'Cadencia', tieneSteps: true, isDefault: true },
+                    { _id: 'tipo-post_llamada', id: 'post_llamada', label: 'Post llamada', tieneSteps: false, isDefault: true }
+                ]
+            };
+        }
+    },
+
+    /**
+     * Crear tipo de template
+     */
+    crearTipoTemplate: async (empresaId, data) => {
+        const res = await api.post('/sdr/templates/tipos', { ...data, empresaId });
+        return res.data;
+    },
+
+    /**
+     * Actualizar tipo de template
+     */
+    actualizarTipoTemplate: async (tipoId, data) => {
+        const res = await api.put(`/sdr/templates/tipos/${tipoId}`, data);
+        return res.data;
+    },
+
+    /**
+     * Eliminar tipo de template
+     */
+    eliminarTipoTemplate: async (tipoId) => {
+        const res = await api.delete(`/sdr/templates/tipos/${tipoId}`);
         return res.data;
     }
 };

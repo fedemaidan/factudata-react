@@ -23,6 +23,10 @@ import {
     useTheme,
     useMediaQuery,
     Slide,
+    Menu,
+    MenuItem,
+    ListItemIcon,
+    ListItemText,
 } from '@mui/material';
 import {
     Close as CloseIcon,
@@ -34,6 +38,8 @@ import {
     ArrowBack as ArrowBackIcon,
     ContentCopy as ContentCopyIcon,
     Info as InfoIcon,
+    Settings as SettingsIcon,
+    MoreVert as MoreVertIcon,
 } from '@mui/icons-material';
 import SDRService from '../../services/sdrService';
 
@@ -41,11 +47,11 @@ const Transition = React.forwardRef(function Transition(props, ref) {
     return <Slide direction="up" ref={ref} {...props} />;
 });
 
-// Etapas de cadencia
-const CADENCIA_STEPS = [
-    { step: 1, label: 'Primer contacto', color: 'info', description: 'Mensaje inicial de presentación' },
-    { step: 2, label: 'Follow-up', color: 'warning', description: 'Segundo intento, recordatorio' },
-    { step: 3, label: 'Último intento', color: 'error', description: 'Mensaje final antes de descartar' },
+// Tipos de templates por defecto (se usan si no se cargan de la API)
+const DEFAULT_TIPOS_TEMPLATE = [
+    { id: 'prospecto', label: 'Prospecto', descripcion: 'Templates para contacto inicial con prospectos', isDefault: true },
+    { id: 'seguimiento', label: 'Seguimiento', descripcion: 'Templates para seguimiento de contactos', isDefault: true },
+    { id: 'post_llamada', label: 'Post llamada', descripcion: 'Templates para enviar después de una llamada', isDefault: true },
 ];
 
 // Variables disponibles
@@ -57,27 +63,54 @@ const VARIABLES_DISPONIBLES = [
 
 // Templates por defecto para inicializar
 const getDefaultTemplates = () => [
+    // Prospecto
     {
-        _id: 'default-1',
-        cadencia_step: 1,
-        label: 'Presentación estándar',
+        _id: 'default-prospecto-1',
+        tipo: 'prospecto',
+        label: 'Primer contacto',
         body: '¡Hola {{first_name}}! 👋\n\nSoy {{assigned_to}} de Sorby. Vi que podrías estar interesado en optimizar la gestión de tu negocio.\n\n¿Tenés 5 minutos para que te cuente cómo podemos ayudarte?',
         active: true,
         isDefault: true
     },
     {
-        _id: 'default-2',
-        cadencia_step: 2,
+        _id: 'default-prospecto-2',
+        tipo: 'prospecto',
+        label: 'Presentación corta',
+        body: '¡Hola {{first_name}}! Soy de Sorby. ¿Tenés un momento para conocer cómo podemos ayudarte con tu negocio?',
+        active: true,
+        isDefault: true
+    },
+    // Seguimiento
+    {
+        _id: 'default-seguimiento-1',
+        tipo: 'seguimiento',
         label: 'Recordatorio amigable',
         body: '¡Hola {{first_name}}! 👋\n\nTe escribo de nuevo porque no quería que te pierdas la oportunidad de conocer Sorby.\n\n¿Te gustaría agendar una llamada rápida esta semana?',
         active: true,
         isDefault: true
     },
     {
-        _id: 'default-3',
-        cadencia_step: 3,
-        label: 'Despedida cordial',
+        _id: 'default-seguimiento-2',
+        tipo: 'seguimiento',
+        label: 'Último intento',
         body: 'Hola {{first_name}},\n\nÚltimo mensaje 😊 No quiero ser insistente, pero realmente creo que Sorby podría ayudarte.\n\nSi en algún momento querés conocer más, acá estoy.\n\n¡Éxitos!',
+        active: true,
+        isDefault: true
+    },
+    // Post llamada
+    {
+        _id: 'default-post-1',
+        tipo: 'post_llamada',
+        label: 'Llamada no atendida',
+        body: 'Hola {{first_name}}! 👋 Te estuvimos llamando pero no pudimos comunicarnos. ¿Tenés un momento para conversar?',
+        active: true,
+        isDefault: true
+    },
+    {
+        _id: 'default-post-2',
+        tipo: 'post_llamada',
+        label: 'Proponer horario',
+        body: 'Hola {{first_name}}! Intenté llamarte sin éxito. ¿Te parece si coordinamos un horario que te quede cómodo?',
         active: true,
         isDefault: true
     }
@@ -92,25 +125,40 @@ const ModalAdminTemplates = ({
     const isMobile = useMediaQuery(theme.breakpoints.down('md'));
     
     const [templates, setTemplates] = useState([]);
+    const [tiposTemplate, setTiposTemplate] = useState(DEFAULT_TIPOS_TEMPLATE);
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
-    const [selectedTab, setSelectedTab] = useState(0); // 0, 1, 2 para cadencia 1, 2, 3
+    const [tipoSeleccionado, setTipoSeleccionado] = useState('prospecto');
     const [editingTemplate, setEditingTemplate] = useState(null);
     const [isCreating, setIsCreating] = useState(false);
     const [error, setError] = useState(null);
     const [success, setSuccess] = useState(null);
     
+    // Estado para gestión de tipos
+    const [menuAnchor, setMenuAnchor] = useState(null);
+    const [showTipoForm, setShowTipoForm] = useState(false);
+    const [editingTipo, setEditingTipo] = useState(null);
+    const [tipoFormData, setTipoFormData] = useState({ label: '' });
+    
+    // Obtener el tipo actual seleccionado
+    const tipoActual = tiposTemplate.find(t => t.id === tipoSeleccionado) || tiposTemplate[0];
+    
     // Formulario
     const [formData, setFormData] = useState({
         label: '',
         body: '',
+        tipo: 'cadencia',
         cadencia_step: 1,
         active: true,
     });
+    
+    // Obtener templates filtrados por tipo
+    const templatesFiltrados = templates.filter(t => t.tipo === tipoSeleccionado);
 
-    // Cargar templates al abrir
+    // Cargar templates y tipos al abrir
     useEffect(() => {
         if (open && empresaId) {
+            cargarTipos();
             cargarTemplates();
         }
     }, [open, empresaId]);
@@ -122,8 +170,35 @@ const ModalAdminTemplates = ({
             setIsCreating(false);
             setError(null);
             setSuccess(null);
+            setShowTipoForm(false);
+            setEditingTipo(null);
         }
     }, [open]);
+
+    const cargarTipos = async () => {
+        try {
+            const data = await SDRService.listarTiposTemplate(empresaId);
+            const tipos = data.tipos || data || [];
+            if (tipos.length > 0) {
+                // Asegurar que cada tipo tenga 'tabs' para compatibilidad
+                const tiposConTabs = tipos.map(t => ({
+                    ...t,
+                    tabs: t.tabs || t.steps || []
+                }));
+                setTiposTemplate(tiposConTabs);
+                
+                // Verificar que el tipo seleccionado existe, si no, seleccionar el primero
+                if (!tiposConTabs.find(t => t.id === tipoSeleccionado)) {
+                    setTipoSeleccionado(tiposConTabs[0]?.id || 'cadencia');
+                }
+            } else {
+                setTiposTemplate(DEFAULT_TIPOS_TEMPLATE);
+            }
+        } catch (err) {
+            console.error('Error cargando tipos:', err);
+            setTiposTemplate(DEFAULT_TIPOS_TEMPLATE);
+        }
+    };
 
     const cargarTemplates = async () => {
         setLoading(true);
@@ -147,12 +222,9 @@ const ModalAdminTemplates = ({
         }
     };
 
-    const handleTabChange = (event, newValue) => {
-        setSelectedTab(newValue);
-        // Si estaba creando, actualizar el step del form
-        if (isCreating) {
-            setFormData(prev => ({ ...prev, cadencia_step: newValue + 1 }));
-        }
+    const handleTipoChange = (nuevoTipo) => {
+        setTipoSeleccionado(nuevoTipo);
+        handleCancelarEdicion();
     };
 
     const handleNuevoTemplate = () => {
@@ -161,7 +233,7 @@ const ModalAdminTemplates = ({
         setFormData({
             label: '',
             body: '',
-            cadencia_step: selectedTab + 1,
+            tipo: tipoSeleccionado,
             active: true,
         });
     };
@@ -172,7 +244,7 @@ const ModalAdminTemplates = ({
         setFormData({
             label: template.label || '',
             body: template.body || '',
-            cadencia_step: template.cadencia_step,
+            tipo: template.tipo || tipoSeleccionado,
             active: template.active !== false,
         });
     };
@@ -183,7 +255,7 @@ const ModalAdminTemplates = ({
         setFormData({
             label: '',
             body: '',
-            cadencia_step: selectedTab + 1,
+            tipo: tipoSeleccionado,
             active: true,
         });
     };
@@ -198,24 +270,23 @@ const ModalAdminTemplates = ({
         setError(null);
         
         try {
+            const templateData = {
+                ...formData,
+                tipo: tipoSeleccionado,
+            };
+            
             if (isCreating) {
                 // Crear nuevo
-                await SDRService.crearTemplateWhatsApp(empresaId, {
-                    ...formData,
-                    cadencia_step: selectedTab + 1,
-                });
+                await SDRService.crearTemplateWhatsApp(empresaId, templateData);
                 setSuccess('Template creado correctamente');
             } else if (editingTemplate) {
                 // Si es un template default, crear uno nuevo en su lugar
                 if (editingTemplate.isDefault || editingTemplate._id?.startsWith('default-')) {
-                    await SDRService.crearTemplateWhatsApp(empresaId, {
-                        ...formData,
-                        cadencia_step: editingTemplate.cadencia_step,
-                    });
+                    await SDRService.crearTemplateWhatsApp(empresaId, templateData);
                     setSuccess('Template guardado correctamente');
                 } else {
                     // Actualizar existente
-                    await SDRService.actualizarTemplateWhatsApp(editingTemplate._id, formData);
+                    await SDRService.actualizarTemplateWhatsApp(editingTemplate._id, templateData);
                     setSuccess('Template actualizado correctamente');
                 }
             }
@@ -281,9 +352,79 @@ const ModalAdminTemplates = ({
         }));
     };
 
-    // Templates filtrados por tab actual
-    const templatesFiltrados = templates.filter(t => t.cadencia_step === selectedTab + 1);
-    const stepActual = CADENCIA_STEPS[selectedTab];
+    // Funciones para gestión de tipos
+    const handleMenuOpen = (event) => setMenuAnchor(event.currentTarget);
+    const handleMenuClose = () => setMenuAnchor(null);
+    
+    const handleNuevoTipo = () => {
+        handleMenuClose();
+        setEditingTipo(null);
+        setTipoFormData({ label: '' });
+        setShowTipoForm(true);
+    };
+    
+    const handleEditarTipo = (tipo) => {
+        handleMenuClose();
+        setEditingTipo(tipo);
+        setTipoFormData({ label: tipo.label });
+        setShowTipoForm(true);
+    };
+    
+    const handleGuardarTipo = async () => {
+        if (!tipoFormData.label.trim()) {
+            setError('El nombre del tipo es requerido');
+            return;
+        }
+        
+        setSaving(true);
+        try {
+            if (editingTipo) {
+                await SDRService.actualizarTipoTemplate(editingTipo._id, tipoFormData);
+                setSuccess('Tipo actualizado');
+            } else {
+                await SDRService.crearTipoTemplate(empresaId, tipoFormData);
+                setSuccess('Tipo creado');
+            }
+            await cargarTipos();
+            setShowTipoForm(false);
+            setTimeout(() => setSuccess(null), 3000);
+        } catch (err) {
+            console.error('Error guardando tipo:', err);
+            setError('Error al guardar el tipo');
+        } finally {
+            setSaving(false);
+        }
+    };
+    
+    const handleEliminarTipo = async (tipo) => {
+        if (tipo.isDefault) {
+            setError('No se pueden eliminar tipos por defecto');
+            setTimeout(() => setError(null), 3000);
+            return;
+        }
+        
+        if (!confirm(`¿Eliminar el tipo "${tipo.label}"? Se eliminarán también los templates asociados.`)) {
+            return;
+        }
+        
+        setSaving(true);
+        try {
+            await SDRService.eliminarTipoTemplate(tipo._id);
+            setSuccess('Tipo eliminado');
+            await cargarTipos();
+            // Si el tipo eliminado era el seleccionado, volver a cadencia
+            if (tipoSeleccionado === tipo.id) {
+                setTipoSeleccionado('cadencia');
+            }
+            setTimeout(() => setSuccess(null), 3000);
+        } catch (err) {
+            console.error('Error eliminando tipo:', err);
+            setError('Error al eliminar el tipo');
+        } finally {
+            setSaving(false);
+        }
+        handleMenuClose();
+    };
 
     // Vista del formulario de edición
     const renderFormulario = () => (
@@ -309,18 +450,19 @@ const ModalAdminTemplates = ({
                         fullWidth
                         value={formData.label}
                         onChange={(e) => setFormData(prev => ({ ...prev, label: e.target.value }))}
-                        placeholder="Ej: Presentación para tech"
+                        placeholder="Ej: Primer contacto, Seguimiento, etc."
                         helperText="Un nombre descriptivo para identificar este template"
                     />
 
-                    {/* Paso de cadencia (solo lectura) */}
+                    {/* Tipo de template (solo lectura) */}
                     <Box>
                         <Typography variant="body2" color="text.secondary" gutterBottom>
-                            Paso de cadencia
+                            Tipo de template
                         </Typography>
                         <Chip 
-                            label={`Paso ${formData.cadencia_step}: ${CADENCIA_STEPS[formData.cadencia_step - 1]?.label}`}
-                            color={CADENCIA_STEPS[formData.cadencia_step - 1]?.color}
+                            label={tipoActual?.label || tipoSeleccionado}
+                            color="primary"
+                            variant="outlined"
                         />
                     </Box>
 
@@ -425,49 +567,109 @@ const ModalAdminTemplates = ({
                         <WhatsAppIcon sx={{ color: '#25D366' }} />
                         <Typography variant="h6">Templates WhatsApp</Typography>
                     </Stack>
-                    <IconButton onClick={onClose}>
-                        <CloseIcon />
-                    </IconButton>
+                    <Stack direction="row" spacing={1}>
+                        <IconButton onClick={handleMenuOpen} size="small">
+                            <SettingsIcon />
+                        </IconButton>
+                        <IconButton onClick={onClose}>
+                            <CloseIcon />
+                        </IconButton>
+                    </Stack>
                 </Stack>
             </Box>
+            
+            {/* Menú de configuración */}
+            <Menu
+                anchorEl={menuAnchor}
+                open={Boolean(menuAnchor)}
+                onClose={handleMenuClose}
+            >
+                <MenuItem onClick={handleNuevoTipo}>
+                    <ListItemIcon><AddIcon fontSize="small" /></ListItemIcon>
+                    <ListItemText>Nuevo tipo de template</ListItemText>
+                </MenuItem>
+                <Divider />
+                {tiposTemplate.filter(t => !t.isDefault).map(tipo => (
+                    <MenuItem key={tipo._id || tipo.id} onClick={() => handleEditarTipo(tipo)}>
+                        <ListItemIcon><EditIcon fontSize="small" /></ListItemIcon>
+                        <ListItemText>{tipo.label}</ListItemText>
+                        <IconButton 
+                            size="small" 
+                            onClick={(e) => { e.stopPropagation(); handleEliminarTipo(tipo); }}
+                            sx={{ ml: 1 }}
+                        >
+                            <DeleteIcon fontSize="small" color="error" />
+                        </IconButton>
+                    </MenuItem>
+                ))}
+                {tiposTemplate.filter(t => !t.isDefault).length === 0 && (
+                    <MenuItem disabled>
+                        <Typography variant="body2" color="text.secondary">
+                            No hay tipos personalizados
+                        </Typography>
+                    </MenuItem>
+                )}
+            </Menu>
 
-            {/* Tabs de cadencia */}
+            {/* Tabs de tipo de template - dinámicos */}
             <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
                 <Tabs 
-                    value={selectedTab} 
-                    onChange={handleTabChange}
-                    variant="fullWidth"
+                    value={tiposTemplate.findIndex(t => t.id === tipoSeleccionado) || 0}
+                    onChange={(e, v) => handleTipoChange(tiposTemplate[v]?.id || 'prospecto')}
+                    variant={tiposTemplate.length > 3 ? "scrollable" : "fullWidth"}
+                    scrollButtons="auto"
                 >
-                    {CADENCIA_STEPS.map((step, index) => (
-                        <Tab 
-                            key={step.step}
-                            label={
-                                <Stack direction="row" spacing={0.5} alignItems="center">
-                                    <Chip 
-                                        label={step.step} 
-                                        size="small" 
-                                        color={step.color}
-                                        sx={{ minWidth: 24, height: 24 }}
-                                    />
-                                    <Typography variant="body2" sx={{ display: { xs: 'none', sm: 'block' } }}>
-                                        {step.label}
-                                    </Typography>
-                                </Stack>
-                            }
-                        />
+                    {tiposTemplate.map((tipo) => (
+                        <Tab key={tipo.id || tipo._id} label={tipo.label} />
                     ))}
                 </Tabs>
             </Box>
 
-            {/* Info del paso */}
+            {/* Info del tipo */}
             <Box sx={{ px: 2, py: 1, bgcolor: 'grey.50' }}>
                 <Stack direction="row" spacing={1} alignItems="center">
                     <InfoIcon fontSize="small" color="action" />
                     <Typography variant="body2" color="text.secondary">
-                        {stepActual?.description}
+                        {tipoActual?.descripcion || `Templates de ${tipoActual?.label || 'este tipo'}`}
                     </Typography>
                 </Stack>
             </Box>
+            
+            {/* Formulario para crear/editar tipo */}
+            {showTipoForm && (
+                <Box sx={{ p: 2, bgcolor: 'grey.100', borderBottom: 1, borderColor: 'divider' }}>
+                    <Stack spacing={2}>
+                        <Typography variant="subtitle2">
+                            {editingTipo ? 'Editar tipo de template' : 'Nuevo tipo de template'}
+                        </Typography>
+                        <TextField
+                            label="Nombre del tipo"
+                            fullWidth
+                            size="small"
+                            value={tipoFormData.label}
+                            onChange={(e) => setTipoFormData(prev => ({ ...prev, label: e.target.value }))}
+                            placeholder="Ej: Seguimiento, Promociones, etc."
+                        />
+                        <Stack direction="row" spacing={1}>
+                            <Button 
+                                variant="outlined" 
+                                size="small" 
+                                onClick={() => setShowTipoForm(false)}
+                            >
+                                Cancelar
+                            </Button>
+                            <Button 
+                                variant="contained" 
+                                size="small"
+                                onClick={handleGuardarTipo}
+                                disabled={saving || !tipoFormData.label.trim()}
+                            >
+                                {saving ? 'Guardando...' : 'Guardar'}
+                            </Button>
+                        </Stack>
+                    </Stack>
+                </Box>
+            )}
 
             {/* Contenido */}
             <Box sx={{ flex: 1, overflow: 'auto', p: 2 }}>
@@ -493,7 +695,7 @@ const ModalAdminTemplates = ({
                         {templatesFiltrados.length === 0 ? (
                             <Paper variant="outlined" sx={{ p: 3, textAlign: 'center' }}>
                                 <Typography color="text.secondary" mb={2}>
-                                    No hay templates para este paso
+                                    No hay templates de {tipoActual?.label || 'este tipo'}
                                 </Typography>
                                 <Button
                                     variant="contained"
@@ -610,7 +812,7 @@ const ModalAdminTemplates = ({
                     onClick={handleNuevoTemplate}
                     sx={{ borderRadius: 2, py: 1.5 }}
                 >
-                    Nuevo template para "{stepActual?.label}"
+                    Nuevo template de {tipoActual?.label || 'este tipo'}
                 </Button>
             </Box>
         </Box>
