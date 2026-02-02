@@ -137,46 +137,59 @@ export const PartesCell = ({ item }) => {
   );
 };
 
-export const ComprobantesCell = ({ item }) => (
+export const ComprobantesCell = ({ item, onOpen }) => (
   <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
     {item.comprobantes && item.comprobantes.length > 0 ? (
       item.comprobantes.map((comp, compIndex) => (
-        <Chip
-          key={`${comp.type}-${comp.url || comp.id || compIndex}`}
-          label={comp.type.charAt(0).toUpperCase() + comp.type.slice(1).toLowerCase()}
-          size="small"
-          color={
-            comp.type === 'horas' ? 'primary' :
-            comp.type === 'parte' ? 'success' :
-            comp.type === 'licencia' ? 'warning' : 'default'
-          }
-          variant="filled"
-          component="a"
-          href={comp.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          clickable
-          icon={
-            comp.type === 'horas' ? <AccessTimeRoundedIcon fontSize="small" /> :
-            comp.type === 'parte' ? <DescriptionRoundedIcon fontSize="small" /> :
-            comp.type === 'licencia' ? <MedicalInformationRoundedIcon fontSize="small" /> : null
-          }
-          sx={{
-            cursor: 'pointer',
-            textDecoration: 'none',
-            fontWeight: 600,
-            boxShadow: 1,
-            transition: 'transform 120ms ease, box-shadow 120ms ease, filter 120ms ease',
-            '&:hover': {
-              boxShadow: 3,
-              transform: 'translateY(-1px)',
-              filter: 'brightness(1.02)',
-            },
-            '&:active': { transform: 'translateY(0)' },
-            '& .MuiChip-icon': { fontSize: '1rem' },
-            '& .MuiChip-label': { px: 1.5 },
-          }}
-        />
+        (() => {
+          const url = comp.url || comp.url_storage || null;
+          const handleClick = (event) => {
+            if (comp.type === 'parte' && onOpen && url) {
+              event.preventDefault();
+              event.stopPropagation();
+              onOpen(url, comp);
+            }
+          };
+          return (
+            <Chip
+              key={`${comp.type}-${url || comp.id || compIndex}`}
+              label={comp.type.charAt(0).toUpperCase() + comp.type.slice(1).toLowerCase()}
+              size="small"
+              color={
+                comp.type === 'horas' ? 'primary' :
+                comp.type === 'parte' ? 'success' :
+                comp.type === 'licencia' ? 'warning' : 'default'
+              }
+              variant="filled"
+              component="a"
+              href={url || "#"}
+              target="_blank"
+              rel="noopener noreferrer"
+              clickable
+              icon={
+                comp.type === 'horas' ? <AccessTimeRoundedIcon fontSize="small" /> :
+                comp.type === 'parte' ? <DescriptionRoundedIcon fontSize="small" /> :
+                comp.type === 'licencia' ? <MedicalInformationRoundedIcon fontSize="small" /> : null
+              }
+              sx={{
+                cursor: 'pointer',
+                textDecoration: 'none',
+                fontWeight: 600,
+                boxShadow: 1,
+                transition: 'transform 120ms ease, box-shadow 120ms ease, filter 120ms ease',
+                '&:hover': {
+                  boxShadow: 3,
+                  transform: 'translateY(-1px)',
+                  filter: 'brightness(1.02)',
+                },
+                '&:active': { transform: 'translateY(0)' },
+                '& .MuiChip-icon': { fontSize: '1rem' },
+                '& .MuiChip-label': { px: 1.5 },
+              }}
+              onClick={handleClick}
+            />
+          );
+        })()
       ))
     ) : (
       <Typography variant="caption" color="textSecondary">-</Typography>
@@ -184,7 +197,7 @@ export const ComprobantesCell = ({ item }) => (
   </Box>
 );
 
-export const buildTrabajoRegistradoColumns = (onEdit, incluirTrabajador = false) => ([
+export const buildTrabajoRegistradoColumns = (onEdit, incluirTrabajador = false, onOpenComprobante) => ([
   ...(incluirTrabajador ? [
     { key: 'trabajador', label: 'Trabajador', sortable: true, render: (item) => <TrabajadorCell item={item} /> },
     { key: 'dni', label: 'DNI', sortable: true, render: (item) => <DNICell item={item} /> },
@@ -193,7 +206,9 @@ export const buildTrabajoRegistradoColumns = (onEdit, incluirTrabajador = false)
   { key: 'licencia', label: 'Licencia', sortable: true, render: (item) => <LicenciaCell item={item} /> },
   { key: 'fecha', label: 'Fecha', sortable: true },
   { key: 'horas', label: 'Horas', sortable: false, render: (item) => <PartesCell item={item} /> },
-  { key: 'comprobantes', label: 'Comprobantes', sortable: false, render: (item) => <ComprobantesCell item={item} /> },
+  { key: 'comprobantes', label: 'Comprobantes', sortable: false, render: (item) => (
+    <ComprobantesCell item={item} onOpen={onOpenComprobante} />
+  ) },
   ...(onEdit ? [{ 
     key: 'acciones', 
     label: 'Acciones', 

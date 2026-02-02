@@ -4,6 +4,7 @@ import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import ReplayIcon from "@mui/icons-material/Replay";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import EditIcon from "@mui/icons-material/Edit";
+import MergeTypeIcon from "@mui/icons-material/MergeType";
 import TrabajoRegistradoService from "src/services/dhn/TrabajoRegistradoService";
 import { getStatusChipConfig } from "src/utils/dhn/syncHelpers";
 import { buildFechaDetectadaPatch } from "src/utils/dhn/trabajoRegistradoHelpers";
@@ -98,6 +99,7 @@ export const AccionesCell = ({
   handleResyncUrlStorage,
   handleOpenResolverLicencia,
   handleOpenResolverParte,
+  handleOpenResolverDuplicado,
 }) => {
   const isError = row?.status === "error";
   const shouldShowButton = Boolean(isParte) || isError;
@@ -108,6 +110,7 @@ export const AccionesCell = ({
   const buttonColor = isError ? "error" : "primary";
   const isLicenciaRow = String(row?.tipo || "").toLowerCase() === "licencia";
   const isParteRow = String(row?.tipo || "").toLowerCase() === "parte";
+  const isDuplicadoRow = row?.status === "duplicado";
   return (
     <Box component="span" sx={{ display: "inline-flex", gap: 0.5, alignItems: "center" }}>
       <Tooltip
@@ -148,6 +151,38 @@ export const AccionesCell = ({
           )}
         </span>
       </Tooltip>
+      {isDuplicadoRow && (
+        <Tooltip title="Resolver duplicado" placement="top">
+          <span>
+            <IconButton
+              size="small"
+              color="warning"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleOpenResolverDuplicado?.(row);
+              }}
+              disabled={
+                Boolean(resyncingId) ||
+                isResyncing ||
+                isProcessing ||
+                !row?.duplicateInfo
+              }
+              sx={{
+                p: 0.5,
+                border: "1px solid",
+                borderColor: "warning.main",
+                color: "warning.main",
+                "&:hover": {
+                  backgroundColor: "warning.light",
+                  borderColor: "warning.dark",
+                },
+              }}
+            >
+              <MergeTypeIcon fontSize="small" />
+            </IconButton>
+          </span>
+        </Tooltip>
+      )}
       {isLicenciaRow && isError && (
         <Tooltip title="Resolver manualmente" placement="top">
           <span>

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useCallback } from 'react';
+import { useEffect, useMemo, useCallback, useState } from 'react';
 import { useRouter } from 'next/router';
 import dayjs from 'dayjs';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
@@ -12,6 +12,8 @@ import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import FiltroTrabajoDiario from 'src/components/dhn/FiltroTrabajoDiario';
 import HistorialModal from 'src/components/dhn/HistorialModal';
 import useTrabajoDiarioPage from 'src/hooks/dhn/useTrabajoDiarioPage';
+import ImagenModal from 'src/components/ImagenModal';
+import TrabajosDetectadosList from 'src/components/dhn/TrabajosDetectadosList';
 import { parseDDMMYYYYAnyToISO } from 'src/utils/handleDates';
 
 const ControlDiarioPage = () => {
@@ -46,6 +48,23 @@ const ControlDiarioPage = () => {
     router.replace({ pathname: router.pathname, query: nextQuery }, undefined, { shallow: true });
   }, [router]);
 
+  const [modalUrl, setModalUrl] = useState("");
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalFileName, setModalFileName] = useState("");
+
+  const handleOpenParteModal = useCallback((url, comp) => {
+    if (!url) return;
+    setModalUrl(url);
+    setModalFileName(comp?.file_name || comp?.fileName || "");
+    setModalOpen(true);
+  }, []);
+
+  const handleCloseParteModal = useCallback(() => {
+    setModalOpen(false);
+    setModalUrl("");
+    setModalFileName("");
+  }, []);
+
   const {
     data,
     stats,
@@ -62,6 +81,7 @@ const ControlDiarioPage = () => {
     diaISO,
     incluirTrabajador: true,
     defaultLimit: 200,
+    onOpenComprobante: handleOpenParteModal,
   });
 
   const formatters = useMemo(() => ({
@@ -152,6 +172,14 @@ const ControlDiarioPage = () => {
         entityLabel="Trabajo diario"
         getEntityTitle={logs.getEntityTitle}
         getEntitySubtitle={logs.getEntitySubtitle}
+      />
+
+      <ImagenModal
+        open={modalOpen}
+        onClose={handleCloseParteModal}
+        imagenUrl={modalUrl}
+        fileName={modalFileName}
+        leftContent={modalUrl ? <TrabajosDetectadosList urlStorage={modalUrl} /> : null}
       />
     </DashboardLayout>
   );

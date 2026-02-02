@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useCallback } from 'react';
+import { useEffect, useMemo, useCallback, useState } from 'react';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import { useRouter } from 'next/router';
 import dayjs from 'dayjs';
@@ -12,6 +12,8 @@ import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import useTrabajoDiarioPage from 'src/hooks/dhn/useTrabajoDiarioPage';
 import EditarTrabajoDiarioModal from 'src/components/dhn/EditarTrabajoDiarioModal';
 import FiltroTrabajoDiario from 'src/components/dhn/FiltroTrabajoDiario';
+import ImagenModal from 'src/components/ImagenModal';
+import TrabajosDetectadosList from 'src/components/dhn/TrabajosDetectadosList';
 import HistorialModal from 'src/components/dhn/HistorialModal';
 import { parseDDMMYYYYAnyToISO } from 'src/utils/handleDates';
 import { formatDateDDMMYYYY } from 'src/utils/handleDates';
@@ -50,6 +52,23 @@ const TrabajadorPage = () => {
     router.replace({ pathname: router.pathname, query: nextQuery }, undefined, { shallow: true });
   }, [router]);
 
+  const [modalUrl, setModalUrl] = useState("");
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalFileName, setModalFileName] = useState("");
+
+  const handleOpenParteModal = useCallback((url, comp) => {
+    if (!url) return;
+    setModalUrl(url);
+    setModalFileName(comp?.file_name || comp?.fileName || "");
+    setModalOpen(true);
+  }, []);
+
+  const handleCloseParteModal = useCallback(() => {
+    setModalOpen(false);
+    setModalUrl("");
+    setModalFileName("");
+  }, []);
+
   const {
     data,
     stats,
@@ -67,6 +86,7 @@ const TrabajadorPage = () => {
     trabajadorId: trabajadorId ? String(trabajadorId) : undefined,
     incluirTrabajador: false,
     defaultLimit: 200,
+    onOpenComprobante: handleOpenParteModal,
   });
 
   const formatters = { fecha: formatDateDDMMYYYY };
@@ -182,6 +202,14 @@ const TrabajadorPage = () => {
         entityLabel="Trabajo diario"
         getEntityTitle={logs.getEntityTitle}
         getEntitySubtitle={logs.getEntitySubtitle}
+      />
+
+      <ImagenModal
+        open={modalOpen}
+        onClose={handleCloseParteModal}
+        imagenUrl={modalUrl}
+        fileName={modalFileName}
+        leftContent={modalUrl ? <TrabajosDetectadosList urlStorage={modalUrl} /> : null}
       />
     </DashboardLayout>
   );

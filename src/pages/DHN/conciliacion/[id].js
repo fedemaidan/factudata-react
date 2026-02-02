@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/router';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import { Container, Stack, Alert, Box, TextField, InputAdornment, IconButton, Chip, Button, Typography, Dialog, DialogTitle, DialogContent, DialogActions, Tooltip } from '@mui/material';
@@ -12,6 +12,8 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import TableComponent from 'src/components/TableComponent';
 import FiltroTrabajoDiario from 'src/components/dhn/FiltroTrabajoDiario';
 import conciliacionService from 'src/services/dhn/conciliacionService';
+import ImagenModal from 'src/components/ImagenModal';
+import TrabajosDetectadosList from 'src/components/dhn/TrabajosDetectadosList';
 
 const ConciliacionDetallePage = () => {
   const router = useRouter();
@@ -36,6 +38,23 @@ const ConciliacionDetallePage = () => {
     horasNocturnas: null,
     fechaLicencia: false,
   });
+
+  const [modalUrl, setModalUrl] = useState("");
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalFileName, setModalFileName] = useState("");
+
+  const handleOpenParteModal = useCallback((url, comp) => {
+    if (!url) return;
+    setModalUrl(url);
+    setModalFileName(comp?.file_name || comp?.fileName || "");
+    setModalOpen(true);
+  }, []);
+
+  const handleCloseParteModal = useCallback(() => {
+    setModalOpen(false);
+    setModalUrl("");
+    setModalFileName("");
+  }, []);
 
   const estadoFiltro = useMemo(() => {
     return router.query.estado || 'todos';
@@ -194,21 +213,32 @@ const ConciliacionDetallePage = () => {
                 comp.type === 'horas' ? <TableViewIcon fontSize="small" /> :
                 comp.type === 'parte' ? <AssignmentIcon fontSize="small" /> :
                 comp.type === 'licencia' ? <SickIcon fontSize="small" /> : null;
-              return (
-                <Chip
-                  key={`${comp.type}-${idx}`}
-                  label={comp.type}
-                  size="small"
-                  color={color}
-                  variant="outlined"
-                  component="a"
-                  href={comp.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  clickable
-                  icon={icon}
-                />
-              );
+              return (() => {
+                const url = comp.url || comp.url_storage || null;
+                const handleClick = (event) => {
+                  if (comp.type === 'parte' && url) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    handleOpenParteModal(url, comp);
+                  }
+                };
+                return (
+                  <Chip
+                    key={`${comp.type}-${idx}`}
+                    label={comp.type}
+                    size="small"
+                    color={color}
+                    variant="outlined"
+                    component="a"
+                    href={url || "#"}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    clickable
+                    icon={icon}
+                    onClick={handleClick}
+                  />
+                );
+              })();
             })}
           </Stack>
         );
@@ -278,7 +308,7 @@ const ConciliacionDetallePage = () => {
         </IconButton>
       )
     }
-  ]), []);
+  ]), [handleOpenParteModal]);
 
   const formatters = useMemo(() => ({
     fecha: (value) => {
@@ -362,6 +392,14 @@ const ConciliacionDetallePage = () => {
           />
         </Stack>
       </Container>
+
+    <ImagenModal
+      open={modalOpen}
+      onClose={handleCloseParteModal}
+      imagenUrl={modalUrl}
+      fileName={modalFileName}
+      leftContent={modalUrl ? <TrabajosDetectadosList urlStorage={modalUrl} /> : null}
+    />
 
       <Dialog open={editOpen} onClose={() => setEditOpen(false)} maxWidth="md" fullWidth>
         <DialogTitle>

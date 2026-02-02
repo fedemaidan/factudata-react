@@ -33,6 +33,7 @@ export default function useTrabajoDiarioPage(options = {}) {
     trabajadorId,
     incluirTrabajador = true,
     defaultLimit = 200,
+    onOpenComprobante,
   } = options || {};
 
   const {
@@ -142,9 +143,10 @@ export default function useTrabajoDiarioPage(options = {}) {
             onOpenLogs={handleOpenLogs}
           />
         ),
-        incluirTrabajador
+        incluirTrabajador,
+        onOpenComprobante
       ),
-    [incluirTrabajador]
+    [incluirTrabajador, onOpenComprobante]
   );
 
   const pagination = {

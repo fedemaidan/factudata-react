@@ -17,6 +17,7 @@ import {
   ObservacionCell,
   StatusChip,
 } from "src/components/dhn/sync/cells";
+import ResolverDuplicadoModal from "src/components/dhn/sync/ResolverDuplicadoModal";
 
 const DEFAULT_PAGE_LIMIT = 100;
 
@@ -47,6 +48,10 @@ const SyncErrorsPage = () => {
   const [resolverLicenciaRow, setResolverLicenciaRow] = useState(null);
   const [resolverParteModalOpen, setResolverParteModalOpen] = useState(false);
   const [resolverParteRow, setResolverParteRow] = useState(null);
+
+  const [resolverDuplicadoRow, setResolverDuplicadoRow] = useState(null);
+  const [resolverDuplicadoLoading, setResolverDuplicadoLoading] = useState(false);
+  const [resolverDuplicadoAction, setResolverDuplicadoAction] = useState(null);
 
   const [resolverModalOpen, setResolverModalOpen] = useState(false);
   const [trabajadorSeleccionado, setTrabajadorSeleccionado] = useState(null);
@@ -173,6 +178,49 @@ const SyncErrorsPage = () => {
     await fetchDetails();
   };
 
+  const handleOpenResolverDuplicado = (row) => {
+    if (!row?.duplicateInfo) return;
+    setResolverDuplicadoRow(row);
+  };
+
+  const handleCloseResolverDuplicado = () => {
+    setResolverDuplicadoRow(null);
+    setResolverDuplicadoAction(null);
+  };
+
+  const handleResolverDuplicado = async (action) => {
+    if (!resolverDuplicadoRow) return;
+    setResolverDuplicadoLoading(true);
+    setResolverDuplicadoAction(action);
+    try {
+      const resp = await DhnDriveService.resolveDuplicate(resolverDuplicadoRow._id, action);
+      if (!resp?.ok) {
+        throw new Error(resp?.error?.message || "No se pudo resolver el duplicado");
+      }
+      const successMessage =
+        action === "keepExisting"
+          ? "Se conservó el registro original"
+          : "Se actualizó el trabajo con el nuevo comprobante";
+      setAlert({
+        open: true,
+        severity: "success",
+        message: successMessage,
+      });
+      handleCloseResolverDuplicado();
+      await fetchDetails();
+    } catch (error) {
+      console.error("Error resolviendo duplicado:", error);
+      setAlert({
+        open: true,
+        severity: "error",
+        message: error?.message || "Error al resolver el duplicado",
+      });
+    } finally {
+      setResolverDuplicadoLoading(false);
+      setResolverDuplicadoAction(null);
+    }
+  };
+
   const handleResyncUrlStorage = async (row) => {
     const urlStorageId = row?._id;
     if (!urlStorageId) return;
@@ -252,6 +300,7 @@ const SyncErrorsPage = () => {
             handleResyncUrlStorage={handleResyncUrlStorage}
             handleOpenResolverLicencia={handleOpenResolverLicencia}
             handleOpenResolverParte={handleOpenResolverParte}
+            handleOpenResolverDuplicado={handleOpenResolverDuplicado}
           />
         ),
       },
@@ -308,6 +357,7 @@ const SyncErrorsPage = () => {
     handleResyncUrlStorage,
     handleOpenResolverLicencia,
     handleOpenResolverParte,
+    handleOpenResolverDuplicado,
     setItems,
     setAlert,
     openImageModal,
@@ -554,6 +604,14 @@ const SyncErrorsPage = () => {
               />
             ) : null
           }
+        />
+        <ResolverDuplicadoModal
+          open={Boolean(resolverDuplicadoRow)}
+          onClose={handleCloseResolverDuplicado}
+          row={resolverDuplicadoRow}
+          onResolve={handleResolverDuplicado}
+          loading={resolverDuplicadoLoading}
+          actionInProgress={resolverDuplicadoAction}
         />
 
         <ResolverTrabajadorModal

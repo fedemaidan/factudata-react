@@ -140,7 +140,7 @@ const DhnDriveService = {
     createdAtTo,
     tipo,
   } = {}) => {
-    const payload = { status: 'error', limit, offset };
+    const payload = { status: ['error', 'duplicado'], limit, offset };
     if (createdAtFrom) payload.createdAtFrom = createdAtFrom;
     if (createdAtTo) payload.createdAtTo = createdAtTo;
     if (tipo) payload.tipo = tipo;
@@ -169,6 +169,28 @@ const DhnDriveService = {
   updateSyncSheet: async (googleSheetLink) => {
     const response = await api.put(`/dhn/sync-sheet`, { googleSheetLink });
     return response.data;
+  },
+
+  resolveDuplicate: async (urlStorageId, action) => {
+    if (!urlStorageId || !action) {
+      return { ok: false, error: { code: 0, message: "urlStorageId y action son requeridos" } };
+    }
+    try {
+      const response = await api.post(`/dhn/trabajo-diario-registrado/resolver-duplicado`, {
+        urlStorageId,
+        action,
+      });
+      return response?.data ?? { ok: false, error: { code: 0, message: "Respuesta inválida" } };
+    } catch (error) {
+      const code = error?.response?.status ?? 0;
+      const message =
+        error?.response?.data?.error?.message ||
+        error?.response?.data?.message ||
+        error?.message ||
+        "Error de red";
+      console.error("Error resolveDuplicate:", message);
+      return { ok: false, error: { code, message } };
+    }
   },
 };
 

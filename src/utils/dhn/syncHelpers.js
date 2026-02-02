@@ -4,6 +4,7 @@ const STATUS_MAP = {
   done: { color: "#2e7d32", label: "Completado" },
   ok: { color: "#2e7d32", label: "OK" },
   error: { color: "#d32f2f", label: "Error" },
+  duplicado: { color: "#ed6c02", label: "Duplicado" },
 };
 
 export const getStatusChipConfig = (status) => {
