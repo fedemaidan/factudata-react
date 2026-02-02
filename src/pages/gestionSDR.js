@@ -140,11 +140,15 @@ const GestionSDRPage = () => {
         sdrAsignado: '',
         busqueda: '',
         soloSinAsignar: false,
+        statusNotion: '',
         ordenarPor: 'updatedAt',
         ordenDir: 'desc'
     });
     const [page, setPage] = useState(1);
     const [historialVersion, setHistorialVersion] = useState(0);
+    
+    // Lista única de Status Notion disponibles (se llena al cargar contactos)
+    const [statusNotionOpciones, setStatusNotionOpciones] = useState([]);
     
     // Navegación de contactos
     const [indiceContactoActual, setIndiceContactoActual] = useState(-1);
@@ -202,6 +206,18 @@ const GestionSDRPage = () => {
             const data = await SDRService.listarContactos(params);
             setContactos(data.contactos);
             setTotalContactos(data.total);
+            
+            // Extraer los statusNotion únicos de los contactos para el filtro
+            const statusUnicos = [...new Set(
+                data.contactos
+                    .map(c => c.statusNotion)
+                    .filter(Boolean)
+            )].sort();
+            setStatusNotionOpciones(prev => {
+                // Combinar con los anteriores para no perder opciones al paginar
+                const combined = [...new Set([...prev, ...statusUnicos])].sort();
+                return combined;
+            });
         } catch (error) {
             console.error('Error cargando contactos:', error);
             mostrarSnackbar('Error al cargar contactos', 'error');
@@ -685,6 +701,21 @@ const GestionSDRPage = () => {
                                 ))}
                             </Select>
                         </FormControl>
+                        {statusNotionOpciones.length > 0 && (
+                            <FormControl size="small" sx={{ minWidth: 150 }}>
+                                <InputLabel>Status Notion</InputLabel>
+                                <Select
+                                    value={filtros.statusNotion}
+                                    label="Status Notion"
+                                    onChange={(e) => setFiltros({ ...filtros, statusNotion: e.target.value })}
+                                >
+                                    <MenuItem value="">Todos</MenuItem>
+                                    {statusNotionOpciones.map((status) => (
+                                        <MenuItem key={status} value={status}>{status}</MenuItem>
+                                    ))}
+                                </Select>
+                            </FormControl>
+                        )}
                         <Button
                             variant={filtros.soloSinAsignar ? 'contained' : 'outlined'}
                             size="small"
@@ -848,6 +879,7 @@ const GestionSDRPage = () => {
                                     <TableCell>Empresa</TableCell>
                                     <TableCell>Teléfono</TableCell>
                                     <TableCell>Estado</TableCell>
+                                    <TableCell>Status Notion</TableCell>
                                     <TableCell>SDR</TableCell>
                                     <TableCell>
                                         <TableSortLabel
@@ -912,6 +944,11 @@ const GestionSDRPage = () => {
                                         <TableCell>{contacto.empresa || '-'}</TableCell>
                                         <TableCell>{contacto.telefono}</TableCell>
                                         <TableCell><EstadoChip estado={contacto.estado} /></TableCell>
+                                        <TableCell>
+                                            {contacto.statusNotion ? (
+                                                <Chip label={contacto.statusNotion} size="small" variant="outlined" color="info" />
+                                            ) : '-'}
+                                        </TableCell>
                                         <TableCell>
                                             {contacto.sdrAsignadoNombre || <Chip label="Pool" size="small" variant="outlined" color="secondary" />}
                                         </TableCell>
@@ -1785,6 +1822,9 @@ const GestionSDRPage = () => {
         const [sdrsDisponibles, setSdrsDisponibles] = useState([]);
         const [loadingSDRs, setLoadingSDRs] = useState(false);
         const [proximoContactoSeleccionado, setProximoContactoSeleccionado] = useState('24h');
+        const [modoAsignacion, setModoAsignacion] = useState('manual'); // 'manual' | 'equitativo'
+        const [filtroStatusNotion, setFiltroStatusNotion] = useState('');
+        const [sdrsParaDistribuir, setSdrsParaDistribuir] = useState([]); // SDRs seleccionados para distribución equitativa
         
         const botonesProximoContacto = [
             { label: '1h', value: '1h' },
@@ -1807,8 +1847,20 @@ const GestionSDRPage = () => {
             }
         };
         
+        // Obtener los contactos filtrados por statusNotion de los seleccionados
+        const contactosFiltrados = contactosSeleccionados.map(id => contactos.find(c => c._id === id)).filter(Boolean);
+        const contactosPorStatus = filtroStatusNotion 
+            ? contactosFiltrados.filter(c => c.statusNotion === filtroStatusNotion)
+            : contactosFiltrados;
+        
+        // Obtener status únicos de los contactos seleccionados
+        const statusUnicos = [...new Set(contactosFiltrados.map(c => c.statusNotion).filter(Boolean))];
+        
         useEffect(() => {
             if (modalAsignar) {
+                setModoAsignacion('manual');
+                setFiltroStatusNotion('');
+                setSdrsParaDistribuir([]);
                 const fetchSDRs = async () => {
                     setLoadingSDRs(true);
                     try {
@@ -1837,32 +1889,176 @@ const GestionSDRPage = () => {
             }
         }, [modalAsignar]);
         
+        // Función para asignar equitativamente
+        const handleAsignarEquitativo = async () => {
+            if (sdrsParaDistribuir.length === 0) {
+                mostrarSnackbar('Selecciona al menos un SDR para distribuir', 'warning');
+                return;
+            }
+            
+            const contactosAAsignar = contactosPorStatus;
+            if (contactosAAsignar.length === 0) {
+                mostrarSnackbar('No hay contactos para asignar con el filtro actual', 'warning');
+                return;
+            }
+            
+            // Distribuir equitativamente entre los SDRs seleccionados
+            const asignaciones = [];
+            contactosAAsignar.forEach((contacto, idx) => {
+                const sdrIndex = idx % sdrsParaDistribuir.length;
+                const sdr = sdrsParaDistribuir[sdrIndex];
+                asignaciones.push({
+                    contactoId: contacto._id,
+                    sdrId: sdr.visibleId || sdr.id,
+                    sdrNombre: sdr.nombre
+                });
+            });
+            
+            // Agrupar por SDR para hacer las asignaciones
+            const porSdr = {};
+            asignaciones.forEach(a => {
+                if (!porSdr[a.sdrId]) {
+                    porSdr[a.sdrId] = { sdrNombre: a.sdrNombre, contactos: [] };
+                }
+                porSdr[a.sdrId].contactos.push(a.contactoId);
+            });
+            
+            try {
+                const proximoContacto = calcularFechaProximo(proximoContactoSeleccionado);
+                // Asignar cada grupo
+                for (const [sdrId, data] of Object.entries(porSdr)) {
+                    await SDRService.asignarContactos(data.contactos, sdrId, data.sdrNombre, empresaId, proximoContacto);
+                }
+                
+                // Mensaje de resumen
+                const resumen = Object.entries(porSdr)
+                    .map(([_, data]) => `${data.sdrNombre}: ${data.contactos.length}`)
+                    .join(', ');
+                mostrarSnackbar(`✅ Distribuidos equitativamente - ${resumen}`);
+                setContactosSeleccionados([]);
+                setModalAsignar(false);
+                cargarContactos();
+                cargarMetricas();
+            } catch (error) {
+                mostrarSnackbar('Error al asignar: ' + error.message, 'error');
+            }
+        };
+        
+        const toggleSdrDistribuir = (sdr) => {
+            setSdrsParaDistribuir(prev => {
+                const existe = prev.find(s => s.id === sdr.id);
+                if (existe) {
+                    return prev.filter(s => s.id !== sdr.id);
+                }
+                return [...prev, sdr];
+            });
+        };
+        
         return (
-            <Dialog open={modalAsignar} onClose={() => setModalAsignar(false)} maxWidth="xs" fullWidth>
+            <Dialog open={modalAsignar} onClose={() => setModalAsignar(false)} maxWidth="sm" fullWidth>
                 <DialogTitle>Asignar Contactos</DialogTitle>
                 <DialogContent>
                     <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
                         {contactosSeleccionados.length} contacto(s) seleccionado(s)
                     </Typography>
-                    {loadingSDRs ? <CircularProgress size={24} /> : (
-                        <FormControl fullWidth sx={{ mb: 2 }}>
-                            <InputLabel>SDR</InputLabel>
-                            <Select
-                                value={sdrSeleccionado.id}
-                                label="SDR"
-                                onChange={(e) => {
-                                    const sdr = sdrsDisponibles.find(s => s.id === e.target.value);
-                                    setSdrSeleccionado(sdr || { id: '', nombre: '' });
-                                }}
-                            >
-                                {sdrsDisponibles.map(sdr => (
-                                    <MenuItem key={sdr.id} value={sdr.id}>{sdr.nombre}</MenuItem>
-                                ))}
-                            </Select>
-                        </FormControl>
+                    
+                    {/* Selector de modo */}
+                    <Tabs value={modoAsignacion} onChange={(_, v) => setModoAsignacion(v)} sx={{ mb: 2 }}>
+                        <Tab value="manual" label="Asignación Manual" />
+                        <Tab value="equitativo" label="Distribución Equitativa" />
+                    </Tabs>
+                    
+                    {modoAsignacion === 'manual' && (
+                        <>
+                            {loadingSDRs ? <CircularProgress size={24} /> : (
+                                <FormControl fullWidth sx={{ mb: 2 }}>
+                                    <InputLabel>SDR</InputLabel>
+                                    <Select
+                                        value={sdrSeleccionado.id}
+                                        label="SDR"
+                                        onChange={(e) => {
+                                            const sdr = sdrsDisponibles.find(s => s.id === e.target.value);
+                                            setSdrSeleccionado(sdr || { id: '', nombre: '' });
+                                        }}
+                                    >
+                                        {sdrsDisponibles.map(sdr => (
+                                            <MenuItem key={sdr.id} value={sdr.id}>{sdr.nombre}</MenuItem>
+                                        ))}
+                                    </Select>
+                                </FormControl>
+                            )}
+                        </>
                     )}
                     
-                    <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                    {modoAsignacion === 'equitativo' && (
+                        <Stack spacing={2}>
+                            {/* Filtro por Status Notion */}
+                            {statusUnicos.length > 0 && (
+                                <FormControl fullWidth size="small">
+                                    <InputLabel>Filtrar por Status Notion</InputLabel>
+                                    <Select
+                                        value={filtroStatusNotion}
+                                        label="Filtrar por Status Notion"
+                                        onChange={(e) => setFiltroStatusNotion(e.target.value)}
+                                    >
+                                        <MenuItem value="">Todos ({contactosFiltrados.length})</MenuItem>
+                                        {statusUnicos.map((status) => (
+                                            <MenuItem key={status} value={status}>
+                                                {status} ({contactosFiltrados.filter(c => c.statusNotion === status).length})
+                                            </MenuItem>
+                                        ))}
+                                    </Select>
+                                </FormControl>
+                            )}
+                            
+                            <Alert severity="info" sx={{ py: 0.5 }}>
+                                {contactosPorStatus.length} contactos a distribuir
+                            </Alert>
+                            
+                            {/* Selección de SDRs */}
+                            <Typography variant="subtitle2">Selecciona los SDRs para distribuir:</Typography>
+                            {loadingSDRs ? <CircularProgress size={24} /> : (
+                                <Stack spacing={1}>
+                                    {sdrsDisponibles.map(sdr => (
+                                        <Paper 
+                                            key={sdr.id} 
+                                            variant="outlined" 
+                                            sx={{ 
+                                                p: 1, 
+                                                cursor: 'pointer',
+                                                bgcolor: sdrsParaDistribuir.find(s => s.id === sdr.id) ? 'primary.light' : 'transparent',
+                                                '&:hover': { bgcolor: 'action.hover' }
+                                            }}
+                                            onClick={() => toggleSdrDistribuir(sdr)}
+                                        >
+                                            <Stack direction="row" alignItems="center" spacing={1}>
+                                                <Checkbox 
+                                                    checked={!!sdrsParaDistribuir.find(s => s.id === sdr.id)} 
+                                                    size="small"
+                                                />
+                                                <Typography variant="body2">{sdr.nombre}</Typography>
+                                                {sdrsParaDistribuir.find(s => s.id === sdr.id) && contactosPorStatus.length > 0 && (
+                                                    <Chip 
+                                                        label={`~${Math.ceil(contactosPorStatus.length / sdrsParaDistribuir.length)} contactos`} 
+                                                        size="small" 
+                                                        color="primary"
+                                                    />
+                                                )}
+                                            </Stack>
+                                        </Paper>
+                                    ))}
+                                </Stack>
+                            )}
+                            
+                            {sdrsParaDistribuir.length > 0 && contactosPorStatus.length > 0 && (
+                                <Alert severity="success" sx={{ py: 0.5 }}>
+                                    Se asignarán ~{Math.ceil(contactosPorStatus.length / sdrsParaDistribuir.length)} contactos a cada SDR
+                                </Alert>
+                            )}
+                        </Stack>
+                    )}
+                    
+                    <Typography variant="subtitle2" sx={{ mt: 2, mb: 1 }}>
                         Próximo contacto
                     </Typography>
                     <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
@@ -1887,17 +2083,28 @@ const GestionSDRPage = () => {
                 </DialogContent>
                 <DialogActions>
                     <Button onClick={() => setModalAsignar(false)}>Cancelar</Button>
-                    <Button 
-                        variant="contained" 
-                        onClick={() => handleAsignarContactos(
-                            sdrSeleccionado.visibleId || sdrSeleccionado.id, 
-                            sdrSeleccionado.nombre,
-                            calcularFechaProximo(proximoContactoSeleccionado)
-                        )} 
-                        disabled={!sdrSeleccionado.id}
-                    >
-                        Asignar
-                    </Button>
+                    {modoAsignacion === 'manual' && (
+                        <Button 
+                            variant="contained" 
+                            onClick={() => handleAsignarContactos(
+                                sdrSeleccionado.visibleId || sdrSeleccionado.id, 
+                                sdrSeleccionado.nombre,
+                                calcularFechaProximo(proximoContactoSeleccionado)
+                            )} 
+                            disabled={!sdrSeleccionado.id}
+                        >
+                            Asignar a {sdrSeleccionado.nombre || 'SDR'}
+                        </Button>
+                    )}
+                    {modoAsignacion === 'equitativo' && (
+                        <Button 
+                            variant="contained" 
+                            onClick={handleAsignarEquitativo} 
+                            disabled={sdrsParaDistribuir.length === 0 || contactosPorStatus.length === 0}
+                        >
+                            Distribuir Equitativamente
+                        </Button>
+                    )}
                 </DialogActions>
             </Dialog>
         );
