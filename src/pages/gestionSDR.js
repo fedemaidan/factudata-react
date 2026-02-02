@@ -1643,15 +1643,26 @@ const GestionSDRPage = () => {
                 mostrarSnackbar('No hay contactos nuevos para importar', 'warning');
                 return;
             }
+            setImportLoading(true);
+            mostrarSnackbar(`⏳ Importando ${contactosAImportar.length} contactos...`, 'info');
             try {
-                const resultado = await SDRService.importarContactos(contactosAImportar, empresaId, 'excel');
+                const resultado = await SDRService.importarContactosConProgreso(
+                    contactosAImportar, 
+                    empresaId, 
+                    'excel',
+                    (progreso) => {
+                        console.log(`📊 Progreso Excel: ${progreso.procesados}/${progreso.total}`);
+                    }
+                );
                 mostrarSnackbar(`✅ Importados: ${resultado.importados}`);
                 setModalImportar(false);
                 resetImportState();
                 cargarContactos();
                 cargarMetricas();
             } catch (error) {
-                mostrarSnackbar('Error al importar', 'error');
+                mostrarSnackbar(error.message || 'Error al importar', 'error');
+            } finally {
+                setImportLoading(false);
             }
         };
         
@@ -1709,15 +1720,24 @@ const GestionSDRPage = () => {
         const handleImportarNotion = async () => {
             if (contactosNotion.length === 0) return;
             setImportLoading(true);
+            mostrarSnackbar(`⏳ Importando ${contactosNotion.length} contactos...`, 'info');
             try {
-                const resultado = await SDRService.importarContactos(contactosNotion, empresaId, 'notion');
+                const resultado = await SDRService.importarContactosConProgreso(
+                    contactosNotion, 
+                    empresaId, 
+                    'notion',
+                    (progreso) => {
+                        // Actualizar UI con progreso
+                        console.log(`📊 Progreso: ${progreso.procesados}/${progreso.total}`);
+                    }
+                );
                 mostrarSnackbar(`✅ Importados: ${resultado.importados}${resultado.duplicados > 0 ? ` | ⚠️ Ya existían: ${resultado.duplicados}` : ''}`);
                 setModalImportar(false);
                 resetImportState();
                 cargarContactos();
                 cargarMetricas();
             } catch (error) {
-                mostrarSnackbar(error.response?.data?.error || 'Error al importar', 'error');
+                mostrarSnackbar(error.message || 'Error al importar', 'error');
             } finally {
                 setImportLoading(false);
             }

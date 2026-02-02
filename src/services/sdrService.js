@@ -152,25 +152,132 @@ const SDRService = {
     },
 
     /**
-     * Importar contactos
+     * Importar contactos (asíncrono)
+     * Retorna inmediatamente con un importacionId para consultar estado
      */
     importarContactos: async (contactos, empresaId, origen = 'excel') => {
         const res = await api.post('/sdr/importar', { contactos, empresaId, origen });
         return res.data;
     },
 
+    /**
+     * Consultar estado de una importación en progreso
+     */
+    estadoImportacion: async (importacionId) => {
+        const res = await api.get(`/sdr/importar/${importacionId}/estado`);
+        return res.data;
+    },
+
+    /**
+     * Importar contactos con polling de progreso
+     * @param {Function} onProgreso - Callback que recibe { estado, procesados, total, importados, duplicados }
+     * @returns {Promise} - Resuelve cuando la importación termina
+     */
+    importarContactosConProgreso: async (contactos, empresaId, origen = 'excel', onProgreso = null) => {
+        // Iniciar importación
+        const { importacionId, total } = await SDRService.importarContactos(contactos, empresaId, origen);
+        
+        if (!importacionId) {
+            throw new Error('No se recibió ID de importación');
+        }
+        
+        // Polling cada 2 segundos
+        return new Promise((resolve, reject) => {
+            const intervalo = setInterval(async () => {
+                try {
+                    const estado = await SDRService.estadoImportacion(importacionId);
+                    
+                    if (onProgreso) {
+                        onProgreso(estado);
+                    }
+                    
+                    if (estado.estado === 'completado') {
+                        clearInterval(intervalo);
+                        resolve(estado);
+                    } else if (estado.estado === 'error') {
+                        clearInterval(intervalo);
+                        reject(new Error(estado.error || 'Error en importación'));
+                    }
+                } catch (error) {
+                    // Si es 404, la importación expiró
+                    if (error.response?.status === 404) {
+                        clearInterval(intervalo);
+                        resolve({ estado: 'completado', mensaje: 'Importación finalizada' });
+                    }
+                }
+            }, 2000);
+            
+            // Timeout máximo de 10 minutos
+            setTimeout(() => {
+                clearInterval(intervalo);
+                resolve({ estado: 'timeout', mensaje: 'Importación en progreso (verificar manualmente)' });
+            }, 10 * 60 * 1000);
+        });
+    },
+
     // ==================== NOTION ====================
 
     /**
-     * Consultar contactos desde Notion (usa token del backend)
+     * Consultar contactos desde Notion (asíncrono - devuelve consultaId)
+     */
+    consultarNotionAsync: async (databaseId, empresaId, filtros = {}, salesFilter = null) => {
+        const res = await api.post('/sdr/notion/consultar', { databaseId, empresaId, filtros, salesFilter });
+        return res.data;
+    },
+
+    /**
+     * Consultar estado de una consulta Notion
+     */
+    estadoConsultaNotion: async (consultaId) => {
+        const res = await api.get(`/sdr/notion/consultar/${consultaId}/estado`);
+        return res.data;
+    },
+
+    /**
+     * Consultar contactos desde Notion con polling (espera resultado)
      * @param {string} databaseId - ID de la DB (opcional, usa env del server)
      * @param {string} empresaId - ID de la empresa
      * @param {Object} filtros - Filtros adicionales
      * @param {string} salesFilter - Filtro de Sales: 'Outbound', 'Inbound', etc
+     * @param {Function} onProgreso - Callback opcional de progreso
      */
-    consultarNotion: async (databaseId, empresaId, filtros = {}, salesFilter = null) => {
-        const res = await api.post('/sdr/notion/consultar', { databaseId, empresaId, filtros, salesFilter });
-        return res.data;
+    consultarNotion: async (databaseId, empresaId, filtros = {}, salesFilter = null, onProgreso = null) => {
+        // Iniciar consulta asíncrona
+        const { consultaId } = await SDRService.consultarNotionAsync(databaseId, empresaId, filtros, salesFilter);
+        
+        if (!consultaId) {
+            throw new Error('No se recibió ID de consulta');
+        }
+        
+        // Polling cada 2 segundos
+        return new Promise((resolve, reject) => {
+            const intervalo = setInterval(async () => {
+                try {
+                    const estado = await SDRService.estadoConsultaNotion(consultaId);
+                    
+                    if (onProgreso) onProgreso(estado);
+                    
+                    if (estado.estado === 'completado') {
+                        clearInterval(intervalo);
+                        resolve(estado);
+                    } else if (estado.estado === 'error') {
+                        clearInterval(intervalo);
+                        reject(new Error(estado.error || 'Error en consulta Notion'));
+                    }
+                } catch (error) {
+                    if (error.response?.status === 404) {
+                        clearInterval(intervalo);
+                        reject(new Error('Consulta expirada'));
+                    }
+                }
+            }, 2000);
+            
+            // Timeout máximo de 5 minutos
+            setTimeout(() => {
+                clearInterval(intervalo);
+                reject(new Error('Timeout: la consulta tardó demasiado'));
+            }, 5 * 60 * 1000);
+        });
     },
 
     /**
