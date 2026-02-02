@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { useRouter } from "next/router";
-import { Container, Box, Snackbar, Alert, Button, Stack, Typography } from "@mui/material";
+import { Container, Box, Snackbar, Alert, Button, Stack, Typography, TextField } from "@mui/material";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import { Layout as DashboardLayout } from "src/layouts/dashboard/layout";
 import TableComponent from "src/components/TableComponent";
@@ -9,6 +9,7 @@ import ImagenModal from "src/components/ImagenModal";
 import ResolverTrabajadorModal from "src/components/dhn/ResolverTrabajadorModal";
 import ResolverLicenciaManualForm from "src/components/dhn/ResolverLicenciaManualForm";
 import ResolverParteManualForm from "src/components/dhn/ResolverParteManualForm";
+import ResolverDuplicadoModal from "src/components/dhn/sync/ResolverDuplicadoModal";
 import TrabajosDetectadosList from "src/components/dhn/TrabajosDetectadosList";
 import {
   AccionesCell,
@@ -33,6 +34,9 @@ const SyncDetailPage = () => {
     total: 0,
   });
   const { limit: paginationLimit, offset: paginationOffset } = pagination;
+  const [searchTerm, setSearchTerm] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchVersion, setSearchVersion] = useState(0);
 
   const [imageModalOpen, setImageModalOpen] = useState(false);
   const [imageUrl, setImageUrl] = useState("");
@@ -47,6 +51,10 @@ const SyncDetailPage = () => {
   const [resolverLicenciaRow, setResolverLicenciaRow] = useState(null);
   const [resolverParteModalOpen, setResolverParteModalOpen] = useState(false);
   const [resolverParteRow, setResolverParteRow] = useState(null);
+
+  const [resolverDuplicadoRow, setResolverDuplicadoRow] = useState(null);
+  const [resolverDuplicadoLoading, setResolverDuplicadoLoading] = useState(false);
+  const [resolverDuplicadoAction, setResolverDuplicadoAction] = useState(null);
 
   const [resolverModalOpen, setResolverModalOpen] = useState(false);
   const [trabajadorSeleccionado, setTrabajadorSeleccionado] = useState(null);
@@ -66,6 +74,7 @@ const SyncDetailPage = () => {
       const page = await DhnDriveService.getSyncChildren(String(syncId), {
         limit: paginationLimit,
         offset: paginationOffset,
+        search: searchQuery || undefined,
       });
       setItems(Array.isArray(page?.items) ? page.items : []);
       setPagination((prev) => ({
@@ -80,7 +89,7 @@ const SyncDetailPage = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [syncId, paginationLimit, paginationOffset]);
+  }, [syncId, paginationLimit, paginationOffset, searchQuery]);
 
   const openImageModal = (url, fileName) => {
     if (!url) return;
@@ -97,6 +106,26 @@ const SyncDetailPage = () => {
     if (reason === "clickaway") return;
     setAlert((prev) => ({ ...prev, open: false }));
   };
+
+  const handleSearchTermChange = useCallback(
+    (value) => {
+      setSearchTerm(value);
+    },
+    [setSearchTerm]
+  );
+
+  const handleSearchSubmit = useCallback(
+    (event) => {
+      if (event && event.preventDefault) {
+        event.preventDefault();
+      }
+      setPagination((prev) => ({ ...prev, offset: 0 }));
+      const trimmed = String(searchTerm || "").trim();
+      setSearchQuery(trimmed);
+      setSearchVersion((prev) => prev + 1);
+    },
+    [searchTerm]
+  );
 
   const handleResolverTrabajador = (trabajador, urlStorage) => {
     setTrabajadorSeleccionado(trabajador);
@@ -222,7 +251,53 @@ const SyncDetailPage = () => {
       await fetchDetails();
     };
     run();
-  }, [fetchDetails]);
+  }, [fetchDetails, searchVersion]);
+
+  const handleOpenResolverDuplicado = useCallback((row) => {
+    if (!row?.duplicateInfo) return;
+    setResolverDuplicadoRow(row);
+  }, []);
+
+  const handleCloseResolverDuplicado = useCallback(() => {
+    setResolverDuplicadoRow(null);
+    setResolverDuplicadoAction(null);
+  }, []);
+
+  const handleResolverDuplicado = useCallback(
+    async (action) => {
+      if (!resolverDuplicadoRow) return;
+      setResolverDuplicadoLoading(true);
+      setResolverDuplicadoAction(action);
+      try {
+        const resp = await DhnDriveService.resolveDuplicate(resolverDuplicadoRow._id, action);
+        if (!resp?.ok) {
+          throw new Error(resp?.error?.message || "No se pudo resolver el duplicado");
+        }
+        const successMessage =
+          action === "keepExisting"
+            ? "Se conservó el registro original"
+            : "Se reemplazó el comprobante";
+        setAlert({
+          open: true,
+          severity: "success",
+          message: successMessage,
+        });
+        handleCloseResolverDuplicado();
+        await fetchDetails();
+      } catch (error) {
+        console.error("Error resolviendo duplicado:", error);
+        setAlert({
+          open: true,
+          severity: "error",
+          message: error?.message || "Error al resolver el duplicado",
+        });
+      } finally {
+        setResolverDuplicadoLoading(false);
+        setResolverDuplicadoAction(null);
+      }
+    },
+    [resolverDuplicadoRow, fetchDetails, handleCloseResolverDuplicado]
+  );
 
   const handleChangePage = useCallback((direction) => {
     setPagination((prev) => {
@@ -245,20 +320,21 @@ const SyncDetailPage = () => {
       },
     ];
 
-    cols.push({
-      key: "acciones",
-      label: "Acciones",
-      render: (it) => (
-        <AccionesCell
-          row={it}
-          isParte={isParte}
-          resyncingId={resyncingId}
-          handleResyncUrlStorage={handleResyncUrlStorage}
-          handleOpenResolverLicencia={handleOpenResolverLicencia}
-          handleOpenResolverParte={handleOpenResolverParte}
-        />
-      ),
-    });
+      cols.push({
+        key: "acciones",
+        label: "Acciones",
+        render: (it) => (
+          <AccionesCell
+            row={it}
+            isParte={isParte}
+            resyncingId={resyncingId}
+            handleResyncUrlStorage={handleResyncUrlStorage}
+            handleOpenResolverLicencia={handleOpenResolverLicencia}
+            handleOpenResolverParte={handleOpenResolverParte}
+            handleOpenResolverDuplicado={handleOpenResolverDuplicado}
+          />
+        ),
+      });
 
     if (shouldShowFecha) {
       cols.push({
@@ -318,6 +394,7 @@ const SyncDetailPage = () => {
     handleResyncUrlStorage,
     handleOpenResolverLicencia,
     handleOpenResolverParte,
+    handleOpenResolverDuplicado,
     setItems,
     setAlert,
     openImageModal,
@@ -369,6 +446,21 @@ const SyncDetailPage = () => {
               disabled={isLoading}
             >
               {isLoading ? "Actualizando..." : "Actualizar"}
+            </Button>
+          </Box>
+
+          <Box component="form" onSubmit={handleSearchSubmit} sx={{ mt: 2, mb: 2, display: "flex", gap: 1, flexWrap: "wrap", maxWidth: 400 }}>
+            <TextField
+              label="Buscar"
+              placeholder="Archivo, carpeta o fecha"
+              size="small"
+              value={searchTerm}
+              onChange={(event) => handleSearchTermChange(event.target.value)}
+              aria-label="Buscar archivos o carpetas"
+              sx={{ flex: 1, minWidth: 220, backgroundColor: "background.paper" }}
+            />
+            <Button type="submit" variant="contained" color="primary" size="small">
+              Buscar
             </Button>
           </Box>
 
@@ -534,6 +626,14 @@ const SyncDetailPage = () => {
               />
             ) : null
           }
+        />
+        <ResolverDuplicadoModal
+          open={Boolean(resolverDuplicadoRow)}
+          onClose={handleCloseResolverDuplicado}
+          row={resolverDuplicadoRow}
+          onResolve={handleResolverDuplicado}
+          loading={resolverDuplicadoLoading}
+          actionInProgress={resolverDuplicadoAction}
         />
         
         <ResolverTrabajadorModal

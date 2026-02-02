@@ -99,7 +99,7 @@ const DhnDriveService = {
    * @param {string} syncId
    * @returns {Promise<Array>} lista de items (o [])
    */
-  getSyncChildren: async (syncId, { limit = DEFAULT_PAGE_LIMIT, offset = 0 } = {}) => {
+  getSyncChildren: async (syncId, { limit = DEFAULT_PAGE_LIMIT, offset = 0, search } = {}) => {
     if (!syncId) {
       return {
         items: [],
@@ -109,7 +109,7 @@ const DhnDriveService = {
       };
     }
     return fetchUrlStoragePage(
-      { syncId, limit, offset },
+      { syncId, limit, offset, search },
       { limit, offset }
     );
   },
@@ -133,17 +133,19 @@ const DhnDriveService = {
     }
   },
 
-  getErroredSyncChildren: async ({ 
-    limit = DEFAULT_PAGE_LIMIT, 
+  getErroredSyncChildren: async ({
+    limit = DEFAULT_PAGE_LIMIT,
     offset = 0,
     createdAtFrom,
     createdAtTo,
     tipo,
+    search,
   } = {}) => {
     const payload = { status: ['error', 'duplicado'], limit, offset };
     if (createdAtFrom) payload.createdAtFrom = createdAtFrom;
     if (createdAtTo) payload.createdAtTo = createdAtTo;
     if (tipo) payload.tipo = tipo;
+    if (search) payload.search = search;
     return fetchUrlStoragePage(payload, { limit, offset });
   },
 

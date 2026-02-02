@@ -34,6 +34,9 @@ const SyncErrorsPage = () => {
     total: 0,
   });
   const { limit: paginationLimit, offset: paginationOffset } = pagination;
+  const [searchTerm, setSearchTerm] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchVersion, setSearchVersion] = useState(0);
 
   const [imageModalOpen, setImageModalOpen] = useState(false);
   const [imageUrl, setImageUrl] = useState("");
@@ -71,6 +74,7 @@ const SyncErrorsPage = () => {
         createdAtFrom: fechaDesde ? fechaDesde.toISOString() : undefined,
         createdAtTo: fechaHasta ? fechaHasta.toISOString() : undefined,
         tipo: tipoFiltro || undefined,
+        search: searchQuery || undefined,
       });
       setItems(Array.isArray(page?.items) ? page.items : []);
       setPagination((prev) => ({
@@ -90,7 +94,7 @@ const SyncErrorsPage = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [paginationLimit, paginationOffset, fechaDesde, fechaHasta, tipoFiltro]);
+  }, [paginationLimit, paginationOffset, fechaDesde, fechaHasta, tipoFiltro, searchQuery]);
 
   const openImageModal = (url, fileName) => {
     if (!url) return;
@@ -109,6 +113,26 @@ const SyncErrorsPage = () => {
     if (reason === "clickaway") return;
     setAlert((prev) => ({ ...prev, open: false }));
   };
+
+  const handleSearchTermChange = useCallback(
+    (value) => {
+      setSearchTerm(value);
+    },
+    [setSearchTerm]
+  );
+
+  const handleSearchSubmit = useCallback(
+    (event) => {
+      if (event && event.preventDefault) {
+        event.preventDefault();
+      }
+      setPagination((prev) => ({ ...prev, offset: 0 }));
+      const trimmed = String(searchTerm || "").trim();
+      setSearchQuery(trimmed);
+      setSearchVersion((prev) => prev + 1);
+    },
+    [searchTerm]
+  );
 
   const handleResolverTrabajador = (trabajador, urlStorage) => {
     setTrabajadorSeleccionado(trabajador);
@@ -268,7 +292,7 @@ const SyncErrorsPage = () => {
 
   useEffect(() => {
     fetchDetails();
-  }, [fetchDetails]);
+  }, [fetchDetails, searchVersion]);
 
   const handleChangePage = useCallback((direction) => {
     setPagination((prev) => {
@@ -407,7 +431,29 @@ const SyncErrorsPage = () => {
             </Button>
           </Box>
 
-          <Stack direction="row" spacing={2} sx={{ mt: 2, mb: 1, alignItems: "center" }}>
+          <Stack
+            direction="row"
+            spacing={2}
+            sx={{ mt: 2, mb: 1, alignItems: "center", flexWrap: "wrap" }}
+          >
+            <Box
+              component="form"
+              onSubmit={handleSearchSubmit}
+              sx={{ display: "flex", gap: 1, alignItems: "center", flexWrap: "wrap" }}
+            >
+              <TextField
+                label="Buscar"
+                placeholder="Archivo, carpeta o fecha"
+                size="small"
+                value={searchTerm}
+                onChange={(event) => handleSearchTermChange(event.target.value)}
+                sx={{ minWidth: 220 }}
+                inputProps={{ "aria-label": "Buscar errores" }}
+              />
+              <Button type="submit" variant="contained" color="primary" size="small">
+                Buscar
+              </Button>
+            </Box>
             <DatePicker
               label="Desde"
               value={fechaDesde}
@@ -440,8 +486,12 @@ const SyncErrorsPage = () => {
                 setFechaDesde(null);
                 setFechaHasta(null);
                 setTipoFiltro("");
+                setSearchTerm("");
+                setSearchQuery("");
+                setSearchVersion((prev) => prev + 1);
+                setPagination((prev) => ({ ...prev, offset: 0 }));
               }}
-              disabled={!fechaDesde && !fechaHasta && !tipoFiltro}
+              disabled={!fechaDesde && !fechaHasta && !tipoFiltro && !searchTerm.trim()}
             >
               Limpiar filtros
             </Button>

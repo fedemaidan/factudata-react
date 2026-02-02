@@ -18,43 +18,46 @@ const ImagePreview = ({ label, url }) => (
       borderColor: "divider",
       borderRadius: 2,
       p: 2,
-      minHeight: 220,
+      minHeight: { xs: 260, md: 360 },
       display: "flex",
       flexDirection: "column",
       gap: 1,
-      justifyContent: "space-between",
     }}
   >
     <Typography variant="caption" color="text.secondary">
       {label}
     </Typography>
-    {url ? (
-      <Box
-        component="img"
-        src={url}
-        alt={label}
-        sx={{
-          width: "100%",
-          maxHeight: 260,
-          objectFit: "contain",
-          borderRadius: 1,
-        }}
-      />
-    ) : (
-      <Box
-        sx={{
-          flex: 1,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          color: "text.secondary",
-          fontSize: "0.75rem",
-          textAlign: "center",
-        }}
-      >
-        Sin imagen disponible
-      </Box>
-    )}
+    <Box
+      sx={{
+        flex: 1,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        position: "relative",
+      }}
+    >
+      {url ? (
+        <Box
+          component="img"
+          src={url}
+          alt={label}
+          sx={{
+            width: "100%",
+            height: "100%",
+            objectFit: "contain",
+            borderRadius: 1,
+          }}
+        />
+      ) : (
+        <Typography
+          variant="body2"
+          color="text.secondary"
+          textAlign="center"
+        >
+          Sin imagen disponible
+        </Typography>
+      )}
+    </Box>
   </Box>
 );
 
@@ -78,9 +81,8 @@ const ResolverDuplicadoModal = ({
   const fechaDetectada = duplicateInfo.fecha
     ? new Date(duplicateInfo.fecha).toLocaleDateString("es-AR")
     : null;
-  const trabajadorLabel = duplicateInfo.trabajadorId
-    ? `Trabajador ${duplicateInfo.trabajadorId}`
-    : "Trabajador identificado";
+
+  const duplicateMessage = duplicateInfo.mensaje;
 
   const handleAction = (action) => () => {
     if (loading) return;
@@ -88,9 +90,19 @@ const ResolverDuplicadoModal = ({
   };
 
   return (
-    <Dialog open={open} onClose={onClose} fullWidth maxWidth="md">
+    <Dialog
+      open={open}
+      onClose={onClose}
+      fullWidth
+      maxWidth="xl"
+      PaperProps={{
+        sx: {
+          minHeight: "70vh",
+        },
+      }}
+    >
       <DialogTitle>Resolver duplicado</DialogTitle>
-      <DialogContent dividers>
+      <DialogContent>
         <Stack spacing={2}>
           <Stack
             direction={{ xs: "column", md: "row" }}
@@ -99,18 +111,15 @@ const ResolverDuplicadoModal = ({
             <ImagePreview label={existingLabel} url={duplicateInfo.comprobanteExistente?.url} />
             <ImagePreview label={nuevoLabel} url={row?.url_storage} />
           </Stack>
-          <Stack direction="row" spacing={2} flexWrap="wrap">
-            <Typography sx={{ fontSize: "0.8rem" }} color="text.secondary">
-              {trabajadorLabel}
+          {duplicateMessage && (
+            <Typography variant="body2" color="text.secondary">
+              {duplicateMessage}
             </Typography>
+          )}
+          <Stack direction="row" spacing={2} flexWrap="wrap">
             {fechaDetectada && (
               <Typography sx={{ fontSize: "0.8rem" }} color="text.secondary">
                 Fecha: {fechaDetectada}
-              </Typography>
-            )}
-            {row?.tipo && (
-              <Typography sx={{ fontSize: "0.8rem" }} color="text.secondary">
-                Tipo: {row.tipo}
               </Typography>
             )}
           </Stack>
