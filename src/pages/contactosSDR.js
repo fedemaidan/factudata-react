@@ -10,6 +10,7 @@ import {
     Avatar, Badge, Fab, Dialog, DialogTitle, DialogContent, DialogActions,
     Checkbox, Tooltip
 } from '@mui/material';
+import { auth } from 'src/config/firebase';
 import {
     Search as SearchIcon,
     Refresh as RefreshIcon,
@@ -42,7 +43,9 @@ const ContactosSDRPage = () => {
     const { user } = useAuthContext();
     const router = useRouter();
     const empresaId = user?.empresa?.id || 'demo-empresa';
-    const sdrId = user?.user_id || user?.id;
+    // Usar el Firebase UID directamente de auth.currentUser para garantizar consistencia
+    // user_id del perfil puede no existir en perfiles antiguos
+    const sdrId = auth.currentUser?.uid || user?.user_id || user?.id;
     const sdrNombre = `${user?.firstName || ''} ${user?.lastName || ''}`.trim() || user?.email || 'SDR';
     
     const theme = useTheme();

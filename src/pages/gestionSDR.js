@@ -11,7 +11,7 @@ import {
 
 // Firebase
 import { collection, query, where, getDocs, doc, updateDoc } from 'firebase/firestore';
-import { db } from 'src/config/firebase';
+import { db, auth } from 'src/config/firebase';
 
 // Icons
 import PhoneIcon from '@mui/icons-material/Phone';
@@ -179,7 +179,8 @@ const GestionSDRPage = () => {
     const { user, isLoading: authLoading } = useAuthContext();
     const userId = user?.id || user?.user_id;
     const empresaId = user?.empresa?.id || 'demo-empresa';
-    const sdrId = user?.user_id || user?.id;
+    // Usar el Firebase UID directamente de auth.currentUser para garantizar consistencia
+    const sdrId = auth.currentUser?.uid || user?.user_id || user?.id;
     const sdrNombre = `${user?.firstName || ''} ${user?.lastName || ''}`.trim() || user?.email || 'SDR';
     
     // Control de carga inicial
@@ -1084,17 +1085,19 @@ const GestionSDRPage = () => {
             
             // Cargar SDRs disponibles
             const snapshot = await getDocs(query(collection(db, 'profile'), where('sdr', '==', true)));
-            const sdrsBase = snapshot.docs.map(doc => {
-                const d = doc.data();
-                return {
-                    id: d.user_id || doc.id,
-                    docId: doc.id,
-                    nombre: `${d.firstName || ''} ${d.lastName || ''}`.trim() || d.email,
-                    email: d.email,
-                    contactos: [],
-                    metricas: { llamadas: 0, whatsapp: 0, reuniones: 0 }
-                };
-            });
+            const sdrsBase = snapshot.docs
+                .filter(doc => doc.data().user_id) // Solo SDRs con user_id
+                .map(doc => {
+                    const d = doc.data();
+                    return {
+                        id: d.user_id, // Siempre usar Firebase UID
+                        docId: doc.id,
+                        nombre: `${d.firstName || ''} ${d.lastName || ''}`.trim() || d.email,
+                        email: d.email,
+                        contactos: [],
+                        metricas: { llamadas: 0, whatsapp: 0, reuniones: 0 }
+                    };
+                });
             
             // Separar sin asignar y agrupar por SDR
             const sinAsignar = todosContactos.filter(c => !c.sdrAsignado);
@@ -1870,15 +1873,25 @@ const GestionSDRPage = () => {
                             where('sdr', '==', true)
                         ));
                         
-                        setSdrsDisponibles(snapshot.docs.map(doc => {
-                            const data = doc.data();
-                            return {
-                                id: doc.id,
-                                visibleId: data.user_id || doc.id,
-                                nombre: `${data.firstName || ''} ${data.lastName || ''}`.trim() || data.email,
-                                email: data.email
-                            };
-                        }));
+                        const sdrs = snapshot.docs
+                            .filter(doc => {
+                                const data = doc.data();
+                                if (!data.user_id) {
+                                    console.warn(`⚠️ SDR sin user_id excluido: ${data.email} - debe corregirse en Firestore`);
+                                    return false;
+                                }
+                                return true;
+                            })
+                            .map(doc => {
+                                const data = doc.data();
+                                return {
+                                    id: data.user_id, // Siempre usar Firebase UID
+                                    nombre: `${data.firstName || ''} ${data.lastName || ''}`.trim() || data.email,
+                                    email: data.email
+                                };
+                            });
+                        
+                        setSdrsDisponibles(sdrs);
                     } catch (error) {
                         console.error('Error al cargar SDRs:', error);
                     } finally {
@@ -1909,7 +1922,7 @@ const GestionSDRPage = () => {
                 const sdr = sdrsParaDistribuir[sdrIndex];
                 asignaciones.push({
                     contactoId: contacto._id,
-                    sdrId: sdr.visibleId || sdr.id,
+                    sdrId: sdr.id, // Siempre es Firebase UID ahora
                     sdrNombre: sdr.nombre
                 });
             });
@@ -2087,7 +2100,7 @@ const GestionSDRPage = () => {
                         <Button 
                             variant="contained" 
                             onClick={() => handleAsignarContactos(
-                                sdrSeleccionado.visibleId || sdrSeleccionado.id, 
+                                sdrSeleccionado.id, // Siempre es Firebase UID ahora
                                 sdrSeleccionado.nombre,
                                 calcularFechaProximo(proximoContactoSeleccionado)
                             )} 
