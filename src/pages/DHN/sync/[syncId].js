@@ -91,7 +91,7 @@ const SyncDetailPage = () => {
     }
   }, [syncId, paginationLimit, paginationOffset, searchQuery]);
 
-  const openImageModal = (url, fileName) => {
+  const openImageModal = (url, fileName, row) => {
     if (!url) return;
     setImageUrl(url);
     setImageFileName(typeof fileName === "string" ? fileName : "");
@@ -146,6 +146,10 @@ const SyncDetailPage = () => {
 
   const handleOpenResolverParte = (row) => {
     if (!row?.url_storage) return;
+    if (row?.status === "incompleto") {
+      openImageModal(row.url_storage, row.file_name, row);
+      return;
+    }
     setResolverParteRow(row);
     setResolverParteModalOpen(true);
   };

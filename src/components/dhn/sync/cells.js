@@ -63,7 +63,7 @@ export const ArchivoCell = ({ row, onOpenImage }) => {
             onClick={(e) => {
               e.stopPropagation();
               if (!hasImage) return;
-              onOpenImage(row.url_storage, row.file_name);
+              onOpenImage?.(row.url_storage, row.file_name, row);
             }}
             disabled={!hasImage}
             sx={{ p: "4px" }}
@@ -102,19 +102,21 @@ export const AccionesCell = ({
   handleOpenResolverDuplicado,
 }) => {
   const isError = row?.status === "error";
-  const shouldShowButton = Boolean(isParte) || isError;
+  const isIncompleto = row?.status === "incompleto";
+  const isErrorLike = isError || isIncompleto;
+  const isDuplicadoRow = row?.status === "duplicado";
+  const shouldShowButton = Boolean(isParte) || isErrorLike || isDuplicadoRow;
   if (!shouldShowButton) return "-";
 
   const isResyncing = resyncingId === row?._id;
   const isProcessing = row?.status === "processing";
-  const buttonColor = isError ? "error" : "primary";
+  const buttonColor = isErrorLike ? "error" : "primary";
   const isLicenciaRow = String(row?.tipo || "").toLowerCase() === "licencia";
   const isParteRow = String(row?.tipo || "").toLowerCase() === "parte";
-  const isDuplicadoRow = row?.status === "duplicado";
   return (
     <Box component="span" sx={{ display: "inline-flex", gap: 0.5, alignItems: "center" }}>
       <Tooltip
-        title={isError ? "Reintentar sincronización" : "Resincronizar / reprocesar"}
+        title={isErrorLike ? "Reintentar sincronización" : "Resincronizar / reprocesar"}
         placement="top"
       >
         <span>
@@ -210,7 +212,7 @@ export const AccionesCell = ({
           </span>
         </Tooltip>
       )}
-      {isParteRow && isError && (
+      {isParteRow && isErrorLike && (
         <Tooltip title="Resolver parte manualmente" placement="top">
           <span>
             <IconButton

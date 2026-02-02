@@ -10,6 +10,7 @@ import ImagenModal from "src/components/ImagenModal";
 import ResolverTrabajadorModal from "src/components/dhn/ResolverTrabajadorModal";
 import ResolverLicenciaManualForm from "src/components/dhn/ResolverLicenciaManualForm";
 import ResolverParteManualForm from "src/components/dhn/ResolverParteManualForm";
+import TrabajosDetectadosList from "src/components/dhn/TrabajosDetectadosList";
 import {
   AccionesCell,
   ArchivoCell,
@@ -41,6 +42,7 @@ const SyncErrorsPage = () => {
   const [imageModalOpen, setImageModalOpen] = useState(false);
   const [imageUrl, setImageUrl] = useState("");
   const [imageFileName, setImageFileName] = useState("");
+  const [imageModalRow, setImageModalRow] = useState(null);
 
   const [editingId, setEditingId] = useState(null);
   const [editingValue, setEditingValue] = useState("");
@@ -96,10 +98,11 @@ const SyncErrorsPage = () => {
     }
   }, [paginationLimit, paginationOffset, fechaDesde, fechaHasta, tipoFiltro, searchQuery]);
 
-  const openImageModal = (url, fileName) => {
+  const openImageModal = (url, fileName, row) => {
     if (!url) return;
     setImageUrl(url);
     setImageFileName(typeof fileName === "string" ? fileName : "");
+    setImageModalRow(row || null);
     setImageModalOpen(true);
   };
 
@@ -107,7 +110,10 @@ const SyncErrorsPage = () => {
     setImageModalOpen(false);
     setImageUrl("");
     setImageFileName("");
+    setImageModalRow(null);
   };
+  const imageModalTipo = String(imageModalRow?.tipo || "").toLowerCase();
+  const isImageModalParte = imageModalTipo === "parte";
 
   const handleCloseAlert = (_, reason) => {
     if (reason === "clickaway") return;
@@ -153,6 +159,10 @@ const SyncErrorsPage = () => {
 
   const handleOpenResolverParte = (row) => {
     if (!row?.url_storage) return;
+    if (row?.status === "incompleto") {
+      openImageModal(row.url_storage, row.file_name, row);
+      return;
+    }
     setResolverParteRow(row);
     setResolverParteModalOpen(true);
   };
@@ -624,6 +634,14 @@ const SyncErrorsPage = () => {
           onClose={closeImageModal}
           imagenUrl={imageUrl}
           fileName={imageFileName}
+          leftContent={
+            isImageModalParte && imageModalRow?.url_storage ? (
+              <TrabajosDetectadosList
+                urlStorage={imageModalRow.url_storage}
+                onUpdated={handleTrabajadorResuelto}
+              />
+            ) : null
+          }
         />
         <ImagenModal
           open={resolverLicenciaModalOpen}
