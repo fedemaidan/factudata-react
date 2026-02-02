@@ -44,7 +44,11 @@ import {
     PhoneDisabled as PhoneDisabledIcon,
     Delete as DeleteIcon,
     Save as SaveIcon,
-    Refresh as RefreshIcon
+    Refresh as RefreshIcon,
+    Fullscreen as FullscreenIcon,
+    FullscreenExit as FullscreenExitIcon,
+    OpenInFull as OpenInFullIcon,
+    CloseFullscreen as CloseFullscreenIcon
 } from '@mui/icons-material';
 import SDRService from '../../services/sdrService';
 import ModalSelectorTemplate from './ModalSelectorTemplate';
@@ -268,6 +272,9 @@ const DrawerDetalleContactoSDR = ({
     
     // Estado para historial expandido
     const [mostrarTodosEventos, setMostrarTodosEventos] = useState(false);
+    
+    // Estado para drawer expandido (pantalla completa)
+    const [drawerExpandido, setDrawerExpandido] = useState(false);
     
     // Estado local del contacto para poder actualizarlo sin refrescar
     const [contactoLocal, setContactoLocal] = useState(contacto);
@@ -1058,8 +1065,11 @@ const DrawerDetalleContactoSDR = ({
             onClose={onClose}
             PaperProps={{ 
                 sx: { 
-                    width: { xs: '100%', sm: 500, md: 550 },
-                    maxWidth: '100vw'
+                    width: drawerExpandido 
+                        ? { xs: '100%', sm: '100%', md: '80vw', lg: '70vw' }
+                        : { xs: '100%', sm: 500, md: 550 },
+                    maxWidth: '100vw',
+                    transition: 'width 0.3s ease-in-out'
                 } 
             }}
         >
@@ -1106,6 +1116,15 @@ const DrawerDetalleContactoSDR = ({
                                     size="small"
                                 >
                                     <RefreshIcon fontSize="small" />
+                                </IconButton>
+                            </Tooltip>
+                            <Tooltip title={drawerExpandido ? "Reducir panel" : "Expandir panel"}>
+                                <IconButton 
+                                    onClick={() => setDrawerExpandido(!drawerExpandido)}
+                                    size="small"
+                                    color={drawerExpandido ? "primary" : "default"}
+                                >
+                                    {drawerExpandido ? <CloseFullscreenIcon fontSize="small" /> : <OpenInFullIcon fontSize="small" />}
                                 </IconButton>
                             </Tooltip>
                             <IconButton onClick={onClose}>
