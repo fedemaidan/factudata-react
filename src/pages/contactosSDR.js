@@ -10,7 +10,6 @@ import {
     Avatar, Badge, Fab, Dialog, DialogTitle, DialogContent, DialogActions,
     Checkbox, Tooltip
 } from '@mui/material';
-import { auth } from 'src/config/firebase';
 import {
     Search as SearchIcon,
     Refresh as RefreshIcon,
@@ -43,10 +42,12 @@ const ContactosSDRPage = () => {
     const { user } = useAuthContext();
     const router = useRouter();
     const empresaId = user?.empresa?.id || 'demo-empresa';
-    // Usar el Firebase UID directamente de auth.currentUser para garantizar consistencia
-    // user_id del perfil puede no existir en perfiles antiguos
-    const sdrId = auth.currentUser?.uid || user?.user_id || user?.id;
+    // Usar user_id del perfil (que es el Firebase UID guardado en Firestore)
+    const sdrId = user?.user_id;
     const sdrNombre = `${user?.firstName || ''} ${user?.lastName || ''}`.trim() || user?.email || 'SDR';
+    
+    // Debug temporal
+    console.log('🔍 contactosSDR - sdrId:', sdrId, '| user_id:', user?.user_id, '| id:', user?.id);
     
     const theme = useTheme();
     const isMobile = useMediaQuery(theme.breakpoints.down('md'));
@@ -102,12 +103,12 @@ const ContactosSDRPage = () => {
 
     // Cargar contactos asignados al SDR
     const cargarContactos = useCallback(async () => {
-        if (!empresaId || !sdrId) return;
+        if (!sdrId) return;
         setLoading(true);
         try {
+            // Solo filtrar por sdrAsignado - el SDR ve TODOS sus contactos asignados
             const params = { 
-                empresaId,
-                sdrAsignado: sdrId // Solo contactos del SDR logueado
+                sdrAsignado: sdrId
             };
             
             // Filtros de tipo

@@ -11,7 +11,7 @@ import {
 
 // Firebase
 import { collection, query, where, getDocs, doc, updateDoc } from 'firebase/firestore';
-import { db, auth } from 'src/config/firebase';
+import { db } from 'src/config/firebase';
 
 // Icons
 import PhoneIcon from '@mui/icons-material/Phone';
@@ -179,8 +179,8 @@ const GestionSDRPage = () => {
     const { user, isLoading: authLoading } = useAuthContext();
     const userId = user?.id || user?.user_id;
     const empresaId = user?.empresa?.id || 'demo-empresa';
-    // Usar el Firebase UID directamente de auth.currentUser para garantizar consistencia
-    const sdrId = auth.currentUser?.uid || user?.user_id || user?.id;
+    // Usar user_id del perfil (que es el Firebase UID guardado en Firestore)
+    const sdrId = user?.user_id;
     const sdrNombre = `${user?.firstName || ''} ${user?.lastName || ''}`.trim() || user?.email || 'SDR';
     
     // Control de carga inicial
