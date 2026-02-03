@@ -39,7 +39,7 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import profileService from 'src/services/profileService';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import { useCallback } from 'react';
-import { getProyectosByEmpresa } from 'src/services/proyectosService';
+import { getProyectosFromUser } from 'src/services/proyectosService';
 import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
 import { formatTimestamp } from 'src/utils/formatters';
 import { Timestamp } from 'firebase/firestore';
@@ -184,14 +184,14 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
 
   const fetchProyectos = useCallback(async () => {
     try {
-      const empresa = await getEmpresaDetailsFromUser(user);
-      const proyectosData = await getProyectosByEmpresa(empresa);
-      console.log(proyectosData)
+      // Obtener solo los proyectos asignados al usuario
+      const proyectosData = await getProyectosFromUser(user);
+      console.log('Proyectos asignados al usuario:', proyectosData);
       setProyectos(proyectosData);
     } catch (error) {
       console.error('Error al obtener proyectos:', error);
     }
-  }, [user?.empresa?.id]);
+  }, [user]);
   
   
   useEffect(() => {
