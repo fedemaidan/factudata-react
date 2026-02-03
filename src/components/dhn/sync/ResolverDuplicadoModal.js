@@ -8,6 +8,7 @@ import {
   DialogActions,
   Stack,
   Typography,
+  Link,
 } from "@mui/material";
 
 const ImagePreview = ({ label, url }) => (
@@ -83,6 +84,12 @@ const ResolverDuplicadoModal = ({
     : null;
 
   const duplicateMessage = duplicateInfo.mensaje;
+  const existingLink = duplicateInfo.comprobanteExistente?.url;
+  const nuevoLink = duplicateInfo.comprobanteNuevo?.url || row?.url_storage;
+  const linkItems = [
+    { label: existingLabel, url: existingLink },
+    { label: nuevoLabel, url: nuevoLink },
+  ].filter((item) => item.url);
 
   const handleAction = (action) => () => {
     if (loading) return;
@@ -115,6 +122,25 @@ const ResolverDuplicadoModal = ({
             <Typography variant="body2" color="text.secondary">
               {duplicateMessage}
             </Typography>
+          )}
+          {linkItems.length > 0 && (
+            <Stack spacing={0.5}>
+              <Typography variant="caption" color="text.secondary">
+                Enlaces disponibles
+              </Typography>
+              {linkItems.map((item) => (
+                <Link
+                  key={`${item.label}-${item.url}`}
+                  href={item.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  underline="hover"
+                  sx={{ fontSize: "0.85rem" }}
+                >
+                  {item.label}
+                </Link>
+              ))}
+            </Stack>
           )}
           <Stack direction="row" spacing={2} flexWrap="wrap">
             {fechaDetectada && (

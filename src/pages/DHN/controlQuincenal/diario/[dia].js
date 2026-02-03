@@ -9,6 +9,7 @@ import TableComponent from 'src/components/TableComponent';
 import HistorialModal from 'src/components/dhn/HistorialModal';
 import useTrabajoDiarioPage from 'src/hooks/dhn/useTrabajoDiarioPage';
 import ImagenModal from 'src/components/ImagenModal';
+import HorasRawModal from 'src/components/dhn/HorasRawModal';
 import TrabajosDetectadosList from 'src/components/dhn/TrabajosDetectadosList';
 import ClearIcon from '@mui/icons-material/Clear';
 import EditarTrabajoDiarioModal from 'src/components/dhn/EditarTrabajoDiarioModal';
@@ -25,17 +26,48 @@ const ControlDiaPage = () => {
   const [modalOpen, setModalOpen] = useState(false);
   const [modalFileName, setModalFileName] = useState("");
 
-  const handleOpenParteModal = useCallback((url, comp) => {
-    if (!url) return;
-    setModalUrl(url);
-    setModalFileName(comp?.file_name || comp?.fileName || "");
-    setModalOpen(true);
-  }, []);
+  const [rawModalOpen, setRawModalOpen] = useState(false);
+  const [rawModalData, setRawModalData] = useState([]);
+  const [rawModalTitle, setRawModalTitle] = useState('');
+  const [rawModalFileName, setRawModalFileName] = useState('');
+  const [rawModalUrl, setRawModalUrl] = useState('');
+
+  const handleOpenComprobante = useCallback((comp, item) => {
+    if (!comp) return;
+    const url = comp?.url || comp?.url_storage || '';
+    if (comp.type === 'parte') {
+      if (!url) return;
+      setModalUrl(url);
+      setModalFileName(comp?.file_name || comp?.fileName || '');
+      setModalOpen(true);
+      return;
+    }
+    if (comp.type === 'horas') {
+      const trabajador = item?.trabajadorId || {};
+      const nombre = `${trabajador?.apellido || ''} ${trabajador?.nombre || ''}`.trim();
+      const dni = trabajador?.dni ? `DNI: ${trabajador.dni}` : '';
+      const titleBase = nombre ? `${nombre} • ${diaLabel}` : `Fichadas raw • ${diaLabel}`;
+      const title = dni ? `${titleBase} • ${dni}` : titleBase;
+      setRawModalData(Array.isArray(item?.dataRawExcel) ? item.dataRawExcel : []);
+      setRawModalTitle(title);
+      setRawModalFileName(comp?.file_name || comp?.fileName || '');
+      setRawModalUrl(url || '');
+      setRawModalOpen(true);
+    }
+  }, [diaLabel]);
 
   const handleCloseParteModal = useCallback(() => {
     setModalOpen(false);
     setModalUrl("");
     setModalFileName("");
+  }, []);
+
+  const handleCloseRawModal = useCallback(() => {
+    setRawModalOpen(false);
+    setRawModalData([]);
+    setRawModalTitle('');
+    setRawModalFileName('');
+    setRawModalUrl('');
   }, []);
 
   const {
@@ -53,7 +85,7 @@ const ControlDiaPage = () => {
     diaISO,
     incluirTrabajador: true,
     defaultLimit: 200,
-    onOpenComprobante: handleOpenParteModal,
+    onOpenComprobante: handleOpenComprobante,
   });
 
   const formatters = {
@@ -143,6 +175,15 @@ const ControlDiaPage = () => {
         imagenUrl={modalUrl}
         fileName={modalFileName}
         leftContent={modalUrl ? <TrabajosDetectadosList urlStorage={modalUrl} /> : null}
+      />
+
+      <HorasRawModal
+        open={rawModalOpen}
+        onClose={handleCloseRawModal}
+        data={rawModalData}
+        title={rawModalTitle}
+        fileName={rawModalFileName}
+        downloadUrl={rawModalUrl}
       />
 
       <EditarTrabajoDiarioModal

@@ -144,10 +144,10 @@ export const ComprobantesCell = ({ item, onOpen }) => (
         (() => {
           const url = comp.url || comp.url_storage || null;
           const handleClick = (event) => {
-            if (comp.type === 'parte' && onOpen && url) {
+            if ((comp.type === 'parte' || comp.type === 'horas') && onOpen) {
               event.preventDefault();
               event.stopPropagation();
-              onOpen(url, comp);
+              onOpen(comp, item);
             }
           };
           return (

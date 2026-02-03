@@ -19,6 +19,7 @@ import {
   StatusChip,
 } from "src/components/dhn/sync/cells";
 import ResolverDuplicadoModal from "src/components/dhn/sync/ResolverDuplicadoModal";
+import { formatDateToDDMMYYYY } from "src/utils/handleDates";
 
 const DEFAULT_PAGE_LIMIT = 100;
 
@@ -66,18 +67,22 @@ const SyncErrorsPage = () => {
   const [fechaDesde, setFechaDesde] = useState(null);
   const [fechaHasta, setFechaHasta] = useState(null);
   const [tipoFiltro, setTipoFiltro] = useState("");
+  const [sortField, setSortField] = useState("created_at");
+  const [sortDirection, setSortDirection] = useState("desc");
 
   const fetchDetails = useCallback(async () => {
     setIsLoading(true);
     try {
-      const page = await DhnDriveService.getErroredSyncChildren({
-        limit: paginationLimit,
-        offset: paginationOffset,
-        createdAtFrom: fechaDesde ? fechaDesde.toISOString() : undefined,
-        createdAtTo: fechaHasta ? fechaHasta.toISOString() : undefined,
-        tipo: tipoFiltro || undefined,
-        search: searchQuery || undefined,
-      });
+    const page = await DhnDriveService.getErroredSyncChildren({
+      limit: paginationLimit,
+      offset: paginationOffset,
+      createdAtFrom: fechaDesde ? fechaDesde.toISOString() : undefined,
+      createdAtTo: fechaHasta ? fechaHasta.toISOString() : undefined,
+      tipo: tipoFiltro || undefined,
+      search: searchQuery || undefined,
+      sortField,
+      sortDirection,
+    });
       setItems(Array.isArray(page?.items) ? page.items : []);
       setPagination((prev) => ({
         ...prev,
@@ -96,7 +101,16 @@ const SyncErrorsPage = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [paginationLimit, paginationOffset, fechaDesde, fechaHasta, tipoFiltro, searchQuery]);
+  }, [
+    paginationLimit,
+    paginationOffset,
+    fechaDesde,
+    fechaHasta,
+    tipoFiltro,
+    searchQuery,
+    sortField,
+    sortDirection,
+  ]);
 
   const openImageModal = (url, fileName, row) => {
     if (!url) return;
@@ -138,6 +152,17 @@ const SyncErrorsPage = () => {
       setSearchVersion((prev) => prev + 1);
     },
     [searchTerm]
+  );
+
+  const handleSortChange = useCallback(
+    (field) => {
+      setPagination((prev) => ({ ...prev, offset: 0 }));
+      setSortDirection((prevDirection) =>
+        sortField === field ? (prevDirection === "asc" ? "desc" : "asc") : "desc"
+      );
+      setSortField(field);
+    },
+    [sortField]
   );
 
   const handleResolverTrabajador = (trabajador, urlStorage) => {
@@ -319,8 +344,15 @@ const SyncErrorsPage = () => {
   const columns = useMemo(() => {
     const cols = [
       {
+        key: "created_at",
+        label: "Fecha sincronización",
+        sortable: true,
+        render: (it) => formatDateToDDMMYYYY(it?.created_at),
+      },
+      {
         key: "status",
         label: "Estado",
+        sortable: true,
         render: (it) => <StatusChip status={it?.status} />,
       },
       {
@@ -368,14 +400,16 @@ const SyncErrorsPage = () => {
     });
 
     cols.push({
-      key: "archivo",
+      key: "file_name",
       label: "Archivo",
-      render: (it) => <ArchivoCell row={it} onOpenImage={openImageModal} />, 
+      sortable: true,
+      render: (it) => <ArchivoCell row={it} onOpenImage={openImageModal} />,
     });
 
     cols.push({
       key: "observacion",
       label: "Observación",
+      sortable: true,
       render: (it) => (
         <ObservacionCell row={it} handleResolverTrabajador={handleResolverTrabajador} />
       ),
@@ -587,6 +621,9 @@ const SyncErrorsPage = () => {
                   data={items}
                   columns={columns}
                   isLoading={isLoading}
+                  sortField={sortField}
+                  sortDirection={sortDirection}
+                  onSortChange={handleSortChange}
                   onRowClick={(row) => {
                     console.log("[DHN Errores] row click:", row);
                   }}

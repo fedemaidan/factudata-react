@@ -140,12 +140,16 @@ const DhnDriveService = {
     createdAtTo,
     tipo,
     search,
+    sortField,
+    sortDirection,
   } = {}) => {
     const payload = { status: ['error', 'duplicado', 'incompleto'], limit, offset };
     if (createdAtFrom) payload.createdAtFrom = createdAtFrom;
     if (createdAtTo) payload.createdAtTo = createdAtTo;
     if (tipo) payload.tipo = tipo;
     if (search) payload.search = search;
+    if (sortField) payload.sortField = sortField;
+    if (sortDirection) payload.sortDirection = sortDirection;
     return fetchUrlStoragePage(payload, { limit, offset });
   },
 
