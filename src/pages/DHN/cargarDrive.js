@@ -294,7 +294,6 @@ const CargarDrive = () => {
                 {isLoading ? "Actualizando..." : "Actualizar"}
               </Button>
             </Box>
-            <Button variant="outlined" onClick={() => router.push("/dhn/sync/errores")}>Corregir errores</Button>
           </Box>
 
           {/* Tabla principal: pasamos onRowClick para que se active la subtabla */}

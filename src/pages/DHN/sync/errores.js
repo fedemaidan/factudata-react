@@ -20,6 +20,7 @@ import {
 } from "src/components/dhn/sync/cells";
 import ResolverDuplicadoModal from "src/components/dhn/sync/ResolverDuplicadoModal";
 import { formatDateToDDMMYYYY } from "src/utils/handleDates";
+import { parsearTrabajadoresNoIdentificados } from "src/utils/dhn/trabajadoresHelpers";
 
 const DEFAULT_PAGE_LIMIT = 100;
 
@@ -62,6 +63,7 @@ const SyncErrorsPage = () => {
   const [resolverModalOpen, setResolverModalOpen] = useState(false);
   const [trabajadorSeleccionado, setTrabajadorSeleccionado] = useState(null);
   const [urlStorageSeleccionado, setUrlStorageSeleccionado] = useState(null);
+  const [resolverTrabajadorRow, setResolverTrabajadorRow] = useState(null);
 
   // Estados para filtros
   const [fechaDesde, setFechaDesde] = useState(null);
@@ -165,10 +167,18 @@ const SyncErrorsPage = () => {
     [sortField]
   );
 
-  const handleResolverTrabajador = (trabajador, urlStorage) => {
+  const handleResolverTrabajador = (trabajador, urlStorage, row) => {
     setTrabajadorSeleccionado(trabajador);
     setUrlStorageSeleccionado(urlStorage);
+    setResolverTrabajadorRow(row || null);
     setResolverModalOpen(true);
+  };
+
+  const handleCloseResolverTrabajador = () => {
+    setResolverModalOpen(false);
+    setTrabajadorSeleccionado(null);
+    setUrlStorageSeleccionado(null);
+    setResolverTrabajadorRow(null);
   };
 
   const handleOpenResolverLicencia = (row) => {
@@ -198,14 +208,20 @@ const SyncErrorsPage = () => {
   };
 
   const handleTrabajadorResuelto = async () => {
+    const currentRowId = resolverTrabajadorRow?._id;
+    const nextRowId = getNextModalRowId(currentRowId);
+    handleCloseResolverTrabajador();
     try {
       await fetchDetails();
     } catch (error) {
       console.error("Error recargando datos de errores:", error);
     }
+    openNextErrorModal(nextRowId);
   };
 
   const handleLicenciaResuelta = async (resp) => {
+    const currentRowId = resolverLicenciaRow?._id;
+    const nextRowId = getNextModalRowId(currentRowId);
     const registros = resp?.registrosCreados ?? resp?.data?.registrosCreados ?? 0;
     const baseMessage =
       resp?.message ||
@@ -219,9 +235,12 @@ const SyncErrorsPage = () => {
     });
     handleCloseResolverLicencia();
     await fetchDetails();
+    openNextErrorModal(nextRowId);
   };
 
   const handleParteResuelta = async (resp) => {
+    const currentRowId = resolverParteRow?._id;
+    const nextRowId = getNextModalRowId(currentRowId);
     const registros = resp?.registrosCreados ?? resp?.data?.registrosCreados ?? 0;
     const baseMessage =
       resp?.message ||
@@ -235,6 +254,7 @@ const SyncErrorsPage = () => {
     });
     handleCloseResolverParte();
     await fetchDetails();
+    openNextErrorModal(nextRowId);
   };
 
   const handleOpenResolverDuplicado = (row) => {
@@ -247,8 +267,64 @@ const SyncErrorsPage = () => {
     setResolverDuplicadoAction(null);
   };
 
+  const rowRequiresErrorModal = (row) => {
+    if (!row) return false;
+    if (row?.duplicateInfo) return true;
+    const tipo = String(row?.tipo || "").toLowerCase();
+    if ((tipo === "licencia" || tipo === "parte") && row?.url_storage) return true;
+    const trabajadores = parsearTrabajadoresNoIdentificados(row?.observacion);
+    return trabajadores.length > 0;
+  };
+
+  const getNextModalRowId = (currentRowId) => {
+    if (!currentRowId) return null;
+    const currentIndex = items.findIndex((item) => item?._id === currentRowId);
+    if (currentIndex === -1) return null;
+    for (let i = currentIndex + 1; i < items.length; i++) {
+      if (rowRequiresErrorModal(items[i])) {
+        return items[i]._id;
+      }
+    }
+    return null;
+  };
+
+  const openModalForRow = (row) => {
+    if (!row) return;
+    if (row?.duplicateInfo) {
+      handleOpenResolverDuplicado(row);
+      return;
+    }
+    const tipo = String(row?.tipo || "").toLowerCase();
+    if (tipo === "licencia" && row?.url_storage) {
+      handleOpenResolverLicencia(row);
+      return;
+    }
+    if (tipo === "parte" && row?.url_storage) {
+      handleOpenResolverParte(row);
+      return;
+    }
+    const trabajadores = parsearTrabajadoresNoIdentificados(row?.observacion);
+    if (trabajadores.length > 0) {
+      handleResolverTrabajador(trabajadores[0], row?.url_storage, row);
+    }
+  };
+
+  const openNextErrorModal = (nextRowId) => {
+    if (!nextRowId) return;
+    const nextRow = items.find((item) => item?._id === nextRowId);
+    if (nextRow) {
+      openModalForRow(nextRow);
+      return;
+    }
+    const fallbackRow = items.find((item) => rowRequiresErrorModal(item));
+    if (fallbackRow) {
+      openModalForRow(fallbackRow);
+    }
+  };
+
   const handleResolverDuplicado = async (action) => {
     if (!resolverDuplicadoRow) return;
+    const nextRowId = getNextModalRowId(resolverDuplicadoRow._id);
     setResolverDuplicadoLoading(true);
     setResolverDuplicadoAction(action);
     try {
@@ -267,6 +343,7 @@ const SyncErrorsPage = () => {
       });
       handleCloseResolverDuplicado();
       await fetchDetails();
+      openNextErrorModal(nextRowId);
     } catch (error) {
       console.error("Error resolviendo duplicado:", error);
       setAlert({
@@ -721,11 +798,7 @@ const SyncErrorsPage = () => {
 
         <ResolverTrabajadorModal
           open={resolverModalOpen}
-          onClose={() => {
-            setResolverModalOpen(false);
-            setTrabajadorSeleccionado(null);
-            setUrlStorageSeleccionado(null);
-          }}
+          onClose={handleCloseResolverTrabajador}
           trabajadorDetectado={trabajadorSeleccionado}
           urlStorage={urlStorageSeleccionado}
           onResolved={handleTrabajadorResuelto}

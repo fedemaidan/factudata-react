@@ -127,7 +127,7 @@ const SyncDetailPage = () => {
     [searchTerm]
   );
 
-  const handleResolverTrabajador = (trabajador, urlStorage) => {
+  const handleResolverTrabajador = (trabajador, urlStorage, row) => {
     setTrabajadorSeleccionado(trabajador);
     setUrlStorageSeleccionado(urlStorage);
     setResolverModalOpen(true);

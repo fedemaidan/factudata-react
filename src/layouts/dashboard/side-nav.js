@@ -41,6 +41,7 @@ import CompareArrowsIcon from "@mui/icons-material/CompareArrows";
 import BackupIcon from "@mui/icons-material/Backup";
 import ScheduleIcon from "@mui/icons-material/Schedule";
 import AdminPanelSettingsIcon from "@mui/icons-material/AdminPanelSettings";
+import ErrorOutlineIcon from "@mui/icons-material/ErrorOutline";
 
 export const SideNav = (props) => {
   const { open, onClose, collapsed = false, onToggleCollapsed, width = 280 } = props;
@@ -466,6 +467,16 @@ export const SideNav = (props) => {
             </SvgIcon>
           ),
         });
+
+        baseItems.push({
+          title: "Errores", 
+          path: "/dhn/sync/errores",
+          icon: (
+            <SvgIcon fontSize="small">
+              <ErrorOutlineIcon />
+            </SvgIcon>
+          ),
+        })
   
         baseItems.push({
           title: "Control Diario",

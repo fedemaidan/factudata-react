@@ -402,7 +402,7 @@ export const ObservacionCell = ({ row, handleResolverTrabajador }) => {
             color="primary"
             onClick={(e) => {
               e.stopPropagation();
-              handleResolverTrabajador(trabajador, row?.url_storage);
+              handleResolverTrabajador(trabajador, row?.url_storage, row);
             }}
             sx={{
               cursor: "pointer",
