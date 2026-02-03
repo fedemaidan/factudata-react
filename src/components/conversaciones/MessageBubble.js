@@ -3,6 +3,7 @@ import AudioPlayer from './AudioPlayer';
 import ImageIcon from '@mui/icons-material/Image';
 import VideocamIcon from '@mui/icons-material/Videocam';
 import AddIcon from '@mui/icons-material/Add';
+import DescriptionIcon from '@mui/icons-material/Description';
 
 // Helper to check if src is a valid media URL (not an internal event identifier)
 const isValidMediaUrl = (src) => {
@@ -273,12 +274,36 @@ export default function MessageBubble({
 
         {message.type === 'document' ? (
           <Box mb={text ? 1 : 0} p={1} bgcolor="background.default" borderRadius={1}>
-            <Typography variant="body2" fontWeight={600}>
-              📄 Documento
-            </Typography>
-            <Typography variant="caption" color="text.secondary">
-              {message.caption || 'Archivo adjunto'}
-            </Typography>
+            <Box 
+              display="flex" 
+              alignItems="center" 
+              gap={1}
+              component={hasValidMediaUrl ? "a" : "div"}
+              href={hasValidMediaUrl ? message.message : undefined}
+              target="_blank"
+              rel="noopener noreferrer"
+              sx={{ 
+                textDecoration: 'none', 
+                color: 'inherit',
+                cursor: hasValidMediaUrl ? 'pointer' : 'default',
+                '&:hover': hasValidMediaUrl ? { opacity: 0.8 } : {}
+              }}
+            >
+              <DescriptionIcon sx={{ fontSize: 30, color: 'text.secondary' }} />
+              <Box>
+                <Typography variant="body2" fontWeight={600}>
+                  Documento
+                </Typography>
+                <Typography variant="caption" color="text.secondary" display="block">
+                  {message.caption || 'Archivo adjunto'}
+                </Typography>
+                {hasValidMediaUrl && (
+                  <Typography variant="caption" color="primary" sx={{textDecoration: 'underline'}}>
+                    Abrir archivo
+                  </Typography>
+                )}
+              </Box>
+            </Box>
           </Box>
         ) : null}
 
