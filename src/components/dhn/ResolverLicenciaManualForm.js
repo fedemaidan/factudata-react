@@ -67,7 +67,9 @@ const ResolverLicenciaManualForm = ({
   trabajadorDetectado,
   onClose,
   onCancel,
+  onAutoClose,
   onResolved,
+  progreso,
 }) => {
   const [formState, setFormState] = useState(INITIAL_FORM_STATE);
   const [isSaving, setIsSaving] = useState(false);
@@ -108,11 +110,18 @@ const ResolverLicenciaManualForm = ({
   }, []);
 
 
-  const handleClose = useCallback(() => {
+  const handleClose = useCallback(
+    (source = "cancel") => {
     if (isSaving) return;
     updateFormState(INITIAL_FORM_STATE);
+    if (source === "auto" && onAutoClose) {
+      onAutoClose();
+      return;
+    }
     onCancel?.() || onClose?.();
-  }, [isSaving, onCancel, onClose, updateFormState]);
+  },
+    [isSaving, onAutoClose, onCancel, onClose, updateFormState]
+  );
 
   const resolverLicencia = useCallback(
     async (trabajador) => {
@@ -175,7 +184,7 @@ const ResolverLicenciaManualForm = ({
         });
         onResolved?.(resp);
         setTimeout(() => {
-          handleClose();
+          handleClose("auto");
         }, 800);
       } catch (error) {
         console.error("Error al resolver licencia manual:", error);
@@ -219,6 +228,11 @@ const ResolverLicenciaManualForm = ({
   return (
     <Box sx={{ width: "100%", maxWidth: 360 }}>
       <Stack spacing={2}>
+        {progreso && (
+          <Typography variant="caption" color="primary">
+            Corrección asistida: {progreso}
+          </Typography>
+        )}
         <Typography variant="h6">Resolver licencia manual</Typography>
         {trabajadorDetectado && (
           <Box>
@@ -317,7 +331,7 @@ const ResolverLicenciaManualForm = ({
         >
           {isSaving ? <CircularProgress size={18} color="inherit" /> : "Enviar resolución"}
         </Button>
-        <Button variant="text" onClick={handleClose} disabled={isSaving} fullWidth>
+        <Button variant="text" onClick={() => handleClose("cancel")} disabled={isSaving} fullWidth>
           Cancelar
         </Button>
       </Stack>

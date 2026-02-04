@@ -69,6 +69,7 @@ const ResolverDuplicadoModal = ({
   onResolve,
   loading = false,
   actionInProgress = null,
+  progreso,
 }) => {
   if (!row) return null;
 
@@ -84,8 +85,13 @@ const ResolverDuplicadoModal = ({
     : null;
 
   const duplicateMessage = duplicateInfo.mensaje;
-  const existingLink = duplicateInfo.comprobanteExistente?.url;
-  const nuevoLink = duplicateInfo.comprobanteNuevo?.url || row?.url_storage;
+  const existingLink =
+    duplicateInfo.comprobanteExistente?.url_drive ||
+    duplicateInfo.comprobanteExistente?.url;
+  const nuevoLink =
+    row?.url_drive ||
+    duplicateInfo.comprobanteNuevo?.url ||
+    row?.url_storage;
   const linkItems = [
     { label: existingLabel, url: existingLink },
     { label: nuevoLabel, url: nuevoLink },
@@ -108,7 +114,16 @@ const ResolverDuplicadoModal = ({
         },
       }}
     >
-      <DialogTitle>Resolver duplicado</DialogTitle>
+      <DialogTitle>
+        <Stack spacing={0.5}>
+          {progreso && (
+            <Typography variant="caption" color="primary">
+              Corrección asistida: {progreso}
+            </Typography>
+          )}
+          <Typography variant="h6">Resolver duplicado</Typography>
+        </Stack>
+      </DialogTitle>
       <DialogContent>
         <Stack spacing={2}>
           <Stack

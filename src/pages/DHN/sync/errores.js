@@ -1,8 +1,26 @@
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/router";
-import { Container, Box, Snackbar, Alert, Button, Stack, Typography, TextField, MenuItem } from "@mui/material";
+import {
+  Container,
+  Box,
+  Snackbar,
+  Alert,
+  Button,
+  Stack,
+  Typography,
+  TextField,
+  MenuItem,
+  IconButton,
+  InputAdornment,
+  Chip,
+  Popover,
+  Divider,
+} from "@mui/material";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
+import FilterListIcon from "@mui/icons-material/FilterList";
+import CloseIcon from "@mui/icons-material/Close";
+import SearchIcon from "@mui/icons-material/Search";
 import { Layout as DashboardLayout } from "src/layouts/dashboard/layout";
 import TableComponent from "src/components/TableComponent";
 import DhnDriveService from "src/services/dhn/cargarUrlDriveService";
@@ -20,9 +38,9 @@ import {
 } from "src/components/dhn/sync/cells";
 import ResolverDuplicadoModal from "src/components/dhn/sync/ResolverDuplicadoModal";
 import { formatDateToDDMMYYYY } from "src/utils/handleDates";
-import { parsearTrabajadoresNoIdentificados } from "src/utils/dhn/trabajadoresHelpers";
+import useCorreccionAsistida from "src/hooks/dhn/useCorreccionAsistida";
 
-const DEFAULT_PAGE_LIMIT = 100;
+const DEFAULT_PAGE_LIMIT = 50;
 
 const SyncErrorsPage = () => {
   const router = useRouter();
@@ -59,6 +77,7 @@ const SyncErrorsPage = () => {
   const [resolverDuplicadoRow, setResolverDuplicadoRow] = useState(null);
   const [resolverDuplicadoLoading, setResolverDuplicadoLoading] = useState(false);
   const [resolverDuplicadoAction, setResolverDuplicadoAction] = useState(null);
+  const [resolverDuplicadoExistingDrive, setResolverDuplicadoExistingDrive] = useState(null);
 
   const [resolverModalOpen, setResolverModalOpen] = useState(false);
   const [trabajadorSeleccionado, setTrabajadorSeleccionado] = useState(null);
@@ -71,48 +90,103 @@ const SyncErrorsPage = () => {
   const [tipoFiltro, setTipoFiltro] = useState("");
   const [sortField, setSortField] = useState("created_at");
   const [sortDirection, setSortDirection] = useState("desc");
+  const [correccionItems, setCorreccionItems] = useState([]);
+  const [isCargandoCorreccion, setIsCargandoCorreccion] = useState(false);
+  const correccionSourceItems = correccionItems.length ? correccionItems : items;
+  const {
+    activa: correccionActiva,
+    textoProgreso,
+    iniciar: iniciarCorreccion,
+    avanzar: avanzarCorreccion,
+    detener: detenerCorreccion,
+    determinarTipoModal,
+  } = useCorreccionAsistida(correccionSourceItems);
+  const totalDisponibles = pagination.total;
 
-  const fetchDetails = useCallback(async () => {
-    setIsLoading(true);
-    try {
-    const page = await DhnDriveService.getErroredSyncChildren({
-      limit: paginationLimit,
-      offset: paginationOffset,
-      createdAtFrom: fechaDesde ? fechaDesde.toISOString() : undefined,
-      createdAtTo: fechaHasta ? fechaHasta.toISOString() : undefined,
-      tipo: tipoFiltro || undefined,
-      search: searchQuery || undefined,
+  const fetchDetails = useCallback(
+    async ({ showLoading = true } = {}) => {
+      if (showLoading) {
+        setIsLoading(true);
+      }
+      try {
+        const page = await DhnDriveService.getErroredSyncChildren({
+          limit: paginationLimit,
+          offset: paginationOffset,
+          createdAtFrom: fechaDesde ? fechaDesde.toISOString() : undefined,
+          createdAtTo: fechaHasta ? fechaHasta.toISOString() : undefined,
+          tipo: tipoFiltro || undefined,
+          search: searchQuery || undefined,
+          sortField,
+          sortDirection,
+        });
+        setItems(Array.isArray(page?.items) ? page.items : []);
+        setPagination((prev) => ({
+          ...prev,
+          total: page?.total ?? prev.total,
+          limit: page?.limit ?? prev.limit,
+          offset: page?.offset ?? prev.offset,
+        }));
+      } catch (error) {
+        console.error("Error cargando errores de sincronización:", error);
+        setItems([]);
+        setAlert({
+          open: true,
+          severity: "error",
+          message: "Error cargando errores",
+        });
+      } finally {
+        if (showLoading) {
+          setIsLoading(false);
+        }
+      }
+    },
+    [
+      paginationLimit,
+      paginationOffset,
+      fechaDesde,
+      fechaHasta,
+      tipoFiltro,
+      searchQuery,
       sortField,
       sortDirection,
-    });
-      setItems(Array.isArray(page?.items) ? page.items : []);
-      setPagination((prev) => ({
-        ...prev,
-        total: page?.total ?? prev.total,
-        limit: page?.limit ?? prev.limit,
-        offset: page?.offset ?? prev.offset,
-      }));
-    } catch (error) {
-      console.error("Error cargando errores de sincronización:", error);
-      setItems([]);
-      setAlert({
-        open: true,
-        severity: "error",
-        message: "Error cargando errores",
+    ]
+  );
+
+  const buildErroredQuery = useCallback(() => {
+    const payload = {};
+    if (fechaDesde) payload.createdAtFrom = fechaDesde.toISOString();
+    if (fechaHasta) payload.createdAtTo = fechaHasta.toISOString();
+    if (tipoFiltro) payload.tipo = tipoFiltro;
+    if (searchQuery) payload.search = searchQuery;
+    if (sortField) payload.sortField = sortField;
+    if (sortDirection) payload.sortDirection = sortDirection;
+    return payload;
+  }, [fechaDesde, fechaHasta, tipoFiltro, searchQuery, sortField, sortDirection]);
+
+  const fetchAllErroredItems = useCallback(async () => {
+    const payloadBase = buildErroredQuery();
+    const limit = paginationLimit ?? DEFAULT_PAGE_LIMIT;
+    const allItems = [];
+    let offset = 0;
+    while (true) {
+      const page = await DhnDriveService.getErroredSyncChildren({
+        ...payloadBase,
+        limit,
+        offset,
       });
-    } finally {
-      setIsLoading(false);
+      const pageItems = Array.isArray(page?.items) ? page.items : [];
+      allItems.push(...pageItems);
+      if (
+        !pageItems.length ||
+        pageItems.length < limit ||
+        (Number.isFinite(page?.total) && allItems.length >= page.total)
+      ) {
+        break;
+      }
+      offset += limit;
     }
-  }, [
-    paginationLimit,
-    paginationOffset,
-    fechaDesde,
-    fechaHasta,
-    tipoFiltro,
-    searchQuery,
-    sortField,
-    sortDirection,
-  ]);
+    return allItems;
+  }, [buildErroredQuery, paginationLimit]);
 
   const openImageModal = (url, fileName, row) => {
     if (!url) return;
@@ -136,25 +210,84 @@ const SyncErrorsPage = () => {
     setAlert((prev) => ({ ...prev, open: false }));
   };
 
-  const handleSearchTermChange = useCallback(
-    (value) => {
-      setSearchTerm(value);
+  const isSearchTriggeredByInputRef = useRef(false);
+
+  const handleSearchTermChange = useCallback((value) => {
+    setSearchTerm(value);
+  }, []);
+
+  const applySearch = useCallback(
+    (term) => {
+      isSearchTriggeredByInputRef.current = true;
+      setPagination((prev) => ({ ...prev, offset: 0 }));
+      const trimmed = String(term || "").trim();
+      setSearchQuery(trimmed);
+      setSearchVersion((prev) => prev + 1);
     },
-    [setSearchTerm]
+    [setPagination]
   );
+
+  useEffect(() => {
+    const showLoading = !isSearchTriggeredByInputRef.current;
+    fetchDetails({ showLoading });
+    isSearchTriggeredByInputRef.current = false;
+  }, [fetchDetails, searchVersion]);
 
   const handleSearchSubmit = useCallback(
     (event) => {
       if (event && event.preventDefault) {
         event.preventDefault();
       }
-      setPagination((prev) => ({ ...prev, offset: 0 }));
-      const trimmed = String(searchTerm || "").trim();
-      setSearchQuery(trimmed);
-      setSearchVersion((prev) => prev + 1);
+      applySearch(searchTerm);
     },
-    [searchTerm]
+    [applySearch, searchTerm]
   );
+  const searchInputRef = useRef(null);
+  const [filtersAnchorEl, setFiltersAnchorEl] = useState(null);
+  const filtersOpen = Boolean(filtersAnchorEl);
+  const handleOpenFilters = useCallback(() => {
+    if (searchInputRef.current) {
+      setFiltersAnchorEl(searchInputRef.current);
+    }
+  }, []);
+  const handleCloseFilters = useCallback(() => {
+    setFiltersAnchorEl(null);
+  }, []);
+
+  const handleClearFilters = useCallback(() => {
+    setFechaDesde(null);
+    setFechaHasta(null);
+    setTipoFiltro("");
+    setSearchTerm("");
+    applySearch("");
+    handleCloseFilters();
+  }, [applySearch, handleCloseFilters]);
+
+  const activeFilters = useMemo(() => {
+    const filters = [];
+    if (searchQuery) {
+      filters.push({ key: "search", label: `Buscar: ${searchQuery}` });
+    }
+    if (fechaDesde) {
+      filters.push({
+        key: "desde",
+        label: `Desde: ${formatDateToDDMMYYYY(fechaDesde)}`,
+      });
+    }
+    if (fechaHasta) {
+      filters.push({
+        key: "hasta",
+        label: `Hasta: ${formatDateToDDMMYYYY(fechaHasta)}`,
+      });
+    }
+    if (tipoFiltro) {
+      filters.push({
+        key: "tipo",
+        label: `Tipo: ${tipoFiltro.charAt(0).toUpperCase()}${tipoFiltro.slice(1)}`,
+      });
+    }
+    return filters;
+  }, [searchQuery, fechaDesde, fechaHasta, tipoFiltro]);
 
   const handleSortChange = useCallback(
     (field) => {
@@ -208,20 +341,23 @@ const SyncErrorsPage = () => {
   };
 
   const handleTrabajadorResuelto = async () => {
-    const currentRowId = resolverTrabajadorRow?._id;
-    const nextRowId = getNextModalRowId(currentRowId);
     handleCloseResolverTrabajador();
     try {
       await fetchDetails();
     } catch (error) {
       console.error("Error recargando datos de errores:", error);
     }
-    openNextErrorModal(nextRowId);
+    if (correccionActiva) {
+      const nextRow = avanzarCorreccion();
+      if (!nextRow) {
+        setCorreccionItems([]);
+        return;
+      }
+      openCorreccionModal(nextRow);
+    }
   };
 
   const handleLicenciaResuelta = async (resp) => {
-    const currentRowId = resolverLicenciaRow?._id;
-    const nextRowId = getNextModalRowId(currentRowId);
     const registros = resp?.registrosCreados ?? resp?.data?.registrosCreados ?? 0;
     const baseMessage =
       resp?.message ||
@@ -235,12 +371,17 @@ const SyncErrorsPage = () => {
     });
     handleCloseResolverLicencia();
     await fetchDetails();
-    openNextErrorModal(nextRowId);
+    if (correccionActiva) {
+      const nextRow = avanzarCorreccion();
+      if (!nextRow) {
+        setCorreccionItems([]);
+        return;
+      }
+      openCorreccionModal(nextRow);
+    }
   };
 
   const handleParteResuelta = async (resp) => {
-    const currentRowId = resolverParteRow?._id;
-    const nextRowId = getNextModalRowId(currentRowId);
     const registros = resp?.registrosCreados ?? resp?.data?.registrosCreados ?? 0;
     const baseMessage =
       resp?.message ||
@@ -254,11 +395,18 @@ const SyncErrorsPage = () => {
     });
     handleCloseResolverParte();
     await fetchDetails();
-    openNextErrorModal(nextRowId);
+    if (correccionActiva) {
+      const nextRow = avanzarCorreccion();
+      if (!nextRow) {
+        setCorreccionItems([]);
+        return;
+      }
+      openCorreccionModal(nextRow);
+    }
   };
 
   const handleOpenResolverDuplicado = (row) => {
-    if (!row?.duplicateInfo) return;
+    if (!row) return;
     setResolverDuplicadoRow(row);
   };
 
@@ -267,64 +415,28 @@ const SyncErrorsPage = () => {
     setResolverDuplicadoAction(null);
   };
 
-  const rowRequiresErrorModal = (row) => {
-    if (!row) return false;
-    if (row?.duplicateInfo) return true;
-    const tipo = String(row?.tipo || "").toLowerCase();
-    if ((tipo === "licencia" || tipo === "parte") && row?.url_storage) return true;
-    const trabajadores = parsearTrabajadoresNoIdentificados(row?.observacion);
-    return trabajadores.length > 0;
-  };
-
-  const getNextModalRowId = (currentRowId) => {
-    if (!currentRowId) return null;
-    const currentIndex = items.findIndex((item) => item?._id === currentRowId);
-    if (currentIndex === -1) return null;
-    for (let i = currentIndex + 1; i < items.length; i++) {
-      if (rowRequiresErrorModal(items[i])) {
-        return items[i]._id;
+  const openCorreccionModal = useCallback(
+    (row) => {
+      if (!row) return;
+      const tipoModal = determinarTipoModal(row);
+      if (!tipoModal) return;
+      if (tipoModal === "duplicado") {
+        handleOpenResolverDuplicado(row);
+        return;
       }
-    }
-    return null;
-  };
-
-  const openModalForRow = (row) => {
-    if (!row) return;
-    if (row?.duplicateInfo) {
-      handleOpenResolverDuplicado(row);
-      return;
-    }
-    const tipo = String(row?.tipo || "").toLowerCase();
-    if (tipo === "licencia" && row?.url_storage) {
-      handleOpenResolverLicencia(row);
-      return;
-    }
-    if (tipo === "parte" && row?.url_storage) {
-      handleOpenResolverParte(row);
-      return;
-    }
-    const trabajadores = parsearTrabajadoresNoIdentificados(row?.observacion);
-    if (trabajadores.length > 0) {
-      handleResolverTrabajador(trabajadores[0], row?.url_storage, row);
-    }
-  };
-
-  const openNextErrorModal = (nextRowId) => {
-    if (!nextRowId) return;
-    const nextRow = items.find((item) => item?._id === nextRowId);
-    if (nextRow) {
-      openModalForRow(nextRow);
-      return;
-    }
-    const fallbackRow = items.find((item) => rowRequiresErrorModal(item));
-    if (fallbackRow) {
-      openModalForRow(fallbackRow);
-    }
-  };
+      if (tipoModal === "licencia") {
+        handleOpenResolverLicencia(row);
+        return;
+      }
+      if (tipoModal === "parte_incompleto" || tipoModal === "parte_error") {
+        handleOpenResolverParte(row);
+      }
+    },
+    [determinarTipoModal, handleOpenResolverDuplicado, handleOpenResolverLicencia, handleOpenResolverParte]
+  );
 
   const handleResolverDuplicado = async (action) => {
     if (!resolverDuplicadoRow) return;
-    const nextRowId = getNextModalRowId(resolverDuplicadoRow._id);
     setResolverDuplicadoLoading(true);
     setResolverDuplicadoAction(action);
     try {
@@ -343,7 +455,14 @@ const SyncErrorsPage = () => {
       });
       handleCloseResolverDuplicado();
       await fetchDetails();
-      openNextErrorModal(nextRowId);
+      if (correccionActiva) {
+        const nextRow = avanzarCorreccion();
+        if (!nextRow) {
+          setCorreccionItems([]);
+          return;
+        }
+        openCorreccionModal(nextRow);
+      }
     } catch (error) {
       console.error("Error resolviendo duplicado:", error);
       setAlert({
@@ -356,6 +475,72 @@ const SyncErrorsPage = () => {
       setResolverDuplicadoAction(null);
     }
   };
+
+  const handleCloseCorreccionOnCancel = useCallback(() => {
+    if (correccionActiva) {
+      detenerCorreccion();
+    }
+    setCorreccionItems([]);
+    setIsCargandoCorreccion(false);
+  }, [correccionActiva, detenerCorreccion]);
+
+  const handleCloseImageModalFromModal = useCallback(() => {
+    handleCloseCorreccionOnCancel();
+    closeImageModal();
+  }, [handleCloseCorreccionOnCancel, closeImageModal]);
+
+  const handleCloseResolverLicenciaFromModal = useCallback(() => {
+    handleCloseCorreccionOnCancel();
+    handleCloseResolverLicencia();
+  }, [handleCloseCorreccionOnCancel, handleCloseResolverLicencia]);
+
+  const handleCloseResolverLicenciaAuto = useCallback(() => {
+    handleCloseResolverLicencia();
+  }, [handleCloseResolverLicencia]);
+
+  const handleCloseResolverParteFromModal = useCallback(() => {
+    handleCloseCorreccionOnCancel();
+    handleCloseResolverParte();
+  }, [handleCloseCorreccionOnCancel, handleCloseResolverParte]);
+
+  const handleCloseResolverParteAuto = useCallback(() => {
+    handleCloseResolverParte();
+  }, [handleCloseResolverParte]);
+
+  const handleCloseResolverDuplicadoFromModal = useCallback(() => {
+    handleCloseCorreccionOnCancel();
+    handleCloseResolverDuplicado();
+  }, [handleCloseCorreccionOnCancel, handleCloseResolverDuplicado]);
+
+  const handleIniciarCorreccion = useCallback(async () => {
+    if (isCargandoCorreccion) return;
+    setIsCargandoCorreccion(true);
+    try {
+      const allItems = await fetchAllErroredItems();
+      if (!allItems.length) {
+        setAlert({
+          open: true,
+          severity: "info",
+          message: "No hay errores pendientes para corrección asistida",
+        });
+        return;
+      }
+      setCorreccionItems(allItems);
+      const firstRow = iniciarCorreccion(allItems);
+      if (firstRow) {
+        openCorreccionModal(firstRow);
+      }
+    } catch (error) {
+      console.error("Error cargando corrección asistida:", error);
+      setAlert({
+        open: true,
+        severity: "error",
+        message: error?.message || "No se pudo iniciar la corrección asistida",
+      });
+    } finally {
+      setIsCargandoCorreccion(false);
+    }
+  }, [fetchAllErroredItems, iniciarCorreccion, openCorreccionModal, isCargandoCorreccion]);
 
   const handleResyncUrlStorage = async (row) => {
     const urlStorageId = row?._id;
@@ -532,90 +717,138 @@ const SyncErrorsPage = () => {
         </Snackbar>
 
         <Stack>
-          <Box sx={{ display: "flex", gap: 2, alignItems: "center" }}>
-            <Button
-              variant="text"
-              startIcon={<ArrowBackIcon />}
-              onClick={() => router.back()}
-              sx={{
-                alignSelf: "flex-start",
-                color: "text.secondary",
-                "&:hover": { backgroundColor: "action.hover", color: "primary.main" },
-                transition: "all 0.2s ease-in-out",
-                fontWeight: 500,
-              }}
-            >
-              Volver
-            </Button>
-            <Button variant="outlined" onClick={fetchDetails} disabled={isLoading}>
-              {isLoading ? "Actualizando..." : "Actualizar"}
-            </Button>
-          </Box>
-
           <Stack
             direction="row"
-            spacing={2}
+            spacing={1}
             sx={{ mt: 2, mb: 1, alignItems: "center", flexWrap: "wrap" }}
           >
-            <Box
-              component="form"
-              onSubmit={handleSearchSubmit}
-              sx={{ display: "flex", gap: 1, alignItems: "center", flexWrap: "wrap" }}
-            >
+            <Box component="form" onSubmit={handleSearchSubmit} sx={{ display: "flex", gap: 1 }}>
               <TextField
+                inputRef={searchInputRef}
                 label="Buscar"
-                placeholder="Archivo, carpeta o fecha"
+                placeholder="Archivo, carpeta, fecha, observación o estado"
                 size="small"
+                variant="outlined"
                 value={searchTerm}
                 onChange={(event) => handleSearchTermChange(event.target.value)}
-                sx={{ minWidth: 220 }}
-                inputProps={{ "aria-label": "Buscar errores" }}
+                sx={{ width: 260 }}
+                inputProps={{ "aria-label": "Buscar errores", type: "search" }}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <SearchIcon fontSize="small" />
+                    </InputAdornment>
+                  ),
+                }}
               />
-              <Button type="submit" variant="contained" color="primary" size="small">
-                Buscar
-              </Button>
             </Box>
-            <DatePicker
-              label="Desde"
-              value={fechaDesde}
-              onChange={setFechaDesde}
-              slotProps={{ textField: { size: "small" } }}
-            />
-            <DatePicker
-              label="Hasta"
-              value={fechaHasta}
-              onChange={setFechaHasta}
-              slotProps={{ textField: { size: "small" } }}
-            />
-            <TextField
-              select
-              label="Tipo"
-              value={tipoFiltro}
-              onChange={(e) => setTipoFiltro(e.target.value)}
+            <IconButton
+              aria-label="Filtros"
               size="small"
-              sx={{ minWidth: 150 }}
+              onClick={handleOpenFilters}
+              sx={{
+                borderRadius: 2,
+                border: "1px solid",
+                borderColor: filtersOpen ? "primary.main" : "divider",
+                color: filtersOpen ? "primary.main" : "text.primary",
+                "&:hover": {
+                  backgroundColor: "action.hover",
+                },
+              }}
             >
-              <MenuItem value="">Todos</MenuItem>
-              <MenuItem value="parte">Parte</MenuItem>
-              <MenuItem value="licencia">Licencia</MenuItem>
-              <MenuItem value="horas">Horas</MenuItem>
-            </TextField>
+              <FilterListIcon fontSize="small" />
+            </IconButton>
+            <Box sx={{ display: "flex", gap: 2, alignItems: "center" }}>
+            <Button variant="outlined" size="small" onClick={fetchDetails} disabled={isLoading}>
+              {isLoading ? "Actualizando..." : "Actualizar"}
+            </Button>
             <Button
               variant="outlined"
               size="small"
-              onClick={() => {
-                setFechaDesde(null);
-                setFechaHasta(null);
-                setTipoFiltro("");
-                setSearchTerm("");
-                setSearchQuery("");
-                setSearchVersion((prev) => prev + 1);
-                setPagination((prev) => ({ ...prev, offset: 0 }));
-              }}
-              disabled={!fechaDesde && !fechaHasta && !tipoFiltro && !searchTerm.trim()}
+              onClick={handleIniciarCorreccion}
+              disabled={isLoading || isCargandoCorreccion || totalDisponibles === 0}
             >
-              Limpiar filtros
+              {isCargandoCorreccion ? "Cargando..." : "Corrección asistida"}
             </Button>
+          </Box>
+          </Stack>
+
+          <Popover
+            open={filtersOpen}
+            onClose={handleCloseFilters}
+            anchorEl={filtersAnchorEl}
+            anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
+            transformOrigin={{ vertical: "top", horizontal: "left" }}
+            PaperProps={{
+              sx: {
+                p: 1.5,
+                minWidth: 300,
+                maxWidth: 360,
+              },
+            }}
+          >
+            <Stack spacing={1.25}>
+              <Box
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                }}
+              >
+                <Typography variant="subtitle2" fontWeight={600}>
+                  Más filtros
+                </Typography>
+                <IconButton size="small" onClick={handleCloseFilters} sx={{ p: 0.5 }}>
+                  <CloseIcon fontSize="small" />
+                </IconButton>
+              </Box>
+              <DatePicker
+                label="Desde"
+                value={fechaDesde}
+                onChange={setFechaDesde}
+                slotProps={{ textField: { size: "small", fullWidth: true } }}
+              />
+              <DatePicker
+                label="Hasta"
+                value={fechaHasta}
+                onChange={setFechaHasta}
+                slotProps={{ textField: { size: "small", fullWidth: true } }}
+              />
+              <TextField
+                select
+                label="Tipo"
+                value={tipoFiltro}
+                onChange={(e) => setTipoFiltro(e.target.value)}
+                size="small"
+                fullWidth
+              >
+                <MenuItem value="">Todos</MenuItem>
+                <MenuItem value="parte">Parte</MenuItem>
+                <MenuItem value="licencia">Licencia</MenuItem>
+                <MenuItem value="horas">Horas</MenuItem>
+              </TextField>
+              <Divider />
+              <Stack direction="row" spacing={1}>
+                <Button size="small" variant="outlined" fullWidth onClick={handleClearFilters}>
+                  Limpiar
+                </Button>
+                <Button size="small" variant="contained" fullWidth onClick={handleCloseFilters}>
+                  Cerrar
+                </Button>
+              </Stack>
+            </Stack>
+          </Popover>
+
+          <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+            {activeFilters.length > 0 ? (
+              activeFilters.map((filter) => (
+                <Chip key={filter.key} label={filter.label} size="small" variant="outlined" />
+              ))
+            ) : (
+              <Typography variant="body2" color="text.secondary">
+                Sin filtros activos
+              </Typography>
+            )}
           </Stack>
 
           <Box>
@@ -745,7 +978,7 @@ const SyncErrorsPage = () => {
 
         <ImagenModal
           open={imageModalOpen}
-          onClose={closeImageModal}
+          onClose={handleCloseImageModalFromModal}
           imagenUrl={imageUrl}
           fileName={imageFileName}
           leftContent={
@@ -753,13 +986,14 @@ const SyncErrorsPage = () => {
               <TrabajosDetectadosList
                 urlStorage={imageModalRow.url_storage}
                 onUpdated={handleTrabajadorResuelto}
+                progreso={correccionActiva ? textoProgreso : null}
               />
             ) : null
           }
         />
         <ImagenModal
           open={resolverLicenciaModalOpen}
-          onClose={handleCloseResolverLicencia}
+          onClose={handleCloseResolverLicenciaFromModal}
           imagenUrl={resolverLicenciaRow?.url_storage}
           fileName={resolverLicenciaRow?.file_name}
           leftContent={
@@ -767,14 +1001,16 @@ const SyncErrorsPage = () => {
               <ResolverLicenciaManualForm
                 urlStorage={resolverLicenciaRow.url_storage}
                 onResolved={handleLicenciaResuelta}
-                onCancel={handleCloseResolverLicencia}
+                onCancel={handleCloseResolverLicenciaFromModal}
+                onAutoClose={handleCloseResolverLicenciaAuto}
+                progreso={correccionActiva ? textoProgreso : null}
               />
             ) : null
           }
         />
         <ImagenModal
           open={resolverParteModalOpen}
-          onClose={handleCloseResolverParte}
+          onClose={handleCloseResolverParteFromModal}
           imagenUrl={resolverParteRow?.url_storage}
           fileName={resolverParteRow?.file_name}
           leftContent={
@@ -782,18 +1018,21 @@ const SyncErrorsPage = () => {
               <ResolverParteManualForm
                 urlStorage={resolverParteRow.url_storage}
                 onResolved={handleParteResuelta}
-                onCancel={handleCloseResolverParte}
+                onCancel={handleCloseResolverParteFromModal}
+                onAutoClose={handleCloseResolverParteAuto}
+                progreso={correccionActiva ? textoProgreso : null}
               />
             ) : null
           }
         />
         <ResolverDuplicadoModal
           open={Boolean(resolverDuplicadoRow)}
-          onClose={handleCloseResolverDuplicado}
+          onClose={handleCloseResolverDuplicadoFromModal}
           row={resolverDuplicadoRow}
           onResolve={handleResolverDuplicado}
           loading={resolverDuplicadoLoading}
           actionInProgress={resolverDuplicadoAction}
+          progreso={correccionActiva ? textoProgreso : null}
         />
 
         <ResolverTrabajadorModal

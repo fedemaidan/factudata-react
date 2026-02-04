@@ -27,7 +27,7 @@ import TrabajoForm, {
   HORA_FIELDS,
 } from "src/components/dhn/TrabajoForm";
 
-const ResolverParteManualForm = ({ urlStorage, onResolved, onCancel }) => {
+const ResolverParteManualForm = ({ urlStorage, onResolved, onCancel, onAutoClose, progreso }) => {
   const [fecha, setFecha] = useState(dayjs());
   const [trabajadores, setTrabajadores] = useState([createEmptyTrabajo()]);
   const [expandedAccordions, setExpandedAccordions] = useState(new Set());
@@ -97,7 +97,13 @@ const ResolverParteManualForm = ({ urlStorage, onResolved, onCancel }) => {
         });
         setAlert({ open: true, severity: "success", message: resp?.message || "Parte resuelto correctamente" });
         onResolved?.(resp);
-        setTimeout(() => onCancel?.(), 500);
+        setTimeout(() => {
+          if (onAutoClose) {
+            onAutoClose();
+            return;
+          }
+          onCancel?.();
+        }, 500);
       } catch (error) {
         setAlert({
           open: true,
@@ -120,6 +126,11 @@ const ResolverParteManualForm = ({ urlStorage, onResolved, onCancel }) => {
   return (
     <Box sx={{ width: "100%", maxWidth: 480 }}>
       <Stack spacing={2}>
+        {progreso && (
+          <Typography variant="caption" color="primary">
+            Corrección asistida: {progreso}
+          </Typography>
+        )}
         <Typography variant="h6">Resolver parte manual</Typography>
         <Typography variant="body2" color="text.secondary">
           Asigná la fecha del parte y los trabajadores con sus horas

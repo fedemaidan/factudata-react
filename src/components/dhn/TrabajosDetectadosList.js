@@ -83,7 +83,7 @@ const TrabajoItem = ({ trabajo, onEdit }) => {
   );
 };
 
-const TrabajosDetectadosList = ({ urlStorage, onUpdated }) => {
+const TrabajosDetectadosList = ({ urlStorage, onUpdated, progreso }) => {
   const [trabajos, setTrabajos] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -310,6 +310,7 @@ const TrabajosDetectadosList = ({ urlStorage, onUpdated }) => {
           urlStorage={urlStorage}
           onResolved={handleManualParteResuelta}
           onCancel={() => {}}
+          progreso={progreso}
         />
       </Box>
     );
@@ -318,6 +319,11 @@ const TrabajosDetectadosList = ({ urlStorage, onUpdated }) => {
   return (
     <Box sx={{ width: "100%", maxWidth: 480 }}>
       <Stack spacing={2}>
+        {progreso && (
+          <Typography variant="caption" color="primary">
+            Corrección asistida: {progreso}
+          </Typography>
+        )}
         <Typography variant="h6">Trabajos detectados</Typography>
 
         <Stack direction="row" spacing={1} alignItems="center">
