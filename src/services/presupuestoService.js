@@ -105,6 +105,89 @@ const PresupuestoService = {
       throw error;
     }
   },
+
+  /**
+   * Agregar adicional a un presupuesto
+   * @param {string} presupuestoId - ID del presupuesto
+   * @param {Object} adicionalData - Datos del adicional (concepto, monto)
+   * @returns {Promise<Object>} - Presupuesto actualizado
+   */
+  agregarAdicional: async (presupuestoId, adicionalData) => {
+    try {
+      const response = await api.post(`/presupuesto/${presupuestoId}/adicional`, adicionalData);
+      if (response.status === 200) {
+        console.log('✅ Adicional agregado con éxito');
+        return response.data;
+      } else {
+        throw new Error('Error al agregar adicional');
+      }
+    } catch (error) {
+      console.error('❌ Error al agregar adicional:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Editar monto de un presupuesto (con historial)
+   * @param {string} presupuestoId - ID del presupuesto
+   * @param {Object} data - { nuevoMonto, motivo, creadoPor }
+   * @returns {Promise<Object>}
+   */
+  editarPresupuesto: async (presupuestoId, data) => {
+    try {
+      const response = await api.put(`/presupuesto/${presupuestoId}/editar`, data);
+      if (response.status === 200) {
+        console.log('✅ Presupuesto editado con éxito');
+        return response.data;
+      } else {
+        throw new Error('Error al editar presupuesto');
+      }
+    } catch (error) {
+      console.error('❌ Error al editar presupuesto:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Obtener resumen de presupuestos por proyecto
+   * @param {string} proyectoId - ID del proyecto
+   * @param {string} empresaId - ID de la empresa
+   * @returns {Promise<Object>} - Resumen con ingresos, egresos y totales
+   */
+  obtenerResumenProyecto: async (proyectoId, empresaId) => {
+    try {
+      const response = await api.get(`/presupuesto/proyecto/${proyectoId}/resumen?empresa_id=${empresaId}`);
+      if (response.status === 200) {
+        console.log('✅ Resumen de proyecto obtenido');
+        return response.data;
+      } else {
+        throw new Error('Error al obtener resumen de proyecto');
+      }
+    } catch (error) {
+      console.error('❌ Error al obtener resumen de proyecto:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Eliminar presupuesto por ID de documento
+   * @param {string} presupuestoId - ID del presupuesto
+   * @returns {Promise<Object>}
+   */
+  eliminarPresupuestoPorId: async (presupuestoId) => {
+    try {
+      const response = await api.delete(`/presupuesto/doc/${presupuestoId}`);
+      if (response.status === 200) {
+        console.log('✅ Presupuesto eliminado con éxito');
+        return response.data;
+      } else {
+        throw new Error('Error al eliminar presupuesto');
+      }
+    } catch (error) {
+      console.error('❌ Error al eliminar presupuesto:', error);
+      throw error;
+    }
+  },
 };
 
 export default PresupuestoService;
