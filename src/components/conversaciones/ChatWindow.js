@@ -10,12 +10,21 @@ import {
   DialogContent,
   DialogActions,
   TextField,
+  Chip,
+  Tooltip,
+  Link as MuiLink,
 } from "@mui/material";
 import MenuIcon from "@mui/icons-material/Menu";
+import BusinessIcon from "@mui/icons-material/Business";
+import PersonIcon from "@mui/icons-material/Person";
+import SettingsIcon from "@mui/icons-material/Settings";
+import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import MessageBubble from "./MessageBubble";
 import MediaModal from "./MediaModal";
+import UserConfigDialog from "./UserConfigDialog";
 import { useConversationsContext } from "src/contexts/conversations-context";
 import { useAuth } from "src/hooks/use-auth";
+import Link from "next/link";
 
 export default function ChatWindow({ myNumber = "X", onOpenList }) {
   const { user } = useAuth()
@@ -31,6 +40,7 @@ export default function ChatWindow({ myNumber = "X", onOpenList }) {
   const [annotationText, setAnnotationText] = useState("");
   const [loadingNotes, setLoadingNotes] = useState({});
   const [errorMessage, setErrorMessage] = useState("");
+  const [userConfigOpen, setUserConfigOpen] = useState(false);
   const {
     messages,
     hasMore,
@@ -41,7 +51,13 @@ export default function ChatWindow({ myNumber = "X", onOpenList }) {
     loadMore,
     handleScrollToMessageHandled,
     onAddNote,
+    selected,
   } = useConversationsContext();
+
+  // Datos de la conversación seleccionada
+  const conversationEmpresa = selected?.empresa;
+  const conversationProfile = selected?.profile;
+  const conversationPhone = selected?.wPid?.split('@')[0] || selected?.lid || '';
 
   const items = useMemo(() => messages || [], [messages]);
   const insightIdsSet = useMemo(() => new Set((insightMessageIds || []).map(String)), [insightMessageIds]);
@@ -150,17 +166,96 @@ export default function ChatWindow({ myNumber = "X", onOpenList }) {
 
   return (
     <Box display="flex" flexDirection="column" height="100%" minHeight={0}>
-      {onOpenList ? (
-        <Box px={1} py={1} display="flex" alignItems="center" gap={1}>
-          <IconButton
-            onClick={onOpenList}
-            aria-label="Abrir conversaciones"
-            sx={{ display: { xs: "inline-flex", md: "none" } }}
-          >
-            <MenuIcon />
-          </IconButton>
+      {/* Header con menú móvil, info empresa y configurar usuario */}
+      <Box 
+        px={1.5} 
+        py={1} 
+        display="flex" 
+        alignItems="center" 
+        justifyContent="space-between"
+        gap={1}
+        flexWrap="wrap"
+        sx={{ minHeight: 48 }}
+      >
+        <Box display="flex" alignItems="center" gap={1}>
+          {onOpenList && (
+            <IconButton
+              onClick={onOpenList}
+              aria-label="Abrir conversaciones"
+              sx={{ display: { xs: "inline-flex", md: "none" } }}
+              size="small"
+            >
+              <MenuIcon />
+            </IconButton>
+          )}
+          
+          {/* Link a la empresa */}
+          {conversationEmpresa && (
+            <Tooltip title={`Ir a ${conversationEmpresa.nombre}`}>
+              <Chip
+                icon={<BusinessIcon />}
+                label={conversationEmpresa.nombre}
+                size="small"
+                color="primary"
+                variant="outlined"
+                component={Link}
+                href={`/empresa?empresaId=${conversationEmpresa.id}`}
+                clickable
+                sx={{
+                  maxWidth: { xs: 150, sm: 200 },
+                  '& .MuiChip-label': { 
+                    overflow: 'hidden', 
+                    textOverflow: 'ellipsis' 
+                  }
+                }}
+              />
+            </Tooltip>
+          )}
+          
+          {/* Info del perfil si existe */}
+          {conversationProfile && (
+            <Chip
+              icon={<PersonIcon />}
+              label={`${conversationProfile.firstName || ''} ${conversationProfile.lastName || ''}`.trim() || conversationPhone}
+              size="small"
+              variant="outlined"
+              sx={{
+                maxWidth: { xs: 120, sm: 180 },
+                '& .MuiChip-label': { 
+                  overflow: 'hidden', 
+                  textOverflow: 'ellipsis' 
+                }
+              }}
+            />
+          )}
         </Box>
-      ) : null}
+        
+        {/* Botón para configurar usuario - OCULTO TEMPORALMENTE */}
+        <Box display="flex" alignItems="center" gap={0.5}>
+          {/* <Tooltip title="Configurar usuario">
+            <IconButton
+              onClick={() => setUserConfigOpen(true)}
+              size="small"
+              color="primary"
+            >
+              <SettingsIcon fontSize="small" />
+            </IconButton>
+          </Tooltip> */}
+          
+          {conversationEmpresa && (
+            <Tooltip title="Abrir empresa en nueva pestaña">
+              <IconButton
+                component="a"
+                href={`/empresa?empresaId=${conversationEmpresa.id}`}
+                target="_blank"
+                size="small"
+              >
+                <OpenInNewIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          )}
+        </Box>
+      </Box>
       <Divider />
 
       {hasMore && atTop && loadMore ? (
@@ -244,6 +339,19 @@ export default function ChatWindow({ myNumber = "X", onOpenList }) {
           </Button>
         </DialogActions>
       </Dialog>
+      
+      {/* Modal para configurar usuario */}
+      <UserConfigDialog
+        open={userConfigOpen}
+        onClose={() => setUserConfigOpen(false)}
+        usuario={conversationProfile}
+        empresa={conversationEmpresa}
+        phone={conversationPhone}
+        onSuccess={() => {
+          // Opcionalmente refrescar la conversación
+          setUserConfigOpen(false);
+        }}
+      />
     </Box>
   );
 }

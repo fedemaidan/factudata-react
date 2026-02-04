@@ -198,6 +198,7 @@ export default function ConversationList({ onSelect, onMessageSelect }) {
           </IconButton>
         </Box>
 
+        {/* Búsqueda en mensajes deshabilitada temporalmente
         {localSearch && (
           <Box>
              <Button 
@@ -243,6 +244,7 @@ export default function ConversationList({ onSelect, onMessageSelect }) {
                 )}
             </Box>
         </Collapse>
+        */}
         
         <ConversacionesFilter />
 
