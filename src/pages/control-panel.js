@@ -10,7 +10,8 @@ import {
   Stack,
   Chip,
   CircularProgress,
-  Alert
+  Alert,
+  Divider
 } from '@mui/material';
 import { useRouter } from 'next/router';
 import BusinessIcon from '@mui/icons-material/Business';
@@ -22,6 +23,9 @@ import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import CurrencyExchangeIcon from '@mui/icons-material/CurrencyExchange';
 import ContactsIcon from '@mui/icons-material/Contacts';
 import SupportAgentIcon from '@mui/icons-material/SupportAgent';
+import AnalyticsIcon from '@mui/icons-material/Analytics';
+import RocketLaunchIcon from '@mui/icons-material/RocketLaunch';
+import AssessmentIcon from '@mui/icons-material/Assessment';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import BotService from 'src/services/botService';
 import ChatGptUsageService from 'src/services/chatGptUsageService';
@@ -131,80 +135,132 @@ const ControlPanelPage = () => {
     fetchStats();
   }, []);
 
-  const panels = [
+  // Paneles organizados por categorías
+  const panelCategories = [
     {
-      title: 'Empresas',
-      description: 'Gestión de empresas y configuraciones',
-      icon: BusinessIcon,
-      color: 'primary',
-      path: '/empresas',
-      metric: null,
-      metricLabel: null
+      title: '📊 Analytics y Métricas',
+      description: 'Análisis de uso y adopción del sistema',
+      panels: [
+        {
+          title: 'Analytics Empresas',
+          description: 'Métricas de uso por empresa y usuarios',
+          icon: AnalyticsIcon,
+          color: 'primary',
+          path: '/analyticsEmpresas',
+          metric: null,
+          metricLabel: null
+        },
+        {
+          title: 'Analytics Onboarding',
+          description: 'Análisis de adopción en primeros días',
+          icon: RocketLaunchIcon,
+          color: 'success',
+          path: '/analyticsOnboarding',
+          metric: null,
+          metricLabel: null
+        }
+      ]
     },
     {
-      title: 'Contactos SDR',
-      description: 'Gestión de contactos y prospectos comerciales',
-      icon: ContactsIcon,
-      color: 'info',
-      path: '/contactosSDR',
-      metric: null,
-      metricLabel: null
+      title: '🏢 Gestión de Empresas',
+      description: 'Administración de clientes y configuraciones',
+      panels: [
+        {
+          title: 'Empresas',
+          description: 'Gestión de empresas y configuraciones',
+          icon: BusinessIcon,
+          color: 'primary',
+          path: '/empresas',
+          metric: null,
+          metricLabel: null
+        }
+      ]
     },
     {
-      title: 'Panel SDR',
-      description: 'Dashboard de seguimiento y métricas SDR',
-      icon: SupportAgentIcon,
-      color: 'success',
-      path: '/gestionSDR',
-      metric: null,
-      metricLabel: null
+      title: '💼 Ventas y CRM',
+      description: 'Gestión comercial y prospectos',
+      panels: [
+        {
+          title: 'Contactos SDR',
+          description: 'Gestión de contactos y prospectos comerciales',
+          icon: ContactsIcon,
+          color: 'info',
+          path: '/contactosSDR',
+          metric: null,
+          metricLabel: null
+        },
+        {
+          title: 'Panel SDR',
+          description: 'Dashboard de seguimiento y métricas SDR',
+          icon: SupportAgentIcon,
+          color: 'success',
+          path: '/gestionSDR',
+          metric: null,
+          metricLabel: null
+        },
+        {
+          title: 'Leads',
+          description: 'Seguimiento de prospectos y oportunidades',
+          icon: LeaderboardIcon,
+          color: 'success',
+          path: '/leads',
+          metric: null,
+          metricLabel: null
+        }
+      ]
     },
     {
-      title: 'Leads',
-      description: 'Seguimiento de prospectos y oportunidades',
-      icon: LeaderboardIcon,
-      color: 'success',
-      path: '/leads',
-      metric: null,
-      metricLabel: null
+      title: '🤖 Bot y Conversaciones',
+      description: 'Gestión del bot de WhatsApp',
+      panels: [
+        {
+          title: 'Usuarios del Bot',
+          description: 'Estados activos y gestión de usuarios',
+          icon: SmartToyIcon,
+          color: 'info',
+          path: '/bot-users',
+          metric: stats.botUsers,
+          metricLabel: 'activos'
+        },
+        {
+          title: 'Conversaciones',
+          description: 'Historial y búsqueda de mensajes',
+          icon: ChatIcon,
+          color: 'secondary',
+          path: '/conversaciones',
+          metric: null,
+          metricLabel: null
+        }
+      ]
     },
     {
-      title: 'Usuarios del Bot',
-      description: 'Estados activos y gestión de usuarios',
-      icon: SmartToyIcon,
-      color: 'info',
-      path: '/bot-users',
-      metric: stats.botUsers,
-      metricLabel: 'activos'
-    },
-    {
-      title: 'Conversaciones',
-      description: 'Historial y búsqueda de mensajes',
-      icon: ChatIcon,
-      color: 'secondary',
-      path: '/conversaciones',
-      metric: null,
-      metricLabel: null
-    },
-    {
-      title: 'Uso de ChatGPT',
-      description: 'Monitoreo de costos y consumo de API',
-      icon: PsychologyIcon,
-      color: 'warning',
-      path: '/chatgpt-usage',
-      metric: stats.chatgptMonth !== null ? `$${stats.chatgptMonth.toFixed(2)}` : null,
-      metricLabel: 'este mes'
-    },
-    {
-      title: 'Monedas',
-      description: 'Valores de dólar (Oficial, Blue, MEP) e índices CAC',
-      icon: CurrencyExchangeIcon,
-      color: 'error',
-      path: '/monedas',
-      metric: null,
-      metricLabel: null
+      title: '⚙️ Sistema y Configuración',
+      description: 'Monitoreo y configuración del sistema',
+      panels: [
+        {
+          title: 'Uso de ChatGPT',
+          description: 'Monitoreo de costos y consumo de API',
+          icon: PsychologyIcon,
+          color: 'warning',
+          path: '/chatgpt-usage',
+          metric: stats.chatgptMonth !== null ? `$${stats.chatgptMonth.toFixed(2)}` : null,
+          metricLabel: 'este mes'
+        },
+        {
+          title: 'Monedas',
+          description: 'Valores de dólar (Oficial, Blue, MEP) e índices CAC',
+          icon: CurrencyExchangeIcon,
+          color: 'error',
+          path: '/monedas',
+          metric: null,
+          metricLabel: null
+        }
+      ]
     }
   ];
+
+  // Flatten para compatibilidad con métricas rápidas
+  const allPanels = panelCategories.flatMap(cat => cat.panels);
 
   return (
     <Box component="main" sx={{ flexGrow: 1, py: 8 }}>
@@ -258,23 +314,36 @@ const ControlPanelPage = () => {
             </Card>
           )}
 
-          {/* Grid de Paneles */}
-          <Grid container spacing={3}>
-            {panels.map((panel) => (
-              <Grid item xs={12} sm={6} md={4} key={panel.path}>
-                <PanelCard
-                  title={panel.title}
-                  description={panel.description}
-                  icon={panel.icon}
-                  color={panel.color}
-                  onClick={() => router.push(panel.path)}
-                  metric={panel.metric}
-                  metricLabel={panel.metricLabel}
-                  loading={loading && panel.metric !== null}
-                />
+          {/* Grid de Paneles por Categoría */}
+          {panelCategories.map((category, catIndex) => (
+            <Box key={category.title}>
+              {catIndex > 0 && <Divider sx={{ my: 2 }} />}
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="h5" fontWeight="bold" gutterBottom>
+                  {category.title}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  {category.description}
+                </Typography>
+              </Box>
+              <Grid container spacing={3}>
+                {category.panels.map((panel) => (
+                  <Grid item xs={12} sm={6} md={4} lg={3} key={panel.path}>
+                    <PanelCard
+                      title={panel.title}
+                      description={panel.description}
+                      icon={panel.icon}
+                      color={panel.color}
+                      onClick={() => router.push(panel.path)}
+                      metric={panel.metric}
+                      metricLabel={panel.metricLabel}
+                      loading={loading && panel.metric !== null}
+                    />
+                  </Grid>
+                ))}
               </Grid>
-            ))}
-          </Grid>
+            </Box>
+          ))}
 
           {/* Información Adicional */}
           <Card variant="outlined">
