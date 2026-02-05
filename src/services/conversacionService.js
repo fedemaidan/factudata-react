@@ -110,3 +110,12 @@ export async function updateConversacionesEmpresa(empresaId, data) {
   const response = await api.patch(`/conversaciones/empresa/${empresaId}`, data);
   return response.data;
 }
+
+/**
+ * Sincroniza el profile de una conversación con los datos actuales de Firestore
+ * @param {string} conversationId - ID de la conversación
+ */
+export async function syncConversationProfile(conversationId) {
+  const response = await api.post(`/conversaciones/${conversationId}/sync-profile`);
+  return response.data;
+}

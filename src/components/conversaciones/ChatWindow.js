@@ -13,17 +13,20 @@ import {
   Chip,
   Tooltip,
   Link as MuiLink,
+  CircularProgress,
 } from "@mui/material";
 import MenuIcon from "@mui/icons-material/Menu";
 import BusinessIcon from "@mui/icons-material/Business";
 import PersonIcon from "@mui/icons-material/Person";
 import SettingsIcon from "@mui/icons-material/Settings";
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
+import SyncIcon from "@mui/icons-material/Sync";
 import MessageBubble from "./MessageBubble";
 import MediaModal from "./MediaModal";
 import UserConfigDialog from "./UserConfigDialog";
 import { useConversationsContext } from "src/contexts/conversations-context";
 import { useAuth } from "src/hooks/use-auth";
+import { syncConversationProfile } from "src/services/conversacionService";
 import Link from "next/link";
 
 export default function ChatWindow({ myNumber = "X", onOpenList }) {
@@ -41,6 +44,7 @@ export default function ChatWindow({ myNumber = "X", onOpenList }) {
   const [loadingNotes, setLoadingNotes] = useState({});
   const [errorMessage, setErrorMessage] = useState("");
   const [userConfigOpen, setUserConfigOpen] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const {
     messages,
     hasMore,
@@ -52,6 +56,7 @@ export default function ChatWindow({ myNumber = "X", onOpenList }) {
     handleScrollToMessageHandled,
     onAddNote,
     selected,
+    onRefreshConversations,
   } = useConversationsContext();
 
   // Datos de la conversación seleccionada
@@ -232,6 +237,35 @@ export default function ChatWindow({ myNumber = "X", onOpenList }) {
         
         {/* Botón para configurar usuario - OCULTO TEMPORALMENTE */}
         <Box display="flex" alignItems="center" gap={0.5}>
+          {/* Botón para sincronizar profile */}
+          {selected?._id && (
+            <Tooltip title={conversationProfile ? "Actualizar datos del usuario" : "Buscar y vincular usuario registrado"}>
+              <IconButton
+                onClick={async () => {
+                  setSyncing(true);
+                  try {
+                    const result = await syncConversationProfile(selected._id);
+                    if (result.updated) {
+                      await onRefreshConversations();
+                    } else {
+                      alert(result.reason || 'No se encontró un usuario registrado con este número');
+                    }
+                  } catch (error) {
+                    console.error('Error sincronizando profile:', error);
+                    alert('Error al buscar usuario');
+                  } finally {
+                    setSyncing(false);
+                  }
+                }}
+                size="small"
+                color="primary"
+                disabled={syncing}
+              >
+                {syncing ? <CircularProgress size={18} /> : <SyncIcon fontSize="small" />}
+              </IconButton>
+            </Tooltip>
+          )}
+          
           {/* <Tooltip title="Configurar usuario">
             <IconButton
               onClick={() => setUserConfigOpen(true)}
