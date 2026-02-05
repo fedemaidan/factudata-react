@@ -1086,11 +1086,10 @@ const GestionSDRPage = () => {
             // Cargar SDRs disponibles
             const snapshot = await getDocs(query(collection(db, 'profile'), where('sdr', '==', true)));
             const sdrsBase = snapshot.docs
-                .filter(doc => doc.data().user_id) // Solo SDRs con user_id
                 .map(doc => {
                     const d = doc.data();
                     return {
-                        id: d.user_id, // Siempre usar Firebase UID
+                        id: doc.id, // Usar ID del documento Firestore para consistencia
                         docId: doc.id,
                         nombre: `${d.firstName || ''} ${d.lastName || ''}`.trim() || d.email,
                         email: d.email,

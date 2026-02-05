@@ -42,12 +42,12 @@ const ContactosSDRPage = () => {
     const { user } = useAuthContext();
     const router = useRouter();
     const empresaId = user?.empresa?.id || 'demo-empresa';
-    // Usar user_id del perfil (que es el Firebase UID guardado en Firestore)
-    const sdrId = user?.user_id;
+    // Usar el ID del documento Firestore para consistencia
+    const sdrId = user?.id;
     const sdrNombre = `${user?.firstName || ''} ${user?.lastName || ''}`.trim() || user?.email || 'SDR';
     
     // Debug temporal
-    console.log('🔍 contactosSDR - sdrId:', sdrId, '| user_id:', user?.user_id, '| id:', user?.id);
+    console.log('🔍 contactosSDR - sdrId:', sdrId, '| user.id:', user?.id);
     
     const theme = useTheme();
     const isMobile = useMediaQuery(theme.breakpoints.down('md'));
