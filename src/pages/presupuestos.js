@@ -31,7 +31,8 @@ import {
   Collapse,
   InputAdornment,
   CircularProgress,
-  Chip
+  Chip,
+  Checkbox
 } from '@mui/material';
 import { LinearProgress } from '@mui/material';
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
@@ -101,6 +102,8 @@ const PresupuestosPage = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filteredPresupuestos, setFilteredPresupuestos] = useState([]);
   const [deleteDialog, setDeleteDialog] = useState({ open: false, codigo: null });
+  const [selectedPresupuestos, setSelectedPresupuestos] = useState([]);
+  const [deleteMultipleDialog, setDeleteMultipleDialog] = useState(false);
   const [formTouched, setFormTouched] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formExpanded, setFormExpanded] = useState(true);
@@ -126,6 +129,44 @@ const PresupuestosPage = () => {
     setNuevaSubcategoria('');
     setNuevaEtapa('');
     setFormTouched({});
+  };
+
+  const handleSelectPresupuesto = (codigo) => {
+    setSelectedPresupuestos(prev => {
+      if (prev.includes(codigo)) {
+        return prev.filter(c => c !== codigo);
+      } else {
+        return [...prev, codigo];
+      }
+    });
+  };
+
+  const handleSelectAll = () => {
+    if (selectedPresupuestos.length === sortedPresupuestos.length) {
+      setSelectedPresupuestos([]);
+    } else {
+      setSelectedPresupuestos(sortedPresupuestos.map(p => p.codigo));
+    }
+  };
+
+  const handleEliminarMultiples = async () => {
+    try {
+      await Promise.all(
+        selectedPresupuestos.map(codigo => 
+          presupuestoService.eliminarPresupuesto(codigo, empresaId)
+        )
+      );
+      setPresupuestos(prev => prev.filter(p => !selectedPresupuestos.includes(p.codigo)));
+      setSelectedPresupuestos([]);
+      setDeleteMultipleDialog(false);
+      setAlert({ 
+        open: true, 
+        message: `Se eliminaron ${selectedPresupuestos.length} presupuestos correctamente.`, 
+        severity: 'success' 
+      });
+    } catch (err) {
+      setAlert({ open: true, message: 'Error al eliminar presupuestos.', severity: 'error' });
+    }
   };
 
   useEffect(() => {
@@ -333,9 +374,20 @@ const PresupuestosPage = () => {
           <Stack spacing={2}>
             <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems="center" justifyContent="space-between">
               <Typography variant="h4">Presupuestos</Typography>
-              <Button
-                variant="outlined"
-                onClick={() => {
+              <Stack direction="row" spacing={2}>
+                {selectedPresupuestos.length > 0 && (
+                  <Button
+                    variant="contained"
+                    color="error"
+                    startIcon={<Delete />}
+                    onClick={() => setDeleteMultipleDialog(true)}
+                  >
+                    Eliminar ({selectedPresupuestos.length})
+                  </Button>
+                )}
+                <Button
+                  variant="outlined"
+                  onClick={() => {
                   const data = filteredPresupuestos.map((p) => ({
                     Código: p.codigo,
                     'Fecha inicio': formatTimestamp(p.fechaInicio),
@@ -354,6 +406,7 @@ const PresupuestosPage = () => {
               >
                 Exportar a Excel
               </Button>
+              </Stack>
             </Stack>
 
             {/* Formulario de creación mejorado */}
@@ -609,6 +662,13 @@ const PresupuestosPage = () => {
             <Table>
               <TableHead>
                 <TableRow>
+                  <TableCell padding="checkbox">
+                    <Checkbox
+                      indeterminate={selectedPresupuestos.length > 0 && selectedPresupuestos.length < sortedPresupuestos.length}
+                      checked={sortedPresupuestos.length > 0 && selectedPresupuestos.length === sortedPresupuestos.length}
+                      onChange={handleSelectAll}
+                    />
+                  </TableCell>
                   {[
                     { label: 'Código', field: 'codigo' },
                     { label: 'Fecha inicio', field: 'fechaInicio' },
@@ -644,8 +704,17 @@ const PresupuestosPage = () => {
                   return (
                     <TableRow
                       key={p.codigo}
-                      sx={esSobreejecucion ? { backgroundColor: '#ffe0e0' } : {}}
+                      sx={{
+                        ...(esSobreejecucion ? { backgroundColor: '#ffe0e0' } : {}),
+                        ...(selectedPresupuestos.includes(p.codigo) ? { backgroundColor: 'action.selected' } : {})
+                      }}
                     >
+                      <TableCell padding="checkbox">
+                        <Checkbox
+                          checked={selectedPresupuestos.includes(p.codigo)}
+                          onChange={() => handleSelectPresupuesto(p.codigo)}
+                        />
+                      </TableCell>
                       <TableCell>{p.codigo}</TableCell>
                       <TableCell>
                         {editing[p.codigo] ? (
@@ -749,6 +818,27 @@ const PresupuestosPage = () => {
               }}
             >
               Eliminar
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        <Dialog
+          open={deleteMultipleDialog}
+          onClose={() => setDeleteMultipleDialog(false)}
+        >
+          <DialogTitle>Confirmar eliminación múltiple</DialogTitle>
+          <DialogContent>
+            <DialogContentText>
+              ¿Estás seguro de que querés eliminar {selectedPresupuestos.length} presupuesto(s)? Esta acción no se puede deshacer.
+            </DialogContentText>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setDeleteMultipleDialog(false)}>Cancelar</Button>
+            <Button
+              color="error"
+              onClick={handleEliminarMultiples}
+            >
+              Eliminar {selectedPresupuestos.length} presupuesto(s)
             </Button>
           </DialogActions>
         </Dialog>
