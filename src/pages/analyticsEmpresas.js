@@ -33,7 +33,8 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
-  DialogActions
+  DialogActions,
+  TableSortLabel
 } from '@mui/material';
 import {
   People as PeopleIcon,
@@ -49,7 +50,8 @@ import {
   Business as BusinessIcon,
   Cancel as CancelIcon,
   DateRange as DateRangeIcon,
-  Search as SearchIcon
+  Search as SearchIcon,
+  Lightbulb as LightbulbIcon
 } from '@mui/icons-material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
@@ -239,6 +241,21 @@ const EmpresaRow = ({ empresa, onSelect }) => {
             </Tooltip>
           )}
         </TableCell>
+        <TableCell align="center">
+          {empresa.insightsEnPeriodo === null && !empresa.metricasCargadas ? (
+            <CircularProgress size={16} />
+          ) : (
+            <Tooltip title={`Insights generados en el periodo`}>
+              <Chip 
+                label={empresa.insightsEnPeriodo || 0} 
+                size="small" 
+                color={empresa.insightsEnPeriodo > 0 ? 'warning' : 'default'}
+                variant={empresa.insightsEnPeriodo > 0 ? 'filled' : 'outlined'}
+                icon={<LightbulbIcon />}
+              />
+            </Tooltip>
+          )}
+        </TableCell>
         <TableCell>
           {empresa.esCliente ? (
             <Tooltip title={empresa.estaDadoDeBaja ? `Baja: ${formatDate(empresa.fechaBaja)}` : 'Cliente activo'}>
@@ -262,7 +279,7 @@ const EmpresaRow = ({ empresa, onSelect }) => {
       </TableRow>
       
       <TableRow>
-        <TableCell colSpan={9} sx={{ py: 0 }}>
+        <TableCell colSpan={10} sx={{ py: 0 }}>
           <Collapse in={expanded} timeout="auto" unmountOnExit>
             <Box sx={{ p: 3, backgroundColor: 'grey.50' }}>
               {loading ? (
@@ -344,6 +361,7 @@ const EmpresaRow = ({ empresa, onSelect }) => {
                                   <TableCell align="center">Admin</TableCell>
                                   <TableCell align="center">Mov. Totales</TableCell>
                                   <TableCell align="center">Mov. Semana</TableCell>
+                                  <TableCell align="center">Insights</TableCell>
                                   <TableCell>Último uso</TableCell>
                                 </TableRow>
                               </TableHead>
@@ -379,6 +397,15 @@ const EmpresaRow = ({ empresa, onSelect }) => {
                                         size="small" 
                                         color={usuario.movimientosUltimaSemana > 0 ? 'success' : 'default'}
                                         variant={usuario.movimientosUltimaSemana > 0 ? 'filled' : 'outlined'}
+                                      />
+                                    </TableCell>
+                                    <TableCell align="center">
+                                      <Chip 
+                                        label={usuario.insightsCount || 0} 
+                                        size="small" 
+                                        color={usuario.insightsCount > 0 ? 'warning' : 'default'}
+                                        variant={usuario.insightsCount > 0 ? 'filled' : 'outlined'}
+                                        icon={<LightbulbIcon />}
                                       />
                                     </TableCell>
                                     <TableCell>
@@ -417,6 +444,10 @@ const AnalyticsEmpresasPage = () => {
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(25);
   const [filtroCliente, setFiltroCliente] = useState('clientes');
+  
+  // Estado para ordenamiento
+  const [orderBy, setOrderBy] = useState('nombre');
+  const [order, setOrder] = useState('asc');
   
   // Estado para el selector de fechas
   const [showDateSelector, setShowDateSelector] = useState(true);
@@ -507,6 +538,7 @@ const AnalyticsEmpresasPage = () => {
                   totalMovimientos: metricas.totalMovimientos,
                   totalAcopios: metricas.totalAcopios,
                   remitosEnPeriodo: metricas.remitosEnPeriodo,
+                  insightsEnPeriodo: metricas.insightsEnPeriodo || 0,
                   ultimoUso: metricas.ultimoUso,
                   metricasCargadas: true,
                 };
@@ -547,6 +579,7 @@ const AnalyticsEmpresasPage = () => {
         totalMovimientos: null,
         totalAcopios: null,
         remitosEnPeriodo: null,
+        insightsEnPeriodo: null,
         ultimoUso: null,
         metricasCargadas: false,
       }));
@@ -571,6 +604,47 @@ const AnalyticsEmpresasPage = () => {
     }
   };
   
+  // Manejar ordenamiento de columnas
+  const handleRequestSort = (property) => {
+    const isAsc = orderBy === property && order === 'asc';
+    setOrder(isAsc ? 'desc' : 'asc');
+    setOrderBy(property);
+  };
+  
+  // Función de comparación para ordenar
+  const getComparator = (order, orderBy) => {
+    return (a, b) => {
+      let aValue = a[orderBy];
+      let bValue = b[orderBy];
+      
+      // Manejar valores null/undefined
+      if (aValue === null || aValue === undefined) aValue = '';
+      if (bValue === null || bValue === undefined) bValue = '';
+      
+      // Para fechas, convertir a timestamps
+      if (orderBy === 'ultimoUso' || orderBy === 'fechaRegistroCliente') {
+        aValue = aValue ? new Date(aValue).getTime() : 0;
+        bValue = bValue ? new Date(bValue).getTime() : 0;
+      }
+      
+      // Para strings, comparar en minúsculas
+      if (typeof aValue === 'string' && typeof bValue === 'string') {
+        aValue = aValue.toLowerCase();
+        bValue = bValue.toLowerCase();
+      }
+      
+      // Comparación correcta
+      let comparison = 0;
+      if (aValue < bValue) {
+        comparison = -1;
+      } else if (aValue > bValue) {
+        comparison = 1;
+      }
+      
+      return order === 'desc' ? -comparison : comparison;
+    };
+  };
+
   // Manejar cambio de filtro - cargar métricas de las nuevas empresas visibles
   const handleFiltroChange = async (e, value) => {
     if (!value) return;
@@ -605,8 +679,11 @@ const AnalyticsEmpresasPage = () => {
       );
     }
     
+    // Aplicar ordenamiento
+    filtered = filtered.sort(getComparator(order, orderBy));
+    
     return filtered;
-  }, [empresas, searchTerm, filtroCliente]);
+  }, [empresas, searchTerm, filtroCliente, order, orderBy]);
 
   const paginatedEmpresas = useMemo(() => {
     const start = page * rowsPerPage;
@@ -640,11 +717,13 @@ const AnalyticsEmpresasPage = () => {
       movimientosTotales: clientesConMetricas.reduce((sum, e) => sum + (e.totalMovimientos || 0), 0),
       acopios: clientesConMetricas.reduce((sum, e) => sum + (e.totalAcopios || 0), 0),
       remitosEnPeriodo: clientesConMetricas.reduce((sum, e) => sum + (e.remitosEnPeriodo || 0), 0),
+      insightsEnPeriodo: clientesConMetricas.reduce((sum, e) => sum + (e.insightsEnPeriodo || 0), 0),
       
       // Métricas solo de clientes activos - EN EL PERIODO
       clientesActivosUsuarios: clientesActivosConMetricas.reduce((sum, e) => sum + (e.totalUsuarios || 0), 0),
       clientesActivosMovimientos: clientesActivosConMetricas.reduce((sum, e) => sum + (e.movimientosEnPeriodo || 0), 0),
       clientesActivosRemitos: clientesActivosConMetricas.reduce((sum, e) => sum + (e.remitosEnPeriodo || 0), 0),
+      clientesActivosInsights: clientesActivosConMetricas.reduce((sum, e) => sum + (e.insightsEnPeriodo || 0), 0),
     };
   }, [empresas]);
   
@@ -870,6 +949,15 @@ const AnalyticsEmpresasPage = () => {
                 />
               </Grid>
               <Grid item xs={12} sm={6} md={2}>
+                <StatCard
+                  title="Insights (Periodo)"
+                  value={totales.insightsEnPeriodo.toLocaleString()}
+                  subtitle={`${totales.clientes > 0 ? Math.round(totales.clientesActivosInsights / totales.clientes) : 0} prom/cliente`}
+                  icon={<LightbulbIcon color="secondary" />}
+                  color="secondary"
+                />
+              </Grid>
+              <Grid item xs={12} sm={6} md={2}>
                 <Card sx={{ height: '100%' }}>
                   <CardContent>
                     <Typography color="textSecondary" variant="body2" gutterBottom>
@@ -887,6 +975,12 @@ const AnalyticsEmpresasPage = () => {
                           {totales.clientes > 0 ? Math.round(totales.clientesActivosRemitos / totales.clientes) : 0}
                         </Typography>
                         <Typography variant="caption" color="textSecondary">remitos</Typography>
+                      </Box>
+                      <Box>
+                        <Typography variant="h6">
+                          {totales.clientes > 0 ? Math.round(totales.clientesActivosInsights / totales.clientes) : 0}
+                        </Typography>
+                        <Typography variant="caption" color="textSecondary">insights</Typography>
                       </Box>
                     </Box>
                   </CardContent>
@@ -959,13 +1053,78 @@ const AnalyticsEmpresasPage = () => {
                     <TableHead>
                       <TableRow>
                         <TableCell width={50} />
-                        <TableCell>Empresa</TableCell>
-                        <TableCell align="center">Usuarios</TableCell>
-                        <TableCell align="center">Con movimientos</TableCell>
-                        <TableCell align="center">Movimientos (periodo)</TableCell>
-                        <TableCell align="center">Remitos (periodo)</TableCell>
-                        <TableCell>Cliente desde</TableCell>
-                        <TableCell>Último uso</TableCell>
+                        <TableCell sortDirection={orderBy === 'nombre' ? order : false}>
+                          <TableSortLabel
+                            active={orderBy === 'nombre'}
+                            direction={orderBy === 'nombre' ? order : 'asc'}
+                            onClick={() => handleRequestSort('nombre')}
+                          >
+                            Empresa
+                          </TableSortLabel>
+                        </TableCell>
+                        <TableCell align="center" sortDirection={orderBy === 'totalUsuarios' ? order : false}>
+                          <TableSortLabel
+                            active={orderBy === 'totalUsuarios'}
+                            direction={orderBy === 'totalUsuarios' ? order : 'asc'}
+                            onClick={() => handleRequestSort('totalUsuarios')}
+                          >
+                            Usuarios
+                          </TableSortLabel>
+                        </TableCell>
+                        <TableCell align="center" sortDirection={orderBy === 'usuariosConMovimientos' ? order : false}>
+                          <TableSortLabel
+                            active={orderBy === 'usuariosConMovimientos'}
+                            direction={orderBy === 'usuariosConMovimientos' ? order : 'asc'}
+                            onClick={() => handleRequestSort('usuariosConMovimientos')}
+                          >
+                            Con movimientos
+                          </TableSortLabel>
+                        </TableCell>
+                        <TableCell align="center" sortDirection={orderBy === 'movimientosEnPeriodo' ? order : false}>
+                          <TableSortLabel
+                            active={orderBy === 'movimientosEnPeriodo'}
+                            direction={orderBy === 'movimientosEnPeriodo' ? order : 'asc'}
+                            onClick={() => handleRequestSort('movimientosEnPeriodo')}
+                          >
+                            Movimientos (periodo)
+                          </TableSortLabel>
+                        </TableCell>
+                        <TableCell align="center" sortDirection={orderBy === 'remitosEnPeriodo' ? order : false}>
+                          <TableSortLabel
+                            active={orderBy === 'remitosEnPeriodo'}
+                            direction={orderBy === 'remitosEnPeriodo' ? order : 'asc'}
+                            onClick={() => handleRequestSort('remitosEnPeriodo')}
+                          >
+                            Remitos (periodo)
+                          </TableSortLabel>
+                        </TableCell>
+                        <TableCell align="center" sortDirection={orderBy === 'insightsEnPeriodo' ? order : false}>
+                          <TableSortLabel
+                            active={orderBy === 'insightsEnPeriodo'}
+                            direction={orderBy === 'insightsEnPeriodo' ? order : 'asc'}
+                            onClick={() => handleRequestSort('insightsEnPeriodo')}
+                          >
+                            Insights
+                          </TableSortLabel>
+                        </TableCell>
+                        <TableCell sortDirection={orderBy === 'fechaRegistroCliente' ? order : false}>
+                          <TableSortLabel
+                            active={orderBy === 'fechaRegistroCliente'}
+                            direction={orderBy === 'fechaRegistroCliente' ? order : 'asc'}
+                            onClick={() => handleRequestSort('fechaRegistroCliente')}
+                          >
+                            Cliente desde
+                          </TableSortLabel>
+                        </TableCell>
+                        <TableCell sortDirection={orderBy === 'ultimoUso' ? order : false}>
+                          <TableSortLabel
+                            active={orderBy === 'ultimoUso'}
+                            direction={orderBy === 'ultimoUso' ? order : 'asc'}
+                            onClick={() => handleRequestSort('ultimoUso')}
+                          >
+                            Último uso
+                          </TableSortLabel>
+                        </TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>

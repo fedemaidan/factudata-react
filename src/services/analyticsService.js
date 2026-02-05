@@ -175,6 +175,87 @@ const analyticsService = {
       console.error('Error al obtener estadísticas de usuarios:', error);
       throw error;
     }
+  },
+
+  /**
+   * Obtiene métricas de onboarding de una empresa
+   * Usa el endpoint de métricas existente con el rango de fechas de onboarding
+   * @param {string} empresaId - ID de la empresa
+   * @param {Date} fechaRegistro - Fecha de registro como cliente
+   * @param {number} diasAnalisis - Cantidad de días a analizar (default: 7)
+   * @returns {Promise<object>} - Métricas del periodo de onboarding
+   */
+  getOnboardingMetricas: async (empresaId, fechaRegistro, diasAnalisis = 7) => {
+    try {
+      const fechaDesde = new Date(fechaRegistro);
+      const fechaHasta = new Date(fechaRegistro);
+      fechaHasta.setDate(fechaHasta.getDate() + diasAnalisis);
+      
+      // Usar el endpoint de métricas existente
+      const response = await api.get(`/analytics/empresa/${empresaId}/metricas`, {
+        params: {
+          fechaDesde: fechaDesde.toISOString(),
+          fechaHasta: fechaHasta.toISOString()
+        }
+      });
+      
+      // Adaptar la respuesta para el formato de onboarding
+      const data = response.data;
+      return {
+        empresaId: data.empresaId || empresaId,
+        totalUsuarios: data.totalUsuarios || 0,
+        usuariosValidados: data.usuariosValidados || 0,
+        usuariosConMovimientos: data.usuariosConMovimientos || 0,
+        movimientosOnboarding: data.movimientosEnPeriodo || 0,
+        movimientosPorOrigen: data.movimientosPorOrigen || { web: 0, whatsapp: 0, otro: 0 },
+        insightsOnboarding: data.insightsEnPeriodo || 0,
+        usuarios: data.usuarios || []
+      };
+    } catch (error) {
+      console.error(`Error al obtener métricas de onboarding de empresa ${empresaId}:`, error);
+      return { error: true, empresaId, msg: error.message };
+    }
+  },
+
+  /**
+   * Carga métricas de onboarding de múltiples empresas en paralelo
+   * @param {Array<{id: string, fechaRegistro: Date}>} empresas - Empresas con su fecha de registro
+   * @param {number} diasAnalisis - Cantidad de días a analizar (default: 7)
+   * @param {number} batchSize - Tamaño del batch (default: 5)
+   * @param {Function} onProgress - Callback para reportar progreso
+   * @returns {Promise<Map>} - Map de empresaId -> métricas
+   */
+  getOnboardingBatch: async (empresas, diasAnalisis = 7, batchSize = 5, onProgress = null) => {
+    const resultados = new Map();
+    const total = empresas.length;
+    let procesadas = 0;
+    
+    for (let i = 0; i < total; i += batchSize) {
+      const batch = empresas.slice(i, i + batchSize);
+      
+      const batchResults = await Promise.all(
+        batch.map(emp => analyticsService.getOnboardingMetricas(emp.id, emp.fechaRegistro, diasAnalisis))
+      );
+      
+      batchResults.forEach(result => {
+        if (result && result.empresaId) {
+          resultados.set(result.empresaId, result);
+        }
+      });
+      
+      procesadas += batch.length;
+      
+      if (onProgress) {
+        onProgress({
+          procesadas,
+          total,
+          porcentaje: Math.round((procesadas / total) * 100),
+          ultimoBatch: batchResults
+        });
+      }
+    }
+    
+    return resultados;
   }
 };
 

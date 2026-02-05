@@ -40,6 +40,9 @@ import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import CallSplitIcon from '@mui/icons-material/CallSplit';
+import WhatsAppIcon from '@mui/icons-material/WhatsApp';
+import LanguageIcon from '@mui/icons-material/Language';
+import SyncIcon from '@mui/icons-material/Sync';
 
 // Componente para mostrar información de prorrateo
 const ProrrateoInfo = ({ movimiento, onVerRelacionados }) => {
@@ -839,6 +842,34 @@ function syncMaterialesWithMovs(currentMateriales = [], mmRows = [], { proyecto_
                 {formik.values?.fecha_factura && <Chip size="small" label={`${formik.values.fecha_factura}`} />}
                 {formik.values.type && <Chip size="small" color={formik.values?.type === 'ingreso' ? 'success' : 'error'} label={`${formik.values.type.toUpperCase()}`} />}
                 {formik.values.caja_chica && <Chip size="small" color="info" label='Caja chica'/>}
+                {isEditMode && movimiento?.origen && (
+                  <Tooltip title={`Origen: ${movimiento.origen}`}>
+                    <Chip 
+                      size="small" 
+                      variant="outlined"
+                      color={movimiento.origen === 'whatsapp' ? 'success' : movimiento.origen === 'web' ? 'info' : 'default'}
+                      icon={
+                        movimiento.origen === 'whatsapp' ? <WhatsAppIcon fontSize="small" /> :
+                        movimiento.origen === 'web' ? <LanguageIcon fontSize="small" /> :
+                        movimiento.origen?.includes('sync') || movimiento.id_sincronizacion ? <SyncIcon fontSize="small" /> :
+                        null
+                      }
+                      label={movimiento.origen === 'whatsapp' ? 'WhatsApp' : movimiento.origen === 'web' ? 'Web' : movimiento.origen}
+                      sx={{ textTransform: 'capitalize' }}
+                    />
+                  </Tooltip>
+                )}
+                {isEditMode && movimiento?.id_sincronizacion && !movimiento?.origen?.includes('sync') && (
+                  <Tooltip title={`Sincronizado: ${movimiento.id_sincronizacion}`}>
+                    <Chip 
+                      size="small" 
+                      variant="outlined"
+                      color="secondary"
+                      icon={<SyncIcon fontSize="small" />}
+                      label="Sync"
+                    />
+                  </Tooltip>
+                )}
                 {isRetrying && (
                   <Chip 
                     size="small" 
