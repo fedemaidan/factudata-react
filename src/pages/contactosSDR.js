@@ -43,11 +43,11 @@ const ContactosSDRPage = () => {
     const router = useRouter();
     const empresaId = user?.empresa?.id || 'demo-empresa';
     // Usar el ID del documento Firestore para consistencia
-    const sdrId = user?.id;
+    const sdrId = user?.user_id;
     const sdrNombre = `${user?.firstName || ''} ${user?.lastName || ''}`.trim() || user?.email || 'SDR';
     
     // Debug temporal
-    console.log('🔍 contactosSDR - sdrId:', sdrId, '| user.id:', user?.id);
+    console.log('🔍 contactosSDR - sdrId:', sdrId, '| user.user_id:', user?.user_id);
     
     const theme = useTheme();
     const isMobile = useMediaQuery(theme.breakpoints.down('md'));
