@@ -54,10 +54,31 @@ import { getEmpresaById, getEmpresaDetailsFromUser } from 'src/services/empresaS
 import { getProyectosFromUser } from 'src/services/proyectosService';
 import { formatCurrency, formatTimestamp } from 'src/utils/formatters';
 
+// Helper: calcular totales de un resumen multimoneda (para ProyectoCard)
+const calcularTotalesResumen = (resumen, tipoCambio = 1470, monedaVista = 'ARS') => {
+  if (!resumen) return { egresosTotal: 0, egresosEjecutado: 0 };
+  
+  const convertir = (monto, monedaOriginal) => {
+    if (monedaVista === monedaOriginal) return monto;
+    if (monedaVista === 'USD' && monedaOriginal === 'ARS') return monto / tipoCambio;
+    if (monedaVista === 'ARS' && monedaOriginal === 'USD') return monto * tipoCambio;
+    return monto;
+  };
+  
+  let egresosTotal = 0, egresosEjecutado = 0;
+  Object.entries(resumen.egresosPorMoneda || {}).forEach(([mon, data]) => {
+    egresosTotal += convertir(data.total || 0, mon);
+    egresosEjecutado += convertir(data.ejecutado || 0, mon);
+  });
+  
+  return { egresosTotal, egresosEjecutado };
+};
+
 // ============ COMPONENTE: CARD DE PROYECTO (VISTA GENERAL) ============
-const ProyectoCard = ({ proyecto, resumen, onSelect, formatMonto }) => {
-  const presupuestoTotal = (resumen?.egresos?.total || 0);
-  const ejecutado = (resumen?.egresos?.ejecutado || 0);
+const ProyectoCard = ({ proyecto, resumen, onSelect, formatMonto, tipoCambio, moneda }) => {
+  const { egresosTotal, egresosEjecutado } = calcularTotalesResumen(resumen, tipoCambio, moneda);
+  const presupuestoTotal = egresosTotal;
+  const ejecutado = egresosEjecutado;
   const porcentaje = presupuestoTotal > 0 ? (ejecutado / presupuestoTotal) * 100 : 0;
   
   return (
@@ -337,10 +358,13 @@ const ControlProyectoPage = () => {
       const result = await presupuestoService.obtenerResumenProyecto(proyectoSeleccionado, empresaId);
       if (result.success) {
         setResumen(result.resumen);
-        // Extraer proveedores únicos del resumen
+        // Extraer proveedores únicos del resumen (de todas las monedas)
         const proveedores = new Set();
-        result.resumen.egresos.items.forEach(item => {
-          if (item.proveedor) proveedores.add(item.proveedor);
+        const egresosPorMoneda = result.resumen.egresosPorMoneda || {};
+        Object.values(egresosPorMoneda).forEach(monedaData => {
+          (monedaData.items || []).forEach(item => {
+            if (item.proveedor) proveedores.add(item.proveedor);
+          });
         });
         setProveedoresAgregados(Array.from(proveedores));
       }
@@ -350,6 +374,39 @@ const ControlProyectoPage = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Helper: obtener todos los items de egresos de todas las monedas
+  const obtenerTodosLosItemsEgresos = () => {
+    if (!resumen?.egresosPorMoneda) return [];
+    return Object.values(resumen.egresosPorMoneda).flatMap(m => m.items || []);
+  };
+
+  // Helper: calcular totales de ingresos/egresos sumando todas las monedas (convertidas a la moneda de visualización)
+  const calcularTotales = () => {
+    if (!resumen) return { ingresos: { total: 0, ejecutado: 0 }, egresos: { total: 0, ejecutado: 0 }, gananciaProyectada: 0, gananciaActual: 0 };
+    
+    let ingresosTotal = 0, ingresosEjecutado = 0;
+    let egresosTotal = 0, egresosEjecutado = 0;
+    
+    // Sumar ingresos de todas las monedas
+    Object.entries(resumen.ingresosPorMoneda || {}).forEach(([mon, data]) => {
+      ingresosTotal += convertir(data.total || 0, mon);
+      ingresosEjecutado += convertir(data.ejecutado || 0, mon);
+    });
+    
+    // Sumar egresos de todas las monedas
+    Object.entries(resumen.egresosPorMoneda || {}).forEach(([mon, data]) => {
+      egresosTotal += convertir(data.total || 0, mon);
+      egresosEjecutado += convertir(data.ejecutado || 0, mon);
+    });
+    
+    return {
+      ingresos: { total: ingresosTotal, ejecutado: ingresosEjecutado },
+      egresos: { total: egresosTotal, ejecutado: egresosEjecutado },
+      gananciaProyectada: ingresosTotal - egresosTotal,
+      gananciaActual: ingresosEjecutado - egresosEjecutado
+    };
   };
 
   // Función para convertir montos según la moneda del presupuesto y la moneda de visualización
@@ -384,9 +441,10 @@ const ControlProyectoPage = () => {
 
   // Obtener presupuesto por agrupación
   const getPresupuestoPorAgrupacion = (tipoAgrupacion, valor) => {
-    if (!resumen) return { presupuesto: null, ejecutado: 0, id: null, historial: [], moneda: 'ARS' };
+    const allItems = obtenerTodosLosItemsEgresos();
+    if (allItems.length === 0) return { presupuesto: null, ejecutado: 0, id: null, historial: [], moneda: 'ARS' };
     
-    const items = resumen.egresos.items.filter(item => {
+    const items = allItems.filter(item => {
       if (tipoAgrupacion === 'categoria') return item.categoria === valor && !item.etapa && !item.proveedor;
       if (tipoAgrupacion === 'etapa') return item.etapa === valor && !item.categoria && !item.proveedor;
       if (tipoAgrupacion === 'proveedor') return item.proveedor === valor && !item.categoria && !item.etapa;
@@ -394,9 +452,12 @@ const ControlProyectoPage = () => {
     });
     
     if (items.length === 0) {
-      // Buscar ejecutado aunque no haya presupuesto
-      const ejecutadoCategoria = resumen.egresos.porCategoria?.[valor]?.ejecutado || 0;
-      return { presupuesto: null, ejecutado: ejecutadoCategoria, id: null, historial: [], moneda: 'ARS' };
+      // Buscar ejecutado aunque no haya presupuesto (buscar en porCategoria de cada moneda)
+      let ejecutadoTotal = 0;
+      Object.values(resumen?.egresosPorMoneda || {}).forEach(monedaData => {
+        ejecutadoTotal += monedaData.porCategoria?.[valor]?.ejecutado || 0;
+      });
+      return { presupuesto: null, ejecutado: ejecutadoTotal, id: null, historial: [], moneda: 'ARS' };
     }
     
     const item = items[0];
@@ -450,7 +511,7 @@ const ControlProyectoPage = () => {
   const calcularSumas = useMemo(() => {
     if (!resumen) return { porCategoria: 0, porEtapa: 0, porProveedor: 0, general: 0 };
     
-    const items = resumen.egresos?.items || [];
+    const items = obtenerTodosLosItemsEgresos();
     
     // Presupuesto general (sin categoria, etapa ni proveedor)
     const general = items
@@ -664,6 +725,8 @@ const ControlProyectoPage = () => {
                         resumen={resumenesProyectos[proyecto.id]}
                         onSelect={handleSeleccionarProyecto}
                         formatMonto={formatMonto}
+                        tipoCambio={tipoCambio}
+                        moneda={moneda}
                       />
                     </Grid>
                   ))}
@@ -720,58 +783,63 @@ const ControlProyectoPage = () => {
             {resumen && (
               <>
                 {/* Resumen General */}
-                <Grid container spacing={3}>
-                  <Grid item xs={12} md={4}>
-                    <Card>
-                      <CardContent>
-                        <Stack direction="row" alignItems="center" spacing={2}>
-                          <TrendingUpIcon color="success" sx={{ fontSize: 40 }} />
-                          <Box>
-                            <Typography variant="body2" color="text.secondary">Ingresos Proyectados</Typography>
-                            <Typography variant="h5">{formatMonto(resumen.ingresos.total)}</Typography>
-                            <Typography variant="body2" color="text.secondary">
-                              Recibido: {formatMonto(resumen.ingresos.ejecutado)}
-                            </Typography>
-                          </Box>
-                        </Stack>
-                      </CardContent>
-                    </Card>
-                  </Grid>
-                  
-                  <Grid item xs={12} md={4}>
-                    <Card>
-                      <CardContent>
-                        <Stack direction="row" alignItems="center" spacing={2}>
-                          <TrendingDownIcon color="error" sx={{ fontSize: 40 }} />
-                          <Box>
-                            <Typography variant="body2" color="text.secondary">Egresos Proyectados</Typography>
-                            <Typography variant="h5">{formatMonto(resumen.egresos.total)}</Typography>
-                            <Typography variant="body2" color="text.secondary">
-                              Gastado: {formatMonto(resumen.egresos.ejecutado)}
-                            </Typography>
-                          </Box>
-                        </Stack>
-                      </CardContent>
-                    </Card>
-                  </Grid>
-                  
-                  <Grid item xs={12} md={4}>
-                    <Card sx={{ bgcolor: resumen.gananciaProyectada >= 0 ? 'success.light' : 'error.light' }}>
-                      <CardContent>
-                        <Stack direction="row" alignItems="center" spacing={2}>
-                          <AccountBalanceWalletIcon sx={{ fontSize: 40, color: 'white' }} />
-                          <Box>
-                            <Typography variant="body2" sx={{ color: 'white' }}>Ganancia Proyectada</Typography>
-                            <Typography variant="h5" sx={{ color: 'white' }}>{formatMonto(resumen.gananciaProyectada)}</Typography>
-                            <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.8)' }}>
-                              Actual: {formatMonto(resumen.gananciaActual)}
-                            </Typography>
-                          </Box>
-                        </Stack>
-                      </CardContent>
-                    </Card>
-                  </Grid>
-                </Grid>
+                {(() => {
+                  const totales = calcularTotales();
+                  return (
+                    <Grid container spacing={3}>
+                      <Grid item xs={12} md={4}>
+                        <Card>
+                          <CardContent>
+                            <Stack direction="row" alignItems="center" spacing={2}>
+                              <TrendingUpIcon color="success" sx={{ fontSize: 40 }} />
+                              <Box>
+                                <Typography variant="body2" color="text.secondary">Ingresos Proyectados</Typography>
+                                <Typography variant="h5">{formatMonto(totales.ingresos.total)}</Typography>
+                                <Typography variant="body2" color="text.secondary">
+                                  Recibido: {formatMonto(totales.ingresos.ejecutado)}
+                                </Typography>
+                              </Box>
+                            </Stack>
+                          </CardContent>
+                        </Card>
+                      </Grid>
+                      
+                      <Grid item xs={12} md={4}>
+                        <Card>
+                          <CardContent>
+                            <Stack direction="row" alignItems="center" spacing={2}>
+                              <TrendingDownIcon color="error" sx={{ fontSize: 40 }} />
+                              <Box>
+                                <Typography variant="body2" color="text.secondary">Egresos Proyectados</Typography>
+                                <Typography variant="h5">{formatMonto(totales.egresos.total)}</Typography>
+                                <Typography variant="body2" color="text.secondary">
+                                  Gastado: {formatMonto(totales.egresos.ejecutado)}
+                                </Typography>
+                              </Box>
+                            </Stack>
+                          </CardContent>
+                        </Card>
+                      </Grid>
+                      
+                      <Grid item xs={12} md={4}>
+                        <Card sx={{ bgcolor: totales.gananciaProyectada >= 0 ? 'success.light' : 'error.light' }}>
+                          <CardContent>
+                            <Stack direction="row" alignItems="center" spacing={2}>
+                              <AccountBalanceWalletIcon sx={{ fontSize: 40, color: 'white' }} />
+                              <Box>
+                                <Typography variant="body2" sx={{ color: 'white' }}>Ganancia Proyectada</Typography>
+                                <Typography variant="h5" sx={{ color: 'white' }}>{formatMonto(totales.gananciaProyectada)}</Typography>
+                                <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.8)' }}>
+                                  Actual: {formatMonto(totales.gananciaActual)}
+                                </Typography>
+                              </Box>
+                            </Stack>
+                          </CardContent>
+                        </Card>
+                      </Grid>
+                    </Grid>
+                  );
+                })()}
 
                 {/* Tabs */}
                 <Paper sx={{ p: 2 }}>
