@@ -9,6 +9,8 @@ import useTrabajoDiarioFilters from 'src/hooks/dhn/useTrabajoDiarioFilters';
 const DEFAULT_STATS = {
   total: 0,
   ok: 0,
+  okAutomatico: 0,
+  okManual: 0,
   incompleto: 0,
   advertencia: 0,
   sinParte: 0,

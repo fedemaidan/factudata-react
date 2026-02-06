@@ -308,10 +308,10 @@ const ConciliacionPage = () => {
                 Opción 2: Archivo Excel
               </Typography>
               <DropZone
-                label="Excel de conciliación (.xlsx, .xls)"
+                label="Excel de conciliación (.xlsx, .xls, .xlsb)"
                 file={archivoExcel}
                 onFileChange={handleFileChange}
-                accept=".xlsx,.xls"
+                accept=".xlsx,.xls,.xlsb,.xlsm"
                 disabled={!!sheetLink}
               />
             </Box>

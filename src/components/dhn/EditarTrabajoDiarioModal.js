@@ -18,6 +18,12 @@ import {
 import TrabajoRegistradoService from "src/services/dhn/TrabajoRegistradoService";
 import useModalAlert from "src/hooks/useModalAlert";
 
+const parseNumberField = (value) => {
+  if (value === undefined || value === null || value === "") return null;
+  const parsed = parseFloat(value);
+  return Number.isNaN(parsed) ? null : parsed;
+};
+
 const EditarTrabajoDiarioModal = ({ open, onClose, onSave, trabajoDiario }) => {
   const { alert, showAlert, closeAlert } = useModalAlert(open);
 
@@ -32,20 +38,27 @@ const EditarTrabajoDiarioModal = ({ open, onClose, onSave, trabajoDiario }) => {
     horasAltura: "",
     horasHormigon: "",
     horasZanjeo: "",
+    horasNocturnas: "",
+    horasNocturnas50: "",
+    horasNocturnas100: "",
     fechaLicencia: false,
   });
 
   useEffect(() => {
     if (trabajoDiario) {
+      const horasExcel = trabajoDiario.horasExcel || {};
       setFormData({
         fecha: trabajoDiario.fecha ? new Date(trabajoDiario.fecha).toISOString().split("T")[0] : "",
         horasTrabajadas: trabajoDiario.horasTrabajadasExcel?.total ?? "",
-        horasNormales: trabajoDiario.horasNormales ?? "",
-        horas50: trabajoDiario.horas50 ?? "",
-        horas100: trabajoDiario.horas100 ?? "",
+        horasNormales: horasExcel.horasNormales ?? trabajoDiario.horasNormales ?? "",
+        horas50: horasExcel.horas50 ?? trabajoDiario.horas50 ?? "",
+        horas100: horasExcel.horas100 ?? trabajoDiario.horas100 ?? "",
         horasAltura: trabajoDiario.horasAltura ?? "",
         horasHormigon: trabajoDiario.horasHormigon ?? "",
         horasZanjeo: trabajoDiario.horasZanjeo ?? "",
+        horasNocturnas: horasExcel.horasNocturnas ?? trabajoDiario.horasNocturnas ?? "",
+        horasNocturnas50: horasExcel.horasNocturnas50 ?? trabajoDiario.horasNocturnas50 ?? "",
+        horasNocturnas100: horasExcel.horasNocturnas100 ?? trabajoDiario.horasNocturnas100 ?? "",
         fechaLicencia: trabajoDiario.fechaLicencia || false,
       });
     }
@@ -79,17 +92,29 @@ const EditarTrabajoDiarioModal = ({ open, onClose, onSave, trabajoDiario }) => {
 
       const buildNoonISO = (yyyyMmDd) => `${yyyyMmDd}T12:00:00.000Z`;
 
-      const payload = {
-        ...formData,
-        ...(shouldUpdateFecha ? { fecha: buildNoonISO(formData.fecha) } : {}),
-        horasTrabajadasExcel: {
-          ...trabajoDiario.horasTrabajadasExcel,
-          total: formData.horasTrabajadas ? parseFloat(formData.horasTrabajadas) : null
-        }
+      const horasExcelBase = trabajoDiario?.horasExcel || {};
+      const horasExcelPayload = {
+        ...horasExcelBase,
+        horasNormales: parseNumberField(formData.horasNormales),
+        horas50: parseNumberField(formData.horas50),
+        horas100: parseNumberField(formData.horas100),
+        horasNocturnas: parseNumberField(formData.horasNocturnas),
+        horasNocturnas50: parseNumberField(formData.horasNocturnas50),
+        horasNocturnas100: parseNumberField(formData.horasNocturnas100),
       };
-      
-      delete payload.horasTrabajadas;
-      if (!shouldUpdateFecha) delete payload.fecha;
+
+      const payload = {
+        ...(shouldUpdateFecha ? { fecha: buildNoonISO(formData.fecha) } : {}),
+        fechaLicencia: formData.fechaLicencia,
+        horasAltura: parseNumberField(formData.horasAltura),
+        horasHormigon: parseNumberField(formData.horasHormigon),
+        horasZanjeo: parseNumberField(formData.horasZanjeo),
+        horasExcel: horasExcelPayload,
+        horasTrabajadasExcel: {
+          ...(trabajoDiario?.horasTrabajadasExcel || {}),
+          total: parseNumberField(formData.horasTrabajadas),
+        },
+      };
       
       await TrabajoRegistradoService.update(trabajoDiario._id, payload);
       
@@ -174,6 +199,39 @@ const EditarTrabajoDiarioModal = ({ open, onClose, onSave, trabajoDiario }) => {
                 type="number"
                 value={formData.horas100}
                 onChange={(e) => handleInputChange("horas100", e.target.value)}
+                margin="normal"
+                inputProps={{ min: 0, step: 0.5 }}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Horas Nocturnas"
+                type="number"
+                value={formData.horasNocturnas}
+                onChange={(e) => handleInputChange("horasNocturnas", e.target.value)}
+                margin="normal"
+                inputProps={{ min: 0, step: 0.5 }}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Horas Nocturnas 50%"
+                type="number"
+                value={formData.horasNocturnas50}
+                onChange={(e) => handleInputChange("horasNocturnas50", e.target.value)}
+                margin="normal"
+                inputProps={{ min: 0, step: 0.5 }}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Horas Nocturnas 100%"
+                type="number"
+                value={formData.horasNocturnas100}
+                onChange={(e) => handleInputChange("horasNocturnas100", e.target.value)}
                 margin="normal"
                 inputProps={{ min: 0, step: 0.5 }}
               />

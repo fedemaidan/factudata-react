@@ -88,6 +88,7 @@ const SyncErrorsPage = () => {
   const [fechaDesde, setFechaDesde] = useState(null);
   const [fechaHasta, setFechaHasta] = useState(null);
   const [tipoFiltro, setTipoFiltro] = useState("");
+  const [estadoFiltro, setEstadoFiltro] = useState("");
   const [sortField, setSortField] = useState("created_at");
   const [sortDirection, setSortDirection] = useState("desc");
   const [correccionItems, setCorreccionItems] = useState([]);
@@ -115,6 +116,7 @@ const SyncErrorsPage = () => {
           createdAtFrom: fechaDesde ? fechaDesde.toISOString() : undefined,
           createdAtTo: fechaHasta ? fechaHasta.toISOString() : undefined,
           tipo: tipoFiltro || undefined,
+          status: estadoFiltro || undefined,
           search: searchQuery || undefined,
           sortField,
           sortDirection,
@@ -146,6 +148,7 @@ const SyncErrorsPage = () => {
       fechaDesde,
       fechaHasta,
       tipoFiltro,
+      estadoFiltro,
       searchQuery,
       sortField,
       sortDirection,
@@ -157,11 +160,12 @@ const SyncErrorsPage = () => {
     if (fechaDesde) payload.createdAtFrom = fechaDesde.toISOString();
     if (fechaHasta) payload.createdAtTo = fechaHasta.toISOString();
     if (tipoFiltro) payload.tipo = tipoFiltro;
+    if (estadoFiltro) payload.status = estadoFiltro;
     if (searchQuery) payload.search = searchQuery;
     if (sortField) payload.sortField = sortField;
     if (sortDirection) payload.sortDirection = sortDirection;
     return payload;
-  }, [fechaDesde, fechaHasta, tipoFiltro, searchQuery, sortField, sortDirection]);
+  }, [fechaDesde, fechaHasta, tipoFiltro, estadoFiltro, searchQuery, sortField, sortDirection]);
 
   const fetchAllErroredItems = useCallback(async () => {
     const payloadBase = buildErroredQuery();
@@ -258,6 +262,7 @@ const SyncErrorsPage = () => {
     setFechaDesde(null);
     setFechaHasta(null);
     setTipoFiltro("");
+    setEstadoFiltro("");
     setSearchTerm("");
     applySearch("");
     handleCloseFilters();
@@ -286,8 +291,14 @@ const SyncErrorsPage = () => {
         label: `Tipo: ${tipoFiltro.charAt(0).toUpperCase()}${tipoFiltro.slice(1)}`,
       });
     }
+    if (estadoFiltro) {
+      filters.push({
+        key: "estado",
+        label: `Estado: ${estadoFiltro.charAt(0).toUpperCase()}${estadoFiltro.slice(1)}`,
+      });
+    }
     return filters;
-  }, [searchQuery, fechaDesde, fechaHasta, tipoFiltro]);
+  }, [searchQuery, fechaDesde, fechaHasta, tipoFiltro, estadoFiltro]);
 
   const handleSortChange = useCallback(
     (field) => {
@@ -826,6 +837,20 @@ const SyncErrorsPage = () => {
                 <MenuItem value="parte">Parte</MenuItem>
                 <MenuItem value="licencia">Licencia</MenuItem>
                 <MenuItem value="horas">Horas</MenuItem>
+              </TextField>
+              <TextField
+                select
+                label="Estado"
+                value={estadoFiltro}
+                onChange={(e) => setEstadoFiltro(e.target.value)}
+                size="small"
+                fullWidth
+              >
+                <MenuItem value="">Todos</MenuItem>
+                <MenuItem value="ok">Ok</MenuItem>
+                <MenuItem value="incompleto">Incompleto</MenuItem>
+                <MenuItem value="error">Error</MenuItem>
+                <MenuItem value="duplicado">Duplicado</MenuItem>
               </TextField>
               <Divider />
               <Stack direction="row" spacing={1}>

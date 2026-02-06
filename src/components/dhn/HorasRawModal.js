@@ -32,7 +32,7 @@ function HorasRawModal(props) {
   const rows = useMemo(() => (Array.isArray(data) ? data : []), [data]);
   const hasRows = rows.length > 0;
 
-  const displayTitle = title || 'Fichadas raw del Excel';
+  const displayTitle = title || 'Fichadas del Excel';
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
@@ -81,10 +81,7 @@ function HorasRawModal(props) {
               </TableBody>
             </Table>
           </TableContainer>
-        ) : (
-          <Typography variant="body2" color="text.secondary">
-            No hay fichadas raw para este día.
-          </Typography>
+        ) : (<></>
         )}
       </DialogContent>
       <DialogActions>

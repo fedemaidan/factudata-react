@@ -28,18 +28,47 @@ const conciliacionService = {
     return lista;
   },
 
-  async getConciliacionRows(id, { estado, text, limit, offset } = {}) {
+  async getConciliacionRows(id, { estado, text, limit, offset, sortField, sortDirection } = {}) {
     const params = {};
     if (estado) params.estado = estado;
     if (text) params.text = text;
     if (limit != null) params.limit = limit;
     if (offset != null) params.offset = offset;
+    if (sortField) params.sortField = sortField;
+    if (sortDirection) params.sortDirection = sortDirection;
     const { data } = await api.get(`/dhn/conciliacion/${id}/rows`, { params });
     return data;
   },
 
   async updateConciliacionRow(conciliacionId, rowId, payload) {
     const { data } = await api.patch(`/dhn/conciliacion/${conciliacionId}/row/${rowId}`, payload);
+    return data;
+  },
+
+  async seleccionarHorasSistema(conciliacionId, rowId) {
+    return this.updateConciliacionRow(conciliacionId, rowId, { estado: "okManual" });
+  },
+
+  async seleccionarHorasExcel(conciliacionId, rowId, payload) {
+    return this.updateConciliacionRow(conciliacionId, rowId, payload);
+  },
+
+  async seleccionarHorasSistemaBulk(conciliacionId, rowIds = []) {
+    const items = (Array.isArray(rowIds) ? rowIds : [])
+      .filter(Boolean)
+      .map((rowId) => ({
+        rowId,
+        payload: { estado: "okManual" },
+      }));
+    const { data } = await api.patch(`/dhn/conciliacion/${conciliacionId}/rows/bulk`, { items });
+    return data;
+  },
+
+  async seleccionarHorasExcelBulk(conciliacionId, items = []) {
+    const payload = {
+      items: Array.isArray(items) ? items : [],
+    };
+    const { data } = await api.patch(`/dhn/conciliacion/${conciliacionId}/rows/bulk`, payload);
     return data;
   }
 };

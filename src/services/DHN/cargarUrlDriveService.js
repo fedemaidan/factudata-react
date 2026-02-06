@@ -139,11 +139,16 @@ const DhnDriveService = {
     createdAtFrom,
     createdAtTo,
     tipo,
+    status,
     search,
     sortField,
     sortDirection,
   } = {}) => {
-    const payload = { status: ['error', 'duplicado', 'incompleto'], limit, offset };
+    const payload = {
+      status: status || ['error', 'duplicado', 'incompleto'],
+      limit,
+      offset,
+    };
     if (createdAtFrom) payload.createdAtFrom = createdAtFrom;
     if (createdAtTo) payload.createdAtTo = createdAtTo;
     if (tipo) payload.tipo = tipo;
