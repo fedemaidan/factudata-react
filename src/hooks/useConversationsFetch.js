@@ -6,6 +6,34 @@ import {
   searchMessages,
 } from "src/services/conversacionService";
 
+// Función para filtrar conversaciones por estado de cliente de la empresa
+function filterByEstadoCliente(conversations, estadoCliente) {
+  if (!estadoCliente || estadoCliente === 'todos') {
+    return conversations;
+  }
+
+  return conversations.filter((c) => {
+    const empresa = c.empresa;
+    if (!empresa) {
+      // Si no tiene empresa, solo mostrar en "todos" o "no_cliente"
+      return estadoCliente === 'no_cliente';
+    }
+
+    switch (estadoCliente) {
+      case 'es_cliente':
+        return empresa.esCliente === true;
+      case 'cliente_activo':
+        return empresa.esCliente === true && empresa.estaDadoDeBaja !== true;
+      case 'dado_de_baja':
+        return empresa.esCliente === true && empresa.estaDadoDeBaja === true;
+      case 'no_cliente':
+        return empresa.esCliente !== true;
+      default:
+        return true;
+    }
+  });
+}
+
 export function useConversationsFetch({
   filters,
   onConversationsLoaded,
@@ -45,7 +73,10 @@ export function useConversationsFetch({
           return;
         }
 
-        onConversationsLoaded?.(conversationData);
+        // Filtrar conversaciones por estado de cliente
+        const filteredConversations = filterByEstadoCliente(conversationData, filters?.estadoCliente);
+
+        onConversationsLoaded?.(filteredConversations);
         onMessageResultsLoaded?.(messageMatchesData);
       } catch (error) {
         console.error("Error al cargar conversaciones:", error);
@@ -70,7 +101,10 @@ export function useConversationsFetch({
     onLoadingUpdated?.(true);
     try {
       const data = await fetchConversations(filters);
-      onConversationsLoaded?.(data);
+      
+      // Filtrar conversaciones por estado de cliente
+      const filteredData = filterByEstadoCliente(data, filters?.estadoCliente);
+      onConversationsLoaded?.(filteredData);
 
       const q = router.query.q;
       const query = Array.isArray(q) ? q[0] : q || "";
@@ -119,7 +153,10 @@ export function useConversationsFetch({
           (queryValue && searchInMessages) ? searchMessages(queryValue, messageFilters) : Promise.resolve([]),
         ]);
 
-        onConversationsLoaded?.(conversationData);
+        // Filtrar conversaciones por estado de cliente
+        const filteredConversations = filterByEstadoCliente(conversationData, currentFilters?.estadoCliente);
+
+        onConversationsLoaded?.(filteredConversations);
         onMessageResultsLoaded?.(messageMatchesData);
       } catch (error) {
         console.error("Error al buscar:", error);

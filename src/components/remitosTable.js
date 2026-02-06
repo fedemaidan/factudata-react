@@ -47,7 +47,8 @@ const RemitosTable = ({ remitos, remitoMovimientos, expanded, setExpanded, route
   const handleMenuClick = (event, remito) => {
     setAnchorEl(event.currentTarget);
     setSelectedRemito(remito.id);
-    setSelectedUrl(remito.url_remito[0] || remito.url_remito);
+    const urlRemito = remito.url_remito;
+    setSelectedUrl(Array.isArray(urlRemito) ? urlRemito[0] : (urlRemito || ''));
   };
 
   const handleCloseMenu = () => {

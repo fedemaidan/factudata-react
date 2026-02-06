@@ -1,6 +1,7 @@
 // src/components/MaterialesTableV2.js
 import React, { useMemo, useState, useEffect } from 'react';
-import { Box, Stack, TextField, Button, Typography } from '@mui/material';
+import { Box, Stack, TextField, Button, Typography, IconButton, Tooltip, Snackbar } from '@mui/material';
+import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import { DataGrid } from '@mui/x-data-grid';
 import { saveAs } from 'file-saver';
 import * as XLSX from 'xlsx';
@@ -41,6 +42,13 @@ export default function MaterialesTableV2({ materialesAgrupados, loading, tipo }
   const [qCodigo, setQCodigo] = useState('');
   const [qDesc, setQDesc] = useState('');
   const [selectionModel, setSelectionModel] = useState([]);
+  const [copySnackbar, setCopySnackbar] = useState(false);
+
+  // Función para copiar al portapapeles
+  const handleCopy = (text) => {
+    navigator.clipboard.writeText(text);
+    setCopySnackbar(true);
+  };
 
   // visibilidad por defecto (se guarda por modo)
   const defaultVisibility = isLista
@@ -115,6 +123,29 @@ export default function MaterialesTableV2({ materialesAgrupados, loading, tipo }
       valueFormatter: (p) => fmtCurrency(p.value)
     });
 
+    // Columna de acciones
+    base.push({
+      field: 'acciones',
+      headerName: '',
+      width: 60,
+      sortable: false,
+      filterable: false,
+      disableColumnMenu: true,
+      renderCell: (params) => (
+        <Tooltip title="Copiar código y descripción">
+          <IconButton
+            size="small"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleCopy(`${params.row.codigo} - ${params.row.descripcion}`);
+            }}
+          >
+            <ContentCopyIcon fontSize="small" />
+          </IconButton>
+        </Tooltip>
+      )
+    });
+
     return base;
   }, [isLista]);
 
@@ -182,6 +213,15 @@ export default function MaterialesTableV2({ materialesAgrupados, loading, tipo }
           <Typography variant="body2">Seleccionadas: <b>{selectionModel.length}</b></Typography>
         )}
       </Stack>
+
+      {/* Snackbar de copiado */}
+      <Snackbar
+        open={copySnackbar}
+        autoHideDuration={2000}
+        onClose={() => setCopySnackbar(false)}
+        message="✓ Copiado al portapapeles"
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      />
     </Box>
   );
 }

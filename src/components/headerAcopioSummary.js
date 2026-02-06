@@ -7,6 +7,8 @@ import UploadFileIcon from '@mui/icons-material/UploadFile';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import TooltipHelp from 'src/components/TooltipHelp';
+import { TOOLTIP_MOVIMIENTOS } from 'src/constant/tooltipTexts';
 
 function fmtCurrency(n) {
   if (n === null || n === undefined) return '$ 0';
@@ -52,20 +54,24 @@ export default function HeaderAcopioSummary({
         <Box sx={{ flex: 1 }} />
 
         <Stack direction="row" spacing={1}>
-          <Button variant="outlined" size="small" startIcon={<EditOutlinedIcon />} onClick={onEditar}>
-            Editar
-          </Button>
-          <Button variant="outlined" size="small" startIcon={<UploadFileIcon />} onClick={onUploadClick}>
-            Subir hojas
-          </Button>
+          <TooltipHelp {...TOOLTIP_MOVIMIENTOS.editar}>
+            <Button variant="outlined" size="small" startIcon={<EditOutlinedIcon />} onClick={onEditar}>
+              Editar
+            </Button>
+          </TooltipHelp>
+          <TooltipHelp {...TOOLTIP_MOVIMIENTOS.subirHojas}>
+            <Button variant="outlined" size="small" startIcon={<UploadFileIcon />} onClick={onUploadClick}>
+              Subir hojas
+            </Button>
+          </TooltipHelp>
           {isAdmin && (
-            <Tooltip title="Recalibrar imágenes (admin)">
+            <TooltipHelp {...TOOLTIP_MOVIMIENTOS.recalibrar}>
               <span>
                 <Button variant="outlined" size="small" onClick={onRecalibrarImagenes}>
                   Recalibrar
                 </Button>
               </span>
-            </Tooltip>
+            </TooltipHelp>
           )}
           <Button variant="outlined" size="small" startIcon={<RefreshIcon />} onClick={onRefrescar}>
             Actualizar
@@ -84,6 +90,8 @@ export default function HeaderAcopioSummary({
           bgcolor: 'background.paper'
         }}
       >
+        <Kpi label="Proyecto" value={acopio?.proyecto_nombre || 'Sin asignar'} highlight />
+        <Kpi label="Proveedor" value={acopio?.proveedor || '-'} />
         <Kpi label="Valor Acopiado" value={fmtCurrency(acopio?.valor_acopio)} />
         <Kpi label="Valor Desacopiado" value={fmtCurrency(acopio?.valor_desacopio)} />
         <Box sx={{ minWidth: 280 }}>
@@ -99,11 +107,29 @@ export default function HeaderAcopioSummary({
   );
 }
 
-function Kpi({ label, value }) {
+function Kpi({ label, value, highlight = false }) {
   return (
-    <Box sx={{ minWidth: 200 }}>
+    <Box sx={{ 
+      minWidth: 200,
+      ...(highlight && {
+        bgcolor: 'primary.50',
+        borderRadius: 1,
+        px: 1.5,
+        py: 0.5,
+        border: '1px solid',
+        borderColor: 'primary.200'
+      })
+    }}>
       <Typography variant="caption" color="text.secondary">{label}</Typography>
-      <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>{value}</Typography>
+      <Typography 
+        variant="subtitle1" 
+        sx={{ 
+          fontWeight: 700,
+          ...(highlight && { color: 'primary.main' })
+        }}
+      >
+        {value}
+      </Typography>
     </Box>
   );
 }

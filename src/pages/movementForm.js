@@ -40,6 +40,9 @@ import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import CallSplitIcon from '@mui/icons-material/CallSplit';
+import WhatsAppIcon from '@mui/icons-material/WhatsApp';
+import LanguageIcon from '@mui/icons-material/Language';
+import SyncIcon from '@mui/icons-material/Sync';
 
 // Componente para mostrar información de prorrateo
 const ProrrateoInfo = ({ movimiento, onVerRelacionados }) => {
@@ -143,7 +146,7 @@ const ProrrateoInfo = ({ movimiento, onVerRelacionados }) => {
 };
 
 const MovementFormPage = () => {
-  const { user } = useAuthContext();
+  const { user, signOut } = useAuthContext();
   const { setBreadcrumbs } = useBreadcrumbs();
   const router = useRouter();
   const { movimientoId, proyectoId, proyectoName, lastPageUrl, lastPageName } = router.query;
@@ -255,10 +258,21 @@ const MovementFormPage = () => {
       if (typeof navigator !== 'undefined' && !navigator.onLine) {
         throw new Error('Sin conexión a internet');
       }
+
+      // Verificar que el usuario tenga datos válidos antes de continuar
+      if (!user || !user.id) {
+        const userError = new Error('Sesión inválida: datos de usuario incompletos');
+        userError.code = 'sorby/invalid-user';
+        userError.details = { userId: user?.id, userPhone: user?.phone, userEmail: user?.email };
+        throw userError;
+      }
       
       const empresa = await getEmpresaDetailsFromUser(user);
       if (!empresa) {
-        throw new Error('No se pudo obtener la información de la empresa');
+        const empresaError = new Error('No se pudo obtener la información de la empresa');
+        empresaError.code = 'sorby/no-empresa';
+        empresaError.details = { userId: user?.id };
+        throw empresaError;
       }
       
       setEmpresa(empresa);
@@ -319,13 +333,44 @@ const MovementFormPage = () => {
       setIsRetrying(false);
       
     } catch (error) {
-      console.error(`Error cargando datos (intento ${attempt}/${maxRetries}):`, error);
+      // Logging detallado para diagnosticar errores
+      console.error(`❌ [MovementForm] Error cargando datos (intento ${attempt}/${maxRetries}):`, {
+        message: error.message,
+        code: error.code,
+        details: error.details,
+        stack: error.stack,
+        user: { id: user?.id, phone: user?.phone, email: user?.email }
+      });
       
       const isOffline = typeof navigator !== 'undefined' && !navigator.onLine;
-      const isNetworkError = error.message.includes('network') || error.message.includes('conexión') || error.message.includes('internet') || isOffline;
+      const isNetworkError = error.message?.includes('network') || error.message?.includes('conexión') || error.message?.includes('internet') || isOffline;
+      
+      // Detectar errores de usuario/sesión corrupta
+      const isUserError = 
+        error.code === 'sorby/invalid-user' || 
+        error.code === 'sorby/no-empresa' ||
+        error.code === 'sorby/deleted-user' ||
+        error.message?.includes('usuario') ||
+        error.message?.includes('perfil') ||
+        error.message?.includes('undefined') ||
+        error.message?.includes('null');
+
+      // Si es error de usuario, no reintentar - ir directo a mostrar opción de re-login
+      if (isUserError) {
+        console.warn('⚠️ [MovementForm] Error de sesión/usuario detectado, requiere re-login');
+        setLoadingError(error);
+        setAlert({ 
+          open: true, 
+          message: 'Tu sesión tiene un problema. Por favor, cerrá sesión y volvé a ingresar.', 
+          severity: 'warning' 
+        });
+        setIsInitialLoading(false);
+        setIsRetrying(false);
+        return;
+      }
 
       // Si no hemos alcanzado el máximo de reintentos, seguimos intentando (útil para microcortes)
-      if (attempt < maxRetries) {
+      if (attempt < maxRetries && !isUserError) {
         const nextAttempt = attempt + 1;
         setRetryCount(nextAttempt);
         
@@ -797,6 +842,34 @@ function syncMaterialesWithMovs(currentMateriales = [], mmRows = [], { proyecto_
                 {formik.values?.fecha_factura && <Chip size="small" label={`${formik.values.fecha_factura}`} />}
                 {formik.values.type && <Chip size="small" color={formik.values?.type === 'ingreso' ? 'success' : 'error'} label={`${formik.values.type.toUpperCase()}`} />}
                 {formik.values.caja_chica && <Chip size="small" color="info" label='Caja chica'/>}
+                {isEditMode && movimiento?.origen && (
+                  <Tooltip title={`Origen: ${movimiento.origen}`}>
+                    <Chip 
+                      size="small" 
+                      variant="outlined"
+                      color={movimiento.origen === 'whatsapp' ? 'success' : movimiento.origen === 'web' ? 'info' : 'default'}
+                      icon={
+                        movimiento.origen === 'whatsapp' ? <WhatsAppIcon fontSize="small" /> :
+                        movimiento.origen === 'web' ? <LanguageIcon fontSize="small" /> :
+                        movimiento.origen?.includes('sync') || movimiento.id_sincronizacion ? <SyncIcon fontSize="small" /> :
+                        null
+                      }
+                      label={movimiento.origen === 'whatsapp' ? 'WhatsApp' : movimiento.origen === 'web' ? 'Web' : movimiento.origen}
+                      sx={{ textTransform: 'capitalize' }}
+                    />
+                  </Tooltip>
+                )}
+                {isEditMode && movimiento?.id_sincronizacion && !movimiento?.origen?.includes('sync') && (
+                  <Tooltip title={`Sincronizado: ${movimiento.id_sincronizacion}`}>
+                    <Chip 
+                      size="small" 
+                      variant="outlined"
+                      color="secondary"
+                      icon={<SyncIcon fontSize="small" />}
+                      label="Sync"
+                    />
+                  </Tooltip>
+                )}
                 {isRetrying && (
                   <Chip 
                     size="small" 
@@ -913,12 +986,19 @@ function syncMaterialesWithMovs(currentMateriales = [], mmRows = [], { proyecto_
           </Box>
         ) : loadingError ? (
           <Box display="flex" flexDirection="column" justifyContent="center" alignItems="center" minHeight="50vh" spacing={2}>
-            <Alert severity="error" sx={{ mb: 2, maxWidth: 600 }}>
+            <Alert 
+              severity={loadingError.code?.startsWith('sorby/') ? 'warning' : 'error'} 
+              sx={{ mb: 2, maxWidth: 600 }}
+            >
               <Typography variant="h6" gutterBottom>
-                Error al cargar los datos
+                {loadingError.code?.startsWith('sorby/') 
+                  ? 'Problema con tu sesión' 
+                  : 'Error al cargar los datos'}
               </Typography>
               <Typography variant="body2" sx={{ mb: 2 }}>
-                {loadingError.message || 'Ha ocurrido un error inesperado'}
+                {loadingError.code?.startsWith('sorby/') 
+                  ? 'Tu sesión parece estar desactualizada o incompleta. Por favor, cerrá sesión y volvé a ingresar.'
+                  : (loadingError.message || 'Ha ocurrido un error inesperado')}
               </Typography>
               <Stack direction="row" spacing={2} sx={{ mt: 2 }}>
                 <Button 
@@ -927,14 +1007,27 @@ function syncMaterialesWithMovs(currentMateriales = [], mmRows = [], { proyecto_
                 >
                   Volver
                 </Button>
-                <Button 
-                  variant="contained" 
-                  onClick={handleRetry}
-                  startIcon={isInitialLoading ? <CircularProgress size={16} /> : null}
-                  disabled={isInitialLoading}
-                >
-                  {isInitialLoading ? 'Reintentando...' : 'Reintentar'}
-                </Button>
+                {loadingError.code?.startsWith('sorby/') ? (
+                  <Button 
+                    variant="contained" 
+                    color="warning"
+                    onClick={() => {
+                      signOut();
+                      router.push('/auth/login');
+                    }}
+                  >
+                    Cerrar sesión
+                  </Button>
+                ) : (
+                  <Button 
+                    variant="contained" 
+                    onClick={handleRetry}
+                    startIcon={isInitialLoading ? <CircularProgress size={16} /> : null}
+                    disabled={isInitialLoading}
+                  >
+                    {isInitialLoading ? 'Reintentando...' : 'Reintentar'}
+                  </Button>
+                )}
               </Stack>
             </Alert>
           </Box>

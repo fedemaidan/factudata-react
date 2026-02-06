@@ -64,6 +64,7 @@ const ImportarPage = () => {
   const [tipoLista, setTipoLista] = useState('');
   const [proveedor, setProveedor] = useState('');
   const [proyecto, setProyecto] = useState('');
+  const [descripcion, setDescripcion] = useState('');
   const [valorTotal, setValorTotal] = useState('');
   const [codigo, setCodigo] = useState('');
   const [urls, setUrls] = useState([]);
@@ -530,6 +531,7 @@ const guardarAcopio = async () => {
       proveedor,
       proyecto_id: proyecto,
       proyecto_nombre,
+      descripcion: descripcion || '',
       valorTotal: Number(valorTotal) || 0,
       url_imagen_compra: urls || [],
       productos: finalRows.map((r) => ({
@@ -851,7 +853,7 @@ const handleAddItem = (position = 'end', datosDefecto = null) => {
       );
     }
 
-    // Step 3: Identificación (código y valor total)
+    // Step 3: Identificación (código, descripción y valor total)
     if (activeStep === 3) {
       return (
         <StepIdentificacion
@@ -859,6 +861,8 @@ const handleAddItem = (position = 'end', datosDefecto = null) => {
           setCodigo={setCodigo}
           valorTotal={valorTotal}
           setValorTotal={setValorTotal}
+          descripcion={descripcion}
+          setDescripcion={setDescripcion}
           proveedor={proveedor}
           tipoLista={tipoLista}
           onNext={handleNext}

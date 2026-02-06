@@ -60,11 +60,34 @@ const ConversacionesFilter = () => {
         return {
           value: empresa.id,
           label: nombre,
+          esCliente: empresa.esCliente || false,
+          estaDadoDeBaja: empresa.estaDadoDeBaja || false,
         };
       })
       .filter((opt) => opt.label && opt.label.length > 0)
       .sort((a, b) => a.label.localeCompare(b.label));
   }, [empresas]);
+
+  // Filtrar empresas según estadoCliente
+  const filteredEmpresaOptions = useMemo(() => {
+    const estadoCliente = filters?.estadoCliente;
+    if (!estadoCliente || estadoCliente === 'todos') return empresaOptions;
+    
+    return empresaOptions.filter((emp) => {
+      switch (estadoCliente) {
+        case 'es_cliente':
+          return emp.esCliente === true;
+        case 'cliente_activo':
+          return emp.esCliente === true && emp.estaDadoDeBaja !== true;
+        case 'dado_de_baja':
+          return emp.esCliente === true && emp.estaDadoDeBaja === true;
+        case 'no_cliente':
+          return emp.esCliente !== true;
+        default:
+          return true;
+      }
+    });
+  }, [empresaOptions, filters?.estadoCliente]);
 
   const filteredInsightTypes = useMemo(() => {
     const category = filters?.insightCategory;
@@ -87,6 +110,7 @@ const ConversacionesFilter = () => {
       creadaDesde: "", 
       creadaHasta: "", 
       empresaId: "", 
+      estadoCliente: "todos",
       tipoContacto: "todos", 
       showInsight: false,
       insightCategory: "todos",
@@ -100,6 +124,7 @@ const ConversacionesFilter = () => {
     filters?.creadaDesde ||
     filters?.creadaHasta ||
     filters?.empresaId || 
+    (filters?.estadoCliente && filters.estadoCliente !== "todos") ||
     (filters?.tipoContacto && filters.tipoContacto !== "todos") ||
     filters?.showInsight;
 
@@ -240,14 +265,38 @@ const ConversacionesFilter = () => {
             </Box>
           </Box>
 
+          <TextField
+            select
+            label="Estado de Cliente"
+            value={filters?.estadoCliente || "todos"}
+            onChange={(e) => {
+              const newValue = e.target.value;
+              // Si cambia el estado, limpiar la empresa seleccionada
+              if (newValue !== filters?.estadoCliente) {
+                onFiltersChange?.({ ...filters, estadoCliente: newValue, empresaId: "" });
+              } else {
+                handleFilterChange("estadoCliente", newValue);
+              }
+            }}
+            fullWidth
+            size="small"
+            variant="filled"
+          >
+            <MenuItem value="todos">Todos</MenuItem>
+            <MenuItem value="es_cliente">Es cliente</MenuItem>
+            <MenuItem value="cliente_activo">Cliente activo (sin baja)</MenuItem>
+            <MenuItem value="dado_de_baja">Dado de baja</MenuItem>
+            <MenuItem value="no_cliente">No es cliente</MenuItem>
+          </TextField>
+
           <Autocomplete
-            options={empresaOptions}
+            options={filteredEmpresaOptions}
             size="small"
             loading={loadingEmpresas}
             getOptionLabel={(option) => option?.label || ""}
             value={
               filters?.empresaId
-                ? empresaOptions.find((opt) => opt.value === filters.empresaId) || null
+                ? filteredEmpresaOptions.find((opt) => opt.value === filters.empresaId) || null
                 : null
             }
             onChange={(_, v) => handleFilterChange("empresaId", v?.value || "")}
@@ -259,12 +308,16 @@ const ConversacionesFilter = () => {
               return (
                 <li key={option.value || key} {...optionProps}>
                   {option.label}
+                  {option.esCliente && (
+                    <span style={{ marginLeft: 8, fontSize: '0.75rem', color: option.estaDadoDeBaja ? '#f44336' : '#4caf50' }}>
+                      {option.estaDadoDeBaja ? '(Baja)' : '(Cliente)'}
+                    </span>
+                  )}
                 </li>
               );
             }}
             isOptionEqualToValue={(opt, v) => opt?.value === v?.value}
-            noOptionsText={loadingEmpresas ? "Cargando empresas..." : "Sin empresas"}
-          />
+            noOptionsText={loadingEmpresas ? "Cargando empresas..." : "Sin empresas"}          />
 
           <TextField
             select

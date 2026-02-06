@@ -39,6 +39,7 @@ import { EtapasDetails } from 'src/sections/empresa/etapasDetails';
 import { SubEmpresasDetails } from 'src/sections/empresa/subEmpresasDetails';
 import { ObrasDetails } from 'src/sections/empresa/obrasDetails';
 import { CategoriasMaterialesDetails } from 'src/sections/empresa/categoriasMaterialesDetails';
+import { RegistroClienteDetails } from 'src/sections/empresa/registroClienteDetails';
 
 // Icons
 import BusinessIcon from '@mui/icons-material/Business';
@@ -59,6 +60,7 @@ import SecurityIcon from '@mui/icons-material/Security';
 import ConstructionIcon from '@mui/icons-material/Construction';
 import CorporateFareIcon from '@mui/icons-material/CorporateFare';
 import MoreHorizIcon from '@mui/icons-material/MoreHoriz';
+import AssignmentIndIcon from '@mui/icons-material/AssignmentInd';
 
 
 const EmpresaPage = () => {
@@ -98,6 +100,7 @@ const EmpresaPage = () => {
 
   // Tabs secundarios (en menú "Más")
   const moreTabs = [
+    { value: 'registro_cliente', label: 'Registro Cliente', icon: <AssignmentIndIcon /> },
     { value: 'sub_empresas', label: 'SubEmpresas', icon: <CorporateFareIcon /> },
     { value: 'categorias_materiales', label: 'Categorías Materiales', icon: <InventoryIcon /> },
     { value: 'etapas', label: 'Etapas', icon: <TimelineIcon /> },
@@ -439,6 +442,7 @@ const EmpresaPage = () => {
               </Card>
             ) : (
               <>
+                {currentTab === 'registro_cliente' && <RegistroClienteDetails empresa={empresa}/>}
                 {currentTab === 'sub_empresas' && <SubEmpresasDetails empresa={empresa}/>}
                 {currentTab === 'usuarios' && <UsuariosDetails empresa={empresa}/>}
                 {currentTab === 'proyectos' && <ProyectosDetails empresa={empresa}/>} 

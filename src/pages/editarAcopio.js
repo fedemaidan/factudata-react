@@ -61,6 +61,8 @@ import { toNumber } from 'src/utils/importar/numbers';
 import { fmtMoney } from 'src/utils/importar/money';
 import { applyPriceFormulaToValue } from 'src/utils/importar/priceFormula';
 import { codeFromDescription } from 'src/utils/importar/codeFromDescription';
+import TooltipHelp from 'src/components/TooltipHelp';
+import { TOOLTIP_EDITAR_ACOPIO, TOOLTIP_REVISION_FINAL } from 'src/constant/tooltipTexts';
 
 export default function EditarAcopioPage() {
   const router = useRouter();
@@ -87,6 +89,7 @@ export default function EditarAcopioPage() {
   }, [codigo, empresaId, setBreadcrumbs]);
   const [proveedor, setProveedor] = useState('');
   const [proyecto, setProyecto] = useState('');
+  const [descripcion, setDescripcion] = useState('');
   const [tipoLista, setTipoLista] = useState('');
   const [valorTotal, setValorTotal] = useState(0);
   const [actualizacionAutomatica, setActualizacionAutomatica] = useState(false); // Por defecto manual
@@ -153,6 +156,7 @@ const goNext = () => setCurrentIdx((i) => (i + 1) % (urls?.length || 0));
         setTipoLista(acopioData.tipo || acopioData.tipoLista || 'materiales');
         setProveedor(acopioData.proveedor || '');
         setProyecto(acopioData.proyecto_id || acopioData.proyectoId || '');
+        setDescripcion(acopioData.descripcion || '');
         
         // Usar el campo correcto del backend
         const valorAcopio = acopioData.valor_acopio || acopioData.valorTotal || acopioData.valor_total || 0;
@@ -320,6 +324,32 @@ const goNext = () => setCurrentIdx((i) => (i + 1) % (urls?.length || 0));
     return () => router.events.off('routeChangeStart', handleRouteChange);
   }, [hasUnsavedChanges, router]);
 
+  // ⌨️ Atajos de teclado: Ctrl+S para guardar, Esc para volver
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      // Ctrl+S o Cmd+S para guardar
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        if (!guardando) {
+          guardarCambios();
+        }
+      }
+      // Esc para volver (solo si no hay diálogo abierto)
+      if (e.key === 'Escape' && !openPreview) {
+        if (hasUnsavedChanges) {
+          if (window.confirm('Tenés cambios sin guardar. ¿Estás seguro de que querés salir?')) {
+            router.push(`/movimientosAcopio?acopioId=${acopioId}&empresaId=${empresaId}`);
+          }
+        } else {
+          router.push(`/movimientosAcopio?acopioId=${acopioId}&empresaId=${empresaId}`);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [guardando, hasUnsavedChanges, openPreview, acopioId, empresaId, router]);
+
   // 💾 Guardar cambios
   const guardarCambios = async () => {
     try {
@@ -331,11 +361,12 @@ const goNext = () => setCurrentIdx((i) => (i + 1) % (urls?.length || 0));
         await updateEmpresaDetails(empresaId, { proveedores: nuevos });
       }
 
-      // 2. Actualizar datos básicos del acopio (proveedor, proyecto, codigo)
+      // 2. Actualizar datos básicos del acopio (proveedor, proyecto, codigo, descripcion)
       const datosBasicos = {
         proveedor,
         proyecto_id: proyecto,
         codigo,
+        descripcion,
       };
       
       console.log('1. Actualizando datos básicos:', datosBasicos);
@@ -1011,6 +1042,17 @@ const goNext = () => setCurrentIdx((i) => (i + 1) % (urls?.length || 0));
                 </TextField>
               </Stack>
 
+              {/* Descripción */}
+              <TextField
+                label="Descripción"
+                value={descripcion}
+                onChange={(e) => setDescripcion(e.target.value)}
+                size="small"
+                fullWidth
+                placeholder="Descripción breve para identificar el acopio"
+                helperText="Esta descripción se mostrará en el listado de acopios"
+              />
+
               <Stack direction="row" spacing={2} alignItems="center">
                 <TextField
                   label="Valor acopiado"
@@ -1391,15 +1433,19 @@ const goNext = () => setCurrentIdx((i) => (i + 1) % (urls?.length || 0));
               )}
 
               {/* Botón guardar */}
-              <Button
-                variant="contained"
-                color="primary"
-                disabled={guardando}
-                startIcon={guardando ? <CircularProgress size={20} color="inherit" /> : null}
-                onClick={guardarCambios}
-              >
-                {guardando ? 'Guardando...' : 'Guardar cambios'}
-              </Button>
+              <TooltipHelp {...TOOLTIP_EDITAR_ACOPIO.guardar}>
+                <span>
+                  <Button
+                    variant="contained"
+                    color="primary"
+                    disabled={guardando}
+                    startIcon={guardando ? <CircularProgress size={20} color="inherit" /> : null}
+                    onClick={guardarCambios}
+                  >
+                    {guardando ? 'Guardando...' : 'Guardar cambios'}
+                  </Button>
+                </span>
+              </TooltipHelp>
             </Stack>
           </Box>
         </Stack>

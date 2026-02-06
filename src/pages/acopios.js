@@ -41,6 +41,8 @@ import { getEmpresaById } from 'src/services/empresaService';
 import { CircularProgress } from '@mui/material';
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
+import TooltipHelp from 'src/components/TooltipHelp';
+import { TOOLTIP_ACOPIOS } from 'src/constant/tooltipTexts';
 
 const AcopiosPage = () => {
   const { user } = useAuthContext();
@@ -82,6 +84,7 @@ const AcopiosPage = () => {
     const data = acopios.map(a => ({
       Fecha: new Date(a.fecha).toLocaleDateString(),
       Código: a.codigo,
+      Descripción: a.descripcion || '',
       Proveedor: a.proveedor,
       Proyecto: a.proyecto_nombre,
       Total: a.totalValor || 0
@@ -147,7 +150,8 @@ const AcopiosPage = () => {
   const acopiosFiltrados = acopios.filter(a =>
     a.codigo?.toLowerCase().includes(filtroTexto.toLowerCase()) ||
     a.proveedor?.toLowerCase().includes(filtroTexto.toLowerCase()) ||
-    a.proyecto_nombre?.toLowerCase().includes(filtroTexto.toLowerCase())
+    a.proyecto_nombre?.toLowerCase().includes(filtroTexto.toLowerCase()) ||
+    a.descripcion?.toLowerCase().includes(filtroTexto.toLowerCase())
   );
 
   if (loading) {
@@ -164,18 +168,24 @@ const AcopiosPage = () => {
         <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={2} mb={2}>
           <Typography variant="h6">Total General de Acopios: {formatCurrency(totalAcopios)}</Typography>
           <Stack direction="row" spacing={2}>
-            <Button variant="outlined" onClick={exportarExcel}>Exportar Excel</Button>
-            <Button variant="contained" startIcon={<RefreshIcon />} onClick={fetchAcopios}>Actualizar</Button>
+            <TooltipHelp {...TOOLTIP_ACOPIOS.exportarExcel}>
+              <Button variant="outlined" onClick={exportarExcel}>Exportar Excel</Button>
+            </TooltipHelp>
+            <TooltipHelp {...TOOLTIP_ACOPIOS.actualizar}>
+              <Button variant="contained" startIcon={<RefreshIcon />} onClick={fetchAcopios}>Actualizar</Button>
+            </TooltipHelp>
             {!isMobile && (
-              <Button variant="contained" startIcon={<AddIcon />} onClick={() => router.push(`/crearAcopio?empresaId=${empresaId}`)}>
-                Crear Acopio
-              </Button>
+              <TooltipHelp {...TOOLTIP_ACOPIOS.crearAcopio}>
+                <Button variant="contained" startIcon={<AddIcon />} onClick={() => router.push(`/crearAcopio?empresaId=${empresaId}`)}>
+                  Crear Acopio
+                </Button>
+              </TooltipHelp>
             )}
           </Stack>
         </Stack>
 
         <TextField
-          placeholder="Buscar por código, proveedor o proyecto"
+          placeholder="Buscar por código, proveedor, proyecto o descripción"
           value={filtroTexto}
           onChange={(e) => setFiltroTexto(e.target.value)}
           fullWidth
@@ -206,7 +216,16 @@ const AcopiosPage = () => {
             {acopiosFiltrados.map((acopio) => (
               <TableRow key={acopio.id}>
                 <TableCell>{new Date(acopio.fecha).toLocaleDateString()}</TableCell>
-                <TableCell>{acopio.codigo}</TableCell>
+                <TableCell>
+                  <Box>
+                    <Typography variant="body2" fontWeight="medium">{acopio.codigo}</Typography>
+                    {acopio.descripcion && (
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                        {acopio.descripcion}
+                      </Typography>
+                    )}
+                  </Box>
+                </TableCell>
                 <TableCell>{acopio.proveedor}</TableCell>
                 <TableCell>{acopio.proyecto_nombre}</TableCell>
                 <TableCell>

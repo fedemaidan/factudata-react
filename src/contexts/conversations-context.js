@@ -113,6 +113,7 @@ const getFiltersFromQuery = (query) => {
   const creadaDesde = getStringParam(query.creadaDesde);
   const creadaHasta = getStringParam(query.creadaHasta);
   const empresaId = getStringParam(query.empresaId);
+  const estadoCliente = getStringParam(query.estadoCliente);
   const tipoContacto = getStringParam(query.tipoContacto);
   const showInsight = query.showInsight === 'true';
   const insightCategory = getStringParam(query.insightCategory);
@@ -122,6 +123,7 @@ const getFiltersFromQuery = (query) => {
   if (creadaDesde) filters.creadaDesde = creadaDesde;
   if (creadaHasta) filters.creadaHasta = creadaHasta;
   if (empresaId) filters.empresaId = empresaId;
+  if (estadoCliente) filters.estadoCliente = estadoCliente;
   if (tipoContacto) filters.tipoContacto = tipoContacto;
   if (showInsight) filters.showInsight = true;
   if (insightCategory) filters.insightCategory = insightCategory;
@@ -146,7 +148,7 @@ export function ConversationsProvider({ children }) {
 
   const filters = useMemo(() => {
     return normalizeFilterDates(getFiltersFromQuery(router.query));
-  }, [router.query.fechaDesde, router.query.fechaHasta, router.query.creadaDesde, router.query.creadaHasta, router.query.empresaId, router.query.tipoContacto, router.query.showInsight, router.query.insightCategory, router.query.insightTypes]);
+  }, [router.query.fechaDesde, router.query.fechaHasta, router.query.creadaDesde, router.query.creadaHasta, router.query.empresaId, router.query.estadoCliente, router.query.tipoContacto, router.query.showInsight, router.query.insightCategory, router.query.insightTypes]);
 
   // Callbacks para los hooks
   const handleConversationsLoaded = useCallback((data) => {
@@ -198,7 +200,7 @@ export function ConversationsProvider({ children }) {
   });
 
   useEffect(() => {
-    if (!router.isReady || conversations.length === 0) {
+    if (!router.isReady) {
       return;
     }
 
@@ -210,7 +212,20 @@ export function ConversationsProvider({ children }) {
     const urlConversationId = getStringParam(router.query.conversationId);
     const currentSelectedId = selected?.ultimoMensaje?.id_conversacion;
 
-    if (urlConversationId && urlConversationId !== currentSelectedId) {
+    // Si no hay conversationId en la URL pero hay una conversación seleccionada,
+    // deseleccionar (esto ocurre cuando el usuario presiona "volver atrás")
+    if (!urlConversationId && selected) {
+      dispatch({ type: ACTIONS.SET_SELECTED, payload: null });
+      dispatch({ type: ACTIONS.SET_MESSAGES, payload: [] });
+      dispatch({ type: ACTIONS.SET_SCROLL_TO_MESSAGE_ID, payload: null });
+      dispatch({ type: ACTIONS.SET_HIGHLIGHTED_MESSAGE_ID, payload: null });
+      dispatch({ type: ACTIONS.SET_INSIGHT_MESSAGE_IDS, payload: [] });
+      dispatch({ type: ACTIONS.SET_CURRENT_INSIGHT_INDEX, payload: -1 });
+      return;
+    }
+
+    // Si hay conversationId y es diferente al seleccionado, seleccionar la nueva
+    if (urlConversationId && urlConversationId !== currentSelectedId && conversations.length > 0) {
       const conversationToSelect = conversations.find(
         (conv) => conv.ultimoMensaje?.id_conversacion === urlConversationId
       );
@@ -269,7 +284,9 @@ export function ConversationsProvider({ children }) {
       const conversationId = conversation.ultimoMensaje?.id_conversacion;
       if (conversationId) {
         const newQuery = { ...router.query, conversationId };
-        router.replace({ pathname: router.pathname, query: newQuery }, undefined, { shallow: true });
+        // Usamos push en lugar de replace para mantener el historial de navegación
+        // Esto permite volver atrás con el botón del navegador en mobile
+        router.push({ pathname: router.pathname, query: newQuery }, undefined, { shallow: true });
       }
     },
     [dispatch, router]
@@ -298,7 +315,8 @@ export function ConversationsProvider({ children }) {
         const conversationId = result.conversationId;
         if (conversationId) {
           const newQuery = { ...router.query, conversationId };
-          router.replace({ pathname: router.pathname, query: newQuery }, undefined, { shallow: true });
+          // Usamos push para mantener el historial de navegación
+          router.push({ pathname: router.pathname, query: newQuery }, undefined, { shallow: true });
         }
 
         await loadMessageById(result.conversationId, targetMessageId, result.conversation);

@@ -673,12 +673,12 @@ moverRemitoAotroAcopio: async (remitoId, origenAcopioId, destinoAcopioId) => {
 /**
  * Edita los datos básicos de un acopio (NO toca productos)
  * @param {string} acopioId - ID del acopio a editar
- * @param {Object} datos - { proveedor, proyecto_id, codigo }
+ * @param {Object} datos - { proveedor, proyecto_id, codigo, descripcion }
  * @returns {Promise<boolean>}
  */
-editarAcopio: async (acopioId, { proveedor, proyecto_id, codigo }) => {
+editarAcopio: async (acopioId, { proveedor, proyecto_id, codigo, descripcion }) => {
   try {
-    const response = await api.put(`/acopio/${acopioId}`, { proveedor, proyecto_id, codigo });
+    const response = await api.put(`/acopio/${acopioId}`, { proveedor, proyecto_id, codigo, descripcion });
     if (response.status === 200) {
       console.log('✅ Acopio actualizado con éxito');
       return true;
@@ -945,6 +945,37 @@ actualizarCamposAcopio: async (acopioId, updates) => {
       return false;
     } catch (err) {
       console.error('❌ actualizarDescripcionDocumentoComplementario', err);
+      return false;
+    }
+  },
+
+  // ==========================================
+  // SISTEMA DE EVENTOS / HISTORIAL
+  // Los eventos se crean automáticamente en el backend
+  // El frontend solo los lee del campo 'eventos' del acopio
+  // ==========================================
+
+  /**
+   * Agrega un comentario al historial del acopio
+   * POST /acopio/:acopioId/comentario
+   * @param {string} acopioId - ID del acopio
+   * @param {string} texto - Texto del comentario
+   * @param {string} usuario - Nombre del usuario (opcional)
+   * @returns {Promise<boolean>}
+   */
+  agregarComentario: async (acopioId, texto, usuario = null) => {
+    try {
+      const resp = await api.post(`/acopio/${acopioId}/comentario`, { 
+        texto, 
+        usuario: usuario || 'Usuario' 
+      });
+      if (resp.status === 200) {
+        console.log('✅ Comentario agregado');
+        return true;
+      }
+      return false;
+    } catch (err) {
+      console.error('❌ agregarComentario:', err);
       return false;
     }
   },
