@@ -7,24 +7,47 @@ import {
   TableCell,
   TableHead,
   TableRow,
+  TablePagination,
   Button,
   IconButton,
-  Tooltip
+  Tooltip,
+  Chip,
+  Typography
 } from '@mui/material';
 import { Scrollbar } from 'src/components/scrollbar';
 import PencilIcon from '@heroicons/react/24/solid/PencilIcon';
 import TrashIcon from '@heroicons/react/24/solid/TrashIcon';
 import { SvgIcon } from '@mui/material';
 
+const getEstadoColor = (estado) => {
+  switch (estado?.toLowerCase()) {
+    case 'pendiente':
+      return 'warning';
+    case 'enviado':
+      return 'success';
+    case 'cancelado':
+      return 'error';
+    case 'error':
+      return 'error';
+    default:
+      return 'primary';
+  }
+};
+
 export const MensajesProgramadosTable = (props) => {
   const {
     items = [],
     onEdit,
-    onDelete
+    onDelete,
+    count = 0,
+    page = 0,
+    rowsPerPage = 10,
+    onPageChange,
+    onRowsPerPageChange
   } = props;
 
   const formatDate = (dateString) => {
-    if (!dateString) return '';
+    if (!dateString) return '-';
     return new Date(dateString).toLocaleString();
   };
 
@@ -53,22 +76,39 @@ export const MensajesProgramadosTable = (props) => {
                   <TableCell>{mensaje.createdFor}</TableCell>
                   <TableCell>{mensaje.from}</TableCell>
                   <TableCell>{mensaje.to}</TableCell>
-                  <TableCell sx={{ maxWidth: 300, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {mensaje.mensaje}
+                  <TableCell sx={{ maxWidth: 300 }}>
+                    <Typography
+                      variant="body2"
+                      sx={{
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        display: '-webkit-box',
+                        WebkitLineClamp: 2,
+                        WebkitBoxOrient: 'vertical',
+                      }}
+                    >
+                      {mensaje.mensaje}
+                    </Typography>
                   </TableCell>
                   <TableCell>{formatDate(mensaje.fechaEnvioProgramada)}</TableCell>
                   <TableCell>{formatDate(mensaje.fechaEnvioReal)}</TableCell>
-                  <TableCell>{mensaje.estado}</TableCell>
+                  <TableCell>
+                    <Chip 
+                      label={mensaje.estado} 
+                      color={getEstadoColor(mensaje.estado)} 
+                      size="small"
+                    />
+                  </TableCell>
                   <TableCell>
                     <Tooltip title="Editar">
-                      <IconButton onClick={() => onEdit(mensaje)}>
+                      <IconButton onClick={() => onEdit(mensaje)} size="small">
                         <SvgIcon fontSize="small">
                           <PencilIcon />
                         </SvgIcon>
                       </IconButton>
                     </Tooltip>
                     <Tooltip title="Eliminar">
-                      <IconButton onClick={() => onDelete(mensaje._id)} color="error">
+                      <IconButton onClick={() => onDelete(mensaje._id)} color="error" size="small">
                         <SvgIcon fontSize="small">
                           <TrashIcon />
                         </SvgIcon>
@@ -80,7 +120,9 @@ export const MensajesProgramadosTable = (props) => {
               {items.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={9} align="center">
-                    No hay mensajes programados
+                    <Typography variant="body2" color="text.secondary" sx={{ py: 4 }}>
+                      No hay mensajes programados
+                    </Typography>
                   </TableCell>
                 </TableRow>
               )}
@@ -88,6 +130,17 @@ export const MensajesProgramadosTable = (props) => {
           </Table>
         </Box>
       </Scrollbar>
+      <TablePagination
+        component="div"
+        count={count}
+        page={page}
+        onPageChange={onPageChange}
+        rowsPerPage={rowsPerPage}
+        onRowsPerPageChange={onRowsPerPageChange}
+        rowsPerPageOptions={[5, 10, 25, 50]}
+        labelRowsPerPage="Filas por página:"
+        labelDisplayedRows={({ from, to, count }) => `${from}-${to} de ${count}`}
+      />
     </Card>
   );
 };
@@ -95,5 +148,10 @@ export const MensajesProgramadosTable = (props) => {
 MensajesProgramadosTable.propTypes = {
   items: PropTypes.array,
   onEdit: PropTypes.func,
-  onDelete: PropTypes.func
+  onDelete: PropTypes.func,
+  count: PropTypes.number,
+  page: PropTypes.number,
+  rowsPerPage: PropTypes.number,
+  onPageChange: PropTypes.func,
+  onRowsPerPageChange: PropTypes.func
 };
