@@ -50,8 +50,8 @@ export const EstadoCell = ({ item }) => {
   if (['ok', 'okAutomatico', 'okManual'].includes(estado)) {
     return <Chip size="small" label={formatEstadoLabel(estado)} color="success" />;
   }
-  if (estado === 'incompleto') return <Chip size="small" label="⚠ Incompleto" color="warning" />;
-  if (estado === 'advertencia') return <Chip size="small" label="✖ Error" color="error" />;
+  if (estado === 'incompleto') return <Chip size="small" label="Incompleto" color="warning" />;
+  if (estado === 'advertencia') return <Chip size="small" label="Advertencia" color="error" />;
   return <Chip size="small" label={formatEstadoLabel(estado)} color="default" />;
 };
 
