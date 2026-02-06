@@ -9,7 +9,7 @@ import AssignmentIcon from '@mui/icons-material/Assignment';
 import SickIcon from '@mui/icons-material/Sick';
 import EditIcon from '@mui/icons-material/Edit';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
-import TableComponent from 'src/components/TableComponent';
+import TableSelectComponent from 'src/components/TableSelectComponent';
 import FiltroTrabajoDiario from 'src/components/dhn/FiltroTrabajoDiario';
 import conciliacionService from 'src/services/dhn/conciliacionService';
 import ImagenModal from 'src/components/ImagenModal';
@@ -17,13 +17,21 @@ import TrabajosDetectadosList from 'src/components/dhn/TrabajosDetectadosList';
 import HorasRawModal from 'src/components/dhn/HorasRawModal';
 
 const DEFAULT_PAGE_SIZE = 200;
+const HORAS_EXCEL_FIELDS = [
+  "horasNormales",
+  "horas50",
+  "horas100",
+  "horasNocturnas",
+  "horasNocturnas50",
+  "horasNocturnas100",
+];
 
 const ConciliacionDetallePage = () => {
   const router = useRouter();
   const { id } = router.query;
 
   const [rows, setRows] = useState([]);
-  const [stats, setStats] = useState({ total: 0, okAutomatico: 0, incompleto: 0, advertencia: 0, pendiente: 0, error: 0 });
+  const [stats, setStats] = useState({ total: 0, okAutomatico: 0, okManual: 0, incompleto: 0, advertencia: 0, pendiente: 0, error: 0 });
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -38,6 +46,7 @@ const ConciliacionDetallePage = () => {
   const [sortDirection, setSortDirection] = useState('desc');
   const [editOpen, setEditOpen] = useState(false);
   const [rowToEdit, setRowToEdit] = useState(null);
+  const [selectedRowsMap, setSelectedRowsMap] = useState(() => new Map());
   const [formHoras, setFormHoras] = useState({
     horasNormales: null,
     horas50: null,
@@ -48,6 +57,8 @@ const ConciliacionDetallePage = () => {
     horasNocturnas: null,
     fechaLicencia: false,
   });
+  const [selectionLoading, setSelectionLoading] = useState(false);
+  const [bulkSelectionLoading, setBulkSelectionLoading] = useState(false);
 
   const [modalUrl, setModalUrl] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
@@ -79,11 +90,17 @@ const ConciliacionDetallePage = () => {
     setRawModalUrl('');
   }, []);
 
+  const getRowId = useCallback((row) => row?._id ?? row?.id, []);
+
+  const selectedRows = useMemo(() => {
+    return Array.from(selectedRowsMap.values());
+  }, [selectedRowsMap]);
+
   const formatFechaLabel = useCallback((value) => {
     if (!value) return '-';
     const fecha = new Date(value);
     if (isNaN(fecha.getTime())) return '-';
-    return fecha.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    return fecha.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit' });
   }, []);
 
   const handleOpenComprobante = useCallback((comp, row) => {
@@ -139,7 +156,7 @@ const ConciliacionDetallePage = () => {
         }
         const res = await conciliacionService.getConciliacionRows(id, params);
         setRows(res.data || []);
-        setStats(res.stats || { total: 0, okAutomatico: 0, incompleto: 0, advertencia: 0, pendiente: 0, error: 0 });
+        setStats(res.stats || { total: 0, okAutomatico: 0, okManual: 0, incompleto: 0, advertencia: 0, pendiente: 0, error: 0 });
         setPeriodoInfo(res.periodo || '-');
         setSheetId(res.sheetId || null);
         setTotalRows(res.total ?? res.data?.length ?? 0);
@@ -193,10 +210,143 @@ const ConciliacionDetallePage = () => {
     });
   }, [sortField]);
 
+  const reloadRows = useCallback(() => {
+    return fetchRows({
+      page,
+      rowsPerPage,
+      text: appliedSearchTerm,
+      estado: estadoFiltro,
+      sortField,
+      sortDirection,
+    });
+  }, [fetchRows, page, rowsPerPage, appliedSearchTerm, estadoFiltro, sortField, sortDirection]);
+
+  const buildSheetSelectionPayload = useCallback((row) => {
+    if (!row) return null;
+    const sheet = row.sheetHoras || {};
+    const normalizeValue = (value) => {
+      if (value === undefined || value === null) return null;
+      const parsed = Number(value);
+      return Number.isNaN(parsed) ? null : parsed;
+    };
+
+    const horasExcel = HORAS_EXCEL_FIELDS.reduce((acc, key) => {
+      acc[key] = normalizeValue(sheet[key]);
+      return acc;
+    }, {});
+
+    return {
+      dataTrabajoDiario: {
+        horasExcel,
+        horasAltura: normalizeValue(sheet.horasAltura),
+        horasHormigon: normalizeValue(sheet.horasHormigon),
+        horasZanjeo: normalizeValue(sheet.horasZanjeo),
+        fechaLicencia: Boolean(sheet.fechaLicencia),
+      },
+      estado: "okManual",
+    };
+  }, []);
+
+  const createSheetSelectionPayload = useCallback(() => {
+    return buildSheetSelectionPayload(rowToEdit);
+  }, [buildSheetSelectionPayload, rowToEdit]);
+
+  const handleSeleccionHorasSistema = useCallback(async () => {
+    if (!id || !rowToEdit?._id) return;
+    setSelectionLoading(true);
+    try {
+      await conciliacionService.seleccionarHorasSistema(id, rowToEdit._id);
+      setEditOpen(false);
+      await reloadRows();
+    } catch (error) {
+      console.error("Error aplicando horas sistema", error);
+    } finally {
+      setSelectionLoading(false);
+    }
+  }, [id, rowToEdit, reloadRows]);
+
+  const handleSeleccionHorasExcel = useCallback(async () => {
+    if (!id || !rowToEdit?._id) return;
+    const payload = createSheetSelectionPayload();
+    if (!payload) return;
+    setSelectionLoading(true);
+    try {
+      await conciliacionService.seleccionarHorasExcel(id, rowToEdit._id, payload);
+      setEditOpen(false);
+      await reloadRows();
+    } catch (error) {
+      console.error("Error aplicando horas sheet", error);
+    } finally {
+      setSelectionLoading(false);
+    }
+  }, [id, rowToEdit, createSheetSelectionPayload, reloadRows]);
+
+  const handleSelectionChange = useCallback((selectedInPage) => {
+    const selectedItems = Array.isArray(selectedInPage) ? selectedInPage : [];
+    const selectedIdsInPage = new Set(selectedItems.map(getRowId).filter(Boolean));
+    setSelectedRowsMap((prev) => {
+      const next = new Map(prev);
+      (Array.isArray(rows) ? rows : []).forEach((item) => {
+        const rowId = getRowId(item);
+        if (!rowId) return;
+        if (selectedIdsInPage.has(rowId)) {
+          next.set(rowId, item);
+          return;
+        }
+        next.delete(rowId);
+      });
+      return next;
+    });
+  }, [rows, getRowId]);
+
+  const handleSeleccionHorasSistemaBulk = useCallback(async () => {
+    if (!id || selectedRows.length === 0) return;
+    setBulkSelectionLoading(true);
+    try {
+      const rowIds = selectedRows.map((row) => row?._id).filter(Boolean);
+      if (rowIds.length === 0) return;
+      await conciliacionService.seleccionarHorasSistemaBulk(id, rowIds);
+      setSelectedRowsMap(new Map());
+      await reloadRows();
+    } catch (error) {
+      console.error("Error aplicando horas sistema en bloque", error);
+    } finally {
+      setBulkSelectionLoading(false);
+    }
+  }, [id, selectedRows, reloadRows]);
+
+  const handleSeleccionHorasExcelBulk = useCallback(async () => {
+    if (!id || selectedRows.length === 0) return;
+    const items = selectedRows
+      .map((row) => {
+        const payload = buildSheetSelectionPayload(row);
+        if (!payload || !row?._id) return null;
+        return { rowId: row._id, payload };
+      })
+      .filter(Boolean);
+    if (items.length === 0) return;
+    setBulkSelectionLoading(true);
+    try {
+      await conciliacionService.seleccionarHorasExcelBulk(id, items);
+      setSelectedRowsMap(new Map());
+      await reloadRows();
+    } catch (error) {
+      console.error("Error aplicando horas excel en bloque", error);
+    } finally {
+      setBulkSelectionLoading(false);
+    }
+  }, [id, selectedRows, buildSheetSelectionPayload, reloadRows]);
+
   const getEstadoChipProps = (estado) => {
     const e = (estado || '').toString().toLowerCase();
-    if (['ok', 'okautomatico', 'ok_automatico', 'completo'].includes(e)) {
+    if (['ok', 'completo'].includes(e)) {
       return { label: 'OK', color: 'success' };
+    }
+    if (['okautomatico'].includes(e)) {
+      return { label: 'OK automático', color: 'success' };
+    }
+    if (['okmanual', 'ok_manual'].includes(e)) {
+      return { label: 'OK manual', color: 'success' };
     }
     if (['incompleto'].includes(e)) {
       return { label: 'Incompleto', color: 'warning' };
@@ -244,7 +394,7 @@ const ConciliacionDetallePage = () => {
   };
 
   const columns = useMemo(() => ([
-    { key: 'fecha', label: 'Fecha', sortable: true },
+    { key: 'fecha', label: 'Fecha', sortable: true, render: (row) => formatFechaLabel(row.fecha) },
     { key: 'trabajador', label: 'Trabajador', sortable: true },
     { key: 'dni', label: 'DNI', sortable: true, render: (row) => formatDni(row.dni) },
     { key: 'licencia', label: 'Licencia', render: (row) => {
@@ -446,50 +596,89 @@ const ConciliacionDetallePage = () => {
     fecha: formatFechaLabel,
   }), [formatFechaLabel]);
 
+  useEffect(() => {
+    setSelectedRowsMap(new Map());
+  }, [id, appliedSearchTerm, estadoFiltro, sortField, sortDirection]);
+
   return (
     <DashboardLayout title={`Conciliación - ${periodoInfo}`}>
       <Container maxWidth="xl">
         <Stack spacing={3}>
-          <Stack direction="row" spacing={2} alignItems="center" justifyContent="start">
-          <Button
-            variant="text"
-            color="inherit"
-            startIcon={<ArrowBackIcon />}
-            onClick={() => router.back()}
-          >
-            Volver
-          </Button>
-          <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
-            <TextField
-              label="Buscar"
-              size="small"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              sx={{ width: 240 }}
-              InputProps={{
-                endAdornment: searchTerm.length > 0 && (
-                  <InputAdornment position="end">
-                    <IconButton
-                      onClick={() => setSearchTerm('')}
-                      edge="end"
-                      size="small"
-                      sx={{ color: 'text.secondary' }}
-                    >
-                      <ClearIcon />
-                    </IconButton>
-                  </InputAdornment>
-                ),
+          <Stack direction="row" spacing={2} alignItems="center" sx={{ width: "100%" }}>
+            <Button
+              variant="text"
+              color="inherit"
+              startIcon={<ArrowBackIcon />}
+              onClick={() => router.back()}
+            >
+              Volver
+            </Button>
+
+            <Box
+              sx={{
+                flex: 1,
+                minWidth: 0,
+                display: "flex",
+                gap: 1,
+                alignItems: "center",
               }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  handleApplySearch();
-                }
-              }}
-              onBlur={handleApplySearch}
-            />
-          </Box>
-          {sheetId ? (
+            >
+              <TextField
+                label="Buscar"
+                size="small"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                sx={{ flex: 1, minWidth: 240, maxWidth: 240}}
+                InputProps={{
+                  endAdornment: searchTerm.length > 0 && (
+                    <InputAdornment position="end">
+                      <IconButton
+                        onClick={() => setSearchTerm('')}
+                        edge="end"
+                        size="small"
+                        sx={{ color: 'text.secondary' }}
+                      >
+                        <ClearIcon />
+                      </IconButton>
+                    </InputAdornment>
+                  ),
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleApplySearch();
+                  }
+                }}
+                onBlur={handleApplySearch}
+              />
+              {selectedRows.length > 0 && (
+                <Stack direction="row" spacing={1} useFlexGap flexWrap>
+                  <Button
+                    size="small"
+                    variant="contained"
+                    onClick={handleSeleccionHorasSistemaBulk}
+                    disabled={bulkSelectionLoading || isLoading}
+                    sx={{ textTransform: "none" }}
+                  >
+                    Elegir sistema
+                  </Button>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    onClick={handleSeleccionHorasExcelBulk}
+                    disabled={bulkSelectionLoading || isLoading}
+                    sx={{ textTransform: "none" }}
+                  >
+                    Elegir excel
+                  </Button>
+                  <Typography variant="body2" color="text.secondary" sx={{ alignSelf: "center" }}>
+                    {selectedRows.length} seleccionado{selectedRows.length !== 1 ? "s" : ""}
+                  </Typography>
+                </Stack>
+              )}
+            </Box>
+
+            {sheetId ? (
               <Button
                 variant="outlined"
                 color="primary"
@@ -511,11 +700,17 @@ const ConciliacionDetallePage = () => {
             </Alert>
           )}
 
-          <TableComponent
+          <TableSelectComponent
             data={rows}
             columns={columns}
-            formatters={formatters}
             isLoading={isLoading}
+            sortField={sortField}
+            sortDirection={sortDirection}
+            onSortChange={handleSortChange}
+            getRowId={getRowId}
+            onSelectionChange={handleSelectionChange}
+            selectedItems={selectedRows}
+            emptyMessage="No hay filas disponibles"
             pagination={{
               total: totalRows,
               page,
@@ -524,12 +719,6 @@ const ConciliacionDetallePage = () => {
             }}
             onPageChange={handlePageChange}
             onRowsPerPageChange={handleRowsPerPageChange}
-            sortField={sortField}
-            sortDirection={sortDirection}
-            onSortChange={handleSortChange}
-            onRowClick={(row) => {
-              console.log('trabajo diario completo', row);
-            }}
           />
         </Stack>
       </Container>
@@ -562,7 +751,33 @@ const ConciliacionDetallePage = () => {
             </Typography>
           </Box>
         </DialogTitle>
-        <DialogContent>
+      <DialogContent>
+        <Box sx={{ mb: 2 }}>
+          <Typography variant="subtitle2" gutterBottom>
+            Elegir
+          </Typography>
+          <Stack direction="row" spacing={1} flexWrap="wrap">
+            <Button
+              size="small"
+              variant="contained"
+              color="primary"
+              onClick={handleSeleccionHorasExcel}
+              disabled={selectionLoading || isLoading}
+              sx={{ textTransform: "none" }}
+            >
+              Horas Excel
+            </Button>
+            <Button
+              size="small"
+              variant="outlined"
+              onClick={handleSeleccionHorasSistema}
+              disabled={selectionLoading || isLoading}
+              sx={{ textTransform: "none" }}
+            >
+              Horas Sistema
+            </Button>
+          </Stack>
+        </Box>
           <Box sx={{ py: 2 }}>
             <Stack direction={{ xs: 'column', md: 'row' }} spacing={3}>
               <Box sx={{ flex: 1, minWidth: 260 }}>
