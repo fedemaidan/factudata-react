@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import Head from 'next/head';
-import { Box, Container, Stack, Typography, Button, TextField, FormControl, InputLabel, Select, MenuItem, Paper, Collapse } from '@mui/material';
+import { Box, Container, Stack, Typography, Button, TextField, FormControl, InputLabel, Select, MenuItem, Paper, Collapse, InputAdornment } from '@mui/material';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import { MensajesProgramadosTable } from 'src/sections/mensajes-programados/mensajes-programados-table';
 import { MensajeProgramadoDialog } from 'src/components/MensajeProgramadoDialog';
@@ -8,6 +8,7 @@ import mensajesProgramadosService from 'src/services/mensajesProgramadosService'
 import PlusIcon from '@heroicons/react/24/solid/PlusIcon';
 import FilterListIcon from '@mui/icons-material/FilterList';
 import ClearIcon from '@mui/icons-material/Clear';
+import SearchIcon from '@mui/icons-material/Search';
 import { SvgIcon } from '@mui/material';
 import { useAuthContext } from 'src/contexts/auth-context';
 
@@ -23,6 +24,7 @@ const Page = () => {
   const [filterFechaDesde, setFilterFechaDesde] = useState('');
   const [filterFechaHasta, setFilterFechaHasta] = useState('');
   const [filterEstado, setFilterEstado] = useState('');
+  const [filterTelefono, setFilterTelefono] = useState('');
   
   // Paginación
   const [page, setPage] = useState(0);
@@ -63,11 +65,17 @@ const Page = () => {
       filtered = filtered.filter((m) => m.estado === filterEstado);
     }
 
+    if (filterTelefono) {
+      filtered = filtered.filter((m) => 
+        m.to?.includes(filterTelefono) || m.from?.includes(filterTelefono)
+      );
+    }
+
     // Ordenar por fecha programada descendente
     filtered.sort((a, b) => new Date(b.fechaEnvioProgramada) - new Date(a.fechaEnvioProgramada));
 
     return filtered;
-  }, [mensajes, filterFechaDesde, filterFechaHasta, filterEstado]);
+  }, [mensajes, filterFechaDesde, filterFechaHasta, filterEstado, filterTelefono]);
 
   // Mensajes paginados
   const paginatedMensajes = useMemo(() => {
@@ -87,13 +95,14 @@ const Page = () => {
     setFilterFechaDesde('');
     setFilterFechaHasta('');
     setFilterEstado('');
+    setFilterTelefono('');
     setPage(0);
   };
 
   // Reset page cuando cambian los filtros
   useEffect(() => {
     setPage(0);
-  }, [filterFechaDesde, filterFechaHasta, filterEstado]);
+  }, [filterFechaDesde, filterFechaHasta, filterEstado, filterTelefono]);
 
   const handleCreate = () => {
     setCurrentMensaje(null);
@@ -179,7 +188,7 @@ const Page = () => {
             {/* Filtros */}
             <Collapse in={filtersVisible}>
               <Paper sx={{ p: 2 }}>
-                <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems="center">
+                <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems="center" flexWrap="wrap">
                   <TextField
                     label="Fecha desde"
                     type="date"
@@ -197,6 +206,21 @@ const Page = () => {
                     onChange={(e) => setFilterFechaHasta(e.target.value)}
                     InputLabelProps={{ shrink: true }}
                     sx={{ minWidth: 160 }}
+                  />
+                  <TextField
+                    label="Teléfono"
+                    size="small"
+                    value={filterTelefono}
+                    onChange={(e) => setFilterTelefono(e.target.value)}
+                    placeholder="Buscar por teléfono..."
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <SearchIcon fontSize="small" />
+                        </InputAdornment>
+                      ),
+                    }}
+                    sx={{ minWidth: 180 }}
                   />
                   <FormControl size="small" sx={{ minWidth: 150 }}>
                     <InputLabel>Estado</InputLabel>
