@@ -47,7 +47,7 @@ import ContactsIcon from "@mui/icons-material/Contacts";
 export const SideNav = (props) => {
   const { open, onClose, collapsed = false, onToggleCollapsed, width = 280 } = props;
   const pathname = usePathname();
-  const lgUp = useMediaQuery((theme) => theme.breakpoints.up("lg"));
+  const lgUp = useMediaQuery((theme) => theme.breakpoints.up("lg"), { noSsr: true });
   const { user, isSpying } = useAuthContext();
 
   const [items, setItems] = useState([]);

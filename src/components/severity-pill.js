@@ -2,10 +2,11 @@ import PropTypes from 'prop-types';
 import { styled } from '@mui/material/styles';
 
 const SeverityPillRoot = styled('span')(({ theme, ownerState }) => {
-  const backgroundColor = theme.palette[ownerState.color].alpha12;
+  const paletteColor = theme.palette[ownerState.color] || theme.palette.primary;
+  const backgroundColor = paletteColor.alpha12 || theme.palette.action.selected;
   const color = theme.palette.mode === 'dark'
-    ? theme.palette[ownerState.color].main
-    : theme.palette[ownerState.color].dark;
+    ? paletteColor.main
+    : paletteColor.dark || paletteColor.main;
 
   return {
     alignItems: 'center',

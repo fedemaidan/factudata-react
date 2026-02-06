@@ -111,7 +111,7 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
   const [filters, setFilters] = useState({ text: '', estado: '', proyecto_id: '', proveedor: '', misNotas: false });
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
-  const isMobile = useMediaQuery((theme) => theme.breakpoints.down('sm'));
+  const isMobile = useMediaQuery((theme) => theme.breakpoints.down('sm'), { noSsr: true });
   
   const sortedNotas = useMemo(() => {
     return [...filteredNotas].sort((a, b) => {
