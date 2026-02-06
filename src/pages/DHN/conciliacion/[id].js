@@ -503,7 +503,7 @@ const ConciliacionDetallePage = () => {
             ) : null}
           </Stack>
 
-          <FiltroTrabajoDiario stats={stats} />
+          <FiltroTrabajoDiario stats={stats} excludeKeys={['sinParte', 'sinHoras', 'conLicencia']} />
 
           {error && (
             <Alert severity="error" onClose={() => setError(null)}>

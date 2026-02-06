@@ -1,9 +1,9 @@
-import React, { useMemo, useCallback } from 'react';
+import React, { useMemo, useCallback, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import { Paper, Stack, Chip } from '@mui/material';
 
 
-const FiltroTrabajoDiario = ({ stats = {}, onChange }) => {
+const FiltroTrabajoDiario = ({ stats = {}, onChange, excludeKeys = [] }) => {
   const router = useRouter();
 
   const selectedKey = useMemo(() => {
@@ -31,16 +31,17 @@ const FiltroTrabajoDiario = ({ stats = {}, onChange }) => {
     router.push({ pathname: router.pathname, query: nextQuery }, undefined, { shallow: true });
     if (onChange) onChange(nuevo);
   }, [router, onChange]);
-
-  const chips = useMemo(() => ([
-    { key: 'todos', label: `Todos (${stats.total || 0})`, color: selectedKey === 'todos' ? 'primary' : undefined, variant: undefined },
-    { key: 'ok', label: `Completos (${stats.ok || 0})`, color: 'success', variant: undefined },
-    { key: 'incompleto', label: `Incompleto (${stats.incompleto || 0})`, color: 'warning', variant: undefined },
-    { key: 'advertencia', label: `Advertencias (${stats.advertencia || 0})`, color: 'error', variant: undefined },
-    { key: 'sinParte', label: `Sin parte (${stats.sinParte || 0})`, color: undefined, variant: 'outlined' },
-    { key: 'sinHoras', label: `Sin horas (${stats.sinHoras || 0})`, color: undefined, variant: 'outlined' },
-    { key: 'conLicencia', label: `Con licencia (${stats.conLicencia || 0})`, color: undefined, variant: 'outlined' },
-  ]), [stats, selectedKey]);
+  const chips = useMemo(() => (
+    [
+      { key: 'todos', label: `Todos (${stats.total || 0})`, color: selectedKey === 'todos' ? 'primary' : undefined, variant: undefined },
+      { key: 'ok', label: `Completos (${stats.okAutomatico + stats.okManual || 0})`, color: 'success', variant: undefined },
+      { key: 'incompleto', label: `Incompleto (${stats.incompleto || 0})`, color: 'warning', variant: undefined },
+      { key: 'advertencia', label: `Advertencias (${stats.advertencia || 0})`, color: 'error', variant: undefined },
+      { key: 'sinParte', label: `Sin parte (${stats.sinParte || 0})`, color: undefined, variant: 'outlined' },
+      { key: 'sinHoras', label: `Sin horas (${stats.sinHoras || 0})`, color: undefined, variant: 'outlined' },
+      { key: 'conLicencia', label: `Con licencia (${stats.conLicencia || 0})`, color: undefined, variant: 'outlined' },
+    ].filter((chip) => !excludeKeys.includes(chip.key))
+  ), [stats, selectedKey, excludeKeys]);
 
   return (
     <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
