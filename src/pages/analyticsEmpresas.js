@@ -51,7 +51,9 @@ import {
   Cancel as CancelIcon,
   DateRange as DateRangeIcon,
   Search as SearchIcon,
-  Lightbulb as LightbulbIcon
+  Lightbulb as LightbulbIcon,
+  WhatsApp as WhatsAppIcon,
+  Web as WebIcon
 } from '@mui/icons-material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
@@ -230,6 +232,32 @@ const EmpresaRow = ({ empresa, onSelect }) => {
             <Tooltip title={`Total histórico: ${empresa.totalMovimientos?.toLocaleString() || 0}`}>
               <span>{empresa.movimientosEnPeriodo || 0}</span>
             </Tooltip>
+          )}
+        </TableCell>
+        <TableCell align="center">
+          {empresa.metricasCargadas ? (
+            <Tooltip title={`WhatsApp: ${empresa.movimientosPorOrigen?.whatsapp || 0} | Web: ${empresa.movimientosPorOrigen?.web || 0} | Otro: ${empresa.movimientosPorOrigen?.otro || 0}`}>
+              <Stack direction="row" spacing={0.5} justifyContent="center" alignItems="center">
+                <Chip 
+                  size="small"
+                  icon={<WhatsAppIcon />}
+                  label={empresa.movimientosPorOrigen?.whatsapp || 0}
+                  color={(empresa.movimientosPorOrigen?.whatsapp || 0) > 0 ? 'success' : 'default'}
+                  variant={(empresa.movimientosPorOrigen?.whatsapp || 0) > 0 ? 'filled' : 'outlined'}
+                  sx={{ '& .MuiChip-icon': { fontSize: 16 } }}
+                />
+                <Chip 
+                  size="small"
+                  icon={<WebIcon />}
+                  label={empresa.movimientosPorOrigen?.web || 0}
+                  color={(empresa.movimientosPorOrigen?.web || 0) > 0 ? 'info' : 'default'}
+                  variant={(empresa.movimientosPorOrigen?.web || 0) > 0 ? 'filled' : 'outlined'}
+                  sx={{ '& .MuiChip-icon': { fontSize: 16 } }}
+                />
+              </Stack>
+            </Tooltip>
+          ) : (
+            <CircularProgress size={16} />
           )}
         </TableCell>
         <TableCell align="center">
@@ -539,6 +567,7 @@ const AnalyticsEmpresasPage = () => {
                   totalAcopios: metricas.totalAcopios,
                   remitosEnPeriodo: metricas.remitosEnPeriodo,
                   insightsEnPeriodo: metricas.insightsEnPeriodo || 0,
+                  movimientosPorOrigen: metricas.movimientosPorOrigen || { whatsapp: 0, web: 0, otro: 0 },
                   ultimoUso: metricas.ultimoUso,
                   metricasCargadas: true,
                 };
@@ -580,6 +609,7 @@ const AnalyticsEmpresasPage = () => {
         totalAcopios: null,
         remitosEnPeriodo: null,
         insightsEnPeriodo: null,
+        movimientosPorOrigen: null,
         ultimoUso: null,
         metricasCargadas: false,
       }));
@@ -724,6 +754,10 @@ const AnalyticsEmpresasPage = () => {
       clientesActivosMovimientos: clientesActivosConMetricas.reduce((sum, e) => sum + (e.movimientosEnPeriodo || 0), 0),
       clientesActivosRemitos: clientesActivosConMetricas.reduce((sum, e) => sum + (e.remitosEnPeriodo || 0), 0),
       clientesActivosInsights: clientesActivosConMetricas.reduce((sum, e) => sum + (e.insightsEnPeriodo || 0), 0),
+      
+      // Totales por origen
+      totalWhatsapp: clientesConMetricas.reduce((sum, e) => sum + (e.movimientosPorOrigen?.whatsapp || 0), 0),
+      totalWeb: clientesConMetricas.reduce((sum, e) => sum + (e.movimientosPorOrigen?.web || 0), 0),
     };
   }, [empresas]);
   
@@ -1088,6 +1122,15 @@ const AnalyticsEmpresasPage = () => {
                           >
                             Movimientos (periodo)
                           </TableSortLabel>
+                        </TableCell>
+                        <TableCell align="center">
+                          <Tooltip title="Origen de los movimientos: WhatsApp / Web">
+                            <Box display="flex" alignItems="center" justifyContent="center" gap={0.5}>
+                              <WhatsAppIcon fontSize="small" color="success" />
+                              /
+                              <WebIcon fontSize="small" color="info" />
+                            </Box>
+                          </Tooltip>
                         </TableCell>
                         <TableCell align="center" sortDirection={orderBy === 'remitosEnPeriodo' ? order : false}>
                           <TableSortLabel

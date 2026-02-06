@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { useRouter } from "next/router";
-import { Container, Box, Snackbar, Alert, Button, Stack, Typography, TextField } from "@mui/material";
+import { Container, Box, Snackbar, Alert, Button, Stack, Typography, TextField, Chip } from "@mui/material";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
+import { STATUS_MAP } from "src/utils/dhn/syncHelpers";
 import { Layout as DashboardLayout } from "src/layouts/dashboard/layout";
 import TableComponent from "src/components/TableComponent";
 import DhnDriveService from "src/services/dhn/cargarUrlDriveService";
@@ -37,6 +38,8 @@ const SyncDetailPage = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [searchVersion, setSearchVersion] = useState(0);
+  const [statusFilter, setStatusFilter] = useState(null);
+  const [sortConfig, setSortConfig] = useState({ key: null, direction: "asc" });
 
   const [imageModalOpen, setImageModalOpen] = useState(false);
   const [imageUrl, setImageUrl] = useState("");
@@ -315,11 +318,66 @@ const SyncDetailPage = () => {
     });
   }, []);
 
+  // Calcular métricas por estado
+  const statusCounts = useMemo(() => {
+    const counts = {};
+    items.forEach((item) => {
+      const status = item?.status || "unknown";
+      counts[status] = (counts[status] || 0) + 1;
+    });
+    return counts;
+  }, [items]);
+
+  // Filtrar items por status
+  const filteredItems = useMemo(() => {
+    if (!statusFilter) return items;
+    return items.filter((item) => item?.status === statusFilter);
+  }, [items, statusFilter]);
+
+  // Ordenar items
+  const sortedItems = useMemo(() => {
+    if (!sortConfig.key) return filteredItems;
+    return [...filteredItems].sort((a, b) => {
+      let aVal = a?.[sortConfig.key];
+      let bVal = b?.[sortConfig.key];
+      
+      // Manejo especial para campos anidados o específicos
+      if (sortConfig.key === "archivo") {
+        aVal = a?.file_name || "";
+        bVal = b?.file_name || "";
+      }
+      if (sortConfig.key === "fechasDetectadas") {
+        aVal = a?.fechasDetectadas || a?.fecha_detectada || "";
+        bVal = b?.fechasDetectadas || b?.fecha_detectada || "";
+      }
+      
+      // Convertir a strings para comparación
+      aVal = String(aVal || "").toLowerCase();
+      bVal = String(bVal || "").toLowerCase();
+      
+      if (aVal < bVal) return sortConfig.direction === "asc" ? -1 : 1;
+      if (aVal > bVal) return sortConfig.direction === "asc" ? 1 : -1;
+      return 0;
+    });
+  }, [filteredItems, sortConfig]);
+
+  const handleSort = useCallback((key) => {
+    setSortConfig((prev) => ({
+      key,
+      direction: prev.key === key && prev.direction === "asc" ? "desc" : "asc",
+    }));
+  }, []);
+
+  const handleStatusFilterClick = useCallback((status) => {
+    setStatusFilter((prev) => (prev === status ? null : status));
+  }, []);
+
   const columns = useMemo(() => {
     const cols = [
       {
         key: "status",
         label: "Estado",
+        sortable: true,
         render: (it) => <StatusChip status={it?.status} />,
       },
     ];
@@ -327,6 +385,7 @@ const SyncDetailPage = () => {
       cols.push({
         key: "acciones",
         label: "Acciones",
+        sortable: false,
         render: (it) => (
           <AccionesCell
             row={it}
@@ -344,6 +403,7 @@ const SyncDetailPage = () => {
       cols.push({
         key: "fechasDetectadas",
         label: "Fecha detectada",
+        sortable: true,
         sx: {
           minWidth: 180,
           maxWidth: 260,
@@ -372,12 +432,14 @@ const SyncDetailPage = () => {
     cols.push({
       key: "archivo",
       label: "Archivo",
+      sortable: true,
       render: (it) => <ArchivoCell row={it} onOpenImage={openImageModal} />,
     });
 
     cols.push({
       key: "observacion",
       label: "Observación",
+      sortable: true,
       render: (it) => (
         <ObservacionCell row={it} handleResolverTrabajador={handleResolverTrabajador} />
       ),
@@ -468,6 +530,50 @@ const SyncDetailPage = () => {
             </Button>
           </Box>
 
+          {/* Métricas por estado */}
+          <Box sx={{ mb: 2 }}>
+            <Typography variant="subtitle2" sx={{ mb: 1, color: "text.secondary" }}>
+              Filtrar por estado:
+            </Typography>
+            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+              <Chip
+                label={`Todos (${items.length})`}
+                onClick={() => setStatusFilter(null)}
+                variant={statusFilter === null ? "filled" : "outlined"}
+                color={statusFilter === null ? "primary" : "default"}
+                size="small"
+                sx={{ fontWeight: statusFilter === null ? 600 : 400 }}
+              />
+              {Object.entries(statusCounts).map(([status, count]) => {
+                const cfg = STATUS_MAP[status] || { color: "#757575", label: status };
+                const isActive = statusFilter === status;
+                return (
+                  <Chip
+                    key={status}
+                    label={`${cfg.label} (${count})`}
+                    onClick={() => handleStatusFilterClick(status)}
+                    variant={isActive ? "filled" : "outlined"}
+                    size="small"
+                    sx={{
+                      fontWeight: isActive ? 600 : 400,
+                      borderColor: cfg.color,
+                      color: isActive ? "#fff" : cfg.color,
+                      backgroundColor: isActive ? cfg.color : "transparent",
+                      "&:hover": {
+                        backgroundColor: isActive ? cfg.color : `${cfg.color}20`,
+                      },
+                    }}
+                  />
+                );
+              })}
+            </Stack>
+            {statusFilter && (
+              <Typography variant="caption" sx={{ mt: 0.5, display: "block", color: "text.secondary" }}>
+                Mostrando {sortedItems.length} de {items.length} registros
+              </Typography>
+            )}
+          </Box>
+
           <Box>
             <Box
               sx={{
@@ -545,9 +651,12 @@ const SyncDetailPage = () => {
                 }}
               >
                 <TableComponent
-                  data={items}
+                  data={sortedItems}
                   columns={columns}
                   isLoading={isLoading}
+                  sortField={sortConfig.key}
+                  sortDirection={sortConfig.direction}
+                  onSortChange={handleSort}
                   onRowClick={(row) => {
                     console.log("[DHN Sync] row click:", row);
                   }}
