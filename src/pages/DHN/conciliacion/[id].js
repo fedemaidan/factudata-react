@@ -14,6 +14,9 @@ import FiltroTrabajoDiario from 'src/components/dhn/FiltroTrabajoDiario';
 import conciliacionService from 'src/services/dhn/conciliacionService';
 import ImagenModal from 'src/components/ImagenModal';
 import TrabajosDetectadosList from 'src/components/dhn/TrabajosDetectadosList';
+import HorasRawModal from 'src/components/dhn/HorasRawModal';
+
+const DEFAULT_PAGE_SIZE = 200;
 
 const ConciliacionDetallePage = () => {
   const router = useRouter();
@@ -26,6 +29,13 @@ const ConciliacionDetallePage = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [periodoInfo, setPeriodoInfo] = useState('-');
   const [sheetId, setSheetId] = useState(null);
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(DEFAULT_PAGE_SIZE);
+  const [appliedSearchTerm, setAppliedSearchTerm] = useState('');
+  const [searchTrigger, setSearchTrigger] = useState(0);
+  const [totalRows, setTotalRows] = useState(0);
+  const [sortField, setSortField] = useState('fecha');
+  const [sortDirection, setSortDirection] = useState('desc');
   const [editOpen, setEditOpen] = useState(false);
   const [rowToEdit, setRowToEdit] = useState(null);
   const [formHoras, setFormHoras] = useState({
@@ -42,6 +52,11 @@ const ConciliacionDetallePage = () => {
   const [modalUrl, setModalUrl] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [modalFileName, setModalFileName] = useState("");
+  const [rawModalOpen, setRawModalOpen] = useState(false);
+  const [rawModalData, setRawModalData] = useState([]);
+  const [rawModalTitle, setRawModalTitle] = useState('');
+  const [rawModalFileName, setRawModalFileName] = useState('');
+  const [rawModalUrl, setRawModalUrl] = useState('');
 
   const handleOpenParteModal = useCallback((url, comp) => {
     if (!url) return;
@@ -56,34 +71,127 @@ const ConciliacionDetallePage = () => {
     setModalFileName("");
   }, []);
 
+  const handleCloseRawModal = useCallback(() => {
+    setRawModalOpen(false);
+    setRawModalData([]);
+    setRawModalTitle('');
+    setRawModalFileName('');
+    setRawModalUrl('');
+  }, []);
+
+  const formatFechaLabel = useCallback((value) => {
+    if (!value) return '-';
+    const fecha = new Date(value);
+    if (isNaN(fecha.getTime())) return '-';
+    return fecha.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  }, []);
+
+  const handleOpenComprobante = useCallback((comp, row) => {
+    if (!comp) return;
+    const url = comp?.url || comp?.url_storage || '';
+    if (comp.type === 'parte') {
+      if (!url) return;
+      handleOpenParteModal(url, comp);
+      return;
+    }
+    if (comp.type === 'horas') {
+      const trabajador = (row?.trabajadorId || row?.trabajador || {});
+      const nombre = `${trabajador?.apellido || ''} ${trabajador?.nombre || ''}`.trim();
+      const dni = trabajador?.dni ? `DNI: ${trabajador.dni}` : '';
+      const diaLabel = formatFechaLabel(row?.fecha);
+      const titleBase = nombre ? `${nombre} • ${diaLabel}` : `Fichadas • ${diaLabel}`;
+      const title = dni ? `${titleBase} • ${dni}` : titleBase;
+      setRawModalData(Array.isArray(row?.dataRawExcel) ? row.dataRawExcel : []);
+      setRawModalTitle(title);
+      setRawModalFileName(comp?.file_name || comp?.fileName || '');
+      setRawModalUrl(url || '');
+      setRawModalOpen(true);
+    }
+  }, [formatFechaLabel, handleOpenParteModal]);
+
   const estadoFiltro = useMemo(() => {
     return router.query.estado || 'todos';
   }, [router.query.estado]);
 
-  const fetchData = async () => {
-    if (!id) return;
-    setIsLoading(true);
-    try {
-      const res = await conciliacionService.getConciliacionRows(id, {
-        estado: estadoFiltro !== 'todos' ? estadoFiltro : undefined,
-        text: searchTerm?.trim() ? searchTerm.trim() : undefined,
-        limit: 1000
-      });
-      setRows(res.data || []);
-      setStats(res.stats || { total: 0, okAutomatico: 0, incompleto: 0, advertencia: 0, pendiente: 0, error: 0 });
-      setPeriodoInfo(res.periodo || '-');
-      setSheetId(res.sheetId || null);
-      setError(null);
-    } catch (e) {
-      setError('Error al cargar detalle de conciliación');
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  const fetchRows = useCallback(
+    async ({ page: targetPage = 0, rowsPerPage: limit = DEFAULT_PAGE_SIZE, text, estado, sortField: sortKey, sortDirection: sortDir } = {}) => {
+      if (!id) return;
+      setIsLoading(true);
+      try {
+        const normalizedPage = Number.isNaN(Number(targetPage)) ? 0 : Math.max(0, Number(targetPage));
+        const normalizedLimit = Number.isNaN(Number(limit)) || Number(limit) <= 0 ? DEFAULT_PAGE_SIZE : Number(limit);
+        const offset = normalizedPage * normalizedLimit;
+        const params = {
+          limit: normalizedLimit,
+          offset,
+        };
+        if (estado && estado !== 'todos') {
+          params.estado = estado;
+        }
+        if (text && text.trim()) {
+          params.text = text.trim();
+        }
+        if (sortKey) {
+          params.sortField = sortKey;
+        }
+        if (sortDir) {
+          params.sortDirection = sortDir;
+        }
+        const res = await conciliacionService.getConciliacionRows(id, params);
+        setRows(res.data || []);
+        setStats(res.stats || { total: 0, okAutomatico: 0, incompleto: 0, advertencia: 0, pendiente: 0, error: 0 });
+        setPeriodoInfo(res.periodo || '-');
+        setSheetId(res.sheetId || null);
+        setTotalRows(res.total ?? res.data?.length ?? 0);
+        setError(null);
+      } catch (e) {
+        setError('Error al cargar detalle de conciliación');
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [id]
+  );
 
   useEffect(() => {
-    fetchData();
-  }, [id, estadoFiltro]);
+    fetchRows({
+      page,
+      rowsPerPage,
+      text: appliedSearchTerm,
+      estado: estadoFiltro,
+      sortField,
+      sortDirection,
+    });
+  }, [fetchRows, page, rowsPerPage, appliedSearchTerm, estadoFiltro, searchTrigger, sortField, sortDirection]);
+
+  const handleApplySearch = useCallback(() => {
+    const trimmed = (searchTerm || '').trim();
+    setPage(0);
+    setAppliedSearchTerm(trimmed);
+    setSearchTrigger((prev) => prev + 1);
+  }, [searchTerm]);
+
+  const handlePageChange = useCallback((_event, newPage) => {
+    setPage(newPage);
+  }, []);
+
+  const handleRowsPerPageChange = useCallback((event) => {
+    const value = Number(event.target.value);
+    const next = Number.isNaN(value) || value <= 0 ? DEFAULT_PAGE_SIZE : value;
+    setRowsPerPage(next);
+    setPage(0);
+  }, []);
+
+  const handleSortChange = useCallback((field) => {
+    setPage(0);
+    setSortField(field);
+    setSortDirection((prevDirection) => {
+      if (sortField === field) {
+        return prevDirection === 'asc' ? 'desc' : 'asc';
+      }
+      return 'asc';
+    });
+  }, [sortField]);
 
   const getEstadoChipProps = (estado) => {
     const e = (estado || '').toString().toLowerCase();
@@ -113,13 +221,20 @@ const ConciliacionDetallePage = () => {
       'Aº': '#00897b',   // teal-600
       'Hº': '#ef6c00',   // orange-800
       'Zº/M°': '#5e35b1', // deepPurple-600
-      'Noc.': '#546e7a', // blueGrey-600
+      'Noct.': '#283593', // indigo-900
+      'Noct. 50%': '#1e88e5', // blue-600
+      'Noct. 100%': '#0d47a1', // blue-900
     };
     const c = colorMap[k] || theme.palette.grey[600];
     return {
       bgcolor: alpha(c, 0.12),
       color: c,
       borderColor: alpha(c, 0.28),
+      whiteSpace: 'nowrap',
+      textTransform: 'none',
+      minWidth: 110,
+      textAlign: 'center',
+      fontSize: '0.7rem',
     };
   };
 
@@ -129,12 +244,19 @@ const ConciliacionDetallePage = () => {
   };
 
   const columns = useMemo(() => ([
-    { key: 'fecha', label: 'Fecha' },
-    { key: 'trabajador', label: 'Trabajador' },
-    { key: 'dni', label: 'DNI', render: (row) => formatDni(row.dni) },
+    { key: 'fecha', label: 'Fecha', sortable: true },
+    { key: 'trabajador', label: 'Trabajador', sortable: true },
+    { key: 'dni', label: 'DNI', sortable: true, render: (row) => formatDni(row.dni) },
     { key: 'licencia', label: 'Licencia', render: (row) => {
       const lic = (row?.sheetHoras?.fechaLicencia ?? row?.licencia ?? false) ? true : false;
-      return lic ? 'Sí' : 'No';
+      return (
+        <Chip
+          label={lic ? 'Licencia: Sí' : 'Licencia: No'}
+          size="small"
+          variant="outlined"
+          color={lic ? 'warning' : 'default'}
+        />
+      );
     }},
     {
       key: 'horas',
@@ -148,7 +270,9 @@ const ConciliacionDetallePage = () => {
           { k: 'Aº', v: Number(db.horasAltura || 0), color: 'info' },
           { k: 'Hº', v: Number(db.horasHormigon || 0), color: 'info' },
           { k: 'Zº/M°', v: Number(db.horasZanjeo || 0), color: 'info' },
-          { k: 'Noc.', v: Number(db.horasNocturnas || 0), color: 'info' },
+          { k: 'Noct.', v: Number(db.horasNocturnas || 0), color: 'info' },
+          { k: 'Noct. 50%', v: Number(db.horasNocturnas50 || 0), color: 'info' },
+          { k: 'Noct. 100%', v: Number(db.horasNocturnas100 || 0), color: 'info' },
         ].filter(i => i.v > 0) : [];
         if (items.length === 0) return '-';
         return (
@@ -178,7 +302,9 @@ const ConciliacionDetallePage = () => {
           { k: 'Aº', v: Number(sh.horasAltura || 0) },
           { k: 'Hº', v: Number(sh.horasHormigon || 0) },
           { k: 'Zº/M°', v: Number(sh.horasZanjeo || 0) },
-          { k: 'Noc.', v: Number(sh.horasNocturnas || 0) },
+          { k: 'Noct.', v: Number(sh.horasNocturnas || 0) },
+          { k: 'Noct. 50%', v: Number(sh.horasNocturnas50 || 0) },
+          { k: 'Noct. 100%', v: Number(sh.horasNocturnas100 || 0) },
         ].filter(i => i.v > 0);
         if (items.length === 0) return '-';
         return (
@@ -216,10 +342,15 @@ const ConciliacionDetallePage = () => {
               return (() => {
                 const url = comp.url || comp.url_storage || null;
                 const handleClick = (event) => {
-                  if (comp.type === 'parte' && url) {
+                  if ((comp.type === 'parte' || comp.type === 'horas') && url) {
                     event.preventDefault();
                     event.stopPropagation();
+                  }
+                  if (comp.type === 'parte') {
                     handleOpenParteModal(url, comp);
+                  }
+                  if (comp.type === 'horas') {
+                    handleOpenComprobante(comp, row);
                   }
                 };
                 return (
@@ -247,6 +378,7 @@ const ConciliacionDetallePage = () => {
     {
       key: 'estado',
       label: 'Estado',
+      sortable: true,
       render: (row) => {
         const { label, color } = getEstadoChipProps(row.estado);
         return <Chip size="small" color={color} label={label} />;
@@ -308,16 +440,11 @@ const ConciliacionDetallePage = () => {
         </IconButton>
       )
     }
-  ]), [handleOpenParteModal]);
+  ]), [handleOpenParteModal, handleOpenComprobante]);
 
   const formatters = useMemo(() => ({
-    fecha: (value) => {
-      if (!value) return '-';
-      const d = new Date(value);
-      if (isNaN(d.getTime())) return '-';
-      return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
-    }
-  }), []);
+    fecha: formatFechaLabel,
+  }), [formatFechaLabel]);
 
   return (
     <DashboardLayout title={`Conciliación - ${periodoInfo}`}>
@@ -354,9 +481,12 @@ const ConciliacionDetallePage = () => {
                 ),
               }}
               onKeyDown={(e) => {
-                if (e.key === 'Enter') fetchData();
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  handleApplySearch();
+                }
               }}
-              onBlur={fetchData}
+              onBlur={handleApplySearch}
             />
           </Box>
           {sheetId ? (
@@ -386,8 +516,19 @@ const ConciliacionDetallePage = () => {
             columns={columns}
             formatters={formatters}
             isLoading={isLoading}
+            pagination={{
+              total: totalRows,
+              page,
+              rowsPerPage,
+              rowsPerPageOptions: [DEFAULT_PAGE_SIZE],
+            }}
+            onPageChange={handlePageChange}
+            onRowsPerPageChange={handleRowsPerPageChange}
+            sortField={sortField}
+            sortDirection={sortDirection}
+            onSortChange={handleSortChange}
             onRowClick={(row) => {
-              console.log('conciliacion.row', row);
+              console.log('trabajo diario completo', row);
             }}
           />
         </Stack>
@@ -400,6 +541,15 @@ const ConciliacionDetallePage = () => {
       fileName={modalFileName}
       leftContent={modalUrl ? <TrabajosDetectadosList urlStorage={modalUrl} /> : null}
     />
+
+      <HorasRawModal
+        open={rawModalOpen}
+        onClose={handleCloseRawModal}
+        data={rawModalData}
+        title={rawModalTitle}
+        fileName={rawModalFileName}
+        downloadUrl={rawModalUrl}
+      />
 
       <Dialog open={editOpen} onClose={() => setEditOpen(false)} maxWidth="md" fullWidth>
         <DialogTitle>
@@ -500,7 +650,14 @@ const ConciliacionDetallePage = () => {
                   dataTrabajoDiario: { ...formHoras },
                 });
                 setEditOpen(false);
-                await fetchData();
+                await fetchRows({
+                  page,
+                  rowsPerPage,
+                  text: appliedSearchTerm,
+                  estado: estadoFiltro,
+                  sortField,
+                  sortDirection,
+                });
               } catch (e) {
                 console.error('Error actualizando horas', e);
               }

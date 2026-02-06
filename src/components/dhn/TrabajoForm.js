@@ -3,6 +3,12 @@ import { Grid, IconButton, Stack, TextField, Typography } from "@mui/material";
 import DeleteIcon from "@mui/icons-material/Delete";
 import TrabajadorSelector from "src/components/dhn/TrabajadorSelector";
 
+let trabajoIdCounter = 0;
+const generateTrabajoId = () => {
+  trabajoIdCounter += 1;
+  return `trabajo-${Date.now().toString(16)}-${trabajoIdCounter}`;
+};
+
 export const HORA_FIELDS = [
   { key: "horasNormales", label: "Normales" },
   { key: "horas50", label: "50%" },
@@ -30,6 +36,7 @@ export const parseTrabajadorId = (trabajador) => {
 };
 
 export const createEmptyTrabajo = () => ({
+  id: generateTrabajoId(),
   trabajador: null,
   horasNormales: "",
   horas50: "",

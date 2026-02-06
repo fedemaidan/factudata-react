@@ -28,12 +28,14 @@ const conciliacionService = {
     return lista;
   },
 
-  async getConciliacionRows(id, { estado, text, limit, offset } = {}) {
+  async getConciliacionRows(id, { estado, text, limit, offset, sortField, sortDirection } = {}) {
     const params = {};
     if (estado) params.estado = estado;
     if (text) params.text = text;
     if (limit != null) params.limit = limit;
     if (offset != null) params.offset = offset;
+    if (sortField) params.sortField = sortField;
+    if (sortDirection) params.sortDirection = sortDirection;
     const { data } = await api.get(`/dhn/conciliacion/${id}/rows`, { params });
     return data;
   },
