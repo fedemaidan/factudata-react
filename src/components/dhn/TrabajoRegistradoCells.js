@@ -50,8 +50,8 @@ export const EstadoCell = ({ item }) => {
   if (['ok', 'okAutomatico', 'okManual'].includes(estado)) {
     return <Chip size="small" label={formatEstadoLabel(estado)} color="success" />;
   }
-  if (estado === 'incompleto') return <Chip size="small" label="⚠ Incompleto" color="warning" />;
-  if (estado === 'advertencia') return <Chip size="small" label="✖ Error" color="error" />;
+  if (estado === 'incompleto') return <Chip size="small" label="Incompleto" color="warning" />;
+  if (estado === 'advertencia') return <Chip size="small" label="Advertencia" color="error" />;
   return <Chip size="small" label={formatEstadoLabel(estado)} color="default" />;
 };
 
@@ -117,7 +117,11 @@ export const PartesCell = ({ item }) => {
     { key: 'horasNocturnas50', label: 'Noct. 50%', color: 'default', sx: { borderColor: '#ab47bc', color: '#ab47bc' } },
     { key: 'horasNocturnas100', label: 'Noct. 100%', color: 'default', sx: { borderColor: '#ec407a', color: '#ec407a' } },
   ];
-  const horasConValor = tiposHoras.filter((tipo) => item[tipo.key] != null && item[tipo.key] > 0);
+  const sourceExcel = item?.horasExcel;
+  const hasExcelValues = sourceExcel && tiposHoras.some((tipo) => sourceExcel[tipo.key] != null && sourceExcel[tipo.key] > 0);
+  const hasRootValues = tiposHoras.some((tipo) => item[tipo.key] != null && item[tipo.key] > 0);
+  const horasFuente = hasExcelValues ? sourceExcel : hasRootValues ? item : null;
+  const horasConValor = horasFuente ? tiposHoras.filter((tipo) => horasFuente[tipo.key] != null && horasFuente[tipo.key] > 0) : [];
   if (horasConValor.length === 0) {
     return <Typography variant="caption" color="textSecondary">-</Typography>;
   }
@@ -126,7 +130,7 @@ export const PartesCell = ({ item }) => {
       {horasConValor.map((tipo) => (
         <Chip
           key={tipo.key}
-          label={`${tipo.label}: ${item[tipo.key]}h`}
+          label={`${tipo.label}: ${horasFuente[tipo.key]}h`}
           size="small"
           color={tipo.color}
           variant="outlined"
