@@ -301,11 +301,15 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
   }
   
   const getEstadoColor = (index) => {
+    // Si el índice es negativo o inválido, devolver color por defecto
+    // Usamos "primary" como fallback ya que es válido tanto para Button como Chip
+    if (index < 0) return "primary";
+    
     let colors;
     switch (notasEstados.length) {
       case 0:
       case 1:
-        return "default";
+        return "primary";
       case 2:
         colors = ["primary", "success"];
         break
@@ -316,13 +320,13 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
         colors = ["warning", "info", "primary", "success"];
         break;
       case 5:
-        colors = ["default", "warning", "info", "primary", "success"];
-        break;
       default:
-        return "default";
+        // Para 5 o más estados
+        colors = ["secondary", "warning", "info", "primary", "success"];
+        break;
     }
     
-    return colors[index % colors.length]; 
+    return colors[index % colors.length] || "primary"; 
   };
   
   
