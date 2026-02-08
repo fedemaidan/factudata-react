@@ -160,19 +160,13 @@ const EmpresaOnboardingRow = ({ empresa, diasAnalisis = 7 }) => {
     if (!expanded && !usuariosDetalle) {
       setLoadingUsuarios(true);
       try {
-        const data = await analyticsService.getEmpresaStats(empresa.id);
-        // Filtrar movimientos del periodo de onboarding para cada usuario
-        const fechaDesde = new Date(empresa.fechaRegistroCliente);
-        const fechaHasta = new Date(empresa.fechaRegistroCliente);
-        fechaHasta.setDate(fechaHasta.getDate() + 7);
-        
-        const usuariosConOnboarding = (data.usuarios || []).map(u => ({
-          ...u,
-          movimientosOnboarding: u.totalMovimientos || 0, // Idealmente filtrado por fecha
-          insightsOnboarding: 0,
-          primerMovimiento: u.ultimoUso // Aproximación
-        }));
-        setUsuariosDetalle(usuariosConOnboarding);
+        const data = await analyticsService.getUsuariosStatsEnPeriodo(
+          empresa.id,
+          empresa.fechaRegistroCliente,
+          diasAnalisis
+        );
+
+        setUsuariosDetalle(data.detalleUsuarios || []);
       } catch (error) {
         console.error('Error cargando usuarios:', error);
         setUsuariosDetalle([]);
@@ -461,7 +455,7 @@ const AnalyticsOnboardingPage = () => {
   // Estado para filtro por estado de onboarding
   const [filtroEstado, setFiltroEstado] = useState('todos');
   
-  // Estado para días de análisis
+  // Estado para días de análisis (default: 7)
   const [diasAnalisis, setDiasAnalisis] = useState(7);
   
   // Estado para filtro de fechas de registro
@@ -673,6 +667,13 @@ const AnalyticsOnboardingPage = () => {
   // Filtrar y ordenar empresas
   const filteredEmpresas = useMemo(() => {
     let filtered = empresas;
+
+    // Filtro por fecha de registro (siempre aplicar en la vista)
+    filtered = filtered.filter(emp => {
+      if (!emp.fechaRegistroCliente) return false;
+      const fechaReg = new Date(emp.fechaRegistroCliente);
+      return fechaReg >= fechaDesde && fechaReg <= fechaHasta;
+    });
     
     // Filtro por estado de onboarding (usando diasAnalisis dinámico)
     if (filtroEstado === 'en-curso') {
@@ -773,9 +774,9 @@ const AnalyticsOnboardingPage = () => {
                     <MenuItem value={30}>Primeros 30 días</MenuItem>
                   </Select>
                 </FormControl>
-                
+
                 <Alert severity="info" sx={{ width: '100%' }}>
-                  💡 Se recomienda seleccionar clientes registrados hace al menos {diasAnalisis} días para tener datos completos de onboarding.
+                  💡 Analizamos los primeros {diasAnalisis} días desde el registro de cada cliente.
                 </Alert>
                 
                 {dateError && (

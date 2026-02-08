@@ -178,6 +178,33 @@ const analyticsService = {
   },
 
   /**
+   * Obtiene estadísticas de usuarios en un periodo específico
+   * @param {string} empresaId - ID de la empresa
+   * @param {Date} fechaRegistro - Fecha de registro como cliente
+   * @param {number} diasAnalisis - Cantidad de días a analizar (default: 7)
+   * @returns {Promise<object>} - Estadísticas de usuarios en periodo
+   */
+  getUsuariosStatsEnPeriodo: async (empresaId, fechaRegistro, diasAnalisis = 7) => {
+    try {
+      const fechaDesde = new Date(fechaRegistro);
+      const fechaHasta = new Date(fechaRegistro);
+      fechaHasta.setDate(fechaHasta.getDate() + diasAnalisis);
+
+      const response = await api.get(`/analytics/empresa/${empresaId}/usuarios`, {
+        params: {
+          fechaDesde: fechaDesde.toISOString(),
+          fechaHasta: fechaHasta.toISOString()
+        }
+      });
+
+      return response.data;
+    } catch (error) {
+      console.error('Error al obtener estadísticas de usuarios en periodo:', error);
+      throw error;
+    }
+  },
+
+  /**
    * Obtiene métricas de onboarding de una empresa
    * Usa el endpoint de métricas existente con el rango de fechas de onboarding
    * @param {string} empresaId - ID de la empresa

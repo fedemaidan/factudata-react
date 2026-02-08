@@ -168,11 +168,12 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
   
     const notaActualizada = { ...comentariosDialogNota, comentarios: comentariosActualizados };
     try {
-      await notaPedidoService.updateNota(comentariosDialogNota.id, notaActualizada);
+      const notaServidor = await notaPedidoService.updateNota(comentariosDialogNota.id, notaActualizada);
+      if (!notaServidor) throw new Error('No se pudo actualizar la nota');
       setNotas((prev) =>
-        prev.map((n) => (n.id === comentariosDialogNota.id ? notaActualizada : n))
+        prev.map((n) => (n.id === comentariosDialogNota.id ? notaServidor : n))
       );
-      setComentariosDialogNota(notaActualizada);
+      setComentariosDialogNota(notaServidor);
       setComentarioEditandoIdx(null);
       setComentarioEditadoTexto('');
       setAlert({ open: true, message: 'Comentario editado', severity: 'success' });
@@ -190,11 +191,12 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
   
     const notaActualizada = { ...comentariosDialogNota, comentarios: comentariosActualizados };
     try {
-      await notaPedidoService.updateNota(comentariosDialogNota.id, notaActualizada);
+      const notaServidor = await notaPedidoService.updateNota(comentariosDialogNota.id, notaActualizada);
+      if (!notaServidor) throw new Error('No se pudo actualizar la nota');
       setNotas((prev) =>
-        prev.map((n) => (n.id === comentariosDialogNota.id ? notaActualizada : n))
+        prev.map((n) => (n.id === comentariosDialogNota.id ? notaServidor : n))
       );
-      setComentariosDialogNota(notaActualizada);
+      setComentariosDialogNota(notaServidor);
       setAlert({ open: true, message: 'Comentario eliminado', severity: 'success' });
     } catch (error) {
       console.error('Error al eliminar comentario:', error);
@@ -352,12 +354,13 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
   
     try {
       setComentariosCargando(true);
-      await notaPedidoService.updateNota(comentariosDialogNota.id, notaActualizada);
-  
+      const notaServidor = await notaPedidoService.updateNota(comentariosDialogNota.id, notaActualizada);
+      if (!notaServidor) throw new Error('No se pudo actualizar la nota');
+
       setNotas((prev) =>
-        prev.map((n) => (n.id === comentariosDialogNota.id ? notaActualizada : n))
+        prev.map((n) => (n.id === comentariosDialogNota.id ? notaServidor : n))
       );
-      setComentariosDialogNota(notaActualizada);
+      setComentariosDialogNota(notaServidor);
       nuevoComentarioRef.current.value = ''; // limpiás el input
       setAlert({ open: true, message: 'Comentario agregado con éxito', severity: 'success' });
     } catch (error) {
@@ -487,9 +490,12 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
       const updatedNota = { ...currentNota, ...formData };
       console.log("updatedNota", updatedNota)
       
-      const success = await notaPedidoService.updateNota(currentNota.id, updatedNota);
-      if (success) {
-        setNotas(notas.map((n) => (n.id === currentNota.id ? updatedNota : n)));
+      const notaServidor = await notaPedidoService.updateNota(currentNota.id, {
+        ...updatedNota,
+        _userName: `${user.firstName} ${user.lastName}`
+      });
+      if (notaServidor) {
+        setNotas(notas.map((n) => (n.id === currentNota.id ? notaServidor : n)));
         setAlert({ open: true, message: 'Nota actualizada con éxito', severity: 'success' });
       } else {
         setAlert({ open: true, message: 'Error al actualizar la nota', severity: 'error' });
@@ -517,29 +523,13 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
         estado: nuevoEstado,
         _userName: `${user.firstName} ${user.lastName}` // Para el historial
       };
-      const success = await notaPedidoService.updateNota(nota.id, updatedNota);
+      const notaServidor = await notaPedidoService.updateNota(nota.id, updatedNota);
   
-      if (success) {
-        // Actualizar nota localmente con el historial
-        const notaConHistorial = {
-          ...nota,
-          estado: nuevoEstado,
-          historial: [
-            ...(nota.historial || []),
-            {
-              tipo: 'cambio_campo',
-              campo: 'Estado',
-              valor_anterior: nota.estado,
-              valor_nuevo: nuevoEstado,
-              fecha: { _seconds: Math.floor(Date.now() / 1000) },
-              usuario_nombre: `${user.firstName} ${user.lastName}`,
-            }
-          ]
-        };
-        setNotas(notas.map((n) => (n.id === nota.id ? notaConHistorial : n)));
+      if (notaServidor) {
+        setNotas(notas.map((n) => (n.id === nota.id ? notaServidor : n)));
         // Actualizar drawer si está abierto
         if (comentariosDialogNota?.id === nota.id) {
-          setComentariosDialogNota(notaConHistorial);
+          setComentariosDialogNota(notaServidor);
         }
         setAlert({ open: true, message: `Estado cambiado a "${nuevoEstado}"`, severity: 'success' });
       } else {

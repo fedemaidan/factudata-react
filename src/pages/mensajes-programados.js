@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Head from 'next/head';
 import { Box, Container, Stack, Typography, Button, TextField, FormControl, InputLabel, Select, MenuItem, Paper, Collapse, InputAdornment } from '@mui/material';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
@@ -15,6 +15,7 @@ import { useAuthContext } from 'src/contexts/auth-context';
 const Page = () => {
   const { user } = useAuthContext();
   const [mensajes, setMensajes] = useState([]);
+  const [totalMensajes, setTotalMensajes] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [currentMensaje, setCurrentMensaje] = useState(null);
@@ -33,54 +34,26 @@ const Page = () => {
   const fetchMensajes = useCallback(async () => {
     try {
       setIsLoading(true);
-      const data = await mensajesProgramadosService.getMensajes();
+      const data = await mensajesProgramadosService.getMensajes({
+        page: page + 1,
+        limit: rowsPerPage,
+        estado: filterEstado || undefined,
+        telefono: filterTelefono || undefined,
+        fechaDesde: filterFechaDesde || undefined,
+        fechaHasta: filterFechaHasta || undefined
+      });
       setMensajes(data.items || []);
+      setTotalMensajes(data.total || 0);
     } catch (err) {
       console.error(err);
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [page, rowsPerPage, filterEstado, filterTelefono, filterFechaDesde, filterFechaHasta]);
 
   useEffect(() => {
     fetchMensajes();
   }, [fetchMensajes]);
-
-  // Filtrado de mensajes
-  const filteredMensajes = useMemo(() => {
-    let filtered = [...mensajes];
-
-    if (filterFechaDesde) {
-      const fechaDesde = new Date(filterFechaDesde);
-      filtered = filtered.filter((m) => new Date(m.fechaEnvioProgramada) >= fechaDesde);
-    }
-
-    if (filterFechaHasta) {
-      const fechaHasta = new Date(filterFechaHasta);
-      fechaHasta.setHours(23, 59, 59, 999);
-      filtered = filtered.filter((m) => new Date(m.fechaEnvioProgramada) <= fechaHasta);
-    }
-
-    if (filterEstado) {
-      filtered = filtered.filter((m) => m.estado === filterEstado);
-    }
-
-    if (filterTelefono) {
-      filtered = filtered.filter((m) => 
-        m.to?.includes(filterTelefono) || m.from?.includes(filterTelefono)
-      );
-    }
-
-    // Ordenar por fecha programada descendente
-    filtered.sort((a, b) => new Date(b.fechaEnvioProgramada) - new Date(a.fechaEnvioProgramada));
-
-    return filtered;
-  }, [mensajes, filterFechaDesde, filterFechaHasta, filterEstado, filterTelefono]);
-
-  // Mensajes paginados
-  const paginatedMensajes = useMemo(() => {
-    return filteredMensajes.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
-  }, [filteredMensajes, page, rowsPerPage]);
 
   const handlePageChange = (event, newPage) => {
     setPage(newPage);
@@ -246,17 +219,17 @@ const Page = () => {
                     Limpiar
                   </Button>
                   <Typography variant="body2" color="text.secondary" sx={{ ml: 'auto' }}>
-                    {filteredMensajes.length} de {mensajes.length} mensajes
+                    {mensajes.length} de {totalMensajes} mensajes
                   </Typography>
                 </Stack>
               </Paper>
             </Collapse>
             
             <MensajesProgramadosTable
-              items={paginatedMensajes}
+              items={mensajes}
               onEdit={handleEdit}
               onDelete={handleDelete}
-              count={filteredMensajes.length}
+              count={totalMensajes}
               page={page}
               rowsPerPage={rowsPerPage}
               onPageChange={handlePageChange}

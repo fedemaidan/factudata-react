@@ -6,9 +6,7 @@ const mensajesProgramadosService = {
     return response.data;
   },
   getMensajes: async (params = {}) => {
-    // Si no se especifica limit, traer todos (o un número grande)
-    const defaultParams = { limit: 1000, ...params };
-    const response = await api.get('/mensajes-programados', { params: defaultParams });
+    const response = await api.get('/mensajes-programados', { params });
     return response.data;
   },
   updateMensaje: async (id, data) => {
