@@ -25,6 +25,7 @@ import { Block as BlockIcon } from "@mui/icons-material";
 import ArrowDropDownIcon from "@mui/icons-material/ArrowDropDown";
 import { FileDownload as FileDownloadIcon } from "@mui/icons-material";
 import SearchIcon from "@mui/icons-material/Search";
+import VisibilityIcon from "@mui/icons-material/Visibility";
 import { useQuery } from "@tanstack/react-query";
 import AgregarProyeccionModal from "src/components/celulandia/AgregarProyeccionModal";
 import AgregarPedidoModal from "src/components/celulandia/proyecciones/AgregarPedidoModal";
@@ -47,6 +48,7 @@ import {
 } from "src/components/celulandia/proyecciones/cells";
 import { formatDateDDMMYYYY } from "src/utils/handleDates";
 import productoService from "src/services/celulandia/productoService";
+import ProductDetailModal from "src/components/celulandia/proyecciones/productDetailModal";
 const INITIAL_SORT_OPTIONS = {
   sortField: "createdAt",
   sortDirection: "desc",
@@ -69,6 +71,8 @@ const ProyeccionesV2Page = () => {
     () => Array.from(selectedProductsMap.values()),
     [selectedProductsMap]
   );
+  const [detailModalOpen, setDetailModalOpen] = useState(false);
+  const [detailModalProduct, setDetailModalProduct] = useState(null);
   const [tagsMenuAnchorEl, setTagsMenuAnchorEl] = useState(null);
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(200);
@@ -155,6 +159,16 @@ const ProyeccionesV2Page = () => {
     setNotaError("");
     setNotaEditando(null);
     setIsNotaDialogOpen(true);
+  }, []);
+
+  const handleOpenDetailModal = useCallback((producto) => {
+    setDetailModalProduct(producto ?? null);
+    setDetailModalOpen(true);
+  }, []);
+
+  const handleCloseDetailModal = useCallback(() => {
+    setDetailModalProduct(null);
+    setDetailModalOpen(false);
   }, []);
 
   const handleOpenEditarNotaDialog = useCallback((producto, nota) => {
@@ -258,10 +272,24 @@ const ProyeccionesV2Page = () => {
         key: "nombre",
         label: "Nombre",
         sortable: true,
-        sx: {
-
-        },
-        render: (item) => <NombreProductoCell nombre={item?.nombre} />,
+        render: (item) => (
+          <Stack direction="row" spacing={0.5} alignItems="center">
+            <NombreProductoCell nombre={item?.nombre} />
+            <Button
+              size="small"
+              variant="text"
+              startIcon={<VisibilityIcon fontSize="small" />}
+              sx={{ minWidth: 0, textTransform: "none", px: 0.5 }}
+              onClick={(event) => {
+                event.stopPropagation();
+                handleOpenDetailModal(item);
+              }}
+              aria-label={`Ver detalle de ${item?.nombre ?? item?.codigo ?? "producto"}`}
+            >
+              Ver
+            </Button>
+          </Stack>
+        ),
       },
       {
         key: "tags",
@@ -293,12 +321,11 @@ const ProyeccionesV2Page = () => {
         render: (item) => <StockActualProductoCell item={item} />,
       },
       { key: "ventasPeriodo", label: "Ventas período", sortable: true },
-      { key: "ventasProyectadas", label: "Ventas proyectadas", sortable: true },
+      { key: "ventasProyectadas", label: "Ventas proyectadas (90 días)", sortable: true },
       {
         key: "diasHastaAgotarStock",
         label: "Días hasta agotar stock",
         sortable: false,
-        sx: { textAlign: "center", whiteSpace: "nowrap" },
         render: (item) => <DiasHastaAgotarProductoCell item={item} />,
       },
       {
@@ -329,8 +356,20 @@ const ProyeccionesV2Page = () => {
         sortable: true,
         render: (item) => formatDateDDMMYYYY(item.fechaCompraSugerida),
       },
+      {
+        key: "fechaIngreso",
+        label: "Fecha ingreso",
+        sortable: true,
+        render: (item) => formatDateDDMMYYYY(item.fechaIngreso),
+      },
+      {
+        key: "fechaCero",
+        label: "Fecha cero",
+        sortable: true,
+        render: (item) => formatDateDDMMYYYY(item.fechaCero),
+      },
     ],
-    [proximoArriboPorCodigo, handleOpenNotaDialog, handleOpenEditarNotaDialog, handleOpenDeleteNotaDialog]
+    [proximoArriboPorCodigo, handleOpenNotaDialog, handleOpenEditarNotaDialog, handleOpenDeleteNotaDialog, handleOpenDetailModal]
   );
 
   const {
@@ -371,14 +410,16 @@ const ProyeccionesV2Page = () => {
     });
     if (!mejorId) return null;
 
-    return mejorCuenta / total >= 0.9
-      ? { id: mejorId, porcentaje: Math.round((mejorCuenta / total) * 100) }
-      : null;
+    return {
+      id: mejorId,
+      porcentaje: Math.round((mejorCuenta / total) * 100),
+      cuenta: mejorCuenta,
+    };
   }, [productos]);
 
   useEffect(() => {
-    const shouldFetch = proyeccionIdsEnPagina.length === 1;
-    if (!shouldFetch) {
+    const idAMostrar = proyeccionMayoritaria?.id;
+    if (!idAMostrar) {
       setProyeccionMeta(null);
       setIsLoadingProyeccionMeta(false);
       return;
@@ -388,7 +429,7 @@ const ProyeccionesV2Page = () => {
     const fetchMeta = async () => {
       try {
         setIsLoadingProyeccionMeta(true);
-        const payload = await proyeccionService.getProyeccionesMetadata({ ids: proyeccionIdsEnPagina });
+        const payload = await proyeccionService.getProyeccionesMetadata({ ids: [idAMostrar] });
         const first = Array.isArray(payload?.data) ? payload.data[0] : null;
         if (!isActive) return;
         setProyeccionMeta(first || null);
@@ -405,7 +446,7 @@ const ProyeccionesV2Page = () => {
     return () => {
       isActive = false;
     };
-  }, [proyeccionIdsEnPagina]);
+  }, [proyeccionMayoritaria?.id]);
 
   const tablePagination = useMemo(
     () => ({
@@ -609,54 +650,58 @@ const ProyeccionesV2Page = () => {
         </Stack>
 
         <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-          {isLoadingProyeccionMeta ? (
-            "Cargando datos de proyección…"
-          ) : proyeccionIdsEnPagina.length === 0 ? (
-            ""
-          ) : proyeccionIdsEnPagina.length > 1 ? (
-            proyeccionMayoritaria ? (
-              `Proyección mayoritaria (≥90%): ${proyeccionMayoritaria.id}`
+        {isLoadingProyeccionMeta ? (
+          "Cargando datos de proyección…"
+        ) : proyeccionIdsEnPagina.length === 0 ? (
+          ""
+        ) : proyeccionMeta ? (
+          <>
+            {proyeccionIdsEnPagina.length > 1 && proyeccionMayoritaria ? (
+              <>
+                {`Proyección mayoritaria: ${proyeccionMayoritaria.id} (${proyeccionMayoritaria.porcentaje}%)`}
+                {" · "}
+              </>
+            ) : null}
+            {`Proyección: ${formatDateDDMMYYYY(proyeccionMeta?.fechaInicio)} → ${formatDateDDMMYYYY(
+              proyeccionMeta?.fechaFin
+            )}`}
+            {` · Fecha actual de proyección: ${formatDateDDMMYYYY(proyeccionMeta?.fechaFin)}`}
+            {" · Archivos: "}
+            {proyeccionMeta?.linkVentas ? (
+              <Link
+                href={proyeccionMeta.linkVentas}
+                target="_blank"
+                rel="noopener noreferrer"
+                underline="hover"
+                sx={{ mr: 1 }}
+              >
+                Ventas
+              </Link>
             ) : (
-              `Esta lista incluye ${proyeccionIdsEnPagina.length} proyecciones distintas.`
-            )
-          ) : (
-            <>
-              {`Proyección: ${formatDateDDMMYYYY(proyeccionMeta?.fechaInicio)} → ${formatDateDDMMYYYY(
-                proyeccionMeta?.fechaFin
-              )}`}
-              {` · Fecha actual de proyección: ${formatDateDDMMYYYY(proyeccionMeta?.fechaFin)}`}
-              {" · Archivos: "}
-              {proyeccionMeta?.linkVentas ? (
-                <Link
-                  href={proyeccionMeta.linkVentas}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  underline="hover"
-                  sx={{ mr: 1 }}
-                >
-                  Ventas
-                </Link>
-              ) : (
-                <Typography component="span" variant="inherit" sx={{ mr: 1, color: "text.disabled" }}>
-                  Ventas
-                </Typography>
-              )}
-              {proyeccionMeta?.linkQuiebre || proyeccionMeta?.linkStock ? (
-                <Link
-                  href={proyeccionMeta?.linkQuiebre || proyeccionMeta?.linkStock}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  underline="hover"
-                >
-                  Stock/Quiebre
-                </Link>
-              ) : (
-                <Typography component="span" variant="inherit" sx={{ color: "text.disabled" }}>
-                  Stock/Quiebre
-                </Typography>
-              )}
-            </>
-          )}
+              <Typography component="span" variant="inherit" sx={{ mr: 1, color: "text.disabled" }}>
+                Ventas
+              </Typography>
+            )}
+            {proyeccionMeta?.linkQuiebre || proyeccionMeta?.linkStock ? (
+              <Link
+                href={proyeccionMeta?.linkQuiebre || proyeccionMeta?.linkStock}
+                target="_blank"
+                rel="noopener noreferrer"
+                underline="hover"
+              >
+                Stock/Quiebre
+              </Link>
+            ) : (
+              <Typography component="span" variant="inherit" sx={{ color: "text.disabled" }}>
+                Stock/Quiebre
+              </Typography>
+            )}
+          </>
+        ) : proyeccionMayoritaria ? (
+          `Proyección mayoritaria: ${proyeccionMayoritaria.id}`
+        ) : (
+          `Esta lista incluye ${proyeccionIdsEnPagina.length} proyecciones distintas.`
+        )}
         </Typography>
 
         {/* Contador de productos seleccionados (debajo de acciones, arriba de la tabla) */}
@@ -799,6 +844,11 @@ const ProyeccionesV2Page = () => {
             setIsIgnorarProductosOpen(false);
             refetchProductos();
           }}
+        />
+        <ProductDetailModal
+          open={detailModalOpen}
+          onClose={handleCloseDetailModal}
+          producto={detailModalProduct}
         />
       </Container>
       </DashboardLayout>

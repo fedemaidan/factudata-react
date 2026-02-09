@@ -6,16 +6,20 @@ export const usePedidosResumen = ({
   sortDirection = "desc",
   limit = 200,
   offset = 0,
+  search = "",
+  estado = "",
 } = {}) => {
   const queryClient = useQueryClient();
   const query = useQuery({
-    queryKey: ["pedidos-resumen", sortField, sortDirection, limit, offset],
+    queryKey: ["pedidos-resumen", sortField, sortDirection, limit, offset, search, estado],
     queryFn: () =>
       pedidoService.getResumen({
         limit,
         offset,
         sortField,
         sortDirection,
+        search,
+        estado,
       }),
     retry: false,
     keepPreviousData: true,
