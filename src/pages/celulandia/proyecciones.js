@@ -321,7 +321,7 @@ const ProyeccionesV2Page = () => {
         render: (item) => <StockActualProductoCell item={item} />,
       },
       { key: "ventasPeriodo", label: "Ventas período", sortable: true },
-      { key: "ventasProyectadas", label: "Ventas proyectadas", sortable: true },
+      { key: "ventasProyectadas", label: "Ventas proyectadas (90 días)", sortable: true },
       {
         key: "diasHastaAgotarStock",
         label: "Días hasta agotar stock",

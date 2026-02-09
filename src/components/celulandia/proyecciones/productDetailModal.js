@@ -205,7 +205,18 @@ const ProductDetailModal = ({ open, onClose, producto }) => {
   if (!open) return null;
 
   return (
-    <Dialog open={open} onClose={onClose} fullWidth maxWidth="lg">
+    <Dialog
+      open={open}
+      onClose={onClose}
+      fullWidth
+      maxWidth="lg"
+      PaperProps={{
+        sx: {
+          minHeight: "88vh",
+          maxHeight: "96vh",
+        },
+      }}
+    >
       <DialogTitle sx={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
         <Box>
           <Typography variant="h6" component="span">
@@ -220,7 +231,13 @@ const ProductDetailModal = ({ open, onClose, producto }) => {
           <CloseIcon fontSize="small" />
         </IconButton>
       </DialogTitle>
-      <DialogContent dividers>
+      <DialogContent
+        dividers
+        sx={{
+          maxHeight: "calc(96vh - 120px)",
+          overflowY: "auto",
+        }}
+      >
         {!hasDetalle ? (
           <Box sx={{ py: 6 }}>
             <Typography variant="body2" align="center" color="text.secondary">
@@ -459,30 +476,108 @@ const ProductDetailModal = ({ open, onClose, producto }) => {
                 </Stack>
               </>
             ) : (
-              <TableContainer component={Paper} sx={{ mt: 2 }}>
-                <Table size="small">
+              <TableContainer
+                component={Paper}
+                sx={{
+                  mt: 2,
+                  maxHeight: "calc(96vh - 260px)",
+                  overflowY: "auto",
+                  borderRadius: 2,
+                }}
+              >
+                <Table
+                  size="small"
+                  stickyHeader
+                  sx={{
+                    borderCollapse: "separate",
+                  }}
+                >
                   <TableHead>
                     <TableRow>
-                      <TableCell>Día</TableCell>
-                      <TableCell>Fecha</TableCell>
-                      <TableCell align="right">Stock inicial</TableCell>
-                      <TableCell align="right">Ventas diarias</TableCell>
-                      <TableCell align="right">Ingreso pedido</TableCell>
-                      <TableCell align="right">Stock proyectado</TableCell>
+                      <TableCell
+                        sx={{
+                          position: "sticky",
+                          top: 0,
+                          backgroundColor: theme.palette.background.paper,
+                          zIndex: 1,
+                          borderBottom: `1px solid ${theme.palette.divider}`,
+                        }}
+                      >
+                        Día
+                      </TableCell>
+                      <TableCell
+                        sx={{
+                          position: "sticky",
+                          top: 0,
+                          backgroundColor: theme.palette.background.paper,
+                          zIndex: 1,
+                          borderBottom: `1px solid ${theme.palette.divider}`,
+                        }}
+                      >
+                        Fecha
+                      </TableCell>
+                      <TableCell
+                        align="right"
+                        sx={{
+                          position: "sticky",
+                          top: 0,
+                          backgroundColor: theme.palette.background.paper,
+                          zIndex: 1,
+                          borderBottom: `1px solid ${theme.palette.divider}`,
+                        }}
+                      >
+                        Stock inicial
+                      </TableCell>
+                      <TableCell
+                        align="right"
+                        sx={{
+                          position: "sticky",
+                          top: 0,
+                          backgroundColor: theme.palette.background.paper,
+                          zIndex: 1,
+                          borderBottom: `1px solid ${theme.palette.divider}`,
+                        }}
+                      >
+                        Ventas diarias
+                      </TableCell>
+                      <TableCell
+                        align="right"
+                        sx={{
+                          position: "sticky",
+                          top: 0,
+                          backgroundColor: theme.palette.background.paper,
+                          zIndex: 1,
+                          borderBottom: `1px solid ${theme.palette.divider}`,
+                        }}
+                      >
+                        Ingreso pedido
+                      </TableCell>
+                      <TableCell
+                        align="right"
+                        sx={{
+                          position: "sticky",
+                          top: 0,
+                          backgroundColor: theme.palette.background.paper,
+                          zIndex: 1,
+                          borderBottom: `1px solid ${theme.palette.divider}`,
+                        }}
+                      >
+                        Stock proyectado
+                      </TableCell>
                     </TableRow>
                   </TableHead>
-        <TableBody>
-          {detalle.map((day) => (
-            <TableRow key={`row-${day.dia}`}>
-              <TableCell>{day.displayDay ?? day.dia}</TableCell>
+                  <TableBody>
+                    {detalle.map((day) => (
+                      <TableRow key={`row-${day.dia}`}>
+                        <TableCell>{day.displayDay ?? day.dia}</TableCell>
                         <TableCell>{getFechaLabel(day) ?? "-"}</TableCell>
-              <TableCell align="right">{day.stockInicial}</TableCell>
-              <TableCell align="right">-{day.ventasDiarias}</TableCell>
-              <TableCell align="right">+{day.ingresosPedido}</TableCell>
-              <TableCell align="right">{day.stockFinal}</TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
+                        <TableCell align="right">{day.stockInicial}</TableCell>
+                        <TableCell align="right">-{day.ventasDiarias}</TableCell>
+                        <TableCell align="right">+{day.ingresosPedido}</TableCell>
+                        <TableCell align="right">{day.stockFinal}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
                 </Table>
               </TableContainer>
             )}
