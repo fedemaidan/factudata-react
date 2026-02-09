@@ -200,6 +200,36 @@ export const SideNav = (props) => {
         });
       }
 
+      if (permisosUsuario.includes("BEJERMAN_DEMO")) {
+        baseItems.push({
+          title: "Bejerman",
+          path: "/bejerman/validacion",
+          icon: (
+            <SvgIcon fontSize="small">
+              <SyncIcon />
+            </SvgIcon>
+          ),
+        });
+        baseItems.push({
+          title: "Bejerman Catálogos",
+          path: "/bejerman/catalogos",
+          icon: (
+            <SvgIcon fontSize="small">
+              <SyncIcon />
+            </SvgIcon>
+          ),
+        });
+        baseItems.push({
+          title: "Bejerman Config",
+          path: "/bejerman/configuracion",
+          icon: (
+            <SvgIcon fontSize="small">
+              <SettingsIcon />
+            </SvgIcon>
+          ),
+        });
+      }
+
       if (permisosUsuario.includes("CELULANDIA_CUENTA_CORRIENTE")) {
         baseItems.push({
           title: "Cuenta Corriente",
