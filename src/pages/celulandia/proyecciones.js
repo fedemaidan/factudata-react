@@ -326,7 +326,6 @@ const ProyeccionesV2Page = () => {
         key: "diasHastaAgotarStock",
         label: "Días hasta agotar stock",
         sortable: false,
-        sx: { textAlign: "center", whiteSpace: "nowrap" },
         render: (item) => <DiasHastaAgotarProductoCell item={item} />,
       },
       {
@@ -356,6 +355,18 @@ const ProyeccionesV2Page = () => {
         label: "Fecha compra sugerida",
         sortable: true,
         render: (item) => formatDateDDMMYYYY(item.fechaCompraSugerida),
+      },
+      {
+        key: "fechaIngreso",
+        label: "Fecha ingreso",
+        sortable: true,
+        render: (item) => formatDateDDMMYYYY(item.fechaIngreso),
+      },
+      {
+        key: "fechaCero",
+        label: "Fecha cero",
+        sortable: true,
+        render: (item) => formatDateDDMMYYYY(item.fechaCero),
       },
     ],
     [proximoArriboPorCodigo, handleOpenNotaDialog, handleOpenEditarNotaDialog, handleOpenDeleteNotaDialog, handleOpenDetailModal]
