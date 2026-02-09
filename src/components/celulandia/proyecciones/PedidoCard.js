@@ -57,143 +57,125 @@ const PedidoCard = ({
     return new Date(masCercana);
   })();
 
-  return (
-    <Card variant="outlined">
-      <CardContent>
-        <Stack direction={{ xs: "column", md: "row" }} spacing={2} justifyContent="space-between">
-          <Box>
-            <Typography variant="h6">{pedido.numeroPedido}</Typography>
-            <Typography variant="caption" color="text.secondary" display="block">
-              Creado: {pedido.createdAt ? dayjs(pedido.createdAt).format("DD/MM/YYYY") : "-"}
-            </Typography>
-          </Box>
+  const renderLlegadasResumen = () => {
+    const fechasContenedores = contenedoresReales.map((c) => {
+      const codigo = c?.contenedor?.codigo || "Contenedor";
+      const fecha = c?.contenedor?.fechaEstimadaLlegada
+        ? dayjs(c.contenedor.fechaEstimadaLlegada).format("DD/MM/YYYY")
+        : null;
+      return { codigo, fecha };
+    });
 
-          <Stack direction="row" spacing={1} alignItems="center">
-            <Chip color={estado.color} label={estado.label} icon={estado.icon} size="small" />
-            {pedido?.observaciones && (
-              <Chip size="small" variant="outlined" label="Con observaciones" />
-            )}
+    const contenedoresSinFecha = fechasContenedores.filter((c) => !c.fecha).length;
+    const contenedoresConFecha = fechasContenedores.filter((c) => !!c.fecha);
+    const uniqueFechasCont = [...new Set(contenedoresConFecha.map((c) => c.fecha))];
+
+    const partes = [];
+
+    if (tieneSinContenedor) {
+      if (fechasPedidoSinContenedor.length === 0) {
+        partes.push("Pedido: sin fecha");
+      } else if (fechasPedidoSinContenedor.length === 1) {
+        partes.push(`Pedido: ${fechasPedidoSinContenedor[0]}`);
+      } else if (fechasPedidoSinContenedor.length === 2) {
+        partes.push(`Pedido: ${fechasPedidoSinContenedor.join(", ")}`);
+      } else {
+        partes.push(
+          `Pedido: ${fechasPedidoSinContenedor[0]}, ${fechasPedidoSinContenedor[1]} +${
+            fechasPedidoSinContenedor.length - 2
+          }`
+        );
+      }
+    }
+
+    if (contenedoresConFecha.length > 0) {
+      if (uniqueFechasCont.length === 1) {
+        const codigos = contenedoresConFecha.map((c) => c.codigo).join(", ");
+        partes.push(`${codigos}: ${uniqueFechasCont[0]}`);
+      } else {
+        contenedoresConFecha.slice(0, 3).forEach((c) => partes.push(`${c.codigo}: ${c.fecha}`));
+        if (contenedoresConFecha.length > 3) {
+          partes.push(`+${contenedoresConFecha.length - 3} contenedor(es)`);
+        }
+      }
+    }
+
+    if (contenedoresSinFecha > 0) {
+      partes.push(`${contenedoresSinFecha} sin fecha`);
+    }
+
+    if (partes.length === 0) {
+      return "No informadas";
+    }
+
+    return partes.join(" · ");
+  };
+
+  return (
+    <Card variant="outlined" sx={{ py: 0, px: 1 }}>
+      <CardContent sx={{ py: 0.5, px: 0 }}>
+        <Stack spacing={0.75}>
+          <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1}>
+            <Stack spacing={0.2}>
+              <Typography variant="subtitle2">{pedido.numeroPedido}</Typography>
+              <Typography variant="caption" color="text.secondary">
+                Creado: {pedido.createdAt ? dayjs(pedido.createdAt).format("DD/MM/YYYY") : "-"}
+              </Typography>
+            </Stack>
+            <Stack direction="row" spacing={0.5} alignItems="center">
+              <Chip color={estado.color} label={estado.label} icon={estado.icon} size="small" />
+              {pedido?.observaciones && (
+                <Chip size="small" variant="outlined" label="Con observaciones" />
+              )}
+              <Button variant="text" size="small" onClick={onVerDetalle}>
+                Ver detalle
+              </Button>
+            </Stack>
+          </Stack>
+
+          <Stack direction="row" spacing={1.5} flexWrap="wrap" sx={{ fontSize: "0.7rem" }}>
+            <Stack spacing={0.2}>
+              <Typography variant="caption" color="text.secondary">
+                Productos
+              </Typography>
+              <Typography variant="body2">
+                {productosCount} referencias · {unidades} unidades
+              </Typography>
+            </Stack>
+            <Stack spacing={0.2} sx={{ maxWidth: 240 }}>
+              <Typography variant="caption" color="text.secondary">
+                Llegadas
+              </Typography>
+              <Typography variant="body2" noWrap>
+                {renderLlegadasResumen()}
+              </Typography>
+            </Stack>
+            <Stack spacing={0.2}>
+              <Typography variant="caption" color="text.secondary">
+                Contenedores
+              </Typography>
+              <Stack direction="row" spacing={0.4} flexWrap="wrap">
+                {contenedoresReales.slice(0, 3).map((c) => (
+                  <Chip
+                    key={c?.contenedor?._id || c?.contenedor?.codigo || Math.random()}
+                    size="small"
+                    label={c?.contenedor?.codigo || "Sin código"}
+                    color={c.estado === "ENTREGADO" ? "success" : "info"}
+                  />
+                ))}
+                {contenedoresReales.length > 3 && (
+                  <Chip size="small" label={`+${contenedoresReales.length - 3}`} />
+                )}
+                {tieneSinContenedor && <Chip size="small" label="Sin contenedor" />}
+              </Stack>
+              {proximaEtaEnTransito && (
+                <Typography variant="caption" color="text.secondary" display="block">
+                  ETA: {dayjs(proximaEtaEnTransito).format("DD/MM/YYYY")}
+                </Typography>
+              )}
+            </Stack>
           </Stack>
         </Stack>
-
-        <Divider sx={{ my: 2 }} />
-
-        <Grid container spacing={2}>
-          <Grid item xs={12} md={4}>
-            <Typography variant="subtitle2">Productos</Typography>
-            <Typography variant="body2" color="text.secondary">
-              {productosCount} referencia(s), {unidades} unidades totales
-            </Typography>
-          </Grid>
-          <Grid item xs={12} md={4}>
-            <Typography variant="subtitle2">Llegadas estimadas</Typography>
-            {(() => {
-              const fechasContenedores = contenedoresReales.map((c) => {
-                const codigo = c?.contenedor?.codigo || "Contenedor";
-                const fecha = c?.contenedor?.fechaEstimadaLlegada
-                  ? dayjs(c.contenedor.fechaEstimadaLlegada).format("DD/MM/YYYY")
-                  : null;
-                return { codigo, fecha };
-              });
-
-              const contenedoresSinFecha = fechasContenedores.filter((c) => !c.fecha).length;
-              const contenedoresConFecha = fechasContenedores.filter((c) => !!c.fecha);
-              const uniqueFechasCont = [...new Set(contenedoresConFecha.map((c) => c.fecha))];
-
-              const partes = [];
-
-              if (tieneSinContenedor) {
-                if (fechasPedidoSinContenedor.length === 0) {
-                  partes.push("Pedido: sin fecha");
-                } else if (fechasPedidoSinContenedor.length === 1) {
-                  partes.push(`Pedido: ${fechasPedidoSinContenedor[0]}`);
-                } else if (fechasPedidoSinContenedor.length === 2) {
-                  partes.push(`Pedido: ${fechasPedidoSinContenedor.join(", ")}`);
-                } else {
-                  partes.push(
-                    `Pedido: ${fechasPedidoSinContenedor[0]}, ${fechasPedidoSinContenedor[1]} +${
-                      fechasPedidoSinContenedor.length - 2
-                    }`
-                  );
-                }
-              }
-
-              if (contenedoresConFecha.length > 0) {
-                // Si hay muchas fechas distintas, resumimos sin perder el dato de que existen
-                if (uniqueFechasCont.length === 1) {
-                  // Mostramos códigos para que quede claro de dónde sale
-                  const codigos = contenedoresConFecha.map((c) => c.codigo).join(", ");
-                  partes.push(`${codigos}: ${uniqueFechasCont[0]}`);
-                } else {
-                  // Mostramos hasta 3 contenedores con fecha
-                  contenedoresConFecha.slice(0, 3).forEach((c) => partes.push(`${c.codigo}: ${c.fecha}`));
-                  if (contenedoresConFecha.length > 3) {
-                    partes.push(`+${contenedoresConFecha.length - 3} contenedor(es)`);
-                  }
-                }
-              }
-
-              if (contenedoresSinFecha > 0) {
-                partes.push(`${contenedoresSinFecha} contenedor(es) sin fecha`);
-              }
-
-              if (partes.length === 0) {
-                return (
-                  <Typography variant="body2" color="text.secondary">
-                    No informadas
-                  </Typography>
-                );
-              }
-
-              return (
-                <Typography variant="body2" color="text.secondary">
-                  {partes.join(" · ")}
-                </Typography>
-              );
-            })()}
-          </Grid>
-          <Grid item xs={12} md={4}>
-            <Typography variant="subtitle2">Contenedores</Typography>
-            {contenedoresReales.length === 0 && !tieneSinContenedor ? (
-              <Typography variant="body2" color="text.secondary">
-                Sin contenedores
-              </Typography>
-            ) : (
-              <>
-                <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
-                  {contenedoresReales.slice(0, 3).map((c) => (
-                    <Chip
-                      key={c?.contenedor?._id || c?.contenedor?.codigo || c.contenedor || Math.random()}
-                      size="small"
-                      label={c?.contenedor?.codigo || "Sin código"}
-                      color={c.estado === "ENTREGADO" ? "success" : "info"}
-                    />
-                  ))}
-                  {contenedoresReales.length > 3 && (
-                    <Chip size="small" label={`+${contenedoresReales.length - 3}`} />
-                  )}
-                  {tieneSinContenedor && <Chip size="small" label="Sin contenedor" />}
-                </Stack>
-                {proximaEtaEnTransito && (
-                  <Typography
-                    variant="caption"
-                    color="text.secondary"
-                    display="block"
-                    sx={{ mt: 0.5 }}
-                  >
-                    Fecha estimada de llegada: {dayjs(proximaEtaEnTransito).format("DD/MM/YYYY")}
-                  </Typography>
-                )}
-              </>
-            )}
-          </Grid>
-        </Grid>
-
-      <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
-        <Button variant="outlined" size="small" onClick={onVerDetalle}>
-          Ver detalle
-        </Button>
-      </Stack>
       </CardContent>
     </Card>
   );

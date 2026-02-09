@@ -40,26 +40,6 @@ const serializeDay = (day, index) => {
   const fechaRaw = day?.fecha ? new Date(day.fecha) : null;
   const fechaLabelFromServer = typeof day?.fechaLabel === "string" ? day.fechaLabel : null;
   const fechaLabel = fechaLabelFromServer || (fechaRaw ? formatDateDDMMYYYY(fechaRaw) : null);
-  // #region agent log
-  fetch("http://127.0.0.1:7242/ingest/2d24a2b6-12a8-4d4d-9c21-afa4382deedb", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      id: "log_serializeDay",
-      timestamp: Date.now(),
-      runId: "initial",
-      hypothesisId: "H1",
-      location: "productDetailModal.js:38",
-      message: "serializeDay output",
-      data: {
-        dia,
-        fecha: day?.fecha,
-        fechaLabel,
-        displayDay,
-      },
-    }),
-  }).catch(() => {});
-  // #endregion
   return {
     dia,
     displayDay,
@@ -82,29 +62,10 @@ const getFechaLabel = (day) => {
 const buildTooltip = (day, isFinalDay) => {
   if (!day) return [];
   const fechaLabel = getFechaLabel(day);
-  // #region agent log
-  fetch("http://127.0.0.1:7242/ingest/2d24a2b6-12a8-4d4d-9c21-afa4382deedb", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        id: "log_buildTooltip",
-        timestamp: Date.now(),
-        runId: "initial",
-        hypothesisId: "H2",
-        location: "productDetailModal.js:56",
-        message: "buildTooltip fechaLabel",
-        data: {
-          dia: day.dia,
-          fechaLabel,
-          fecha: day.fecha,
-        },
-      }),
-  }).catch(() => {});
-  // #endregion
   return [
     { label: "Día", value: day.displayDay ?? day.dia ?? "-" },
     { label: "Fecha", value: fechaLabel ?? "-" },
-    { label: "Stock inicial", value: day.stockInicial },
+    { label: "Stock", value: day.stockInicial },
     { label: "Ventas", value: `-${day.ventasDiarias}` },
     { label: "Ingreso pedido", value: `+${day.ingresosPedido}` },
     { label: isFinalDay ? "Stock proyectado (día 90)" : "Stock final", value: day.stockFinal },
@@ -112,7 +73,6 @@ const buildTooltip = (day, isFinalDay) => {
 };
 
 const ProductDetailModal = ({ open, onClose, producto }) => {
-  console.log("[Proyección modal] producto", producto);
   const theme = useTheme();
   const detalle = useMemo(
     () =>
@@ -125,12 +85,12 @@ const ProductDetailModal = ({ open, onClose, producto }) => {
     [producto]
   );
   const hasDetalle = detalle.length > 0;
-  const [tabIndex, setTabIndex] = useState(0);
+  const [tabIndex, setTabIndex] = useState(1);
   const [showAllEvents, setShowAllEvents] = useState(false);
 
   useEffect(() => {
     if (!open) return;
-    setTabIndex(0);
+    setTabIndex(1);
     setShowAllEvents(false);
   }, [open]);
 
@@ -210,25 +170,6 @@ const ProductDetailModal = ({ open, onClose, producto }) => {
 
   const renderTooltipContent = useCallback(
     (payload) => {
-      // #region agent log
-      const payloadInfo = {
-        index: typeof payload?.datum?.index === "number" ? payload.datum.index : null,
-        x: payload?.datum?.x ?? null,
-      };
-      fetch("http://127.0.0.1:7242/ingest/2d24a2b6-12a8-4d4d-9c21-afa4382deedb", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          id: "log_renderTooltip",
-          timestamp: Date.now(),
-          runId: "initial",
-          hypothesisId: "H3",
-          location: "productDetailModal.js:187",
-          message: "renderTooltip payload",
-          data: payloadInfo,
-        }),
-      }).catch(() => {});
-      // #endregion
       const index = typeof payload?.datum?.index === "number" ? payload.datum.index : null;
       const day = Number.isFinite(index) ? detalle[index] : null;
       const finalDay = detalle[detalle.length - 1];
@@ -289,8 +230,8 @@ const ProductDetailModal = ({ open, onClose, producto }) => {
         ) : (
           <>
             <Tabs value={tabIndex} onChange={(_, value) => setTabIndex(value)} sx={{ mb: 2 }}>
-              <Tab label="Resumen" />
-              <Tab label="Tabla completa" />
+              <Tab label="Resumen" value={0} sx={{ display: "none" }} />
+              <Tab label="Tabla completa" value={1} />
             </Tabs>
             {tabIndex === 0 ? (
               <>

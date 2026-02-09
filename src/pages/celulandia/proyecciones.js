@@ -280,7 +280,10 @@ const ProyeccionesV2Page = () => {
               variant="text"
               startIcon={<VisibilityIcon fontSize="small" />}
               sx={{ minWidth: 0, textTransform: "none", px: 0.5 }}
-              onClick={() => handleOpenDetailModal(item)}
+              onClick={(event) => {
+                event.stopPropagation();
+                handleOpenDetailModal(item);
+              }}
               aria-label={`Ver detalle de ${item?.nombre ?? item?.codigo ?? "producto"}`}
             >
               Ver
