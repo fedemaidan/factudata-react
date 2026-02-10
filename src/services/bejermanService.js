@@ -7,7 +7,7 @@ const getDocuments = async (empresaId, status) => {
 
 const validateDocument = async (id, payload) => {
   const response = await api.put(`/bejerman/documents/${id}/validate`, payload);
-  return response.data.document;
+  return response.data;
 };
 
 const sendDocument = async (id) => {

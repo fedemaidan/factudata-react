@@ -42,7 +42,11 @@ const CatalogosBejermanPage = () => {
 
   const handleConsultar = async () => {
     if (!empresaId) return;
-    if (!vista || !campos) {
+    const vistaValue = vista.trim();
+    const camposValue = campos.trim();
+    const filtrosValue = filtros.trim();
+
+    if (!vistaValue || !camposValue) {
       setError('Completá Vista y Campos.');
       return;
     }
@@ -50,9 +54,9 @@ const CatalogosBejermanPage = () => {
     setLoading(true);
     setResultado(null);
 
-    const parametrosJson = filtros
-      ? [vista, campos, filtros]
-      : [vista, campos];
+    const parametrosJson = filtrosValue
+      ? [vistaValue, camposValue, filtrosValue]
+      : [vistaValue, camposValue];
 
     try {
       const response = await bejermanService.query({
@@ -148,6 +152,18 @@ const CatalogosBejermanPage = () => {
                   <Button variant="contained" onClick={handleConsultar} disabled={loading}>
                     {loading ? 'Consultando...' : 'Consultar'}
                   </Button>
+                  <Button
+                    variant="outlined"
+                    onClick={() => {
+                      setVista('Bitrix24\\Productos');
+                      setCampos('CODIGO,DESCRIPCION');
+                      setFiltros('');
+                      setResultado(null);
+                      setError('');
+                    }}
+                  >
+                    Ejemplo del mail
+                  </Button>
                   <Button variant="outlined" onClick={() => { setResultado(null); setError(''); }}>
                     Limpiar
                   </Button>
@@ -170,6 +186,16 @@ const CatalogosBejermanPage = () => {
                         : JSON.stringify(resultado.parsed, null, 2)}
                     </pre>
                   )}
+                  {!resultado.parsed && (
+                    <Alert severity="warning">
+                      La respuesta no trae DatosJSON. Revisá Resultado y ErrorMsg en el detalle.
+                    </Alert>
+                  )}
+                  <Divider />
+                  <Typography variant="subtitle2">Detalle respuesta</Typography>
+                  <pre style={{ whiteSpace: 'pre-wrap', margin: 0 }}>
+                    {JSON.stringify(resultado.raw, null, 2)}
+                  </pre>
                 </Stack>
               </Paper>
             )}

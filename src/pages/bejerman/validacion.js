@@ -63,20 +63,18 @@ const ValidationBejermanPage = () => {
       monto: Number(form.monto),
       fecha: form.fecha ? new Date(form.fecha) : null
     };
-    await bejermanService.validateDocument(selected._id, payload);
-    setAlert({ open: true, message: 'Documento enviado a Bejerman', severity: 'success' });
-    setSelected(null);
-    setForm(emptyForm);
-    await loadDocuments();
-  };
-
-  const handleSend = async () => {
-    if (!selected) return;
-    await bejermanService.sendDocument(selected._id);
-    setAlert({ open: true, message: 'Enviado a Bejerman', severity: 'success' });
-    setSelected(null);
-    setForm(emptyForm);
-    await loadDocuments();
+    try {
+      await bejermanService.validateDocument(selected._id, payload);
+      setAlert({ open: true, message: 'Documento enviado a Bejerman', severity: 'success' });
+      setSelected(null);
+      setForm(emptyForm);
+      await loadDocuments();
+    } catch (error) {
+      const apiError = error?.response?.data;
+      const detalle = apiError?.details?.soapFault || apiError?.details?.status;
+      const message = apiError?.error || error?.message || 'Error validando';
+      setAlert({ open: true, message: detalle ? `${message} - ${detalle}` : message, severity: 'error' });
+    }
   };
 
   return (
@@ -167,8 +165,7 @@ const ValidationBejermanPage = () => {
                   </Grid>
 
                   <Stack direction="row" spacing={2}>
-                    <Button variant="contained" onClick={handleValidate}>Validar</Button>
-                    <Button variant="outlined" onClick={handleSend}>Enviar a Bejerman</Button>
+                    <Button variant="contained" onClick={handleValidate}>Validar y enviar</Button>
                   </Stack>
                 </Stack>
               </Paper>
