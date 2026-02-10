@@ -12,8 +12,8 @@ const PERSIST_KEYS = [
 ];
 
 const defaultFilters = {
-  fechaDesde: subDays(new Date(), 365*3),
-  fechaHasta: addDays(new Date(), 365),
+  fechaDesde: null,
+  fechaHasta: null,
   palabras: '',
   observacion: '',
   categorias: [],

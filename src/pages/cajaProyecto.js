@@ -6,7 +6,7 @@ import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import Head from 'next/head';
-import { Box, Container, Stack, Chip, Typography, TextField, InputAdornment, Paper, Card, CardContent, Button, Select, MenuItem, FormControl, InputLabel, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, useMediaQuery, IconButton, Menu, Table, TableBody, TableCell, TableHead, TableRow, TableContainer, Tooltip, MenuItem as MenuOption, Divider, TablePagination, Drawer, List, ListItem, ListItemText, Badge } from '@mui/material';
+import { Box, Container, Stack, Chip, Typography, TextField, InputAdornment, Paper, Card, CardContent, Button, Select, MenuItem, FormControl, InputLabel, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, useMediaQuery, IconButton, Menu, Table, TableBody, TableCell, TableHead, TableRow, TableContainer, Tooltip, MenuItem as MenuOption, Divider, TablePagination, Drawer, List, ListItem, ListItemText, Badge, Fab } from '@mui/material';
 
 import { Checkbox, Popover, FormControlLabel, Switch } from '@mui/material';
 
@@ -82,11 +82,12 @@ const ellipsis = (maxWidth) => ({
 });
 
 
-const TotalesFiltrados = ({ t, fmt, moneda, showUsdBlue = false, usdBlue = null, chips = [], onOpenFilters }) => {
+const TotalesFiltrados = ({ t, fmt, moneda, showUsdBlue = false, usdBlue = null, chips = [], onOpenFilters, isMobile = false, showDetails = false, onToggleDetails }) => {
   const up = (moneda || '').toUpperCase();
   const ingreso = t[up]?.ingreso ?? 0;
   const egreso  = t[up]?.egreso  ?? 0;
   const neto    = ingreso - egreso;
+  const totalPeriodo = ingreso + egreso;
 
   return (
     <Stack spacing={1.25} sx={{ mb: 2 }}>
@@ -97,7 +98,7 @@ const TotalesFiltrados = ({ t, fmt, moneda, showUsdBlue = false, usdBlue = null,
           borderRadius: 2,
           flex: 1,
           minWidth: 260,
-          bgcolor: 'background.paper',
+          bgcolor: 'action.hover',
           border: '1px solid',
           borderColor: 'divider',
           boxShadow: '0 6px 16px rgba(0,0,0,0.06)'
@@ -108,31 +109,56 @@ const TotalesFiltrados = ({ t, fmt, moneda, showUsdBlue = false, usdBlue = null,
             Totales filtrados
           </Typography>
           <Stack direction="row" spacing={1} alignItems="center" sx={{ flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-            {chips.length > 0 && chips.map((chip, idx) => (
-              <Chip
-                key={`${chip.label}-${idx}`}
-                label={chip.label}
-                onDelete={(e) => { e.stopPropagation(); chip.onDelete(); }}
-                onClick={() => onOpenFilters?.()}
-                size="small"
-                variant="outlined"
-                clickable
-              />
-            ))}
+            {chips.length > 0 && (
+              <Box sx={{ display: 'flex', gap: 1, maxWidth: isMobile ? 220 : 'none', overflowX: isMobile ? 'auto' : 'visible' }}>
+                {chips.map((chip, idx) => (
+                  <Chip
+                    key={`${chip.label}-${idx}`}
+                    label={chip.label}
+                    onDelete={(e) => { e.stopPropagation(); chip.onDelete(); }}
+                    onClick={() => onOpenFilters?.()}
+                    size="small"
+                    variant="outlined"
+                    clickable
+                  />
+                ))}
+              </Box>
+            )}
             <Chip size="small" label={up} variant="outlined" />
           </Stack>
         </Stack>
         <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.5, color: neto >= 0 ? 'success.main' : 'error.main' }}>
           Neto: {fmt(up, neto)}
         </Typography>
-        <Stack direction="row" spacing={1.5} flexWrap="wrap">
-          <Typography sx={{ color: 'success.main', fontWeight: 600 }}>
-            + {fmt(up, ingreso)}
-          </Typography>
-          <Typography sx={{ color: 'error.main', fontWeight: 600 }}>
-            - {fmt(up, egreso)}
-          </Typography>
-        </Stack>
+        {isMobile ? (
+          <Stack direction="row" spacing={1.5} alignItems="center" flexWrap="wrap">
+            <Typography sx={{ color: 'text.secondary' }}>
+              Total período: {fmt(up, totalPeriodo)}
+            </Typography>
+            <Button size="small" variant="text" onClick={onToggleDetails}>
+              {showDetails ? 'Ocultar' : 'Ver más'}
+            </Button>
+            {showDetails && (
+              <Stack direction="row" spacing={1.5} flexWrap="wrap">
+                <Typography sx={{ color: 'success.main', fontWeight: 600 }}>
+                  + {fmt(up, ingreso)}
+                </Typography>
+                <Typography sx={{ color: 'error.main', fontWeight: 600 }}>
+                  - {fmt(up, egreso)}
+                </Typography>
+              </Stack>
+            )}
+          </Stack>
+        ) : (
+          <Stack direction="row" spacing={1.5} flexWrap="wrap">
+            <Typography sx={{ color: 'success.main', fontWeight: 600 }}>
+              + {fmt(up, ingreso)}
+            </Typography>
+            <Typography sx={{ color: 'error.main', fontWeight: 600 }}>
+              - {fmt(up, egreso)}
+            </Typography>
+          </Stack>
+        )}
 
       </Box>
 
@@ -244,8 +270,20 @@ const ProyectoMovimientosPage = () => {
   const [detalleMov, setDetalleMov] = useState(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [showTotalsDetails, setShowTotalsDetails] = useState(false);
+  const [mobileActionAnchor, setMobileActionAnchor] = useState(null);
+  const [mobileActionMov, setMobileActionMov] = useState(null);
+  const [showCajasMobile, setShowCajasMobile] = useState(true);
   const openImg = (url) => setImgPreview({ open: true, url });
   const closeImg = () => setImgPreview({ open: false, url: null });
+  const openMobileActions = (event, mov) => {
+    setMobileActionAnchor(event.currentTarget);
+    setMobileActionMov(mov);
+  };
+  const closeMobileActions = () => {
+    setMobileActionAnchor(null);
+    setMobileActionMov(null);
+  };
   
   const [anchorCajaEl, setAnchorCajaEl] = useState(null);
   const [cajaMenuIndex, setCajaMenuIndex] = useState(null);
@@ -1220,36 +1258,120 @@ useEffect(() => {
         <Container maxWidth="xl">
           <Stack spacing={3}>
             
-            <Stack direction="row" spacing={2} alignItems="stretch">
-              {cajasVirtuales.map((caja, index) => (
-                <Box key={index} sx={{ position: 'relative', width: '100%', mb: 1, display: 'flex' }}>
-                  <Button
-                    fullWidth
-                    variant={cajaSeleccionada?.nombre === caja.nombre ? "contained" : "outlined"}
-                    onClick={() => onSelectCaja(caja)}
-                    sx={{
-                      justifyContent: 'space-between',
-                      pl: 2,
-                      pr: 5,
-                      minHeight: 56,
-                      alignItems: 'center',
-                    }}
-                  >
-              <Typography>{caja.nombre}</Typography>
-              {caja.equivalencia && caja.equivalencia !== 'none' && (
-                  <Chip size="small" label={caja.equivalencia.replace('_', ' ')} sx={{ ml: 1 }} />
-                )}
-              <Typography>{formatCajaAmount(caja, calcularTotalParaCaja(caja))}</Typography>
-            </Button>
-            <IconButton
-              size="small"
-              onClick={(event) => handleOpenCajaMenu(event, index)}
-              sx={{ position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)' }}
-            >
-              <MoreVertIcon fontSize="small" />
-            </IconButton>
-             </Box>
-))}
+            <Stack direction={isMobile ? "column" : "row"} spacing={2} alignItems="stretch">
+              {isMobile ? (
+                <Stack spacing={1}>
+                  <Button size="small" variant="text" onClick={() => setShowCajasMobile((v) => !v)}>
+                    {showCajasMobile ? 'Ocultar cajas' : 'Mostrar cajas'}
+                  </Button>
+                  {!showCajasMobile && cajaSeleccionada && (
+                    <Box
+                      sx={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        px: 1.5,
+                        py: 1,
+                        borderRadius: 1.5,
+                        border: '1px solid',
+                        borderColor: 'primary.main',
+                        bgcolor: 'action.hover',
+                      }}
+                    >
+                      <Stack spacing={0.25}>
+                        <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                          {cajaSeleccionada.nombre}
+                        </Typography>
+                        {cajaSeleccionada.equivalencia && cajaSeleccionada.equivalencia !== 'none' && (
+                          <Typography variant="caption" color="text.secondary">
+                            {cajaSeleccionada.equivalencia.replace('_', ' ')}
+                          </Typography>
+                        )}
+                      </Stack>
+                      <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                        {formatCajaAmount(cajaSeleccionada, calcularTotalParaCaja(cajaSeleccionada))}
+                      </Typography>
+                    </Box>
+                  )}
+                  {showCajasMobile && (
+                    <Stack spacing={0.5}>
+                      {cajasVirtuales.map((caja, index) => {
+                        const selected = cajaSeleccionada?.nombre === caja.nombre;
+                        return (
+                          <Box
+                            key={index}
+                            onClick={() => onSelectCaja(caja)}
+                            sx={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              px: 1.5,
+                              py: 1,
+                              borderRadius: 1.5,
+                              border: '1px solid',
+                              borderColor: selected ? 'primary.main' : 'divider',
+                              bgcolor: selected ? 'action.hover' : 'background.paper',
+                            }}
+                          >
+                            <Stack spacing={0.25}>
+                              <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                                {caja.nombre}
+                              </Typography>
+                              {caja.equivalencia && caja.equivalencia !== 'none' && (
+                                <Typography variant="caption" color="text.secondary">
+                                  {caja.equivalencia.replace('_', ' ')}
+                                </Typography>
+                              )}
+                            </Stack>
+                            <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                              {formatCajaAmount(caja, calcularTotalParaCaja(caja))}
+                            </Typography>
+                          </Box>
+                        );
+                      })}
+                    </Stack>
+                  )}
+                </Stack>
+              ) : (
+                <Box
+                  sx={{
+                    display: 'flex',
+                    gap: 2,
+                    overflowX: 'visible',
+                  }}
+                >
+                  {cajasVirtuales.map((caja, index) => (
+                    <Box key={index} sx={{ position: 'relative', width: '100%', mb: 1, display: 'flex' }}>
+                      <Button
+                        fullWidth
+                        variant={cajaSeleccionada?.nombre === caja.nombre ? "contained" : "outlined"}
+                        onClick={() => onSelectCaja(caja)}
+                        sx={{
+                          justifyContent: 'space-between',
+                          pl: 2,
+                          pr: 5,
+                          minHeight: 56,
+                          alignItems: 'center',
+                          textAlign: 'left',
+                        }}
+                      >
+                        <Typography>{caja.nombre}</Typography>
+                        {caja.equivalencia && caja.equivalencia !== 'none' && (
+                          <Chip size="small" label={caja.equivalencia.replace('_', ' ')} sx={{ ml: 1 }} />
+                        )}
+                        <Typography>{formatCajaAmount(caja, calcularTotalParaCaja(caja))}</Typography>
+                      </Button>
+                      <IconButton
+                        size="small"
+                        onClick={(event) => handleOpenCajaMenu(event, index)}
+                        sx={{ position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)' }}
+                      >
+                        <MoreVertIcon fontSize="small" />
+                      </IconButton>
+                    </Box>
+                  ))}
+                </Box>
+              )}
 
 <Menu
   anchorEl={anchorCajaEl}
@@ -1259,35 +1381,30 @@ useEffect(() => {
   <MenuItem onClick={() => handleEditarCaja(cajaMenuIndex)}>Editar</MenuItem>
   <MenuItem onClick={() => handleEliminarCaja(cajaMenuIndex)}>Eliminar</MenuItem>
 </Menu>
-<Box sx={{ display: 'flex', gap: 1 }}>
+<Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', width: isMobile ? '100%' : 'auto' }}>
   <Button
     variant="outlined"
     size="small"
     startIcon={<FilterListIcon />}
     onClick={() => setFiltersOpen(true)}
+    fullWidth={isMobile}
   >
     <Badge color="primary" badgeContent={filterChips.length} invisible={filterChips.length === 0}>
       <span>Filtros</span>
     </Badge>
   </Button>
-  <Button
-    variant="outlined"
-    size="small"
-    startIcon={<MoreVertIcon />}
-    onClick={handleOpenMenu}   // abre el mismo menú de acciones
-  >
-    Acciones
-  </Button>
 
-  <Button
-    variant="outlined"
-    size="small"
-    onClick={handleOpenCols}
-  >
-    <Badge color="primary" badgeContent={hiddenColsCount} invisible={hiddenColsCount === 0}>
-      <span>Columnas</span>
-    </Badge>
-  </Button>
+  {!isMobile && (
+    <Button
+      variant="outlined"
+      size="small"
+      onClick={handleOpenCols}
+    >
+      <Badge color="primary" badgeContent={hiddenColsCount} invisible={hiddenColsCount === 0}>
+        <span>Columnas</span>
+      </Badge>
+    </Button>
+  )}
 </Box>
 
             </Stack>
@@ -1355,22 +1472,46 @@ useEffect(() => {
   </DialogActions>
 </Dialog>
 
-<Dialog open={filtersOpen} onClose={() => setFiltersOpen(false)} maxWidth="lg" fullWidth>
-  <DialogTitle>Filtros</DialogTitle>
-  <DialogContent dividers>
-    <FilterBarCajaProyecto
-      filters={filters}
-      setFilters={setFilters}
-      options={options}
-      onRefresh={handleRefresh}
-      empresa={empresa}
-    />
-  </DialogContent>
-  <DialogActions sx={{ position: 'sticky', bottom: 0, bgcolor: 'background.paper', borderTop: '1px solid', borderColor: 'divider', px: 2, py: 1.5 }}>
-    <Button variant="text" onClick={() => setFiltersOpen(false)}>Cancelar</Button>
-    <Button variant="contained" onClick={() => setFiltersOpen(false)}>Aplicar filtros</Button>
-  </DialogActions>
-</Dialog>
+{isMobile ? (
+  <Drawer
+    anchor="bottom"
+    open={filtersOpen}
+    onClose={() => setFiltersOpen(false)}
+    PaperProps={{ sx: { borderTopLeftRadius: 16, borderTopRightRadius: 16, maxHeight: '90vh' } }}
+  >
+    <Box sx={{ px: 2, py: 1.5 }}>
+      <Typography variant="subtitle1" sx={{ mb: 1 }}>Filtros</Typography>
+      <FilterBarCajaProyecto
+        filters={filters}
+        setFilters={setFilters}
+        options={options}
+        onRefresh={handleRefresh}
+        empresa={empresa}
+      />
+      <Stack direction="row" justifyContent="flex-end" spacing={1} sx={{ mt: 2 }}>
+        <Button variant="text" onClick={() => setFiltersOpen(false)}>Cancelar</Button>
+        <Button variant="contained" onClick={() => setFiltersOpen(false)}>Aplicar</Button>
+      </Stack>
+    </Box>
+  </Drawer>
+) : (
+  <Dialog open={filtersOpen} onClose={() => setFiltersOpen(false)} maxWidth="lg" fullWidth>
+    <DialogTitle>Filtros</DialogTitle>
+    <DialogContent dividers>
+      <FilterBarCajaProyecto
+        filters={filters}
+        setFilters={setFilters}
+        options={options}
+        onRefresh={handleRefresh}
+        empresa={empresa}
+      />
+    </DialogContent>
+    <DialogActions sx={{ position: 'sticky', bottom: 0, bgcolor: 'background.paper', borderTop: '1px solid', borderColor: 'divider', px: 2, py: 1.5 }}>
+      <Button variant="text" onClick={() => setFiltersOpen(false)}>Cancelar</Button>
+      <Button variant="contained" onClick={() => setFiltersOpen(false)}>Aplicar filtros</Button>
+    </DialogActions>
+  </Dialog>
+)}
             <Paper>
               <Snackbar open={alert.open} autoHideDuration={6000} onClose={handleCloseAlert}>
                 <Alert onClose={handleCloseAlert} severity={alert.severity} sx={{ width: '100%' }}>
@@ -1389,6 +1530,9 @@ useEffect(() => {
                   usdBlue={totalesUsdBlue}
                   chips={filterChips}
                   onOpenFilters={() => setFiltersOpen(true)}
+                  isMobile={isMobile}
+                  showDetails={showTotalsDetails}
+                  onToggleDetails={() => setShowTotalsDetails((s) => !s)}
                 />
 
               </Stack>
@@ -1411,46 +1555,29 @@ useEffect(() => {
                               const amountColor = mov.type === 'ingreso' ? 'success.main' : 'error.main';
                               
                               return (
-                                <Card key={`${item.grupoId}-${subIndex}`} sx={{ mb: 1, cursor: 'pointer' }} onClick={() => openDetalle(mov)}>
+                                <Card key={`${item.grupoId}-${subIndex}`} sx={{ mb: 1, cursor: 'pointer', bgcolor: 'background.paper' }} onClick={() => openDetalle(mov)}>
                                   <CardContent>
-                                    <Stack direction="row" spacing={2} alignItems="center">
-                                      <Box sx={{ flex: 1 }}>
-                                        <Stack direction="row" spacing={1} alignItems="center">
-                                          <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
-                                            {mov.codigo_operacion}
-                                          </Typography>
-                                          <Chip size="small" label="Prorrateo" variant="outlined" color="info" />
-                                        </Stack>
-                                        <Typography variant="body2">{mov.descripcion}</Typography>
-                                        {empresa?.comprobante_info?.factura_cliente && (
-                                          <Typography variant="body2"><b>Factura cliente:</b> {mov.factura_cliente ? 'Sí' : 'No'}</Typography>
-                                        )}
-                                        <Typography variant="caption" color="textSecondary">
-                                          {formatTimestamp(mov.fecha_factura, "DIA/MES/ANO")} • {mov.categoria}
-                                        </Typography>
-                                      </Box>
-                                      <Typography variant="h6" color={amountColor}>
+                                    <Stack direction="row" justifyContent="space-between" alignItems="center">
+                                      <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                                        {mov.codigo_operacion}
+                                      </Typography>
+                                      <Typography variant="subtitle1" color={amountColor}>
                                         {formatByCurrency(mov.moneda, mov.total)}
                                       </Typography>
                                     </Stack>
-                                    <Stack direction="row" spacing={1} mt={1}>
-                                      <Button
-                                        size="small"
-                                        color="primary"
-                                        startIcon={<EditIcon />}
-                                        onClick={(e) => { e.stopPropagation(); goToEdit(mov); }}
-                                      >
-                                        Editar
-                                      </Button>
-                                      <Button
-                                        size="small"
-                                        color="error"
-                                        startIcon={<DeleteIcon />}
-                                        onClick={(e) => { e.stopPropagation(); handleEliminarClick(mov.id); }}
-                                      >
-                                        Eliminar
-                                      </Button>
-                                    </Stack>
+                                    <Typography variant="body2" color="text.secondary">
+                                      {mov.nombre_proveedor || '—'} • {mov.categoria || '—'}
+                                    </Typography>
+                                    <Typography variant="caption" color="text.secondary">
+                                      {formatTimestamp(mov.fecha_factura, "DIA/MES/ANO")}
+                                    </Typography>
+                                    <IconButton
+                                      size="small"
+                                      onClick={(e) => { e.stopPropagation(); openMobileActions(e, mov); }}
+                                      sx={{ mt: 1 }}
+                                    >
+                                      <MoreVertIcon fontSize="small" />
+                                    </IconButton>
                                   </CardContent>
                                 </Card>
                               );
@@ -1462,40 +1589,29 @@ useEffect(() => {
                       // Si es un movimiento normal
                       const mov = item.data;
                       return (
-                        <Card key={index} sx={{ cursor: 'pointer' }} onClick={() => openDetalle(mov)}>
+                        <Card key={index} sx={{ cursor: 'pointer', bgcolor: 'background.paper' }} onClick={() => openDetalle(mov)}>
                           <CardContent>
-                            <Typography variant="h6" color={mov.type === "ingreso" ? "green" : "red"}>
-                              {mov.type === "ingreso" ? `Ingreso: ${formatCurrency(mov.total)}` : `Egreso: ${formatCurrency(mov.total)}`}
+                            <Stack direction="row" justifyContent="space-between" alignItems="center">
+                              <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                                {mov.codigo_operacion || '—'}
+                              </Typography>
+                              <Typography variant="subtitle1" color={mov.type === "ingreso" ? "green" : "red"}>
+                                {formatCurrency(mov.total)}
+                              </Typography>
+                            </Stack>
+                            <Typography variant="body2" color="text.secondary">
+                              {mov.nombre_proveedor || '—'} • {mov.categoria || '—'}
                             </Typography>
-                            {mov.obra && <Typography variant="body2"><b>Obra:</b> {mov.obra}</Typography>}
-                            {mov.cliente && <Typography variant="body2"><b>Cliente:</b> {mov.cliente}</Typography>}
-                            <Typography variant="body2">{mov.observacion}</Typography>
-                            {empresa?.comprobante_info?.factura_cliente && (
-                              <Typography variant="body2"><b>Factura cliente:</b> {mov.factura_cliente ? 'Sí' : 'No'}</Typography>
-                            )}
-                            {mov.tc && <Typography variant="body2">Tipo de cambio: ${mov.tc}</Typography>}
                             <Typography variant="caption" color="textSecondary">
                               {formatTimestamp(mov.fecha_factura, "DIA/MES/ANO")}
                             </Typography>
-                            <Typography variant="body2" color="textSecondary">
-                              Código de operación: {mov.codigo_operacion || "Ninguno"}
-                            </Typography>
-                            <Stack direction="row" spacing={1} mt={2}>
-                              <Button
-                                color="primary"
-                                startIcon={<EditIcon />}
-                                onClick={(e) => { e.stopPropagation(); goToEdit(mov); }}
-                              >
-                                Ver / Editar 
-                              </Button>
-                              <Button
-                                color="error"
-                                startIcon={<DeleteIcon />}
-                                onClick={(e) => { e.stopPropagation(); handleEliminarClick(mov.id); }}
-                              >
-                                {deletingElement !== mov.id ? "Eliminar" : "Eliminando..."}
-                              </Button>
-                            </Stack>
+                            <IconButton
+                              size="small"
+                              onClick={(e) => { e.stopPropagation(); openMobileActions(e, mov); }}
+                              sx={{ mt: 1 }}
+                            >
+                              <MoreVertIcon fontSize="small" />
+                            </IconButton>
                           </CardContent>
                         </Card>
                       );
@@ -2555,6 +2671,40 @@ useEffect(() => {
     )}
   </DialogContent>
 </Dialog>
+
+<Menu
+  anchorEl={mobileActionAnchor}
+  open={Boolean(mobileActionAnchor)}
+  onClose={closeMobileActions}
+  anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+  transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+>
+  {mobileActionMov?.url_imagen && (
+    <MenuItem onClick={() => { openImg(mobileActionMov.url_imagen); closeMobileActions(); }}>
+      Ver adjunto
+    </MenuItem>
+  )}
+  {mobileActionMov && (
+    <MenuItem onClick={() => { goToEdit(mobileActionMov); closeMobileActions(); }}>
+      Editar
+    </MenuItem>
+  )}
+  {mobileActionMov && (
+    <MenuItem onClick={() => { handleEliminarClick(mobileActionMov.id); closeMobileActions(); }}>
+      Eliminar
+    </MenuItem>
+  )}
+</Menu>
+
+{isMobile && (
+  <Fab
+    color="primary"
+    onClick={(e) => { setAnchorEl(e.currentTarget); }}
+    sx={{ position: 'fixed', bottom: 20, right: 20, zIndex: 1400 }}
+  >
+    <MoreVertIcon />
+  </Fab>
+)}
 
 <Drawer anchor="right" open={drawerOpen} onClose={() => setDrawerOpen(false)}>
   <Box sx={{ width: 360, p: 2 }}>
