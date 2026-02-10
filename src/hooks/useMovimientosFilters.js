@@ -154,14 +154,15 @@ export function useMovimientosFilters({
 
   useEffect(() => {
     if (!router.isReady) return;
+    const incomingHash = stableStringify(router.query || {});
+    if (incomingHash === lastQueryHashRef.current) return;
     const parsed = parseFiltersFromQuery(router.query);
     const merged = { ...defaultFilters, ...parsed };
     arrayFields.forEach((k) => {
       if (!Array.isArray(merged[k])) merged[k] = [];
     });
     setFilters(merged);
-    const qHash = stableStringify(router.query || {});
-    lastQueryHashRef.current = qHash;
+    lastQueryHashRef.current = incomingHash;
     initializedRef.current = true;
   }, [router.isReady, router.query]);
 

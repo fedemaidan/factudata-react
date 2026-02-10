@@ -298,27 +298,20 @@ export const FilterBarCajaProyecto = ({
           Restaurar defaults
         </Button>
       </Box>
-      <Box
-        sx={{
-          display: 'grid',
-          gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' },
-          gap: 2,
-        }}
-      >
-        <Box sx={{
-          border: '1px solid',
-          borderColor: 'divider',
-          borderRadius: 2,
-          p: 1.25,
-          bgcolor: 'background.paper',
-          boxShadow: '0 6px 16px rgba(0,0,0,0.04)'
-        }}>
-          <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
-            <Typography variant="subtitle2" color="text.secondary" sx={{ letterSpacing: 0.4 }}>Filtros rápidos</Typography>
-            <Typography variant="caption" color="text.secondary">Búsqueda y principales</Typography>
-          </Stack>
-            <Stack spacing={1.5}>
-              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems="center">
+      <Box sx={{
+        border: '1px solid',
+        borderColor: 'divider',
+        borderRadius: 2,
+        p: 1.5,
+        bgcolor: 'background.paper',
+        boxShadow: '0 6px 16px rgba(0,0,0,0.04)'
+      }}>
+        <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
+          <Typography variant="subtitle2" color="text.secondary" sx={{ letterSpacing: 0.4 }}>Filtros</Typography>
+          <Typography variant="caption" color="text.secondary">Búsqueda y principales</Typography>
+        </Stack>
+        <Stack spacing={1.5}>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems="center">
               <DatePicker
                 selected={filters.fechaDesde}
                 onChange={(date) => set('fechaDesde', date)}
@@ -342,7 +335,7 @@ export const FilterBarCajaProyecto = ({
                 autoFocus={focusField === 'fechaHasta'}
                 customInput={<DateInput />}
               />
-                <Stack direction="row" spacing={0.5} alignItems="center" sx={{ ml: 0.5 }}>
+              <Stack direction="row" spacing={0.5} alignItems="center" sx={{ ml: 0.5 }}>
               {presets.map((p) => (
                 <Button
                   key={p.label}
@@ -353,38 +346,23 @@ export const FilterBarCajaProyecto = ({
                   {p.label}
                 </Button>
               ))}
-                </Stack>
               </Stack>
-
-              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1 }}>
-                <Box sx={{ gridColumn: { xs: '1 / -1', sm: '1 / -1' } }}>
-                  {renderFiltroRapido('palabras')}
-                </Box>
-                {renderFiltroRapido('tipo')}
-                {renderFiltroRapido('moneda')}
-                {renderFiltroRapido('proveedores')}
-                {renderFiltroRapido('categorias')}
-                {renderFiltroRapido('subcategorias')}
-                {renderFiltroRapido('facturaCliente')}
-              </Box>
-
-              <Stack direction="row" justifyContent="flex-end">
-                {onRefresh && <Button onClick={onRefresh}>Actualizar</Button>}
-              </Stack>
-            </Stack>
-        </Box>
-
-        <Box sx={{
-          border: '1px dashed',
-          borderColor: 'divider',
-          borderRadius: 2,
-          p: 1.25,
-          bgcolor: 'action.hover'
-        }}>
-          <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
-            <Typography variant="subtitle2" color="text.secondary" sx={{ letterSpacing: 0.4 }}>Filtros avanzados</Typography>
           </Stack>
-          {showAdvanced && (
+
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1 }}>
+              <Box sx={{ gridColumn: { xs: '1 / -1', sm: '1 / -1' } }}>
+                {renderFiltroRapido('palabras')}
+              </Box>
+              {renderFiltroRapido('tipo')}
+              {renderFiltroRapido('moneda')}
+              {renderFiltroRapido('proveedores')}
+              {renderFiltroRapido('categorias')}
+              {renderFiltroRapido('subcategorias')}
+              {renderFiltroRapido('facturaCliente')}
+            </Box>
+
+            <Divider sx={{ my: 1 }} />
+
             <Stack direction="row" spacing={1.25} flexWrap="wrap" alignItems="center">
               {filtrosAvanzados.map((filtro) => {
                 const value = filters[filtro.name];
@@ -487,9 +465,12 @@ export const FilterBarCajaProyecto = ({
 
                 return null;
               })}
-            </Stack>
-          )}
-        </Box>
+          </Stack>
+
+          <Stack direction="row" justifyContent="flex-end">
+            {onRefresh && <Button onClick={onRefresh}>Actualizar</Button>}
+          </Stack>
+        </Stack>
       </Box>
 
     {activeChips.length > 0 ? (
