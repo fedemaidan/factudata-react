@@ -1,31 +1,15 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { subDays, addDays } from 'date-fns';
-import filtersService from 'src/services/filtersService';
-import { reviveFilterDates, serializeFilterDates, toJsDate } from 'src/utils/dateSerde';
+import { useRouter } from 'next/router';
+import { toJsDate } from 'src/utils/dateSerde';
 
 const PERSIST_KEYS = [
   'fechaDesde','fechaHasta','palabras','observacion',
   'categorias','subcategorias','proveedores','medioPago',
   'tipo','moneda','etapa','estados','cuentaInterna','tagsExtra',
-  'montoMin','montoMax','ordenarPor','ordenDir','caja', '_dayKey',
-  'empresaFacturacion','fechaPagoDesde','fechaPagoHasta','codigoSync'
+  'montoMin','montoMax','ordenarPor','ordenarDir','caja', '_dayKey',
+  'empresaFacturacion','fechaPagoDesde','fechaPagoHasta','codigoSync','facturaCliente'
 ];
-
-const pickPersistable = (f) => {
-  const out = {};
-  PERSIST_KEYS.forEach(k => { if (k in f) out[k] = f[k]; });
-  return out;
-};
-
-const hash = (obj) => JSON.stringify(serializeFilterDates(obj));
-
-const todayKey = () => {
-  const d = new Date();
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const dd = String(d.getDate()).padStart(2, '0');
-  return `${d.getFullYear()}-${mm}-${dd}`;
-};
-
 
 const defaultFilters = {
   fechaDesde: subDays(new Date(), 365*3),
@@ -51,6 +35,7 @@ const defaultFilters = {
   fechaPagoHasta: null,     // Date
   caja: null, // { moneda, medio_pago }
   codigoSync: '', // código de sincronización de importación masiva
+  facturaCliente: '', // '' | 'cliente' | 'propia'
 };
 
 const arrayFields = [
@@ -62,131 +47,162 @@ export function useMovimientosFilters({
   empresaId, proyectoId, userId, // <-- agrega userId
   movimientos, movimientosUSD, cajaSeleccionada
 }) {
+  const router = useRouter();
   const [filters, setFilters] = useState(defaultFilters);
-  const loadedRef = useRef(false);
-  const unsubRef = useRef(null);
-  const saveTimerRef = useRef(null);
-  const lastSavedHashRef = useRef(null);
-const lastSnapHashRef  = useRef(null);
+  const initializedRef = useRef(false);
+  const lastQueryHashRef = useRef(null);
 
-useEffect(() => {
-  let mounted = true;
+  const parseArray = (v) => {
+    if (!v) return [];
+    if (Array.isArray(v)) v = v.join(',');
+    return String(v)
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+  };
 
-  const boot = async () => {
-    // 1) carga inicial
-    const remote = await filtersService.getOnce(empresaId, proyectoId, userId);
-    if (!mounted) return;
+  const parseDate = (v) => {
+    if (!v) return null;
+    if (Array.isArray(v)) v = v[0];
+    const d = new Date(v);
+    return isNaN(d.getTime()) ? null : d;
+  };
 
-    const merged = reviveFilterDates({ ...defaultFilters, ...(remote || {}) });
-    // fuerza arrays
-    ['tipo','moneda','proveedores','categorias','subcategorias','medioPago','estados','estado','etapa','cuentaInterna','tagsExtra']
-      .forEach(k => { if (!Array.isArray(merged[k])) merged[k] = []; });
-
-    // Normalizar _dayKey y resetear fechas si es de otro día
-    const remoteDay = remote?._dayKey;
-    const today = todayKey();
-    if (!remoteDay) {
-      merged._dayKey = today; // primera vez o doc viejo
-    } else if (remoteDay !== today) {
-      merged.fechaDesde = defaultFilters.fechaDesde;
-      merged.fechaHasta = defaultFilters.fechaHasta;
-      merged._dayKey    = today; // ya queda con el día actual
+  const parseObject = (v) => {
+    if (!v) return null;
+    if (Array.isArray(v)) v = v[0];
+    try {
+      return JSON.parse(v);
+    } catch {
+      return null;
     }
+  };
 
-    if (remote && remote._dayKey && remote._dayKey !== todayKey()) {
-        merged.fechaDesde = defaultFilters.fechaDesde;
-        merged.fechaHasta = defaultFilters.fechaHasta;
-        merged._dayKey    = todayKey(); // normalizo en memoria
-     }
+  const sameDay = (a, b) => {
+    if (!(a instanceof Date) || !(b instanceof Date)) return false;
+    return a.toDateString() === b.toDateString();
+  };
 
-    setFilters(merged);
-
-    // registra hashes
-    const initialHash = hash(pickPersistable(merged));
-    lastSnapHashRef.current  = initialHash;
-    lastSavedHashRef.current = initialHash;
-
-    loadedRef.current = true;
-
-    // 2) suscripción realtime
-    if (unsubRef.current) unsubRef.current();
-    unsubRef.current = filtersService.subscribe(empresaId, proyectoId, userId, (docData) => {
-      if (!mounted || !docData) return;
-
-      const incoming = reviveFilterDates({ ...defaultFilters, ...docData });
-      ['tipo','moneda','proveedores','categorias','subcategorias','medioPago','estados','estado','etapa','cuentaInterna','tagsExtra']
-        .forEach(k => { if (!Array.isArray(incoming[k])) incoming[k] = []; });
-      
-      // Ajuste por cambio de día
-      const today = todayKey();
-      if (incoming._dayKey && incoming._dayKey !== today) {
-        incoming.fechaDesde = defaultFilters.fechaDesde;
-        incoming.fechaHasta = defaultFilters.fechaHasta;
-        incoming._dayKey    = today;
+  const parseFiltersFromQuery = (query) => {
+    const out = {};
+    PERSIST_KEYS.forEach((k) => {
+      if (!(k in query)) return;
+      if (arrayFields.includes(k)) {
+        out[k] = parseArray(query[k]);
+        return;
       }
-      const incomingHash = hash(pickPersistable(incoming));
-      lastSnapHashRef.current = incomingHash;
-
-      // Evitá usar `filters` del cierre, compará contra el estado actual
-      setFilters(prev => {
-        if (incomingHash === lastSavedHashRef.current) return prev; // lo escribí yo
-        const prevHash = hash(pickPersistable(prev));
-        if (incomingHash === prevHash) return prev; // ya lo tengo
-        return incoming;
-      });
+      if (k === 'fechaDesde' || k === 'fechaHasta' || k === 'fechaPagoDesde' || k === 'fechaPagoHasta') {
+        out[k] = parseDate(query[k]);
+        return;
+      }
+      if (k === 'caja') {
+        out[k] = parseObject(query[k]);
+        return;
+      }
+      out[k] = Array.isArray(query[k]) ? query[k][0] : query[k];
     });
+    return out;
   };
 
-  boot();
-
-  return () => {
-    mounted = false;
-    if (unsubRef.current) unsubRef.current();
-    unsubRef.current = null;
+  const stableStringify = (obj) => {
+    const sorted = Object.keys(obj || {})
+      .sort()
+      .reduce((acc, k) => {
+        acc[k] = obj[k];
+        return acc;
+      }, {});
+    return JSON.stringify(sorted);
   };
-}, [empresaId, proyectoId, userId]); // deps del efecto
 
-useEffect(() => {
-  if (!loadedRef.current) return;
+  const buildQueryFromFilters = (f, baseQuery = {}) => {
+    const out = { ...baseQuery };
+    PERSIST_KEYS.forEach((k) => {
+      delete out[k];
+    });
 
-  if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-  saveTimerRef.current = setTimeout(async () => {
-    const payload = { ...pickPersistable(filters), _dayKey: todayKey() };
-    const currentHash = hash(payload);
+    const shouldInclude = (k, v) => {
+      if (Array.isArray(v)) return v.length > 0;
+      if (v instanceof Date) {
+        const dv = defaultFilters[k];
+        if (!dv) return true;
+        return !sameDay(v, dv);
+      }
+      if (typeof v === 'object' && v) return Object.keys(v).length > 0;
+      if (typeof v === 'string') {
+        const dv = defaultFilters[k];
+        if (typeof dv === 'string' && v === dv) return false;
+        return v !== '';
+      }
+      return v != null;
+    };
 
-    // si es igual al snapshot más reciente → no escribas
-    if (currentHash === lastSnapHashRef.current) return;
-
-    // si es igual a lo último que guardé yo → no escribas
-    if (currentHash === lastSavedHashRef.current) return;
-
-    await filtersService.save(empresaId, proyectoId, userId, serializeFilterDates(payload));
-
-    // marca lo que acabo de guardar
-    lastSavedHashRef.current = currentHash;
-  }, 350);
-
-  return () => {
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    PERSIST_KEYS.forEach((k) => {
+      const v = f[k];
+      if (!shouldInclude(k, v)) return;
+      if (Array.isArray(v)) {
+        out[k] = v.join(',');
+      } else if (v instanceof Date) {
+        out[k] = v.toISOString().slice(0, 10);
+      } else if (typeof v === 'object') {
+        out[k] = JSON.stringify(v);
+      } else {
+        out[k] = String(v);
+      }
+    });
+    return out;
   };
-}, [filters, empresaId, proyectoId, userId]);
+
+  useEffect(() => {
+    if (!router.isReady) return;
+    const parsed = parseFiltersFromQuery(router.query);
+    const merged = { ...defaultFilters, ...parsed };
+    arrayFields.forEach((k) => {
+      if (!Array.isArray(merged[k])) merged[k] = [];
+    });
+    setFilters(merged);
+    const qHash = stableStringify(router.query || {});
+    lastQueryHashRef.current = qHash;
+    initializedRef.current = true;
+  }, [router.isReady, router.query]);
+
+  useEffect(() => {
+    if (!initializedRef.current || !router.isReady) return;
+    const nextQuery = buildQueryFromFilters(filters, router.query || {});
+    const qHash = stableStringify(nextQuery);
+    if (qHash === lastQueryHashRef.current) return;
+    lastQueryHashRef.current = qHash;
+    router.replace({ pathname: router.pathname, query: nextQuery }, undefined, { shallow: true, scroll: false });
+  }, [filters, router]);
 
 
   // opciones únicas (para selects múltiples)
   const options = useMemo(() => {
     const base = [...(movimientos || []), ...(movimientosUSD || [])];
     const uniq = (arr) => [...new Set(arr.filter(Boolean))];
+    const sort = (arr) => arr.slice().sort((a, b) => String(a).localeCompare(String(b), 'es', { sensitivity: 'base' }));
+    const subcatMap = base.reduce((acc, m) => {
+      const cat = m.categoria;
+      const sub = m.subcategoria;
+      if (!cat || !sub) return acc;
+      if (!acc[cat]) acc[cat] = new Set();
+      acc[cat].add(sub);
+      return acc;
+    }, {});
+    const subcategoriasByCategoria = Object.fromEntries(
+      Object.entries(subcatMap).map(([cat, set]) => [cat, sort([...set])])
+    );
     return {
-      categorias: uniq(base.map(m => m.categoria)),
-      subcategorias: uniq(base.map(m => m.subcategoria)),
-      proveedores: uniq(base.map(m => m.nombre_proveedor)),
-      monedas: uniq(base.map(m => m.moneda)),
-      mediosPago: uniq(base.map(m => m.medio_pago)),
-      etapas: uniq(base.map(m => m.etapa)),
-      estados: uniq(base.map(m => m.estado)),
-      cuentasInternas: uniq(base.map(m => m.cuenta_interna)),
-      tags: uniq(base.flatMap(m => Array.isArray(m.tags_extra) ? m.tags_extra : [])),
-      empresasFacturacion: uniq(base.map(m => m.empresa_facturacion)),
+      categorias: sort(uniq(base.map(m => m.categoria))),
+      subcategorias: sort(uniq(base.map(m => m.subcategoria))),
+      subcategoriasByCategoria,
+      proveedores: sort(uniq(base.map(m => m.nombre_proveedor))),
+      monedas: sort(uniq(base.map(m => m.moneda))),
+      mediosPago: sort(uniq(base.map(m => m.medio_pago))),
+      etapas: sort(uniq(base.map(m => m.etapa))),
+      estados: sort(uniq(base.map(m => m.estado))),
+      cuentasInternas: sort(uniq(base.map(m => m.cuenta_interna))),
+      tags: sort(uniq(base.flatMap(m => Array.isArray(m.tags_extra) ? m.tags_extra : []))),
+      empresasFacturacion: sort(uniq(base.map(m => m.empresa_facturacion))),
       tipos: ['ingreso', 'egreso'],
     };
   }, [movimientos, movimientosUSD]);
@@ -230,7 +246,7 @@ useEffect(() => {
       fechaDesde, fechaHasta, palabras, observacion, categorias, subcategorias,
       proveedores, medioPago, tipo, moneda, etapa, cuentaInterna, estado, tagsExtra,
       montoMin, montoMax, ordenarPor, ordenarDir, empresaFacturacion, fechaPagoDesde, fechaPagoHasta,
-      codigoSync
+      codigoSync, facturaCliente
     } = filters;
 
     const match = (value, arr) => arr.length === 0 || arr.includes(value);
@@ -258,6 +274,13 @@ useEffect(() => {
       if (!codigoSync || codigoSync.trim() === '') return true;
       return mov.codigo_sync === codigoSync.trim();
     };
+    const matchFacturaCliente = (mov) => {
+      if (!facturaCliente) return true;
+      const isCliente = mov.factura_cliente === true;
+      if (facturaCliente === 'cliente') return isCliente;
+      if (facturaCliente === 'propia') return !isCliente;
+      return true;
+    };
 
     const res = base.filter(mov =>
       insideRange(mov, fechaDesde, fechaHasta)
@@ -277,6 +300,7 @@ useEffect(() => {
       && matchEstado(mov)
       && matchCaja(mov)
       && matchCodigoSync(mov)
+      && matchFacturaCliente(mov)
       && (empresaFacturacion.length === 0 || empresaFacturacion.includes(mov.empresa_facturacion)) // 🔹 NUEVO
     );
     

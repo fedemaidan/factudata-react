@@ -321,7 +321,8 @@ const MovementFormPage = () => {
           materiales: data.materiales || [],
           etapa: data.etapa || '',
           obra: data.obra || '',
-          cliente: data.cliente || ''
+          cliente: data.cliente || '',
+          factura_cliente: typeof data.factura_cliente === 'boolean' ? data.factura_cliente : false
         });
         await fetchMmList();
       }
@@ -503,7 +504,8 @@ const createdAtStr = (() => {
       // <<< opcional: guardar "etapa" de la compra (string)
       etapa: '',
       obra: '',
-      cliente: ''
+      cliente: '',
+      factura_cliente: false
     },
     validationSchema: Yup.object({}),
     validate: () => ({}),
@@ -519,7 +521,8 @@ const createdAtStr = (() => {
         url_imagen: movimiento?.url_imagen ?? values.url_imagen,
         impuestos: values.impuestos || [],
         obra: values.obra || '',         // <-- NUEVO
-        cliente: values.cliente || ''    // <-- NUEVO
+        cliente: values.cliente || '',   // <-- NUEVO
+        factura_cliente: values.factura_cliente === true
       };
 
       const subtotal  = Number(values.subtotal) || 0;
@@ -1322,6 +1325,7 @@ function syncMaterialesWithMovs(currentMateriales = [], mmRows = [], { proyecto_
                         { key: 'tipo_factura',     label: 'Tipo de Factura' },
                         { key: 'medio_pago',       label: 'Medio de Pago' },
                         { key: 'empresa_facturacion', label: 'Empresa de facturación' },
+                        { key: 'factura_cliente', label: 'Factura de cliente', format: yesNo },
                         { key: 'fecha_pago',          label: 'Fecha de pago' },
                         { key: 'moneda',           label: 'Moneda' },
                         { key: 'subtotal',         label: 'Subtotal', format: (v)=>formatCurrency(v,2) },

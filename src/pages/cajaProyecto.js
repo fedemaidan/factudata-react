@@ -63,6 +63,7 @@ const COLS = {
   mep: 160,
   estado: 140,
   empresaFacturacion: 200,
+  facturaCliente: 140,
   fechaPago: 140,
   dolarReferencia: 140,
   totalDolar: 140,
@@ -347,6 +348,7 @@ const handleSaveCols = async () => {
     estado: !!empresa?.con_estados,
     acciones: true,
     empresaFacturacion: false,
+    facturaCliente: !!empresa?.comprobante_info?.factura_cliente,
     fechaPago: false,
     dolarReferencia: false,
     totalDolar: false,
@@ -1360,6 +1362,9 @@ useEffect(() => {
       <FormControlLabel control={<Checkbox size="small" checked={visibleCols.estado}      onChange={() => toggleCol('estado')} />}      label="Estado" />
     )}
     <FormControlLabel control={<Checkbox size="small" checked={visibleCols.empresaFacturacion} onChange={() => toggleCol('empresaFacturacion')} />} label="Empresa facturación" />
+    {empresa?.comprobante_info?.factura_cliente && (
+      <FormControlLabel control={<Checkbox size="small" checked={visibleCols.facturaCliente} onChange={() => toggleCol('facturaCliente')} />} label="Factura cliente" />
+    )}
     <FormControlLabel control={<Checkbox size="small" checked={visibleCols.fechaPago} onChange={() => toggleCol('fechaPago')} />} label="Fecha de pago" />
     {options?.tags?.length > 0 && (
       <FormControlLabel control={<Checkbox size="small" checked={visibleCols.tagsExtra} onChange={() => toggleCol('tagsExtra')} />} label="Tags extra" />
@@ -1641,6 +1646,10 @@ useEffect(() => {
         )}
         {visibleCols.empresaFacturacion && (
           <TableCell sx={{ ...cellBase, minWidth: COLS.empresaFacturacion }}>EMPRESA FACTURACIÓN</TableCell>
+        )}
+
+        {visibleCols.facturaCliente && (
+          <TableCell sx={{ ...cellBase, minWidth: COLS.facturaCliente }}>FACTURA CLIENTE</TableCell>
         )}
 
         {visibleCols.fechaPago && (
@@ -2085,6 +2094,12 @@ useEffect(() => {
             {visibleCols.empresaFacturacion && (
               <TableCell sx={{ ...cellBase, minWidth: COLS.empresaFacturacion }}>
                 {mov.empresa_facturacion || '—'}
+              </TableCell>
+            )}
+
+            {visibleCols.facturaCliente && (
+              <TableCell sx={{ ...cellBase, minWidth: COLS.facturaCliente }}>
+                {mov.factura_cliente ? 'Sí' : 'No'}
               </TableCell>
             )}
 
