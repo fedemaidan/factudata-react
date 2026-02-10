@@ -29,6 +29,7 @@ import RefreshIcon from '@mui/icons-material/Refresh';
 import AddIcon from '@mui/icons-material/Add';
 import SearchIcon from '@mui/icons-material/Search';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
+import EditIcon from '@mui/icons-material/Edit';
 import { useAuthContext } from 'src/contexts/auth-context';
 import { useBreadcrumbs } from 'src/contexts/breadcrumbs-context';
 import { useRouter } from 'next/router';
@@ -60,6 +61,10 @@ const AcopiosPage = () => {
   const [anchorEl, setAnchorEl] = useState(null);
   const [selectedAcopio, setSelectedAcopio] = useState(null);
   const openMenu = Boolean(anchorEl);
+  const [descripcionDialogOpen, setDescripcionDialogOpen] = useState(false);
+  const [descripcionEdit, setDescripcionEdit] = useState('');
+  const [acopioEditando, setAcopioEditando] = useState(null);
+  const [guardandoDescripcion, setGuardandoDescripcion] = useState(false);
 
   // Setear breadcrumbs
   useEffect(() => {
@@ -78,6 +83,44 @@ const AcopiosPage = () => {
   const handleCloseMenu = () => {
     setAnchorEl(null);
     setSelectedAcopio(null);
+  };
+
+  const openDescripcionDialog = (acopio) => {
+    setAcopioEditando(acopio);
+    setDescripcionEdit(acopio?.descripcion || '');
+    setDescripcionDialogOpen(true);
+  };
+
+  const closeDescripcionDialog = () => {
+    setDescripcionDialogOpen(false);
+    setAcopioEditando(null);
+    setDescripcionEdit('');
+  };
+
+  const handleGuardarDescripcion = async () => {
+    if (!acopioEditando) return;
+    setGuardandoDescripcion(true);
+    try {
+      const ok = await AcopioService.editarAcopio(acopioEditando.id, {
+        proveedor: acopioEditando.proveedor,
+        proyecto_id: acopioEditando.proyecto_id || acopioEditando.proyectoId || '',
+        codigo: acopioEditando.codigo,
+        descripcion: descripcionEdit
+      });
+      if (ok) {
+        setAcopios((prev) =>
+          prev.map((a) => (a.id === acopioEditando.id ? { ...a, descripcion: descripcionEdit } : a))
+        );
+        setAlert({ open: true, message: 'Descripción actualizada', severity: 'success' });
+        closeDescripcionDialog();
+      } else {
+        setAlert({ open: true, message: 'No se pudo actualizar la descripción', severity: 'error' });
+      }
+    } catch (error) {
+      setAlert({ open: true, message: 'Error al actualizar la descripción', severity: 'error' });
+    } finally {
+      setGuardandoDescripcion(false);
+    }
   };
 
   const exportarExcel = () => {
@@ -219,11 +262,30 @@ const AcopiosPage = () => {
                 <TableCell>
                   <Box>
                     <Typography variant="body2" fontWeight="medium">{acopio.codigo}</Typography>
-                    {acopio.descripcion && (
-                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                        {acopio.descripcion}
-                      </Typography>
-                    )}
+                    <Stack direction="row" spacing={0.5} alignItems="center">
+                      {acopio.descripcion ? (
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                          {acopio.descripcion}
+                        </Typography>
+                      ) : (
+                        <Button
+                          variant="text"
+                          size="small"
+                          onClick={() => openDescripcionDialog(acopio)}
+                          startIcon={<EditIcon fontSize="inherit" />}
+                          sx={{ px: 0, minWidth: 0, textTransform: 'none', color: 'text.secondary' }}
+                        >
+                          Agregar descripción
+                        </Button>
+                      )}
+                      {acopio.descripcion && (
+                        <Tooltip title="Editar descripción">
+                          <IconButton size="small" onClick={() => openDescripcionDialog(acopio)}>
+                            <EditIcon fontSize="inherit" />
+                          </IconButton>
+                        </Tooltip>
+                      )}
+                    </Stack>
                   </Box>
                 </TableCell>
                 <TableCell>{acopio.proveedor}</TableCell>
@@ -288,6 +350,31 @@ const AcopiosPage = () => {
               </Button>
               <Button onClick={handleEliminarAcopio} variant="contained" color="error">
                 Eliminar
+              </Button>
+            </Stack>
+          </Card>
+        </Dialog>
+
+        <Dialog open={descripcionDialogOpen} onClose={closeDescripcionDialog}>
+          <Card sx={{ p: 3, maxWidth: 520 }}>
+            <Typography variant="h6" gutterBottom>
+              Descripción del acopio
+            </Typography>
+            <TextField
+              value={descripcionEdit}
+              onChange={(e) => setDescripcionEdit(e.target.value)}
+              placeholder="Agregar una descripción breve"
+              fullWidth
+              multiline
+              minRows={3}
+              sx={{ mb: 2 }}
+            />
+            <Stack direction="row" spacing={2} justifyContent="flex-end">
+              <Button onClick={closeDescripcionDialog} variant="outlined">
+                Cancelar
+              </Button>
+              <Button onClick={handleGuardarDescripcion} variant="contained" disabled={guardandoDescripcion}>
+                {guardandoDescripcion ? 'Guardando...' : 'Guardar'}
               </Button>
             </Stack>
           </Card>
