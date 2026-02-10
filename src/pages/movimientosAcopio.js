@@ -47,8 +47,6 @@ import AcopioVisor from 'src/components/acopioVisor';
 // Tu tabla actual de Remitos:
 import RemitosTable from 'src/components/remitosTable';
 
-// Buscador (para lista de precios)
-import ListaPreciosBuscador from 'src/components/listaPreciosBuscador';
 
 // Tooltips de ayuda
 import TooltipHelp from 'src/components/TooltipHelp';
@@ -843,14 +841,6 @@ const MovimientosAcopioPage = () => {
           >
             Materiales{materialesCount > 0 ? ` (${materialesCount})` : ''}
           </Button>
-          {acopio?.tipo === 'lista_precios' && (
-            <Button
-              variant={tabActiva === 'buscar' ? 'contained' : 'outlined'}
-              onClick={() => handleChangeTab(null, 'buscar')}
-            >
-              Buscar materiales
-            </Button>
-          )}
           {hasAcopioPages && (
             <Button
               variant={tabActiva === 'hojas' ? 'contained' : 'outlined'}
@@ -938,12 +928,6 @@ const MovimientosAcopioPage = () => {
           </Box>
         )}
 
-        {/* BUSCAR (para lista de precios) */}
-        {tabActiva === 'buscar' && acopio?.tipo === 'lista_precios' && !initialLoading && (
-          <Box sx={{ mt: 2 }}>
-            <ListaPreciosBuscador acopioId={acopioId} />
-          </Box>
-        )}
 
         {/* INFO ACOPIO + editor */}
         {tabActiva === 'acopio' && !initialLoading && (
