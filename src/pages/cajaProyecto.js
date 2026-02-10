@@ -6,7 +6,7 @@ import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import Head from 'next/head';
-import { Box, Container, Stack, Chip, Typography, TextField, InputAdornment, Paper, Card, CardContent, Button, Select, MenuItem, FormControl, InputLabel, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, useMediaQuery, IconButton, Menu, Table, TableBody, TableCell, TableHead, TableRow, TableContainer, Tooltip, MenuItem as MenuOption, Divider, TablePagination } from '@mui/material';
+import { Box, Container, Stack, Chip, Typography, TextField, InputAdornment, Paper, Card, CardContent, Button, Select, MenuItem, FormControl, InputLabel, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, useMediaQuery, IconButton, Menu, Table, TableBody, TableCell, TableHead, TableRow, TableContainer, Tooltip, MenuItem as MenuOption, Divider, TablePagination, Drawer, List, ListItem, ListItemText, Badge } from '@mui/material';
 
 import { Checkbox, Popover, FormControlLabel, Switch } from '@mui/material';
 
@@ -82,56 +82,101 @@ const ellipsis = (maxWidth) => ({
 });
 
 
-const TotalesFiltrados = ({ t, fmt, moneda, showUsdBlue = false, usdBlue = null }) => {
+const TotalesFiltrados = ({ t, fmt, moneda, showUsdBlue = false, usdBlue = null, chips = [], onOpenFilters }) => {
   const up = (moneda || '').toUpperCase();
   const ingreso = t[up]?.ingreso ?? 0;
   const egreso  = t[up]?.egreso  ?? 0;
   const neto    = ingreso - egreso;
 
   return (
-    <Stack direction="row" spacing={4} sx={{ mb: 2, flexWrap: 'wrap' }}>
-      {/* bloque ARS/moneda base */}
-      <Box sx={{ bgcolor: 'action.hover', p: 2, borderRadius: 1, flex: 1, minWidth: 260 }}>
-        <Typography variant="subtitle2" sx={{ mb: 1 }}>
-          Totales filtrados ({up})
+    <Stack spacing={1.25} sx={{ mb: 2 }}>
+      <Stack direction="row" spacing={2} sx={{ flexWrap: 'wrap' }}>
+      <Box
+        sx={{
+          p: 2,
+          borderRadius: 2,
+          flex: 1,
+          minWidth: 260,
+          bgcolor: 'background.paper',
+          border: '1px solid',
+          borderColor: 'divider',
+          boxShadow: '0 6px 16px rgba(0,0,0,0.06)'
+        }}
+      >
+        <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1, gap: 1 }}>
+          <Typography variant="subtitle2" color="text.secondary">
+            Totales filtrados
+          </Typography>
+          <Stack direction="row" spacing={1} alignItems="center" sx={{ flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+            {chips.length > 0 && chips.map((chip, idx) => (
+              <Chip
+                key={`${chip.label}-${idx}`}
+                label={chip.label}
+                onDelete={(e) => { e.stopPropagation(); chip.onDelete(); }}
+                onClick={() => onOpenFilters?.()}
+                size="small"
+                variant="outlined"
+                clickable
+              />
+            ))}
+            <Chip size="small" label={up} variant="outlined" />
+          </Stack>
+        </Stack>
+        <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.5, color: neto >= 0 ? 'success.main' : 'error.main' }}>
+          Neto: {fmt(up, neto)}
         </Typography>
-        <Stack direction="row" spacing={1} flexWrap="wrap">
+        <Stack direction="row" spacing={1.5} flexWrap="wrap">
           <Typography sx={{ color: 'success.main', fontWeight: 600 }}>
             + {fmt(up, ingreso)}
           </Typography>
           <Typography sx={{ color: 'error.main', fontWeight: 600 }}>
             - {fmt(up, egreso)}
           </Typography>
-          <Typography sx={{ color: neto >= 0 ? 'success.main' : 'error.main', fontWeight: 700 }}>
-            Neto: {fmt(up, neto)}
-          </Typography>
         </Stack>
+
       </Box>
 
-      {/* bloque USD blue opcional */}
       {showUsdBlue && usdBlue && (
-        <Box sx={{ bgcolor: 'action.hover', p: 2, borderRadius: 1, flex: 1, minWidth: 260 }}>
-          <Typography variant="subtitle2" sx={{ mb: 1 }}>
-            Totales filtrados en USD blue
+        <Box
+          sx={{
+            p: 2,
+            borderRadius: 2,
+            flex: 1,
+            minWidth: 260,
+            bgcolor: 'background.paper',
+            border: '1px solid',
+            borderColor: 'divider',
+            boxShadow: '0 6px 16px rgba(0,0,0,0.06)'
+          }}
+        >
+          <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
+            <Typography variant="subtitle2" color="text.secondary">
+              Totales USD blue
+            </Typography>
+            <Chip size="small" label="USD" variant="outlined" />
+          </Stack>
+          <Typography
+            variant="h6"
+            sx={{
+              fontWeight: 700,
+              mb: 0.5,
+              color: (usdBlue.neto ?? 0) >= 0 ? 'success.main' : 'error.main'
+            }}
+          >
+            Neto: {fmt('USD', usdBlue.neto)}
           </Typography>
-          <Stack direction="row" spacing={1} flexWrap="wrap">
+          <Stack direction="row" spacing={1.5} flexWrap="wrap">
             <Typography sx={{ color: 'success.main', fontWeight: 600 }}>
               + {fmt('USD', usdBlue.ingreso)}
             </Typography>
             <Typography sx={{ color: 'error.main', fontWeight: 600 }}>
               - {fmt('USD', usdBlue.egreso)}
             </Typography>
-            <Typography
-              sx={{
-                color: (usdBlue.neto ?? 0) >= 0 ? 'success.main' : 'error.main',
-                fontWeight: 700
-              }}
-            >
-              Neto: {fmt('USD', usdBlue.neto)}
-            </Typography>
           </Stack>
         </Box>
       )}
+      </Stack>
+
     </Stack>
   );
 };
@@ -196,6 +241,9 @@ const ProyectoMovimientosPage = () => {
   const [savingCols, setSavingCols] = useState(false);
   const [saveMsg, setSaveMsg] = useState(null); // opcional: feedback breve
   const [imgPreview, setImgPreview] = useState({ open: false, url: null });
+  const [detalleMov, setDetalleMov] = useState(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const openImg = (url) => setImgPreview({ open: true, url });
   const closeImg = () => setImgPreview({ open: false, url: null });
   
@@ -358,6 +406,66 @@ const handleSaveCols = async () => {
   
 
 const [visibleCols, setVisibleCols] = useState(defaultVisible);
+const hiddenColsCount = useMemo(() => Object.values(visibleCols).filter((v) => !v).length, [visibleCols]);
+
+const applyPreset = (preset) => {
+  const base = { ...defaultVisible };
+  if (preset === 'finanzas') {
+    setVisibleCols({
+      ...base,
+      codigo: true,
+      fechas: true,
+      total: true,
+      categoria: true,
+      subcategoria: !!empresa?.comprobante_info?.subcategoria,
+      medioPago: !!empresa?.comprobante_info?.medio_pago,
+      proveedor: true,
+      estado: !!empresa?.con_estados,
+      empresaFacturacion: !!empresa?.comprobante_info?.empresa_facturacion,
+      facturaCliente: !!empresa?.comprobante_info?.factura_cliente,
+      observacion: false,
+    });
+  }
+  if (preset === 'operativo') {
+    setVisibleCols({
+      ...base,
+      codigo: true,
+      fechas: true,
+      tipo: !compactCols,
+      proveedor: true,
+      obra: true,
+      cliente: true,
+      observacion: true,
+      medioPago: !!empresa?.comprobante_info?.medio_pago,
+      estado: !!empresa?.con_estados,
+    });
+  }
+  if (preset === 'auditoria') {
+    setVisibleCols({
+      ...base,
+      codigo: true,
+      fechas: true,
+      fechaFactura: true,
+      fechaCreacion: true,
+      tipo: true,
+      total: true,
+      categoria: true,
+      subcategoria: !!empresa?.comprobante_info?.subcategoria,
+      medioPago: !!empresa?.comprobante_info?.medio_pago,
+      proveedor: true,
+      estado: !!empresa?.con_estados,
+      empresaFacturacion: !!empresa?.comprobante_info?.empresa_facturacion,
+      facturaCliente: !!empresa?.comprobante_info?.factura_cliente,
+      tc: true,
+      usd: true,
+      mep: true,
+      fechaPago: !!empresa?.comprobante_info?.fecha_pago,
+    });
+  }
+  if (preset === 'reset') {
+    setVisibleCols(defaultVisible);
+  }
+};
 
 // si todavía no hidratamos desde el proyecto, aplicamos defaults
 useEffect(() => {
@@ -455,7 +563,7 @@ const handleCloseCols = () => setAnchorColsEl(null);
   };
 
   const handleFiltrosActivos = () => {
-    setFiltrosActivos(!filtrosActivos);
+    setFiltersOpen(true);
     handleCloseMenu();
   };
 
@@ -507,6 +615,11 @@ const handleCloseCols = () => setAnchorColsEl(null);
         lastPageUrl: router.asPath, // Next lo encodea
       },
     });
+  };
+
+  const openDetalle = (mov) => {
+    setDetalleMov(mov);
+    setDrawerOpen(true);
   };
 
   
@@ -1035,6 +1148,41 @@ const movimientosConProrrateo = useMemo(() => {
     }
     handleCloseMenu();
   };
+  const formatDateChip = (d) => d ? new Date(d).toLocaleDateString('es-AR') : '';
+  const filterChips = useMemo(() => {
+    const chips = [];
+    const add = (label, onDelete) => chips.push({ label, onDelete });
+    if (filters.fechaDesde || filters.fechaHasta) {
+      const label = filters.fechaDesde && filters.fechaHasta
+        ? `Fecha: ${formatDateChip(filters.fechaDesde)} - ${formatDateChip(filters.fechaHasta)}`
+        : (filters.fechaDesde ? `Fecha desde: ${formatDateChip(filters.fechaDesde)}` : `Fecha hasta: ${formatDateChip(filters.fechaHasta)}`);
+      add(label, () => setFilters((f) => ({ ...f, fechaDesde: null, fechaHasta: null })));
+    }
+    if (filters.fechaPagoDesde || filters.fechaPagoHasta) {
+      const label = filters.fechaPagoDesde && filters.fechaPagoHasta
+        ? `Pago: ${formatDateChip(filters.fechaPagoDesde)} - ${formatDateChip(filters.fechaPagoHasta)}`
+        : (filters.fechaPagoDesde ? `Pago desde: ${formatDateChip(filters.fechaPagoDesde)}` : `Pago hasta: ${formatDateChip(filters.fechaPagoHasta)}`);
+      add(label, () => setFilters((f) => ({ ...f, fechaPagoDesde: null, fechaPagoHasta: null })));
+    }
+    if (filters.palabras) add(`Buscar: ${filters.palabras}`, () => setFilters((f) => ({ ...f, palabras: '' })));
+    if (filters.observacion) add(`Observación: ${filters.observacion}`, () => setFilters((f) => ({ ...f, observacion: '' })));
+    if (filters.codigoSync) add(`Código: ${filters.codigoSync}`, () => setFilters((f) => ({ ...f, codigoSync: '' })));
+    (filters.tipo || []).forEach((v) => add(`Tipo: ${v}`, () => setFilters((f) => ({ ...f, tipo: f.tipo.filter((x) => x !== v) }))));
+    (filters.moneda || []).forEach((v) => add(`Moneda: ${v}`, () => setFilters((f) => ({ ...f, moneda: f.moneda.filter((x) => x !== v) }))));
+    (filters.proveedores || []).forEach((v) => add(`Proveedor: ${v}`, () => setFilters((f) => ({ ...f, proveedores: f.proveedores.filter((x) => x !== v) }))));
+    (filters.categorias || []).forEach((v) => add(`Categoría: ${v}`, () => setFilters((f) => ({ ...f, categorias: f.categorias.filter((x) => x !== v) }))));
+    (filters.subcategorias || []).forEach((v) => add(`Subcategoría: ${v}`, () => setFilters((f) => ({ ...f, subcategorias: f.subcategorias.filter((x) => x !== v) }))));
+    (filters.medioPago || []).forEach((v) => add(`Medio: ${v}`, () => setFilters((f) => ({ ...f, medioPago: f.medioPago.filter((x) => x !== v) }))));
+    (filters.etapa || []).forEach((v) => add(`Etapa: ${v}`, () => setFilters((f) => ({ ...f, etapa: f.etapa.filter((x) => x !== v) }))));
+    (filters.estados || []).forEach((v) => add(`Estado: ${v}`, () => setFilters((f) => ({ ...f, estados: f.estados.filter((x) => x !== v) }))));
+    (filters.cuentaInterna || []).forEach((v) => add(`Cuenta: ${v}`, () => setFilters((f) => ({ ...f, cuentaInterna: f.cuentaInterna.filter((x) => x !== v) }))));
+    (filters.tagsExtra || []).forEach((v) => add(`Tag: ${v}`, () => setFilters((f) => ({ ...f, tagsExtra: f.tagsExtra.filter((x) => x !== v) }))));
+    (filters.empresaFacturacion || []).forEach((v) => add(`Emp. fact.: ${v}`, () => setFilters((f) => ({ ...f, empresaFacturacion: f.empresaFacturacion.filter((x) => x !== v) }))));
+    if (filters.facturaCliente) add(filters.facturaCliente === 'cliente' ? 'Factura: Cliente' : 'Factura: Propia', () => setFilters((f) => ({ ...f, facturaCliente: '' })));
+    if (filters.montoMin) add(`Monto min: ${filters.montoMin}`, () => setFilters((f) => ({ ...f, montoMin: '' })));
+    if (filters.montoMax) add(`Monto max: ${filters.montoMax}`, () => setFilters((f) => ({ ...f, montoMax: '' })));
+    return chips;
+  }, [filters, setFilters]);
   const totalesUsdBlue = useMemo(() => {
     let ingreso = 0, egreso = 0;
     (movimientosFiltrados || []).forEach(m => {
@@ -1072,14 +1220,20 @@ useEffect(() => {
         <Container maxWidth="xl">
           <Stack spacing={3}>
             
-            <Stack direction="row" spacing={2}>
+            <Stack direction="row" spacing={2} alignItems="stretch">
               {cajasVirtuales.map((caja, index) => (
-                <Box key={index} sx={{ position: 'relative', width: '100%', mb: 1 }}>
+                <Box key={index} sx={{ position: 'relative', width: '100%', mb: 1, display: 'flex' }}>
                   <Button
                     fullWidth
                     variant={cajaSeleccionada?.nombre === caja.nombre ? "contained" : "outlined"}
                     onClick={() => onSelectCaja(caja)}
-                    sx={{ justifyContent: 'space-between', pl: 2, pr: 5 }}
+                    sx={{
+                      justifyContent: 'space-between',
+                      pl: 2,
+                      pr: 5,
+                      minHeight: 56,
+                      alignItems: 'center',
+                    }}
                   >
               <Typography>{caja.nombre}</Typography>
               {caja.equivalencia && caja.equivalencia !== 'none' && (
@@ -1109,6 +1263,16 @@ useEffect(() => {
   <Button
     variant="outlined"
     size="small"
+    startIcon={<FilterListIcon />}
+    onClick={() => setFiltersOpen(true)}
+  >
+    <Badge color="primary" badgeContent={filterChips.length} invisible={filterChips.length === 0}>
+      <span>Filtros</span>
+    </Badge>
+  </Button>
+  <Button
+    variant="outlined"
+    size="small"
     startIcon={<MoreVertIcon />}
     onClick={handleOpenMenu}   // abre el mismo menú de acciones
   >
@@ -1120,7 +1284,9 @@ useEffect(() => {
     size="small"
     onClick={handleOpenCols}
   >
-    Columnas
+    <Badge color="primary" badgeContent={hiddenColsCount} invisible={hiddenColsCount === 0}>
+      <span>Columnas</span>
+    </Badge>
   </Button>
 </Box>
 
@@ -1189,15 +1355,21 @@ useEffect(() => {
   </DialogActions>
 </Dialog>
 
-{filtrosActivos && (
-  <FilterBarCajaProyecto
-    filters={filters}
-    setFilters={setFilters}
-    options={options}
-    onRefresh={handleRefresh}
-    empresa={empresa}
-  />
-)}
+<Dialog open={filtersOpen} onClose={() => setFiltersOpen(false)} maxWidth="lg" fullWidth>
+  <DialogTitle>Filtros</DialogTitle>
+  <DialogContent dividers>
+    <FilterBarCajaProyecto
+      filters={filters}
+      setFilters={setFilters}
+      options={options}
+      onRefresh={handleRefresh}
+      empresa={empresa}
+    />
+  </DialogContent>
+  <DialogActions>
+    <Button onClick={() => setFiltersOpen(false)}>Cerrar</Button>
+  </DialogActions>
+</Dialog>
             <Paper>
               <Snackbar open={alert.open} autoHideDuration={6000} onClose={handleCloseAlert}>
                 <Alert onClose={handleCloseAlert} severity={alert.severity} sx={{ width: '100%' }}>
@@ -1214,11 +1386,21 @@ useEffect(() => {
                   // showUsdBlue={Boolean(visibleCols.usd)}
                   showUsdBlue={false}
                   usdBlue={totalesUsdBlue}
+                  chips={filterChips}
+                  onOpenFilters={() => setFiltersOpen(true)}
                 />
 
               </Stack>
                 {isMobile ? (
                   <Stack spacing={2}>
+                    {paginatedMovs.length === 0 && (
+                      <Paper sx={{ p: 2 }}>
+                        <Typography variant="subtitle1">Sin resultados</Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          Probá ajustar fechas, categorías o limpiar filtros.
+                        </Typography>
+                      </Paper>
+                    )}
                     {paginatedMovs.map((item, index) => {
                       // Si es un grupo de prorrateo - mostrar solo los movimientos individuales
                       if (item.tipo === 'grupo_prorrateo') {
@@ -1228,7 +1410,7 @@ useEffect(() => {
                               const amountColor = mov.type === 'ingreso' ? 'success.main' : 'error.main';
                               
                               return (
-                                <Card key={`${item.grupoId}-${subIndex}`} sx={{ mb: 1 }}>
+                                <Card key={`${item.grupoId}-${subIndex}`} sx={{ mb: 1, cursor: 'pointer' }} onClick={() => openDetalle(mov)}>
                                   <CardContent>
                                     <Stack direction="row" spacing={2} alignItems="center">
                                       <Box sx={{ flex: 1 }}>
@@ -1239,6 +1421,9 @@ useEffect(() => {
                                           <Chip size="small" label="Prorrateo" variant="outlined" color="info" />
                                         </Stack>
                                         <Typography variant="body2">{mov.descripcion}</Typography>
+                                        {empresa?.comprobante_info?.factura_cliente && (
+                                          <Typography variant="body2"><b>Factura cliente:</b> {mov.factura_cliente ? 'Sí' : 'No'}</Typography>
+                                        )}
                                         <Typography variant="caption" color="textSecondary">
                                           {formatTimestamp(mov.fecha_factura, "DIA/MES/ANO")} • {mov.categoria}
                                         </Typography>
@@ -1252,7 +1437,7 @@ useEffect(() => {
                                         size="small"
                                         color="primary"
                                         startIcon={<EditIcon />}
-                                        onClick={() => goToEdit(mov)}
+                                        onClick={(e) => { e.stopPropagation(); goToEdit(mov); }}
                                       >
                                         Editar
                                       </Button>
@@ -1260,7 +1445,7 @@ useEffect(() => {
                                         size="small"
                                         color="error"
                                         startIcon={<DeleteIcon />}
-                                        onClick={() => handleEliminarClick(mov.id)}
+                                        onClick={(e) => { e.stopPropagation(); handleEliminarClick(mov.id); }}
                                       >
                                         Eliminar
                                       </Button>
@@ -1276,7 +1461,7 @@ useEffect(() => {
                       // Si es un movimiento normal
                       const mov = item.data;
                       return (
-                        <Card key={index}>
+                        <Card key={index} sx={{ cursor: 'pointer' }} onClick={() => openDetalle(mov)}>
                           <CardContent>
                             <Typography variant="h6" color={mov.type === "ingreso" ? "green" : "red"}>
                               {mov.type === "ingreso" ? `Ingreso: ${formatCurrency(mov.total)}` : `Egreso: ${formatCurrency(mov.total)}`}
@@ -1284,6 +1469,9 @@ useEffect(() => {
                             {mov.obra && <Typography variant="body2"><b>Obra:</b> {mov.obra}</Typography>}
                             {mov.cliente && <Typography variant="body2"><b>Cliente:</b> {mov.cliente}</Typography>}
                             <Typography variant="body2">{mov.observacion}</Typography>
+                            {empresa?.comprobante_info?.factura_cliente && (
+                              <Typography variant="body2"><b>Factura cliente:</b> {mov.factura_cliente ? 'Sí' : 'No'}</Typography>
+                            )}
                             {mov.tc && <Typography variant="body2">Tipo de cambio: ${mov.tc}</Typography>}
                             <Typography variant="caption" color="textSecondary">
                               {formatTimestamp(mov.fecha_factura, "DIA/MES/ANO")}
@@ -1295,14 +1483,14 @@ useEffect(() => {
                               <Button
                                 color="primary"
                                 startIcon={<EditIcon />}
-                                onClick={() => goToEdit(mov)}
+                                onClick={(e) => { e.stopPropagation(); goToEdit(mov); }}
                               >
                                 Ver / Editar 
                               </Button>
                               <Button
                                 color="error"
                                 startIcon={<DeleteIcon />}
-                                onClick={() => handleEliminarClick(mov.id)}
+                                onClick={(e) => { e.stopPropagation(); handleEliminarClick(mov.id); }}
                               >
                                 {deletingElement !== mov.id ? "Eliminar" : "Eliminando..."}
                               </Button>
@@ -1329,6 +1517,16 @@ useEffect(() => {
       control={<Switch size="small" checked={compactCols} onChange={(e) => setCompactCols(e.target.checked)} />}
       label="Modo compacto"
     />
+
+    <Stack direction="row" spacing={1}>
+      <Button size="small" variant="outlined" onClick={() => applyPreset('finanzas')}>Finanzas</Button>
+      <Button size="small" variant="outlined" onClick={() => applyPreset('operativo')}>Operativo</Button>
+    </Stack>
+    <Stack direction="row" spacing={1}>
+      <Button size="small" variant="outlined" onClick={() => applyPreset('auditoria')}>Auditoría</Button>
+      <Button size="small" variant="text" onClick={() => applyPreset('reset')}>Reset</Button>
+    </Stack>
+    <Divider sx={{ my: 0.5 }} />
 
     {/* lista de columnas */}
     <FormControlLabel control={<Checkbox size="small" checked={visibleCols.codigo}     onChange={() => toggleCol('codigo')} />}     label="Código" />
@@ -1694,6 +1892,16 @@ useEffect(() => {
     </TableHead>
 
     <TableBody>
+      {paginatedMovs.length === 0 && (
+        <TableRow>
+          <TableCell colSpan={Object.values(visibleCols).filter(Boolean).length} sx={{ py: 4 }}>
+            <Typography variant="subtitle1">Sin resultados</Typography>
+            <Typography variant="body2" color="text.secondary">
+              Probá ajustar fechas, categorías o limpiar filtros.
+            </Typography>
+          </TableCell>
+        </TableRow>
+      )}
       {paginatedMovs.map((item, index) => {
         // Si es un grupo de prorrateo
         if (item.tipo === 'grupo_prorrateo') {
@@ -1712,6 +1920,8 @@ useEffect(() => {
                   <TableRow 
                     key={`${item.grupoId}-${subIndex}`} 
                     hover
+                    onClick={() => openDetalle(mov)}
+                    sx={{ cursor: 'pointer' }}
                   >
                     {visibleCols.codigo && (
                       <TableCell
@@ -1915,21 +2125,21 @@ useEffect(() => {
                       }}>    
                           {mov.url_imagen && <IconButton
                             size="small"
-                            onClick={() => openImg(mov.url_imagen)}
+                            onClick={(e) => { e.stopPropagation(); openImg(mov.url_imagen); }}
                           >
                             <ImageIcon fontSize="small" />
                           </IconButton>}
                         <IconButton
                           size="small"
                           color="primary"
-                          onClick={() => goToEdit(mov)}
+                          onClick={(e) => { e.stopPropagation(); goToEdit(mov); }}
                         >
                           <EditIcon fontSize="small" />
                         </IconButton>
                         <IconButton
                           size="small"
                           color="error"
-                          onClick={() => handleEliminarClick(mov.id)}
+                          onClick={(e) => { e.stopPropagation(); handleEliminarClick(mov.id); }}
                           disabled={deletingElement === mov.id}
                         >
                           <DeleteIcon fontSize="small" />
@@ -1951,7 +2161,7 @@ useEffect(() => {
             : 'inherit';
 
         return (
-          <TableRow key={index} hover>
+          <TableRow key={index} hover onClick={() => openDetalle(mov)} sx={{ cursor: 'pointer' }}>
             {visibleCols.codigo && (
               <TableCell
                 sx={{ ...cellBase, minWidth: COLS.codigo, position: 'sticky', left: 0, zIndex: 1, bgcolor: 'background.paper' }}
@@ -2149,21 +2359,21 @@ useEffect(() => {
               }}>    
                   {mov.url_imagen && <IconButton
                     size="small"
-                    onClick={() => openImg(mov.url_imagen)}
+                    onClick={(e) => { e.stopPropagation(); openImg(mov.url_imagen); }}
                   >
                     <ImageIcon fontSize="small" />
                   </IconButton>}
                 <IconButton
                   size="small"
                   color="primary"
-                  onClick={() => goToEdit(mov)}
+                  onClick={(e) => { e.stopPropagation(); goToEdit(mov); }}
                 >
                   <EditIcon fontSize="small" />
                 </IconButton>
                 <IconButton
                   size="small"
                   color="error"
-                  onClick={() => handleEliminarClick(mov.id)}
+                  onClick={(e) => { e.stopPropagation(); handleEliminarClick(mov.id); }}
                   disabled={deletingElement === mov.id}
                 >
                   <DeleteIcon fontSize="small" />
@@ -2235,7 +2445,7 @@ useEffect(() => {
   </MenuOption>
   <MenuOption onClick={() => handleMenuOptionClick('filtrar')}>
     <FilterListIcon sx={{ mr: 1 }} />
-    {filtrosActivos ? "Ocultar filtro" : "Filtrar"}
+    Filtros
   </MenuOption>
 
   <Divider sx={{ my: 1 }} />
@@ -2344,6 +2554,40 @@ useEffect(() => {
     )}
   </DialogContent>
 </Dialog>
+
+<Drawer anchor="right" open={drawerOpen} onClose={() => setDrawerOpen(false)}>
+  <Box sx={{ width: 360, p: 2 }}>
+    <Typography variant="h6" sx={{ mb: 1 }}>Detalle del movimiento</Typography>
+    {detalleMov ? (
+      <List dense>
+        <ListItem><ListItemText primary="Código" secondary={detalleMov.codigo_operacion || detalleMov.codigo || '—'} /></ListItem>
+        <ListItem><ListItemText primary="Fecha" secondary={formatTimestamp(detalleMov.fecha_factura, "DIA/MES/ANO") || '—'} /></ListItem>
+        <ListItem><ListItemText primary="Tipo" secondary={detalleMov.type || '—'} /></ListItem>
+        <ListItem><ListItemText primary="Total" secondary={formatCurrency(detalleMov.total)} /></ListItem>
+        <ListItem><ListItemText primary="Moneda" secondary={detalleMov.moneda || '—'} /></ListItem>
+        <ListItem><ListItemText primary="Proveedor" secondary={detalleMov.nombre_proveedor || '—'} /></ListItem>
+        <ListItem><ListItemText primary="Categoría" secondary={detalleMov.categoria || '—'} /></ListItem>
+        {detalleMov.subcategoria && (
+          <ListItem><ListItemText primary="Subcategoría" secondary={detalleMov.subcategoria} /></ListItem>
+        )}
+        {detalleMov.obra && (
+          <ListItem><ListItemText primary="Obra" secondary={detalleMov.obra} /></ListItem>
+        )}
+        {detalleMov.cliente && (
+          <ListItem><ListItemText primary="Cliente" secondary={detalleMov.cliente} /></ListItem>
+        )}
+        {empresa?.comprobante_info?.factura_cliente && (
+          <ListItem><ListItemText primary="Factura cliente" secondary={detalleMov.factura_cliente ? 'Sí' : 'No'} /></ListItem>
+        )}
+        {detalleMov.observacion && (
+          <ListItem><ListItemText primary="Observación" secondary={detalleMov.observacion} /></ListItem>
+        )}
+      </List>
+    ) : (
+      <Typography variant="body2" color="text.secondary">Sin datos.</Typography>
+    )}
+  </Box>
+</Drawer>
 
 {/* Dialog de Transferencia Interna */}
 <TransferenciaInternaDialog

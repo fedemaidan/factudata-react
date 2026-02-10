@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Stack, TextField, Select, MenuItem, FormControl, InputLabel, Button, Autocomplete, Chip } from '@mui/material';
+import { useEffect, useMemo, useState, forwardRef } from 'react';
+import { Stack, TextField, Select, MenuItem, FormControl, InputLabel, Button, Autocomplete, Chip, Divider, Box, Typography } from '@mui/material';
 import DatePicker from 'react-datepicker';
 
 // arriba del archivo
@@ -38,6 +38,21 @@ export const FilterBarCajaProyecto = ({
   empresa, 
 }) => {
   const [focusField, setFocusField] = useState(null);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+
+  const DateInput = forwardRef(function DateInput(props, ref) {
+    return (
+      <TextField
+        {...props}
+        inputRef={ref}
+        size="small"
+        variant="outlined"
+        sx={{ width: 140 }}
+      />
+    );
+  });
+
+  const fieldSx = { minWidth: 180 };
 
   const subcategoriasDisponibles = useMemo(() => {
     const cats = filters.categorias || [];
@@ -65,7 +80,7 @@ export const FilterBarCajaProyecto = ({
 
   const DEFINICION_FILTROS = [
     { name: 'observacion', label: 'Observación', type: 'text', visibleIf: () => true },
-    { name: 'palabras', label: 'Palabras sueltas', type: 'text', visibleIf: () => true },
+    { name: 'palabras', label: 'Buscar', type: 'text', visibleIf: () => true },
     { name: 'codigoSync', label: 'Código de importación', type: 'text', visibleIf: () => false }, // Oculto - solo por URL
     { name: 'tipo', label: 'Tipo', type: 'selectMultiple', options: ['ingreso', 'egreso'], visibleIf: () => true },
     { name: 'moneda', label: 'Moneda', type: 'selectMultiple', optionsKey: 'monedas', visibleIf: () => true },
@@ -155,9 +170,30 @@ export const FilterBarCajaProyecto = ({
     return () => clearTimeout(t);
   }, [focusField]);
 
+  const quickFilterNames = new Set([
+    'palabras','tipo','moneda','categorias','proveedores','facturaCliente'
+  ]);
+
+  const filtrosVisibles = getFiltrosVisibles(empresa);
+  const filtrosRapidos = filtrosVisibles.filter((f) => quickFilterNames.has(f.name));
+  const filtrosAvanzados = filtrosVisibles.filter((f) => !quickFilterNames.has(f.name));
+
   return (
-    <Stack direction="row" spacing={2} flexWrap="wrap" alignItems="center">
-      <Stack direction="row" spacing={1} alignItems="center">
+    <Stack spacing={1.5}>
+      <Box sx={{
+        border: '1px solid',
+        borderColor: 'divider',
+        borderRadius: 2,
+        p: 1.5,
+        bgcolor: 'background.paper',
+        boxShadow: '0 6px 16px rgba(0,0,0,0.04)'
+      }}>
+        <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
+          <Typography variant="subtitle2" color="text.secondary">Filtros rápidos</Typography>
+          <Typography variant="caption" color="text.secondary">Búsqueda y principales</Typography>
+        </Stack>
+        <Stack direction="row" spacing={1.5} flexWrap="wrap" alignItems="center">
+          <Stack direction="row" spacing={1} alignItems="center">
         <DatePicker
           selected={filters.fechaDesde}
           onChange={(date) => set('fechaDesde', date)}
@@ -167,6 +203,7 @@ export const FilterBarCajaProyecto = ({
           placeholderText="Desde"
           dateFormat="dd/MM/yyyy"
           autoFocus={focusField === 'fechaDesde'}
+          customInput={<DateInput />}
         />
         <DatePicker
           selected={filters.fechaHasta}
@@ -178,10 +215,11 @@ export const FilterBarCajaProyecto = ({
           placeholderText="Hasta"
           dateFormat="dd/MM/yyyy"
           autoFocus={focusField === 'fechaHasta'}
+          customInput={<DateInput />}
         />
-      </Stack>
+          </Stack>
 
-      {empresa?.comprobante_info?.fecha_pago && <Stack direction="row" spacing={1} alignItems="center">
+          {empresa?.comprobante_info?.fecha_pago && <Stack direction="row" spacing={1} alignItems="center">
           <DatePicker
             selected={filters.fechaPagoDesde}
             onChange={(date) => set('fechaPagoDesde', date)}
@@ -191,6 +229,7 @@ export const FilterBarCajaProyecto = ({
             placeholderText="Pago desde"
             dateFormat="dd/MM/yyyy"
             autoFocus={focusField === 'fechaPagoDesde'}
+            customInput={<DateInput />}
           />
           <DatePicker
             selected={filters.fechaPagoHasta}
@@ -202,11 +241,137 @@ export const FilterBarCajaProyecto = ({
             placeholderText="Pago hasta"
             dateFormat="dd/MM/yyyy"
             autoFocus={focusField === 'fechaPagoHasta'}
+            customInput={<DateInput />}
           />
         </Stack>
-      }
+        }
 
-      {getFiltrosVisibles(empresa).map((filtro) => {
+        {filtrosRapidos.map((filtro) => {
+  const value = filters[filtro.name];
+
+  // campo de texto
+  if (filtro.type === 'text') {
+    return (
+      <TextField
+        key={filtro.name}
+        label={filtro.label}
+        value={value}
+        onChange={(e) => set(filtro.name, e.target.value)}
+        size="small"
+        variant="outlined"
+        sx={fieldSx}
+        autoFocus={focusField === filtro.name}
+      />
+    );
+  }
+
+  // select múltiple
+  if (filtro.type === 'selectMultiple') {
+    if (filtro.name === 'proveedores') {
+      const selectOptions = filtro.options || options[filtro.optionsKey] || [];
+      return (
+        <Autocomplete
+          key={filtro.name}
+          multiple
+          options={selectOptions}
+          value={value}
+          onChange={(_e, newValue) => set(filtro.name, newValue)}
+          filterSelectedOptions
+          renderInput={(params) => (
+            <TextField {...params} label={filtro.label} size="small" variant="outlined" sx={{ minWidth: 220 }} autoFocus={focusField === filtro.name} />
+          )}
+          size="small"
+          sx={{ minWidth: 220 }}
+        />
+      );
+    }
+
+    const isSubcategorias = filtro.name === 'subcategorias';
+    const selectOptions = isSubcategorias
+      ? subcategoriasDisponibles
+      : (filtro.options || options[filtro.optionsKey] || []);
+
+    return (
+      <FormControl sx={fieldSx} key={filtro.name} disabled={isSubcategorias && !filters.categorias?.length} size="small">
+        <InputLabel>{filtro.label}</InputLabel>
+        <Select
+          multiple
+          value={value}
+          onChange={(e) => set(filtro.name, e.target.value)}
+          label={filtro.label}
+          autoFocus={focusField === filtro.name}
+          size="small"
+        >
+          {selectOptions.map((opt) => (
+            <MenuItem key={opt} value={opt}>{opt}</MenuItem>
+          ))}
+        </Select>
+      </FormControl>
+    );
+  }
+
+  // select simple
+  if (filtro.type === 'select') {
+    const selectOptions = filtro.options || options[filtro.optionsKey] || [];
+
+    return (
+      <FormControl sx={{ minWidth: 160 }} key={filtro.name} size="small">
+        <InputLabel>{filtro.label}</InputLabel>
+        <Select
+          value={value}
+          onChange={(e) => set(filtro.name, e.target.value)}
+          label={filtro.label}
+          autoFocus={focusField === filtro.name}
+          size="small"
+        >
+          <MenuItem value="">Todos</MenuItem>
+          {selectOptions.map((opt) => (
+            <MenuItem key={opt} value={opt}>{opt}</MenuItem>
+          ))}
+        </Select>
+      </FormControl>
+    );
+  }
+
+  // number
+  if (filtro.type === 'number') {
+    return (
+      <TextField
+        key={filtro.name}
+        type="number"
+        label={filtro.label}
+        value={value}
+        onChange={(e) => set(filtro.name, e.target.value)}
+        size="small"
+        variant="outlined"
+        sx={{ width: 120 }}
+        autoFocus={focusField === filtro.name}
+      />
+    );
+  }
+
+  return null;
+})}
+        <Button size="small" variant="outlined" onClick={() => setShowAdvanced((s) => !s)}>
+          {showAdvanced ? 'Menos filtros' : 'Más filtros'}
+        </Button>
+        {onRefresh && <Button onClick={onRefresh}>Actualizar</Button>}
+        </Stack>
+      </Box>
+
+    {showAdvanced && (
+      <>
+        <Divider />
+        <Box sx={{
+          border: '1px dashed',
+          borderColor: 'divider',
+          borderRadius: 2,
+          p: 1.5,
+          bgcolor: 'action.hover'
+        }}>
+          <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>Filtros avanzados</Typography>
+          <Stack direction="row" spacing={1.5} flexWrap="wrap" alignItems="center">
+          {filtrosAvanzados.map((filtro) => {
   const value = filters[filtro.name];
 
   // campo de texto
@@ -305,30 +470,41 @@ export const FilterBarCajaProyecto = ({
 
   return null;
 })}
+          </Stack>
+        </Box>
+      </>
+    )}
 
-      {onRefresh && <Button onClick={onRefresh}>Actualizar</Button>}
-
-      {activeChips.length > 0 ? (
-        <Stack direction="row" spacing={1} flexWrap="wrap" alignItems="center" sx={{ width: '100%' }}>
-          {activeChips.map((chip, idx) => (
-            <Chip
-              key={`${chip.label}-${idx}`}
-              label={chip.label}
-              onDelete={chip.onDelete}
-              onClick={chip.focusKey ? () => setFocusField(chip.focusKey) : undefined}
-              size="small"
-              clickable={Boolean(chip.focusKey)}
-            />
-          ))}
-          <Button size="small" variant="text" onClick={() => setFilters(prev => ({ ...prev, ...defaultFilters }))}>
-            Limpiar todo
-          </Button>
-        </Stack>
-      ) : (
-        <Button variant="outlined" onClick={() => setFilters(prev => ({ ...prev, ...defaultFilters }))}>
+    {activeChips.length > 0 ? (
+      <Box sx={{
+        border: '1px solid',
+        borderColor: 'divider',
+        borderRadius: 2,
+        p: 1,
+        bgcolor: 'background.paper'
+      }}>
+      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>Filtros activos</Typography>
+      <Stack direction="row" spacing={1} flexWrap="wrap" alignItems="center">
+        {activeChips.map((chip, idx) => (
+          <Chip
+            key={`${chip.label}-${idx}`}
+            label={chip.label}
+            onDelete={chip.onDelete}
+            onClick={chip.focusKey ? () => setFocusField(chip.focusKey) : undefined}
+            size="small"
+            clickable={Boolean(chip.focusKey)}
+          />
+        ))}
+        <Button size="small" variant="text" onClick={() => setFilters(prev => ({ ...prev, ...defaultFilters }))}>
           Limpiar todo
         </Button>
-      )}
-    </Stack>
+      </Stack>
+      </Box>
+    ) : (
+      <Button variant="outlined" onClick={() => setFilters(prev => ({ ...prev, ...defaultFilters }))}>
+        Limpiar todo
+      </Button>
+    )}
+  </Stack>
   );
 };
