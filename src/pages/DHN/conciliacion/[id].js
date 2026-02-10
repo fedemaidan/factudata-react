@@ -26,12 +26,22 @@ const HORAS_EXCEL_FIELDS = [
   "horasNocturnas100",
 ];
 
+const INITIAL_STATS = {
+  total: 0,
+  okAutomatico: 0,
+  okManual: 0,
+  incompleto: 0,
+  advertencia: 0,
+  pendiente: 0,
+  error: 0,
+};
+
 const ConciliacionDetallePage = () => {
   const router = useRouter();
   const { id } = router.query;
 
   const [rows, setRows] = useState([]);
-  const [stats, setStats] = useState({ total: 0, okAutomatico: 0, okManual: 0, incompleto: 0, advertencia: 0, pendiente: 0, error: 0 });
+  const [stats, setStats] = useState(INITIAL_STATS);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -154,12 +164,24 @@ const ConciliacionDetallePage = () => {
         if (sortDir) {
           params.sortDirection = sortDir;
         }
-        const res = await conciliacionService.getConciliacionRows(id, params);
-        setRows(res.data || []);
-        setStats(res.stats || { total: 0, okAutomatico: 0, okManual: 0, incompleto: 0, advertencia: 0, pendiente: 0, error: 0 });
-        setPeriodoInfo(res.periodo || '-');
-        setSheetId(res.sheetId || null);
-        setTotalRows(res.total ?? res.data?.length ?? 0);
+        const [rowsRes, statsRes] = await Promise.all([
+          conciliacionService.getConciliacionRows(id, params),
+          conciliacionService.getConciliacionStats(id),
+        ]);
+        setRows(rowsRes.data || []);
+        const normalizedStats = statsRes?.stats || statsRes || {};
+        setStats({
+          total: normalizedStats.total ?? 0,
+          okAutomatico: normalizedStats.okAutomatico ?? 0,
+          okManual: normalizedStats.okManual ?? 0,
+          incompleto: normalizedStats.incompleto ?? 0,
+          advertencia: normalizedStats.advertencia ?? 0,
+          pendiente: normalizedStats.pendiente ?? 0,
+          error: normalizedStats.error ?? 0,
+        });
+        setPeriodoInfo(rowsRes.periodo || '-');
+        setSheetId(rowsRes.sheetId || null);
+        setTotalRows(rowsRes.total ?? rowsRes.data?.length ?? 0);
         setError(null);
       } catch (e) {
         setError('Error al cargar detalle de conciliación');
@@ -393,10 +415,50 @@ const ConciliacionDetallePage = () => {
     return value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
   };
 
+  const getTrabajadorDisplayData = (row) => {
+    const source = row?.trabajadorId || row?.trabajador || {};
+    let nombre = '';
+    let dniValue = '';
+
+    if (typeof source === 'string') {
+      nombre = source;
+      dniValue = row?.dni || '';
+    } else if (source && typeof source === 'object') {
+      const apellido = source.apellido ? source.apellido : '';
+      const nombreProp = source.nombre ? source.nombre : '';
+      nombre = `${apellido} ${nombreProp}`.trim();
+      dniValue = source.dni || row?.dni || '';
+    }
+
+    if (!nombre) {
+      nombre = row?.trabajador || '-';
+      dniValue = row?.dni || dniValue;
+    }
+
+    return { nombre: nombre || '-', dni: dniValue };
+  };
+
   const columns = useMemo(() => ([
     { key: 'fecha', label: 'Fecha', sortable: true, render: (row) => formatFechaLabel(row.fecha) },
-    { key: 'trabajador', label: 'Trabajador', sortable: true },
-    { key: 'dni', label: 'DNI', sortable: true, render: (row) => formatDni(row.dni) },
+    {
+      key: 'trabajador',
+      label: 'Trabajador',
+      sortable: true,
+      render: (row) => {
+        const { nombre, dni } = getTrabajadorDisplayData(row);
+        const dniLabel = formatDni(dni);
+        return (
+          <Box>
+            <Typography variant="body2">{nombre}</Typography>
+            {dniLabel && dniLabel !== '-' ? (
+              <Typography variant="caption" color="text.secondary">
+                DNI: {dniLabel}
+              </Typography>
+            ) : null}
+          </Box>
+        );
+      },
+    },
     { key: 'licencia', label: 'Licencia', render: (row) => {
       const lic = (row?.sheetHoras?.fechaLicencia ?? row?.licencia ?? false) ? true : false;
       return (
@@ -533,33 +595,6 @@ const ConciliacionDetallePage = () => {
         const { label, color } = getEstadoChipProps(row.estado);
         return <Chip size="small" color={color} label={label} />;
       }
-    },
-    {
-      key: 'observacion',
-      label: 'Observación',
-      render: (row) => {
-        const text = row?.observacion || '-';
-        if (text === '-') return text;
-        return (
-          <Tooltip title={text} placement="left" arrow>
-            <Typography
-              variant="body2"
-              sx={{
-                whiteSpace: 'normal',
-                wordBreak: 'break-word',
-                display: 'block',
-              }}
-            >
-              {text}
-            </Typography>
-          </Tooltip>
-        );
-      },
-      sx: {
-        maxWidth: 320,
-        whiteSpace: 'normal',
-        wordBreak: 'break-word',
-      },
     },
     {
       key: 'acciones',
