@@ -1366,8 +1366,9 @@ useEffect(() => {
       empresa={empresa}
     />
   </DialogContent>
-  <DialogActions>
-    <Button onClick={() => setFiltersOpen(false)}>Cerrar</Button>
+  <DialogActions sx={{ position: 'sticky', bottom: 0, bgcolor: 'background.paper', borderTop: '1px solid', borderColor: 'divider', px: 2, py: 1.5 }}>
+    <Button variant="text" onClick={() => setFiltersOpen(false)}>Cancelar</Button>
+    <Button variant="contained" onClick={() => setFiltersOpen(false)}>Aplicar filtros</Button>
   </DialogActions>
 </Dialog>
             <Paper>

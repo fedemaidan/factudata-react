@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, forwardRef } from 'react';
 import { Stack, TextField, Select, MenuItem, FormControl, InputLabel, Button, Autocomplete, Chip, Divider, Box, Typography } from '@mui/material';
 import DatePicker from 'react-datepicker';
+import { subDays, startOfMonth, endOfMonth } from 'date-fns';
 
 // arriba del archivo
 const defaultFilters = {
@@ -38,7 +39,7 @@ export const FilterBarCajaProyecto = ({
   empresa, 
 }) => {
   const [focusField, setFocusField] = useState(null);
-  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(true);
 
   const DateInput = forwardRef(function DateInput(props, ref) {
     return (
@@ -53,6 +54,12 @@ export const FilterBarCajaProyecto = ({
   });
 
   const fieldSx = { minWidth: 180 };
+  const presets = [
+    { label: 'Hoy', from: new Date(), to: new Date() },
+    { label: '7 días', from: subDays(new Date(), 7), to: new Date() },
+    { label: '30 días', from: subDays(new Date(), 30), to: new Date() },
+    { label: 'Mes', from: startOfMonth(new Date()), to: endOfMonth(new Date()) },
+  ];
 
   const subcategoriasDisponibles = useMemo(() => {
     const cats = filters.categorias || [];
@@ -171,309 +178,319 @@ export const FilterBarCajaProyecto = ({
   }, [focusField]);
 
   const quickFilterNames = new Set([
-    'palabras','tipo','moneda','categorias','proveedores','facturaCliente'
+    'palabras','tipo','moneda','proveedores','categorias','subcategorias','facturaCliente'
   ]);
 
   const filtrosVisibles = getFiltrosVisibles(empresa);
   const filtrosRapidos = filtrosVisibles.filter((f) => quickFilterNames.has(f.name));
   const filtrosAvanzados = filtrosVisibles.filter((f) => !quickFilterNames.has(f.name));
 
-  return (
-    <Stack spacing={1.5}>
-      <Box sx={{
-        border: '1px solid',
-        borderColor: 'divider',
-        borderRadius: 2,
-        p: 1.5,
-        bgcolor: 'background.paper',
-        boxShadow: '0 6px 16px rgba(0,0,0,0.04)'
-      }}>
-        <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
-          <Typography variant="subtitle2" color="text.secondary">Filtros rápidos</Typography>
-          <Typography variant="caption" color="text.secondary">Búsqueda y principales</Typography>
-        </Stack>
-        <Stack direction="row" spacing={1.5} flexWrap="wrap" alignItems="center">
-          <Stack direction="row" spacing={1} alignItems="center">
-        <DatePicker
-          selected={filters.fechaDesde}
-          onChange={(date) => set('fechaDesde', date)}
-          selectsStart
-          startDate={filters.fechaDesde}
-          endDate={filters.fechaHasta}
-          placeholderText="Desde"
-          dateFormat="dd/MM/yyyy"
-          autoFocus={focusField === 'fechaDesde'}
-          customInput={<DateInput />}
-        />
-        <DatePicker
-          selected={filters.fechaHasta}
-          onChange={(date) => set('fechaHasta', date)}
-          selectsEnd
-          startDate={filters.fechaDesde}
-          endDate={filters.fechaHasta}
-          minDate={filters.fechaDesde}
-          placeholderText="Hasta"
-          dateFormat="dd/MM/yyyy"
-          autoFocus={focusField === 'fechaHasta'}
-          customInput={<DateInput />}
-        />
-          </Stack>
+  const renderFiltroRapido = (name) => {
+    const filtro = filtrosRapidos.find((f) => f.name === name);
+    if (!filtro) return null;
+    const value = filters[filtro.name];
 
-          {empresa?.comprobante_info?.fecha_pago && <Stack direction="row" spacing={1} alignItems="center">
-          <DatePicker
-            selected={filters.fechaPagoDesde}
-            onChange={(date) => set('fechaPagoDesde', date)}
-            selectsStart
-            startDate={filters.fechaPagoDesde}
-            endDate={filters.fechaPagoHasta}
-            placeholderText="Pago desde"
-            dateFormat="dd/MM/yyyy"
-            autoFocus={focusField === 'fechaPagoDesde'}
-            customInput={<DateInput />}
-          />
-          <DatePicker
-            selected={filters.fechaPagoHasta}
-            onChange={(date) => set('fechaPagoHasta', date)}
-            selectsEnd
-            startDate={filters.fechaPagoDesde}
-            endDate={filters.fechaPagoHasta}
-            minDate={filters.fechaPagoDesde}
-            placeholderText="Pago hasta"
-            dateFormat="dd/MM/yyyy"
-            autoFocus={focusField === 'fechaPagoHasta'}
-            customInput={<DateInput />}
-          />
-        </Stack>
-        }
-
-        {filtrosRapidos.map((filtro) => {
-  const value = filters[filtro.name];
-
-  // campo de texto
-  if (filtro.type === 'text') {
-    return (
-      <TextField
-        key={filtro.name}
-        label={filtro.label}
-        value={value}
-        onChange={(e) => set(filtro.name, e.target.value)}
-        size="small"
-        variant="outlined"
-        sx={fieldSx}
-        autoFocus={focusField === filtro.name}
-      />
-    );
-  }
-
-  // select múltiple
-  if (filtro.type === 'selectMultiple') {
-    if (filtro.name === 'proveedores') {
-      const selectOptions = filtro.options || options[filtro.optionsKey] || [];
+    if (filtro.type === 'text') {
       return (
-        <Autocomplete
+        <TextField
           key={filtro.name}
-          multiple
-          options={selectOptions}
+          label={filtro.label}
           value={value}
-          onChange={(_e, newValue) => set(filtro.name, newValue)}
-          filterSelectedOptions
-          renderInput={(params) => (
-            <TextField {...params} label={filtro.label} size="small" variant="outlined" sx={{ minWidth: 220 }} autoFocus={focusField === filtro.name} />
-          )}
+          onChange={(e) => set(filtro.name, e.target.value)}
           size="small"
-          sx={{ minWidth: 220 }}
+          variant="outlined"
+          sx={fieldSx}
+          autoFocus={focusField === filtro.name}
+          helperText={filtro.name === 'palabras' ? 'Código, proveedor, observación…' : undefined}
         />
       );
     }
 
-    const isSubcategorias = filtro.name === 'subcategorias';
-    const selectOptions = isSubcategorias
-      ? subcategoriasDisponibles
-      : (filtro.options || options[filtro.optionsKey] || []);
+    if (filtro.type === 'selectMultiple') {
+      if (filtro.name === 'proveedores') {
+        const selectOptions = filtro.options || options[filtro.optionsKey] || [];
+        return (
+          <Autocomplete
+            key={filtro.name}
+            multiple
+            options={selectOptions}
+            value={value}
+            onChange={(_e, newValue) => set(filtro.name, newValue)}
+            filterSelectedOptions
+            renderInput={(params) => (
+              <TextField {...params} label={filtro.label} size="small" variant="outlined" sx={{ minWidth: 220 }} autoFocus={focusField === filtro.name} />
+            )}
+            size="small"
+            sx={{ minWidth: 220 }}
+          />
+        );
+      }
 
-    return (
-      <FormControl sx={fieldSx} key={filtro.name} disabled={isSubcategorias && !filters.categorias?.length} size="small">
-        <InputLabel>{filtro.label}</InputLabel>
-        <Select
-          multiple
+      const isSubcategorias = filtro.name === 'subcategorias';
+      const selectOptions = isSubcategorias
+        ? subcategoriasDisponibles
+        : (filtro.options || options[filtro.optionsKey] || []);
+
+      return (
+        <FormControl sx={fieldSx} key={filtro.name} disabled={isSubcategorias && !filters.categorias?.length} size="small">
+          <InputLabel>{filtro.label}</InputLabel>
+          <Select
+            multiple
+            value={value}
+            onChange={(e) => set(filtro.name, e.target.value)}
+            label={filtro.label}
+            autoFocus={focusField === filtro.name}
+            size="small"
+          >
+            {selectOptions.map((opt) => (
+              <MenuItem key={opt} value={opt}>{opt}</MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+      );
+    }
+
+    if (filtro.type === 'select') {
+      const selectOptions = filtro.options || options[filtro.optionsKey] || [];
+      return (
+        <FormControl sx={{ minWidth: 160 }} key={filtro.name} size="small">
+          <InputLabel>{filtro.label}</InputLabel>
+          <Select
+            value={value}
+            onChange={(e) => set(filtro.name, e.target.value)}
+            label={filtro.label}
+            autoFocus={focusField === filtro.name}
+            size="small"
+          >
+            <MenuItem value="">Todos</MenuItem>
+            {selectOptions.map((opt) => (
+              <MenuItem key={opt} value={opt}>{opt}</MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+      );
+    }
+
+    if (filtro.type === 'number') {
+      return (
+        <TextField
+          key={filtro.name}
+          type="number"
+          label={filtro.label}
           value={value}
           onChange={(e) => set(filtro.name, e.target.value)}
-          label={filtro.label}
-          autoFocus={focusField === filtro.name}
           size="small"
-        >
-          {selectOptions.map((opt) => (
-            <MenuItem key={opt} value={opt}>{opt}</MenuItem>
-          ))}
-        </Select>
-      </FormControl>
-    );
-  }
-
-  // select simple
-  if (filtro.type === 'select') {
-    const selectOptions = filtro.options || options[filtro.optionsKey] || [];
-
-    return (
-      <FormControl sx={{ minWidth: 160 }} key={filtro.name} size="small">
-        <InputLabel>{filtro.label}</InputLabel>
-        <Select
-          value={value}
-          onChange={(e) => set(filtro.name, e.target.value)}
-          label={filtro.label}
+          variant="outlined"
+          sx={{ width: 120 }}
           autoFocus={focusField === filtro.name}
-          size="small"
-        >
-          <MenuItem value="">Todos</MenuItem>
-          {selectOptions.map((opt) => (
-            <MenuItem key={opt} value={opt}>{opt}</MenuItem>
-          ))}
-        </Select>
-      </FormControl>
-    );
-  }
+        />
+      );
+    }
 
-  // number
-  if (filtro.type === 'number') {
-    return (
-      <TextField
-        key={filtro.name}
-        type="number"
-        label={filtro.label}
-        value={value}
-        onChange={(e) => set(filtro.name, e.target.value)}
-        size="small"
-        variant="outlined"
-        sx={{ width: 120 }}
-        autoFocus={focusField === filtro.name}
-      />
-    );
-  }
+    return null;
+  };
 
-  return null;
-})}
-        <Button size="small" variant="outlined" onClick={() => setShowAdvanced((s) => !s)}>
-          {showAdvanced ? 'Menos filtros' : 'Más filtros'}
+  return (
+    <Stack spacing={1.5}>
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <Typography variant="subtitle2" color="text.secondary">{activeChips.length} filtros activos</Typography>
+        <Button size="small" variant="text" onClick={() => setFilters(prev => ({ ...prev, ...defaultFilters }))}>
+          Restaurar defaults
         </Button>
-        {onRefresh && <Button onClick={onRefresh}>Actualizar</Button>}
-        </Stack>
       </Box>
+      <Box
+        sx={{
+          display: 'grid',
+          gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' },
+          gap: 2,
+        }}
+      >
+        <Box sx={{
+          border: '1px solid',
+          borderColor: 'divider',
+          borderRadius: 2,
+          p: 1.25,
+          bgcolor: 'background.paper',
+          boxShadow: '0 6px 16px rgba(0,0,0,0.04)'
+        }}>
+          <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
+            <Typography variant="subtitle2" color="text.secondary" sx={{ letterSpacing: 0.4 }}>Filtros rápidos</Typography>
+            <Typography variant="caption" color="text.secondary">Búsqueda y principales</Typography>
+          </Stack>
+            <Stack spacing={1.5}>
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems="center">
+              <DatePicker
+                selected={filters.fechaDesde}
+                onChange={(date) => set('fechaDesde', date)}
+                selectsStart
+                startDate={filters.fechaDesde}
+                endDate={filters.fechaHasta}
+                placeholderText="Desde"
+                dateFormat="dd/MM/yyyy"
+                autoFocus={focusField === 'fechaDesde'}
+                customInput={<DateInput />}
+              />
+              <DatePicker
+                selected={filters.fechaHasta}
+                onChange={(date) => set('fechaHasta', date)}
+                selectsEnd
+                startDate={filters.fechaDesde}
+                endDate={filters.fechaHasta}
+                minDate={filters.fechaDesde}
+                placeholderText="Hasta"
+                dateFormat="dd/MM/yyyy"
+                autoFocus={focusField === 'fechaHasta'}
+                customInput={<DateInput />}
+              />
+                <Stack direction="row" spacing={0.5} alignItems="center" sx={{ ml: 0.5 }}>
+              {presets.map((p) => (
+                <Button
+                  key={p.label}
+                  size="small"
+                  variant="text"
+                  onClick={() => setFilters((f) => ({ ...f, fechaDesde: p.from, fechaHasta: p.to }))}
+                >
+                  {p.label}
+                </Button>
+              ))}
+                </Stack>
+              </Stack>
 
-    {showAdvanced && (
-      <>
-        <Divider />
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1 }}>
+                <Box sx={{ gridColumn: { xs: '1 / -1', sm: '1 / -1' } }}>
+                  {renderFiltroRapido('palabras')}
+                </Box>
+                {renderFiltroRapido('tipo')}
+                {renderFiltroRapido('moneda')}
+                {renderFiltroRapido('proveedores')}
+                {renderFiltroRapido('categorias')}
+                {renderFiltroRapido('subcategorias')}
+                {renderFiltroRapido('facturaCliente')}
+              </Box>
+
+              <Stack direction="row" justifyContent="flex-end">
+                {onRefresh && <Button onClick={onRefresh}>Actualizar</Button>}
+              </Stack>
+            </Stack>
+        </Box>
+
         <Box sx={{
           border: '1px dashed',
           borderColor: 'divider',
           borderRadius: 2,
-          p: 1.5,
+          p: 1.25,
           bgcolor: 'action.hover'
         }}>
-          <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>Filtros avanzados</Typography>
-          <Stack direction="row" spacing={1.5} flexWrap="wrap" alignItems="center">
-          {filtrosAvanzados.map((filtro) => {
-  const value = filters[filtro.name];
-
-  // campo de texto
-  if (filtro.type === 'text') {
-    return (
-      <TextField
-        key={filtro.name}
-        label={filtro.label}
-        value={value}
-        onChange={(e) => set(filtro.name, e.target.value)}
-        sx={{ minWidth: 200 }}
-        autoFocus={focusField === filtro.name}
-      />
-    );
-  }
-
-  // select múltiple
-  if (filtro.type === 'selectMultiple') {
-    if (filtro.name === 'proveedores') {
-      const selectOptions = filtro.options || options[filtro.optionsKey] || [];
-      return (
-        <Autocomplete
-          key={filtro.name}
-          multiple
-          options={selectOptions}
-          value={value}
-          onChange={(_e, newValue) => set(filtro.name, newValue)}
-          filterSelectedOptions
-          renderInput={(params) => (
-            <TextField {...params} label={filtro.label} sx={{ minWidth: 240 }} autoFocus={focusField === filtro.name} />
-          )}
-          sx={{ minWidth: 240 }}
-        />
-      );
-    }
-
-    const isSubcategorias = filtro.name === 'subcategorias';
-    const selectOptions = isSubcategorias
-      ? subcategoriasDisponibles
-      : (filtro.options || options[filtro.optionsKey] || []);
-
-    return (
-      <FormControl sx={{ minWidth: 200 }} key={filtro.name} disabled={isSubcategorias && !filters.categorias?.length}>
-        <InputLabel>{filtro.label}</InputLabel>
-        <Select
-          multiple
-          value={value}
-          onChange={(e) => set(filtro.name, e.target.value)}
-          label={filtro.label}
-          autoFocus={focusField === filtro.name}
-        >
-          {selectOptions.map((opt) => (
-            <MenuItem key={opt} value={opt}>{opt}</MenuItem>
-          ))}
-        </Select>
-      </FormControl>
-    );
-  }
-
-  // select simple
-  if (filtro.type === 'select') {
-    const selectOptions = filtro.options || options[filtro.optionsKey] || [];
-
-    return (
-      <FormControl sx={{ minWidth: 160 }} key={filtro.name}>
-        <InputLabel>{filtro.label}</InputLabel>
-        <Select
-          value={value}
-          onChange={(e) => set(filtro.name, e.target.value)}
-          label={filtro.label}
-          autoFocus={focusField === filtro.name}
-        >
-          <MenuItem value="">Todos</MenuItem>
-          {selectOptions.map((opt) => (
-            <MenuItem key={opt} value={opt}>{opt}</MenuItem>
-          ))}
-        </Select>
-      </FormControl>
-    );
-  }
-
-  // number
-  if (filtro.type === 'number') {
-    return (
-      <TextField
-        key={filtro.name}
-        type="number"
-        label={filtro.label}
-        value={value}
-        onChange={(e) => set(filtro.name, e.target.value)}
-        sx={{ width: 120 }}
-        autoFocus={focusField === filtro.name}
-      />
-    );
-  }
-
-  return null;
-})}
+          <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
+            <Typography variant="subtitle2" color="text.secondary" sx={{ letterSpacing: 0.4 }}>Filtros avanzados</Typography>
           </Stack>
+          {showAdvanced && (
+            <Stack direction="row" spacing={1.25} flexWrap="wrap" alignItems="center">
+              {filtrosAvanzados.map((filtro) => {
+                const value = filters[filtro.name];
+
+                if (filtro.type === 'text') {
+                  return (
+                    <TextField
+                      key={filtro.name}
+                      label={filtro.label}
+                      value={value}
+                      onChange={(e) => set(filtro.name, e.target.value)}
+                      size="small"
+                      variant="outlined"
+                      sx={{ minWidth: 200 }}
+                      autoFocus={focusField === filtro.name}
+                    />
+                  );
+                }
+
+                if (filtro.type === 'selectMultiple') {
+                  if (filtro.name === 'proveedores') {
+                    const selectOptions = filtro.options || options[filtro.optionsKey] || [];
+                    return (
+                      <Autocomplete
+                        key={filtro.name}
+                        multiple
+                        options={selectOptions}
+                        value={value}
+                        onChange={(_e, newValue) => set(filtro.name, newValue)}
+                        filterSelectedOptions
+                        renderInput={(params) => (
+                          <TextField {...params} label={filtro.label} size="small" variant="outlined" sx={{ minWidth: 240 }} autoFocus={focusField === filtro.name} />
+                        )}
+                        size="small"
+                        sx={{ minWidth: 240 }}
+                      />
+                    );
+                  }
+
+                  const isSubcategorias = filtro.name === 'subcategorias';
+                  const selectOptions = isSubcategorias
+                    ? subcategoriasDisponibles
+                    : (filtro.options || options[filtro.optionsKey] || []);
+
+                  return (
+                    <FormControl sx={{ minWidth: 200 }} key={filtro.name} disabled={isSubcategorias && !filters.categorias?.length} size="small">
+                      <InputLabel>{filtro.label}</InputLabel>
+                      <Select
+                        multiple
+                        value={value}
+                        onChange={(e) => set(filtro.name, e.target.value)}
+                        label={filtro.label}
+                        autoFocus={focusField === filtro.name}
+                        size="small"
+                      >
+                        {selectOptions.map((opt) => (
+                          <MenuItem key={opt} value={opt}>{opt}</MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  );
+                }
+
+                if (filtro.type === 'select') {
+                  const selectOptions = filtro.options || options[filtro.optionsKey] || [];
+                  return (
+                    <FormControl sx={{ minWidth: 160 }} key={filtro.name} size="small">
+                      <InputLabel>{filtro.label}</InputLabel>
+                      <Select
+                        value={value}
+                        onChange={(e) => set(filtro.name, e.target.value)}
+                        label={filtro.label}
+                        autoFocus={focusField === filtro.name}
+                        size="small"
+                      >
+                        <MenuItem value="">Todos</MenuItem>
+                        {selectOptions.map((opt) => (
+                          <MenuItem key={opt} value={opt}>{opt}</MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  );
+                }
+
+                if (filtro.type === 'number') {
+                  return (
+                    <TextField
+                      key={filtro.name}
+                      type="number"
+                      label={filtro.label}
+                      value={value}
+                      onChange={(e) => set(filtro.name, e.target.value)}
+                      size="small"
+                      variant="outlined"
+                      sx={{ width: 120 }}
+                      autoFocus={focusField === filtro.name}
+                    />
+                  );
+                }
+
+                return null;
+              })}
+            </Stack>
+          )}
         </Box>
-      </>
-    )}
+      </Box>
 
     {activeChips.length > 0 ? (
       <Box sx={{
