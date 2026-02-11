@@ -1405,6 +1405,17 @@ useEffect(() => {
       </Badge>
     </Button>
   )}
+
+  {!isMobile && (
+    <Button
+      variant="contained"
+      size="small"
+      startIcon={<MoreVertIcon />}
+      onClick={handleOpenMenu}
+    >
+      Acciones
+    </Button>
+  )}
 </Box>
 
             </Stack>
