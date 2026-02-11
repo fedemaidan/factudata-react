@@ -1382,41 +1382,46 @@ useEffect(() => {
   <MenuItem onClick={() => handleEliminarCaja(cajaMenuIndex)}>Eliminar</MenuItem>
 </Menu>
 <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', width: isMobile ? '100%' : 'auto' }}>
-  <Button
-    variant="outlined"
-    size="small"
-    startIcon={<FilterListIcon />}
-    onClick={() => setFiltersOpen(true)}
-    fullWidth={isMobile}
-  >
-    <Badge color="primary" badgeContent={filterChips.length} invisible={filterChips.length === 0}>
-      <span>Filtros</span>
-    </Badge>
-  </Button>
-
-  {!isMobile && (
+  {isMobile && (
     <Button
       variant="outlined"
       size="small"
+      startIcon={<FilterListIcon />}
+      onClick={() => setFiltersOpen(true)}
+      fullWidth
+    >
+      <Badge color="primary" badgeContent={filterChips.length} invisible={filterChips.length === 0}>
+        <span>Filtros</span>
+      </Badge>
+    </Button>
+  )}
+</Box>
+
+{!isMobile && (
+  <Stack spacing={0.75} sx={{ flexShrink: 0, justifyContent: 'center' }}>
+    <Button
+      variant="outlined"
+      size="small"
+      fullWidth
       onClick={handleOpenCols}
+      sx={{ minWidth: 110, whiteSpace: 'nowrap' }}
     >
       <Badge color="primary" badgeContent={hiddenColsCount} invisible={hiddenColsCount === 0}>
         <span>Columnas</span>
       </Badge>
     </Button>
-  )}
-
-  {!isMobile && (
     <Button
       variant="contained"
       size="small"
+      fullWidth
       startIcon={<MoreVertIcon />}
       onClick={handleOpenMenu}
+      sx={{ minWidth: 110, whiteSpace: 'nowrap' }}
     >
       Acciones
     </Button>
-  )}
-</Box>
+  </Stack>
+)}
 
             </Stack>
             <Dialog open={showCrearCaja} onClose={() => setShowCrearCaja(false)}>
@@ -1483,7 +1488,7 @@ useEffect(() => {
   </DialogActions>
 </Dialog>
 
-{isMobile ? (
+{isMobile && (
   <Drawer
     anchor="bottom"
     open={filtersOpen}
@@ -1498,6 +1503,11 @@ useEffect(() => {
         options={options}
         onRefresh={handleRefresh}
         empresa={empresa}
+        expanded={true}
+        onToggleExpanded={() => setFiltersOpen(false)}
+        storageKey={proyectoId}
+        empresaId={empresa?.id}
+        userId={user?.uid}
       />
       <Stack direction="row" justifyContent="flex-end" spacing={1} sx={{ mt: 2 }}>
         <Button variant="text" onClick={() => setFiltersOpen(false)}>Cancelar</Button>
@@ -1505,23 +1515,21 @@ useEffect(() => {
       </Stack>
     </Box>
   </Drawer>
-) : (
-  <Dialog open={filtersOpen} onClose={() => setFiltersOpen(false)} maxWidth="lg" fullWidth>
-    <DialogTitle>Filtros</DialogTitle>
-    <DialogContent dividers>
-      <FilterBarCajaProyecto
-        filters={filters}
-        setFilters={setFilters}
-        options={options}
-        onRefresh={handleRefresh}
-        empresa={empresa}
-      />
-    </DialogContent>
-    <DialogActions sx={{ position: 'sticky', bottom: 0, bgcolor: 'background.paper', borderTop: '1px solid', borderColor: 'divider', px: 2, py: 1.5 }}>
-      <Button variant="text" onClick={() => setFiltersOpen(false)}>Cancelar</Button>
-      <Button variant="contained" onClick={() => setFiltersOpen(false)}>Aplicar filtros</Button>
-    </DialogActions>
-  </Dialog>
+)}
+
+{!isMobile && (
+  <FilterBarCajaProyecto
+    filters={filters}
+    setFilters={setFilters}
+    options={options}
+    onRefresh={handleRefresh}
+    empresa={empresa}
+    expanded={filtersOpen}
+    onToggleExpanded={() => setFiltersOpen((o) => !o)}
+    storageKey={proyectoId}
+    empresaId={empresa?.id}
+    userId={user?.uid}
+  />
 )}
             <Paper>
               <Snackbar open={alert.open} autoHideDuration={6000} onClose={handleCloseAlert}>
@@ -1536,11 +1544,10 @@ useEffect(() => {
                   t={totalesDetallados}
                   fmt={formatByCurrency}
                   moneda={cajaSeleccionada?.moneda || 'ARS'}
-                  // showUsdBlue={Boolean(visibleCols.usd)}
                   showUsdBlue={false}
                   usdBlue={totalesUsdBlue}
-                  chips={filterChips}
-                  onOpenFilters={() => setFiltersOpen(true)}
+                  chips={[]}
+                  onOpenFilters={() => setFiltersOpen((o) => !o)}
                   isMobile={isMobile}
                   showDetails={showTotalsDetails}
                   onToggleDetails={() => setShowTotalsDetails((s) => !s)}
