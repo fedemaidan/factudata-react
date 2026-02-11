@@ -293,9 +293,9 @@ export const FilterBarCajaProyecto = ({
 
   // Cargar filtros guardados desde la API
   const fetchSaved = useCallback(async () => {
-    if (!storageKey || !empresaId) return;
+    if (!empresaId) return;
     try {
-      const data = await FiltrosGuardadosService.listar(storageKey, empresaId);
+      const data = await FiltrosGuardadosService.listar(empresaId);
       setSavedFilters(data);
 
       // Aplicar default solo la primera vez
@@ -307,7 +307,7 @@ export const FilterBarCajaProyecto = ({
     } catch (err) {
       console.error('Error al cargar filtros guardados:', err);
     }
-  }, [storageKey, empresaId]);
+  }, [empresaId]);
 
   useEffect(() => { fetchSaved(); }, [fetchSaved]);
 
@@ -317,7 +317,6 @@ export const FilterBarCajaProyecto = ({
     setSavingFilter(true);
     try {
       await FiltrosGuardadosService.crear({
-        proyecto_id: storageKey,
         empresa_id: empresaId,
         nombre: name,
         filtros: serializeFilters(filters),
@@ -468,7 +467,7 @@ export const FilterBarCajaProyecto = ({
           ))}
 
           {/* Botón filtros guardados — posición fija al final de la fila */}
-          {storageKey && (
+          {empresaId && (
             <IconButton
               size="small"
               onClick={(e) => setSavedAnchor(e.currentTarget)}

@@ -2,21 +2,20 @@ import api from './axiosConfig';
 
 const FiltrosGuardadosService = {
   /**
-   * Obtener filtros guardados para un proyecto
-   * @param {string} proyectoId
+   * Obtener filtros guardados de una empresa (visibles en todos los proyectos)
    * @param {string} empresaId
    * @returns {Promise<Array>}
    */
-  listar: async (proyectoId, empresaId) => {
+  listar: async (empresaId) => {
     const res = await api.get('/filtros-guardados', {
-      params: { proyecto_id: proyectoId, empresa_id: empresaId },
+      params: { empresa_id: empresaId },
     });
     return res.data;
   },
 
   /**
    * Crear un filtro guardado
-   * @param {Object} data - { proyecto_id, empresa_id, nombre, filtros, creado_por }
+   * @param {Object} data - { empresa_id, nombre, filtros, creado_por }
    * @returns {Promise<Object>}
    */
   crear: async (data) => {
