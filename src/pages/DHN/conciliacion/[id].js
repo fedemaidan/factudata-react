@@ -1,8 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/router';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
-import { Container, Stack, Alert, Box, TextField, InputAdornment, IconButton, Chip, Button, Typography, Dialog, DialogTitle, DialogContent, DialogActions, Tooltip } from '@mui/material';
-import { alpha } from '@mui/material/styles';
+import { Container, Stack, Alert, Box, TextField, InputAdornment, IconButton, Chip, Button, Typography } from '@mui/material';
 import ClearIcon from '@mui/icons-material/Clear';
 import TableViewIcon from '@mui/icons-material/TableView';
 import AssignmentIcon from '@mui/icons-material/Assignment';
@@ -15,6 +14,8 @@ import conciliacionService from 'src/services/dhn/conciliacionService';
 import ImagenModal from 'src/components/ImagenModal';
 import TrabajosDetectadosList from 'src/components/dhn/TrabajosDetectadosList';
 import HorasRawModal from 'src/components/dhn/HorasRawModal';
+import CorreccionConciliacionModal from 'src/components/dhn/CorreccionConciliacionModal';
+import { getHourChipSx } from 'src/components/dhn/hourChipStyles';
 
 const DEFAULT_PAGE_SIZE = 200;
 const HORAS_EXCEL_FIELDS = [
@@ -359,6 +360,19 @@ const ConciliacionDetallePage = () => {
     }
   }, [id, selectedRows, buildSheetSelectionPayload, reloadRows]);
 
+  const handleGuardarHoras = useCallback(async () => {
+    if (!id || !rowToEdit?._id) return;
+    try {
+      await conciliacionService.updateConciliacionRow(id, rowToEdit._id, {
+        dataTrabajoDiario: { ...formHoras },
+      });
+      setEditOpen(false);
+      await reloadRows();
+    } catch (error) {
+      console.error("Error actualizando horas", error);
+    }
+  }, [id, rowToEdit, formHoras, reloadRows]);
+
   const getEstadoChipProps = (estado) => {
     const e = (estado || '').toString().toLowerCase();
     if (['ok', 'completo'].includes(e)) {
@@ -383,31 +397,6 @@ const ConciliacionDetallePage = () => {
       return { label: 'Error', color: 'error' };
     }
     return { label: estado || '-', color: 'default' };
-  };
-
-  const getHourChipSx = (k) => (theme) => {
-    const colorMap = {
-      'Norm.': theme.palette.grey[700],
-      '50%': theme.palette.primary.main,
-      '100%': theme.palette.secondary.main,
-      'Aº': '#00897b',   // teal-600
-      'Hº': '#ef6c00',   // orange-800
-      'Zº/M°': '#5e35b1', // deepPurple-600
-      'Noct.': '#283593', // indigo-900
-      'Noct. 50%': '#1e88e5', // blue-600
-      'Noct. 100%': '#0d47a1', // blue-900
-    };
-    const c = colorMap[k] || theme.palette.grey[600];
-    return {
-      bgcolor: alpha(c, 0.12),
-      color: c,
-      borderColor: alpha(c, 0.28),
-      whiteSpace: 'nowrap',
-      textTransform: 'none',
-      minWidth: 110,
-      textAlign: 'center',
-      fontSize: '0.7rem',
-    };
   };
 
   const formatDni = (value) => {
@@ -627,10 +616,6 @@ const ConciliacionDetallePage = () => {
     }
   ]), [handleOpenParteModal, handleOpenComprobante]);
 
-  const formatters = useMemo(() => ({
-    fecha: formatFechaLabel,
-  }), [formatFechaLabel]);
-
   useEffect(() => {
     setSelectedRowsMap(new Map());
   }, [id, appliedSearchTerm, estadoFiltro, sortField, sortDirection]);
@@ -775,148 +760,17 @@ const ConciliacionDetallePage = () => {
         downloadUrl={rawModalUrl}
       />
 
-      <Dialog open={editOpen} onClose={() => setEditOpen(false)} maxWidth="md" fullWidth>
-        <DialogTitle>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Typography variant="h6" sx={{ fontWeight: 600 }}>
-              Editar horas
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              {rowToEdit?.trabajador || ''} · {formatters.fecha(rowToEdit?.fecha)}
-            </Typography>
-          </Box>
-        </DialogTitle>
-      <DialogContent>
-        <Box sx={{ mb: 2 }}>
-          <Typography variant="subtitle2" gutterBottom>
-            Elegir
-          </Typography>
-          <Stack direction="row" spacing={1} flexWrap="wrap">
-            <Button
-              size="small"
-              variant="contained"
-              color="primary"
-              onClick={handleSeleccionHorasExcel}
-              disabled={selectionLoading || isLoading}
-              sx={{ textTransform: "none" }}
-            >
-              Horas Excel
-            </Button>
-            <Button
-              size="small"
-              variant="outlined"
-              onClick={handleSeleccionHorasSistema}
-              disabled={selectionLoading || isLoading}
-              sx={{ textTransform: "none" }}
-            >
-              Horas Sistema
-            </Button>
-          </Stack>
-        </Box>
-          <Box sx={{ py: 2 }}>
-            <Stack direction={{ xs: 'column', md: 'row' }} spacing={3}>
-              <Box sx={{ flex: 1, minWidth: 260 }}>
-                <Typography variant="subtitle2" gutterBottom>En sistema</Typography>
-                <Stack spacing={1.5}>
-                  {[
-                    { k: 'horasNormales', label: 'Normales' },
-                    { k: 'horas50', label: '50%' },
-                    { k: 'horas100', label: '100%' },
-                    { k: 'horasAltura', label: 'Altura' },
-                    { k: 'horasHormigon', label: 'Hormigón' },
-                    { k: 'horasZanjeo', label: 'Zanjeo' },
-                    { k: 'horasNocturnas', label: 'Nocturnas' },
-                  ].map((f) => (
-                    <TextField
-                      key={f.k}
-                      label={f.label}
-                      type="number"
-                      inputProps={{ step: '0.5', min: 0 }}
-                      value={formHoras[f.k] ?? ''}
-                      onChange={(e) => setFormHoras((prev) => ({ ...prev, [f.k]: e.target.value === '' ? null : Number(e.target.value) }))}
-                      size="small"
-                      fullWidth
-                    />
-                  ))}
-                  <Stack direction="row" spacing={1} alignItems="center">
-                    <Typography variant="body2">Licencia</Typography>
-                    <Chip
-                      label={formHoras.fechaLicencia ? 'Sí' : 'No'}
-                      color={formHoras.fechaLicencia ? 'warning' : 'default'}
-                      variant="outlined"
-                      onClick={() => setFormHoras((p) => ({ ...p, fechaLicencia: !p.fechaLicencia }))}
-                      size="small"
-                    />
-                  </Stack>
-                </Stack>
-              </Box>
-              <Box sx={{ flex: 1, minWidth: 260 }}>
-                <Typography variant="subtitle2" gutterBottom>En sheet</Typography>
-                <Stack direction="row" spacing={0.5} useFlexGap flexWrap="wrap">
-                  {(() => {
-                    const sh = rowToEdit?.sheetHoras || {};
-                    const items = [
-                      { k: 'Norm.', v: Number(sh.horasNormales || 0) },
-                      { k: '50%', v: Number(sh.horas50 || 0) },
-                      { k: '100%', v: Number(sh.horas100 || 0) },
-                      { k: 'Aº', v: Number(sh.horasAltura || 0) },
-                      { k: 'Hº', v: Number(sh.horasHormigon || 0) },
-                      { k: 'Zº/M°', v: Number(sh.horasZanjeo || 0) },
-                      { k: 'Noc.', v: Number(sh.horasNocturnas || 0) },
-                    ].filter(i => i.v > 0);
-                    if (items.length === 0) {
-                      return <Typography variant="caption" color="text.secondary">Sin horas en sheet</Typography>;
-                    }
-                    return items.map(({ k, v }) => (
-                      <Chip
-                        key={k}
-                        label={`${k} ${v} hs`}
-                        size="small"
-                        variant="outlined"
-                        sx={getHourChipSx(k)}
-                      />
-                    ));
-                  })()}
-                </Stack>
-                <Box sx={{ mt: 1 }}>
-                  <Typography variant="body2" color="text.secondary">
-                    Licencia: {(rowToEdit?.sheetHoras?.fechaLicencia ? 'Sí' : 'No')}
-                  </Typography>
-                </Box>
-              </Box>
-            </Stack>
-          </Box>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setEditOpen(false)} color="inherit">
-            Cancelar
-          </Button>
-          <Button
-            variant="contained"
-            onClick={async () => {
-              if (!rowToEdit?._id || !id) return;
-              try {
-                await conciliacionService.updateConciliacionRow(id, rowToEdit._id, {
-                  dataTrabajoDiario: { ...formHoras },
-                });
-                setEditOpen(false);
-                await fetchRows({
-                  page,
-                  rowsPerPage,
-                  text: appliedSearchTerm,
-                  estado: estadoFiltro,
-                  sortField,
-                  sortDirection,
-                });
-              } catch (e) {
-                console.error('Error actualizando horas', e);
-              }
-            }}
-          >
-            Guardar
-          </Button>
-        </DialogActions>
-      </Dialog>
+      <CorreccionConciliacionModal
+        open={editOpen}
+        onClose={() => setEditOpen(false)}
+        row={rowToEdit}
+        formHoras={formHoras}
+        onFormHorasChange={setFormHoras}
+        onSelectExcel={handleSeleccionHorasExcel}
+        onSelectSistema={handleSeleccionHorasSistema}
+        selectionLoading={selectionLoading}
+        onSave={handleGuardarHoras}
+      />
     </DashboardLayout>
   );
 };

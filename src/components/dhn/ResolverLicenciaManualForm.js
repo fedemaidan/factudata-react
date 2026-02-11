@@ -70,6 +70,8 @@ const ResolverLicenciaManualForm = ({
   onAutoClose,
   onResolved,
   progreso,
+  rowId = null,
+  initialData = null,
 }) => {
   const [formState, setFormState] = useState(INITIAL_FORM_STATE);
   const [isSaving, setIsSaving] = useState(false);
@@ -89,12 +91,23 @@ const ResolverLicenciaManualForm = ({
 
   useEffect(() => {
     if (open === false) return;
+    if (rowId && initialData) {
+      setFormState({
+        trabajadorSeleccionado: initialData.trabajadorSeleccionado || null,
+        tipoLicencia: initialData.tipoLicencia ?? INITIAL_FORM_STATE.tipoLicencia,
+        useRange: initialData.useRange ?? INITIAL_FORM_STATE.useRange,
+        fechaIndividual: initialData.fechaIndividual ? dayjs(initialData.fechaIndividual) : dayjs(),
+        fechaDesde: initialData.fechaDesde ? dayjs(initialData.fechaDesde) : dayjs(),
+        fechaHasta: initialData.fechaHasta ? dayjs(initialData.fechaHasta) : dayjs(),
+      });
+      return;
+    }
     const initialState = { ...INITIAL_FORM_STATE };
     if (trabajadorDetectado) {
       initialState.trabajadorSeleccionado = trabajadorDetectado;
     }
     updateFormState(initialState);
-  }, [open, trabajadorDetectado, updateFormState]);
+  }, [open, trabajadorDetectado, rowId, initialData, updateFormState]);
 
   const initialTrabajadorFormData = useMemo(
     () => ({
@@ -112,14 +125,14 @@ const ResolverLicenciaManualForm = ({
 
   const handleClose = useCallback(
     (source = "cancel") => {
-    if (isSaving) return;
-    updateFormState(INITIAL_FORM_STATE);
-    if (source === "auto" && onAutoClose) {
-      onAutoClose();
-      return;
-    }
-    onCancel?.() || onClose?.();
-  },
+      if (isSaving) return;
+      updateFormState(INITIAL_FORM_STATE);
+      if (source === "auto" && onAutoClose) {
+        onAutoClose();
+        return;
+      }
+      onCancel?.() || onClose?.();
+    },
     [isSaving, onAutoClose, onCancel, onClose, updateFormState]
   );
 
@@ -173,6 +186,14 @@ const ResolverLicenciaManualForm = ({
       ...(useRange ? { hasta: normalizeDayjs(hasta) } : {}),
       estado: "okManual",
     };
+    const payloadSnapshot = {
+      trabajadorSeleccionado,
+      tipoLicencia,
+      useRange,
+      fechaIndividual: fechaIndividual?.toISOString() || null,
+      fechaDesde: fechaDesde?.toISOString() || null,
+      fechaHasta: fechaHasta?.toISOString() || null,
+    };
 
       setIsSaving(true);
       try {
@@ -182,7 +203,7 @@ const ResolverLicenciaManualForm = ({
           severity: "success",
           message: resp?.message || "Licencia resuelta correctamente",
         });
-        onResolved?.(resp);
+        onResolved?.({ rowId, payload: payloadSnapshot, response: resp });
         setTimeout(() => {
           handleClose("auto");
         }, 800);
@@ -209,6 +230,7 @@ const ResolverLicenciaManualForm = ({
       fechaHasta,
       handleClose,
       onResolved,
+      rowId,
     ]
   );
 
@@ -222,7 +244,7 @@ const ResolverLicenciaManualForm = ({
         setIsSaving(false);
       }
     },
-    [resolverLicencia, trabajadorSeleccionado]
+    [resolverLicencia, trabajadorSeleccionado, rowId]
   );
 
   return (
