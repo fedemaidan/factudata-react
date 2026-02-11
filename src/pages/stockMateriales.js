@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
 import Head from 'next/head';
 import {
   Alert, Box, Button, Chip, Container, Dialog, DialogActions, DialogContent, DialogTitle,
-  IconButton, Paper, Snackbar, Stack, Table, TableBody, TableCell, TableHead, TableRow,
+  Checkbox, IconButton, Paper, Snackbar, Stack, Table, TableBody, TableCell, TableHead, TableRow,
   TextField, Tooltip, Typography, InputAdornment, FormControl, InputLabel, Select, MenuItem,
   TableSortLabel, TablePagination, FormHelperText, LinearProgress, Backdrop, CircularProgress,
-  Collapse, Tabs, Tab
+  Tabs, Tab
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
@@ -14,7 +14,6 @@ import SearchIcon from '@mui/icons-material/Search';
 import WarningIcon from '@mui/icons-material/Warning';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import DownloadIcon from '@mui/icons-material/Download';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
 import ImportExportIcon from '@mui/icons-material/ImportExport';
@@ -30,6 +29,9 @@ import AjusteStockService from '../services/stock/ajusteStockService';
 import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
 import { getProyectosFromUser } from 'src/services/proyectosService';
 import { useAuthContext } from 'src/contexts/auth-context';
+import { useBreadcrumbs } from 'src/contexts/breadcrumbs-context';
+import HomeIcon from '@mui/icons-material/Home';
+import InventoryIcon from '@mui/icons-material/Inventory';
 
 /* ======================
    Helpers alias <-> chips (para crear/editar)
@@ -57,6 +59,169 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /* ====================== */
 
+const TextFilters = memo(({ value, onApply }) => {
+  const [local, setLocal] = useState(value);
+
+  useEffect(() => {
+    setLocal(value);
+  }, [value]);
+
+  const hasChanges = local !== value;
+
+  const apply = () => {
+    if (!hasChanges) return;
+    onApply(local);
+  };
+
+  const onKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      apply();
+    }
+  };
+
+  return (
+    <>
+      <Box sx={{ minWidth: 260, flex: 1 }}>
+        <TextField
+          fullWidth
+          label="Buscar"
+          value={local}
+          onChange={(e) => setLocal(e.target.value)}
+          onKeyDown={onKeyDown}
+          placeholder="Nombre, SKU, alias o descripción…"
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start"><SearchIcon /></InputAdornment>
+            ),
+          }}
+        />
+      </Box>
+
+      {hasChanges && (
+        <Button
+          variant="contained"
+          startIcon={<SearchIcon />}
+          onClick={apply}
+          sx={{ height: 40, alignSelf: 'center' }}
+        >
+          Buscar
+        </Button>
+      )}
+    </>
+  );
+});
+
+const RowItem = memo(
+  ({ row, checked, onToggle, onOpenStock, onEdit, onDelete }) => (
+    <TableRow hover>
+      <TableCell padding="checkbox">
+        <Checkbox
+          checked={checked}
+          onChange={(e) => onToggle(row._id, e.target.checked)}
+          inputProps={{ 'aria-label': `Seleccionar ${row.nombre || 'material'}` }}
+        />
+      </TableCell>
+      <TableCell width={56} sx={{ pr: 1 }}>
+        <Tooltip title={`Ver stock por proyecto (${(row.porProyecto || []).length})`}>
+          <Chip
+            clickable
+            onClick={() => onOpenStock(row)}
+            label={(row.porProyecto || []).length}
+            size="small"
+            variant="outlined"
+            sx={{ height: 22, '& .MuiChip-label': { px: 1 } }}
+          />
+        </Tooltip>
+      </TableCell>
+      <TableCell>
+        <Tooltip title={row.desc_material || ''}>
+          <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+            <Typography variant="body1" fontWeight={600}>{row.nombre}</Typography>
+            {(!row.categoria || String(row.categoria).trim() === '') && (
+              <Chip label="Sin categoría" size="small" color="warning" variant="outlined" />
+            )}
+          </Stack>
+        </Tooltip>
+        <Stack spacing={0.5} sx={{ mt: 0.5 }}>
+          <Typography variant="caption" color="text.secondary">
+            SKU: {row.SKU || '—'}
+          </Typography>
+          {(Array.isArray(row.alias) ? row.alias.length > 0 : !!row.alias) && (
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+              {Array.isArray(row.alias)
+                ? row.alias.map((a, i) => (
+                    <Chip key={`${a}-${i}`} label={a} size="small" sx={{ mb: .5 }} />
+                  ))
+                : row.alias}
+            </Box>
+          )}
+        </Stack>
+      </TableCell>
+      <TableCell>
+        {row.categoria ? (
+          <Stack spacing={0.5}>
+            <Chip label={row.categoria} size="small" variant="outlined" />
+            {row.subcategoria && (
+              <Typography variant="caption" color="text.secondary">
+                {row.subcategoria}
+              </Typography>
+            )}
+          </Stack>
+        ) : (
+          <em>(—)</em>
+        )}
+      </TableCell>
+      <TableCell align="right">
+        <Stack spacing={0.5} alignItems="flex-end">
+          {(() => {
+            const stockValue = typeof row.stock === 'number' ? row.stock : (row.stockTotal ?? 0);
+            const status = getStockStatus(stockValue);
+            return (
+              <Typography
+                variant="body1"
+                fontWeight="bold"
+                color={status.color === 'error' ? 'error.main' : 'success.main'}
+              >
+                {stockValue}
+              </Typography>
+            );
+          })()}
+          {row.tienePendientes ? (
+            <Tooltip title={`${row.cantidadPendienteEntrega || 0} unidades pendientes de recibir`}>
+              <Chip
+                icon={<HourglassEmptyIcon />}
+                label={row.cantidadPendienteEntrega || 0}
+                size="small"
+                color="warning"
+                variant="filled"
+              />
+            </Tooltip>
+          ) : (
+            <Chip
+              icon={<CheckCircleIcon />}
+              label="—"
+              size="small"
+              color="success"
+              variant="outlined"
+            />
+          )}
+        </Stack>
+      </TableCell>
+      <TableCell align="right">
+        <IconButton color="primary" onClick={() => onEdit(row)} aria-label="Editar">
+          <EditIcon />
+        </IconButton>
+        <IconButton color="error" onClick={() => onDelete(row)} aria-label="Eliminar">
+          <DeleteIcon />
+        </IconButton>
+      </TableCell>
+    </TableRow>
+  ),
+  (prev, next) => prev.row === next.row && prev.checked === next.checked
+);
+
+
 const emptyForm = {
   _id: '',
   nombre: '',
@@ -70,6 +235,8 @@ const emptyForm = {
 };
 
 // helper mapea items del back y da fallback a stockTotal
+const SIN_CATEGORIA_VALUE = '__SIN_CATEGORIA__';
+
 function mapItems(items) {
   return (items || []).map((m) => ({
     ...m,
@@ -102,11 +269,8 @@ const StockMateriales = () => {
 
   // estados de filtros/orden/paginación (server-side)
   const [nombre, setNombre] = useState('');            // 🔎 nombre
-  const [descripcion, setDescripcion] = useState('');  // 🔎 descripción
-  const [sku, setSku] = useState('');                  // 🔎 SKU
-  const [aliasText, setAliasText] = useState('');      // 🔎 alias como texto
+  // filtros de texto (buscador único)
   const [stockFilter, setStockFilter] = useState('all'); // all | gt0 | eq0 | lt0
-  const [proyectoFilter, setProyectoFilter] = useState(''); // filtro por proyecto
   const [estadoEntrega, setEstadoEntrega] = useState('all'); // all | entregado | no_entregado
   const [categoriaFilter, setCategoriaFilter] = useState(''); // filtro por categoría
   const [subcategoriaFilter, setSubcategoriaFilter] = useState(''); // filtro por subcategoría
@@ -114,17 +278,19 @@ const StockMateriales = () => {
   const [orderBy, setOrderBy] = useState('nombre'); // nombre | descripcion | sku | stock
   const [order, setOrder] = useState('asc'); // asc | desc
   const [page, setPage] = useState(0);
-  const [rowsPerPage, setRowsPerPage] = useState(50);
+  const [rowsPerPage, setRowsPerPage] = useState(100);
 
-  // Estados para expansión de filas y tabs
-  const [expandedRows, setExpandedRows] = useState(new Set());
+  // Estados para tabs y dialog de stock por proyecto
   const [currentTab, setCurrentTab] = useState('general');
   const [proyectos, setProyectos] = useState([]);
+  const [openStockDialog, setOpenStockDialog] = useState(false);
+  const [stockDialogRow, setStockDialogRow] = useState(null);
 
   // total que llega desde el back (para paginación)
   const [total, setTotal] = useState(0);
 
   const { user } = useAuthContext();
+  const { setBreadcrumbs } = useBreadcrumbs();
   const [alert, setAlert] = useState({ open: false, message: '', severity: 'info' });
   const closeAlert = () => setAlert((prev) => ({ ...prev, open: false }));
 
@@ -136,12 +302,27 @@ const StockMateriales = () => {
   const [openDelete, setOpenDelete] = useState(false);
   const [toDelete, setToDelete] = useState(null);
 
+  // Selección masiva + categorizador
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [openBulkCategoria, setOpenBulkCategoria] = useState(false);
+  const [bulkCategoria, setBulkCategoria] = useState('');
+  const [bulkSubcategoria, setBulkSubcategoria] = useState('');
+  const [bulkLoading, setBulkLoading] = useState(false);
+
   // Estados para exportar/importar
   const [openExportar, setOpenExportar] = useState(false);
   const [openImportar, setOpenImportar] = useState(false);
 
   // Estado para categorías de materiales de la empresa
   const [categoriasMateriales, setCategoriasMateriales] = useState([]);
+
+  useEffect(() => {
+    setBreadcrumbs([
+      { label: 'Inicio', href: '/', icon: <HomeIcon fontSize="small" /> },
+      { label: 'Stock de materiales', icon: <InventoryIcon fontSize="small" /> }
+    ]);
+    return () => setBreadcrumbs([]);
+  }, [setBreadcrumbs]);
   
   // Subcategorías disponibles según la categoría seleccionada (para el form de crear/editar)
   const subcategoriasDisponibles = useMemo(() => {
@@ -152,10 +333,17 @@ const StockMateriales = () => {
 
   // Subcategorías disponibles para el FILTRO (basado en categoriaFilter)
   const subcategoriasFilterDisponibles = useMemo(() => {
-    if (!categoriaFilter) return [];
+    if (!categoriaFilter || categoriaFilter === SIN_CATEGORIA_VALUE) return [];
     const cat = categoriasMateriales.find(c => c.name === categoriaFilter);
     return cat?.subcategorias || [];
   }, [categoriaFilter, categoriasMateriales]);
+
+  // Subcategorías disponibles para el categorizador masivo
+  const subcategoriasBulkDisponibles = useMemo(() => {
+    if (!bulkCategoria) return [];
+    const cat = categoriasMateriales.find(c => c.name === bulkCategoria);
+    return cat?.subcategorias || [];
+  }, [bulkCategoria, categoriasMateriales]);
 
   // construye el string sort "campo:asc|desc" para el back
   const sortParam = useMemo(() => {
@@ -166,6 +354,12 @@ const StockMateriales = () => {
 
   // fetch al back en base a filtros/orden/paginación
   async function fetchAll() {
+    if (!user) {
+      setAllRows([]);
+      setRows([]);
+      setTotal(0);
+      return;
+    }
     setLoading(true);
     const startedAt = Date.now();
     try {
@@ -178,26 +372,24 @@ const StockMateriales = () => {
       };
 
       // 🔎 filtros (solo envío si hay valor)
-      if (nombre?.trim())        params.nombre        = nombre.trim();
-      if (descripcion?.trim())   params.desc_material = descripcion.trim();
-      if (sku?.trim())           params.SKU           = sku.trim();
-      if (aliasText?.trim())     params.alias         = aliasText.trim();
+      if (nombre?.trim())        params.text          = nombre.trim();
       if (stockFilter !== 'all') params.stockFilter   = stockFilter; // 'gt0' | 'eq0' | 'lt0'
       if (estadoEntrega !== 'all') params.estadoEntrega = estadoEntrega; // 'entregado' | 'no_entregado'
-      if (categoriaFilter)         params.categoria     = categoriaFilter;
-      if (subcategoriaFilter)      params.subcategoria  = subcategoriaFilter;
+      if (categoriaFilter && categoriaFilter !== SIN_CATEGORIA_VALUE) {
+        params.categoria = categoriaFilter;
+      }
+      if (subcategoriaFilter && categoriaFilter !== SIN_CATEGORIA_VALUE) {
+        params.subcategoria = subcategoriaFilter;
+      }
 
       const resp = await StockMaterialesService.listarMateriales(params);
       const allData = mapItems(resp.items || []);
       
       // Aplicar filtros adicionales en frontend que no se aplicaron en el backend
       let filteredData = allData;
-      
-      // Filtro por proyecto (si está activo)
-      if (proyectoFilter) {
-        filteredData = filteredData.filter(row => 
-          (row.porProyecto || []).some(p => p.proyecto_id === proyectoFilter)
-        );
+
+      if (categoriaFilter === SIN_CATEGORIA_VALUE) {
+        filteredData = filteredData.filter(row => !row.categoria || String(row.categoria).trim() === '');
       }
       
       // Guardar todos los datos filtrados
@@ -221,24 +413,16 @@ const StockMateriales = () => {
     }
   }
 
-  // Función toggle expand para filas
-  const toggleRowExpansion = (materialId) => {
-    setExpandedRows(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(materialId)) {
-        newSet.delete(materialId);
-      } else {
-        newSet.add(materialId);
-      }
-      return newSet;
-    });
-  };
-
   // dispara el fetch cuando cambian filtros/orden (no page/rowsPerPage ya que paginamos en frontend)
   useEffect(() => {
     fetchAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nombre, descripcion, sku, aliasText, stockFilter, estadoEntrega, categoriaFilter, subcategoriaFilter, proyectoFilter, sortParam]);
+  }, [user, nombre, stockFilter, estadoEntrega, categoriaFilter, subcategoriaFilter, sortParam]);
+
+  // limpiar selección al refrescar datos
+  useEffect(() => {
+    setSelectedIds([]);
+  }, [allRows, page, rowsPerPage, currentTab]);
 
   // Efecto separado para manejar cambios de paginación (solo client-side)
   useEffect(() => {
@@ -249,6 +433,37 @@ const StockMateriales = () => {
       setRows(pageData);
     }
   }, [allRows, page, rowsPerPage]);
+
+  const pageIds = rows.map(r => r?._id).filter(Boolean);
+  const selectedInPage = pageIds.filter(id => selectedIds.includes(id));
+  const allSelectedInPage = pageIds.length > 0 && selectedInPage.length === pageIds.length;
+  const someSelectedInPage = selectedInPage.length > 0 && selectedInPage.length < pageIds.length;
+  const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
+
+  const toggleSelectAllPage = (checked) => {
+    setSelectedIds((prev) => {
+      if (checked) return Array.from(new Set([...prev, ...pageIds]));
+      return prev.filter(id => !pageIds.includes(id));
+    });
+  };
+
+  const toggleSelectOne = (id, checked) => {
+    if (!id) return;
+    setSelectedIds((prev) => {
+      if (checked) return Array.from(new Set([...prev, id]));
+      return prev.filter(x => x !== id);
+    });
+  };
+
+  const selectAllFiltered = () => {
+    const allIds = allRows.map(r => r?._id).filter(Boolean);
+    setSelectedIds(Array.from(new Set(allIds)));
+  };
+
+  const openStockPorProyecto = (row) => {
+    setStockDialogRow(row);
+    setOpenStockDialog(true);
+  };
 
   // --- crear/editar ---
   const handleOpenCreate = () => {
@@ -327,6 +542,20 @@ const StockMateriales = () => {
     setOpenDelete(true);
   };
 
+  const tableRows = useMemo(() => (
+    rows.map((row) => (
+      <RowItem
+        key={row._id}
+        row={row}
+        checked={selectedIdSet.has(row._id)}
+        onToggle={toggleSelectOne}
+        onOpenStock={openStockPorProyecto}
+        onEdit={handleOpenEdit}
+        onDelete={confirmDelete}
+      />
+    ))
+  ), [rows, selectedIdSet, toggleSelectOne, openStockPorProyecto, handleOpenEdit]);
+
   const remove = async () => {
     if (!toDelete) return;
     try {
@@ -341,6 +570,36 @@ const StockMateriales = () => {
     } catch (e) {
       console.error(e);
       setAlert({ open: true, message: 'Error eliminando material', severity: 'error' });
+    }
+  };
+
+  const handleOpenBulkCategoria = () => {
+    setBulkCategoria('');
+    setBulkSubcategoria('');
+    setOpenBulkCategoria(true);
+  };
+
+  const handleBulkCategoria = async () => {
+    if (!selectedIds.length || !bulkCategoria) return;
+    setBulkLoading(true);
+    try {
+      const empresa = await getEmpresaDetailsFromUser(user);
+      await StockMaterialesService.actualizarCategoriaMasiva({
+        empresa_id: empresa.id,
+        material_ids: selectedIds,
+        categoria: bulkCategoria,
+        subcategoria: bulkSubcategoria,
+      });
+
+      setAlert({ open: true, message: 'Categorías actualizadas', severity: 'success' });
+      setOpenBulkCategoria(false);
+      setSelectedIds([]);
+      await fetchAll();
+    } catch (e) {
+      console.error(e);
+      setAlert({ open: true, message: 'Error actualizando categorías', severity: 'error' });
+    } finally {
+      setBulkLoading(false);
     }
   };
 
@@ -482,34 +741,31 @@ const StockMateriales = () => {
     <>
       <Head><title>Stock de materiales</title></Head>
 
-      <Box component="main" sx={{ flexGrow: 1, py: 8 }}>
+      <Box component="main" sx={{ flexGrow: 1, py: 3 }}>
         <Container maxWidth="xl">
-          <Stack spacing={3}>
-
-            {/* Barra superior */}
-            <Stack direction="row" alignItems="center" justifyContent="space-between">
-              <Typography variant="h4">Stock de materiales</Typography>
-              <Stack direction="row" spacing={2}>
-                <Button 
-                  variant="outlined" 
-                  startIcon={<ImportExportIcon />}
-                  onClick={() => setOpenExportar(true)}
-                  color="primary"
-                >
-                  Exportar
-                </Button>
-                <Button 
-                  variant="outlined" 
-                  startIcon={<UploadFileIcon />}
-                  onClick={() => setOpenImportar(true)}
-                  color="secondary"
-                >
-                  Importar
-                </Button>
-                <Button variant="contained" startIcon={<AddIcon />} onClick={handleOpenCreate}>
-                  Agregar material
-                </Button>
-              </Stack>
+          <Stack spacing={2}>
+            <Stack direction="row" justifyContent="flex-end" spacing={1}>
+              <Button 
+                size="small"
+                variant="outlined" 
+                startIcon={<ImportExportIcon />}
+                onClick={() => setOpenExportar(true)}
+                color="primary"
+              >
+                Exportar
+              </Button>
+              <Button 
+                size="small"
+                variant="outlined" 
+                startIcon={<UploadFileIcon />}
+                onClick={() => setOpenImportar(true)}
+                color="secondary"
+              >
+                Importar
+              </Button>
+              <Button size="small" variant="contained" startIcon={<AddIcon />} onClick={handleOpenCreate}>
+                Agregar material
+              </Button>
             </Stack>
 
             {/* Sistema de Tabs */}
@@ -531,46 +787,13 @@ const StockMateriales = () => {
               <TabPanel value={currentTab} index="general">
                 <Stack spacing={3} sx={{ mt: 2 }}>
                   {/* Filtros */}
-                  <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} flexWrap="wrap">
-              <Box sx={{ minWidth: 220, flex: 1 }}>
-                <TextField
-                  fullWidth
-                  label="Nombre"
-                  value={nombre}
-                  onChange={(e) => { setNombre(e.target.value); setPage(0); }}
-                  placeholder="Buscar por nombre…"
-                  InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start"><SearchIcon /></InputAdornment>
-                    ),
-                  }}
-                />
-              </Box>
-
-              <TextField
-                label="Descripción"
-                value={descripcion}
-                onChange={(e) => { setDescripcion(e.target.value); setPage(0); }}
-                sx={{ minWidth: 220 }}
-                placeholder="Filtrar por descripción…"
-              />
-
-              <TextField
-                label="SKU"
-                value={sku}
-                onChange={(e) => { setSku(e.target.value); setPage(0); }}
-                sx={{ minWidth: 160 }}
-                placeholder="Filtrar por SKU…"
-              />
-
-              {/* Alias como texto (filtro) */}
-              <TextField
-                label="Alias"
-                value={aliasText}
-                onChange={(e) => { setAliasText(e.target.value); setPage(0); }}
-                sx={{ minWidth: 220 }}
-                placeholder="Filtrar por alias…"
-                helperText="Coincidencia parcial en cualquier alias"
+                  <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} flexWrap="wrap">
+              <TextFilters
+                value={nombre}
+                onApply={(n) => {
+                  setNombre(n);
+                  setPage(0);
+                }}
               />
 
               <FormControl sx={{ minWidth: 150 }}>
@@ -597,20 +820,6 @@ const StockMateriales = () => {
                   </Select>
                 </FormControl>
 
-                <FormControl sx={{ minWidth: 150 }}>
-                  <InputLabel id="proyecto-filter-label">Proyecto</InputLabel>
-                  <Select
-                    labelId="proyecto-filter-label"
-                    label="Proyecto"
-                    value={proyectoFilter}
-                    onChange={(e) => { setProyectoFilter(e.target.value); setPage(0); }}
-                  >
-                    <MenuItem value="">Todos los proyectos</MenuItem>
-                    {proyectos.map(p => (
-                      <MenuItem key={p.id} value={p.id}>{p.nombre}</MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
 
                 <FormControl sx={{ minWidth: 180 }}>
                   <InputLabel id="entrega-filter-label">Estado Entrega</InputLabel>
@@ -649,6 +858,7 @@ const StockMateriales = () => {
                     }}
                   >
                     <MenuItem value="">Todas las categorías</MenuItem>
+                    <MenuItem value={SIN_CATEGORIA_VALUE}>Sin categoría</MenuItem>
                     {categoriasMateriales.map(cat => (
                       <MenuItem key={cat.id || cat.name} value={cat.name}>{cat.name}</MenuItem>
                     ))}
@@ -662,7 +872,7 @@ const StockMateriales = () => {
                     label="Subcategoría"
                     value={subcategoriaFilter}
                     onChange={(e) => { setSubcategoriaFilter(e.target.value); setPage(0); }}
-                    disabled={!categoriaFilter}
+                    disabled={!categoriaFilter || categoriaFilter === SIN_CATEGORIA_VALUE}
                   >
                     <MenuItem value="">Todas las subcategorías</MenuItem>
                     {subcategoriasFilterDisponibles.map(sub => (
@@ -670,14 +880,63 @@ const StockMateriales = () => {
                     ))}
                   </Select>
                 </FormControl>
-              </Stack>            {/* Tabla */}
+              </Stack>
+
+              {(allRows.length > 0 || selectedIds.length > 0) && (
+                <Paper variant="outlined" sx={{ p: 1.5 }}>
+                  <Stack
+                    direction={{ xs: 'column', sm: 'row' }}
+                    spacing={1}
+                    alignItems={{ xs: 'flex-start', sm: 'center' }}
+                    justifyContent="space-between"
+                  >
+                    <Typography variant="body2">
+                      Seleccionados: <strong>{selectedIds.length}</strong>
+                    </Typography>
+                    <Stack direction="row" spacing={1}>
+                      <Button size="small" variant="outlined" onClick={selectAllFiltered}>
+                        Seleccionar resultados
+                      </Button>
+                      <Button
+                        size="small"
+                        variant="contained"
+                        onClick={handleOpenBulkCategoria}
+                        disabled={selectedIds.length === 0}
+                      >
+                        Asignar categoría
+                      </Button>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        onClick={() => setSelectedIds([])}
+                        disabled={selectedIds.length === 0}
+                      >
+                        Limpiar selección
+                      </Button>
+                    </Stack>
+                  </Stack>
+                  <Typography variant="caption" color="text.secondary">
+                    Selecciona todos los materiales del listado actual (según filtros)
+                  </Typography>
+                </Paper>
+              )}
+
+              {/* Tabla */}
             <Paper>
               {/* 🔵 Barra fina de carga */}
               {loading && <LinearProgress />}
 
-              <Table>
+              <Table size="small" sx={{ '& th, & td': { py: 0.5 } }}>
                 <TableHead>
                   <TableRow>
+                    <TableCell padding="checkbox">
+                      <Checkbox
+                        indeterminate={someSelectedInPage}
+                        checked={allSelectedInPage}
+                        onChange={(e) => toggleSelectAllPage(e.target.checked)}
+                        inputProps={{ 'aria-label': 'Seleccionar todos en la página' }}
+                      />
+                    </TableCell>
                     <TableCell width={60}>
                       {/* Columna para expansión */}
                     </TableCell>
@@ -690,198 +949,29 @@ const StockMateriales = () => {
                         Nombre
                       </TableSortLabel>
                     </TableCell>
-                    <TableCell sortDirection={orderBy === 'descripcion' ? order : false}>
-                      <TableSortLabel
-                        active={orderBy === 'descripcion'}
-                        direction={orderBy === 'descripcion' ? order : 'asc'}
-                        onClick={createSortHandler('descripcion')}
-                      >
-                        Descripción
-                      </TableSortLabel>
-                    </TableCell>
-                    <TableCell sortDirection={orderBy === 'sku' ? order : false}>
-                      <TableSortLabel
-                        active={orderBy === 'sku'}
-                        direction={orderBy === 'sku' ? order : 'asc'}
-                        onClick={createSortHandler('sku')}
-                      >
-                        SKU
-                      </TableSortLabel>
-                    </TableCell>
-                    <TableCell>Alias</TableCell>
-                    <TableCell align="right" sortDirection={orderBy === 'stock' ? order : false}>
-                      <TableSortLabel
-                        active={orderBy === 'stock'}
-                        direction={orderBy === 'stock' ? order : 'asc'}
-                        onClick={createSortHandler('stock')}
-                      >
-                        Stock total
-                      </TableSortLabel>
-                    </TableCell>
+                    <TableCell>Categoría</TableCell>
                     <TableCell align="right">
-                      <Tooltip title="Cantidad de materiales con movimientos pendientes de entrega (comprados pero no recibidos)">
-                        <span>Pend. Entrega</span>
-                      </Tooltip>
+                      <Stack direction="row" spacing={1} alignItems="center" justifyContent="flex-end">
+                        <TableSortLabel
+                          active={orderBy === 'stock'}
+                          direction={orderBy === 'stock' ? order : 'asc'}
+                          onClick={createSortHandler('stock')}
+                        >
+                          Stock / Pend.
+                        </TableSortLabel>
+                        <Tooltip title="Cantidad de materiales con movimientos pendientes de entrega (comprados pero no recibidos)">
+                          <span>ⓘ</span>
+                        </Tooltip>
+                      </Stack>
                     </TableCell>
-                    <TableCell>Último Proveedor</TableCell>
-                    <TableCell>Última Fecha</TableCell>
                     <TableCell align="right">Acciones</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {rows.map((row) => [
-                    <TableRow key={row._id} hover>
-                      <TableCell>
-                        <Box display="flex" alignItems="center" gap={1}>
-                          <IconButton 
-                            size="small" 
-                            onClick={() => toggleRowExpansion(row._id)}
-                          >
-                            {expandedRows.has(row._id) ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-                          </IconButton>
-                          <Tooltip title={`Stock en ${(row.porProyecto || []).length} proyectos`}>
-                            <Chip 
-                              label={`${(row.porProyecto || []).length} proyectos`}
-                              size="small"
-                              variant="outlined"
-                            />
-                          </Tooltip>
-                        </Box>
-                      </TableCell>
-                      <TableCell>
-                        <Typography variant="body1" fontWeight={600}>{row.nombre}</Typography>
-                      </TableCell>
-                      <TableCell sx={{ maxWidth: 280 }}>
-                        <Tooltip title={row.desc_material || ''}>
-                          <Typography variant="body2" noWrap>
-                            {row.desc_material || <em>(—)</em>}
-                          </Typography>
-                        </Tooltip>
-                      </TableCell>
-                      <TableCell>{row.SKU || <em>(—)</em>}</TableCell>
-                      <TableCell sx={{ maxWidth: 300 }}>
-                        {Array.isArray(row.alias)
-                          ? row.alias.length
-                            ? row.alias.map((a, i) => (
-                                <Chip key={`${a}-${i}`} label={a} size="small" sx={{ mr: .5, mb: .5 }} />
-                              ))
-                            : <em>(—)</em>
-                          : (row.alias || <em>(—)</em>)}
-                      </TableCell>
-                      <TableCell align="right">
-                        {(() => {
-                          const stockValue = typeof row.stock === 'number' ? row.stock : (row.stockTotal ?? 0);
-                          const status = getStockStatus(stockValue);
-                          return (
-                            <Typography 
-                              variant="body1" 
-                              fontWeight="bold"
-                              color={status.color === 'error' ? 'error.main' : 'success.main'}
-                            >
-                              {stockValue}
-                            </Typography>
-                          );
-                        })()} 
-                      </TableCell>
-                      <TableCell align="right">
-                        {row.tienePendientes ? (
-                          <Tooltip title={`${row.cantidadPendienteEntrega || 0} unidades pendientes de recibir`}>
-                            <Chip
-                              icon={<HourglassEmptyIcon />}
-                              label={row.cantidadPendienteEntrega || 0}
-                              size="small"
-                              color="warning"
-                              variant="filled"
-                            />
-                          </Tooltip>
-                        ) : (
-                          <Chip
-                            icon={<CheckCircleIcon />}
-                            label="—"
-                            size="small"
-                            color="success"
-                            variant="outlined"
-                          />
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <Typography variant="body2">
-                          {row.ultimoProveedor || '—'}
-                        </Typography>
-                      </TableCell>
-                      <TableCell>
-                        <Typography variant="body2" color="text.secondary">
-                          {row.ultimaFechaMovimiento ? 
-                            new Date(row.ultimaFechaMovimiento).toLocaleDateString('es-ES') : 
-                            '—'
-                          }
-                        </Typography>
-                      </TableCell>
-                      <TableCell align="right">
-                        <IconButton color="primary" onClick={() => handleOpenEdit(row)} aria-label="Editar">
-                          <EditIcon />
-                        </IconButton>
-                        <IconButton color="error" onClick={() => confirmDelete(row)} aria-label="Eliminar">
-                          <DeleteIcon />
-                        </IconButton>
-                      </TableCell>
-                    </TableRow>,
-                    expandedRows.has(row._id) && (
-                      <TableRow key={`${row._id}-expanded`}>
-                        <TableCell colSpan={9} sx={{ py: 0 }}>
-                          <Collapse in={expandedRows.has(row._id)}>
-                            <Box sx={{ margin: 1 }}>
-                              <Typography variant="h6" gutterBottom>
-                                Stock por Proyecto
-                              </Typography>
-                              <Table size="small">
-                                <TableHead>
-                                  <TableRow>
-                                    <TableCell>Proyecto</TableCell>
-                                    <TableCell align="right">Stock</TableCell>
-                                  </TableRow>
-                                </TableHead>
-                                <TableBody>
-                                  {(row.porProyecto || []).map((proj) => (
-                                    <TableRow key={proj.proyecto_id}>
-                                      <TableCell>{proj.proyecto_nombre}</TableCell>
-                                      <TableCell align="right">
-                                        {(() => {
-                                          const stockValue = proj.stock || proj.cantidad || 0;
-                                          const isError = stockValue <= 0;
-                                          return (
-                                            <Typography 
-                                              variant="body1" 
-                                              fontWeight="bold"
-                                              color={isError ? 'error.main' : 'success.main'}
-                                            >
-                                              {stockValue}
-                                            </Typography>
-                                          );
-                                        })()} 
-                                      </TableCell>
-                                    </TableRow>
-                                  ))}
-                                  {(row.porProyecto || []).length === 0 && (
-                                    <TableRow>
-                                      <TableCell colSpan={2}>
-                                        <Typography variant="body2" color="text.secondary">
-                                          No hay stock distribuido por proyectos
-                                        </Typography>
-                                      </TableCell>
-                                    </TableRow>
-                                  )}
-                                </TableBody>
-                              </Table>
-                            </Box>
-                          </Collapse>
-                        </TableCell>
-                      </TableRow>
-                    )
-                  ]).flat()}
+                  {tableRows}
                   {!loading && rows.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={9}>
+                      <TableCell colSpan={6}>
                         <Typography variant="body2">Sin resultados.</Typography>
                       </TableCell>
                     </TableRow>
@@ -897,7 +987,7 @@ const StockMateriales = () => {
                 onPageChange={handleChangePage}
                 rowsPerPage={rowsPerPage}
                 onRowsPerPageChange={handleChangeRowsPerPage}
-                rowsPerPageOptions={[10, 25, 50, 100]}
+                rowsPerPageOptions={[25, 50, 100, 200]}
               />
             </Paper>
                 </Stack>
@@ -917,7 +1007,6 @@ const StockMateriales = () => {
                       <TableHead>
                         <TableRow>
                           <TableCell>Nombre</TableCell>
-                          <TableCell>Descripción</TableCell>
                           <TableCell>SKU</TableCell>
                           <TableCell align="right">Stock Sin Asignar</TableCell>
                           <TableCell align="right">Acciones</TableCell>
@@ -964,13 +1053,8 @@ const StockMateriales = () => {
                             return (
                               <TableRow key={row._id} hover>
                                 <TableCell>
-                                  <Typography variant="body1" fontWeight={600}>{row.nombre}</Typography>
-                                </TableCell>
-                                <TableCell sx={{ maxWidth: 280 }}>
                                   <Tooltip title={row.desc_material || ''}>
-                                    <Typography variant="body2" noWrap>
-                                      {row.desc_material || <em>(—)</em>}
-                                    </Typography>
+                                    <Typography variant="body1" fontWeight={600}>{row.nombre}</Typography>
                                   </Tooltip>
                                 </TableCell>
                                 <TableCell>{row.SKU || <em>(—)</em>}</TableCell>
@@ -1018,7 +1102,6 @@ const StockMateriales = () => {
                         <TableHead>
                           <TableRow>
                             <TableCell>Nombre</TableCell>
-                            <TableCell>Descripción</TableCell>
                             <TableCell>SKU</TableCell>
                             <TableCell align="right">Stock en Proyecto</TableCell>
                             <TableCell align="right">Acciones</TableCell>
@@ -1032,13 +1115,8 @@ const StockMateriales = () => {
                             return (
                               <TableRow key={row._id} hover>
                                 <TableCell>
-                                  <Typography variant="body1" fontWeight={600}>{row.nombre}</Typography>
-                                </TableCell>
-                                <TableCell sx={{ maxWidth: 280 }}>
                                   <Tooltip title={row.desc_material || ''}>
-                                    <Typography variant="body2" noWrap>
-                                      {row.desc_material || <em>(—)</em>}
-                                    </Typography>
+                                    <Typography variant="body1" fontWeight={600}>{row.nombre}</Typography>
                                   </Tooltip>
                                 </TableCell>
                                 <TableCell>{row.SKU || <em>(—)</em>}</TableCell>
@@ -1214,6 +1292,104 @@ const StockMateriales = () => {
           <DialogActions>
             <Button onClick={() => setOpenDelete(false)}>Cancelar</Button>
             <Button color="error" variant="contained" onClick={remove}>Eliminar</Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* Stock por proyecto */}
+        <Dialog open={openStockDialog} onClose={() => setOpenStockDialog(false)} fullWidth maxWidth="sm">
+          <DialogTitle>Stock por proyecto</DialogTitle>
+          <DialogContent>
+            <Stack spacing={2} sx={{ mt: 1 }}>
+              <Typography variant="subtitle1" fontWeight={600}>
+                {stockDialogRow?.nombre || 'Material'}
+              </Typography>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Proyecto</TableCell>
+                    <TableCell align="right">Stock</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {(stockDialogRow?.porProyecto || []).map((proj) => (
+                    <TableRow key={proj.proyecto_id || proj.proyecto_nombre}>
+                      <TableCell>{proj.proyecto_nombre || '(sin nombre)'}</TableCell>
+                      <TableCell align="right">
+                        <Typography fontWeight={700}>
+                          {proj.stock || proj.cantidad || 0}
+                        </Typography>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {(stockDialogRow?.porProyecto || []).length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={2}>
+                        <Typography variant="body2" color="text.secondary">
+                          No hay stock distribuido por proyectos
+                        </Typography>
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </Stack>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setOpenStockDialog(false)}>Cerrar</Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* Categorizador masivo */}
+        <Dialog open={openBulkCategoria} onClose={() => setOpenBulkCategoria(false)} fullWidth maxWidth="sm">
+          <DialogTitle>Asignar categoría a {selectedIds.length} materiales</DialogTitle>
+          <DialogContent>
+            <Stack spacing={2} sx={{ mt: 1 }}>
+              <FormControl fullWidth>
+                <InputLabel id="bulk-categoria-label">Categoría</InputLabel>
+                <Select
+                  labelId="bulk-categoria-label"
+                  label="Categoría"
+                  value={bulkCategoria}
+                  onChange={(e) => {
+                    setBulkCategoria(e.target.value);
+                    setBulkSubcategoria('');
+                  }}
+                >
+                  <MenuItem value=""><em>Seleccionar categoría</em></MenuItem>
+                  {categoriasMateriales.map(cat => (
+                    <MenuItem key={cat.id || cat.name} value={cat.name}>{cat.name}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+
+              <FormControl fullWidth disabled={!bulkCategoria}>
+                <InputLabel id="bulk-subcategoria-label">Subcategoría</InputLabel>
+                <Select
+                  labelId="bulk-subcategoria-label"
+                  label="Subcategoría"
+                  value={bulkSubcategoria}
+                  onChange={(e) => setBulkSubcategoria(e.target.value)}
+                >
+                  <MenuItem value=""><em>(sin subcategoría)</em></MenuItem>
+                  {subcategoriasBulkDisponibles.map(sub => (
+                    <MenuItem key={sub} value={sub}>{sub}</MenuItem>
+                  ))}
+                </Select>
+                <FormHelperText>
+                  La subcategoría es opcional
+                </FormHelperText>
+              </FormControl>
+            </Stack>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setOpenBulkCategoria(false)}>Cancelar</Button>
+            <Button
+              variant="contained"
+              onClick={handleBulkCategoria}
+              disabled={!bulkCategoria || bulkLoading}
+            >
+              {bulkLoading ? 'Aplicando…' : 'Aplicar'}
+            </Button>
           </DialogActions>
         </Dialog>
 

@@ -34,6 +34,7 @@ const StockMaterialesService = {
       ...(raw.SKU?.trim()           ? { SKU: raw.SKU.trim() } : {}),
       ...(raw.categoria?.trim()     ? { categoria: raw.categoria.trim() } : {}),
       ...(raw.subcategoria?.trim()  ? { subcategoria: raw.subcategoria.trim() } : {}),
+      ...(raw.text?.trim()          ? { text: raw.text.trim() } : {}),
 
       // alias puede venir como array o string; mandamos tal cual
       ...(Array.isArray(raw.alias) && raw.alias.length
@@ -110,6 +111,24 @@ const StockMaterialesService = {
     const res = await api.patch(`/materiales/alias/${materialId}`, { alias });
     if (res.status === 200) return res.data;
     throw new Error('Error al agregar alias');
+  },
+
+  // Actualizar categoría/subcategoría en bloque
+  actualizarCategoriaMasiva: async ({ empresa_id, material_ids, categoria, subcategoria }) => {
+    if (!empresa_id) throw new Error('empresa_id es requerido');
+    if (!Array.isArray(material_ids) || material_ids.length === 0) {
+      throw new Error('material_ids es requerido');
+    }
+    if (!categoria) throw new Error('categoria es requerida');
+
+    const res = await api.patch('/materiales/categorias/bulk', {
+      empresa_id,
+      material_ids,
+      categoria,
+      subcategoria,
+    });
+    if (res.status === 200) return res.data;
+    throw new Error('Error al actualizar categorías');
   },
 };
 

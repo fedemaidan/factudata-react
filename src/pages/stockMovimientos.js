@@ -373,6 +373,29 @@ const StockMovimientos = () => {
                   <Button onClick={limpiarFiltros} startIcon={<ClearAllIcon />} variant="outlined">Limpiar</Button>
                 </Stack>
 
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                  <Button
+                    variant={conciliado === 'false' ? 'contained' : 'outlined'}
+                    color="warning"
+                    onClick={() => { setConciliado('false'); setPage(0); }}
+                  >
+                    Pendientes de conciliación
+                  </Button>
+                  <Button
+                    variant={conciliado === 'true' ? 'contained' : 'outlined'}
+                    color="success"
+                    onClick={() => { setConciliado('true'); setPage(0); }}
+                  >
+                    Conciliados
+                  </Button>
+                  <Button
+                    variant={conciliado === '' ? 'contained' : 'outlined'}
+                    onClick={() => { setConciliado(''); setPage(0); }}
+                  >
+                    Todos
+                  </Button>
+                </Stack>
+
                 {activeChips.length > 0 && (
                   <Stack direction="row" spacing={1} flexWrap="wrap">
                     {activeChips.map((c) => (
