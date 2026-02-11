@@ -1,10 +1,9 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/router';
+import Alerts from 'src/components/alerts';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import { Container, Stack, Alert, Box, TextField, InputAdornment, IconButton, Chip, Button, Typography } from '@mui/material';
 import ClearIcon from '@mui/icons-material/Clear';
-import TableViewIcon from '@mui/icons-material/TableView';
-import AssignmentIcon from '@mui/icons-material/Assignment';
 import SickIcon from '@mui/icons-material/Sick';
 import EditIcon from '@mui/icons-material/Edit';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
@@ -26,6 +25,13 @@ const HORAS_EXCEL_FIELDS = [
   "horasNocturnas50",
   "horasNocturnas100",
 ];
+const CHIP_LIMIT_SX = {
+  maxWidth: 140,
+  textAlign: "center",
+  justifyContent: "center",
+  whiteSpace: "normal",
+  px: 1,
+};
 
 const INITIAL_STATS = {
   total: 0,
@@ -79,6 +85,7 @@ const ConciliacionDetallePage = () => {
   const [rawModalTitle, setRawModalTitle] = useState('');
   const [rawModalFileName, setRawModalFileName] = useState('');
   const [rawModalUrl, setRawModalUrl] = useState('');
+  const [alert, setAlert] = useState({ open: false, severity: 'success', message: '' });
 
   const handleOpenParteModal = useCallback((url, comp) => {
     if (!url) return;
@@ -101,6 +108,14 @@ const ConciliacionDetallePage = () => {
     setRawModalUrl('');
   }, []);
 
+  const showAlert = useCallback((message, severity = 'success') => {
+    setAlert({ open: true, message, severity });
+  }, []);
+
+  const handleAlertClose = useCallback(() => {
+    setAlert((prev) => ({ ...prev, open: false }));
+  }, []);
+
   const getRowId = useCallback((row) => row?._id ?? row?.id, []);
 
   const selectedRows = useMemo(() => {
@@ -113,29 +128,6 @@ const ConciliacionDetallePage = () => {
     if (isNaN(fecha.getTime())) return '-';
     return fecha.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit' });
   }, []);
-
-  const handleOpenComprobante = useCallback((comp, row) => {
-    if (!comp) return;
-    const url = comp?.url || comp?.url_storage || '';
-    if (comp.type === 'parte') {
-      if (!url) return;
-      handleOpenParteModal(url, comp);
-      return;
-    }
-    if (comp.type === 'horas') {
-      const trabajador = (row?.trabajadorId || row?.trabajador || {});
-      const nombre = `${trabajador?.apellido || ''} ${trabajador?.nombre || ''}`.trim();
-      const dni = trabajador?.dni ? `DNI: ${trabajador.dni}` : '';
-      const diaLabel = formatFechaLabel(row?.fecha);
-      const titleBase = nombre ? `${nombre} • ${diaLabel}` : `Fichadas • ${diaLabel}`;
-      const title = dni ? `${titleBase} • ${dni}` : titleBase;
-      setRawModalData(Array.isArray(row?.dataRawExcel) ? row.dataRawExcel : []);
-      setRawModalTitle(title);
-      setRawModalFileName(comp?.file_name || comp?.fileName || '');
-      setRawModalUrl(url || '');
-      setRawModalOpen(true);
-    }
-  }, [formatFechaLabel, handleOpenParteModal]);
 
   const estadoFiltro = useMemo(() => {
     return router.query.estado || 'todos';
@@ -281,6 +273,7 @@ const ConciliacionDetallePage = () => {
       await conciliacionService.seleccionarHorasSistema(id, rowToEdit._id);
       setEditOpen(false);
       await reloadRows();
+      showAlert("Se aplicaron las horas del sistema correctamente");
     } catch (error) {
       console.error("Error aplicando horas sistema", error);
     } finally {
@@ -297,6 +290,7 @@ const ConciliacionDetallePage = () => {
       await conciliacionService.seleccionarHorasExcel(id, rowToEdit._id, payload);
       setEditOpen(false);
       await reloadRows();
+      showAlert("Se aplicaron las horas NASA correctamente");
     } catch (error) {
       console.error("Error aplicando horas sheet", error);
     } finally {
@@ -368,6 +362,7 @@ const ConciliacionDetallePage = () => {
       });
       setEditOpen(false);
       await reloadRows();
+      showAlert("Cambios guardados correctamente");
     } catch (error) {
       console.error("Error actualizando horas", error);
     }
@@ -448,20 +443,9 @@ const ConciliacionDetallePage = () => {
         );
       },
     },
-    { key: 'licencia', label: 'Licencia', render: (row) => {
-      const lic = (row?.sheetHoras?.fechaLicencia ?? row?.licencia ?? false) ? true : false;
-      return (
-        <Chip
-          label={lic ? 'Licencia: Sí' : 'Licencia: No'}
-          size="small"
-          variant="outlined"
-          color={lic ? 'warning' : 'default'}
-        />
-      );
-    }},
     {
       key: 'horas',
-      label: 'Horas',
+      label: 'Horas Sistema',
       render: (row) => {
         const db = row.dbHoras || null;
         const items = db ? [
@@ -475,7 +459,10 @@ const ConciliacionDetallePage = () => {
           { k: 'Noct. 50%', v: Number(db.horasNocturnas50 || 0), color: 'info' },
           { k: 'Noct. 100%', v: Number(db.horasNocturnas100 || 0), color: 'info' },
         ].filter(i => i.v > 0) : [];
-        if (items.length === 0) return '-';
+        const tieneLicencia = Boolean(db?.fechaLicencia);
+        const licenciaTipo = db?.tipoLicencia;
+        const licenciaLabel = licenciaTipo ? `Licencia (${licenciaTipo})` : 'Licencia';
+        if (!tieneLicencia && items.length === 0) return '-';
         return (
           <Stack direction="column" spacing={0.5}>
             {items.map(({ k, v }) => (
@@ -484,16 +471,30 @@ const ConciliacionDetallePage = () => {
                 label={`${k} ${v} hs`}
                 size="small"
                 variant="outlined"
-                sx={getHourChipSx(k)}
+                sx={(theme) => ({
+                  ...getHourChipSx(k)(theme),
+                  ...CHIP_LIMIT_SX,
+                  fontWeight: 600,
+                })}
               />
             ))}
+            {tieneLicencia && (
+              <Chip
+                label={licenciaLabel}
+                size="small"
+                variant="outlined"
+                color="warning"
+                icon={<SickIcon fontSize="small" />}
+                sx={CHIP_LIMIT_SX}
+              />
+            )}
           </Stack>
         );
       }
     },
     {
       key: 'sheetHoras',
-      label: 'Sheet',
+      label: 'Horas NASA',
       render: (row) => {
         const sh = row.sheetHoras || {};
         const items = [
@@ -507,7 +508,10 @@ const ConciliacionDetallePage = () => {
           { k: 'Noct. 50%', v: Number(sh.horasNocturnas50 || 0) },
           { k: 'Noct. 100%', v: Number(sh.horasNocturnas100 || 0) },
         ].filter(i => i.v > 0);
-        if (items.length === 0) return '-';
+        const tieneLicenciaSheet = Boolean(sh.fechaLicencia ?? row?.licencia);
+        const licenciaTipoSheet = sh.tipoLicencia ?? row?.tipoLicencia;
+        const licenciaLabelSheet = licenciaTipoSheet ? `Licencia (${licenciaTipoSheet})` : 'Licencia';
+        if (!tieneLicenciaSheet && items.length === 0) return '-';
         return (
           <Stack direction="column" spacing={0.5}>
             {items.map(({ k, v }) => (
@@ -516,62 +520,23 @@ const ConciliacionDetallePage = () => {
                 label={`${k} ${v} hs`}
                 size="small"
                 variant="outlined"
-                sx={getHourChipSx(k)}
+                sx={(theme) => ({
+                  ...getHourChipSx(k)(theme),
+                  ...CHIP_LIMIT_SX,
+                  fontWeight: 600,
+                })}
               />
             ))}
-          </Stack>
-        );
-      }
-    },
-    {
-      key: 'comprobantes',
-      label: 'Comprobantes',
-      render: (row) => {
-        const comps = Array.isArray(row.comprobantes) ? row.comprobantes : [];
-        if (comps.length === 0) return '-';
-        return (
-          <Stack direction="row" spacing={0.5} useFlexGap flexWrap="wrap">
-            {comps.map((comp, idx) => {
-              const color =
-                comp.type === 'horas' ? 'primary' :
-                comp.type === 'parte' ? 'success' :
-                comp.type === 'licencia' ? 'warning' : 'default';
-              const icon =
-                comp.type === 'horas' ? <TableViewIcon fontSize="small" /> :
-                comp.type === 'parte' ? <AssignmentIcon fontSize="small" /> :
-                comp.type === 'licencia' ? <SickIcon fontSize="small" /> : null;
-              return (() => {
-                const url = comp.url || comp.url_storage || null;
-                const handleClick = (event) => {
-                  if ((comp.type === 'parte' || comp.type === 'horas') && url) {
-                    event.preventDefault();
-                    event.stopPropagation();
-                  }
-                  if (comp.type === 'parte') {
-                    handleOpenParteModal(url, comp);
-                  }
-                  if (comp.type === 'horas') {
-                    handleOpenComprobante(comp, row);
-                  }
-                };
-                return (
-                  <Chip
-                    key={`${comp.type}-${idx}`}
-                    label={comp.type}
-                    size="small"
-                    color={color}
-                    variant="outlined"
-                    component="a"
-                    href={url || "#"}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    clickable
-                    icon={icon}
-                    onClick={handleClick}
-                  />
-                );
-              })();
-            })}
+            {tieneLicenciaSheet && (
+              <Chip
+                label={licenciaLabelSheet}
+                size="small"
+                variant="outlined"
+                color="warning"
+                icon={<SickIcon fontSize="small" />}
+                sx={CHIP_LIMIT_SX}
+              />
+            )}
           </Stack>
         );
       }
@@ -614,7 +579,7 @@ const ConciliacionDetallePage = () => {
         </IconButton>
       )
     }
-  ]), [handleOpenParteModal, handleOpenComprobante]);
+  ]), [handleOpenParteModal]);
 
   useEffect(() => {
     setSelectedRowsMap(new Map());
@@ -720,26 +685,29 @@ const ConciliacionDetallePage = () => {
             </Alert>
           )}
 
-          <TableSelectComponent
-            data={rows}
-            columns={columns}
-            isLoading={isLoading}
-            sortField={sortField}
-            sortDirection={sortDirection}
-            onSortChange={handleSortChange}
-            getRowId={getRowId}
-            onSelectionChange={handleSelectionChange}
-            selectedItems={selectedRows}
-            emptyMessage="No hay filas disponibles"
-            pagination={{
-              total: totalRows,
-              page,
-              rowsPerPage,
-              rowsPerPageOptions: [DEFAULT_PAGE_SIZE],
-            }}
-            onPageChange={handlePageChange}
-            onRowsPerPageChange={handleRowsPerPageChange}
-          />
+          <Box sx={{ width: "100%", maxWidth: 1200, mx: "auto" }}>
+            <TableSelectComponent
+              data={rows}
+              columns={columns}
+              isLoading={isLoading}
+              sortField={sortField}
+              sortDirection={sortDirection}
+              onSortChange={handleSortChange}
+              getRowId={getRowId}
+              onSelectionChange={handleSelectionChange}
+              selectedItems={selectedRows}
+              emptyMessage="No hay filas disponibles"
+              pagination={{
+                total: totalRows,
+                page,
+                rowsPerPage,
+                rowsPerPageOptions: [DEFAULT_PAGE_SIZE],
+              }}
+              onPageChange={handlePageChange}
+              onRowsPerPageChange={handleRowsPerPageChange}
+            />
+            <Alerts alert={alert} onClose={handleAlertClose} />
+          </Box>
         </Stack>
       </Container>
 

@@ -1,10 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import PropTypes from "prop-types";
 import {
   AppBar,
+  Backdrop,
   Box,
   Button,
   Chip,
+  CircularProgress,
   Dialog,
   Divider,
   IconButton,
@@ -13,6 +14,8 @@ import {
   Tab,
   Tabs,
   TextField,
+  ToggleButton,
+  ToggleButtonGroup,
   Toolbar,
   Tooltip,
   Typography,
@@ -162,11 +165,34 @@ const CorreccionConciliacionModal = ({
     [onFormHorasChange]
   );
 
-  const handleGuardar = useCallback(async () => {
-    if (typeof onSave === "function") {
-      await onSave();
+  const handleLicenseToggle = useCallback(
+    (_event, value) => {
+      if (value === null) return;
+      handleHorasFieldChange("fechaLicencia", value === "si");
+    },
+    [handleHorasFieldChange]
+  );
+
+  const handleSelectExcelClick = useCallback(async () => {
+    if (typeof onSelectExcel === "function") {
+      await onSelectExcel();
     }
-  }, [onSave]);
+  }, [onSelectExcel]);
+
+  const handleSelectSistemaClick = useCallback(async () => {
+    if (typeof onSelectSistema === "function") {
+      await onSelectSistema();
+    }
+  }, [onSelectSistema]);
+
+  const handleGuardar = useCallback(
+    async () => {
+      if (typeof onSave === "function") {
+        await onSave();
+      }
+    },
+    [onSave]
+  );
 
   const { nombre, dni } = getTrabajadorDisplayData(row);
   const fechaLabel = formatFechaLabel(row?.fecha);
@@ -278,7 +304,7 @@ const CorreccionConciliacionModal = ({
           variant="scrollable"
           scrollButtons="auto"
           allowScrollButtonsMobile
-          sx={{ borderBottom: 1, borderColor: "divider" }}
+          sx={{ borderBottom: 1, borderColor: "divider", mb: 0 }}
         >
           {tabItems.map((tab) => (
             <Tab key={tab.id} icon={tab.icon} iconPosition="start" label={tab.label} />
@@ -292,7 +318,7 @@ const CorreccionConciliacionModal = ({
           minHeight: 0,
           display: "flex",
           flexDirection: "column",
-          pt: 1,
+          pt: 0,
         }}
       >
         {tabItems.length === 0 && (
@@ -302,7 +328,7 @@ const CorreccionConciliacionModal = ({
         )}
 
         {tabItems.length > 0 && (
-          <Stack direction="column" spacing={1} sx={{ flex: 1 }}>
+          <Stack direction="column" spacing={0} sx={{ flex: 1 }}>
             {activeTabMeta?.fileName && (
               <Typography variant="caption" color="text.secondary">
                 {activeTabMeta.fileName}
@@ -342,7 +368,7 @@ const CorreccionConciliacionModal = ({
         </Toolbar>
       </AppBar>
 
-      <Box sx={{ display: "flex", flex: 1, minHeight: 0, flexDirection: { xs: "column", md: "row" } }}>
+      <Box sx={{ display: "flex" ,flex: 1, minHeight: 0, flexDirection: { xs: "column", md: "row" } }}>
         <Box
           sx={{
             width: { xs: "100%", md: 360 },
@@ -357,22 +383,22 @@ const CorreccionConciliacionModal = ({
           <Stack spacing={2}>
             <Stack direction="row" spacing={1} flexWrap="wrap">
               <Button
-                variant="contained"
-                size="small"
-                onClick={onSelectExcel}
-                disabled={selectionLoading}
-                sx={{ textTransform: "none" }}
-              >
-                Horas Excel
-              </Button>
-              <Button
                 variant="outlined"
                 size="small"
-                onClick={onSelectSistema}
+                onClick={handleSelectSistemaClick}
                 disabled={selectionLoading}
                 sx={{ textTransform: "none" }}
               >
                 Horas Sistema
+              </Button>
+              <Button
+                variant="contained"
+                size="small"
+                onClick={handleSelectExcelClick}
+                disabled={selectionLoading}
+                sx={{ textTransform: "none" }}
+              >
+                Horas NASA
               </Button>
             </Stack>
             <Divider />
@@ -385,7 +411,7 @@ const CorreccionConciliacionModal = ({
             >
               <Box sx={{ flex: 1, minWidth: 200 }}>
                 <Typography variant="subtitle2" gutterBottom>
-                  En sistema
+                  Sistema
                 </Typography>
                 <Stack spacing={1} sx={{ flexWrap: "wrap" }}>
                   {HORA_FIELDS.map((field) => (
@@ -404,19 +430,37 @@ const CorreccionConciliacionModal = ({
                   ))}
                 </Stack>
                 <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 1 }}>
-                  <Typography variant="body2">Licencia</Typography>
-                  <Chip
-                    label={formHoras?.fechaLicencia ? "Sí" : "No"}
-                    color={formHoras?.fechaLicencia ? "warning" : "default"}
-                    variant="outlined"
+                  <Typography variant="body2" sx={{ minWidth: 60 }}>
+                    Licencia
+                  </Typography>
+                  <ToggleButtonGroup
+                    value={formHoras?.fechaLicencia ? "si" : "no"}
+                    exclusive
                     size="small"
-                    onClick={() => handleHorasFieldChange("fechaLicencia", !formHoras?.fechaLicencia)}
-                  />
+                    onChange={handleLicenseToggle}
+                    sx={{
+                      borderRadius: 1,
+                      bgcolor: "background.paper",
+                      boxShadow: 1,
+                      "& .MuiToggleButton-root": {
+                        borderColor: "divider",
+                        px: 1.5,
+                      },
+                    }}
+                    aria-label="Seleccionar licencia"
+                  >
+                    <ToggleButton value="si" aria-label="Licencia sí">
+                      Sí
+                    </ToggleButton>
+                    <ToggleButton value="no" aria-label="Licencia no">
+                      No
+                    </ToggleButton>
+                  </ToggleButtonGroup>
                 </Stack>
               </Box>
               <Box sx={{ flex: 1, minWidth: 200 }}>
                 <Typography variant="subtitle2" gutterBottom>
-                  En sheet
+                  Sheet NASA
                 </Typography>
                 <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
                   {sheetItems.length === 0 ? (
@@ -454,39 +498,28 @@ const CorreccionConciliacionModal = ({
             minHeight: 0,
             display: "flex",
             flexDirection: "column",
-            p: 3,
+            px: 2,
+            py: 0,
             backgroundColor: "background.default",
           }}
         >
           {tabsArea}
         </Box>
       </Box>
+      <Backdrop
+        open={selectionLoading}
+        sx={(theme) => ({
+          zIndex: theme.zIndex.modal + 1,
+          color: theme.palette.common.white,
+        })}
+      >
+        <Stack spacing={1} alignItems="center">
+          <CircularProgress color="inherit" />
+          <Typography>Guardando...</Typography>
+        </Stack>
+      </Backdrop>
     </Dialog>
   );
-};
-
-CorreccionConciliacionModal.propTypes = {
-  open: PropTypes.bool,
-  onClose: PropTypes.func,
-  row: PropTypes.object,
-  formHoras: PropTypes.object,
-  onFormHorasChange: PropTypes.func,
-  onSelectExcel: PropTypes.func,
-  onSelectSistema: PropTypes.func,
-  selectionLoading: PropTypes.bool,
-  onSave: PropTypes.func,
-};
-
-CorreccionConciliacionModal.defaultProps = {
-  open: false,
-  onClose: undefined,
-  row: null,
-  formHoras: {},
-  onFormHorasChange: () => {},
-  onSelectExcel: () => {},
-  onSelectSistema: () => {},
-  selectionLoading: false,
-  onSave: undefined,
 };
 
 export default CorreccionConciliacionModal;
