@@ -35,6 +35,7 @@ const StockMaterialesService = {
       ...(raw.categoria?.trim()     ? { categoria: raw.categoria.trim() } : {}),
       ...(raw.subcategoria?.trim()  ? { subcategoria: raw.subcategoria.trim() } : {}),
       ...(raw.text?.trim()          ? { text: raw.text.trim() } : {}),
+      ...(raw.sin_categoria ? { sin_categoria: raw.sin_categoria } : {}),
 
       // alias puede venir como array o string; mandamos tal cual
       ...(Array.isArray(raw.alias) && raw.alias.length
@@ -47,8 +48,8 @@ const StockMaterialesService = {
       ...(raw.estadoEntrega && raw.estadoEntrega !== 'all' ? { estadoEntrega: raw.estadoEntrega } : {}),
 
       sort: (typeof raw.sort === 'string' && raw.sort.includes(':')) ? raw.sort : 'nombre:asc',
-      limit: Number.isFinite(raw.limit) ? Number(raw.limit) : 9999, // Traer todos los datos
-      page: 0, // Siempre página 0 para traer todo
+      limit: Number.isFinite(raw.limit) ? Number(raw.limit) : 50,
+      page: Number.isFinite(raw.page) ? Number(raw.page) : 0,
     };
 
     // (opcional) log para depurar qué se envía

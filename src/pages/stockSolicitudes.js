@@ -1457,7 +1457,7 @@ export default function StockSolicitudes() {
                         </TableCell>
                         <TableCell>{s.subtipo}</TableCell>
                         <TableCell>
-                          {(() => {
+                          {s.tipo === 'INGRESO' ? (() => {
                             const estadoInfo = getEstadoChip(s.estado);
                             return (
                               <Chip
@@ -1468,7 +1468,9 @@ export default function StockSolicitudes() {
                                 variant="filled"
                               />
                             );
-                          })()}
+                          })() : (
+                            <Typography variant="caption" color="text.secondary">—</Typography>
+                          )}
                         </TableCell>
                         <TableCell>{fmt(s.fecha)}</TableCell>
                         <TableCell>{fmt(s.updatedAt)}</TableCell>

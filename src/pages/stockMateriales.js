@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import Head from 'next/head';
 import {
   Alert, Box, Button, Chip, Container, Dialog, DialogActions, DialogContent, DialogTitle,
@@ -59,56 +59,48 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /* ====================== */
 
-const TextFilters = memo(({ value, onApply }) => {
-  const [local, setLocal] = useState(value);
+const SearchBox = memo(({ initialValue, onApply }) => {
+  const [local, setLocal] = useState(initialValue || '');
 
   useEffect(() => {
-    setLocal(value);
-  }, [value]);
+    setLocal(initialValue || '');
+  }, [initialValue]);
 
-  const hasChanges = local !== value;
-
-  const apply = () => {
-    if (!hasChanges) return;
+  const apply = useCallback(() => {
     onApply(local);
-  };
+  }, [local, onApply]);
 
-  const onKeyDown = (e) => {
+  const onKeyDown = useCallback((e) => {
     if (e.key === 'Enter') {
       e.preventDefault();
       apply();
     }
-  };
+  }, [apply]);
 
   return (
-    <>
-      <Box sx={{ minWidth: 260, flex: 1 }}>
-        <TextField
-          fullWidth
-          label="Buscar"
-          value={local}
-          onChange={(e) => setLocal(e.target.value)}
-          onKeyDown={onKeyDown}
-          placeholder="Nombre, SKU, alias o descripción…"
-          InputProps={{
-            startAdornment: (
-              <InputAdornment position="start"><SearchIcon /></InputAdornment>
-            ),
-          }}
-        />
-      </Box>
-
-      {hasChanges && (
-        <Button
-          variant="contained"
-          startIcon={<SearchIcon />}
-          onClick={apply}
-          sx={{ height: 40, alignSelf: 'center' }}
-        >
-          Buscar
-        </Button>
-      )}
-    </>
+    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ minWidth: 260, flex: 1 }}>
+      <TextField
+        fullWidth
+        label="Buscar"
+        value={local}
+        onChange={(e) => setLocal(e.target.value)}
+        onKeyDown={onKeyDown}
+        placeholder="Nombre, SKU, alias o descripción…"
+        InputProps={{
+          startAdornment: (
+            <InputAdornment position="start"><SearchIcon /></InputAdornment>
+          ),
+        }}
+      />
+      <Button
+        variant="contained"
+        startIcon={<SearchIcon />}
+        onClick={apply}
+        sx={{ height: 40, alignSelf: 'center' }}
+      >
+        Buscar
+      </Button>
+    </Stack>
   );
 });
 
@@ -173,6 +165,20 @@ const RowItem = memo(
         )}
       </TableCell>
       <TableCell align="right">
+        {row.precio_unitario != null ? (
+          <Tooltip title={row.fecha_precio
+            ? `Actualizado: ${(() => { try { return new Date(row.fecha_precio).toLocaleDateString('es-AR'); } catch { return '—'; } })()}`
+            : 'Sin fecha de actualización'
+          }>
+            <Typography variant="body2" fontWeight={500}>
+              ${Number(row.precio_unitario).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </Typography>
+          </Tooltip>
+        ) : (
+          <Typography variant="caption" color="text.secondary">—</Typography>
+        )}
+      </TableCell>
+      <TableCell align="right">
         <Stack spacing={0.5} alignItems="flex-end">
           {(() => {
             const stockValue = typeof row.stock === 'number' ? row.stock : (row.stockTotal ?? 0);
@@ -230,6 +236,7 @@ const emptyForm = {
   categoria: '',
   subcategoria: '',
   aliasChips: [],            // ← chips en el form
+  precio_unitario: '',
   empresa_id: '',
   empresa_nombre: '',
 };
@@ -254,6 +261,7 @@ const ORDER_MAP = {
   descripcion: 'desc_material',
   sku: 'SKU',
   stock: 'stock',
+  precio_unitario: 'precio_unitario',
 };
 
 // Helper para obtener estado de stock
@@ -263,8 +271,7 @@ const getStockStatus = (stock) => {
 };
 
 const StockMateriales = () => {
-  const [allRows, setAllRows] = useState([]); // Todos los datos del backend
-  const [rows, setRows] = useState([]); // Datos de la página actual
+  const [allRows, setAllRows] = useState([]); // Datos cargados (hasta 1000)
   const [loading, setLoading] = useState(false);
 
   // estados de filtros/orden/paginación (server-side)
@@ -278,7 +285,7 @@ const StockMateriales = () => {
   const [orderBy, setOrderBy] = useState('nombre'); // nombre | descripcion | sku | stock
   const [order, setOrder] = useState('asc'); // asc | desc
   const [page, setPage] = useState(0);
-  const [rowsPerPage, setRowsPerPage] = useState(100);
+  const [rowsPerPage, setRowsPerPage] = useState(25);
 
   // Estados para tabs y dialog de stock por proyecto
   const [currentTab, setCurrentTab] = useState('general');
@@ -286,8 +293,7 @@ const StockMateriales = () => {
   const [openStockDialog, setOpenStockDialog] = useState(false);
   const [stockDialogRow, setStockDialogRow] = useState(null);
 
-  // total que llega desde el back (para paginación)
-  const [total, setTotal] = useState(0);
+  // total para paginación (frontend)
 
   const { user } = useAuthContext();
   const { setBreadcrumbs } = useBreadcrumbs();
@@ -352,12 +358,17 @@ const StockMateriales = () => {
     return `${field}:${dir}`;
   }, [orderBy, order]);
 
-  // fetch al back en base a filtros/orden/paginación
+  const onApplySearch = useCallback((value) => {
+    setNombre(value);
+    setPage(0);
+  }, []);
+
+  const FETCH_LIMIT = 1000;
+
+  // fetch al back en base a filtros/orden (sin búsqueda de texto)
   async function fetchAll() {
     if (!user) {
       setAllRows([]);
-      setRows([]);
-      setTotal(0);
       return;
     }
     setLoading(true);
@@ -367,12 +378,12 @@ const StockMateriales = () => {
 
       const params = {
         empresa_id: empresa.id,
-        limit: 9999, // Traer todos los datos
+        limit: FETCH_LIMIT,
+        page: 0,
         sort: sortParam, // ej: "stock:desc"
       };
 
       // 🔎 filtros (solo envío si hay valor)
-      if (nombre?.trim())        params.text          = nombre.trim();
       if (stockFilter !== 'all') params.stockFilter   = stockFilter; // 'gt0' | 'eq0' | 'lt0'
       if (estadoEntrega !== 'all') params.estadoEntrega = estadoEntrega; // 'entregado' | 'no_entregado'
       if (categoriaFilter && categoriaFilter !== SIN_CATEGORIA_VALUE) {
@@ -381,29 +392,17 @@ const StockMateriales = () => {
       if (subcategoriaFilter && categoriaFilter !== SIN_CATEGORIA_VALUE) {
         params.subcategoria = subcategoriaFilter;
       }
+      if (categoriaFilter === SIN_CATEGORIA_VALUE) {
+        params.sin_categoria = true;
+      }
 
       const resp = await StockMaterialesService.listarMateriales(params);
-      const allData = mapItems(resp.items || []);
-      
-      // Aplicar filtros adicionales en frontend que no se aplicaron en el backend
-      let filteredData = allData;
-
-      if (categoriaFilter === SIN_CATEGORIA_VALUE) {
-        filteredData = filteredData.filter(row => !row.categoria || String(row.categoria).trim() === '');
-      }
-      
-      // Guardar todos los datos filtrados
-      setAllRows(filteredData);
-      setTotal(filteredData.length);
-      
-      // Calcular datos de la página actual (paginación client-side)
-      const startIndex = page * rowsPerPage;
-      const endIndex = startIndex + rowsPerPage;
-      const pageData = filteredData.slice(startIndex, endIndex);
-      setRows(pageData);
+      const pageData = mapItems(resp.items || []);
+      setAllRows(pageData);
     } catch (e) {
       console.error(e);
-      setAlert({ open: true, message: 'Error al cargar materiales', severity: 'error' });
+      const msg = e?.response?.data?.error?.message || e?.message || 'Error al cargar materiales';
+      setAlert({ open: true, message: `Error al cargar materiales: ${msg}`, severity: 'error' });
     } finally {
       // mínimo 1s de loader visible
       const elapsed = Date.now() - startedAt;
@@ -413,57 +412,75 @@ const StockMateriales = () => {
     }
   }
 
-  // dispara el fetch cuando cambian filtros/orden (no page/rowsPerPage ya que paginamos en frontend)
+  const filteredRows = useMemo(() => {
+    const term = (nombre || '').trim().toLowerCase();
+    if (!term) return allRows;
+
+    return allRows.filter((row) => {
+      const nombreValue = String(row?.nombre || '').toLowerCase();
+      const skuValue = String(row?.SKU || '').toLowerCase();
+      const descValue = String(row?.desc_material || '').toLowerCase();
+      const aliasValue = Array.isArray(row?.alias)
+        ? row.alias.join(' ').toLowerCase()
+        : String(row?.alias || '').toLowerCase();
+
+      return (
+        nombreValue.includes(term) ||
+        skuValue.includes(term) ||
+        descValue.includes(term) ||
+        aliasValue.includes(term)
+      );
+    });
+  }, [allRows, nombre]);
+
+  const total = filteredRows.length;
+
+  const pageRows = useMemo(() => {
+    const start = page * rowsPerPage;
+    return filteredRows.slice(start, start + rowsPerPage);
+  }, [filteredRows, page, rowsPerPage]);
+
+  // dispara el fetch cuando cambian filtros/orden (paginamos en frontend)
   useEffect(() => {
     fetchAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, nombre, stockFilter, estadoEntrega, categoriaFilter, subcategoriaFilter, sortParam]);
+  }, [user, stockFilter, estadoEntrega, categoriaFilter, subcategoriaFilter, sortParam]);
 
   // limpiar selección al refrescar datos
   useEffect(() => {
     setSelectedIds([]);
-  }, [allRows, page, rowsPerPage, currentTab]);
+  }, [filteredRows, page, rowsPerPage, currentTab]);
 
-  // Efecto separado para manejar cambios de paginación (solo client-side)
-  useEffect(() => {
-    if (allRows.length > 0) {
-      const startIndex = page * rowsPerPage;
-      const endIndex = startIndex + rowsPerPage;
-      const pageData = allRows.slice(startIndex, endIndex);
-      setRows(pageData);
-    }
-  }, [allRows, page, rowsPerPage]);
-
-  const pageIds = rows.map(r => r?._id).filter(Boolean);
+  const pageIds = pageRows.map(r => r?._id).filter(Boolean);
   const selectedInPage = pageIds.filter(id => selectedIds.includes(id));
   const allSelectedInPage = pageIds.length > 0 && selectedInPage.length === pageIds.length;
   const someSelectedInPage = selectedInPage.length > 0 && selectedInPage.length < pageIds.length;
   const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
 
-  const toggleSelectAllPage = (checked) => {
+  const toggleSelectAllPage = useCallback((checked) => {
     setSelectedIds((prev) => {
       if (checked) return Array.from(new Set([...prev, ...pageIds]));
       return prev.filter(id => !pageIds.includes(id));
     });
-  };
+  }, [pageIds]);
 
-  const toggleSelectOne = (id, checked) => {
+  const toggleSelectOne = useCallback((id, checked) => {
     if (!id) return;
     setSelectedIds((prev) => {
       if (checked) return Array.from(new Set([...prev, id]));
       return prev.filter(x => x !== id);
     });
-  };
+  }, []);
 
-  const selectAllFiltered = () => {
-    const allIds = allRows.map(r => r?._id).filter(Boolean);
+  const selectAllFiltered = useCallback(() => {
+    const allIds = pageRows.map(r => r?._id).filter(Boolean);
     setSelectedIds(Array.from(new Set(allIds)));
-  };
+  }, [pageRows]);
 
-  const openStockPorProyecto = (row) => {
+  const openStockPorProyecto = useCallback((row) => {
     setStockDialogRow(row);
     setOpenStockDialog(true);
-  };
+  }, []);
 
   // --- crear/editar ---
   const handleOpenCreate = () => {
@@ -473,7 +490,7 @@ const StockMateriales = () => {
     setOpenForm(true);
   };
 
-  const handleOpenEdit = (row) => {
+  const handleOpenEdit = useCallback((row) => {
     setIsEdit(true);
     setForm({
       _id: row._id,
@@ -483,12 +500,13 @@ const StockMateriales = () => {
       categoria: row.categoria || '',
       subcategoria: row.subcategoria || '',
       aliasChips: parseAliasToChips(row.alias),       // ← chips desde DB
+      precio_unitario: row.precio_unitario ?? '',
       empresa_id: row.empresa_id || '',
       empresa_nombre: row.empresa_nombre || '',
     });
     setAliasInput('');
     setOpenForm(true);
-  };
+  }, []);
 
   const validate = () => {
     if (!form.nombre?.trim()) return 'El nombre es requerido';
@@ -513,6 +531,7 @@ const StockMateriales = () => {
         categoria: form.categoria?.trim() || null,
         subcategoria: form.subcategoria?.trim() || null,
         alias: form.aliasChips && form.aliasChips.length ? form.aliasChips : null, // ← array
+        precio_unitario: form.precio_unitario !== '' ? Number(form.precio_unitario) : null,
         empresa_id,
         empresa_nombre,
       };
@@ -537,13 +556,13 @@ const StockMateriales = () => {
   };
 
   // --- eliminar ---
-  const confirmDelete = (row) => {
+  const confirmDelete = useCallback((row) => {
     setToDelete(row);
     setOpenDelete(true);
-  };
+  }, []);
 
   const tableRows = useMemo(() => (
-    rows.map((row) => (
+    pageRows.map((row) => (
       <RowItem
         key={row._id}
         row={row}
@@ -554,7 +573,7 @@ const StockMateriales = () => {
         onDelete={confirmDelete}
       />
     ))
-  ), [rows, selectedIdSet, toggleSelectOne, openStockPorProyecto, handleOpenEdit]);
+  ), [pageRows, selectedIdSet, toggleSelectOne, openStockPorProyecto, handleOpenEdit, confirmDelete]);
 
   const remove = async () => {
     if (!toDelete) return;
@@ -564,7 +583,7 @@ const StockMateriales = () => {
       setOpenDelete(false);
       setToDelete(null);
 
-      const isLastOnPage = rows.length === 1 && page > 0;
+      const isLastOnPage = pageRows.length === 1 && page > 0;
       if (isLastOnPage) setPage((p) => Math.max(0, p - 1));
       else await fetchAll();
     } catch (e) {
@@ -788,101 +807,95 @@ const StockMateriales = () => {
                 <Stack spacing={3} sx={{ mt: 2 }}>
                   {/* Filtros */}
                   <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} flexWrap="wrap">
-              <TextFilters
-                value={nombre}
-                onApply={(n) => {
-                  setNombre(n);
-                  setPage(0);
-                }}
-              />
+                    <SearchBox initialValue={nombre} onApply={onApplySearch} />
 
-              <FormControl sx={{ minWidth: 150 }}>
-                <InputLabel id="stock-filter-label">Estado Stock</InputLabel>
-                <Select
-                  labelId="stock-filter-label"
-                  label="Estado Stock"
-                  value={stockFilter}
-                  onChange={(e) => { setStockFilter(e.target.value); setPage(0); }}
-                >
-                  <MenuItem value="all">Todos</MenuItem>
-                  <MenuItem value="eq0">
-                    <Box display="flex" alignItems="center" gap={1}>
-                      <WarningIcon color="error" fontSize="small" />
-                      Sin Stock
-                    </Box>
-                  </MenuItem>
-                  <MenuItem value="gt0">
-                    <Box display="flex" alignItems="center" gap={1}>
-                      <CheckCircleIcon color="success" fontSize="small" />
-                      Con Stock
-                    </Box>
-                  </MenuItem>
-                  </Select>
-                </FormControl>
+                    <FormControl sx={{ minWidth: 150 }}>
+                      <InputLabel id="stock-filter-label">Estado Stock</InputLabel>
+                      <Select
+                        labelId="stock-filter-label"
+                        label="Estado Stock"
+                        value={stockFilter}
+                        onChange={(e) => { setStockFilter(e.target.value); setPage(0); }}
+                      >
+                        <MenuItem value="all">Todos</MenuItem>
+                        <MenuItem value="eq0">
+                          <Box display="flex" alignItems="center" gap={1}>
+                            <WarningIcon color="error" fontSize="small" />
+                            Sin Stock
+                          </Box>
+                        </MenuItem>
+                        <MenuItem value="gt0">
+                          <Box display="flex" alignItems="center" gap={1}>
+                            <CheckCircleIcon color="success" fontSize="small" />
+                            Con Stock
+                          </Box>
+                        </MenuItem>
+                      </Select>
+                    </FormControl>
 
+                    <FormControl sx={{ minWidth: 180 }}>
+                      <InputLabel id="entrega-filter-label">Estado Entrega</InputLabel>
+                      <Select
+                        labelId="entrega-filter-label"
+                        label="Estado Entrega"
+                        value={estadoEntrega}
+                        onChange={(e) => { setEstadoEntrega(e.target.value); setPage(0); }}
+                      >
+                        <MenuItem value="all">Todos</MenuItem>
+                        <MenuItem value="no_entregado">
+                          <Box display="flex" alignItems="center" gap={1}>
+                            <HourglassEmptyIcon color="warning" fontSize="small" />
+                            Pendientes de entrega
+                          </Box>
+                        </MenuItem>
+                        <MenuItem value="entregado">
+                          <Box display="flex" alignItems="center" gap={1}>
+                            <LocalShippingIcon color="success" fontSize="small" />
+                            Entregados
+                          </Box>
+                        </MenuItem>
+                      </Select>
+                    </FormControl>
 
-                <FormControl sx={{ minWidth: 180 }}>
-                  <InputLabel id="entrega-filter-label">Estado Entrega</InputLabel>
-                  <Select
-                    labelId="entrega-filter-label"
-                    label="Estado Entrega"
-                    value={estadoEntrega}
-                    onChange={(e) => { setEstadoEntrega(e.target.value); setPage(0); }}
-                  >
-                    <MenuItem value="all">Todos</MenuItem>
-                    <MenuItem value="no_entregado">
-                      <Box display="flex" alignItems="center" gap={1}>
-                        <HourglassEmptyIcon color="warning" fontSize="small" />
-                        Pendientes de entrega
-                      </Box>
-                    </MenuItem>
-                    <MenuItem value="entregado">
-                      <Box display="flex" alignItems="center" gap={1}>
-                        <LocalShippingIcon color="success" fontSize="small" />
-                        Entregados
-                      </Box>
-                    </MenuItem>
-                  </Select>
-                </FormControl>
+                    <FormControl sx={{ minWidth: 180 }}>
+                      <InputLabel id="categoria-filter-label">Categoría</InputLabel>
+                      <Select
+                        labelId="categoria-filter-label"
+                        label="Categoría"
+                        value={categoriaFilter}
+                        onChange={(e) => { 
+                          setCategoriaFilter(e.target.value); 
+                          setSubcategoriaFilter(''); // Reset subcategoría al cambiar categoría
+                          setPage(0); 
+                        }}
+                      >
+                        <MenuItem value="">Todas las categorías</MenuItem>
+                        <MenuItem value={SIN_CATEGORIA_VALUE}>Sin categoría</MenuItem>
+                        {categoriasMateriales.map(cat => (
+                          <MenuItem key={cat.id || cat.name} value={cat.name}>{cat.name}</MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
 
-                <FormControl sx={{ minWidth: 180 }}>
-                  <InputLabel id="categoria-filter-label">Categoría</InputLabel>
-                  <Select
-                    labelId="categoria-filter-label"
-                    label="Categoría"
-                    value={categoriaFilter}
-                    onChange={(e) => { 
-                      setCategoriaFilter(e.target.value); 
-                      setSubcategoriaFilter(''); // Reset subcategoría al cambiar categoría
-                      setPage(0); 
-                    }}
-                  >
-                    <MenuItem value="">Todas las categorías</MenuItem>
-                    <MenuItem value={SIN_CATEGORIA_VALUE}>Sin categoría</MenuItem>
-                    {categoriasMateriales.map(cat => (
-                      <MenuItem key={cat.id || cat.name} value={cat.name}>{cat.name}</MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
+                    <FormControl sx={{ minWidth: 180 }}>
+                      <InputLabel id="subcategoria-filter-label">Subcategoría</InputLabel>
+                      <Select
+                        labelId="subcategoria-filter-label"
+                        label="Subcategoría"
+                        value={subcategoriaFilter}
+                        onChange={(e) => { setSubcategoriaFilter(e.target.value); setPage(0); }}
+                        disabled={!categoriaFilter || categoriaFilter === SIN_CATEGORIA_VALUE}
+                      >
+                        <MenuItem value="">Todas las subcategorías</MenuItem>
+                        {subcategoriasFilterDisponibles.map(sub => (
+                          <MenuItem key={sub} value={sub}>{sub}</MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
 
-                <FormControl sx={{ minWidth: 180 }}>
-                  <InputLabel id="subcategoria-filter-label">Subcategoría</InputLabel>
-                  <Select
-                    labelId="subcategoria-filter-label"
-                    label="Subcategoría"
-                    value={subcategoriaFilter}
-                    onChange={(e) => { setSubcategoriaFilter(e.target.value); setPage(0); }}
-                    disabled={!categoriaFilter || categoriaFilter === SIN_CATEGORIA_VALUE}
-                  >
-                    <MenuItem value="">Todas las subcategorías</MenuItem>
-                    {subcategoriasFilterDisponibles.map(sub => (
-                      <MenuItem key={sub} value={sub}>{sub}</MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              </Stack>
+                  </Stack>
 
-              {(allRows.length > 0 || selectedIds.length > 0) && (
+              {(pageRows.length > 0 || selectedIds.length > 0) && (
                 <Paper variant="outlined" sx={{ p: 1.5 }}>
                   <Stack
                     direction={{ xs: 'column', sm: 'row' }}
@@ -895,7 +908,7 @@ const StockMateriales = () => {
                     </Typography>
                     <Stack direction="row" spacing={1}>
                       <Button size="small" variant="outlined" onClick={selectAllFiltered}>
-                        Seleccionar resultados
+                        Seleccionar página
                       </Button>
                       <Button
                         size="small"
@@ -916,7 +929,7 @@ const StockMateriales = () => {
                     </Stack>
                   </Stack>
                   <Typography variant="caption" color="text.secondary">
-                    Selecciona todos los materiales del listado actual (según filtros)
+                    Selecciona todos los materiales de la página actual
                   </Typography>
                 </Paper>
               )}
@@ -951,6 +964,15 @@ const StockMateriales = () => {
                     </TableCell>
                     <TableCell>Categoría</TableCell>
                     <TableCell align="right">
+                      <TableSortLabel
+                        active={orderBy === 'precio_unitario'}
+                        direction={orderBy === 'precio_unitario' ? order : 'asc'}
+                        onClick={createSortHandler('precio_unitario')}
+                      >
+                        Precio
+                      </TableSortLabel>
+                    </TableCell>
+                    <TableCell align="right">
                       <Stack direction="row" spacing={1} alignItems="center" justifyContent="flex-end">
                         <TableSortLabel
                           active={orderBy === 'stock'}
@@ -969,9 +991,9 @@ const StockMateriales = () => {
                 </TableHead>
                 <TableBody>
                   {tableRows}
-                  {!loading && rows.length === 0 && (
+                  {!loading && pageRows.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={6}>
+                      <TableCell colSpan={7}>
                         <Typography variant="body2">Sin resultados.</Typography>
                       </TableCell>
                     </TableRow>
@@ -1014,22 +1036,12 @@ const StockMateriales = () => {
                       </TableHead>
                       <TableBody>
                         {(() => {
-                          // Debug: agregar logs para entender los datos
-                          console.log('🔍 [Debug] rows en sin-asignar:', rows.length);
-                          console.log('🔍 [Debug] sample row:', rows[0]);
-                          
-                          const materialesConStockSinAsignar = rows.filter(row => {
-                            // Buscar específicamente proyectos con ID "SIN_ASIGNAR" o que tengan stock sin asignar
+                          const materialesConStockSinAsignar = filteredRows.filter(row => {
                             const tieneStockSinAsignar = (row.porProyecto || []).some(p => 
                               (p.proyecto_id === 'SIN_ASIGNAR' || p.proyecto_id === null) && (p.stock || 0) > 0
                             );
-                            
-                            console.log(`🔍 [Debug] ${row.nombre}: tieneStockSinAsignar=${tieneStockSinAsignar}, porProyecto:`, row.porProyecto);
-                            
                             return tieneStockSinAsignar;
                           });
-                          
-                          console.log('🔍 [Debug] materialesConStockSinAsignar:', materialesConStockSinAsignar.length);
                           
                           if (materialesConStockSinAsignar.length === 0 && !loading) {
                             return (
@@ -1037,7 +1049,7 @@ const StockMateriales = () => {
                                 <TableCell colSpan={5}>
                                   <Typography variant="body2">No hay materiales con stock sin asignar a proyectos.</Typography>
                                   <Typography variant="caption" color="text.secondary">
-                                    Total de materiales: {rows.length}
+                                    Total de materiales: {filteredRows.length}
                                   </Typography>
                                 </TableCell>
                               </TableRow>
@@ -1108,7 +1120,7 @@ const StockMateriales = () => {
                           </TableRow>
                         </TableHead>
                         <TableBody>
-                          {rows.filter(row => 
+                          {filteredRows.filter(row => 
                             (row.porProyecto || []).some(p => p.proyecto_id === proyecto.id)
                           ).map((row) => {
                             const proyectoStock = (row.porProyecto || []).find(p => p.proyecto_id === proyecto.id);
@@ -1143,7 +1155,7 @@ const StockMateriales = () => {
                               </TableRow>
                             );
                           })}
-                          {rows.filter(row => 
+                          {filteredRows.filter(row => 
                             (row.porProyecto || []).some(p => p.proyecto_id === proyecto.id)
                           ).length === 0 && (
                             <TableRow>
@@ -1189,6 +1201,21 @@ const StockMateriales = () => {
                 label="SKU"
                 value={form.SKU}
                 onChange={(e) => setForm({ ...form, SKU: e.target.value })}
+              />
+              <TextField
+                label="Precio unitario ($)"
+                type="number"
+                value={form.precio_unitario}
+                onChange={(e) => setForm({ ...form, precio_unitario: e.target.value })}
+                InputProps={{ inputProps: { min: 0, step: 0.01 } }}
+                helperText={isEdit && form._id
+                  ? `Última actualización de precio: ${(() => {
+                      const row = allRows.find(r => r._id === form._id);
+                      if (!row?.fecha_precio) return 'nunca';
+                      try { return new Date(row.fecha_precio).toLocaleDateString('es-AR'); } catch { return '—'; }
+                    })()}`
+                  : 'Se registra la fecha de carga automáticamente'
+                }
               />
               <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
                 <FormControl fullWidth>
@@ -1397,7 +1424,7 @@ const StockMateriales = () => {
         <ExportarStock
           open={openExportar}
           onClose={() => setOpenExportar(false)}
-          materiales={rows}
+          materiales={filteredRows}
           proyectos={proyectos}
           user={user}
         />
@@ -1407,7 +1434,7 @@ const StockMateriales = () => {
           open={openImportar}
           onClose={() => setOpenImportar(false)}
           onConfirmAjustes={handleConfirmAjustes}
-          materiales={rows} // Pasar los materiales actuales para comparar
+          materiales={filteredRows} // Pasar los materiales actuales para comparar
           proyectos={proyectos} // Pasar los proyectos para convertir nombres a IDs
           user={user}
         />
