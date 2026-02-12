@@ -43,6 +43,7 @@ import TransferenciaInternaDialog from 'src/components/TransferenciaInternaDialo
 import IntercambioMonedaDialog from 'src/components/IntercambioMonedaDialog';
 import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import CurrencyExchangeIcon from '@mui/icons-material/CurrencyExchange';
+import BulkEditDialog from 'src/components/BulkEditDialog';
 
 
 // tamaños mínimos por columna (px)
@@ -274,6 +275,9 @@ const ProyectoMovimientosPage = () => {
   const [mobileActionAnchor, setMobileActionAnchor] = useState(null);
   const [mobileActionMov, setMobileActionMov] = useState(null);
   const [showCajasMobile, setShowCajasMobile] = useState(true);
+  // ── Selección masiva ──
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [bulkDialogOpen, setBulkDialogOpen] = useState(false);
   const openImg = (url) => setImgPreview({ open: true, url });
   const closeImg = () => setImgPreview({ open: false, url: null });
   const openMobileActions = (event, mov) => {
@@ -1104,6 +1108,49 @@ const movimientosConProrrateo = useMemo(() => {
     const end = Math.min(totalRows, start + rowsPerPage);
     return movimientosConProrrateo.slice(start, end);
   }, [movimientosConProrrateo, page, rowsPerPage, totalRows]);
+
+  // ── Helpers selección masiva ──
+  const allPageIds = useMemo(() => {
+    const ids = [];
+    paginatedMovs.forEach((item) => {
+      if (item.tipo === 'grupo_prorrateo') {
+        item.movimientos.forEach((m) => ids.push(m.id));
+      } else {
+        ids.push(item.data.id);
+      }
+    });
+    return ids;
+  }, [paginatedMovs]);
+
+  const allPageSelected = allPageIds.length > 0 && allPageIds.every((id) => selectedIds.has(id));
+  const somePageSelected = allPageIds.some((id) => selectedIds.has(id));
+
+  const toggleSelectAll = () => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (allPageSelected) {
+        allPageIds.forEach((id) => next.delete(id));
+      } else {
+        allPageIds.forEach((id) => next.add(id));
+      }
+      return next;
+    });
+  };
+
+  const toggleSelectOne = (id) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const handleBulkDone = async () => {
+    setSelectedIds(new Set());
+    setBulkDialogOpen(false);
+    await handleRefresh();
+    setAlert({ open: true, message: 'Edición masiva completada', severity: 'success' });
+  };
   
   
   const handleOpenTransferencia = () => {
@@ -1903,6 +1950,15 @@ useEffect(() => {
   <Table ref={tableRef} stickyHeader size="small">
     <TableHead>
       <TableRow>
+        {/* Checkbox selección masiva */}
+        <TableCell padding="checkbox" sx={{ position: 'sticky', left: 0, zIndex: 3, bgcolor: 'background.paper' }}>
+          <Checkbox
+            size="small"
+            indeterminate={somePageSelected && !allPageSelected}
+            checked={allPageSelected}
+            onChange={toggleSelectAll}
+          />
+        </TableCell>
         {visibleCols.codigo && (
           <TableCell sx={{ ...cellBase, minWidth: COLS.codigo, position: 'sticky', left: 0, zIndex: 2, bgcolor: 'background.paper' }}>
             CÓDIGO
@@ -2029,7 +2085,7 @@ useEffect(() => {
     <TableBody>
       {paginatedMovs.length === 0 && (
         <TableRow>
-          <TableCell colSpan={Object.values(visibleCols).filter(Boolean).length} sx={{ py: 4 }}>
+          <TableCell colSpan={Object.values(visibleCols).filter(Boolean).length + 1} sx={{ py: 4 }}>
             <Typography variant="subtitle1">Sin resultados</Typography>
             <Typography variant="body2" color="text.secondary">
               Probá ajustar fechas, categorías o limpiar filtros.
@@ -2056,8 +2112,16 @@ useEffect(() => {
                     key={`${item.grupoId}-${subIndex}`} 
                     hover
                     onClick={() => openDetalle(mov)}
-                    sx={{ cursor: 'pointer' }}
+                    sx={{ cursor: 'pointer', ...(selectedIds.has(mov.id) && { bgcolor: 'action.selected' }) }}
                   >
+                    <TableCell padding="checkbox" sx={{ position: 'sticky', left: 0, zIndex: 1, bgcolor: 'inherit' }}>
+                      <Checkbox
+                        size="small"
+                        checked={selectedIds.has(mov.id)}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={() => toggleSelectOne(mov.id)}
+                      />
+                    </TableCell>
                     {visibleCols.codigo && (
                       <TableCell
                         sx={{ 
@@ -2296,7 +2360,15 @@ useEffect(() => {
             : 'inherit';
 
         return (
-          <TableRow key={index} hover onClick={() => openDetalle(mov)} sx={{ cursor: 'pointer' }}>
+          <TableRow key={index} hover onClick={() => openDetalle(mov)} sx={{ cursor: 'pointer', ...(selectedIds.has(mov.id) && { bgcolor: 'action.selected' }) }}>
+            <TableCell padding="checkbox" sx={{ position: 'sticky', left: 0, zIndex: 1, bgcolor: 'inherit' }}>
+              <Checkbox
+                size="small"
+                checked={selectedIds.has(mov.id)}
+                onClick={(e) => e.stopPropagation()}
+                onChange={() => toggleSelectOne(mov.id)}
+              />
+            </TableCell>
             {visibleCols.codigo && (
               <TableCell
                 sx={{ ...cellBase, minWidth: COLS.codigo, position: 'sticky', left: 0, zIndex: 1, bgcolor: 'background.paper' }}
@@ -2774,6 +2846,61 @@ useEffect(() => {
   onClose={handleCloseIntercambio}
   onSuccess={handleIntercambioSuccess}
   proyectoId={proyecto?.id}
+  empresa={empresa}
+/>
+
+{/* ── Barra flotante de selección masiva ── */}
+{selectedIds.size > 0 && (
+  <Paper
+    elevation={6}
+    sx={{
+      position: 'fixed',
+      bottom: 24,
+      left: '50%',
+      transform: 'translateX(-50%)',
+      zIndex: 1300,
+      px: 3,
+      py: 1.5,
+      borderRadius: 3,
+      display: 'flex',
+      alignItems: 'center',
+      gap: 2,
+      bgcolor: 'primary.main',
+      color: 'primary.contrastText',
+    }}
+  >
+    <Typography variant="body2" sx={{ fontWeight: 600 }}>
+      {selectedIds.size} seleccionado{selectedIds.size !== 1 ? 's' : ''}
+    </Typography>
+    <Button
+      size="small"
+      variant="contained"
+      color="inherit"
+      sx={{ color: 'primary.main', fontWeight: 600 }}
+      startIcon={<EditIcon />}
+      onClick={() => setBulkDialogOpen(true)}
+    >
+      Editar
+    </Button>
+    <Button
+      size="small"
+      variant="text"
+      sx={{ color: 'primary.contrastText' }}
+      onClick={() => setSelectedIds(new Set())}
+    >
+      Cancelar
+    </Button>
+  </Paper>
+)}
+
+{/* Dialog edición masiva */}
+<BulkEditDialog
+  open={bulkDialogOpen}
+  onClose={() => setBulkDialogOpen(false)}
+  selectedCount={selectedIds.size}
+  selectedIds={selectedIds}
+  onDone={handleBulkDone}
+  options={options}
   empresa={empresa}
 />
 
