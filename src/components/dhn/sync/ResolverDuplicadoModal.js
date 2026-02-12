@@ -10,10 +10,13 @@ import {
   Stack,
   Typography,
   Divider,
+  IconButton,
+  Tooltip,
 } from "@mui/material";
 import TrabajosDetectadosList from "../TrabajosDetectadosList";
 import ResolverLicenciaManualForm from "../ResolverLicenciaManualForm";
 import DhnDriveService from "src/services/dhn/cargarUrlDriveService";
+import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 
 const ComprobanteCard = ({ label, url, type, selected, onClick, fullHeight }) => {
   const previewFlex = fullHeight ? (selected ? 1 : 0.45) : 1;
@@ -151,6 +154,18 @@ const buildLicenciaInitialData = (payload = {}) => {
   };
 };
 
+const hasTrabajadorInfo = (trabajador) => {
+  if (!trabajador) {
+    return false;
+  }
+  const getValue = (value) => (value ?? "").toString().trim();
+  return Boolean(
+    getValue(trabajador.nombre) ||
+      getValue(trabajador.apellido) ||
+      getValue(trabajador.dni)
+  );
+};
+
 const ResolverDuplicadoModal = ({
   open,
   onClose,
@@ -182,6 +197,11 @@ const ResolverDuplicadoModal = ({
     duplicateInfo.comprobanteNuevo?.type ||
     rowTipo ||
     "parte";
+
+  const selectedUrl =
+    selectedSide === "existing"
+      ? existingUrlStorage || safeRow.url_drive || safeRow.url_storage
+      : nuevoUrlStorage || row?.url_drive || row?.url_storage || existingUrlStorage;
 
   const duplicateMessage = duplicateInfo.mensaje;
 
@@ -317,12 +337,16 @@ const ResolverDuplicadoModal = ({
           progreso,
         });
       }
+      const incomingTrabajador = {
+        nombre: incoming.nombre,
+        apellido: incoming.apellido,
+        dni: incoming.dni,
+      };
+      const trabajadorDetectado = hasTrabajadorInfo(incomingTrabajador)
+        ? incomingTrabajador
+        : null;
       const incomingPayload = {
-        trabajadorSeleccionado: {
-          nombre: incoming.nombre,
-          apellido: incoming.apellido,
-          dni: incoming.dni,
-        },
+        trabajadorSeleccionado: trabajadorDetectado,
         tipoLicencia: incoming.tipoLicencia,
         fechasLicencias: incoming.fechasLicencias,
         fecha: incoming.fecha,
@@ -332,7 +356,7 @@ const ResolverDuplicadoModal = ({
         urlStorage: licenciaUrl || safeRow.url_storage,
         rowId: safeRow._id,
         initialData: incomingInitial,
-        trabajadorDetectado: incomingPayload.trabajadorSeleccionado,
+        trabajadorDetectado,
         onCancel: () => {},
         onResolved: () => handleTrabajadorResuelto(),
         onAutoClose: () => {},
@@ -382,9 +406,32 @@ const ResolverDuplicadoModal = ({
         },
       }}
     >
-      <DialogTitle>
-          <Typography variant="h6">Resolver duplicado</Typography>
-      </DialogTitle>
+    <DialogTitle>
+      <Box
+        sx={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 1,
+        }}
+      >
+        <Typography variant="h6">Resolver duplicado</Typography>
+        <Tooltip title="Abrir comprobante seleccionado">
+          <span>
+            <IconButton
+              component="a"
+              href={selectedUrl}
+              target="_blank"
+              rel="noreferrer"
+              disabled={!selectedUrl}
+              size="small"
+            >
+              <OpenInNewIcon fontSize="small" />
+            </IconButton>
+          </span>
+        </Tooltip>
+      </Box>
+    </DialogTitle>
       <DialogContent
         sx={{
           display: "grid",

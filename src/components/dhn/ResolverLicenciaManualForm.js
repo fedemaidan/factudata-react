@@ -42,6 +42,20 @@ const licenseTypes = [
   "RE",
 ];
 
+const trimValue = (value) =>
+  value === null || value === undefined
+    ? ""
+    : typeof value === "string"
+    ? value.trim()
+    : `${value}`.trim();
+
+const hasTrabajadorDetectadoInfo = (trabajador) =>
+  Boolean(
+    trimValue(trabajador?.nombre) ||
+      trimValue(trabajador?.apellido) ||
+      trimValue(trabajador?.dni)
+  );
+
 const normalizeDayjs = (value) =>
   value
     ? value
@@ -109,11 +123,16 @@ const ResolverLicenciaManualForm = ({
     updateFormState(initialState);
   }, [open, trabajadorDetectado, rowId, initialData, updateFormState]);
 
+  const trabajadorDetectadoValido = useMemo(
+    () => hasTrabajadorDetectadoInfo(trabajadorDetectado),
+    [trabajadorDetectado]
+  );
+
   const initialTrabajadorFormData = useMemo(
     () => ({
-      nombre: trabajadorDetectado?.nombre || "",
-      apellido: trabajadorDetectado?.apellido || "",
-      dni: trabajadorDetectado?.dni || "",
+      nombre: trimValue(trabajadorDetectado?.nombre),
+      apellido: trimValue(trabajadorDetectado?.apellido),
+      dni: trimValue(trabajadorDetectado?.dni),
     }),
     [trabajadorDetectado]
   );
@@ -256,7 +275,7 @@ const ResolverLicenciaManualForm = ({
           </Typography>
         )}
         <Typography variant="h6">Resolver licencia manual</Typography>
-        {trabajadorDetectado && (
+        {trabajadorDetectadoValido && (
           <Box>
             <Typography variant="body2" color="text.secondary">
               Trabajador detectado
