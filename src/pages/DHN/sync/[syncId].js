@@ -520,22 +520,6 @@ const SyncDetailPage = () => {
         </Snackbar>
 
         <Stack>
-          <Box sx={{ display: "flex", gap: 2, alignItems: "center" }}>
-            <Button
-              variant="text"
-              startIcon={<ArrowBackIcon />}
-              onClick={() => router.back()}
-              sx={{
-                alignSelf: "flex-start",
-                color: "text.secondary",
-                "&:hover": { backgroundColor: "action.hover", color: "primary.main" },
-                transition: "all 0.2s ease-in-out",
-                fontWeight: 500,
-              }}
-            >
-              Volver
-            </Button>
-          </Box>
 
           <Stack
             direction="row"
@@ -545,6 +529,21 @@ const SyncDetailPage = () => {
             justifyContent="flex-start"
             sx={{ mt: 2, mb: 1 }}
           >
+            <Button
+              variant="text"
+              startIcon={<ArrowBackIcon fontSize="10px" />}
+              onClick={() => router.back()}
+              sx={{
+                alignSelf: "flex-start",
+                color: "text.secondary",
+                "&:hover": { backgroundColor: "action.hover", color: "primary.main" },
+                transition: "all 0.2s ease-in-out",
+                fontWeight: 500,
+                fontSize: "12px"
+              }}
+            >
+              Volver
+            </Button>
             <Box component="form" onSubmit={handleSearchSubmit} sx={{ display: "flex", gap: 1, flex: 1, minWidth: 0, maxWidth: 350 }}>
               <TextField
                 label="Buscar"

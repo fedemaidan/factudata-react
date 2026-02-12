@@ -55,11 +55,9 @@ const DhnDriveService = {
    * @returns {Promise<Object>} { ok:true, ...data } | { ok:false, error:{ code, message } }
    */
   inspeccionarRecurso: async (urlDrive, extra = {}) => {
-    console.log('Inspeccionando recurso:', urlDrive);
     if (!validarUrlDrive(urlDrive)) {
       return { ok: false, error: { code: 0, message: 'La URL/ID de Drive no es válida.' } };
     }
-    console.log('URL válida:', urlDrive);
     try {
       const payload = { urlDrive, ...extra };
       const response = await api.post(`/dhn/sync`, payload); // ✅ /dhn/sync
