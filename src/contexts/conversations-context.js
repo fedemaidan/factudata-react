@@ -4,7 +4,21 @@ import { useConversationsFetch } from "src/hooks/useConversationsFetch";
 import { useMessagesFetch } from "src/hooks/useMessagesFetch";
 import { useMessageScroll } from "src/hooks/useMessageScroll";
 import { useInsightNavigation } from "src/hooks/useErrorNavigation";
-import { addNoteToMessage } from "src/services/conversacionService";
+import { addNoteToMessage, fetchMessages } from "src/services/conversacionService";
+import {
+  cacheConversations,
+  cacheConversation,
+  cacheMessages,
+  getCachedConversations,
+  getRecentConversationIds,
+  getSyncCursor,
+  getLastSyncTime,
+  getSyncIntervalMs,
+  deleteOldMessages,
+  saveSyncCursor,
+  touchConversation,
+} from "src/db/indexed-db";
+import { filterUniqueMessages, resolveLatestCursor } from "src/utils/messageCache";
 
 const ACTIONS = {
   SET_CONVERSATIONS: "SET_CONVERSATIONS",
@@ -23,6 +37,9 @@ const ACTIONS = {
   SET_CURRENT_INSIGHT_INDEX: "SET_CURRENT_INSIGHT_INDEX",
   UPDATE_MESSAGE_NOTES: "UPDATE_MESSAGE_NOTES",
 };
+
+const SYNC_FETCH_LIMIT = 50;
+const RECENT_SYNC_LIMIT = 30;
 
 const initialState = {
   conversations: [],
@@ -141,6 +158,25 @@ export function ConversationsProvider({ children }) {
   const { selected, conversations, messages, offset, hasMore, scrollToMessageId, highlightedMessageId, scrollToBottom, messageResults, loading, insightMessageIds, currentInsightIndex } =
     state;
 
+  useEffect(() => {
+    let isMounted = true;
+    const loadCachedConversations = async () => {
+      const cached = await getCachedConversations();
+      if (isMounted && cached.length > 0) {
+        dispatch({ type: ACTIONS.SET_CONVERSATIONS, payload: cached });
+      }
+    };
+    loadCachedConversations();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const messagesRef = useRef(messages);
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
   const search = useMemo(() => {
     const q = router.query.q;
     return Array.isArray(q) ? q[0] : q || "";
@@ -153,6 +189,7 @@ export function ConversationsProvider({ children }) {
   // Callbacks para los hooks
   const handleConversationsLoaded = useCallback((data) => {
     dispatch({ type: ACTIONS.SET_CONVERSATIONS, payload: data });
+    cacheConversations(data).catch(() => {});
   }, []);
 
   const handleMessageResultsLoaded = useCallback((data) => {
@@ -265,6 +302,80 @@ export function ConversationsProvider({ children }) {
     onInsightIdsLoaded: handleInsightMessageIdsLoaded,
   });
 
+  useEffect(() => {
+    let cancelled = false;
+    const intervalMs = getSyncIntervalMs();
+
+    const syncConversationMessages = async (conversationId) => {
+      if (!conversationId) return [];
+      try {
+        const cursor = await getSyncCursor(conversationId);
+        const params = cursor
+          ? {
+              sinceCreatedAt: cursor.createdAt?.toISOString(),
+              sinceId: cursor._id,
+              limit: SYNC_FETCH_LIMIT,
+            }
+          : { limit: SYNC_FETCH_LIMIT, offset: 0 };
+        const sortOrder = cursor ? "asc" : "desc";
+        const { items = [], cursor: responseCursor } = await fetchMessages(conversationId, {
+          ...params,
+          sort: sortOrder,
+        });
+        if (items.length) {
+          await cacheMessages(items);
+          await deleteOldMessages({ conversationId });
+        }
+        const derivedCursor = responseCursor || resolveLatestCursor(items) || cursor;
+        if (derivedCursor) {
+          await saveSyncCursor(conversationId, derivedCursor, { recentAt: Date.now() });
+        }
+        await touchConversation(conversationId).catch(() => {});
+        return { items, sortOrder };
+      } catch (error) {
+        console.error("Error sincronizando conversación:", conversationId, error);
+        return { items: [], sortOrder: "desc" };
+      }
+    };
+
+    const runSync = async () => {
+      const recentIds = await getRecentConversationIds({ limit: RECENT_SYNC_LIMIT });
+      const targetSet = new Set(recentIds.filter(Boolean));
+      const activeConversationId = selected?.ultimoMensaje?.id_conversacion;
+      if (activeConversationId) targetSet.add(activeConversationId);
+      if (!targetSet.size) return;
+
+      const now = Date.now();
+      for (const conversationId of Array.from(targetSet)) {
+        if (cancelled) return;
+        const lastSync = await getLastSyncTime(conversationId);
+        if (lastSync && now - lastSync < intervalMs) {
+          continue;
+        }
+        const { items: newItems, sortOrder } = await syncConversationMessages(conversationId);
+        if (!cancelled && conversationId === activeConversationId && newItems?.length) {
+          const cachedMessages = messagesRef.current || [];
+          const normalizedItems = sortOrder === "asc" ? newItems : [...newItems].reverse();
+          const uniqueItems = filterUniqueMessages(cachedMessages, normalizedItems);
+          if (uniqueItems.length) {
+            handleMessagesLoaded?.([...cachedMessages, ...uniqueItems]);
+            handleScrollToBottom?.(true);
+          }
+        }
+      }
+    };
+
+    runSync();
+    const intervalId = setInterval(() => {
+      runSync().catch((error) => console.error("Error en sincronización periódica:", error));
+    }, intervalMs);
+
+    return () => {
+      cancelled = true;
+      clearInterval(intervalId);
+    };
+  }, [selected?.ultimoMensaje?.id_conversacion, handleMessagesLoaded, handleScrollToBottom]);
+
   const handleSelectConversation = useCallback(
     (conversation) => {
       if (!conversation) {
@@ -288,6 +399,10 @@ export function ConversationsProvider({ children }) {
         // Esto permite volver atrás con el botón del navegador en mobile
         router.push({ pathname: router.pathname, query: newQuery }, undefined, { shallow: true });
       }
+        cacheConversation(conversation).catch(() => {});
+        if (conversationId) {
+          touchConversation(conversationId).catch(() => {});
+        }
     },
     [dispatch, router]
   );
@@ -313,6 +428,12 @@ export function ConversationsProvider({ children }) {
         dispatch({ type: ACTIONS.SET_HIGHLIGHTED_MESSAGE_ID, payload: targetMessageId });
 
         const conversationId = result.conversationId;
+        if (result.conversation) {
+          cacheConversation(result.conversation).catch(() => {});
+        }
+        if (conversationId) {
+          touchConversation(conversationId).catch(() => {});
+        }
         if (conversationId) {
           const newQuery = { ...router.query, conversationId };
           // Usamos push para mantener el historial de navegación

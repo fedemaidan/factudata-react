@@ -1,5 +1,14 @@
 import { useCallback, useEffect, useRef } from "react";
 import { fetchMessages, sendMessage, getJumpInfo } from "src/services/conversacionService";
+import {
+  cacheMessages,
+  getCachedMessagesForConversation,
+  getSyncCursor,
+  deleteOldMessages,
+  saveSyncCursor,
+  touchConversation,
+} from "src/db/indexed-db";
+import { filterUniqueMessages, resolveLatestCursor } from "src/utils/messageCache";
 
 const PAGE = 50;
 
@@ -15,7 +24,6 @@ export function useMessagesFetch({
 }) {
   const activeRef = useRef(true);
 
-  // Cargar mensajes cuando se selecciona una conversación
   useEffect(() => {
     if (!selected) {
       onMessagesLoaded?.([]);
@@ -31,32 +39,75 @@ export function useMessagesFetch({
       return;
     }
 
-    activeRef.current = true;
+    const conversationId = selected.ultimoMensaje?.id_conversacion;
+    if (!conversationId) {
+      return;
+    }
 
-    const loadSelectedMessages = async () => {
+    activeRef.current = true;
+    onScrollToMessageIdCleared?.();
+    onHighlightedMessageIdCleared?.();
+    touchConversation(conversationId).catch(() => {});
+
+    const loadAndSync = async () => {
       try {
-        const { items, total } = await fetchMessages(selected.ultimoMensaje.id_conversacion, {
-          limit: PAGE,
-          offset: 0,
+        const cachedMessages = await getCachedMessagesForConversation(conversationId, { limit: PAGE * 2 });
+        if (!activeRef.current) {
+          return;
+        }
+
+        if (cachedMessages.length) {
+          onMessagesLoaded?.(cachedMessages);
+          onOffsetUpdated?.(cachedMessages.length);
+          onHasMoreUpdated?.(false);
+        }
+
+        const cursor = await getSyncCursor(conversationId);
+        const hasCursor = Boolean(cursor?.createdAt);
+        const params = hasCursor
+          ? {
+              sinceCreatedAt: cursor.createdAt.toISOString(),
+              sinceId: cursor._id,
+              limit: PAGE,
+            }
+          : { limit: PAGE, offset: 0 };
+
+        const sortOrder = hasCursor ? "asc" : "desc";
+        const { items = [], total, cursor: responseCursor } = await fetchMessages(conversationId, {
+          ...params,
+          sort: sortOrder,
         });
 
         if (!activeRef.current) {
           return;
         }
 
-        const reversedItems = [...items].reverse();
-        onMessagesLoaded?.(reversedItems);
-        onOffsetUpdated?.(reversedItems.length);
-        onHasMoreUpdated?.(reversedItems.length < total);
+        const orderedItems = hasCursor ? items : [...items].reverse();
+        const appendedItems = hasCursor ? filterUniqueMessages(cachedMessages, orderedItems) : orderedItems;
+        const finalMessages = hasCursor ? [...cachedMessages, ...appendedItems] : orderedItems;
+
+        onMessagesLoaded?.(finalMessages);
+        onOffsetUpdated?.(finalMessages.length);
+        if (!hasCursor) {
+          onHasMoreUpdated?.(orderedItems.length < (total ?? 0));
+        }
         onScrollToBottom?.(true);
-        onScrollToMessageIdCleared?.();
-        onHighlightedMessageIdCleared?.();
+
+        if (items.length) {
+          await cacheMessages(items);
+          await deleteOldMessages({ conversationId });
+        }
+
+        const syncCursorValue = responseCursor || resolveLatestCursor(items) || cursor;
+        if (syncCursorValue) {
+          await saveSyncCursor(conversationId, syncCursorValue, { recentAt: Date.now() });
+        }
       } catch (error) {
         console.error("Error al cargar mensajes:", error);
       }
     };
 
-    loadSelectedMessages();
+    loadAndSync();
 
     return () => {
       activeRef.current = false;
@@ -92,7 +143,11 @@ export function useMessagesFetch({
 
         onMessagesLoaded?.(newMessages);
         onOffsetUpdated?.(newOffset);
-        onHasMoreUpdated?.(newOffset < total);
+        onHasMoreUpdated?.(newOffset < (total ?? 0));
+
+        if (items.length) {
+          await cacheMessages(items);
+        }
       } catch (error) {
         console.error("Error al cargar más mensajes:", error);
       }
@@ -114,6 +169,18 @@ export function useMessagesFetch({
 
         const updatedMessages = [...currentMessages, message];
         onMessagesLoaded?.(updatedMessages);
+
+        if (message) {
+          await cacheMessages([message]);
+          const cursor = resolveLatestCursor([message]);
+          if (cursor) {
+            await saveSyncCursor(selected.ultimoMensaje.id_conversacion, cursor, {
+              recentAt: Date.now(),
+            });
+          }
+          await deleteOldMessages({ conversationId: selected.ultimoMensaje.id_conversacion });
+          await touchConversation(selected.ultimoMensaje.id_conversacion).catch(() => {});
+        }
 
         const updatedConversations = currentConversations.map((cv) =>
           cv.id === selected.id ? { ...cv, lastMessage: text, updatedAt: message.fecha } : cv
@@ -141,8 +208,18 @@ export function useMessagesFetch({
         const reversedItems = [...items].reverse();
         onMessagesLoaded?.(reversedItems);
         onOffsetUpdated?.(reversedItems.length);
-        onHasMoreUpdated?.(reversedItems.length < total);
+        onHasMoreUpdated?.(reversedItems.length < (total ?? 0));
         onScrollToBottom?.(false);
+
+        if (items.length) {
+          await cacheMessages(items);
+          const cursor = resolveLatestCursor(items);
+          if (cursor) {
+            await saveSyncCursor(conversationId, cursor, { recentAt: Date.now() });
+          }
+          await deleteOldMessages({ conversationId });
+          await touchConversation(conversationId).catch(() => {});
+        }
 
         return { messages: reversedItems, conversation };
       } catch (error) {
@@ -158,8 +235,11 @@ export function useMessagesFetch({
       return;
     }
 
+    const conversationId = selected.ultimoMensaje?.id_conversacion;
+    if (!conversationId) return;
+
     try {
-      const { items, total } = await fetchMessages(selected.ultimoMensaje.id_conversacion, {
+      const { items, total } = await fetchMessages(conversationId, {
         limit: PAGE,
         offset: 0,
       });
@@ -167,8 +247,18 @@ export function useMessagesFetch({
       const reversedItems = [...items].reverse();
       onMessagesLoaded?.(reversedItems);
       onOffsetUpdated?.(reversedItems.length);
-      onHasMoreUpdated?.(reversedItems.length < total);
+      onHasMoreUpdated?.(reversedItems.length < (total ?? 0));
       onScrollToBottom?.(true);
+
+      if (items.length) {
+        await cacheMessages(items);
+        const cursor = resolveLatestCursor(items);
+        if (cursor) {
+          await saveSyncCursor(conversationId, cursor, { recentAt: Date.now() });
+        }
+        await deleteOldMessages({ conversationId });
+        await touchConversation(conversationId).catch(() => {});
+      }
     } catch (error) {
       console.error("Error al refrescar conversación actual:", error);
     }

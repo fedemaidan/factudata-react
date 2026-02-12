@@ -30,10 +30,13 @@ export async function fetchConversations(filters = {}) {
 
 export async function fetchMessages(
   conversationId,
-  { limit = 20, offset = 0, sort = 'desc' } = {}
+  { limit = 20, offset = 0, sort = 'desc', sinceCreatedAt, sinceId } = {}
 ) {
+  const params = { limit, offset, sort };
+  if (sinceCreatedAt) params.sinceCreatedAt = sinceCreatedAt;
+  if (sinceId) params.sinceId = sinceId;
   const { data } = await api.get(`/conversaciones/${conversationId}`, {
-    params: { limit, offset, sort },
+    params,
   });
   return data;
 }
