@@ -28,6 +28,7 @@ const normalizePageResponse = (page, defaults = {}) => ({
   total: Number.isFinite(page?.total) ? page.total : 0,
   limit: Number.isFinite(page?.limit) ? page.limit : (defaults.limit ?? DEFAULT_PAGE_LIMIT),
   offset: Number.isFinite(page?.offset) ? page.offset : (defaults.offset ?? 0),
+  statusCounts: typeof page?.statusCounts === 'object' && page?.statusCounts !== null ? page.statusCounts : {},
 });
 
 const fetchUrlStoragePage = async (payload = {}, defaults = {}) => {
@@ -54,11 +55,9 @@ const DhnDriveService = {
    * @returns {Promise<Object>} { ok:true, ...data } | { ok:false, error:{ code, message } }
    */
   inspeccionarRecurso: async (urlDrive, extra = {}) => {
-    console.log('Inspeccionando recurso:', urlDrive);
     if (!validarUrlDrive(urlDrive)) {
       return { ok: false, error: { code: 0, message: 'La URL/ID de Drive no es válida.' } };
     }
-    console.log('URL válida:', urlDrive);
     try {
       const payload = { urlDrive, ...extra };
       const response = await api.post(`/dhn/sync`, payload); // ✅ /dhn/sync
@@ -99,7 +98,7 @@ const DhnDriveService = {
    * @param {string} syncId
    * @returns {Promise<Array>} lista de items (o [])
    */
-  getSyncChildren: async (syncId, { limit = DEFAULT_PAGE_LIMIT, offset = 0, search } = {}) => {
+  getSyncChildren: async (syncId, { limit = DEFAULT_PAGE_LIMIT, offset = 0, search, status } = {}) => {
     if (!syncId) {
       return {
         items: [],
@@ -109,7 +108,7 @@ const DhnDriveService = {
       };
     }
     return fetchUrlStoragePage(
-      { syncId, limit, offset, search },
+      { syncId, limit, offset, search, status },
       { limit, offset }
     );
   },
@@ -177,12 +176,31 @@ const DhnDriveService = {
     }
   },
 
+  getTrabajoById: async (id) => {
+    if (!id) {
+      return { ok: false, error: { code: 0, message: "id es requerido" } };
+    }
+    try {
+      const response = await api.get(`/dhn/trabajo-diario-registrado/registro/${id}`);
+      return response?.data ?? { ok: false, error: { code: 0, message: "Respuesta inválida" } };
+    } catch (error) {
+      const code = error?.response?.status ?? 0;
+      const message =
+        error?.response?.data?.error?.message ||
+        error?.response?.data?.message ||
+        error?.message ||
+        "Error de red";
+      console.error("Error getTrabajoById:", message);
+      return { ok: false, error: { code, message } };
+    }
+  },
+
   updateSyncSheet: async (googleSheetLink) => {
     const response = await api.put(`/dhn/sync-sheet`, { googleSheetLink });
     return response.data;
   },
 
-  resolveDuplicate: async (urlStorageId, action) => {
+  resolveDuplicate: async (urlStorageId, action, manualPatch) => {
     if (!urlStorageId || !action) {
       return { ok: false, error: { code: 0, message: "urlStorageId y action son requeridos" } };
     }
@@ -190,6 +208,7 @@ const DhnDriveService = {
       const response = await api.post(`/dhn/trabajo-diario-registrado/resolver-duplicado`, {
         urlStorageId,
         action,
+        manualPatch,
       });
       return response?.data ?? { ok: false, error: { code: 0, message: "Respuesta inválida" } };
     } catch (error) {

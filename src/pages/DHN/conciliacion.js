@@ -158,21 +158,28 @@ const ConciliacionPage = () => {
     severity: "error",
   });
 
-  const fetchConciliaciones = async () => {
+  const fetchConciliaciones = useCallback(async () => {
     setIsLoading(true);
     try {
       const lista = await conciliacionService.getConciliaciones();
-      setItems(lista);
+      const ids = lista.map((item) => item._id).filter(Boolean);
+      const statsResponse = await conciliacionService.getConciliacionesStats(ids);
+      const statsMap = statsResponse?.stats || {};
+      const enriched = lista.map((item) => ({
+        ...item,
+        stats: statsMap[item._id] || {},
+      }));
+      setItems(enriched);
     } catch (e) {
       console.error("Error cargando conciliaciones", e);
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchConciliaciones();
-  }, []);
+  }, [fetchConciliaciones]);
 
   const handleRowClick = (item) => {
     if (!item?._id) return;

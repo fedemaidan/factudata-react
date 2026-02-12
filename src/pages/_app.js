@@ -3,6 +3,7 @@ import Head from 'next/head';
 import { CacheProvider } from '@emotion/react';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
+import { es } from 'date-fns/locale';
 import { CssBaseline } from '@mui/material';
 import { ThemeProvider } from '@mui/material/styles';
 import { AuthConsumer, AuthProvider } from 'src/contexts/auth-context';
@@ -14,8 +15,6 @@ import 'simplebar-react/dist/simplebar.min.css';
 import 'src/styles/react-datepicker.css';
 import { QueryCache, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AlertProvider, useAlert } from 'src/contexts/alert-context';
-
-
 
 const clientSideEmotionCache = createEmotionCache();
 
@@ -61,7 +60,7 @@ const App = (props) => {
           content="initial-scale=1, width=device-width"
         />
       </Head>
-      <LocalizationProvider dateAdapter={AdapterDateFns}>
+      <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={es}>
         <AuthProvider>
           <ThemeProvider theme={theme}>
             <CssBaseline />
