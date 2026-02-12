@@ -8,6 +8,7 @@ import {
 import ArrowBackIosNewIcon from "@mui/icons-material/ArrowBackIosNew";
 import ArrowForwardIosIcon from "@mui/icons-material/ArrowForwardIos";
 import CloseIcon from "@mui/icons-material/Close";
+import { useEffect, useCallback } from "react";
 import ImagenModal from "src/components/ImagenModal";
 import ResolverDuplicadoModal from "src/components/dhn/sync/ResolverDuplicadoModal";
 import ResolverLicenciaManualForm from "src/components/dhn/ResolverLicenciaManualForm";
@@ -29,6 +30,28 @@ const CorreccionModalNavigator = ({
   alertOpen = false,
   resolvedPayloads = {},
 }) => {
+
+  const handleParteResueltaConConfirm = useCallback(
+    async (result) => {
+      await handlers.handleParteResuelta(result);
+      onConfirmarYContinuar?.();
+    },
+    [handlers.handleParteResuelta, onConfirmarYContinuar]
+  );
+
+  const handleLicenciaResueltaConConfirm = useCallback(
+    async (result) => {
+      await handlers.handleLicenciaResuelta(result);
+      onConfirmarYContinuar?.();
+    },
+    [handlers.handleLicenciaResuelta, onConfirmarYContinuar]
+  );
+
+  useEffect(() => {
+    if (!correccionActiva || !row) return;
+    console.log("[CorreccionModalNavigator] urlStorage:", row?.url_storage);
+  }, [correccionActiva, row?.url_storage]);
+
   if (!correccionActiva || !row || !tipoModal) {
     return null;
   }
@@ -58,15 +81,17 @@ const CorreccionModalNavigator = ({
           <ArrowForwardIosIcon fontSize="small" />
         </IconButton>
       </Stack>
-      <Button
-        size="small"
-        variant="contained"
-        color="primary"
-        onClick={onConfirmarYContinuar}
-        sx={{ whiteSpace: "nowrap" }}
-      >
-        Confirmar y continuar
-      </Button>
+      {tipoModal === "parte_incompleto" && (
+        <Button
+          size="small"
+          variant="contained"
+          color="primary"
+          onClick={onConfirmarYContinuar}
+          sx={{ whiteSpace: "nowrap" }}
+        >
+          Confirmar
+        </Button>
+      )}
       <Typography variant="caption" color="text.secondary">
         {textoProgreso}
       </Typography>
@@ -88,6 +113,8 @@ const CorreccionModalNavigator = ({
           loading={handlers.resolverDuplicadoLoading}
           actionInProgress={handlers.resolverDuplicadoAction}
           progreso={textoProgreso}
+          onConfirmarYContinuar={onConfirmarYContinuar}
+        onTrabajadorResuelto={handlers.handleTrabajadorResuelto}
         />
       </>
     );
@@ -136,7 +163,7 @@ const CorreccionModalNavigator = ({
                 urlStorage={row.url_storage}
                 rowId={rowId}
                 initialData={initialData}
-                onResolved={handlers.handleLicenciaResuelta}
+                onResolved={handleLicenciaResueltaConConfirm}
                 onCancel={handlers.handleCloseResolverLicenciaFromModal}
                 onAutoClose={handlers.handleCloseResolverLicenciaAuto}
                 progreso={textoProgreso}
@@ -156,7 +183,7 @@ const CorreccionModalNavigator = ({
                 urlStorage={row.url_storage}
                 rowId={rowId}
                 initialData={initialData}
-                onResolved={handlers.handleParteResuelta}
+                onResolved={handleParteResueltaConConfirm}
                 onCancel={handlers.handleCloseResolverParteFromModal}
                 onAutoClose={handlers.handleCloseResolverParteAuto}
                 progreso={textoProgreso}

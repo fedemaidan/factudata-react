@@ -138,7 +138,7 @@ const FiltroErrores = ({
           />
           <TextField
             select
-            label="Tipo"
+            label="Tipo de documento"
             value={filters.tipo}
             onChange={(e) => setFilter("tipo", e.target.value)}
             size="small"
@@ -151,7 +151,7 @@ const FiltroErrores = ({
           </TextField>
           <TextField
             select
-            label="Estado"
+            label="Tipo de error"
             value={filters.estado}
             onChange={(e) => setFilter("estado", e.target.value)}
             size="small"

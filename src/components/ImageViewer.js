@@ -108,6 +108,15 @@ export const useImageViewerState = (imagenUrl, open) => {
     [canShowActions, open, rotation, zoom, zoomCfg.max, zoomCfg.min]
   );
 
+  useEffect(() => {
+    const element = viewerRef.current;
+    if (!element) return undefined;
+    element.addEventListener("wheel", handleWheel, { passive: false });
+    return () => {
+      element.removeEventListener("wheel", handleWheel, { passive: false });
+    };
+  }, [handleWheel]);
+
   const handleDoubleClick = useCallback(
     (e) => {
       if (!open || !canShowActions || !viewerRef.current) return;
@@ -282,7 +291,6 @@ export const ImageViewer = ({ imagenUrl, viewerState, leftContent }) => {
 
       <Box
         ref={viewerRef}
-        onWheel={handleWheel}
         onDoubleClick={handleDoubleClick}
         onMouseDown={handlePointerDown}
         onMouseMove={handlePointerMove}

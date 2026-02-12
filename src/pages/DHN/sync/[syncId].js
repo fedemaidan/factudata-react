@@ -271,12 +271,16 @@ const SyncDetailPage = () => {
   }, []);
 
   const handleResolverDuplicado = useCallback(
-    async (action) => {
-      if (!resolverDuplicadoRow) return;
+    async ({ action, manualPatch } = {}) => {
+      if (!resolverDuplicadoRow || !action) return;
       setResolverDuplicadoLoading(true);
       setResolverDuplicadoAction(action);
       try {
-        const resp = await DhnDriveService.resolveDuplicate(resolverDuplicadoRow._id, action);
+        const resp = await DhnDriveService.resolveDuplicate(
+          resolverDuplicadoRow._id,
+          action,
+          manualPatch
+        );
         if (!resp?.ok) {
           throw new Error(resp?.error?.message || "No se pudo resolver el duplicado");
         }
@@ -291,6 +295,7 @@ const SyncDetailPage = () => {
         });
         handleCloseResolverDuplicado();
         await fetchDetails();
+        return true;
       } catch (error) {
         console.error("Error resolviendo duplicado:", error);
         setAlert({
@@ -298,6 +303,7 @@ const SyncDetailPage = () => {
           severity: "error",
           message: error?.message || "Error al resolver el duplicado",
         });
+        return false;
       } finally {
         setResolverDuplicadoLoading(false);
         setResolverDuplicadoAction(null);

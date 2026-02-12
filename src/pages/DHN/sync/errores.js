@@ -11,7 +11,6 @@ import TrabajosDetectadosList from "src/components/dhn/TrabajosDetectadosList";
 import {
   AccionesCell,
   ArchivoCell,
-  FechaDetectadaCell,
   ObservacionCell,
   StatusChip,
 } from "src/components/dhn/sync/cells";
@@ -26,6 +25,7 @@ const DEFAULT_PAGE_LIMIT = 50;
 
 const SyncErrorsPage = () => {
   const [items, setItems] = useState([]);
+  console.log("[DHN Errores] SyncErrorsPage", items);
   const [isLoading, setIsLoading] = useState(true);
   const [alert, setAlert] = useState({ open: false, message: "", severity: "error" });
   const [pagination, setPagination] = useState({
@@ -48,10 +48,6 @@ const SyncErrorsPage = () => {
   const [imageUrl, setImageUrl] = useState("");
   const [imageFileName, setImageFileName] = useState("");
   const [imageModalRow, setImageModalRow] = useState(null);
-
-  const [editingId, setEditingId] = useState(null);
-  const [editingValue, setEditingValue] = useState("");
-  const [savingId, setSavingId] = useState(null);
 
   const [resyncingId, setResyncingId] = useState(null);
   const [resolverLicenciaModalOpen, setResolverLicenciaModalOpen] = useState(false);
@@ -302,12 +298,16 @@ const SyncErrorsPage = () => {
     setResolverDuplicadoAction(null);
   };
 
-  const handleResolverDuplicado = async (action) => {
+  const handleResolverDuplicado = async ({ action, manualPatch } = {}) => {
     if (!resolverDuplicadoRow) return;
     setResolverDuplicadoLoading(true);
     setResolverDuplicadoAction(action);
     try {
-      const resp = await DhnDriveService.resolveDuplicate(resolverDuplicadoRow._id, action);
+      const resp = await DhnDriveService.resolveDuplicate(
+        resolverDuplicadoRow._id,
+        action,
+        manualPatch
+      );
       if (!resp?.ok) {
         throw new Error(resp?.error?.message || "No se pudo resolver el duplicado");
       }
@@ -322,6 +322,7 @@ const SyncErrorsPage = () => {
       });
       handleCloseResolverDuplicado();
       await fetchDetails();
+    return true;
     } catch (error) {
       console.error("Error resolviendo duplicado:", error);
       setAlert({
@@ -329,6 +330,7 @@ const SyncErrorsPage = () => {
         severity: "error",
         message: error?.message || "Error al resolver el duplicado",
       });
+    return false;
     } finally {
       setResolverDuplicadoLoading(false);
       setResolverDuplicadoAction(null);
@@ -533,33 +535,6 @@ const SyncErrorsPage = () => {
     ];
 
     cols.push({
-      key: "fechasDetectadas",
-      label: "Fecha detectada",
-      render: (it) => {
-        const rowTipo = String(it?.tipo || "").toLowerCase();
-        const rowIsParte = rowTipo === "parte";
-        const rowIsLicencia = rowTipo === "licencia";
-        const canEditFecha = rowIsParte || rowIsLicencia;
-        return (
-          <FechaDetectadaCell
-            row={it}
-            canEditFecha={canEditFecha}
-            isParte={rowIsParte}
-            isLicencia={rowIsLicencia}
-            editingId={editingId}
-            editingValue={editingValue}
-            setEditingId={setEditingId}
-            setEditingValue={setEditingValue}
-            savingId={savingId}
-            setSavingId={setSavingId}
-            setItems={setItems}
-            setAlert={setAlert}
-          />
-        );
-      },
-    });
-
-    cols.push({
       key: "file_name",
       label: "Archivo",
       sortable: true,
@@ -577,17 +552,12 @@ const SyncErrorsPage = () => {
 
     return cols;
   }, [
-    editingId,
-    editingValue,
-    savingId,
     resyncingId,
     handleResolverTrabajador,
     handleResyncUrlStorage,
     handleOpenResolverLicencia,
     handleOpenResolverParte,
     handleOpenResolverDuplicado,
-    setItems,
-    setAlert,
     openImageModal,
   ]);
 

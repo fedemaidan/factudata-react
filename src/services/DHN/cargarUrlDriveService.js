@@ -177,12 +177,31 @@ const DhnDriveService = {
     }
   },
 
+  getTrabajoById: async (id) => {
+    if (!id) {
+      return { ok: false, error: { code: 0, message: "id es requerido" } };
+    }
+    try {
+      const response = await api.get(`/dhn/trabajo-diario-registrado/registro/${id}`);
+      return response?.data ?? { ok: false, error: { code: 0, message: "Respuesta inválida" } };
+    } catch (error) {
+      const code = error?.response?.status ?? 0;
+      const message =
+        error?.response?.data?.error?.message ||
+        error?.response?.data?.message ||
+        error?.message ||
+        "Error de red";
+      console.error("Error getTrabajoById:", message);
+      return { ok: false, error: { code, message } };
+    }
+  },
+
   updateSyncSheet: async (googleSheetLink) => {
     const response = await api.put(`/dhn/sync-sheet`, { googleSheetLink });
     return response.data;
   },
 
-  resolveDuplicate: async (urlStorageId, action) => {
+  resolveDuplicate: async (urlStorageId, action, manualPatch) => {
     if (!urlStorageId || !action) {
       return { ok: false, error: { code: 0, message: "urlStorageId y action son requeridos" } };
     }
@@ -190,6 +209,7 @@ const DhnDriveService = {
       const response = await api.post(`/dhn/trabajo-diario-registrado/resolver-duplicado`, {
         urlStorageId,
         action,
+        manualPatch,
       });
       return response?.data ?? { ok: false, error: { code: 0, message: "Respuesta inválida" } };
     } catch (error) {
