@@ -1,7 +1,27 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { useRouter } from "next/router";
-import { Container, Box, Snackbar, Alert, Button, Stack, Typography, TextField, Chip } from "@mui/material";
+import {
+  Container,
+  Box,
+  Snackbar,
+  Alert,
+  Button,
+  Stack,
+  Typography,
+  TextField,
+  Chip,
+  IconButton,
+  InputAdornment,
+  Popover,
+  Divider,
+  MenuItem,
+  Tooltip,
+} from "@mui/material";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
+import FilterListIcon from "@mui/icons-material/FilterList";
+import SearchIcon from "@mui/icons-material/Search";
+import CloseIcon from "@mui/icons-material/Close";
+import RefreshIcon from "@mui/icons-material/Refresh";
 import { STATUS_MAP } from "src/utils/dhn/syncHelpers";
 import { Layout as DashboardLayout } from "src/layouts/dashboard/layout";
 import TableComponent from "src/components/TableComponent";
@@ -39,7 +59,9 @@ const SyncDetailPage = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchVersion, setSearchVersion] = useState(0);
   const [statusFilter, setStatusFilter] = useState(null);
+  const [statusCounts, setStatusCounts] = useState({});
   const [sortConfig, setSortConfig] = useState({ key: null, direction: "asc" });
+  const [filtersAnchorEl, setFiltersAnchorEl] = useState(null);
 
   const [imageModalOpen, setImageModalOpen] = useState(false);
   const [imageUrl, setImageUrl] = useState("");
@@ -78,8 +100,10 @@ const SyncDetailPage = () => {
         limit: paginationLimit,
         offset: paginationOffset,
         search: searchQuery || undefined,
+        status: statusFilter || undefined,
       });
       setItems(Array.isArray(page?.items) ? page.items : []);
+      setStatusCounts(typeof page?.statusCounts === "object" && page.statusCounts ? page.statusCounts : {});
       setPagination((prev) => ({
         ...prev,
         total: page?.total ?? prev.total,
@@ -88,11 +112,12 @@ const SyncDetailPage = () => {
       }));
     } catch (e) {
       setItems([]);
+      setStatusCounts({});
       setAlert({ open: true, message: "Error cargando detalles", severity: "error" });
     } finally {
       setIsLoading(false);
     }
-  }, [syncId, paginationLimit, paginationOffset, searchQuery]);
+  }, [syncId, paginationLimit, paginationOffset, searchQuery, statusFilter]);
 
   const openImageModal = (url, fileName, row) => {
     if (!url) return;
@@ -110,13 +135,6 @@ const SyncDetailPage = () => {
     setAlert((prev) => ({ ...prev, open: false }));
   };
 
-  const handleSearchTermChange = useCallback(
-    (value) => {
-      setSearchTerm(value);
-    },
-    [setSearchTerm]
-  );
-
   const handleSearchSubmit = useCallback(
     (event) => {
       if (event && event.preventDefault) {
@@ -129,6 +147,20 @@ const SyncDetailPage = () => {
     },
     [searchTerm]
   );
+
+  const handleCloseFilters = useCallback(() => {
+    setFiltersAnchorEl(null);
+  }, []);
+
+  const handleToggleFilters = useCallback((event) => {
+    setFiltersAnchorEl((prev) => (prev ? null : event.currentTarget));
+  }, []);
+
+  const handleClearFilters = useCallback(() => {
+    setStatusFilter(null);
+    setPagination((prev) => ({ ...prev, offset: 0 }));
+    handleCloseFilters();
+  }, [handleCloseFilters]);
 
   const handleResolverTrabajador = (trabajador, urlStorage, row) => {
     setTrabajadorSeleccionado(trabajador);
@@ -271,12 +303,16 @@ const SyncDetailPage = () => {
   }, []);
 
   const handleResolverDuplicado = useCallback(
-    async (action) => {
-      if (!resolverDuplicadoRow) return;
+    async ({ action, manualPatch } = {}) => {
+      if (!resolverDuplicadoRow || !action) return;
       setResolverDuplicadoLoading(true);
       setResolverDuplicadoAction(action);
       try {
-        const resp = await DhnDriveService.resolveDuplicate(resolverDuplicadoRow._id, action);
+        const resp = await DhnDriveService.resolveDuplicate(
+          resolverDuplicadoRow._id,
+          action,
+          manualPatch
+        );
         if (!resp?.ok) {
           throw new Error(resp?.error?.message || "No se pudo resolver el duplicado");
         }
@@ -291,6 +327,7 @@ const SyncDetailPage = () => {
         });
         handleCloseResolverDuplicado();
         await fetchDetails();
+        return true;
       } catch (error) {
         console.error("Error resolviendo duplicado:", error);
         setAlert({
@@ -298,6 +335,7 @@ const SyncDetailPage = () => {
           severity: "error",
           message: error?.message || "Error al resolver el duplicado",
         });
+        return false;
       } finally {
         setResolverDuplicadoLoading(false);
         setResolverDuplicadoAction(null);
@@ -318,26 +356,10 @@ const SyncDetailPage = () => {
     });
   }, []);
 
-  // Calcular métricas por estado
-  const statusCounts = useMemo(() => {
-    const counts = {};
-    items.forEach((item) => {
-      const status = item?.status || "unknown";
-      counts[status] = (counts[status] || 0) + 1;
-    });
-    return counts;
-  }, [items]);
-
-  // Filtrar items por status
-  const filteredItems = useMemo(() => {
-    if (!statusFilter) return items;
-    return items.filter((item) => item?.status === statusFilter);
-  }, [items, statusFilter]);
-
   // Ordenar items
   const sortedItems = useMemo(() => {
-    if (!sortConfig.key) return filteredItems;
-    return [...filteredItems].sort((a, b) => {
+    if (!sortConfig.key) return items;
+    return [...items].sort((a, b) => {
       let aVal = a?.[sortConfig.key];
       let bVal = b?.[sortConfig.key];
       
@@ -359,17 +381,13 @@ const SyncDetailPage = () => {
       if (aVal > bVal) return sortConfig.direction === "asc" ? 1 : -1;
       return 0;
     });
-  }, [filteredItems, sortConfig]);
+  }, [items, sortConfig]);
 
   const handleSort = useCallback((key) => {
     setSortConfig((prev) => ({
       key,
       direction: prev.key === key && prev.direction === "asc" ? "desc" : "asc",
     }));
-  }, []);
-
-  const handleStatusFilterClick = useCallback((status) => {
-    setStatusFilter((prev) => (prev === status ? null : status));
   }, []);
 
   const columns = useMemo(() => {
@@ -475,6 +493,17 @@ const SyncDetailPage = () => {
       ? `Página ${currentPage} de ${totalPages} (${pagination.total} registros)`
       : "Sin registros";
 
+  const activeFilters = useMemo(() => {
+    const result = [];
+    if (statusFilter) {
+      result.push({
+        key: "status",
+        label: STATUS_MAP[statusFilter]?.label || statusFilter,
+      });
+    }
+    return result;
+  }, [statusFilter]);
+
 
   return (
     <DashboardLayout title="Detalle de sincronización">
@@ -506,73 +535,148 @@ const SyncDetailPage = () => {
             >
               Volver
             </Button>
-            <Button
-              variant="outlined"
-              onClick={fetchDetails}
-              disabled={isLoading}
-            >
-              {isLoading ? "Actualizando..." : "Actualizar"}
-            </Button>
           </Box>
 
-          <Box component="form" onSubmit={handleSearchSubmit} sx={{ mt: 2, mb: 2, display: "flex", gap: 1, flexWrap: "wrap", maxWidth: 400 }}>
-            <TextField
-              label="Buscar"
-              placeholder="Archivo, carpeta o fecha"
-              size="small"
-              value={searchTerm}
-              onChange={(event) => handleSearchTermChange(event.target.value)}
-              aria-label="Buscar archivos o carpetas"
-              sx={{ flex: 1, minWidth: 220, backgroundColor: "background.paper" }}
-            />
-            <Button type="submit" variant="contained" color="primary" size="small">
-              Buscar
-            </Button>
-          </Box>
-
-          {/* Métricas por estado */}
-          <Box sx={{ mb: 2 }}>
-            <Typography variant="subtitle2" sx={{ mb: 1, color: "text.secondary" }}>
-              Filtrar por estado:
-            </Typography>
-            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-              <Chip
-                label={`Todos (${items.length})`}
-                onClick={() => setStatusFilter(null)}
-                variant={statusFilter === null ? "filled" : "outlined"}
-                color={statusFilter === null ? "primary" : "default"}
+          <Stack
+            direction="row"
+            spacing={1}
+            flexWrap="wrap"
+            alignItems="center"
+            justifyContent="flex-start"
+            sx={{ mt: 2, mb: 1 }}
+          >
+            <Box component="form" onSubmit={handleSearchSubmit} sx={{ display: "flex", gap: 1, flex: 1, minWidth: 0, maxWidth: 350 }}>
+              <TextField
+                label="Buscar"
+                placeholder="Archivo, carpeta o fecha"
                 size="small"
-                sx={{ fontWeight: statusFilter === null ? 600 : 400 }}
+                value={searchTerm}
+                onChange={(event) => setSearchTerm(event.target.value)}
+                aria-label="Buscar archivos o carpetas"
+                sx={{ flex: 1, minWidth: 220, backgroundColor: "background.paper" }}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <SearchIcon fontSize="small" />
+                    </InputAdornment>
+                  ),
+                }}
               />
-              {Object.entries(statusCounts).map(([status, count]) => {
-                const cfg = STATUS_MAP[status] || { color: "#757575", label: status };
-                const isActive = statusFilter === status;
-                return (
-                  <Chip
-                    key={status}
-                    label={`${cfg.label} (${count})`}
-                    onClick={() => handleStatusFilterClick(status)}
-                    variant={isActive ? "filled" : "outlined"}
-                    size="small"
-                    sx={{
-                      fontWeight: isActive ? 600 : 400,
-                      borderColor: cfg.color,
-                      color: isActive ? "#fff" : cfg.color,
-                      backgroundColor: isActive ? cfg.color : "transparent",
-                      "&:hover": {
-                        backgroundColor: isActive ? cfg.color : `${cfg.color}20`,
-                      },
-                    }}
-                  />
-                );
-              })}
+            </Box>
+            <IconButton
+              aria-label="Filtros"
+              size="small"
+              onClick={handleToggleFilters}
+              sx={{
+                borderRadius: 2,
+                border: "1px solid",
+                borderColor: filtersAnchorEl ? "primary.main" : "divider",
+                color: filtersAnchorEl ? "primary.main" : "text.primary",
+                "&:hover": {
+                  backgroundColor: "action.hover",
+                },
+              }}
+            >
+              <FilterListIcon fontSize="small" />
+            </IconButton>
+            <Tooltip title="Actualizar datos">
+              <IconButton
+                size="small"
+                onClick={fetchDetails}
+                disabled={isLoading}
+                sx={{
+                  borderRadius: 2,
+                  px: 1,
+                  py: 1,
+                  boxShadow: 1,
+                  "&:hover": { boxShadow: 2 },
+                  ml: "auto",
+                }}
+              >
+                <RefreshIcon
+                  sx={{
+                    animation: isLoading ? "spin 1s linear infinite" : "none",
+                    "@keyframes spin": {
+                      "0%": { transform: "rotate(0deg)" },
+                      "100%": { transform: "rotate(360deg)" },
+                    },
+                  }}
+                />
+              </IconButton>
+            </Tooltip>
+          </Stack>
+
+          <Popover
+            open={Boolean(filtersAnchorEl)}
+            anchorEl={filtersAnchorEl}
+            onClose={handleCloseFilters}
+            anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
+            transformOrigin={{ vertical: "top", horizontal: "left" }}
+            PaperProps={{
+              sx: {
+                p: 1.5,
+                minWidth: 300,
+                maxWidth: 360,
+              },
+            }}
+          >
+            <Stack spacing={1.25}>
+              <Box
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                }}
+              >
+                <Typography variant="subtitle2" fontWeight={600}>
+                  Más filtros
+                </Typography>
+                <IconButton size="small" onClick={handleCloseFilters} sx={{ p: 0.5 }}>
+                  <CloseIcon fontSize="small" />
+                </IconButton>
+              </Box>
+              <TextField
+                select
+                label="Estado"
+                value={statusFilter || ""}
+                onChange={(event) => {
+                  const value = event.target.value || null;
+                  setStatusFilter(value);
+                  setPagination((prev) => ({ ...prev, offset: 0 }));
+                }}
+                size="small"
+                fullWidth
+              >
+                <MenuItem value="">Todos</MenuItem>
+                {Object.entries(statusCounts).map(([status, count]) => (
+                  <MenuItem key={status} value={status}>
+                    {`${STATUS_MAP[status]?.label || status} (${count})`}
+                  </MenuItem>
+                ))}
+              </TextField>
+              <Divider />
+              <Stack direction="row" spacing={1}>
+                <Button size="small" variant="outlined" fullWidth onClick={handleClearFilters}>
+                  Limpiar
+                </Button>
+                <Button size="small" variant="contained" fullWidth onClick={handleCloseFilters}>
+                  Cerrar
+                </Button>
+              </Stack>
             </Stack>
-            {statusFilter && (
-              <Typography variant="caption" sx={{ mt: 0.5, display: "block", color: "text.secondary" }}>
-                Mostrando {sortedItems.length} de {items.length} registros
+          </Popover>
+
+          <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" sx={{ mt: 1 }}>
+            {activeFilters.length > 0 ? (
+              activeFilters.map((filter) => (
+                <Chip key={filter.key} label={filter.label} size="small" variant="outlined" />
+              ))
+            ) : (
+              <Typography variant="body2" color="text.secondary">
+                Sin filtros activos
               </Typography>
             )}
-          </Box>
+          </Stack>
 
           <Box>
             <Box

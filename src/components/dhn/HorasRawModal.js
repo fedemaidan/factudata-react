@@ -19,6 +19,63 @@ import {
   Button,
 } from '@mui/material';
 
+function HorasRawTable({ rows }) {
+  const preparedRows = useMemo(() => (Array.isArray(rows) ? rows : []), [rows]);
+  if (preparedRows.length === 0) {
+    return (
+      <Typography variant="body2" color="text.secondary">
+        No hay fichadas para mostrar.
+      </Typography>
+    );
+  }
+
+  return (
+    <TableContainer component={Paper} variant="outlined">
+      <Table size="small" aria-label="Fichadas raw">
+        <TableHead>
+          <TableRow>
+            <TableCell>Fecha</TableCell>
+            <TableCell>Hora</TableCell>
+            <TableCell>E/S</TableCell>
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          {preparedRows.map((row, index) => {
+            const tipo = (row?.entradaSalida || '').toString();
+            const isEntrada = tipo === 'E';
+            return (
+              <TableRow key={`${row?.fecha || 'row'}-${index}`}>
+                <TableCell>{formatDateToDDMMYYYY(row?.fecha)}</TableCell>
+                <TableCell>{row?.hora || '-'}</TableCell>
+                <TableCell>
+                  {tipo ? (
+                    <Chip
+                      size="small"
+                      label={tipo}
+                      color={isEntrada ? 'success' : 'error'}
+                      variant="outlined"
+                    />
+                  ) : (
+                    '-'
+                  )}
+                </TableCell>
+              </TableRow>
+            );
+          })}
+        </TableBody>
+      </Table>
+    </TableContainer>
+  );
+}
+
+HorasRawTable.propTypes = {
+  rows: PropTypes.arrayOf(PropTypes.object),
+};
+
+HorasRawTable.defaultProps = {
+  rows: [],
+};
+
 function HorasRawModal(props) {
   const {
     open,
@@ -30,7 +87,6 @@ function HorasRawModal(props) {
   } = props;
 
   const rows = useMemo(() => (Array.isArray(data) ? data : []), [data]);
-  const hasRows = rows.length > 0;
 
   const displayTitle = title || 'Fichadas del Excel';
 
@@ -45,44 +101,7 @@ function HorasRawModal(props) {
             </Typography>
           ) : null}
         </Box>
-        {hasRows ? (
-          <TableContainer component={Paper} variant="outlined">
-            <Table size="small" aria-label="Fichadas raw">
-              <TableHead>
-                <TableRow>
-                  <TableCell>Fecha</TableCell>
-                  <TableCell>Hora</TableCell>
-                  <TableCell>E/S</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {rows.map((row, index) => {
-                  const tipo = (row?.entradaSalida || '').toString();
-                  const isEntrada = tipo === 'E';
-                  return (
-                    <TableRow key={`${row?.fecha || 'row'}-${index}`}>
-                      <TableCell>{formatDateToDDMMYYYY(row?.fecha)}</TableCell>
-                      <TableCell>{row?.hora || '-'}</TableCell>
-                      <TableCell>
-                        {tipo ? (
-                          <Chip
-                            size="small"
-                            label={tipo}
-                            color={isEntrada ? 'success' : 'error'}
-                            variant="outlined"
-                          />
-                        ) : (
-                          '-'
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        ) : (<></>
-        )}
+        <HorasRawTable rows={rows} />
       </DialogContent>
       <DialogActions>
         <Box sx={{ flex: 1 }} />
@@ -123,4 +142,5 @@ HorasRawModal.defaultProps = {
   downloadUrl: '',
 };
 
+export { HorasRawTable };
 export default HorasRawModal;

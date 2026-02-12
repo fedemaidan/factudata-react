@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Accordion,
   AccordionDetails,
@@ -27,7 +27,15 @@ import TrabajoForm, {
   HORA_FIELDS,
 } from "src/components/dhn/TrabajoForm";
 
-const ResolverParteManualForm = ({ urlStorage, onResolved, onCancel, onAutoClose, progreso }) => {
+const ResolverParteManualForm = ({
+  urlStorage,
+  onResolved,
+  onCancel,
+  onAutoClose,
+  progreso,
+  rowId = null,
+  initialData = null,
+}) => {
   const [fecha, setFecha] = useState(dayjs());
   const [trabajadores, setTrabajadores] = useState([createEmptyTrabajo()]);
   const [expandedAccordions, setExpandedAccordions] = useState(new Set());
@@ -37,6 +45,30 @@ const ResolverParteManualForm = ({ urlStorage, onResolved, onCancel, onAutoClose
   const handleCloseAlert = useCallback(() => {
     setAlert((prev) => ({ ...prev, open: false }));
   }, []);
+
+  useEffect(() => {
+    if (rowId && initialData) {
+      const nextTrabajadores =
+        Array.isArray(initialData.trabajadores) && initialData.trabajadores.length > 0
+          ? initialData.trabajadores.map((trabajo) => ({ ...trabajo }))
+          : [createEmptyTrabajo()];
+      setFecha(initialData.fecha ? dayjs(initialData.fecha) : dayjs());
+      setTrabajadores(nextTrabajadores);
+      setExpandedAccordions(() => {
+        const next = new Set();
+        nextTrabajadores.forEach((trabajo) => {
+          if (trabajo.id) {
+            next.add(trabajo.id);
+          }
+        });
+        return next;
+      });
+      return;
+    }
+    setFecha(dayjs());
+    setTrabajadores([createEmptyTrabajo()]);
+    setExpandedAccordions(new Set());
+  }, [rowId, initialData]);
 
   const handleTrabajoChange = useCallback((id, updated) => {
     setTrabajadores((prev) => prev.map((t) => (t.id === id ? updated : t)));
@@ -86,6 +118,10 @@ const ResolverParteManualForm = ({ urlStorage, onResolved, onCancel, onAutoClose
         });
         return data;
       });
+      const resolvedSnapshot = {
+        fecha: fecha?.toISOString() || null,
+        trabajadores: trabajadores.map((trabajo) => ({ ...trabajo })),
+      };
 
       setIsSaving(true);
       try {
@@ -96,7 +132,7 @@ const ResolverParteManualForm = ({ urlStorage, onResolved, onCancel, onAutoClose
           estado: "okManual",
         });
         setAlert({ open: true, severity: "success", message: resp?.message || "Parte resuelto correctamente" });
-        onResolved?.(resp);
+        onResolved?.({ rowId, payload: resolvedSnapshot, response: resp });
         setTimeout(() => {
           if (onAutoClose) {
             onAutoClose();
@@ -114,7 +150,7 @@ const ResolverParteManualForm = ({ urlStorage, onResolved, onCancel, onAutoClose
         setIsSaving(false);
       }
     },
-    [trabajadores, disabledEnviar, fecha, urlStorage, validTrabajadores, onResolved, onCancel]
+    [trabajadores, disabledEnviar, fecha, urlStorage, validTrabajadores, onResolved, onCancel, rowId]
   );
 
   const handleAgregarTrabajador = useCallback(() => {
