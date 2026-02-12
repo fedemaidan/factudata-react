@@ -10,11 +10,13 @@ import {
   Chip,
   Popover,
   Divider,
+  Tooltip,
 } from "@mui/material";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import FilterListIcon from "@mui/icons-material/FilterList";
 import CloseIcon from "@mui/icons-material/Close";
 import SearchIcon from "@mui/icons-material/Search";
+import RefreshIcon from "@mui/icons-material/Refresh";
 
 const FiltroErrores = ({
   filterContext,
@@ -80,10 +82,31 @@ const FiltroErrores = ({
         >
           <FilterListIcon fontSize="small" />
         </IconButton>
-        <Box sx={{ display: "flex", gap: 2, alignItems: "center" }}>
-          <Button variant="outlined" size="small" onClick={onActualizar} disabled={isLoading}>
-            {isLoading ? "Actualizando..." : "Actualizar"}
-          </Button>
+        <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
+          <Tooltip title="Actualizar datos">
+            <IconButton
+              size="small"
+              onClick={onActualizar}
+              disabled={isLoading}
+              sx={{
+                borderRadius: 2,
+                px: 1,
+                py: 1,
+                boxShadow: 1,
+                "&:hover": { boxShadow: 2 },
+              }}
+            >
+              <RefreshIcon
+                sx={{
+                  animation: isLoading ? "spin 1s linear infinite" : "none",
+                  "@keyframes spin": {
+                    "0%": { transform: "rotate(0deg)" },
+                    "100%": { transform: "rotate(360deg)" },
+                  },
+                }}
+              />
+            </IconButton>
+          </Tooltip>
           <Button
             variant="outlined"
             size="small"
@@ -92,7 +115,7 @@ const FiltroErrores = ({
           >
             {isCargandoCorreccion ? "Cargando..." : "Corrección asistida"}
           </Button>
-        </Box>
+        </Stack>
       </Stack>
 
       <Popover

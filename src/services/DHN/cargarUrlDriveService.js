@@ -28,6 +28,7 @@ const normalizePageResponse = (page, defaults = {}) => ({
   total: Number.isFinite(page?.total) ? page.total : 0,
   limit: Number.isFinite(page?.limit) ? page.limit : (defaults.limit ?? DEFAULT_PAGE_LIMIT),
   offset: Number.isFinite(page?.offset) ? page.offset : (defaults.offset ?? 0),
+  statusCounts: typeof page?.statusCounts === 'object' && page?.statusCounts !== null ? page.statusCounts : {},
 });
 
 const fetchUrlStoragePage = async (payload = {}, defaults = {}) => {
@@ -99,7 +100,7 @@ const DhnDriveService = {
    * @param {string} syncId
    * @returns {Promise<Array>} lista de items (o [])
    */
-  getSyncChildren: async (syncId, { limit = DEFAULT_PAGE_LIMIT, offset = 0, search } = {}) => {
+  getSyncChildren: async (syncId, { limit = DEFAULT_PAGE_LIMIT, offset = 0, search, status } = {}) => {
     if (!syncId) {
       return {
         items: [],
@@ -109,7 +110,7 @@ const DhnDriveService = {
       };
     }
     return fetchUrlStoragePage(
-      { syncId, limit, offset, search },
+      { syncId, limit, offset, search, status },
       { limit, offset }
     );
   },
