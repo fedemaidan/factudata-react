@@ -47,21 +47,32 @@ import RefreshIcon from '@mui/icons-material/Refresh';
 import CategoryIcon from '@mui/icons-material/Category';
 import TimelineIcon from '@mui/icons-material/Timeline';
 import StorefrontIcon from '@mui/icons-material/Storefront';
+import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
 import { useRouter } from 'next/router';
 import { useAuthContext } from 'src/contexts/auth-context';
 import presupuestoService from 'src/services/presupuestoService';
+import MonedasService from 'src/services/monedasService';
 import { getEmpresaById, getEmpresaDetailsFromUser } from 'src/services/empresaService';
 import { getProyectosFromUser } from 'src/services/proyectosService';
 import { formatCurrency, formatTimestamp } from 'src/utils/formatters';
+import PresupuestoDrawer from 'src/components/PresupuestoDrawer';
 
 // Helper: calcular totales de un resumen multimoneda (para ProyectoCard)
-const calcularTotalesResumen = (resumen, tipoCambio = 1470, monedaVista = 'ARS') => {
+const calcularTotalesResumen = (resumen, tipoCambio = null, monedaVista = 'ARS') => {
   if (!resumen) return { egresosTotal: 0, egresosEjecutado: 0 };
+  
+  const cacIndice = resumen.cotizacionActual?.cac_indice || null;
   
   const convertir = (monto, monedaOriginal) => {
     if (monedaVista === monedaOriginal) return monto;
-    if (monedaVista === 'USD' && monedaOriginal === 'ARS') return monto / tipoCambio;
-    if (monedaVista === 'ARS' && monedaOriginal === 'USD') return monto * tipoCambio;
+    if (!tipoCambio && monedaOriginal !== 'CAC') return monto;
+    // ARS ↔ USD
+    if (monedaVista === 'USD' && monedaOriginal === 'ARS') return tipoCambio ? monto / tipoCambio : monto;
+    if (monedaVista === 'ARS' && monedaOriginal === 'USD') return tipoCambio ? monto * tipoCambio : monto;
+    // CAC → ARS: monto_cac * cac_indice
+    if (monedaOriginal === 'CAC' && monedaVista === 'ARS') return cacIndice ? monto * cacIndice : monto;
+    // CAC → USD: (monto_cac * cac_indice) / tipoCambio
+    if (monedaOriginal === 'CAC' && monedaVista === 'USD') return (cacIndice && tipoCambio) ? (monto * cacIndice) / tipoCambio : monto;
     return monto;
   };
   
@@ -204,43 +215,57 @@ const ControlProyectoPage = () => {
   // Tabs
   const [tabActivo, setTabActivo] = useState(0); // 0: Categoría, 1: Etapa, 2: Proveedor
   
-  // Estado de moneda
+  // Estado de moneda y cotización
   const [moneda, setMoneda] = useState('ARS');
-  const [tipoCambio, setTipoCambio] = useState(1470);
+  const [tipoCambio, setTipoCambio] = useState(null);
+  const [tipoCambioManual, setTipoCambioManual] = useState('');
+  const [cotizacionCargada, setCotizacionCargada] = useState(false);
   
   // Categorías, etapas y proveedores configurados
   const [categorias, setCategorias] = useState([]);
   const [etapas, setEtapas] = useState([]);
   const [proveedoresAgregados, setProveedoresAgregados] = useState([]);
-  const [proveedoresEmpresa, setProveedoresEmpresa] = useState([]); // Proveedores cargados en la empresa
+  const [proveedoresEmpresa, setProveedoresEmpresa] = useState([]);
   
-  // Modal de nuevo presupuesto
-  const [nuevoPresupuestoModal, setNuevoPresupuestoModal] = useState({ 
-    open: false, 
-    tipoAgrupacion: null, // 'categoria' | 'etapa' | 'proveedor'
-    valor: null 
+  // Drawer de presupuesto (reemplaza todos los modals de presupuesto)
+  const [drawerPresupuesto, setDrawerPresupuesto] = useState({
+    open: false,
+    mode: 'crear', // 'crear' | 'editar'
+    tipoAgrupacion: null,
+    valorAgrupacion: null,
+    tipoDefault: 'egreso',
+    presupuesto: null,
   });
-  const [nuevoPresupuesto, setNuevoPresupuesto] = useState({ monto: '', moneda: 'ARS' });
   
-  // Modal de adicional
-  const [adicionalModal, setAdicionalModal] = useState({ open: false, presupuestoId: null });
-  const [nuevoAdicional, setNuevoAdicional] = useState({ concepto: '', monto: '' });
-  
-  // Modal agregar proveedor
+  // Modal agregar proveedor (se mantiene como dialog simple)
   const [proveedorModal, setProveedorModal] = useState(false);
   const [nuevoProveedor, setNuevoProveedor] = useState('');
   
-  // Modal de edición de presupuesto
-  const [editarModal, setEditarModal] = useState({ open: false, presupuestoId: null, montoActual: 0, monedaActual: 'ARS', label: '' });
-  const [edicionData, setEdicionData] = useState({ nuevoMonto: '', motivo: '', nuevaMoneda: 'ARS' });
-  
-  // Modal de historial
-  const [historialModal, setHistorialModal] = useState({ open: false, historial: [], label: '' });
-  
-  // Modal de presupuesto general
+  // Modal de presupuesto general (se mantiene como dialog simple)
   const [presupuestoGeneralModal, setPresupuestoGeneralModal] = useState(false);
   const [nuevoPresupuestoGeneral, setNuevoPresupuestoGeneral] = useState('');
   const [monedaPresupuestoGeneral, setMonedaPresupuestoGeneral] = useState('ARS');
+
+  // Cargar cotización del dólar
+  useEffect(() => {
+    const cargarCotizacion = async () => {
+      try {
+        const data = await MonedasService.listarDolar({ limit: 1 });
+        if (data && data.length > 0) {
+          const ultimo = data[0];
+          // Usar blue promedio si existe, si no oficial
+          const valor = ultimo.blue?.promedio || ultimo.blue?.venta || ultimo.oficial?.venta || null;
+          if (valor) {
+            setTipoCambio(valor);
+            setCotizacionCargada(true);
+          }
+        }
+      } catch (err) {
+        console.error('No se pudo cargar cotización del dólar:', err);
+      }
+    };
+    cargarCotizacion();
+  }, []);
 
   // Cargar datos iniciales
   useEffect(() => {
@@ -257,7 +282,6 @@ const ControlProyectoPage = () => {
 
         setEmpresa(empresaData);
         setEmpresaId(empresaData.id);
-        setTipoCambio(empresaData.tipoCambio || 1470);
         setCategorias(empresaData.categorias || []);
         setEtapas(empresaData.etapas || ['Cimientos', 'Estructura', 'Cerramientos', 'Instalaciones', 'Terminaciones']);
         
@@ -382,6 +406,12 @@ const ControlProyectoPage = () => {
     return Object.values(resumen.egresosPorMoneda).flatMap(m => m.items || []);
   };
 
+  // Helper: obtener todos los items de ingresos de todas las monedas
+  const obtenerTodosLosItemsIngresos = () => {
+    if (!resumen?.ingresosPorMoneda) return [];
+    return Object.values(resumen.ingresosPorMoneda).flatMap(m => m.items || []);
+  };
+
   // Helper: calcular totales de ingresos/egresos sumando todas las monedas (convertidas a la moneda de visualización)
   const calcularTotales = () => {
     if (!resumen) return { ingresos: { total: 0, ejecutado: 0 }, egresos: { total: 0, ejecutado: 0 }, gananciaProyectada: 0, gananciaActual: 0 };
@@ -410,18 +440,21 @@ const ControlProyectoPage = () => {
   };
 
   // Función para convertir montos según la moneda del presupuesto y la moneda de visualización
+  const cacIndiceActual = resumen?.cotizacionActual?.cac_indice || null;
+
   const convertir = (monto, monedaOriginal = 'ARS') => {
     // Si la moneda de visualización y la original son iguales, no convertir
     if (moneda === monedaOriginal) return monto;
     
-    // Convertir de ARS a USD
-    if (moneda === 'USD' && monedaOriginal === 'ARS') {
-      return monto / tipoCambio;
-    }
-    // Convertir de USD a ARS
-    if (moneda === 'ARS' && monedaOriginal === 'USD') {
-      return monto * tipoCambio;
-    }
+    // ARS ↔ USD
+    if (moneda === 'USD' && monedaOriginal === 'ARS') return tipoCambio ? monto / tipoCambio : monto;
+    if (moneda === 'ARS' && monedaOriginal === 'USD') return tipoCambio ? monto * tipoCambio : monto;
+    
+    // CAC → ARS: monto_cac * cac_indice (presupuestos indexados por CAC vistos en ARS)
+    if (monedaOriginal === 'CAC' && moneda === 'ARS') return cacIndiceActual ? monto * cacIndiceActual : monto;
+    // CAC → USD: (monto_cac * cac_indice) / tipoCambio
+    if (monedaOriginal === 'CAC' && moneda === 'USD') return (cacIndiceActual && tipoCambio) ? (monto * cacIndiceActual) / tipoCambio : monto;
+    
     return monto;
   };
 
@@ -466,45 +499,56 @@ const ControlProyectoPage = () => {
       ejecutado: item.ejecutado || 0, 
       id: item.id,
       historial: item.historial || [],
-      moneda: item.moneda || 'ARS'
+      moneda: item.moneda || 'ARS',
+      moneda_display: item.moneda_display || item.moneda || 'ARS',
+      indexacion: item.indexacion || null,
+      monto_ingresado: item.monto_ingresado || item.monto,
+      base_calculo: item.base_calculo || 'total',
+      cotizacion_snapshot: item.cotizacion_snapshot || null,
     };
   };
 
-  // Handler para editar presupuesto
-  const handleEditarPresupuesto = async () => {
-    try {
-      const result = await presupuestoService.editarPresupuesto(editarModal.presupuestoId, {
-        nuevoMonto: parseFloat(edicionData.nuevoMonto),
-        motivo: edicionData.motivo,
-        creadoPor: user?.uid,
-        nuevaMoneda: edicionData.nuevaMoneda
-      });
-      
-      if (result.success) {
-        setAlert({ open: true, message: 'Presupuesto editado correctamente', severity: 'success' });
-        setEditarModal({ open: false, presupuestoId: null, montoActual: 0, monedaActual: 'ARS', label: '' });
-        setEdicionData({ nuevoMonto: '', motivo: '', nuevaMoneda: 'ARS' });
-        await cargarResumen();
-      }
-    } catch (err) {
-      setAlert({ open: true, message: 'Error al editar presupuesto', severity: 'error' });
-    }
+  // Handler unificado: cuando el drawer completa una operación
+  const handleDrawerSuccess = (message) => {
+    setAlert({ open: true, message, severity: 'success' });
+    cargarResumen();
   };
 
-  // Handler para eliminar presupuesto
-  const handleEliminarPresupuesto = async () => {
-    try {
-      const result = await presupuestoService.eliminarPresupuestoPorId(editarModal.presupuestoId);
-      
-      if (result.success) {
-        setAlert({ open: true, message: 'Presupuesto eliminado correctamente', severity: 'success' });
-        setEditarModal({ open: false, presupuestoId: null, montoActual: 0, monedaActual: 'ARS', label: '' });
-        setEdicionData({ nuevoMonto: '', motivo: '', nuevaMoneda: 'ARS' });
-        await cargarResumen();
-      }
-    } catch (err) {
-      setAlert({ open: true, message: 'Error al eliminar presupuesto', severity: 'error' });
-    }
+  // Helper: abrir drawer para crear
+  const abrirDrawerCrear = (tipoAgrupacion, valor, tipoDefault = 'egreso') => {
+    setDrawerPresupuesto({
+      open: true,
+      mode: 'crear',
+      tipoAgrupacion,
+      valorAgrupacion: valor,
+      tipoDefault,
+      presupuesto: null,
+    });
+  };
+
+  // Helper: abrir drawer para editar
+  const abrirDrawerEditar = (item, label) => {
+    setDrawerPresupuesto({
+      open: true,
+      mode: 'editar',
+      tipoAgrupacion: null,
+      valorAgrupacion: null,
+      tipoDefault: 'egreso',
+      presupuesto: {
+        id: item.id,
+        monto: item.monto || item.presupuesto,
+        moneda: item.moneda || 'ARS',
+        moneda_display: item.moneda_display || item.moneda || 'ARS',
+        indexacion: item.indexacion || null,
+        monto_ingresado: item.monto_ingresado || item.monto || item.presupuesto,
+        base_calculo: item.base_calculo || 'total',
+        tipo: item.tipo || 'egreso',
+        label: label,
+        historial: item.historial || [],
+        ejecutado: item.ejecutado || 0,
+        cotizacion_snapshot: item.cotizacion_snapshot || null,
+      },
+    });
   };
 
   // Calcular sumas por cada agrupación (son 3 formas de ver el MISMO presupuesto)
@@ -571,34 +615,18 @@ const ControlProyectoPage = () => {
     origen: ''
   });
 
-  // Handler para crear nuevo presupuesto
-  const handleCrearPresupuesto = async () => {
+  // Handler para crear nuevo presupuesto (solo para presupuesto general y ajustes)
+  const handleCrearPresupuestoGeneral = async (monto, monedaVal) => {
     try {
-      const data = {
+      await presupuestoService.crearPresupuesto({
         empresa_id: empresaId,
         proyecto_id: proyectoSeleccionado,
         tipo: 'egreso',
-        monto: parseFloat(nuevoPresupuesto.monto),
-        moneda: nuevoPresupuesto.moneda || 'ARS'
-      };
-      
-      if (nuevoPresupuestoModal.tipoAgrupacion === 'categoria') {
-        data.categoria = nuevoPresupuestoModal.valor;
-      } else if (nuevoPresupuestoModal.tipoAgrupacion === 'etapa') {
-        data.etapa = nuevoPresupuestoModal.valor;
-      } else if (nuevoPresupuestoModal.tipoAgrupacion === 'proveedor') {
-        data.proveedor = nuevoPresupuestoModal.valor;
-      }
-      
-      await presupuestoService.crearPresupuesto(data);
-      
+        monto: parseFloat(monto),
+        moneda: monedaVal || 'ARS'
+      });
       setAlert({ open: true, message: 'Presupuesto creado correctamente', severity: 'success' });
-      setNuevoPresupuestoModal({ open: false, tipoAgrupacion: null, valor: null });
-      setNuevoPresupuesto({ monto: '', moneda: 'ARS' });
-      
-      // Recargar y luego verificar si excede el general
       await cargarResumen();
-      // La verificación se hace en un useEffect
     } catch (err) {
       setAlert({ open: true, message: 'Error al crear presupuesto', severity: 'error' });
     }
@@ -633,38 +661,13 @@ const ControlProyectoPage = () => {
           creadoPor: user?.uid
         });
       } else {
-        await presupuestoService.crearPresupuesto({
-          empresa_id: empresaId,
-          proyecto_id: proyectoSeleccionado,
-          tipo: 'egreso',
-          monto: ajusteGeneralModal.sumaHijos
-        });
+        await handleCrearPresupuestoGeneral(ajusteGeneralModal.sumaHijos);
       }
       setAlert({ open: true, message: 'Presupuesto general ajustado', severity: 'success' });
       setAjusteGeneralModal({ open: false, sumaHijos: 0, origen: '' });
       cargarResumen();
     } catch (err) {
       setAlert({ open: true, message: 'Error al ajustar presupuesto', severity: 'error' });
-    }
-  };
-
-  // Handler para agregar adicional
-  const handleAgregarAdicional = async () => {
-    try {
-      const result = await presupuestoService.agregarAdicional(adicionalModal.presupuestoId, {
-        concepto: nuevoAdicional.concepto,
-        monto: parseFloat(nuevoAdicional.monto),
-        creadoPor: user?.uid
-      });
-      
-      if (result.success) {
-        setAlert({ open: true, message: 'Adicional agregado correctamente', severity: 'success' });
-        setAdicionalModal({ open: false, presupuestoId: null });
-        setNuevoAdicional({ concepto: '', monto: '' });
-        cargarResumen();
-      }
-    } catch (err) {
-      setAlert({ open: true, message: 'Error al agregar adicional', severity: 'error' });
     }
   };
 
@@ -756,7 +759,7 @@ const ControlProyectoPage = () => {
                 <Typography variant="h4">{proyectoActual?.nombre}</Typography>
               </Stack>
               
-              <Stack direction="row" spacing={2}>
+              <Stack direction="row" spacing={2} alignItems="center">
                 <ToggleButtonGroup
                   value={moneda}
                   exclusive
@@ -766,6 +769,38 @@ const ControlProyectoPage = () => {
                   <ToggleButton value="ARS">ARS</ToggleButton>
                   <ToggleButton value="USD">USD</ToggleButton>
                 </ToggleButtonGroup>
+
+                {/* Indicadores de cotización */}
+                <Stack direction="row" spacing={1} alignItems="center">
+                  {cotizacionCargada && tipoCambio ? (
+                    <Chip
+                      label={`USD Blue: $${Number(tipoCambio).toLocaleString('es-AR')}`}
+                      size="small"
+                      color="info"
+                      variant="outlined"
+                      icon={<AttachMoneyIcon />}
+                    />
+                  ) : (
+                    <TextField
+                      label="Cotización USD"
+                      type="number"
+                      size="small"
+                      sx={{ width: 160 }}
+                      value={tipoCambioManual}
+                      onChange={(e) => {
+                        setTipoCambioManual(e.target.value);
+                        const val = parseFloat(e.target.value);
+                        if (val > 0) setTipoCambio(val);
+                      }}
+                      placeholder="Ej: 1450"
+                      InputProps={{
+                        startAdornment: <Typography variant="caption" sx={{ mr: 0.5 }}>$</Typography>,
+                      }}
+                      helperText={!tipoCambio ? 'Requerido para convertir' : ''}
+                      error={!tipoCambio}
+                    />
+                  )}
+                </Stack>
                 
                 <Button 
                   variant="outlined" 
@@ -841,8 +876,103 @@ const ControlProyectoPage = () => {
                   );
                 })()}
 
-                {/* Tabs */}
+                {/* Sección de Ingresos */}
+                {(() => {
+                  const itemsIngreso = obtenerTodosLosItemsIngresos();
+                  const totales = calcularTotales();
+                  return (
+                    <Paper sx={{ p: 2 }}>
+                      <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
+                        <Stack direction="row" spacing={1} alignItems="center">
+                          <TrendingUpIcon color="success" />
+                          <Typography variant="h6">Ingresos</Typography>
+                          {itemsIngreso.length > 0 && (
+                            <Chip label={`${itemsIngreso.length} presupuesto${itemsIngreso.length > 1 ? 's' : ''}`} size="small" variant="outlined" />
+                          )}
+                        </Stack>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          color="success"
+                          startIcon={<AddCircleIcon />}
+                          onClick={() => abrirDrawerCrear(null, 'Ingreso', 'ingreso')}
+                        >
+                          Crear Ingreso
+                        </Button>
+                      </Stack>
+                      {itemsIngreso.length === 0 ? (
+                        <Typography color="text.secondary" variant="body2" sx={{ py: 2, textAlign: 'center' }}>
+                          No hay ingresos presupuestados. Creá uno para controlar cobros al cliente.
+                        </Typography>
+                      ) : (
+                        <Stack spacing={1.5}>
+                          {itemsIngreso.map((item) => {
+                            const porcentaje = item.monto > 0 ? (item.ejecutado / item.monto) * 100 : 0;
+                            const monedaItem = item.moneda || 'ARS';
+                            const monedaLabel = monedaItem === 'USD' ? '🇺🇸' : '🇦🇷';
+                            const label = [item.categoria, item.etapa, item.proveedor].filter(Boolean).join(' · ') || 'Ingreso general';
+                            return (
+                              <Paper key={item.id} variant="outlined" sx={{ p: 2 }}>
+                                <Stack direction="row" justifyContent="space-between" alignItems="center">
+                                  <Stack direction="row" spacing={1} alignItems="center">
+                                    <Typography fontWeight={500}>{label}</Typography>
+                                    <Chip label={monedaLabel} size="small" variant="outlined" sx={{ minWidth: 32 }} />
+                                  </Stack>
+                                  <Stack direction="row" spacing={1} alignItems="center">
+                                    <Chip label={`Pres: ${formatMonto(item.monto, monedaItem)}`} size="small" variant="outlined" />
+                                    <Chip
+                                      label={`Cobrado: ${formatMonto(item.ejecutado || 0, monedaItem)}`}
+                                      size="small"
+                                      color={porcentaje > 100 ? 'error' : 'success'}
+                                    />
+                                    <Button
+                                      size="small"
+                                      variant="outlined"
+                                      onClick={() => abrirDrawerEditar({ ...item, tipo: 'ingreso' }, label)}
+                                    >
+                                      Editar
+                                    </Button>
+                                    {item.historial?.length > 0 && (
+                                      <Chip
+                                        label={`${item.historial.length} cambios`}
+                                        size="small"
+                                        color="info"
+                                        variant="outlined"
+                                        onClick={() => abrirDrawerEditar({ ...item, tipo: 'ingreso' }, label)}
+                                        sx={{ cursor: 'pointer' }}
+                                      />
+                                    )}
+                                  </Stack>
+                                </Stack>
+                                <LinearProgress
+                                  variant="determinate"
+                                  value={Math.min(porcentaje, 100)}
+                                  sx={{ mt: 1.5, height: 8, borderRadius: 4 }}
+                                  color={porcentaje > 100 ? 'error' : porcentaje > 80 ? 'warning' : 'success'}
+                                />
+                                <Stack direction="row" justifyContent="space-between" sx={{ mt: 0.5 }}>
+                                  <Typography variant="caption" color="text.secondary">
+                                    {porcentaje.toFixed(1)}% cobrado
+                                  </Typography>
+                                  <Typography variant="caption" color="text.secondary">
+                                    Pendiente: {formatMonto(item.monto - (item.ejecutado || 0), monedaItem)}
+                                  </Typography>
+                                </Stack>
+                              </Paper>
+                            );
+                          })}
+                        </Stack>
+                      )}
+                    </Paper>
+                  );
+                })()}
+
+                {/* Tabs de Egresos */}
                 <Paper sx={{ p: 2 }}>
+                  <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
+                    <TrendingDownIcon color="error" />
+                    <Typography variant="h6">Egresos</Typography>
+                  </Stack>
                   <Tabs value={tabActivo} onChange={(e, v) => setTabActivo(v)}>
                     <Tab icon={<CategoryIcon />} iconPosition="start" label="Por Categoría" />
                     <Tab icon={<TimelineIcon />} iconPosition="start" label="Por Etapa" />
@@ -862,13 +992,8 @@ const ControlProyectoPage = () => {
                                 <Button 
                                   size="small" 
                                   onClick={() => {
-                                    setEditarModal({ 
-                                      open: true, 
-                                      presupuestoId: calcularSumas.generalId, 
-                                      montoActual: presupuestoGeneral, 
-                                      label: 'General' 
-                                    });
-                                    setEdicionData({ nuevoMonto: presupuestoGeneral, motivo: '' });
+                                    const generalItem = obtenerTodosLosItemsEgresos().find(i => !i.categoria && !i.etapa && !i.proveedor);
+                                    if (generalItem) abrirDrawerEditar(generalItem, 'General');
                                   }}
                                 >
                                   Editar
@@ -879,11 +1004,10 @@ const ControlProyectoPage = () => {
                                     size="small" 
                                     color="info" 
                                     variant="outlined"
-                                    onClick={() => setHistorialModal({ 
-                                      open: true, 
-                                      historial: calcularSumas.generalHistorial, 
-                                      label: 'General' 
-                                    })}
+                                    onClick={() => {
+                                      const generalItem = obtenerTodosLosItemsEgresos().find(i => !i.categoria && !i.etapa && !i.proveedor);
+                                      if (generalItem) abrirDrawerEditar(generalItem, 'General');
+                                    }}
                                     sx={{ cursor: 'pointer' }}
                                   />
                                 )}
@@ -948,13 +1072,10 @@ const ControlProyectoPage = () => {
                                 formatMonto={formatMonto}
                                 historial={data.historial}
                                 moneda={data.moneda}
-                                onCrear={() => setNuevoPresupuestoModal({ open: true, tipoAgrupacion: 'categoria', valor: catName })}
-                                onAdicional={data.id ? () => setAdicionalModal({ open: true, presupuestoId: data.id }) : null}
-                                onEditar={data.id ? () => {
-                                  setEditarModal({ open: true, presupuestoId: data.id, montoActual: data.presupuesto, monedaActual: data.moneda || 'ARS', label: catName });
-                                  setEdicionData({ nuevoMonto: data.presupuesto, motivo: '', nuevaMoneda: data.moneda || 'ARS' });
-                                } : null}
-                                onVerHistorial={data.historial?.length > 0 ? () => setHistorialModal({ open: true, historial: data.historial, label: catName }) : null}
+                                onCrear={() => abrirDrawerCrear('categoria', catName)}
+                                onAdicional={data.id ? () => abrirDrawerEditar(data, catName) : null}
+                                onEditar={data.id ? () => abrirDrawerEditar(data, catName) : null}
+                                onVerHistorial={data.id && data.historial?.length > 0 ? () => abrirDrawerEditar(data, catName) : null}
                               />
                             );
                           })
@@ -980,13 +1101,10 @@ const ControlProyectoPage = () => {
                                 formatMonto={formatMonto}
                                 historial={data.historial}
                                 moneda={data.moneda}
-                                onCrear={() => setNuevoPresupuestoModal({ open: true, tipoAgrupacion: 'etapa', valor: etapaName })}
-                                onAdicional={data.id ? () => setAdicionalModal({ open: true, presupuestoId: data.id }) : null}
-                                onEditar={data.id ? () => {
-                                  setEditarModal({ open: true, presupuestoId: data.id, montoActual: data.presupuesto, monedaActual: data.moneda || 'ARS', label: etapaName });
-                                  setEdicionData({ nuevoMonto: data.presupuesto, motivo: '', nuevaMoneda: data.moneda || 'ARS' });
-                                } : null}
-                                onVerHistorial={data.historial?.length > 0 ? () => setHistorialModal({ open: true, historial: data.historial, label: etapaName }) : null}
+                                onCrear={() => abrirDrawerCrear('etapa', etapaName)}
+                                onAdicional={data.id ? () => abrirDrawerEditar(data, etapaName) : null}
+                                onEditar={data.id ? () => abrirDrawerEditar(data, etapaName) : null}
+                                onVerHistorial={data.id && data.historial?.length > 0 ? () => abrirDrawerEditar(data, etapaName) : null}
                               />
                             );
                           })
@@ -1022,13 +1140,10 @@ const ControlProyectoPage = () => {
                                 formatMonto={formatMonto}
                                 historial={data.historial}
                                 moneda={data.moneda}
-                                onCrear={() => setNuevoPresupuestoModal({ open: true, tipoAgrupacion: 'proveedor', valor: proveedor })}
-                                onAdicional={data.id ? () => setAdicionalModal({ open: true, presupuestoId: data.id }) : null}
-                                onEditar={data.id ? () => {
-                                  setEditarModal({ open: true, presupuestoId: data.id, montoActual: data.presupuesto, monedaActual: data.moneda || 'ARS', label: proveedor });
-                                  setEdicionData({ nuevoMonto: data.presupuesto, motivo: '', nuevaMoneda: data.moneda || 'ARS' });
-                                } : null}
-                                onVerHistorial={data.historial?.length > 0 ? () => setHistorialModal({ open: true, historial: data.historial, label: proveedor }) : null}
+                                onCrear={() => abrirDrawerCrear('proveedor', proveedor)}
+                                onAdicional={data.id ? () => abrirDrawerEditar(data, proveedor) : null}
+                                onEditar={data.id ? () => abrirDrawerEditar(data, proveedor) : null}
+                                onVerHistorial={data.id && data.historial?.length > 0 ? () => abrirDrawerEditar(data, proveedor) : null}
                               />
                             );
                           })
@@ -1044,74 +1159,21 @@ const ControlProyectoPage = () => {
         </Container>
       </Box>
 
-      {/* Modal de Nuevo Presupuesto */}
-      <Dialog open={nuevoPresupuestoModal.open} onClose={() => setNuevoPresupuestoModal({ open: false, tipoAgrupacion: null, valor: null })}>
-        <DialogTitle>
-          Crear Presupuesto: {nuevoPresupuestoModal.valor}
-        </DialogTitle>
-        <DialogContent>
-          <Stack spacing={2} sx={{ pt: 1, minWidth: 300 }}>
-            <Typography variant="body2" color="text.secondary">
-              {nuevoPresupuestoModal.tipoAgrupacion === 'categoria' && 'Presupuesto para la categoría'}
-              {nuevoPresupuestoModal.tipoAgrupacion === 'etapa' && 'Presupuesto para la etapa'}
-              {nuevoPresupuestoModal.tipoAgrupacion === 'proveedor' && 'Presupuesto para el proveedor'}
-            </Typography>
-            <Stack direction="row" spacing={2}>
-              <TextField
-                label="Monto"
-                type="number"
-                fullWidth
-                value={nuevoPresupuesto.monto}
-                onChange={(e) => setNuevoPresupuesto(prev => ({ ...prev, monto: e.target.value }))}
-                autoFocus
-              />
-              <ToggleButtonGroup
-                value={nuevoPresupuesto.moneda}
-                exclusive
-                onChange={(e, val) => val && setNuevoPresupuesto(prev => ({ ...prev, moneda: val }))}
-                size="small"
-              >
-                <ToggleButton value="ARS">ARS</ToggleButton>
-                <ToggleButton value="USD">USD</ToggleButton>
-              </ToggleButtonGroup>
-            </Stack>
-          </Stack>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setNuevoPresupuestoModal({ open: false, tipoAgrupacion: null, valor: null })}>
-            Cancelar
-          </Button>
-          <Button variant="contained" onClick={handleCrearPresupuesto}>
-            Crear
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Modal de Adicional */}
-      <Dialog open={adicionalModal.open} onClose={() => setAdicionalModal({ open: false, presupuestoId: null })}>
-        <DialogTitle>Agregar Adicional</DialogTitle>
-        <DialogContent>
-          <Stack spacing={2} sx={{ pt: 1, minWidth: 300 }}>
-            <TextField
-              label="Concepto"
-              fullWidth
-              value={nuevoAdicional.concepto}
-              onChange={(e) => setNuevoAdicional(prev => ({ ...prev, concepto: e.target.value }))}
-            />
-            <TextField
-              label="Monto"
-              type="number"
-              fullWidth
-              value={nuevoAdicional.monto}
-              onChange={(e) => setNuevoAdicional(prev => ({ ...prev, monto: e.target.value }))}
-            />
-          </Stack>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setAdicionalModal({ open: false, presupuestoId: null })}>Cancelar</Button>
-          <Button variant="contained" onClick={handleAgregarAdicional}>Agregar</Button>
-        </DialogActions>
-      </Dialog>
+      {/* Drawer de Presupuesto (crear/editar/adicional/historial) */}
+      <PresupuestoDrawer
+        open={drawerPresupuesto.open}
+        onClose={() => setDrawerPresupuesto(prev => ({ ...prev, open: false }))}
+        onSuccess={handleDrawerSuccess}
+        mode={drawerPresupuesto.mode}
+        empresaId={empresaId}
+        proyectoId={proyectoSeleccionado}
+        userId={user?.uid}
+        tipoAgrupacion={drawerPresupuesto.tipoAgrupacion}
+        valorAgrupacion={drawerPresupuesto.valorAgrupacion}
+        tipoDefault={drawerPresupuesto.tipoDefault}
+        proveedoresEmpresa={proveedoresEmpresa}
+        presupuesto={drawerPresupuesto.presupuesto}
+      />
 
       {/* Modal de Agregar Proveedor */}
       <Dialog open={proveedorModal} onClose={() => setProveedorModal(false)}>
@@ -1195,18 +1257,10 @@ const ControlProyectoPage = () => {
             variant="contained" 
             onClick={async () => {
               try {
-                await presupuestoService.crearPresupuesto({
-                  empresa_id: empresaId,
-                  proyecto_id: proyectoSeleccionado,
-                  tipo: 'egreso',
-                  monto: parseFloat(nuevoPresupuestoGeneral),
-                  moneda: monedaPresupuestoGeneral
-                });
-                setAlert({ open: true, message: 'Presupuesto general creado', severity: 'success' });
+                await handleCrearPresupuestoGeneral(nuevoPresupuestoGeneral, monedaPresupuestoGeneral);
                 setPresupuestoGeneralModal(false);
                 setNuevoPresupuestoGeneral('');
                 setMonedaPresupuestoGeneral('ARS');
-                cargarResumen();
               } catch (err) {
                 setAlert({ open: true, message: 'Error al crear presupuesto', severity: 'error' });
               }
@@ -1251,141 +1305,6 @@ const ControlProyectoPage = () => {
           </Button>
           <Button variant="contained" color="warning" onClick={handleAjustarGeneral}>
             Sí, ajustar a {formatMonto(ajusteGeneralModal.sumaHijos)}
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Modal de Edición de Presupuesto */}
-      <Dialog open={editarModal.open} onClose={() => setEditarModal({ open: false, presupuestoId: null, montoActual: 0, monedaActual: 'ARS', label: '' })}>
-        <DialogTitle>Editar Presupuesto: {editarModal.label}</DialogTitle>
-        <DialogContent>
-          <Stack spacing={2} sx={{ pt: 1, minWidth: 350 }}>
-            <Alert severity="info">
-              Monto actual: <strong>{formatMonto(editarModal.montoActual, editarModal.monedaActual)}</strong>
-              {editarModal.monedaActual === 'USD' ? ' 🇺🇸' : ' 🇦🇷'}
-            </Alert>
-            <Stack direction="row" spacing={2} alignItems="center">
-              <TextField
-                label="Nuevo Monto"
-                type="number"
-                fullWidth
-                value={edicionData.nuevoMonto}
-                onChange={(e) => setEdicionData(prev => ({ ...prev, nuevoMonto: e.target.value }))}
-                autoFocus
-              />
-              <ToggleButtonGroup
-                value={edicionData.nuevaMoneda}
-                exclusive
-                onChange={(e, val) => val && setEdicionData(prev => ({ ...prev, nuevaMoneda: val }))}
-                size="small"
-              >
-                <ToggleButton value="ARS">ARS</ToggleButton>
-                <ToggleButton value="USD">USD</ToggleButton>
-              </ToggleButtonGroup>
-            </Stack>
-            <TextField
-              label="Motivo del cambio"
-              fullWidth
-              multiline
-              rows={2}
-              value={edicionData.motivo}
-              onChange={(e) => setEdicionData(prev => ({ ...prev, motivo: e.target.value }))}
-              placeholder="Ej: Ajuste por inflación, cambio de alcance, etc."
-            />
-          </Stack>
-        </DialogContent>
-        <DialogActions sx={{ justifyContent: 'space-between' }}>
-          <Button color="error" onClick={handleEliminarPresupuesto}>
-            Eliminar
-          </Button>
-          <Stack direction="row" spacing={1}>
-            <Button onClick={() => setEditarModal({ open: false, presupuestoId: null, montoActual: 0, monedaActual: 'ARS', label: '' })}>
-              Cancelar
-            </Button>
-            <Button variant="contained" onClick={handleEditarPresupuesto}>
-              Guardar
-            </Button>
-          </Stack>
-        </DialogActions>
-      </Dialog>
-
-      {/* Modal de Historial */}
-      <Dialog 
-        open={historialModal.open} 
-        onClose={() => setHistorialModal({ open: false, historial: [], label: '' })}
-        maxWidth="md"
-        fullWidth
-      >
-        <DialogTitle>Historial de cambios: {historialModal.label}</DialogTitle>
-        <DialogContent>
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell>Fecha</TableCell>
-                <TableCell>Tipo</TableCell>
-                <TableCell>Concepto</TableCell>
-                <TableCell align="right">Monto Anterior</TableCell>
-                <TableCell align="right">Monto Nuevo</TableCell>
-                <TableCell align="right">Diferencia</TableCell>
-                <TableCell align="center">Moneda</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {historialModal.historial
-                .sort((a, b) => new Date(b.fecha?._seconds ? b.fecha._seconds * 1000 : b.fecha) - new Date(a.fecha?._seconds ? a.fecha._seconds * 1000 : a.fecha))
-                .map((item, idx) => {
-                  const fecha = item.fecha?._seconds 
-                    ? new Date(item.fecha._seconds * 1000).toLocaleDateString('es-AR') 
-                    : new Date(item.fecha).toLocaleDateString('es-AR');
-                  const diferencia = (item.montoNuevo || 0) - (item.montoAnterior || 0);
-                  const cambioMoneda = item.monedaAnterior && item.monedaNueva && item.monedaAnterior !== item.monedaNueva;
-                  return (
-                    <TableRow key={idx}>
-                      <TableCell>{fecha}</TableCell>
-                      <TableCell>
-                        <Chip 
-                          label={item.tipo === 'adicional' ? 'Adicional' : 'Edición'} 
-                          size="small" 
-                          color={item.tipo === 'adicional' ? 'primary' : 'secondary'}
-                          variant="outlined"
-                        />
-                      </TableCell>
-                      <TableCell>{item.concepto}</TableCell>
-                      <TableCell align="right">{formatMonto(item.montoAnterior, item.monedaAnterior)}</TableCell>
-                      <TableCell align="right">{formatMonto(item.montoNuevo, item.monedaNueva)}</TableCell>
-                      <TableCell align="right" sx={{ color: diferencia >= 0 ? 'success.main' : 'error.main' }}>
-                        {diferencia >= 0 ? '+' : ''}{formatMonto(diferencia, item.monedaNueva || item.monedaAnterior)}
-                      </TableCell>
-                      <TableCell align="center">
-                        {cambioMoneda ? (
-                          <Chip 
-                            label={`${item.monedaAnterior} → ${item.monedaNueva}`}
-                            size="small"
-                            color="warning"
-                            variant="outlined"
-                          />
-                        ) : (
-                          <Typography variant="caption" color="text.secondary">
-                            {item.monedaNueva || item.monedaAnterior || '-'}
-                          </Typography>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              {historialModal.historial.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={7} align="center">
-                    <Typography color="text.secondary">No hay cambios registrados</Typography>
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setHistorialModal({ open: false, historial: [], label: '' })}>
-            Cerrar
           </Button>
         </DialogActions>
       </Dialog>
