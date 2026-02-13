@@ -56,6 +56,8 @@ import { getEmpresaById, getEmpresaDetailsFromUser } from 'src/services/empresaS
 import { getProyectosFromUser } from 'src/services/proyectosService';
 import { formatCurrency, formatTimestamp } from 'src/utils/formatters';
 import PresupuestoDrawer from 'src/components/PresupuestoDrawer';
+import Tooltip from '@mui/material/Tooltip';
+import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 
 // Helper: calcular totales de un resumen multimoneda (para ProyectoCard)
 const calcularTotalesResumen = (resumen, tipoCambio = null, monedaVista = 'ARS') => {
@@ -125,7 +127,7 @@ const ProyectoCard = ({ proyecto, resumen, onSelect, formatMonto, tipoCambio, mo
 };
 
 // ============ COMPONENTE: ITEM DE PRESUPUESTO ============
-const PresupuestoItem = ({ label, presupuesto, ejecutado, formatMonto, onCrear, onAdicional, onEditar, onVerHistorial, historial, moneda }) => {
+const PresupuestoItem = ({ label, presupuesto, ejecutado, formatMonto, onCrear, onAdicional, onEditar, onVerHistorial, historial, moneda, indexacion, baseCalculo }) => {
   const tienePresupuesto = presupuesto !== null && presupuesto !== undefined;
   const porcentaje = tienePresupuesto && presupuesto > 0 ? (ejecutado / presupuesto) * 100 : 0;
   const tieneHistorial = historial && historial.length > 0;
@@ -152,7 +154,19 @@ const PresupuestoItem = ({ label, presupuesto, ejecutado, formatMonto, onCrear, 
       <Stack direction="row" justifyContent="space-between" alignItems="center">
         <Stack direction="row" spacing={1} alignItems="center">
           <Typography fontWeight={500}>{label}</Typography>
-          <Chip label={monedaLabel} size="small" variant="outlined" sx={{ minWidth: 32 }} />
+          <Tooltip title={moneda === 'USD' ? 'Dólares' : 'Pesos argentinos'} arrow>
+            <Chip label={monedaLabel} size="small" variant="outlined" sx={{ minWidth: 32 }} />
+          </Tooltip>
+          {indexacion && (
+            <Tooltip title={indexacion === 'CAC' ? 'Indexado por CAC (construcción)' : 'Indexado por dólar blue'} arrow>
+              <Chip label={`idx ${indexacion}`} size="small" color="secondary" variant="outlined" sx={{ height: 20, '& .MuiChip-label': { px: 0.5, fontSize: '0.65rem' } }} />
+            </Tooltip>
+          )}
+          {baseCalculo === 'subtotal' && (
+            <Tooltip title="Calcula ejecutado por subtotal neto (sin impuestos)" arrow>
+              <Chip label="neto" size="small" color="default" variant="outlined" sx={{ height: 20, '& .MuiChip-label': { px: 0.5, fontSize: '0.65rem' } }} />
+            </Tooltip>
+          )}
         </Stack>
         <Stack direction="row" spacing={1} alignItems="center">
           <Chip label={`Pres: ${formatMonto(presupuesto, moneda)}`} size="small" variant="outlined" />
@@ -815,6 +829,18 @@ const ControlProyectoPage = () => {
 
             {loading && <LinearProgress />}
 
+            {!loading && !resumen && (
+              <Box sx={{ py: 8, textAlign: 'center' }}>
+                <ReceiptLongIcon sx={{ fontSize: 64, color: 'grey.300', mb: 2 }} />
+                <Typography variant="h6" color="text.secondary" gutterBottom>
+                  Cargando presupuestos del proyecto...
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Si tarda demasiado, probá actualizando la página.
+                </Typography>
+              </Box>
+            )}
+
             {resumen && (
               <>
                 {/* Resumen General */}
@@ -897,13 +923,28 @@ const ControlProyectoPage = () => {
                           startIcon={<AddCircleIcon />}
                           onClick={() => abrirDrawerCrear(null, 'Ingreso', 'ingreso')}
                         >
-                          Crear Ingreso
+                          Crear presupuesto de ingreso
                         </Button>
                       </Stack>
                       {itemsIngreso.length === 0 ? (
-                        <Typography color="text.secondary" variant="body2" sx={{ py: 2, textAlign: 'center' }}>
-                          No hay ingresos presupuestados. Creá uno para controlar cobros al cliente.
-                        </Typography>
+                        <Box sx={{ py: 4, textAlign: 'center' }}>
+                          <TrendingUpIcon sx={{ fontSize: 48, color: 'grey.300', mb: 1 }} />
+                          <Typography color="text.secondary" variant="body2">
+                            No hay ingresos presupuestados.
+                          </Typography>
+                          <Typography color="text.secondary" variant="caption" sx={{ display: 'block', mb: 2 }}>
+                            Creá un presupuesto de ingreso para controlar cobros al cliente.
+                          </Typography>
+                          <Button
+                            size="small"
+                            variant="contained"
+                            color="success"
+                            startIcon={<AddCircleIcon />}
+                            onClick={() => abrirDrawerCrear(null, 'Ingreso', 'ingreso')}
+                          >
+                            Crear presupuesto de ingreso
+                          </Button>
+                        </Box>
                       ) : (
                         <Stack spacing={1.5}>
                           {itemsIngreso.map((item) => {
@@ -916,7 +957,19 @@ const ControlProyectoPage = () => {
                                 <Stack direction="row" justifyContent="space-between" alignItems="center">
                                   <Stack direction="row" spacing={1} alignItems="center">
                                     <Typography fontWeight={500}>{label}</Typography>
-                                    <Chip label={monedaLabel} size="small" variant="outlined" sx={{ minWidth: 32 }} />
+                                    <Tooltip title={monedaItem === 'USD' ? 'Dólares' : 'Pesos argentinos'} arrow>
+                                      <Chip label={monedaLabel} size="small" variant="outlined" sx={{ minWidth: 32 }} />
+                                    </Tooltip>
+                                    {item.indexacion && (
+                                      <Tooltip title={item.indexacion === 'CAC' ? 'Indexado por CAC' : 'Indexado por USD'} arrow>
+                                        <Chip label={`idx ${item.indexacion}`} size="small" color="secondary" variant="outlined" sx={{ height: 20, '& .MuiChip-label': { px: 0.5, fontSize: '0.65rem' } }} />
+                                      </Tooltip>
+                                    )}
+                                    {item.base_calculo === 'subtotal' && (
+                                      <Tooltip title="Calcula ejecutado por subtotal neto" arrow>
+                                        <Chip label="neto" size="small" color="default" variant="outlined" sx={{ height: 20, '& .MuiChip-label': { px: 0.5, fontSize: '0.65rem' } }} />
+                                      </Tooltip>
+                                    )}
                                   </Stack>
                                   <Stack direction="row" spacing={1} alignItems="center">
                                     <Chip label={`Pres: ${formatMonto(item.monto, monedaItem)}`} size="small" variant="outlined" />
@@ -1058,7 +1111,13 @@ const ControlProyectoPage = () => {
                     {tabActivo === 0 && (
                       <Stack spacing={2}>
                         {categorias.length === 0 ? (
-                          <Typography color="text.secondary">No hay categorías configuradas en la empresa</Typography>
+                          <Box sx={{ py: 4, textAlign: 'center' }}>
+                            <CategoryIcon sx={{ fontSize: 48, color: 'grey.300', mb: 1 }} />
+                            <Typography color="text.secondary">No hay categorías configuradas en la empresa.</Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              Agregá categorías desde la configuración de la empresa para asignar presupuestos.
+                            </Typography>
+                          </Box>
                         ) : (
                           categorias.map((cat) => {
                             const catName = cat.name || cat;
@@ -1072,6 +1131,8 @@ const ControlProyectoPage = () => {
                                 formatMonto={formatMonto}
                                 historial={data.historial}
                                 moneda={data.moneda}
+                                indexacion={data.indexacion}
+                                baseCalculo={data.base_calculo}
                                 onCrear={() => abrirDrawerCrear('categoria', catName)}
                                 onAdicional={data.id ? () => abrirDrawerEditar(data, catName) : null}
                                 onEditar={data.id ? () => abrirDrawerEditar(data, catName) : null}
@@ -1087,7 +1148,13 @@ const ControlProyectoPage = () => {
                     {tabActivo === 1 && (
                       <Stack spacing={2}>
                         {etapas.length === 0 ? (
-                          <Typography color="text.secondary">No hay etapas configuradas</Typography>
+                          <Box sx={{ py: 4, textAlign: 'center' }}>
+                            <TimelineIcon sx={{ fontSize: 48, color: 'grey.300', mb: 1 }} />
+                            <Typography color="text.secondary">No hay etapas configuradas.</Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              Agregá etapas desde la configuración de la empresa para asignar presupuestos por etapa.
+                            </Typography>
+                          </Box>
                         ) : (
                           etapas.map((etapa) => {
                             const etapaName = etapa.nombre || etapa.name || etapa;
@@ -1101,6 +1168,8 @@ const ControlProyectoPage = () => {
                                 formatMonto={formatMonto}
                                 historial={data.historial}
                                 moneda={data.moneda}
+                                indexacion={data.indexacion}
+                                baseCalculo={data.base_calculo}
                                 onCrear={() => abrirDrawerCrear('etapa', etapaName)}
                                 onAdicional={data.id ? () => abrirDrawerEditar(data, etapaName) : null}
                                 onEditar={data.id ? () => abrirDrawerEditar(data, etapaName) : null}
@@ -1125,9 +1194,23 @@ const ControlProyectoPage = () => {
                         </Button>
                         
                         {proveedoresAgregados.length === 0 ? (
-                          <Typography color="text.secondary">
-                            No hay proveedores agregados. Usa el botón para agregar uno.
-                          </Typography>
+                          <Box sx={{ py: 4, textAlign: 'center' }}>
+                            <StorefrontIcon sx={{ fontSize: 48, color: 'grey.300', mb: 1 }} />
+                            <Typography color="text.secondary">
+                              No hay proveedores agregados a este proyecto.
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
+                              Agregá proveedores para asignarles presupuesto individual.
+                            </Typography>
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              startIcon={<AddCircleIcon />}
+                              onClick={() => setProveedorModal(true)}
+                            >
+                              Agregar proveedor
+                            </Button>
+                          </Box>
                         ) : (
                           proveedoresAgregados.map((proveedor) => {
                             const data = getPresupuestoPorAgrupacion('proveedor', proveedor);
@@ -1140,6 +1223,8 @@ const ControlProyectoPage = () => {
                                 formatMonto={formatMonto}
                                 historial={data.historial}
                                 moneda={data.moneda}
+                                indexacion={data.indexacion}
+                                baseCalculo={data.base_calculo}
                                 onCrear={() => abrirDrawerCrear('proveedor', proveedor)}
                                 onAdicional={data.id ? () => abrirDrawerEditar(data, proveedor) : null}
                                 onEditar={data.id ? () => abrirDrawerEditar(data, proveedor) : null}
@@ -1173,6 +1258,19 @@ const ControlProyectoPage = () => {
         tipoDefault={drawerPresupuesto.tipoDefault}
         proveedoresEmpresa={proveedoresEmpresa}
         presupuesto={drawerPresupuesto.presupuesto}
+        onRecalcular={async (id) => {
+          try {
+            const { success } = await presupuestoService.recalcularPresupuesto(id, empresaId);
+            if (success) {
+              setAlert({ open: true, message: 'Presupuesto recalculado correctamente', severity: 'success' });
+              cargarResumen();
+            } else {
+              setAlert({ open: true, message: 'No se pudo recalcular', severity: 'warning' });
+            }
+          } catch (err) {
+            setAlert({ open: true, message: 'Error al recalcular', severity: 'error' });
+          }
+        }}
       />
 
       {/* Modal de Agregar Proveedor */}
