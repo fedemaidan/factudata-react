@@ -14,7 +14,9 @@ import {
   TableCell,
   TableHead,
   TableRow,
-  Divider
+  Divider,
+  Chip,
+  TableContainer
 } from '@mui/material';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import { useAuthContext } from 'src/contexts/auth-context';
@@ -24,8 +26,8 @@ const CatalogosBejermanPage = () => {
   const { user } = useAuthContext();
   const empresaId = useMemo(() => user?.empresa?.id, [user]);
 
+  const [modulo, setModulo] = useState('INTE');
   const [vista, setVista] = useState('');
-  const [campos, setCampos] = useState('');
   const [filtros, setFiltros] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -34,7 +36,12 @@ const CatalogosBejermanPage = () => {
   const parseDatos = (datosJson) => {
     if (!datosJson) return null;
     try {
-      return JSON.parse(datosJson);
+      let parsed = JSON.parse(datosJson);
+      // Bejerman a veces devuelve string con doble escape: "[{...}]"
+      if (typeof parsed === 'string') {
+        parsed = JSON.parse(parsed);
+      }
+      return parsed;
     } catch (err) {
       return datosJson;
     }
@@ -42,21 +49,22 @@ const CatalogosBejermanPage = () => {
 
   const handleConsultar = async () => {
     if (!empresaId) return;
+    const moduloValue = modulo.trim();
     const vistaValue = vista.trim();
-    const camposValue = campos.trim();
     const filtrosValue = filtros.trim();
 
-    if (!vistaValue || !camposValue) {
-      setError('Completá Vista y Campos.');
+    if (!moduloValue || !vistaValue) {
+      setError('Completá Módulo y Vista.');
       return;
     }
     setError('');
     setLoading(true);
     setResultado(null);
 
+    // Formato confirmado por Bejerman: ["MODULO", "Vista", "[{Campo,Valor}]"]
     const parametrosJson = filtrosValue
-      ? [vistaValue, camposValue, filtrosValue]
-      : [vistaValue, camposValue];
+      ? [moduloValue, vistaValue, filtrosValue]
+      : [moduloValue, vistaValue];
 
     try {
       const response = await bejermanService.query({
@@ -84,26 +92,28 @@ const CatalogosBejermanPage = () => {
 
   const renderTable = (data) => {
     if (!Array.isArray(data) || data.length === 0) return null;
-    const columns = Object.keys(data[0] || {}).slice(0, 12);
+    const columns = Object.keys(data[0] || {});
     return (
-      <Table size="small">
-        <TableHead>
-          <TableRow>
-            {columns.map((col) => (
-              <TableCell key={col}>{col}</TableCell>
-            ))}
-          </TableRow>
-        </TableHead>
-        <TableBody>
-          {data.slice(0, 50).map((row, idx) => (
-            <TableRow key={idx}>
+      <TableContainer sx={{ maxHeight: 500 }}>
+        <Table size="small" stickyHeader>
+          <TableHead>
+            <TableRow>
               {columns.map((col) => (
-                <TableCell key={col}>{String(row?.[col] ?? '')}</TableCell>
+                <TableCell key={col} sx={{ whiteSpace: 'nowrap', fontWeight: 'bold' }}>{col}</TableCell>
               ))}
             </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+          </TableHead>
+          <TableBody>
+            {data.slice(0, 100).map((row, idx) => (
+              <TableRow key={idx}>
+                {columns.map((col) => (
+                  <TableCell key={col} sx={{ whiteSpace: 'nowrap' }}>{String(row?.[col] ?? '')}</TableCell>
+                ))}
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </TableContainer>
     );
   };
 
@@ -123,50 +133,71 @@ const CatalogosBejermanPage = () => {
                   Consulta QUERIES (ObtenerJsonQueryVista)
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  Ingresá la Vista, los Campos y opcionalmente el Filtro. Esto trae los códigos desde Bejerman sin ejecutar el .exe.
+                  Formato: Módulo (ej: INTE), Vista (ej: Bitrix24/Productos) y opcionalmente Filtro JSON [{'"'}Campo{'"'}:{'"'}SKU{'"'},{'"'}Valor{'"'}:{'"'}123{'"'}].
                 </Typography>
 
                 <TextField
+                  label="Módulo"
+                  placeholder="Ej: INTE"
+                  value={modulo}
+                  onChange={(e) => setModulo(e.target.value)}
+                  fullWidth
+                />
+                <TextField
                   label="Vista"
-                  placeholder="Ej: VW_MOV_FONDOS"
+                  placeholder="Ej: Bitrix24/Productos"
                   value={vista}
                   onChange={(e) => setVista(e.target.value)}
                   fullWidth
                 />
                 <TextField
-                  label="Campos"
-                  placeholder="Ej: CODIGO,DESCRIPCION"
-                  value={campos}
-                  onChange={(e) => setCampos(e.target.value)}
-                  fullWidth
-                />
-                <TextField
-                  label="Filtro (opcional)"
-                  placeholder="Ej: ACTIVO=1"
+                  label="Filtro JSON (opcional)"
+                  placeholder='Ej: [{"Campo":"SKU","Valor":"024202"}]'
                   value={filtros}
                   onChange={(e) => setFiltros(e.target.value)}
                   fullWidth
+                  multiline
+                  minRows={2}
                 />
 
                 <Stack direction="row" spacing={2}>
                   <Button variant="contained" onClick={handleConsultar} disabled={loading}>
                     {loading ? 'Consultando...' : 'Consultar'}
                   </Button>
-                  <Button
-                    variant="outlined"
-                    onClick={() => {
-                      setVista('Bitrix24\\Productos');
-                      setCampos('CODIGO,DESCRIPCION');
-                      setFiltros('');
-                      setResultado(null);
-                      setError('');
-                    }}
-                  >
-                    Ejemplo del mail
-                  </Button>
-                  <Button variant="outlined" onClick={() => { setResultado(null); setError(''); }}>
+                  <Button variant="outlined" onClick={() => { setResultado(null); setError(''); setVista(''); setFiltros(''); }}>
                     Limpiar
                   </Button>
+                </Stack>
+
+                <Divider />
+                <Typography variant="caption" color="text.secondary">Vistas rápidas (click para cargar):</Typography>
+                <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                  {[
+                    { label: 'Productos', vista: 'Bitrix24/Productos', filtro: '' },
+                    { label: 'Productos (SKU)', vista: 'Bitrix24/Productos', filtro: '[{"Campo":"SKU","Valor":"024202"}]' },
+                    { label: 'Clientes', vista: 'Bitrix24/Clientes', filtro: '' },
+                    { label: 'Proveedores', vista: 'Bitrix24/Proveedores', filtro: '' },
+                    { label: 'Bancos', vista: 'Bitrix24/Bancos', filtro: '' },
+                    { label: 'Cuentas Bancarias', vista: 'Bitrix24/CuentasBancarias', filtro: '' },
+                    { label: 'Cajas', vista: 'Bitrix24/Cajas', filtro: '' },
+                    { label: 'Mov. Fondos', vista: 'Bitrix24/TiposMovFondos', filtro: '' },
+                    { label: 'Monedas', vista: 'Bitrix24/Monedas', filtro: '' },
+                  ].map((v) => (
+                    <Chip
+                      key={v.label}
+                      label={v.label}
+                      variant="outlined"
+                      size="small"
+                      onClick={() => {
+                        setModulo('INTE');
+                        setVista(v.vista);
+                        setFiltros(v.filtro);
+                        setResultado(null);
+                        setError('');
+                      }}
+                      sx={{ cursor: 'pointer' }}
+                    />
+                  ))}
                 </Stack>
 
                 {error && <Alert severity="error">{error}</Alert>}
