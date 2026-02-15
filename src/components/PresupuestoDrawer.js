@@ -346,7 +346,7 @@ const PresupuestoDrawer = ({
         <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}>
           <Stack>
             <Typography variant="h6">
-              {mode === 'crear' ? 'Crear Presupuesto' : 'Editar Presupuesto'}
+              {mode === 'crear' ? 'Nuevo presupuesto' : 'Editar presupuesto'}
             </Typography>
             {label && (
               <Typography variant="body2" color="text.secondary">
@@ -372,7 +372,7 @@ const PresupuestoDrawer = ({
               {/* Tipo */}
               <Box>
                 <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
-                  Tipo de presupuesto
+                  ¿Qué querés controlar?
                 </Typography>
                 <ToggleButtonGroup
                   value={tipo}
@@ -382,15 +382,23 @@ const PresupuestoDrawer = ({
                   fullWidth
                   color={tipo === 'ingreso' ? 'success' : 'error'}
                 >
-                  <ToggleButton value="egreso" sx={{ flex: 1 }}>Egreso</ToggleButton>
-                  <ToggleButton value="ingreso" sx={{ flex: 1 }}>Ingreso</ToggleButton>
+                  <ToggleButton value="egreso" sx={{ flex: 1 }}>
+                    <Tooltip title="Controlá cuánto gastás vs lo presupuestado" arrow>
+                      <span>💸 Gastos</span>
+                    </Tooltip>
+                  </ToggleButton>
+                  <ToggleButton value="ingreso" sx={{ flex: 1 }}>
+                    <Tooltip title="Controlá cuánto cobrás vs lo esperado" arrow>
+                      <span>💰 Cobros</span>
+                    </Tooltip>
+                  </ToggleButton>
                 </ToggleButtonGroup>
               </Box>
 
               {/* Monto + Moneda */}
               <Box>
                 <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
-                  Monto
+                  {tipo === 'ingreso' ? '¿Cuánto esperás cobrar?' : '¿Cuánto pensás gastar?'}
                 </Typography>
                 <Stack direction="row" spacing={2}>
                   <TextField
@@ -398,7 +406,7 @@ const PresupuestoDrawer = ({
                     fullWidth
                     value={monto}
                     onChange={(e) => setMonto(e.target.value)}
-                    placeholder="Ej: 5000000"
+                    placeholder={tipo === 'ingreso' ? 'Ej: 10000000' : 'Ej: 5000000'}
                     autoFocus
                   />
                   <ToggleButtonGroup
@@ -415,13 +423,23 @@ const PresupuestoDrawer = ({
                     <ToggleButton value="USD">USD</ToggleButton>
                   </ToggleButtonGroup>
                 </Stack>
+                {monto && parseFloat(monto) > 0 && (
+                  <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                    {moneda === 'USD' ? 'USD ' : '$'}
+                    {Number(parseFloat(monto)).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+                    {moneda === 'ARS' ? ' ARS' : ''}
+                    {indexacion === 'CAC' && ' indexados por CAC'}
+                    {indexacion === 'USD' && ' indexados por dólar'}
+                    {!indexacion && moneda === 'ARS' && ' sin indexar'}
+                  </Typography>
+                )}
               </Box>
 
               {/* Indexación (solo para ARS) */}
               {moneda === 'ARS' && (
                 <Box>
                   <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
-                    Indexación
+                    ¿Querés protegerte de la inflación?
                   </Typography>
                   <ToggleButtonGroup
                     value={indexacion}
@@ -431,16 +449,16 @@ const PresupuestoDrawer = ({
                     fullWidth
                   >
                     <ToggleButton value={null} sx={{ flex: 1 }}>
-                      Sin indexar
+                      Pesos fijos
                     </ToggleButton>
                     <ToggleButton value="CAC" sx={{ flex: 1 }}>
-                      <Tooltip title="Índice CAC (construcción) — se ajusta por inflación" arrow>
-                        <span>Indexar CAC</span>
+                      <Tooltip title="Ajusta automáticamente por el índice de construcción (CAC)" arrow>
+                        <span>Ajustar por CAC</span>
                       </Tooltip>
                     </ToggleButton>
                     <ToggleButton value="USD" sx={{ flex: 1 }}>
-                      <Tooltip title="Se guarda en USD y se muestra en pesos al valor actual" arrow>
-                        <span>Indexar USD</span>
+                      <Tooltip title="Se guarda en dólares y se muestra al valor del día" arrow>
+                        <span>Ajustar por dólar</span>
                       </Tooltip>
                     </ToggleButton>
                   </ToggleButtonGroup>
@@ -463,6 +481,31 @@ const PresupuestoDrawer = ({
                   )}
                 </Box>
               )}
+
+              {/* Base de cálculo */}
+              <Box>
+                <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
+                  ¿Cómo comparás contra las facturas?
+                </Typography>
+                <ToggleButtonGroup
+                  value={baseCalculo}
+                  exclusive
+                  onChange={(e, val) => val && setBaseCalculo(val)}
+                  size="small"
+                  fullWidth
+                >
+                  <ToggleButton value="total" sx={{ flex: 1 }}>
+                    <Tooltip title="Suma el total de cada factura (incluye impuestos)" arrow>
+                      <span>Total (con imp.)</span>
+                    </Tooltip>
+                  </ToggleButton>
+                  <ToggleButton value="subtotal" sx={{ flex: 1 }}>
+                    <Tooltip title="Suma el subtotal neto de cada factura (sin impuestos)" arrow>
+                      <span>Neto (sin imp.)</span>
+                    </Tooltip>
+                  </ToggleButton>
+                </ToggleButtonGroup>
+              </Box>
 
               {/* Proveedor (simplificado: solo si agrupación proveedor sin valor) */}
               {!showFullForm && tipoAgrupacion === 'proveedor' && !valorAgrupacion && (
@@ -513,121 +556,103 @@ const PresupuestoDrawer = ({
                     </FormControl>
                   </Box>
 
-                  <Divider />
-                  <Typography variant="subtitle2" color="text.secondary">
-                    Información adicional (opcional)
-                  </Typography>
+                  {tipo !== 'ingreso' && (
+                    <>
+                      <Divider />
+                      <Typography variant="subtitle2" color="text.secondary">
+                        Opcional: ¿querés filtrar el seguimiento?
+                      </Typography>
+                      <Typography variant="caption" color="text.disabled" sx={{ mt: -1.5 }}>
+                        Asociá categoría, proveedor o etapa para un control más preciso
+                      </Typography>
 
-                  <FormControl fullWidth size="small">
-                    <InputLabel>Categoría</InputLabel>
-                    <Select
-                      value={categoriaSel}
-                      onChange={(e) => { setCategoriaSel(e.target.value); setSubcategoriaSel(''); }}
-                      label="Categoría"
-                    >
-                      <MenuItem value=""><em>Sin categoría</em></MenuItem>
-                      {categorias.map((cat, idx) => (
-                        <MenuItem key={idx} value={cat.name}>{cat.name}</MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
+                      <FormControl fullWidth size="small">
+                        <InputLabel>Categoría</InputLabel>
+                        <Select
+                          value={categoriaSel}
+                          onChange={(e) => { setCategoriaSel(e.target.value); setSubcategoriaSel(''); }}
+                          label="Categoría"
+                        >
+                          <MenuItem value=""><em>Sin categoría</em></MenuItem>
+                          {categorias.map((cat, idx) => (
+                            <MenuItem key={idx} value={cat.name}>{cat.name}</MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
 
-                  <Box>
-                    <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>
-                      Proveedor
-                    </Typography>
-                    <Autocomplete
-                      freeSolo
-                      options={proveedoresEmpresa}
-                      value={proveedorInput}
-                      onChange={(e, val) => setProveedorInput(val || '')}
-                      onInputChange={(e, val) => setProveedorInput(val || '')}
-                      getOptionLabel={(option) => option || ''}
-                      size="small"
-                      renderInput={(params) => (
-                        <TextField {...params} placeholder="Buscar o crear proveedor..." />
-                      )}
-                      renderOption={(props, option) => (
-                        <li {...props}>
-                          <Stack direction="row" spacing={1} alignItems="center">
-                            <StorefrontIcon fontSize="small" color="action" />
-                            <Typography>{option}</Typography>
-                          </Stack>
-                        </li>
-                      )}
-                    />
-                  </Box>
+                      <Box>
+                        <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>
+                          Proveedor
+                        </Typography>
+                        <Autocomplete
+                          freeSolo
+                          options={proveedoresEmpresa}
+                          value={proveedorInput}
+                          onChange={(e, val) => setProveedorInput(val || '')}
+                          onInputChange={(e, val) => setProveedorInput(val || '')}
+                          getOptionLabel={(option) => option || ''}
+                          size="small"
+                          renderInput={(params) => (
+                            <TextField {...params} placeholder="Buscar o crear proveedor..." />
+                          )}
+                          renderOption={(props, option) => (
+                            <li {...props}>
+                              <Stack direction="row" spacing={1} alignItems="center">
+                                <StorefrontIcon fontSize="small" color="action" />
+                                <Typography>{option}</Typography>
+                              </Stack>
+                            </li>
+                          )}
+                        />
+                      </Box>
 
-                  <FormControl fullWidth size="small">
-                    <InputLabel>Etapa</InputLabel>
-                    <Select
-                      value={etapaSel}
-                      onChange={(e) => setEtapaSel(e.target.value)}
-                      label="Etapa"
-                    >
-                      <MenuItem value=""><em>Sin etapa</em></MenuItem>
-                      {etapas.map((et, idx) => (
-                        <MenuItem key={idx} value={et}>{et}</MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
+                      <FormControl fullWidth size="small">
+                        <InputLabel>Etapa</InputLabel>
+                        <Select
+                          value={etapaSel}
+                          onChange={(e) => setEtapaSel(e.target.value)}
+                          label="Etapa"
+                        >
+                          <MenuItem value=""><em>Sin etapa</em></MenuItem>
+                          {etapas.map((et, idx) => (
+                            <MenuItem key={idx} value={et}>{et}</MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
 
-                  <FormControl fullWidth size="small" disabled={!categoriaSel}>
-                    <InputLabel>Subcategoría</InputLabel>
-                    <Select
-                      value={subcategoriaSel}
-                      onChange={(e) => setSubcategoriaSel(e.target.value)}
-                      label="Subcategoría"
-                    >
-                      <MenuItem value=""><em>Sin subcategoría</em></MenuItem>
-                      {(categorias.find(c => c.name === categoriaSel)?.subcategorias || []).map((sub, idx) => (
-                        <MenuItem key={idx} value={sub}>{sub}</MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
+                      <FormControl fullWidth size="small" disabled={!categoriaSel}>
+                        <InputLabel>Subcategoría</InputLabel>
+                        <Select
+                          value={subcategoriaSel}
+                          onChange={(e) => setSubcategoriaSel(e.target.value)}
+                          label="Subcategoría"
+                        >
+                          <MenuItem value=""><em>Sin subcategoría</em></MenuItem>
+                          {(categorias.find(c => c.name === categoriaSel)?.subcategorias || []).map((sub, idx) => (
+                            <MenuItem key={idx} value={sub}>{sub}</MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                    </>
+                  )}
                 </>
               )}
 
-              {/* Base de cálculo */}
-              <Box>
-                <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
-                  Base de cálculo
-                </Typography>
-                <ToggleButtonGroup
-                  value={baseCalculo}
-                  exclusive
-                  onChange={(e, val) => val && setBaseCalculo(val)}
-                  size="small"
-                  fullWidth
-                >
-                  <ToggleButton value="total" sx={{ flex: 1 }}>
-                    <Tooltip title="Suma el total de cada factura (incluye impuestos)" arrow>
-                      <span>Total (con imp.)</span>
-                    </Tooltip>
-                  </ToggleButton>
-                  <ToggleButton value="subtotal" sx={{ flex: 1 }}>
-                    <Tooltip title="Suma el subtotal neto de cada factura (sin impuestos)" arrow>
-                      <span>Neto (sin imp.)</span>
-                    </Tooltip>
-                  </ToggleButton>
-                </ToggleButtonGroup>
-              </Box>
-
               {/* Preview */}
               {monto && parseFloat(monto) > 0 && (
-                <Alert severity="info" variant="outlined">
+                <Alert severity="info" variant="outlined" icon={<InfoOutlinedIcon fontSize="small" />}>
                   <Typography variant="body2">
-                    {tipo === 'ingreso' ? 'Ingreso' : 'Egreso'} de{' '}
+                    Vas a controlar {tipo === 'ingreso' ? 'cobros' : 'gastos'} por{' '}
                     <strong>{formatMonto(parseFloat(monto), moneda)}</strong>
-                    {indexacion && <> (indexado {indexacion})</>}
-                    {baseCalculo === 'subtotal' && <> · base neta</>}
+                    {indexacion && <> ajustado por {indexacion === 'CAC' ? 'inflación (CAC)' : 'dólar'}</>}
+                    {baseCalculo === 'subtotal' && <> · comparando contra neto sin impuestos</>}
                     {showFullForm && proyectoSel && (
                       <> en <strong>{proyectos.find(p => p.id === proyectoSel)?.nombre}</strong></>
                     )}
                     {!showFullForm && label && <> para <strong>{label}</strong></>}
-                    {proveedorInput && <>, proveedor: <strong>{proveedorInput}</strong></>}
-                    {etapaSel && <>, etapa: <strong>{etapaSel}</strong></>}
-                    {categoriaSel && <>, categoría: <strong>{categoriaSel}</strong></>}
+                    {proveedorInput && <> · proveedor: <strong>{proveedorInput}</strong></>}
+                    {etapaSel && <> · etapa: <strong>{etapaSel}</strong></>}
+                    {categoriaSel && <> · categoría: <strong>{categoriaSel}</strong></>}
                     {subcategoriaSel && <> / <strong>{subcategoriaSel}</strong></>}
                   </Typography>
                 </Alert>
@@ -641,16 +666,16 @@ const PresupuestoDrawer = ({
               <Box sx={{ p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
                 <Stack spacing={1}>
                   <Stack direction="row" justifyContent="space-between">
-                    <Typography variant="body2" color="text.secondary">Tipo</Typography>
+                    <Typography variant="body2" color="text.secondary">Controlás</Typography>
                     <Chip
-                      label={presupuesto.tipo === 'ingreso' ? 'Ingreso' : 'Egreso'}
+                      label={presupuesto.tipo === 'ingreso' ? '💰 Cobros' : '💸 Gastos'}
                       size="small"
                       color={presupuesto.tipo === 'ingreso' ? 'success' : 'error'}
                       variant="outlined"
                     />
                   </Stack>
                   <Stack direction="row" justifyContent="space-between">
-                    <Typography variant="body2" color="text.secondary">Monto actual</Typography>
+                    <Typography variant="body2" color="text.secondary">Presupuestado</Typography>
                     <Stack direction="row" spacing={1} alignItems="center">
                       {presupuesto.indexacion ? (
                         <>
@@ -678,7 +703,7 @@ const PresupuestoDrawer = ({
                     </Alert>
                   )}
                   <Stack direction="row" justifyContent="space-between">
-                    <Typography variant="body2" color="text.secondary">Base de cálculo</Typography>
+                    <Typography variant="body2" color="text.secondary">Compara contra</Typography>
                     <Chip
                       label={presupuesto.base_calculo === 'subtotal' ? 'Neto (sin imp.)' : 'Total (con imp.)'}
                       size="small"
@@ -712,7 +737,7 @@ const PresupuestoDrawer = ({
               {/* Editar monto */}
               <Box>
                 <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
-                  Nuevo monto {nuevaIndexacion ? '(en pesos, se indexará)' : ''}
+                  Nuevo monto {nuevaIndexacion ? '(ingresá en pesos, se va a indexar)' : ''}
                 </Typography>
                 <Stack direction="row" spacing={2}>
                   <TextField
@@ -736,13 +761,23 @@ const PresupuestoDrawer = ({
                     <ToggleButton value="USD">USD</ToggleButton>
                   </ToggleButtonGroup>
                 </Stack>
+                {nuevoMonto && parseFloat(nuevoMonto) > 0 && (
+                  <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                    {nuevaMoneda === 'USD' ? 'USD ' : '$'}
+                    {Number(parseFloat(nuevoMonto)).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+                    {nuevaMoneda === 'ARS' ? ' ARS' : ''}
+                    {nuevaIndexacion === 'CAC' && ' indexados por CAC'}
+                    {nuevaIndexacion === 'USD' && ' indexados por dólar'}
+                    {!nuevaIndexacion && nuevaMoneda === 'ARS' && ' sin indexar'}
+                  </Typography>
+                )}
               </Box>
 
               {/* Indexación (solo para ARS) */}
               {nuevaMoneda === 'ARS' && (
                 <Box>
                   <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
-                    Indexación
+                    ¿Querés protegerte de la inflación?
                   </Typography>
                   <ToggleButtonGroup
                     value={nuevaIndexacion}
@@ -751,9 +786,9 @@ const PresupuestoDrawer = ({
                     size="small"
                     fullWidth
                   >
-                    <ToggleButton value={null} sx={{ flex: 1 }}>Sin indexar</ToggleButton>
-                    <ToggleButton value="CAC" sx={{ flex: 1 }}>Indexar CAC</ToggleButton>
-                    <ToggleButton value="USD" sx={{ flex: 1 }}>Indexar USD</ToggleButton>
+                    <ToggleButton value={null} sx={{ flex: 1 }}>Pesos fijos</ToggleButton>
+                    <ToggleButton value="CAC" sx={{ flex: 1 }}>Ajustar por CAC</ToggleButton>
+                    <ToggleButton value="USD" sx={{ flex: 1 }}>Ajustar por dólar</ToggleButton>
                   </ToggleButtonGroup>
 
                   {nuevaIndexacion && nuevoMonto && parseFloat(nuevoMonto) > 0 && (
@@ -773,7 +808,7 @@ const PresupuestoDrawer = ({
               {/* Base de cálculo */}
               <Box>
                 <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
-                  Base de cálculo
+                  ¿Cómo comparás contra las facturas?
                 </Typography>
                 <ToggleButtonGroup
                   value={nuevaBaseCalculo}
@@ -934,7 +969,7 @@ const PresupuestoDrawer = ({
               disabled={loading || !monto || parseFloat(monto) <= 0 || (showFullForm && !proyectoSel)}
               startIcon={loading ? <CircularProgress size={16} color="inherit" /> : null}
             >
-              {loading ? 'Creando...' : 'Crear Presupuesto'}
+              {loading ? 'Creando...' : tipo === 'ingreso' ? 'Crear control de cobros' : 'Crear control de gastos'}
             </Button>
           )}
 
