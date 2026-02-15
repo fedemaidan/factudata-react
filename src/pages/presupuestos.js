@@ -10,9 +10,9 @@ import {
   Table,
   TableBody,
   TableCell,
+  TableContainer,
   TableHead,
   TableRow,
-  IconButton,
   TextField,
   Button,
   Snackbar,
@@ -20,33 +20,32 @@ import {
   Select,
   MenuItem,
   FormControl,
+  FormControlLabel,
   InputLabel,
   Dialog,
   DialogActions,
   DialogContent,
   DialogContentText,
   DialogTitle,
-  FormHelperText,
-  Divider,
-  Collapse,
-  InputAdornment,
-  CircularProgress,
   Chip,
-  Checkbox
+  Checkbox,
+  IconButton,
+  Tooltip,
+  Popover,
+  Switch
 } from '@mui/material';
 import { LinearProgress } from '@mui/material';
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
 import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import ExpandLessIcon from '@mui/icons-material/ExpandLess';
-import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
+import ViewColumnIcon from '@mui/icons-material/ViewColumn';
 import { useRouter } from 'next/router';
-import { Autorenew, Delete, Edit, Save } from '@mui/icons-material';
+import { Add, Delete } from '@mui/icons-material';
 import { useAuthContext } from 'src/contexts/auth-context';
 import presupuestoService from 'src/services/presupuestoService';
+import MonedasService from 'src/services/monedasService';
+import PresupuestoDrawer from 'src/components/PresupuestoDrawer';
 import { getEmpresaById, getEmpresaDetailsFromUser } from 'src/services/empresaService';
 import { getProyectosFromUser } from 'src/services/proyectosService';
-import { Timestamp } from 'firebase/firestore';
 import { formatCurrency, formatTimestamp } from 'src/utils/formatters';
 import * as XLSX from 'xlsx';
 
@@ -73,62 +72,60 @@ const formatFechaInput = (fecha) => {
 
 
 
-const parseFechaInput = (fechaString) => {
-  if (!fechaString) return null;
-  const [year, month, day] = fechaString.split('-').map(Number);
-  return new Date(year, month - 1, day); // mes: 0-based
-};
-
 const PresupuestosPage = () => {
 
   const { user } = useAuthContext();
   const router = useRouter();
   const [presupuestos, setPresupuestos] = useState([]);
-  const [nuevoMonto, setNuevoMonto] = useState('');
-  const [nuevoProveedor, setNuevoProveedor] = useState('');
-  const [nuevoProyecto, setNuevoProyecto] = useState('');
   const [proyectos, setProyectos] = useState([]);
   const [categorias, setCategorias] = useState([]);
-  const [nuevaCategoria, setNuevaCategoria] = useState('');
-  const [nuevaSubcategoria, setNuevaSubcategoria] = useState('');
   const [empresaId, setEmpresaId] = useState(null);
-  const [editing, setEditing] = useState({});
   const [alert, setAlert] = useState({ open: false, message: '', severity: 'info' });
   const [proveedores, setProveedores] = useState([]);
   const [etapas, setEtapas] = useState([]);
-  const [nuevaEtapa, setNuevaEtapa] = useState('');
+  const [filtroTipo, setFiltroTipo] = useState('todos');
+
+  // Cotizaciones para mostrar montos indexados en su moneda_display
+  const [dolarRate, setDolarRate] = useState(null);
+  const [cacIndice, setCacIndice] = useState(null);
+
+  // Drawer de presupuesto
+  const [drawerPresupuesto, setDrawerPresupuesto] = useState({
+    open: false,
+    mode: 'crear',
+    presupuesto: null,
+  });
   const [orderBy, setOrderBy] = useState('fechaInicio');
   const [orderDirection, setOrderDirection] = useState('asc');
   const [searchTerm, setSearchTerm] = useState('');
   const [filteredPresupuestos, setFilteredPresupuestos] = useState([]);
-  const [deleteDialog, setDeleteDialog] = useState({ open: false, codigo: null });
   const [selectedPresupuestos, setSelectedPresupuestos] = useState([]);
   const [deleteMultipleDialog, setDeleteMultipleDialog] = useState(false);
-  const [formTouched, setFormTouched] = useState({});
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [formExpanded, setFormExpanded] = useState(true);
-  const subcategoriasFiltradas = categorias.find(c => c.name === nuevaCategoria)?.subcategorias || [];
+  const [colAnchorEl, setColAnchorEl] = useState(null);
+  const [columnasVisibles, setColumnasVisibles] = useState({
+    codigo: true,
+    tipo: true,
+    fechaInicio: false,
+    monto: true,
+    detalle: true,
+    proyecto: true,
+    ejecutado: true,
+    disponible: true,
+  });
 
-  // Validación del formulario
-  const formErrors = {
-    monto: formTouched.monto && (!nuevoMonto || parseFloat(nuevoMonto) <= 0),
-    proyecto: formTouched.proyecto && !nuevoProyecto,
+  const toggleColumna = (key) => {
+    setColumnasVisibles(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
-  const isFormValid = nuevoMonto && parseFloat(nuevoMonto) > 0 && nuevoProyecto;
-
-  const handleFieldBlur = (field) => {
-    setFormTouched(prev => ({ ...prev, [field]: true }));
-  };
-
-  const resetForm = () => {
-    setNuevoMonto('');
-    setNuevoProveedor('');
-    setNuevoProyecto('');
-    setNuevaCategoria('');
-    setNuevaSubcategoria('');
-    setNuevaEtapa('');
-    setFormTouched({});
+  const COLUMNAS_LABELS = {
+    codigo: 'Código',
+    tipo: 'Tipo',
+    fechaInicio: 'Fecha inicio',
+    monto: 'Monto',
+    detalle: 'Detalle',
+    proyecto: 'Proyecto',
+    ejecutado: 'Ejecutado',
+    disponible: 'Disponible',
   };
 
   const handleSelectPresupuesto = (codigo) => {
@@ -177,12 +174,14 @@ const PresupuestosPage = () => {
           const proveedor = p.proveedor?.toLowerCase() || '';
           const etapa = p.etapa?.toLowerCase() || '';
           const proyecto = proyectos.find(pr => pr.id === p.proyecto_id)?.nombre?.toLowerCase() || '';
-          return proveedor.includes(term) || etapa.includes(term) || proyecto.includes(term);
+          const matchTerm = proveedor.includes(term) || etapa.includes(term) || proyecto.includes(term);
+          const matchTipo = filtroTipo === 'todos' || (p.tipo || 'egreso') === filtroTipo;
+          return matchTerm && matchTipo;
         })
       );
     }, 300);
     return () => clearTimeout(timeout);
-  }, [searchTerm, presupuestos, proyectos]);
+  }, [searchTerm, presupuestos, proyectos, filtroTipo]);
 
   const handleSort = (field) => {
     if (orderBy === field) {
@@ -246,15 +245,29 @@ const PresupuestosPage = () => {
         }));
         setCategorias(categoriasFormateadas);
 
-        const subcategoriasFiltradas =
-          categorias.find(c => c.name === nuevaCategoria)?.subcategorias || [];
-
         const etapas = empresa.etapas ? empresa.etapas.map(etapa => etapa.nombre) : [];
         setEtapas(etapas || []);
 
         const { presupuestos, success } = await presupuestoService.listarPresupuestos(empresa.id);
         setPresupuestos(presupuestos);
         setFilteredPresupuestos(presupuestos);
+
+        // Cargar cotizaciones para mostrar montos indexados en ARS
+        try {
+          const [dolarData, cacData] = await Promise.all([
+            MonedasService.listarDolar({ limit: 1 }).catch(() => null),
+            MonedasService.listarCAC({ limit: 1 }).catch(() => null),
+          ]);
+          if (dolarData?.[0]) {
+            const d = dolarData[0];
+            setDolarRate(d.blue?.venta || d.blue?.promedio || d.oficial?.venta || null);
+          }
+          if (cacData?.[0]) {
+            setCacIndice(cacData[0].general || cacData[0].valor || null);
+          }
+        } catch (e) {
+          console.warn('No se pudieron cargar cotizaciones:', e);
+        }
 
       } catch (err) {
         console.log(err)
@@ -264,106 +277,46 @@ const PresupuestosPage = () => {
     fetchData();
   }, [user]);
 
-  const handleAgregarPresupuesto = async () => {
-    // Marcar todos los campos requeridos como tocados para mostrar errores
-    setFormTouched({ monto: true, proyecto: true });
-
-    if (!isFormValid) {
-      setAlert({
-        open: true,
-        message: 'Por favor, completá los campos requeridos: Monto y Proyecto.',
-        severity: 'warning'
-      });
-      return;
-    }
-
-    setIsSubmitting(true);
-
+  const handleDrawerSuccess = async (message, presupuestoCreado) => {
+    setAlert({ open: true, message, severity: 'success' });
+    // Recargar todos los presupuestos
     try {
-      const { presupuesto } = await presupuestoService.crearPresupuesto({
-        empresa_id: empresaId,
-        monto: parseFloat(nuevoMonto),
-        proveedor: nuevoProveedor,
-        proyecto_id: nuevoProyecto,
-        etapa: nuevaEtapa || null,
-        categoria: nuevaCategoria || null,
-        subcategoria: nuevaSubcategoria || null
-      });
-
-      setPresupuestos(prev => [...prev, presupuesto]);
-      resetForm();
-      
-      setAlert({
-        open: true,
-        message: `Presupuesto creado exitosamente (Código: ${presupuesto.codigo})`,
-        severity: 'success'
-      });
+      const { presupuestos: lista } = await presupuestoService.listarPresupuestos(empresaId);
+      setPresupuestos(lista);
     } catch (err) {
-      setAlert({
-        open: true,
-        message: 'Error al agregar presupuesto. Intentá nuevamente.',
-        severity: 'error'
-      });
-    } finally {
-      setIsSubmitting(false);
+      console.error('Error al recargar presupuestos:', err);
     }
   };
 
-  const safeToISOString = (f) => {
-    if (!f) return null;
-    try {
-      if (typeof f.toDate === 'function') return f.toDate().toISOString();
-      if (f._seconds) return new Date(f._seconds * 1000).toISOString();
-      const d = new Date(f);
-      return isNaN(d.getTime()) ? null : d.toISOString();
-    } catch {
-      return null;
-    }
-  };
-  const dateToTimestamp = (input) => {
-    if (!input) return null;
-
-    try {
-      if (input instanceof Date) {
-        return Timestamp.fromDate(input);
-      }
-      if (typeof input === 'string') {
-        const [year, month, day] = input.split('-').map(Number);
-        const date = new Date(year, month - 1, day);
-        return Timestamp.fromDate(date);
-      }
-      // ya es Timestamp
-      if (input._seconds) {
-        return input;
-      }
-    } catch (e) {
-      console.error('Error en dateToTimestamp:', input, e);
-    }
-
-    return null;
+  const abrirDrawerCrear = () => {
+    setDrawerPresupuesto({ open: true, mode: 'crear', presupuesto: null });
   };
 
-  const handleGuardar = async (codigo) => {
-    const item = presupuestos.find(p => p.codigo === codigo);
-    try {
-      await presupuestoService.modificarPresupuesto(codigo, {
-        nuevo_monto: item.monto,
-        empresa_id: empresaId,
-        nuevaFechaInicio: formatFechaInput(item.fechaInicio),
-      });
-      setEditing(prev => ({ ...prev, [codigo]: false }));
-    } catch (err) {
-      setAlert({ open: true, message: 'Error al editar presupuesto.', severity: 'error' });
-    }
-  };
-
-  const handleEliminar = async (codigo) => {
-    try {
-      await presupuestoService.eliminarPresupuesto(codigo, empresaId);
-      setPresupuestos(prev => prev.filter(p => p.codigo !== codigo));
-    } catch (err) {
-      setAlert({ open: true, message: 'Error al eliminar presupuesto.', severity: 'error' });
-    }
+  const abrirDrawerEditar = (p) => {
+    setDrawerPresupuesto({
+      open: true,
+      mode: 'editar',
+      presupuesto: {
+        id: p.id,
+        codigo: p.codigo,
+        monto: p.monto,
+        moneda: p.moneda || 'ARS',
+        moneda_display: p.moneda_display || p.moneda || 'ARS',
+        indexacion: p.indexacion || null,
+        monto_ingresado: p.monto_ingresado || p.monto,
+        base_calculo: p.base_calculo || 'total',
+        tipo: p.tipo || 'egreso',
+        label: `#${p.codigo} — ${p.proveedor || proyectos.find(pr => pr.id === p.proyecto_id)?.nombre || 'Sin nombre'}`,
+        historial: p.historial || [],
+        ejecutado: p.ejecutado || 0,
+        cotizacion_snapshot: p.cotizacion_snapshot || null,
+        proyecto_id: p.proyecto_id || null,
+        proveedor: p.proveedor || null,
+        categoria: p.categoria || null,
+        subcategoria: p.subcategoria || null,
+        etapa: p.etapa || null,
+      },
+    });
   };
 
   return (
@@ -386,10 +339,18 @@ const PresupuestosPage = () => {
                   </Button>
                 )}
                 <Button
+                  variant="contained"
+                  startIcon={<Add />}
+                  onClick={abrirDrawerCrear}
+                >
+                  Nuevo Presupuesto
+                </Button>
+                <Button
                   variant="outlined"
                   onClick={() => {
                   const data = filteredPresupuestos.map((p) => ({
                     Código: p.codigo,
+                    Tipo: p.tipo === 'ingreso' ? 'Ingreso' : 'Egreso',
                     'Fecha inicio': formatTimestamp(p.fechaInicio),
                     Monto: p.monto,
                     Proveedor: p.proveedor,
@@ -409,418 +370,250 @@ const PresupuestosPage = () => {
               </Stack>
             </Stack>
 
-            {/* Formulario de creación mejorado */}
-            <Paper 
-              elevation={2} 
-              sx={{ 
-                p: 3, 
-                borderRadius: 2,
-                border: '1px solid',
-                borderColor: 'divider',
-                backgroundColor: 'background.paper'
-              }}
-            >
-              <Stack spacing={2}>
-                {/* Header del formulario */}
-                <Stack 
-                  direction="row" 
-                  alignItems="center" 
-                  justifyContent="space-between"
-                  onClick={() => setFormExpanded(!formExpanded)}
-                  sx={{ cursor: 'pointer' }}
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+              <TextField
+                label="Buscar proveedor, etapa o proyecto"
+                variant="outlined"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                size="small"
+                sx={{ flex: 1 }}
+              />
+              <FormControl size="small" sx={{ minWidth: 140 }}>
+                <InputLabel>Tipo</InputLabel>
+                <Select
+                  value={filtroTipo}
+                  onChange={(e) => setFiltroTipo(e.target.value)}
+                  label="Tipo"
                 >
-                  <Stack direction="row" alignItems="center" spacing={1}>
-                    <Typography variant="h6" fontWeight={600}>
-                      Nuevo Presupuesto
-                    </Typography>
-                    <Chip 
-                      label="2 campos requeridos" 
-                      size="small" 
-                      color="primary" 
-                      variant="outlined"
-                    />
-                  </Stack>
-                  <IconButton size="small">
-                    {formExpanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-                  </IconButton>
-                </Stack>
-
-                <Collapse in={formExpanded}>
-                  <Stack spacing={3}>
-                    {/* Campos requeridos */}
-                    <Box>
-                      <Typography 
-                        variant="subtitle2" 
-                        color="text.secondary" 
-                        sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 0.5 }}
-                      >
-                        Información obligatoria
-                        <Typography component="span" color="error.main">*</Typography>
-                      </Typography>
-                      
-                      <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
-                        <TextField
-                          label="Monto"
-                          type="number"
-                          value={nuevoMonto}
-                          onChange={(e) => setNuevoMonto(e.target.value)}
-                          onBlur={() => handleFieldBlur('monto')}
-                          size="small"
-                          required
-                          error={formErrors.monto}
-                          helperText={formErrors.monto ? 'Ingresá un monto válido mayor a 0' : 'Monto total del presupuesto'}
-                          sx={{ minWidth: 180 }}
-                          InputProps={{
-                            startAdornment: (
-                              <InputAdornment position="start">
-                                <AttachMoneyIcon fontSize="small" color={formErrors.monto ? 'error' : 'action'} />
-                              </InputAdornment>
-                            ),
-                          }}
-                        />
-                        
-                        <FormControl 
-                          sx={{ minWidth: 200 }} 
-                          size="small" 
-                          required
-                          error={formErrors.proyecto}
-                        >
-                          <InputLabel>Proyecto</InputLabel>
-                          <Select
-                            value={nuevoProyecto}
-                            onChange={(e) => setNuevoProyecto(e.target.value)}
-                            onBlur={() => handleFieldBlur('proyecto')}
-                            label="Proyecto"
-                          >
-                            {proyectos.length === 0 ? (
-                              <MenuItem disabled>No hay proyectos disponibles</MenuItem>
-                            ) : (
-                              proyectos.map(p => (
-                                <MenuItem key={p.id} value={p.id}>{p.nombre}</MenuItem>
-                              ))
-                            )}
-                          </Select>
-                          <FormHelperText>
-                            {formErrors.proyecto ? 'Seleccioná un proyecto' : 'Proyecto destino'}
-                          </FormHelperText>
-                        </FormControl>
-                      </Stack>
-                    </Box>
-
-                    <Divider />
-
-                    {/* Campos opcionales */}
-                    <Box>
-                      <Typography 
-                        variant="subtitle2" 
-                        color="text.secondary" 
-                        sx={{ mb: 2 }}
-                      >
-                        Información adicional (opcional)
-                      </Typography>
-                      
-                      <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} useFlexGap flexWrap="wrap">
-                        <FormControl sx={{ minWidth: 200 }} size="small">
-                          <InputLabel>Proveedor</InputLabel>
-                          <Select
-                            value={nuevoProveedor}
-                            onChange={(e) => setNuevoProveedor(e.target.value)}
-                            label="Proveedor"
-                          >
-                            <MenuItem value="">
-                              <em>Sin proveedor</em>
-                            </MenuItem>
-                            {proveedores.map((prov, index) => (
-                              <MenuItem key={index} value={prov}>{prov}</MenuItem>
-                            ))}
-                          </Select>
-                          <FormHelperText>Proveedor asignado</FormHelperText>
-                        </FormControl>
-
-                        <FormControl sx={{ minWidth: 180 }} size="small">
-                          <InputLabel>Etapa</InputLabel>
-                          <Select
-                            value={nuevaEtapa}
-                            onChange={(e) => setNuevaEtapa(e.target.value)}
-                            label="Etapa"
-                          >
-                            <MenuItem value="">
-                              <em>Sin etapa</em>
-                            </MenuItem>
-                            {etapas.map((etapa, idx) => (
-                              <MenuItem key={idx} value={etapa}>{etapa}</MenuItem>
-                            ))}
-                          </Select>
-                          <FormHelperText>Etapa del proyecto</FormHelperText>
-                        </FormControl>
-
-                        <FormControl sx={{ minWidth: 180 }} size="small">
-                          <InputLabel>Categoría</InputLabel>
-                          <Select
-                            value={nuevaCategoria}
-                            onChange={(e) => {
-                              setNuevaCategoria(e.target.value);
-                              setNuevaSubcategoria('');
-                            }}
-                            label="Categoría"
-                          >
-                            <MenuItem value="">
-                              <em>Sin categoría</em>
-                            </MenuItem>
-                            {categorias.map((cat, idx) => (
-                              <MenuItem key={idx} value={cat.name}>
-                                {cat.name}
-                              </MenuItem>
-                            ))}
-                          </Select>
-                          <FormHelperText>Tipo de gasto</FormHelperText>
-                        </FormControl>
-
-                        <FormControl 
-                          sx={{ minWidth: 180 }} 
-                          size="small" 
-                          disabled={!nuevaCategoria}
-                        >
-                          <InputLabel>Subcategoría</InputLabel>
-                          <Select
-                            value={nuevaSubcategoria}
-                            onChange={(e) => setNuevaSubcategoria(e.target.value)}
-                            label="Subcategoría"
-                          >
-                            <MenuItem value="">
-                              <em>Sin subcategoría</em>
-                            </MenuItem>
-                            {subcategoriasFiltradas.map((sub, idx) => (
-                              <MenuItem key={idx} value={sub}>
-                                {sub}
-                              </MenuItem>
-                            ))}
-                          </Select>
-                          <FormHelperText>
-                            {!nuevaCategoria ? 'Seleccioná una categoría primero' : 'Detalle de categoría'}
-                          </FormHelperText>
-                        </FormControl>
-                      </Stack>
-                    </Box>
-
-                    {/* Botón de acción */}
-                    <Stack direction="row" spacing={2} justifyContent="flex-end" alignItems="center">
-                      {(nuevoMonto || nuevoProveedor || nuevoProyecto) && (
-                        <Button 
-                          variant="text" 
-                          color="inherit"
-                          onClick={resetForm}
-                          disabled={isSubmitting}
-                        >
-                          Limpiar
-                        </Button>
-                      )}
-                      <Button 
-                        variant="contained" 
-                        onClick={handleAgregarPresupuesto}
-                        disabled={isSubmitting}
-                        startIcon={isSubmitting ? <CircularProgress size={16} color="inherit" /> : null}
-                        sx={{ minWidth: 140 }}
-                      >
-                        {isSubmitting ? 'Creando...' : 'Crear Presupuesto'}
-                      </Button>
-                    </Stack>
-
-                    {/* Resumen antes de crear */}
-                    {isFormValid && (
-                      <Alert severity="info" variant="outlined" sx={{ mt: 1 }}>
-                        <Typography variant="body2">
-                          <strong>Resumen:</strong> Presupuesto de{' '}
-                          <strong>{formatCurrency(parseFloat(nuevoMonto))}</strong>
-                          {nuevoProveedor && <> para <strong>{nuevoProveedor}</strong></>}
-                          {' '}en el proyecto{' '}
-                          <strong>{proyectos.find(p => p.id === nuevoProyecto)?.nombre}</strong>
-                          {nuevaEtapa && <>, etapa: <strong>{nuevaEtapa}</strong></>}
-                          {nuevaCategoria && <>, categoría: <strong>{nuevaCategoria}</strong></>}
-                          {nuevaSubcategoria && <> / <strong>{nuevaSubcategoria}</strong></>}
-                        </Typography>
-                      </Alert>
-                    )}
-                  </Stack>
-                </Collapse>
-              </Stack>
-            </Paper>
-
-            <TextField
-              label="Buscar proveedor, etapa o proyecto"
-              variant="outlined"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              size="small"
-              fullWidth
-            />
+                  <MenuItem value="todos">Todos</MenuItem>
+                  <MenuItem value="egreso">Egreso</MenuItem>
+                  <MenuItem value="ingreso">Ingreso</MenuItem>
+                </Select>
+              </FormControl>
+            </Stack>
           </Stack>
 
-          <Paper>
-
-
-            <Table>
-              <TableHead>
-                <TableRow>
-                  <TableCell padding="checkbox">
-                    <Checkbox
-                      indeterminate={selectedPresupuestos.length > 0 && selectedPresupuestos.length < sortedPresupuestos.length}
-                      checked={sortedPresupuestos.length > 0 && selectedPresupuestos.length === sortedPresupuestos.length}
-                      onChange={handleSelectAll}
-                    />
-                  </TableCell>
-                  {[
-                    { label: 'Código', field: 'codigo' },
-                    { label: 'Fecha inicio', field: 'fechaInicio' },
-                    { label: 'Monto', field: 'monto' },
-                    { label: 'Proveedor', field: 'proveedor' },
-                    { label: 'Etapa', field: 'etapa' },
-                    { label: 'Proyecto', field: 'proyecto_id' },
-                    { label: 'Categoria', field: 'categoria' },
-                    { label: 'SubCategoria', field: 'subCategoria' },
-                    { label: 'Ejecutado', field: 'ejecutado' },
-                    { label: 'Disponible', field: 'ejecutado' },
-                    { label: '% Ejecutado', field: 'ejecutado' }, // sin sorting
-                    { label: 'Acciones' },
-                  ].map(({ label, field }) => (
-                    <TableCell
-                      key={label}
-                      onClick={() => field && handleSort(field)}
-                      sx={{ cursor: field ? 'pointer' : 'default' }}
-                    >
-                      {label}
-                      {orderBy === field &&
-                        (orderDirection === 'asc' ? <ArrowUpwardIcon fontSize="inherit" /> : <ArrowDownwardIcon fontSize="inherit" />)}
-                    </TableCell>
-                  ))}
-                </TableRow>
-              </TableHead>
-
-              <TableBody>
-                {sortedPresupuestos.map(p => {
-                  const porcentaje = p.monto ? (p.ejecutado / p.monto) * 100 : 0;
-                  const esSobreejecucion = p.ejecutado > p.monto;
-
-                  return (
-                    <TableRow
-                      key={p.codigo}
-                      sx={{
-                        ...(esSobreejecucion ? { backgroundColor: '#ffe0e0' } : {}),
-                        ...(selectedPresupuestos.includes(p.codigo) ? { backgroundColor: 'action.selected' } : {})
-                      }}
-                    >
-                      <TableCell padding="checkbox">
-                        <Checkbox
-                          checked={selectedPresupuestos.includes(p.codigo)}
-                          onChange={() => handleSelectPresupuesto(p.codigo)}
+          <Paper sx={{ overflow: 'hidden' }}>
+            {/* Botón para gestionar columnas */}
+            <Stack direction="row" justifyContent="flex-end" sx={{ px: 1, pt: 0.5 }}>
+              <Tooltip title="Columnas visibles">
+                <IconButton size="small" onClick={(e) => setColAnchorEl(e.currentTarget)}>
+                  <ViewColumnIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+              <Popover
+                open={Boolean(colAnchorEl)}
+                anchorEl={colAnchorEl}
+                onClose={() => setColAnchorEl(null)}
+                anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+                transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+              >
+                <Box sx={{ p: 2, minWidth: 180 }}>
+                  <Typography variant="subtitle2" gutterBottom>Columnas</Typography>
+                  {Object.entries(COLUMNAS_LABELS).map(([key, label]) => (
+                    <FormControlLabel
+                      key={key}
+                      control={
+                        <Switch
+                          size="small"
+                          checked={columnasVisibles[key]}
+                          onChange={() => toggleColumna(key)}
                         />
+                      }
+                      label={<Typography variant="body2">{label}</Typography>}
+                      sx={{ display: 'block', ml: 0 }}
+                    />
+                  ))}
+                </Box>
+              </Popover>
+            </Stack>
+
+            <TableContainer sx={{ overflowX: 'auto' }}>
+              <Table size="small" sx={{ tableLayout: 'auto' }}>
+                <TableHead>
+                  <TableRow>
+                    <TableCell padding="checkbox" sx={{ width: 40 }}>
+                      <Checkbox
+                        size="small"
+                        indeterminate={selectedPresupuestos.length > 0 && selectedPresupuestos.length < sortedPresupuestos.length}
+                        checked={sortedPresupuestos.length > 0 && selectedPresupuestos.length === sortedPresupuestos.length}
+                        onChange={handleSelectAll}
+                      />
+                    </TableCell>
+                    {columnasVisibles.codigo && (
+                      <TableCell onClick={() => handleSort('codigo')} sx={{ cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                        # {orderBy === 'codigo' && (orderDirection === 'asc' ? <ArrowUpwardIcon fontSize="inherit" /> : <ArrowDownwardIcon fontSize="inherit" />)}
                       </TableCell>
-                      <TableCell>{p.codigo}</TableCell>
-                      <TableCell>
-                        {editing[p.codigo] ? (
-                          <TextField
-                            type="date"
-                            value={formatFechaInput(p.fechaInicio)}
+                    )}
+                    {columnasVisibles.tipo && (
+                      <TableCell onClick={() => handleSort('tipo')} sx={{ cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                        Tipo {orderBy === 'tipo' && (orderDirection === 'asc' ? <ArrowUpwardIcon fontSize="inherit" /> : <ArrowDownwardIcon fontSize="inherit" />)}
+                      </TableCell>
+                    )}
+                    {columnasVisibles.fechaInicio && (
+                      <TableCell onClick={() => handleSort('fechaInicio')} sx={{ cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                        Fecha {orderBy === 'fechaInicio' && (orderDirection === 'asc' ? <ArrowUpwardIcon fontSize="inherit" /> : <ArrowDownwardIcon fontSize="inherit" />)}
+                      </TableCell>
+                    )}
+                    {columnasVisibles.monto && (
+                      <TableCell onClick={() => handleSort('monto')} sx={{ cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                        Monto {orderBy === 'monto' && (orderDirection === 'asc' ? <ArrowUpwardIcon fontSize="inherit" /> : <ArrowDownwardIcon fontSize="inherit" />)}
+                      </TableCell>
+                    )}
+                    {columnasVisibles.detalle && (
+                      <TableCell onClick={() => handleSort('proveedor')} sx={{ cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                        Detalle {orderBy === 'proveedor' && (orderDirection === 'asc' ? <ArrowUpwardIcon fontSize="inherit" /> : <ArrowDownwardIcon fontSize="inherit" />)}
+                      </TableCell>
+                    )}
+                    {columnasVisibles.proyecto && (
+                      <TableCell onClick={() => handleSort('proyecto_id')} sx={{ cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                        Proyecto {orderBy === 'proyecto_id' && (orderDirection === 'asc' ? <ArrowUpwardIcon fontSize="inherit" /> : <ArrowDownwardIcon fontSize="inherit" />)}
+                      </TableCell>
+                    )}
+                    {columnasVisibles.ejecutado && (
+                      <TableCell onClick={() => handleSort('ejecutado')} sx={{ cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                        Ejecutado {orderBy === 'ejecutado' && (orderDirection === 'asc' ? <ArrowUpwardIcon fontSize="inherit" /> : <ArrowDownwardIcon fontSize="inherit" />)}
+                      </TableCell>
+                    )}
+                    {columnasVisibles.disponible && (
+                      <TableCell sx={{ whiteSpace: 'nowrap' }}>Disponible</TableCell>
+                    )}
+                  </TableRow>
+                </TableHead>
+
+                <TableBody>
+                  {sortedPresupuestos.map(p => {
+                    const porcentaje = p.monto ? (p.ejecutado / p.monto) * 100 : 0;
+                    const esSobreejecucion = p.ejecutado > p.monto;
+
+                    const tieneIndexacion = !!p.indexacion;
+                    const monDisplay = p.moneda_display || p.moneda || 'ARS';
+
+                    const convertirADisplay = (val) => {
+                      if (!tieneIndexacion) return val;
+                      if (p.indexacion === 'CAC' && cacIndice) return val * cacIndice;
+                      if (p.indexacion === 'USD' && dolarRate) return val * dolarRate;
+                      return val;
+                    };
+
+                    const fmtMonto = (val) => {
+                      if (val === null || val === undefined) return '-';
+                      const monMostrar = tieneIndexacion ? monDisplay : (p.moneda || 'ARS');
+                      const valMostrar = tieneIndexacion ? convertirADisplay(val) : val;
+                      if (monMostrar === 'USD') return `USD ${Number(valMostrar).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                      return formatCurrency(valMostrar);
+                    };
+
+                    return (
+                      <TableRow
+                        key={p.codigo}
+                        hover
+                        onClick={() => abrirDrawerEditar(p)}
+                        sx={{
+                          cursor: 'pointer',
+                          ...(esSobreejecucion ? { backgroundColor: '#fff0f0' } : {}),
+                          ...(selectedPresupuestos.includes(p.codigo) ? { backgroundColor: 'action.selected' } : {})
+                        }}
+                      >
+                        <TableCell padding="checkbox" onClick={(e) => e.stopPropagation()}>
+                          <Checkbox
                             size="small"
-                            onChange={(e) => {
-                              const val = e.target.value;
-                              setPresupuestos(prev =>
-                                prev.map(x =>
-                                  x.codigo === p.codigo
-                                    ? { ...x, fechaInicio: parseFechaInput(val) }
-                                    : x
-                                )
-                              );
-                            }}
+                            checked={selectedPresupuestos.includes(p.codigo)}
+                            onChange={() => handleSelectPresupuesto(p.codigo)}
                           />
-                        ) : (
-                          formatFechaInput(p.fechaInicio)
+                        </TableCell>
+
+                        {columnasVisibles.codigo && (
+                          <TableCell sx={{ whiteSpace: 'nowrap' }}>{p.codigo}</TableCell>
                         )}
-                      </TableCell>
 
-                      <TableCell>
-                        {editing[p.codigo] ? (
-                          <TextField
-                            type="number"
-                            value={p.monto}
-                            size="small"
-                            onChange={(e) => {
-                              const val = parseFloat(e.target.value);
-                              setPresupuestos(prev =>
-                                prev.map(x =>
-                                  x.codigo === p.codigo ? { ...x, monto: val } : x
-                                )
-                              );
-                            }}
-                          />
-                        ) : (
-                          formatCurrency(p.monto)
+                        {columnasVisibles.tipo && (
+                          <TableCell>
+                            <Chip
+                              label={p.tipo === 'ingreso' ? 'Ingreso' : 'Egreso'}
+                              size="small"
+                              color={p.tipo === 'ingreso' ? 'success' : 'error'}
+                              variant="outlined"
+                              sx={{ height: 22, '& .MuiChip-label': { px: 0.75, fontSize: '0.75rem' } }}
+                            />
+                          </TableCell>
                         )}
-                      </TableCell>
 
-                      <TableCell>{p.proveedor || '-'}</TableCell>
-                      <TableCell>{p.etapa || '-'}</TableCell>
-                      <TableCell>{proyectos.find(pr => pr.id === p.proyecto_id)?.nombre || '-'}</TableCell>
-                      <TableCell>{p.categoria ||'-'}</TableCell>
-                      <TableCell>{p.subcategoria || '-'}</TableCell>
-                      <TableCell>{formatCurrency(p.ejecutado || 0)}</TableCell>
-                      <TableCell>{formatCurrency(p.monto - p.ejecutado || p.monto)}</TableCell>
-                      <TableCell>
-                        <Stack spacing={0.5}>
-                          <Typography variant="caption" color={esSobreejecucion ? 'error' : 'text.primary'}>
-                            {porcentaje.toFixed(1)}%
-                          </Typography>
-                          <LinearProgress
-                            variant="determinate"
-                            value={Math.min(porcentaje, 100)}
-                            color={esSobreejecucion ? 'error' : 'primary'}
-                            sx={{ height: 8, borderRadius: 2 }}
-                          />
-                        </Stack>
-                      </TableCell>
-                      <TableCell>
-                        <IconButton onClick={() => handleGuardar(p.codigo)}><Save /></IconButton>
-                        <IconButton onClick={() => setEditing(prev => ({ ...prev, [p.codigo]: true }))}><Edit /></IconButton>
-                        <IconButton onClick={() => setDeleteDialog({ open: true, codigo: p.codigo })}>
-                          <Delete />
-                        </IconButton>
-                        <IconButton onClick={() => handleRecalcularPresupuesto(p.id)}><Autorenew /></IconButton>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
+                        {columnasVisibles.fechaInicio && (
+                          <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                            {formatFechaInput(p.fechaInicio) || '-'}
+                          </TableCell>
+                        )}
 
-            </Table>
+                        {columnasVisibles.monto && (
+                          <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                            <Stack direction="row" spacing={0.5} alignItems="center">
+                              <span>{fmtMonto(p.monto)}</span>
+                              {tieneIndexacion && (
+                                <Chip label={`idx ${p.indexacion}`} size="small" color="secondary" variant="outlined" sx={{ height: 18, '& .MuiChip-label': { px: 0.5, fontSize: '0.6rem' } }} />
+                              )}
+                            </Stack>
+                          </TableCell>
+                        )}
+
+                        {columnasVisibles.detalle && (
+                          <TableCell>
+                            <Stack spacing={0}>
+                              {p.proveedor && (
+                                <Typography variant="caption" color="text.secondary">Proveedor: <Box component="span" sx={{ color: 'text.primary' }}>{p.proveedor}</Box></Typography>
+                              )}
+                              {p.categoria && (
+                                <Typography variant="caption" color="text.secondary">Categoría: <Box component="span" sx={{ color: 'text.primary' }}>{p.subcategoria ? `${p.categoria} › ${p.subcategoria}` : p.categoria}</Box></Typography>
+                              )}
+                              {p.etapa && (
+                                <Typography variant="caption" color="text.secondary">Etapa: <Box component="span" sx={{ color: 'text.primary' }}>{p.etapa}</Box></Typography>
+                              )}
+                              {!p.proveedor && !p.categoria && !p.etapa && (
+                                <Typography variant="caption" color="text.disabled">-</Typography>
+                              )}
+                            </Stack>
+                          </TableCell>
+                        )}
+
+                        {columnasVisibles.proyecto && (
+                          <TableCell>{proyectos.find(pr => pr.id === p.proyecto_id)?.nombre || '-'}</TableCell>
+                        )}
+
+                        {columnasVisibles.ejecutado && (
+                          <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                            <Stack spacing={0.25}>
+                              <span>{fmtMonto(p.ejecutado || 0)}</span>
+                              <LinearProgress
+                                variant="determinate"
+                                value={Math.min(porcentaje, 100)}
+                                color={esSobreejecucion ? 'error' : 'primary'}
+                                sx={{ height: 3, borderRadius: 2 }}
+                              />
+                              <Typography variant="caption" color={esSobreejecucion ? 'error.main' : 'text.disabled'} sx={{ fontSize: '0.65rem' }}>
+                                {porcentaje.toFixed(0)}%
+                              </Typography>
+                            </Stack>
+                          </TableCell>
+                        )}
+
+                        {columnasVisibles.disponible && (
+                          <TableCell sx={{ whiteSpace: 'nowrap', fontWeight: 500 }}>
+                            {fmtMonto((p.monto || 0) - (p.ejecutado || 0))}
+                          </TableCell>
+                        )}
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </TableContainer>
           </Paper>
 
         </Container>
         <Snackbar open={alert.open} autoHideDuration={6000} onClose={() => setAlert({ ...alert, open: false })}>
           <Alert severity={alert.severity}>{alert.message}</Alert>
         </Snackbar>
-        <Dialog
-          open={deleteDialog.open}
-          onClose={() => setDeleteDialog({ open: false, codigo: null })}
-        >
-          <DialogTitle>Confirmar eliminación</DialogTitle>
-          <DialogContent>
-            <DialogContentText>
-              ¿Estás seguro de que querés eliminar este presupuesto? Esta acción no se puede deshacer.
-            </DialogContentText>
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={() => setDeleteDialog({ open: false, codigo: null })}>Cancelar</Button>
-            <Button
-              color="error"
-              onClick={async () => {
-                await handleEliminar(deleteDialog.codigo);
-                setDeleteDialog({ open: false, codigo: null });
-              }}
-            >
-              Eliminar
-            </Button>
-          </DialogActions>
-        </Dialog>
 
         <Dialog
           open={deleteMultipleDialog}
@@ -842,6 +635,23 @@ const PresupuestosPage = () => {
             </Button>
           </DialogActions>
         </Dialog>
+
+        {/* Drawer de Presupuesto (crear/editar) */}
+        <PresupuestoDrawer
+          open={drawerPresupuesto.open}
+          onClose={() => setDrawerPresupuesto(prev => ({ ...prev, open: false }))}
+          onSuccess={handleDrawerSuccess}
+          mode={drawerPresupuesto.mode}
+          empresaId={empresaId}
+          userId={user?.uid}
+          presupuesto={drawerPresupuesto.presupuesto}
+          onRecalcular={handleRecalcularPresupuesto}
+          showFullForm
+          proyectos={proyectos}
+          categorias={categorias}
+          etapas={etapas}
+          proveedoresEmpresa={proveedores}
+        />
 
       </Box>
     </>
