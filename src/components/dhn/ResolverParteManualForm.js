@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Accordion,
   AccordionDetails,
@@ -8,11 +8,9 @@ import {
   Button,
   CircularProgress,
   Divider,
-  Grid,
   IconButton,
   Snackbar,
   Stack,
-  TextField,
   Typography,
 } from "@mui/material";
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -22,45 +20,24 @@ import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import TrabajoRegistradoService from "src/services/dhn/TrabajoRegistradoService";
-import TrabajadorSelector from "src/components/dhn/TrabajadorSelector";
+import TrabajoForm, {
+  createEmptyTrabajo,
+  parseTrabajadorId,
+  normalizeHourValue,
+  HORA_FIELDS,
+} from "src/components/dhn/TrabajoForm";
 
-const createEmptyTrabajadorRow = () => ({
-  id: `${Date.now()}-${Math.random()}`,
-  trabajador: null,
-  horasNormales: "",
-  horas50: "",
-  horas100: "",
-  horasAltura: "",
-  horasHormigon: "",
-  horasZanjeo: "",
-});
-
-const parseTrabajadorId = (trabajador) => {
-  if (!trabajador) return null;
-  if (trabajador.trabajadorId) return trabajador.trabajadorId;
-  if (trabajador._id) return trabajador._id;
-  if (trabajador?.data?._id) return trabajador.data._id;
-  return null;
-};
-
-const normalizeHourValue = (value) => {
-  if (value === undefined || value === null || value === "") return null;
-  const numberValue = Number(value);
-  return Number.isNaN(numberValue) ? null : numberValue;
-};
-
-const HORA_FIELDS = [
-  { key: "horasNormales", label: "Horas normales" },
-  { key: "horas50", label: "Horas 50%" },
-  { key: "horas100", label: "Horas 100%" },
-  { key: "horasAltura", label: "Horas Altura" },
-  { key: "horasHormigon", label: "Horas Hormigón" },
-  { key: "horasZanjeo", label: "Horas Zanjeo" },
-];
-
-const ResolverParteManualForm = ({ urlStorage, onResolved, onCancel }) => {
+const ResolverParteManualForm = ({
+  urlStorage,
+  onResolved,
+  onCancel,
+  onAutoClose,
+  progreso,
+  rowId = null,
+  initialData = null,
+}) => {
   const [fecha, setFecha] = useState(dayjs());
-  const [trabajadores, setTrabajadores] = useState([createEmptyTrabajadorRow()]);
+  const [trabajadores, setTrabajadores] = useState([createEmptyTrabajo()]);
   const [expandedAccordions, setExpandedAccordions] = useState(new Set());
   const [isSaving, setIsSaving] = useState(false);
   const [alert, setAlert] = useState({ open: false, severity: "error", message: "" });
@@ -69,90 +46,127 @@ const ResolverParteManualForm = ({ urlStorage, onResolved, onCancel }) => {
     setAlert((prev) => ({ ...prev, open: false }));
   }, []);
 
-  const actualizarTrabajador = useCallback((id, patch) => {
-    setTrabajadores((prev) =>
-      prev.map((item) => (item.id === id ? { ...item, ...patch } : item))
-    );
+  useEffect(() => {
+    if (rowId && initialData) {
+      const nextTrabajadores =
+        Array.isArray(initialData.trabajadores) && initialData.trabajadores.length > 0
+          ? initialData.trabajadores.map((trabajo) => ({ ...trabajo }))
+          : [createEmptyTrabajo()];
+      setFecha(initialData.fecha ? dayjs(initialData.fecha) : dayjs());
+      setTrabajadores(nextTrabajadores);
+      setExpandedAccordions(() => {
+        const next = new Set();
+        nextTrabajadores.forEach((trabajo) => {
+          if (trabajo.id) {
+            next.add(trabajo.id);
+          }
+        });
+        return next;
+      });
+      return;
+    }
+    setFecha(dayjs());
+    setTrabajadores([createEmptyTrabajo()]);
+    setExpandedAccordions(new Set());
+  }, [rowId, initialData]);
+
+  const handleTrabajoChange = useCallback((id, updated) => {
+    setTrabajadores((prev) => prev.map((t) => (t.id === id ? updated : t)));
   }, []);
 
-  const handleAccordionChange = useCallback((id) => (event, isExpanded) => {
+  const handleDeleteTrabajo = useCallback((id) => {
+    setTrabajadores((prev) => prev.filter((t) => t.id !== id));
     setExpandedAccordions((prev) => {
       const next = new Set(prev);
-      if (isExpanded) {
-        next.add(id);
-      } else {
-        next.delete(id);
-      }
+      next.delete(id);
       return next;
     });
   }, []);
 
+  const handleAccordionChange = useCallback(
+    (id) => (_, isExpanded) => {
+      setExpandedAccordions((prev) => {
+        const next = new Set(prev);
+        isExpanded ? next.add(id) : next.delete(id);
+        return next;
+      });
+    },
+    []
+  );
 
-  const validTrabajadores = useMemo(() => {
-    return trabajadores.filter((item) => parseTrabajadorId(item.trabajador));
-  }, [trabajadores]);
+  const validTrabajadores = useMemo(
+    () => trabajadores.filter((t) => parseTrabajadorId(t.trabajador)),
+    [trabajadores]
+  );
 
-  const disabledEnviar =
-    isSaving || validTrabajadores.length === 0 || !fecha || !fecha.isValid();
+  const disabledEnviar = isSaving || validTrabajadores.length === 0 || !fecha?.isValid();
 
   const handleEnviar = useCallback(
-    async (event) => {
-      event?.preventDefault();
+    async (e) => {
+      e?.preventDefault();
       if (disabledEnviar) return;
+
       if (validTrabajadores.length !== trabajadores.length) {
-        setAlert({
-          open: true,
-          severity: "error",
-          message: "Seleccioná un trabajador válido en cada fila",
-        });
+        setAlert({ open: true, severity: "error", message: "Seleccioná un trabajador válido en cada fila" });
         return;
       }
 
-      const payloadTrabajadores = validTrabajadores.map((item) => ({
-        trabajadorId: parseTrabajadorId(item.trabajador),
-        horasNormales: normalizeHourValue(item.horasNormales),
-        horas50: normalizeHourValue(item.horas50),
-        horas100: normalizeHourValue(item.horas100),
-        horasAltura: normalizeHourValue(item.horasAltura),
-        horasHormigon: normalizeHourValue(item.horasHormigon),
-        horasZanjeo: normalizeHourValue(item.horasZanjeo),
-      }));
+      const payload = validTrabajadores.map((t) => {
+        const data = { trabajadorId: parseTrabajadorId(t.trabajador) };
+        HORA_FIELDS.forEach(({ key }) => {
+          data[key] = normalizeHourValue(t[key]);
+        });
+        return data;
+      });
+      const resolvedSnapshot = {
+        fecha: fecha?.toISOString() || null,
+        trabajadores: trabajadores.map((trabajo) => ({ ...trabajo })),
+      };
 
       setIsSaving(true);
       try {
         const resp = await TrabajoRegistradoService.resolverParteManual({
           urlStorage,
           fecha: fecha.toISOString(),
-          trabajadores: payloadTrabajadores,
+          trabajadores: payload,
           estado: "okManual",
         });
-        setAlert({
-          open: true,
-          severity: "success",
-          message: resp?.message || "Parte resuelto correctamente",
-        });
-        onResolved?.(resp);
+        setAlert({ open: true, severity: "success", message: resp?.message || "Parte resuelto correctamente" });
+        onResolved?.({ rowId, payload: resolvedSnapshot, response: resp });
         setTimeout(() => {
+          if (onAutoClose) {
+            onAutoClose();
+            return;
+          }
           onCancel?.();
         }, 500);
       } catch (error) {
-        console.error("Error al resolver parte manual:", error);
         setAlert({
           open: true,
           severity: "error",
-          message:
-            error?.response?.data?.message || error?.message || "No se pudo resolver el parte",
+          message: error?.response?.data?.message || error?.message || "No se pudo resolver el parte",
         });
       } finally {
         setIsSaving(false);
       }
     },
-    [trabajadores, disabledEnviar, fecha, urlStorage, validTrabajadores, onResolved, onCancel]
+    [trabajadores, disabledEnviar, fecha, urlStorage, validTrabajadores, onResolved, onCancel, rowId]
   );
+
+  const handleAgregarTrabajador = useCallback(() => {
+    const nuevo = createEmptyTrabajo();
+    setTrabajadores((prev) => [...prev, nuevo]);
+    setExpandedAccordions((prev) => new Set([...prev, nuevo.id]));
+  }, []);
 
   return (
     <Box sx={{ width: "100%", maxWidth: 480 }}>
       <Stack spacing={2}>
+        {progreso && (
+          <Typography variant="caption" color="primary">
+            Corrección asistida: {progreso}
+          </Typography>
+        )}
         <Typography variant="h6">Resolver parte manual</Typography>
         <Typography variant="body2" color="text.secondary">
           Asigná la fecha del parte y los trabajadores con sus horas
@@ -165,7 +179,7 @@ const ResolverParteManualForm = ({ urlStorage, onResolved, onCancel }) => {
             label="Fecha del parte"
             format="DD/MM/YYYY"
             value={fecha}
-            onChange={(newFecha) => setFecha(newFecha || dayjs())}
+            onChange={(v) => setFecha(v || dayjs())}
             slotProps={{ textField: { size: "small" } }}
           />
         </LocalizationProvider>
@@ -173,42 +187,21 @@ const ResolverParteManualForm = ({ urlStorage, onResolved, onCancel }) => {
         <Divider />
 
         <Stack spacing={2}>
-          {trabajadores.map((trabajadorRow, idx) => (
+          {trabajadores.map((trabajo, idx) => (
             <Accordion
-              key={trabajadorRow.id}
-              expanded={expandedAccordions.has(trabajadorRow.id)}
-              onChange={handleAccordionChange(trabajadorRow.id)}
-              sx={{
-                borderColor: "divider",
-                bgcolor: "background.paper",
-                boxShadow: "none",
-                "&::before": {
-                  display: "none",
-                },
-              }}
+              key={trabajo.id}
+              expanded={expandedAccordions.has(trabajo.id)}
+              onChange={handleAccordionChange(trabajo.id)}
+              sx={{ borderColor: "divider", bgcolor: "background.paper", boxShadow: "none", "&::before": { display: "none" } }}
             >
-              <AccordionSummary
-                expandIcon={<ExpandMoreIcon />}
-                sx={{ px: 0, py: 1 }}
-              >
-                <Stack
-                  direction="row"
-                  justifyContent="space-between"
-                  alignItems="center"
-                  width="100%"
-                  spacing={1}
-                >
+              <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ px: 0, py: 1 }}>
+                <Stack direction="row" justifyContent="space-between" alignItems="center" width="100%" spacing={1}>
                   <Typography variant="subtitle2">Trabajador #{idx + 1}</Typography>
                   <IconButton
                     size="small"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      setTrabajadores((prev) => prev.filter((item) => item.id !== trabajadorRow.id));
-                      setExpandedAccordions((prev) => {
-                        const next = new Set(prev);
-                        next.delete(trabajadorRow.id);
-                        return next;
-                      });
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDeleteTrabajo(trabajo.id);
                     }}
                     disabled={trabajadores.length === 1}
                     sx={{ p: 0.5 }}
@@ -218,53 +211,22 @@ const ResolverParteManualForm = ({ urlStorage, onResolved, onCancel }) => {
                 </Stack>
               </AccordionSummary>
               <AccordionDetails sx={{ px: 0, pt: 0, pb: 2 }}>
-                <Stack spacing={1}>
-                  <TrabajadorSelector
-                    value={trabajadorRow.trabajador}
-                    onChange={(selected) => actualizarTrabajador(trabajadorRow.id, { trabajador: selected })}
-                    setAlert={setAlert}
-                  />
-
-                  <Grid container spacing={1}>
-                    {HORA_FIELDS.map(({ key, label }) => (
-                      <Grid key={key} item xs={12} sm={6}>
-                        <TextField
-                          label={label}
-                          size="small"
-                          type="number"
-                          fullWidth
-                          value={trabajadorRow[key] ?? ""}
-                          onChange={(event) =>
-                            actualizarTrabajador(trabajadorRow.id, { [key]: event.target.value })
-                          }
-                        />
-                      </Grid>
-                    ))}
-                  </Grid>
-                </Stack>
+                <TrabajoForm
+                  trabajo={trabajo}
+                  onChange={(updated) => handleTrabajoChange(trabajo.id, updated)}
+                  setAlert={setAlert}
+                  showTitle={false}
+                />
               </AccordionDetails>
             </Accordion>
           ))}
         </Stack>
 
-        <Button
-          variant="text"
-          onClick={() => {
-            const nuevoTrabajador = createEmptyTrabajadorRow();
-            setTrabajadores((prev) => [...prev, nuevoTrabajador]);
-            setExpandedAccordions((prev) => new Set([...prev, nuevoTrabajador.id]));
-          }}
-          size="small"
-        >
+        <Button variant="text" onClick={handleAgregarTrabajador} size="small">
           Agregar trabajador
         </Button>
 
-        <Button
-          variant="contained"
-          color="primary"
-          onClick={handleEnviar}
-          disabled={disabledEnviar}
-        >
+        <Button variant="contained" color="primary" onClick={handleEnviar} disabled={disabledEnviar}>
           {isSaving ? <CircularProgress size={18} color="inherit" /> : "Enviar parte"}
         </Button>
         <Button variant="text" onClick={onCancel} disabled={isSaving} fullWidth>
@@ -272,12 +234,7 @@ const ResolverParteManualForm = ({ urlStorage, onResolved, onCancel }) => {
         </Button>
       </Stack>
 
-      <Snackbar
-        anchorOrigin={{ vertical: "top", horizontal: "center" }}
-        open={alert.open}
-        autoHideDuration={4000}
-        onClose={handleCloseAlert}
-      >
+      <Snackbar anchorOrigin={{ vertical: "top", horizontal: "center" }} open={alert.open} autoHideDuration={4000} onClose={handleCloseAlert}>
         <Alert onClose={handleCloseAlert} severity={alert.severity} sx={{ width: "100%" }}>
           {alert.message}
         </Alert>
@@ -287,4 +244,3 @@ const ResolverParteManualForm = ({ urlStorage, onResolved, onCancel }) => {
 };
 
 export default ResolverParteManualForm;
-

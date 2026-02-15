@@ -5,7 +5,7 @@ const mensajesProgramadosService = {
     const response = await api.post('/mensajes-programados', data);
     return response.data;
   },
-  getMensajes: async (params) => {
+  getMensajes: async (params = {}) => {
     const response = await api.get('/mensajes-programados', { params });
     return response.data;
   },

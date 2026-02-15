@@ -1,9 +1,10 @@
-import { Box, Tooltip, IconButton, Button, CircularProgress, TextField, Chip } from "@mui/material";
+import { Box, Stack, Tooltip, IconButton, Button, CircularProgress, TextField, Chip } from "@mui/material";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import ReplayIcon from "@mui/icons-material/Replay";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import EditIcon from "@mui/icons-material/Edit";
+import MergeTypeIcon from "@mui/icons-material/MergeType";
 import TrabajoRegistradoService from "src/services/dhn/TrabajoRegistradoService";
 import { getStatusChipConfig } from "src/utils/dhn/syncHelpers";
 import { buildFechaDetectadaPatch } from "src/utils/dhn/trabajoRegistradoHelpers";
@@ -62,7 +63,7 @@ export const ArchivoCell = ({ row, onOpenImage }) => {
             onClick={(e) => {
               e.stopPropagation();
               if (!hasImage) return;
-              onOpenImage(row.url_storage, row.file_name);
+              onOpenImage?.(row.url_storage, row.file_name, row);
             }}
             disabled={!hasImage}
             sx={{ p: "4px" }}
@@ -98,20 +99,24 @@ export const AccionesCell = ({
   handleResyncUrlStorage,
   handleOpenResolverLicencia,
   handleOpenResolverParte,
+  handleOpenResolverDuplicado,
 }) => {
   const isError = row?.status === "error";
-  const shouldShowButton = Boolean(isParte) || isError;
+  const isIncompleto = row?.status === "incompleto";
+  const isErrorLike = isError || isIncompleto;
+  const isDuplicadoRow = row?.status === "duplicado";
+  const shouldShowButton = Boolean(isParte) || isErrorLike || isDuplicadoRow;
   if (!shouldShowButton) return "-";
 
   const isResyncing = resyncingId === row?._id;
   const isProcessing = row?.status === "processing";
-  const buttonColor = isError ? "error" : "primary";
+  const buttonColor = isErrorLike ? "error" : "primary";
   const isLicenciaRow = String(row?.tipo || "").toLowerCase() === "licencia";
   const isParteRow = String(row?.tipo || "").toLowerCase() === "parte";
   return (
     <Box component="span" sx={{ display: "inline-flex", gap: 0.5, alignItems: "center" }}>
       <Tooltip
-        title={isError ? "Reintentar sincronización" : "Resincronizar / reprocesar"}
+        title={isErrorLike ? "Reintentar sincronización" : "Resincronizar / reprocesar"}
         placement="top"
       >
         <span>
@@ -148,6 +153,38 @@ export const AccionesCell = ({
           )}
         </span>
       </Tooltip>
+      {isDuplicadoRow && (
+        <Tooltip title="Resolver duplicado" placement="top">
+          <span>
+            <IconButton
+              size="small"
+              color="warning"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleOpenResolverDuplicado?.(row);
+              }}
+              disabled={
+                Boolean(resyncingId) ||
+                isResyncing ||
+                isProcessing ||
+                !row?.duplicateInfo
+              }
+              sx={{
+                p: 0.5,
+                border: "1px solid",
+                borderColor: "warning.main",
+                color: "warning.main",
+                "&:hover": {
+                  backgroundColor: "warning.light",
+                  borderColor: "warning.dark",
+                },
+              }}
+            >
+              <MergeTypeIcon fontSize="small" />
+            </IconButton>
+          </span>
+        </Tooltip>
+      )}
       {isLicenciaRow && isError && (
         <Tooltip title="Resolver manualmente" placement="top">
           <span>
@@ -175,7 +212,7 @@ export const AccionesCell = ({
           </span>
         </Tooltip>
       )}
-      {isParteRow && isError && (
+      {isParteRow && isErrorLike && (
         <Tooltip title="Resolver parte manualmente" placement="top">
           <span>
             <IconButton
@@ -277,37 +314,52 @@ export const FechaDetectadaCell = ({
 
   if (isEditing) {
     return (
-      <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+      <Stack direction="row" alignItems="center" spacing={0.5} sx={{ minWidth: 0 }}>
         <TextField
           value={editingValue}
           onChange={(e) => setEditingValue(e.target.value)}
           size="small"
           variant="standard"
-          sx={{ maxWidth: isRange ? 220 : 110 }}
           placeholder={
             isLicencia ? (isRange ? "DD/MM/AAAA - DD/MM/AAAA" : "DD/MM/AAAA") : "DD/MM/AAAA"
           }
-        />
-        <IconButton
-          size="small"
-          onClick={handleSave}
-          disabled={savingId === row?._id}
-          sx={{ p: 0.5 }}
-        >
-          ✓
-        </IconButton>
-        <IconButton
-          size="small"
-          onClick={(e) => {
-            e.stopPropagation();
-            setEditingId(null);
-            setEditingValue("");
+          sx={{
+            flexGrow: 1,
+            minWidth: isRange ? 180 : 140,
+            maxWidth: isRange ? 260 : 200,
+            "& .MuiInputBase-root": {
+              px: 0.5,
+              py: 0.25,
+            },
+            "& .MuiInputBase-input": {
+              px: 0,
+              py: 0.25,
+              textAlign: "left",
+            },
           }}
-          sx={{ p: 0.5 }}
-        >
-          ✕
-        </IconButton>
-      </Box>
+        />
+        <Stack direction="row" spacing={0.25} alignItems="center">
+          <IconButton
+            size="small"
+            onClick={handleSave}
+            disabled={savingId === row?._id}
+            sx={{ p: 0.5 }}
+          >
+            ✓
+          </IconButton>
+          <IconButton
+            size="small"
+            onClick={(e) => {
+              e.stopPropagation();
+              setEditingId(null);
+              setEditingValue("");
+            }}
+            sx={{ p: 0.5 }}
+          >
+            ✕
+          </IconButton>
+        </Stack>
+      </Stack>
     );
   }
 
@@ -350,7 +402,7 @@ export const ObservacionCell = ({ row, handleResolverTrabajador }) => {
             color="primary"
             onClick={(e) => {
               e.stopPropagation();
-              handleResolverTrabajador(trabajador, row?.url_storage);
+              handleResolverTrabajador(trabajador, row?.url_storage, row);
             }}
             sx={{
               cursor: "pointer",

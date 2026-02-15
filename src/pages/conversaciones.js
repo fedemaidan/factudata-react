@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Layout as DashboardLayout } from "src/layouts/dashboard/layout";
 import Head from "next/head";
 import { 
@@ -16,16 +16,20 @@ import {
   TextField,
   Button,
   Badge,
-  Tooltip
+  Tooltip,
+  Snackbar,
+  Alert
 } from "@mui/material";
 import DownloadIcon from '@mui/icons-material/Download';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
+import RestartAltIcon from '@mui/icons-material/RestartAlt';
 import ConversationList from "src/components/conversaciones/ConversationList";
 import ChatWindow from "src/components/conversaciones/ChatWindow";
 import MessageInput from "src/components/conversaciones/MessageInput";
 import EmptyState from "src/components/conversaciones/EmptyState";
 import { downloadConversation } from "src/services/conversacionService";
+import BotService from "src/services/botService";
 import {
   ConversationsProvider,
   useConversationsContext,
@@ -44,6 +48,9 @@ function ConversacionesContent() {
   const [isListOpenMobile, setIsListOpenMobile] = useState(false);
   const [downloadOpen, setDownloadOpen] = useState(false);
   const [downloadDates, setDownloadDates] = useState({ start: "", end: "" });
+  const [resetOpen, setResetOpen] = useState(false);
+  const [resetLoading, setResetLoading] = useState(false);
+  const [alert, setAlert] = useState({ open: false, message: "", severity: "info" });
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
   const myNumber = "sorby";
@@ -58,6 +65,10 @@ function ConversacionesContent() {
   } = useConversationsContext();
 
   const hasInsights = insightMessageIds.length > 0;
+  const selectedPhone = useMemo(() => {
+    if (!selected) return "";
+    return selected?.wPid?.split('@')[0] || selected?.lid || selected?.ultimoMensaje?.receptor || "";
+  }, [selected]);
 
   const headerActions = selected ? (
     <Box display="flex" alignItems="center" gap={{ xs: 0.25, sm: 0.5 }}>
@@ -68,6 +79,15 @@ function ConversacionesContent() {
         sx={{ p: { xs: 0.5, sm: 1 } }}
       >
         <RefreshIcon sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }} />
+      </IconButton>
+      <IconButton 
+        onClick={() => setResetOpen(true)} 
+        title="Reiniciar bot del usuario" 
+        size="small"
+        sx={{ p: { xs: 0.5, sm: 1 } }}
+        disabled={!selectedPhone}
+      >
+        <RestartAltIcon sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }} />
       </IconButton>
       <IconButton 
         onClick={() => setDownloadOpen(true)} 
@@ -105,6 +125,21 @@ function ConversacionesContent() {
       )}
     </Box>
   ) : null;
+
+  const handleResetBot = async () => {
+    if (!selectedPhone) return;
+    setResetLoading(true);
+    try {
+      await BotService.resetearEstado(selectedPhone);
+      setAlert({ open: true, message: `Estado reiniciado para ${selectedPhone}`, severity: "success" });
+      setResetOpen(false);
+    } catch (error) {
+      console.error(error);
+      setAlert({ open: true, message: "Error al reiniciar el estado", severity: "error" });
+    } finally {
+      setResetLoading(false);
+    }
+  };
 
   const handleDownload = async () => {
     if (!selected || !downloadDates.start || !downloadDates.end) {
@@ -213,6 +248,39 @@ function ConversacionesContent() {
           </Button>
         </DialogActions>
       </Dialog>
+
+      <Dialog open={resetOpen} onClose={() => setResetOpen(false)}>
+        <DialogTitle>Reiniciar Bot del Usuario</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" mt={1}>
+            Esto borrará el progreso del usuario y lo devolverá al inicio del flujo.
+          </Typography>
+          <Typography variant="subtitle2" mt={2}>
+            Teléfono: {selectedPhone || "—"}
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setResetOpen(false)} disabled={resetLoading}>Cancelar</Button>
+          <Button
+            onClick={handleResetBot}
+            variant="contained"
+            color="error"
+            disabled={!selectedPhone || resetLoading}
+          >
+            Reiniciar
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Snackbar
+        open={alert.open}
+        autoHideDuration={6000}
+        onClose={() => setAlert({ ...alert, open: false })}
+      >
+        <Alert onClose={() => setAlert({ ...alert, open: false })} severity={alert.severity}>
+          {alert.message}
+        </Alert>
+      </Snackbar>
     </DashboardLayout>
   );
 }

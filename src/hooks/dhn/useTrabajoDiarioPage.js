@@ -9,6 +9,8 @@ import useTrabajoDiarioFilters from 'src/hooks/dhn/useTrabajoDiarioFilters';
 const DEFAULT_STATS = {
   total: 0,
   ok: 0,
+  okAutomatico: 0,
+  okManual: 0,
   incompleto: 0,
   advertencia: 0,
   sinParte: 0,
@@ -33,6 +35,7 @@ export default function useTrabajoDiarioPage(options = {}) {
     trabajadorId,
     incluirTrabajador = true,
     defaultLimit = 200,
+    onOpenComprobante,
   } = options || {};
 
   const {
@@ -142,9 +145,10 @@ export default function useTrabajoDiarioPage(options = {}) {
             onOpenLogs={handleOpenLogs}
           />
         ),
-        incluirTrabajador
+        incluirTrabajador,
+        onOpenComprobante
       ),
-    [incluirTrabajador]
+    [incluirTrabajador, onOpenComprobante]
   );
 
   const pagination = {

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useCallback } from 'react';
+import { useEffect, useMemo, useCallback, useState } from 'react';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import { useRouter } from 'next/router';
 import dayjs from 'dayjs';
@@ -12,9 +12,11 @@ import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import useTrabajoDiarioPage from 'src/hooks/dhn/useTrabajoDiarioPage';
 import EditarTrabajoDiarioModal from 'src/components/dhn/EditarTrabajoDiarioModal';
 import FiltroTrabajoDiario from 'src/components/dhn/FiltroTrabajoDiario';
+import ImagenModal from 'src/components/ImagenModal';
+import TrabajosDetectadosList from 'src/components/dhn/TrabajosDetectadosList';
 import HistorialModal from 'src/components/dhn/HistorialModal';
-import { parseDDMMYYYYAnyToISO } from 'src/utils/handleDates';
-import { formatDateDDMMYYYY } from 'src/utils/handleDates';
+import HorasRawModal from 'src/components/dhn/HorasRawModal';
+import { parseDDMMYYYYAnyToISO, formatDateDDMMYYYY } from 'src/utils/handleDates';
 
 const TrabajadorPage = () => {
   const router = useRouter();
@@ -31,6 +33,12 @@ const TrabajadorPage = () => {
     }
     return parseDDMMYYYYAnyToISO(dayjs().format('DD-MM-YYYY'));
   }, [diaParam]);
+
+  const diaLabel = useMemo(() => {
+    if (!diaISO) return '-';
+    if (!diaParam) return formatDateDDMMYYYY(diaISO);
+    return formatDateDDMMYYYY(diaISO || diaParam);
+  }, [diaISO, diaParam]);
 
   useEffect(() => {
     if (!router.isReady) return;
@@ -50,6 +58,54 @@ const TrabajadorPage = () => {
     router.replace({ pathname: router.pathname, query: nextQuery }, undefined, { shallow: true });
   }, [router]);
 
+  const [modalUrl, setModalUrl] = useState("");
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalFileName, setModalFileName] = useState("");
+  const [rawModalOpen, setRawModalOpen] = useState(false);
+  const [rawModalData, setRawModalData] = useState([]);
+  const [rawModalTitle, setRawModalTitle] = useState('');
+  const [rawModalFileName, setRawModalFileName] = useState('');
+  const [rawModalUrl, setRawModalUrl] = useState('');
+
+  const handleOpenComprobante = useCallback((comp, item) => {
+    if (!comp) return;
+    const url = comp?.url || comp?.url_storage || '';
+    if (comp.type === 'parte') {
+      if (!url) return;
+      setModalUrl(url);
+      setModalFileName(comp?.file_name || comp?.fileName || '');
+      setModalOpen(true);
+      return;
+    }
+
+    if (comp.type === 'horas') {
+      const trabajador = item?.trabajadorId || {};
+      const nombre = `${trabajador?.apellido || ''} ${trabajador?.nombre || ''}`.trim();
+      const dni = trabajador?.dni ? `DNI: ${trabajador.dni}` : '';
+      const titleBase = nombre ? `${nombre} • ${diaLabel}` : `Fichadas raw • ${diaLabel}`;
+      const title = dni ? `${titleBase} • ${dni}` : titleBase;
+      setRawModalData(Array.isArray(item?.dataRawExcel) ? item.dataRawExcel : []);
+      setRawModalTitle(title);
+      setRawModalFileName(comp?.file_name || comp?.fileName || '');
+      setRawModalUrl(url || '');
+      setRawModalOpen(true);
+    }
+  }, [diaLabel]);
+
+  const handleCloseParteModal = useCallback(() => {
+    setModalOpen(false);
+    setModalUrl("");
+    setModalFileName("");
+  }, []);
+
+  const handleCloseRawModal = useCallback(() => {
+    setRawModalOpen(false);
+    setRawModalData([]);
+    setRawModalTitle('');
+    setRawModalFileName('');
+    setRawModalUrl('');
+  }, []);
+
   const {
     data,
     stats,
@@ -67,6 +123,7 @@ const TrabajadorPage = () => {
     trabajadorId: trabajadorId ? String(trabajadorId) : undefined,
     incluirTrabajador: false,
     defaultLimit: 200,
+    onOpenComprobante: handleOpenComprobante,
   });
 
   const formatters = { fecha: formatDateDDMMYYYY };
@@ -182,6 +239,23 @@ const TrabajadorPage = () => {
         entityLabel="Trabajo diario"
         getEntityTitle={logs.getEntityTitle}
         getEntitySubtitle={logs.getEntitySubtitle}
+      />
+
+      <ImagenModal
+        open={modalOpen}
+        onClose={handleCloseParteModal}
+        imagenUrl={modalUrl}
+        fileName={modalFileName}
+        leftContent={modalUrl ? <TrabajosDetectadosList urlStorage={modalUrl} /> : null}
+      />
+
+      <HorasRawModal
+        open={rawModalOpen}
+        onClose={handleCloseRawModal}
+        data={rawModalData}
+        title={rawModalTitle}
+        fileName={rawModalFileName}
+        downloadUrl={rawModalUrl}
       />
     </DashboardLayout>
   );

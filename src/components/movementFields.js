@@ -46,6 +46,7 @@ const DEFINICION_CAMPOS = [
   { section: 'pago', name: 'estado', label: 'Estado', type: 'select', options: ['Pendiente', 'Pagado'], visibleIf: (_, empresa) => empresa?.con_estados },
   { section: 'pago', name: 'caja_chica', label: 'Caja Chica', type: 'boolean' },
   { section: 'pago', name: 'empresa_facturacion', label: 'Empresa de facturación', type: 'select', optionsKey: 'subempresas' },
+  { section: 'pago', name: 'factura_cliente', label: 'Factura de cliente', type: 'boolean', visibleIf: (info) => info.factura_cliente },
 
   // IMPUESTOS
   { section: 'impuestos', name: 'impuestos', label: 'Impuestos', type: 'impuestos' },

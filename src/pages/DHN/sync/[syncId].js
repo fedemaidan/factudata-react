@@ -1,7 +1,28 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { useRouter } from "next/router";
-import { Container, Box, Snackbar, Alert, Button, Stack, Typography } from "@mui/material";
+import {
+  Container,
+  Box,
+  Snackbar,
+  Alert,
+  Button,
+  Stack,
+  Typography,
+  TextField,
+  Chip,
+  IconButton,
+  InputAdornment,
+  Popover,
+  Divider,
+  MenuItem,
+  Tooltip,
+} from "@mui/material";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
+import FilterListIcon from "@mui/icons-material/FilterList";
+import SearchIcon from "@mui/icons-material/Search";
+import CloseIcon from "@mui/icons-material/Close";
+import RefreshIcon from "@mui/icons-material/Refresh";
+import { STATUS_MAP } from "src/utils/dhn/syncHelpers";
 import { Layout as DashboardLayout } from "src/layouts/dashboard/layout";
 import TableComponent from "src/components/TableComponent";
 import DhnDriveService from "src/services/dhn/cargarUrlDriveService";
@@ -9,6 +30,8 @@ import ImagenModal from "src/components/ImagenModal";
 import ResolverTrabajadorModal from "src/components/dhn/ResolverTrabajadorModal";
 import ResolverLicenciaManualForm from "src/components/dhn/ResolverLicenciaManualForm";
 import ResolverParteManualForm from "src/components/dhn/ResolverParteManualForm";
+import ResolverDuplicadoModal from "src/components/dhn/sync/ResolverDuplicadoModal";
+import TrabajosDetectadosList from "src/components/dhn/TrabajosDetectadosList";
 import {
   AccionesCell,
   ArchivoCell,
@@ -32,6 +55,13 @@ const SyncDetailPage = () => {
     total: 0,
   });
   const { limit: paginationLimit, offset: paginationOffset } = pagination;
+  const [searchTerm, setSearchTerm] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchVersion, setSearchVersion] = useState(0);
+  const [statusFilter, setStatusFilter] = useState(null);
+  const [statusCounts, setStatusCounts] = useState({});
+  const [sortConfig, setSortConfig] = useState({ key: null, direction: "asc" });
+  const [filtersAnchorEl, setFiltersAnchorEl] = useState(null);
 
   const [imageModalOpen, setImageModalOpen] = useState(false);
   const [imageUrl, setImageUrl] = useState("");
@@ -46,6 +76,10 @@ const SyncDetailPage = () => {
   const [resolverLicenciaRow, setResolverLicenciaRow] = useState(null);
   const [resolverParteModalOpen, setResolverParteModalOpen] = useState(false);
   const [resolverParteRow, setResolverParteRow] = useState(null);
+
+  const [resolverDuplicadoRow, setResolverDuplicadoRow] = useState(null);
+  const [resolverDuplicadoLoading, setResolverDuplicadoLoading] = useState(false);
+  const [resolverDuplicadoAction, setResolverDuplicadoAction] = useState(null);
 
   const [resolverModalOpen, setResolverModalOpen] = useState(false);
   const [trabajadorSeleccionado, setTrabajadorSeleccionado] = useState(null);
@@ -65,8 +99,11 @@ const SyncDetailPage = () => {
       const page = await DhnDriveService.getSyncChildren(String(syncId), {
         limit: paginationLimit,
         offset: paginationOffset,
+        search: searchQuery || undefined,
+        status: statusFilter || undefined,
       });
       setItems(Array.isArray(page?.items) ? page.items : []);
+      setStatusCounts(typeof page?.statusCounts === "object" && page.statusCounts ? page.statusCounts : {});
       setPagination((prev) => ({
         ...prev,
         total: page?.total ?? prev.total,
@@ -75,13 +112,14 @@ const SyncDetailPage = () => {
       }));
     } catch (e) {
       setItems([]);
+      setStatusCounts({});
       setAlert({ open: true, message: "Error cargando detalles", severity: "error" });
     } finally {
       setIsLoading(false);
     }
-  }, [syncId, paginationLimit, paginationOffset]);
+  }, [syncId, paginationLimit, paginationOffset, searchQuery, statusFilter]);
 
-  const openImageModal = (url, fileName) => {
+  const openImageModal = (url, fileName, row) => {
     if (!url) return;
     setImageUrl(url);
     setImageFileName(typeof fileName === "string" ? fileName : "");
@@ -97,7 +135,34 @@ const SyncDetailPage = () => {
     setAlert((prev) => ({ ...prev, open: false }));
   };
 
-  const handleResolverTrabajador = (trabajador, urlStorage) => {
+  const handleSearchSubmit = useCallback(
+    (event) => {
+      if (event && event.preventDefault) {
+        event.preventDefault();
+      }
+      setPagination((prev) => ({ ...prev, offset: 0 }));
+      const trimmed = String(searchTerm || "").trim();
+      setSearchQuery(trimmed);
+      setSearchVersion((prev) => prev + 1);
+    },
+    [searchTerm]
+  );
+
+  const handleCloseFilters = useCallback(() => {
+    setFiltersAnchorEl(null);
+  }, []);
+
+  const handleToggleFilters = useCallback((event) => {
+    setFiltersAnchorEl((prev) => (prev ? null : event.currentTarget));
+  }, []);
+
+  const handleClearFilters = useCallback(() => {
+    setStatusFilter(null);
+    setPagination((prev) => ({ ...prev, offset: 0 }));
+    handleCloseFilters();
+  }, [handleCloseFilters]);
+
+  const handleResolverTrabajador = (trabajador, urlStorage, row) => {
     setTrabajadorSeleccionado(trabajador);
     setUrlStorageSeleccionado(urlStorage);
     setResolverModalOpen(true);
@@ -116,6 +181,10 @@ const SyncDetailPage = () => {
 
   const handleOpenResolverParte = (row) => {
     if (!row?.url_storage) return;
+    if (row?.status === "incompleto") {
+      openImageModal(row.url_storage, row.file_name, row);
+      return;
+    }
     setResolverParteRow(row);
     setResolverParteModalOpen(true);
   };
@@ -221,7 +290,59 @@ const SyncDetailPage = () => {
       await fetchDetails();
     };
     run();
-  }, [fetchDetails]);
+  }, [fetchDetails, searchVersion]);
+
+  const handleOpenResolverDuplicado = useCallback((row) => {
+    if (!row?.duplicateInfo) return;
+    setResolverDuplicadoRow(row);
+  }, []);
+
+  const handleCloseResolverDuplicado = useCallback(() => {
+    setResolverDuplicadoRow(null);
+    setResolverDuplicadoAction(null);
+  }, []);
+
+  const handleResolverDuplicado = useCallback(
+    async ({ action, manualPatch } = {}) => {
+      if (!resolverDuplicadoRow || !action) return;
+      setResolverDuplicadoLoading(true);
+      setResolverDuplicadoAction(action);
+      try {
+        const resp = await DhnDriveService.resolveDuplicate(
+          resolverDuplicadoRow._id,
+          action,
+          manualPatch
+        );
+        if (!resp?.ok) {
+          throw new Error(resp?.error?.message || "No se pudo resolver el duplicado");
+        }
+        const successMessage =
+          action === "keepExisting"
+            ? "Se conservó el registro original"
+            : "Se reemplazó el comprobante";
+        setAlert({
+          open: true,
+          severity: "success",
+          message: successMessage,
+        });
+        handleCloseResolverDuplicado();
+        await fetchDetails();
+        return true;
+      } catch (error) {
+        console.error("Error resolviendo duplicado:", error);
+        setAlert({
+          open: true,
+          severity: "error",
+          message: error?.message || "Error al resolver el duplicado",
+        });
+        return false;
+      } finally {
+        setResolverDuplicadoLoading(false);
+        setResolverDuplicadoAction(null);
+      }
+    },
+    [resolverDuplicadoRow, fetchDetails, handleCloseResolverDuplicado]
+  );
 
   const handleChangePage = useCallback((direction) => {
     setPagination((prev) => {
@@ -235,34 +356,78 @@ const SyncDetailPage = () => {
     });
   }, []);
 
+  // Ordenar items
+  const sortedItems = useMemo(() => {
+    if (!sortConfig.key) return items;
+    return [...items].sort((a, b) => {
+      let aVal = a?.[sortConfig.key];
+      let bVal = b?.[sortConfig.key];
+      
+      // Manejo especial para campos anidados o específicos
+      if (sortConfig.key === "archivo") {
+        aVal = a?.file_name || "";
+        bVal = b?.file_name || "";
+      }
+      if (sortConfig.key === "fechasDetectadas") {
+        aVal = a?.fechasDetectadas || a?.fecha_detectada || "";
+        bVal = b?.fechasDetectadas || b?.fecha_detectada || "";
+      }
+      
+      // Convertir a strings para comparación
+      aVal = String(aVal || "").toLowerCase();
+      bVal = String(bVal || "").toLowerCase();
+      
+      if (aVal < bVal) return sortConfig.direction === "asc" ? -1 : 1;
+      if (aVal > bVal) return sortConfig.direction === "asc" ? 1 : -1;
+      return 0;
+    });
+  }, [items, sortConfig]);
+
+  const handleSort = useCallback((key) => {
+    setSortConfig((prev) => ({
+      key,
+      direction: prev.key === key && prev.direction === "asc" ? "desc" : "asc",
+    }));
+  }, []);
+
   const columns = useMemo(() => {
     const cols = [
       {
         key: "status",
         label: "Estado",
+        sortable: true,
         render: (it) => <StatusChip status={it?.status} />,
       },
     ];
 
-    cols.push({
-      key: "acciones",
-      label: "Acciones",
-      render: (it) => (
-        <AccionesCell
-          row={it}
-          isParte={isParte}
-          resyncingId={resyncingId}
-          handleResyncUrlStorage={handleResyncUrlStorage}
-          handleOpenResolverLicencia={handleOpenResolverLicencia}
-          handleOpenResolverParte={handleOpenResolverParte}
-        />
-      ),
-    });
+      cols.push({
+        key: "acciones",
+        label: "Acciones",
+        sortable: false,
+        render: (it) => (
+          <AccionesCell
+            row={it}
+            isParte={isParte}
+            resyncingId={resyncingId}
+            handleResyncUrlStorage={handleResyncUrlStorage}
+            handleOpenResolverLicencia={handleOpenResolverLicencia}
+            handleOpenResolverParte={handleOpenResolverParte}
+            handleOpenResolverDuplicado={handleOpenResolverDuplicado}
+          />
+        ),
+      });
 
     if (shouldShowFecha) {
       cols.push({
         key: "fechasDetectadas",
         label: "Fecha detectada",
+        sortable: true,
+        sx: {
+          minWidth: 180,
+          maxWidth: 260,
+          whiteSpace: "normal",
+          overflow: "visible",
+        },
         render: (it) => (
           <FechaDetectadaCell
             row={it}
@@ -285,12 +450,14 @@ const SyncDetailPage = () => {
     cols.push({
       key: "archivo",
       label: "Archivo",
+      sortable: true,
       render: (it) => <ArchivoCell row={it} onOpenImage={openImageModal} />,
     });
 
     cols.push({
       key: "observacion",
       label: "Observación",
+      sortable: true,
       render: (it) => (
         <ObservacionCell row={it} handleResolverTrabajador={handleResolverTrabajador} />
       ),
@@ -311,6 +478,7 @@ const SyncDetailPage = () => {
     handleResyncUrlStorage,
     handleOpenResolverLicencia,
     handleOpenResolverParte,
+    handleOpenResolverDuplicado,
     setItems,
     setAlert,
     openImageModal,
@@ -324,6 +492,17 @@ const SyncDetailPage = () => {
     pagination.total > 0
       ? `Página ${currentPage} de ${totalPages} (${pagination.total} registros)`
       : "Sin registros";
+
+  const activeFilters = useMemo(() => {
+    const result = [];
+    if (statusFilter) {
+      result.push({
+        key: "status",
+        label: STATUS_MAP[statusFilter]?.label || statusFilter,
+      });
+    }
+    return result;
+  }, [statusFilter]);
 
 
   return (
@@ -341,10 +520,18 @@ const SyncDetailPage = () => {
         </Snackbar>
 
         <Stack>
-          <Box sx={{ display: "flex", gap: 2, alignItems: "center" }}>
+
+          <Stack
+            direction="row"
+            spacing={1}
+            flexWrap="wrap"
+            alignItems="center"
+            justifyContent="flex-start"
+            sx={{ mt: 2, mb: 1 }}
+          >
             <Button
               variant="text"
-              startIcon={<ArrowBackIcon />}
+              startIcon={<ArrowBackIcon fontSize="10px" />}
               onClick={() => router.back()}
               sx={{
                 alignSelf: "flex-start",
@@ -352,18 +539,143 @@ const SyncDetailPage = () => {
                 "&:hover": { backgroundColor: "action.hover", color: "primary.main" },
                 transition: "all 0.2s ease-in-out",
                 fontWeight: 500,
+                fontSize: "12px"
               }}
             >
               Volver
             </Button>
-            <Button
-              variant="outlined"
-              onClick={fetchDetails}
-              disabled={isLoading}
+            <Box component="form" onSubmit={handleSearchSubmit} sx={{ display: "flex", gap: 1, flex: 1, minWidth: 0, maxWidth: 350 }}>
+              <TextField
+                label="Buscar"
+                placeholder="Archivo, carpeta o fecha"
+                size="small"
+                value={searchTerm}
+                onChange={(event) => setSearchTerm(event.target.value)}
+                aria-label="Buscar archivos o carpetas"
+                sx={{ flex: 1, minWidth: 220, backgroundColor: "background.paper" }}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <SearchIcon fontSize="small" />
+                    </InputAdornment>
+                  ),
+                }}
+              />
+            </Box>
+            <IconButton
+              aria-label="Filtros"
+              size="small"
+              onClick={handleToggleFilters}
+              sx={{
+                borderRadius: 2,
+                border: "1px solid",
+                borderColor: filtersAnchorEl ? "primary.main" : "divider",
+                color: filtersAnchorEl ? "primary.main" : "text.primary",
+                "&:hover": {
+                  backgroundColor: "action.hover",
+                },
+              }}
             >
-              {isLoading ? "Actualizando..." : "Actualizar"}
-            </Button>
-          </Box>
+              <FilterListIcon fontSize="small" />
+            </IconButton>
+            <Tooltip title="Actualizar datos">
+              <IconButton
+                size="small"
+                onClick={fetchDetails}
+                disabled={isLoading}
+                sx={{
+                  borderRadius: 2,
+                  px: 1,
+                  py: 1,
+                  boxShadow: 1,
+                  "&:hover": { boxShadow: 2 },
+                  ml: "auto",
+                }}
+              >
+                <RefreshIcon
+                  sx={{
+                    animation: isLoading ? "spin 1s linear infinite" : "none",
+                    "@keyframes spin": {
+                      "0%": { transform: "rotate(0deg)" },
+                      "100%": { transform: "rotate(360deg)" },
+                    },
+                  }}
+                />
+              </IconButton>
+            </Tooltip>
+          </Stack>
+
+          <Popover
+            open={Boolean(filtersAnchorEl)}
+            anchorEl={filtersAnchorEl}
+            onClose={handleCloseFilters}
+            anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
+            transformOrigin={{ vertical: "top", horizontal: "left" }}
+            PaperProps={{
+              sx: {
+                p: 1.5,
+                minWidth: 300,
+                maxWidth: 360,
+              },
+            }}
+          >
+            <Stack spacing={1.25}>
+              <Box
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                }}
+              >
+                <Typography variant="subtitle2" fontWeight={600}>
+                  Más filtros
+                </Typography>
+                <IconButton size="small" onClick={handleCloseFilters} sx={{ p: 0.5 }}>
+                  <CloseIcon fontSize="small" />
+                </IconButton>
+              </Box>
+              <TextField
+                select
+                label="Estado"
+                value={statusFilter || ""}
+                onChange={(event) => {
+                  const value = event.target.value || null;
+                  setStatusFilter(value);
+                  setPagination((prev) => ({ ...prev, offset: 0 }));
+                }}
+                size="small"
+                fullWidth
+              >
+                <MenuItem value="">Todos</MenuItem>
+                {Object.entries(statusCounts).map(([status, count]) => (
+                  <MenuItem key={status} value={status}>
+                    {`${STATUS_MAP[status]?.label || status} (${count})`}
+                  </MenuItem>
+                ))}
+              </TextField>
+              <Divider />
+              <Stack direction="row" spacing={1}>
+                <Button size="small" variant="outlined" fullWidth onClick={handleClearFilters}>
+                  Limpiar
+                </Button>
+                <Button size="small" variant="contained" fullWidth onClick={handleCloseFilters}>
+                  Cerrar
+                </Button>
+              </Stack>
+            </Stack>
+          </Popover>
+
+          <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" sx={{ mt: 1 }}>
+            {activeFilters.length > 0 ? (
+              activeFilters.map((filter) => (
+                <Chip key={filter.key} label={filter.label} size="small" variant="outlined" />
+              ))
+            ) : (
+              <Typography variant="body2" color="text.secondary">
+                Sin filtros activos
+              </Typography>
+            )}
+          </Stack>
 
           <Box>
             <Box
@@ -442,9 +754,12 @@ const SyncDetailPage = () => {
                 }}
               >
                 <TableComponent
-                  data={items}
+                  data={sortedItems}
                   columns={columns}
                   isLoading={isLoading}
+                  sortField={sortConfig.key}
+                  sortDirection={sortConfig.direction}
+                  onSortChange={handleSort}
                   onRowClick={(row) => {
                     console.log("[DHN Sync] row click:", row);
                   }}
@@ -492,6 +807,11 @@ const SyncDetailPage = () => {
           onClose={closeImageModal}
           imagenUrl={imageUrl}
           fileName={imageFileName}
+          leftContent={
+            isParte && imageUrl ? (
+              <TrabajosDetectadosList urlStorage={imageUrl} />
+            ) : null
+          }
         />
         <ImagenModal
           open={resolverLicenciaModalOpen}
@@ -522,6 +842,14 @@ const SyncDetailPage = () => {
               />
             ) : null
           }
+        />
+        <ResolverDuplicadoModal
+          open={Boolean(resolverDuplicadoRow)}
+          onClose={handleCloseResolverDuplicado}
+          row={resolverDuplicadoRow}
+          onResolve={handleResolverDuplicado}
+          loading={resolverDuplicadoLoading}
+          actionInProgress={resolverDuplicadoAction}
         />
         
         <ResolverTrabajadorModal

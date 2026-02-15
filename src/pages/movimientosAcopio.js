@@ -47,8 +47,6 @@ import AcopioVisor from 'src/components/acopioVisor';
 // Tu tabla actual de Remitos:
 import RemitosTable from 'src/components/remitosTable';
 
-// Buscador (para lista de precios)
-import ListaPreciosBuscador from 'src/components/listaPreciosBuscador';
 
 // Tooltips de ayuda
 import TooltipHelp from 'src/components/TooltipHelp';
@@ -73,6 +71,9 @@ const MovimientosAcopioPage = () => {
   const [alert, setAlert] = useState({ open: false, message: '', severity: 'info' });
 
   const [acopio, setAcopio] = useState(null);
+  const [descripcionDialogOpen, setDescripcionDialogOpen] = useState(false);
+  const [descripcionEdit, setDescripcionEdit] = useState('');
+  const [guardandoDescripcion, setGuardandoDescripcion] = useState(false);
   
   // Conteo para badges en tabs
   const [remitosCount, setRemitosCount] = useState(null); // null = no cargado, 0+ = cargado
@@ -235,6 +236,40 @@ const MovimientosAcopioPage = () => {
       setLoading(false);
     }
   }, [acopioId]);
+
+  const openDescripcionDialog = () => {
+    setDescripcionEdit(acopio?.descripcion || '');
+    setDescripcionDialogOpen(true);
+  };
+
+  const closeDescripcionDialog = () => {
+    setDescripcionDialogOpen(false);
+    setDescripcionEdit('');
+  };
+
+  const handleGuardarDescripcionAcopio = async () => {
+    if (!acopio) return;
+    setGuardandoDescripcion(true);
+    try {
+      const ok = await AcopioService.editarAcopio(acopioId, {
+        proveedor: acopio.proveedor,
+        proyecto_id: acopio.proyecto_id || acopio.proyectoId || '',
+        codigo: acopio.codigo,
+        descripcion: descripcionEdit
+      });
+      if (ok) {
+        setAcopio((prev) => ({ ...prev, descripcion: descripcionEdit }));
+        setAlert({ open: true, message: 'Descripción actualizada', severity: 'success' });
+        closeDescripcionDialog();
+      } else {
+        setAlert({ open: true, message: 'No se pudo actualizar la descripción', severity: 'error' });
+      }
+    } catch (error) {
+      setAlert({ open: true, message: 'Error al actualizar la descripción', severity: 'error' });
+    } finally {
+      setGuardandoDescripcion(false);
+    }
+  };
 
   // Función para exportar informe de remitos a Excel con estilos
   const exportarInformeRemitos = async () => {
@@ -806,14 +841,6 @@ const MovimientosAcopioPage = () => {
           >
             Materiales{materialesCount > 0 ? ` (${materialesCount})` : ''}
           </Button>
-          {acopio?.tipo === 'lista_precios' && (
-            <Button
-              variant={tabActiva === 'buscar' ? 'contained' : 'outlined'}
-              onClick={() => handleChangeTab(null, 'buscar')}
-            >
-              Buscar materiales
-            </Button>
-          )}
           {hasAcopioPages && (
             <Button
               variant={tabActiva === 'hojas' ? 'contained' : 'outlined'}
@@ -901,12 +928,6 @@ const MovimientosAcopioPage = () => {
           </Box>
         )}
 
-        {/* BUSCAR (para lista de precios) */}
-        {tabActiva === 'buscar' && acopio?.tipo === 'lista_precios' && !initialLoading && (
-          <Box sx={{ mt: 2 }}>
-            <ListaPreciosBuscador acopioId={acopioId} />
-          </Box>
-        )}
 
         {/* INFO ACOPIO + editor */}
         {tabActiva === 'acopio' && !initialLoading && (
@@ -934,14 +955,33 @@ const MovimientosAcopioPage = () => {
                   <Button variant="outlined" onClick={handleEditAcopio}>Editar Acopio</Button>
                 </Stack>
 
-                {/* Descripción destacada (si existe) */}
-                {acopio.descripcion && (
-                  <Box sx={{ mb: 3, p: 2, bgcolor: 'grey.50', borderRadius: 1, borderLeft: '4px solid', borderColor: 'primary.main' }}>
-                    <Typography variant="body1" color="text.secondary">
-                      {acopio.descripcion}
-                    </Typography>
-                  </Box>
-                )}
+                {/* Descripción destacada / edición rápida */}
+                <Box sx={{ mb: 3 }}>
+                  {acopio.descripcion ? (
+                    <Stack direction="row" spacing={1} alignItems="flex-start">
+                      <Box sx={{ flex: 1, p: 2, bgcolor: 'grey.50', borderRadius: 1, borderLeft: '4px solid', borderColor: 'primary.main' }}>
+                        <Typography variant="body1" color="text.secondary">
+                          {acopio.descripcion}
+                        </Typography>
+                      </Box>
+                      <Tooltip title="Editar descripción">
+                        <IconButton size="small" onClick={openDescripcionDialog} sx={{ mt: 0.5 }}>
+                          <EditIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    </Stack>
+                  ) : (
+                    <Button
+                      variant="text"
+                      size="small"
+                      onClick={openDescripcionDialog}
+                      startIcon={<EditIcon fontSize="inherit" />}
+                      sx={{ px: 0, minWidth: 0, textTransform: 'none', color: 'text.secondary' }}
+                    >
+                      Agregar descripción
+                    </Button>
+                  )}
+                </Box>
 
                 {/* Datos del Acopio */}
                 <Typography variant="h6" gutterBottom>Información General</Typography>
@@ -1276,6 +1316,31 @@ const MovimientosAcopioPage = () => {
             </DialogContent>
           </Dialog>
         )}
+
+        <Dialog open={descripcionDialogOpen} onClose={closeDescripcionDialog}>
+          <DialogContent>
+            <Typography variant="h6" gutterBottom>
+              Descripción del acopio
+            </Typography>
+            <TextField
+              value={descripcionEdit}
+              onChange={(e) => setDescripcionEdit(e.target.value)}
+              placeholder="Agregar una descripción breve"
+              fullWidth
+              multiline
+              minRows={3}
+              sx={{ mb: 2 }}
+            />
+            <Stack direction="row" spacing={2} justifyContent="flex-end">
+              <Button onClick={closeDescripcionDialog} variant="outlined">
+                Cancelar
+              </Button>
+              <Button onClick={handleGuardarDescripcionAcopio} variant="contained" disabled={guardandoDescripcion}>
+                {guardandoDescripcion ? 'Guardando...' : 'Guardar'}
+              </Button>
+            </Stack>
+          </DialogContent>
+        </Dialog>
 
         {/* Snackbar */}
         <Snackbar

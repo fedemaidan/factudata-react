@@ -28,14 +28,24 @@ const pedidoService = {
     offset = 0,
     sortField = "createdAt",
     sortDirection = "desc",
+    search = "",
+    estado = "",
   } = {}) => {
+    const params = {
+      limit,
+      offset,
+      sortField,
+      sortOrder: sortDirection,
+    };
+    if (search) {
+      params.search = search;
+    }
+    if (estado) {
+      params.estado = estado;
+    }
+
     const response = await axiosCelulandia.get("/pedidos/resumen", {
-      params: {
-        limit,
-        offset,
-        sortField,
-        sortOrder: sortDirection,
-      },
+      params,
     });
     return response.data;
   },

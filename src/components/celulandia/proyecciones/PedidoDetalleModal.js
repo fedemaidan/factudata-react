@@ -244,21 +244,6 @@ const PedidoDetalleModal = ({ open, onClose, resumen }) => {
         update: asignacionesActualizadas,
         remove: asignacionesEliminar,
       };
-      // #region agent log
-      fetch("http://127.0.0.1:7242/ingest/2d24a2b6-12a8-4d4d-9c21-afa4382deedb", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sessionId: "debug-session",
-          runId: "run1",
-          hypothesisId: "H1",
-          location: "PedidoDetalleModal.js:254",
-          message: "Payload previo al mutation",
-          data: payload,
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {});
-      // #endregion
       const tasks = [];
 
       if (pedido?._id && cambiosEstadoPedido) {

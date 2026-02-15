@@ -29,7 +29,7 @@ const TOP_NAV_HEIGHT = 64;
 export const TopNav = (props) => {
   const { onNavOpen, title, updateAvailable, onUpdateClick, navWidth = SIDE_NAV_WIDTH, headerActions } = props; // <-- NUEVO
   const { breadcrumbs } = useBreadcrumbs();
-  const lgUp = useMediaQuery((theme) => theme.breakpoints.up("lg"));
+  const lgUp = useMediaQuery((theme) => theme.breakpoints.up("lg"), { noSsr: true });
   const accountPopover = usePopover();
   const { user, isSpying, originalUser } = useAuthContext();
   const credit = user?.credit;

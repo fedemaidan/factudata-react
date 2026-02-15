@@ -39,14 +39,14 @@ const notaPedidoService = {
       const response = await api.put(`nota-pedido/${notaId}`, nuevosDatos);
       if (response.status === 200) {
         console.log('Nota actualizada con éxito');
-        return true;
+        return response.data?.nota || null;
       } else {
         console.error('Error al actualizar la nota');
-        return false;
+        return null;
       }
     } catch (err) {
       console.error('Error al actualizar la nota:', err);
-      return false;
+      return null;
     }
   },
 

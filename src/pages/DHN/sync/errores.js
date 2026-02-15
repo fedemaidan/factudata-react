@@ -1,7 +1,5 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
-import { useRouter } from "next/router";
 import { Container, Box, Snackbar, Alert, Button, Stack, Typography } from "@mui/material";
-import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import { Layout as DashboardLayout } from "src/layouts/dashboard/layout";
 import TableComponent from "src/components/TableComponent";
 import DhnDriveService from "src/services/dhn/cargarUrlDriveService";
@@ -9,21 +7,25 @@ import ImagenModal from "src/components/ImagenModal";
 import ResolverTrabajadorModal from "src/components/dhn/ResolverTrabajadorModal";
 import ResolverLicenciaManualForm from "src/components/dhn/ResolverLicenciaManualForm";
 import ResolverParteManualForm from "src/components/dhn/ResolverParteManualForm";
+import TrabajosDetectadosList from "src/components/dhn/TrabajosDetectadosList";
 import {
   AccionesCell,
   ArchivoCell,
-  FechaDetectadaCell,
   ObservacionCell,
   StatusChip,
 } from "src/components/dhn/sync/cells";
+import ResolverDuplicadoModal from "src/components/dhn/sync/ResolverDuplicadoModal";
+import { formatDateToDDMMYYYY } from "src/utils/handleDates";
+import useCorreccionAsistida from "src/hooks/dhn/useCorreccionAsistida";
+import CorreccionModalNavigator from "src/components/dhn/sync/CorreccionModalNavigator";
+import useErroresSyncFilters from "src/hooks/dhn/useErroresSyncFilters";
+import FiltroErrores from "src/components/dhn/sync/FiltroErrores";
 
-const DEFAULT_PAGE_LIMIT = 100;
+const DEFAULT_PAGE_LIMIT = 50;
 
 const SyncErrorsPage = () => {
-  const router = useRouter();
-  const tipoLabel = "errores";
-
   const [items, setItems] = useState([]);
+  console.log("[DHN Errores] SyncErrorsPage", items);
   const [isLoading, setIsLoading] = useState(true);
   const [alert, setAlert] = useState({ open: false, message: "", severity: "error" });
   const [pagination, setPagination] = useState({
@@ -31,15 +33,21 @@ const SyncErrorsPage = () => {
     offset: 0,
     total: 0,
   });
+  const [resolvedPayloads, setResolvedPayloads] = useState({});
   const { limit: paginationLimit, offset: paginationOffset } = pagination;
+  const filterContext = useErroresSyncFilters({
+    onSearchApply: () =>
+      setPagination((prev) => ({
+        ...prev,
+        offset: 0,
+      })),
+  });
+  const { filtersPayload, searchVersion, isSearchTriggeredByInputRef } = filterContext;
 
   const [imageModalOpen, setImageModalOpen] = useState(false);
   const [imageUrl, setImageUrl] = useState("");
   const [imageFileName, setImageFileName] = useState("");
-
-  const [editingId, setEditingId] = useState(null);
-  const [editingValue, setEditingValue] = useState("");
-  const [savingId, setSavingId] = useState(null);
+  const [imageModalRow, setImageModalRow] = useState(null);
 
   const [resyncingId, setResyncingId] = useState(null);
   const [resolverLicenciaModalOpen, setResolverLicenciaModalOpen] = useState(false);
@@ -47,41 +55,107 @@ const SyncErrorsPage = () => {
   const [resolverParteModalOpen, setResolverParteModalOpen] = useState(false);
   const [resolverParteRow, setResolverParteRow] = useState(null);
 
+  const [resolverDuplicadoRow, setResolverDuplicadoRow] = useState(null);
+  const [resolverDuplicadoLoading, setResolverDuplicadoLoading] = useState(false);
+  const [resolverDuplicadoAction, setResolverDuplicadoAction] = useState(null);
+
   const [resolverModalOpen, setResolverModalOpen] = useState(false);
   const [trabajadorSeleccionado, setTrabajadorSeleccionado] = useState(null);
   const [urlStorageSeleccionado, setUrlStorageSeleccionado] = useState(null);
 
-  const fetchDetails = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      const page = await DhnDriveService.getErroredSyncChildren({
-        limit: paginationLimit,
-        offset: paginationOffset,
-      });
-      setItems(Array.isArray(page?.items) ? page.items : []);
-      setPagination((prev) => ({
-        ...prev,
-        total: page?.total ?? prev.total,
-        limit: page?.limit ?? prev.limit,
-        offset: page?.offset ?? prev.offset,
-      }));
-    } catch (error) {
-      console.error("Error cargando errores de sincronización:", error);
-      setItems([]);
-      setAlert({
-        open: true,
-        severity: "error",
-        message: "Error cargando errores",
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  }, [paginationLimit, paginationOffset, setPagination]);
+  const [sortField, setSortField] = useState("created_at");
+  const [sortDirection, setSortDirection] = useState("desc");
+  const [correccionItems, setCorreccionItems] = useState([]);
+  const [isCargandoCorreccion, setIsCargandoCorreccion] = useState(false);
+  const correccionSourceItems = correccionItems.length ? correccionItems : items;
+  const {
+    activa: correccionActiva,
+    textoProgreso,
+    iniciar: iniciarCorreccion,
+    detener: detenerCorreccion,
+    determinarTipoModal,
+    actualRow,
+    hasPrev: correccionHasPrev,
+    hasNext: correccionHasNext,
+    irAnterior: irCorreccionAnterior,
+    irSiguiente: irCorreccionSiguiente,
+    confirmarYAvanzar,
+  } = useCorreccionAsistida(correccionSourceItems);
+  const tipoModalActual = determinarTipoModal(actualRow);
+  const totalDisponibles = pagination.total;
 
-  const openImageModal = (url, fileName) => {
+  const fetchDetails = useCallback(
+    async ({ showLoading = true } = {}) => {
+      if (showLoading) {
+        setIsLoading(true);
+      }
+      try {
+        const page = await DhnDriveService.getErroredSyncChildren({
+          limit: paginationLimit,
+          offset: paginationOffset,
+          ...filtersPayload,
+          sortField,
+          sortDirection,
+        });
+        setItems(Array.isArray(page?.items) ? page.items : []);
+        setPagination((prev) => ({
+          ...prev,
+          total: page?.total ?? prev.total,
+          limit: page?.limit ?? prev.limit,
+          offset: page?.offset ?? prev.offset,
+        }));
+      } catch (error) {
+        console.error("Error cargando errores de sincronización:", error);
+        setItems([]);
+        setAlert({
+          open: true,
+          severity: "error",
+          message: "Error cargando errores",
+        });
+      } finally {
+        if (showLoading) {
+          setIsLoading(false);
+        }
+      }
+    },
+    [paginationLimit, paginationOffset, filtersPayload, sortField, sortDirection]
+  );
+
+  const fetchAllErroredItems = useCallback(async () => {
+    const limit = paginationLimit ?? DEFAULT_PAGE_LIMIT;
+    const allItems = [];
+    let offset = 0;
+    while (true) {
+      const page = await DhnDriveService.getErroredSyncChildren({
+        ...filtersPayload,
+        limit,
+        offset,
+      });
+      const pageItems = Array.isArray(page?.items) ? page.items : [];
+      allItems.push(...pageItems);
+      if (
+        !pageItems.length ||
+        pageItems.length < limit ||
+        (Number.isFinite(page?.total) && allItems.length >= page.total)
+      ) {
+        break;
+      }
+      offset += limit;
+    }
+    return allItems;
+  }, [filtersPayload, paginationLimit]);
+
+  useEffect(() => {
+    const showLoading = !isSearchTriggeredByInputRef.current;
+    fetchDetails({ showLoading });
+    isSearchTriggeredByInputRef.current = false;
+  }, [fetchDetails, searchVersion]);
+
+  const openImageModal = (url, fileName, row) => {
     if (!url) return;
     setImageUrl(url);
     setImageFileName(typeof fileName === "string" ? fileName : "");
+    setImageModalRow(row || null);
     setImageModalOpen(true);
   };
 
@@ -89,17 +163,36 @@ const SyncErrorsPage = () => {
     setImageModalOpen(false);
     setImageUrl("");
     setImageFileName("");
+    setImageModalRow(null);
   };
+  const imageModalTipo = String(imageModalRow?.tipo || "").toLowerCase();
+  const isImageModalParte = imageModalTipo === "parte";
 
   const handleCloseAlert = (_, reason) => {
     if (reason === "clickaway") return;
     setAlert((prev) => ({ ...prev, open: false }));
   };
+  const handleSortChange = useCallback(
+    (field) => {
+      setPagination((prev) => ({ ...prev, offset: 0 }));
+      setSortDirection((prevDirection) =>
+        sortField === field ? (prevDirection === "asc" ? "desc" : "asc") : "desc"
+      );
+      setSortField(field);
+    },
+    [sortField]
+  );
 
-  const handleResolverTrabajador = (trabajador, urlStorage) => {
+  const handleResolverTrabajador = (trabajador, urlStorage, row) => {
     setTrabajadorSeleccionado(trabajador);
     setUrlStorageSeleccionado(urlStorage);
     setResolverModalOpen(true);
+  };
+
+  const handleCloseResolverTrabajador = () => {
+    setResolverModalOpen(false);
+    setTrabajadorSeleccionado(null);
+    setUrlStorageSeleccionado(null);
   };
 
   const handleOpenResolverLicencia = (row) => {
@@ -115,6 +208,10 @@ const SyncErrorsPage = () => {
 
   const handleOpenResolverParte = (row) => {
     if (!row?.url_storage) return;
+    if (row?.status === "incompleto") {
+      openImageModal(row.url_storage, row.file_name, row);
+      return;
+    }
     setResolverParteRow(row);
     setResolverParteModalOpen(true);
   };
@@ -125,6 +222,7 @@ const SyncErrorsPage = () => {
   };
 
   const handleTrabajadorResuelto = async () => {
+    handleCloseResolverTrabajador();
     try {
       await fetchDetails();
     } catch (error) {
@@ -132,37 +230,221 @@ const SyncErrorsPage = () => {
     }
   };
 
-  const handleLicenciaResuelta = async (resp) => {
-    const registros = resp?.registrosCreados ?? resp?.data?.registrosCreados ?? 0;
-    const baseMessage =
-      resp?.message ||
-      resp?.mensaje ||
-      `Licencia resuelta manualmente (${registros} registro${registros === 1 ? "" : "s"})`;
-    const fechas = resp?.fechasDetectadas || resp?.data?.fechasDetectadas || "";
-    setAlert({
-      open: true,
-      severity: "success",
-      message: fechas ? `${baseMessage} (${fechas})` : baseMessage,
-    });
-    handleCloseResolverLicencia();
-    await fetchDetails();
+  const cacheResolvedPayload = useCallback(({ rowId, tipo, payload }) => {
+    if (!rowId || !payload) return;
+    setResolvedPayloads((prev) => ({
+      ...prev,
+      [rowId]: { tipo, payload },
+    }));
+  }, []);
+
+  const handleLicenciaResuelta = useCallback(
+    async (result) => {
+      const resp = result?.response ?? result ?? {};
+      const rowId = result?.rowId;
+      const payload = result?.payload;
+      if (rowId && payload) {
+        cacheResolvedPayload({ rowId, tipo: "licencia", payload });
+      }
+      const registros = resp?.registrosCreados ?? resp?.data?.registrosCreados ?? 0;
+      const baseMessage =
+        resp?.message ||
+        resp?.mensaje ||
+        `Licencia resuelta manualmente (${registros} registro${registros === 1 ? "" : "s"})`;
+      const fechas = resp?.fechasDetectadas || resp?.data?.fechasDetectadas || "";
+      setAlert({
+        open: true,
+        severity: "success",
+        message: fechas ? `${baseMessage} (${fechas})` : baseMessage,
+      });
+      handleCloseResolverLicencia();
+      await fetchDetails();
+    },
+    [cacheResolvedPayload]
+  );
+
+  const handleParteResuelta = useCallback(
+    async (result) => {
+      const resp = result?.response ?? result ?? {};
+      const rowId = result?.rowId;
+      const payload = result?.payload;
+      if (rowId && payload) {
+        cacheResolvedPayload({ rowId, tipo: "parte", payload });
+      }
+      const registros = resp?.registrosCreados ?? resp?.data?.registrosCreados ?? 0;
+      const baseMessage =
+        resp?.message ||
+        resp?.mensaje ||
+        `Parte resuelto manualmente (${registros} trabajador${registros === 1 ? "" : "es"})`;
+      const fechas = resp?.fechasDetectadas || resp?.data?.fechasDetectadas || "";
+      setAlert({
+        open: true,
+        severity: "success",
+        message: fechas ? `${baseMessage} (${fechas})` : baseMessage,
+      });
+      handleCloseResolverParte();
+      await fetchDetails();
+    },
+    [cacheResolvedPayload]
+  );
+
+  const handleOpenResolverDuplicado = (row) => {
+    if (!row) return;
+    setResolverDuplicadoRow(row);
   };
 
-  const handleParteResuelta = async (resp) => {
-    const registros = resp?.registrosCreados ?? resp?.data?.registrosCreados ?? 0;
-    const baseMessage =
-      resp?.message ||
-      resp?.mensaje ||
-      `Parte resuelto manualmente (${registros} trabajador${registros === 1 ? "" : "es"})`;
-    const fechas = resp?.fechasDetectadas || resp?.data?.fechasDetectadas || "";
-    setAlert({
-      open: true,
-      severity: "success",
-      message: fechas ? `${baseMessage} (${fechas})` : baseMessage,
-    });
-    handleCloseResolverParte();
-    await fetchDetails();
+  const handleCloseResolverDuplicado = () => {
+    setResolverDuplicadoRow(null);
+    setResolverDuplicadoAction(null);
   };
+
+  const handleResolverDuplicado = async ({ action, manualPatch } = {}) => {
+    if (!resolverDuplicadoRow) return;
+    setResolverDuplicadoLoading(true);
+    setResolverDuplicadoAction(action);
+    try {
+      const resp = await DhnDriveService.resolveDuplicate(
+        resolverDuplicadoRow._id,
+        action,
+        manualPatch
+      );
+      if (!resp?.ok) {
+        throw new Error(resp?.error?.message || "No se pudo resolver el duplicado");
+      }
+      const successMessage =
+        action === "keepExisting"
+          ? "Se conservó el registro original"
+          : "Se actualizó el trabajo con el nuevo comprobante";
+      setAlert({
+        open: true,
+        severity: "success",
+        message: successMessage,
+      });
+      handleCloseResolverDuplicado();
+      await fetchDetails();
+    return true;
+    } catch (error) {
+      console.error("Error resolviendo duplicado:", error);
+      setAlert({
+        open: true,
+        severity: "error",
+        message: error?.message || "Error al resolver el duplicado",
+      });
+    return false;
+    } finally {
+      setResolverDuplicadoLoading(false);
+      setResolverDuplicadoAction(null);
+    }
+  };
+
+  const handleCloseCorreccionOnCancel = useCallback(() => {
+    if (correccionActiva) {
+      detenerCorreccion();
+    }
+    setCorreccionItems([]);
+    setIsCargandoCorreccion(false);
+    setResolvedPayloads({});
+  }, [correccionActiva, detenerCorreccion, setResolvedPayloads]);
+
+  const handleCloseImageModalFromModal = useCallback(() => {
+    handleCloseCorreccionOnCancel();
+    closeImageModal();
+  }, [handleCloseCorreccionOnCancel, closeImageModal]);
+
+  const handleCloseResolverLicenciaFromModal = useCallback(() => {
+    handleCloseCorreccionOnCancel();
+    handleCloseResolverLicencia();
+  }, [handleCloseCorreccionOnCancel, handleCloseResolverLicencia]);
+
+  const handleCloseResolverLicenciaAuto = useCallback(() => {
+    handleCloseResolverLicencia();
+  }, [handleCloseResolverLicencia]);
+
+  const handleCloseResolverParteFromModal = useCallback(() => {
+    handleCloseCorreccionOnCancel();
+    handleCloseResolverParte();
+  }, [handleCloseCorreccionOnCancel, handleCloseResolverParte]);
+
+  const handleCloseResolverParteAuto = useCallback(() => {
+    handleCloseResolverParte();
+  }, [handleCloseResolverParte]);
+
+  const handleCloseResolverDuplicadoFromModal = useCallback(() => {
+    handleCloseCorreccionOnCancel();
+    handleCloseResolverDuplicado();
+  }, [handleCloseCorreccionOnCancel, handleCloseResolverDuplicado]);
+
+  const handleConfirmarYContinuar = useCallback(async () => {
+    try {
+      await fetchDetails();
+      const nextRow = confirmarYAvanzar();
+      if (!nextRow) {
+        setCorreccionItems([]);
+      }
+    } catch (error) {
+      console.error("Error confirmando corrección asistida:", error);
+      setAlert({
+        open: true,
+        severity: "error",
+        message: error?.message || "No se pudo avanzar en la corrección asistida",
+      });
+    }
+  }, [confirmarYAvanzar, fetchDetails]);
+
+  const handleCorreccionAnterior = useCallback(() => {
+    if (!correccionActiva) return;
+    irCorreccionAnterior();
+  }, [correccionActiva, irCorreccionAnterior]);
+
+  const handleCorreccionSiguiente = useCallback(() => {
+    if (!correccionActiva) return;
+    irCorreccionSiguiente();
+  }, [correccionActiva, irCorreccionSiguiente]);
+
+  const correccionModalHandlers = {
+    handleTrabajadorResuelto,
+    handleLicenciaResuelta,
+    handleParteResuelta,
+    handleResolverDuplicado,
+    handleCloseResolverLicenciaFromModal,
+    handleCloseResolverParteFromModal,
+    handleCloseResolverDuplicadoFromModal,
+    handleCloseResolverLicenciaAuto,
+    handleCloseResolverParteAuto,
+    resolverDuplicadoLoading,
+    resolverDuplicadoAction,
+  };
+
+  const handleIniciarCorreccion = useCallback(async () => {
+    if (isCargandoCorreccion) return;
+    setResolvedPayloads({});
+    setIsCargandoCorreccion(true);
+    try {
+      const allItems = await fetchAllErroredItems();
+      if (!allItems.length) {
+        setAlert({
+          open: true,
+          severity: "info",
+          message: "No hay errores pendientes para corrección asistida",
+        });
+        return;
+      }
+      setCorreccionItems(allItems);
+      const firstRow = iniciarCorreccion(allItems);
+      if (!firstRow) {
+        setCorreccionItems([]);
+      }
+    } catch (error) {
+      console.error("Error cargando corrección asistida:", error);
+      setAlert({
+        open: true,
+        severity: "error",
+        message: error?.message || "No se pudo iniciar la corrección asistida",
+      });
+    } finally {
+      setIsCargandoCorreccion(false);
+    }
+  }, [fetchAllErroredItems, iniciarCorreccion, isCargandoCorreccion, setResolvedPayloads]);
 
   const handleResyncUrlStorage = async (row) => {
     const urlStorageId = row?._id;
@@ -209,10 +491,6 @@ const SyncErrorsPage = () => {
     }
   };
 
-  useEffect(() => {
-    fetchDetails();
-  }, [fetchDetails]);
-
   const handleChangePage = useCallback((direction) => {
     setPagination((prev) => {
       const pageCount = Math.max(1, Math.ceil(prev.total / prev.limit));
@@ -228,8 +506,15 @@ const SyncErrorsPage = () => {
   const columns = useMemo(() => {
     const cols = [
       {
+        key: "created_at",
+        label: "Fecha sincronización",
+        sortable: true,
+        render: (it) => formatDateToDDMMYYYY(it?.created_at),
+      },
+      {
         key: "status",
         label: "Estado",
+        sortable: true,
         render: (it) => <StatusChip status={it?.status} />,
       },
       {
@@ -243,47 +528,23 @@ const SyncErrorsPage = () => {
             handleResyncUrlStorage={handleResyncUrlStorage}
             handleOpenResolverLicencia={handleOpenResolverLicencia}
             handleOpenResolverParte={handleOpenResolverParte}
+            handleOpenResolverDuplicado={handleOpenResolverDuplicado}
           />
         ),
       },
     ];
 
     cols.push({
-      key: "fechasDetectadas",
-      label: "Fecha detectada",
-      render: (it) => {
-        const rowTipo = String(it?.tipo || "").toLowerCase();
-        const rowIsParte = rowTipo === "parte";
-        const rowIsLicencia = rowTipo === "licencia";
-        const canEditFecha = rowIsParte || rowIsLicencia;
-        return (
-          <FechaDetectadaCell
-            row={it}
-            canEditFecha={canEditFecha}
-            isParte={rowIsParte}
-            isLicencia={rowIsLicencia}
-            editingId={editingId}
-            editingValue={editingValue}
-            setEditingId={setEditingId}
-            setEditingValue={setEditingValue}
-            savingId={savingId}
-            setSavingId={setSavingId}
-            setItems={setItems}
-            setAlert={setAlert}
-          />
-        );
-      },
-    });
-
-    cols.push({
-      key: "archivo",
+      key: "file_name",
       label: "Archivo",
-      render: (it) => <ArchivoCell row={it} onOpenImage={openImageModal} />, 
+      sortable: true,
+      render: (it) => <ArchivoCell row={it} onOpenImage={openImageModal} />,
     });
 
     cols.push({
       key: "observacion",
       label: "Observación",
+      sortable: true,
       render: (it) => (
         <ObservacionCell row={it} handleResolverTrabajador={handleResolverTrabajador} />
       ),
@@ -291,16 +552,12 @@ const SyncErrorsPage = () => {
 
     return cols;
   }, [
-    editingId,
-    editingValue,
-    savingId,
     resyncingId,
     handleResolverTrabajador,
     handleResyncUrlStorage,
     handleOpenResolverLicencia,
     handleOpenResolverParte,
-    setItems,
-    setAlert,
+    handleOpenResolverDuplicado,
     openImageModal,
   ]);
 
@@ -319,7 +576,7 @@ const SyncErrorsPage = () => {
         <Snackbar
           anchorOrigin={{ vertical: "top", horizontal: "center" }}
           open={alert.open}
-          autoHideDuration={6000}
+          autoHideDuration={4500}
           onClose={handleCloseAlert}
         >
           <Alert onClose={handleCloseAlert} severity={alert.severity} sx={{ width: "100%" }}>
@@ -328,26 +585,14 @@ const SyncErrorsPage = () => {
         </Snackbar>
 
         <Stack>
-          <Box sx={{ display: "flex", gap: 2, alignItems: "center" }}>
-            <Button
-              variant="text"
-              startIcon={<ArrowBackIcon />}
-              onClick={() => router.back()}
-              sx={{
-                alignSelf: "flex-start",
-                color: "text.secondary",
-                "&:hover": { backgroundColor: "action.hover", color: "primary.main" },
-                transition: "all 0.2s ease-in-out",
-                fontWeight: 500,
-              }}
-            >
-              Volver
-            </Button>
-            <Button variant="outlined" onClick={fetchDetails} disabled={isLoading}>
-              {isLoading ? "Actualizando..." : "Actualizar"}
-            </Button>
-          </Box>
-
+          <FiltroErrores
+            filterContext={filterContext}
+            onActualizar={fetchDetails}
+            onIniciarCorreccion={handleIniciarCorreccion}
+            isLoading={isLoading}
+            isCargandoCorreccion={isCargandoCorreccion}
+            totalDisponibles={totalDisponibles}
+          />
           <Box>
             <Box
               sx={{
@@ -386,7 +631,7 @@ const SyncErrorsPage = () => {
                   Detalles del registro:
                 </Box>
                 <Box component="span" sx={{ textTransform: "uppercase" }}>
-                  {tipoLabel}
+                  {'errores'}
                 </Box>
               </Box>
 
@@ -428,6 +673,9 @@ const SyncErrorsPage = () => {
                   data={items}
                   columns={columns}
                   isLoading={isLoading}
+                  sortField={sortField}
+                  sortDirection={sortDirection}
+                  onSortChange={handleSortChange}
                   onRowClick={(row) => {
                     console.log("[DHN Errores] row click:", row);
                   }}
@@ -470,54 +718,91 @@ const SyncErrorsPage = () => {
           </Box>
         </Stack>
 
-        <ImagenModal
-          open={imageModalOpen}
-          onClose={closeImageModal}
-          imagenUrl={imageUrl}
-          fileName={imageFileName}
+        <CorreccionModalNavigator
+          key={`${actualRow?._id ?? "none"}-${tipoModalActual ?? "none"}`}
+          row={actualRow}
+          tipoModal={tipoModalActual}
+          correccionActiva={correccionActiva}
+          textoProgreso={textoProgreso}
+          hasPrev={correccionHasPrev}
+          hasNext={correccionHasNext}
+          onPrev={handleCorreccionAnterior}
+          onNext={handleCorreccionSiguiente}
+          onConfirmarYContinuar={handleConfirmarYContinuar}
+          onCloseFlow={handleCloseCorreccionOnCancel}
+          handlers={correccionModalHandlers}
+          resolvedPayloads={resolvedPayloads}
+          alertOpen={alert.open}
         />
-        <ImagenModal
-          open={resolverLicenciaModalOpen}
-          onClose={handleCloseResolverLicencia}
-          imagenUrl={resolverLicenciaRow?.url_storage}
-          fileName={resolverLicenciaRow?.file_name}
-          leftContent={
-            resolverLicenciaRow ? (
-              <ResolverLicenciaManualForm
-                urlStorage={resolverLicenciaRow.url_storage}
-                onResolved={handleLicenciaResuelta}
-                onCancel={handleCloseResolverLicencia}
-              />
-            ) : null
-          }
-        />
-        <ImagenModal
-          open={resolverParteModalOpen}
-          onClose={handleCloseResolverParte}
-          imagenUrl={resolverParteRow?.url_storage}
-          fileName={resolverParteRow?.file_name}
-          leftContent={
-            resolverParteRow ? (
-              <ResolverParteManualForm
-                urlStorage={resolverParteRow.url_storage}
-                onResolved={handleParteResuelta}
-                onCancel={handleCloseResolverParte}
-              />
-            ) : null
-          }
-        />
-
-        <ResolverTrabajadorModal
-          open={resolverModalOpen}
-          onClose={() => {
-            setResolverModalOpen(false);
-            setTrabajadorSeleccionado(null);
-            setUrlStorageSeleccionado(null);
-          }}
-          trabajadorDetectado={trabajadorSeleccionado}
-          urlStorage={urlStorageSeleccionado}
-          onResolved={handleTrabajadorResuelto}
-        />
+        {!correccionActiva && (
+          <>
+            <ImagenModal
+              open={imageModalOpen}
+              onClose={handleCloseImageModalFromModal}
+              imagenUrl={imageUrl}
+              fileName={imageFileName}
+              leftContent={
+                isImageModalParte && imageModalRow?.url_storage ? (
+                  <TrabajosDetectadosList
+                    urlStorage={imageModalRow.url_storage}
+                    onUpdated={handleTrabajadorResuelto}
+                    progreso={correccionActiva ? textoProgreso : null}
+                  />
+                ) : null
+              }
+            />
+            <ImagenModal
+              open={resolverLicenciaModalOpen}
+              onClose={handleCloseResolverLicenciaFromModal}
+              imagenUrl={resolverLicenciaRow?.url_storage}
+              fileName={resolverLicenciaRow?.file_name}
+              leftContent={
+                resolverLicenciaRow ? (
+                  <ResolverLicenciaManualForm
+                    urlStorage={resolverLicenciaRow.url_storage}
+                    onResolved={handleLicenciaResuelta}
+                    onCancel={handleCloseResolverLicenciaFromModal}
+                    onAutoClose={handleCloseResolverLicenciaAuto}
+                    progreso={correccionActiva ? textoProgreso : null}
+                  />
+                ) : null
+              }
+            />
+            <ImagenModal
+              open={resolverParteModalOpen}
+              onClose={handleCloseResolverParteFromModal}
+              imagenUrl={resolverParteRow?.url_storage}
+              fileName={resolverParteRow?.file_name}
+              leftContent={
+                resolverParteRow ? (
+                  <ResolverParteManualForm
+                    urlStorage={resolverParteRow.url_storage}
+                    onResolved={handleParteResuelta}
+                    onCancel={handleCloseResolverParteFromModal}
+                    onAutoClose={handleCloseResolverParteAuto}
+                    progreso={correccionActiva ? textoProgreso : null}
+                  />
+                ) : null
+              }
+            />
+            <ResolverDuplicadoModal
+              open={Boolean(resolverDuplicadoRow)}
+              onClose={handleCloseResolverDuplicadoFromModal}
+              row={resolverDuplicadoRow}
+              onResolve={handleResolverDuplicado}
+              loading={resolverDuplicadoLoading}
+              actionInProgress={resolverDuplicadoAction}
+              progreso={correccionActiva ? textoProgreso : null}
+            />
+            <ResolverTrabajadorModal
+              open={resolverModalOpen}
+              onClose={handleCloseResolverTrabajador}
+              trabajadorDetectado={trabajadorSeleccionado}
+              urlStorage={urlStorageSeleccionado}
+              onResolved={handleTrabajadorResuelto}
+            />
+          </>
+        )}
       </Container>
     </DashboardLayout>
   );

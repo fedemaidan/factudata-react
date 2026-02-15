@@ -6,7 +6,7 @@ import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import Head from 'next/head';
-import { Box, Container, Stack, Chip, Typography, TextField, InputAdornment, Paper, Card, CardContent, Button, Select, MenuItem, FormControl, InputLabel, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, useMediaQuery, IconButton, Menu, Table, TableBody, TableCell, TableHead, TableRow, TableContainer, Tooltip, MenuItem as MenuOption, Divider, TablePagination } from '@mui/material';
+import { Box, Container, Stack, Chip, Typography, TextField, InputAdornment, Paper, Card, CardContent, Button, Select, MenuItem, FormControl, InputLabel, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, useMediaQuery, IconButton, Menu, Table, TableBody, TableCell, TableHead, TableRow, TableContainer, Tooltip, MenuItem as MenuOption, Divider, TablePagination, Drawer, List, ListItem, ListItemText, Badge, Fab } from '@mui/material';
 
 import { Checkbox, Popover, FormControlLabel, Switch } from '@mui/material';
 
@@ -43,6 +43,7 @@ import TransferenciaInternaDialog from 'src/components/TransferenciaInternaDialo
 import IntercambioMonedaDialog from 'src/components/IntercambioMonedaDialog';
 import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import CurrencyExchangeIcon from '@mui/icons-material/CurrencyExchange';
+import BulkEditDialog from 'src/components/BulkEditDialog';
 
 
 // tamaños mínimos por columna (px)
@@ -63,6 +64,7 @@ const COLS = {
   mep: 160,
   estado: 140,
   empresaFacturacion: 200,
+  facturaCliente: 140,
   fechaPago: 140,
   dolarReferencia: 140,
   totalDolar: 140,
@@ -81,56 +83,127 @@ const ellipsis = (maxWidth) => ({
 });
 
 
-const TotalesFiltrados = ({ t, fmt, moneda, showUsdBlue = false, usdBlue = null }) => {
+const TotalesFiltrados = ({ t, fmt, moneda, showUsdBlue = false, usdBlue = null, chips = [], onOpenFilters, isMobile = false, showDetails = false, onToggleDetails }) => {
   const up = (moneda || '').toUpperCase();
   const ingreso = t[up]?.ingreso ?? 0;
   const egreso  = t[up]?.egreso  ?? 0;
   const neto    = ingreso - egreso;
+  const totalPeriodo = ingreso + egreso;
 
   return (
-    <Stack direction="row" spacing={4} sx={{ mb: 2, flexWrap: 'wrap' }}>
-      {/* bloque ARS/moneda base */}
-      <Box sx={{ bgcolor: 'action.hover', p: 2, borderRadius: 1, flex: 1, minWidth: 260 }}>
-        <Typography variant="subtitle2" sx={{ mb: 1 }}>
-          Totales filtrados ({up})
-        </Typography>
-        <Stack direction="row" spacing={1} flexWrap="wrap">
-          <Typography sx={{ color: 'success.main', fontWeight: 600 }}>
-            + {fmt(up, ingreso)}
+    <Stack spacing={1.25} sx={{ mb: 2 }}>
+      <Stack direction="row" spacing={2} sx={{ flexWrap: 'wrap' }}>
+      <Box
+        sx={{
+          p: 2,
+          borderRadius: 2,
+          flex: 1,
+          minWidth: 260,
+          bgcolor: 'action.hover',
+          border: '1px solid',
+          borderColor: 'divider',
+          boxShadow: '0 6px 16px rgba(0,0,0,0.06)'
+        }}
+      >
+        <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1, gap: 1 }}>
+          <Typography variant="subtitle2" color="text.secondary">
+            Totales filtrados
           </Typography>
-          <Typography sx={{ color: 'error.main', fontWeight: 600 }}>
-            - {fmt(up, egreso)}
-          </Typography>
-          <Typography sx={{ color: neto >= 0 ? 'success.main' : 'error.main', fontWeight: 700 }}>
-            Neto: {fmt(up, neto)}
-          </Typography>
+          <Stack direction="row" spacing={1} alignItems="center" sx={{ flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+            {chips.length > 0 && (
+              <Box sx={{ display: 'flex', gap: 1, maxWidth: isMobile ? 220 : 'none', overflowX: isMobile ? 'auto' : 'visible' }}>
+                {chips.map((chip, idx) => (
+                  <Chip
+                    key={`${chip.label}-${idx}`}
+                    label={chip.label}
+                    onDelete={(e) => { e.stopPropagation(); chip.onDelete(); }}
+                    onClick={() => onOpenFilters?.()}
+                    size="small"
+                    variant="outlined"
+                    clickable
+                  />
+                ))}
+              </Box>
+            )}
+            <Chip size="small" label={up} variant="outlined" />
+          </Stack>
         </Stack>
+        <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.5, color: neto >= 0 ? 'success.main' : 'error.main' }}>
+          Neto: {fmt(up, neto)}
+        </Typography>
+        {isMobile ? (
+          <Stack direction="row" spacing={1.5} alignItems="center" flexWrap="wrap">
+            <Typography sx={{ color: 'text.secondary' }}>
+              Total período: {fmt(up, totalPeriodo)}
+            </Typography>
+            <Button size="small" variant="text" onClick={onToggleDetails}>
+              {showDetails ? 'Ocultar' : 'Ver más'}
+            </Button>
+            {showDetails && (
+              <Stack direction="row" spacing={1.5} flexWrap="wrap">
+                <Typography sx={{ color: 'success.main', fontWeight: 600 }}>
+                  + {fmt(up, ingreso)}
+                </Typography>
+                <Typography sx={{ color: 'error.main', fontWeight: 600 }}>
+                  - {fmt(up, egreso)}
+                </Typography>
+              </Stack>
+            )}
+          </Stack>
+        ) : (
+          <Stack direction="row" spacing={1.5} flexWrap="wrap">
+            <Typography sx={{ color: 'success.main', fontWeight: 600 }}>
+              + {fmt(up, ingreso)}
+            </Typography>
+            <Typography sx={{ color: 'error.main', fontWeight: 600 }}>
+              - {fmt(up, egreso)}
+            </Typography>
+          </Stack>
+        )}
+
       </Box>
 
-      {/* bloque USD blue opcional */}
       {showUsdBlue && usdBlue && (
-        <Box sx={{ bgcolor: 'action.hover', p: 2, borderRadius: 1, flex: 1, minWidth: 260 }}>
-          <Typography variant="subtitle2" sx={{ mb: 1 }}>
-            Totales filtrados en USD blue
+        <Box
+          sx={{
+            p: 2,
+            borderRadius: 2,
+            flex: 1,
+            minWidth: 260,
+            bgcolor: 'background.paper',
+            border: '1px solid',
+            borderColor: 'divider',
+            boxShadow: '0 6px 16px rgba(0,0,0,0.06)'
+          }}
+        >
+          <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
+            <Typography variant="subtitle2" color="text.secondary">
+              Totales USD blue
+            </Typography>
+            <Chip size="small" label="USD" variant="outlined" />
+          </Stack>
+          <Typography
+            variant="h6"
+            sx={{
+              fontWeight: 700,
+              mb: 0.5,
+              color: (usdBlue.neto ?? 0) >= 0 ? 'success.main' : 'error.main'
+            }}
+          >
+            Neto: {fmt('USD', usdBlue.neto)}
           </Typography>
-          <Stack direction="row" spacing={1} flexWrap="wrap">
+          <Stack direction="row" spacing={1.5} flexWrap="wrap">
             <Typography sx={{ color: 'success.main', fontWeight: 600 }}>
               + {fmt('USD', usdBlue.ingreso)}
             </Typography>
             <Typography sx={{ color: 'error.main', fontWeight: 600 }}>
               - {fmt('USD', usdBlue.egreso)}
             </Typography>
-            <Typography
-              sx={{
-                color: (usdBlue.neto ?? 0) >= 0 ? 'success.main' : 'error.main',
-                fontWeight: 700
-              }}
-            >
-              Neto: {fmt('USD', usdBlue.neto)}
-            </Typography>
           </Stack>
         </Box>
       )}
+      </Stack>
+
     </Stack>
   );
 };
@@ -195,8 +268,26 @@ const ProyectoMovimientosPage = () => {
   const [savingCols, setSavingCols] = useState(false);
   const [saveMsg, setSaveMsg] = useState(null); // opcional: feedback breve
   const [imgPreview, setImgPreview] = useState({ open: false, url: null });
+  const [detalleMov, setDetalleMov] = useState(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [showTotalsDetails, setShowTotalsDetails] = useState(false);
+  const [mobileActionAnchor, setMobileActionAnchor] = useState(null);
+  const [mobileActionMov, setMobileActionMov] = useState(null);
+  const [showCajasMobile, setShowCajasMobile] = useState(true);
+  // ── Selección masiva ──
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [bulkDialogOpen, setBulkDialogOpen] = useState(false);
   const openImg = (url) => setImgPreview({ open: true, url });
   const closeImg = () => setImgPreview({ open: false, url: null });
+  const openMobileActions = (event, mov) => {
+    setMobileActionAnchor(event.currentTarget);
+    setMobileActionMov(mov);
+  };
+  const closeMobileActions = () => {
+    setMobileActionAnchor(null);
+    setMobileActionMov(null);
+  };
   
   const [anchorCajaEl, setAnchorCajaEl] = useState(null);
   const [cajaMenuIndex, setCajaMenuIndex] = useState(null);
@@ -347,6 +438,7 @@ const handleSaveCols = async () => {
     estado: !!empresa?.con_estados,
     acciones: true,
     empresaFacturacion: false,
+    facturaCliente: !!empresa?.comprobante_info?.factura_cliente,
     fechaPago: false,
     dolarReferencia: false,
     totalDolar: false,
@@ -356,6 +448,66 @@ const handleSaveCols = async () => {
   
 
 const [visibleCols, setVisibleCols] = useState(defaultVisible);
+const hiddenColsCount = useMemo(() => Object.values(visibleCols).filter((v) => !v).length, [visibleCols]);
+
+const applyPreset = (preset) => {
+  const base = { ...defaultVisible };
+  if (preset === 'finanzas') {
+    setVisibleCols({
+      ...base,
+      codigo: true,
+      fechas: true,
+      total: true,
+      categoria: true,
+      subcategoria: !!empresa?.comprobante_info?.subcategoria,
+      medioPago: !!empresa?.comprobante_info?.medio_pago,
+      proveedor: true,
+      estado: !!empresa?.con_estados,
+      empresaFacturacion: !!empresa?.comprobante_info?.empresa_facturacion,
+      facturaCliente: !!empresa?.comprobante_info?.factura_cliente,
+      observacion: false,
+    });
+  }
+  if (preset === 'operativo') {
+    setVisibleCols({
+      ...base,
+      codigo: true,
+      fechas: true,
+      tipo: !compactCols,
+      proveedor: true,
+      obra: true,
+      cliente: true,
+      observacion: true,
+      medioPago: !!empresa?.comprobante_info?.medio_pago,
+      estado: !!empresa?.con_estados,
+    });
+  }
+  if (preset === 'auditoria') {
+    setVisibleCols({
+      ...base,
+      codigo: true,
+      fechas: true,
+      fechaFactura: true,
+      fechaCreacion: true,
+      tipo: true,
+      total: true,
+      categoria: true,
+      subcategoria: !!empresa?.comprobante_info?.subcategoria,
+      medioPago: !!empresa?.comprobante_info?.medio_pago,
+      proveedor: true,
+      estado: !!empresa?.con_estados,
+      empresaFacturacion: !!empresa?.comprobante_info?.empresa_facturacion,
+      facturaCliente: !!empresa?.comprobante_info?.factura_cliente,
+      tc: true,
+      usd: true,
+      mep: true,
+      fechaPago: !!empresa?.comprobante_info?.fecha_pago,
+    });
+  }
+  if (preset === 'reset') {
+    setVisibleCols(defaultVisible);
+  }
+};
 
 // si todavía no hidratamos desde el proyecto, aplicamos defaults
 useEffect(() => {
@@ -453,7 +605,7 @@ const handleCloseCols = () => setAnchorColsEl(null);
   };
 
   const handleFiltrosActivos = () => {
-    setFiltrosActivos(!filtrosActivos);
+    setFiltersOpen(true);
     handleCloseMenu();
   };
 
@@ -505,6 +657,11 @@ const handleCloseCols = () => setAnchorColsEl(null);
         lastPageUrl: router.asPath, // Next lo encodea
       },
     });
+  };
+
+  const openDetalle = (mov) => {
+    setDetalleMov(mov);
+    setDrawerOpen(true);
   };
 
   
@@ -951,6 +1108,49 @@ const movimientosConProrrateo = useMemo(() => {
     const end = Math.min(totalRows, start + rowsPerPage);
     return movimientosConProrrateo.slice(start, end);
   }, [movimientosConProrrateo, page, rowsPerPage, totalRows]);
+
+  // ── Helpers selección masiva ──
+  const allPageIds = useMemo(() => {
+    const ids = [];
+    paginatedMovs.forEach((item) => {
+      if (item.tipo === 'grupo_prorrateo') {
+        item.movimientos.forEach((m) => ids.push(m.id));
+      } else {
+        ids.push(item.data.id);
+      }
+    });
+    return ids;
+  }, [paginatedMovs]);
+
+  const allPageSelected = allPageIds.length > 0 && allPageIds.every((id) => selectedIds.has(id));
+  const somePageSelected = allPageIds.some((id) => selectedIds.has(id));
+
+  const toggleSelectAll = () => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (allPageSelected) {
+        allPageIds.forEach((id) => next.delete(id));
+      } else {
+        allPageIds.forEach((id) => next.add(id));
+      }
+      return next;
+    });
+  };
+
+  const toggleSelectOne = (id) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const handleBulkDone = async () => {
+    setSelectedIds(new Set());
+    setBulkDialogOpen(false);
+    await handleRefresh();
+    setAlert({ open: true, message: 'Edición masiva completada', severity: 'success' });
+  };
   
   
   const handleOpenTransferencia = () => {
@@ -1033,6 +1233,41 @@ const movimientosConProrrateo = useMemo(() => {
     }
     handleCloseMenu();
   };
+  const formatDateChip = (d) => d ? new Date(d).toLocaleDateString('es-AR') : '';
+  const filterChips = useMemo(() => {
+    const chips = [];
+    const add = (label, onDelete) => chips.push({ label, onDelete });
+    if (filters.fechaDesde || filters.fechaHasta) {
+      const label = filters.fechaDesde && filters.fechaHasta
+        ? `Fecha: ${formatDateChip(filters.fechaDesde)} - ${formatDateChip(filters.fechaHasta)}`
+        : (filters.fechaDesde ? `Fecha desde: ${formatDateChip(filters.fechaDesde)}` : `Fecha hasta: ${formatDateChip(filters.fechaHasta)}`);
+      add(label, () => setFilters((f) => ({ ...f, fechaDesde: null, fechaHasta: null })));
+    }
+    if (filters.fechaPagoDesde || filters.fechaPagoHasta) {
+      const label = filters.fechaPagoDesde && filters.fechaPagoHasta
+        ? `Pago: ${formatDateChip(filters.fechaPagoDesde)} - ${formatDateChip(filters.fechaPagoHasta)}`
+        : (filters.fechaPagoDesde ? `Pago desde: ${formatDateChip(filters.fechaPagoDesde)}` : `Pago hasta: ${formatDateChip(filters.fechaPagoHasta)}`);
+      add(label, () => setFilters((f) => ({ ...f, fechaPagoDesde: null, fechaPagoHasta: null })));
+    }
+    if (filters.palabras) add(`Buscar: ${filters.palabras}`, () => setFilters((f) => ({ ...f, palabras: '' })));
+    if (filters.observacion) add(`Observación: ${filters.observacion}`, () => setFilters((f) => ({ ...f, observacion: '' })));
+    if (filters.codigoSync) add(`Código: ${filters.codigoSync}`, () => setFilters((f) => ({ ...f, codigoSync: '' })));
+    (filters.tipo || []).forEach((v) => add(`Tipo: ${v}`, () => setFilters((f) => ({ ...f, tipo: f.tipo.filter((x) => x !== v) }))));
+    (filters.moneda || []).forEach((v) => add(`Moneda: ${v}`, () => setFilters((f) => ({ ...f, moneda: f.moneda.filter((x) => x !== v) }))));
+    (filters.proveedores || []).forEach((v) => add(`Proveedor: ${v}`, () => setFilters((f) => ({ ...f, proveedores: f.proveedores.filter((x) => x !== v) }))));
+    (filters.categorias || []).forEach((v) => add(`Categoría: ${v}`, () => setFilters((f) => ({ ...f, categorias: f.categorias.filter((x) => x !== v) }))));
+    (filters.subcategorias || []).forEach((v) => add(`Subcategoría: ${v}`, () => setFilters((f) => ({ ...f, subcategorias: f.subcategorias.filter((x) => x !== v) }))));
+    (filters.medioPago || []).forEach((v) => add(`Medio: ${v}`, () => setFilters((f) => ({ ...f, medioPago: f.medioPago.filter((x) => x !== v) }))));
+    (filters.etapa || []).forEach((v) => add(`Etapa: ${v}`, () => setFilters((f) => ({ ...f, etapa: f.etapa.filter((x) => x !== v) }))));
+    (filters.estados || []).forEach((v) => add(`Estado: ${v}`, () => setFilters((f) => ({ ...f, estados: f.estados.filter((x) => x !== v) }))));
+    (filters.cuentaInterna || []).forEach((v) => add(`Cuenta: ${v}`, () => setFilters((f) => ({ ...f, cuentaInterna: f.cuentaInterna.filter((x) => x !== v) }))));
+    (filters.tagsExtra || []).forEach((v) => add(`Tag: ${v}`, () => setFilters((f) => ({ ...f, tagsExtra: f.tagsExtra.filter((x) => x !== v) }))));
+    (filters.empresaFacturacion || []).forEach((v) => add(`Emp. fact.: ${v}`, () => setFilters((f) => ({ ...f, empresaFacturacion: f.empresaFacturacion.filter((x) => x !== v) }))));
+    if (filters.facturaCliente) add(filters.facturaCliente === 'cliente' ? 'Factura: Cliente' : 'Factura: Propia', () => setFilters((f) => ({ ...f, facturaCliente: '' })));
+    if (filters.montoMin) add(`Monto min: ${filters.montoMin}`, () => setFilters((f) => ({ ...f, montoMin: '' })));
+    if (filters.montoMax) add(`Monto max: ${filters.montoMax}`, () => setFilters((f) => ({ ...f, montoMax: '' })));
+    return chips;
+  }, [filters, setFilters]);
   const totalesUsdBlue = useMemo(() => {
     let ingreso = 0, egreso = 0;
     (movimientosFiltrados || []).forEach(m => {
@@ -1070,30 +1305,120 @@ useEffect(() => {
         <Container maxWidth="xl">
           <Stack spacing={3}>
             
-            <Stack direction="row" spacing={2}>
-              {cajasVirtuales.map((caja, index) => (
-                <Box key={index} sx={{ position: 'relative', width: '100%', mb: 1 }}>
-                  <Button
-                    fullWidth
-                    variant={cajaSeleccionada?.nombre === caja.nombre ? "contained" : "outlined"}
-                    onClick={() => onSelectCaja(caja)}
-                    sx={{ justifyContent: 'space-between', pl: 2, pr: 5 }}
-                  >
-              <Typography>{caja.nombre}</Typography>
-              {caja.equivalencia && caja.equivalencia !== 'none' && (
-                  <Chip size="small" label={caja.equivalencia.replace('_', ' ')} sx={{ ml: 1 }} />
-                )}
-              <Typography>{formatCajaAmount(caja, calcularTotalParaCaja(caja))}</Typography>
-            </Button>
-            <IconButton
-              size="small"
-              onClick={(event) => handleOpenCajaMenu(event, index)}
-              sx={{ position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)' }}
-            >
-              <MoreVertIcon fontSize="small" />
-            </IconButton>
-             </Box>
-))}
+            <Stack direction={isMobile ? "column" : "row"} spacing={2} alignItems="stretch">
+              {isMobile ? (
+                <Stack spacing={1}>
+                  <Button size="small" variant="text" onClick={() => setShowCajasMobile((v) => !v)}>
+                    {showCajasMobile ? 'Ocultar cajas' : 'Mostrar cajas'}
+                  </Button>
+                  {!showCajasMobile && cajaSeleccionada && (
+                    <Box
+                      sx={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        px: 1.5,
+                        py: 1,
+                        borderRadius: 1.5,
+                        border: '1px solid',
+                        borderColor: 'primary.main',
+                        bgcolor: 'action.hover',
+                      }}
+                    >
+                      <Stack spacing={0.25}>
+                        <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                          {cajaSeleccionada.nombre}
+                        </Typography>
+                        {cajaSeleccionada.equivalencia && cajaSeleccionada.equivalencia !== 'none' && (
+                          <Typography variant="caption" color="text.secondary">
+                            {cajaSeleccionada.equivalencia.replace('_', ' ')}
+                          </Typography>
+                        )}
+                      </Stack>
+                      <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                        {formatCajaAmount(cajaSeleccionada, calcularTotalParaCaja(cajaSeleccionada))}
+                      </Typography>
+                    </Box>
+                  )}
+                  {showCajasMobile && (
+                    <Stack spacing={0.5}>
+                      {cajasVirtuales.map((caja, index) => {
+                        const selected = cajaSeleccionada?.nombre === caja.nombre;
+                        return (
+                          <Box
+                            key={index}
+                            onClick={() => onSelectCaja(caja)}
+                            sx={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              px: 1.5,
+                              py: 1,
+                              borderRadius: 1.5,
+                              border: '1px solid',
+                              borderColor: selected ? 'primary.main' : 'divider',
+                              bgcolor: selected ? 'action.hover' : 'background.paper',
+                            }}
+                          >
+                            <Stack spacing={0.25}>
+                              <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                                {caja.nombre}
+                              </Typography>
+                              {caja.equivalencia && caja.equivalencia !== 'none' && (
+                                <Typography variant="caption" color="text.secondary">
+                                  {caja.equivalencia.replace('_', ' ')}
+                                </Typography>
+                              )}
+                            </Stack>
+                            <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                              {formatCajaAmount(caja, calcularTotalParaCaja(caja))}
+                            </Typography>
+                          </Box>
+                        );
+                      })}
+                    </Stack>
+                  )}
+                </Stack>
+              ) : (
+                <Box
+                  sx={{
+                    display: 'flex',
+                    gap: 2,
+                    overflowX: 'visible',
+                  }}
+                >
+                  {cajasVirtuales.map((caja, index) => (
+                    <Box key={index} sx={{ position: 'relative', width: '100%', mb: 1, display: 'flex' }}>
+                      <Button
+                        fullWidth
+                        variant={cajaSeleccionada?.nombre === caja.nombre ? "contained" : "outlined"}
+                        onClick={() => onSelectCaja(caja)}
+                        sx={{
+                          justifyContent: 'space-between',
+                          pl: 2,
+                          pr: 5,
+                          minHeight: 56,
+                          alignItems: 'center',
+                          textAlign: 'left',
+                        }}
+                      >
+                        <Typography>{caja.nombre}</Typography>
+                        {caja.equivalencia && caja.equivalencia !== 'none' && (
+                          <Chip size="small" label={caja.equivalencia.replace('_', ' ')} sx={{ ml: 1 }} />
+                        )}
+                        <Typography>{formatCajaAmount(caja, calcularTotalParaCaja(caja))}</Typography>
+                      </Button>
+                      <IconButton
+                        size="small"
+                        onClick={(event) => handleOpenCajaMenu(event, index)}
+                        sx={{ position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)' }}
+                      >
+                        <MoreVertIcon fontSize="small" />
+                      </IconButton>
+                    </Box>
+                  ))}
+                </Box>
+              )}
 
 <Menu
   anchorEl={anchorCajaEl}
@@ -1103,24 +1428,47 @@ useEffect(() => {
   <MenuItem onClick={() => handleEditarCaja(cajaMenuIndex)}>Editar</MenuItem>
   <MenuItem onClick={() => handleEliminarCaja(cajaMenuIndex)}>Eliminar</MenuItem>
 </Menu>
-<Box sx={{ display: 'flex', gap: 1 }}>
-  <Button
-    variant="outlined"
-    size="small"
-    startIcon={<MoreVertIcon />}
-    onClick={handleOpenMenu}   // abre el mismo menú de acciones
-  >
-    Acciones
-  </Button>
-
-  <Button
-    variant="outlined"
-    size="small"
-    onClick={handleOpenCols}
-  >
-    Columnas
-  </Button>
+<Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', width: isMobile ? '100%' : 'auto' }}>
+  {isMobile && (
+    <Button
+      variant="outlined"
+      size="small"
+      startIcon={<FilterListIcon />}
+      onClick={() => setFiltersOpen(true)}
+      fullWidth
+    >
+      <Badge color="primary" badgeContent={filterChips.length} invisible={filterChips.length === 0}>
+        <span>Filtros</span>
+      </Badge>
+    </Button>
+  )}
 </Box>
+
+{!isMobile && (
+  <Stack spacing={0.75} sx={{ flexShrink: 0, justifyContent: 'center' }}>
+    <Button
+      variant="outlined"
+      size="small"
+      fullWidth
+      onClick={handleOpenCols}
+      sx={{ minWidth: 110, whiteSpace: 'nowrap' }}
+    >
+      <Badge color="primary" badgeContent={hiddenColsCount} invisible={hiddenColsCount === 0}>
+        <span>Columnas</span>
+      </Badge>
+    </Button>
+    <Button
+      variant="contained"
+      size="small"
+      fullWidth
+      startIcon={<MoreVertIcon />}
+      onClick={handleOpenMenu}
+      sx={{ minWidth: 110, whiteSpace: 'nowrap' }}
+    >
+      Acciones
+    </Button>
+  </Stack>
+)}
 
             </Stack>
             <Dialog open={showCrearCaja} onClose={() => setShowCrearCaja(false)}>
@@ -1187,13 +1535,47 @@ useEffect(() => {
   </DialogActions>
 </Dialog>
 
-{filtrosActivos && (
+{isMobile && (
+  <Drawer
+    anchor="bottom"
+    open={filtersOpen}
+    onClose={() => setFiltersOpen(false)}
+    PaperProps={{ sx: { borderTopLeftRadius: 16, borderTopRightRadius: 16, maxHeight: '90vh' } }}
+  >
+    <Box sx={{ px: 2, py: 1.5 }}>
+      <Typography variant="subtitle1" sx={{ mb: 1 }}>Filtros</Typography>
+      <FilterBarCajaProyecto
+        filters={filters}
+        setFilters={setFilters}
+        options={options}
+        onRefresh={handleRefresh}
+        empresa={empresa}
+        expanded={true}
+        onToggleExpanded={() => setFiltersOpen(false)}
+        storageKey={proyectoId}
+        empresaId={empresa?.id}
+        userId={user?.uid}
+      />
+      <Stack direction="row" justifyContent="flex-end" spacing={1} sx={{ mt: 2 }}>
+        <Button variant="text" onClick={() => setFiltersOpen(false)}>Cancelar</Button>
+        <Button variant="contained" onClick={() => setFiltersOpen(false)}>Aplicar</Button>
+      </Stack>
+    </Box>
+  </Drawer>
+)}
+
+{!isMobile && (
   <FilterBarCajaProyecto
     filters={filters}
     setFilters={setFilters}
     options={options}
     onRefresh={handleRefresh}
     empresa={empresa}
+    expanded={filtersOpen}
+    onToggleExpanded={() => setFiltersOpen((o) => !o)}
+    storageKey={proyectoId}
+    empresaId={empresa?.id}
+    userId={user?.uid}
   />
 )}
             <Paper>
@@ -1209,14 +1591,26 @@ useEffect(() => {
                   t={totalesDetallados}
                   fmt={formatByCurrency}
                   moneda={cajaSeleccionada?.moneda || 'ARS'}
-                  // showUsdBlue={Boolean(visibleCols.usd)}
                   showUsdBlue={false}
                   usdBlue={totalesUsdBlue}
+                  chips={[]}
+                  onOpenFilters={() => setFiltersOpen((o) => !o)}
+                  isMobile={isMobile}
+                  showDetails={showTotalsDetails}
+                  onToggleDetails={() => setShowTotalsDetails((s) => !s)}
                 />
 
               </Stack>
                 {isMobile ? (
                   <Stack spacing={2}>
+                    {paginatedMovs.length === 0 && (
+                      <Paper sx={{ p: 2 }}>
+                        <Typography variant="subtitle1">Sin resultados</Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          Probá ajustar fechas, categorías o limpiar filtros.
+                        </Typography>
+                      </Paper>
+                    )}
                     {paginatedMovs.map((item, index) => {
                       // Si es un grupo de prorrateo - mostrar solo los movimientos individuales
                       if (item.tipo === 'grupo_prorrateo') {
@@ -1226,43 +1620,29 @@ useEffect(() => {
                               const amountColor = mov.type === 'ingreso' ? 'success.main' : 'error.main';
                               
                               return (
-                                <Card key={`${item.grupoId}-${subIndex}`} sx={{ mb: 1 }}>
+                                <Card key={`${item.grupoId}-${subIndex}`} sx={{ mb: 1, cursor: 'pointer', bgcolor: 'background.paper' }} onClick={() => openDetalle(mov)}>
                                   <CardContent>
-                                    <Stack direction="row" spacing={2} alignItems="center">
-                                      <Box sx={{ flex: 1 }}>
-                                        <Stack direction="row" spacing={1} alignItems="center">
-                                          <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
-                                            {mov.codigo_operacion}
-                                          </Typography>
-                                          <Chip size="small" label="Prorrateo" variant="outlined" color="info" />
-                                        </Stack>
-                                        <Typography variant="body2">{mov.descripcion}</Typography>
-                                        <Typography variant="caption" color="textSecondary">
-                                          {formatTimestamp(mov.fecha_factura, "DIA/MES/ANO")} • {mov.categoria}
-                                        </Typography>
-                                      </Box>
-                                      <Typography variant="h6" color={amountColor}>
+                                    <Stack direction="row" justifyContent="space-between" alignItems="center">
+                                      <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                                        {mov.codigo_operacion}
+                                      </Typography>
+                                      <Typography variant="subtitle1" color={amountColor}>
                                         {formatByCurrency(mov.moneda, mov.total)}
                                       </Typography>
                                     </Stack>
-                                    <Stack direction="row" spacing={1} mt={1}>
-                                      <Button
-                                        size="small"
-                                        color="primary"
-                                        startIcon={<EditIcon />}
-                                        onClick={() => goToEdit(mov)}
-                                      >
-                                        Editar
-                                      </Button>
-                                      <Button
-                                        size="small"
-                                        color="error"
-                                        startIcon={<DeleteIcon />}
-                                        onClick={() => handleEliminarClick(mov.id)}
-                                      >
-                                        Eliminar
-                                      </Button>
-                                    </Stack>
+                                    <Typography variant="body2" color="text.secondary">
+                                      {mov.nombre_proveedor || '—'} • {mov.categoria || '—'}
+                                    </Typography>
+                                    <Typography variant="caption" color="text.secondary">
+                                      {formatTimestamp(mov.fecha_factura, "DIA/MES/ANO")}
+                                    </Typography>
+                                    <IconButton
+                                      size="small"
+                                      onClick={(e) => { e.stopPropagation(); openMobileActions(e, mov); }}
+                                      sx={{ mt: 1 }}
+                                    >
+                                      <MoreVertIcon fontSize="small" />
+                                    </IconButton>
                                   </CardContent>
                                 </Card>
                               );
@@ -1274,37 +1654,29 @@ useEffect(() => {
                       // Si es un movimiento normal
                       const mov = item.data;
                       return (
-                        <Card key={index}>
+                        <Card key={index} sx={{ cursor: 'pointer', bgcolor: 'background.paper' }} onClick={() => openDetalle(mov)}>
                           <CardContent>
-                            <Typography variant="h6" color={mov.type === "ingreso" ? "green" : "red"}>
-                              {mov.type === "ingreso" ? `Ingreso: ${formatCurrency(mov.total)}` : `Egreso: ${formatCurrency(mov.total)}`}
+                            <Stack direction="row" justifyContent="space-between" alignItems="center">
+                              <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                                {mov.codigo_operacion || '—'}
+                              </Typography>
+                              <Typography variant="subtitle1" color={mov.type === "ingreso" ? "green" : "red"}>
+                                {formatCurrency(mov.total)}
+                              </Typography>
+                            </Stack>
+                            <Typography variant="body2" color="text.secondary">
+                              {mov.nombre_proveedor || '—'} • {mov.categoria || '—'}
                             </Typography>
-                            {mov.obra && <Typography variant="body2"><b>Obra:</b> {mov.obra}</Typography>}
-                            {mov.cliente && <Typography variant="body2"><b>Cliente:</b> {mov.cliente}</Typography>}
-                            <Typography variant="body2">{mov.observacion}</Typography>
-                            {mov.tc && <Typography variant="body2">Tipo de cambio: ${mov.tc}</Typography>}
                             <Typography variant="caption" color="textSecondary">
                               {formatTimestamp(mov.fecha_factura, "DIA/MES/ANO")}
                             </Typography>
-                            <Typography variant="body2" color="textSecondary">
-                              Código de operación: {mov.codigo_operacion || "Ninguno"}
-                            </Typography>
-                            <Stack direction="row" spacing={1} mt={2}>
-                              <Button
-                                color="primary"
-                                startIcon={<EditIcon />}
-                                onClick={() => goToEdit(mov)}
-                              >
-                                Ver / Editar 
-                              </Button>
-                              <Button
-                                color="error"
-                                startIcon={<DeleteIcon />}
-                                onClick={() => handleEliminarClick(mov.id)}
-                              >
-                                {deletingElement !== mov.id ? "Eliminar" : "Eliminando..."}
-                              </Button>
-                            </Stack>
+                            <IconButton
+                              size="small"
+                              onClick={(e) => { e.stopPropagation(); openMobileActions(e, mov); }}
+                              sx={{ mt: 1 }}
+                            >
+                              <MoreVertIcon fontSize="small" />
+                            </IconButton>
                           </CardContent>
                         </Card>
                       );
@@ -1327,6 +1699,16 @@ useEffect(() => {
       control={<Switch size="small" checked={compactCols} onChange={(e) => setCompactCols(e.target.checked)} />}
       label="Modo compacto"
     />
+
+    <Stack direction="row" spacing={1}>
+      <Button size="small" variant="outlined" onClick={() => applyPreset('finanzas')}>Finanzas</Button>
+      <Button size="small" variant="outlined" onClick={() => applyPreset('operativo')}>Operativo</Button>
+    </Stack>
+    <Stack direction="row" spacing={1}>
+      <Button size="small" variant="outlined" onClick={() => applyPreset('auditoria')}>Auditoría</Button>
+      <Button size="small" variant="text" onClick={() => applyPreset('reset')}>Reset</Button>
+    </Stack>
+    <Divider sx={{ my: 0.5 }} />
 
     {/* lista de columnas */}
     <FormControlLabel control={<Checkbox size="small" checked={visibleCols.codigo}     onChange={() => toggleCol('codigo')} />}     label="Código" />
@@ -1360,6 +1742,9 @@ useEffect(() => {
       <FormControlLabel control={<Checkbox size="small" checked={visibleCols.estado}      onChange={() => toggleCol('estado')} />}      label="Estado" />
     )}
     <FormControlLabel control={<Checkbox size="small" checked={visibleCols.empresaFacturacion} onChange={() => toggleCol('empresaFacturacion')} />} label="Empresa facturación" />
+    {empresa?.comprobante_info?.factura_cliente && (
+      <FormControlLabel control={<Checkbox size="small" checked={visibleCols.facturaCliente} onChange={() => toggleCol('facturaCliente')} />} label="Factura cliente" />
+    )}
     <FormControlLabel control={<Checkbox size="small" checked={visibleCols.fechaPago} onChange={() => toggleCol('fechaPago')} />} label="Fecha de pago" />
     {options?.tags?.length > 0 && (
       <FormControlLabel control={<Checkbox size="small" checked={visibleCols.tagsExtra} onChange={() => toggleCol('tagsExtra')} />} label="Tags extra" />
@@ -1565,6 +1950,15 @@ useEffect(() => {
   <Table ref={tableRef} stickyHeader size="small">
     <TableHead>
       <TableRow>
+        {/* Checkbox selección masiva */}
+        <TableCell padding="checkbox" sx={{ position: 'sticky', left: 0, zIndex: 3, bgcolor: 'background.paper' }}>
+          <Checkbox
+            size="small"
+            indeterminate={somePageSelected && !allPageSelected}
+            checked={allPageSelected}
+            onChange={toggleSelectAll}
+          />
+        </TableCell>
         {visibleCols.codigo && (
           <TableCell sx={{ ...cellBase, minWidth: COLS.codigo, position: 'sticky', left: 0, zIndex: 2, bgcolor: 'background.paper' }}>
             CÓDIGO
@@ -1643,6 +2037,10 @@ useEffect(() => {
           <TableCell sx={{ ...cellBase, minWidth: COLS.empresaFacturacion }}>EMPRESA FACTURACIÓN</TableCell>
         )}
 
+        {visibleCols.facturaCliente && (
+          <TableCell sx={{ ...cellBase, minWidth: COLS.facturaCliente }}>FACTURA CLIENTE</TableCell>
+        )}
+
         {visibleCols.fechaPago && (
           <TableCell sx={{ ...cellBase, minWidth: COLS.fechaPago }}>FECHA PAGO</TableCell>
         )}
@@ -1685,6 +2083,16 @@ useEffect(() => {
     </TableHead>
 
     <TableBody>
+      {paginatedMovs.length === 0 && (
+        <TableRow>
+          <TableCell colSpan={Object.values(visibleCols).filter(Boolean).length + 1} sx={{ py: 4 }}>
+            <Typography variant="subtitle1">Sin resultados</Typography>
+            <Typography variant="body2" color="text.secondary">
+              Probá ajustar fechas, categorías o limpiar filtros.
+            </Typography>
+          </TableCell>
+        </TableRow>
+      )}
       {paginatedMovs.map((item, index) => {
         // Si es un grupo de prorrateo
         if (item.tipo === 'grupo_prorrateo') {
@@ -1703,7 +2111,17 @@ useEffect(() => {
                   <TableRow 
                     key={`${item.grupoId}-${subIndex}`} 
                     hover
+                    onClick={() => openDetalle(mov)}
+                    sx={{ cursor: 'pointer', ...(selectedIds.has(mov.id) && { bgcolor: 'action.selected' }) }}
                   >
+                    <TableCell padding="checkbox" sx={{ position: 'sticky', left: 0, zIndex: 1, bgcolor: 'inherit' }}>
+                      <Checkbox
+                        size="small"
+                        checked={selectedIds.has(mov.id)}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={() => toggleSelectOne(mov.id)}
+                      />
+                    </TableCell>
                     {visibleCols.codigo && (
                       <TableCell
                         sx={{ 
@@ -1906,21 +2324,21 @@ useEffect(() => {
                       }}>    
                           {mov.url_imagen && <IconButton
                             size="small"
-                            onClick={() => openImg(mov.url_imagen)}
+                            onClick={(e) => { e.stopPropagation(); openImg(mov.url_imagen); }}
                           >
                             <ImageIcon fontSize="small" />
                           </IconButton>}
                         <IconButton
                           size="small"
                           color="primary"
-                          onClick={() => goToEdit(mov)}
+                          onClick={(e) => { e.stopPropagation(); goToEdit(mov); }}
                         >
                           <EditIcon fontSize="small" />
                         </IconButton>
                         <IconButton
                           size="small"
                           color="error"
-                          onClick={() => handleEliminarClick(mov.id)}
+                          onClick={(e) => { e.stopPropagation(); handleEliminarClick(mov.id); }}
                           disabled={deletingElement === mov.id}
                         >
                           <DeleteIcon fontSize="small" />
@@ -1942,7 +2360,15 @@ useEffect(() => {
             : 'inherit';
 
         return (
-          <TableRow key={index} hover>
+          <TableRow key={index} hover onClick={() => openDetalle(mov)} sx={{ cursor: 'pointer', ...(selectedIds.has(mov.id) && { bgcolor: 'action.selected' }) }}>
+            <TableCell padding="checkbox" sx={{ position: 'sticky', left: 0, zIndex: 1, bgcolor: 'inherit' }}>
+              <Checkbox
+                size="small"
+                checked={selectedIds.has(mov.id)}
+                onClick={(e) => e.stopPropagation()}
+                onChange={() => toggleSelectOne(mov.id)}
+              />
+            </TableCell>
             {visibleCols.codigo && (
               <TableCell
                 sx={{ ...cellBase, minWidth: COLS.codigo, position: 'sticky', left: 0, zIndex: 1, bgcolor: 'background.paper' }}
@@ -2088,6 +2514,12 @@ useEffect(() => {
               </TableCell>
             )}
 
+            {visibleCols.facturaCliente && (
+              <TableCell sx={{ ...cellBase, minWidth: COLS.facturaCliente }}>
+                {mov.factura_cliente ? 'Sí' : 'No'}
+              </TableCell>
+            )}
+
             {visibleCols.fechaPago && (
               <TableCell sx={{ ...cellBase, minWidth: COLS.fechaPago }}>
                 {mov.fecha_pago ? formatTimestamp(mov.fecha_pago, "DIA/MES/ANO") : '—'}
@@ -2134,21 +2566,21 @@ useEffect(() => {
               }}>    
                   {mov.url_imagen && <IconButton
                     size="small"
-                    onClick={() => openImg(mov.url_imagen)}
+                    onClick={(e) => { e.stopPropagation(); openImg(mov.url_imagen); }}
                   >
                     <ImageIcon fontSize="small" />
                   </IconButton>}
                 <IconButton
                   size="small"
                   color="primary"
-                  onClick={() => goToEdit(mov)}
+                  onClick={(e) => { e.stopPropagation(); goToEdit(mov); }}
                 >
                   <EditIcon fontSize="small" />
                 </IconButton>
                 <IconButton
                   size="small"
                   color="error"
-                  onClick={() => handleEliminarClick(mov.id)}
+                  onClick={(e) => { e.stopPropagation(); handleEliminarClick(mov.id); }}
                   disabled={deletingElement === mov.id}
                 >
                   <DeleteIcon fontSize="small" />
@@ -2220,7 +2652,7 @@ useEffect(() => {
   </MenuOption>
   <MenuOption onClick={() => handleMenuOptionClick('filtrar')}>
     <FilterListIcon sx={{ mr: 1 }} />
-    {filtrosActivos ? "Ocultar filtro" : "Filtrar"}
+    Filtros
   </MenuOption>
 
   <Divider sx={{ my: 1 }} />
@@ -2330,6 +2762,74 @@ useEffect(() => {
   </DialogContent>
 </Dialog>
 
+<Menu
+  anchorEl={mobileActionAnchor}
+  open={Boolean(mobileActionAnchor)}
+  onClose={closeMobileActions}
+  anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+  transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+>
+  {mobileActionMov?.url_imagen && (
+    <MenuItem onClick={() => { openImg(mobileActionMov.url_imagen); closeMobileActions(); }}>
+      Ver adjunto
+    </MenuItem>
+  )}
+  {mobileActionMov && (
+    <MenuItem onClick={() => { goToEdit(mobileActionMov); closeMobileActions(); }}>
+      Editar
+    </MenuItem>
+  )}
+  {mobileActionMov && (
+    <MenuItem onClick={() => { handleEliminarClick(mobileActionMov.id); closeMobileActions(); }}>
+      Eliminar
+    </MenuItem>
+  )}
+</Menu>
+
+{isMobile && (
+  <Fab
+    color="primary"
+    onClick={(e) => { setAnchorEl(e.currentTarget); }}
+    sx={{ position: 'fixed', bottom: 20, right: 20, zIndex: 1400 }}
+  >
+    <MoreVertIcon />
+  </Fab>
+)}
+
+<Drawer anchor="right" open={drawerOpen} onClose={() => setDrawerOpen(false)}>
+  <Box sx={{ width: 360, p: 2 }}>
+    <Typography variant="h6" sx={{ mb: 1 }}>Detalle del movimiento</Typography>
+    {detalleMov ? (
+      <List dense>
+        <ListItem><ListItemText primary="Código" secondary={detalleMov.codigo_operacion || detalleMov.codigo || '—'} /></ListItem>
+        <ListItem><ListItemText primary="Fecha" secondary={formatTimestamp(detalleMov.fecha_factura, "DIA/MES/ANO") || '—'} /></ListItem>
+        <ListItem><ListItemText primary="Tipo" secondary={detalleMov.type || '—'} /></ListItem>
+        <ListItem><ListItemText primary="Total" secondary={formatCurrency(detalleMov.total)} /></ListItem>
+        <ListItem><ListItemText primary="Moneda" secondary={detalleMov.moneda || '—'} /></ListItem>
+        <ListItem><ListItemText primary="Proveedor" secondary={detalleMov.nombre_proveedor || '—'} /></ListItem>
+        <ListItem><ListItemText primary="Categoría" secondary={detalleMov.categoria || '—'} /></ListItem>
+        {detalleMov.subcategoria && (
+          <ListItem><ListItemText primary="Subcategoría" secondary={detalleMov.subcategoria} /></ListItem>
+        )}
+        {detalleMov.obra && (
+          <ListItem><ListItemText primary="Obra" secondary={detalleMov.obra} /></ListItem>
+        )}
+        {detalleMov.cliente && (
+          <ListItem><ListItemText primary="Cliente" secondary={detalleMov.cliente} /></ListItem>
+        )}
+        {empresa?.comprobante_info?.factura_cliente && (
+          <ListItem><ListItemText primary="Factura cliente" secondary={detalleMov.factura_cliente ? 'Sí' : 'No'} /></ListItem>
+        )}
+        {detalleMov.observacion && (
+          <ListItem><ListItemText primary="Observación" secondary={detalleMov.observacion} /></ListItem>
+        )}
+      </List>
+    ) : (
+      <Typography variant="body2" color="text.secondary">Sin datos.</Typography>
+    )}
+  </Box>
+</Drawer>
+
 {/* Dialog de Transferencia Interna */}
 <TransferenciaInternaDialog
   open={openTransferencia}
@@ -2346,6 +2846,61 @@ useEffect(() => {
   onClose={handleCloseIntercambio}
   onSuccess={handleIntercambioSuccess}
   proyectoId={proyecto?.id}
+  empresa={empresa}
+/>
+
+{/* ── Barra flotante de selección masiva ── */}
+{selectedIds.size > 0 && (
+  <Paper
+    elevation={6}
+    sx={{
+      position: 'fixed',
+      bottom: 24,
+      left: '50%',
+      transform: 'translateX(-50%)',
+      zIndex: 1300,
+      px: 3,
+      py: 1.5,
+      borderRadius: 3,
+      display: 'flex',
+      alignItems: 'center',
+      gap: 2,
+      bgcolor: 'primary.main',
+      color: 'primary.contrastText',
+    }}
+  >
+    <Typography variant="body2" sx={{ fontWeight: 600 }}>
+      {selectedIds.size} seleccionado{selectedIds.size !== 1 ? 's' : ''}
+    </Typography>
+    <Button
+      size="small"
+      variant="contained"
+      color="inherit"
+      sx={{ color: 'primary.main', fontWeight: 600 }}
+      startIcon={<EditIcon />}
+      onClick={() => setBulkDialogOpen(true)}
+    >
+      Editar
+    </Button>
+    <Button
+      size="small"
+      variant="text"
+      sx={{ color: 'primary.contrastText' }}
+      onClick={() => setSelectedIds(new Set())}
+    >
+      Cancelar
+    </Button>
+  </Paper>
+)}
+
+{/* Dialog edición masiva */}
+<BulkEditDialog
+  open={bulkDialogOpen}
+  onClose={() => setBulkDialogOpen(false)}
+  selectedCount={selectedIds.size}
+  selectedIds={selectedIds}
+  onDone={handleBulkDone}
+  options={options}
   empresa={empresa}
 />
 
