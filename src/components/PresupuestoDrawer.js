@@ -33,6 +33,8 @@ import StorefrontIcon from '@mui/icons-material/Storefront';
 import AutorenewIcon from '@mui/icons-material/Autorenew';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import Tooltip from '@mui/material/Tooltip';
+import Link from 'next/link';
+import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import presupuestoService from 'src/services/presupuestoService';
 import MonedasService from 'src/services/monedasService';
 import { formatCurrency } from 'src/utils/formatters';
@@ -110,6 +112,7 @@ const PresupuestoDrawer = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [recalculando, setRecalculando] = useState(false);
 
   // === Estado: Indexación ===
   const [indexacion, setIndexacion] = useState(null); // null | 'CAC' | 'USD'
@@ -117,6 +120,17 @@ const PresupuestoDrawer = ({
   const [dolarRate, setDolarRate] = useState(null);
   const [cacIndice, setCacIndice] = useState(null);
   const [loadingRates, setLoadingRates] = useState(false);
+
+  // === Estado: Override cotización ===
+  const [mostrarOverrideCotiz, setMostrarOverrideCotiz] = useState(false);
+  const [cacHistorial, setCacHistorial] = useState([]);
+  const [cacOverride, setCacOverride] = useState('');
+  const [dolarOverride, setDolarOverride] = useState('');
+  const [loadingHistorial, setLoadingHistorial] = useState(false);
+
+  // Valor efectivo de CAC/dólar (override o el cargado automáticamente)
+  const cacEfectivo = cacOverride ? parseFloat(cacOverride) : cacIndice;
+  const dolarEfectivo = dolarOverride ? parseFloat(dolarOverride) : dolarRate;
 
   // === Estado: Base de cálculo ===
   const [baseCalculo, setBaseCalculo] = useState('total'); // 'total' | 'subtotal'
@@ -153,6 +167,11 @@ const PresupuestoDrawer = ({
     if (open) {
       setError(null);
       setConfirmDelete(false);
+      setRecalculando(false);
+      setMostrarOverrideCotiz(false);
+      setCacOverride('');
+      setDolarOverride('');
+      setCacHistorial([]);
       setMostrarAdicional(false);
       setAdicionalConcepto('');
       setAdicionalMonto('');
@@ -208,6 +227,13 @@ const PresupuestoDrawer = ({
         base_calculo: baseCalculo || 'total',
       };
 
+      // Si el usuario hizo override del índice, enviarlo al backend
+      if (indexacion === 'CAC' && cacOverride) {
+        data.cotizacion_override = { cac_indice: parseFloat(cacOverride) };
+      } else if (indexacion === 'USD' && dolarOverride) {
+        data.cotizacion_override = { dolar_blue: parseFloat(dolarOverride) };
+      }
+
       if (showFullForm) {
         // Formulario completo: asignar campos opcionales
         if (proveedorInput) data.proveedor = proveedorInput;
@@ -246,14 +272,23 @@ const PresupuestoDrawer = ({
     setError(null);
 
     try {
-      await presupuestoService.editarPresupuesto(presupuesto.id, {
+      const editData = {
         nuevoMonto: parseFloat(nuevoMonto),
         motivo: motivo || 'Edición de monto',
         creadoPor: userId,
         nuevaMoneda: nuevaMoneda,
         nuevaIndexacion: nuevaMoneda === 'ARS' ? (nuevaIndexacion || null) : null,
         nuevaBaseCalculo: nuevaBaseCalculo || 'total',
-      });
+      };
+
+      // Si el usuario hizo override del índice, enviarlo al backend
+      if (nuevaIndexacion === 'CAC' && cacOverride) {
+        editData.cotizacion_override = { cac_indice: parseFloat(cacOverride) };
+      } else if (nuevaIndexacion === 'USD' && dolarOverride) {
+        editData.cotizacion_override = { dolar_blue: parseFloat(dolarOverride) };
+      }
+
+      await presupuestoService.editarPresupuesto(presupuesto.id, editData);
       onSuccess?.('Presupuesto editado correctamente');
       onClose();
     } catch (err) {
@@ -354,10 +389,22 @@ const PresupuestoDrawer = ({
               </Typography>
             )}
           </Stack>
-          <IconButton onClick={onClose}>
+          <IconButton onClick={onClose} disabled={recalculando}>
             <CloseIcon />
           </IconButton>
         </Stack>
+
+        {/* Banner de recalculando */}
+        {recalculando && (
+          <Box sx={{ px: 2, pt: 1.5, pb: 0.5 }}>
+            <Alert severity="info" icon={<AutorenewIcon sx={{ animation: 'spin 1s linear infinite', '@keyframes spin': { '0%': { transform: 'rotate(0deg)' }, '100%': { transform: 'rotate(360deg)' } } }} />}>
+              <Typography variant="body2">
+                Recalculando ejecutado… Esto puede tardar si hay muchos movimientos.
+              </Typography>
+              <LinearProgress sx={{ mt: 1, borderRadius: 1 }} />
+            </Alert>
+          </Box>
+        )}
 
         {/* Body */}
         <Box sx={{ flex: 1, overflow: 'auto', p: 2 }}>
@@ -467,10 +514,10 @@ const PresupuestoDrawer = ({
                   {indexacion && monto && parseFloat(monto) > 0 && (
                     <Alert severity="info" variant="outlined" icon={<InfoOutlinedIcon fontSize="small" />} sx={{ mt: 1 }}>
                       <Typography variant="caption">
-                        {indexacion === 'CAC' && cacIndice ? (
-                          <>Equivale a <strong>CAC {(parseFloat(monto) / cacIndice).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong> (1 CAC = ${Number(cacIndice).toLocaleString('es-AR')}). Se ajusta automáticamente por inflación.</>
-                        ) : indexacion === 'USD' && dolarRate ? (
-                          <>Equivale a <strong>USD {(parseFloat(monto) / dolarRate).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong> (1 USD = ${Number(dolarRate).toLocaleString('es-AR')}). Se ajusta al valor del dólar.</>
+                        {indexacion === 'CAC' && cacEfectivo ? (
+                          <>Equivale a <strong>CAC {(parseFloat(monto) / cacEfectivo).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong> (1 CAC = ${Number(cacEfectivo).toLocaleString('es-AR')}). Se ajusta automáticamente por inflación.</>
+                        ) : indexacion === 'USD' && dolarEfectivo ? (
+                          <>Equivale a <strong>USD {(parseFloat(monto) / dolarEfectivo).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong> (1 USD = ${Number(dolarEfectivo).toLocaleString('es-AR')}). Se ajusta al valor del dólar.</>
                         ) : loadingRates ? (
                           <>Cargando cotizaciones...</>
                         ) : (
@@ -478,6 +525,98 @@ const PresupuestoDrawer = ({
                         )}
                       </Typography>
                     </Alert>
+                  )}
+
+                  {/* Override discreto de cotización */}
+                  {indexacion && (
+                    <Box sx={{ mt: 0.5 }}>
+                      {!mostrarOverrideCotiz ? (
+                        <Typography
+                          variant="caption"
+                          color="text.disabled"
+                          sx={{ cursor: 'pointer', '&:hover': { color: 'text.secondary' } }}
+                          onClick={async () => {
+                            setMostrarOverrideCotiz(true);
+                            if (indexacion === 'CAC' && cacHistorial.length === 0) {
+                              setLoadingHistorial(true);
+                              try {
+                                const data = await MonedasService.listarCAC({ limit: 12 });
+                                setCacHistorial(data || []);
+                              } catch (e) { console.warn(e); }
+                              finally { setLoadingHistorial(false); }
+                            }
+                          }}
+                        >
+                          Usar otro índice…
+                        </Typography>
+                      ) : (
+                        <Stack spacing={1} sx={{ mt: 1, p: 1.5, bgcolor: 'grey.50', borderRadius: 1 }}>
+                          <Stack direction="row" justifyContent="space-between" alignItems="center">
+                            <Typography variant="caption" color="text.secondary" fontWeight={600}>
+                              {indexacion === 'CAC' ? 'Índice CAC personalizado' : 'Dólar personalizado'}
+                            </Typography>
+                            <Typography
+                              variant="caption"
+                              color="primary"
+                              sx={{ cursor: 'pointer' }}
+                              onClick={() => {
+                                setMostrarOverrideCotiz(false);
+                                setCacOverride('');
+                                setDolarOverride('');
+                              }}
+                            >
+                              Usar automático
+                            </Typography>
+                          </Stack>
+                          {indexacion === 'CAC' ? (
+                            <>
+                              <Autocomplete
+                                freeSolo
+                                size="small"
+                                options={cacHistorial}
+                                loading={loadingHistorial}
+                                getOptionLabel={(opt) =>
+                                  typeof opt === 'string' ? opt
+                                    : `${opt.fecha} — CAC ${Number(opt.general || opt.valor || 0).toLocaleString('es-AR')}`
+                                }
+                                inputValue={cacOverride}
+                                onInputChange={(e, val, reason) => {
+                                  if (reason === 'input') setCacOverride(val);
+                                }}
+                                onChange={(e, val) => {
+                                  if (val && typeof val !== 'string') {
+                                    setCacOverride(String(val.general || val.valor || ''));
+                                  }
+                                }}
+                                renderInput={(params) => (
+                                  <TextField {...params} placeholder="Ej: 1042.5" />
+                                )}
+                              />
+                              {cacOverride && !isNaN(Number(cacOverride)) && (
+                                <Typography variant="caption" color="text.secondary">
+                                  Usando CAC = {Number(cacOverride).toLocaleString('es-AR')} en vez de {cacIndice ? Number(cacIndice).toLocaleString('es-AR') : '(no cargado)'}
+                                </Typography>
+                              )}
+                            </>
+                          ) : (
+                            <>
+                              <TextField
+                                size="small"
+                                type="number"
+                                placeholder="Ej: 1250"
+                                value={dolarOverride}
+                                onChange={(e) => setDolarOverride(e.target.value)}
+                              />
+                              {dolarOverride && !isNaN(Number(dolarOverride)) && (
+                                <Typography variant="caption" color="text.secondary">
+                                  Usando USD = ${Number(dolarOverride).toLocaleString('es-AR')} en vez de ${dolarRate ? Number(dolarRate).toLocaleString('es-AR') : '(no cargado)'}
+                                </Typography>
+                              )}
+                            </>
+                          )}
+                        </Stack>
+                      )}
+                    </Box>
                   )}
                 </Box>
               )}
@@ -674,15 +813,31 @@ const PresupuestoDrawer = ({
                       variant="outlined"
                     />
                   </Stack>
-                  <Stack direction="row" justifyContent="space-between">
+                  <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
                     <Typography variant="body2" color="text.secondary">Presupuestado</Typography>
-                    <Stack direction="row" spacing={1} alignItems="center">
+                    <Stack alignItems="flex-end">
                       {presupuesto.indexacion ? (
                         <>
-                          <Typography variant="body2" fontWeight={600}>
-                            {formatMonto(presupuesto.monto_ingresado || presupuesto.monto, presupuesto.moneda_display || 'ARS')}
+                          <Stack direction="row" spacing={1} alignItems="center">
+                            <Typography variant="body2" fontWeight={600}>
+                              {(() => {
+                                // Mostrar en pesos al valor de hoy
+                                const cotiz = presupuesto.indexacion === 'CAC' ? cacEfectivo : dolarEfectivo;
+                                if (cotiz && presupuesto.monto != null) {
+                                  const enPesos = presupuesto.monto * cotiz;
+                                  return formatCurrency(enPesos);
+                                }
+                                return formatMonto(presupuesto.monto_ingresado || presupuesto.monto, presupuesto.moneda_display || 'ARS');
+                              })()}
+                            </Typography>
+                            <Chip label={`idx ${presupuesto.indexacion}`} size="small" color="secondary" variant="outlined" sx={{ height: 20, '& .MuiChip-label': { px: 0.5, fontSize: '0.65rem' } }} />
+                          </Stack>
+                          <Typography variant="caption" color="text.secondary">
+                            {presupuesto.indexacion === 'CAC'
+                              ? `${Number(presupuesto.monto).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} unidades CAC`
+                              : `USD ${Number(presupuesto.monto).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                            }
                           </Typography>
-                          <Chip label={`idx ${presupuesto.indexacion}`} size="small" color="secondary" variant="outlined" sx={{ height: 20, '& .MuiChip-label': { px: 0.5, fontSize: '0.65rem' } }} />
                         </>
                       ) : (
                         <Typography variant="body2" fontWeight={600}>
@@ -713,13 +868,37 @@ const PresupuestoDrawer = ({
                   </Stack>
                   {presupuesto.ejecutado !== undefined && (
                     <>
-                      <Stack direction="row" justifyContent="space-between">
+                      <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
                         <Typography variant="body2" color="text.secondary">
                           {presupuesto.tipo === 'ingreso' ? 'Cobrado' : 'Ejecutado'}
                         </Typography>
-                        <Typography variant="body2" fontWeight={600}>
-                          {formatMonto(presupuesto.ejecutado, presupuesto.moneda)}
-                        </Typography>
+                        <Stack alignItems="flex-end">
+                          {presupuesto.indexacion ? (
+                            <>
+                              <Typography variant="body2" fontWeight={600}>
+                                {(() => {
+                                  // Mostrar en pesos (la unidad que el usuario entiende)
+                                  const cotiz = presupuesto.indexacion === 'CAC' ? cacEfectivo : dolarEfectivo;
+                                  if (cotiz && presupuesto.ejecutado != null) {
+                                    const enPesos = presupuesto.ejecutado * cotiz;
+                                    return formatCurrency(enPesos);
+                                  }
+                                  return formatMonto(presupuesto.ejecutado, presupuesto.moneda);
+                                })()}
+                              </Typography>
+                              <Typography variant="caption" color="text.secondary">
+                                {presupuesto.indexacion === 'CAC'
+                                  ? `${Number(presupuesto.ejecutado).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} unidades CAC`
+                                  : `USD ${Number(presupuesto.ejecutado).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                }
+                              </Typography>
+                            </>
+                          ) : (
+                            <Typography variant="body2" fontWeight={600}>
+                              {formatMonto(presupuesto.ejecutado, presupuesto.moneda)}
+                            </Typography>
+                          )}
+                        </Stack>
                       </Stack>
                       <LinearProgress
                         variant="determinate"
@@ -727,6 +906,33 @@ const PresupuestoDrawer = ({
                         sx={{ height: 6, borderRadius: 3 }}
                         color={presupuesto.ejecutado > presupuesto.monto ? 'error' : 'primary'}
                       />
+                      {(proyectoId || presupuesto.proyecto_id) && presupuesto.ejecutado > 0 && (
+                        <Link
+                          href={(() => {
+                            const params = new URLSearchParams();
+                            params.set('proyectoId', proyectoId || presupuesto.proyecto_id);
+                            if (presupuesto.tipo) params.set('tipo', presupuesto.tipo);
+                            if (presupuesto.proveedor) params.set('proveedores', presupuesto.proveedor);
+                            if (presupuesto.categoria) params.set('categorias', presupuesto.categoria);
+                            if (presupuesto.subcategoria) params.set('subcategorias', presupuesto.subcategoria);
+                            if (presupuesto.etapa) params.set('etapa', presupuesto.etapa);
+                            return `/cajaProyecto?${params.toString()}`;
+                          })()}
+                          passHref
+                          legacyBehavior
+                        >
+                          <Typography
+                            component="a"
+                            variant="caption"
+                            color="primary"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5, cursor: 'pointer', textDecoration: 'none', '&:hover': { textDecoration: 'underline' } }}
+                          >
+                            Ver movimientos <OpenInNewIcon sx={{ fontSize: 14 }} />
+                          </Typography>
+                        </Link>
+                      )}
                     </>
                   )}
                 </Stack>
@@ -794,13 +1000,105 @@ const PresupuestoDrawer = ({
                   {nuevaIndexacion && nuevoMonto && parseFloat(nuevoMonto) > 0 && (
                     <Alert severity="info" variant="outlined" icon={<InfoOutlinedIcon fontSize="small" />} sx={{ mt: 1 }}>
                       <Typography variant="caption">
-                        {nuevaIndexacion === 'CAC' && cacIndice ? (
-                          <>Equivale a <strong>CAC {(parseFloat(nuevoMonto) / cacIndice).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></>
-                        ) : nuevaIndexacion === 'USD' && dolarRate ? (
-                          <>Equivale a <strong>USD {(parseFloat(nuevoMonto) / dolarRate).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></>
+                        {nuevaIndexacion === 'CAC' && cacEfectivo ? (
+                          <>Equivale a <strong>CAC {(parseFloat(nuevoMonto) / cacEfectivo).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></>
+                        ) : nuevaIndexacion === 'USD' && dolarEfectivo ? (
+                          <>Equivale a <strong>USD {(parseFloat(nuevoMonto) / dolarEfectivo).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></>
                         ) : loadingRates ? 'Cargando cotizaciones...' : 'No se pudo obtener cotización'}
                       </Typography>
                     </Alert>
+                  )}
+
+                  {/* Override discreto de cotización */}
+                  {nuevaIndexacion && (
+                    <Box sx={{ mt: 0.5 }}>
+                      {!mostrarOverrideCotiz ? (
+                        <Typography
+                          variant="caption"
+                          color="text.disabled"
+                          sx={{ cursor: 'pointer', '&:hover': { color: 'text.secondary' } }}
+                          onClick={async () => {
+                            setMostrarOverrideCotiz(true);
+                            if (nuevaIndexacion === 'CAC' && cacHistorial.length === 0) {
+                              setLoadingHistorial(true);
+                              try {
+                                const data = await MonedasService.listarCAC({ limit: 12 });
+                                setCacHistorial(data || []);
+                              } catch (e) { console.warn(e); }
+                              finally { setLoadingHistorial(false); }
+                            }
+                          }}
+                        >
+                          Usar otro índice…
+                        </Typography>
+                      ) : (
+                        <Stack spacing={1} sx={{ mt: 1, p: 1.5, bgcolor: 'grey.50', borderRadius: 1 }}>
+                          <Stack direction="row" justifyContent="space-between" alignItems="center">
+                            <Typography variant="caption" color="text.secondary" fontWeight={600}>
+                              {nuevaIndexacion === 'CAC' ? 'Índice CAC personalizado' : 'Dólar personalizado'}
+                            </Typography>
+                            <Typography
+                              variant="caption"
+                              color="primary"
+                              sx={{ cursor: 'pointer' }}
+                              onClick={() => {
+                                setMostrarOverrideCotiz(false);
+                                setCacOverride('');
+                                setDolarOverride('');
+                              }}
+                            >
+                              Usar automático
+                            </Typography>
+                          </Stack>
+                          {nuevaIndexacion === 'CAC' ? (
+                            <>
+                              <Autocomplete
+                                freeSolo
+                                size="small"
+                                options={cacHistorial}
+                                loading={loadingHistorial}
+                                getOptionLabel={(opt) =>
+                                  typeof opt === 'string' ? opt
+                                    : `${opt.fecha} — CAC ${Number(opt.general || opt.valor || 0).toLocaleString('es-AR')}`
+                                }
+                                inputValue={cacOverride}
+                                onInputChange={(e, val, reason) => {
+                                  if (reason === 'input') setCacOverride(val);
+                                }}
+                                onChange={(e, val) => {
+                                  if (val && typeof val !== 'string') {
+                                    setCacOverride(String(val.general || val.valor || ''));
+                                  }
+                                }}
+                                renderInput={(params) => (
+                                  <TextField {...params} placeholder="Ej: 1042.5" />
+                                )}
+                              />
+                              {cacOverride && !isNaN(Number(cacOverride)) && (
+                                <Typography variant="caption" color="text.secondary">
+                                  Usando CAC = {Number(cacOverride).toLocaleString('es-AR')} en vez de {cacIndice ? Number(cacIndice).toLocaleString('es-AR') : '(no cargado)'}
+                                </Typography>
+                              )}
+                            </>
+                          ) : (
+                            <>
+                              <TextField
+                                size="small"
+                                type="number"
+                                placeholder="Ej: 1250"
+                                value={dolarOverride}
+                                onChange={(e) => setDolarOverride(e.target.value)}
+                              />
+                              {dolarOverride && !isNaN(Number(dolarOverride)) && (
+                                <Typography variant="caption" color="text.secondary">
+                                  Usando USD = ${Number(dolarOverride).toLocaleString('es-AR')} en vez de ${dolarRate ? Number(dolarRate).toLocaleString('es-AR') : '(no cargado)'}
+                                </Typography>
+                              )}
+                            </>
+                          )}
+                        </Stack>
+                      )}
+                    </Box>
                   )}
                 </Box>
               )}
@@ -989,12 +1287,24 @@ const PresupuestoDrawer = ({
                   <Button
                     color="info"
                     fullWidth
-                    onClick={() => { onRecalcular(presupuesto.id); onClose(); }}
-                    disabled={loading}
+                    onClick={async () => {
+                      setRecalculando(true);
+                      setError(null);
+                      try {
+                        await onRecalcular(presupuesto.id);
+                      } catch (err) {
+                        console.error('Error al recalcular:', err);
+                        setError('Error al recalcular presupuesto');
+                      } finally {
+                        setRecalculando(false);
+                        onClose();
+                      }
+                    }}
+                    disabled={loading || recalculando}
                     variant="outlined"
-                    startIcon={<AutorenewIcon />}
+                    startIcon={recalculando ? <CircularProgress size={16} color="inherit" /> : <AutorenewIcon />}
                   >
-                    Recalcular
+                    {recalculando ? 'Recalculando…' : 'Recalcular'}
                   </Button>
                 )}
                 <Button

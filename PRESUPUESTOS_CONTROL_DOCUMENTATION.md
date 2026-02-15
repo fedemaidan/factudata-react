@@ -103,7 +103,9 @@ Esto es relevante para constructoras que trabajan con Factura A (desglosan IVA) 
     fecha: "2026-02-13",
     dolar_blue: 1470,
     cac_indice: 95432.5,
-    cac_fecha: "2025-12"
+    cac_fecha: "2025-12",
+    cac_override: true,          // Presente si el usuario hizo override manual
+    dolar_override: true,        // Presente si el usuario hizo override manual
   },
   
   // Adicionales (incrementos posteriores al presupuesto original)
@@ -154,13 +156,15 @@ Del documento `movimientos/{id}`, el presupuesto usa:
 |---|---|
 | `total` | Se suma al ejecutado cuando `base_calculo = 'total'` |
 | `subtotal` | Se suma al ejecutado cuando `base_calculo = 'subtotal'` |
-| `type` | Filtro: solo `'egreso'` para presupuestos de egreso |
+| `type` | Match: `'egreso'` para presupuestos egreso, `'ingreso'` para presupuestos ingreso |
+| `moneda` | Moneda del movimiento (`'ARS'`, `'USD'`). Si coincide con la del presupuesto, no hay conversión |
 | `proyecto_id` | Match con `presupuesto.proyecto_id` |
 | `nombre_proveedor` | Match con `presupuesto.proveedor` |
 | `etapa` | Match con `presupuesto.etapa` |
 | `categoria` | Match con `presupuesto.categoria` |
 | `subcategoria` | Match con `presupuesto.subcategoria` |
 | `fecha_factura` | Debe ser `>= presupuesto.fechaInicio` (si existe) |
+| `equivalencias` | Pre-calculado: `{total: {usd_blue, ars, cac}, subtotal: {...}}`. Se usa como fuente de verdad para conversión en `recalcularPresupuestoPorId` |
 
 ---
 
@@ -176,11 +180,12 @@ Del documento `movimientos/{id}`, el presupuesto usa:
 
 | Función | Qué hace |
 |---|---|
-| `crearPresupuesto(data)` | Crea presupuesto, convierte monto si hay indexación, toma snapshot de cotización, recalcula ejecutado |
-| `editarPresupuesto(data)` | Edita monto/moneda/indexación/base_calculo, guarda historial, toma nueva cotización |
+| `crearPresupuesto(data)` | Crea presupuesto, convierte monto si hay indexación, toma snapshot de cotización (con override opcional), recalcula ejecutado |
+| `editarPresupuesto(data)` | Edita monto/moneda/indexación/base_calculo, guarda historial, toma nueva cotización (con override opcional) |
 | `agregarAdicional(data)` | Suma un adicional al monto total, registra en historial |
-| `recalcularPresupuestoPorId({id})` | Re-suma todos los movimientos que matchean, usa `base_calculo` y convierte a moneda del presupuesto |
-| `sumarEgresoAPresupuesto(data)` | Llamado al crear un movimiento: busca presupuestos que matchean y suma el monto |
+| `recalcularPresupuestoPorId({id})` | Re-suma movimientos que matchean. Usa `mov.equivalencias` como fuente de verdad; fallback a servicio de cotización. Soporta multi-moneda (USD↔ARS↔CAC) |
+| `sumarEgresoAPresupuesto(data)` | Llamado al crear un movimiento: busca presupuestos que matchean por tipo (egreso→egreso, ingreso→ingreso) y suma el monto. Acepta `moneda` del movimiento para conversión directa |
+| `recalcularPresupuestosPorMovimiento(data)` | Llamado al editar/eliminar movimiento: recalcula todos los presupuestos afectados. Matchea tipo del movimiento con tipo del presupuesto |
 | `obtenerResumenProyecto(proyecto_id, empresa_id)` | Devuelve presupuestos agrupados por tipo e ingresos/egresos con totales |
 | `buscarPresupuestosFiltrados(filtros)` | Query con filtros opcionales por empresa, proyecto, proveedor, etapa, categoría |
 
@@ -211,7 +216,7 @@ Del documento `movimientos/{id}`, el presupuesto usa:
 |---|---|
 | `src/components/PresupuestoDrawer.js` | Drawer reutilizable para crear y editar presupuestos |
 | `src/pages/controlProyecto.js` | Vista de control por proyecto (ingresos, egresos, agrupaciones) |
-| `src/pages/presupuestos.js` | Tabla CRUD de todos los presupuestos de la empresa |
+| `src/pages/presupuestos.js` | Tabla CRUD de todos los presupuestos. Columnas ocultables (toggle ⊞), columna "Detalle" combina proveedor/categoría/etapa en texto compacto |
 | `src/services/presupuestoService.js` | Servicio HTTP (axios) |
 | `src/services/monedasService.js` | Para obtener cotizaciones (dólar, CAC) |
 
@@ -222,17 +227,19 @@ Del documento `movimientos/{id}`, el presupuesto usa:
 2. Campo **Monto** + toggle **ARS / USD**
 3. Si ARS → selector de **Indexación**: Sin indexar | Indexar CAC | Indexar USD
    - Si indexa: muestra preview de equivalencia ("Equivale a CAC X.XX")
+   - Link discreto **"Usar otro índice…"** que expande un panel con Autocomplete de los últimos 12 meses de CAC (o input manual de dólar). Permite hacer override del índice base.
 4. Selector de **Base de cálculo**: Total (con imp.) | Neto (sin imp.)
 5. Si `showFullForm` (página presupuestos): Proyecto, Categoría, Proveedor, Etapa, Subcategoría
 6. Preview resumen
 
 **Modo Editar:**
-1. Resumen actual (tipo, monto, indexación, base cálculo, ejecutado, barra de progreso)
-2. Info de valor almacenado si tiene indexación
+1. Resumen actual (tipo, monto en pesos con unidades indexadas como subtítulo, ejecutado con barra de progreso)
+2. Link "Ver movimientos" que abre la caja del proyecto filtrada
 3. Campos de edición: Monto + Moneda + Indexación + Base cálculo + Motivo
+   - Override de índice disponible (mismo que en crear)
 4. Sección de adicionales
 5. Historial de cambios (colapsable)
-6. Acciones: Guardar / Recalcular / Eliminar
+6. Acciones: Guardar / Recalcular (con loading y barra de progreso) / Eliminar
 
 ### 4.4 controlProyecto.js — Vista por proyecto
 
@@ -274,15 +281,14 @@ Frontend muestra: $50.000.000 (recalculado: 523.95 × CAC_actual)
 ### 5.2 Recalcular ejecutado (ARS indexado CAC)
 
 ```
-Presupuesto: moneda="CAC", base_calculo="subtotal"
+Presupuesto: moneda="CAC", base_calculo="subtotal", tipo="egreso"
     ↓
 Query: movimientos donde type="egreso" AND proyecto_id=X AND proveedor=Y ...
     ↓
 Por cada movimiento:
-  1. Tomar mov.subtotal (porque base_calculo="subtotal")
-  2. Obtener índice CAC para la fecha del movimiento (dameIndiceParaFechaDeUsoReal)
-  3. Convertir: montoCAC = mov.subtotal / indiceCAC
-  4. Sumar al ejecutado
+  1. Si misma moneda → sumar directo
+  2. Si tiene mov.equivalencias[subtotal][cac] → usar ese valor (fuente de verdad)
+  3. Fallback: convertir con servicio de cotización para la fecha del movimiento
     ↓
 Guardar ejecutado actualizado en el presupuesto
 ```
@@ -295,11 +301,10 @@ Se crea movimiento (factura de proveedor)
 sumarEgresoAPresupuesto busca TODOS los presupuestos de la empresa
     ↓
 Filtra: coincide proyecto + proveedor + etapa + categoría + subcategoría + fecha
+  + tipo del movimiento debe coincidir con tipo del presupuesto (egreso→egreso, ingreso→ingreso)
     ↓
-Si base_calculo="subtotal": usa monto.subtotal del movimiento
-Si base_calculo="total": usa monto.total
-    ↓
-Convierte a moneda del presupuesto si es necesario (ARS→USD o ARS→CAC)
+Si misma moneda → sumar directo (movimiento USD a presupuesto USD)
+Si distinta moneda → convertir (ej: movimiento USD * dólar → ARS para presupuesto ARS)
     ↓
 Suma al ejecutado
 ```

@@ -561,6 +561,10 @@ const ControlProyectoPage = () => {
         historial: item.historial || [],
         ejecutado: item.ejecutado || 0,
         cotizacion_snapshot: item.cotizacion_snapshot || null,
+        proveedor: item.proveedor || null,
+        categoria: item.categoria || null,
+        subcategoria: item.subcategoria || null,
+        etapa: item.etapa || null,
       },
     });
   };

@@ -10,6 +10,7 @@ import {
   Table,
   TableBody,
   TableCell,
+  TableContainer,
   TableHead,
   TableRow,
   TextField,
@@ -19,6 +20,7 @@ import {
   Select,
   MenuItem,
   FormControl,
+  FormControlLabel,
   InputLabel,
   Dialog,
   DialogActions,
@@ -26,11 +28,16 @@ import {
   DialogContentText,
   DialogTitle,
   Chip,
-  Checkbox
+  Checkbox,
+  IconButton,
+  Tooltip,
+  Popover,
+  Switch
 } from '@mui/material';
 import { LinearProgress } from '@mui/material';
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
 import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
+import ViewColumnIcon from '@mui/icons-material/ViewColumn';
 import { useRouter } from 'next/router';
 import { Add, Delete } from '@mui/icons-material';
 import { useAuthContext } from 'src/contexts/auth-context';
@@ -94,6 +101,32 @@ const PresupuestosPage = () => {
   const [filteredPresupuestos, setFilteredPresupuestos] = useState([]);
   const [selectedPresupuestos, setSelectedPresupuestos] = useState([]);
   const [deleteMultipleDialog, setDeleteMultipleDialog] = useState(false);
+  const [colAnchorEl, setColAnchorEl] = useState(null);
+  const [columnasVisibles, setColumnasVisibles] = useState({
+    codigo: true,
+    tipo: true,
+    fechaInicio: false,
+    monto: true,
+    detalle: true,
+    proyecto: true,
+    ejecutado: true,
+    disponible: true,
+  });
+
+  const toggleColumna = (key) => {
+    setColumnasVisibles(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const COLUMNAS_LABELS = {
+    codigo: 'Código',
+    tipo: 'Tipo',
+    fechaInicio: 'Fecha inicio',
+    monto: 'Monto',
+    detalle: 'Detalle',
+    proyecto: 'Proyecto',
+    ejecutado: 'Ejecutado',
+    disponible: 'Disponible',
+  };
 
   const handleSelectPresupuesto = (codigo) => {
     setSelectedPresupuestos(prev => {
@@ -277,6 +310,11 @@ const PresupuestosPage = () => {
         historial: p.historial || [],
         ejecutado: p.ejecutado || 0,
         cotizacion_snapshot: p.cotizacion_snapshot || null,
+        proyecto_id: p.proyecto_id || null,
+        proveedor: p.proveedor || null,
+        categoria: p.categoria || null,
+        subcategoria: p.subcategoria || null,
+        etapa: p.etapa || null,
       },
     });
   };
@@ -356,136 +394,220 @@ const PresupuestosPage = () => {
             </Stack>
           </Stack>
 
-          <Paper>
-
-
-            <Table>
-              <TableHead>
-                <TableRow>
-                  <TableCell padding="checkbox">
-                    <Checkbox
-                      indeterminate={selectedPresupuestos.length > 0 && selectedPresupuestos.length < sortedPresupuestos.length}
-                      checked={sortedPresupuestos.length > 0 && selectedPresupuestos.length === sortedPresupuestos.length}
-                      onChange={handleSelectAll}
-                    />
-                  </TableCell>
-                  {[
-                    { label: 'Código', field: 'codigo' },
-                    { label: 'Tipo', field: 'tipo' },
-                    { label: 'Fecha inicio', field: 'fechaInicio' },
-                    { label: 'Monto', field: 'monto' },
-                    { label: 'Proveedor', field: 'proveedor' },
-                    { label: 'Etapa', field: 'etapa' },
-                    { label: 'Proyecto', field: 'proyecto_id' },
-                    { label: 'Categoria', field: 'categoria' },
-                    { label: 'SubCategoria', field: 'subCategoria' },
-                    { label: 'Ejecutado', field: 'ejecutado' },
-                    { label: 'Disponible', field: 'ejecutado' },
-                    { label: '% Ejecutado', field: 'ejecutado' }, // sin sorting
-                  ].map(({ label, field }) => (
-                    <TableCell
-                      key={label}
-                      onClick={() => field && handleSort(field)}
-                      sx={{ cursor: field ? 'pointer' : 'default' }}
-                    >
-                      {label}
-                      {orderBy === field &&
-                        (orderDirection === 'asc' ? <ArrowUpwardIcon fontSize="inherit" /> : <ArrowDownwardIcon fontSize="inherit" />)}
-                    </TableCell>
-                  ))}
-                </TableRow>
-              </TableHead>
-
-              <TableBody>
-                {sortedPresupuestos.map(p => {
-                  const porcentaje = p.monto ? (p.ejecutado / p.monto) * 100 : 0;
-                  const esSobreejecucion = p.ejecutado > p.monto;
-
-                  // Si tiene indexación, mostrar el valor actual en la moneda_display (ARS)
-                  const tieneIndexacion = !!p.indexacion;
-                  const monDisplay = p.moneda_display || p.moneda || 'ARS';
-
-                  const convertirADisplay = (val) => {
-                    if (!tieneIndexacion) return val;
-                    // val está en la moneda de almacenamiento (CAC o USD), convertir a moneda_display (ARS)
-                    if (p.indexacion === 'CAC' && cacIndice) return val * cacIndice;
-                    if (p.indexacion === 'USD' && dolarRate) return val * dolarRate;
-                    return val;
-                  };
-
-                  const fmtMonto = (val) => {
-                    if (val === null || val === undefined) return '-';
-                    const monMostrar = tieneIndexacion ? monDisplay : (p.moneda || 'ARS');
-                    const valMostrar = tieneIndexacion ? convertirADisplay(val) : val;
-                    if (monMostrar === 'USD') return `USD ${Number(valMostrar).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-                    return formatCurrency(valMostrar);
-                  };
-
-                  return (
-                    <TableRow
-                      key={p.codigo}
-                      hover
-                      onClick={() => abrirDrawerEditar(p)}
-                      sx={{
-                        cursor: 'pointer',
-                        ...(esSobreejecucion ? { backgroundColor: '#ffe0e0' } : {}),
-                        ...(selectedPresupuestos.includes(p.codigo) ? { backgroundColor: 'action.selected' } : {})
-                      }}
-                    >
-                      <TableCell padding="checkbox" onClick={(e) => e.stopPropagation()}>
-                        <Checkbox
-                          checked={selectedPresupuestos.includes(p.codigo)}
-                          onChange={() => handleSelectPresupuesto(p.codigo)}
-                        />
-                      </TableCell>
-                      <TableCell>{p.codigo}</TableCell>
-                      <TableCell>
-                        <Chip
-                          label={p.tipo === 'ingreso' ? 'Ingreso' : 'Egreso'}
+          <Paper sx={{ overflow: 'hidden' }}>
+            {/* Botón para gestionar columnas */}
+            <Stack direction="row" justifyContent="flex-end" sx={{ px: 1, pt: 0.5 }}>
+              <Tooltip title="Columnas visibles">
+                <IconButton size="small" onClick={(e) => setColAnchorEl(e.currentTarget)}>
+                  <ViewColumnIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+              <Popover
+                open={Boolean(colAnchorEl)}
+                anchorEl={colAnchorEl}
+                onClose={() => setColAnchorEl(null)}
+                anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+                transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+              >
+                <Box sx={{ p: 2, minWidth: 180 }}>
+                  <Typography variant="subtitle2" gutterBottom>Columnas</Typography>
+                  {Object.entries(COLUMNAS_LABELS).map(([key, label]) => (
+                    <FormControlLabel
+                      key={key}
+                      control={
+                        <Switch
                           size="small"
-                          color={p.tipo === 'ingreso' ? 'success' : 'error'}
-                          variant="outlined"
+                          checked={columnasVisibles[key]}
+                          onChange={() => toggleColumna(key)}
                         />
-                      </TableCell>
-                      <TableCell>
-                        {formatFechaInput(p.fechaInicio) || '-'}
-                      </TableCell>
+                      }
+                      label={<Typography variant="body2">{label}</Typography>}
+                      sx={{ display: 'block', ml: 0 }}
+                    />
+                  ))}
+                </Box>
+              </Popover>
+            </Stack>
 
-                      <TableCell>
-                        <Stack direction="row" spacing={0.5} alignItems="center">
-                          <span>{fmtMonto(p.monto)}</span>
-                          {tieneIndexacion && (
-                            <Chip label={`idx ${p.indexacion}`} size="small" color="secondary" variant="outlined" sx={{ height: 18, '& .MuiChip-label': { px: 0.5, fontSize: '0.6rem' } }} />
-                          )}
-                        </Stack>
+            <TableContainer sx={{ overflowX: 'auto' }}>
+              <Table size="small" sx={{ tableLayout: 'auto' }}>
+                <TableHead>
+                  <TableRow>
+                    <TableCell padding="checkbox" sx={{ width: 40 }}>
+                      <Checkbox
+                        size="small"
+                        indeterminate={selectedPresupuestos.length > 0 && selectedPresupuestos.length < sortedPresupuestos.length}
+                        checked={sortedPresupuestos.length > 0 && selectedPresupuestos.length === sortedPresupuestos.length}
+                        onChange={handleSelectAll}
+                      />
+                    </TableCell>
+                    {columnasVisibles.codigo && (
+                      <TableCell onClick={() => handleSort('codigo')} sx={{ cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                        # {orderBy === 'codigo' && (orderDirection === 'asc' ? <ArrowUpwardIcon fontSize="inherit" /> : <ArrowDownwardIcon fontSize="inherit" />)}
                       </TableCell>
+                    )}
+                    {columnasVisibles.tipo && (
+                      <TableCell onClick={() => handleSort('tipo')} sx={{ cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                        Tipo {orderBy === 'tipo' && (orderDirection === 'asc' ? <ArrowUpwardIcon fontSize="inherit" /> : <ArrowDownwardIcon fontSize="inherit" />)}
+                      </TableCell>
+                    )}
+                    {columnasVisibles.fechaInicio && (
+                      <TableCell onClick={() => handleSort('fechaInicio')} sx={{ cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                        Fecha {orderBy === 'fechaInicio' && (orderDirection === 'asc' ? <ArrowUpwardIcon fontSize="inherit" /> : <ArrowDownwardIcon fontSize="inherit" />)}
+                      </TableCell>
+                    )}
+                    {columnasVisibles.monto && (
+                      <TableCell onClick={() => handleSort('monto')} sx={{ cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                        Monto {orderBy === 'monto' && (orderDirection === 'asc' ? <ArrowUpwardIcon fontSize="inherit" /> : <ArrowDownwardIcon fontSize="inherit" />)}
+                      </TableCell>
+                    )}
+                    {columnasVisibles.detalle && (
+                      <TableCell onClick={() => handleSort('proveedor')} sx={{ cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                        Detalle {orderBy === 'proveedor' && (orderDirection === 'asc' ? <ArrowUpwardIcon fontSize="inherit" /> : <ArrowDownwardIcon fontSize="inherit" />)}
+                      </TableCell>
+                    )}
+                    {columnasVisibles.proyecto && (
+                      <TableCell onClick={() => handleSort('proyecto_id')} sx={{ cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                        Proyecto {orderBy === 'proyecto_id' && (orderDirection === 'asc' ? <ArrowUpwardIcon fontSize="inherit" /> : <ArrowDownwardIcon fontSize="inherit" />)}
+                      </TableCell>
+                    )}
+                    {columnasVisibles.ejecutado && (
+                      <TableCell onClick={() => handleSort('ejecutado')} sx={{ cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                        Ejecutado {orderBy === 'ejecutado' && (orderDirection === 'asc' ? <ArrowUpwardIcon fontSize="inherit" /> : <ArrowDownwardIcon fontSize="inherit" />)}
+                      </TableCell>
+                    )}
+                    {columnasVisibles.disponible && (
+                      <TableCell sx={{ whiteSpace: 'nowrap' }}>Disponible</TableCell>
+                    )}
+                  </TableRow>
+                </TableHead>
 
-                      <TableCell>{p.proveedor || '-'}</TableCell>
-                      <TableCell>{p.etapa || '-'}</TableCell>
-                      <TableCell>{proyectos.find(pr => pr.id === p.proyecto_id)?.nombre || '-'}</TableCell>
-                      <TableCell>{p.categoria ||'-'}</TableCell>
-                      <TableCell>{p.subcategoria || '-'}</TableCell>
-                      <TableCell>{fmtMonto(p.ejecutado || 0)}</TableCell>
-                      <TableCell>{fmtMonto((p.monto || 0) - (p.ejecutado || 0))}</TableCell>
-                      <TableCell>
-                        <Stack spacing={0.5}>
-                          <Typography variant="caption" color={esSobreejecucion ? 'error' : 'text.primary'}>
-                            {porcentaje.toFixed(1)}%
-                          </Typography>
-                          <LinearProgress
-                            variant="determinate"
-                            value={Math.min(porcentaje, 100)}
-                            color={esSobreejecucion ? 'error' : 'primary'}
-                            sx={{ height: 8, borderRadius: 2 }}
+                <TableBody>
+                  {sortedPresupuestos.map(p => {
+                    const porcentaje = p.monto ? (p.ejecutado / p.monto) * 100 : 0;
+                    const esSobreejecucion = p.ejecutado > p.monto;
+
+                    const tieneIndexacion = !!p.indexacion;
+                    const monDisplay = p.moneda_display || p.moneda || 'ARS';
+
+                    const convertirADisplay = (val) => {
+                      if (!tieneIndexacion) return val;
+                      if (p.indexacion === 'CAC' && cacIndice) return val * cacIndice;
+                      if (p.indexacion === 'USD' && dolarRate) return val * dolarRate;
+                      return val;
+                    };
+
+                    const fmtMonto = (val) => {
+                      if (val === null || val === undefined) return '-';
+                      const monMostrar = tieneIndexacion ? monDisplay : (p.moneda || 'ARS');
+                      const valMostrar = tieneIndexacion ? convertirADisplay(val) : val;
+                      if (monMostrar === 'USD') return `USD ${Number(valMostrar).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                      return formatCurrency(valMostrar);
+                    };
+
+                    return (
+                      <TableRow
+                        key={p.codigo}
+                        hover
+                        onClick={() => abrirDrawerEditar(p)}
+                        sx={{
+                          cursor: 'pointer',
+                          ...(esSobreejecucion ? { backgroundColor: '#fff0f0' } : {}),
+                          ...(selectedPresupuestos.includes(p.codigo) ? { backgroundColor: 'action.selected' } : {})
+                        }}
+                      >
+                        <TableCell padding="checkbox" onClick={(e) => e.stopPropagation()}>
+                          <Checkbox
+                            size="small"
+                            checked={selectedPresupuestos.includes(p.codigo)}
+                            onChange={() => handleSelectPresupuesto(p.codigo)}
                           />
-                        </Stack>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
+                        </TableCell>
 
-            </Table>
+                        {columnasVisibles.codigo && (
+                          <TableCell sx={{ whiteSpace: 'nowrap' }}>{p.codigo}</TableCell>
+                        )}
+
+                        {columnasVisibles.tipo && (
+                          <TableCell>
+                            <Chip
+                              label={p.tipo === 'ingreso' ? 'Ingreso' : 'Egreso'}
+                              size="small"
+                              color={p.tipo === 'ingreso' ? 'success' : 'error'}
+                              variant="outlined"
+                              sx={{ height: 22, '& .MuiChip-label': { px: 0.75, fontSize: '0.75rem' } }}
+                            />
+                          </TableCell>
+                        )}
+
+                        {columnasVisibles.fechaInicio && (
+                          <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                            {formatFechaInput(p.fechaInicio) || '-'}
+                          </TableCell>
+                        )}
+
+                        {columnasVisibles.monto && (
+                          <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                            <Stack direction="row" spacing={0.5} alignItems="center">
+                              <span>{fmtMonto(p.monto)}</span>
+                              {tieneIndexacion && (
+                                <Chip label={`idx ${p.indexacion}`} size="small" color="secondary" variant="outlined" sx={{ height: 18, '& .MuiChip-label': { px: 0.5, fontSize: '0.6rem' } }} />
+                              )}
+                            </Stack>
+                          </TableCell>
+                        )}
+
+                        {columnasVisibles.detalle && (
+                          <TableCell>
+                            <Stack spacing={0}>
+                              {p.proveedor && (
+                                <Typography variant="caption" color="text.secondary">Proveedor: <Box component="span" sx={{ color: 'text.primary' }}>{p.proveedor}</Box></Typography>
+                              )}
+                              {p.categoria && (
+                                <Typography variant="caption" color="text.secondary">Categoría: <Box component="span" sx={{ color: 'text.primary' }}>{p.subcategoria ? `${p.categoria} › ${p.subcategoria}` : p.categoria}</Box></Typography>
+                              )}
+                              {p.etapa && (
+                                <Typography variant="caption" color="text.secondary">Etapa: <Box component="span" sx={{ color: 'text.primary' }}>{p.etapa}</Box></Typography>
+                              )}
+                              {!p.proveedor && !p.categoria && !p.etapa && (
+                                <Typography variant="caption" color="text.disabled">-</Typography>
+                              )}
+                            </Stack>
+                          </TableCell>
+                        )}
+
+                        {columnasVisibles.proyecto && (
+                          <TableCell>{proyectos.find(pr => pr.id === p.proyecto_id)?.nombre || '-'}</TableCell>
+                        )}
+
+                        {columnasVisibles.ejecutado && (
+                          <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                            <Stack spacing={0.25}>
+                              <span>{fmtMonto(p.ejecutado || 0)}</span>
+                              <LinearProgress
+                                variant="determinate"
+                                value={Math.min(porcentaje, 100)}
+                                color={esSobreejecucion ? 'error' : 'primary'}
+                                sx={{ height: 3, borderRadius: 2 }}
+                              />
+                              <Typography variant="caption" color={esSobreejecucion ? 'error.main' : 'text.disabled'} sx={{ fontSize: '0.65rem' }}>
+                                {porcentaje.toFixed(0)}%
+                              </Typography>
+                            </Stack>
+                          </TableCell>
+                        )}
+
+                        {columnasVisibles.disponible && (
+                          <TableCell sx={{ whiteSpace: 'nowrap', fontWeight: 500 }}>
+                            {fmtMonto((p.monto || 0) - (p.ejecutado || 0))}
+                          </TableCell>
+                        )}
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </TableContainer>
           </Paper>
 
         </Container>
