@@ -816,6 +816,15 @@ const ControlPresupuestosPage = () => {
 
                 {/* Indicadores de cotización */}
                 <Stack direction="row" spacing={1} alignItems="center">
+                  {cacIndiceActual && (
+                    <Chip
+                      label={`CAC: ${Number(cacIndiceActual).toLocaleString('es-AR')}`}
+                      size="small"
+                      color="secondary"
+                      variant="outlined"
+                      icon={<TimelineIcon />}
+                    />
+                  )}
                   {cotizacionCargada && tipoCambio ? (
                     <Chip
                       label={`USD Blue: $${Number(tipoCambio).toLocaleString('es-AR')}`}
@@ -1361,11 +1370,14 @@ const ControlPresupuestosPage = () => {
             <Stack direction="row" spacing={2} alignItems="center">
               <TextField
                 label="Monto del Presupuesto General"
-                type="number"
                 fullWidth
-                value={nuevoPresupuestoGeneral}
-                onChange={(e) => setNuevoPresupuestoGeneral(e.target.value)}
+                value={nuevoPresupuestoGeneral ? Number(nuevoPresupuestoGeneral).toLocaleString('es-AR') : ''}
+                onChange={(e) => {
+                  const raw = e.target.value.replace(/\./g, '').replace(/,/g, '').replace(/[^0-9]/g, '');
+                  setNuevoPresupuestoGeneral(raw);
+                }}
                 autoFocus
+                inputProps={{ inputMode: 'numeric' }}
               />
               <ToggleButtonGroup
                 value={monedaPresupuestoGeneral}
