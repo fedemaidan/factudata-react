@@ -241,7 +241,7 @@ const PresupuestoDrawer = ({
         if (categoriaSel) data.categoria = categoriaSel;
         if (subcategoriaSel) data.subcategoria = subcategoriaSel;
       } else {
-        // Formulario simplificado (controlProyecto)
+        // Formulario simplificado (control-presupuestos)
         if (tipoAgrupacion === 'categoria') data.categoria = valorAgrupacion;
         else if (tipoAgrupacion === 'etapa') data.etapa = valorAgrupacion;
         else if (tipoAgrupacion === 'proveedor') data.proveedor = valorAgrupacion || proveedorInput;

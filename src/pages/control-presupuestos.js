@@ -58,6 +58,7 @@ import { formatCurrency, formatTimestamp } from 'src/utils/formatters';
 import PresupuestoDrawer from 'src/components/PresupuestoDrawer';
 import Tooltip from '@mui/material/Tooltip';
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
+import ListAltIcon from '@mui/icons-material/ListAlt';
 
 // Helper: calcular totales de un resumen multimoneda (para ProyectoCard)
 const calcularTotalesResumen = (resumen, tipoCambio = null, monedaVista = 'ARS') => {
@@ -212,7 +213,7 @@ const PresupuestoItem = ({ label, presupuesto, ejecutado, formatMonto, onCrear, 
 };
 
 // ============ COMPONENTE PRINCIPAL ============
-const ControlProyectoPage = () => {
+const ControlPresupuestosPage = () => {
   const { user } = useAuthContext();
   const router = useRouter();
   
@@ -704,12 +705,12 @@ const ControlProyectoPage = () => {
   if (!proyectoSeleccionado) {
     return (
       <>
-        <Head><title>Control de Proyectos</title></Head>
+        <Head><title>Control de Presupuestos</title></Head>
         <Box component="main" sx={{ flexGrow: 1, py: 4 }}>
           <Container maxWidth={false} sx={{ px: 4 }}>
             <Stack spacing={3}>
               <Stack direction="row" justifyContent="space-between" alignItems="center">
-                <Typography variant="h4">Control de Proyectos</Typography>
+                <Typography variant="h4">Control de Presupuestos</Typography>
                 <Stack direction="row" spacing={2}>
                   <ToggleButtonGroup
                     value={moneda}
@@ -739,6 +740,31 @@ const ControlProyectoPage = () => {
                 </Paper>
               ) : (
                 <Grid container spacing={3}>
+                  {/* Card destacada: acceso a la tabla completa de presupuestos */}
+                  <Grid item xs={12} sm={6} md={4} lg={3}>
+                    <Card
+                      sx={{
+                        height: '100%',
+                        background: 'linear-gradient(135deg, #1976d2 0%, #1565c0 100%)',
+                        color: 'white',
+                        transition: 'transform 0.2s, box-shadow 0.2s',
+                        '&:hover': { transform: 'translateY(-4px)', boxShadow: 6 },
+                      }}
+                    >
+                      <CardActionArea onClick={() => router.push('/presupuestos')} sx={{ height: '100%' }}>
+                        <CardContent sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', py: 4 }}>
+                          <ListAltIcon sx={{ fontSize: 48, mb: 1.5, opacity: 0.9 }} />
+                          <Typography variant="h6" gutterBottom align="center">
+                            Todos los presupuestos
+                          </Typography>
+                          <Typography variant="body2" align="center" sx={{ opacity: 0.85 }}>
+                            Ver, crear y gestionar todos los presupuestos en una tabla detallada
+                          </Typography>
+                        </CardContent>
+                      </CardActionArea>
+                    </Card>
+                  </Grid>
+
                   {proyectos.map((proyecto) => (
                     <Grid item xs={12} sm={6} md={4} lg={3} key={proyecto.id}>
                       <ProyectoCard 
@@ -1423,8 +1449,8 @@ const ControlProyectoPage = () => {
   );
 };
 
-ControlProyectoPage.getLayout = (page) => (
+ControlPresupuestosPage.getLayout = (page) => (
   <DashboardLayout>{page}</DashboardLayout>
 );
 
-export default ControlProyectoPage;
+export default ControlPresupuestosPage;
