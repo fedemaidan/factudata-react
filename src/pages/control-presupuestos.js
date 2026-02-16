@@ -103,7 +103,8 @@ const calcularTotalesResumen = (resumen, tipoCambio = null, monedaVista = 'ARS')
 const ProyectoCard = ({ proyecto, resumen, onSelect, formatMonto, tipoCambio, moneda }) => {
   const { egresosTotal, egresosEjecutado, ingresosTotal, ingresosEjecutado } = calcularTotalesResumen(resumen, tipoCambio, moneda);
   const porcentajeEgresos = egresosTotal > 0 ? (egresosEjecutado / egresosTotal) * 100 : 0;
-  const ganancia = ingresosTotal - egresosTotal;
+  const gananciaProyectada = ingresosTotal - egresosTotal;
+  const gananciaReal = ingresosEjecutado - egresosEjecutado;
   const tieneIngresos = ingresosTotal > 0;
   
   return (
@@ -112,27 +113,32 @@ const ProyectoCard = ({ proyecto, resumen, onSelect, formatMonto, tipoCambio, mo
         <CardContent>
           <Typography variant="h6" gutterBottom noWrap>{proyecto.nombre}</Typography>
           <Stack spacing={0.75}>
-            {/* Ingresos */}
+            {/* Ingresos: presupuestado y cobrado */}
             {tieneIngresos && (
-              <Stack direction="row" justifyContent="space-between" alignItems="center">
-                <Stack direction="row" spacing={0.5} alignItems="center">
-                  <TrendingUpIcon sx={{ fontSize: 14, color: 'success.main' }} />
-                  <Typography variant="body2" color="text.secondary">Ingresos</Typography>
+              <>
+                <Stack direction="row" justifyContent="space-between" alignItems="center">
+                  <Stack direction="row" spacing={0.5} alignItems="center">
+                    <TrendingUpIcon sx={{ fontSize: 14, color: 'success.main' }} />
+                    <Typography variant="body2" color="text.secondary">Pres. ingresos</Typography>
+                  </Stack>
+                  <Typography variant="body2" fontWeight={600}>{formatMonto(ingresosTotal)}</Typography>
                 </Stack>
-                <Typography variant="body2" fontWeight={600} color="success.main">
-                  {formatMonto(ingresosTotal)}
-                </Typography>
-              </Stack>
+                <Stack direction="row" justifyContent="space-between" alignItems="center">
+                  <Typography variant="caption" color="text.secondary" sx={{ pl: 2.5 }}>Cobrado</Typography>
+                  <Typography variant="caption" fontWeight={600} color="success.main">
+                    {formatMonto(ingresosEjecutado)}
+                  </Typography>
+                </Stack>
+              </>
             )}
-            {/* Egresos */}
+            {/* Egresos: presupuestado y gastado */}
             <Stack direction="row" justifyContent="space-between" alignItems="center">
               <Stack direction="row" spacing={0.5} alignItems="center">
                 <TrendingDownIcon sx={{ fontSize: 14, color: 'error.main' }} />
-                <Typography variant="body2" color="text.secondary">Egresos</Typography>
+                <Typography variant="body2" color="text.secondary">Pres. egresos</Typography>
               </Stack>
               <Typography variant="body2" fontWeight={600}>{formatMonto(egresosTotal)}</Typography>
             </Stack>
-            {/* Ejecutado egresos */}
             <Stack direction="row" justifyContent="space-between" alignItems="center">
               <Typography variant="caption" color="text.secondary" sx={{ pl: 2.5 }}>Gastado</Typography>
               <Typography variant="caption" fontWeight={600} color={porcentajeEgresos > 100 ? 'error.main' : 'text.secondary'}>
@@ -145,21 +151,29 @@ const ProyectoCard = ({ proyecto, resumen, onSelect, formatMonto, tipoCambio, mo
               sx={{ height: 6, borderRadius: 3 }}
               color={porcentajeEgresos > 100 ? 'error' : porcentajeEgresos > 80 ? 'warning' : 'primary'}
             />
-            {/* Ganancia (solo si hay ingresos) */}
+            {/* Ganancia proyectada y real (solo si hay ingresos) */}
             {tieneIngresos && (
               <>
                 <Divider sx={{ my: 0.25 }} />
                 <Stack direction="row" justifyContent="space-between" alignItems="center">
-                  <Typography variant="body2" color="text.secondary">Ganancia</Typography>
-                  <Typography variant="body2" fontWeight={700} color={ganancia >= 0 ? 'success.main' : 'error.main'}>
-                    {formatMonto(ganancia)}
+                  <Typography variant="caption" color="text.secondary">Ganancia proyectada</Typography>
+                  <Typography variant="body2" fontWeight={600} color={gananciaProyectada >= 0 ? 'success.main' : 'error.main'}>
+                    {formatMonto(gananciaProyectada)}
+                  </Typography>
+                </Stack>
+                <Stack direction="row" justifyContent="space-between" alignItems="center">
+                  <Typography variant="caption" color="text.secondary">Ganancia real</Typography>
+                  <Typography variant="body2" fontWeight={700} color={gananciaReal >= 0 ? 'success.main' : 'error.main'}>
+                    {formatMonto(gananciaReal)}
                   </Typography>
                 </Stack>
               </>
             )}
-            <Typography variant="caption" color="text.secondary" align="center">
-              {porcentajeEgresos.toFixed(1)}% ejecutado
-            </Typography>
+            {!tieneIngresos && (
+              <Typography variant="caption" color="text.secondary" align="center">
+                {porcentajeEgresos.toFixed(1)}% ejecutado
+              </Typography>
+            )}
           </Stack>
         </CardContent>
       </CardActionArea>
