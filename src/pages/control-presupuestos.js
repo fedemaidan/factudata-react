@@ -89,41 +89,76 @@ const calcularTotalesResumen = (resumen, tipoCambio = null, monedaVista = 'ARS')
     egresosTotal += convertir(data.total || 0, mon);
     egresosEjecutado += convertir(data.ejecutado || 0, mon);
   });
+
+  let ingresosTotal = 0, ingresosEjecutado = 0;
+  Object.entries(resumen.ingresosPorMoneda || {}).forEach(([mon, data]) => {
+    ingresosTotal += convertir(data.total || 0, mon);
+    ingresosEjecutado += convertir(data.ejecutado || 0, mon);
+  });
   
-  return { egresosTotal, egresosEjecutado };
+  return { egresosTotal, egresosEjecutado, ingresosTotal, ingresosEjecutado };
 };
 
 // ============ COMPONENTE: CARD DE PROYECTO (VISTA GENERAL) ============
 const ProyectoCard = ({ proyecto, resumen, onSelect, formatMonto, tipoCambio, moneda }) => {
-  const { egresosTotal, egresosEjecutado } = calcularTotalesResumen(resumen, tipoCambio, moneda);
-  const presupuestoTotal = egresosTotal;
-  const ejecutado = egresosEjecutado;
-  const porcentaje = presupuestoTotal > 0 ? (ejecutado / presupuestoTotal) * 100 : 0;
+  const { egresosTotal, egresosEjecutado, ingresosTotal, ingresosEjecutado } = calcularTotalesResumen(resumen, tipoCambio, moneda);
+  const porcentajeEgresos = egresosTotal > 0 ? (egresosEjecutado / egresosTotal) * 100 : 0;
+  const ganancia = ingresosTotal - egresosTotal;
+  const tieneIngresos = ingresosTotal > 0;
   
   return (
     <Card sx={{ height: '100%' }}>
       <CardActionArea onClick={() => onSelect(proyecto.id)} sx={{ height: '100%' }}>
         <CardContent>
           <Typography variant="h6" gutterBottom noWrap>{proyecto.nombre}</Typography>
-          <Stack spacing={1}>
-            <Stack direction="row" justifyContent="space-between">
-              <Typography variant="body2" color="text.secondary">Presupuesto:</Typography>
-              <Typography variant="body2" fontWeight={600}>{formatMonto(presupuestoTotal)}</Typography>
+          <Stack spacing={0.75}>
+            {/* Ingresos */}
+            {tieneIngresos && (
+              <Stack direction="row" justifyContent="space-between" alignItems="center">
+                <Stack direction="row" spacing={0.5} alignItems="center">
+                  <TrendingUpIcon sx={{ fontSize: 14, color: 'success.main' }} />
+                  <Typography variant="body2" color="text.secondary">Ingresos</Typography>
+                </Stack>
+                <Typography variant="body2" fontWeight={600} color="success.main">
+                  {formatMonto(ingresosTotal)}
+                </Typography>
+              </Stack>
+            )}
+            {/* Egresos */}
+            <Stack direction="row" justifyContent="space-between" alignItems="center">
+              <Stack direction="row" spacing={0.5} alignItems="center">
+                <TrendingDownIcon sx={{ fontSize: 14, color: 'error.main' }} />
+                <Typography variant="body2" color="text.secondary">Egresos</Typography>
+              </Stack>
+              <Typography variant="body2" fontWeight={600}>{formatMonto(egresosTotal)}</Typography>
             </Stack>
-            <Stack direction="row" justifyContent="space-between">
-              <Typography variant="body2" color="text.secondary">Ejecutado:</Typography>
-              <Typography variant="body2" fontWeight={600} color={porcentaje > 100 ? 'error.main' : 'success.main'}>
-                {formatMonto(ejecutado)}
+            {/* Ejecutado egresos */}
+            <Stack direction="row" justifyContent="space-between" alignItems="center">
+              <Typography variant="caption" color="text.secondary" sx={{ pl: 2.5 }}>Gastado</Typography>
+              <Typography variant="caption" fontWeight={600} color={porcentajeEgresos > 100 ? 'error.main' : 'text.secondary'}>
+                {formatMonto(egresosEjecutado)}
               </Typography>
             </Stack>
             <LinearProgress 
               variant="determinate" 
-              value={Math.min(porcentaje, 100)}
-              sx={{ height: 8, borderRadius: 4, mt: 1 }}
-              color={porcentaje > 100 ? 'error' : porcentaje > 80 ? 'warning' : 'primary'}
+              value={Math.min(porcentajeEgresos, 100)}
+              sx={{ height: 6, borderRadius: 3 }}
+              color={porcentajeEgresos > 100 ? 'error' : porcentajeEgresos > 80 ? 'warning' : 'primary'}
             />
+            {/* Ganancia (solo si hay ingresos) */}
+            {tieneIngresos && (
+              <>
+                <Divider sx={{ my: 0.25 }} />
+                <Stack direction="row" justifyContent="space-between" alignItems="center">
+                  <Typography variant="body2" color="text.secondary">Ganancia</Typography>
+                  <Typography variant="body2" fontWeight={700} color={ganancia >= 0 ? 'success.main' : 'error.main'}>
+                    {formatMonto(ganancia)}
+                  </Typography>
+                </Stack>
+              </>
+            )}
             <Typography variant="caption" color="text.secondary" align="center">
-              {porcentaje.toFixed(1)}% consumido
+              {porcentajeEgresos.toFixed(1)}% ejecutado
             </Typography>
           </Stack>
         </CardContent>
