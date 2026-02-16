@@ -76,6 +76,10 @@ const calcularTotalesResumen = (resumen, tipoCambio = null, monedaVista = 'ARS')
     if (monedaOriginal === 'CAC' && monedaVista === 'ARS') return cacIndice ? monto * cacIndice : monto;
     // CAC → USD: (monto_cac * cac_indice) / tipoCambio
     if (monedaOriginal === 'CAC' && monedaVista === 'USD') return (cacIndice && tipoCambio) ? (monto * cacIndice) / tipoCambio : monto;
+    // ARS → CAC
+    if (monedaOriginal === 'ARS' && monedaVista === 'CAC') return cacIndice ? monto / cacIndice : monto;
+    // USD → CAC
+    if (monedaOriginal === 'USD' && monedaVista === 'CAC') return (cacIndice && tipoCambio) ? (monto * tipoCambio) / cacIndice : monto;
     return monto;
   };
   
@@ -128,7 +132,7 @@ const ProyectoCard = ({ proyecto, resumen, onSelect, formatMonto, tipoCambio, mo
 };
 
 // ============ COMPONENTE: ITEM DE PRESUPUESTO ============
-const PresupuestoItem = ({ label, presupuesto, ejecutado, formatMonto, onCrear, onAdicional, onEditar, onVerHistorial, historial, moneda, indexacion, baseCalculo }) => {
+const PresupuestoItem = ({ label, presupuesto, ejecutado, formatMonto, onCrear, onAdicional, onEditar, onVerHistorial, historial, moneda, indexacion, baseCalculo, cotizacionSnapshot, montoIngresado, cacIndiceActual: cacIdx, tipoCambioActual }) => {
   const tienePresupuesto = presupuesto !== null && presupuesto !== undefined;
   const porcentaje = tienePresupuesto && presupuesto > 0 ? (ejecutado / presupuesto) * 100 : 0;
   const tieneHistorial = historial && historial.length > 0;
@@ -158,11 +162,28 @@ const PresupuestoItem = ({ label, presupuesto, ejecutado, formatMonto, onCrear, 
           <Tooltip title={moneda === 'USD' ? 'Dólares' : 'Pesos argentinos'} arrow>
             <Chip label={monedaLabel} size="small" variant="outlined" sx={{ minWidth: 32 }} />
           </Tooltip>
-          {indexacion && (
-            <Tooltip title={indexacion === 'CAC' ? 'Indexado por CAC (construcción)' : 'Indexado por dólar blue'} arrow>
-              <Chip label={`idx ${indexacion}`} size="small" color="secondary" variant="outlined" sx={{ height: 20, '& .MuiChip-label': { px: 0.5, fontSize: '0.65rem' } }} />
-            </Tooltip>
-          )}
+          {indexacion && (() => {
+            const snap = cotizacionSnapshot || {};
+            const indiceCreacion = indexacion === 'CAC' ? snap.cac_indice : snap.dolar_blue;
+            const indiceActual = indexacion === 'CAC' ? cacIdx : tipoCambioActual;
+            const unidad = indexacion === 'CAC' ? 'CAC' : 'USD';
+            const fmtNum = (v) => v != null ? Number(v).toLocaleString('es-AR', { maximumFractionDigits: 2 }) : '?';
+            const valorHoy = indiceActual && presupuesto ? presupuesto * indiceActual : null;
+            return (
+              <Tooltip arrow title={
+                <Box sx={{ fontSize: '0.75rem', lineHeight: 1.6 }}>
+                  <strong>Indexado por {indexacion}</strong><br />
+                  {montoIngresado != null && <>Ingresó: ${fmtNum(montoIngresado)} ARS<br /></>}
+                  {indiceCreacion != null && <>Índice al crear: {fmtNum(indiceCreacion)}<br /></>}
+                  → Guardado: {fmtNum(presupuesto)} {unidad}<br />
+                  Índice actual: {fmtNum(indiceActual)}<br />
+                  {valorHoy != null && <>→ Valor hoy: ${fmtNum(valorHoy)} ARS</>}
+                </Box>
+              }>
+                <Chip label={`idx ${indexacion}`} size="small" color="secondary" variant="outlined" sx={{ height: 20, '& .MuiChip-label': { px: 0.5, fontSize: '0.65rem' }, cursor: 'help' }} />
+              </Tooltip>
+            );
+          })()}
           {baseCalculo === 'subtotal' && (
             <Tooltip title="Calcula ejecutado por subtotal neto (sin impuestos)" arrow>
               <Chip label="neto" size="small" color="default" variant="outlined" sx={{ height: 20, '& .MuiChip-label': { px: 0.5, fontSize: '0.65rem' } }} />
@@ -469,6 +490,10 @@ const ControlPresupuestosPage = () => {
     if (monedaOriginal === 'CAC' && moneda === 'ARS') return cacIndiceActual ? monto * cacIndiceActual : monto;
     // CAC → USD: (monto_cac * cac_indice) / tipoCambio
     if (monedaOriginal === 'CAC' && moneda === 'USD') return (cacIndiceActual && tipoCambio) ? (monto * cacIndiceActual) / tipoCambio : monto;
+    // ARS → CAC
+    if (monedaOriginal === 'ARS' && moneda === 'CAC') return cacIndiceActual ? monto / cacIndiceActual : monto;
+    // USD → CAC
+    if (monedaOriginal === 'USD' && moneda === 'CAC') return (cacIndiceActual && tipoCambio) ? (monto * tipoCambio) / cacIndiceActual : monto;
     
     return monto;
   };
@@ -483,6 +508,9 @@ const ControlPresupuestosPage = () => {
     
     if (monedaMostrar === 'USD') {
       return `USD ${valor.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    }
+    if (monedaMostrar === 'CAC' || moneda === 'CAC') {
+      return `CAC ${Number(valor).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     }
     return formatCurrency(valor);
   };
@@ -720,6 +748,7 @@ const ControlPresupuestosPage = () => {
                   >
                     <ToggleButton value="ARS">ARS</ToggleButton>
                     <ToggleButton value="USD">USD</ToggleButton>
+                    <ToggleButton value="CAC">CAC</ToggleButton>
                   </ToggleButtonGroup>
                   <Button 
                     variant="outlined" 
@@ -812,6 +841,7 @@ const ControlPresupuestosPage = () => {
                 >
                   <ToggleButton value="ARS">ARS</ToggleButton>
                   <ToggleButton value="USD">USD</ToggleButton>
+                  <ToggleButton value="CAC">CAC</ToggleButton>
                 </ToggleButtonGroup>
 
                 {/* Indicadores de cotización */}
@@ -1172,6 +1202,10 @@ const ControlPresupuestosPage = () => {
                                 moneda={data.moneda}
                                 indexacion={data.indexacion}
                                 baseCalculo={data.base_calculo}
+                                cotizacionSnapshot={data.cotizacion_snapshot}
+                                montoIngresado={data.monto_ingresado}
+                                cacIndiceActual={cacIndiceActual}
+                                tipoCambioActual={tipoCambio}
                                 onCrear={() => abrirDrawerCrear('categoria', catName)}
                                 onAdicional={data.id ? () => abrirDrawerEditar(data, catName) : null}
                                 onEditar={data.id ? () => abrirDrawerEditar(data, catName) : null}
@@ -1209,6 +1243,10 @@ const ControlPresupuestosPage = () => {
                                 moneda={data.moneda}
                                 indexacion={data.indexacion}
                                 baseCalculo={data.base_calculo}
+                                cotizacionSnapshot={data.cotizacion_snapshot}
+                                montoIngresado={data.monto_ingresado}
+                                cacIndiceActual={cacIndiceActual}
+                                tipoCambioActual={tipoCambio}
                                 onCrear={() => abrirDrawerCrear('etapa', etapaName)}
                                 onAdicional={data.id ? () => abrirDrawerEditar(data, etapaName) : null}
                                 onEditar={data.id ? () => abrirDrawerEditar(data, etapaName) : null}
@@ -1264,6 +1302,10 @@ const ControlPresupuestosPage = () => {
                                 moneda={data.moneda}
                                 indexacion={data.indexacion}
                                 baseCalculo={data.base_calculo}
+                                cotizacionSnapshot={data.cotizacion_snapshot}
+                                montoIngresado={data.monto_ingresado}
+                                cacIndiceActual={cacIndiceActual}
+                                tipoCambioActual={tipoCambio}
                                 onCrear={() => abrirDrawerCrear('proveedor', proveedor)}
                                 onAdicional={data.id ? () => abrirDrawerEditar(data, proveedor) : null}
                                 onEditar={data.id ? () => abrirDrawerEditar(data, proveedor) : null}

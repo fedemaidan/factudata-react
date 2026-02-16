@@ -550,9 +550,31 @@ const PresupuestosPage = () => {
                           <TableCell sx={{ whiteSpace: 'nowrap' }}>
                             <Stack direction="row" spacing={0.5} alignItems="center">
                               <span>{fmtMonto(p.monto)}</span>
-                              {tieneIndexacion && (
-                                <Chip label={`idx ${p.indexacion}`} size="small" color="secondary" variant="outlined" sx={{ height: 18, '& .MuiChip-label': { px: 0.5, fontSize: '0.6rem' } }} />
-                              )}
+                              {tieneIndexacion && (() => {
+                                const snap = p.cotizacion_snapshot || {};
+                                const ingresado = p.monto_ingresado;
+                                const indiceCreacion = p.indexacion === 'CAC' ? snap.cac_indice : snap.dolar_blue;
+                                const indiceActual = p.indexacion === 'CAC' ? cacIndice : dolarRate;
+                                const unidad = p.indexacion === 'CAC' ? 'CAC' : 'USD';
+                                const fmtNum = (v) => v != null ? Number(v).toLocaleString('es-AR', { maximumFractionDigits: 2 }) : '?';
+                                return (
+                                  <Tooltip
+                                    arrow
+                                    title={
+                                      <Box sx={{ fontSize: '0.75rem', lineHeight: 1.6 }}>
+                                        <strong>Indexado por {p.indexacion}</strong><br />
+                                        Ingresó: ${fmtNum(ingresado)} ARS<br />
+                                        Índice al crear: {fmtNum(indiceCreacion)}<br />
+                                        → Guardado: {fmtNum(p.monto)} {unidad}<br />
+                                        Índice actual: {fmtNum(indiceActual)}<br />
+                                        → Valor hoy: ${fmtNum(convertirADisplay(p.monto))} ARS
+                                      </Box>
+                                    }
+                                  >
+                                    <Chip label={`idx ${p.indexacion}`} size="small" color="secondary" variant="outlined" sx={{ height: 18, '& .MuiChip-label': { px: 0.5, fontSize: '0.6rem' }, cursor: 'help' }} />
+                                  </Tooltip>
+                                );
+                              })()}
                             </Stack>
                           </TableCell>
                         )}
