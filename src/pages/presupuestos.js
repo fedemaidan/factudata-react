@@ -422,7 +422,7 @@ const PresupuestosPage = () => {
                         />
                       }
                       label={<Typography variant="body2">{label}</Typography>}
-                      sx={{ display: 'block', ml: 0 }}
+                      sx={{ display: 'flex', ml: 0 }}
                     />
                   ))}
                 </Box>
