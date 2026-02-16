@@ -58,6 +58,7 @@ import { formatCurrency, formatTimestamp } from 'src/utils/formatters';
 import PresupuestoDrawer from 'src/components/PresupuestoDrawer';
 import Tooltip from '@mui/material/Tooltip';
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
+import DeleteIcon from '@mui/icons-material/Delete';
 import ListAltIcon from '@mui/icons-material/ListAlt';
 
 // Helper: calcular totales de un resumen multimoneda (para ProyectoCard)
@@ -132,11 +133,20 @@ const ProyectoCard = ({ proyecto, resumen, onSelect, formatMonto, tipoCambio, mo
 };
 
 // ============ COMPONENTE: ITEM DE PRESUPUESTO ============
-const PresupuestoItem = ({ label, presupuesto, ejecutado, formatMonto, onCrear, onAdicional, onEditar, onVerHistorial, historial, moneda, indexacion, baseCalculo, cotizacionSnapshot, montoIngresado, cacIndiceActual: cacIdx, tipoCambioActual }) => {
+const PresupuestoItem = ({ label, presupuesto, ejecutado, formatMonto, onCrear, onClick, historial, moneda, indexacion, baseCalculo, cotizacionSnapshot, montoIngresado, cacIndiceActual: cacIdx, tipoCambioActual }) => {
   const tienePresupuesto = presupuesto !== null && presupuesto !== undefined;
   const porcentaje = tienePresupuesto && presupuesto > 0 ? (ejecutado / presupuesto) * 100 : 0;
   const tieneHistorial = historial && historial.length > 0;
   const monedaLabel = moneda === 'USD' ? '🇺🇸' : '🇦🇷';
+  const esIndexado = !!indexacion;
+  const indiceActual = indexacion === 'CAC' ? cacIdx : (indexacion === 'USD' ? tipoCambioActual : null);
+  const unidadIdx = indexacion === 'CAC' ? 'CAC' : (indexacion === 'USD' ? 'USD' : '');
+
+  // Para indexados: mostrar equivalencia ARS hoy
+  const fmtARS = (v) => v != null ? `$${Number(v).toLocaleString('es-AR', { maximumFractionDigits: 0 })}` : '';
+  const presEnARS = esIndexado && indiceActual && presupuesto ? presupuesto * indiceActual : null;
+  const ejEnARS = esIndexado && indiceActual && ejecutado ? ejecutado * indiceActual : null;
+  const saldoEnARS = esIndexado && indiceActual ? (presupuesto - ejecutado) * indiceActual : null;
   
   if (!tienePresupuesto) {
     return (
@@ -155,63 +165,47 @@ const PresupuestoItem = ({ label, presupuesto, ejecutado, formatMonto, onCrear, 
   }
   
   return (
-    <Paper variant="outlined" sx={{ p: 2 }}>
+    <Paper 
+      variant="outlined" 
+      sx={{ p: 2, cursor: 'pointer', transition: 'all 0.15s', '&:hover': { bgcolor: 'action.hover', borderColor: 'primary.main' } }}
+      onClick={onClick}
+    >
       <Stack direction="row" justifyContent="space-between" alignItems="center">
-        <Stack direction="row" spacing={1} alignItems="center">
-          <Typography fontWeight={500}>{label}</Typography>
-          <Tooltip title={moneda === 'USD' ? 'Dólares' : 'Pesos argentinos'} arrow>
-            <Chip label={monedaLabel} size="small" variant="outlined" sx={{ minWidth: 32 }} />
-          </Tooltip>
-          {indexacion && (() => {
-            const snap = cotizacionSnapshot || {};
-            const indiceCreacion = indexacion === 'CAC' ? snap.cac_indice : snap.dolar_blue;
-            const indiceActual = indexacion === 'CAC' ? cacIdx : tipoCambioActual;
-            const unidad = indexacion === 'CAC' ? 'CAC' : 'USD';
-            const fmtNum = (v) => v != null ? Number(v).toLocaleString('es-AR', { maximumFractionDigits: 2 }) : '?';
-            const valorHoy = indiceActual && presupuesto ? presupuesto * indiceActual : null;
-            return (
-              <Tooltip arrow title={
-                <Box sx={{ fontSize: '0.75rem', lineHeight: 1.6 }}>
-                  <strong>Indexado por {indexacion}</strong><br />
-                  {montoIngresado != null && <>Ingresó: ${fmtNum(montoIngresado)} ARS<br /></>}
-                  {indiceCreacion != null && <>Índice al crear: {fmtNum(indiceCreacion)}<br /></>}
-                  → Guardado: {fmtNum(presupuesto)} {unidad}<br />
-                  Índice actual: {fmtNum(indiceActual)}<br />
-                  {valorHoy != null && <>→ Valor hoy: ${fmtNum(valorHoy)} ARS</>}
-                </Box>
-              }>
-                <Chip label={`idx ${indexacion}`} size="small" color="secondary" variant="outlined" sx={{ height: 20, '& .MuiChip-label': { px: 0.5, fontSize: '0.65rem' }, cursor: 'help' }} />
-              </Tooltip>
-            );
-          })()}
+        <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0, flex: 1 }}>
+          <Typography fontWeight={500} noWrap>{label}</Typography>
+          {esIndexado && (
+            <Chip label={`idx ${indexacion}`} size="small" color="secondary" variant="outlined" sx={{ height: 20, '& .MuiChip-label': { px: 0.5, fontSize: '0.65rem' } }} />
+          )}
           {baseCalculo === 'subtotal' && (
-            <Tooltip title="Calcula ejecutado por subtotal neto (sin impuestos)" arrow>
-              <Chip label="neto" size="small" color="default" variant="outlined" sx={{ height: 20, '& .MuiChip-label': { px: 0.5, fontSize: '0.65rem' } }} />
-            </Tooltip>
+            <Chip label="neto" size="small" color="default" variant="outlined" sx={{ height: 20, '& .MuiChip-label': { px: 0.5, fontSize: '0.65rem' } }} />
+          )}
+          {tieneHistorial && (
+            <Chip label={`${historial.length}`} size="small" color="info" variant="outlined" sx={{ height: 20, '& .MuiChip-label': { px: 0.5, fontSize: '0.65rem' } }} />
           )}
         </Stack>
         <Stack direction="row" spacing={1} alignItems="center">
-          <Chip label={`Pres: ${formatMonto(presupuesto, moneda)}`} size="small" variant="outlined" />
-          <Chip 
-            label={`Ejec: ${formatMonto(ejecutado, moneda)}`} 
-            size="small" 
-            color={porcentaje > 100 ? 'error' : 'success'}
-          />
-          {onEditar && (
-            <Button size="small" variant="outlined" onClick={onEditar}>Editar</Button>
-          )}
-          {onAdicional && (
-            <Button size="small" onClick={onAdicional}>+ Adicional</Button>
-          )}
-          {tieneHistorial && onVerHistorial && (
-            <Chip 
-              label={`${historial.length} cambios`} 
-              size="small" 
-              color="info" 
-              variant="outlined"
-              onClick={onVerHistorial}
-              sx={{ cursor: 'pointer' }}
-            />
+          {esIndexado ? (
+            <>
+              <Tooltip title={presEnARS != null ? `Hoy: ${fmtARS(presEnARS)}` : ''} arrow>
+                <Chip label={`Pres: ${Number(presupuesto).toLocaleString('es-AR', { maximumFractionDigits: 2 })} ${unidadIdx}`} size="small" variant="outlined" />
+              </Tooltip>
+              <Tooltip title={ejEnARS != null ? `Hoy: ${fmtARS(ejEnARS)}` : ''} arrow>
+                <Chip 
+                  label={`Ejec: ${Number(ejecutado).toLocaleString('es-AR', { maximumFractionDigits: 2 })} ${unidadIdx}`}
+                  size="small" 
+                  color={porcentaje > 100 ? 'error' : 'success'}
+                />
+              </Tooltip>
+            </>
+          ) : (
+            <>
+              <Chip label={`Pres: ${formatMonto(presupuesto, moneda)}`} size="small" variant="outlined" />
+              <Chip 
+                label={`Ejec: ${formatMonto(ejecutado, moneda)}`} 
+                size="small" 
+                color={porcentaje > 100 ? 'error' : 'success'}
+              />
+            </>
           )}
         </Stack>
       </Stack>
@@ -224,9 +218,11 @@ const PresupuestoItem = ({ label, presupuesto, ejecutado, formatMonto, onCrear, 
       <Stack direction="row" justifyContent="space-between" sx={{ mt: 0.5 }}>
         <Typography variant="caption" color="text.secondary">
           {porcentaje.toFixed(1)}% ejecutado
+          {esIndexado && ejEnARS != null && ` · ${fmtARS(ejEnARS)} ARS`}
         </Typography>
         <Typography variant="caption" color="text.secondary">
-          Saldo: {formatMonto(presupuesto - ejecutado, moneda)}
+          Saldo: {esIndexado ? `${Number(presupuesto - ejecutado).toLocaleString('es-AR', { maximumFractionDigits: 2 })} ${unidadIdx}` : formatMonto(presupuesto - ejecutado, moneda)}
+          {esIndexado && saldoEnARS != null && ` · ${fmtARS(saldoEnARS)} ARS`}
         </Typography>
       </Stack>
     </Paper>
@@ -557,6 +553,21 @@ const ControlPresupuestosPage = () => {
     cargarResumen();
   };
 
+  // Eliminar presupuesto directamente
+  const [deleteConfirm, setDeleteConfirm] = useState({ open: false, id: null, label: '' });
+  const handleEliminarPresupuesto = async () => {
+    if (!deleteConfirm.id) return;
+    try {
+      await presupuestoService.eliminarPresupuestoPorId(deleteConfirm.id);
+      setAlert({ open: true, message: `Presupuesto "${deleteConfirm.label}" eliminado`, severity: 'success' });
+      cargarResumen();
+    } catch (err) {
+      setAlert({ open: true, message: 'Error al eliminar presupuesto', severity: 'error' });
+    } finally {
+      setDeleteConfirm({ open: false, id: null, label: '' });
+    }
+  };
+
   // Helper: abrir drawer para crear
   const abrirDrawerCrear = (tipoAgrupacion, valor, tipoDefault = 'egreso') => {
     setDrawerPresupuesto({
@@ -574,6 +585,7 @@ const ControlPresupuestosPage = () => {
     setDrawerPresupuesto({
       open: true,
       mode: 'editar',
+      drawerView: 'full',
       tipoAgrupacion: null,
       valorAgrupacion: null,
       tipoDefault: 'egreso',
@@ -588,6 +600,7 @@ const ControlPresupuestosPage = () => {
         tipo: item.tipo || 'egreso',
         label: label,
         historial: item.historial || [],
+        adicionales: item.adicionales || [],
         ejecutado: item.ejecutado || 0,
         cotizacion_snapshot: item.cotizacion_snapshot || null,
         proveedor: item.proveedor || null,
@@ -595,6 +608,53 @@ const ControlPresupuestosPage = () => {
         subcategoria: item.subcategoria || null,
         etapa: item.etapa || null,
       },
+    });
+  };
+
+  // Helper: armar presupuesto data para los drawers
+  const _buildPresupuestoPayload = (item, label) => ({
+    id: item.id,
+    monto: item.monto || item.presupuesto,
+    moneda: item.moneda || 'ARS',
+    moneda_display: item.moneda_display || item.moneda || 'ARS',
+    indexacion: item.indexacion || null,
+    monto_ingresado: item.monto_ingresado || item.monto || item.presupuesto,
+    base_calculo: item.base_calculo || 'total',
+    tipo: item.tipo || 'egreso',
+    label: label,
+    historial: item.historial || [],
+    adicionales: item.adicionales || [],
+    ejecutado: item.ejecutado || 0,
+    cotizacion_snapshot: item.cotizacion_snapshot || null,
+    proveedor: item.proveedor || null,
+    categoria: item.categoria || null,
+    subcategoria: item.subcategoria || null,
+    etapa: item.etapa || null,
+  });
+
+  // Helper: abrir drawer directo en modo adicional
+  const abrirDrawerAdicional = (item, label) => {
+    setDrawerPresupuesto({
+      open: true,
+      mode: 'editar',
+      drawerView: 'adicional',
+      tipoAgrupacion: null,
+      valorAgrupacion: null,
+      tipoDefault: 'egreso',
+      presupuesto: _buildPresupuestoPayload(item, label),
+    });
+  };
+
+  // Helper: abrir drawer directo en modo historial
+  const abrirDrawerHistorial = (item, label) => {
+    setDrawerPresupuesto({
+      open: true,
+      mode: 'editar',
+      drawerView: 'historial',
+      tipoAgrupacion: null,
+      valorAgrupacion: null,
+      tipoDefault: 'egreso',
+      presupuesto: _buildPresupuestoPayload(item, label),
     });
   };
 
@@ -1019,19 +1079,31 @@ const ControlPresupuestosPage = () => {
                           {itemsIngreso.map((item) => {
                             const porcentaje = item.monto > 0 ? (item.ejecutado / item.monto) * 100 : 0;
                             const monedaItem = item.moneda || 'ARS';
-                            const monedaLabel = monedaItem === 'USD' ? '🇺🇸' : '🇦🇷';
+                            const esIdx = !!item.indexacion;
+                            const unidadIdx = item.indexacion === 'CAC' ? 'CAC' : (item.indexacion === 'USD' ? 'USD' : '');
+                            const idxActual = item.indexacion === 'CAC' ? cacIndiceActual : (item.indexacion === 'USD' ? tipoCambio : null);
+                            const presEnARS = esIdx && idxActual ? item.monto * idxActual : null;
+                            const ejEnARS = esIdx && idxActual ? (item.ejecutado || 0) * idxActual : null;
+                            const saldoEnARS = esIdx && idxActual ? (item.monto - (item.ejecutado || 0)) * idxActual : null;
+                            const fmtARS = (v) => v != null ? `$${Number(v).toLocaleString('es-AR', { maximumFractionDigits: 0 })}` : '';
+                            const fmtUnidad = (v) => `${Number(v).toLocaleString('es-AR', { maximumFractionDigits: 2 })} ${unidadIdx}`;
                             const label = [item.categoria, item.etapa, item.proveedor].filter(Boolean).join(' · ') || 'Ingreso general';
                             return (
                               <Paper key={item.id} variant="outlined" sx={{ p: 2 }}>
                                 <Stack direction="row" justifyContent="space-between" alignItems="center">
                                   <Stack direction="row" spacing={1} alignItems="center">
                                     <Typography fontWeight={500}>{label}</Typography>
-                                    <Tooltip title={monedaItem === 'USD' ? 'Dólares' : 'Pesos argentinos'} arrow>
-                                      <Chip label={monedaLabel} size="small" variant="outlined" sx={{ minWidth: 32 }} />
-                                    </Tooltip>
-                                    {item.indexacion && (
-                                      <Tooltip title={item.indexacion === 'CAC' ? 'Indexado por CAC' : 'Indexado por USD'} arrow>
-                                        <Chip label={`idx ${item.indexacion}`} size="small" color="secondary" variant="outlined" sx={{ height: 20, '& .MuiChip-label': { px: 0.5, fontSize: '0.65rem' } }} />
+                                    <Chip label={esIdx ? unidadIdx : (monedaItem === 'USD' ? '🇺🇸' : '🇦🇷')} size="small" variant="outlined" sx={{ minWidth: 32 }} />
+                                    {esIdx && (
+                                      <Tooltip arrow title={
+                                        <Box sx={{ fontSize: '0.75rem', lineHeight: 1.6 }}>
+                                          <strong>Indexado por {item.indexacion}</strong><br />
+                                          Guardado: {fmtUnidad(item.monto)}<br />
+                                          Índice actual: {idxActual ? Number(idxActual).toLocaleString('es-AR', { maximumFractionDigits: 2 }) : '?'}<br />
+                                          {presEnARS != null && <>Valor hoy: {fmtARS(presEnARS)} ARS</>}
+                                        </Box>
+                                      }>
+                                        <Chip label={`idx ${item.indexacion}`} size="small" color="secondary" variant="outlined" sx={{ height: 20, '& .MuiChip-label': { px: 0.5, fontSize: '0.65rem' }, cursor: 'help' }} />
                                       </Tooltip>
                                     )}
                                     {item.base_calculo === 'subtotal' && (
@@ -1041,12 +1113,29 @@ const ControlPresupuestosPage = () => {
                                     )}
                                   </Stack>
                                   <Stack direction="row" spacing={1} alignItems="center">
-                                    <Chip label={`Pres: ${formatMonto(item.monto, monedaItem)}`} size="small" variant="outlined" />
-                                    <Chip
-                                      label={`Cobrado: ${formatMonto(item.ejecutado || 0, monedaItem)}`}
-                                      size="small"
-                                      color={porcentaje > 100 ? 'error' : 'success'}
-                                    />
+                                    {esIdx ? (
+                                      <>
+                                        <Tooltip title={presEnARS != null ? `Hoy: ${fmtARS(presEnARS)}` : ''} arrow>
+                                          <Chip label={`Pres: ${fmtUnidad(item.monto)}`} size="small" variant="outlined" />
+                                        </Tooltip>
+                                        <Tooltip title={ejEnARS != null ? `Hoy: ${fmtARS(ejEnARS)}` : ''} arrow>
+                                          <Chip
+                                            label={`Cobrado: ${fmtUnidad(item.ejecutado || 0)}`}
+                                            size="small"
+                                            color={porcentaje > 100 ? 'error' : 'success'}
+                                          />
+                                        </Tooltip>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Chip label={`Pres: ${formatMonto(item.monto, monedaItem)}`} size="small" variant="outlined" />
+                                        <Chip
+                                          label={`Cobrado: ${formatMonto(item.ejecutado || 0, monedaItem)}`}
+                                          size="small"
+                                          color={porcentaje > 100 ? 'error' : 'success'}
+                                        />
+                                      </>
+                                    )}
                                     <Button
                                       size="small"
                                       variant="outlined"
@@ -1064,6 +1153,11 @@ const ControlPresupuestosPage = () => {
                                         sx={{ cursor: 'pointer' }}
                                       />
                                     )}
+                                    <Tooltip title="Eliminar presupuesto" arrow>
+                                      <IconButton size="small" color="error" onClick={() => setDeleteConfirm({ open: true, id: item.id, label })}>
+                                        <DeleteIcon fontSize="small" />
+                                      </IconButton>
+                                    </Tooltip>
                                   </Stack>
                                 </Stack>
                                 <LinearProgress
@@ -1075,9 +1169,11 @@ const ControlPresupuestosPage = () => {
                                 <Stack direction="row" justifyContent="space-between" sx={{ mt: 0.5 }}>
                                   <Typography variant="caption" color="text.secondary">
                                     {porcentaje.toFixed(1)}% cobrado
+                                    {esIdx && ejEnARS != null && ` · ${fmtARS(ejEnARS)} ARS`}
                                   </Typography>
                                   <Typography variant="caption" color="text.secondary">
-                                    Pendiente: {formatMonto(item.monto - (item.ejecutado || 0), monedaItem)}
+                                    Pendiente: {esIdx ? fmtUnidad(item.monto - (item.ejecutado || 0)) : formatMonto(item.monto - (item.ejecutado || 0), monedaItem)}
+                                    {esIdx && saldoEnARS != null && ` · ${fmtARS(saldoEnARS)} ARS`}
                                   </Typography>
                                 </Stack>
                               </Paper>
@@ -1207,9 +1303,7 @@ const ControlPresupuestosPage = () => {
                                 cacIndiceActual={cacIndiceActual}
                                 tipoCambioActual={tipoCambio}
                                 onCrear={() => abrirDrawerCrear('categoria', catName)}
-                                onAdicional={data.id ? () => abrirDrawerEditar(data, catName) : null}
-                                onEditar={data.id ? () => abrirDrawerEditar(data, catName) : null}
-                                onVerHistorial={data.id && data.historial?.length > 0 ? () => abrirDrawerEditar(data, catName) : null}
+                                onClick={data.id ? () => abrirDrawerEditar(data, catName) : undefined}
                               />
                             );
                           })
@@ -1248,9 +1342,7 @@ const ControlPresupuestosPage = () => {
                                 cacIndiceActual={cacIndiceActual}
                                 tipoCambioActual={tipoCambio}
                                 onCrear={() => abrirDrawerCrear('etapa', etapaName)}
-                                onAdicional={data.id ? () => abrirDrawerEditar(data, etapaName) : null}
-                                onEditar={data.id ? () => abrirDrawerEditar(data, etapaName) : null}
-                                onVerHistorial={data.id && data.historial?.length > 0 ? () => abrirDrawerEditar(data, etapaName) : null}
+                                onClick={data.id ? () => abrirDrawerEditar(data, etapaName) : undefined}
                               />
                             );
                           })
@@ -1307,9 +1399,7 @@ const ControlPresupuestosPage = () => {
                                 cacIndiceActual={cacIndiceActual}
                                 tipoCambioActual={tipoCambio}
                                 onCrear={() => abrirDrawerCrear('proveedor', proveedor)}
-                                onAdicional={data.id ? () => abrirDrawerEditar(data, proveedor) : null}
-                                onEditar={data.id ? () => abrirDrawerEditar(data, proveedor) : null}
-                                onVerHistorial={data.id && data.historial?.length > 0 ? () => abrirDrawerEditar(data, proveedor) : null}
+                                onClick={data.id ? () => abrirDrawerEditar(data, proveedor) : undefined}
                               />
                             );
                           })
@@ -1339,6 +1429,7 @@ const ControlPresupuestosPage = () => {
         tipoDefault={drawerPresupuesto.tipoDefault}
         proveedoresEmpresa={proveedoresEmpresa}
         presupuesto={drawerPresupuesto.presupuesto}
+        drawerView={drawerPresupuesto.drawerView || 'full'}
         onRecalcular={async (id) => {
           try {
             const { success } = await presupuestoService.recalcularPresupuesto(id, empresaId);
@@ -1499,6 +1590,18 @@ const ControlPresupuestosPage = () => {
       >
         <Alert severity={alert.severity}>{alert.message}</Alert>
       </Snackbar>
+
+      {/* Dialog confirmar eliminación */}
+      <Dialog open={deleteConfirm.open} onClose={() => setDeleteConfirm({ open: false, id: null, label: '' })}>
+        <DialogTitle>Eliminar presupuesto</DialogTitle>
+        <DialogContent>
+          <Typography>¿Estás seguro de que querés eliminar el presupuesto <strong>{deleteConfirm.label}</strong>? Esta acción no se puede deshacer.</Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteConfirm({ open: false, id: null, label: '' })}>Cancelar</Button>
+          <Button color="error" variant="contained" onClick={handleEliminarPresupuesto}>Eliminar</Button>
+        </DialogActions>
+      </Dialog>
     </>
   );
 };
