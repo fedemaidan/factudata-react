@@ -58,67 +58,129 @@ import { formatCurrency, formatTimestamp } from 'src/utils/formatters';
 import PresupuestoDrawer from 'src/components/PresupuestoDrawer';
 import Tooltip from '@mui/material/Tooltip';
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
+import DeleteIcon from '@mui/icons-material/Delete';
+import ListAltIcon from '@mui/icons-material/ListAlt';
 
 // Helper: calcular totales de un resumen multimoneda (para ProyectoCard)
+// Si existe presupuesto general (sin categoría/etapa/proveedor), lo usa como techo
 const calcularTotalesResumen = (resumen, tipoCambio = null, monedaVista = 'ARS') => {
-  if (!resumen) return { egresosTotal: 0, egresosEjecutado: 0 };
+  if (!resumen) return { egresosTotal: 0, egresosEjecutado: 0, ingresosTotal: 0, ingresosEjecutado: 0 };
   
   const cacIndice = resumen.cotizacionActual?.cac_indice || null;
   
   const convertir = (monto, monedaOriginal) => {
     if (monedaVista === monedaOriginal) return monto;
     if (!tipoCambio && monedaOriginal !== 'CAC') return monto;
-    // ARS ↔ USD
     if (monedaVista === 'USD' && monedaOriginal === 'ARS') return tipoCambio ? monto / tipoCambio : monto;
     if (monedaVista === 'ARS' && monedaOriginal === 'USD') return tipoCambio ? monto * tipoCambio : monto;
-    // CAC → ARS: monto_cac * cac_indice
     if (monedaOriginal === 'CAC' && monedaVista === 'ARS') return cacIndice ? monto * cacIndice : monto;
-    // CAC → USD: (monto_cac * cac_indice) / tipoCambio
     if (monedaOriginal === 'CAC' && monedaVista === 'USD') return (cacIndice && tipoCambio) ? (monto * cacIndice) / tipoCambio : monto;
+    if (monedaOriginal === 'ARS' && monedaVista === 'CAC') return cacIndice ? monto / cacIndice : monto;
+    if (monedaOriginal === 'USD' && monedaVista === 'CAC') return (cacIndice && tipoCambio) ? (monto * tipoCambio) / cacIndice : monto;
     return monto;
   };
+
+  // Sumar items separando general (techo) de específicos (asignaciones)
+  const sumarPorTipo = (porMoneda) => {
+    const allItems = Object.values(porMoneda || {}).flatMap(m => m.items || []);
+    const generales = allItems.filter(i => !i.categoria && !i.etapa && !i.proveedor);
+    const especificos = allItems.filter(i => i.categoria || i.etapa || i.proveedor);
+    
+    if (generales.length > 0) {
+      let total = generales.reduce((s, i) => s + convertir(i.monto || 0, i.moneda || 'ARS'), 0);
+      const ejecutado = generales.reduce((s, i) => s + convertir(i.ejecutado || 0, i.moneda || 'ARS'), 0);
+      const especTotal = especificos.reduce((s, i) => s + convertir(i.monto || 0, i.moneda || 'ARS'), 0);
+      if (especTotal > total) total = especTotal;
+      return { total, ejecutado };
+    }
+    
+    return allItems.reduce((acc, i) => ({
+      total: acc.total + convertir(i.monto || 0, i.moneda || 'ARS'),
+      ejecutado: acc.ejecutado + convertir(i.ejecutado || 0, i.moneda || 'ARS'),
+    }), { total: 0, ejecutado: 0 });
+  };
+
+  const egresos = sumarPorTipo(resumen.egresosPorMoneda);
+  const ingresos = sumarPorTipo(resumen.ingresosPorMoneda);
   
-  let egresosTotal = 0, egresosEjecutado = 0;
-  Object.entries(resumen.egresosPorMoneda || {}).forEach(([mon, data]) => {
-    egresosTotal += convertir(data.total || 0, mon);
-    egresosEjecutado += convertir(data.ejecutado || 0, mon);
-  });
-  
-  return { egresosTotal, egresosEjecutado };
+  return { egresosTotal: egresos.total, egresosEjecutado: egresos.ejecutado, ingresosTotal: ingresos.total, ingresosEjecutado: ingresos.ejecutado };
 };
 
 // ============ COMPONENTE: CARD DE PROYECTO (VISTA GENERAL) ============
 const ProyectoCard = ({ proyecto, resumen, onSelect, formatMonto, tipoCambio, moneda }) => {
-  const { egresosTotal, egresosEjecutado } = calcularTotalesResumen(resumen, tipoCambio, moneda);
-  const presupuestoTotal = egresosTotal;
-  const ejecutado = egresosEjecutado;
-  const porcentaje = presupuestoTotal > 0 ? (ejecutado / presupuestoTotal) * 100 : 0;
+  const { egresosTotal, egresosEjecutado, ingresosTotal, ingresosEjecutado } = calcularTotalesResumen(resumen, tipoCambio, moneda);
+  const porcentajeEgresos = egresosTotal > 0 ? (egresosEjecutado / egresosTotal) * 100 : 0;
+  const gananciaProyectada = ingresosTotal - egresosTotal;
+  const gananciaReal = ingresosEjecutado - egresosEjecutado;
+  const tieneIngresos = ingresosTotal > 0;
   
   return (
     <Card sx={{ height: '100%' }}>
       <CardActionArea onClick={() => onSelect(proyecto.id)} sx={{ height: '100%' }}>
-        <CardContent>
-          <Typography variant="h6" gutterBottom noWrap>{proyecto.nombre}</Typography>
-          <Stack spacing={1}>
-            <Stack direction="row" justifyContent="space-between">
-              <Typography variant="body2" color="text.secondary">Presupuesto:</Typography>
-              <Typography variant="body2" fontWeight={600}>{formatMonto(presupuestoTotal)}</Typography>
+        <CardContent sx={{ p: { xs: 1.5, md: 2 }, '&:last-child': { pb: { xs: 1.5, md: 2 } } }}>
+          <Typography variant="h6" gutterBottom noWrap sx={{ fontSize: { xs: '0.95rem', md: '1.25rem' } }}>{proyecto.nombre}</Typography>
+          <Stack spacing={0.75}>
+            {/* Ingresos: presupuestado y cobrado */}
+            {tieneIngresos && (
+              <>
+                <Stack direction="row" justifyContent="space-between" alignItems="center">
+                  <Stack direction="row" spacing={0.5} alignItems="center">
+                    <TrendingUpIcon sx={{ fontSize: 14, color: 'success.main' }} />
+                    <Typography variant="body2" color="text.secondary">Pres. ingresos</Typography>
+                  </Stack>
+                  <Typography variant="body2" fontWeight={600}>{formatMonto(ingresosTotal, moneda)}</Typography>
+                </Stack>
+                <Stack direction="row" justifyContent="space-between" alignItems="center">
+                  <Typography variant="caption" color="text.secondary" sx={{ pl: 2.5 }}>Cobrado</Typography>
+                  <Typography variant="caption" fontWeight={600} color="success.main">
+                    {formatMonto(ingresosEjecutado, moneda)}
+                  </Typography>
+                </Stack>
+              </>
+            )}
+            {/* Egresos: presupuestado y gastado */}
+            <Stack direction="row" justifyContent="space-between" alignItems="center">
+              <Stack direction="row" spacing={0.5} alignItems="center">
+                <TrendingDownIcon sx={{ fontSize: 14, color: 'error.main' }} />
+                <Typography variant="body2" color="text.secondary">Pres. egresos</Typography>
+              </Stack>
+              <Typography variant="body2" fontWeight={600}>{formatMonto(egresosTotal, moneda)}</Typography>
             </Stack>
-            <Stack direction="row" justifyContent="space-between">
-              <Typography variant="body2" color="text.secondary">Ejecutado:</Typography>
-              <Typography variant="body2" fontWeight={600} color={porcentaje > 100 ? 'error.main' : 'success.main'}>
-                {formatMonto(ejecutado)}
+            <Stack direction="row" justifyContent="space-between" alignItems="center">
+              <Typography variant="caption" color="text.secondary" sx={{ pl: 2.5 }}>Gastado</Typography>
+              <Typography variant="caption" fontWeight={600} color={porcentajeEgresos > 100 ? 'error.main' : 'text.secondary'}>
+                {formatMonto(egresosEjecutado, moneda)}
               </Typography>
             </Stack>
             <LinearProgress 
               variant="determinate" 
-              value={Math.min(porcentaje, 100)}
-              sx={{ height: 8, borderRadius: 4, mt: 1 }}
-              color={porcentaje > 100 ? 'error' : porcentaje > 80 ? 'warning' : 'primary'}
+              value={Math.min(porcentajeEgresos, 100)}
+              sx={{ height: 6, borderRadius: 3 }}
+              color={porcentajeEgresos > 100 ? 'error' : porcentajeEgresos > 80 ? 'warning' : 'primary'}
             />
-            <Typography variant="caption" color="text.secondary" align="center">
-              {porcentaje.toFixed(1)}% consumido
-            </Typography>
+            {/* Ganancia proyectada y real (solo si hay ingresos) */}
+            {tieneIngresos && (
+              <>
+                <Divider sx={{ my: 0.25 }} />
+                <Stack direction="row" justifyContent="space-between" alignItems="center">
+                  <Typography variant="caption" color="text.secondary">Ganancia proyectada</Typography>
+                  <Typography variant="body2" fontWeight={600} color={gananciaProyectada >= 0 ? 'success.main' : 'error.main'}>
+                    {formatMonto(gananciaProyectada, moneda)}
+                  </Typography>
+                </Stack>
+                <Stack direction="row" justifyContent="space-between" alignItems="center">
+                  <Typography variant="caption" color="text.secondary">Ganancia real</Typography>
+                  <Typography variant="body2" fontWeight={700} color={gananciaReal >= 0 ? 'success.main' : 'error.main'}>
+                    {formatMonto(gananciaReal, moneda)}
+                  </Typography>
+                </Stack>
+              </>
+            )}
+            {!tieneIngresos && (
+              <Typography variant="caption" color="text.secondary" align="center">
+                {porcentajeEgresos.toFixed(1)}% ejecutado
+              </Typography>
+            )}
           </Stack>
         </CardContent>
       </CardActionArea>
@@ -127,17 +189,26 @@ const ProyectoCard = ({ proyecto, resumen, onSelect, formatMonto, tipoCambio, mo
 };
 
 // ============ COMPONENTE: ITEM DE PRESUPUESTO ============
-const PresupuestoItem = ({ label, presupuesto, ejecutado, formatMonto, onCrear, onAdicional, onEditar, onVerHistorial, historial, moneda, indexacion, baseCalculo }) => {
+const PresupuestoItem = ({ label, presupuesto, ejecutado, formatMonto, onCrear, onClick, historial, moneda, indexacion, baseCalculo, cotizacionSnapshot, montoIngresado, cacIndiceActual: cacIdx, tipoCambioActual }) => {
   const tienePresupuesto = presupuesto !== null && presupuesto !== undefined;
   const porcentaje = tienePresupuesto && presupuesto > 0 ? (ejecutado / presupuesto) * 100 : 0;
   const tieneHistorial = historial && historial.length > 0;
   const monedaLabel = moneda === 'USD' ? '🇺🇸' : '🇦🇷';
+  const esIndexado = !!indexacion;
+  const indiceActual = indexacion === 'CAC' ? cacIdx : (indexacion === 'USD' ? tipoCambioActual : null);
+  const unidadIdx = indexacion === 'CAC' ? 'CAC' : (indexacion === 'USD' ? 'USD' : '');
+
+  // Para indexados: mostrar equivalencia ARS hoy
+  const fmtARS = (v) => v != null ? `$${Number(v).toLocaleString('es-AR', { maximumFractionDigits: 0 })}` : '';
+  const presEnARS = esIndexado && indiceActual && presupuesto ? presupuesto * indiceActual : null;
+  const ejEnARS = esIndexado && indiceActual && ejecutado ? ejecutado * indiceActual : null;
+  const saldoEnARS = esIndexado && indiceActual ? (presupuesto - ejecutado) * indiceActual : null;
   
   if (!tienePresupuesto) {
     return (
-      <Paper variant="outlined" sx={{ p: 2 }}>
-        <Stack direction="row" justifyContent="space-between" alignItems="center">
-          <Typography>{label}</Typography>
+      <Paper variant="outlined" sx={{ p: { xs: 1.5, md: 2 } }}>
+        <Stack direction="row" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={1}>
+          <Typography sx={{ fontSize: { xs: '0.875rem', md: '1rem' } }}>{label}</Typography>
           <Stack direction="row" spacing={1} alignItems="center">
             <Chip label="Sin presupuesto" size="small" variant="outlined" color="default" />
             <Button size="small" variant="outlined" onClick={onCrear} startIcon={<AddCircleIcon />}>
@@ -150,61 +221,64 @@ const PresupuestoItem = ({ label, presupuesto, ejecutado, formatMonto, onCrear, 
   }
   
   return (
-    <Paper variant="outlined" sx={{ p: 2 }}>
-      <Stack direction="row" justifyContent="space-between" alignItems="center">
-        <Stack direction="row" spacing={1} alignItems="center">
-          <Typography fontWeight={500}>{label}</Typography>
-          <Tooltip title={moneda === 'USD' ? 'Dólares' : 'Pesos argentinos'} arrow>
-            <Chip label={monedaLabel} size="small" variant="outlined" sx={{ minWidth: 32 }} />
-          </Tooltip>
-          {indexacion && (
-            <Tooltip title={indexacion === 'CAC' ? 'Indexado por CAC (construcción)' : 'Indexado por dólar blue'} arrow>
-              <Chip label={`idx ${indexacion}`} size="small" color="secondary" variant="outlined" sx={{ height: 20, '& .MuiChip-label': { px: 0.5, fontSize: '0.65rem' } }} />
+    <Paper 
+      variant="outlined" 
+      sx={{ p: { xs: 1.5, md: 2 }, cursor: 'pointer', transition: 'all 0.15s', '&:hover': { bgcolor: 'action.hover', borderColor: 'primary.main' } }}
+      onClick={onClick}
+    >
+      {/* Fila superior: label + badges */}
+      <Stack direction="row" spacing={0.5} alignItems="center" sx={{ minWidth: 0, mb: 0.5 }} flexWrap="wrap" useFlexGap>
+        <Typography fontWeight={500} noWrap sx={{ fontSize: { xs: '0.85rem', md: '1rem' }, flex: { xs: '1 1 auto', sm: '0 1 auto' }, minWidth: 0 }}>{label}</Typography>
+        {esIndexado && (
+          <Chip label={`idx ${indexacion}`} size="small" color="secondary" variant="outlined" sx={{ height: 20, '& .MuiChip-label': { px: 0.5, fontSize: '0.65rem' } }} />
+        )}
+        {baseCalculo === 'subtotal' && (
+          <Chip label="neto" size="small" color="default" variant="outlined" sx={{ height: 20, '& .MuiChip-label': { px: 0.5, fontSize: '0.65rem' } }} />
+        )}
+        {tieneHistorial && (
+          <Chip label={`${historial.length}`} size="small" color="info" variant="outlined" sx={{ height: 20, '& .MuiChip-label': { px: 0.5, fontSize: '0.65rem' } }} />
+        )}
+      </Stack>
+      {/* Fila de montos: presupuesto y ejecutado */}
+      <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap" useFlexGap>
+        {esIndexado ? (
+          <>
+            <Tooltip title={presEnARS != null ? `Hoy: ${fmtARS(presEnARS)}` : ''} arrow>
+              <Chip label={`Pres: ${Number(presupuesto).toLocaleString('es-AR', { maximumFractionDigits: 2 })} ${unidadIdx}`} size="small" variant="outlined" />
             </Tooltip>
-          )}
-          {baseCalculo === 'subtotal' && (
-            <Tooltip title="Calcula ejecutado por subtotal neto (sin impuestos)" arrow>
-              <Chip label="neto" size="small" color="default" variant="outlined" sx={{ height: 20, '& .MuiChip-label': { px: 0.5, fontSize: '0.65rem' } }} />
+            <Tooltip title={ejEnARS != null ? `Hoy: ${fmtARS(ejEnARS)}` : ''} arrow>
+              <Chip 
+                label={`Ejec: ${Number(ejecutado).toLocaleString('es-AR', { maximumFractionDigits: 2 })} ${unidadIdx}`}
+                size="small" 
+                color={porcentaje > 100 ? 'error' : 'success'}
+              />
             </Tooltip>
-          )}
-        </Stack>
-        <Stack direction="row" spacing={1} alignItems="center">
-          <Chip label={`Pres: ${formatMonto(presupuesto, moneda)}`} size="small" variant="outlined" />
-          <Chip 
-            label={`Ejec: ${formatMonto(ejecutado, moneda)}`} 
-            size="small" 
-            color={porcentaje > 100 ? 'error' : 'success'}
-          />
-          {onEditar && (
-            <Button size="small" variant="outlined" onClick={onEditar}>Editar</Button>
-          )}
-          {onAdicional && (
-            <Button size="small" onClick={onAdicional}>+ Adicional</Button>
-          )}
-          {tieneHistorial && onVerHistorial && (
+          </>
+        ) : (
+          <>
+            <Chip label={`Pres: ${formatMonto(presupuesto, moneda)}`} size="small" variant="outlined" />
             <Chip 
-              label={`${historial.length} cambios`} 
+              label={`Ejec: ${formatMonto(ejecutado, moneda)}`} 
               size="small" 
-              color="info" 
-              variant="outlined"
-              onClick={onVerHistorial}
-              sx={{ cursor: 'pointer' }}
+              color={porcentaje > 100 ? 'error' : 'success'}
             />
-          )}
-        </Stack>
+          </>
+        )}
       </Stack>
       <LinearProgress 
         variant="determinate" 
         value={Math.min(porcentaje, 100)}
-        sx={{ mt: 1.5, height: 8, borderRadius: 4 }}
+        sx={{ mt: 1, height: { xs: 6, md: 8 }, borderRadius: 4 }}
         color={porcentaje > 100 ? 'error' : porcentaje > 80 ? 'warning' : 'primary'}
       />
       <Stack direction="row" justifyContent="space-between" sx={{ mt: 0.5 }}>
-        <Typography variant="caption" color="text.secondary">
+        <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.6rem', sm: '0.75rem' } }}>
           {porcentaje.toFixed(1)}% ejecutado
+          {esIndexado && ejEnARS != null && ` · ${fmtARS(ejEnARS)} ARS`}
         </Typography>
-        <Typography variant="caption" color="text.secondary">
-          Saldo: {formatMonto(presupuesto - ejecutado, moneda)}
+        <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.6rem', sm: '0.75rem' } }}>
+          Saldo: {esIndexado ? `${Number(presupuesto - ejecutado).toLocaleString('es-AR', { maximumFractionDigits: 2 })} ${unidadIdx}` : formatMonto(presupuesto - ejecutado, moneda)}
+          {esIndexado && saldoEnARS != null && ` · ${fmtARS(saldoEnARS)} ARS`}
         </Typography>
       </Stack>
     </Paper>
@@ -212,7 +286,7 @@ const PresupuestoItem = ({ label, presupuesto, ejecutado, formatMonto, onCrear, 
 };
 
 // ============ COMPONENTE PRINCIPAL ============
-const ControlProyectoPage = () => {
+const ControlPresupuestosPage = () => {
   const { user } = useAuthContext();
   const router = useRouter();
   
@@ -426,30 +500,43 @@ const ControlProyectoPage = () => {
     return Object.values(resumen.ingresosPorMoneda).flatMap(m => m.items || []);
   };
 
-  // Helper: calcular totales de ingresos/egresos sumando todas las monedas (convertidas a la moneda de visualización)
+  // Helper: calcular totales de ingresos/egresos (convertidos a la moneda de visualización)
+  // Si existe un presupuesto "general" (sin categoría/etapa/proveedor), se usa como techo del total
+  // porque los presupuestos por categoría/proveedor son asignaciones DENTRO del general.
+  // El ejecutado del general ya acumula todos los movimientos (matchea contra todo).
   const calcularTotales = () => {
     if (!resumen) return { ingresos: { total: 0, ejecutado: 0 }, egresos: { total: 0, ejecutado: 0 }, gananciaProyectada: 0, gananciaActual: 0 };
     
-    let ingresosTotal = 0, ingresosEjecutado = 0;
-    let egresosTotal = 0, egresosEjecutado = 0;
+    const sumarPorTipo = (obtenerItems) => {
+      const items = obtenerItems();
+      const generales = items.filter(i => !i.categoria && !i.etapa && !i.proveedor);
+      const especificos = items.filter(i => i.categoria || i.etapa || i.proveedor);
+      
+      if (generales.length > 0) {
+        // Hay presupuesto general: usarlo como techo
+        let total = generales.reduce((s, i) => s + convertir(i.monto || 0, i.moneda || 'ARS'), 0);
+        const ejecutado = generales.reduce((s, i) => s + convertir(i.ejecutado || 0, i.moneda || 'ARS'), 0);
+        // Si la suma de específicos excede el general, mostrar la suma real
+        const especTotal = especificos.reduce((s, i) => s + convertir(i.monto || 0, i.moneda || 'ARS'), 0);
+        if (especTotal > total) total = especTotal;
+        return { total, ejecutado };
+      }
+      
+      // Sin general: sumar todos
+      return items.reduce((acc, i) => ({
+        total: acc.total + convertir(i.monto || 0, i.moneda || 'ARS'),
+        ejecutado: acc.ejecutado + convertir(i.ejecutado || 0, i.moneda || 'ARS'),
+      }), { total: 0, ejecutado: 0 });
+    };
     
-    // Sumar ingresos de todas las monedas
-    Object.entries(resumen.ingresosPorMoneda || {}).forEach(([mon, data]) => {
-      ingresosTotal += convertir(data.total || 0, mon);
-      ingresosEjecutado += convertir(data.ejecutado || 0, mon);
-    });
-    
-    // Sumar egresos de todas las monedas
-    Object.entries(resumen.egresosPorMoneda || {}).forEach(([mon, data]) => {
-      egresosTotal += convertir(data.total || 0, mon);
-      egresosEjecutado += convertir(data.ejecutado || 0, mon);
-    });
+    const ingresos = sumarPorTipo(obtenerTodosLosItemsIngresos);
+    const egresos = sumarPorTipo(obtenerTodosLosItemsEgresos);
     
     return {
-      ingresos: { total: ingresosTotal, ejecutado: ingresosEjecutado },
-      egresos: { total: egresosTotal, ejecutado: egresosEjecutado },
-      gananciaProyectada: ingresosTotal - egresosTotal,
-      gananciaActual: ingresosEjecutado - egresosEjecutado
+      ingresos,
+      egresos,
+      gananciaProyectada: ingresos.total - egresos.total,
+      gananciaActual: ingresos.ejecutado - egresos.ejecutado
     };
   };
 
@@ -468,20 +555,27 @@ const ControlProyectoPage = () => {
     if (monedaOriginal === 'CAC' && moneda === 'ARS') return cacIndiceActual ? monto * cacIndiceActual : monto;
     // CAC → USD: (monto_cac * cac_indice) / tipoCambio
     if (monedaOriginal === 'CAC' && moneda === 'USD') return (cacIndiceActual && tipoCambio) ? (monto * cacIndiceActual) / tipoCambio : monto;
+    // ARS → CAC
+    if (monedaOriginal === 'ARS' && moneda === 'CAC') return cacIndiceActual ? monto / cacIndiceActual : monto;
+    // USD → CAC
+    if (monedaOriginal === 'USD' && moneda === 'CAC') return (cacIndiceActual && tipoCambio) ? (monto * tipoCambio) / cacIndiceActual : monto;
     
     return monto;
   };
 
   // formatMonto acepta moneda original opcional para mostrar en la moneda del presupuesto
+  // formatMonto: convierte desde monedaOriginal a la moneda de visualización actual
+  // Si monedaOriginal === moneda de vista, convertir() no hace nada (valor ya está en moneda correcta)
   const formatMonto = (monto, monedaOriginal) => {
     if (monto === null || monto === undefined) return '-';
     
-    // Si se especifica moneda original, usar esa para mostrar sin convertir
-    const monedaMostrar = monedaOriginal || moneda;
-    const valor = monedaOriginal ? monto : convertir(monto);
+    const valor = convertir(monto, monedaOriginal || 'ARS');
     
-    if (monedaMostrar === 'USD') {
+    if (moneda === 'USD') {
       return `USD ${valor.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    }
+    if (moneda === 'CAC') {
+      return `CAC ${Number(valor).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     }
     return formatCurrency(valor);
   };
@@ -501,8 +595,9 @@ const ControlProyectoPage = () => {
     if (items.length === 0) {
       // Buscar ejecutado aunque no haya presupuesto (buscar en porCategoria de cada moneda)
       let ejecutadoTotal = 0;
-      Object.values(resumen?.egresosPorMoneda || {}).forEach(monedaData => {
-        ejecutadoTotal += monedaData.porCategoria?.[valor]?.ejecutado || 0;
+      Object.entries(resumen?.egresosPorMoneda || {}).forEach(([mon, monedaData]) => {
+        const ejCrudo = monedaData.porCategoria?.[valor]?.ejecutado || 0;
+        ejecutadoTotal += convertir(ejCrudo, mon);
       });
       return { presupuesto: null, ejecutado: ejecutadoTotal, id: null, historial: [], moneda: 'ARS' };
     }
@@ -528,6 +623,21 @@ const ControlProyectoPage = () => {
     cargarResumen();
   };
 
+  // Eliminar presupuesto directamente
+  const [deleteConfirm, setDeleteConfirm] = useState({ open: false, id: null, label: '' });
+  const handleEliminarPresupuesto = async () => {
+    if (!deleteConfirm.id) return;
+    try {
+      await presupuestoService.eliminarPresupuestoPorId(deleteConfirm.id);
+      setAlert({ open: true, message: `Presupuesto "${deleteConfirm.label}" eliminado`, severity: 'success' });
+      cargarResumen();
+    } catch (err) {
+      setAlert({ open: true, message: 'Error al eliminar presupuesto', severity: 'error' });
+    } finally {
+      setDeleteConfirm({ open: false, id: null, label: '' });
+    }
+  };
+
   // Helper: abrir drawer para crear
   const abrirDrawerCrear = (tipoAgrupacion, valor, tipoDefault = 'egreso') => {
     setDrawerPresupuesto({
@@ -545,6 +655,7 @@ const ControlProyectoPage = () => {
     setDrawerPresupuesto({
       open: true,
       mode: 'editar',
+      drawerView: 'full',
       tipoAgrupacion: null,
       valorAgrupacion: null,
       tipoDefault: 'egreso',
@@ -559,6 +670,7 @@ const ControlProyectoPage = () => {
         tipo: item.tipo || 'egreso',
         label: label,
         historial: item.historial || [],
+        adicionales: item.adicionales || [],
         ejecutado: item.ejecutado || 0,
         cotizacion_snapshot: item.cotizacion_snapshot || null,
         proveedor: item.proveedor || null,
@@ -569,16 +681,65 @@ const ControlProyectoPage = () => {
     });
   };
 
+  // Helper: armar presupuesto data para los drawers
+  const _buildPresupuestoPayload = (item, label) => ({
+    id: item.id,
+    monto: item.monto || item.presupuesto,
+    moneda: item.moneda || 'ARS',
+    moneda_display: item.moneda_display || item.moneda || 'ARS',
+    indexacion: item.indexacion || null,
+    monto_ingresado: item.monto_ingresado || item.monto || item.presupuesto,
+    base_calculo: item.base_calculo || 'total',
+    tipo: item.tipo || 'egreso',
+    label: label,
+    historial: item.historial || [],
+    adicionales: item.adicionales || [],
+    ejecutado: item.ejecutado || 0,
+    cotizacion_snapshot: item.cotizacion_snapshot || null,
+    proveedor: item.proveedor || null,
+    categoria: item.categoria || null,
+    subcategoria: item.subcategoria || null,
+    etapa: item.etapa || null,
+  });
+
+  // Helper: abrir drawer directo en modo adicional
+  const abrirDrawerAdicional = (item, label) => {
+    setDrawerPresupuesto({
+      open: true,
+      mode: 'editar',
+      drawerView: 'adicional',
+      tipoAgrupacion: null,
+      valorAgrupacion: null,
+      tipoDefault: 'egreso',
+      presupuesto: _buildPresupuestoPayload(item, label),
+    });
+  };
+
+  // Helper: abrir drawer directo en modo historial
+  const abrirDrawerHistorial = (item, label) => {
+    setDrawerPresupuesto({
+      open: true,
+      mode: 'editar',
+      drawerView: 'historial',
+      tipoAgrupacion: null,
+      valorAgrupacion: null,
+      tipoDefault: 'egreso',
+      presupuesto: _buildPresupuestoPayload(item, label),
+    });
+  };
+
   // Calcular sumas por cada agrupación (son 3 formas de ver el MISMO presupuesto)
+  // Convierte cada item a la moneda de visualización antes de sumar
   const calcularSumas = useMemo(() => {
     if (!resumen) return { porCategoria: 0, porEtapa: 0, porProveedor: 0, general: 0 };
     
     const items = obtenerTodosLosItemsEgresos();
+    const conv = (i) => convertir(i.monto || 0, i.moneda || 'ARS');
     
     // Presupuesto general (sin categoria, etapa ni proveedor)
     const general = items
       .filter(i => !i.categoria && !i.etapa && !i.proveedor)
-      .reduce((sum, i) => sum + (i.monto || 0), 0);
+      .reduce((sum, i) => sum + conv(i), 0);
     
     // ID del presupuesto general
     const generalItem = items.find(i => !i.categoria && !i.etapa && !i.proveedor);
@@ -588,20 +749,20 @@ const ControlProyectoPage = () => {
     // Suma de presupuestos por categoría
     const porCategoria = items
       .filter(i => i.categoria && !i.etapa && !i.proveedor)
-      .reduce((sum, i) => sum + (i.monto || 0), 0);
+      .reduce((sum, i) => sum + conv(i), 0);
     
     // Suma de presupuestos por etapa
     const porEtapa = items
       .filter(i => i.etapa && !i.categoria && !i.proveedor)
-      .reduce((sum, i) => sum + (i.monto || 0), 0);
+      .reduce((sum, i) => sum + conv(i), 0);
     
     // Suma de presupuestos por proveedor
     const porProveedor = items
       .filter(i => i.proveedor && !i.categoria && !i.etapa)
-      .reduce((sum, i) => sum + (i.monto || 0), 0);
+      .reduce((sum, i) => sum + conv(i), 0);
     
     return { porCategoria, porEtapa, porProveedor, general, generalId, generalHistorial };
-  }, [resumen]);
+  }, [resumen, moneda, tipoCambio, cacIndiceActual]);
 
   // Obtener el presupuesto general del proyecto
   const presupuestoGeneral = calcularSumas.general || 0;
@@ -704,13 +865,13 @@ const ControlProyectoPage = () => {
   if (!proyectoSeleccionado) {
     return (
       <>
-        <Head><title>Control de Proyectos</title></Head>
-        <Box component="main" sx={{ flexGrow: 1, py: 4 }}>
-          <Container maxWidth={false} sx={{ px: 4 }}>
-            <Stack spacing={3}>
-              <Stack direction="row" justifyContent="space-between" alignItems="center">
-                <Typography variant="h4">Control de Proyectos</Typography>
-                <Stack direction="row" spacing={2}>
+        <Head><title>Control de Presupuestos</title></Head>
+        <Box component="main" sx={{ flexGrow: 1, py: { xs: 2, md: 4 } }}>
+          <Container maxWidth={false} sx={{ px: { xs: 1.5, sm: 3, md: 4 } }}>
+            <Stack spacing={{ xs: 2, md: 3 }}>
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} justifyContent="space-between" alignItems={{ sm: 'center' }}>
+                <Typography variant="h4" sx={{ fontSize: { xs: '1.5rem', md: '2.125rem' } }}>Control de Presupuestos</Typography>
+                <Stack direction="row" spacing={1} alignItems="center">
                   <ToggleButtonGroup
                     value={moneda}
                     exclusive
@@ -719,14 +880,16 @@ const ControlProyectoPage = () => {
                   >
                     <ToggleButton value="ARS">ARS</ToggleButton>
                     <ToggleButton value="USD">USD</ToggleButton>
+                    <ToggleButton value="CAC">CAC</ToggleButton>
                   </ToggleButtonGroup>
                   <Button 
                     variant="outlined" 
                     startIcon={<RefreshIcon />}
                     onClick={cargarResumenesTodosProyectos}
                     disabled={loading}
+                    sx={{ minWidth: 'auto', px: { xs: 1, sm: 2 } }}
                   >
-                    Actualizar
+                    <Box component="span" sx={{ display: { xs: 'none', sm: 'inline' } }}>Actualizar</Box>
                   </Button>
                 </Stack>
               </Stack>
@@ -739,6 +902,31 @@ const ControlProyectoPage = () => {
                 </Paper>
               ) : (
                 <Grid container spacing={3}>
+                  {/* Card destacada: acceso a la tabla completa de presupuestos */}
+                  <Grid item xs={12} sm={6} md={4} lg={3}>
+                    <Card
+                      sx={{
+                        height: '100%',
+                        background: 'linear-gradient(135deg, #1976d2 0%, #1565c0 100%)',
+                        color: 'white',
+                        transition: 'transform 0.2s, box-shadow 0.2s',
+                        '&:hover': { transform: 'translateY(-4px)', boxShadow: 6 },
+                      }}
+                    >
+                      <CardActionArea onClick={() => router.push('/presupuestos')} sx={{ height: '100%' }}>
+                        <CardContent sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', py: { xs: 2.5, md: 4 } }}>
+                          <ListAltIcon sx={{ fontSize: { xs: 36, md: 48 }, mb: 1.5, opacity: 0.9 }} />
+                          <Typography variant="h6" gutterBottom align="center">
+                            Todos los presupuestos
+                          </Typography>
+                          <Typography variant="body2" align="center" sx={{ opacity: 0.85 }}>
+                            Ver, crear y gestionar todos los presupuestos en una tabla detallada
+                          </Typography>
+                        </CardContent>
+                      </CardActionArea>
+                    </Card>
+                  </Grid>
+
                   {proyectos.map((proyecto) => (
                     <Grid item xs={12} sm={6} md={4} lg={3} key={proyecto.id}>
                       <ProyectoCard 
@@ -764,20 +952,25 @@ const ControlProyectoPage = () => {
   return (
     <>
       <Head><title>Control - {proyectoActual?.nombre || 'Proyecto'}</title></Head>
-      <Box component="main" sx={{ flexGrow: 1, py: 4 }}>
-        <Container maxWidth={false} sx={{ px: 4 }}>
-          <Stack spacing={3}>
+      <Box component="main" sx={{ flexGrow: 1, py: { xs: 2, md: 4 } }}>
+        <Container maxWidth={false} sx={{ px: { xs: 1.5, sm: 3, md: 4 } }}>
+          <Stack spacing={{ xs: 2, md: 3 }}>
             
             {/* Header */}
-            <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems="center" justifyContent="space-between">
-              <Stack direction="row" spacing={2} alignItems="center">
-                <IconButton onClick={handleVolverAGeneral}>
+            <Stack spacing={1.5}>
+              <Stack direction="row" spacing={1} alignItems="center">
+                <IconButton onClick={handleVolverAGeneral} size="small">
                   <ArrowBackIcon />
                 </IconButton>
-                <Typography variant="h4">{proyectoActual?.nombre}</Typography>
+                <Typography variant="h4" sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem', md: '2.125rem' }, flex: 1 }} noWrap>
+                  {proyectoActual?.nombre}
+                </Typography>
+                <IconButton onClick={cargarResumen} disabled={loading} sx={{ display: { xs: 'flex', sm: 'none' } }}>
+                  <RefreshIcon />
+                </IconButton>
               </Stack>
               
-              <Stack direction="row" spacing={2} alignItems="center">
+              <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
                 <ToggleButtonGroup
                   value={moneda}
                   exclusive
@@ -786,45 +979,54 @@ const ControlProyectoPage = () => {
                 >
                   <ToggleButton value="ARS">ARS</ToggleButton>
                   <ToggleButton value="USD">USD</ToggleButton>
+                  <ToggleButton value="CAC">CAC</ToggleButton>
                 </ToggleButtonGroup>
 
                 {/* Indicadores de cotización */}
-                <Stack direction="row" spacing={1} alignItems="center">
-                  {cotizacionCargada && tipoCambio ? (
-                    <Chip
-                      label={`USD Blue: $${Number(tipoCambio).toLocaleString('es-AR')}`}
-                      size="small"
-                      color="info"
-                      variant="outlined"
-                      icon={<AttachMoneyIcon />}
-                    />
-                  ) : (
-                    <TextField
-                      label="Cotización USD"
-                      type="number"
-                      size="small"
-                      sx={{ width: 160 }}
-                      value={tipoCambioManual}
-                      onChange={(e) => {
-                        setTipoCambioManual(e.target.value);
-                        const val = parseFloat(e.target.value);
-                        if (val > 0) setTipoCambio(val);
-                      }}
-                      placeholder="Ej: 1450"
-                      InputProps={{
-                        startAdornment: <Typography variant="caption" sx={{ mr: 0.5 }}>$</Typography>,
-                      }}
-                      helperText={!tipoCambio ? 'Requerido para convertir' : ''}
-                      error={!tipoCambio}
-                    />
-                  )}
-                </Stack>
+                {cacIndiceActual && (
+                  <Chip
+                    label={`CAC: ${Number(cacIndiceActual).toLocaleString('es-AR')}`}
+                    size="small"
+                    color="secondary"
+                    variant="outlined"
+                    icon={<TimelineIcon />}
+                  />
+                )}
+                {cotizacionCargada && tipoCambio ? (
+                  <Chip
+                    label={`USD: $${Number(tipoCambio).toLocaleString('es-AR')}`}
+                    size="small"
+                    color="info"
+                    variant="outlined"
+                    icon={<AttachMoneyIcon />}
+                  />
+                ) : (
+                  <TextField
+                    label="Cotización USD"
+                    type="number"
+                    size="small"
+                    sx={{ width: { xs: 130, sm: 160 } }}
+                    value={tipoCambioManual}
+                    onChange={(e) => {
+                      setTipoCambioManual(e.target.value);
+                      const val = parseFloat(e.target.value);
+                      if (val > 0) setTipoCambio(val);
+                    }}
+                    placeholder="Ej: 1450"
+                    InputProps={{
+                      startAdornment: <Typography variant="caption" sx={{ mr: 0.5 }}>$</Typography>,
+                    }}
+                    helperText={!tipoCambio ? 'Requerido' : ''}
+                    error={!tipoCambio}
+                  />
+                )}
                 
                 <Button 
                   variant="outlined" 
                   startIcon={<RefreshIcon />}
                   onClick={cargarResumen}
                   disabled={loading}
+                  sx={{ display: { xs: 'none', sm: 'inline-flex' } }}
                 >
                   Actualizar
                 </Button>
@@ -851,17 +1053,17 @@ const ControlProyectoPage = () => {
                 {(() => {
                   const totales = calcularTotales();
                   return (
-                    <Grid container spacing={3}>
-                      <Grid item xs={12} md={4}>
+                    <Grid container spacing={{ xs: 1.5, md: 3 }}>
+                      <Grid item xs={6} sm={4}>
                         <Card>
-                          <CardContent>
-                            <Stack direction="row" alignItems="center" spacing={2}>
-                              <TrendingUpIcon color="success" sx={{ fontSize: 40 }} />
-                              <Box>
-                                <Typography variant="body2" color="text.secondary">Ingresos Proyectados</Typography>
-                                <Typography variant="h5">{formatMonto(totales.ingresos.total)}</Typography>
-                                <Typography variant="body2" color="text.secondary">
-                                  Recibido: {formatMonto(totales.ingresos.ejecutado)}
+                          <CardContent sx={{ p: { xs: 1.5, md: 2 }, '&:last-child': { pb: { xs: 1.5, md: 2 } } }}>
+                            <Stack direction="row" alignItems="center" spacing={{ xs: 1, md: 2 }}>
+                              <TrendingUpIcon color="success" sx={{ fontSize: { xs: 28, md: 40 } }} />
+                              <Box sx={{ minWidth: 0 }}>
+                                <Typography variant="body2" color="text.secondary" sx={{ fontSize: { xs: '0.65rem', sm: '0.75rem', md: '0.875rem' } }} noWrap>Ingresos Proyectados</Typography>
+                                <Typography variant="h5" sx={{ fontSize: { xs: '1rem', sm: '1.25rem', md: '1.5rem' } }} noWrap>{formatMonto(totales.ingresos.total, moneda)}</Typography>
+                                <Typography variant="body2" color="text.secondary" sx={{ fontSize: { xs: '0.6rem', sm: '0.7rem', md: '0.875rem' } }} noWrap>
+                                  Recibido: {formatMonto(totales.ingresos.ejecutado, moneda)}
                                 </Typography>
                               </Box>
                             </Stack>
@@ -869,16 +1071,16 @@ const ControlProyectoPage = () => {
                         </Card>
                       </Grid>
                       
-                      <Grid item xs={12} md={4}>
+                      <Grid item xs={6} sm={4}>
                         <Card>
-                          <CardContent>
-                            <Stack direction="row" alignItems="center" spacing={2}>
-                              <TrendingDownIcon color="error" sx={{ fontSize: 40 }} />
-                              <Box>
-                                <Typography variant="body2" color="text.secondary">Egresos Proyectados</Typography>
-                                <Typography variant="h5">{formatMonto(totales.egresos.total)}</Typography>
-                                <Typography variant="body2" color="text.secondary">
-                                  Gastado: {formatMonto(totales.egresos.ejecutado)}
+                          <CardContent sx={{ p: { xs: 1.5, md: 2 }, '&:last-child': { pb: { xs: 1.5, md: 2 } } }}>
+                            <Stack direction="row" alignItems="center" spacing={{ xs: 1, md: 2 }}>
+                              <TrendingDownIcon color="error" sx={{ fontSize: { xs: 28, md: 40 } }} />
+                              <Box sx={{ minWidth: 0 }}>
+                                <Typography variant="body2" color="text.secondary" sx={{ fontSize: { xs: '0.65rem', sm: '0.75rem', md: '0.875rem' } }} noWrap>Egresos Proyectados</Typography>
+                                <Typography variant="h5" sx={{ fontSize: { xs: '1rem', sm: '1.25rem', md: '1.5rem' } }} noWrap>{formatMonto(totales.egresos.total, moneda)}</Typography>
+                                <Typography variant="body2" color="text.secondary" sx={{ fontSize: { xs: '0.6rem', sm: '0.7rem', md: '0.875rem' } }} noWrap>
+                                  Gastado: {formatMonto(totales.egresos.ejecutado, moneda)}
                                 </Typography>
                               </Box>
                             </Stack>
@@ -886,16 +1088,16 @@ const ControlProyectoPage = () => {
                         </Card>
                       </Grid>
                       
-                      <Grid item xs={12} md={4}>
+                      <Grid item xs={12} sm={4}>
                         <Card sx={{ bgcolor: totales.gananciaProyectada >= 0 ? 'success.light' : 'error.light' }}>
-                          <CardContent>
-                            <Stack direction="row" alignItems="center" spacing={2}>
-                              <AccountBalanceWalletIcon sx={{ fontSize: 40, color: 'white' }} />
-                              <Box>
-                                <Typography variant="body2" sx={{ color: 'white' }}>Ganancia Proyectada</Typography>
-                                <Typography variant="h5" sx={{ color: 'white' }}>{formatMonto(totales.gananciaProyectada)}</Typography>
-                                <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.8)' }}>
-                                  Actual: {formatMonto(totales.gananciaActual)}
+                          <CardContent sx={{ p: { xs: 1.5, md: 2 }, '&:last-child': { pb: { xs: 1.5, md: 2 } } }}>
+                            <Stack direction="row" alignItems="center" spacing={{ xs: 1, md: 2 }}>
+                              <AccountBalanceWalletIcon sx={{ fontSize: { xs: 28, md: 40 }, color: 'white' }} />
+                              <Box sx={{ minWidth: 0 }}>
+                                <Typography variant="body2" sx={{ color: 'white', fontSize: { xs: '0.65rem', sm: '0.75rem', md: '0.875rem' } }} noWrap>Ganancia Proyectada</Typography>
+                                <Typography variant="h5" sx={{ color: 'white', fontSize: { xs: '1rem', sm: '1.25rem', md: '1.5rem' } }} noWrap>{formatMonto(totales.gananciaProyectada, moneda)}</Typography>
+                                <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.8)', fontSize: { xs: '0.6rem', sm: '0.7rem', md: '0.875rem' } }} noWrap>
+                                  Actual: {formatMonto(totales.gananciaActual, moneda)}
                                 </Typography>
                               </Box>
                             </Stack>
@@ -911,13 +1113,13 @@ const ControlProyectoPage = () => {
                   const itemsIngreso = obtenerTodosLosItemsIngresos();
                   const totales = calcularTotales();
                   return (
-                    <Paper sx={{ p: 2 }}>
-                      <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
+                    <Paper sx={{ p: { xs: 1.5, md: 2 } }}>
+                      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="space-between" alignItems={{ sm: 'center' }} sx={{ mb: 2 }}>
                         <Stack direction="row" spacing={1} alignItems="center">
-                          <TrendingUpIcon color="success" />
-                          <Typography variant="h6">Ingresos</Typography>
+                          <TrendingUpIcon color="success" sx={{ fontSize: { xs: 20, md: 24 } }} />
+                          <Typography variant="h6" sx={{ fontSize: { xs: '1rem', md: '1.25rem' } }}>Ingresos</Typography>
                           {itemsIngreso.length > 0 && (
-                            <Chip label={`${itemsIngreso.length} presupuesto${itemsIngreso.length > 1 ? 's' : ''}`} size="small" variant="outlined" />
+                            <Chip label={`${itemsIngreso.length}`} size="small" variant="outlined" />
                           )}
                         </Stack>
                         <Button
@@ -926,8 +1128,10 @@ const ControlProyectoPage = () => {
                           color="success"
                           startIcon={<AddCircleIcon />}
                           onClick={() => abrirDrawerCrear(null, 'Ingreso', 'ingreso')}
+                          sx={{ alignSelf: { xs: 'flex-start', sm: 'auto' } }}
                         >
-                          Crear presupuesto de ingreso
+                          <Box component="span" sx={{ display: { xs: 'none', sm: 'inline' } }}>Crear presupuesto de ingreso</Box>
+                          <Box component="span" sx={{ display: { xs: 'inline', sm: 'none' } }}>Crear ingreso</Box>
                         </Button>
                       </Stack>
                       {itemsIngreso.length === 0 ? (
@@ -954,65 +1158,103 @@ const ControlProyectoPage = () => {
                           {itemsIngreso.map((item) => {
                             const porcentaje = item.monto > 0 ? (item.ejecutado / item.monto) * 100 : 0;
                             const monedaItem = item.moneda || 'ARS';
-                            const monedaLabel = monedaItem === 'USD' ? '🇺🇸' : '🇦🇷';
+                            const esIdx = !!item.indexacion;
+                            const unidadIdx = item.indexacion === 'CAC' ? 'CAC' : (item.indexacion === 'USD' ? 'USD' : '');
+                            const idxActual = item.indexacion === 'CAC' ? cacIndiceActual : (item.indexacion === 'USD' ? tipoCambio : null);
+                            const presEnARS = esIdx && idxActual ? item.monto * idxActual : null;
+                            const ejEnARS = esIdx && idxActual ? (item.ejecutado || 0) * idxActual : null;
+                            const saldoEnARS = esIdx && idxActual ? (item.monto - (item.ejecutado || 0)) * idxActual : null;
+                            const fmtARS = (v) => v != null ? `$${Number(v).toLocaleString('es-AR', { maximumFractionDigits: 0 })}` : '';
+                            const fmtUnidad = (v) => `${Number(v).toLocaleString('es-AR', { maximumFractionDigits: 2 })} ${unidadIdx}`;
                             const label = [item.categoria, item.etapa, item.proveedor].filter(Boolean).join(' · ') || 'Ingreso general';
                             return (
-                              <Paper key={item.id} variant="outlined" sx={{ p: 2 }}>
-                                <Stack direction="row" justifyContent="space-between" alignItems="center">
-                                  <Stack direction="row" spacing={1} alignItems="center">
-                                    <Typography fontWeight={500}>{label}</Typography>
-                                    <Tooltip title={monedaItem === 'USD' ? 'Dólares' : 'Pesos argentinos'} arrow>
-                                      <Chip label={monedaLabel} size="small" variant="outlined" sx={{ minWidth: 32 }} />
+                              <Paper key={item.id} variant="outlined" sx={{ p: { xs: 1.5, md: 2 } }}>
+                                {/* Fila 1: label + badges */}
+                                <Stack direction="row" spacing={0.5} alignItems="center" flexWrap="wrap" useFlexGap sx={{ mb: 0.5 }}>
+                                  <Typography fontWeight={500} sx={{ fontSize: { xs: '0.85rem', md: '1rem' } }}>{label}</Typography>
+                                  <Chip label={esIdx ? unidadIdx : (monedaItem === 'USD' ? '🇺🇸' : '🇦🇷')} size="small" variant="outlined" sx={{ minWidth: 32 }} />
+                                  {esIdx && (
+                                    <Tooltip arrow title={
+                                      <Box sx={{ fontSize: '0.75rem', lineHeight: 1.6 }}>
+                                        <strong>Indexado por {item.indexacion}</strong><br />
+                                        Guardado: {fmtUnidad(item.monto)}<br />
+                                        Índice actual: {idxActual ? Number(idxActual).toLocaleString('es-AR', { maximumFractionDigits: 2 }) : '?'}<br />
+                                        {presEnARS != null && <>Valor hoy: {fmtARS(presEnARS)} ARS</>}
+                                      </Box>
+                                    }>
+                                      <Chip label={`idx ${item.indexacion}`} size="small" color="secondary" variant="outlined" sx={{ height: 20, '& .MuiChip-label': { px: 0.5, fontSize: '0.65rem' }, cursor: 'help' }} />
                                     </Tooltip>
-                                    {item.indexacion && (
-                                      <Tooltip title={item.indexacion === 'CAC' ? 'Indexado por CAC' : 'Indexado por USD'} arrow>
-                                        <Chip label={`idx ${item.indexacion}`} size="small" color="secondary" variant="outlined" sx={{ height: 20, '& .MuiChip-label': { px: 0.5, fontSize: '0.65rem' } }} />
-                                      </Tooltip>
-                                    )}
-                                    {item.base_calculo === 'subtotal' && (
-                                      <Tooltip title="Calcula ejecutado por subtotal neto" arrow>
-                                        <Chip label="neto" size="small" color="default" variant="outlined" sx={{ height: 20, '& .MuiChip-label': { px: 0.5, fontSize: '0.65rem' } }} />
-                                      </Tooltip>
-                                    )}
-                                  </Stack>
-                                  <Stack direction="row" spacing={1} alignItems="center">
-                                    <Chip label={`Pres: ${formatMonto(item.monto, monedaItem)}`} size="small" variant="outlined" />
+                                  )}
+                                  {item.base_calculo === 'subtotal' && (
+                                    <Tooltip title="Calcula ejecutado por subtotal neto" arrow>
+                                      <Chip label="neto" size="small" color="default" variant="outlined" sx={{ height: 20, '& .MuiChip-label': { px: 0.5, fontSize: '0.65rem' } }} />
+                                    </Tooltip>
+                                  )}
+                                  <Box sx={{ flex: 1 }} />
+                                  <Button
+                                    size="small"
+                                    variant="outlined"
+                                    onClick={() => abrirDrawerEditar({ ...item, tipo: 'ingreso' }, label)}
+                                    sx={{ minWidth: 'auto', px: 1 }}
+                                  >
+                                    Editar
+                                  </Button>
+                                  {item.historial?.length > 0 && (
                                     <Chip
-                                      label={`Cobrado: ${formatMonto(item.ejecutado || 0, monedaItem)}`}
+                                      label={`${item.historial.length}`}
                                       size="small"
-                                      color={porcentaje > 100 ? 'error' : 'success'}
-                                    />
-                                    <Button
-                                      size="small"
+                                      color="info"
                                       variant="outlined"
                                       onClick={() => abrirDrawerEditar({ ...item, tipo: 'ingreso' }, label)}
-                                    >
-                                      Editar
-                                    </Button>
-                                    {item.historial?.length > 0 && (
+                                      sx={{ cursor: 'pointer' }}
+                                    />
+                                  )}
+                                  <Tooltip title="Eliminar presupuesto" arrow>
+                                    <IconButton size="small" color="error" onClick={() => setDeleteConfirm({ open: true, id: item.id, label })}>
+                                      <DeleteIcon fontSize="small" />
+                                    </IconButton>
+                                  </Tooltip>
+                                </Stack>
+                                {/* Fila 2: chips de montos */}
+                                <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap" useFlexGap>
+                                  {esIdx ? (
+                                    <>
+                                      <Tooltip title={presEnARS != null ? `Hoy: ${fmtARS(presEnARS)}` : ''} arrow>
+                                        <Chip label={`Pres: ${fmtUnidad(item.monto)}`} size="small" variant="outlined" />
+                                      </Tooltip>
+                                      <Tooltip title={ejEnARS != null ? `Hoy: ${fmtARS(ejEnARS)}` : ''} arrow>
+                                        <Chip
+                                          label={`Cobrado: ${fmtUnidad(item.ejecutado || 0)}`}
+                                          size="small"
+                                          color={porcentaje > 100 ? 'error' : 'success'}
+                                        />
+                                      </Tooltip>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Chip label={`Pres: ${formatMonto(item.monto, monedaItem)}`} size="small" variant="outlined" />
                                       <Chip
-                                        label={`${item.historial.length} cambios`}
+                                        label={`Cobrado: ${formatMonto(item.ejecutado || 0, monedaItem)}`}
                                         size="small"
-                                        color="info"
-                                        variant="outlined"
-                                        onClick={() => abrirDrawerEditar({ ...item, tipo: 'ingreso' }, label)}
-                                        sx={{ cursor: 'pointer' }}
+                                        color={porcentaje > 100 ? 'error' : 'success'}
                                       />
-                                    )}
-                                  </Stack>
+                                    </>
+                                  )}
                                 </Stack>
                                 <LinearProgress
                                   variant="determinate"
                                   value={Math.min(porcentaje, 100)}
-                                  sx={{ mt: 1.5, height: 8, borderRadius: 4 }}
+                                  sx={{ mt: 1, height: { xs: 6, md: 8 }, borderRadius: 4 }}
                                   color={porcentaje > 100 ? 'error' : porcentaje > 80 ? 'warning' : 'success'}
                                 />
                                 <Stack direction="row" justifyContent="space-between" sx={{ mt: 0.5 }}>
-                                  <Typography variant="caption" color="text.secondary">
+                                  <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.6rem', sm: '0.75rem' } }}>
                                     {porcentaje.toFixed(1)}% cobrado
+                                    {esIdx && ejEnARS != null && ` · ${fmtARS(ejEnARS)} ARS`}
                                   </Typography>
-                                  <Typography variant="caption" color="text.secondary">
-                                    Pendiente: {formatMonto(item.monto - (item.ejecutado || 0), monedaItem)}
+                                  <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.6rem', sm: '0.75rem' } }}>
+                                    Pendiente: {esIdx ? fmtUnidad(item.monto - (item.ejecutado || 0)) : formatMonto(item.monto - (item.ejecutado || 0), monedaItem)}
+                                    {esIdx && saldoEnARS != null && ` · ${fmtARS(saldoEnARS)} ARS`}
                                   </Typography>
                                 </Stack>
                               </Paper>
@@ -1025,89 +1267,106 @@ const ControlProyectoPage = () => {
                 })()}
 
                 {/* Tabs de Egresos */}
-                <Paper sx={{ p: 2 }}>
+                <Paper sx={{ p: { xs: 1.5, md: 2 } }}>
                   <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
-                    <TrendingDownIcon color="error" />
-                    <Typography variant="h6">Egresos</Typography>
+                    <TrendingDownIcon color="error" sx={{ fontSize: { xs: 20, md: 24 } }} />
+                    <Typography variant="h6" sx={{ fontSize: { xs: '1rem', md: '1.25rem' } }}>Egresos</Typography>
                   </Stack>
-                  <Tabs value={tabActivo} onChange={(e, v) => setTabActivo(v)}>
-                    <Tab icon={<CategoryIcon />} iconPosition="start" label="Por Categoría" />
-                    <Tab icon={<TimelineIcon />} iconPosition="start" label="Por Etapa" />
-                    <Tab icon={<StorefrontIcon />} iconPosition="start" label="Por Proveedor" />
+                  <Tabs 
+                    value={tabActivo} 
+                    onChange={(e, v) => setTabActivo(v)}
+                    variant="fullWidth"
+                    sx={{ 
+                      minHeight: { xs: 40, md: 48 },
+                      '& .MuiTab-root': { 
+                        minHeight: { xs: 40, md: 48 },
+                        fontSize: { xs: '0.7rem', sm: '0.8rem', md: '0.875rem' },
+                        px: { xs: 0.5, md: 2 },
+                        minWidth: 0,
+                      }
+                    }}
+                  >
+                    <Tab icon={<CategoryIcon sx={{ fontSize: { xs: 16, md: 20 } }} />} iconPosition="start" label="Categoría" />
+                    <Tab icon={<TimelineIcon sx={{ fontSize: { xs: 16, md: 20 } }} />} iconPosition="start" label="Etapa" />
+                    <Tab icon={<StorefrontIcon sx={{ fontSize: { xs: 16, md: 20 } }} />} iconPosition="start" label="Proveedor" />
                   </Tabs>
                   
                   {/* Resumen de asignación del tab activo */}
-                  <Box sx={{ mt: 2, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
-                    <Stack direction="row" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={2}>
-                      <Stack direction="row" spacing={3} alignItems="center">
-                        <Box>
-                          <Typography variant="caption" color="text.secondary">Presupuesto General</Typography>
-                          <Stack direction="row" alignItems="center" spacing={1}>
-                            {presupuestoGeneral > 0 ? (
-                              <>
-                                <Typography variant="h6">{formatMonto(presupuestoGeneral)}</Typography>
-                                <Button 
+                  <Box sx={{ mt: 2, p: { xs: 1.5, md: 2 }, bgcolor: 'grey.50', borderRadius: 1 }}>
+                    {/* Mobile: grid 2x2; Desktop: fila horizontal */}
+                    <Box sx={{ 
+                      display: 'grid', 
+                      gridTemplateColumns: { xs: '1fr 1fr', sm: 'auto auto auto auto 1fr' },
+                      gap: { xs: 1.5, md: 2 },
+                      alignItems: 'center'
+                    }}>
+                      <Box>
+                        <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.6rem', sm: '0.75rem' } }}>Presupuesto General</Typography>
+                        <Stack direction="row" alignItems="center" spacing={0.5} flexWrap="wrap" useFlexGap>
+                          {presupuestoGeneral > 0 ? (
+                            <>
+                              <Typography variant="h6" sx={{ fontSize: { xs: '0.95rem', md: '1.25rem' } }}>{formatMonto(presupuestoGeneral, moneda)}</Typography>
+                              <Button 
+                                size="small"
+                                sx={{ minWidth: 'auto', px: 0.5, fontSize: '0.7rem' }}
+                                onClick={() => {
+                                  const generalItem = obtenerTodosLosItemsEgresos().find(i => !i.categoria && !i.etapa && !i.proveedor);
+                                  if (generalItem) abrirDrawerEditar(generalItem, 'General');
+                                }}
+                              >
+                                Editar
+                              </Button>
+                              {calcularSumas.generalHistorial?.length > 0 && (
+                                <Chip 
+                                  label={`${calcularSumas.generalHistorial.length}`} 
                                   size="small" 
+                                  color="info" 
+                                  variant="outlined"
                                   onClick={() => {
                                     const generalItem = obtenerTodosLosItemsEgresos().find(i => !i.categoria && !i.etapa && !i.proveedor);
                                     if (generalItem) abrirDrawerEditar(generalItem, 'General');
                                   }}
-                                >
-                                  Editar
-                                </Button>
-                                {calcularSumas.generalHistorial?.length > 0 && (
-                                  <Chip 
-                                    label={`${calcularSumas.generalHistorial.length} cambios`} 
-                                    size="small" 
-                                    color="info" 
-                                    variant="outlined"
-                                    onClick={() => {
-                                      const generalItem = obtenerTodosLosItemsEgresos().find(i => !i.categoria && !i.etapa && !i.proveedor);
-                                      if (generalItem) abrirDrawerEditar(generalItem, 'General');
-                                    }}
-                                    sx={{ cursor: 'pointer' }}
-                                  />
-                                )}
-                              </>
-                            ) : (
-                              <Button size="small" variant="outlined" onClick={() => setPresupuestoGeneralModal(true)}>
-                                Definir presupuesto
-                              </Button>
-                            )}
-                          </Stack>
-                        </Box>
-                        <Divider orientation="vertical" flexItem />
-                        <Box>
-                          <Typography variant="caption" color="text.secondary">
-                            Asignado por {tabActivo === 0 ? 'Categoría' : tabActivo === 1 ? 'Etapa' : 'Proveedor'}
-                          </Typography>
-                          <Typography variant="h6" color={
-                            (tabActivo === 0 ? calcularSumas.porCategoria : tabActivo === 1 ? calcularSumas.porEtapa : calcularSumas.porProveedor) > presupuestoGeneral 
-                              ? 'error.main' 
-                              : 'text.primary'
-                          }>
-                            {formatMonto(tabActivo === 0 ? calcularSumas.porCategoria : tabActivo === 1 ? calcularSumas.porEtapa : calcularSumas.porProveedor)}
-                          </Typography>
-                        </Box>
-                        <Divider orientation="vertical" flexItem />
-                        <Box>
-                          <Typography variant="caption" color="text.secondary">Sin asignar</Typography>
-                          <Typography variant="h6" color={
-                            presupuestoGeneral - (tabActivo === 0 ? calcularSumas.porCategoria : tabActivo === 1 ? calcularSumas.porEtapa : calcularSumas.porProveedor) < 0 
-                              ? 'error.main' 
-                              : 'success.main'
-                          }>
-                            {formatMonto(presupuestoGeneral - (tabActivo === 0 ? calcularSumas.porCategoria : tabActivo === 1 ? calcularSumas.porEtapa : calcularSumas.porProveedor))}
-                          </Typography>
-                        </Box>
-                      </Stack>
+                                  sx={{ cursor: 'pointer', height: 20, '& .MuiChip-label': { px: 0.5, fontSize: '0.65rem' } }}
+                                />
+                              )}
+                            </>
+                          ) : (
+                            <Button size="small" variant="outlined" onClick={() => setPresupuestoGeneralModal(true)} sx={{ fontSize: { xs: '0.7rem', md: '0.8rem' } }}>
+                              Definir
+                            </Button>
+                          )}
+                        </Stack>
+                      </Box>
+                      <Box>
+                        <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.6rem', sm: '0.75rem' } }}>
+                          Asignado
+                        </Typography>
+                        <Typography variant="h6" sx={{ fontSize: { xs: '0.95rem', md: '1.25rem' } }} color={
+                          (tabActivo === 0 ? calcularSumas.porCategoria : tabActivo === 1 ? calcularSumas.porEtapa : calcularSumas.porProveedor) > presupuestoGeneral 
+                            ? 'error.main' 
+                            : 'text.primary'
+                        }>
+                          {formatMonto(tabActivo === 0 ? calcularSumas.porCategoria : tabActivo === 1 ? calcularSumas.porEtapa : calcularSumas.porProveedor, moneda)}
+                        </Typography>
+                      </Box>
+                      <Box>
+                        <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.6rem', sm: '0.75rem' } }}>Sin asignar</Typography>
+                        <Typography variant="h6" sx={{ fontSize: { xs: '0.95rem', md: '1.25rem' } }} color={
+                          presupuestoGeneral - (tabActivo === 0 ? calcularSumas.porCategoria : tabActivo === 1 ? calcularSumas.porEtapa : calcularSumas.porProveedor) < 0 
+                            ? 'error.main' 
+                            : 'success.main'
+                        }>
+                          {formatMonto(presupuestoGeneral - (tabActivo === 0 ? calcularSumas.porCategoria : tabActivo === 1 ? calcularSumas.porEtapa : calcularSumas.porProveedor), moneda)}
+                        </Typography>
+                      </Box>
                       {presupuestoGeneral > 0 && (
                         <Chip 
-                          label={`${(((tabActivo === 0 ? calcularSumas.porCategoria : tabActivo === 1 ? calcularSumas.porEtapa : calcularSumas.porProveedor) / presupuestoGeneral) * 100).toFixed(0)}% asignado`}
+                          label={`${(((tabActivo === 0 ? calcularSumas.porCategoria : tabActivo === 1 ? calcularSumas.porEtapa : calcularSumas.porProveedor) / presupuestoGeneral) * 100).toFixed(0)}%`}
                           color={(tabActivo === 0 ? calcularSumas.porCategoria : tabActivo === 1 ? calcularSumas.porEtapa : calcularSumas.porProveedor) > presupuestoGeneral ? 'error' : 'primary'}
+                          size="small"
                         />
                       )}
-                    </Stack>
+                    </Box>
                   </Box>
                   
                   <Box sx={{ mt: 3 }}>
@@ -1137,10 +1396,12 @@ const ControlProyectoPage = () => {
                                 moneda={data.moneda}
                                 indexacion={data.indexacion}
                                 baseCalculo={data.base_calculo}
+                                cotizacionSnapshot={data.cotizacion_snapshot}
+                                montoIngresado={data.monto_ingresado}
+                                cacIndiceActual={cacIndiceActual}
+                                tipoCambioActual={tipoCambio}
                                 onCrear={() => abrirDrawerCrear('categoria', catName)}
-                                onAdicional={data.id ? () => abrirDrawerEditar(data, catName) : null}
-                                onEditar={data.id ? () => abrirDrawerEditar(data, catName) : null}
-                                onVerHistorial={data.id && data.historial?.length > 0 ? () => abrirDrawerEditar(data, catName) : null}
+                                onClick={data.id ? () => abrirDrawerEditar(data, catName) : undefined}
                               />
                             );
                           })
@@ -1174,10 +1435,12 @@ const ControlProyectoPage = () => {
                                 moneda={data.moneda}
                                 indexacion={data.indexacion}
                                 baseCalculo={data.base_calculo}
+                                cotizacionSnapshot={data.cotizacion_snapshot}
+                                montoIngresado={data.monto_ingresado}
+                                cacIndiceActual={cacIndiceActual}
+                                tipoCambioActual={tipoCambio}
                                 onCrear={() => abrirDrawerCrear('etapa', etapaName)}
-                                onAdicional={data.id ? () => abrirDrawerEditar(data, etapaName) : null}
-                                onEditar={data.id ? () => abrirDrawerEditar(data, etapaName) : null}
-                                onVerHistorial={data.id && data.historial?.length > 0 ? () => abrirDrawerEditar(data, etapaName) : null}
+                                onClick={data.id ? () => abrirDrawerEditar(data, etapaName) : undefined}
                               />
                             );
                           })
@@ -1229,10 +1492,12 @@ const ControlProyectoPage = () => {
                                 moneda={data.moneda}
                                 indexacion={data.indexacion}
                                 baseCalculo={data.base_calculo}
+                                cotizacionSnapshot={data.cotizacion_snapshot}
+                                montoIngresado={data.monto_ingresado}
+                                cacIndiceActual={cacIndiceActual}
+                                tipoCambioActual={tipoCambio}
                                 onCrear={() => abrirDrawerCrear('proveedor', proveedor)}
-                                onAdicional={data.id ? () => abrirDrawerEditar(data, proveedor) : null}
-                                onEditar={data.id ? () => abrirDrawerEditar(data, proveedor) : null}
-                                onVerHistorial={data.id && data.historial?.length > 0 ? () => abrirDrawerEditar(data, proveedor) : null}
+                                onClick={data.id ? () => abrirDrawerEditar(data, proveedor) : undefined}
                               />
                             );
                           })
@@ -1262,6 +1527,7 @@ const ControlProyectoPage = () => {
         tipoDefault={drawerPresupuesto.tipoDefault}
         proveedoresEmpresa={proveedoresEmpresa}
         presupuesto={drawerPresupuesto.presupuesto}
+        drawerView={drawerPresupuesto.drawerView || 'full'}
         onRecalcular={async (id) => {
           try {
             const { success } = await presupuestoService.recalcularPresupuesto(id, empresaId);
@@ -1288,9 +1554,13 @@ const ControlProyectoPage = () => {
             <Autocomplete
               freeSolo
               options={proveedoresEmpresa.filter(p => p && !proveedoresAgregados.includes(p))}
-              value={nuevoProveedor || ''}
+              inputValue={nuevoProveedor || ''}
+              onInputChange={(e, newInputValue, reason) => {
+                if (reason === 'input' || reason === 'clear') {
+                  setNuevoProveedor(newInputValue || '');
+                }
+              }}
               onChange={(e, newValue) => setNuevoProveedor(newValue || '')}
-              onInputChange={(e, newInputValue) => setNuevoProveedor(newInputValue || '')}
               getOptionLabel={(option) => option || ''}
               renderInput={(params) => (
                 <TextField
@@ -1335,11 +1605,14 @@ const ControlProyectoPage = () => {
             <Stack direction="row" spacing={2} alignItems="center">
               <TextField
                 label="Monto del Presupuesto General"
-                type="number"
                 fullWidth
-                value={nuevoPresupuestoGeneral}
-                onChange={(e) => setNuevoPresupuestoGeneral(e.target.value)}
+                value={nuevoPresupuestoGeneral ? Number(nuevoPresupuestoGeneral).toLocaleString('es-AR') : ''}
+                onChange={(e) => {
+                  const raw = e.target.value.replace(/\./g, '').replace(/,/g, '').replace(/[^0-9]/g, '');
+                  setNuevoPresupuestoGeneral(raw);
+                }}
                 autoFocus
+                inputProps={{ inputMode: 'numeric' }}
               />
               <ToggleButtonGroup
                 value={monedaPresupuestoGeneral}
@@ -1383,21 +1656,21 @@ const ControlProyectoPage = () => {
             </Alert>
             <Stack direction="row" justifyContent="space-between">
               <Typography color="text.secondary">Presupuesto general actual:</Typography>
-              <Typography fontWeight={600}>{formatMonto(presupuestoGeneral)}</Typography>
+              <Typography fontWeight={600}>{formatMonto(presupuestoGeneral, moneda)}</Typography>
             </Stack>
             <Stack direction="row" justifyContent="space-between">
               <Typography color="text.secondary">Suma por {ajusteGeneralModal.origen}:</Typography>
-              <Typography fontWeight={600} color="error">{formatMonto(ajusteGeneralModal.sumaHijos)}</Typography>
+              <Typography fontWeight={600} color="error">{formatMonto(ajusteGeneralModal.sumaHijos, moneda)}</Typography>
             </Stack>
             <Stack direction="row" justifyContent="space-between">
               <Typography color="text.secondary">Exceso:</Typography>
               <Typography fontWeight={600} color="error">
-                +{formatMonto(ajusteGeneralModal.sumaHijos - presupuestoGeneral)}
+                +{formatMonto(ajusteGeneralModal.sumaHijos - presupuestoGeneral, moneda)}
               </Typography>
             </Stack>
             <Divider />
             <Typography variant="body2">
-              ¿Desea ajustar el presupuesto general a {formatMonto(ajusteGeneralModal.sumaHijos)}?
+              ¿Desea ajustar el presupuesto general a {formatMonto(ajusteGeneralModal.sumaHijos, moneda)}?
             </Typography>
           </Stack>
         </DialogContent>
@@ -1406,7 +1679,7 @@ const ControlProyectoPage = () => {
             No, mantener actual
           </Button>
           <Button variant="contained" color="warning" onClick={handleAjustarGeneral}>
-            Sí, ajustar a {formatMonto(ajusteGeneralModal.sumaHijos)}
+            Sí, ajustar a {formatMonto(ajusteGeneralModal.sumaHijos, moneda)}
           </Button>
         </DialogActions>
       </Dialog>
@@ -1419,12 +1692,24 @@ const ControlProyectoPage = () => {
       >
         <Alert severity={alert.severity}>{alert.message}</Alert>
       </Snackbar>
+
+      {/* Dialog confirmar eliminación */}
+      <Dialog open={deleteConfirm.open} onClose={() => setDeleteConfirm({ open: false, id: null, label: '' })}>
+        <DialogTitle>Eliminar presupuesto</DialogTitle>
+        <DialogContent>
+          <Typography>¿Estás seguro de que querés eliminar el presupuesto <strong>{deleteConfirm.label}</strong>? Esta acción no se puede deshacer.</Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteConfirm({ open: false, id: null, label: '' })}>Cancelar</Button>
+          <Button color="error" variant="contained" onClick={handleEliminarPresupuesto}>Eliminar</Button>
+        </DialogActions>
+      </Dialog>
     </>
   );
 };
 
-ControlProyectoPage.getLayout = (page) => (
+ControlPresupuestosPage.getLayout = (page) => (
   <DashboardLayout>{page}</DashboardLayout>
 );
 
-export default ControlProyectoPage;
+export default ControlPresupuestosPage;

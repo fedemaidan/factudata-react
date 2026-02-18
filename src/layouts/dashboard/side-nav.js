@@ -557,8 +557,8 @@ export const SideNav = (props) => {
         });
 
         baseItems.push({
-          title: "Presupuestos",
-          path: "/presupuestos",
+          title: "Control Presupuestos",
+          path: "/control-presupuestos",
           icon: (
             <SvgIcon fontSize="small">
               <NoteAltIcon />
