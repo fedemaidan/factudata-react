@@ -112,6 +112,10 @@ const filterConversations = (conversations = [], filters = {}) => {
       return false;
     }
     if (!matchesDateRange(conversation, filters)) return false;
+    if (filters.showInsight) {
+      const count = Number(conversation?.insightCount ?? 0);
+      if (count <= 0) return false;
+    }
     return true;
   });
 };
@@ -187,6 +191,28 @@ export const updateCachedMessageById = async (messageId, updates = {}) => {
   if (!merged) return null;
   await db.messages.put(merged);
   return merged;
+};
+
+export const patchInsightIdsInCache = async (conversationId, messageIds = []) => {
+  if (!conversationId || !messageIds?.length) return;
+  const existingMessages = await db.messages.bulkGet(messageIds);
+  const updates = [];
+
+  for (const msg of existingMessages) {
+    if (!msg || msg.conversationId !== String(conversationId)) {
+      continue;
+    }
+    if (msg.insightId) {
+      continue;
+    }
+    updates.push({
+      ...buildMessageRecord(msg),
+      insightId: msg._id || msg.id,
+    });
+  }
+
+  if (!updates.length) return;
+  await db.messages.bulkPut(updates);
 };
 
 const GLOBAL_SYNC_KEY = "__GLOBAL_SYNC__";

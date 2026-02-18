@@ -319,7 +319,13 @@ export function ConversationsProvider({ children }) {
     }
   }, [router.isReady, router.query.conversationId, conversations, selected]);
 
-  const { loadMore: loadMoreMessages, sendNewMessage, loadMessageById, refreshCurrentConversation } = useMessagesFetch({
+  const {
+    loadMore: loadMoreMessages,
+    sendNewMessage,
+    loadMessageById,
+    refreshCurrentConversation,
+    refreshMessagesFromCache,
+  } = useMessagesFetch({
     selected,
     skipDefaultLoadRef,
     onMessagesLoaded: handleMessagesLoaded,
@@ -341,6 +347,7 @@ export function ConversationsProvider({ children }) {
     selected,
     filters,
     onInsightIdsLoaded: handleInsightMessageIdsLoaded,
+    onRefreshMessagesFromCache: refreshMessagesFromCache,
   });
 
   useEffect(() => {

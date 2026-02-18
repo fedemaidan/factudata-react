@@ -64,4 +64,36 @@ El DB `factudata-conversaciones` usa estas tablas:
    - El controlador llama a `enviarMensajeService`, guarda el resultado con `saveOutgoingMessage` y devuelve el mensaje persistido (`_id`, `id_conversacion`, `createdAt`, `updatedAt`, `message`, `fromMe`, etc.).
    - El cliente cachea ese mensaje en IndexedDB, actualiza el estado local y dispara inmediatamente el mismo proceso de sincronización global (`/conversaciones/sync` con `sinceUpdatedAt` calculado como si hubieran pasado 30 segundos). Así el historial activo y el sidebar se refrescan antes de que el intervalo automático ocurra.
 
+
+## Insights y cache
+
+Cuando `showInsight` está activo, la ventana debe mostrar los mensajes que tienen insights, incluso si un script nocturno los marcó después de que se guardaron en IndexedDB.
+
+### Flujo normal (insights en tiempo real)
+
+- El insight se genera junto con el mensaje; el backend actualiza `updatedAt` y `insightId`.
+- El sync global de `/conversaciones/sync` trae ese mensaje con `insightId` y `cacheMessages` lo persiste correctamente.
+- `patchInsightIdsInCache` no escribe nada porque el mensaje ya lo tenía.
+
+### Flujo excepcional (script nocturno)
+
+- El cron nocturno añade `insightId` a mensajes que ya estaban cacheados, y puede no reescribir `createdAt`, por lo que `cacheMessages` no los vuelve a persisting.
+- Al abrir la conversación con `showInsight`, `getInsightMessageIds` devuelve todos los IDs nuevos.
+  - `patchInsightIdsInCache(conversationId, ids)` actualiza solo los mensajes existentes en la cache que todavía no tenían `insightId`.
+  - `refreshMessagesFromCache()` vuelve a leer la ventana y la UI muestra los insights sin tener que limpiar la cache completa.
+- Este patch es idempotente: solo escribe registros que ya existen y carecen del flag. No altera el flujo normal.
+
+### Tips rápidos
+
+- `patchInsightIdsInCache` se exporta desde Dexie y se ejecuta cada vez que se reciben IDs nuevos.
+- Solo actualiza mensajes que ya existen en cache y no tienen `insightId`, así que el flujo normal no se ve afectado.
+
+### Filtros de insights y lista de conversaciones
+
+La lista del sidebar usa un flujo híbrido según los filtros activos:
+
+- **Con filtros de insights activos** (`showInsight`, `insightCategory`, `insightTypes`): se llama a `fetchConversations` en el backend. El backend devuelve conversaciones con `insightCount`. Se filtran las que tienen `insightCount > 0`, se cachean y se muestran. El badge de insights en el sidebar usa ese `insightCount`.
+- **Sin filtros de insights**: se usa solo `getCachedConversations` (IndexedDB). `filterConversations` aplica el resto de filtros (estado, empresa, fechas, etc.).
+- Cuando se cachean conversaciones del backend con insights, `insightCount` se conserva en IndexedDB. Si luego se lee desde cache con `showInsight` activo, `filterConversations` excluye las que tienen `insightCount <= 0`.
+
 Este README complementa el código real: la UI solo necesita un loading global inicial, los hooks reutilizan helpers de Dexie y la sincronización periódica se basa en filtros de `updatedAt` para mantener la implementación DRY/SOLID. Si necesitas diagramas o ejemplos adicionales, decímelo y los agrego.

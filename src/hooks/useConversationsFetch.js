@@ -1,5 +1,13 @@
 import { useCallback, useEffect } from "react";
-import { getCachedConversations } from "src/db/indexed-db";
+import { getCachedConversations, cacheConversations } from "src/db/indexed-db";
+import { fetchConversations } from "src/services/conversacionService";
+
+const hasInsightFilters = (filters) =>
+  Boolean(
+    filters?.showInsight ||
+      (filters?.insightCategory && filters.insightCategory !== "todos") ||
+      (filters?.insightTypes?.length > 0)
+  );
 
 export function useConversationsFetch({
   filters,
@@ -10,10 +18,22 @@ export function useConversationsFetch({
     async (currentFilters) => {
       onLoadingUpdated?.(true);
       try {
-        const conversations = await getCachedConversations({ filters: currentFilters, limit: 200 });
-        onConversationsLoaded?.(conversations);
+        if (hasInsightFilters(currentFilters)) {
+          const insightFilters = { ...currentFilters, showInsight: true };
+          const data = await fetchConversations(insightFilters);
+          const items = Array.isArray(data) ? data : data?.items ?? [];
+          const filtered = items.filter((c) => Number(c?.insightCount ?? 0) > 0);
+          await cacheConversations(filtered).catch(() => {});
+          onConversationsLoaded?.(filtered);
+        } else {
+          const conversations = await getCachedConversations({
+            filters: currentFilters,
+            limit: 200,
+          });
+          onConversationsLoaded?.(conversations);
+        }
       } catch (error) {
-        console.error("Error cargando conversaciones desde cache:", error);
+        console.error("Error cargando conversaciones:", error);
       } finally {
         onLoadingUpdated?.(false);
       }

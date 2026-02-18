@@ -327,11 +327,30 @@ export function useMessagesFetch({
     }
   }, [selected, onMessagesLoaded, onOffsetUpdated, onHasMoreUpdated, onScrollToBottom]);
 
+  const refreshMessagesFromCache = useCallback(async () => {
+    if (!selected) return;
+    const conversationId = selected.ultimoMensaje?.id_conversacion;
+    if (!conversationId) return;
+
+    try {
+      const refreshedMessages = await getCachedMessagesForConversation(conversationId, {
+        limit: PAGE * 4,
+      });
+      onMessagesLoaded?.(refreshedMessages);
+      onOffsetUpdated?.(refreshedMessages.length);
+      onHasMoreUpdated?.(false);
+      onScrollToBottom?.(true);
+    } catch (error) {
+      console.error("Error al recargar mensajes desde cache:", error);
+    }
+  }, [selected, onMessagesLoaded, onOffsetUpdated, onHasMoreUpdated, onScrollToBottom]);
+
   return {
     loadMore,
     sendNewMessage,
     loadMessageById,
     refreshCurrentConversation,
+    refreshMessagesFromCache,
   };
 }
 
