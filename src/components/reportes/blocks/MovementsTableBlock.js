@@ -13,6 +13,8 @@ const COLUMN_LABELS = {
   proyecto_nombre: 'Proyecto',
   monto_display: 'Monto',
   subtotal_display: 'Subtotal',
+  ingreso_display: 'Ingreso',
+  egreso_display: 'Egreso',
   moneda: 'Moneda',
   medioPago: 'Medio de pago',
   notas: 'Notas',
@@ -24,10 +26,15 @@ const COLUMN_LABELS = {
 /** Resuelve label de columna, incluyendo columnas multi-moneda dinámicas */
 const getColumnLabel = (col) => {
   if (COLUMN_LABELS[col]) return COLUMN_LABELS[col];
-  const match = col.match(/^(monto_display|subtotal_display)__(.+)$/);
+  const match = col.match(/^(monto_display|subtotal_display|ingreso_display|egreso_display)__(.+)$/);
   if (match) {
-    const base = match[1] === 'monto_display' ? 'Monto' : 'Subtotal';
-    return `${base} (${match[2]})`;
+    const baseMap = {
+      monto_display: 'Monto',
+      subtotal_display: 'Subtotal',
+      ingreso_display: 'Ingreso',
+      egreso_display: 'Egreso',
+    };
+    return `${baseMap[match[1]] || match[1]} (${match[2]})`;
   }
   return col;
 };
@@ -53,10 +60,12 @@ const MovementsTableBlock = ({ data, displayCurrency }) => {
   );
 
   const renderCell = (row, col) => {
-    // Columnas multi-moneda dinámicas (monto_display__ARS, etc.)
-    if (col.startsWith('monto_display__') || col.startsWith('subtotal_display__')) {
-      const currency = col.split('__')[1];
-      return formatValue(row[col], 'currency', currency);
+    // Columnas multi-moneda dinámicas (monto_display__ARS, ingreso_display__USD, etc.)
+    if (col.match(/^(monto_display|subtotal_display|ingreso_display|egreso_display)__/)) {
+      const [base, currency] = col.split('__');
+      const val = row[col];
+      if (val == null) return '';
+      return formatValue(val, 'currency', currency);
     }
 
     switch (col) {
@@ -75,6 +84,10 @@ const MovementsTableBlock = ({ data, displayCurrency }) => {
         return formatValue(row.monto_display, 'currency', displayCurrency);
       case 'subtotal_display':
         return formatValue(row.subtotal_display, 'currency', displayCurrency);
+      case 'ingreso_display':
+        return row.ingreso_display != null ? formatValue(row.ingreso_display, 'currency', displayCurrency) : '';
+      case 'egreso_display':
+        return row.egreso_display != null ? formatValue(row.egreso_display, 'currency', displayCurrency) : '';
       case 'moneda':
         return row.moneda || 'ARS';
       case 'proveedor_nombre':

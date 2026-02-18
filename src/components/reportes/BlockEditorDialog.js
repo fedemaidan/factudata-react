@@ -15,6 +15,7 @@ const BLOCK_TYPES = [
   { value: 'movements_table', label: 'Tabla de Movimientos', desc: 'Lista individual de movimientos con paginación.' },
   { value: 'budget_vs_actual', label: 'Presupuesto vs Real', desc: 'Compara presupuesto de control vs gastos reales por categoría.' },
   { value: 'chart', label: 'Gráfico', desc: 'Muestra datos agrupados en gráficos de barras, torta, línea o área.' },
+  { value: 'grouped_detail', label: 'Detalle por Grupo', desc: 'Muestra chips o mini-cards de grupos con tabla de movimientos filtrada al seleccionar.' },
 ];
 
 const OPERACIONES = [
@@ -69,6 +70,8 @@ const COLUMNAS_VISIBLES_OPTIONS = [
   { value: 'proyecto_nombre', label: 'Proyecto' },
   { value: 'monto_display', label: 'Monto' },
   { value: 'subtotal_display', label: 'Subtotal' },
+  { value: 'ingreso_display', label: 'Ingreso' },
+  { value: 'egreso_display', label: 'Egreso' },
   { value: 'moneda', label: 'Moneda' },
   { value: 'medioPago', label: 'Medio de Pago' },
   { value: 'notas', label: 'Notas' },
@@ -142,6 +145,16 @@ function defaultBlock(type) {
         columnas: [{ id: 'total', titulo: 'Total', operacion: 'sum', campo: 'total', formato: 'currency' }],
         filtro_tipo: null,
         top_n: 10,
+        excluir: {},
+      };
+    case 'grouped_detail':
+      return {
+        ...base,
+        agrupar_por: 'etapa',
+        chips_style: 'metric',
+        columnas_visibles: ['fecha_factura', 'categoria', 'proveedor_nombre', 'egreso_display', 'ingreso_display', 'moneda', 'notas'],
+        page_size: 25,
+        filtro_tipo: null,
         excluir: {},
       };
     default:
@@ -281,6 +294,9 @@ const BlockEditorDialog = ({ open, onClose, onSave, initialBlock }) => {
           )}
           {block.type === 'chart' && (
             <ChartConfig block={block} onChange={updateBlock} />
+          )}
+          {block.type === 'grouped_detail' && (
+            <GroupedDetailConfig block={block} onChange={updateBlock} />
           )}
         </Stack>
       </DialogContent>
@@ -889,6 +905,130 @@ function ChartConfig({ block, onChange }) {
           ))
         }
         renderInput={(params) => <TextField {...params} label="Excluir proveedores" placeholder="Escribí y presioná Enter" />}
+      />
+    </Stack>
+  );
+}
+
+function GroupedDetailConfig({ block, onChange }) {
+  const selected = block.columnas_visibles || [];
+
+  return (
+    <Stack spacing={2}>
+      <FormControl size="small" fullWidth>
+        <InputLabel>Agrupar por</InputLabel>
+        <Select
+          value={block.agrupar_por || 'etapa'}
+          label="Agrupar por"
+          onChange={(e) => onChange('agrupar_por', e.target.value)}
+        >
+          {AGRUPAR_POR.map((a) => (
+            <MenuItem key={a.value} value={a.value}>{a.label}</MenuItem>
+          ))}
+        </Select>
+      </FormControl>
+
+      <FormControl size="small" fullWidth>
+        <InputLabel>Estilo de selectores</InputLabel>
+        <Select
+          value={block.chips_style || 'metric'}
+          label="Estilo de selectores"
+          onChange={(e) => onChange('chips_style', e.target.value)}
+        >
+          <MenuItem value="chip">Chips simples</MenuItem>
+          <MenuItem value="metric">Mini-cards con totales</MenuItem>
+        </Select>
+      </FormControl>
+
+      <Typography variant="subtitle2" fontWeight={600}>Columnas de la tabla</Typography>
+      <Autocomplete
+        multiple
+        size="small"
+        options={COLUMNAS_VISIBLES_OPTIONS}
+        getOptionLabel={(o) => o.label}
+        value={COLUMNAS_VISIBLES_OPTIONS.filter((o) => selected.includes(o.value))}
+        onChange={(_, val) => onChange('columnas_visibles', val.map((v) => v.value))}
+        renderTags={(value, getTagProps) =>
+          value.map((option, index) => (
+            <Chip key={option.value} label={option.label} size="small" {...getTagProps({ index })} />
+          ))
+        }
+        renderInput={(params) => <TextField {...params} label="Seleccioná columnas" />}
+        disableCloseOnSelect
+      />
+
+      <TextField
+        label="Movimientos por página"
+        type="number"
+        value={block.page_size || 25}
+        onChange={(e) => onChange('page_size', parseInt(e.target.value) || 25)}
+        size="small"
+        fullWidth
+        inputProps={{ min: 5, max: 100 }}
+      />
+
+      <Divider />
+
+      {/* Excluir items */}
+      <Typography variant="subtitle2" fontWeight={600}>Ocultar items</Typography>
+      <Alert severity="info" variant="outlined" sx={{ py: 0.5 }}>
+        Excluí valores específicos del agrupamiento. Se filtran del selector de chips y de la tabla.
+      </Alert>
+      <Autocomplete
+        multiple
+        freeSolo
+        size="small"
+        options={[]}
+        value={block.excluir?.categorias || []}
+        onChange={(_, val) => onChange('excluir', { ...(block.excluir || {}), categorias: val })}
+        renderTags={(value, getTagProps) =>
+          value.map((option, index) => (
+            <Chip key={option} label={option} size="small" color="error" variant="outlined" {...getTagProps({ index })} />
+          ))
+        }
+        renderInput={(params) => <TextField {...params} label="Excluir categorías" placeholder="Escribí y presioná Enter" />}
+      />
+      <Autocomplete
+        multiple
+        freeSolo
+        size="small"
+        options={[]}
+        value={block.excluir?.proveedores || []}
+        onChange={(_, val) => onChange('excluir', { ...(block.excluir || {}), proveedores: val })}
+        renderTags={(value, getTagProps) =>
+          value.map((option, index) => (
+            <Chip key={option} label={option} size="small" color="error" variant="outlined" {...getTagProps({ index })} />
+          ))
+        }
+        renderInput={(params) => <TextField {...params} label="Excluir proveedores" placeholder="Escribí y presioná Enter" />}
+      />
+      <Autocomplete
+        multiple
+        freeSolo
+        size="small"
+        options={[]}
+        value={block.excluir?.etapas || []}
+        onChange={(_, val) => onChange('excluir', { ...(block.excluir || {}), etapas: val })}
+        renderTags={(value, getTagProps) =>
+          value.map((option, index) => (
+            <Chip key={option} label={option} size="small" color="error" variant="outlined" {...getTagProps({ index })} />
+          ))
+        }
+        renderInput={(params) => <TextField {...params} label="Excluir etapas" placeholder="Escribí y presioná Enter" />}
+      />
+      <Autocomplete
+        multiple
+        freeSolo
+        size="small"
+        options={[]}
+        value={block.excluir?.usuarios || []}
+        onChange={(_, val) => onChange('excluir', { ...(block.excluir || {}), usuarios: val })}
+        renderTags={(value, getTagProps) =>
+          value.map((option, index) => (
+            <Chip key={option} label={option} size="small" color="error" variant="outlined" {...getTagProps({ index })} />
+          ))
+        }
+        renderInput={(params) => <TextField {...params} label="Excluir usuarios" placeholder="Escribí y presioná Enter" />}
       />
     </Stack>
   );

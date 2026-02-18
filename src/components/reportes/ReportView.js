@@ -5,6 +5,7 @@ import SummaryTableBlock from './blocks/SummaryTableBlock';
 import MovementsTableBlock from './blocks/MovementsTableBlock';
 import BudgetVsActualBlock from './blocks/BudgetVsActualBlock';
 import ChartBlock from './blocks/ChartBlock';
+import GroupedDetailBlock from './blocks/GroupedDetailBlock';
 import DrillDownDialog from './DrillDownDialog';
 import { executeReport } from 'src/tools/reportEngine';
 
@@ -14,6 +15,7 @@ const BLOCK_COMPONENTS = {
   movements_table: MovementsTableBlock,
   budget_vs_actual: BudgetVsActualBlock,
   chart: ChartBlock,
+  grouped_detail: GroupedDetailBlock,
 };
 
 /**

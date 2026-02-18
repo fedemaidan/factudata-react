@@ -440,13 +440,12 @@ export function processMovementsTable(block, movimientos, _presupuestos, currenc
 
   // Si multi-moneda, expandir columna monto_display a una por moneda
   if (isMulti) {
-    const idx = columnasVisibles.indexOf('monto_display');
-    if (idx !== -1) {
-      columnasVisibles.splice(idx, 1, ...currencies.map((c) => `monto_display__${c}`));
-    }
-    const idx2 = columnasVisibles.indexOf('subtotal_display');
-    if (idx2 !== -1) {
-      columnasVisibles.splice(idx2, 1, ...currencies.map((c) => `subtotal_display__${c}`));
+    const expandableKeys = ['monto_display', 'subtotal_display', 'ingreso_display', 'egreso_display'];
+    for (const ek of expandableKeys) {
+      const idx = columnasVisibles.indexOf(ek);
+      if (idx !== -1) {
+        columnasVisibles.splice(idx, 1, ...currencies.map((c) => `${ek}__${c}`));
+      }
     }
   }
 
@@ -456,12 +455,16 @@ export function processMovementsTable(block, movimientos, _presupuestos, currenc
       ...m,
       monto_display: getAmount(m, primaryCurrency, 'total'),
       subtotal_display: getAmount(m, primaryCurrency, 'subtotal'),
+      ingreso_display: m.type === 'ingreso' ? getAmount(m, primaryCurrency, 'total') : null,
+      egreso_display: m.type === 'egreso' ? getAmount(m, primaryCurrency, 'total') : null,
       _fecha: toDate(m),
     };
     if (isMulti) {
       for (const cur of currencies) {
         row[`monto_display__${cur}`] = getAmount(m, cur, 'total');
         row[`subtotal_display__${cur}`] = getAmount(m, cur, 'subtotal');
+        row[`ingreso_display__${cur}`] = m.type === 'ingreso' ? getAmount(m, cur, 'total') : null;
+        row[`egreso_display__${cur}`] = m.type === 'egreso' ? getAmount(m, cur, 'total') : null;
       }
     }
     return row;
@@ -655,6 +658,65 @@ function getPresupuestoAmount(pres, displayCurrency, cotizaciones) {
 // ─── Procesador principal ───
 
 /**
+ * Procesa un bloque grouped_detail — agrupa movimientos y prepara datos para
+ * chips/mini-cards de selección + tabla filtrada por grupo.
+ * @returns {{ groups, columnas, pageSize, currencies, chipsStyle }}
+ */
+export function processGroupedDetail(block, movimientos, _presupuestos, currencies) {
+  const data = applyBlockFilters(movimientos, block);
+  const primaryCurrency = currencies[0];
+  const isMulti = currencies.length > 1;
+  const agruparPor = block.agrupar_por || 'etapa';
+
+  // Agrupar
+  const grouped = groupBy(data, agruparPor);
+
+  // Construir info de cada grupo con totales
+  const groups = [];
+  for (const [key, items] of grouped) {
+    const total = items.reduce((acc, m) => acc + getAmount(m, primaryCurrency, 'total'), 0);
+    groups.push({
+      key,
+      label: key,
+      count: items.length,
+      total,
+      movimientos: items,
+    });
+  }
+
+  // Ordenar por total absoluto desc
+  groups.sort((a, b) => Math.abs(b.total) - Math.abs(a.total));
+
+  // Columnas visibles
+  const defaultCols = [
+    'fecha_factura', 'categoria', 'proveedor_nombre',
+    'monto_display', 'moneda', 'notas',
+  ];
+  let columnasVisibles = block.columnas_visibles?.length > 0
+    ? [...block.columnas_visibles]
+    : [...defaultCols];
+
+  // Si multi-moneda, expandir columnas monetarias
+  if (isMulti) {
+    const expandableKeys = ['monto_display', 'subtotal_display', 'ingreso_display', 'egreso_display'];
+    for (const ek of expandableKeys) {
+      const idx = columnasVisibles.indexOf(ek);
+      if (idx !== -1) {
+        columnasVisibles.splice(idx, 1, ...currencies.map((c) => `${ek}__${c}`));
+      }
+    }
+  }
+
+  return {
+    groups,
+    columnas: columnasVisibles,
+    pageSize: block.page_size || 25,
+    currencies,
+    chipsStyle: block.chips_style || 'metric',
+  };
+}
+
+/**
  * Procesa un bloque chart — reutiliza processSummaryTable para obtener datos
  * y los formatea para renderizar en gráficos (bar, pie, line, doughnut)
  */
@@ -673,6 +735,7 @@ const BLOCK_PROCESSORS = {
   movements_table: processMovementsTable,
   budget_vs_actual: processBudgetVsActual,
   chart: processChart,
+  grouped_detail: processGroupedDetail,
 };
 
 /**

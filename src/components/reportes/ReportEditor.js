@@ -25,6 +25,7 @@ const BLOCK_TYPE_LABELS = {
   movements_table: 'Tabla de Movimientos',
   budget_vs_actual: 'Presupuesto vs Real',
   chart: 'Gráfico',
+  grouped_detail: 'Detalle por Grupo',
 };
 
 const FILTRO_FIELDS = [
@@ -232,6 +233,9 @@ const ReportEditor = ({
         break;
       case 'chart':
         detail = (block.chart_type || 'bar') + ' · Por ' + (block.agrupar_por || 'categoria');
+        break;
+      case 'grouped_detail':
+        detail = 'Por ' + (block.agrupar_por || 'etapa') + ' · ' + (block.chips_style === 'chip' ? 'Chips' : 'Mini-cards') + ' · ' + (block.columnas_visibles?.length || 7) + ' col';
         break;
       default:
         detail = '';
