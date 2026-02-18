@@ -224,14 +224,14 @@ const AnalyticsAcciones = () => {
     setLoading(true);
     setError(null);
     try {
-      const [accionesData, vencidasData, ownerData] = await Promise.all([
+      const [accionesResp, vencidasResp, ownerResp] = await Promise.all([
         leadershipService.getAccionesSemanaActual(),
         leadershipService.getAccionesVencidas(),
         leadershipService.getResumenPorOwner()
       ]);
-      setAcciones(accionesData || []);
-      setVencidas(vencidasData || []);
-      setResumenOwner(ownerData || []);
+      setAcciones(Array.isArray(accionesResp?.acciones) ? accionesResp.acciones : []);
+      setVencidas(Array.isArray(vencidasResp?.vencidas) ? vencidasResp.vencidas : []);
+      setResumenOwner(Array.isArray(ownerResp?.resumen) ? ownerResp.resumen : []);
     } catch (err) {
       console.error('Error cargando acciones:', err);
       setError('No se pudieron cargar las acciones.');

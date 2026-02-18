@@ -229,12 +229,12 @@ const AnalyticsCobranza = () => {
     setLoading(true);
     setError(null);
     try {
-      const [pagosData, resumenData] = await Promise.all([
+      const [pagosResp, resumenResp] = await Promise.all([
         leadershipService.getPagosPorPeriodo(mes, anio),
         leadershipService.getResumenCobranza(mes, anio)
       ]);
-      setPagos(pagosData || []);
-      setResumen(resumenData || {});
+      setPagos(Array.isArray(pagosResp?.pagos) ? pagosResp.pagos : []);
+      setResumen(resumenResp || {});
     } catch (err) {
       console.error('Error cargando cobranza:', err);
       setError('No se pudieron cargar los datos de cobranza.');

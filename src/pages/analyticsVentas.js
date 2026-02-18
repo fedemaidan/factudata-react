@@ -234,12 +234,16 @@ const AnalyticsVentas = () => {
     setLoading(true);
     setError(null);
     try {
-      const [funnel, porCanal, porSDR] = await Promise.all([
+      const [funnelResp, canalResp, sdrResp] = await Promise.all([
         leadershipService.getFunnel(fechaDesde, fechaHasta),
         leadershipService.getMetricasPorCanal(fechaDesde, fechaHasta),
         leadershipService.getMetricasPorSDR(fechaDesde, fechaHasta)
       ]);
-      setData({ funnel, porCanal, porSDR });
+      setData({
+        funnel: funnelResp?.funnel || {},
+        porCanal: Array.isArray(canalResp?.canales) ? canalResp.canales : [],
+        porSDR: Array.isArray(sdrResp?.sdrs) ? sdrResp.sdrs : []
+      });
     } catch (err) {
       console.error('Error cargando ventas:', err);
       setError('No se pudieron cargar los datos de ventas.');

@@ -227,12 +227,16 @@ const AnalyticsResumenEjecutivo = () => {
     setLoading(true);
     setError(null);
     try {
-      const [resumen, distribucionPlan, movimientos] = await Promise.all([
+      const [resumenResp, distribucionResp, movimientosResp] = await Promise.all([
         leadershipService.getResumenEjecutivo(),
         leadershipService.getDistribucionPorPlan(),
         leadershipService.getMovimientosPorMes(6)
       ]);
-      setData({ resumen, distribucionPlan, movimientos });
+      setData({
+        resumen: resumenResp || {},
+        distribucionPlan: Array.isArray(distribucionResp?.distribucion) ? distribucionResp.distribucion : [],
+        movimientos: Array.isArray(movimientosResp?.movimientos) ? movimientosResp.movimientos : []
+      });
     } catch (err) {
       console.error('Error cargando resumen ejecutivo:', err);
       setError('No se pudieron cargar los datos. Verificá que el backend esté corriendo.');
@@ -262,7 +266,9 @@ const AnalyticsResumenEjecutivo = () => {
   }
 
   const { resumen = {}, distribucionPlan = [], movimientos = [] } = data || {};
-  const { breakEven = {}, mesActual = {}, historico = {} } = resumen;
+  const breakEven = resumen.breakEven || {};
+  const mesActual = resumen.mesActual || {};
+  const historico = resumen.historico || {};
 
   const planItems = (distribucionPlan || []).map(d => ({ label: d._id || 'Sin plan', value: d.cantidad || 0 }));
 

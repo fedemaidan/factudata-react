@@ -27,7 +27,14 @@ import {
   useTheme,
   Alert,
   Tooltip,
-  Snackbar
+  Snackbar,
+  MenuItem,
+  Select,
+  FormControl,
+  InputLabel,
+  InputAdornment,
+  CircularProgress,
+  Skeleton
 } from '@mui/material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
@@ -40,8 +47,21 @@ import EventIcon from '@mui/icons-material/Event';
 import PersonAddIcon from '@mui/icons-material/PersonAdd';
 import PersonOffIcon from '@mui/icons-material/PersonOff';
 import SaveIcon from '@mui/icons-material/Save';
+import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
+import SubscriptionsIcon from '@mui/icons-material/Subscriptions';
+import CancelIcon from '@mui/icons-material/Cancel';
+import RestoreIcon from '@mui/icons-material/Restore';
 import { updateEmpresaDetails } from 'src/services/empresaService';
 import { updateConversacionesEmpresa } from 'src/services/conversacionService';
+import leadershipService from 'src/services/leadershipService';
+
+const PLANES = ['basico', 'intermedio', 'avanzado', 'custom'];
+const FRECUENCIAS = ['mensual', 'anual'];
+const METODOS_PAGO = ['mercadopago', 'transferencia', 'efectivo'];
+const CANALES = ['meta', 'cold_calling', 'organico', 'alianza', 'referido', 'mailing', 'otro'];
+
+const PLAN_LABELS = { basico: 'Básico', intermedio: 'Intermedio', avanzado: 'Avanzado', custom: 'Custom' };
+const ESTADO_COLORS = { activa: 'success', cancelada: 'error', pausada: 'warning', trial: 'info' };
 
 export const RegistroClienteDetails = ({ empresa }) => {
   const theme = useTheme();
@@ -71,6 +91,20 @@ export const RegistroClienteDetails = ({ empresa }) => {
   const [hasChanges, setHasChanges] = useState(false);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
 
+  // Estado de suscripción
+  const [suscripcion, setSuscripcion] = useState(null);
+  const [loadingSuscripcion, setLoadingSuscripcion] = useState(false);
+  const [suscripcionForm, setSuscripcionForm] = useState({
+    plan: 'basico',
+    monto: '',
+    frecuenciaCobro: 'mensual',
+    metodoPago: 'mercadopago',
+    canalAdquisicion: 'meta',
+    notas: ''
+  });
+  const [editingSuscripcion, setEditingSuscripcion] = useState(false);
+  const [savingSuscripcion, setSavingSuscripcion] = useState(false);
+
   // Cargar datos al montar desde los campos de empresa
   useEffect(() => {
     if (empresa) {
@@ -85,8 +119,140 @@ export const RegistroClienteDetails = ({ empresa }) => {
     }
   }, [empresa]);
 
+  // Cargar suscripción de la empresa
+  const fetchSuscripcion = useCallback(async () => {
+    if (!empresa?.id) return;
+    setLoadingSuscripcion(true);
+    try {
+      const resp = await leadershipService.getSuscripcionByEmpresa(empresa.id);
+      if (resp && !resp.error) {
+        setSuscripcion(resp);
+        setSuscripcionForm({
+          plan: resp.plan || 'basico',
+          monto: resp.monto || '',
+          frecuenciaCobro: resp.frecuenciaCobro || 'mensual',
+          metodoPago: resp.metodoPago || 'mercadopago',
+          canalAdquisicion: resp.canalAdquisicion || 'meta',
+          notas: resp.notas || ''
+        });
+      }
+    } catch (err) {
+      // 404 = no tiene suscripción, es normal
+      if (err?.response?.status !== 404) {
+        console.error('Error cargando suscripción:', err);
+      }
+    } finally {
+      setLoadingSuscripcion(false);
+    }
+  }, [empresa?.id]);
+
+  useEffect(() => {
+    if (empresa?.id && clienteData.esCliente) {
+      fetchSuscripcion();
+    }
+  }, [empresa?.id, clienteData.esCliente, fetchSuscripcion]);
+
   const showSnackbar = (message, severity = 'success') => {
     setSnackbar({ open: true, message, severity });
+  };
+
+  const handleSuscripcionFormChange = (field, value) => {
+    setSuscripcionForm(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleCrearSuscripcion = async () => {
+    if (!suscripcionForm.monto || isNaN(suscripcionForm.monto) || Number(suscripcionForm.monto) <= 0) {
+      showSnackbar('El monto es requerido y debe ser mayor a 0', 'error');
+      return;
+    }
+    setSavingSuscripcion(true);
+    try {
+      const data = {
+        empresaId: empresa.id,
+        empresaNombre: empresa.nombre || empresa.name || empresa.id,
+        plan: suscripcionForm.plan,
+        monto: Number(suscripcionForm.monto),
+        frecuenciaCobro: suscripcionForm.frecuenciaCobro,
+        metodoPago: suscripcionForm.metodoPago,
+        canalAdquisicion: suscripcionForm.canalAdquisicion,
+        notas: suscripcionForm.notas,
+        fechaInicio: new Date().toISOString()
+      };
+      const resp = await leadershipService.crearSuscripcion(data);
+      if (resp && !resp.error) {
+        setSuscripcion(resp);
+        setEditingSuscripcion(false);
+        showSnackbar('Suscripción creada correctamente');
+      } else {
+        showSnackbar(resp?.msg || 'Error al crear suscripción', 'error');
+      }
+    } catch (err) {
+      const msg = err?.response?.data?.msg || 'Error al crear suscripción';
+      showSnackbar(msg, 'error');
+    } finally {
+      setSavingSuscripcion(false);
+    }
+  };
+
+  const handleActualizarSuscripcion = async () => {
+    if (!suscripcionForm.monto || isNaN(suscripcionForm.monto) || Number(suscripcionForm.monto) <= 0) {
+      showSnackbar('El monto es requerido y debe ser mayor a 0', 'error');
+      return;
+    }
+    setSavingSuscripcion(true);
+    try {
+      const data = {
+        plan: suscripcionForm.plan,
+        monto: Number(suscripcionForm.monto),
+        frecuenciaCobro: suscripcionForm.frecuenciaCobro,
+        metodoPago: suscripcionForm.metodoPago,
+        canalAdquisicion: suscripcionForm.canalAdquisicion,
+        notas: suscripcionForm.notas
+      };
+      const resp = await leadershipService.actualizarSuscripcion(suscripcion._id, data);
+      if (resp && !resp.error) {
+        setSuscripcion(resp);
+        setEditingSuscripcion(false);
+        showSnackbar('Suscripción actualizada');
+      } else {
+        showSnackbar(resp?.msg || 'Error al actualizar', 'error');
+      }
+    } catch (err) {
+      showSnackbar(err?.response?.data?.msg || 'Error al actualizar', 'error');
+    } finally {
+      setSavingSuscripcion(false);
+    }
+  };
+
+  const handleCancelarSuscripcion = async () => {
+    if (!window.confirm('¿Estás seguro de cancelar esta suscripción?')) return;
+    setSavingSuscripcion(true);
+    try {
+      const resp = await leadershipService.cancelarSuscripcion(suscripcion._id, { razon: 'Cancelado desde panel' });
+      if (resp && !resp.error) {
+        setSuscripcion(resp);
+        showSnackbar('Suscripción cancelada');
+      }
+    } catch (err) {
+      showSnackbar('Error al cancelar', 'error');
+    } finally {
+      setSavingSuscripcion(false);
+    }
+  };
+
+  const handleReactivarSuscripcion = async () => {
+    setSavingSuscripcion(true);
+    try {
+      const resp = await leadershipService.reactivarSuscripcion(suscripcion._id);
+      if (resp && !resp.error) {
+        setSuscripcion(resp);
+        showSnackbar('Suscripción reactivada');
+      }
+    } catch (err) {
+      showSnackbar('Error al reactivar', 'error');
+    } finally {
+      setSavingSuscripcion(false);
+    }
   };
 
   const handleClienteChange = (field, value) => {
@@ -390,6 +556,234 @@ export const RegistroClienteDetails = ({ empresa }) => {
             </Stack>
           </CardContent>
         </Card>
+
+        {/* Card de Suscripción — solo si es cliente */}
+        {clienteData.esCliente && (
+          <Card
+            elevation={0}
+            sx={{
+              border: `1px solid ${theme.palette.divider}`,
+              borderRadius: 2
+            }}
+          >
+            <CardHeader
+              title={
+                <Stack direction="row" alignItems="center" spacing={1}>
+                  <SubscriptionsIcon color="primary" />
+                  <Typography variant="h6">Suscripción</Typography>
+                  {suscripcion && (
+                    <Chip
+                      label={suscripcion.estado?.toUpperCase()}
+                      color={ESTADO_COLORS[suscripcion.estado] || 'default'}
+                      size="small"
+                    />
+                  )}
+                </Stack>
+              }
+              action={
+                suscripcion && !editingSuscripcion && suscripcion.estado === 'activa' && (
+                  <Stack direction="row" spacing={1}>
+                    <Button
+                      size="small"
+                      startIcon={<EditIcon />}
+                      onClick={() => setEditingSuscripcion(true)}
+                    >
+                      Editar
+                    </Button>
+                    <Button
+                      size="small"
+                      color="error"
+                      startIcon={<CancelIcon />}
+                      onClick={handleCancelarSuscripcion}
+                      disabled={savingSuscripcion}
+                    >
+                      Cancelar
+                    </Button>
+                  </Stack>
+                )
+              }
+            />
+            <Divider />
+            <CardContent>
+              {loadingSuscripcion ? (
+                <Stack spacing={2}>
+                  <Skeleton variant="rectangular" height={40} />
+                  <Skeleton variant="rectangular" height={40} />
+                </Stack>
+              ) : !suscripcion || editingSuscripcion ? (
+                /* Formulario de crear / editar */
+                <Stack spacing={2.5}>
+                  {!suscripcion && (
+                    <Alert severity="info" variant="outlined">
+                      Esta empresa no tiene suscripción registrada. Completá los datos para crearla.
+                    </Alert>
+                  )}
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+                    <FormControl size="small" sx={{ minWidth: 150 }}>
+                      <InputLabel>Plan</InputLabel>
+                      <Select
+                        value={suscripcionForm.plan}
+                        label="Plan"
+                        onChange={(e) => handleSuscripcionFormChange('plan', e.target.value)}
+                      >
+                        {PLANES.map(p => (
+                          <MenuItem key={p} value={p}>{PLAN_LABELS[p] || p}</MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                    <TextField
+                      label="Monto"
+                      type="number"
+                      size="small"
+                      value={suscripcionForm.monto}
+                      onChange={(e) => handleSuscripcionFormChange('monto', e.target.value)}
+                      InputProps={{
+                        startAdornment: <InputAdornment position="start">$</InputAdornment>
+                      }}
+                      sx={{ maxWidth: 180 }}
+                      required
+                    />
+                    <FormControl size="small" sx={{ minWidth: 140 }}>
+                      <InputLabel>Frecuencia</InputLabel>
+                      <Select
+                        value={suscripcionForm.frecuenciaCobro}
+                        label="Frecuencia"
+                        onChange={(e) => handleSuscripcionFormChange('frecuenciaCobro', e.target.value)}
+                      >
+                        {FRECUENCIAS.map(f => (
+                          <MenuItem key={f} value={f}>{f.charAt(0).toUpperCase() + f.slice(1)}</MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Stack>
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+                    <FormControl size="small" sx={{ minWidth: 160 }}>
+                      <InputLabel>Método de pago</InputLabel>
+                      <Select
+                        value={suscripcionForm.metodoPago}
+                        label="Método de pago"
+                        onChange={(e) => handleSuscripcionFormChange('metodoPago', e.target.value)}
+                      >
+                        {METODOS_PAGO.map(m => (
+                          <MenuItem key={m} value={m}>{m.charAt(0).toUpperCase() + m.slice(1)}</MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                    <FormControl size="small" sx={{ minWidth: 150 }}>
+                      <InputLabel>Canal adquisición</InputLabel>
+                      <Select
+                        value={suscripcionForm.canalAdquisicion}
+                        label="Canal adquisición"
+                        onChange={(e) => handleSuscripcionFormChange('canalAdquisicion', e.target.value)}
+                      >
+                        {CANALES.map(c => (
+                          <MenuItem key={c} value={c}>{c.replace('_', ' ').charAt(0).toUpperCase() + c.replace('_', ' ').slice(1)}</MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Stack>
+                  <TextField
+                    label="Notas"
+                    size="small"
+                    value={suscripcionForm.notas}
+                    onChange={(e) => handleSuscripcionFormChange('notas', e.target.value)}
+                    multiline
+                    rows={2}
+                  />
+                  <Stack direction="row" spacing={1}>
+                    <Button
+                      variant="contained"
+                      startIcon={savingSuscripcion ? <CircularProgress size={16} color="inherit" /> : <SaveIcon />}
+                      onClick={suscripcion ? handleActualizarSuscripcion : handleCrearSuscripcion}
+                      disabled={savingSuscripcion}
+                      size="small"
+                    >
+                      {suscripcion ? 'Actualizar' : 'Crear Suscripción'}
+                    </Button>
+                    {editingSuscripcion && (
+                      <Button
+                        size="small"
+                        onClick={() => {
+                          setEditingSuscripcion(false);
+                          // Restaurar form con datos actuales
+                          setSuscripcionForm({
+                            plan: suscripcion.plan || 'basico',
+                            monto: suscripcion.monto || '',
+                            frecuenciaCobro: suscripcion.frecuenciaCobro || 'mensual',
+                            metodoPago: suscripcion.metodoPago || 'mercadopago',
+                            canalAdquisicion: suscripcion.canalAdquisicion || 'meta',
+                            notas: suscripcion.notas || ''
+                          });
+                        }}
+                      >
+                        Cancelar
+                      </Button>
+                    )}
+                  </Stack>
+                </Stack>
+              ) : (
+                /* Vista resumen de suscripción existente */
+                <Stack spacing={2}>
+                  <Stack direction="row" spacing={4} flexWrap="wrap" useFlexGap>
+                    <Box>
+                      <Typography variant="caption" color="text.secondary">Plan</Typography>
+                      <Typography fontWeight={600}>{PLAN_LABELS[suscripcion.plan] || suscripcion.plan}</Typography>
+                    </Box>
+                    <Box>
+                      <Typography variant="caption" color="text.secondary">Monto</Typography>
+                      <Typography fontWeight={600} color="success.main">
+                        ${Number(suscripcion.monto).toLocaleString('es-AR')}
+                      </Typography>
+                    </Box>
+                    <Box>
+                      <Typography variant="caption" color="text.secondary">Frecuencia</Typography>
+                      <Typography fontWeight={600}>{suscripcion.frecuenciaCobro}</Typography>
+                    </Box>
+                    <Box>
+                      <Typography variant="caption" color="text.secondary">Método de pago</Typography>
+                      <Typography fontWeight={600}>{suscripcion.metodoPago}</Typography>
+                    </Box>
+                    <Box>
+                      <Typography variant="caption" color="text.secondary">Canal</Typography>
+                      <Typography fontWeight={600}>{suscripcion.canalAdquisicion?.replace('_', ' ')}</Typography>
+                    </Box>
+                    <Box>
+                      <Typography variant="caption" color="text.secondary">Desde</Typography>
+                      <Typography fontWeight={600}>{formatDate(suscripcion.fechaInicio)}</Typography>
+                    </Box>
+                  </Stack>
+                  {suscripcion.notas && (
+                    <Typography variant="body2" color="text.secondary">
+                      <strong>Notas:</strong> {suscripcion.notas}
+                    </Typography>
+                  )}
+                  {suscripcion.estado === 'cancelada' && (
+                    <Alert
+                      severity="error"
+                      action={
+                        <Button
+                          size="small"
+                          startIcon={<RestoreIcon />}
+                          onClick={handleReactivarSuscripcion}
+                          disabled={savingSuscripcion}
+                        >
+                          Reactivar
+                        </Button>
+                      }
+                    >
+                      Suscripción cancelada el {formatDate(suscripcion.fechaCancelacion)}
+                    </Alert>
+                  )}
+                  {suscripcion.estado === 'pausada' && (
+                    <Alert severity="warning">
+                      Suscripción pausada
+                    </Alert>
+                  )}
+                </Stack>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         {/* Card de Reuniones */}
         <Card 

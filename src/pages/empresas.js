@@ -22,7 +22,12 @@ import {
   TableRow,
   IconButton,
   LinearProgress,
-  TablePagination
+  TablePagination,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
+  Chip
 } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import Head from 'next/head';
@@ -50,6 +55,7 @@ const EmpresasListPage = () => {
     nombre: '',
     tipo: '',
     proyectos: '',
+    estadoCliente: 'todos',
   });
 
   // --- Paginación ---
@@ -148,7 +154,16 @@ const EmpresasListPage = () => {
         ? empresa?.proyectosIds?.length === parseInt(filters.proyectos, 10)
         : true;
 
-      return matchesNombre && matchesTipo && matchesProyectos;
+      let matchesEstadoCliente = true;
+      if (filters.estadoCliente === 'cliente') {
+        matchesEstadoCliente = empresa?.esCliente === true && !empresa?.estaDadoDeBaja;
+      } else if (filters.estadoCliente === 'baja') {
+        matchesEstadoCliente = empresa?.estaDadoDeBaja === true;
+      } else if (filters.estadoCliente === 'no_cliente') {
+        matchesEstadoCliente = !empresa?.esCliente;
+      }
+
+      return matchesNombre && matchesTipo && matchesProyectos && matchesEstadoCliente;
     });
 
     setFilteredEmpresas(filtered);
@@ -173,7 +188,7 @@ const EmpresasListPage = () => {
             Listado de Empresas ({filteredEmpresas.length})
           </Typography>
 
-          <Box sx={{ mb: 3, display: 'flex', gap: 2 }}>
+          <Box sx={{ mb: 3, display: 'flex', gap: 2, alignItems: 'center' }}>
             <TextField
               label="Buscar por nombre"
               variant="outlined"
@@ -199,6 +214,20 @@ const EmpresasListPage = () => {
               type="number"
               fullWidth
             />
+            <FormControl variant="outlined" sx={{ minWidth: 180 }}>
+              <InputLabel>Estado cliente</InputLabel>
+              <Select
+                name="estadoCliente"
+                value={filters.estadoCliente}
+                onChange={handleFilterChange}
+                label="Estado cliente"
+              >
+                <MenuItem value="todos">Todos</MenuItem>
+                <MenuItem value="cliente">Cliente activo</MenuItem>
+                <MenuItem value="baja">Dado de baja</MenuItem>
+                <MenuItem value="no_cliente">No es cliente</MenuItem>
+              </Select>
+            </FormControl>
           </Box>
 
           {isLoading ? (
@@ -230,6 +259,7 @@ const EmpresasListPage = () => {
                       </TableCell>
                       <TableCell>Nombre</TableCell>
                       <TableCell>Tipo</TableCell>
+                      <TableCell>Estado</TableCell>
                       <TableCell>Cantidad de Proyectos</TableCell>
                       <TableCell align="right">Acciones</TableCell>
                     </TableRow>
@@ -255,6 +285,15 @@ const EmpresasListPage = () => {
                           </Link>
                         </TableCell>
                         <TableCell>{empresa.tipo}</TableCell>
+                        <TableCell>
+                          {empresa.estaDadoDeBaja ? (
+                            <Chip label="Baja" color="error" size="small" variant="outlined" />
+                          ) : empresa.esCliente ? (
+                            <Chip label="Cliente" color="success" size="small" variant="outlined" />
+                          ) : (
+                            <Chip label="—" size="small" variant="outlined" />
+                          )}
+                        </TableCell>
                         <TableCell>{empresa.proyectosIds?.length || 0}</TableCell>
                         <TableCell align="right">
                           <IconButton color="secondary" onClick={() => handleCheckboxChange(empresa.id)}>

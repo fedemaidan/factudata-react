@@ -121,7 +121,7 @@ const leadershipService = {
 
   generarPagosPendientes: async (mes, anio) => {
     try {
-      const response = await api.post('/leadership/pagos/generar-pendientes', { mes, anio });
+      const response = await api.post('/leadership/pagos/generar-pendientes', { periodoMes: mes, periodoAnio: anio });
       return response.data;
     } catch (error) {
       console.error('Error al generar pagos pendientes:', error);

@@ -315,6 +315,15 @@ export const SideNav = (props) => {
             </SvgIcon>
           ),
         });
+        baseItems.push({
+          title: "Gestión General",
+          path: "/gestion-general",
+          icon: (
+            <SvgIcon fontSize="small">
+              <DashboardIcon />
+            </SvgIcon>
+          ),
+        });
       }
 
       if (user?.admin) {

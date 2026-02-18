@@ -14,10 +14,8 @@ import {
   TableHead,
   TableRow,
   Paper,
-  Chip,
   Alert,
   Stack,
-  Tooltip,
   Button,
   FormControl,
   InputLabel,
@@ -27,17 +25,13 @@ import {
 import {
   People as PeopleIcon,
   TrendingDown as TrendingDownIcon,
-  Warning as WarningIcon,
-  Refresh as RefreshIcon,
-  AccessTime as AccessTimeIcon
+  Refresh as RefreshIcon
 } from '@mui/icons-material';
 import Head from 'next/head';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import leadershipService from 'src/services/leadershipService';
 
 // ── Helpers ──
-const pct = (a, b) => (b > 0 ? Math.round((a / b) * 100) : 0);
-
 const getRetencionColor = (valor) => {
   if (valor >= 80) return '#4caf50';
   if (valor >= 60) return '#8bc34a';
@@ -114,7 +108,8 @@ const CohortTable = ({ cohortes = [] }) => {
                   </TableCell>
                   <TableCell align="center">{cohorte.clientesIngresados}</TableCell>
                   {columnas.map(i => {
-                    const valor = cohorte.retencion?.[`mes${i}`];
+                    const dato = cohorte.retencion?.[`mes${i}`];
+                    const valor = typeof dato === 'object' && dato !== null ? dato.porcentaje : dato;
                     return (
                       <TableCell
                         key={i}
@@ -139,61 +134,6 @@ const CohortTable = ({ cohortes = [] }) => {
   );
 };
 
-// ── Lista de inactivas ──
-const InactivasTable = ({ inactivas = [] }) => (
-  <Card>
-    <CardContent>
-      <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
-        <Typography variant="h6">
-          Clientes Inactivos
-          {inactivas.length > 0 && (
-            <Chip label={inactivas.length} color="error" size="small" sx={{ ml: 1 }} />
-          )}
-        </Typography>
-      </Stack>
-      {inactivas.length === 0 ? (
-        <Alert severity="success">No hay clientes inactivos en el período seleccionado.</Alert>
-      ) : (
-        <TableContainer component={Paper} variant="outlined">
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell sx={{ fontWeight: 'bold' }}>Empresa</TableCell>
-                <TableCell align="center" sx={{ fontWeight: 'bold' }}>Días sin actividad</TableCell>
-                <TableCell align="center" sx={{ fontWeight: 'bold' }}>Riesgo</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {inactivas.map((emp, idx) => (
-                <TableRow key={idx}>
-                  <TableCell>{emp.nombre || emp.empresaId}</TableCell>
-                  <TableCell align="center">
-                    <Chip
-                      icon={<AccessTimeIcon />}
-                      label={`${emp.diasInactivo} días`}
-                      size="small"
-                      color={emp.diasInactivo > 21 ? 'error' : 'warning'}
-                    />
-                  </TableCell>
-                  <TableCell align="center">
-                    {emp.diasInactivo > 30 ? (
-                      <Chip label="CRÍTICO" color="error" size="small" />
-                    ) : emp.diasInactivo > 21 ? (
-                      <Chip label="ALTO" color="warning" size="small" />
-                    ) : (
-                      <Chip label="MODERADO" color="default" size="small" />
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
-      )}
-    </CardContent>
-  </Card>
-);
-
 // ══════════════════════════════════════════════════════════
 // PÁGINA PRINCIPAL
 // ══════════════════════════════════════════════════════════
@@ -201,27 +141,21 @@ const AnalyticsRetencion = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [cohortes, setCohortes] = useState([]);
-  const [inactivas, setInactivas] = useState([]);
   const [meses, setMeses] = useState(6);
-  const [diasInactividad, setDiasInactividad] = useState(14);
 
   const cargarDatos = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [cohortesData, inactivasData] = await Promise.all([
-        leadershipService.getCohortes(meses),
-        leadershipService.getInactivas(diasInactividad)
-      ]);
-      setCohortes(cohortesData.cohortes || []);
-      setInactivas(inactivasData.inactivas || []);
+      const cohortesResp = await leadershipService.getCohortes(meses);
+      setCohortes(Array.isArray(cohortesResp?.cohortes) ? cohortesResp.cohortes : []);
     } catch (err) {
       console.error('Error cargando retención:', err);
       setError('No se pudieron cargar los datos de retención.');
     } finally {
       setLoading(false);
     }
-  }, [meses, diasInactividad]);
+  }, [meses]);
 
   useEffect(() => { cargarDatos(); }, [cargarDatos]);
 
@@ -232,8 +166,10 @@ const AnalyticsRetencion = () => {
     // Retención promedio del mes 1 (promedio ponderado)
     let sumProd = 0, sumClientes = 0;
     cohortes.forEach(c => {
-      if (c.retencion?.mes1 != null) {
-        sumProd += c.retencion.mes1 * c.clientesIngresados;
+      const dato = c.retencion?.mes1;
+      const val = typeof dato === 'object' && dato !== null ? dato.porcentaje : dato;
+      if (val != null) {
+        sumProd += val * c.clientesIngresados;
         sumClientes += c.clientesIngresados;
       }
     });
@@ -259,7 +195,7 @@ const AnalyticsRetencion = () => {
             <Box>
               <Typography variant="h4">Retención de Clientes</Typography>
               <Typography variant="body2" color="textSecondary">
-                Análisis de cohortes y detección de clientes en riesgo
+                Análisis de cohortes de retención mensual
               </Typography>
             </Box>
             <Stack direction="row" gap={2} alignItems="center">
@@ -267,12 +203,6 @@ const AnalyticsRetencion = () => {
                 <InputLabel>Meses atrás</InputLabel>
                 <Select value={meses} label="Meses atrás" onChange={(e) => setMeses(e.target.value)}>
                   {[3, 6, 9, 12].map(v => <MenuItem key={v} value={v}>{v} meses</MenuItem>)}
-                </Select>
-              </FormControl>
-              <FormControl size="small" sx={{ minWidth: 150 }}>
-                <InputLabel>Días inactividad</InputLabel>
-                <Select value={diasInactividad} label="Días inactividad" onChange={(e) => setDiasInactividad(e.target.value)}>
-                  {[7, 14, 21, 30].map(v => <MenuItem key={v} value={v}>{v} días</MenuItem>)}
                 </Select>
               </FormControl>
               <Button variant="outlined" startIcon={<RefreshIcon />} onClick={cargarDatos}>
@@ -289,11 +219,20 @@ const AnalyticsRetencion = () => {
           <Grid container spacing={3} mb={3}>
             <Grid item xs={12} sm={4}>
               <StatCard
+                title="Total Clientes (cohortes)"
+                value={metricas.totalClientes}
+                subtitle="Sumados de todas las cohortes"
+                icon={<PeopleIcon color="primary" />}
+                color="primary"
+              />
+            </Grid>
+            <Grid item xs={12} sm={4}>
+              <StatCard
                 title="Retención Mes 1 (prom)"
                 value={`${metricas.retencionMes1}%`}
                 subtitle="Promedio ponderado de cohortes"
-                icon={<PeopleIcon color="primary" />}
-                color="primary"
+                icon={<PeopleIcon color="success" />}
+                color="success"
               />
             </Grid>
             <Grid item xs={12} sm={4}>
@@ -305,24 +244,10 @@ const AnalyticsRetencion = () => {
                 color="error"
               />
             </Grid>
-            <Grid item xs={12} sm={4}>
-              <StatCard
-                title="Clientes en Riesgo"
-                value={inactivas.length}
-                subtitle={`Sin actividad hace ${diasInactividad}+ días`}
-                icon={<WarningIcon color="warning" />}
-                color="warning"
-              />
-            </Grid>
           </Grid>
 
           {/* Tabla de cohortes */}
-          <Box mb={3}>
-            <CohortTable cohortes={cohortes} />
-          </Box>
-
-          {/* Inactivas */}
-          <InactivasTable inactivas={inactivas} />
+          <CohortTable cohortes={cohortes} />
         </Container>
       </Box>
     </>
