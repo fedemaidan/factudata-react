@@ -62,41 +62,48 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import ListAltIcon from '@mui/icons-material/ListAlt';
 
 // Helper: calcular totales de un resumen multimoneda (para ProyectoCard)
+// Si existe presupuesto general (sin categoría/etapa/proveedor), lo usa como techo
 const calcularTotalesResumen = (resumen, tipoCambio = null, monedaVista = 'ARS') => {
-  if (!resumen) return { egresosTotal: 0, egresosEjecutado: 0 };
+  if (!resumen) return { egresosTotal: 0, egresosEjecutado: 0, ingresosTotal: 0, ingresosEjecutado: 0 };
   
   const cacIndice = resumen.cotizacionActual?.cac_indice || null;
   
   const convertir = (monto, monedaOriginal) => {
     if (monedaVista === monedaOriginal) return monto;
     if (!tipoCambio && monedaOriginal !== 'CAC') return monto;
-    // ARS ↔ USD
     if (monedaVista === 'USD' && monedaOriginal === 'ARS') return tipoCambio ? monto / tipoCambio : monto;
     if (monedaVista === 'ARS' && monedaOriginal === 'USD') return tipoCambio ? monto * tipoCambio : monto;
-    // CAC → ARS: monto_cac * cac_indice
     if (monedaOriginal === 'CAC' && monedaVista === 'ARS') return cacIndice ? monto * cacIndice : monto;
-    // CAC → USD: (monto_cac * cac_indice) / tipoCambio
     if (monedaOriginal === 'CAC' && monedaVista === 'USD') return (cacIndice && tipoCambio) ? (monto * cacIndice) / tipoCambio : monto;
-    // ARS → CAC
     if (monedaOriginal === 'ARS' && monedaVista === 'CAC') return cacIndice ? monto / cacIndice : monto;
-    // USD → CAC
     if (monedaOriginal === 'USD' && monedaVista === 'CAC') return (cacIndice && tipoCambio) ? (monto * tipoCambio) / cacIndice : monto;
     return monto;
   };
-  
-  let egresosTotal = 0, egresosEjecutado = 0;
-  Object.entries(resumen.egresosPorMoneda || {}).forEach(([mon, data]) => {
-    egresosTotal += convertir(data.total || 0, mon);
-    egresosEjecutado += convertir(data.ejecutado || 0, mon);
-  });
 
-  let ingresosTotal = 0, ingresosEjecutado = 0;
-  Object.entries(resumen.ingresosPorMoneda || {}).forEach(([mon, data]) => {
-    ingresosTotal += convertir(data.total || 0, mon);
-    ingresosEjecutado += convertir(data.ejecutado || 0, mon);
-  });
+  // Sumar items separando general (techo) de específicos (asignaciones)
+  const sumarPorTipo = (porMoneda) => {
+    const allItems = Object.values(porMoneda || {}).flatMap(m => m.items || []);
+    const generales = allItems.filter(i => !i.categoria && !i.etapa && !i.proveedor);
+    const especificos = allItems.filter(i => i.categoria || i.etapa || i.proveedor);
+    
+    if (generales.length > 0) {
+      let total = generales.reduce((s, i) => s + convertir(i.monto || 0, i.moneda || 'ARS'), 0);
+      const ejecutado = generales.reduce((s, i) => s + convertir(i.ejecutado || 0, i.moneda || 'ARS'), 0);
+      const especTotal = especificos.reduce((s, i) => s + convertir(i.monto || 0, i.moneda || 'ARS'), 0);
+      if (especTotal > total) total = especTotal;
+      return { total, ejecutado };
+    }
+    
+    return allItems.reduce((acc, i) => ({
+      total: acc.total + convertir(i.monto || 0, i.moneda || 'ARS'),
+      ejecutado: acc.ejecutado + convertir(i.ejecutado || 0, i.moneda || 'ARS'),
+    }), { total: 0, ejecutado: 0 });
+  };
+
+  const egresos = sumarPorTipo(resumen.egresosPorMoneda);
+  const ingresos = sumarPorTipo(resumen.ingresosPorMoneda);
   
-  return { egresosTotal, egresosEjecutado, ingresosTotal, ingresosEjecutado };
+  return { egresosTotal: egresos.total, egresosEjecutado: egresos.ejecutado, ingresosTotal: ingresos.total, ingresosEjecutado: ingresos.ejecutado };
 };
 
 // ============ COMPONENTE: CARD DE PROYECTO (VISTA GENERAL) ============
@@ -121,12 +128,12 @@ const ProyectoCard = ({ proyecto, resumen, onSelect, formatMonto, tipoCambio, mo
                     <TrendingUpIcon sx={{ fontSize: 14, color: 'success.main' }} />
                     <Typography variant="body2" color="text.secondary">Pres. ingresos</Typography>
                   </Stack>
-                  <Typography variant="body2" fontWeight={600}>{formatMonto(ingresosTotal)}</Typography>
+                  <Typography variant="body2" fontWeight={600}>{formatMonto(ingresosTotal, moneda)}</Typography>
                 </Stack>
                 <Stack direction="row" justifyContent="space-between" alignItems="center">
                   <Typography variant="caption" color="text.secondary" sx={{ pl: 2.5 }}>Cobrado</Typography>
                   <Typography variant="caption" fontWeight={600} color="success.main">
-                    {formatMonto(ingresosEjecutado)}
+                    {formatMonto(ingresosEjecutado, moneda)}
                   </Typography>
                 </Stack>
               </>
@@ -137,12 +144,12 @@ const ProyectoCard = ({ proyecto, resumen, onSelect, formatMonto, tipoCambio, mo
                 <TrendingDownIcon sx={{ fontSize: 14, color: 'error.main' }} />
                 <Typography variant="body2" color="text.secondary">Pres. egresos</Typography>
               </Stack>
-              <Typography variant="body2" fontWeight={600}>{formatMonto(egresosTotal)}</Typography>
+              <Typography variant="body2" fontWeight={600}>{formatMonto(egresosTotal, moneda)}</Typography>
             </Stack>
             <Stack direction="row" justifyContent="space-between" alignItems="center">
               <Typography variant="caption" color="text.secondary" sx={{ pl: 2.5 }}>Gastado</Typography>
               <Typography variant="caption" fontWeight={600} color={porcentajeEgresos > 100 ? 'error.main' : 'text.secondary'}>
-                {formatMonto(egresosEjecutado)}
+                {formatMonto(egresosEjecutado, moneda)}
               </Typography>
             </Stack>
             <LinearProgress 
@@ -158,13 +165,13 @@ const ProyectoCard = ({ proyecto, resumen, onSelect, formatMonto, tipoCambio, mo
                 <Stack direction="row" justifyContent="space-between" alignItems="center">
                   <Typography variant="caption" color="text.secondary">Ganancia proyectada</Typography>
                   <Typography variant="body2" fontWeight={600} color={gananciaProyectada >= 0 ? 'success.main' : 'error.main'}>
-                    {formatMonto(gananciaProyectada)}
+                    {formatMonto(gananciaProyectada, moneda)}
                   </Typography>
                 </Stack>
                 <Stack direction="row" justifyContent="space-between" alignItems="center">
                   <Typography variant="caption" color="text.secondary">Ganancia real</Typography>
                   <Typography variant="body2" fontWeight={700} color={gananciaReal >= 0 ? 'success.main' : 'error.main'}>
-                    {formatMonto(gananciaReal)}
+                    {formatMonto(gananciaReal, moneda)}
                   </Typography>
                 </Stack>
               </>
@@ -493,30 +500,43 @@ const ControlPresupuestosPage = () => {
     return Object.values(resumen.ingresosPorMoneda).flatMap(m => m.items || []);
   };
 
-  // Helper: calcular totales de ingresos/egresos sumando todas las monedas (convertidas a la moneda de visualización)
+  // Helper: calcular totales de ingresos/egresos (convertidos a la moneda de visualización)
+  // Si existe un presupuesto "general" (sin categoría/etapa/proveedor), se usa como techo del total
+  // porque los presupuestos por categoría/proveedor son asignaciones DENTRO del general.
+  // El ejecutado del general ya acumula todos los movimientos (matchea contra todo).
   const calcularTotales = () => {
     if (!resumen) return { ingresos: { total: 0, ejecutado: 0 }, egresos: { total: 0, ejecutado: 0 }, gananciaProyectada: 0, gananciaActual: 0 };
     
-    let ingresosTotal = 0, ingresosEjecutado = 0;
-    let egresosTotal = 0, egresosEjecutado = 0;
+    const sumarPorTipo = (obtenerItems) => {
+      const items = obtenerItems();
+      const generales = items.filter(i => !i.categoria && !i.etapa && !i.proveedor);
+      const especificos = items.filter(i => i.categoria || i.etapa || i.proveedor);
+      
+      if (generales.length > 0) {
+        // Hay presupuesto general: usarlo como techo
+        let total = generales.reduce((s, i) => s + convertir(i.monto || 0, i.moneda || 'ARS'), 0);
+        const ejecutado = generales.reduce((s, i) => s + convertir(i.ejecutado || 0, i.moneda || 'ARS'), 0);
+        // Si la suma de específicos excede el general, mostrar la suma real
+        const especTotal = especificos.reduce((s, i) => s + convertir(i.monto || 0, i.moneda || 'ARS'), 0);
+        if (especTotal > total) total = especTotal;
+        return { total, ejecutado };
+      }
+      
+      // Sin general: sumar todos
+      return items.reduce((acc, i) => ({
+        total: acc.total + convertir(i.monto || 0, i.moneda || 'ARS'),
+        ejecutado: acc.ejecutado + convertir(i.ejecutado || 0, i.moneda || 'ARS'),
+      }), { total: 0, ejecutado: 0 });
+    };
     
-    // Sumar ingresos de todas las monedas
-    Object.entries(resumen.ingresosPorMoneda || {}).forEach(([mon, data]) => {
-      ingresosTotal += convertir(data.total || 0, mon);
-      ingresosEjecutado += convertir(data.ejecutado || 0, mon);
-    });
-    
-    // Sumar egresos de todas las monedas
-    Object.entries(resumen.egresosPorMoneda || {}).forEach(([mon, data]) => {
-      egresosTotal += convertir(data.total || 0, mon);
-      egresosEjecutado += convertir(data.ejecutado || 0, mon);
-    });
+    const ingresos = sumarPorTipo(obtenerTodosLosItemsIngresos);
+    const egresos = sumarPorTipo(obtenerTodosLosItemsEgresos);
     
     return {
-      ingresos: { total: ingresosTotal, ejecutado: ingresosEjecutado },
-      egresos: { total: egresosTotal, ejecutado: egresosEjecutado },
-      gananciaProyectada: ingresosTotal - egresosTotal,
-      gananciaActual: ingresosEjecutado - egresosEjecutado
+      ingresos,
+      egresos,
+      gananciaProyectada: ingresos.total - egresos.total,
+      gananciaActual: ingresos.ejecutado - egresos.ejecutado
     };
   };
 
@@ -544,17 +564,17 @@ const ControlPresupuestosPage = () => {
   };
 
   // formatMonto acepta moneda original opcional para mostrar en la moneda del presupuesto
+  // formatMonto: convierte desde monedaOriginal a la moneda de visualización actual
+  // Si monedaOriginal === moneda de vista, convertir() no hace nada (valor ya está en moneda correcta)
   const formatMonto = (monto, monedaOriginal) => {
     if (monto === null || monto === undefined) return '-';
     
-    // Si se especifica moneda original, usar esa para mostrar sin convertir
-    const monedaMostrar = monedaOriginal || moneda;
-    const valor = monedaOriginal ? monto : convertir(monto);
+    const valor = convertir(monto, monedaOriginal || 'ARS');
     
-    if (monedaMostrar === 'USD') {
+    if (moneda === 'USD') {
       return `USD ${valor.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     }
-    if (monedaMostrar === 'CAC' || moneda === 'CAC') {
+    if (moneda === 'CAC') {
       return `CAC ${Number(valor).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     }
     return formatCurrency(valor);
@@ -575,8 +595,9 @@ const ControlPresupuestosPage = () => {
     if (items.length === 0) {
       // Buscar ejecutado aunque no haya presupuesto (buscar en porCategoria de cada moneda)
       let ejecutadoTotal = 0;
-      Object.values(resumen?.egresosPorMoneda || {}).forEach(monedaData => {
-        ejecutadoTotal += monedaData.porCategoria?.[valor]?.ejecutado || 0;
+      Object.entries(resumen?.egresosPorMoneda || {}).forEach(([mon, monedaData]) => {
+        const ejCrudo = monedaData.porCategoria?.[valor]?.ejecutado || 0;
+        ejecutadoTotal += convertir(ejCrudo, mon);
       });
       return { presupuesto: null, ejecutado: ejecutadoTotal, id: null, historial: [], moneda: 'ARS' };
     }
@@ -708,15 +729,17 @@ const ControlPresupuestosPage = () => {
   };
 
   // Calcular sumas por cada agrupación (son 3 formas de ver el MISMO presupuesto)
+  // Convierte cada item a la moneda de visualización antes de sumar
   const calcularSumas = useMemo(() => {
     if (!resumen) return { porCategoria: 0, porEtapa: 0, porProveedor: 0, general: 0 };
     
     const items = obtenerTodosLosItemsEgresos();
+    const conv = (i) => convertir(i.monto || 0, i.moneda || 'ARS');
     
     // Presupuesto general (sin categoria, etapa ni proveedor)
     const general = items
       .filter(i => !i.categoria && !i.etapa && !i.proveedor)
-      .reduce((sum, i) => sum + (i.monto || 0), 0);
+      .reduce((sum, i) => sum + conv(i), 0);
     
     // ID del presupuesto general
     const generalItem = items.find(i => !i.categoria && !i.etapa && !i.proveedor);
@@ -726,20 +749,20 @@ const ControlPresupuestosPage = () => {
     // Suma de presupuestos por categoría
     const porCategoria = items
       .filter(i => i.categoria && !i.etapa && !i.proveedor)
-      .reduce((sum, i) => sum + (i.monto || 0), 0);
+      .reduce((sum, i) => sum + conv(i), 0);
     
     // Suma de presupuestos por etapa
     const porEtapa = items
       .filter(i => i.etapa && !i.categoria && !i.proveedor)
-      .reduce((sum, i) => sum + (i.monto || 0), 0);
+      .reduce((sum, i) => sum + conv(i), 0);
     
     // Suma de presupuestos por proveedor
     const porProveedor = items
       .filter(i => i.proveedor && !i.categoria && !i.etapa)
-      .reduce((sum, i) => sum + (i.monto || 0), 0);
+      .reduce((sum, i) => sum + conv(i), 0);
     
     return { porCategoria, porEtapa, porProveedor, general, generalId, generalHistorial };
-  }, [resumen]);
+  }, [resumen, moneda, tipoCambio, cacIndiceActual]);
 
   // Obtener el presupuesto general del proyecto
   const presupuestoGeneral = calcularSumas.general || 0;
@@ -1038,9 +1061,9 @@ const ControlPresupuestosPage = () => {
                               <TrendingUpIcon color="success" sx={{ fontSize: { xs: 28, md: 40 } }} />
                               <Box sx={{ minWidth: 0 }}>
                                 <Typography variant="body2" color="text.secondary" sx={{ fontSize: { xs: '0.65rem', sm: '0.75rem', md: '0.875rem' } }} noWrap>Ingresos Proyectados</Typography>
-                                <Typography variant="h5" sx={{ fontSize: { xs: '1rem', sm: '1.25rem', md: '1.5rem' } }} noWrap>{formatMonto(totales.ingresos.total)}</Typography>
+                                <Typography variant="h5" sx={{ fontSize: { xs: '1rem', sm: '1.25rem', md: '1.5rem' } }} noWrap>{formatMonto(totales.ingresos.total, moneda)}</Typography>
                                 <Typography variant="body2" color="text.secondary" sx={{ fontSize: { xs: '0.6rem', sm: '0.7rem', md: '0.875rem' } }} noWrap>
-                                  Recibido: {formatMonto(totales.ingresos.ejecutado)}
+                                  Recibido: {formatMonto(totales.ingresos.ejecutado, moneda)}
                                 </Typography>
                               </Box>
                             </Stack>
@@ -1055,9 +1078,9 @@ const ControlPresupuestosPage = () => {
                               <TrendingDownIcon color="error" sx={{ fontSize: { xs: 28, md: 40 } }} />
                               <Box sx={{ minWidth: 0 }}>
                                 <Typography variant="body2" color="text.secondary" sx={{ fontSize: { xs: '0.65rem', sm: '0.75rem', md: '0.875rem' } }} noWrap>Egresos Proyectados</Typography>
-                                <Typography variant="h5" sx={{ fontSize: { xs: '1rem', sm: '1.25rem', md: '1.5rem' } }} noWrap>{formatMonto(totales.egresos.total)}</Typography>
+                                <Typography variant="h5" sx={{ fontSize: { xs: '1rem', sm: '1.25rem', md: '1.5rem' } }} noWrap>{formatMonto(totales.egresos.total, moneda)}</Typography>
                                 <Typography variant="body2" color="text.secondary" sx={{ fontSize: { xs: '0.6rem', sm: '0.7rem', md: '0.875rem' } }} noWrap>
-                                  Gastado: {formatMonto(totales.egresos.ejecutado)}
+                                  Gastado: {formatMonto(totales.egresos.ejecutado, moneda)}
                                 </Typography>
                               </Box>
                             </Stack>
@@ -1072,9 +1095,9 @@ const ControlPresupuestosPage = () => {
                               <AccountBalanceWalletIcon sx={{ fontSize: { xs: 28, md: 40 }, color: 'white' }} />
                               <Box sx={{ minWidth: 0 }}>
                                 <Typography variant="body2" sx={{ color: 'white', fontSize: { xs: '0.65rem', sm: '0.75rem', md: '0.875rem' } }} noWrap>Ganancia Proyectada</Typography>
-                                <Typography variant="h5" sx={{ color: 'white', fontSize: { xs: '1rem', sm: '1.25rem', md: '1.5rem' } }} noWrap>{formatMonto(totales.gananciaProyectada)}</Typography>
+                                <Typography variant="h5" sx={{ color: 'white', fontSize: { xs: '1rem', sm: '1.25rem', md: '1.5rem' } }} noWrap>{formatMonto(totales.gananciaProyectada, moneda)}</Typography>
                                 <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.8)', fontSize: { xs: '0.6rem', sm: '0.7rem', md: '0.875rem' } }} noWrap>
-                                  Actual: {formatMonto(totales.gananciaActual)}
+                                  Actual: {formatMonto(totales.gananciaActual, moneda)}
                                 </Typography>
                               </Box>
                             </Stack>
@@ -1282,7 +1305,7 @@ const ControlPresupuestosPage = () => {
                         <Stack direction="row" alignItems="center" spacing={0.5} flexWrap="wrap" useFlexGap>
                           {presupuestoGeneral > 0 ? (
                             <>
-                              <Typography variant="h6" sx={{ fontSize: { xs: '0.95rem', md: '1.25rem' } }}>{formatMonto(presupuestoGeneral)}</Typography>
+                              <Typography variant="h6" sx={{ fontSize: { xs: '0.95rem', md: '1.25rem' } }}>{formatMonto(presupuestoGeneral, moneda)}</Typography>
                               <Button 
                                 size="small"
                                 sx={{ minWidth: 'auto', px: 0.5, fontSize: '0.7rem' }}
@@ -1323,7 +1346,7 @@ const ControlPresupuestosPage = () => {
                             ? 'error.main' 
                             : 'text.primary'
                         }>
-                          {formatMonto(tabActivo === 0 ? calcularSumas.porCategoria : tabActivo === 1 ? calcularSumas.porEtapa : calcularSumas.porProveedor)}
+                          {formatMonto(tabActivo === 0 ? calcularSumas.porCategoria : tabActivo === 1 ? calcularSumas.porEtapa : calcularSumas.porProveedor, moneda)}
                         </Typography>
                       </Box>
                       <Box>
@@ -1333,7 +1356,7 @@ const ControlPresupuestosPage = () => {
                             ? 'error.main' 
                             : 'success.main'
                         }>
-                          {formatMonto(presupuestoGeneral - (tabActivo === 0 ? calcularSumas.porCategoria : tabActivo === 1 ? calcularSumas.porEtapa : calcularSumas.porProveedor))}
+                          {formatMonto(presupuestoGeneral - (tabActivo === 0 ? calcularSumas.porCategoria : tabActivo === 1 ? calcularSumas.porEtapa : calcularSumas.porProveedor), moneda)}
                         </Typography>
                       </Box>
                       {presupuestoGeneral > 0 && (
@@ -1531,9 +1554,13 @@ const ControlPresupuestosPage = () => {
             <Autocomplete
               freeSolo
               options={proveedoresEmpresa.filter(p => p && !proveedoresAgregados.includes(p))}
-              value={nuevoProveedor || ''}
+              inputValue={nuevoProveedor || ''}
+              onInputChange={(e, newInputValue, reason) => {
+                if (reason === 'input' || reason === 'clear') {
+                  setNuevoProveedor(newInputValue || '');
+                }
+              }}
               onChange={(e, newValue) => setNuevoProveedor(newValue || '')}
-              onInputChange={(e, newInputValue) => setNuevoProveedor(newInputValue || '')}
               getOptionLabel={(option) => option || ''}
               renderInput={(params) => (
                 <TextField
@@ -1629,21 +1656,21 @@ const ControlPresupuestosPage = () => {
             </Alert>
             <Stack direction="row" justifyContent="space-between">
               <Typography color="text.secondary">Presupuesto general actual:</Typography>
-              <Typography fontWeight={600}>{formatMonto(presupuestoGeneral)}</Typography>
+              <Typography fontWeight={600}>{formatMonto(presupuestoGeneral, moneda)}</Typography>
             </Stack>
             <Stack direction="row" justifyContent="space-between">
               <Typography color="text.secondary">Suma por {ajusteGeneralModal.origen}:</Typography>
-              <Typography fontWeight={600} color="error">{formatMonto(ajusteGeneralModal.sumaHijos)}</Typography>
+              <Typography fontWeight={600} color="error">{formatMonto(ajusteGeneralModal.sumaHijos, moneda)}</Typography>
             </Stack>
             <Stack direction="row" justifyContent="space-between">
               <Typography color="text.secondary">Exceso:</Typography>
               <Typography fontWeight={600} color="error">
-                +{formatMonto(ajusteGeneralModal.sumaHijos - presupuestoGeneral)}
+                +{formatMonto(ajusteGeneralModal.sumaHijos - presupuestoGeneral, moneda)}
               </Typography>
             </Stack>
             <Divider />
             <Typography variant="body2">
-              ¿Desea ajustar el presupuesto general a {formatMonto(ajusteGeneralModal.sumaHijos)}?
+              ¿Desea ajustar el presupuesto general a {formatMonto(ajusteGeneralModal.sumaHijos, moneda)}?
             </Typography>
           </Stack>
         </DialogContent>
@@ -1652,7 +1679,7 @@ const ControlPresupuestosPage = () => {
             No, mantener actual
           </Button>
           <Button variant="contained" color="warning" onClick={handleAjustarGeneral}>
-            Sí, ajustar a {formatMonto(ajusteGeneralModal.sumaHijos)}
+            Sí, ajustar a {formatMonto(ajusteGeneralModal.sumaHijos, moneda)}
           </Button>
         </DialogActions>
       </Dialog>
