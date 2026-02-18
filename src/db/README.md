@@ -4,8 +4,8 @@ Este módulo encapsula la cache local que alimenta el sidebar y la ventana de me
 
 1. Se muestran conversaciones y mensajes directamente desde la cache local.
 2. Guardamos solo los mensajes con `createdAt` en los últimos 14 días. Si una conversación tiene menos de 1.000 mensajes cacheados, el hook solicita al backend todo lo necesario (dentro de la misma ventana) hasta llegar a ese mínimo o agotar el historial disponible.
-3. Cada 30 segundos (mientras el módulo esté montado) se dispara una sincronización global: el backend devuelve todos los mensajes de todas las conversaciones producidos en los últimos 30 segundos y el cliente los agrupa y persiste en IndexedDB.
-4. El backend solo depende de filtros por `createdAt`, lo que mantiene la consulta muy eficiente sobre el índice existente.
+3. Cada 30 segundos (mientras el módulo esté montado) se dispara una sincronización global: el backend devuelve todos los mensajes de todas las conversaciones que fueron creados o actualizados en los últimos 30 segundos y el cliente los agrupa y persiste en IndexedDB.
+4. El backend depende de filtros por `updatedAt`, lo que permite detectar tanto mensajes nuevos como actualizaciones en mensajes existentes sin perder eficiencia.
 
 ## Esquema
 
@@ -22,7 +22,7 @@ El DB `factudata-conversaciones` usa estas tablas:
 
 ### `syncState`
 - Clave primaria `id`.
-- Guarda `lastSync` (timestamp) y el `cursorGlobal` opcional para saber desde cuándo pedir datos en la próxima sincronización global. No hay cursores por conversación, solo se mantiene un marcador general basado en `createdAt`.
+- Guarda `lastSync` (timestamp) y el `cursorGlobal` opcional para saber desde cuándo pedir datos en la próxima sincronización global. No hay cursores por conversación, solo se mantiene un marcador general basado en `updatedAt`.
 
 ## Funciones principales
 
@@ -35,7 +35,7 @@ El DB `factudata-conversaciones` usa estas tablas:
 - `cacheMessages(messages, options)`
   - Normaliza y guarda los mensajes. Al recibir la respuesta global de `/conversaciones/sync`, el helper agrupa por `conversationId` y mantiene el índice de 1.000 registros como mínimo por conversación dentro de la ventana.
 - `getGlobalSyncTime()` / `saveGlobalSyncTime(timestamp)`
-  - Manejan el `lastSync` global y el cursor basado en `createdAt` para la siguiente sincronización cada 30 segundos.
+  - Manejan el `lastSync` global y el cursor basado en `updatedAt` para la siguiente sincronización cada 30 segundos.
 - `getSyncIntervalMs()` y `getMessageWindowCutoff()` devuelven los valores constantes (30 segundos y 14 días).
 
 ## Flujo completo
@@ -48,15 +48,20 @@ El DB `factudata-conversaciones` usa estas tablas:
 
 3. **Sincronización global cada 30 segundos**:
    - Un efecto en el provider ejecuta `setInterval` con `getSyncIntervalMs()` mientras el módulo esté montado.
-   - Cada ciclo pide `/conversaciones/sync` con `sinceCreatedAt` igual al máximo entre `lastSync` y `now - 30s`.
-   - El backend devuelve todos los mensajes producidos en ese lapso; el cliente los agrupa por conversación y los guarda con `cacheMessages`. Si una conversación está activa, los nuevos mensajes se mezclan sin duplicados para mostrarlos.
+   - Cada ciclo pide `/conversaciones/sync` con `sinceUpdatedAt` igual al máximo entre `lastSync` y `now - 30s`.
+   - El backend devuelve todos los mensajes producidos o actualizados en ese lapso; el cliente los agrupa por conversación y los guarda con `cacheMessages`. Si una conversación está activa, los nuevos mensajes o updates se mezclan sin duplicados para mostrarlos.
    - No se realizan múltiples requests por conversación durante el ciclo: solo una petición global por todas las conversaciones.
 
 4. **Mantenimiento del tamaño**:
-   - La sincronización actualiza `syncState` (que incluye `lastSync` y opcionalmente `cursorGlobal`) para controlar desde qué `createdAt` se pide lo siguiente.
+   - La sincronización actualiza `syncState` (que incluye `lastSync` y opcionalmente `cursorGlobal`) para controlar desde qué `updatedAt` se pide lo siguiente.
 
-5. **Uso de `createdAt` en el backend**:
-   - El endpoint `/conversaciones/sync` acepta `sinceCreatedAt` y usa `{ createdAt: { $gte: sinceCreatedAt } }` para aprovechar el índice de `createdAt`.
-   - Mantener un cursor global basado en `createdAt` evita tener cursos por conversación y simplifica el código.
+5. **Uso de `updatedAt` en el backend**:
+   - El endpoint `/conversaciones/sync` acepta `sinceUpdatedAt` (con fallback a `sinceCreatedAt` para compatibilidad) y usa `{ updatedAt: { $gte: sinceUpdatedAt } }` para aprovechar el índice de `updatedAt`.
+   - Mantener un cursor global basado en `updatedAt` evita tener cursos por conversación y simplifica el código, pero ahora también garantiza que las ediciones (notas, insights, etc.) se propagan rápidamente.
 
-Este README complementa el código real: la UI solo necesita un loading global inicial, los hooks reutilizan helpers de Dexie y la sincronización periódica se basa en filtros de `createdAt` para mantener la implementación DRY/SOLID. Si necesitas diagramas o ejemplos adicionales, decímelo y los agrego.
+6. **Envío de mensajes desde el front**:
+   - Al enviar un mensaje la UI hace `POST /conversaciones/message` con `{ userId, message }`. El `userId` puede ser `wPid`, `lid` o el número; el backend normaliza a `@s.whatsapp.net` y verifica que haya texto.
+   - El controlador llama a `enviarMensajeService`, guarda el resultado con `saveOutgoingMessage` y devuelve el mensaje persistido (`_id`, `id_conversacion`, `createdAt`, `updatedAt`, `message`, `fromMe`, etc.).
+   - El cliente cachea ese mensaje en IndexedDB, actualiza el estado local y dispara inmediatamente el mismo proceso de sincronización global (`/conversaciones/sync` con `sinceUpdatedAt` calculado como si hubieran pasado 30 segundos). Así el historial activo y el sidebar se refrescan antes de que el intervalo automático ocurra.
+
+Este README complementa el código real: la UI solo necesita un loading global inicial, los hooks reutilizan helpers de Dexie y la sincronización periódica se basa en filtros de `updatedAt` para mantener la implementación DRY/SOLID. Si necesitas diagramas o ejemplos adicionales, decímelo y los agrego.

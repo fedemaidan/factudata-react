@@ -17,6 +17,7 @@ import {
   getMessageWindowCutoff,
   searchCachedConversations,
   searchCachedMessages,
+  updateCachedMessageById,
 } from "src/db/indexed-db";
 
 const ACTIONS = {
@@ -357,7 +358,7 @@ export function ConversationsProvider({ children }) {
           limit: 2000,
         };
         if (sinceTimestamp > 0) {
-          params.sinceCreatedAt = new Date(sinceTimestamp).toISOString();
+          params.sinceUpdatedAt = new Date(sinceTimestamp).toISOString();
         }
 
         const { items = [] } = await fetchRecentMessages(params);
@@ -674,14 +675,19 @@ export function ConversationsProvider({ children }) {
   const handleAddNote = useCallback(async ({ messageId, content, userEmail }) => {
     try {
       const response = await addNoteToMessage({ messageId, content, userEmail });
-      dispatch({ 
-        type: ACTIONS.UPDATE_MESSAGE_NOTES, 
-        payload: { messageId, notas: response.notas } 
+      dispatch({
+        type: ACTIONS.UPDATE_MESSAGE_NOTES,
+        payload: { messageId, notas: response.notas },
       });
+      const updatedMessage = response.updatedMessage;
+      if (updatedMessage) {
+        const cacheId = updatedMessage._id
+        await updateCachedMessageById(cacheId, updatedMessage).catch(() => {});
+      }
       return { success: true };
     } catch (error) {
       console.error("Error al agregar nota:", error);
-      return { success: false, error: error.message || 'Error al agregar nota' };
+      return { success: false, error: error.message || "Error al agregar nota" };
     }
   }, []);
 

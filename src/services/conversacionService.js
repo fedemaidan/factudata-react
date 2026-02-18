@@ -41,18 +41,19 @@ export async function fetchMessages(
   return data;
 }
 
-export async function fetchRecentMessages({ sinceCreatedAt, limit = 1000 } = {}) {
+export async function fetchRecentMessages({ sinceUpdatedAt, limit = 1000 } = {}) {
   const params = { limit };
-  if (sinceCreatedAt) params.sinceCreatedAt = sinceCreatedAt;
+  if (sinceUpdatedAt) params.sinceUpdatedAt = sinceUpdatedAt;
   const { data } = await api.get("/conversaciones/sync", { params });
   return data;
 }
 
-export async function sendMessage({ conversationId, text }) {
-  const response = await api.post('/conversaciones/message', {
-    conversationId,
-    text,
-  });
+export async function sendMessage({ userId, message, conversationId }) {
+  const body = { userId, message };
+  if (conversationId) {
+    body.conversationId = conversationId;
+  }
+  const response = await api.post('/conversaciones/message', body);
   return response.data;
 }
 

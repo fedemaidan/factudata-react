@@ -30,16 +30,22 @@ const prepareConversationRecord = (conversation, extra = {}) => {
   };
 };
 
-const normalizeMessage = (message) => {
+const buildMessageRecord = (message) => {
   if (!message) return null;
-  const conversationId = message.id_conversacion || null
+  const conversationId = String(message.id_conversacion || message.conversationId || "");
   if (!conversationId) return null;
+  const createdAtValue = message.createdAt
+  const createdAt = normalizeDate(createdAtValue) || new Date();
   return {
     ...message,
-    _id: String(message._id || message.id || `${conversationId}-${message.createdAt || Date.now()}`),
-    conversationId: String(conversationId),
-    createdAt: normalizeDate(message.createdAt) || new Date(),
+    _id: String(message._id),
+    conversationId,
+    createdAt,
   };
+};
+
+const normalizeMessage = (message) => {
+  return buildMessageRecord(message);
 };
 
 export const getMessageWindowCutoff = () =>
@@ -166,6 +172,21 @@ export const cacheMessages = async (messages = [], { ignoreWindow = false } = {}
 export const countCachedMessagesForConversation = async (conversationId) => {
   if (!conversationId) return 0;
   return db.messages.where("conversationId").equals(conversationId).count();
+};
+
+export const updateCachedMessageById = async (messageId, updates = {}) => {
+  if (!messageId) return null;
+  const normalizedId = String(messageId);
+  const existing = await db.messages.get(normalizedId);
+  if (!existing) return null;
+  const merged = buildMessageRecord({
+    ...existing,
+    ...updates,
+    conversationId: existing.conversationId,
+  });
+  if (!merged) return null;
+  await db.messages.put(merged);
+  return merged;
 };
 
 const GLOBAL_SYNC_KEY = "__GLOBAL_SYNC__";
