@@ -4,8 +4,7 @@ import { toNumber, normalizeDate } from "../utils/parseData";
 
 const DB_NAME = "factudata-conversaciones";
 const MESSAGE_WINDOW_DAYS = 14;
-const RECENT_CONVERSATION_TTL_MS = 1000 * 60 * 60 * 2; // 2 horas.
-const SYNC_INTERVAL_MS = 1000 * 60 * 5; // 5 minutos
+const SYNC_INTERVAL_MS = 1000 * 30; // 30 segundos
 
 const db = new Dexie(DB_NAME);
 
@@ -46,12 +45,78 @@ const normalizeMessage = (message) => {
 export const getMessageWindowCutoff = () =>
   subDays(new Date(), MESSAGE_WINDOW_DAYS);
 
-export const getCachedConversations = async (limit = 30) => {
-  return db.conversations
+const parseDateRange = (value, endOfDay = false) => {
+  if (!value) return null;
+  const base = value.includes("T") ? value.split("T")[0] : value;
+  const date = new Date(`${base}T00:00:00`);
+  if (endOfDay) {
+    date.setHours(23, 59, 59, 999);
+  }
+  return date;
+};
+
+const matchesTipoContacto = (conversation, tipoContacto) => {
+  if (!tipoContacto || tipoContacto === "todos") return true;
+  const hasProfile = conversation?.profile && Object.keys(conversation.profile || {}).length;
+  if (tipoContacto === "cliente") {
+    return Boolean(hasProfile);
+  }
+  return !hasProfile;
+};
+
+const matchesEstadoCliente = (conversation, estadoCliente) => {
+  if (!estadoCliente || estadoCliente === "todos") return true;
+  const empresa = conversation?.empresa;
+  if (!empresa) return estadoCliente === "no_cliente";
+  if (!empresa.esCliente) return estadoCliente === "no_cliente";
+  if (empresa.estaDadoDeBaja) return estadoCliente === "dado_de_baja";
+  return estadoCliente === "cliente_activo";
+};
+
+const getDateFromConversation = (conversation) => {
+  const value =
+    conversation?.ultimoMensaje?.fecha ||
+    conversation?.ultimoMensaje?.createdAt ||
+    conversation?.createdAt ||
+    conversation?.updatedAt ||
+    null;
+  if (!value) return null;
+  return value instanceof Date ? value : new Date(value);
+};
+
+const matchesDateRange = (conversation, { fechaDesde, fechaHasta, creadaDesde, creadaHasta }) => {
+  const target = getDateFromConversation(conversation);
+  if (!target) return true;
+  const fechaDesdeDate = parseDateRange(fechaDesde);
+  const fechaHastaDate = parseDateRange(fechaHasta, true);
+  const creadaDesdeDate = parseDateRange(creadaDesde);
+  const creadaHastaDate = parseDateRange(creadaHasta, true);
+  if (fechaDesdeDate && target < fechaDesdeDate) return false;
+  if (fechaHastaDate && target > fechaHastaDate) return false;
+  if (creadaDesdeDate && target < creadaDesdeDate) return false;
+  if (creadaHastaDate && target > creadaHastaDate) return false;
+  return true;
+};
+
+const filterConversations = (conversations = [], filters = {}) => {
+  return (conversations || []).filter((conversation) => {
+    if (!matchesEstadoCliente(conversation, filters.estadoCliente)) return false;
+    if (!matchesTipoContacto(conversation, filters.tipoContacto)) return false;
+    if (filters.empresaId && String(filters.empresaId) !== String(conversation?.empresa?.id)) {
+      return false;
+    }
+    if (!matchesDateRange(conversation, filters)) return false;
+    return true;
+  });
+};
+
+export const getCachedConversations = async ({ filters = {}, limit = 30 } = {}) => {
+  const all = await db.conversations
     .orderBy("recentAt")
     .reverse()
-    .limit(limit)
     .toArray();
+  const filtered = filterConversations(all, filters);
+  return filtered.slice(0, limit);
 };
 
 export const cacheConversations = async (conversations = []) => {
@@ -79,79 +144,129 @@ export const getCachedMessagesForConversation = async (conversationId, { limit =
   return records.reverse();
 };
 
-export const cacheMessages = async (messages = []) => {
+export const cacheMessages = async (messages = [], { ignoreWindow = false } = {}) => {
   const prepared = messages
     .map(normalizeMessage)
     .filter((message) => message && message.conversationId);
   if (!prepared.length) return;
-  await db.messages.bulkPut(prepared);
-};
-
-// cutOff: fecha limite
-//
-export const deleteOldMessages = async ({ cutoff, conversationId } = {}) => {
-  const threshold = cutoff || getMessageWindowCutoff();
-  if (conversationId) {
-    await db.messages
-      .where("[conversationId+createdAt]")
-      .between([conversationId, Dexie.minKey], [conversationId, threshold], true, true)
-      .delete();
+  if (ignoreWindow) {
+    await db.messages.bulkPut(prepared);
     return;
   }
-  await db.messages.where("createdAt").below(threshold).delete();
+  const cutoff = getMessageWindowCutoff();
+  const filtered = prepared.filter((message) => {
+    const createdAt = message.createdAt instanceof Date ? message.createdAt : new Date(message.createdAt);
+    if (Number.isNaN(createdAt.getTime())) return false;
+    return createdAt >= cutoff;
+  });
+  if (!filtered.length) return;
+  await db.messages.bulkPut(filtered);
 };
 
-const buildSyncStateRecord = ({ conversationId, cursor, lastSync, recentAt }) => ({
-  conversationId,
-  cursorCreatedAt: cursor?.createdAt ? toNumber(cursor.createdAt) : null,
-  cursorId: cursor?._id || null,
-  lastSync: lastSync || Date.now(),
-  recentAt: recentAt || Date.now(),
-});
-
-export const getSyncCursor = async (conversationId) => {
-  if (!conversationId) return null;
-  const state = await db.syncState.get(conversationId);
-  if (!state) return null;
-  return {
-    createdAt: state.cursorCreatedAt ? new Date(state.cursorCreatedAt) : null,
-    _id: state.cursorId,
-  };
+export const countCachedMessagesForConversation = async (conversationId) => {
+  if (!conversationId) return 0;
+  return db.messages.where("conversationId").equals(conversationId).count();
 };
 
-export const getLastSyncTime = async (conversationId) => {
-  if (!conversationId) return null;
-  const state = await db.syncState.get(conversationId);
+const GLOBAL_SYNC_KEY = "__GLOBAL_SYNC__";
+
+export const getGlobalSyncTime = async () => {
+  const state = await db.syncState.get(GLOBAL_SYNC_KEY);
   return state?.lastSync || null;
 };
 
-export const saveSyncCursor = async (conversationId, cursor, { recentAt } = {}) => {
-  if (!conversationId) return;
-  const record = buildSyncStateRecord({ conversationId, cursor, recentAt, lastSync: Date.now() });
-  await db.syncState.put(record);
-};
-
-export const touchConversation = async (conversationId) => {
-  if (!conversationId) return;
-  const state = (await db.syncState.get(conversationId)) || {};
+export const saveGlobalSyncTime = async (timestamp = Date.now()) => {
   await db.syncState.put({
-    ...state,
-    conversationId,
-    recentAt: Date.now(),
+    conversationId: GLOBAL_SYNC_KEY,
+    lastSync: timestamp,
+    recentAt: timestamp,
   });
-};
-
-export const getRecentConversationIds = async ({ limit = 30, ttlMs = RECENT_CONVERSATION_TTL_MS } = {}) => {
-  const threshold = Date.now() - ttlMs;
-  const states = await db.syncState
-    .where("recentAt")
-    .above(threshold)
-    .reverse()
-    .limit(limit)
-    .toArray();
-  return states.map((state) => state.conversationId);
 };
 
 export const getSyncIntervalMs = () => SYNC_INTERVAL_MS;
 
 export default db;
+
+const normalizeSearchText = (value) => (value || "").toLowerCase().trim();
+
+const matchesQuery = (conversation, query) => {
+  const normalized = normalizeSearchText(query);
+  if (!normalized) return true;
+  const haystack = [
+    conversation?.profile?.firstName,
+    conversation?.profile?.lastName,
+    conversation?.profile?.phone,
+    conversation?.empresa?.nombre,
+    conversation?.wPid,
+    conversation?.lid,
+    conversation?.ultimoMensaje?.message,
+    conversation?.ultimoMensaje?.caption,
+  ]
+    .filter(Boolean)
+    .map((value) => value.toString().toLowerCase())
+    .join(" ");
+  return haystack.includes(normalized);
+};
+
+export const searchCachedConversations = async (
+  query,
+  { filters = {}, limit = 100 } = {}
+) => {
+  const normalizedQuery = normalizeSearchText(query);
+  const allConversations = await db.conversations
+    .orderBy("recentAt")
+    .reverse()
+    .toArray();
+  const results = [];
+  for (const conversation of allConversations) {
+    if (!matchesEstadoCliente(conversation, filters.estadoCliente)) continue;
+    if (filters.empresaId && String(filters.empresaId) !== String(conversation.empresa?.id)) {
+      continue;
+    }
+    if (
+      normalizedQuery &&
+      !matchesQuery(conversation, normalizedQuery)
+    ) {
+      continue;
+    }
+    results.push(conversation);
+    if (results.length >= limit) break;
+  }
+  return results;
+};
+
+export const searchCachedMessages = async (
+  query,
+  { filters = {}, limit = 100 } = {}
+) => {
+  const normalizedQuery = normalizeSearchText(query);
+  const startDate = filters.fechaDesde ? new Date(filters.fechaDesde) : null;
+  const endDate = filters.fechaHasta ? new Date(filters.fechaHasta) : null;
+  const conversations = await db.conversations.toArray();
+  const conversationMap = new Map(conversations.map((c) => [c.id, c]));
+  const allMessages = await db.messages.orderBy("createdAt").reverse().toArray();
+  const matches = [];
+  for (const message of allMessages) {
+    if (normalizedQuery) {
+      const haystack = [
+        message.message,
+        message.caption,
+        message.profile?.name,
+        message.empresa?.nombre,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      if (!haystack.includes(normalizedQuery)) continue;
+    }
+    if (startDate && message.createdAt < startDate) continue;
+    if (endDate && message.createdAt > endDate) continue;
+    matches.push({
+      conversationId: message.conversationId,
+      matchMessage: message,
+      conversation: conversationMap.get(String(message.conversationId)) || null,
+    });
+    if (matches.length >= limit) break;
+  }
+  return matches;
+};

@@ -3,12 +3,10 @@ import { fetchMessages, sendMessage, getJumpInfo } from "src/services/conversaci
 import {
   cacheMessages,
   getCachedMessagesForConversation,
-  getSyncCursor,
-  deleteOldMessages,
-  saveSyncCursor,
-  touchConversation,
+  countCachedMessagesForConversation,
+  getGlobalSyncTime,
+  getMessageWindowCutoff,
 } from "src/db/indexed-db";
-import { filterUniqueMessages, resolveLatestCursor } from "src/utils/messageCache";
 
 const PAGE = 50;
 
@@ -47,61 +45,73 @@ export function useMessagesFetch({
     activeRef.current = true;
     onScrollToMessageIdCleared?.();
     onHighlightedMessageIdCleared?.();
-    touchConversation(conversationId).catch(() => {});
 
     const loadAndSync = async () => {
       try {
-        const cachedMessages = await getCachedMessagesForConversation(conversationId, { limit: PAGE * 2 });
-        if (!activeRef.current) {
-          return;
-        }
-
-        if (cachedMessages.length) {
-          onMessagesLoaded?.(cachedMessages);
-          onOffsetUpdated?.(cachedMessages.length);
-          onHasMoreUpdated?.(false);
-        }
-
-        const cursor = await getSyncCursor(conversationId);
-        const hasCursor = Boolean(cursor?.createdAt);
-        const params = hasCursor
-          ? {
-              sinceCreatedAt: cursor.createdAt.toISOString(),
-              sinceId: cursor._id,
-              limit: PAGE,
-            }
-          : { limit: PAGE, offset: 0 };
-
-        const sortOrder = hasCursor ? "asc" : "desc";
-        const { items = [], total, cursor: responseCursor } = await fetchMessages(conversationId, {
-          ...params,
-          sort: sortOrder,
+        const cachedMessages = await getCachedMessagesForConversation(conversationId, {
+          limit: PAGE * 4,
         });
+        if (!activeRef.current) return;
 
-        if (!activeRef.current) {
-          return;
+        onMessagesLoaded?.(cachedMessages);
+        onOffsetUpdated?.(cachedMessages.length);
+        onHasMoreUpdated?.(false);
+
+        const [localCount, globalLastSync] = await Promise.all([
+          countCachedMessagesForConversation(conversationId),
+          getGlobalSyncTime(),
+        ]);
+        const lastSync = globalLastSync ? Number(globalLastSync) : 0;
+        const windowCutoff = getMessageWindowCutoff().getTime();
+        const needsFullWindow = localCount < 1000;
+        const now = Date.now();
+        const baseSince = needsFullWindow ? windowCutoff : Math.max(lastSync, now - 30_000);
+        const sinceTimestamp = Math.max(baseSince, windowCutoff);
+        const sinceDate = new Date(Math.max(0, sinceTimestamp));
+
+        const params = {
+          limit: needsFullWindow ? 1000 : PAGE * 2,
+          sort: "asc",
+        };
+        if (sinceDate.getTime()) {
+          params.sinceCreatedAt = sinceDate.toISOString();
         }
 
-        const orderedItems = hasCursor ? items : [...items].reverse();
-        const appendedItems = hasCursor ? filterUniqueMessages(cachedMessages, orderedItems) : orderedItems;
-        const finalMessages = hasCursor ? [...cachedMessages, ...appendedItems] : orderedItems;
+        const { items = [] } = await fetchMessages(conversationId, params);
+        if (!activeRef.current) return;
 
-        onMessagesLoaded?.(finalMessages);
-        onOffsetUpdated?.(finalMessages.length);
-        if (!hasCursor) {
-          onHasMoreUpdated?.(orderedItems.length < (total ?? 0));
+        let fetchedItems = items;
+        if (
+          !fetchedItems.length &&
+          needsFullWindow &&
+          !cachedMessages.length &&
+          activeRef.current
+        ) {
+          const fallback = await fetchMessages(conversationId, {
+            limit: 500,
+            sort: "desc",
+          });
+          fetchedItems = fallback?.items?.length ? fallback.items : fetchedItems;
         }
+
+        if (fetchedItems.length) {
+          const cacheOptions = needsFullWindow && !cachedMessages.length ? { ignoreWindow: true } : undefined;
+          await cacheMessages(fetchedItems, cacheOptions);
+          const finalLimit = Math.max(
+            cachedMessages.length + fetchedItems.length,
+            1000,
+            PAGE * 4
+          );
+          const refreshedMessages = await getCachedMessagesForConversation(conversationId, {
+            limit: finalLimit,
+          });
+          if (!activeRef.current) return;
+          onMessagesLoaded?.(refreshedMessages);
+          onOffsetUpdated?.(refreshedMessages.length);
+        }
+
+        onHasMoreUpdated?.(false);
         onScrollToBottom?.(true);
-
-        if (items.length) {
-          await cacheMessages(items);
-          await deleteOldMessages({ conversationId });
-        }
-
-        const syncCursorValue = responseCursor || resolveLatestCursor(items) || cursor;
-        if (syncCursorValue) {
-          await saveSyncCursor(conversationId, syncCursorValue, { recentAt: Date.now() });
-        }
       } catch (error) {
         console.error("Error al cargar mensajes:", error);
       }
@@ -172,14 +182,6 @@ export function useMessagesFetch({
 
         if (message) {
           await cacheMessages([message]);
-          const cursor = resolveLatestCursor([message]);
-          if (cursor) {
-            await saveSyncCursor(selected.ultimoMensaje.id_conversacion, cursor, {
-              recentAt: Date.now(),
-            });
-          }
-          await deleteOldMessages({ conversationId: selected.ultimoMensaje.id_conversacion });
-          await touchConversation(selected.ultimoMensaje.id_conversacion).catch(() => {});
         }
 
         const updatedConversations = currentConversations.map((cv) =>
@@ -213,12 +215,6 @@ export function useMessagesFetch({
 
         if (items.length) {
           await cacheMessages(items);
-          const cursor = resolveLatestCursor(items);
-          if (cursor) {
-            await saveSyncCursor(conversationId, cursor, { recentAt: Date.now() });
-          }
-          await deleteOldMessages({ conversationId });
-          await touchConversation(conversationId).catch(() => {});
         }
 
         return { messages: reversedItems, conversation };
@@ -252,12 +248,6 @@ export function useMessagesFetch({
 
       if (items.length) {
         await cacheMessages(items);
-        const cursor = resolveLatestCursor(items);
-        if (cursor) {
-          await saveSyncCursor(conversationId, cursor, { recentAt: Date.now() });
-        }
-        await deleteOldMessages({ conversationId });
-        await touchConversation(conversationId).catch(() => {});
       }
     } catch (error) {
       console.error("Error al refrescar conversación actual:", error);

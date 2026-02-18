@@ -41,6 +41,13 @@ export async function fetchMessages(
   return data;
 }
 
+export async function fetchRecentMessages({ sinceCreatedAt, limit = 1000 } = {}) {
+  const params = { limit };
+  if (sinceCreatedAt) params.sinceCreatedAt = sinceCreatedAt;
+  const { data } = await api.get("/conversaciones/sync", { params });
+  return data;
+}
+
 export async function sendMessage({ conversationId, text }) {
   const response = await api.post('/conversaciones/message', {
     conversationId,

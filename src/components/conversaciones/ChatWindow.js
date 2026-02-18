@@ -58,6 +58,7 @@ export default function ChatWindow({ myNumber = "X", onOpenList }) {
     selected,
     onRefreshConversations,
   } = useConversationsContext();
+  console.log('messages', messages);
 
   // Datos de la conversación seleccionada
   const conversationEmpresa = selected?.empresa;

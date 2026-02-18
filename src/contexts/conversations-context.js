@@ -4,21 +4,20 @@ import { useConversationsFetch } from "src/hooks/useConversationsFetch";
 import { useMessagesFetch } from "src/hooks/useMessagesFetch";
 import { useMessageScroll } from "src/hooks/useMessageScroll";
 import { useInsightNavigation } from "src/hooks/useErrorNavigation";
-import { addNoteToMessage, fetchMessages } from "src/services/conversacionService";
+import { addNoteToMessage, fetchRecentMessages } from "src/services/conversacionService";
 import {
   cacheConversations,
   cacheConversation,
   cacheMessages,
   getCachedConversations,
-  getRecentConversationIds,
-  getSyncCursor,
-  getLastSyncTime,
+  getGlobalSyncTime,
+  saveGlobalSyncTime,
+  getCachedMessagesForConversation,
   getSyncIntervalMs,
-  deleteOldMessages,
-  saveSyncCursor,
-  touchConversation,
+  getMessageWindowCutoff,
+  searchCachedConversations,
+  searchCachedMessages,
 } from "src/db/indexed-db";
-import { filterUniqueMessages, resolveLatestCursor } from "src/utils/messageCache";
 
 const ACTIONS = {
   SET_CONVERSATIONS: "SET_CONVERSATIONS",
@@ -35,11 +34,13 @@ const ACTIONS = {
   SET_LOADING: "SET_LOADING",
   SET_INSIGHT_MESSAGE_IDS: "SET_INSIGHT_MESSAGE_IDS",
   SET_CURRENT_INSIGHT_INDEX: "SET_CURRENT_INSIGHT_INDEX",
+  SET_INITIAL_SYNCING: "SET_INITIAL_SYNCING",
+  SET_SEARCH_CONVERSATIONS: "SET_SEARCH_CONVERSATIONS",
+  SET_CACHE_SEARCH_ACTIVE: "SET_CACHE_SEARCH_ACTIVE",
   UPDATE_MESSAGE_NOTES: "UPDATE_MESSAGE_NOTES",
 };
 
-const SYNC_FETCH_LIMIT = 50;
-const RECENT_SYNC_LIMIT = 30;
+const INITIAL_SYNC_THRESHOLD_MS = 1000 * 60 * 60 * 12;
 
 const initialState = {
   conversations: [],
@@ -55,6 +56,9 @@ const initialState = {
   loading: false,
   insightMessageIds: [],
   currentInsightIndex: -1,
+  initialSyncing: false,
+  searchConversations: null,
+  cacheSearchActive: false,
 };
 
 const reducer = (state, action) => {
@@ -85,6 +89,12 @@ const reducer = (state, action) => {
       return { ...state, insightMessageIds: action.payload };
     case ACTIONS.SET_CURRENT_INSIGHT_INDEX:
       return { ...state, currentInsightIndex: action.payload };
+    case ACTIONS.SET_INITIAL_SYNCING:
+      return { ...state, initialSyncing: action.payload };
+    case ACTIONS.SET_SEARCH_CONVERSATIONS:
+      return { ...state, searchConversations: action.payload };
+    case ACTIONS.SET_CACHE_SEARCH_ACTIVE:
+      return { ...state, cacheSearchActive: action.payload };
     case ACTIONS.UPDATE_MESSAGE_NOTES:
       return {
         ...state,
@@ -155,8 +165,25 @@ export function ConversationsProvider({ children }) {
   const [state, dispatch] = useReducer(reducer, initialState);
   const skipDefaultLoadRef = useRef(false);
   const isManualSelectionRef = useRef(false);
-  const { selected, conversations, messages, offset, hasMore, scrollToMessageId, highlightedMessageId, scrollToBottom, messageResults, loading, insightMessageIds, currentInsightIndex } =
-    state;
+  const {
+    selected,
+    conversations,
+    messages,
+    offset,
+    hasMore,
+    scrollToMessageId,
+    highlightedMessageId,
+    scrollToBottom,
+    messageResults,
+    loading,
+    insightMessageIds,
+    currentInsightIndex,
+    initialSyncing,
+    searchConversations,
+    cacheSearchActive,
+  } = state;
+  const initialSyncPendingRef = useRef(false);
+  const selectedRef = useRef(selected);
 
   useEffect(() => {
     let isMounted = true;
@@ -164,6 +191,15 @@ export function ConversationsProvider({ children }) {
       const cached = await getCachedConversations();
       if (isMounted && cached.length > 0) {
         dispatch({ type: ACTIONS.SET_CONVERSATIONS, payload: cached });
+      }
+      const globalLastSync = await getGlobalSyncTime();
+      const needsInitialSync =
+        !cached.length ||
+        !globalLastSync ||
+        Date.now() - (globalLastSync || 0) > INITIAL_SYNC_THRESHOLD_MS;
+      if (isMounted && needsInitialSync) {
+        dispatch({ type: ACTIONS.SET_INITIAL_SYNCING, payload: true });
+        initialSyncPendingRef.current = true;
       }
     };
     loadCachedConversations();
@@ -185,6 +221,10 @@ export function ConversationsProvider({ children }) {
   const filters = useMemo(() => {
     return normalizeFilterDates(getFiltersFromQuery(router.query));
   }, [router.query.fechaDesde, router.query.fechaHasta, router.query.creadaDesde, router.query.creadaHasta, router.query.empresaId, router.query.estadoCliente, router.query.tipoContacto, router.query.showInsight, router.query.insightCategory, router.query.insightTypes]);
+
+  useEffect(() => {
+    selectedRef.current = selected;
+  }, [selected]);
 
   // Callbacks para los hooks
   const handleConversationsLoaded = useCallback((data) => {
@@ -229,7 +269,7 @@ export function ConversationsProvider({ children }) {
     dispatch({ type: ACTIONS.SET_CURRENT_INSIGHT_INDEX, payload: -1 });
   }, []);
 
-  const { refreshConversations, performSearch } = useConversationsFetch({
+  const { refreshConversations, runCachedFilters } = useConversationsFetch({
     filters,
     onConversationsLoaded: handleConversationsLoaded,
     onMessageResultsLoaded: handleMessageResultsLoaded,
@@ -306,62 +346,42 @@ export function ConversationsProvider({ children }) {
     let cancelled = false;
     const intervalMs = getSyncIntervalMs();
 
-    const syncConversationMessages = async (conversationId) => {
-      if (!conversationId) return [];
+    const runSync = async () => {
       try {
-        const cursor = await getSyncCursor(conversationId);
-        const params = cursor
-          ? {
-              sinceCreatedAt: cursor.createdAt?.toISOString(),
-              sinceId: cursor._id,
-              limit: SYNC_FETCH_LIMIT,
-            }
-          : { limit: SYNC_FETCH_LIMIT, offset: 0 };
-        const sortOrder = cursor ? "asc" : "desc";
-        const { items = [], cursor: responseCursor } = await fetchMessages(conversationId, {
-          ...params,
-          sort: sortOrder,
-        });
+        const globalLastSync = (await getGlobalSyncTime()) || 0;
+        const now = Date.now();
+        const windowCutoff = getMessageWindowCutoff().getTime();
+        const baseSince = globalLastSync ? Math.max(globalLastSync, now - intervalMs) : windowCutoff;
+        const sinceTimestamp = Math.max(baseSince, windowCutoff);
+        const params = {
+          limit: 2000,
+        };
+        if (sinceTimestamp > 0) {
+          params.sinceCreatedAt = new Date(sinceTimestamp).toISOString();
+        }
+
+        const { items = [] } = await fetchRecentMessages(params);
+        if (cancelled) return;
         if (items.length) {
           await cacheMessages(items);
-          await deleteOldMessages({ conversationId });
-        }
-        const derivedCursor = responseCursor || resolveLatestCursor(items) || cursor;
-        if (derivedCursor) {
-          await saveSyncCursor(conversationId, derivedCursor, { recentAt: Date.now() });
-        }
-        await touchConversation(conversationId).catch(() => {});
-        return { items, sortOrder };
-      } catch (error) {
-        console.error("Error sincronizando conversación:", conversationId, error);
-        return { items: [], sortOrder: "desc" };
-      }
-    };
-
-    const runSync = async () => {
-      const recentIds = await getRecentConversationIds({ limit: RECENT_SYNC_LIMIT });
-      const targetSet = new Set(recentIds.filter(Boolean));
-      const activeConversationId = selected?.ultimoMensaje?.id_conversacion;
-      if (activeConversationId) targetSet.add(activeConversationId);
-      if (!targetSet.size) return;
-
-      const now = Date.now();
-      for (const conversationId of Array.from(targetSet)) {
-        if (cancelled) return;
-        const lastSync = await getLastSyncTime(conversationId);
-        if (lastSync && now - lastSync < intervalMs) {
-          continue;
-        }
-        const { items: newItems, sortOrder } = await syncConversationMessages(conversationId);
-        if (!cancelled && conversationId === activeConversationId && newItems?.length) {
-          const cachedMessages = messagesRef.current || [];
-          const normalizedItems = sortOrder === "asc" ? newItems : [...newItems].reverse();
-          const uniqueItems = filterUniqueMessages(cachedMessages, normalizedItems);
-          if (uniqueItems.length) {
-            handleMessagesLoaded?.([...cachedMessages, ...uniqueItems]);
-            handleScrollToBottom?.(true);
+          const activeConversationId = selectedRef.current?.ultimoMensaje?.id_conversacion;
+          if (activeConversationId) {
+            const limit = Math.max(messagesRef.current.length + items.length, 200);
+            const refreshedMessages = await getCachedMessagesForConversation(activeConversationId, { limit });
+            if (!cancelled && refreshedMessages.length) {
+              handleMessagesLoaded?.(refreshedMessages);
+              handleScrollToBottom?.(true);
+            }
           }
         }
+
+        await saveGlobalSyncTime(now);
+        if (initialSyncPendingRef.current) {
+          dispatch({ type: ACTIONS.SET_INITIAL_SYNCING, payload: false });
+          initialSyncPendingRef.current = false;
+        }
+      } catch (error) {
+        console.error("Error sincronizando mensajes globalmente:", error);
       }
     };
 
@@ -374,7 +394,7 @@ export function ConversationsProvider({ children }) {
       cancelled = true;
       clearInterval(intervalId);
     };
-  }, [selected?.ultimoMensaje?.id_conversacion, handleMessagesLoaded, handleScrollToBottom]);
+  }, [handleMessagesLoaded, handleScrollToBottom]);
 
   const handleSelectConversation = useCallback(
     (conversation) => {
@@ -400,9 +420,6 @@ export function ConversationsProvider({ children }) {
         router.push({ pathname: router.pathname, query: newQuery }, undefined, { shallow: true });
       }
         cacheConversation(conversation).catch(() => {});
-        if (conversationId) {
-          touchConversation(conversationId).catch(() => {});
-        }
     },
     [dispatch, router]
   );
@@ -430,9 +447,6 @@ export function ConversationsProvider({ children }) {
         const conversationId = result.conversationId;
         if (result.conversation) {
           cacheConversation(result.conversation).catch(() => {});
-        }
-        if (conversationId) {
-          touchConversation(conversationId).catch(() => {});
         }
         if (conversationId) {
           const newQuery = { ...router.query, conversationId };
@@ -538,10 +552,52 @@ export function ConversationsProvider({ children }) {
         // performSearch relies on router state in our updated hook, so we might need to wait for router update if we used push/replace.
         // But if params are same, performSearch won't see a change.
         // We can call performSearch manually if needed, but usually not required if state matches.
-        await performSearch(queryValue, filters);
+        await runCachedFilters(filters);
       }
     },
-    [filters, router, performSearch]
+    [filters, router, runCachedFilters]
+  );
+
+  const handleSearchCache = useCallback(
+    async (value, options = {}) => {
+      const queryValue = (value || "").trim();
+      if (!queryValue) {
+        dispatch({ type: ACTIONS.SET_SEARCH_CONVERSATIONS, payload: null });
+        dispatch({ type: ACTIONS.SET_MESSAGE_RESULTS, payload: [] });
+        dispatch({ type: ACTIONS.SET_CACHE_SEARCH_ACTIVE, payload: false });
+        return;
+      }
+
+      const normalizedFilters = {
+        ...filters,
+        fechaDesde: options.fechaDesde || filters.fechaDesde,
+        fechaHasta: options.fechaHasta || filters.fechaHasta,
+      };
+
+      const localConversations = await searchCachedConversations(queryValue, {
+        filters: normalizedFilters,
+        limit: 100,
+      });
+
+      const localMessages =
+        options.searchInMessages || options.fechaDesde || options.fechaHasta
+          ? await searchCachedMessages(queryValue, {
+              filters: normalizedFilters,
+              limit: 100,
+            })
+          : [];
+
+      dispatch({
+        type: ACTIONS.SET_SEARCH_CONVERSATIONS,
+        payload: localConversations,
+      });
+      dispatch({
+        type: ACTIONS.SET_MESSAGE_RESULTS,
+        payload: localMessages,
+      });
+      dispatch({ type: ACTIONS.SET_CACHE_SEARCH_ACTIVE, payload: true });
+    },
+    [filters]
   );
 
   const handleRefreshConversations = useCallback(async () => {
@@ -602,9 +658,9 @@ export function ConversationsProvider({ children }) {
 
       router.replace({ pathname: router.pathname, query: newQuery }, undefined, { shallow: true });
       const query = search || "";
-      await performSearch(query, normalizedFilters);
+      await runCachedFilters(normalizedFilters);
     },
-    [search, router, performSearch]
+    [search, router, runCachedFilters]
   );
 
   const handleRefreshCurrentConversation = useCallback(async () => {
@@ -644,9 +700,11 @@ export function ConversationsProvider({ children }) {
       loading,
       insightMessageIds,
       currentInsightIndex,
+      initialSyncing,
       onSelectConversation: handleSelectConversation,
       onMessageSelect: handleSelectMessageResult,
       onSearch: handleSearch,
+      onSearchCache: handleSearchCache,
       onRefreshConversations: handleRefreshConversations,
       onFiltersChange: handleFiltersChange,
       onRefreshCurrentConversation: handleRefreshCurrentConversation,
@@ -656,6 +714,8 @@ export function ConversationsProvider({ children }) {
       onInsightMessageIdsLoaded: handleInsightMessageIdsLoaded,
       onNavigateToInsight: handleNavigateToInsight,
       onAddNote: handleAddNote,
+      searchConversations,
+      cacheSearchActive,
     }),
     [
       conversations,
@@ -670,6 +730,7 @@ export function ConversationsProvider({ children }) {
       highlightedMessageId,
       insightMessageIds,
       currentInsightIndex,
+      initialSyncing,
       handleSelectConversation,
       handleSelectMessageResult,
       handleSearch,
@@ -682,6 +743,9 @@ export function ConversationsProvider({ children }) {
       handleInsightMessageIdsLoaded,
       handleNavigateToInsight,
       handleAddNote,
+      handleSearchCache,
+      searchConversations,
+      cacheSearchActive,
     ]
   );
 
