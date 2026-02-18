@@ -223,6 +223,7 @@ export function useReportData(user, empresaId) {
         etapas: getUniqueValues(movs, 'etapa'),
         mediosPago: getUniqueValues(movs, 'medio_pago'),
         monedas: getUniqueValues(movs, 'moneda'),
+        usuarios: getUniqueValues(movs, 'usuario'),
       }));
 
       // Aplicar filtros iniciales

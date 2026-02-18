@@ -24,6 +24,7 @@ const BLOCK_TYPE_LABELS = {
   summary_table: 'Tabla Resumen',
   movements_table: 'Tabla de Movimientos',
   budget_vs_actual: 'Presupuesto vs Real',
+  chart: 'Gráfico',
 };
 
 const FILTRO_FIELDS = [
@@ -33,6 +34,7 @@ const FILTRO_FIELDS = [
   { key: 'categorias', label: 'Categorias' },
   { key: 'proveedores', label: 'Proveedores' },
   { key: 'etapas', label: 'Etapas' },
+  { key: 'usuarios', label: 'Usuarios' },
   { key: 'medio_pago', label: 'Medio de pago' },
   { key: 'moneda_movimiento', label: 'Moneda del movimiento' },
   { key: 'moneda_equivalente', label: 'Selector de moneda equivalente' },
@@ -211,18 +213,30 @@ const ReportEditor = ({
   };
 
   const blockSummary = (block) => {
+    const spanLabel = block.col_span && block.col_span !== 12
+      ? ` · ${Math.round(block.col_span / 12 * 100)}% ancho`
+      : '';
+    let detail;
     switch (block.type) {
       case 'metric_cards':
-        return (block.metricas?.length || 0) + ' metricas';
+        detail = (block.metricas?.length || 0) + ' metricas';
+        break;
       case 'summary_table':
-        return 'Agrupado por ' + (block.agrupar_por || '?') + ' - ' + (block.columnas?.length || 0) + ' col';
+        detail = 'Agrupado por ' + (block.agrupar_por || '?') + ' - ' + (block.columnas?.length || 0) + ' col';
+        break;
       case 'movements_table':
-        return (block.columnas_visibles?.length || 7) + ' col - ' + (block.page_size || 25) + '/pag';
+        detail = (block.columnas_visibles?.length || 7) + ' col - ' + (block.page_size || 25) + '/pag';
+        break;
       case 'budget_vs_actual':
-        return 'Tipo: ' + (block.mostrar_tipo || 'egreso');
+        detail = 'Tipo: ' + (block.mostrar_tipo || 'egreso') + ' · Por: ' + (block.agrupar_por || 'categoria');
+        break;
+      case 'chart':
+        detail = (block.chart_type || 'bar') + ' · Por ' + (block.agrupar_por || 'categoria');
+        break;
       default:
-        return '';
+        detail = '';
     }
+    return detail + spanLabel;
   };
 
   // Config Panel

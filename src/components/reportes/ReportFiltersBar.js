@@ -180,6 +180,24 @@ const ReportFiltersBar = ({
             />
           )}
 
+          {/* Usuarios */}
+          {filtrosSchema.usuarios?.enabled && (
+            <Autocomplete
+              multiple
+              size="small"
+              options={availableOptions.usuarios || []}
+              value={filters.usuarios || []}
+              onChange={(_, val) => handleChange('usuarios', val)}
+              renderTags={(value, getTagProps) =>
+                value.map((option, index) => (
+                  <Chip key={option} label={option} size="small" {...getTagProps({ index })} />
+                ))
+              }
+              renderInput={(params) => <TextField {...params} label="Usuarios" />}
+              sx={{ minWidth: 200 }}
+            />
+          )}
+
           {/* Medio de pago */}
           {filtrosSchema.medio_pago?.enabled && (
             <Autocomplete

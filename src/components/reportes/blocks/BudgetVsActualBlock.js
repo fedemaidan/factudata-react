@@ -14,10 +14,16 @@ const COLUMN_LABELS = {
   barra: 'Progreso',
 };
 
-const BudgetVsActualBlock = ({ data, displayCurrency }) => {
+const BudgetVsActualBlock = ({ data, displayCurrency, onDrillDown }) => {
   if (!data) return null;
 
   const { columnas, rows, totals } = data;
+
+  const handleRowClick = (row) => {
+    if (onDrillDown && row._movimientos?.length > 0) {
+      onDrillDown(row._movimientos, row.categoria);
+    }
+  };
 
   const renderCell = (row, col) => {
     switch (col) {
@@ -84,7 +90,11 @@ const BudgetVsActualBlock = ({ data, displayCurrency }) => {
             <TableRow
               key={idx}
               hover
-              sx={row.sobreejecucion ? { backgroundColor: 'error.lighter' } : {}}
+              onClick={() => handleRowClick(row)}
+              sx={{
+                cursor: row._movimientos?.length > 0 ? 'pointer' : 'default',
+                ...(row.sobreejecucion ? { backgroundColor: 'error.lighter' } : {}),
+              }}
             >
               <TableCell>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>

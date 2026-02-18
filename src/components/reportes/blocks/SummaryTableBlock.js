@@ -5,10 +5,16 @@ import {
 } from '@mui/material';
 import { formatValue } from 'src/tools/reportEngine';
 
-const SummaryTableBlock = ({ data, displayCurrency }) => {
+const SummaryTableBlock = ({ data, displayCurrency, onDrillDown }) => {
   if (!data) return null;
 
   const { headers, rows, totals } = data;
+
+  const handleRowClick = (row) => {
+    if (onDrillDown && row._movimientos?.length > 0) {
+      onDrillDown(row._movimientos, row.grupo);
+    }
+  };
 
   return (
     <TableContainer component={Paper} variant="outlined" sx={{ maxHeight: 500 }}>
@@ -32,7 +38,12 @@ const SummaryTableBlock = ({ data, displayCurrency }) => {
         </TableHead>
         <TableBody>
           {rows.map((row, idx) => (
-            <TableRow key={idx} hover>
+            <TableRow
+              key={idx}
+              hover
+              onClick={() => handleRowClick(row)}
+              sx={{ cursor: row._movimientos?.length > 0 ? 'pointer' : 'default' }}
+            >
               {headers.map((h) => (
                 <TableCell
                   key={h.id}

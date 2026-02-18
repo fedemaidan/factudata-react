@@ -134,6 +134,15 @@ export function filterMovimientos(movimientos, filters = {}) {
     result = result.filter((m) => m.medio_pago && set.has(m.medio_pago.toLowerCase()));
   }
 
+  // Usuarios
+  if (filters.usuarios?.length > 0) {
+    const set = new Set(filters.usuarios.map((u) => u.toLowerCase()));
+    result = result.filter((m) => {
+      const uname = (m.usuario_nombre || m.usuario || '').toLowerCase();
+      return uname && set.has(uname);
+    });
+  }
+
   // Moneda original
   if (filters.moneda_movimiento?.length > 0) {
     const set = new Set(filters.moneda_movimiento.map((mon) => mon.toLowerCase()));
@@ -170,6 +179,30 @@ export function applyBlockFilters(movimientos, block) {
     if (fe.etapas?.length > 0) {
       const set = new Set(fe.etapas.map((e) => e.toLowerCase()));
       result = result.filter((m) => m.etapa && set.has(m.etapa.toLowerCase()));
+    }
+  }
+
+  // ─── Exclusiones: ocultar items específicos ───
+  const ex = block.excluir;
+  if (ex) {
+    if (ex.categorias?.length > 0) {
+      const set = new Set(ex.categorias.map((c) => c.toLowerCase()));
+      result = result.filter((m) => !m.categoria || !set.has(m.categoria.toLowerCase()));
+    }
+    if (ex.proveedores?.length > 0) {
+      const set = new Set(ex.proveedores.map((p) => p.toLowerCase()));
+      result = result.filter((m) => !m.nombre_proveedor || !set.has(m.nombre_proveedor.toLowerCase()));
+    }
+    if (ex.etapas?.length > 0) {
+      const set = new Set(ex.etapas.map((e) => e.toLowerCase()));
+      result = result.filter((m) => !m.etapa || !set.has(m.etapa.toLowerCase()));
+    }
+    if (ex.usuarios?.length > 0) {
+      const set = new Set(ex.usuarios.map((u) => u.toLowerCase()));
+      result = result.filter((m) => {
+        const uname = (m.usuario_nombre || m.usuario || '').toLowerCase();
+        return !uname || !set.has(uname);
+      });
     }
   }
 
@@ -215,6 +248,7 @@ const GROUP_KEYS = {
   mes: (m) => getMes(m),
   moneda_original: (m) => m.moneda || 'ARS',
   medio_pago: (m) => m.medio_pago || 'Sin medio de pago',
+  usuario: (m) => m.usuario_nombre || m.usuario || 'Sin usuario',
 };
 
 /**
@@ -285,6 +319,7 @@ export function processMetricCards(block, movimientos, _presupuestos, currencies
       valores,
       formato: metrica.formato || 'currency',
       color: metrica.color || 'default',
+      _movimientos: data,
     };
   });
 }
@@ -337,7 +372,7 @@ export function processSummaryTable(block, movimientos, _presupuestos, currencie
   // Rows
   let rows = [];
   for (const [grupo, items] of grouped) {
-    const row = { grupo, _count: items.length };
+    const row = { grupo, _count: items.length, _movimientos: items };
     for (const ec of expandedCols) {
       const values = items.map((m) => getAmount(m, ec.currency, ec.campo || 'total'));
       row[ec._id] = aggregate(values, ec.operacion);
@@ -455,6 +490,7 @@ export function processMovementsTable(block, movimientos, _presupuestos, currenc
 export function processBudgetVsActual(block, movimientos, presupuestos, currencies, cotizaciones) {
   const displayCurrency = currencies[0];
   const data = applyBlockFilters(movimientos, block);
+  const agruparPor = block.agrupar_por || 'categoria';
 
   // Filtrar presupuestos por tipo si corresponde
   let presFiltered = presupuestos || [];
@@ -462,13 +498,51 @@ export function processBudgetVsActual(block, movimientos, presupuestos, currenci
     presFiltered = presFiltered.filter((p) => p.tipo === block.mostrar_tipo);
   }
 
-  // Mapear presupuestos por categoría
+  // Filtrar presupuestos que tengan el campo seleccionado cargado
+  if (block.presupuestos_con_campo) {
+    const campoReq = block.presupuestos_con_campo; // 'categoria' | 'etapa' | 'proveedor'
+    presFiltered = presFiltered.filter((p) => {
+      if (campoReq === 'categoria') return !!(p.categoria || p.rubro);
+      if (campoReq === 'etapa') return !!p.etapa;
+      if (campoReq === 'proveedor') return !!(p.proveedor || p.nombre_proveedor);
+      return true;
+    });
+  }
+
+  // Excluir presupuestos específicos
+  if (block.excluir?.presupuestos?.length > 0) {
+    const exSet = new Set(block.excluir.presupuestos.map((n) => n.toLowerCase()));
+    presFiltered = presFiltered.filter((p) => {
+      const nombre = (p.nombre || p.categoria || p.rubro || '').toLowerCase();
+      return !exSet.has(nombre);
+    });
+  }
+
+  // Función para obtener clave de agrupación de un presupuesto
+  const getPresKey = (p) => {
+    switch (agruparPor) {
+      case 'etapa': return (p.etapa || 'Sin etapa').toLowerCase();
+      case 'proveedor': return (p.proveedor || p.nombre_proveedor || 'Sin proveedor').toLowerCase();
+      case 'categoria':
+      default: return (p.categoria || p.rubro || 'Sin categoría').toLowerCase();
+    }
+  };
+  const getPresNombre = (p) => {
+    switch (agruparPor) {
+      case 'etapa': return p.etapa || 'Sin etapa';
+      case 'proveedor': return p.proveedor || p.nombre_proveedor || 'Sin proveedor';
+      case 'categoria':
+      default: return p.categoria || p.rubro || 'Sin categoría';
+    }
+  };
+
+  // Mapear presupuestos por campo de agrupación
   const presMap = new Map();
   for (const p of presFiltered) {
-    const key = (p.categoria || p.rubro || 'Sin categoría').toLowerCase();
+    const key = getPresKey(p);
     if (!presMap.has(key)) {
       presMap.set(key, {
-        nombre: p.categoria || p.rubro || 'Sin categoría',
+        nombre: getPresNombre(p),
         presupuestado: 0,
       });
     }
@@ -477,8 +551,8 @@ export function processBudgetVsActual(block, movimientos, presupuestos, currenci
     entry.presupuestado += getPresupuestoAmount(p, displayCurrency, cotizaciones);
   }
 
-  // Agrupar movimientos por categoría
-  const movGrouped = groupBy(data, 'categoria');
+  // Agrupar movimientos por el campo seleccionado
+  const movGrouped = groupBy(data, agruparPor);
 
   // Combinar
   const allKeys = new Set([...presMap.keys()]);
@@ -506,6 +580,7 @@ export function processBudgetVsActual(block, movimientos, presupuestos, currenci
       disponible,
       porcentaje,
       sobreejecucion,
+      _movimientos: movs,
     });
   }
 
@@ -579,11 +654,25 @@ function getPresupuestoAmount(pres, displayCurrency, cotizaciones) {
 
 // ─── Procesador principal ───
 
+/**
+ * Procesa un bloque chart — reutiliza processSummaryTable para obtener datos
+ * y los formatea para renderizar en gráficos (bar, pie, line, doughnut)
+ */
+export function processChart(block, movimientos, presupuestos, currencies, cotizaciones) {
+  const tableData = processSummaryTable(block, movimientos, presupuestos, currencies);
+  return {
+    chartType: block.chart_type || 'bar',
+    chartOptions: block.chart_options || {},
+    ...tableData,
+  };
+}
+
 const BLOCK_PROCESSORS = {
   metric_cards: processMetricCards,
   summary_table: processSummaryTable,
   movements_table: processMovementsTable,
   budget_vs_actual: processBudgetVsActual,
+  chart: processChart,
 };
 
 /**
@@ -634,6 +723,7 @@ export function getUniqueValues(movimientos, campo) {
     proyecto: (m) => m.proyecto,
     medio_pago: (m) => m.medio_pago,
     moneda: (m) => m.moneda,
+    usuario: (m) => m.usuario_nombre || m.usuario,
   };
   const fn = map[campo];
   if (!fn) return [];

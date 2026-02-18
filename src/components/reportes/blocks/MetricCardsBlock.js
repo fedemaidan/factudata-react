@@ -12,10 +12,16 @@ const COLOR_MAP = {
   info: 'info.main',
 };
 
-const MetricCardsBlock = ({ data, displayCurrency, displayCurrencies }) => {
+const MetricCardsBlock = ({ data, displayCurrency, displayCurrencies, onDrillDown }) => {
   if (!data || data.length === 0) return null;
 
   const isMulti = displayCurrencies && displayCurrencies.length > 1;
+
+  const handleClick = (metric) => {
+    if (onDrillDown && metric._movimientos?.length > 0) {
+      onDrillDown(metric._movimientos, metric.titulo);
+    }
+  };
 
   return (
     <Grid container spacing={2}>
@@ -26,7 +32,11 @@ const MetricCardsBlock = ({ data, displayCurrency, displayCurrencies }) => {
               height: '100%',
               borderLeft: 4,
               borderColor: COLOR_MAP[metric.color] || COLOR_MAP.default,
+              cursor: metric._movimientos?.length > 0 ? 'pointer' : 'default',
+              transition: 'box-shadow 0.2s',
+              '&:hover': metric._movimientos?.length > 0 ? { boxShadow: 4 } : {},
             }}
+            onClick={() => handleClick(metric)}
           >
             <CardContent>
               <Typography

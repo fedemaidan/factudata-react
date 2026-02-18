@@ -1,9 +1,11 @@
-import React, { useMemo } from 'react';
-import { Box, Typography, Divider, Alert } from '@mui/material';
+import React, { useMemo, useState, useCallback } from 'react';
+import { Box, Typography, Divider, Alert, Grid } from '@mui/material';
 import MetricCardsBlock from './blocks/MetricCardsBlock';
 import SummaryTableBlock from './blocks/SummaryTableBlock';
 import MovementsTableBlock from './blocks/MovementsTableBlock';
 import BudgetVsActualBlock from './blocks/BudgetVsActualBlock';
+import ChartBlock from './blocks/ChartBlock';
+import DrillDownDialog from './DrillDownDialog';
 import { executeReport } from 'src/tools/reportEngine';
 
 const BLOCK_COMPONENTS = {
@@ -11,6 +13,7 @@ const BLOCK_COMPONENTS = {
   summary_table: SummaryTableBlock,
   movements_table: MovementsTableBlock,
   budget_vs_actual: BudgetVsActualBlock,
+  chart: ChartBlock,
 };
 
 /**
@@ -25,6 +28,18 @@ const ReportView = ({ reportConfig, movimientos = [], presupuestos = [], display
     ? displayCurrencies
     : [reportConfig?.display_currency || 'ARS'];
   const primaryCurrency = currencies[0];
+
+  // Drill-down state
+  const [drillDownOpen, setDrillDownOpen] = useState(false);
+  const [drillDownMovs, setDrillDownMovs] = useState([]);
+  const [drillDownTitulo, setDrillDownTitulo] = useState('');
+
+  const handleDrillDown = useCallback((movsArray, titulo) => {
+    if (!movsArray || movsArray.length === 0) return;
+    setDrillDownMovs(movsArray);
+    setDrillDownTitulo(titulo || 'Detalle de movimientos');
+    setDrillDownOpen(true);
+  }, []);
 
   const results = useMemo(() => {
     if (!reportConfig?.layout?.length) return [];
@@ -50,41 +65,62 @@ const ReportView = ({ reportConfig, movimientos = [], presupuestos = [], display
   }
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-      {results.map((block, idx) => {
-        const Component = BLOCK_COMPONENTS[block.type];
+    <>
+      <Grid container spacing={3}>
+        {results.map((block, idx) => {
+          const Component = BLOCK_COMPONENTS[block.type];
+          const layoutBlock = reportConfig.layout[idx] || {};
+          const colSpan = layoutBlock.col_span || 12;
 
-        if (!Component) {
+          if (!Component) {
+            return (
+              <Grid item xs={12} md={colSpan} key={idx}>
+                <Alert severity="warning">
+                  Tipo de bloque desconocido: {block.type}
+                </Alert>
+              </Grid>
+            );
+          }
+
+          if (block.error) {
+            return (
+              <Grid item xs={12} md={colSpan} key={idx}>
+                <Alert severity="error">
+                  Error en bloque &quot;{block.titulo}&quot;: {block.error}
+                </Alert>
+              </Grid>
+            );
+          }
+
           return (
-            <Alert key={idx} severity="warning">
-              Tipo de bloque desconocido: {block.type}
-            </Alert>
+            <Grid item xs={12} md={colSpan} key={idx}>
+              {block.titulo && (
+                <>
+                  <Typography variant="subtitle1" fontWeight={600} gutterBottom>
+                    {block.titulo}
+                  </Typography>
+                  <Divider sx={{ mb: 1.5 }} />
+                </>
+              )}
+              <Component
+                data={block.data}
+                displayCurrency={primaryCurrency}
+                displayCurrencies={currencies}
+                onDrillDown={handleDrillDown}
+              />
+            </Grid>
           );
-        }
+        })}
+      </Grid>
 
-        if (block.error) {
-          return (
-            <Alert key={idx} severity="error">
-              Error en bloque &quot;{block.titulo}&quot;: {block.error}
-            </Alert>
-          );
-        }
-
-        return (
-          <Box key={idx}>
-            {block.titulo && (
-              <>
-                <Typography variant="subtitle1" fontWeight={600} gutterBottom>
-                  {block.titulo}
-                </Typography>
-                <Divider sx={{ mb: 1.5 }} />
-              </>
-            )}
-            <Component data={block.data} displayCurrency={primaryCurrency} displayCurrencies={currencies} />
-          </Box>
-        );
-      })}
-    </Box>
+      <DrillDownDialog
+        open={drillDownOpen}
+        onClose={() => setDrillDownOpen(false)}
+        movimientos={drillDownMovs}
+        titulo={drillDownTitulo}
+        displayCurrency={primaryCurrency}
+      />
+    </>
   );
 };
 

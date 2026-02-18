@@ -14,6 +14,7 @@ const BLOCK_TYPES = [
   { value: 'summary_table', label: 'Tabla Resumen', desc: 'Agrupa movimientos por categoría, proveedor, etapa, mes, etc. con totales.' },
   { value: 'movements_table', label: 'Tabla de Movimientos', desc: 'Lista individual de movimientos con paginación.' },
   { value: 'budget_vs_actual', label: 'Presupuesto vs Real', desc: 'Compara presupuesto de control vs gastos reales por categoría.' },
+  { value: 'chart', label: 'Gráfico', desc: 'Muestra datos agrupados en gráficos de barras, torta, línea o área.' },
 ];
 
 const OPERACIONES = [
@@ -57,6 +58,7 @@ const AGRUPAR_POR = [
   { value: 'mes', label: 'Mes' },
   { value: 'moneda_original', label: 'Moneda Original' },
   { value: 'medio_pago', label: 'Medio de Pago' },
+  { value: 'usuario', label: 'Usuario' },
 ];
 
 const COLUMNAS_VISIBLES_OPTIONS = [
@@ -100,7 +102,7 @@ function emptyColumna() {
 }
 
 function defaultBlock(type) {
-  const base = { type, titulo: '' };
+  const base = { type, titulo: '', col_span: 12 };
   switch (type) {
     case 'metric_cards':
       return { ...base, metricas: [emptyMetrica()] };
@@ -113,6 +115,7 @@ function defaultBlock(type) {
         filtro_tipo: null,
         mostrar_total: true,
         top_n: null,
+        excluir: {},
       };
     case 'movements_table':
       return {
@@ -124,8 +127,22 @@ function defaultBlock(type) {
     case 'budget_vs_actual':
       return {
         ...base,
+        agrupar_por: 'categoria',
         mostrar_tipo: 'egreso',
         alerta_sobreejecucion: true,
+        presupuestos_con_campo: null,
+        excluir: {},
+      };
+    case 'chart':
+      return {
+        ...base,
+        col_span: 6,
+        chart_type: 'bar',
+        agrupar_por: 'categoria',
+        columnas: [{ id: 'total', titulo: 'Total', operacion: 'sum', campo: 'total', formato: 'currency' }],
+        filtro_tipo: null,
+        top_n: 10,
+        excluir: {},
       };
     default:
       return base;
@@ -215,6 +232,22 @@ const BlockEditorDialog = ({ open, onClose, onSave, initialBlock }) => {
             placeholder="Ej: Resumen de Gastos"
           />
 
+          {/* Ancho del bloque (col_span) */}
+          <FormControl size="small" fullWidth>
+            <InputLabel>Ancho del bloque</InputLabel>
+            <Select
+              value={block.col_span || 12}
+              label="Ancho del bloque"
+              onChange={(e) => updateBlock('col_span', e.target.value)}
+            >
+              <MenuItem value={3}>1/4 de fila (25%)</MenuItem>
+              <MenuItem value={4}>1/3 de fila (33%)</MenuItem>
+              <MenuItem value={6}>Media fila (50%)</MenuItem>
+              <MenuItem value={8}>2/3 de fila (66%)</MenuItem>
+              <MenuItem value={12}>Fila completa (100%)</MenuItem>
+            </Select>
+          </FormControl>
+
           {/* Filtro de tipo (compartido) */}
           {block.type !== 'budget_vs_actual' && (
             <FormControl size="small" fullWidth>
@@ -245,6 +278,9 @@ const BlockEditorDialog = ({ open, onClose, onSave, initialBlock }) => {
           )}
           {block.type === 'budget_vs_actual' && (
             <BudgetVsActualConfig block={block} onChange={updateBlock} />
+          )}
+          {block.type === 'chart' && (
+            <ChartConfig block={block} onChange={updateBlock} />
           )}
         </Stack>
       </DialogContent>
@@ -504,6 +540,70 @@ function SummaryTableConfig({ block, onChange }) {
         fullWidth
         inputProps={{ min: 1 }}
       />
+
+      <Divider />
+
+      {/* Excluir items específicos */}
+      <Typography variant="subtitle2" fontWeight={600}>Ocultar items</Typography>
+      <Alert severity="info" variant="outlined" sx={{ py: 0.5 }}>
+        Escribí los valores que querés excluir del resumen. Se aplican al campo de agrupación y a los datos.
+      </Alert>
+      <Autocomplete
+        multiple
+        freeSolo
+        size="small"
+        options={[]}
+        value={block.excluir?.categorias || []}
+        onChange={(_, val) => onChange('excluir', { ...(block.excluir || {}), categorias: val })}
+        renderTags={(value, getTagProps) =>
+          value.map((option, index) => (
+            <Chip key={option} label={option} size="small" color="error" variant="outlined" {...getTagProps({ index })} />
+          ))
+        }
+        renderInput={(params) => <TextField {...params} label="Excluir categorías" placeholder="Escribí y presioná Enter" />}
+      />
+      <Autocomplete
+        multiple
+        freeSolo
+        size="small"
+        options={[]}
+        value={block.excluir?.proveedores || []}
+        onChange={(_, val) => onChange('excluir', { ...(block.excluir || {}), proveedores: val })}
+        renderTags={(value, getTagProps) =>
+          value.map((option, index) => (
+            <Chip key={option} label={option} size="small" color="error" variant="outlined" {...getTagProps({ index })} />
+          ))
+        }
+        renderInput={(params) => <TextField {...params} label="Excluir proveedores" placeholder="Escribí y presioná Enter" />}
+      />
+      <Autocomplete
+        multiple
+        freeSolo
+        size="small"
+        options={[]}
+        value={block.excluir?.etapas || []}
+        onChange={(_, val) => onChange('excluir', { ...(block.excluir || {}), etapas: val })}
+        renderTags={(value, getTagProps) =>
+          value.map((option, index) => (
+            <Chip key={option} label={option} size="small" color="error" variant="outlined" {...getTagProps({ index })} />
+          ))
+        }
+        renderInput={(params) => <TextField {...params} label="Excluir etapas" placeholder="Escribí y presioná Enter" />}
+      />
+      <Autocomplete
+        multiple
+        freeSolo
+        size="small"
+        options={[]}
+        value={block.excluir?.usuarios || []}
+        onChange={(_, val) => onChange('excluir', { ...(block.excluir || {}), usuarios: val })}
+        renderTags={(value, getTagProps) =>
+          value.map((option, index) => (
+            <Chip key={option} label={option} size="small" color="error" variant="outlined" {...getTagProps({ index })} />
+          ))
+        }
+        renderInput={(params) => <TextField {...params} label="Excluir usuarios" placeholder="Escribí y presioná Enter" />}
+      />
     </Stack>
   );
 }
@@ -547,6 +647,19 @@ function BudgetVsActualConfig({ block, onChange }) {
   return (
     <Stack spacing={2}>
       <FormControl size="small" fullWidth>
+        <InputLabel>Agrupar por</InputLabel>
+        <Select
+          value={block.agrupar_por || 'categoria'}
+          label="Agrupar por"
+          onChange={(e) => onChange('agrupar_por', e.target.value)}
+        >
+          <MenuItem value="categoria">Categoría</MenuItem>
+          <MenuItem value="etapa">Etapa</MenuItem>
+          <MenuItem value="proveedor">Proveedor</MenuItem>
+        </Select>
+      </FormControl>
+
+      <FormControl size="small" fullWidth>
         <InputLabel>Mostrar tipo</InputLabel>
         <Select
           value={block.mostrar_tipo || 'egreso'}
@@ -556,6 +669,20 @@ function BudgetVsActualConfig({ block, onChange }) {
           <MenuItem value="egreso">Solo Egresos</MenuItem>
           <MenuItem value="ingreso">Solo Ingresos</MenuItem>
           <MenuItem value="ambos">Ambos</MenuItem>
+        </Select>
+      </FormControl>
+
+      <FormControl size="small" fullWidth>
+        <InputLabel>Solo presupuestos que tienen</InputLabel>
+        <Select
+          value={block.presupuestos_con_campo || ''}
+          label="Solo presupuestos que tienen"
+          onChange={(e) => onChange('presupuestos_con_campo', e.target.value || null)}
+        >
+          <MenuItem value="">Todos los presupuestos</MenuItem>
+          <MenuItem value="categoria">Categoría cargada</MenuItem>
+          <MenuItem value="etapa">Etapa cargada</MenuItem>
+          <MenuItem value="proveedor">Proveedor cargado</MenuItem>
         </Select>
       </FormControl>
 
@@ -569,9 +696,200 @@ function BudgetVsActualConfig({ block, onChange }) {
         label="Alertar cuando haya sobreejecución (>100%)"
       />
 
+      <Divider />
+
+      {/* Excluir items */}
+      <Typography variant="subtitle2" fontWeight={600}>Ocultar items</Typography>
+      <Autocomplete
+        multiple
+        freeSolo
+        size="small"
+        options={[]}
+        value={block.excluir?.presupuestos || []}
+        onChange={(_, val) => onChange('excluir', { ...(block.excluir || {}), presupuestos: val })}
+        renderTags={(value, getTagProps) =>
+          value.map((option, index) => (
+            <Chip key={option} label={option} size="small" color="error" variant="outlined" {...getTagProps({ index })} />
+          ))
+        }
+        renderInput={(params) => <TextField {...params} label="Excluir presupuestos (por nombre)" placeholder="Escribí y presioná Enter" />}
+      />
+      <Autocomplete
+        multiple
+        freeSolo
+        size="small"
+        options={[]}
+        value={block.excluir?.categorias || []}
+        onChange={(_, val) => onChange('excluir', { ...(block.excluir || {}), categorias: val })}
+        renderTags={(value, getTagProps) =>
+          value.map((option, index) => (
+            <Chip key={option} label={option} size="small" color="error" variant="outlined" {...getTagProps({ index })} />
+          ))
+        }
+        renderInput={(params) => <TextField {...params} label="Excluir categorías" placeholder="Escribí y presioná Enter" />}
+      />
+      <Autocomplete
+        multiple
+        freeSolo
+        size="small"
+        options={[]}
+        value={block.excluir?.etapas || []}
+        onChange={(_, val) => onChange('excluir', { ...(block.excluir || {}), etapas: val })}
+        renderTags={(value, getTagProps) =>
+          value.map((option, index) => (
+            <Chip key={option} label={option} size="small" color="error" variant="outlined" {...getTagProps({ index })} />
+          ))
+        }
+        renderInput={(params) => <TextField {...params} label="Excluir etapas" placeholder="Escribí y presioná Enter" />}
+      />
+
       <Alert severity="info" variant="outlined" sx={{ py: 0.5 }}>
-        Este bloque cruza los presupuestos de control cargados en Sorby con los movimientos reales, agrupados por categoría.
+        Este bloque cruza los presupuestos de control cargados en Sorby con los movimientos reales.
+        Hacé click en una fila para ver los movimientos que la componen.
       </Alert>
+    </Stack>
+  );
+}
+
+function ChartConfig({ block, onChange }) {
+  const columnas = block.columnas || [];
+
+  const updateColumna = (idx, field, value) => {
+    const updated = [...columnas];
+    updated[idx] = { ...updated[idx], [field]: value };
+    onChange('columnas', updated);
+  };
+
+  const addColumna = () => {
+    onChange('columnas', [...columnas, emptyColumna()]);
+  };
+
+  const removeColumna = (idx) => {
+    onChange('columnas', columnas.filter((_, i) => i !== idx));
+  };
+
+  return (
+    <Stack spacing={2}>
+      <Stack direction="row" spacing={2}>
+        <FormControl size="small" sx={{ flex: 1 }}>
+          <InputLabel>Tipo de gráfico</InputLabel>
+          <Select
+            value={block.chart_type || 'bar'}
+            label="Tipo de gráfico"
+            onChange={(e) => onChange('chart_type', e.target.value)}
+          >
+            <MenuItem value="bar">Barras</MenuItem>
+            <MenuItem value="pie">Torta</MenuItem>
+            <MenuItem value="donut">Dona</MenuItem>
+            <MenuItem value="line">Línea</MenuItem>
+            <MenuItem value="area">Área</MenuItem>
+          </Select>
+        </FormControl>
+        <FormControl size="small" sx={{ flex: 1 }}>
+          <InputLabel>Agrupar por</InputLabel>
+          <Select
+            value={block.agrupar_por || 'categoria'}
+            label="Agrupar por"
+            onChange={(e) => onChange('agrupar_por', e.target.value)}
+          >
+            {AGRUPAR_POR.map((a) => (
+              <MenuItem key={a.value} value={a.value}>{a.label}</MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+      </Stack>
+
+      <Typography variant="subtitle2" fontWeight={600}>Valores a graficar</Typography>
+
+      {columnas.map((c, idx) => (
+        <Box key={c.id || idx} sx={{ p: 1.5, border: 1, borderColor: 'divider', borderRadius: 1 }}>
+          <Stack direction="row" spacing={1} alignItems="center">
+            <TextField
+              label="Título"
+              value={c.titulo || ''}
+              onChange={(e) => updateColumna(idx, 'titulo', e.target.value)}
+              size="small"
+              sx={{ flex: 2 }}
+            />
+            <FormControl size="small" sx={{ flex: 1 }}>
+              <InputLabel>Operación</InputLabel>
+              <Select
+                value={c.operacion || 'sum'}
+                label="Operación"
+                onChange={(e) => updateColumna(idx, 'operacion', e.target.value)}
+              >
+                {OPERACIONES.filter((o) => ['sum', 'count', 'avg'].includes(o.value)).map((o) => (
+                  <MenuItem key={o.value} value={o.value}>{o.label}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <FormControl size="small" sx={{ flex: 1 }}>
+              <InputLabel>Campo</InputLabel>
+              <Select
+                value={c.campo || 'total'}
+                label="Campo"
+                onChange={(e) => updateColumna(idx, 'campo', e.target.value)}
+              >
+                {CAMPOS.map((f) => (
+                  <MenuItem key={f.value} value={f.value}>{f.label}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <IconButton size="small" onClick={() => removeColumna(idx)} color="error" disabled={columnas.length <= 1}>
+              <DeleteIcon fontSize="small" />
+            </IconButton>
+          </Stack>
+        </Box>
+      ))}
+
+      {columnas.length < 4 && (
+        <Button startIcon={<AddIcon />} onClick={addColumna} variant="outlined" size="small">
+          Agregar serie
+        </Button>
+      )}
+
+      <Divider />
+
+      <TextField
+        label="Mostrar solo los primeros N (vacío = todos)"
+        type="number"
+        value={block.top_n || ''}
+        onChange={(e) => onChange('top_n', e.target.value ? parseInt(e.target.value) : null)}
+        size="small"
+        fullWidth
+        inputProps={{ min: 1 }}
+      />
+
+      {/* Excluir items */}
+      <Typography variant="subtitle2" fontWeight={600}>Ocultar items</Typography>
+      <Autocomplete
+        multiple
+        freeSolo
+        size="small"
+        options={[]}
+        value={block.excluir?.categorias || []}
+        onChange={(_, val) => onChange('excluir', { ...(block.excluir || {}), categorias: val })}
+        renderTags={(value, getTagProps) =>
+          value.map((option, index) => (
+            <Chip key={option} label={option} size="small" color="error" variant="outlined" {...getTagProps({ index })} />
+          ))
+        }
+        renderInput={(params) => <TextField {...params} label="Excluir categorías" placeholder="Escribí y presioná Enter" />}
+      />
+      <Autocomplete
+        multiple
+        freeSolo
+        size="small"
+        options={[]}
+        value={block.excluir?.proveedores || []}
+        onChange={(_, val) => onChange('excluir', { ...(block.excluir || {}), proveedores: val })}
+        renderTags={(value, getTagProps) =>
+          value.map((option, index) => (
+            <Chip key={option} label={option} size="small" color="error" variant="outlined" {...getTagProps({ index })} />
+          ))
+        }
+        renderInput={(params) => <TextField {...params} label="Excluir proveedores" placeholder="Escribí y presioná Enter" />}
+      />
     </Stack>
   );
 }
