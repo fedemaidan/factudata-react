@@ -1,11 +1,9 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/router';
+import Alerts from 'src/components/alerts';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
-import { Container, Stack, Alert, Box, TextField, InputAdornment, IconButton, Chip, Button, Typography, Dialog, DialogTitle, DialogContent, DialogActions, Tooltip } from '@mui/material';
-import { alpha } from '@mui/material/styles';
+import { Container, Stack, Alert, Box, TextField, InputAdornment, IconButton, Chip, Button, Typography } from '@mui/material';
 import ClearIcon from '@mui/icons-material/Clear';
-import TableViewIcon from '@mui/icons-material/TableView';
-import AssignmentIcon from '@mui/icons-material/Assignment';
 import SickIcon from '@mui/icons-material/Sick';
 import EditIcon from '@mui/icons-material/Edit';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
@@ -15,6 +13,8 @@ import conciliacionService from 'src/services/dhn/conciliacionService';
 import ImagenModal from 'src/components/ImagenModal';
 import TrabajosDetectadosList from 'src/components/dhn/TrabajosDetectadosList';
 import HorasRawModal from 'src/components/dhn/HorasRawModal';
+import CorreccionConciliacionModal from 'src/components/dhn/CorreccionConciliacionModal';
+import { getHourChipSx } from 'src/components/dhn/hourChipStyles';
 
 const DEFAULT_PAGE_SIZE = 200;
 const HORAS_EXCEL_FIELDS = [
@@ -25,13 +25,30 @@ const HORAS_EXCEL_FIELDS = [
   "horasNocturnas50",
   "horasNocturnas100",
 ];
+const CHIP_LIMIT_SX = {
+  maxWidth: 140,
+  textAlign: "center",
+  justifyContent: "center",
+  whiteSpace: "normal",
+  px: 1,
+};
+
+const INITIAL_STATS = {
+  total: 0,
+  okAutomatico: 0,
+  okManual: 0,
+  incompleto: 0,
+  advertencia: 0,
+  pendiente: 0,
+  error: 0,
+};
 
 const ConciliacionDetallePage = () => {
   const router = useRouter();
   const { id } = router.query;
 
   const [rows, setRows] = useState([]);
-  const [stats, setStats] = useState({ total: 0, okAutomatico: 0, okManual: 0, incompleto: 0, advertencia: 0, pendiente: 0, error: 0 });
+  const [stats, setStats] = useState(INITIAL_STATS);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -68,6 +85,7 @@ const ConciliacionDetallePage = () => {
   const [rawModalTitle, setRawModalTitle] = useState('');
   const [rawModalFileName, setRawModalFileName] = useState('');
   const [rawModalUrl, setRawModalUrl] = useState('');
+  const [alert, setAlert] = useState({ open: false, severity: 'success', message: '' });
 
   const handleOpenParteModal = useCallback((url, comp) => {
     if (!url) return;
@@ -90,6 +108,14 @@ const ConciliacionDetallePage = () => {
     setRawModalUrl('');
   }, []);
 
+  const showAlert = useCallback((message, severity = 'success') => {
+    setAlert({ open: true, message, severity });
+  }, []);
+
+  const handleAlertClose = useCallback(() => {
+    setAlert((prev) => ({ ...prev, open: false }));
+  }, []);
+
   const getRowId = useCallback((row) => row?._id ?? row?.id, []);
 
   const selectedRows = useMemo(() => {
@@ -102,29 +128,6 @@ const ConciliacionDetallePage = () => {
     if (isNaN(fecha.getTime())) return '-';
     return fecha.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit' });
   }, []);
-
-  const handleOpenComprobante = useCallback((comp, row) => {
-    if (!comp) return;
-    const url = comp?.url || comp?.url_storage || '';
-    if (comp.type === 'parte') {
-      if (!url) return;
-      handleOpenParteModal(url, comp);
-      return;
-    }
-    if (comp.type === 'horas') {
-      const trabajador = (row?.trabajadorId || row?.trabajador || {});
-      const nombre = `${trabajador?.apellido || ''} ${trabajador?.nombre || ''}`.trim();
-      const dni = trabajador?.dni ? `DNI: ${trabajador.dni}` : '';
-      const diaLabel = formatFechaLabel(row?.fecha);
-      const titleBase = nombre ? `${nombre} • ${diaLabel}` : `Fichadas • ${diaLabel}`;
-      const title = dni ? `${titleBase} • ${dni}` : titleBase;
-      setRawModalData(Array.isArray(row?.dataRawExcel) ? row.dataRawExcel : []);
-      setRawModalTitle(title);
-      setRawModalFileName(comp?.file_name || comp?.fileName || '');
-      setRawModalUrl(url || '');
-      setRawModalOpen(true);
-    }
-  }, [formatFechaLabel, handleOpenParteModal]);
 
   const estadoFiltro = useMemo(() => {
     return router.query.estado || 'todos';
@@ -154,12 +157,24 @@ const ConciliacionDetallePage = () => {
         if (sortDir) {
           params.sortDirection = sortDir;
         }
-        const res = await conciliacionService.getConciliacionRows(id, params);
-        setRows(res.data || []);
-        setStats(res.stats || { total: 0, okAutomatico: 0, okManual: 0, incompleto: 0, advertencia: 0, pendiente: 0, error: 0 });
-        setPeriodoInfo(res.periodo || '-');
-        setSheetId(res.sheetId || null);
-        setTotalRows(res.total ?? res.data?.length ?? 0);
+        const [rowsRes, statsRes] = await Promise.all([
+          conciliacionService.getConciliacionRows(id, params),
+          conciliacionService.getConciliacionStats(id),
+        ]);
+        setRows(rowsRes.data || []);
+        const normalizedStats = statsRes?.stats || statsRes || {};
+        setStats({
+          total: normalizedStats.total ?? 0,
+          okAutomatico: normalizedStats.okAutomatico ?? 0,
+          okManual: normalizedStats.okManual ?? 0,
+          incompleto: normalizedStats.incompleto ?? 0,
+          advertencia: normalizedStats.advertencia ?? 0,
+          pendiente: normalizedStats.pendiente ?? 0,
+          error: normalizedStats.error ?? 0,
+        });
+        setPeriodoInfo(rowsRes.periodo || '-');
+        setSheetId(rowsRes.sheetId || null);
+        setTotalRows(rowsRes.total ?? rowsRes.data?.length ?? 0);
         setError(null);
       } catch (e) {
         setError('Error al cargar detalle de conciliación');
@@ -258,6 +273,7 @@ const ConciliacionDetallePage = () => {
       await conciliacionService.seleccionarHorasSistema(id, rowToEdit._id);
       setEditOpen(false);
       await reloadRows();
+      showAlert("Se aplicaron las horas del sistema correctamente");
     } catch (error) {
       console.error("Error aplicando horas sistema", error);
     } finally {
@@ -274,6 +290,7 @@ const ConciliacionDetallePage = () => {
       await conciliacionService.seleccionarHorasExcel(id, rowToEdit._id, payload);
       setEditOpen(false);
       await reloadRows();
+      showAlert("Se aplicaron las horas NASA correctamente");
     } catch (error) {
       console.error("Error aplicando horas sheet", error);
     } finally {
@@ -337,6 +354,20 @@ const ConciliacionDetallePage = () => {
     }
   }, [id, selectedRows, buildSheetSelectionPayload, reloadRows]);
 
+  const handleGuardarHoras = useCallback(async () => {
+    if (!id || !rowToEdit?._id) return;
+    try {
+      await conciliacionService.updateConciliacionRow(id, rowToEdit._id, {
+        dataTrabajoDiario: { ...formHoras },
+      });
+      setEditOpen(false);
+      await reloadRows();
+      showAlert("Cambios guardados correctamente");
+    } catch (error) {
+      console.error("Error actualizando horas", error);
+    }
+  }, [id, rowToEdit, formHoras, reloadRows]);
+
   const getEstadoChipProps = (estado) => {
     const e = (estado || '').toString().toLowerCase();
     if (['ok', 'completo'].includes(e)) {
@@ -363,54 +394,58 @@ const ConciliacionDetallePage = () => {
     return { label: estado || '-', color: 'default' };
   };
 
-  const getHourChipSx = (k) => (theme) => {
-    const colorMap = {
-      'Norm.': theme.palette.grey[700],
-      '50%': theme.palette.primary.main,
-      '100%': theme.palette.secondary.main,
-      'Aº': '#00897b',   // teal-600
-      'Hº': '#ef6c00',   // orange-800
-      'Zº/M°': '#5e35b1', // deepPurple-600
-      'Noct.': '#283593', // indigo-900
-      'Noct. 50%': '#1e88e5', // blue-600
-      'Noct. 100%': '#0d47a1', // blue-900
-    };
-    const c = colorMap[k] || theme.palette.grey[600];
-    return {
-      bgcolor: alpha(c, 0.12),
-      color: c,
-      borderColor: alpha(c, 0.28),
-      whiteSpace: 'nowrap',
-      textTransform: 'none',
-      minWidth: 110,
-      textAlign: 'center',
-      fontSize: '0.7rem',
-    };
-  };
-
   const formatDni = (value) => {
     if (!value || value === '-') return '-';
     return value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
   };
 
+  const getTrabajadorDisplayData = (row) => {
+    const source = row?.trabajadorId || row?.trabajador || {};
+    let nombre = '';
+    let dniValue = '';
+
+    if (typeof source === 'string') {
+      nombre = source;
+      dniValue = row?.dni || '';
+    } else if (source && typeof source === 'object') {
+      const apellido = source.apellido ? source.apellido : '';
+      const nombreProp = source.nombre ? source.nombre : '';
+      nombre = `${apellido} ${nombreProp}`.trim();
+      dniValue = source.dni || row?.dni || '';
+    }
+
+    if (!nombre) {
+      nombre = row?.trabajador || '-';
+      dniValue = row?.dni || dniValue;
+    }
+
+    return { nombre: nombre || '-', dni: dniValue };
+  };
+
   const columns = useMemo(() => ([
     { key: 'fecha', label: 'Fecha', sortable: true, render: (row) => formatFechaLabel(row.fecha) },
-    { key: 'trabajador', label: 'Trabajador', sortable: true },
-    { key: 'dni', label: 'DNI', sortable: true, render: (row) => formatDni(row.dni) },
-    { key: 'licencia', label: 'Licencia', render: (row) => {
-      const lic = (row?.sheetHoras?.fechaLicencia ?? row?.licencia ?? false) ? true : false;
-      return (
-        <Chip
-          label={lic ? 'Licencia: Sí' : 'Licencia: No'}
-          size="small"
-          variant="outlined"
-          color={lic ? 'warning' : 'default'}
-        />
-      );
-    }},
+    {
+      key: 'trabajador',
+      label: 'Trabajador',
+      sortable: true,
+      render: (row) => {
+        const { nombre, dni } = getTrabajadorDisplayData(row);
+        const dniLabel = formatDni(dni);
+        return (
+          <Box>
+            <Typography variant="body2">{nombre}</Typography>
+            {dniLabel && dniLabel !== '-' ? (
+              <Typography variant="caption" color="text.secondary">
+                DNI: {dniLabel}
+              </Typography>
+            ) : null}
+          </Box>
+        );
+      },
+    },
     {
       key: 'horas',
-      label: 'Horas',
+      label: 'Horas Sistema',
       render: (row) => {
         const db = row.dbHoras || null;
         const items = db ? [
@@ -424,7 +459,10 @@ const ConciliacionDetallePage = () => {
           { k: 'Noct. 50%', v: Number(db.horasNocturnas50 || 0), color: 'info' },
           { k: 'Noct. 100%', v: Number(db.horasNocturnas100 || 0), color: 'info' },
         ].filter(i => i.v > 0) : [];
-        if (items.length === 0) return '-';
+        const tieneLicencia = Boolean(db?.fechaLicencia);
+        const licenciaTipo = db?.tipoLicencia;
+        const licenciaLabel = licenciaTipo ? `Licencia (${licenciaTipo})` : 'Licencia';
+        if (!tieneLicencia && items.length === 0) return '-';
         return (
           <Stack direction="column" spacing={0.5}>
             {items.map(({ k, v }) => (
@@ -433,16 +471,30 @@ const ConciliacionDetallePage = () => {
                 label={`${k} ${v} hs`}
                 size="small"
                 variant="outlined"
-                sx={getHourChipSx(k)}
+                sx={(theme) => ({
+                  ...getHourChipSx(k)(theme),
+                  ...CHIP_LIMIT_SX,
+                  fontWeight: 600,
+                })}
               />
             ))}
+            {tieneLicencia && (
+              <Chip
+                label={licenciaLabel}
+                size="small"
+                variant="outlined"
+                color="warning"
+                icon={<SickIcon fontSize="small" />}
+                sx={CHIP_LIMIT_SX}
+              />
+            )}
           </Stack>
         );
       }
     },
     {
       key: 'sheetHoras',
-      label: 'Sheet',
+      label: 'Horas NASA',
       render: (row) => {
         const sh = row.sheetHoras || {};
         const items = [
@@ -456,7 +508,10 @@ const ConciliacionDetallePage = () => {
           { k: 'Noct. 50%', v: Number(sh.horasNocturnas50 || 0) },
           { k: 'Noct. 100%', v: Number(sh.horasNocturnas100 || 0) },
         ].filter(i => i.v > 0);
-        if (items.length === 0) return '-';
+        const tieneLicenciaSheet = Boolean(sh.fechaLicencia ?? row?.licencia);
+        const licenciaTipoSheet = sh.tipoLicencia ?? row?.tipoLicencia;
+        const licenciaLabelSheet = licenciaTipoSheet ? `Licencia (${licenciaTipoSheet})` : 'Licencia';
+        if (!tieneLicenciaSheet && items.length === 0) return '-';
         return (
           <Stack direction="column" spacing={0.5}>
             {items.map(({ k, v }) => (
@@ -465,62 +520,23 @@ const ConciliacionDetallePage = () => {
                 label={`${k} ${v} hs`}
                 size="small"
                 variant="outlined"
-                sx={getHourChipSx(k)}
+                sx={(theme) => ({
+                  ...getHourChipSx(k)(theme),
+                  ...CHIP_LIMIT_SX,
+                  fontWeight: 600,
+                })}
               />
             ))}
-          </Stack>
-        );
-      }
-    },
-    {
-      key: 'comprobantes',
-      label: 'Comprobantes',
-      render: (row) => {
-        const comps = Array.isArray(row.comprobantes) ? row.comprobantes : [];
-        if (comps.length === 0) return '-';
-        return (
-          <Stack direction="row" spacing={0.5} useFlexGap flexWrap="wrap">
-            {comps.map((comp, idx) => {
-              const color =
-                comp.type === 'horas' ? 'primary' :
-                comp.type === 'parte' ? 'success' :
-                comp.type === 'licencia' ? 'warning' : 'default';
-              const icon =
-                comp.type === 'horas' ? <TableViewIcon fontSize="small" /> :
-                comp.type === 'parte' ? <AssignmentIcon fontSize="small" /> :
-                comp.type === 'licencia' ? <SickIcon fontSize="small" /> : null;
-              return (() => {
-                const url = comp.url || comp.url_storage || null;
-                const handleClick = (event) => {
-                  if ((comp.type === 'parte' || comp.type === 'horas') && url) {
-                    event.preventDefault();
-                    event.stopPropagation();
-                  }
-                  if (comp.type === 'parte') {
-                    handleOpenParteModal(url, comp);
-                  }
-                  if (comp.type === 'horas') {
-                    handleOpenComprobante(comp, row);
-                  }
-                };
-                return (
-                  <Chip
-                    key={`${comp.type}-${idx}`}
-                    label={comp.type}
-                    size="small"
-                    color={color}
-                    variant="outlined"
-                    component="a"
-                    href={url || "#"}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    clickable
-                    icon={icon}
-                    onClick={handleClick}
-                  />
-                );
-              })();
-            })}
+            {tieneLicenciaSheet && (
+              <Chip
+                label={licenciaLabelSheet}
+                size="small"
+                variant="outlined"
+                color="warning"
+                icon={<SickIcon fontSize="small" />}
+                sx={CHIP_LIMIT_SX}
+              />
+            )}
           </Stack>
         );
       }
@@ -533,33 +549,6 @@ const ConciliacionDetallePage = () => {
         const { label, color } = getEstadoChipProps(row.estado);
         return <Chip size="small" color={color} label={label} />;
       }
-    },
-    {
-      key: 'observacion',
-      label: 'Observación',
-      render: (row) => {
-        const text = row?.observacion || '-';
-        if (text === '-') return text;
-        return (
-          <Tooltip title={text} placement="left" arrow>
-            <Typography
-              variant="body2"
-              sx={{
-                whiteSpace: 'normal',
-                wordBreak: 'break-word',
-                display: 'block',
-              }}
-            >
-              {text}
-            </Typography>
-          </Tooltip>
-        );
-      },
-      sx: {
-        maxWidth: 320,
-        whiteSpace: 'normal',
-        wordBreak: 'break-word',
-      },
     },
     {
       key: 'acciones',
@@ -590,11 +579,7 @@ const ConciliacionDetallePage = () => {
         </IconButton>
       )
     }
-  ]), [handleOpenParteModal, handleOpenComprobante]);
-
-  const formatters = useMemo(() => ({
-    fecha: formatFechaLabel,
-  }), [formatFechaLabel]);
+  ]), [handleOpenParteModal]);
 
   useEffect(() => {
     setSelectedRowsMap(new Map());
@@ -700,26 +685,29 @@ const ConciliacionDetallePage = () => {
             </Alert>
           )}
 
-          <TableSelectComponent
-            data={rows}
-            columns={columns}
-            isLoading={isLoading}
-            sortField={sortField}
-            sortDirection={sortDirection}
-            onSortChange={handleSortChange}
-            getRowId={getRowId}
-            onSelectionChange={handleSelectionChange}
-            selectedItems={selectedRows}
-            emptyMessage="No hay filas disponibles"
-            pagination={{
-              total: totalRows,
-              page,
-              rowsPerPage,
-              rowsPerPageOptions: [DEFAULT_PAGE_SIZE],
-            }}
-            onPageChange={handlePageChange}
-            onRowsPerPageChange={handleRowsPerPageChange}
-          />
+          <Box sx={{ width: "100%", maxWidth: 1200, mx: "auto" }}>
+            <TableSelectComponent
+              data={rows}
+              columns={columns}
+              isLoading={isLoading}
+              sortField={sortField}
+              sortDirection={sortDirection}
+              onSortChange={handleSortChange}
+              getRowId={getRowId}
+              onSelectionChange={handleSelectionChange}
+              selectedItems={selectedRows}
+              emptyMessage="No hay filas disponibles"
+              pagination={{
+                total: totalRows,
+                page,
+                rowsPerPage,
+                rowsPerPageOptions: [DEFAULT_PAGE_SIZE],
+              }}
+              onPageChange={handlePageChange}
+              onRowsPerPageChange={handleRowsPerPageChange}
+            />
+            <Alerts alert={alert} onClose={handleAlertClose} />
+          </Box>
         </Stack>
       </Container>
 
@@ -740,148 +728,17 @@ const ConciliacionDetallePage = () => {
         downloadUrl={rawModalUrl}
       />
 
-      <Dialog open={editOpen} onClose={() => setEditOpen(false)} maxWidth="md" fullWidth>
-        <DialogTitle>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Typography variant="h6" sx={{ fontWeight: 600 }}>
-              Editar horas
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              {rowToEdit?.trabajador || ''} · {formatters.fecha(rowToEdit?.fecha)}
-            </Typography>
-          </Box>
-        </DialogTitle>
-      <DialogContent>
-        <Box sx={{ mb: 2 }}>
-          <Typography variant="subtitle2" gutterBottom>
-            Elegir
-          </Typography>
-          <Stack direction="row" spacing={1} flexWrap="wrap">
-            <Button
-              size="small"
-              variant="contained"
-              color="primary"
-              onClick={handleSeleccionHorasExcel}
-              disabled={selectionLoading || isLoading}
-              sx={{ textTransform: "none" }}
-            >
-              Horas Excel
-            </Button>
-            <Button
-              size="small"
-              variant="outlined"
-              onClick={handleSeleccionHorasSistema}
-              disabled={selectionLoading || isLoading}
-              sx={{ textTransform: "none" }}
-            >
-              Horas Sistema
-            </Button>
-          </Stack>
-        </Box>
-          <Box sx={{ py: 2 }}>
-            <Stack direction={{ xs: 'column', md: 'row' }} spacing={3}>
-              <Box sx={{ flex: 1, minWidth: 260 }}>
-                <Typography variant="subtitle2" gutterBottom>En sistema</Typography>
-                <Stack spacing={1.5}>
-                  {[
-                    { k: 'horasNormales', label: 'Normales' },
-                    { k: 'horas50', label: '50%' },
-                    { k: 'horas100', label: '100%' },
-                    { k: 'horasAltura', label: 'Altura' },
-                    { k: 'horasHormigon', label: 'Hormigón' },
-                    { k: 'horasZanjeo', label: 'Zanjeo' },
-                    { k: 'horasNocturnas', label: 'Nocturnas' },
-                  ].map((f) => (
-                    <TextField
-                      key={f.k}
-                      label={f.label}
-                      type="number"
-                      inputProps={{ step: '0.5', min: 0 }}
-                      value={formHoras[f.k] ?? ''}
-                      onChange={(e) => setFormHoras((prev) => ({ ...prev, [f.k]: e.target.value === '' ? null : Number(e.target.value) }))}
-                      size="small"
-                      fullWidth
-                    />
-                  ))}
-                  <Stack direction="row" spacing={1} alignItems="center">
-                    <Typography variant="body2">Licencia</Typography>
-                    <Chip
-                      label={formHoras.fechaLicencia ? 'Sí' : 'No'}
-                      color={formHoras.fechaLicencia ? 'warning' : 'default'}
-                      variant="outlined"
-                      onClick={() => setFormHoras((p) => ({ ...p, fechaLicencia: !p.fechaLicencia }))}
-                      size="small"
-                    />
-                  </Stack>
-                </Stack>
-              </Box>
-              <Box sx={{ flex: 1, minWidth: 260 }}>
-                <Typography variant="subtitle2" gutterBottom>En sheet</Typography>
-                <Stack direction="row" spacing={0.5} useFlexGap flexWrap="wrap">
-                  {(() => {
-                    const sh = rowToEdit?.sheetHoras || {};
-                    const items = [
-                      { k: 'Norm.', v: Number(sh.horasNormales || 0) },
-                      { k: '50%', v: Number(sh.horas50 || 0) },
-                      { k: '100%', v: Number(sh.horas100 || 0) },
-                      { k: 'Aº', v: Number(sh.horasAltura || 0) },
-                      { k: 'Hº', v: Number(sh.horasHormigon || 0) },
-                      { k: 'Zº/M°', v: Number(sh.horasZanjeo || 0) },
-                      { k: 'Noc.', v: Number(sh.horasNocturnas || 0) },
-                    ].filter(i => i.v > 0);
-                    if (items.length === 0) {
-                      return <Typography variant="caption" color="text.secondary">Sin horas en sheet</Typography>;
-                    }
-                    return items.map(({ k, v }) => (
-                      <Chip
-                        key={k}
-                        label={`${k} ${v} hs`}
-                        size="small"
-                        variant="outlined"
-                        sx={getHourChipSx(k)}
-                      />
-                    ));
-                  })()}
-                </Stack>
-                <Box sx={{ mt: 1 }}>
-                  <Typography variant="body2" color="text.secondary">
-                    Licencia: {(rowToEdit?.sheetHoras?.fechaLicencia ? 'Sí' : 'No')}
-                  </Typography>
-                </Box>
-              </Box>
-            </Stack>
-          </Box>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setEditOpen(false)} color="inherit">
-            Cancelar
-          </Button>
-          <Button
-            variant="contained"
-            onClick={async () => {
-              if (!rowToEdit?._id || !id) return;
-              try {
-                await conciliacionService.updateConciliacionRow(id, rowToEdit._id, {
-                  dataTrabajoDiario: { ...formHoras },
-                });
-                setEditOpen(false);
-                await fetchRows({
-                  page,
-                  rowsPerPage,
-                  text: appliedSearchTerm,
-                  estado: estadoFiltro,
-                  sortField,
-                  sortDirection,
-                });
-              } catch (e) {
-                console.error('Error actualizando horas', e);
-              }
-            }}
-          >
-            Guardar
-          </Button>
-        </DialogActions>
-      </Dialog>
+      <CorreccionConciliacionModal
+        open={editOpen}
+        onClose={() => setEditOpen(false)}
+        row={rowToEdit}
+        formHoras={formHoras}
+        onFormHorasChange={setFormHoras}
+        onSelectExcel={handleSeleccionHorasExcel}
+        onSelectSistema={handleSeleccionHorasSistema}
+        selectionLoading={selectionLoading}
+        onSave={handleGuardarHoras}
+      />
     </DashboardLayout>
   );
 };

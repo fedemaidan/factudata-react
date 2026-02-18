@@ -242,6 +242,7 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
     "observacion",
     "nombre_proveedor",
     "fecha_factura",
+    "factura_cliente",
   ];
 
   const handleDolarAjusteChange = (event) => {

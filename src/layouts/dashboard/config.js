@@ -10,6 +10,7 @@ import { SvgIcon } from '@mui/material';
 import DashboardIcon from '@mui/icons-material/Dashboard';
 import StoreIcon from '@mui/icons-material/Store';
 import AddCircleIcon from '@mui/icons-material/AddCircle';
+import AssessmentIcon from '@mui/icons-material/Assessment';
 
 export const items = [
   // {
@@ -36,6 +37,15 @@ export const items = [
     icon: (
       <SvgIcon fontSize="small">
         <DashboardIcon />
+      </SvgIcon>
+    )
+  },
+  {
+    title: 'Reportes',
+    path: '/reportes',
+    icon: (
+      <SvgIcon fontSize="small">
+        <AssessmentIcon />
       </SvgIcon>
     )
   },

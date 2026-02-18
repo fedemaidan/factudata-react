@@ -47,6 +47,37 @@ const movimientosService = {
     }
   },
 
+  /**
+   * Edición masiva: envía el pedido y devuelve un jobId para polling
+   * @param {string[]} ids - IDs de los movimientos a editar
+   * @param {Object} campos - Campos y valores a aplicar
+   * @returns {Promise<{ ok: boolean, jobId?: string, total?: number, error?: string }>}
+   */
+  bulkUpdate: async (ids, campos) => {
+    try {
+      const response = await api.put('movimientos/bulk-update', { ids, campos });
+      return { ok: true, jobId: response.data.jobId, total: response.data.total };
+    } catch (err) {
+      console.error('Error en edición masiva:', err);
+      return { ok: false, error: err.message };
+    }
+  },
+
+  /**
+   * Consultar estado de un job
+   * @param {string} jobId
+   * @returns {Promise<Object|null>} - { id, status, total, completed, errors, result }
+   */
+  getJobStatus: async (jobId) => {
+    try {
+      const response = await api.get(`jobs/${jobId}`);
+      return response.data;
+    } catch (err) {
+      console.error('Error consultando job:', err);
+      return null;
+    }
+  },
+
   deleteMovimientoById: async (movimientoId) => {
     try {
       const response = await api.delete(`movimiento/${movimientoId}`);

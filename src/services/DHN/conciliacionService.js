@@ -40,6 +40,22 @@ const conciliacionService = {
     return data;
   },
 
+  async getConciliacionStats(id) {
+    if (!id) return null;
+    const { data } = await api.get(`/dhn/conciliacion/${id}/stats`);
+    return data;
+  },
+
+  async getConciliacionesStats(ids = []) {
+    const filteredIds = Array.isArray(ids) ? ids.filter(Boolean) : [];
+    if (filteredIds.length === 0) {
+      return { stats: {} };
+    }
+    const params = { ids: filteredIds.join(",") };
+    const { data } = await api.get('/dhn/conciliacion/stats', { params });
+    return data;
+  },
+
   async updateConciliacionRow(conciliacionId, rowId, payload) {
     const { data } = await api.patch(`/dhn/conciliacion/${conciliacionId}/row/${rowId}`, payload);
     return data;

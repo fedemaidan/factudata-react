@@ -37,7 +37,7 @@ const useCorreccionAsistida = (items = []) => {
   const [indiceActual, setIndiceActual] = useState(0);
   const [resueltos, setResueltos] = useState(0);
   const [elegibles, setElegibles] = useState([]);
-
+  const [rowActual, setRowActual] = useState(null);
   const elegiblesRef = useRef([]);
   const indiceRef = useRef(0);
   const resueltosRef = useRef(0);
@@ -51,79 +51,106 @@ const useCorreccionAsistida = (items = []) => {
   }, [activa, items]);
 
   const totalElegibles = elegibles.length;
-  const textoProgreso = useMemo(
-    () => `${resueltos}/${totalElegibles}`,
-    [resueltos, totalElegibles]
-  );
+  const textoProgreso = useMemo(() => {
+    const current = totalElegibles ? Math.min(indiceActual + 1, totalElegibles) : 0;
+    return `Caso ${current}/${totalElegibles} (resueltos ${resueltos})`;
+  }, [resueltos, totalElegibles, indiceActual]);
 
   const resetState = useCallback(() => {
     setActiva(false);
     setIndiceActual(0);
     setResueltos(0);
     setElegibles([]);
+    setRowActual(null);
     elegiblesRef.current = [];
     indiceRef.current = 0;
     resueltosRef.current = 0;
   }, []);
+
+  const getRowByIndex = useCallback(
+    (index) => {
+      if (index < 0 || index >= elegiblesRef.current.length) return null;
+      const id = elegiblesRef.current[index];
+      const row = findRowById(itemsRef.current, id);
+      return row && esElegible(row) ? row : null;
+    },
+    []
+  );
 
   const iniciar = useCallback(
     (overrideItems) => {
       const targetItems = Array.isArray(overrideItems) ? overrideItems : itemsRef.current;
       itemsRef.current = Array.isArray(targetItems) ? targetItems : [];
       const lista = buildElegibles(itemsRef.current);
-    if (lista.length === 0) {
-      resetState();
-      return null;
-    }
+      if (lista.length === 0) {
+        resetState();
+        return null;
+      }
 
-    setActiva(true);
-    setIndiceActual(0);
-    setResueltos(0);
-    setElegibles(lista);
-    elegiblesRef.current = lista;
-    indiceRef.current = 0;
-    resueltosRef.current = 0;
+      setActiva(true);
+      setIndiceActual(0);
+      setResueltos(0);
+      setElegibles(lista);
+      elegiblesRef.current = lista;
+      indiceRef.current = 0;
+      resueltosRef.current = 0;
 
-    const firstId = lista[0];
-    const firstRow = findRowById(itemsRef.current, firstId);
-    return firstRow;
-  },
-    [resetState]
+      const firstRow = getRowByIndex(0);
+      setRowActual(firstRow);
+      return firstRow;
+    },
+    [getRowByIndex, resetState]
   );
 
   const detener = useCallback(() => {
     resetState();
   }, [resetState]);
 
-  const avanzar = useCallback(() => {
-    if (!activa) return null;
-
+  const confirmarActual = useCallback(() => {
+    if (!activa) return;
     const nextResolved = resueltosRef.current + 1;
     setResueltos(nextResolved);
     resueltosRef.current = nextResolved;
+  }, [activa]);
 
-    let nextIndex = indiceRef.current + 1;
-    let nextRow = null;
+  const irAIndice = useCallback(
+    (index) => {
+      if (!activa) return null;
+      const row = getRowByIndex(index);
+      if (!row) return null;
 
-    while (nextIndex < elegiblesRef.current.length && !nextRow) {
-      const id = elegiblesRef.current[nextIndex];
-      const row = findRowById(itemsRef.current, id);
-      if (row && esElegible(row)) {
-        nextRow = row;
-      } else {
-        nextIndex += 1;
-      }
-    }
+      setIndiceActual(index);
+      indiceRef.current = index;
+      setRowActual(row);
+      return row;
+    },
+    [activa, getRowByIndex]
+  );
 
+  const irSiguiente = useCallback(() => {
+    const nextIndex = indiceRef.current + 1;
+    return irAIndice(nextIndex);
+  }, [irAIndice]);
+
+  const irAnterior = useCallback(() => {
+    const prevIndex = indiceRef.current - 1;
+    return irAIndice(prevIndex);
+  }, [irAIndice]);
+
+  const confirmarYAvanzar = useCallback(() => {
+    if (!activa) return null;
+    confirmarActual();
+    const nextRow = irSiguiente();
     if (!nextRow) {
       detener();
-      return null;
     }
-
-    setIndiceActual(nextIndex);
-    indiceRef.current = nextIndex;
     return nextRow;
-  }, [activa, detener, items]);
+  }, [activa, confirmarActual, irSiguiente, detener]);
+
+  const avanzar = useCallback(() => confirmarYAvanzar(), [confirmarYAvanzar]);
+
+  const hasPrev = activa && indiceActual > 0;
+  const hasNext = activa && indiceActual < elegibles.length - 1;
 
   const determinarTipoModal = useCallback((row) => {
     if (esHorasExcel(row)) return null;
@@ -143,6 +170,12 @@ const useCorreccionAsistida = (items = []) => {
     avanzar,
     detener,
     determinarTipoModal,
+    actualRow: rowActual,
+    hasPrev,
+    hasNext,
+    irAnterior,
+    irSiguiente,
+    confirmarYAvanzar,
   };
 };
 

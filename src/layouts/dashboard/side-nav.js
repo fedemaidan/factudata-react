@@ -43,6 +43,7 @@ import ScheduleIcon from "@mui/icons-material/Schedule";
 import AdminPanelSettingsIcon from "@mui/icons-material/AdminPanelSettings";
 import ErrorOutlineIcon from "@mui/icons-material/ErrorOutline";
 import ContactsIcon from "@mui/icons-material/Contacts";
+import AssessmentIcon from "@mui/icons-material/Assessment";
 
 export const SideNav = (props) => {
   const { open, onClose, collapsed = false, onToggleCollapsed, width = 280 } = props;
@@ -135,6 +136,15 @@ export const SideNav = (props) => {
           icon: (
             <SvgIcon fontSize="small">
               <PeopleIcon />
+            </SvgIcon>
+          ),
+        },
+        {
+          title: "Reportes",
+          path: "/reportes",
+          icon: (
+            <SvgIcon fontSize="small">
+              <AssessmentIcon />
             </SvgIcon>
           ),
         },
@@ -557,8 +567,8 @@ export const SideNav = (props) => {
         });
 
         baseItems.push({
-          title: "Presupuestos",
-          path: "/presupuestos",
+          title: "Control Presupuestos",
+          path: "/control-presupuestos",
           icon: (
             <SvgIcon fontSize="small">
               <NoteAltIcon />
