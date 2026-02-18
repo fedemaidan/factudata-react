@@ -314,6 +314,19 @@ const ReportListPage = () => {
       </Head>
       <Box sx={{ flexGrow: 1, py: 2 }}>
         <Container maxWidth="xl">
+          <Stack direction="row" justifyContent="space-between" alignItems="center" mb={3}>
+            <Typography variant="h5" fontWeight={700}>
+              Reportes
+            </Typography>
+            <Button
+              variant="contained"
+              startIcon={<AddIcon />}
+              onClick={() => setCreateDialogOpen(true)}
+            >
+              Nuevo Reporte
+            </Button>
+          </Stack>
+
           {loading && (
             <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
               <CircularProgress />
