@@ -80,15 +80,36 @@ function ConversacionesContent() {
       >
         <RefreshIcon sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }} />
       </IconButton>
-      <IconButton 
-        onClick={() => setResetOpen(true)} 
-        title="Reiniciar bot del usuario" 
+      <Button
+        onClick={() => setResetOpen(true)}
+        title="Reiniciar bot del usuario"
         size="small"
-        sx={{ p: { xs: 0.5, sm: 1 } }}
         disabled={!selectedPhone}
+        startIcon={<RestartAltIcon sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }} />}
+        sx={{
+          minWidth: 0,
+          px: 1,
+          color: 'text.secondary',
+          transition: 'all 150ms ease',
+          '& .reset-label': {
+            maxWidth: 0,
+            opacity: 0,
+            overflow: 'hidden',
+            whiteSpace: 'nowrap',
+            transition: 'all 150ms ease',
+          },
+          '&:hover': {
+            color: 'error.main',
+            bgcolor: 'rgba(211, 47, 47, 0.08)'
+          },
+          '&:hover .reset-label': {
+            maxWidth: 160,
+            opacity: 1,
+          }
+        }}
       >
-        <RestartAltIcon sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }} />
-      </IconButton>
+        <span className="reset-label">REINICAR FLUJO</span>
+      </Button>
       <IconButton 
         onClick={() => setDownloadOpen(true)} 
         title="Descargar conversación" 

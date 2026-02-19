@@ -1,21 +1,15 @@
-import { useEffect, useMemo, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import Head from 'next/head';
 import {
   Alert, Box, Button, Chip, Container, Dialog, DialogActions, DialogContent, DialogTitle,
-  IconButton, Paper, Snackbar, Stack, Table, TableBody, TableCell, TableHead, TableRow,
+  Checkbox, Paper, Snackbar, Stack, Table, TableBody, TableCell, TableHead, TableRow,
   TextField, Tooltip, Typography, InputAdornment, FormControl, InputLabel, Select, MenuItem,
   TableSortLabel, TablePagination, FormHelperText, LinearProgress, Backdrop, CircularProgress,
-  Collapse, Tabs, Tab
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
-import EditIcon from '@mui/icons-material/Edit';
-import DeleteIcon from '@mui/icons-material/Delete';
 import SearchIcon from '@mui/icons-material/Search';
 import WarningIcon from '@mui/icons-material/Warning';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import ExpandLessIcon from '@mui/icons-material/ExpandLess';
-import DownloadIcon from '@mui/icons-material/Download';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
 import ImportExportIcon from '@mui/icons-material/ImportExport';
 import LocalShippingIcon from '@mui/icons-material/LocalShipping';
@@ -30,6 +24,11 @@ import AjusteStockService from '../services/stock/ajusteStockService';
 import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
 import { getProyectosFromUser } from 'src/services/proyectosService';
 import { useAuthContext } from 'src/contexts/auth-context';
+import { useBreadcrumbs } from 'src/contexts/breadcrumbs-context';
+import { useRouter } from 'next/router';
+import MaterialDetailDrawer from '../components/stock/materiales/MaterialDetailDrawer';
+import HomeIcon from '@mui/icons-material/Home';
+import InventoryIcon from '@mui/icons-material/Inventory';
 
 /* ======================
    Helpers alias <-> chips (para crear/editar)
@@ -57,6 +56,167 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /* ====================== */
 
+const SearchBox = memo(({ initialValue, onApply }) => {
+  const [local, setLocal] = useState(initialValue || '');
+
+  useEffect(() => {
+    setLocal(initialValue || '');
+  }, [initialValue]);
+
+  const apply = useCallback(() => {
+    onApply(local);
+  }, [local, onApply]);
+
+  const onKeyDown = useCallback((e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      apply();
+    }
+  }, [apply]);
+
+  return (
+    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ minWidth: 260, flex: 1 }}>
+      <TextField
+        fullWidth
+        label="Buscar"
+        value={local}
+        onChange={(e) => setLocal(e.target.value)}
+        onKeyDown={onKeyDown}
+        placeholder="Nombre, SKU, alias o descripción…"
+        InputProps={{
+          startAdornment: (
+            <InputAdornment position="start"><SearchIcon /></InputAdornment>
+          ),
+        }}
+      />
+      <Button
+        variant="contained"
+        startIcon={<SearchIcon />}
+        onClick={apply}
+        sx={{ height: 40, alignSelf: 'center' }}
+      >
+        Buscar
+      </Button>
+    </Stack>
+  );
+});
+
+const RowItem = memo(
+  ({ row, checked, onToggle, onClick }) => (
+    <TableRow
+      hover
+      onClick={() => onClick(row)}
+      sx={{ cursor: 'pointer' }}
+    >
+      <TableCell padding="checkbox" onClick={(e) => e.stopPropagation()}>
+        <Checkbox
+          checked={checked}
+          onChange={(e) => onToggle(row._id, e.target.checked)}
+          inputProps={{ 'aria-label': `Seleccionar ${row.nombre || 'material'}` }}
+        />
+      </TableCell>
+      <TableCell>
+        <Typography variant="body2" fontWeight={600}>{row.nombre}</Typography>
+        <Stack spacing={0.5} sx={{ mt: 0.5 }}>
+          <Typography variant="caption" color="text.secondary">
+            SKU: {row.SKU || '—'}
+          </Typography>
+          {(Array.isArray(row.alias) ? row.alias.length > 0 : !!row.alias) && (
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+              {Array.isArray(row.alias)
+                ? row.alias.map((a, i) => (
+                    <Chip key={`${a}-${i}`} label={a} size="small" sx={{ mb: .5 }} />
+                  ))
+                : row.alias}
+            </Box>
+          )}
+        </Stack>
+      </TableCell>
+      <TableCell sx={{ maxWidth: 160 }}>
+        {row.categoria ? (
+          <Typography variant="body2" noWrap>
+            <strong>{row.categoria}</strong>
+            {row.subcategoria && (
+              <Typography component="span" variant="caption" color="text.secondary">
+                {' / '}{row.subcategoria}
+              </Typography>
+            )}
+          </Typography>
+        ) : (
+          <Typography variant="caption" color="text.disabled">—</Typography>
+        )}
+      </TableCell>
+      <TableCell align="right">
+        {row.precio_unitario != null ? (
+          (() => {
+            const STALE_DAYS = 30;
+            const fechaPrecio = row.fecha_precio ? new Date(row.fecha_precio) : null;
+            const diasDesdeActualizacion = fechaPrecio ? Math.floor((Date.now() - fechaPrecio.getTime()) / (1000 * 60 * 60 * 24)) : null;
+            const isStale = diasDesdeActualizacion != null && diasDesdeActualizacion > STALE_DAYS;
+            const fechaLabel = fechaPrecio
+              ? (() => { try { return fechaPrecio.toLocaleDateString('es-AR'); } catch { return '—'; } })()
+              : null;
+            const tooltipText = isStale
+              ? `⚠️ Precio de hace ${diasDesdeActualizacion} días (${fechaLabel})`
+              : fechaLabel
+                ? `Actualizado: ${fechaLabel}`
+                : 'Sin fecha de actualización';
+            return (
+              <Tooltip title={tooltipText}>
+                <Stack direction="row" spacing={0.5} alignItems="center" justifyContent="flex-end">
+                  {isStale && <WarningIcon sx={{ fontSize: 16, color: 'warning.main' }} />}
+                  <Typography
+                    variant="body2"
+                    fontWeight={500}
+                    color={isStale ? 'warning.main' : 'text.primary'}
+                  >
+                    ${Number(row.precio_unitario).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </Typography>
+                </Stack>
+              </Tooltip>
+            );
+          })()
+        ) : (
+          <Tooltip title="Sin precio unitario cargado">
+            <Typography variant="caption" color="text.secondary">—</Typography>
+          </Tooltip>
+        )}
+      </TableCell>
+      <TableCell align="right">
+        <Stack spacing={0.5} alignItems="flex-end">
+          {(() => {
+            const stockValue = typeof row.stock === 'number' ? row.stock : (row.stockTotal ?? 0);
+            const status = getStockStatus(stockValue);
+            return (
+              <Typography
+                variant="body1"
+                fontWeight="bold"
+                color={status.color === 'error' ? 'error.main' : 'success.main'}
+              >
+                {stockValue}
+              </Typography>
+            );
+          })()}
+          {row.tienePendientes && (
+            <Tooltip title={`${row.cantidadPendienteEntrega || 0} pendientes de recibir`}>
+              <Chip
+                icon={<HourglassEmptyIcon />}
+                label={row.cantidadPendienteEntrega || 0}
+                size="small"
+                color="warning"
+                variant="filled"
+                sx={{ height: 20, '& .MuiChip-label': { px: 0.5 } }}
+              />
+            </Tooltip>
+          )}
+        </Stack>
+      </TableCell>
+    </TableRow>
+  ),
+  (prev, next) => prev.row === next.row && prev.checked === next.checked
+);
+
+
 const emptyForm = {
   _id: '',
   nombre: '',
@@ -65,11 +225,14 @@ const emptyForm = {
   categoria: '',
   subcategoria: '',
   aliasChips: [],            // ← chips en el form
+  precio_unitario: '',
   empresa_id: '',
   empresa_nombre: '',
 };
 
 // helper mapea items del back y da fallback a stockTotal
+const SIN_CATEGORIA_VALUE = '__SIN_CATEGORIA__';
+
 function mapItems(items) {
   return (items || []).map((m) => ({
     ...m,
@@ -87,6 +250,7 @@ const ORDER_MAP = {
   descripcion: 'desc_material',
   sku: 'SKU',
   stock: 'stock',
+  precio_unitario: 'precio_unitario',
 };
 
 // Helper para obtener estado de stock
@@ -96,17 +260,13 @@ const getStockStatus = (stock) => {
 };
 
 const StockMateriales = () => {
-  const [allRows, setAllRows] = useState([]); // Todos los datos del backend
-  const [rows, setRows] = useState([]); // Datos de la página actual
+  const [allRows, setAllRows] = useState([]); // Datos de la página actual
   const [loading, setLoading] = useState(false);
 
   // estados de filtros/orden/paginación (server-side)
   const [nombre, setNombre] = useState('');            // 🔎 nombre
-  const [descripcion, setDescripcion] = useState('');  // 🔎 descripción
-  const [sku, setSku] = useState('');                  // 🔎 SKU
-  const [aliasText, setAliasText] = useState('');      // 🔎 alias como texto
+  // filtros de texto (buscador único)
   const [stockFilter, setStockFilter] = useState('all'); // all | gt0 | eq0 | lt0
-  const [proyectoFilter, setProyectoFilter] = useState(''); // filtro por proyecto
   const [estadoEntrega, setEstadoEntrega] = useState('all'); // all | entregado | no_entregado
   const [categoriaFilter, setCategoriaFilter] = useState(''); // filtro por categoría
   const [subcategoriaFilter, setSubcategoriaFilter] = useState(''); // filtro por subcategoría
@@ -114,17 +274,22 @@ const StockMateriales = () => {
   const [orderBy, setOrderBy] = useState('nombre'); // nombre | descripcion | sku | stock
   const [order, setOrder] = useState('asc'); // asc | desc
   const [page, setPage] = useState(0);
-  const [rowsPerPage, setRowsPerPage] = useState(50);
+  const [rowsPerPage, setRowsPerPage] = useState(25);
 
-  // Estados para expansión de filas y tabs
-  const [expandedRows, setExpandedRows] = useState(new Set());
+  // Estados para tabs y drawer de detalle
   const [currentTab, setCurrentTab] = useState('general');
   const [proyectos, setProyectos] = useState([]);
+  const [drawerMaterial, setDrawerMaterial] = useState(null);
 
-  // total que llega desde el back (para paginación)
-  const [total, setTotal] = useState(0);
+  // total para paginación (backend)
+  const [totalRows, setTotalRows] = useState(0);
+
+  // totales valorizados por proyecto (desde endpoint dedicado)
+  const [totalesStock, setTotalesStock] = useState(null);
 
   const { user } = useAuthContext();
+  const router = useRouter();
+  const { setBreadcrumbs } = useBreadcrumbs();
   const [alert, setAlert] = useState({ open: false, message: '', severity: 'info' });
   const closeAlert = () => setAlert((prev) => ({ ...prev, open: false }));
 
@@ -136,12 +301,27 @@ const StockMateriales = () => {
   const [openDelete, setOpenDelete] = useState(false);
   const [toDelete, setToDelete] = useState(null);
 
+  // Selección masiva + categorizador
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [openBulkCategoria, setOpenBulkCategoria] = useState(false);
+  const [bulkCategoria, setBulkCategoria] = useState('');
+  const [bulkSubcategoria, setBulkSubcategoria] = useState('');
+  const [bulkLoading, setBulkLoading] = useState(false);
+
   // Estados para exportar/importar
   const [openExportar, setOpenExportar] = useState(false);
   const [openImportar, setOpenImportar] = useState(false);
 
   // Estado para categorías de materiales de la empresa
   const [categoriasMateriales, setCategoriasMateriales] = useState([]);
+
+  useEffect(() => {
+    setBreadcrumbs([
+      { label: 'Inicio', href: '/', icon: <HomeIcon fontSize="small" /> },
+      { label: 'Stock de materiales', icon: <InventoryIcon fontSize="small" /> }
+    ]);
+    return () => setBreadcrumbs([]);
+  }, [setBreadcrumbs]);
   
   // Subcategorías disponibles según la categoría seleccionada (para el form de crear/editar)
   const subcategoriasDisponibles = useMemo(() => {
@@ -152,10 +332,17 @@ const StockMateriales = () => {
 
   // Subcategorías disponibles para el FILTRO (basado en categoriaFilter)
   const subcategoriasFilterDisponibles = useMemo(() => {
-    if (!categoriaFilter) return [];
+    if (!categoriaFilter || categoriaFilter === SIN_CATEGORIA_VALUE) return [];
     const cat = categoriasMateriales.find(c => c.name === categoriaFilter);
     return cat?.subcategorias || [];
   }, [categoriaFilter, categoriasMateriales]);
+
+  // Subcategorías disponibles para el categorizador masivo
+  const subcategoriasBulkDisponibles = useMemo(() => {
+    if (!bulkCategoria) return [];
+    const cat = categoriasMateriales.find(c => c.name === bulkCategoria);
+    return cat?.subcategorias || [];
+  }, [bulkCategoria, categoriasMateriales]);
 
   // construye el string sort "campo:asc|desc" para el back
   const sortParam = useMemo(() => {
@@ -164,8 +351,18 @@ const StockMateriales = () => {
     return `${field}:${dir}`;
   }, [orderBy, order]);
 
-  // fetch al back en base a filtros/orden/paginación
+  const onApplySearch = useCallback((value) => {
+    setNombre(value);
+    setPage(0);
+  }, []);
+
+  // fetch al back en base a filtros/orden (sin búsqueda de texto)
   async function fetchAll() {
+    if (!user) {
+      setAllRows([]);
+      setTotalRows(0);
+      return;
+    }
     setLoading(true);
     const startedAt = Date.now();
     try {
@@ -173,45 +370,34 @@ const StockMateriales = () => {
 
       const params = {
         empresa_id: empresa.id,
-        limit: 9999, // Traer todos los datos
+        limit: rowsPerPage,
+        page,
         sort: sortParam, // ej: "stock:desc"
       };
 
       // 🔎 filtros (solo envío si hay valor)
-      if (nombre?.trim())        params.nombre        = nombre.trim();
-      if (descripcion?.trim())   params.desc_material = descripcion.trim();
-      if (sku?.trim())           params.SKU           = sku.trim();
-      if (aliasText?.trim())     params.alias         = aliasText.trim();
       if (stockFilter !== 'all') params.stockFilter   = stockFilter; // 'gt0' | 'eq0' | 'lt0'
       if (estadoEntrega !== 'all') params.estadoEntrega = estadoEntrega; // 'entregado' | 'no_entregado'
-      if (categoriaFilter)         params.categoria     = categoriaFilter;
-      if (subcategoriaFilter)      params.subcategoria  = subcategoriaFilter;
+      if (categoriaFilter && categoriaFilter !== SIN_CATEGORIA_VALUE) {
+        params.categoria = categoriaFilter;
+      }
+      if (subcategoriaFilter && categoriaFilter !== SIN_CATEGORIA_VALUE) {
+        params.subcategoria = subcategoriaFilter;
+      }
+      if (categoriaFilter === SIN_CATEGORIA_VALUE) {
+        params.sin_categoria = true;
+      }
+
+      if ((nombre || '').trim()) params.text = nombre.trim();
 
       const resp = await StockMaterialesService.listarMateriales(params);
-      const allData = mapItems(resp.items || []);
-      
-      // Aplicar filtros adicionales en frontend que no se aplicaron en el backend
-      let filteredData = allData;
-      
-      // Filtro por proyecto (si está activo)
-      if (proyectoFilter) {
-        filteredData = filteredData.filter(row => 
-          (row.porProyecto || []).some(p => p.proyecto_id === proyectoFilter)
-        );
-      }
-      
-      // Guardar todos los datos filtrados
-      setAllRows(filteredData);
-      setTotal(filteredData.length);
-      
-      // Calcular datos de la página actual (paginación client-side)
-      const startIndex = page * rowsPerPage;
-      const endIndex = startIndex + rowsPerPage;
-      const pageData = filteredData.slice(startIndex, endIndex);
-      setRows(pageData);
+      const pageData = mapItems(resp.items || []);
+      setAllRows(pageData);
+      setTotalRows(Number(resp.total) || 0);
     } catch (e) {
       console.error(e);
-      setAlert({ open: true, message: 'Error al cargar materiales', severity: 'error' });
+      const msg = e?.response?.data?.error?.message || e?.message || 'Error al cargar materiales';
+      setAlert({ open: true, message: `Error al cargar materiales: ${msg}`, severity: 'error' });
     } finally {
       // mínimo 1s de loader visible
       const elapsed = Date.now() - startedAt;
@@ -221,34 +407,77 @@ const StockMateriales = () => {
     }
   }
 
-  // Función toggle expand para filas
-  const toggleRowExpansion = (materialId) => {
-    setExpandedRows(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(materialId)) {
-        newSet.delete(materialId);
-      } else {
-        newSet.add(materialId);
-      }
-      return newSet;
-    });
-  };
+  const total = totalRows;
 
-  // dispara el fetch cuando cambian filtros/orden (no page/rowsPerPage ya que paginamos en frontend)
+  const pageRows = useMemo(() => allRows, [allRows]);
+
+  // dispara el fetch cuando cambian filtros/orden/página (paginación backend)
   useEffect(() => {
     fetchAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nombre, descripcion, sku, aliasText, stockFilter, estadoEntrega, categoriaFilter, subcategoriaFilter, proyectoFilter, sortParam]);
+  }, [user, stockFilter, estadoEntrega, categoriaFilter, subcategoriaFilter, sortParam, page, rowsPerPage, nombre]);
 
-  // Efecto separado para manejar cambios de paginación (solo client-side)
+  // cargar totales valorizados (independiente de la paginación)
   useEffect(() => {
-    if (allRows.length > 0) {
-      const startIndex = page * rowsPerPage;
-      const endIndex = startIndex + rowsPerPage;
-      const pageData = allRows.slice(startIndex, endIndex);
-      setRows(pageData);
-    }
-  }, [allRows, page, rowsPerPage]);
+    let cancelled = false;
+    const fetchTotales = async () => {
+      try {
+        if (!user) return;
+        const empresa = await getEmpresaDetailsFromUser(user);
+        const params = {
+          empresa_id: empresa.id,
+          ...(stockFilter !== 'all' ? { stockFilter } : {}),
+          ...(estadoEntrega !== 'all' ? { estadoEntrega } : {}),
+          ...(categoriaFilter && categoriaFilter !== SIN_CATEGORIA_VALUE ? { categoria: categoriaFilter } : {}),
+          ...(subcategoriaFilter && categoriaFilter !== SIN_CATEGORIA_VALUE ? { subcategoria: subcategoriaFilter } : {}),
+          ...(categoriaFilter === SIN_CATEGORIA_VALUE ? { sin_categoria: true } : {}),
+          ...((nombre || '').trim() ? { text: nombre.trim() } : {}),
+        };
+        const data = await StockMaterialesService.obtenerTotalesStock(params);
+        if (!cancelled) setTotalesStock(data);
+      } catch (e) {
+        console.warn('[stockMateriales] Error obteniendo totales:', e);
+      }
+    };
+    fetchTotales();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, stockFilter, estadoEntrega, categoriaFilter, subcategoriaFilter, nombre]);
+
+  // limpiar selección al refrescar datos
+  useEffect(() => {
+    setSelectedIds([]);
+  }, [allRows, page, rowsPerPage, currentTab]);
+
+  const pageIds = pageRows.map(r => r?._id).filter(Boolean);
+  const selectedInPage = pageIds.filter(id => selectedIds.includes(id));
+  const allSelectedInPage = pageIds.length > 0 && selectedInPage.length === pageIds.length;
+  const someSelectedInPage = selectedInPage.length > 0 && selectedInPage.length < pageIds.length;
+  const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
+
+  const toggleSelectAllPage = useCallback((checked) => {
+    setSelectedIds((prev) => {
+      if (checked) return Array.from(new Set([...prev, ...pageIds]));
+      return prev.filter(id => !pageIds.includes(id));
+    });
+  }, [pageIds]);
+
+  const toggleSelectOne = useCallback((id, checked) => {
+    if (!id) return;
+    setSelectedIds((prev) => {
+      if (checked) return Array.from(new Set([...prev, id]));
+      return prev.filter(x => x !== id);
+    });
+  }, []);
+
+  const selectAllFiltered = useCallback(() => {
+    const allIds = pageRows.map(r => r?._id).filter(Boolean);
+    setSelectedIds(Array.from(new Set(allIds)));
+  }, [pageRows]);
+
+  const handleOpenDetail = useCallback((row) => {
+    setDrawerMaterial(row);
+  }, []);
 
   // --- crear/editar ---
   const handleOpenCreate = () => {
@@ -258,25 +487,11 @@ const StockMateriales = () => {
     setOpenForm(true);
   };
 
-  const handleOpenEdit = (row) => {
-    setIsEdit(true);
-    setForm({
-      _id: row._id,
-      nombre: row.nombre || '',
-      SKU: row.SKU || '',
-      desc_material: row.desc_material || '',
-      categoria: row.categoria || '',
-      subcategoria: row.subcategoria || '',
-      aliasChips: parseAliasToChips(row.alias),       // ← chips desde DB
-      empresa_id: row.empresa_id || '',
-      empresa_nombre: row.empresa_nombre || '',
-    });
-    setAliasInput('');
-    setOpenForm(true);
-  };
+  // handleOpenEdit removed — edit is now inside the detail drawer
 
   const validate = () => {
     if (!form.nombre?.trim()) return 'El nombre es requerido';
+    if (!form.categoria?.trim()) return 'La categoría es requerida. Seleccioná una categoría para organizar el material.';
     return null;
   };
 
@@ -298,6 +513,7 @@ const StockMateriales = () => {
         categoria: form.categoria?.trim() || null,
         subcategoria: form.subcategoria?.trim() || null,
         alias: form.aliasChips && form.aliasChips.length ? form.aliasChips : null, // ← array
+        precio_unitario: form.precio_unitario !== '' ? Number(form.precio_unitario) : null,
         empresa_id,
         empresa_nombre,
       };
@@ -322,10 +538,71 @@ const StockMateriales = () => {
   };
 
   // --- eliminar ---
-  const confirmDelete = (row) => {
+  const confirmDelete = useCallback((row) => {
     setToDelete(row);
     setOpenDelete(true);
+  }, []);
+
+  // --- drawer handlers ---
+  const saveFromDrawer = async (drawerForm) => {
+    if (!drawerForm.nombre?.trim()) {
+      setAlert({ open: true, message: 'El nombre es requerido', severity: 'warning' });
+      return;
+    }
+    try {
+      const empresa = await getEmpresaDetailsFromUser(user);
+      const payload = {
+        nombre: drawerForm.nombre?.trim(),
+        SKU: drawerForm.SKU?.trim() || null,
+        desc_material: drawerForm.desc_material?.trim() || null,
+        categoria: drawerForm.categoria?.trim() || null,
+        subcategoria: drawerForm.subcategoria?.trim() || null,
+        alias: drawerForm.aliasChips?.length ? drawerForm.aliasChips : null,
+        precio_unitario: drawerForm.precio_unitario !== '' ? Number(drawerForm.precio_unitario) : null,
+        empresa_id: empresa?.id,
+        empresa_nombre: empresa?.nombre,
+      };
+      await StockMaterialesService.actualizarMaterial(drawerForm._id, payload);
+      setAlert({ open: true, message: 'Material actualizado', severity: 'success' });
+      setDrawerMaterial(null);
+      await fetchAll();
+    } catch (e) {
+      console.error(e);
+      setAlert({ open: true, message: 'Error guardando material', severity: 'error' });
+    }
   };
+
+  const deleteFromDrawer = async (mat) => {
+    try {
+      await StockMaterialesService.eliminarMaterial(mat._id);
+      setAlert({ open: true, message: 'Material eliminado', severity: 'success' });
+      setDrawerMaterial(null);
+      await fetchAll();
+    } catch (e) {
+      console.error(e);
+      setAlert({ open: true, message: 'Error eliminando material', severity: 'error' });
+    }
+  };
+
+  const handleCreateTicket = useCallback((tipo, subtipo, material) => {
+    const params = new URLSearchParams({ crear: '1', tipo });
+    if (subtipo) params.set('subtipo', subtipo);
+    if (material?._id) params.set('material_id', material._id);
+    if (material?.nombre) params.set('material_nombre', material.nombre);
+    router.push(`/stockSolicitudes?${params.toString()}`);
+  }, [router]);
+
+  const tableRows = useMemo(() => (
+    pageRows.map((row) => (
+      <RowItem
+        key={row._id}
+        row={row}
+        checked={selectedIdSet.has(row._id)}
+        onToggle={toggleSelectOne}
+        onClick={handleOpenDetail}
+      />
+    ))
+  ), [pageRows, selectedIdSet, toggleSelectOne, handleOpenDetail]);
 
   const remove = async () => {
     if (!toDelete) return;
@@ -335,12 +612,42 @@ const StockMateriales = () => {
       setOpenDelete(false);
       setToDelete(null);
 
-      const isLastOnPage = rows.length === 1 && page > 0;
+      const isLastOnPage = pageRows.length === 1 && page > 0;
       if (isLastOnPage) setPage((p) => Math.max(0, p - 1));
       else await fetchAll();
     } catch (e) {
       console.error(e);
       setAlert({ open: true, message: 'Error eliminando material', severity: 'error' });
+    }
+  };
+
+  const handleOpenBulkCategoria = () => {
+    setBulkCategoria('');
+    setBulkSubcategoria('');
+    setOpenBulkCategoria(true);
+  };
+
+  const handleBulkCategoria = async () => {
+    if (!selectedIds.length || !bulkCategoria) return;
+    setBulkLoading(true);
+    try {
+      const empresa = await getEmpresaDetailsFromUser(user);
+      await StockMaterialesService.actualizarCategoriaMasiva({
+        empresa_id: empresa.id,
+        material_ids: selectedIds,
+        categoria: bulkCategoria,
+        subcategoria: bulkSubcategoria,
+      });
+
+      setAlert({ open: true, message: 'Categorías actualizadas', severity: 'success' });
+      setOpenBulkCategoria(false);
+      setSelectedIds([]);
+      await fetchAll();
+    } catch (e) {
+      console.error(e);
+      setAlert({ open: true, message: 'Error actualizando categorías', severity: 'error' });
+    } finally {
+      setBulkLoading(false);
     }
   };
 
@@ -482,204 +789,330 @@ const StockMateriales = () => {
     <>
       <Head><title>Stock de materiales</title></Head>
 
-      <Box component="main" sx={{ flexGrow: 1, py: 8 }}>
+      <Box component="main" sx={{ flexGrow: 1, py: 3 }}>
         <Container maxWidth="xl">
-          <Stack spacing={3}>
-
-            {/* Barra superior */}
-            <Stack direction="row" alignItems="center" justifyContent="space-between">
-              <Typography variant="h4">Stock de materiales</Typography>
-              <Stack direction="row" spacing={2}>
-                <Button 
-                  variant="outlined" 
-                  startIcon={<ImportExportIcon />}
-                  onClick={() => setOpenExportar(true)}
-                  color="primary"
-                >
-                  Exportar
-                </Button>
-                <Button 
-                  variant="outlined" 
-                  startIcon={<UploadFileIcon />}
-                  onClick={() => setOpenImportar(true)}
-                  color="secondary"
-                >
-                  Importar
-                </Button>
-                <Button variant="contained" startIcon={<AddIcon />} onClick={handleOpenCreate}>
-                  Agregar material
-                </Button>
-              </Stack>
+          <Stack spacing={2}>
+            <Stack direction="row" justifyContent="flex-end" spacing={1}>
+              <Button 
+                size="small"
+                variant="outlined" 
+                startIcon={<ImportExportIcon />}
+                onClick={() => setOpenExportar(true)}
+                color="primary"
+              >
+                Exportar
+              </Button>
+              <Button 
+                size="small"
+                variant="outlined" 
+                startIcon={<UploadFileIcon />}
+                onClick={() => setOpenImportar(true)}
+                color="secondary"
+              >
+                Importar
+              </Button>
+              <Button size="small" variant="contained" startIcon={<AddIcon />} onClick={handleOpenCreate}>
+                Agregar material
+              </Button>
             </Stack>
 
-            {/* Sistema de Tabs */}
+            {/* Resumen consolidado */}
+            {totalesStock && (
+              <Paper variant="outlined" sx={{ p: 2 }}>
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={3} alignItems={{ sm: 'center' }} flexWrap="wrap">
+                  <Box>
+                    <Typography variant="caption" color="text.secondary">Stock total valorizado</Typography>
+                    <Typography variant="h5" fontWeight={700} color="success.main">
+                      ${(totalesStock.general?.totalDinero ?? 0).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                    </Typography>
+                  </Box>
+                  <Box>
+                    <Typography variant="caption" color="text.secondary">Unidades totales</Typography>
+                    <Typography variant="h6" fontWeight={600}>
+                      {(totalesStock.general?.totalUnidades ?? 0).toLocaleString('es-AR')}
+                    </Typography>
+                  </Box>
+                  {(totalesStock.general?.sinPrecio ?? 0) > 0 && (
+                    <Box>
+                      <Typography variant="caption" color="text.secondary">Materiales sin precio</Typography>
+                      <Stack direction="row" spacing={0.5} alignItems="center">
+                        <WarningIcon sx={{ fontSize: 18, color: 'warning.main' }} />
+                        <Typography variant="h6" fontWeight={600} color="warning.main">
+                          {totalesStock.general.sinPrecio}
+                        </Typography>
+                      </Stack>
+                    </Box>
+                  )}
+                  {(totalesStock.sinAsignar?.totalUnidades ?? 0) > 0 && (
+                    <Box>
+                      <Typography variant="caption" color="text.secondary">Sin asignar a proyecto</Typography>
+                      <Typography variant="h6" fontWeight={600} color="warning.main">
+                        {totalesStock.sinAsignar.totalUnidades} u · ${(totalesStock.sinAsignar.totalDinero ?? 0).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                      </Typography>
+                    </Box>
+                  )}
+                </Stack>
+              </Paper>
+            )}
+
+            {/* Selector de vista: botones-card */}
             <Box sx={{ width: '100%' }}>
-              <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
-                <Tabs value={currentTab} onChange={(e, newValue) => setCurrentTab(newValue)}>
-                  <Tab label="General" value="general" />
-                  <Tab label="Sin asignar" value="sin-asignar" />
-                  {proyectos.map(proyecto => (
-                    <Tab 
-                      key={proyecto.id} 
-                      label={proyecto.nombre} 
-                      value={proyecto.id}
-                    />
-                  ))}
-                </Tabs>
-              </Box>
+              <Stack
+                direction="row"
+                spacing={1.5}
+                sx={{
+                  pb: 1,
+                  overflowX: 'auto',
+                  '&::-webkit-scrollbar': { height: 6 },
+                  '&::-webkit-scrollbar-thumb': { bgcolor: 'divider', borderRadius: 3 },
+                }}
+              >
+                {/* --- General --- */}
+                {(() => {
+                  const isSelected = currentTab === 'general';
+                  const t = totalesStock?.general || {};
+                  const totalUnidades = t.totalUnidades ?? 0;
+                  const totalDinero = t.totalDinero ?? 0;
+                  const sinPrecio = t.sinPrecio ?? 0;
+                  return (
+                    <Paper
+                      variant={isSelected ? 'elevation' : 'outlined'}
+                      elevation={isSelected ? 4 : 0}
+                      onClick={() => setCurrentTab('general')}
+                      sx={{
+                        px: 2, py: 1.5, cursor: 'pointer', minWidth: 170, flexShrink: 0,
+                        border: isSelected ? '2px solid' : '1px solid',
+                        borderColor: isSelected ? 'primary.main' : 'divider',
+                        bgcolor: isSelected ? 'primary.lightest' : 'background.paper',
+                        transition: 'all 0.15s ease',
+                        '&:hover': { borderColor: 'primary.main', bgcolor: 'action.hover' },
+                      }}
+                    >
+                      <Typography variant="subtitle2" fontWeight={600} noWrap>General</Typography>
+                      <Typography variant="h6" fontWeight={700} color={totalDinero > 0 ? 'success.main' : 'text.disabled'} sx={{ lineHeight: 1.3 }}>
+                        ${totalDinero.toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {totalUnidades} {totalUnidades === 1 ? 'unidad' : 'unidades'}
+                        {sinPrecio > 0 && ` · ${sinPrecio} sin precio`}
+                      </Typography>
+                    </Paper>
+                  );
+                })()}
+
+                {/* --- Sin asignar --- */}
+                {(() => {
+                  const isSelected = currentTab === 'sin-asignar';
+                  const t = totalesStock?.sinAsignar || {};
+                  const totalUnidades = t.totalUnidades ?? 0;
+                  const totalDinero = t.totalDinero ?? 0;
+                  const sinPrecio = t.sinPrecio ?? 0;
+                  return (
+                    <Paper
+                      variant={isSelected ? 'elevation' : 'outlined'}
+                      elevation={isSelected ? 4 : 0}
+                      onClick={() => setCurrentTab('sin-asignar')}
+                      sx={{
+                        px: 2, py: 1.5, cursor: 'pointer', minWidth: 170, flexShrink: 0,
+                        border: isSelected ? '2px solid' : '1px solid',
+                        borderColor: isSelected ? 'warning.main' : 'divider',
+                        bgcolor: isSelected ? 'warning.lightest' : 'background.paper',
+                        transition: 'all 0.15s ease',
+                        '&:hover': { borderColor: 'warning.main', bgcolor: 'action.hover' },
+                      }}
+                    >
+                      <Typography variant="subtitle2" fontWeight={600} noWrap>Sin asignar</Typography>
+                      <Typography variant="h6" fontWeight={700} color={totalDinero > 0 ? 'warning.main' : 'text.disabled'} sx={{ lineHeight: 1.3 }}>
+                        ${totalDinero.toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {totalUnidades} {totalUnidades === 1 ? 'unidad' : 'unidades'}
+                        {sinPrecio > 0 && ` · ${sinPrecio} sin precio`}
+                      </Typography>
+                    </Paper>
+                  );
+                })()}
+
+                {/* --- Proyectos --- */}
+                {(totalesStock?.porProyecto || []).map((proj) => {
+                  const isSelected = currentTab === proj.proyecto_id;
+                  const totalUnidades = proj.totalUnidades ?? 0;
+                  const totalDinero = proj.totalDinero ?? 0;
+                  const sinPrecio = proj.sinPrecio ?? 0;
+                  return (
+                    <Paper
+                      key={proj.proyecto_id}
+                      variant={isSelected ? 'elevation' : 'outlined'}
+                      elevation={isSelected ? 4 : 0}
+                      onClick={() => setCurrentTab(proj.proyecto_id)}
+                      sx={{
+                        px: 2, py: 1.5, cursor: 'pointer', minWidth: 170, flexShrink: 0,
+                        border: isSelected ? '2px solid' : '1px solid',
+                        borderColor: isSelected ? 'primary.main' : 'divider',
+                        bgcolor: isSelected ? 'primary.lightest' : 'background.paper',
+                        transition: 'all 0.15s ease',
+                        '&:hover': { borderColor: 'primary.main', bgcolor: 'action.hover' },
+                      }}
+                    >
+                      <Typography variant="subtitle2" fontWeight={600} noWrap>{proj.proyecto_nombre}</Typography>
+                      <Typography variant="h6" fontWeight={700} color={totalDinero > 0 ? 'success.main' : 'text.disabled'} sx={{ lineHeight: 1.3 }}>
+                        ${totalDinero.toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {totalUnidades} {totalUnidades === 1 ? 'unidad' : 'unidades'}
+                        {sinPrecio > 0 && ` · ${sinPrecio} sin precio`}
+                      </Typography>
+                    </Paper>
+                  );
+                })}
+              </Stack>
 
               <TabPanel value={currentTab} index="general">
                 <Stack spacing={3} sx={{ mt: 2 }}>
                   {/* Filtros */}
-                  <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} flexWrap="wrap">
-              <Box sx={{ minWidth: 220, flex: 1 }}>
-                <TextField
-                  fullWidth
-                  label="Nombre"
-                  value={nombre}
-                  onChange={(e) => { setNombre(e.target.value); setPage(0); }}
-                  placeholder="Buscar por nombre…"
-                  InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start"><SearchIcon /></InputAdornment>
-                    ),
-                  }}
-                />
-              </Box>
+                  <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} flexWrap="wrap">
+                    <SearchBox initialValue={nombre} onApply={onApplySearch} />
 
-              <TextField
-                label="Descripción"
-                value={descripcion}
-                onChange={(e) => { setDescripcion(e.target.value); setPage(0); }}
-                sx={{ minWidth: 220 }}
-                placeholder="Filtrar por descripción…"
-              />
+                    <FormControl sx={{ minWidth: 150 }}>
+                      <InputLabel id="stock-filter-label">Estado Stock</InputLabel>
+                      <Select
+                        labelId="stock-filter-label"
+                        label="Estado Stock"
+                        value={stockFilter}
+                        onChange={(e) => { setStockFilter(e.target.value); setPage(0); }}
+                      >
+                        <MenuItem value="all">Todos</MenuItem>
+                        <MenuItem value="eq0">
+                          <Box display="flex" alignItems="center" gap={1}>
+                            <WarningIcon color="error" fontSize="small" />
+                            Sin Stock
+                          </Box>
+                        </MenuItem>
+                        <MenuItem value="gt0">
+                          <Box display="flex" alignItems="center" gap={1}>
+                            <CheckCircleIcon color="success" fontSize="small" />
+                            Con Stock
+                          </Box>
+                        </MenuItem>
+                      </Select>
+                    </FormControl>
 
-              <TextField
-                label="SKU"
-                value={sku}
-                onChange={(e) => { setSku(e.target.value); setPage(0); }}
-                sx={{ minWidth: 160 }}
-                placeholder="Filtrar por SKU…"
-              />
+                    <FormControl sx={{ minWidth: 180 }}>
+                      <InputLabel id="entrega-filter-label">Estado Entrega</InputLabel>
+                      <Select
+                        labelId="entrega-filter-label"
+                        label="Estado Entrega"
+                        value={estadoEntrega}
+                        onChange={(e) => { setEstadoEntrega(e.target.value); setPage(0); }}
+                      >
+                        <MenuItem value="all">Todos</MenuItem>
+                        <MenuItem value="no_entregado">
+                          <Box display="flex" alignItems="center" gap={1}>
+                            <HourglassEmptyIcon color="warning" fontSize="small" />
+                            Pendientes de entrega
+                          </Box>
+                        </MenuItem>
+                        <MenuItem value="entregado">
+                          <Box display="flex" alignItems="center" gap={1}>
+                            <LocalShippingIcon color="success" fontSize="small" />
+                            Entregados
+                          </Box>
+                        </MenuItem>
+                      </Select>
+                    </FormControl>
 
-              {/* Alias como texto (filtro) */}
-              <TextField
-                label="Alias"
-                value={aliasText}
-                onChange={(e) => { setAliasText(e.target.value); setPage(0); }}
-                sx={{ minWidth: 220 }}
-                placeholder="Filtrar por alias…"
-                helperText="Coincidencia parcial en cualquier alias"
-              />
+                    <FormControl sx={{ minWidth: 180 }}>
+                      <InputLabel id="categoria-filter-label">Categoría</InputLabel>
+                      <Select
+                        labelId="categoria-filter-label"
+                        label="Categoría"
+                        value={categoriaFilter}
+                        onChange={(e) => { 
+                          setCategoriaFilter(e.target.value); 
+                          setSubcategoriaFilter(''); // Reset subcategoría al cambiar categoría
+                          setPage(0); 
+                        }}
+                      >
+                        <MenuItem value="">Todas las categorías</MenuItem>
+                        <MenuItem value={SIN_CATEGORIA_VALUE}>Sin categoría</MenuItem>
+                        {categoriasMateriales.map(cat => (
+                          <MenuItem key={cat.id || cat.name} value={cat.name}>{cat.name}</MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
 
-              <FormControl sx={{ minWidth: 150 }}>
-                <InputLabel id="stock-filter-label">Estado Stock</InputLabel>
-                <Select
-                  labelId="stock-filter-label"
-                  label="Estado Stock"
-                  value={stockFilter}
-                  onChange={(e) => { setStockFilter(e.target.value); setPage(0); }}
-                >
-                  <MenuItem value="all">Todos</MenuItem>
-                  <MenuItem value="eq0">
-                    <Box display="flex" alignItems="center" gap={1}>
-                      <WarningIcon color="error" fontSize="small" />
-                      Sin Stock
-                    </Box>
-                  </MenuItem>
-                  <MenuItem value="gt0">
-                    <Box display="flex" alignItems="center" gap={1}>
-                      <CheckCircleIcon color="success" fontSize="small" />
-                      Con Stock
-                    </Box>
-                  </MenuItem>
-                  </Select>
-                </FormControl>
+                    <FormControl sx={{ minWidth: 180 }}>
+                      <InputLabel id="subcategoria-filter-label">Subcategoría</InputLabel>
+                      <Select
+                        labelId="subcategoria-filter-label"
+                        label="Subcategoría"
+                        value={subcategoriaFilter}
+                        onChange={(e) => { setSubcategoriaFilter(e.target.value); setPage(0); }}
+                        disabled={!categoriaFilter || categoriaFilter === SIN_CATEGORIA_VALUE}
+                      >
+                        <MenuItem value="">Todas las subcategorías</MenuItem>
+                        {subcategoriasFilterDisponibles.map(sub => (
+                          <MenuItem key={sub} value={sub}>{sub}</MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
 
-                <FormControl sx={{ minWidth: 150 }}>
-                  <InputLabel id="proyecto-filter-label">Proyecto</InputLabel>
-                  <Select
-                    labelId="proyecto-filter-label"
-                    label="Proyecto"
-                    value={proyectoFilter}
-                    onChange={(e) => { setProyectoFilter(e.target.value); setPage(0); }}
+                  </Stack>
+
+              {(pageRows.length > 0 || selectedIds.length > 0) && (
+                <Paper variant="outlined" sx={{ p: 1.5 }}>
+                  <Stack
+                    direction={{ xs: 'column', sm: 'row' }}
+                    spacing={1}
+                    alignItems={{ xs: 'flex-start', sm: 'center' }}
+                    justifyContent="space-between"
                   >
-                    <MenuItem value="">Todos los proyectos</MenuItem>
-                    {proyectos.map(p => (
-                      <MenuItem key={p.id} value={p.id}>{p.nombre}</MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
+                    <Typography variant="body2">
+                      Seleccionados: <strong>{selectedIds.length}</strong>
+                    </Typography>
+                    <Stack direction="row" spacing={1}>
+                      <Button size="small" variant="outlined" onClick={selectAllFiltered}>
+                        Seleccionar página
+                      </Button>
+                      <Button
+                        size="small"
+                        variant="contained"
+                        onClick={handleOpenBulkCategoria}
+                        disabled={selectedIds.length === 0}
+                      >
+                        Asignar categoría
+                      </Button>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        onClick={() => setSelectedIds([])}
+                        disabled={selectedIds.length === 0}
+                      >
+                        Limpiar selección
+                      </Button>
+                    </Stack>
+                  </Stack>
+                  <Typography variant="caption" color="text.secondary">
+                    Selecciona todos los materiales de la página actual
+                  </Typography>
+                </Paper>
+              )}
 
-                <FormControl sx={{ minWidth: 180 }}>
-                  <InputLabel id="entrega-filter-label">Estado Entrega</InputLabel>
-                  <Select
-                    labelId="entrega-filter-label"
-                    label="Estado Entrega"
-                    value={estadoEntrega}
-                    onChange={(e) => { setEstadoEntrega(e.target.value); setPage(0); }}
-                  >
-                    <MenuItem value="all">Todos</MenuItem>
-                    <MenuItem value="no_entregado">
-                      <Box display="flex" alignItems="center" gap={1}>
-                        <HourglassEmptyIcon color="warning" fontSize="small" />
-                        Pendientes de entrega
-                      </Box>
-                    </MenuItem>
-                    <MenuItem value="entregado">
-                      <Box display="flex" alignItems="center" gap={1}>
-                        <LocalShippingIcon color="success" fontSize="small" />
-                        Entregados
-                      </Box>
-                    </MenuItem>
-                  </Select>
-                </FormControl>
-
-                <FormControl sx={{ minWidth: 180 }}>
-                  <InputLabel id="categoria-filter-label">Categoría</InputLabel>
-                  <Select
-                    labelId="categoria-filter-label"
-                    label="Categoría"
-                    value={categoriaFilter}
-                    onChange={(e) => { 
-                      setCategoriaFilter(e.target.value); 
-                      setSubcategoriaFilter(''); // Reset subcategoría al cambiar categoría
-                      setPage(0); 
-                    }}
-                  >
-                    <MenuItem value="">Todas las categorías</MenuItem>
-                    {categoriasMateriales.map(cat => (
-                      <MenuItem key={cat.id || cat.name} value={cat.name}>{cat.name}</MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-
-                <FormControl sx={{ minWidth: 180 }}>
-                  <InputLabel id="subcategoria-filter-label">Subcategoría</InputLabel>
-                  <Select
-                    labelId="subcategoria-filter-label"
-                    label="Subcategoría"
-                    value={subcategoriaFilter}
-                    onChange={(e) => { setSubcategoriaFilter(e.target.value); setPage(0); }}
-                    disabled={!categoriaFilter}
-                  >
-                    <MenuItem value="">Todas las subcategorías</MenuItem>
-                    {subcategoriasFilterDisponibles.map(sub => (
-                      <MenuItem key={sub} value={sub}>{sub}</MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              </Stack>            {/* Tabla */}
+              {/* Tabla */}
             <Paper>
               {/* 🔵 Barra fina de carga */}
               {loading && <LinearProgress />}
 
-              <Table>
+              <Table size="small" sx={{ '& th, & td': { py: 0.5 } }}>
                 <TableHead>
                   <TableRow>
-                    <TableCell width={60}>
-                      {/* Columna para expansión */}
+                    <TableCell padding="checkbox">
+                      <Checkbox
+                        indeterminate={someSelectedInPage}
+                        checked={allSelectedInPage}
+                        onChange={(e) => toggleSelectAllPage(e.target.checked)}
+                        inputProps={{ 'aria-label': 'Seleccionar todos en la página' }}
+                      />
                     </TableCell>
                     <TableCell sortDirection={orderBy === 'nombre' ? order : false}>
                       <TableSortLabel
@@ -690,198 +1123,37 @@ const StockMateriales = () => {
                         Nombre
                       </TableSortLabel>
                     </TableCell>
-                    <TableCell sortDirection={orderBy === 'descripcion' ? order : false}>
+                    <TableCell>Categoría</TableCell>
+                    <TableCell align="right">
                       <TableSortLabel
-                        active={orderBy === 'descripcion'}
-                        direction={orderBy === 'descripcion' ? order : 'asc'}
-                        onClick={createSortHandler('descripcion')}
+                        active={orderBy === 'precio_unitario'}
+                        direction={orderBy === 'precio_unitario' ? order : 'asc'}
+                        onClick={createSortHandler('precio_unitario')}
                       >
-                        Descripción
-                      </TableSortLabel>
-                    </TableCell>
-                    <TableCell sortDirection={orderBy === 'sku' ? order : false}>
-                      <TableSortLabel
-                        active={orderBy === 'sku'}
-                        direction={orderBy === 'sku' ? order : 'asc'}
-                        onClick={createSortHandler('sku')}
-                      >
-                        SKU
-                      </TableSortLabel>
-                    </TableCell>
-                    <TableCell>Alias</TableCell>
-                    <TableCell align="right" sortDirection={orderBy === 'stock' ? order : false}>
-                      <TableSortLabel
-                        active={orderBy === 'stock'}
-                        direction={orderBy === 'stock' ? order : 'asc'}
-                        onClick={createSortHandler('stock')}
-                      >
-                        Stock total
+                        Precio
                       </TableSortLabel>
                     </TableCell>
                     <TableCell align="right">
-                      <Tooltip title="Cantidad de materiales con movimientos pendientes de entrega (comprados pero no recibidos)">
-                        <span>Pend. Entrega</span>
-                      </Tooltip>
+                      <Stack direction="row" spacing={1} alignItems="center" justifyContent="flex-end">
+                        <TableSortLabel
+                          active={orderBy === 'stock'}
+                          direction={orderBy === 'stock' ? order : 'asc'}
+                          onClick={createSortHandler('stock')}
+                        >
+                          Stock / Pend.
+                        </TableSortLabel>
+                        <Tooltip title="Cantidad de materiales con movimientos pendientes de entrega (comprados pero no recibidos)">
+                          <span>ⓘ</span>
+                        </Tooltip>
+                      </Stack>
                     </TableCell>
-                    <TableCell>Último Proveedor</TableCell>
-                    <TableCell>Última Fecha</TableCell>
-                    <TableCell align="right">Acciones</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {rows.map((row) => [
-                    <TableRow key={row._id} hover>
-                      <TableCell>
-                        <Box display="flex" alignItems="center" gap={1}>
-                          <IconButton 
-                            size="small" 
-                            onClick={() => toggleRowExpansion(row._id)}
-                          >
-                            {expandedRows.has(row._id) ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-                          </IconButton>
-                          <Tooltip title={`Stock en ${(row.porProyecto || []).length} proyectos`}>
-                            <Chip 
-                              label={`${(row.porProyecto || []).length} proyectos`}
-                              size="small"
-                              variant="outlined"
-                            />
-                          </Tooltip>
-                        </Box>
-                      </TableCell>
-                      <TableCell>
-                        <Typography variant="body1" fontWeight={600}>{row.nombre}</Typography>
-                      </TableCell>
-                      <TableCell sx={{ maxWidth: 280 }}>
-                        <Tooltip title={row.desc_material || ''}>
-                          <Typography variant="body2" noWrap>
-                            {row.desc_material || <em>(—)</em>}
-                          </Typography>
-                        </Tooltip>
-                      </TableCell>
-                      <TableCell>{row.SKU || <em>(—)</em>}</TableCell>
-                      <TableCell sx={{ maxWidth: 300 }}>
-                        {Array.isArray(row.alias)
-                          ? row.alias.length
-                            ? row.alias.map((a, i) => (
-                                <Chip key={`${a}-${i}`} label={a} size="small" sx={{ mr: .5, mb: .5 }} />
-                              ))
-                            : <em>(—)</em>
-                          : (row.alias || <em>(—)</em>)}
-                      </TableCell>
-                      <TableCell align="right">
-                        {(() => {
-                          const stockValue = typeof row.stock === 'number' ? row.stock : (row.stockTotal ?? 0);
-                          const status = getStockStatus(stockValue);
-                          return (
-                            <Typography 
-                              variant="body1" 
-                              fontWeight="bold"
-                              color={status.color === 'error' ? 'error.main' : 'success.main'}
-                            >
-                              {stockValue}
-                            </Typography>
-                          );
-                        })()} 
-                      </TableCell>
-                      <TableCell align="right">
-                        {row.tienePendientes ? (
-                          <Tooltip title={`${row.cantidadPendienteEntrega || 0} unidades pendientes de recibir`}>
-                            <Chip
-                              icon={<HourglassEmptyIcon />}
-                              label={row.cantidadPendienteEntrega || 0}
-                              size="small"
-                              color="warning"
-                              variant="filled"
-                            />
-                          </Tooltip>
-                        ) : (
-                          <Chip
-                            icon={<CheckCircleIcon />}
-                            label="—"
-                            size="small"
-                            color="success"
-                            variant="outlined"
-                          />
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <Typography variant="body2">
-                          {row.ultimoProveedor || '—'}
-                        </Typography>
-                      </TableCell>
-                      <TableCell>
-                        <Typography variant="body2" color="text.secondary">
-                          {row.ultimaFechaMovimiento ? 
-                            new Date(row.ultimaFechaMovimiento).toLocaleDateString('es-ES') : 
-                            '—'
-                          }
-                        </Typography>
-                      </TableCell>
-                      <TableCell align="right">
-                        <IconButton color="primary" onClick={() => handleOpenEdit(row)} aria-label="Editar">
-                          <EditIcon />
-                        </IconButton>
-                        <IconButton color="error" onClick={() => confirmDelete(row)} aria-label="Eliminar">
-                          <DeleteIcon />
-                        </IconButton>
-                      </TableCell>
-                    </TableRow>,
-                    expandedRows.has(row._id) && (
-                      <TableRow key={`${row._id}-expanded`}>
-                        <TableCell colSpan={9} sx={{ py: 0 }}>
-                          <Collapse in={expandedRows.has(row._id)}>
-                            <Box sx={{ margin: 1 }}>
-                              <Typography variant="h6" gutterBottom>
-                                Stock por Proyecto
-                              </Typography>
-                              <Table size="small">
-                                <TableHead>
-                                  <TableRow>
-                                    <TableCell>Proyecto</TableCell>
-                                    <TableCell align="right">Stock</TableCell>
-                                  </TableRow>
-                                </TableHead>
-                                <TableBody>
-                                  {(row.porProyecto || []).map((proj) => (
-                                    <TableRow key={proj.proyecto_id}>
-                                      <TableCell>{proj.proyecto_nombre}</TableCell>
-                                      <TableCell align="right">
-                                        {(() => {
-                                          const stockValue = proj.stock || proj.cantidad || 0;
-                                          const isError = stockValue <= 0;
-                                          return (
-                                            <Typography 
-                                              variant="body1" 
-                                              fontWeight="bold"
-                                              color={isError ? 'error.main' : 'success.main'}
-                                            >
-                                              {stockValue}
-                                            </Typography>
-                                          );
-                                        })()} 
-                                      </TableCell>
-                                    </TableRow>
-                                  ))}
-                                  {(row.porProyecto || []).length === 0 && (
-                                    <TableRow>
-                                      <TableCell colSpan={2}>
-                                        <Typography variant="body2" color="text.secondary">
-                                          No hay stock distribuido por proyectos
-                                        </Typography>
-                                      </TableCell>
-                                    </TableRow>
-                                  )}
-                                </TableBody>
-                              </Table>
-                            </Box>
-                          </Collapse>
-                        </TableCell>
-                      </TableRow>
-                    )
-                  ]).flat()}
-                  {!loading && rows.length === 0 && (
+                  {tableRows}
+                  {!loading && pageRows.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={9}>
+                      <TableCell colSpan={5}>
                         <Typography variant="body2">Sin resultados.</Typography>
                       </TableCell>
                     </TableRow>
@@ -897,7 +1169,7 @@ const StockMateriales = () => {
                 onPageChange={handleChangePage}
                 rowsPerPage={rowsPerPage}
                 onRowsPerPageChange={handleChangeRowsPerPage}
-                rowsPerPageOptions={[10, 25, 50, 100]}
+                rowsPerPageOptions={[25, 50, 100, 200]}
               />
             </Paper>
                 </Stack>
@@ -907,95 +1179,100 @@ const StockMateriales = () => {
               <TabPanel value={currentTab} index="sin-asignar">
                 <Stack spacing={3} sx={{ mt: 2 }}>
                   <Typography variant="h6">
-                    Materiales sin proyecto asignado
+                    Stock sin asignar a proyecto
                   </Typography>
                   
-                  {/* Tabla filtrada por materiales sin proyecto */}
                   <Paper>
                     {loading && <LinearProgress />}
                     <Table>
                       <TableHead>
                         <TableRow>
                           <TableCell>Nombre</TableCell>
-                          <TableCell>Descripción</TableCell>
                           <TableCell>SKU</TableCell>
-                          <TableCell align="right">Stock Sin Asignar</TableCell>
-                          <TableCell align="right">Acciones</TableCell>
+                          <TableCell align="right">Stock</TableCell>
+                          <TableCell align="right">Precio unit.</TableCell>
+                          <TableCell align="right">Costo</TableCell>
                         </TableRow>
                       </TableHead>
                       <TableBody>
                         {(() => {
-                          // Debug: agregar logs para entender los datos
-                          console.log('🔍 [Debug] rows en sin-asignar:', rows.length);
-                          console.log('🔍 [Debug] sample row:', rows[0]);
-                          
-                          const materialesConStockSinAsignar = rows.filter(row => {
-                            // Buscar específicamente proyectos con ID "SIN_ASIGNAR" o que tengan stock sin asignar
+                          const materialesConStockSinAsignar = allRows.filter(row => {
                             const tieneStockSinAsignar = (row.porProyecto || []).some(p => 
                               (p.proyecto_id === 'SIN_ASIGNAR' || p.proyecto_id === null) && (p.stock || 0) > 0
                             );
-                            
-                            console.log(`🔍 [Debug] ${row.nombre}: tieneStockSinAsignar=${tieneStockSinAsignar}, porProyecto:`, row.porProyecto);
-                            
                             return tieneStockSinAsignar;
                           });
-                          
-                          console.log('🔍 [Debug] materialesConStockSinAsignar:', materialesConStockSinAsignar.length);
                           
                           if (materialesConStockSinAsignar.length === 0 && !loading) {
                             return (
                               <TableRow>
                                 <TableCell colSpan={5}>
                                   <Typography variant="body2">No hay materiales con stock sin asignar a proyectos.</Typography>
-                                  <Typography variant="caption" color="text.secondary">
-                                    Total de materiales: {rows.length}
-                                  </Typography>
                                 </TableCell>
                               </TableRow>
                             );
                           }
-                          
-                          return materialesConStockSinAsignar.map((row) => {
-                            // Encontrar el stock sin asignar
+
+                          let costoTotal = 0;
+                          const filas = materialesConStockSinAsignar.map((row) => {
                             const stockSinAsignar = (row.porProyecto || [])
                               .filter(p => p.proyecto_id === 'SIN_ASIGNAR' || p.proyecto_id === null)
                               .reduce((sum, p) => sum + (p.stock || 0), 0);
-                            
+                            const precio = row.precio_unitario;
+                            const costo = precio != null ? stockSinAsignar * precio : null;
+                            if (costo != null) costoTotal += costo;
                             return (
-                              <TableRow key={row._id} hover>
+                              <TableRow key={row._id} hover onClick={() => handleOpenDetail(row)} sx={{ cursor: 'pointer' }}>
                                 <TableCell>
-                                  <Typography variant="body1" fontWeight={600}>{row.nombre}</Typography>
-                                </TableCell>
-                                <TableCell sx={{ maxWidth: 280 }}>
                                   <Tooltip title={row.desc_material || ''}>
-                                    <Typography variant="body2" noWrap>
-                                      {row.desc_material || <em>(—)</em>}
-                                    </Typography>
+                                    <Typography variant="body2" fontWeight={600}>{row.nombre}</Typography>
                                   </Tooltip>
                                 </TableCell>
                                 <TableCell>{row.SKU || <em>(—)</em>}</TableCell>
                                 <TableCell align="right">
-                                  <Box display="flex" alignItems="center" justifyContent="flex-end" gap={1}>
-                                    <Typography 
-                                      variant="body1" 
-                                      fontWeight="bold"
-                                      color={stockSinAsignar <= 0 ? 'error.main' : 'success.main'}
-                                    >
-                                      {stockSinAsignar}
-                                    </Typography>
-                                    <Typography variant="caption" color="text.secondary">
-                                      (sin proyecto asignado)
-                                    </Typography>
-                                  </Box>
+                                  <Typography
+                                    variant="body1"
+                                    fontWeight="bold"
+                                    color={stockSinAsignar <= 0 ? 'error.main' : 'success.main'}
+                                  >
+                                    {stockSinAsignar}
+                                  </Typography>
                                 </TableCell>
                                 <TableCell align="right">
-                                  <IconButton color="primary" onClick={() => handleOpenEdit(row)} aria-label="Editar">
-                                    <EditIcon />
-                                  </IconButton>
+                                  {precio != null ? (
+                                    <Typography variant="body2">
+                                      ${Number(precio).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    </Typography>
+                                  ) : (
+                                    <Typography variant="caption" color="text.disabled">—</Typography>
+                                  )}
+                                </TableCell>
+                                <TableCell align="right">
+                                  {costo != null
+                                    ? <Typography variant="body2">${costo.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</Typography>
+                                    : <Typography variant="caption" color="text.disabled">—</Typography>
+                                  }
                                 </TableCell>
                               </TableRow>
                             );
                           });
+                          return (
+                            <>
+                              {filas}
+                              {costoTotal > 0 && (
+                                <TableRow sx={{ '& td': { borderTop: 2, borderColor: 'divider' } }}>
+                                  <TableCell colSpan={4} align="right">
+                                    <Typography variant="body2" fontWeight={700}>Total invertido</Typography>
+                                  </TableCell>
+                                  <TableCell align="right">
+                                    <Typography fontWeight={700}>
+                                      ${costoTotal.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    </Typography>
+                                  </TableCell>
+                                </TableRow>
+                              )}
+                            </>
+                          );
                         })()}
                       </TableBody>
                     </Table>
@@ -1004,7 +1281,19 @@ const StockMateriales = () => {
               </TabPanel>
 
               {/* Tab para cada proyecto */}
-              {proyectos.map(proyecto => (
+              {/* Usa proyectos del endpoint de totales (completo) + fallback a proyectos del usuario */}
+              {(() => {
+                const totalesProyectos = totalesStock?.porProyecto || [];
+                // Merge: proyectos del endpoint de totales + proyectos del usuario
+                const proyectoIds = new Set();
+                const mergedProyectos = [];
+                totalesProyectos.forEach(p => {
+                  if (p.proyecto_id) { proyectoIds.add(p.proyecto_id); mergedProyectos.push({ id: p.proyecto_id, nombre: p.proyecto_nombre }); }
+                });
+                proyectos.forEach(p => {
+                  if (!proyectoIds.has(p.id)) { mergedProyectos.push(p); }
+                });
+                return mergedProyectos.map(proyecto => (
                 <TabPanel key={proyecto.id} value={currentTab} index={proyecto.id}>
                   <Stack spacing={3} sx={{ mt: 2 }}>
                     <Typography variant="h6">
@@ -1018,68 +1307,103 @@ const StockMateriales = () => {
                         <TableHead>
                           <TableRow>
                             <TableCell>Nombre</TableCell>
-                            <TableCell>Descripción</TableCell>
                             <TableCell>SKU</TableCell>
-                            <TableCell align="right">Stock en Proyecto</TableCell>
-                            <TableCell align="right">Acciones</TableCell>
+                            <TableCell align="right">Stock</TableCell>
+                            <TableCell align="right">Precio unit.</TableCell>
+                            <TableCell align="right">Costo</TableCell>
                           </TableRow>
                         </TableHead>
                         <TableBody>
-                          {rows.filter(row => 
-                            (row.porProyecto || []).some(p => p.proyecto_id === proyecto.id)
-                          ).map((row) => {
-                            const proyectoStock = (row.porProyecto || []).find(p => p.proyecto_id === proyecto.id);
-                            return (
-                              <TableRow key={row._id} hover>
-                                <TableCell>
-                                  <Typography variant="body1" fontWeight={600}>{row.nombre}</Typography>
-                                </TableCell>
-                                <TableCell sx={{ maxWidth: 280 }}>
-                                  <Tooltip title={row.desc_material || ''}>
-                                    <Typography variant="body2" noWrap>
-                                      {row.desc_material || <em>(—)</em>}
-                                    </Typography>
-                                  </Tooltip>
-                                </TableCell>
-                                <TableCell>{row.SKU || <em>(—)</em>}</TableCell>
-                                <TableCell align="right">
-                                  {(() => {
-                                    const stockValue = proyectoStock?.stock || proyectoStock?.cantidad || 0;
-                                    const isError = stockValue <= 0;
-                                    return (
-                                      <Typography 
-                                        variant="body1" 
-                                        fontWeight="bold"
-                                        color={isError ? 'error.main' : 'success.main'}
-                                      >
-                                        {stockValue}
-                                      </Typography>
-                                    );
-                                  })()} 
-                                </TableCell>
-                                <TableCell align="right">
-                                  <IconButton color="primary" onClick={() => handleOpenEdit(row)} aria-label="Editar">
-                                    <EditIcon />
-                                  </IconButton>
-                                </TableCell>
-                              </TableRow>
+                          {(() => {
+                            const rowsEnProyecto = allRows.filter(row =>
+                              (row.porProyecto || []).some(p => p.proyecto_id === proyecto.id)
                             );
-                          })}
-                          {rows.filter(row => 
-                            (row.porProyecto || []).some(p => p.proyecto_id === proyecto.id)
-                          ).length === 0 && (
-                            <TableRow>
-                              <TableCell colSpan={5}>
-                                <Typography variant="body2">Sin materiales en este proyecto.</Typography>
-                              </TableCell>
-                            </TableRow>
-                          )}
+                            if (rowsEnProyecto.length === 0) {
+                              return (
+                                <TableRow>
+                                  <TableCell colSpan={5}>
+                                    <Typography variant="body2">Sin materiales en este proyecto.</Typography>
+                                  </TableCell>
+                                </TableRow>
+                              );
+                            }
+                            let costoTotal = 0;
+                            const filas = rowsEnProyecto.map((row) => {
+                              const proyectoStock = (row.porProyecto || []).find(p => p.proyecto_id === proyecto.id);
+                              const stockValue = proyectoStock?.stock || proyectoStock?.cantidad || 0;
+                              const precio = row.precio_unitario;
+                              const costo = precio != null ? stockValue * precio : null;
+                              if (costo != null) costoTotal += costo;
+                              return (
+                                <TableRow key={row._id} hover onClick={() => handleOpenDetail(row)} sx={{ cursor: 'pointer' }}>
+                                  <TableCell>
+                                    <Tooltip title={row.desc_material || ''}>
+                                      <Typography variant="body2" fontWeight={600}>{row.nombre}</Typography>
+                                    </Tooltip>
+                                  </TableCell>
+                                  <TableCell>{row.SKU || <em>(—)</em>}</TableCell>
+                                  <TableCell align="right">
+                                    <Typography
+                                      variant="body1"
+                                      fontWeight="bold"
+                                      color={stockValue <= 0 ? 'error.main' : 'success.main'}
+                                    >
+                                      {stockValue}
+                                    </Typography>
+                                  </TableCell>
+                                  <TableCell align="right">
+                                    {(() => {
+                                      if (precio == null) return <Typography variant="caption" color="text.disabled">—</Typography>;
+                                      const STALE_DAYS = 30;
+                                      const fp = row.fecha_precio ? new Date(row.fecha_precio) : null;
+                                      const dias = fp ? Math.floor((Date.now() - fp.getTime()) / 86400000) : null;
+                                      const isStale = dias != null && dias > STALE_DAYS;
+                                      return (
+                                        <Tooltip title={isStale ? `⚠️ Precio de hace ${dias} días` : ''}>
+                                          <Stack direction="row" spacing={0.5} alignItems="center" justifyContent="flex-end">
+                                            {isStale && <WarningIcon sx={{ fontSize: 14, color: 'warning.main' }} />}
+                                            <Typography variant="body2" color={isStale ? 'warning.main' : 'text.primary'}>
+                                              ${Number(precio).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                            </Typography>
+                                          </Stack>
+                                        </Tooltip>
+                                      );
+                                    })()}
+                                  </TableCell>
+                                  <TableCell align="right">
+                                    {costo != null
+                                      ? <Typography variant="body2">${costo.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</Typography>
+                                      : <Typography variant="caption" color="text.disabled">—</Typography>
+                                    }
+                                  </TableCell>
+                                </TableRow>
+                              );
+                            });
+                            return (
+                              <>
+                                {filas}
+                                {costoTotal > 0 && (
+                                  <TableRow sx={{ '& td': { borderTop: 2, borderColor: 'divider' } }}>
+                                    <TableCell colSpan={4} align="right">
+                                      <Typography variant="body2" fontWeight={700}>Total invertido</Typography>
+                                    </TableCell>
+                                    <TableCell align="right">
+                                      <Typography fontWeight={700}>
+                                        ${costoTotal.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                      </Typography>
+                                    </TableCell>
+                                  </TableRow>
+                                )}
+                              </>
+                            );
+                          })()}
                         </TableBody>
                       </Table>
                     </Paper>
                   </Stack>
                 </TabPanel>
-              ))}
+              ));
+              })()}
             </Box>
           </Stack>
         </Container>
@@ -1112,11 +1436,26 @@ const StockMateriales = () => {
                 value={form.SKU}
                 onChange={(e) => setForm({ ...form, SKU: e.target.value })}
               />
+              <TextField
+                label="Precio unitario ($)"
+                type="number"
+                value={form.precio_unitario}
+                onChange={(e) => setForm({ ...form, precio_unitario: e.target.value })}
+                InputProps={{ inputProps: { min: 0, step: 0.01 } }}
+                helperText={isEdit && form._id
+                  ? `Última actualización de precio: ${(() => {
+                      const row = allRows.find(r => r._id === form._id);
+                      if (!row?.fecha_precio) return 'nunca';
+                      try { return new Date(row.fecha_precio).toLocaleDateString('es-AR'); } catch { return '—'; }
+                    })()}`
+                  : 'Se registra la fecha de carga automáticamente'
+                }
+              />
               <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
-                <FormControl fullWidth>
-                  <InputLabel>Categoría</InputLabel>
+                <FormControl fullWidth required error={!form.categoria && form.nombre?.trim()?.length > 0}>
+                  <InputLabel>Categoría *</InputLabel>
                   <Select
-                    label="Categoría"
+                    label="Categoría *"
                     value={form.categoria}
                     onChange={(e) => setForm({ ...form, categoria: e.target.value, subcategoria: '' })}
                   >
@@ -1129,9 +1468,17 @@ const StockMateriales = () => {
                       </MenuItem>
                     ))}
                   </Select>
-                  {categoriasMateriales.length === 0 && (
+                  {categoriasMateriales.length === 0 ? (
                     <FormHelperText>
                       Configura categorías en Empresa → Categorías Materiales
+                    </FormHelperText>
+                  ) : !form.categoria && form.nombre?.trim()?.length > 0 ? (
+                    <FormHelperText error>
+                      Seleccioná una categoría para continuar
+                    </FormHelperText>
+                  ) : (
+                    <FormHelperText>
+                      Obligatorio para organizar el inventario
                     </FormHelperText>
                   )}
                 </FormControl>
@@ -1217,13 +1564,88 @@ const StockMateriales = () => {
           </DialogActions>
         </Dialog>
 
+        {/* Drawer detalle de material */}
+        <MaterialDetailDrawer
+          open={!!drawerMaterial}
+          material={drawerMaterial}
+          onClose={() => setDrawerMaterial(null)}
+          onSave={saveFromDrawer}
+          onDelete={deleteFromDrawer}
+          onCreateTicket={handleCreateTicket}
+          categoriasMateriales={categoriasMateriales}
+        />
+
+        {/* Categorizador masivo */}
+        <Dialog open={openBulkCategoria} onClose={() => setOpenBulkCategoria(false)} fullWidth maxWidth="sm">
+          <DialogTitle>Asignar categoría a {selectedIds.length} materiales</DialogTitle>
+          <DialogContent>
+            <Stack spacing={2} sx={{ mt: 1 }}>
+              <FormControl fullWidth>
+                <InputLabel id="bulk-categoria-label">Categoría</InputLabel>
+                <Select
+                  labelId="bulk-categoria-label"
+                  label="Categoría"
+                  value={bulkCategoria}
+                  onChange={(e) => {
+                    setBulkCategoria(e.target.value);
+                    setBulkSubcategoria('');
+                  }}
+                >
+                  <MenuItem value=""><em>Seleccionar categoría</em></MenuItem>
+                  {categoriasMateriales.map(cat => (
+                    <MenuItem key={cat.id || cat.name} value={cat.name}>{cat.name}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+
+              <FormControl fullWidth disabled={!bulkCategoria}>
+                <InputLabel id="bulk-subcategoria-label">Subcategoría</InputLabel>
+                <Select
+                  labelId="bulk-subcategoria-label"
+                  label="Subcategoría"
+                  value={bulkSubcategoria}
+                  onChange={(e) => setBulkSubcategoria(e.target.value)}
+                >
+                  <MenuItem value=""><em>(sin subcategoría)</em></MenuItem>
+                  {subcategoriasBulkDisponibles.map(sub => (
+                    <MenuItem key={sub} value={sub}>{sub}</MenuItem>
+                  ))}
+                </Select>
+                <FormHelperText>
+                  La subcategoría es opcional
+                </FormHelperText>
+              </FormControl>
+            </Stack>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setOpenBulkCategoria(false)}>Cancelar</Button>
+            <Button
+              variant="contained"
+              onClick={handleBulkCategoria}
+              disabled={!bulkCategoria || bulkLoading}
+            >
+              {bulkLoading ? 'Aplicando…' : 'Aplicar'}
+            </Button>
+          </DialogActions>
+        </Dialog>
+
         {/* Diálogo Exportar Stock */}
         <ExportarStock
           open={openExportar}
           onClose={() => setOpenExportar(false)}
-          materiales={rows}
+          materiales={allRows}
           proyectos={proyectos}
           user={user}
+          exportFilters={{
+            enabled: true,
+            text: (nombre || '').trim() || undefined,
+            stockFilter,
+            estadoEntrega,
+            categoria: categoriaFilter && categoriaFilter !== SIN_CATEGORIA_VALUE ? categoriaFilter : undefined,
+            subcategoria: subcategoriaFilter && categoriaFilter !== SIN_CATEGORIA_VALUE ? subcategoriaFilter : undefined,
+            sin_categoria: categoriaFilter === SIN_CATEGORIA_VALUE,
+            sort: sortParam,
+          }}
         />
 
         {/* Diálogo Importar Stock */}
@@ -1231,7 +1653,7 @@ const StockMateriales = () => {
           open={openImportar}
           onClose={() => setOpenImportar(false)}
           onConfirmAjustes={handleConfirmAjustes}
-          materiales={rows} // Pasar los materiales actuales para comparar
+          materiales={allRows} // Pasar los materiales actuales para comparar
           proyectos={proyectos} // Pasar los proyectos para convertir nombres a IDs
           user={user}
         />

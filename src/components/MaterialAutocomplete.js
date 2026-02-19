@@ -1,5 +1,5 @@
 // src/components/MaterialAutocomplete.js
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { 
   Autocomplete, 
   TextField, 
@@ -15,7 +15,12 @@ import {
   Stack,
   Alert,
   Checkbox,
-  FormControlLabel
+  FormControlLabel,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  FormHelperText,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import BookmarkAddIcon from '@mui/icons-material/BookmarkAdd';
@@ -51,6 +56,13 @@ const MaterialAutocomplete = ({
   const [showAliasDialog, setShowAliasDialog] = useState(false);
   const [aliasDialogData, setAliasDialogData] = useState(null); // { material, originalText }
   const [aliasLoading, setAliasLoading] = useState(false);
+
+  // Estado para categorías y campos extra del diálogo de crear material
+  const [empresaCategorias, setEmpresaCategorias] = useState([]);
+  const [createCategoria, setCreateCategoria] = useState('');
+  const [createSubcategoria, setCreateSubcategoria] = useState('');
+  const [createAlias, setCreateAlias] = useState('');
+  const [createNombre, setCreateNombre] = useState('');
   
   // Guardar el texto original del remito cuando se monta el componente o cambia fallbackText
   useEffect(() => {
@@ -58,6 +70,34 @@ const MaterialAutocomplete = ({
       setOriginalRemitoText(fallbackText.trim());
     }
   }, [fallbackText, originalRemitoText]);
+
+  // Cargar categorías de empresa cuando se abre el diálogo de crear
+  useEffect(() => {
+    if (showCreateDialog && user) {
+      getEmpresaDetailsFromUser(user).then(emp => {
+        setEmpresaCategorias(emp?.categorias_materiales || []);
+      }).catch(() => setEmpresaCategorias([]));
+
+      // Inicializar nombre con el texto actual y alias con el texto original del remito
+      setCreateNombre(inputValue.trim());
+      const origText = originalRemitoText || fallbackText?.trim() || '';
+      // Si el texto original es diferente al nombre, sugerirlo como alias
+      if (origText && origText.toLowerCase() !== inputValue.trim().toLowerCase()) {
+        setCreateAlias(origText);
+      } else {
+        setCreateAlias('');
+      }
+      setCreateCategoria('');
+      setCreateSubcategoria('');
+    }
+  }, [showCreateDialog, user]);
+
+  // Subcategorías disponibles según la categoría seleccionada en el diálogo de crear
+  const createSubcategoriasDisponibles = useMemo(() => {
+    if (!createCategoria) return [];
+    const cat = empresaCategorias.find(c => c.name === createCategoria);
+    return cat?.subcategorias || [];
+  }, [createCategoria, empresaCategorias]);
 
   // Buscar materiales con debounce
   const searchMaterials = useCallback(
@@ -251,18 +291,27 @@ const MaterialAutocomplete = ({
 
   // Función para crear material nuevo
   const handleCreateMaterial = async () => {
-    if (!inputValue.trim()) return;
+    const nombre = createNombre.trim() || inputValue.trim();
+    if (!nombre) return;
 
     try {
       setCreateLoading(true);
       const empresa = await getEmpresaDetailsFromUser(user);
       
+      // Construir array de alias
+      const aliasArr = [];
+      if (createAlias.trim()) {
+        aliasArr.push(createAlias.trim());
+      }
+      
       const nuevoMaterial = {
-        nombre: inputValue.trim(),
+        nombre,
         empresa_id: empresa.id,
         SKU: null,
         desc_material: null,
-        alias: null,
+        alias: aliasArr.length > 0 ? aliasArr : null,
+        categoria: createCategoria || null,
+        subcategoria: createSubcategoria || null,
         empresa_nombre: empresa.nombre || null
       };
 
@@ -275,10 +324,12 @@ const MaterialAutocomplete = ({
         SKU: '',
         desc_material: '',
         stock: 0,
+        alias: aliasArr,
         label: nuevoMaterial.nombre
       };
 
       setSelectedMaterial(materialObj);
+      setInputValue(materialObj.label);
       setMaterialExists(true);
       setShowCreateDialog(false);
       
@@ -451,15 +502,87 @@ const MaterialAutocomplete = ({
 
       {/* Diálogo para confirmar creación de material */}
       <Dialog open={showCreateDialog} onClose={() => setShowCreateDialog(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Crear Material Nuevo</DialogTitle>
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <AddIcon color="primary" />
+          Crear Material Nuevo
+        </DialogTitle>
         <DialogContent>
-          <Stack spacing={2} sx={{ mt: 1 }}>
+          <Stack spacing={2.5} sx={{ mt: 1 }}>
             <Alert severity="info">
-              El material "<strong>{inputValue}</strong>" no existe en el sistema. ¿Deseas crearlo?
+              El material "<strong>{inputValue}</strong>" no existe en el sistema. Completá los datos para crearlo.
             </Alert>
-            <Typography variant="body2" color="text.secondary">
-              Se creará un material básico con este nombre. Podrás editarlo después para agregar más detalles.
-            </Typography>
+
+            {/* Nombre */}
+            <TextField
+              label="Nombre del material"
+              value={createNombre}
+              onChange={(e) => setCreateNombre(e.target.value)}
+              fullWidth
+              required
+              autoFocus
+              helperText="Nombre con el que aparecerá en el inventario"
+            />
+
+            {/* Categoría y Subcategoría */}
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+              <FormControl fullWidth required>
+                <InputLabel>Categoría</InputLabel>
+                <Select
+                  label="Categoría"
+                  value={createCategoria}
+                  onChange={(e) => { setCreateCategoria(e.target.value); setCreateSubcategoria(''); }}
+                  startAdornment={createCategoria ? null : undefined}
+                >
+                  <MenuItem value="">
+                    <em>Sin categoría</em>
+                  </MenuItem>
+                  {empresaCategorias.map((cat) => (
+                    <MenuItem key={cat.id || cat.name} value={cat.name}>
+                      {cat.name}
+                    </MenuItem>
+                  ))}
+                </Select>
+                {empresaCategorias.length === 0 ? (
+                  <FormHelperText>
+                    Configura categorías en Empresa → Categorías Materiales
+                  </FormHelperText>
+                ) : (
+                  <FormHelperText>
+                    Asigná una categoría para organizar el material
+                  </FormHelperText>
+                )}
+              </FormControl>
+              <FormControl fullWidth disabled={!createCategoria}>
+                <InputLabel>Subcategoría</InputLabel>
+                <Select
+                  label="Subcategoría"
+                  value={createSubcategoria}
+                  onChange={(e) => setCreateSubcategoria(e.target.value)}
+                >
+                  <MenuItem value="">
+                    <em>Sin subcategoría</em>
+                  </MenuItem>
+                  {createSubcategoriasDisponibles.map((sub) => (
+                    <MenuItem key={sub} value={sub}>
+                      {sub}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Stack>
+
+            {/* Alias */}
+            <TextField
+              label="Alias (nombre alternativo)"
+              value={createAlias}
+              onChange={(e) => setCreateAlias(e.target.value)}
+              fullWidth
+              helperText={createAlias
+                ? `"${createAlias}" se usará como alias para conciliar automáticamente en el futuro`
+                : 'Nombre de la factura/remito diferente al del material (opcional)'
+              }
+              placeholder="ej: Cemento Portland x 50kg (como aparece en la factura)"
+            />
           </Stack>
         </DialogContent>
         <DialogActions>
@@ -469,7 +592,7 @@ const MaterialAutocomplete = ({
           <Button 
             onClick={handleCreateMaterial} 
             variant="contained" 
-            disabled={createLoading}
+            disabled={createLoading || !createNombre.trim()}
             startIcon={createLoading ? <CircularProgress size={16} /> : <AddIcon />}
           >
             {createLoading ? 'Creando...' : 'Crear Material'}

@@ -18,13 +18,15 @@ import {
 import DownloadIcon from '@mui/icons-material/Download';
 import * as XLSX from 'xlsx';
 import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
+import StockMaterialesService from 'src/services/stock/stockMaterialesService';
 
 const ExportarStock = ({ 
   open, 
   onClose, 
   materiales = [], 
   proyectos = [],
-  user 
+  user,
+  exportFilters = null
 }) => {
   const [selectedProyecto, setSelectedProyecto] = useState('');
   const [exporting, setExporting] = useState(false);
@@ -36,6 +38,26 @@ const ExportarStock = ({
     try {
       const empresa = await getEmpresaDetailsFromUser(user);
       const proyectoSeleccionado = proyectos.find(p => p.id === selectedProyecto);
+
+      let materialesToExport = materiales;
+
+      // Si hay filtros activos y la paginación es server-side, traer todo para exportar
+      if (exportFilters && exportFilters.enabled) {
+        const resp = await StockMaterialesService.listarMateriales({
+          empresa_id: empresa.id,
+          limit: 200,
+          page: 0,
+          sort: exportFilters.sort || 'nombre:asc',
+          stockFilter: exportFilters.stockFilter || 'all',
+          estadoEntrega: exportFilters.estadoEntrega || 'all',
+          categoria: exportFilters.categoria || undefined,
+          subcategoria: exportFilters.subcategoria || undefined,
+          sin_categoria: exportFilters.sin_categoria ? true : undefined,
+          text: exportFilters.text || undefined,
+          export_all: true
+        });
+        materialesToExport = resp.items || [];
+      }
       
       // Preparar datos para el Excel
       let dataToExport = [];
@@ -43,7 +65,7 @@ const ExportarStock = ({
       if (selectedProyecto === 'TODOS') {
         // Exportar todos los proyectos: crear una fila por cada combinación material-proyecto
         // TODOS los materiales deben aparecer para TODOS los proyectos (incluso con stock 0)
-        materiales.forEach(material => {
+        materialesToExport.forEach(material => {
           proyectos.forEach(proyecto => {
             // Buscar si este material tiene stock en este proyecto específico
             const stockProyecto = material.porProyecto?.find(p => p.proyecto_id === proyecto.id);
@@ -79,7 +101,7 @@ const ExportarStock = ({
         });
       } else if (selectedProyecto === 'SIN_ASIGNAR') {
         // Exportar solo materiales sin asignar a proyecto
-        dataToExport = materiales.map(material => {
+        dataToExport = materialesToExport.map(material => {
           // Buscar específicamente el proyecto "SIN_ASIGNAR" en porProyecto
           const stockSinAsignarProyecto = material.porProyecto?.find(p => p.proyecto_id === 'SIN_ASIGNAR' || p.proyecto_id === null);
           const stockSinAsignar = stockSinAsignarProyecto?.stock || 0;
@@ -98,7 +120,7 @@ const ExportarStock = ({
       } else {
         // Exportar proyecto específico
         const proyectoSeleccionado = proyectos.find(p => p.id === selectedProyecto);
-        dataToExport = materiales.map(material => {
+        dataToExport = materialesToExport.map(material => {
           const stockProyecto = material.porProyecto?.find(p => p.proyecto_id === selectedProyecto);
           const stockActual = stockProyecto?.stock || 0;
           
