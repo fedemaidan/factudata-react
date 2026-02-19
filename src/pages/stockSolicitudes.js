@@ -45,7 +45,7 @@ import EntregaParcialDialog from 'src/components/stock/solicitudes/EntregaParcia
 import ConfirmarIngresoDialog from 'src/components/stock/solicitudes/ConfirmarIngresoDialog';
 import AjusteStockDialog from 'src/components/stock/solicitudes/AjusteStockDialog';
 import {
-  TIPO_OPCIONES, ESTADO_OPCIONES, ORDER_MAP,
+  TIPO_OPCIONES, ESTADO_OPCIONES, ORDER_MAP, SUBTIPO_POR_TIPO,
   getEstadoChip, fmt, getTipoIcon, calculateTotals,
 } from 'src/components/stock/solicitudes/constants';
 
@@ -250,9 +250,11 @@ export default function StockSolicitudes() {
   const openCreateWithMode = (mode, tipo) => {
     resetModal();
     setModalMode(mode);
+    const subtipos = SUBTIPO_POR_TIPO[tipo] || [];
     setForm((prev) => ({
       ...prev,
       tipo,
+      subtipo: subtipos[0] || '',
       fecha: (() => { const d = new Date(); d.setHours(11, 0, 0, 0); return d.toISOString().substring(0, 10); })(),
       responsable: user?.email || '',
     }));

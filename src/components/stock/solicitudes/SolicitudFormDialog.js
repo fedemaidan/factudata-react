@@ -9,7 +9,7 @@ import AttachFileIcon from '@mui/icons-material/AttachFile';
 import ImageIcon from '@mui/icons-material/Image';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import MaterialAutocomplete from 'src/components/MaterialAutocomplete';
-import { TIPO_OPCIONES, getEstadoChip } from './constants';
+import { TIPO_OPCIONES, SUBTIPO_POR_TIPO, SUBTIPO_LABELS, getEstadoChip } from './constants';
 
 /**
  * Dialog para crear o editar una solicitud (ticket) con sus movimientos.
@@ -57,7 +57,7 @@ export default function SolicitudFormDialog({
       nombre_item: '',
       cantidad: 0,
       tipo: modalMode === 'transferencia' ? 'TRANSFERENCIA' : (form.tipo || 'INGRESO'),
-      subtipo: modalMode === 'transferencia' ? 'TRANSFERENCIA' : 'GENERAL',
+      subtipo: form.subtipo || (modalMode === 'transferencia' ? 'ENTRE_OBRAS' : 'GENERAL'),
       fecha_movimiento: form.fecha || '',
       proyecto_id: '',
       proyecto_nombre: '',
@@ -86,11 +86,23 @@ export default function SolicitudFormDialog({
             <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
               <FormControl sx={{ minWidth: 180 }}>
                 <InputLabel id="ntipo">Tipo</InputLabel>
-                <Select labelId="ntipo" label="Tipo" value={form.tipo} onChange={(e) => patchForm('tipo', e.target.value)}>
+                <Select labelId="ntipo" label="Tipo" value={form.tipo} onChange={(e) => {
+                  patchForm('tipo', e.target.value);
+                  // Auto-seleccionar primer subtipo del nuevo tipo
+                  const subtipos = SUBTIPO_POR_TIPO[e.target.value] || [];
+                  patchForm('subtipo', subtipos[0] || '');
+                }}>
                   {TIPO_OPCIONES.map((t) => <MenuItem key={t} value={t}>{t}</MenuItem>)}
                 </Select>
               </FormControl>
-              <TextField label="Subtipo" value={form.subtipo} onChange={(e) => patchForm('subtipo', e.target.value)} sx={{ minWidth: 200 }} />
+              <FormControl sx={{ minWidth: 200 }}>
+                <InputLabel id="nsubtipo">Subtipo</InputLabel>
+                <Select labelId="nsubtipo" label="Subtipo" value={form.subtipo} onChange={(e) => patchForm('subtipo', e.target.value)}>
+                  {(SUBTIPO_POR_TIPO[form.tipo] || []).map((s) => (
+                    <MenuItem key={s} value={s}>{SUBTIPO_LABELS[s] || s}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
               <TextField type="date" label="Fecha" InputLabelProps={{ shrink: true }} value={form.fecha} onChange={(e) => patchForm('fecha', e.target.value)} sx={{ minWidth: 200 }} />
             </Stack>
           )}
@@ -185,9 +197,17 @@ export default function SolicitudFormDialog({
             </Paper>
           )}
 
-          {/* En modo creación rápida, solo fecha y observación */}
+          {/* En modo creación rápida, subtipo + fecha + observación */}
           {!editMode && modalMode && (
             <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+              <FormControl sx={{ minWidth: 200 }}>
+                <InputLabel id="nsubtipo-rapido">Subtipo</InputLabel>
+                <Select labelId="nsubtipo-rapido" label="Subtipo" value={form.subtipo} onChange={(e) => patchForm('subtipo', e.target.value)}>
+                  {(SUBTIPO_POR_TIPO[form.tipo] || SUBTIPO_POR_TIPO[modalMode?.toUpperCase()] || []).map((s) => (
+                    <MenuItem key={s} value={s}>{SUBTIPO_LABELS[s] || s}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
               <TextField type="date" label="Fecha" InputLabelProps={{ shrink: true }} value={form.fecha} onChange={(e) => patchForm('fecha', e.target.value)} sx={{ minWidth: 200 }} />
               <TextField label="Observación" value={form.observacion || ''} onChange={(e) => patchForm('observacion', e.target.value)} sx={{ minWidth: 300 }} />
             </Stack>

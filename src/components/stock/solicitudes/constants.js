@@ -9,6 +9,28 @@ import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 
 export const TIPO_OPCIONES = ['INGRESO', 'EGRESO', 'TRANSFERENCIA', 'AJUSTE', 'COMPRA'];
 export const ESTADO_OPCIONES = ['PENDIENTE', 'PARCIALMENTE_ENTREGADO', 'ENTREGADO'];
+
+/** Opciones de subtipo según el tipo seleccionado */
+export const SUBTIPO_POR_TIPO = {
+  INGRESO: ['COMPRA', 'DONACION', 'GENERAL'],
+  EGRESO: ['RETIRO', 'ENTREGA', 'DEVOLUCION_RECHAZO', 'GENERAL'],
+  TRANSFERENCIA: ['ENTRE_OBRAS'],
+  AJUSTE: ['AJUSTE_POSITIVO', 'AJUSTE_NEGATIVO'],
+  COMPRA: ['COMPRA'],
+};
+
+/** Labels legibles para subtipos */
+export const SUBTIPO_LABELS = {
+  COMPRA: 'Compra',
+  DONACION: 'Donación',
+  GENERAL: 'General',
+  RETIRO: 'Retiro',
+  ENTREGA: 'Entrega',
+  DEVOLUCION_RECHAZO: 'Devolución / Rechazo',
+  ENTRE_OBRAS: 'Entre obras',
+  AJUSTE_POSITIVO: 'Ajuste positivo',
+  AJUSTE_NEGATIVO: 'Ajuste negativo',
+};
 export const ORDER_MAP = { fecha: 'fecha', tipo: 'tipo', subtipo: 'subtipo', responsable: 'responsable', updated: 'updatedAt', estado: 'estado' };
 
 /** Color, label e icono según estado de la solicitud */
