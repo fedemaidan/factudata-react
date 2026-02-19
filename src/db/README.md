@@ -40,7 +40,7 @@ El DB `factudata-conversaciones` usa estas tablas:
 
 ## Flujo completo
 
-1. **Inicialización**: al montar `<ConversationsProvider />`, se leen conversaciones desde Dexie para renderizar el sidebar instantáneamente. Si la cache está vacía o hace más de 12 horas que no se sincroniza (`lastSync` ausente), `src/pages/conversaciones.js` muestra un overlay de pantalla completa (“Sincronizando mensajes…”) hasta que llega la primera carga completa.
+1. **Inicialización**: al montar `<ConversationsProvider />`, se leen conversaciones desde Dexie para renderizar el sidebar instantáneamente. Si la tabla `conversations` está vacía se dispara un fetch inicial al backend (`GET /conversaciones`) y se guardan los resultados en cache antes de renderizar. El overlay de pantalla completa (“Sincronizando mensajes…”) sigue apareciendo si no hay `lastSync` o hace más de 12 horas que no se sincroniza, hasta que la primera carga completa finaliza.
 
 2. **Selección de conversación**:
    - `useMessagesFetch` muestra los mensajes cacheados (`getCachedMessagesForConversation`) y, en segundo plano, completa los 1.000 registros solicitando al backend los mensajes faltantes dentro de la ventana de 14 días.
@@ -48,16 +48,18 @@ El DB `factudata-conversaciones` usa estas tablas:
 
 3. **Sincronización global cada 30 segundos**:
    - Un efecto en el provider ejecuta `setInterval` con `getSyncIntervalMs()` mientras el módulo esté montado.
-   - Cada ciclo pide `/conversaciones/sync` con `sinceUpdatedAt` igual al máximo entre `lastSync` y `now - 30s`.
-   - El backend devuelve todos los mensajes producidos o actualizados en ese lapso; el cliente los agrupa por conversación y los guarda con `cacheMessages`. Si una conversación está activa, los nuevos mensajes o updates se mezclan sin duplicados para mostrarlos.
-   - No se realizan múltiples requests por conversación durante el ciclo: solo una petición global por todas las conversaciones.
+   - Cada ciclo hace dos requests con el mismo `sinceUpdatedAt` (máximo entre `lastSync` y `now - 30s`):
+     - `/conversaciones/sync` para mensajes.
+     - `/conversaciones/sync/conversations` para conversaciones.
+   - Los mensajes se guardan con `cacheMessages` y las conversaciones con `cacheConversations`, manteniendo el sidebar actualizado con `ultimoMensaje` y orden correcto por recencia.
+   - No se realizan requests por conversación: siguen siendo dos requests globales por ciclo (mensajes + conversaciones).
 
 4. **Mantenimiento del tamaño**:
    - La sincronización actualiza `syncState` (que incluye `lastSync` y opcionalmente `cursorGlobal`) para controlar desde qué `updatedAt` se pide lo siguiente.
 
 5. **Uso de `updatedAt` en el backend**:
-   - El endpoint `/conversaciones/sync` acepta `sinceUpdatedAt` (con fallback a `sinceCreatedAt` para compatibilidad) y usa `{ updatedAt: { $gte: sinceUpdatedAt } }` para aprovechar el índice de `updatedAt`.
-   - Mantener un cursor global basado en `updatedAt` evita tener cursos por conversación y simplifica el código, pero ahora también garantiza que las ediciones (notas, insights, etc.) se propagan rápidamente.
+   - Los endpoints `/conversaciones/sync` y `/conversaciones/sync/conversations` aceptan `sinceUpdatedAt` para devolver deltas de mensajes y conversaciones.
+   - Mantener un cursor global basado en `updatedAt` evita tener cursores por conversación y simplifica el código, además de propagar rápido mensajes nuevos y cambios de metadata.
 
 6. **Envío de mensajes desde el front**:
    - Al enviar un mensaje la UI hace `POST /conversaciones/message` con `{ userId, message }`. El `userId` puede ser `wPid`, `lid` o el número; el backend normaliza a `@s.whatsapp.net` y verifica que haya texto.

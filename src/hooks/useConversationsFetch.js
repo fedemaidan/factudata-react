@@ -1,5 +1,5 @@
 import { useCallback, useEffect } from "react";
-import { getCachedConversations, cacheConversations } from "src/db/indexed-db";
+import { getCachedConversations, cacheConversations, countCachedConversations } from "src/db/indexed-db";
 import { fetchConversations } from "src/services/conversacionService";
 
 const hasInsightFilters = (filters) =>
@@ -26,10 +26,22 @@ export function useConversationsFetch({
           await cacheConversations(filtered).catch(() => {});
           onConversationsLoaded?.(filtered);
         } else {
-          const conversations = await getCachedConversations({
+          let conversations = await getCachedConversations({
             filters: currentFilters,
             limit: 200,
           });
+          if (!conversations.length) {
+            const totalCount = await countCachedConversations();
+            if (totalCount === 0) {
+              const data = await fetchConversations();
+              const items = Array.isArray(data) ? data : data?.items ?? [];
+              await cacheConversations(items).catch(() => {});
+              conversations = await getCachedConversations({
+                filters: currentFilters,
+                limit: 200,
+              });
+            }
+          }
           onConversationsLoaded?.(conversations);
         }
       } catch (error) {

@@ -4,7 +4,7 @@ import { useConversationsFetch } from "src/hooks/useConversationsFetch";
 import { useMessagesFetch } from "src/hooks/useMessagesFetch";
 import { useMessageScroll } from "src/hooks/useMessageScroll";
 import { useInsightNavigation } from "src/hooks/useErrorNavigation";
-import { addNoteToMessage, fetchRecentMessages } from "src/services/conversacionService";
+import { addNoteToMessage, fetchRecentMessages, fetchRecentConversations } from "src/services/conversacionService";
 import {
   cacheConversations,
   cacheConversation,
@@ -368,13 +368,28 @@ export function ConversationsProvider({ children }) {
           params.sinceUpdatedAt = new Date(sinceTimestamp).toISOString();
         }
 
-        const { items = [] } = await fetchRecentMessages(params);
+        const [{ items: messageItems = [] }, { items: conversationItems = [] }] = await Promise.all([
+          fetchRecentMessages(params),
+          fetchRecentConversations(params),
+        ]);
         if (cancelled) return;
-        if (items.length) {
-          await cacheMessages(items);
+
+        if (conversationItems.length) {
+          await cacheConversations(conversationItems).catch(() => {});
+          const refreshedConversations = await getCachedConversations({
+            filters,
+            limit: 200,
+          });
+          if (!cancelled) {
+            dispatch({ type: ACTIONS.SET_CONVERSATIONS, payload: refreshedConversations });
+          }
+        }
+
+        if (messageItems.length) {
+          await cacheMessages(messageItems);
           const activeConversationId = selectedRef.current?.ultimoMensaje?.id_conversacion;
           if (activeConversationId) {
-            const limit = Math.max(messagesRef.current.length + items.length, 200);
+            const limit = Math.max(messagesRef.current.length + messageItems.length, 200);
             const refreshedMessages = await getCachedMessagesForConversation(activeConversationId, { limit });
             if (!cancelled && refreshedMessages.length) {
               handleMessagesLoaded?.(refreshedMessages);
@@ -402,7 +417,7 @@ export function ConversationsProvider({ children }) {
       cancelled = true;
       clearInterval(intervalId);
     };
-  }, [handleMessagesLoaded, handleScrollToBottom]);
+  }, [filters, handleMessagesLoaded, handleScrollToBottom]);
 
   const handleSelectConversation = useCallback(
     (conversation) => {
