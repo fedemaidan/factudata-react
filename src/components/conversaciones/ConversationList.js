@@ -19,6 +19,7 @@ import {
 } from "@mui/material";
 import SearchIcon from "@mui/icons-material/Search";
 import RefreshIcon from "@mui/icons-material/Refresh";
+import CachedIcon from "@mui/icons-material/Cached";
 import ConversacionesFilter from "./ConversacionesFilter";
 import { formatFecha } from "src/utils/handleDates";
 import { useConversationsContext } from "src/contexts/conversations-context";
@@ -53,6 +54,7 @@ export default function ConversationList({ onSelect, onMessageSelect }) {
     searchConversations,
     cacheSearchActive,
     onRefreshConversations,
+    onForceRefresh,
     onSelectConversation,
     onMessageSelect: handleMessageSelect,
     onFiltersChange,
@@ -197,6 +199,16 @@ export default function ConversationList({ onSelect, onMessageSelect }) {
           >
             <RefreshIcon fontSize="small" />
           </IconButton>
+          <Tooltip title="Recargar todo desde cero (limpia caché local)" arrow>
+            <IconButton
+              onClick={onForceRefresh}
+              size="small"
+              sx={{ flexShrink: 0, color: "warning.main" }}
+              disabled={loading}
+            >
+              <CachedIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
         </Box>
 
         {/* Búsqueda en mensajes deshabilitada temporalmente

@@ -4,7 +4,7 @@ import { useConversationsFetch } from "src/hooks/useConversationsFetch";
 import { useMessagesFetch } from "src/hooks/useMessagesFetch";
 import { useMessageScroll } from "src/hooks/useMessageScroll";
 import { useInsightNavigation } from "src/hooks/useErrorNavigation";
-import { addNoteToMessage, fetchRecentMessages, fetchRecentConversations } from "src/services/conversacionService";
+import { addNoteToMessage, fetchRecentMessages, fetchRecentConversations, fetchConversations } from "src/services/conversacionService";
 import {
   cacheConversations,
   cacheConversation,
@@ -18,6 +18,7 @@ import {
   searchCachedConversations,
   searchCachedMessages,
   updateCachedMessageById,
+  clearAllCache,
 } from "src/db/indexed-db";
 
 const ACTIONS = {
@@ -627,6 +628,24 @@ export function ConversationsProvider({ children }) {
     await refreshConversations();
   }, [refreshConversations]);
 
+  const handleForceRefresh = useCallback(async () => {
+    dispatch({ type: ACTIONS.SET_LOADING, payload: true });
+    try {
+      await clearAllCache();
+      const data = await fetchConversations(filters);
+      const items = Array.isArray(data) ? data : data?.items ?? [];
+      await cacheConversations(items).catch(() => {});
+      await saveGlobalSyncTime(Date.now());
+      dispatch({ type: ACTIONS.SET_CONVERSATIONS, payload: items });
+      dispatch({ type: ACTIONS.SET_SELECTED, payload: null });
+      dispatch({ type: ACTIONS.SET_MESSAGES, payload: [] });
+    } catch (error) {
+      console.error("Error en force refresh:", error);
+    } finally {
+      dispatch({ type: ACTIONS.SET_LOADING, payload: false });
+    }
+  }, [filters]);
+
   const handleFiltersChange = useCallback(
     async (newFilters) => {
       const normalizedFilters = normalizeFilterDates(newFilters);
@@ -687,8 +706,11 @@ export function ConversationsProvider({ children }) {
   );
 
   const handleRefreshCurrentConversation = useCallback(async () => {
-    await refreshCurrentConversation();
-  }, [refreshCurrentConversation]);
+    await Promise.all([
+      refreshCurrentConversation(),
+      refreshConversations(),
+    ]);
+  }, [refreshCurrentConversation, refreshConversations]);
 
   const handleScrollToMessageHandled = useCallback(() => {
     dispatch({ type: ACTIONS.SET_SCROLL_TO_MESSAGE_ID, payload: null });
@@ -734,6 +756,7 @@ export function ConversationsProvider({ children }) {
       onSearch: handleSearch,
       onSearchCache: handleSearchCache,
       onRefreshConversations: handleRefreshConversations,
+      onForceRefresh: handleForceRefresh,
       onFiltersChange: handleFiltersChange,
       onRefreshCurrentConversation: handleRefreshCurrentConversation,
       onSend: handleSend,
@@ -763,6 +786,7 @@ export function ConversationsProvider({ children }) {
       handleSelectMessageResult,
       handleSearch,
       handleRefreshConversations,
+      handleForceRefresh,
       handleFiltersChange,
       handleRefreshCurrentConversation,
       handleSend,

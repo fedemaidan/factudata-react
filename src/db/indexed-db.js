@@ -234,6 +234,16 @@ export const saveGlobalSyncTime = async (timestamp = Date.now()) => {
 
 export const getSyncIntervalMs = () => SYNC_INTERVAL_MS;
 
+/**
+ * Borra toda la cache de IndexedDB (conversaciones, mensajes, syncState).
+ * Útil para forzar una recarga completa desde el servidor.
+ */
+export const clearAllCache = async () => {
+  await db.conversations.clear();
+  await db.messages.clear();
+  await db.syncState.clear();
+};
+
 export default db;
 
 const normalizeSearchText = (value) => (value || "").toLowerCase().trim();
