@@ -114,6 +114,26 @@ const StockMaterialesService = {
     throw new Error('Error al agregar alias');
   },
 
+  /**
+   * Obtiene totales de stock valorizado agrupados por proyecto.
+   * Devuelve: { general, sinAsignar, porProyecto[] }
+   */
+  obtenerTotalesStock: async (raw = {}) => {
+    if (!raw.empresa_id) throw new Error('empresa_id es requerido');
+    const params = {
+      empresa_id: String(raw.empresa_id),
+      ...(raw.stockFilter && raw.stockFilter !== 'all' ? { stockFilter: raw.stockFilter } : {}),
+      ...(raw.estadoEntrega && raw.estadoEntrega !== 'all' ? { estadoEntrega: raw.estadoEntrega } : {}),
+      ...(raw.categoria?.trim() ? { categoria: raw.categoria.trim() } : {}),
+      ...(raw.subcategoria?.trim() ? { subcategoria: raw.subcategoria.trim() } : {}),
+      ...(raw.sin_categoria ? { sin_categoria: raw.sin_categoria } : {}),
+      ...(raw.text?.trim() ? { text: raw.text.trim() } : {}),
+    };
+    const res = await api.get('/materiales/stock/totales', { params });
+    if (res.status !== 200) throw new Error('Error al obtener totales de stock');
+    return res.data; // { ok, general, sinAsignar, porProyecto }
+  },
+
   // Actualizar categoría/subcategoría en bloque
   actualizarCategoriaMasiva: async ({ empresa_id, material_ids, categoria, subcategoria }) => {
     if (!empresa_id) throw new Error('empresa_id es requerido');
