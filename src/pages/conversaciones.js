@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Layout as DashboardLayout } from "src/layouts/dashboard/layout";
 import Head from "next/head";
-import { 
+import {
   Box, 
   Divider, 
   Drawer, 
@@ -18,7 +18,8 @@ import {
   Badge,
   Tooltip,
   Snackbar,
-  Alert
+  Alert,
+  CircularProgress,
 } from "@mui/material";
 import DownloadIcon from '@mui/icons-material/Download';
 import RefreshIcon from '@mui/icons-material/Refresh';
@@ -62,6 +63,7 @@ function ConversacionesContent() {
     currentInsightIndex,
     onRefreshCurrentConversation,
     onNavigateToInsight,
+    initialSyncing,
   } = useConversationsContext();
 
   const hasInsights = insightMessageIds.length > 0;
@@ -192,6 +194,7 @@ function ConversacionesContent() {
         <title>Conversaciones</title>
       </Head>
       <Box
+        position="relative"
         display="flex"
         height="calc(100vh - 120px)"
         border="1px solid"
@@ -199,6 +202,26 @@ function ConversacionesContent() {
         borderRadius={1}
         overflow="hidden"
       >
+        {initialSyncing && (
+          <Box
+            position="absolute"
+            top={0}
+            left={0}
+            right={0}
+            bottom={0}
+            zIndex={10}
+            bgcolor="rgba(255,255,255,0.9)"
+            display="flex"
+            flexDirection="column"
+            alignItems="center"
+            justifyContent="center"
+            gap={1.5}
+            textAlign="center"
+          >
+            <CircularProgress />
+            <Typography fontWeight={600}>Sincronizando mensajes...</Typography>
+          </Box>
+        )}
         <Box
           width={360}
           minWidth={320}

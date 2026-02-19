@@ -13,11 +13,6 @@ import {
   InputAdornment,
   IconButton,
   Button,
-  FormControlLabel,
-  Checkbox,
-  TextField,
-  Alert,
-  Collapse,
   CircularProgress,
   Chip,
   Tooltip
@@ -54,6 +49,9 @@ export default function ConversationList({ onSelect, onMessageSelect }) {
     filters = {},
     messageResults = [],
     onSearch,
+    onSearchCache,
+    searchConversations,
+    cacheSearchActive,
     onRefreshConversations,
     onSelectConversation,
     onMessageSelect: handleMessageSelect,
@@ -63,7 +61,6 @@ export default function ConversationList({ onSelect, onMessageSelect }) {
 
   const [localSearch, setLocalSearch] = useState(search || "");
   const [searchInMessages, setSearchInMessages] = useState(false);
-  const [showFilters, setShowFilters] = useState(false);
   const [error, setError] = useState("");
   
   // Default dates: last 7 days
@@ -105,7 +102,7 @@ export default function ConversationList({ onSelect, onMessageSelect }) {
     // Pass extra params via onSearch if supported, or handle via context update
     // Assuming onSearch handles the query update. We might need to update context to handle filters too.
     // For now, we'll pass the query. The context needs to be updated to handle message search flag.
-    onSearch?.(localSearch, { 
+    onSearchCache?.(localSearch, {
       searchInMessages, 
       fechaDesde: dates.start, 
       fechaHasta: dates.end 
@@ -149,7 +146,11 @@ export default function ConversationList({ onSelect, onMessageSelect }) {
     return text?.length > 80 ? `${text.slice(0, 80)}…` : text;
   };
 
-  const hasConversationResults = conversations.length > 0;
+  const displayConversations =
+    cacheSearchActive && searchConversations?.length
+      ? searchConversations
+      : conversations;
+  const hasConversationResults = displayConversations.length > 0;
   const hasMessageResults = messageResults.length > 0;
 
   return (
@@ -291,7 +292,7 @@ export default function ConversationList({ onSelect, onMessageSelect }) {
             </Box>
         )}
         <List dense sx={{ overflowY: "auto" }}>
-          {conversations.map((c) => {
+          {displayConversations.map((c) => {
             const estadoCliente = getEstadoCliente(c);
             const estadoConfig = ESTADO_CLIENTE_COLORS[estadoCliente];
             
