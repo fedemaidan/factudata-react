@@ -7,20 +7,147 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
+  Slider,
   Stack,
   Typography,
   Divider,
   IconButton,
   Tooltip,
+  useMediaQuery,
 } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
+import RotateLeftIcon from "@mui/icons-material/RotateLeft";
+import RotateRightIcon from "@mui/icons-material/RotateRight";
+import RestartAltIcon from "@mui/icons-material/RestartAlt";
+import ZoomInIcon from "@mui/icons-material/ZoomIn";
+import ZoomOutIcon from "@mui/icons-material/ZoomOut";
 import TrabajosDetectadosList from "../TrabajosDetectadosList";
 import ResolverLicenciaManualForm from "../ResolverLicenciaManualForm";
 import DhnDriveService from "src/services/dhn/cargarUrlDriveService";
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
+import { ImageViewer, useImageViewerState } from "src/components/ImageViewer";
 
-const ComprobanteCard = ({ label, url, type, selected, onClick, fullHeight }) => {
+const ComprobanteCardToolbar = ({ viewerState, compact }) => {
+  const theme = useTheme();
+  const isMdDown = useMediaQuery(theme.breakpoints.down("md"));
+  const {
+    zoom,
+    zoomCfg,
+    canShowActions,
+    handleZoom,
+    handleZoomIn,
+    handleZoomOut,
+    handleRotateLeft,
+    handleRotateRight,
+    handleReset,
+  } = viewerState;
+
+  if (!canShowActions) return null;
+
+  return (
+    <Stack
+      direction="row"
+      alignItems="center"
+      spacing={0.5}
+      sx={{
+        flexShrink: 0,
+        py: 0.5,
+        px: 0.5,
+        bgcolor: "action.hover",
+        borderRadius: 1,
+        flexWrap: "wrap",
+      }}
+    >
+      <Tooltip title="Rotar a la izquierda" placement="top">
+        <span>
+          <IconButton size="small" onClick={handleRotateLeft} aria-label="Rotar a la izquierda">
+            <RotateLeftIcon fontSize="small" />
+          </IconButton>
+        </span>
+      </Tooltip>
+      <Tooltip title="Rotar a la derecha" placement="top">
+        <span>
+          <IconButton size="small" onClick={handleRotateRight} aria-label="Rotar a la derecha">
+            <RotateRightIcon fontSize="small" />
+          </IconButton>
+        </span>
+      </Tooltip>
+      <Tooltip title="Restablecer zoom y rotación" placement="top">
+        <span>
+          <IconButton size="small" onClick={handleReset} aria-label="Restablecer">
+            <RestartAltIcon fontSize="small" />
+          </IconButton>
+        </span>
+      </Tooltip>
+      <Box
+        sx={{
+          display: "flex",
+          alignItems: "center",
+          gap: 0.5,
+          minWidth: compact ? 120 : 160,
+        }}
+      >
+        <IconButton
+          size="small"
+          onClick={handleZoomOut}
+          disabled={zoom <= zoomCfg.min}
+          aria-label="Alejar"
+        >
+          <ZoomOutIcon fontSize="small" />
+        </IconButton>
+        <Slider
+          size="small"
+          value={zoom}
+          min={zoomCfg.min}
+          max={zoomCfg.max}
+          step={zoomCfg.step}
+          onChange={(_, v) => handleZoom(Number(v))}
+          valueLabelDisplay="auto"
+          valueLabelFormat={(v) => `${Math.round(v * 100)}%`}
+          aria-label="Zoom"
+          sx={{ minWidth: 60 }}
+          slotProps={{
+            valueLabel: {
+              sx: { zIndex: (theme) => theme.zIndex.modal + 2 },
+            },
+          }}
+        />
+        <IconButton
+          size="small"
+          onClick={handleZoomIn}
+          disabled={zoom >= zoomCfg.max}
+          aria-label="Acercar"
+        >
+          <ZoomInIcon fontSize="small" />
+        </IconButton>
+      </Box>
+    </Stack>
+  );
+};
+
+const ComprobanteCard = ({
+  label,
+  url,
+  type,
+  selected,
+  onClick,
+  fullHeight,
+  viewerState,
+}) => {
+  const theme = useTheme();
+  const isMdDown = useMediaQuery(theme.breakpoints.down("md"));
   const previewFlex = fullHeight ? (selected ? 1 : 0.45) : 1;
   const previewHeight = fullHeight ? "100%" : 160;
+  const useViewer = selected && url && viewerState;
+
+  const handleContentClick = useCallback(
+    (e) => {
+      if (useViewer) {
+        e.stopPropagation();
+      }
+    },
+    [useViewer]
+  );
 
   return (
     <Box
@@ -44,21 +171,36 @@ const ComprobanteCard = ({ label, url, type, selected, onClick, fullHeight }) =>
         {label}
       </Typography>
       <Box
+        onClick={handleContentClick}
         sx={{
           height: previewHeight,
           borderRadius: 1,
           border: "1px dashed",
           borderColor: "divider",
           display: "flex",
-          alignItems: "center",
+          flexDirection: "column",
+          alignItems: "stretch",
           justifyContent: "center",
           bgcolor: "grey.100",
-          overflow: "hidden",
+          overflow: useViewer ? "visible" : "hidden",
           flex: previewFlex,
           minHeight: 0,
         }}
       >
-        {url ? (
+        {useViewer ? (
+          <>
+            <Box sx={{ overflow: "visible", flexShrink: 0, position: "relative", zIndex: 1 }}>
+              <ComprobanteCardToolbar viewerState={viewerState} compact={isMdDown} />
+            </Box>
+            <Box sx={{ flex: 1, minHeight: 0, display: "flex", overflow: "hidden" }}>
+              <ImageViewer
+                imagenUrl={url}
+                viewerState={viewerState}
+                leftContent={null}
+              />
+            </Box>
+          </>
+        ) : url ? (
           <Box
             component="img"
             src={url}
@@ -204,6 +346,9 @@ const ResolverDuplicadoModal = ({
       : nuevoUrlStorage || row?.url_drive || row?.url_storage || existingUrlStorage;
 
   const duplicateMessage = duplicateInfo.mensaje;
+
+  const existingViewerState = useImageViewerState(existingUrlStorage || "", open);
+  const newViewerState = useImageViewerState(nuevoUrlStorage || "", open);
 
   const fetchExistingTrabajo = useCallback(async (trabajoId) => {
     if (!trabajoId) {
@@ -487,6 +632,7 @@ const ResolverDuplicadoModal = ({
                 selected={selectedSide === "existing"}
                 onClick={() => setSelectedSide("existing")}
                 fullHeight
+                viewerState={existingViewerState}
               />
               <ComprobanteCard
                 label={'Comprobante nuevo'}
@@ -495,6 +641,7 @@ const ResolverDuplicadoModal = ({
                 selected={selectedSide === "new"}
                 onClick={() => setSelectedSide("new")}
                 fullHeight
+                viewerState={newViewerState}
               />
             </Box>
           </Box>
