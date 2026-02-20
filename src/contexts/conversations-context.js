@@ -539,7 +539,6 @@ export function ConversationsProvider({ children }) {
   const handleSearch = useCallback(
     async (value, options = {}) => {
       const queryValue = value || "";
-      const currentQ = Array.isArray(router.query.q) ? router.query.q[0] : router.query.q || "";
       
       const newQuery = { ...router.query };
       
@@ -632,11 +631,41 @@ export function ConversationsProvider({ children }) {
     dispatch({ type: ACTIONS.SET_LOADING, payload: true });
     try {
       await clearAllCache();
-      const data = await fetchConversations(filters);
+      const data = await fetchConversations();
       const items = Array.isArray(data) ? data : data?.items ?? [];
       await cacheConversations(items).catch(() => {});
+
+      const windowCutoff = getMessageWindowCutoff().getTime();
+      const syncParams = {
+        limit: 2000,
+      };
+      if (windowCutoff > 0) {
+        syncParams.sinceUpdatedAt = new Date(windowCutoff).toISOString();
+      }
+
+      const [
+        { items: messageItems = [] },
+        { items: convSyncItems = [] },
+      ] = await Promise.all([
+        fetchRecentMessages(syncParams),
+        fetchRecentConversations(syncParams),
+      ]);
+
+      if (messageItems.length) {
+        await cacheMessages(messageItems);
+      }
+      if (convSyncItems.length) {
+        await cacheConversations(convSyncItems).catch(() => {});
+      }
+
       await saveGlobalSyncTime(Date.now());
-      dispatch({ type: ACTIONS.SET_CONVERSATIONS, payload: items });
+
+      const itemsToShow = await getCachedConversations({
+        filters,
+        limit: 200,
+      });
+
+      dispatch({ type: ACTIONS.SET_CONVERSATIONS, payload: itemsToShow });
       dispatch({ type: ACTIONS.SET_SELECTED, payload: null });
       dispatch({ type: ACTIONS.SET_MESSAGES, payload: [] });
     } catch (error) {

@@ -533,11 +533,11 @@ export const SideNav = (props) => {
         })
 
         baseItems.push({
-          title: "Horarios",
-          path: "/dhn/horarios",
+          title: "Horarios / Licencias",
+          path: "/dhn/configuracion",
           icon: (
             <SvgIcon fontSize="small">
-              <ScheduleIcon />
+              <SettingsIcon />
             </SvgIcon>
           ),
         });

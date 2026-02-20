@@ -23,24 +23,7 @@ import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import TrabajoRegistradoService from "src/services/dhn/TrabajoRegistradoService";
 import TrabajadorSelector from "src/components/dhn/TrabajadorSelector";
-
-const licenseTypes = [
-  "PG",
-  "VC",
-  "V",
-  "NT",
-  "D",
-  "FC",
-  "1/2FC",
-  "AR",
-  "CJ",
-  "CA",
-  "NA",
-  "FA",
-  "EX",
-  "IZRC",
-  "RE",
-];
+import tiposLicenciaService from "src/services/dhn/tiposLicenciaService";
 
 const trimValue = (value) =>
   value === null || value === undefined
@@ -89,7 +72,24 @@ const ResolverLicenciaManualForm = ({
 }) => {
   const [formState, setFormState] = useState(INITIAL_FORM_STATE);
   const [isSaving, setIsSaving] = useState(false);
+  const [tiposLicencia, setTiposLicencia] = useState([]);
   const [alert, setAlert] = useState({ open: false, severity: "error", message: "" });
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const data = await tiposLicenciaService.getAll();
+        if (!active) return;
+        setTiposLicencia(Array.isArray(data) ? data : []);
+      } catch (e) {
+        if (!active) return;
+        setTiposLicencia([]);
+      }
+    })();
+    return () => { active = false; };
+  }, []);
+
   const updateFormState = useCallback((patch) => {
     setFormState((prev) => ({ ...prev, ...patch }));
   }, []);
@@ -355,9 +355,9 @@ const ResolverLicenciaManualForm = ({
             label="Tipo de licencia"
             onChange={(event) => updateFormState({ tipoLicencia: event.target.value })}
           >
-            {licenseTypes.map((type) => (
-              <MenuItem value={type} key={type}>
-                {type}
+            {tiposLicencia.map((t) => (
+              <MenuItem value={t.codigo} key={t._id}>
+                {t.nombre} ({t.codigo})
               </MenuItem>
             ))}
           </Select>
