@@ -27,10 +27,7 @@ import {
   TableSortLabel,
   ToggleButton,
   ToggleButtonGroup,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem
+
 } from '@mui/material';
 import {
   People as PeopleIcon,
@@ -762,18 +759,20 @@ const AnalyticsOnboardingPage = () => {
                 </Typography>
                 
                 {/* Selector de días de análisis */}
-                <FormControl fullWidth>
-                  <InputLabel>Periodo de análisis</InputLabel>
-                  <Select
-                    value={diasAnalisis}
-                    label="Periodo de análisis"
-                    onChange={(e) => setDiasAnalisis(e.target.value)}
-                  >
-                    <MenuItem value={7}>Primeros 7 días</MenuItem>
-                    <MenuItem value={14}>Primeros 14 días</MenuItem>
-                    <MenuItem value={30}>Primeros 30 días</MenuItem>
-                  </Select>
-                </FormControl>
+                <TextField
+                  label="Días de análisis"
+                  type="number"
+                  value={diasAnalisis}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value, 10);
+                    if (!isNaN(val) && val >= 1 && val <= 365) {
+                      setDiasAnalisis(val);
+                    }
+                  }}
+                  inputProps={{ min: 1, max: 365 }}
+                  helperText="Cantidad de días desde el registro a analizar (1-365)"
+                  fullWidth
+                />
 
                 <Alert severity="info" sx={{ width: '100%' }}>
                   💡 Analizamos los primeros {diasAnalisis} días desde el registro de cada cliente.
