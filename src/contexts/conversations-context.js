@@ -360,18 +360,19 @@ export function ConversationsProvider({ children }) {
         const globalLastSync = (await getGlobalSyncTime()) || 0;
         const now = Date.now();
         const windowCutoff = getMessageWindowCutoff().getTime();
-        const baseSince = globalLastSync || windowCutoff;
-        const sinceTimestamp = Math.max(baseSince, windowCutoff);
-        const params = {
-          limit: 2000,
-        };
-        if (sinceTimestamp > 0) {
-          params.sinceUpdatedAt = new Date(sinceTimestamp).toISOString();
+        const messageSince = Math.max(globalLastSync || windowCutoff, windowCutoff);
+        const messageParams = { limit: 2000 };
+        if (messageSince > 0) {
+          messageParams.sinceUpdatedAt = new Date(messageSince).toISOString();
+        }
+        const convParams = {};
+        if (globalLastSync > 0) {
+          convParams.sinceUpdatedAt = new Date(globalLastSync).toISOString();
         }
 
         const [{ items: messageItems = [] }, { items: conversationItems = [] }] = await Promise.all([
-          fetchRecentMessages(params),
-          fetchRecentConversations(params),
+          fetchRecentMessages(messageParams),
+          fetchRecentConversations(convParams),
         ]);
         if (cancelled) return;
 
@@ -636,19 +637,17 @@ export function ConversationsProvider({ children }) {
       await cacheConversations(items).catch(() => {});
 
       const windowCutoff = getMessageWindowCutoff().getTime();
-      const syncParams = {
-        limit: 2000,
-      };
+      const messageParams = { limit: 2000 };
       if (windowCutoff > 0) {
-        syncParams.sinceUpdatedAt = new Date(windowCutoff).toISOString();
+        messageParams.sinceUpdatedAt = new Date(windowCutoff).toISOString();
       }
 
       const [
         { items: messageItems = [] },
         { items: convSyncItems = [] },
       ] = await Promise.all([
-        fetchRecentMessages(syncParams),
-        fetchRecentConversations(syncParams),
+        fetchRecentMessages(messageParams),
+        fetchRecentConversations({ limit: 2000 }),
       ]);
 
       if (messageItems.length) {

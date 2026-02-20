@@ -21,6 +21,7 @@ import SearchIcon from "@mui/icons-material/Search";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import CachedIcon from "@mui/icons-material/Cached";
 import ConversacionesFilter from "./ConversacionesFilter";
+import Alerts from "src/components/alerts";
 import { formatFecha } from "src/utils/handleDates";
 import { useConversationsContext } from "src/contexts/conversations-context";
 import { getNombreCliente } from "src/utils/conversacionesUtils";
@@ -49,7 +50,6 @@ export default function ConversationList({ onSelect, onMessageSelect }) {
     search,
     filters = {},
     messageResults = [],
-    onSearch,
     onSearchCache,
     searchConversations,
     cacheSearchActive,
@@ -64,6 +64,8 @@ export default function ConversationList({ onSelect, onMessageSelect }) {
   const [localSearch, setLocalSearch] = useState(search || "");
   const [searchInMessages, setSearchInMessages] = useState(false);
   const [error, setError] = useState("");
+  const [alert, setAlert] = useState({ open: false, message: "", severity: "info" });
+  const [searchCount, setSearchCount] = useState(0);
   
   // Default dates: last 7 days
   const [dates, setDates] = useState({
@@ -76,6 +78,32 @@ export default function ConversationList({ onSelect, onMessageSelect }) {
       setLocalSearch(search || "");
     }
   }, [search]);
+
+  useEffect(() => {
+    if (error) {
+      setAlert({ open: true, message: error, severity: "error", autoHideDuration: 5000 });
+    }
+  }, [error]);
+
+  useEffect(() => {
+    if (searchCount === 0) return;
+    const hasNoResults =
+      cacheSearchActive &&
+      !(searchConversations?.length || messageResults?.length);
+    if (hasNoResults) {
+      setAlert({
+        open: true,
+        message: "Sin resultados",
+        severity: "warning",
+        autoHideDuration: 3000,
+      });
+    }
+  }, [searchCount, cacheSearchActive, searchConversations?.length, messageResults?.length]);
+
+  const handleAlertClose = () => {
+    setAlert((prev) => ({ ...prev, open: false }));
+    setError("");
+  };
 
   const handleSearchClick = () => {
     setError("");
@@ -101,9 +129,7 @@ export default function ConversationList({ onSelect, onMessageSelect }) {
       }
     }
 
-    // Pass extra params via onSearch if supported, or handle via context update
-    // Assuming onSearch handles the query update. We might need to update context to handle filters too.
-    // For now, we'll pass the query. The context needs to be updated to handle message search flag.
+    setSearchCount((c) => c + 1);
     onSearchCache?.(localSearch, {
       searchInMessages, 
       fechaDesde: dates.start, 
@@ -156,6 +182,7 @@ export default function ConversationList({ onSelect, onMessageSelect }) {
   const hasMessageResults = messageResults.length > 0;
 
   return (
+    <>
     <Box display="flex" flexDirection="column" height="100%">
       <Box
         sx={{
@@ -432,5 +459,7 @@ export default function ConversationList({ onSelect, onMessageSelect }) {
         )}
       </Box>
     </Box>
+    <Alerts alert={alert} onClose={handleAlertClose} />
+    </>
   );
 }

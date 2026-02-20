@@ -50,7 +50,8 @@ El DB `factudata-conversaciones` usa estas tablas:
 
 3. **Sincronización global cada 30 segundos**:
    - Un efecto en el provider ejecuta `setInterval` con `getSyncIntervalMs()` mientras el módulo esté montado.
-   - Cada ciclo usa `sinceUpdatedAt = lastSync` (o inicio de ventana si no hay `lastSync`). Así, si el usuario vuelve tras horas, se recupera todo el gap de conversaciones y mensajes.
+   - **Mensajes**: `sinceUpdatedAt = lastSync` o inicio de ventana de 14 días si no hay `lastSync` (el corte de 14 días aplica solo a mensajes).
+   - **Conversaciones**: `sinceUpdatedAt = lastSync` si existe; si no hay `lastSync`, no se pasa filtro y se traen todas.
    - Dos requests en paralelo: `/conversaciones/sync` (mensajes) y `/conversaciones/sync/conversations` (conversaciones).
    - Los mensajes se guardan con `cacheMessages` y las conversaciones con `cacheConversations`, manteniendo el sidebar actualizado con `ultimoMensaje` y orden correcto por recencia.
 
@@ -62,8 +63,8 @@ El DB `factudata-conversaciones` usa estas tablas:
    - Mantener un cursor global basado en `updatedAt` evita tener cursores por conversación y simplifica el código, además de propagar rápido mensajes nuevos y cambios de metadata.
 
 6. **Force refresh (recargar todo)**:
-   - El botón de recarga completa ejecuta `clearAllCache`, luego `fetchConversations()` sin filtros (para cachear todas las conversaciones), y un sync de mensajes y conversaciones con `sinceUpdatedAt` = inicio de ventana de 14 días.
-   - Así se repueblan conversaciones y mensajes. El sidebar muestra las conversaciones filtradas por los filtros actuales (`getCachedConversations({ filters })`).
+   - El botón de recarga completa ejecuta `clearAllCache`, luego `fetchConversations()` sin filtros (todas las conversaciones), y un sync: mensajes con `sinceUpdatedAt` = ventana de 14 días; conversaciones sin filtro (todas).
+   - El sidebar muestra las conversaciones filtradas por los filtros actuales (`getCachedConversations({ filters })`).
 
 7. **Envío de mensajes desde el front**:
    - Al enviar un mensaje la UI hace `POST /conversaciones/message` con `{ userId, message }`. El `userId` puede ser `wPid`, `lid` o el número; el backend normaliza a `@s.whatsapp.net` y verifica que haya texto.
