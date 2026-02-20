@@ -628,7 +628,7 @@ export function ConversationsProvider({ children }) {
   }, [refreshConversations]);
 
   const handleForceRefresh = useCallback(async () => {
-    dispatch({ type: ACTIONS.SET_LOADING, payload: true });
+    dispatch({ type: ACTIONS.SET_INITIAL_SYNCING, payload: true });
     try {
       await clearAllCache();
       const data = await fetchConversations();
@@ -665,10 +665,12 @@ export function ConversationsProvider({ children }) {
       dispatch({ type: ACTIONS.SET_CONVERSATIONS, payload: itemsToShow });
       dispatch({ type: ACTIONS.SET_SELECTED, payload: null });
       dispatch({ type: ACTIONS.SET_MESSAGES, payload: [] });
+      dispatch({ type: ACTIONS.SET_SEARCH_CONVERSATIONS, payload: null });
+      dispatch({ type: ACTIONS.SET_CACHE_SEARCH_ACTIVE, payload: false });
     } catch (error) {
       console.error("Error en force refresh:", error);
     } finally {
-      dispatch({ type: ACTIONS.SET_LOADING, payload: false });
+      dispatch({ type: ACTIONS.SET_INITIAL_SYNCING, payload: false });
     }
   }, [filters]);
 

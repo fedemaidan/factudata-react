@@ -210,7 +210,7 @@ function ConversacionesContent() {
             right={0}
             bottom={0}
             zIndex={10}
-            bgcolor="rgba(255,255,255,0.9)"
+            bgcolor="rgba(255,255,255,0.95)"
             display="flex"
             flexDirection="column"
             alignItems="center"
@@ -218,8 +218,11 @@ function ConversacionesContent() {
             gap={1.5}
             textAlign="center"
           >
-            <CircularProgress />
+            <CircularProgress size={40} />
             <Typography fontWeight={600}>Sincronizando mensajes...</Typography>
+            <Typography variant="body2" color="text.secondary">
+              Por favor espere, esto puede tardar unos segundos
+            </Typography>
           </Box>
         )}
         <Box
