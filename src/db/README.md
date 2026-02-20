@@ -4,7 +4,7 @@ Este módulo encapsula la cache local que alimenta el sidebar y la ventana de me
 
 1. Se muestran conversaciones y mensajes directamente desde la cache local.
 2. Guardamos solo los mensajes con `createdAt` en los últimos 14 días. Si una conversación tiene menos de 1.000 mensajes cacheados, el hook solicita al backend todo lo necesario (dentro de la misma ventana) hasta llegar a ese mínimo o agotar el historial disponible.
-3. Cada 30 segundos (mientras el módulo esté montado) se dispara una sincronización global: el backend devuelve todos los mensajes de todas las conversaciones que fueron creados o actualizados en los últimos 30 segundos y el cliente los agrupa y persiste en IndexedDB.
+3. Cada 30 segundos (mientras el módulo esté montado) se dispara una sincronización global: el backend devuelve mensajes y conversaciones creados o actualizados desde `lastSync`, y el cliente los persiste en IndexedDB. Si el usuario vuelve tras horas sin usar la app, se recupera todo el gap (no solo los últimos 30 segundos).
 4. El backend depende de filtros por `updatedAt`, lo que permite detectar tanto mensajes nuevos como actualizaciones en mensajes existentes sin perder eficiencia.
 
 ## Esquema
@@ -13,6 +13,8 @@ El DB `factudata-conversaciones` usa estas tablas:
 
 ### `conversations`
 - Clave primaria `id` (extraída de los metadatos).
+- Índice `updatedAt` para ordenar por recencia (más nuevos primero). Se usa solo `updatedAt` (se eliminó `recentAt`).
+- `prepareConversationRecord` prioriza `conversation.updatedAt`, luego `ultimoMensaje.fecha`, `ultimoMensaje.createdAt`.
 - Almacena metadata completa (`empresa`, `profile`, `ultimoMensaje`, `updatedAt`, etc.) para renderizar el sidebar sin esperar al servidor.
 
 ### `messages`
@@ -21,13 +23,13 @@ El DB `factudata-conversaciones` usa estas tablas:
 - Solo se guardan mensajes cuyo `createdAt` cae dentro de los últimos 14 días. Si una conversación queda con menos de 1.000 mensajes almacenados, se piden al backend los registros faltantes hasta completar ese umbral (o agotar la ventana de 14 días) y todo lo recibido se agrupa y guarda en Dexie.
 
 ### `syncState`
-- Clave primaria `id`.
-- Guarda `lastSync` (timestamp) y el `cursorGlobal` opcional para saber desde cuándo pedir datos en la próxima sincronización global. No hay cursores por conversación, solo se mantiene un marcador general basado en `updatedAt`.
+- Clave primaria `conversationId` (se usa `__GLOBAL_SYNC__` para el estado global).
+- Guarda `lastSync` (timestamp) para saber desde cuándo pedir datos en la próxima sincronización global. No hay cursores por conversación, solo se mantiene un marcador general basado en `updatedAt`.
 
 ## Funciones principales
 
 - `cacheConversations(conversations)` / `cacheConversation(conversation)`
-  - Normaliza cada conversación y la guarda para que el sidebar siempre use datos locales.
+  - Normaliza cada conversación (priorizando `updatedAt` del backend) y la guarda para que el sidebar siempre use datos locales.
 - `getCachedConversations({ filters, limit = 30 })`
   - Lee conversaciones ordenadas por `updatedAt`, aplica los filtros locales (`estadoCliente`, `empresaId`, `tipoContacto`, rangos de fecha/creación, insights, etc.) y las entrega al provider sin recurrir al backend.
 - `getCachedMessagesForConversation(conversationId, { limit })`
@@ -48,20 +50,22 @@ El DB `factudata-conversaciones` usa estas tablas:
 
 3. **Sincronización global cada 30 segundos**:
    - Un efecto en el provider ejecuta `setInterval` con `getSyncIntervalMs()` mientras el módulo esté montado.
-   - Cada ciclo hace dos requests con el mismo `sinceUpdatedAt` (máximo entre `lastSync` y `now - 30s`):
-     - `/conversaciones/sync` para mensajes.
-     - `/conversaciones/sync/conversations` para conversaciones.
+   - Cada ciclo usa `sinceUpdatedAt = lastSync` (o inicio de ventana si no hay `lastSync`). Así, si el usuario vuelve tras horas, se recupera todo el gap de conversaciones y mensajes.
+   - Dos requests en paralelo: `/conversaciones/sync` (mensajes) y `/conversaciones/sync/conversations` (conversaciones).
    - Los mensajes se guardan con `cacheMessages` y las conversaciones con `cacheConversations`, manteniendo el sidebar actualizado con `ultimoMensaje` y orden correcto por recencia.
-   - No se realizan requests por conversación: siguen siendo dos requests globales por ciclo (mensajes + conversaciones).
 
 4. **Mantenimiento del tamaño**:
-   - La sincronización actualiza `syncState` (que incluye `lastSync` y opcionalmente `cursorGlobal`) para controlar desde qué `updatedAt` se pide lo siguiente.
+   - La sincronización actualiza `syncState.lastSync` para controlar desde qué `updatedAt` se pide lo siguiente.
 
 5. **Uso de `updatedAt` en el backend**:
    - Los endpoints `/conversaciones/sync` y `/conversaciones/sync/conversations` aceptan `sinceUpdatedAt` para devolver deltas de mensajes y conversaciones.
    - Mantener un cursor global basado en `updatedAt` evita tener cursores por conversación y simplifica el código, además de propagar rápido mensajes nuevos y cambios de metadata.
 
-6. **Envío de mensajes desde el front**:
+6. **Force refresh (recargar todo)**:
+   - El botón de recarga completa ejecuta `clearAllCache`, luego `fetchConversations()` sin filtros (para cachear todas las conversaciones), y un sync de mensajes y conversaciones con `sinceUpdatedAt` = inicio de ventana de 14 días.
+   - Así se repueblan conversaciones y mensajes. El sidebar muestra las conversaciones filtradas por los filtros actuales (`getCachedConversations({ filters })`).
+
+7. **Envío de mensajes desde el front**:
    - Al enviar un mensaje la UI hace `POST /conversaciones/message` con `{ userId, message }`. El `userId` puede ser `wPid`, `lid` o el número; el backend normaliza a `@s.whatsapp.net` y verifica que haya texto.
    - El controlador llama a `enviarMensajeService`, guarda el resultado con `saveOutgoingMessage` y devuelve el mensaje persistido (`_id`, `id_conversacion`, `createdAt`, `updatedAt`, `message`, `fromMe`, etc.).
    - El cliente cachea ese mensaje en IndexedDB, actualiza el estado local y dispara inmediatamente el mismo proceso de sincronización global (`/conversaciones/sync` con `sinceUpdatedAt` calculado como si hubieran pasado 30 segundos). Así el historial activo y el sidebar se refrescan antes de que el intervalo automático ocurra.
@@ -98,4 +102,10 @@ La lista del sidebar usa un flujo híbrido según los filtros activos:
 - **Sin filtros de insights**: se usa solo `getCachedConversations` (IndexedDB). `filterConversations` aplica el resto de filtros (estado, empresa, fechas, etc.).
 - Cuando se cachean conversaciones del backend con insights, `insightCount` se conserva en IndexedDB. Si luego se lee desde cache con `showInsight` activo, `filterConversations` excluye las que tienen `insightCount <= 0`.
 
-Este README complementa el código real: la UI solo necesita un loading global inicial, los hooks reutilizan helpers de Dexie y la sincronización periódica se basa en filtros de `updatedAt` para mantener la implementación DRY/SOLID. Si necesitas diagramas o ejemplos adicionales, decímelo y los agrego.
+## Migración de esquema (Dexie v2)
+
+El esquema v2 eliminó `recentAt` de `conversations` y `syncState`. Dexie aplica la migración automáticamente al abrir la DB; los datos existentes se conservan.
+
+---
+
+Este README complementa el código real: la UI solo necesita un loading global inicial, los hooks reutilizan helpers de Dexie y la sincronización periódica se basa en `updatedAt` para mantener la implementación DRY/SOLID. Si necesitas diagramas o ejemplos adicionales, decímelo y los agrego.

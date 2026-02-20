@@ -360,7 +360,7 @@ export function ConversationsProvider({ children }) {
         const globalLastSync = (await getGlobalSyncTime()) || 0;
         const now = Date.now();
         const windowCutoff = getMessageWindowCutoff().getTime();
-        const baseSince = globalLastSync ? Math.max(globalLastSync, now - intervalMs) : windowCutoff;
+        const baseSince = globalLastSync || windowCutoff;
         const sinceTimestamp = Math.max(baseSince, windowCutoff);
         const params = {
           limit: 2000,

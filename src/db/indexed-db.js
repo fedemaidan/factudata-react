@@ -14,19 +14,24 @@ db.version(1).stores({
   syncState: "&conversationId, lastSync, recentAt",
 });
 
-const prepareConversationRecord = (conversation, extra = {}) => {
-  const id = conversation._id || null
+db.version(2).stores({
+  conversations: "&id, updatedAt",
+  messages: "&_id, conversationId, createdAt, [conversationId+createdAt], type, status",
+  syncState: "&conversationId, lastSync",
+});
+
+const prepareConversationRecord = (conversation) => {
+  const id = conversation._id || null;
   if (!id) return null;
   const updatedAt =
+    normalizeDate(conversation?.updatedAt) ||
     normalizeDate(conversation?.ultimoMensaje?.fecha) ||
     normalizeDate(conversation?.ultimoMensaje?.createdAt) ||
-    normalizeDate(conversation?.updatedAt) ||
     new Date();
   return {
     ...conversation,
     id,
     updatedAt: toNumber(updatedAt),
-    recentAt: toNumber(extra.recentAt) || Date.now(),
   };
 };
 
@@ -122,7 +127,7 @@ const filterConversations = (conversations = [], filters = {}) => {
 
 export const getCachedConversations = async ({ filters = {}, limit = 30 } = {}) => {
   const all = await db.conversations
-    .orderBy("recentAt")
+    .orderBy("updatedAt")
     .reverse()
     .toArray();
   const filtered = filterConversations(all, filters);
@@ -228,7 +233,6 @@ export const saveGlobalSyncTime = async (timestamp = Date.now()) => {
   await db.syncState.put({
     conversationId: GLOBAL_SYNC_KEY,
     lastSync: timestamp,
-    recentAt: timestamp,
   });
 };
 
@@ -273,7 +277,7 @@ export const searchCachedConversations = async (
 ) => {
   const normalizedQuery = normalizeSearchText(query);
   const allConversations = await db.conversations
-    .orderBy("recentAt")
+    .orderBy("updatedAt")
     .reverse()
     .toArray();
   const results = [];
