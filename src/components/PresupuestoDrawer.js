@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Fragment } from 'react';
 import {
   Drawer,
   Box,
@@ -1208,47 +1208,100 @@ const PresupuestoDrawer = ({
               {/* ── TAB 2: Historial ── */}
               {activeTab === 2 && (
                 <Box sx={{ p: 2 }}>
-                  {presupuesto.historial?.length > 0 ? (
-                    <Stack spacing={1.5}>
-                      {presupuesto.historial
-                        .sort((a, b) => {
-                          const fa = a.fecha?._seconds ? a.fecha._seconds * 1000 : new Date(a.fecha).getTime();
-                          const fb = b.fecha?._seconds ? b.fecha._seconds * 1000 : new Date(b.fecha).getTime();
-                          return fb - fa;
-                        })
-                        .map((item, idx) => (
-                          <Box key={idx} sx={{ p: 1.5, bgcolor: 'grey.50', borderRadius: 1 }}>
-                            <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 0.5 }}>
-                              <Stack direction="row" spacing={1} alignItems="center">
-                                <Chip
-                                  label={item.tipo === 'adicional' ? 'Adicional' : 'Edición'}
-                                  size="small"
-                                  color={item.tipo === 'adicional' ? 'primary' : 'secondary'}
-                                  variant="outlined"
-                                />
-                                <Typography variant="caption" color="text.secondary">
-                                  {formatFechaHistorial(item.fecha)}
-                                </Typography>
-                              </Stack>
-                            </Stack>
-                            <Stack direction="row" spacing={2} alignItems="center">
-                              <Typography variant="body2" color="text.secondary" sx={{ flex: 1 }}>
-                                {formatMonto(item.montoAnterior, item.monedaAnterior)}
-                              </Typography>
-                              <Typography variant="body2" color="text.secondary">→</Typography>
-                              <Typography variant="body2" fontWeight={600} sx={{ flex: 1, textAlign: 'right' }}>
-                                {formatMonto(item.montoNuevo, item.monedaNueva)}
-                              </Typography>
-                            </Stack>
-                            {item.motivo || item.concepto ? (
-                              <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block', fontStyle: 'italic' }}>
-                                {item.motivo || item.concepto}
-                              </Typography>
-                            ) : null}
-                          </Box>
-                        ))}
-                    </Stack>
-                  ) : (
+                  {presupuesto.historial?.length > 0 ? (() => {
+                    const isIndexed = !!presupuesto.indexacion;
+                    const idxLabel = presupuesto.indexacion === 'CAC' ? 'CAC' : presupuesto.indexacion === 'USD' ? 'USD' : null;
+                    const rate = presupuesto.indexacion === 'CAC' ? cacEfectivo : presupuesto.indexacion === 'USD' ? dolarEfectivo : null;
+                    // Moneda de almacenamiento real (para adicionales que no traen monedaAnterior/monedaNueva)
+                    const storageMoneda = isIndexed ? idxLabel : (presupuesto.moneda || 'ARS');
+
+                    const sorted = [...presupuesto.historial].sort((a, b) => {
+                      const fa = a.fecha?._seconds ? a.fecha._seconds * 1000 : new Date(a.fecha).getTime();
+                      const fb = b.fecha?._seconds ? b.fecha._seconds * 1000 : new Date(b.fecha).getTime();
+                      return fb - fa;
+                    });
+
+                    const cellSx = { px: 1, py: 0.5, fontSize: '0.75rem', lineHeight: 1.3 };
+                    const subCellSx = { ...cellSx, pt: 0, pb: 0.75, fontSize: '0.68rem', color: 'text.secondary', borderBottom: 1, borderColor: 'divider' };
+
+                    return (
+                      <Box sx={{ overflowX: 'auto' }}>
+                        <Table size="small">
+                          <TableHead>
+                            <TableRow sx={{ '& th': { px: 1, py: 0.75, fontSize: '0.7rem', fontWeight: 700, color: 'text.secondary', whiteSpace: 'nowrap' } }}>
+                              <TableCell>Mov.</TableCell>
+                              <TableCell align="right">Anterior</TableCell>
+                              <TableCell align="right">Nuevo</TableCell>
+                              <TableCell align="right">Diferencia</TableCell>
+                            </TableRow>
+                          </TableHead>
+                          <TableBody>
+                            {sorted.map((item, idx) => {
+                              const monAnt = item.monedaAnterior || storageMoneda;
+                              const monNue = item.monedaNueva || storageMoneda;
+                              const diff = item.tipo === 'adicional'
+                                ? (item.monto || 0)
+                                : (item.diferencia != null ? item.diferencia : ((item.montoNuevo || 0) - (item.montoAnterior || 0)));
+
+                              return (
+                                <Fragment key={idx}>
+                                  {/* Fila principal – moneda de almacenamiento */}
+                                  <TableRow sx={{ '& td': { ...cellSx, borderBottom: (isIndexed && rate) || (item.motivo || item.concepto) ? 0 : undefined } }}>
+                                    <TableCell>
+                                      <Chip
+                                        label={item.tipo === 'adicional' ? 'Adic.' : 'Edit.'}
+                                        size="small"
+                                        color={item.tipo === 'adicional' ? 'primary' : 'secondary'}
+                                        variant="outlined"
+                                        sx={{ height: 20, '& .MuiChip-label': { px: 0.5, fontSize: '0.65rem' } }}
+                                      />
+                                      <Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 0.25, fontSize: '0.68rem' }}>
+                                        {formatFechaHistorial(item.fecha)}
+                                      </Typography>
+                                    </TableCell>
+                                    <TableCell align="right">
+                                      {formatMonto(item.montoAnterior, monAnt)}
+                                    </TableCell>
+                                    <TableCell align="right" sx={{ fontWeight: 600 }}>
+                                      {formatMonto(item.montoNuevo, monNue)}
+                                    </TableCell>
+                                    <TableCell align="right" sx={{ fontWeight: 600, color: diff >= 0 ? 'success.main' : 'error.main' }}>
+                                      {diff >= 0 ? '+' : ''}{formatMonto(diff, storageMoneda)}
+                                    </TableCell>
+                                  </TableRow>
+
+                                  {/* Sub-fila – equivalente ARS (solo si está indexado) */}
+                                  {isIndexed && rate ? (
+                                    <TableRow sx={{ '& td': { ...subCellSx, borderBottom: (item.motivo || item.concepto) ? 0 : undefined } }}>
+                                      <TableCell sx={{ fontSize: '0.65rem', color: 'text.disabled' }}>≈ ARS</TableCell>
+                                      <TableCell align="right">
+                                        {formatCurrency((item.montoAnterior || 0) * rate)}
+                                      </TableCell>
+                                      <TableCell align="right">
+                                        {formatCurrency((item.montoNuevo || 0) * rate)}
+                                      </TableCell>
+                                      <TableCell align="right" sx={{ color: diff >= 0 ? 'success.main' : 'error.main' }}>
+                                        {diff >= 0 ? '+' : ''}{formatCurrency(Math.abs(diff) * rate)}
+                                      </TableCell>
+                                    </TableRow>
+                                  ) : null}
+
+                                  {/* Sub-fila – motivo/concepto */}
+                                  {(item.motivo || item.concepto) ? (
+                                    <TableRow>
+                                      <TableCell colSpan={4} sx={{ ...cellSx, pt: 0, fontStyle: 'italic', color: 'text.secondary', fontSize: '0.68rem' }}>
+                                        💬 {item.motivo || item.concepto}
+                                      </TableCell>
+                                    </TableRow>
+                                  ) : null}
+                                </Fragment>
+                              );
+                            })}
+                          </TableBody>
+                        </Table>
+                      </Box>
+                    );
+                  })() : (
                     <Box sx={{ py: 4, textAlign: 'center' }}>
                       <HistoryIcon sx={{ fontSize: 40, color: 'grey.300', mb: 1 }} />
                       <Typography color="text.secondary" variant="body2">Sin cambios registrados</Typography>

@@ -112,6 +112,7 @@ const ProyectoCard = ({ proyecto, resumen, onSelect, formatMonto, tipoCambio, mo
   const porcentajeEgresos = egresosTotal > 0 ? (egresosEjecutado / egresosTotal) * 100 : 0;
   const gananciaProyectada = ingresosTotal - egresosTotal;
   const gananciaReal = ingresosEjecutado - egresosEjecutado;
+  const gananciaProyectadaPendiente = gananciaProyectada - gananciaReal;
   const tieneIngresos = ingresosTotal > 0;
   
   return (
@@ -158,20 +159,26 @@ const ProyectoCard = ({ proyecto, resumen, onSelect, formatMonto, tipoCambio, mo
               sx={{ height: 6, borderRadius: 3 }}
               color={porcentajeEgresos > 100 ? 'error' : porcentajeEgresos > 80 ? 'warning' : 'primary'}
             />
-            {/* Ganancia proyectada y real (solo si hay ingresos) */}
+            {/* Ganancia proyectada, ejecutada y pendiente (solo si hay ingresos) */}
             {tieneIngresos && (
               <>
                 <Divider sx={{ my: 0.25 }} />
                 <Stack direction="row" justifyContent="space-between" alignItems="center">
                   <Typography variant="caption" color="text.secondary">Ganancia proyectada</Typography>
-                  <Typography variant="body2" fontWeight={600} color={gananciaProyectada >= 0 ? 'success.main' : 'error.main'}>
+                  <Typography variant="body2" fontWeight={700} color={gananciaProyectada >= 0 ? 'success.main' : 'error.main'}>
                     {formatMonto(gananciaProyectada, moneda)}
                   </Typography>
                 </Stack>
                 <Stack direction="row" justifyContent="space-between" alignItems="center">
-                  <Typography variant="caption" color="text.secondary">Ganancia real</Typography>
-                  <Typography variant="body2" fontWeight={700} color={gananciaReal >= 0 ? 'success.main' : 'error.main'}>
+                  <Typography variant="caption" color="text.secondary" sx={{ pl: 1 }}>Ejecutada</Typography>
+                  <Typography variant="caption" fontWeight={600} color={gananciaReal >= 0 ? 'success.main' : 'error.main'}>
                     {formatMonto(gananciaReal, moneda)}
+                  </Typography>
+                </Stack>
+                <Stack direction="row" justifyContent="space-between" alignItems="center">
+                  <Typography variant="caption" color="text.secondary" sx={{ pl: 1 }}>Pendiente</Typography>
+                  <Typography variant="caption" fontWeight={600} color={gananciaProyectadaPendiente >= 0 ? 'success.main' : 'error.main'}>
+                    {formatMonto(gananciaProyectadaPendiente, moneda)}
                   </Typography>
                 </Stack>
               </>
@@ -191,18 +198,20 @@ const ProyectoCard = ({ proyecto, resumen, onSelect, formatMonto, tipoCambio, mo
 // ============ COMPONENTE: ITEM DE PRESUPUESTO ============
 const PresupuestoItem = ({ label, presupuesto, ejecutado, formatMonto, onCrear, onClick, historial, moneda, indexacion, baseCalculo, cotizacionSnapshot, montoIngresado, cacIndiceActual: cacIdx, tipoCambioActual }) => {
   const tienePresupuesto = presupuesto !== null && presupuesto !== undefined;
-  const porcentaje = tienePresupuesto && presupuesto > 0 ? (ejecutado / presupuesto) * 100 : 0;
+  const ejec = ejecutado || 0;
+  const porcentaje = tienePresupuesto && presupuesto > 0 ? (ejec / presupuesto) * 100 : 0;
   const tieneHistorial = historial && historial.length > 0;
-  const monedaLabel = moneda === 'USD' ? '🇺🇸' : '🇦🇷';
+  const monedaItem = moneda || 'ARS';
   const esIndexado = !!indexacion;
   const indiceActual = indexacion === 'CAC' ? cacIdx : (indexacion === 'USD' ? tipoCambioActual : null);
   const unidadIdx = indexacion === 'CAC' ? 'CAC' : (indexacion === 'USD' ? 'USD' : '');
 
   // Para indexados: mostrar equivalencia ARS hoy
   const fmtARS = (v) => v != null ? `$${Number(v).toLocaleString('es-AR', { maximumFractionDigits: 0 })}` : '';
+  const fmtUnidad = (v) => `${Number(v || 0).toLocaleString('es-AR', { maximumFractionDigits: 2 })} ${unidadIdx}`;
   const presEnARS = esIndexado && indiceActual && presupuesto ? presupuesto * indiceActual : null;
-  const ejEnARS = esIndexado && indiceActual && ejecutado ? ejecutado * indiceActual : null;
-  const saldoEnARS = esIndexado && indiceActual ? (presupuesto - ejecutado) * indiceActual : null;
+  const ejEnARS = esIndexado && indiceActual && ejec ? ejec * indiceActual : null;
+  const saldoEnARS = esIndexado && indiceActual ? (presupuesto - ejec) * indiceActual : null;
   
   if (!tienePresupuesto) {
     return (
@@ -244,11 +253,11 @@ const PresupuestoItem = ({ label, presupuesto, ejecutado, formatMonto, onCrear, 
         {esIndexado ? (
           <>
             <Tooltip title={presEnARS != null ? `Hoy: ${fmtARS(presEnARS)}` : ''} arrow>
-              <Chip label={`Pres: ${Number(presupuesto).toLocaleString('es-AR', { maximumFractionDigits: 2 })} ${unidadIdx}`} size="small" variant="outlined" />
+              <Chip label={`Pres: ${fmtUnidad(presupuesto)}`} size="small" variant="outlined" />
             </Tooltip>
             <Tooltip title={ejEnARS != null ? `Hoy: ${fmtARS(ejEnARS)}` : ''} arrow>
               <Chip 
-                label={`Ejec: ${Number(ejecutado).toLocaleString('es-AR', { maximumFractionDigits: 2 })} ${unidadIdx}`}
+                label={`Ejec: ${fmtUnidad(ejec)}`}
                 size="small" 
                 color={porcentaje > 100 ? 'error' : 'success'}
               />
@@ -256,28 +265,22 @@ const PresupuestoItem = ({ label, presupuesto, ejecutado, formatMonto, onCrear, 
           </>
         ) : (
           <>
-            <Chip label={`Pres: ${formatMonto(presupuesto, moneda)}`} size="small" variant="outlined" />
+            <Chip label={`Pres: ${formatMonto(presupuesto, monedaItem)}`} size="small" variant="outlined" />
             <Chip 
-              label={`Ejec: ${formatMonto(ejecutado, moneda)}`} 
+              label={`Ejec: ${formatMonto(ejec, monedaItem)}`} 
               size="small" 
               color={porcentaje > 100 ? 'error' : 'success'}
             />
           </>
         )}
       </Stack>
-      <LinearProgress 
-        variant="determinate" 
-        value={Math.min(porcentaje, 100)}
-        sx={{ mt: 1, height: { xs: 6, md: 8 }, borderRadius: 4 }}
-        color={porcentaje > 100 ? 'error' : porcentaje > 80 ? 'warning' : 'primary'}
-      />
-      <Stack direction="row" justifyContent="space-between" sx={{ mt: 0.5 }}>
+      <Stack direction="row" justifyContent="space-between" sx={{ mt: 0.75 }}>
         <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.6rem', sm: '0.75rem' } }}>
           {porcentaje.toFixed(1)}% ejecutado
           {esIndexado && ejEnARS != null && ` · ${fmtARS(ejEnARS)} ARS`}
         </Typography>
         <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.6rem', sm: '0.75rem' } }}>
-          Saldo: {esIndexado ? `${Number(presupuesto - ejecutado).toLocaleString('es-AR', { maximumFractionDigits: 2 })} ${unidadIdx}` : formatMonto(presupuesto - ejecutado, moneda)}
+          Saldo: {esIndexado ? `${fmtUnidad(presupuesto - ejec)}` : formatMonto(presupuesto - ejec, monedaItem)}
           {esIndexado && saldoEnARS != null && ` · ${fmtARS(saldoEnARS)} ARS`}
         </Typography>
       </Stack>
@@ -329,10 +332,7 @@ const ControlPresupuestosPage = () => {
   const [proveedorModal, setProveedorModal] = useState(false);
   const [nuevoProveedor, setNuevoProveedor] = useState('');
   
-  // Modal de presupuesto general (se mantiene como dialog simple)
-  const [presupuestoGeneralModal, setPresupuestoGeneralModal] = useState(false);
-  const [nuevoPresupuestoGeneral, setNuevoPresupuestoGeneral] = useState('');
-  const [monedaPresupuestoGeneral, setMonedaPresupuestoGeneral] = useState('ARS');
+
 
   // Cargar cotización del dólar
   useEffect(() => {
@@ -505,7 +505,7 @@ const ControlPresupuestosPage = () => {
   // porque los presupuestos por categoría/proveedor son asignaciones DENTRO del general.
   // El ejecutado del general ya acumula todos los movimientos (matchea contra todo).
   const calcularTotales = () => {
-    if (!resumen) return { ingresos: { total: 0, ejecutado: 0 }, egresos: { total: 0, ejecutado: 0 }, gananciaProyectada: 0, gananciaActual: 0 };
+    if (!resumen) return { ingresos: { total: 0, ejecutado: 0 }, egresos: { total: 0, ejecutado: 0 }, gananciaProyectada: 0, gananciaActual: 0, gananciaProyectadaPendiente: 0 };
     
     const sumarPorTipo = (obtenerItems) => {
       const items = obtenerItems();
@@ -532,11 +532,14 @@ const ControlPresupuestosPage = () => {
     const ingresos = sumarPorTipo(obtenerTodosLosItemsIngresos);
     const egresos = sumarPorTipo(obtenerTodosLosItemsEgresos);
     
+    const gananciaProyectada = ingresos.total - egresos.total;
+    const gananciaActual = ingresos.ejecutado - egresos.ejecutado;
     return {
       ingresos,
       egresos,
-      gananciaProyectada: ingresos.total - egresos.total,
-      gananciaActual: ingresos.ejecutado - egresos.ejecutado
+      gananciaProyectada,
+      gananciaActual,
+      gananciaProyectadaPendiente: gananciaProyectada - gananciaActual
     };
   };
 
@@ -761,7 +764,7 @@ const ControlPresupuestosPage = () => {
       .filter(i => i.proveedor && !i.categoria && !i.etapa)
       .reduce((sum, i) => sum + conv(i), 0);
     
-    return { porCategoria, porEtapa, porProveedor, general, generalId, generalHistorial };
+    return { porCategoria, porEtapa, porProveedor, general, generalId, generalHistorial, generalItem: generalItem || null };
   }, [resumen, moneda, tipoCambio, cacIndiceActual]);
 
   // Obtener el presupuesto general del proyecto
@@ -1097,7 +1100,7 @@ const ControlPresupuestosPage = () => {
                                 <Typography variant="body2" sx={{ color: 'white', fontSize: { xs: '0.65rem', sm: '0.75rem', md: '0.875rem' } }} noWrap>Ganancia Proyectada</Typography>
                                 <Typography variant="h5" sx={{ color: 'white', fontSize: { xs: '1rem', sm: '1.25rem', md: '1.5rem' } }} noWrap>{formatMonto(totales.gananciaProyectada, moneda)}</Typography>
                                 <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.8)', fontSize: { xs: '0.6rem', sm: '0.7rem', md: '0.875rem' } }} noWrap>
-                                  Actual: {formatMonto(totales.gananciaActual, moneda)}
+                                  Ejecutada: {formatMonto(totales.gananciaActual, moneda)} · Pendiente: {formatMonto(totales.gananciaProyectadaPendiente, moneda)}
                                 </Typography>
                               </Box>
                             </Stack>
@@ -1304,34 +1307,59 @@ const ControlPresupuestosPage = () => {
                         <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.6rem', sm: '0.75rem' } }}>Presupuesto General</Typography>
                         <Stack direction="row" alignItems="center" spacing={0.5} flexWrap="wrap" useFlexGap>
                           {presupuestoGeneral > 0 ? (
-                            <>
-                              <Typography variant="h6" sx={{ fontSize: { xs: '0.95rem', md: '1.25rem' } }}>{formatMonto(presupuestoGeneral, moneda)}</Typography>
-                              <Button 
-                                size="small"
-                                sx={{ minWidth: 'auto', px: 0.5, fontSize: '0.7rem' }}
-                                onClick={() => {
-                                  const generalItem = obtenerTodosLosItemsEgresos().find(i => !i.categoria && !i.etapa && !i.proveedor);
-                                  if (generalItem) abrirDrawerEditar(generalItem, 'General');
-                                }}
-                              >
-                                Editar
-                              </Button>
-                              {calcularSumas.generalHistorial?.length > 0 && (
-                                <Chip 
-                                  label={`${calcularSumas.generalHistorial.length}`} 
-                                  size="small" 
-                                  color="info" 
-                                  variant="outlined"
-                                  onClick={() => {
-                                    const generalItem = obtenerTodosLosItemsEgresos().find(i => !i.categoria && !i.etapa && !i.proveedor);
-                                    if (generalItem) abrirDrawerEditar(generalItem, 'General');
-                                  }}
-                                  sx={{ cursor: 'pointer', height: 20, '& .MuiChip-label': { px: 0.5, fontSize: '0.65rem' } }}
-                                />
-                              )}
-                            </>
+                            (() => {
+                              const gi = calcularSumas.generalItem;
+                              const esIdx = gi && !!gi.indexacion;
+                              const monedaItem = gi?.moneda || 'ARS';
+                              const unidadIdx = gi?.indexacion === 'CAC' ? 'CAC' : (gi?.indexacion === 'USD' ? 'USD' : '');
+                              const idxActual = gi?.indexacion === 'CAC' ? cacIndiceActual : (gi?.indexacion === 'USD' ? tipoCambio : null);
+                              const presEnARS = esIdx && idxActual ? gi.monto * idxActual : null;
+                              const fmtARS = (v) => v != null ? `$${Number(v).toLocaleString('es-AR', { maximumFractionDigits: 0 })}` : '';
+                              const fmtUnidad = (v) => `${Number(v).toLocaleString('es-AR', { maximumFractionDigits: 2 })} ${unidadIdx}`;
+                              return (
+                                <>
+                                  <Typography variant="h6" sx={{ fontSize: { xs: '0.95rem', md: '1.25rem' } }}>
+                                    {esIdx ? fmtUnidad(gi.monto) : formatMonto(presupuestoGeneral, moneda)}
+                                  </Typography>
+                                  {esIdx && presEnARS != null && (
+                                    <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.6rem', sm: '0.7rem' } }}>
+                                      ≈ {fmtARS(presEnARS)}
+                                    </Typography>
+                                  )}
+                                  {esIdx && (
+                                    <Chip label={`idx ${gi.indexacion}`} size="small" color="secondary" variant="outlined" sx={{ height: 20, '& .MuiChip-label': { px: 0.5, fontSize: '0.65rem' } }} />
+                                  )}
+                                  {gi?.base_calculo === 'subtotal' && (
+                                    <Chip label="neto" size="small" color="default" variant="outlined" sx={{ height: 20, '& .MuiChip-label': { px: 0.5, fontSize: '0.65rem' } }} />
+                                  )}
+                                  <Button 
+                                    size="small"
+                                    sx={{ minWidth: 'auto', px: 0.5, fontSize: '0.7rem' }}
+                                    onClick={() => {
+                                      const generalItem = obtenerTodosLosItemsEgresos().find(i => !i.categoria && !i.etapa && !i.proveedor);
+                                      if (generalItem) abrirDrawerEditar(generalItem, 'General');
+                                    }}
+                                  >
+                                    Editar
+                                  </Button>
+                                  {calcularSumas.generalHistorial?.length > 0 && (
+                                    <Chip 
+                                      label={`${calcularSumas.generalHistorial.length}`} 
+                                      size="small" 
+                                      color="info" 
+                                      variant="outlined"
+                                      onClick={() => {
+                                        const generalItem = obtenerTodosLosItemsEgresos().find(i => !i.categoria && !i.etapa && !i.proveedor);
+                                        if (generalItem) abrirDrawerEditar(generalItem, 'General');
+                                      }}
+                                      sx={{ cursor: 'pointer', height: 20, '& .MuiChip-label': { px: 0.5, fontSize: '0.65rem' } }}
+                                    />
+                                  )}
+                                </>
+                              );
+                            })()
                           ) : (
-                            <Button size="small" variant="outlined" onClick={() => setPresupuestoGeneralModal(true)} sx={{ fontSize: { xs: '0.7rem', md: '0.8rem' } }}>
+                            <Button size="small" variant="outlined" onClick={() => abrirDrawerCrear(null, null, 'egreso')} sx={{ fontSize: { xs: '0.7rem', md: '0.8rem' } }}>
                               Definir
                             </Button>
                           )}
@@ -1593,58 +1621,7 @@ const ControlPresupuestosPage = () => {
         </DialogActions>
       </Dialog>
 
-      {/* Modal de Presupuesto General */}
-      <Dialog open={presupuestoGeneralModal} onClose={() => setPresupuestoGeneralModal(false)}>
-        <DialogTitle>Definir Presupuesto General del Proyecto</DialogTitle>
-        <DialogContent>
-          <Stack spacing={2} sx={{ pt: 1, minWidth: 350 }}>
-            <Alert severity="info">
-              El presupuesto general es el monto total destinado al proyecto. 
-              Luego podrás distribuirlo por categoría, etapa o proveedor.
-            </Alert>
-            <Stack direction="row" spacing={2} alignItems="center">
-              <TextField
-                label="Monto del Presupuesto General"
-                fullWidth
-                value={nuevoPresupuestoGeneral ? Number(nuevoPresupuestoGeneral).toLocaleString('es-AR') : ''}
-                onChange={(e) => {
-                  const raw = e.target.value.replace(/\./g, '').replace(/,/g, '').replace(/[^0-9]/g, '');
-                  setNuevoPresupuestoGeneral(raw);
-                }}
-                autoFocus
-                inputProps={{ inputMode: 'numeric' }}
-              />
-              <ToggleButtonGroup
-                value={monedaPresupuestoGeneral}
-                exclusive
-                onChange={(e, val) => val && setMonedaPresupuestoGeneral(val)}
-                size="small"
-              >
-                <ToggleButton value="ARS">ARS</ToggleButton>
-                <ToggleButton value="USD">USD</ToggleButton>
-              </ToggleButtonGroup>
-            </Stack>
-          </Stack>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setPresupuestoGeneralModal(false)}>Cancelar</Button>
-          <Button 
-            variant="contained" 
-            onClick={async () => {
-              try {
-                await handleCrearPresupuestoGeneral(nuevoPresupuestoGeneral, monedaPresupuestoGeneral);
-                setPresupuestoGeneralModal(false);
-                setNuevoPresupuestoGeneral('');
-                setMonedaPresupuestoGeneral('ARS');
-              } catch (err) {
-                setAlert({ open: true, message: 'Error al crear presupuesto', severity: 'error' });
-              }
-            }}
-          >
-            Crear
-          </Button>
-        </DialogActions>
-      </Dialog>
+
 
       {/* Modal de Ajuste del Presupuesto General */}
       <Dialog open={ajusteGeneralModal.open} onClose={() => setAjusteGeneralModal({ open: false, sumaHijos: 0, origen: '' })}>
