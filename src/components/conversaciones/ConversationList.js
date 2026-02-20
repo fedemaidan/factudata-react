@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   Box,
   Divider,
@@ -8,40 +8,17 @@ import {
   ListItemAvatar,
   Avatar,
   Typography,
-  Badge,
-  OutlinedInput,
-  InputAdornment,
-  IconButton,
-  Button,
   CircularProgress,
   Chip,
-  Tooltip
 } from "@mui/material";
-import SearchIcon from "@mui/icons-material/Search";
-import RefreshIcon from "@mui/icons-material/Refresh";
-import CachedIcon from "@mui/icons-material/Cached";
 import ConversacionesFilter from "./ConversacionesFilter";
+import ConversationSearchBox from "./ConversationSearchBox";
+import ConversationListItem from "./ConversationListItem";
 import Alerts from "src/components/alerts";
 import { formatFecha } from "src/utils/handleDates";
 import { useConversationsContext } from "src/contexts/conversations-context";
 import { getNombreCliente } from "src/utils/conversacionesUtils";
 import { subDays, format, differenceInDays, parseISO } from "date-fns";
-
-// Colores para los estados de cliente
-const ESTADO_CLIENTE_COLORS = {
-  cliente_activo: { border: '#4caf50', bg: '#e8f5e9', label: 'Activo' },      // Verde
-  dado_de_baja: { border: '#ef5350', bg: '#ffebee', label: 'Baja' },          // Rojo sutil
-  no_cliente: { border: '#2196f3', bg: '#e3f2fd', label: 'Nuevo' },           // Azul
-};
-
-// Obtiene el estado de cliente de una conversación
-const getEstadoCliente = (conversation) => {
-  const empresa = conversation?.empresa;
-  if (!empresa) return 'no_cliente';  // Sin empresa = Nuevo
-  if (!empresa.esCliente) return 'no_cliente';
-  if (empresa.estaDadoDeBaja) return 'dado_de_baja';
-  return 'cliente_activo';
-};
 
 export default function ConversationList({ onSelect, onMessageSelect }) {
   const {
@@ -61,23 +38,14 @@ export default function ConversationList({ onSelect, onMessageSelect }) {
     loading
   } = useConversationsContext();
 
-  const [localSearch, setLocalSearch] = useState(search || "");
   const [searchInMessages, setSearchInMessages] = useState(false);
   const [error, setError] = useState("");
   const [alert, setAlert] = useState({ open: false, message: "", severity: "info" });
   const [searchCount, setSearchCount] = useState(0);
-  
-  // Default dates: last 7 days
   const [dates, setDates] = useState({
     start: format(subDays(new Date(), 7), "yyyy-MM-dd"),
-    end: format(new Date(), "yyyy-MM-dd")
+    end: format(new Date(), "yyyy-MM-dd"),
   });
-
-  useEffect(() => {
-    if (search !== localSearch) {
-      setLocalSearch(search || "");
-    }
-  }, [search]);
 
   useEffect(() => {
     if (error) {
@@ -100,79 +68,47 @@ export default function ConversationList({ onSelect, onMessageSelect }) {
     }
   }, [searchCount, cacheSearchActive, searchConversations?.length, messageResults?.length]);
 
-  const handleAlertClose = () => {
+  const handleAlertClose = useCallback(() => {
     setAlert((prev) => ({ ...prev, open: false }));
     setError("");
-  };
+  }, []);
 
-  const handleSearchClick = () => {
-    setError("");
-    
-    if (searchInMessages) {
-      if (!dates.start || !dates.end) {
-        setError("Debes seleccionar un rango de fechas para buscar en mensajes.");
-        return;
+  const handleSearchSubmit = useCallback(
+    (query) => {
+      setError("");
+      if (searchInMessages) {
+        if (!dates.start || !dates.end) {
+          setError("Debes seleccionar un rango de fechas para buscar en mensajes.");
+          return;
+        }
+        const start = parseISO(dates.start);
+        const end = parseISO(dates.end);
+        const diff = differenceInDays(end, start);
+        if (diff > 7) {
+          setError("El rango máximo para buscar en mensajes es de 7 días.");
+          return;
+        }
+        if (diff < 0) {
+          setError("La fecha de fin debe ser posterior a la de inicio.");
+          return;
+        }
       }
-
-      const start = parseISO(dates.start);
-      const end = parseISO(dates.end);
-      const diff = differenceInDays(end, start);
-
-      if (diff > 7) {
-        setError("El rango máximo para buscar en mensajes es de 7 días.");
-        return;
-      }
-      
-      if (diff < 0) {
-        setError("La fecha de fin debe ser posterior a la de inicio.");
-        return;
-      }
-    }
-
-    setSearchCount((c) => c + 1);
-    onSearchCache?.(localSearch, {
-      searchInMessages, 
-      fechaDesde: dates.start, 
-      fechaHasta: dates.end 
-    });
-  };
-
-  const handleKeyDown = (e) => {
-    if (e.key === 'Enter') {
-      handleSearchClick();
-    }
-  };
+      setSearchCount((c) => c + 1);
+      onSearchCache?.(query, {
+        searchInMessages,
+        fechaDesde: dates.start,
+        fechaHasta: dates.end,
+      });
+    },
+    [searchInMessages, dates, onSearchCache]
+  );
 
   const selectedId = selected?.ultimoMensaje?.id_conversacion;
 
-  const renderInsightBadge = (count) => {
-    const insightCount = Number(count || 0);
-    if (!insightCount) {
-      return null;
-    }
-
-    return (
-      <Badge
-        color="warning"
-        badgeContent={insightCount}
-        sx={{
-          "& .MuiBadge-badge": {
-            fontSize: "0.65rem",
-            minWidth: 16,
-            height: 16,
-            px: 0.5
-          }
-        }}
-      >
-        <Box sx={{ width: 8, height: 8 }} />
-      </Badge>
-    );
-  };
-
-  const renderMessageSnippet = (match) => {
+  const renderMessageSnippet = useCallback((match) => {
     const text = match?.matchMessage?.message || match?.matchMessage?.caption || "[Sin texto]";
     return text?.length > 80 ? `${text.slice(0, 80)}…` : text;
-  };
+  }, []);
 
   const displayConversations =
     cacheSearchActive && searchConversations?.length
@@ -194,49 +130,13 @@ export default function ConversationList({ onSelect, onMessageSelect }) {
           borderColor: "divider"
         }}
       >
-        <Box display="flex" alignItems="center" gap={1}>
-          <OutlinedInput
-            fullWidth
-            size="small"
-            placeholder="Buscar conversación..."
-            value={localSearch}
-            onChange={(e) => setLocalSearch(e.target.value)}
-            onKeyDown={handleKeyDown}
-            startAdornment={
-              <InputAdornment position="start">
-                <SearchIcon fontSize="small" sx={{ color: "action.active" }} />
-              </InputAdornment>
-            }
-          />
-          <Button 
-            variant="contained" 
-            size="small" 
-            onClick={handleSearchClick}
-            sx={{ minWidth: 'auto', px: 2 }}
-            disabled={loading}
-          >
-            {loading ? <CircularProgress size={20} color="inherit" /> : "Buscar"}
-          </Button>
-          <IconButton
-            onClick={onRefreshConversations}
-            title="Refrescar lista"
-            size="small"
-            sx={{ flexShrink: 0, color: "action.active" }}
-            disabled={loading}
-          >
-            <RefreshIcon fontSize="small" />
-          </IconButton>
-          <Tooltip title="Recargar todo desde cero (limpia caché local)" arrow>
-            <IconButton
-              onClick={onForceRefresh}
-              size="small"
-              sx={{ flexShrink: 0, color: "warning.main" }}
-              disabled={loading}
-            >
-              <CachedIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-        </Box>
+        <ConversationSearchBox
+          initialSearch={search}
+          onSearchSubmit={handleSearchSubmit}
+          loading={loading}
+          onRefreshConversations={onRefreshConversations}
+          onForceRefresh={onForceRefresh}
+        />
 
         {/* Búsqueda en mensajes deshabilitada temporalmente
         {localSearch && (
@@ -331,70 +231,17 @@ export default function ConversationList({ onSelect, onMessageSelect }) {
             </Box>
         )}
         <List dense sx={{ overflowY: "auto" }}>
-          {displayConversations.map((c) => {
-            const estadoCliente = getEstadoCliente(c);
-            const estadoConfig = ESTADO_CLIENTE_COLORS[estadoCliente];
-            
-            return (
-            <Tooltip 
+          {displayConversations.map((c) => (
+            <ConversationListItem
               key={c.ultimoMensaje?.id_conversacion}
-              title={estadoConfig?.label || ''}
-              placement="left"
-              arrow
-            >
-              <ListItemButton
-                selected={c.ultimoMensaje?.id_conversacion === selectedId}
-                onClick={() => {
-                  onSelectConversation(c);
-                  onSelect?.(c);
-                }}
-                sx={{
-                  borderLeft: `4px solid ${estadoConfig?.border || 'transparent'}`,
-                  '&:hover': {
-                    bgcolor: estadoConfig?.bg || 'action.hover',
-                  },
-                  '&.Mui-selected': {
-                    borderLeft: `4px solid ${estadoConfig?.border || 'transparent'}`,
-                  }
-                }}
-              >
-                <ListItemAvatar>
-                  <Avatar>
-                    {getNombreCliente(c)?.charAt(0).toUpperCase()}
-                  </Avatar>
-                </ListItemAvatar>
-              <ListItemText
-                primary={
-                  <Box display="flex" alignItems="center" justifyContent="space-between">
-                    <Typography fontWeight={600} noWrap>
-                      {getNombreCliente(c)}
-                    </Typography>
-                    <Box display="flex" alignItems="center" gap={1}>
-                      {filters?.showInsight && renderInsightBadge(c.insightCount)}
-                      <Typography
-                        variant="caption"
-                        color="text.secondary"
-                        sx={{ minWidth: 45, textAlign: "right" }}
-                      >
-                        {formatFecha(c.ultimoMensaje?.fecha)}
-                      </Typography>
-                    </Box>
-                  </Box>
-                }
-                secondary={
-                  <Typography variant="body2" color="text.secondary" noWrap>
-                    {c.ultimoMensaje?.type === "text" || c.ultimoMensaje?.type === "text_extended"
-                      ? c.ultimoMensaje?.message || ""
-                      : `${
-                          c.ultimoMensaje?.type.charAt(0).toUpperCase() + c.ultimoMensaje?.type.slice(1)
-                        }`}
-                  </Typography>
-                }
-              />
-              </ListItemButton>
-            </Tooltip>
-          );
-          })}
+              conversation={c}
+              isSelected={selectedId}
+              onSelect={onSelect}
+              onSelectConversation={onSelectConversation}
+              showInsight={filters?.showInsight}
+              insightCount={c.insightCount}
+            />
+          ))}
           {!hasConversationResults && !hasMessageResults && (
             <Box p={2}>
               <Typography variant="body2" color="text.secondary">

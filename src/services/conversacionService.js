@@ -48,9 +48,10 @@ export async function fetchRecentMessages({ sinceUpdatedAt, limit = 1000 } = {})
   return data;
 }
 
-export async function fetchRecentConversations({ sinceUpdatedAt, limit = 1000 } = {}) {
-  const params = { limit };
+export async function fetchRecentConversations({ sinceUpdatedAt, limit = 0 } = {}) {
+  const params = {};
   if (sinceUpdatedAt) params.sinceUpdatedAt = sinceUpdatedAt;
+  if (limit > 0) params.limit = limit;
   const { data } = await api.get("/conversaciones/sync/conversations", { params });
   return data;
 }

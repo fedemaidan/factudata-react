@@ -125,13 +125,17 @@ const filterConversations = (conversations = [], filters = {}) => {
   });
 };
 
-export const getCachedConversations = async ({ filters = {}, limit = 30 } = {}) => {
+export const getCachedConversations = async ({ filters = {}, limit } = {}) => {
   const all = await db.conversations
     .orderBy("updatedAt")
     .reverse()
     .toArray();
   const filtered = filterConversations(all, filters);
-  return filtered.slice(0, limit);
+  const safeLimit = Number(limit);
+  if (Number.isFinite(safeLimit) && safeLimit > 0) {
+    return filtered.slice(0, safeLimit);
+  }
+  return filtered;
 };
 
 export const cacheConversations = async (conversations = []) => {

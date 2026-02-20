@@ -28,7 +28,6 @@ export function useConversationsFetch({
         } else {
           let conversations = await getCachedConversations({
             filters: currentFilters,
-            limit: 200,
           });
           if (!conversations.length) {
             const totalCount = await countCachedConversations();
@@ -38,7 +37,6 @@ export function useConversationsFetch({
               await cacheConversations(items).catch(() => {});
               conversations = await getCachedConversations({
                 filters: currentFilters,
-                limit: 200,
               });
             }
           }

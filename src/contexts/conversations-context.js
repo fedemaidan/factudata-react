@@ -380,7 +380,6 @@ export function ConversationsProvider({ children }) {
           await cacheConversations(conversationItems).catch(() => {});
           const refreshedConversations = await getCachedConversations({
             filters,
-            limit: 200,
           });
           if (!cancelled) {
             dispatch({ type: ACTIONS.SET_CONVERSATIONS, payload: refreshedConversations });
@@ -647,7 +646,7 @@ export function ConversationsProvider({ children }) {
         { items: convSyncItems = [] },
       ] = await Promise.all([
         fetchRecentMessages(messageParams),
-        fetchRecentConversations({ limit: 2000 }),
+        fetchRecentConversations(),
       ]);
 
       if (messageItems.length) {
@@ -661,7 +660,6 @@ export function ConversationsProvider({ children }) {
 
       const itemsToShow = await getCachedConversations({
         filters,
-        limit: 200,
       });
 
       dispatch({ type: ACTIONS.SET_CONVERSATIONS, payload: itemsToShow });

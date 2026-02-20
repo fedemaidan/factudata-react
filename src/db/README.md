@@ -30,8 +30,8 @@ El DB `factudata-conversaciones` usa estas tablas:
 
 - `cacheConversations(conversations)` / `cacheConversation(conversation)`
   - Normaliza cada conversación (priorizando `updatedAt` del backend) y la guarda para que el sidebar siempre use datos locales.
-- `getCachedConversations({ filters, limit = 30 })`
-  - Lee conversaciones ordenadas por `updatedAt`, aplica los filtros locales (`estadoCliente`, `empresaId`, `tipoContacto`, rangos de fecha/creación, insights, etc.) y las entrega al provider sin recurrir al backend.
+- `getCachedConversations({ filters, limit })`
+  - Lee conversaciones ordenadas por `updatedAt`, aplica los filtros locales (`estadoCliente`, `empresaId`, `tipoContacto`, rangos de fecha/creación, insights, etc.) y las entrega al provider sin recurrir al backend. Si no se pasa `limit`, devuelve todas las conversaciones filtradas.
 - `getCachedMessagesForConversation(conversationId, { limit })`
   - Recupera mensajes recientes de una conversación. Si hay menos de 1.000 resultados, el hook pide al backend los faltantes (dentro de los últimos 14 días) y los incorpora con `cacheMessages`.
 - `cacheMessages(messages, options)`
