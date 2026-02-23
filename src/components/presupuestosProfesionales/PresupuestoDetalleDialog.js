@@ -20,6 +20,7 @@ import {
 } from '@mui/material';
 import { ESTADO_LABEL, ESTADO_COLOR, formatCurrency, formatDate, formatPct } from './constants';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
+import PostAddIcon from '@mui/icons-material/PostAdd';
 
 const PresupuestoDetalleDialog = ({
   open,
@@ -30,6 +31,7 @@ const PresupuestoDetalleDialog = ({
   onTabChange,
   onExportPDF,
   exportingPdf,
+  onAgregarAnexo,
 }) => (
   <Dialog open={open} onClose={onClose} fullWidth maxWidth="lg">
     <DialogTitle>
@@ -229,60 +231,111 @@ const PresupuestoDetalleDialog = ({
 
           {tab === 3 && (
             <Box>
+              {onAgregarAnexo && (
+                <Stack direction="row" justifyContent="flex-end" mb={2}>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    startIcon={<PostAddIcon />}
+                    onClick={() => onAgregarAnexo(data)}
+                  >
+                    Agregar anexo
+                  </Button>
+                </Stack>
+              )}
               {(data.anexos || []).length === 0 ? (
-                <Typography color="text.secondary">No hay anexos.</Typography>
+                <Typography color="text.secondary">
+                  No hay anexos. Usá el botón de arriba para agregar uno.
+                </Typography>
               ) : (
-                (data.anexos || []).map((ax, i) => (
-                  <Paper key={i} variant="outlined" sx={{ p: 2, mb: 1.5 }}>
-                    <Stack direction="row" spacing={2} alignItems="center" mb={1}>
-                      <Chip label={`Anexo #${ax.numero}`} size="small" color="secondary" />
-                      <Chip
-                        label={ax.tipo}
-                        size="small"
-                        variant="outlined"
-                        color={
-                          ax.tipo === 'adicion'
-                            ? 'success'
-                            : ax.tipo === 'deduccion'
-                            ? 'error'
-                            : 'info'
-                        }
-                      />
-                      <Typography variant="body2">{formatDate(ax.fecha)}</Typography>
-                      <Box sx={{ flexGrow: 1 }} />
-                      <Typography variant="body2" fontWeight={600}>
-                        Diferencia: {formatCurrency(ax.monto_diferencia, data.moneda)}
-                      </Typography>
+                <>
+                  <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
+                    <Typography variant="subtitle2" gutterBottom>Resumen contractual</Typography>
+                    <Stack direction="row" spacing={4} flexWrap="wrap">
+                      <Box>
+                        <Typography variant="caption" color="text.secondary">Total original</Typography>
+                        <Typography fontWeight={600}>
+                          {formatCurrency(data.total_neto, data.moneda)}
+                        </Typography>
+                      </Box>
+                      <Box>
+                        <Typography variant="caption" color="text.secondary">Impacto anexos</Typography>
+                        <Typography fontWeight={600}>
+                          {formatCurrency(
+                            (data.anexos || []).reduce((s, a) => s + (Number(a.monto_diferencia) || 0), 0),
+                            data.moneda
+                          )}
+                        </Typography>
+                      </Box>
+                      <Box>
+                        <Typography variant="caption" color="text.secondary">Total actualizado</Typography>
+                        <Typography fontWeight={700} color="primary">
+                          {formatCurrency(
+                            (data.total_neto || 0) +
+                            (data.anexos || []).reduce((s, a) => s + (Number(a.monto_diferencia) || 0), 0),
+                            data.moneda
+                          )}
+                        </Typography>
+                      </Box>
                     </Stack>
-                    <Typography variant="body2" gutterBottom>
-                      <strong>Motivo:</strong> {ax.motivo}
-                    </Typography>
-                    {(ax.rubros_afectados || []).length > 0 && (
-                      <Table size="small">
-                        <TableHead>
-                          <TableRow>
-                            <TableCell>Rubro</TableCell>
-                            <TableCell align="right">Monto anterior</TableCell>
-                            <TableCell align="right">Monto nuevo</TableCell>
-                          </TableRow>
-                        </TableHead>
-                        <TableBody>
-                          {ax.rubros_afectados.map((ra, j) => (
-                            <TableRow key={j}>
-                              <TableCell>{ra.rubro_nombre}</TableCell>
-                              <TableCell align="right">
-                                {formatCurrency(ra.monto_anterior, data.moneda)}
-                              </TableCell>
-                              <TableCell align="right">
-                                {formatCurrency(ra.monto_nuevo, data.moneda)}
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    )}
                   </Paper>
-                ))
+                  {(data.anexos || []).map((ax, i) => (
+                    <Paper key={i} variant="outlined" sx={{ p: 2, mb: 1.5 }}>
+                      <Stack direction="row" spacing={2} alignItems="center" mb={1}>
+                        <Chip label={`Anexo #${ax.numero}`} size="small" color="secondary" />
+                        <Chip
+                          label={ax.tipo}
+                          size="small"
+                          variant="outlined"
+                          color={
+                            ax.tipo === 'adicion'
+                              ? 'success'
+                              : ax.tipo === 'deduccion'
+                              ? 'error'
+                              : 'info'
+                          }
+                        />
+                        <Typography variant="body2">{formatDate(ax.fecha)}</Typography>
+                        <Box sx={{ flexGrow: 1 }} />
+                        <Typography variant="body2" fontWeight={600}>
+                          Impacto: {formatCurrency(ax.monto_diferencia, data.moneda)}
+                        </Typography>
+                      </Stack>
+                      <Typography variant="body2" gutterBottom>
+                        <strong>Motivo:</strong> {ax.motivo}
+                      </Typography>
+                      {ax.detalle && (
+                        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                          {ax.detalle}
+                        </Typography>
+                      )}
+                      {(ax.rubros_afectados || []).length > 0 && (
+                        <Table size="small" sx={{ mt: 1 }}>
+                          <TableHead>
+                            <TableRow>
+                              <TableCell>Rubro</TableCell>
+                              <TableCell align="right">Monto anterior</TableCell>
+                              <TableCell align="right">Monto nuevo</TableCell>
+                            </TableRow>
+                          </TableHead>
+                          <TableBody>
+                            {ax.rubros_afectados.map((ra, j) => (
+                              <TableRow key={j}>
+                                <TableCell>{ra.rubro_nombre}</TableCell>
+                                <TableCell align="right">
+                                  {formatCurrency(ra.monto_anterior, data.moneda)}
+                                </TableCell>
+                                <TableCell align="right">
+                                  {formatCurrency(ra.monto_nuevo, data.moneda)}
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      )}
+                    </Paper>
+                  ))}
+                </>
               )}
             </Box>
           )}

@@ -187,6 +187,71 @@ const formatFecha = (value) => {
   return date.toLocaleDateString('es-AR', { day: '2-digit', month: 'long', year: 'numeric' });
 };
 
+const formatFechaAnexo = (value) => {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
+  return date.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+};
+
+const TIPO_ANEXO_LABEL = {
+  adicion: 'Adición',
+  deduccion: 'Deducción',
+  modificacion: 'Modificación',
+};
+
+const renderAnexos = (anexos = [], currency) => {
+  if (!anexos.length) return null;
+  const sorted = [...anexos].sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
+  return (
+    <View style={{ marginTop: 10 }} wrap>
+      <Text style={styles.sectionTitle}>ANEXOS</Text>
+      <View style={[styles.tableHeader, { marginTop: 4 }]}>
+        <Text style={[styles.tableCellDesc, { flex: 1.2 }]}>Fecha</Text>
+        <Text style={[styles.tableCellDesc, { flex: 1.2 }]}>Tipo</Text>
+        <Text style={styles.tableCellDesc}>Motivo</Text>
+        <Text style={[styles.tableCellRight, { flex: 1 }]}>Impacto</Text>
+      </View>
+      {sorted.map((ax, i) => (
+        <View style={styles.tableRow} key={i}>
+          <Text style={[styles.tableCellDesc, { flex: 1.2 }]}>
+            {formatFechaAnexo(ax.fecha)}
+          </Text>
+          <Text style={[styles.tableCellDesc, { flex: 1.2 }]}>
+            {TIPO_ANEXO_LABEL[ax.tipo] || ax.tipo}
+          </Text>
+          <Text style={[styles.tableCellDesc, { flex: 2 }]}>{ax.motivo || '—'}</Text>
+          <Text style={[styles.tableCellRight, { flex: 1 }]}>
+            {formatCurrency(ax.monto_diferencia, currency)}
+          </Text>
+        </View>
+      ))}
+    </View>
+  );
+};
+
+const renderResumenContractual = (totalOriginal, impactoAnexos, totalActualizado, currency) => (
+  <View style={[styles.notesBox, { marginTop: 10 }]} wrap>
+    <Text style={styles.sectionTitle}>RESUMEN CONTRACTUAL</Text>
+    <View style={[styles.tableRow, { flexDirection: 'row', justifyContent: 'space-between' }]}>
+      <Text style={styles.tableCellDesc}>Total original</Text>
+      <Text style={styles.tableCellRight}>{formatCurrency(totalOriginal, currency)}</Text>
+    </View>
+    <View style={[styles.tableRow, { flexDirection: 'row', justifyContent: 'space-between' }]}>
+      <Text style={styles.tableCellDesc}>Impacto anexos</Text>
+      <Text style={styles.tableCellRight}>{formatCurrency(impactoAnexos, currency)}</Text>
+    </View>
+    <View style={[styles.tableRow, { backgroundColor: '#0a4791', flexDirection: 'row', justifyContent: 'space-between' }]}>
+      <Text style={[styles.tableCellDesc, { color: '#fff', fontWeight: 'bold' }]}>
+        Total actualizado (incluye anexos)
+      </Text>
+      <Text style={[styles.tableCellRight, { color: '#fff', fontWeight: 'bold' }]}>
+        {formatCurrency(totalActualizado, currency)}
+      </Text>
+    </View>
+  </View>
+);
+
 export const PresupuestoPdfDocument = ({ presupuesto, empresa }) => {
   const rubros = presupuesto?.rubros || [];
   const totalNeto =
@@ -195,6 +260,10 @@ export const PresupuestoPdfDocument = ({ presupuesto, empresa }) => {
   const currency = presupuesto?.moneda || 'ARS';
   const surfaceLines = buildSurfaceLines(presupuesto?.analisis_superficies, totalNeto, currency);
   const notes = presupuesto?.notas_texto?.trim() || '';
+  const anexos = presupuesto?.anexos || [];
+  const impactoAnexos = anexos.reduce((s, a) => s + (Number(a.monto_diferencia) || 0), 0);
+  const totalActualizado = totalNeto + impactoAnexos;
+  const tieneAnexos = anexos.length > 0;
 
   return (
     <Document>
@@ -225,6 +294,8 @@ export const PresupuestoPdfDocument = ({ presupuesto, empresa }) => {
           </View>
           {renderRubros(rubros, currency, totalNeto)}
         </View>
+        {tieneAnexos && renderAnexos(anexos, currency)}
+        {tieneAnexos && renderResumenContractual(totalNeto, impactoAnexos, totalActualizado, currency)}
         {(notes || surfaceLines.length > 0) && (
           <View style={styles.notesBox} wrap>
             {notes ? (

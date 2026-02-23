@@ -157,7 +157,14 @@ const PresupuestosProfesionales = () => {
   // ── Presupuestos: agregar anexo ──
   const [openAnexo, setOpenAnexo] = useState(false);
   const [anexoTarget, setAnexoTarget] = useState(null);
-  const [anexoForm, setAnexoForm] = useState({ motivo: '', tipo: 'adicion', rubros_cambios: [] });
+  const [anexoForm, setAnexoForm] = useState({
+    motivo: '',
+    tipo: 'adicion',
+    monto: '',
+    fecha: new Date().toISOString().slice(0, 10),
+    detalle: '',
+    impacto: 'positivo',
+  });
 
   // ── Plantillas: lista ──
   const [plantillasLoading, setPlantillasLoading] = useState(false);
@@ -477,7 +484,14 @@ const PresupuestosProfesionales = () => {
 
   const handleOpenAnexo = (row) => {
     setAnexoTarget(row);
-    setAnexoForm({ motivo: '', tipo: 'adicion', rubros_cambios: [] });
+    setAnexoForm({
+      motivo: '',
+      tipo: 'adicion',
+      monto: '',
+      fecha: new Date().toISOString().slice(0, 10),
+      detalle: '',
+      impacto: 'positivo',
+    });
     setOpenAnexo(true);
   };
 
@@ -486,15 +500,28 @@ const PresupuestosProfesionales = () => {
       showAlert('El motivo es obligatorio', 'warning');
       return;
     }
+    const monto = Number(anexoForm.monto);
+    if (!Number.isFinite(monto) || monto <= 0) {
+      showAlert('El monto es obligatorio y debe ser mayor a 0', 'warning');
+      return;
+    }
     try {
       await PresupuestoProfesionalService.agregarAnexo(anexoTarget._id, {
-        motivo: anexoForm.motivo,
+        motivo: anexoForm.motivo.trim(),
         tipo: anexoForm.tipo,
-        rubros_cambios: anexoForm.rubros_cambios,
+        monto,
+        fecha: anexoForm.fecha || undefined,
+        detalle: anexoForm.detalle?.trim() || undefined,
+        impacto: anexoForm.tipo === 'modificacion' ? anexoForm.impacto : undefined,
       });
       showAlert('Anexo agregado correctamente');
       setOpenAnexo(false);
+      setAnexoTarget(null);
       fetchPresupuestos();
+      if (openDetalle && detalleData?._id === anexoTarget._id) {
+        const full = await PresupuestoProfesionalService.obtenerPorId(anexoTarget._id);
+        setDetalleData(full);
+      }
     } catch (err) {
       const msg = err?.response?.data?.error?.message || err?.response?.data?.message || err.message || 'Error al agregar anexo';
       showAlert(msg, 'error');
@@ -960,6 +987,23 @@ const PresupuestosProfesionales = () => {
                             <TableCell>{row.moneda}</TableCell>
                             <TableCell align="right">
                               {formatCurrency(row.total_neto, row.moneda)}
+                              {row.estado === 'aceptado' &&
+                                (row.anexos || []).length > 0 && (
+                                  <>
+                                    <br />
+                                    <Typography variant="caption" color="primary">
+                                      Actualizado:{' '}
+                                      {formatCurrency(
+                                        (row.total_neto || 0) +
+                                          (row.anexos || []).reduce(
+                                            (s, a) => s + (Number(a.monto_diferencia) || 0),
+                                            0
+                                          ),
+                                        row.moneda
+                                      )}
+                                    </Typography>
+                                  </>
+                                )}
                             </TableCell>
                             <TableCell>
                               <Chip
@@ -1010,13 +1054,11 @@ const PresupuestosProfesionales = () => {
                                     </IconButton>
                                   </Tooltip>
                                 )}
-                                {row.estado === 'aceptado' && (
-                                  <Tooltip title="Agregar anexo">
-                                    <IconButton size="small" onClick={() => handleOpenAnexo(row)}>
-                                      <PostAddIcon fontSize="small" />
-                                    </IconButton>
-                                  </Tooltip>
-                                )}
+                                <Tooltip title="Agregar anexo">
+                                  <IconButton size="small" onClick={() => handleOpenAnexo(row)}>
+                                    <PostAddIcon fontSize="small" />
+                                  </IconButton>
+                                </Tooltip>
                                 {row.estado === 'borrador' && (
                                   <Tooltip title="Eliminar">
                                     <IconButton
@@ -1270,6 +1312,7 @@ const PresupuestosProfesionales = () => {
         onTabChange={setDetalleTab}
         onExportPDF={handleExportPdfFromDetalle}
         exportingPdf={detallePdfExporting}
+        onAgregarAnexo={detalleData ? () => handleOpenAnexo(detalleData) : undefined}
       />
 
       <AgregarAnexoDialog
