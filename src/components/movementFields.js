@@ -175,7 +175,9 @@ const MovementFields = ({
               onChange={(e) => {
                 const nextValue = e.target.value;
                 formik.setFieldValue('dolar_referencia', nextValue);
-                const manual = Number(nextValue) > 0;
+                const initialValue = formik.initialValues?.dolar_referencia;
+                const hasChanged = String(nextValue ?? '') !== String(initialValue ?? '');
+                const manual = hasChanged ? Number(nextValue) > 0 : Boolean(formik.initialValues?.dolar_referencia_manual);
                 formik.setFieldValue('dolar_referencia_manual', manual);
               }}
               InputProps={campo.readonly ? { readOnly: true } : undefined}
