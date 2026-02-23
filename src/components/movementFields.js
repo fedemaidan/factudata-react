@@ -10,7 +10,8 @@ import {
   Box,
   Button,
   Paper,
-  Grid
+  Grid,
+  Chip
 } from '@mui/material';
 import { Alert } from '@mui/material';
 import ImpuestosEditor from './impuestosEditor';
@@ -161,6 +162,39 @@ const MovementFields = ({
   const renderCampo = (campo) => {
     const value = formik.values[campo.name] ?? (campo.type === 'boolean' ? false : '');
     if (['text', 'number', 'date'].includes(campo.type)) {
+      if (campo.name === 'dolar_referencia') {
+        const isManual = Boolean(formik.values.dolar_referencia_manual);
+        return (
+          <Box key={campo.name} sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+            <TextField
+              fullWidth
+              type={campo.type}
+              name={campo.name}
+              label={campo.label}
+              value={value}
+              onChange={(e) => {
+                const nextValue = e.target.value;
+                formik.setFieldValue('dolar_referencia', nextValue);
+                const manual = Number(nextValue) > 0;
+                formik.setFieldValue('dolar_referencia_manual', manual);
+              }}
+              InputProps={campo.readonly ? { readOnly: true } : undefined}
+              disabled={campo.readonly}
+              sx={isManual ? { backgroundColor: 'rgba(255, 193, 7, 0.08)' } : undefined}
+            />
+            {(isManual || Number(value) > 0) && (
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Chip
+                  size="small"
+                  label={isManual ? 'Manual' : 'Automático'}
+                  color={isManual ? 'warning' : 'default'}
+                  variant="outlined"
+                />
+              </Box>
+            )}
+          </Box>
+        );
+      }
       return (
         <TextField
           key={campo.name}

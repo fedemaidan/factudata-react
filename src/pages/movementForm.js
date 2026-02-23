@@ -322,7 +322,8 @@ const MovementFormPage = () => {
           etapa: data.etapa || '',
           obra: data.obra || '',
           cliente: data.cliente || '',
-          factura_cliente: typeof data.factura_cliente === 'boolean' ? data.factura_cliente : false
+          factura_cliente: typeof data.factura_cliente === 'boolean' ? data.factura_cliente : false,
+          dolar_referencia_manual: data.dolar_referencia_manual ?? false
         });
         await fetchMmList();
       }
@@ -499,6 +500,7 @@ const createdAtStr = (() => {
       empresa_facturacion: '',
       fecha_pago: '',
       dolar_referencia: '',
+      dolar_referencia_manual: false,
       subtotal_dolar: 0,
       total_dolar: 0,
       // <<< opcional: guardar "etapa" de la compra (string)
