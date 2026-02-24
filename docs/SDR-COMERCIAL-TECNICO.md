@@ -14,13 +14,15 @@
 | 1 | **Estados enum** | 12 estados incluyendo `meet_agendada`, `meet_realizada` | 10 estados. Meets son entidad separada |
 | 2 | **Campo `precalificacionBot`** | No existía | Nuevo enum en ContactoSDR |
 | 3 | **Campo `leadId`** | No existía | Referencia a Lead de Firestore para trazabilidad |
-| 4 | **Modelo ReunionSDR** | Sin lifecycle | `estado`: agendada/realizada/no_show/cancelada + `numero` auto-incremental |
+| 4 | **Modelo ReunionSDR** | Sin lifecycle | `estado`: agendada/realizada/no_show/cancelada + `numero` auto-incremental. Campo `notas` único (simplificado) |
 | 5 | **Modelo CadenciaSDR** | 1 acción por paso, delay en horas | Múltiples acciones por paso, variantes de template por rubro, delay en días |
 | 6 | **`calcularPrioridadScore`** | Sin factor bot ni reuniones | Agrega factores: precalificacionBot, reuniones. Quita meet_agendada/meet_realizada |
 | 7 | **HistorialSDR tipos** | Set reducido | Agrega: `bot_interaccion`, `whatsapp_respuesta`, `instagram_contacto`, `link_pago_enviado`, `presupuesto_enviado`, `negociacion_iniciada`, `contacto_enriquecido`, `reunion_*` |
 | 8 | **Puente Lead↔ContactoSDR** | No existía | Lógica de auto-creación desde bot + deduplicación por teléfono normalizado |
-| 9 | **Migración** | `meet` → `meet_agendada` | `meet` → `calificado` + crear ReunionSDR separada |
+| 9 | **Migración** | `meet` → `meet_agendada` | `meet` → `calificado` + crear ReunionSDR separada. Outbound: `precalificacionBot = null` |
 | 10 | **Constantes frontend** | Incluían meet_agendada/meet_realizada | Sin meets. Agrega PRECALIFICACION_BOT |
+| 11 | **Puntos de inserción bot** | No documentados | 6 puntos exactos donde el bot actualiza `precalificacionBot` progresivamente |
+| 12 | **Impacto reunión → estado** | No definido | Reunión NO cambia estado automáticamente. Prompts sugeridos al SDR |
 
 ---
 
@@ -190,9 +192,8 @@ const ReunionSDRSchema = new Schema({
     link: { type: String, default: null },         // URL de Zoom/Meet/lugar
     lugar: { type: String, default: null },        // Dirección física si aplica
 
-    // NUEVO: Notas separadas pre y post
-    notasPre: { type: String, default: '' },       // Qué preparar, qué preguntar
-    notasPost: { type: String, default: '' },      // Resultado, impresiones, next steps
+    // Notas (campo único, simplificado)
+    notas: { type: String, default: '' },          // Preparación, resultado, next steps — todo junto
 
     // NUEVO: Participantes
     participantes: [{
@@ -355,7 +356,54 @@ function calcularPrioridadScore(contacto, reuniones = []) {
 module.exports = { calcularPrioridadScore, PLANES_SORBY };
 ```
 
-### 1.5 Puente Lead (Firestore) ↔ ContactoSDR (MongoDB)
+### 1.5 Impacto de Reunión en Estado del Contacto
+
+La reunión es una entidad **independiente** del estado del contacto. Su resolución **NO cambia el estado automáticamente** — siempre es decisión del SDR.
+
+#### Reglas de negocio
+
+| Resultado reunión | Estado del contacto | Comportamiento |
+|---|---|---|
+| `realizada` | Se mantiene en `calificado` | Mostrar prompt: *"¿Querés mover a Cierre?"* (botón rápido, no obligatorio) |
+| `no_show` | Se mantiene donde estaba | Se puede reagendar. Al 2do no_show consecutivo → sugerir *"¿Revisar más adelante?"* |
+| `cancelada` | Se mantiene donde estaba | Se puede reagendar. Misma lógica que no_show |
+
+#### Implementación del prompt post-evaluación
+
+```javascript
+// En ModalEvaluarReunion.js — después de guardar el estado de la reunión:
+
+async function onEvaluarReunion(reunionId, resultado) {
+    await sdrService.actualizarReunion(reunionId, { estado: resultado });
+
+    if (resultado === 'realizada') {
+        // Prompt sugerido, NO automático
+        setPrompt({
+            show: true,
+            mensaje: '¿Querés mover este contacto a Cierre?',
+            accion: () => cambiarEstado(contacto._id, 'cierre')
+        });
+    }
+
+    if (resultado === 'no_show') {
+        // Contar no_shows consecutivos
+        const noShows = reuniones.filter(r => r.estado === 'no_show').length;
+        if (noShows >= 2) {
+            setPrompt({
+                show: true,
+                mensaje: `${noShows} no-shows seguidos. ¿Revisar más adelante?`,
+                accion: () => cambiarEstado(contacto._id, 'revisar_mas_adelante')
+            });
+        }
+    }
+}
+```
+
+> **Principio**: El sistema sugiere, el SDR decide. Nunca mover estado automáticamente por resultado de reunión.
+
+---
+
+### 1.6 Puente Lead (Firestore) ↔ ContactoSDR (MongoDB)
 
 ```javascript
 // backend/src/services/leadContactoBridge.js
@@ -634,7 +682,7 @@ async function enriquecerContactoDesdeImportacion(contactoId, datosNuevos) {
 }
 ```
 
-### 1.6 Backend — Endpoints nuevos/modificados
+### 1.7 Backend — Endpoints nuevos/modificados
 
 ```javascript
 // MODIFICAR: listarContactos
@@ -721,7 +769,7 @@ async function obtenerMetricasPeriodo(req, res) {
 }
 ```
 
-### 1.7 Nuevas rutas API (Fase 1)
+### 1.8 Nuevas rutas API (Fase 1)
 
 ```javascript
 // sdrRoutes.js — Agregar:
@@ -746,7 +794,7 @@ router.post('/webhook/nuevo-lead', sdrController.webhookNuevoLead);
 router.get('/contactos/siguiente', sdrController.obtenerSiguienteContacto);
 ```
 
-### 1.8 Frontend — Cambios
+### 1.9 Frontend — Cambios
 
 #### Nueva estructura de archivos
 
@@ -829,6 +877,99 @@ const ESTADOS_REUNION = {
     cancelada: { label: 'Cancelada', color: 'default', icon: '🚫' }
 };
 ```
+
+### 1.10 Actualización progresiva de `precalificacionBot` desde el Bot
+
+El campo `precalificacionBot` se actualiza **progresivamente** conforme el usuario avanza en la conversación con el bot. No es un valor que se asigna una vez — va evolucionando.
+
+#### Árbol de decisiones
+
+```
+Usuario escribe por WA
+    │
+    ▼
+flowInicioGeneral → ContactoSDR creado con precalificacionBot = 'sin_calificar'
+    │
+    ├─ Opción 1: "Ya tengo cuenta" → NO CAMBIA (usuario existente, no es lead)
+    │
+    ├─ Opción 2: "Probar gratis"
+    │   └─ flowOnboardingRol (elige rubro) → sigue 'sin_calificar'
+    │       └─ flowOnboardingConstructora (asistente GPT)
+    │           ├─ function crear_empresa  → ✅ 'calificado'
+    │           └─ function solicitar_reunion → ✅ 'quiere_meet'
+    │
+    ├─ Opción 3: "Saber más"
+    │   └─ flowOnboardingInfo (elige tema)
+    │       ├─ Temas 1-5: asistente GPT info → sigue 'sin_calificar'
+    │       │   └─ Si escala al asistente de Construcción → mismas reglas ↑
+    │       └─ Tema 6: "Hablar con humano" → ✅ 'quiere_meet'
+    │
+    ├─ Opción 4: "Hablar con humano" → ✅ 'quiere_meet'
+    │
+    └─ [No responde al menú] → ⏰ 'no_llego' (por cron/timeout)
+```
+
+#### Los 6 puntos de inserción
+
+| # | Archivo | Trigger | Valor | Datos extra |
+|---|---------|---------|-------|-------------|
+| 1 | `flowInicioGeneral.js` | Primer mensaje → crear ContactoSDR | `sin_calificar` | `{ interes: null }` |
+| 2 | `flowInicioGeneral.js` | Opción 4: "Hablar con humano" | `quiere_meet` | `{ interes: 'humano' }` |
+| 3 | `flowOnboardingConstructora.js` | Asistente GPT ejecuta `crear_empresa` | `calificado` | `{ rubro, cantidadObras }` |
+| 4 | `flowOnboardingConstructora.js` | Asistente GPT ejecuta `solicitar_reunion` | `quiere_meet` | `{ interes: 'reunion' }` |
+| 5 | `flowOnboardingInfo.js` | Opción 6 del sub-menú: "Hablar con humano" | `quiere_meet` | `{ interes: 'humano' }` |
+| 6 | **Cron job (nuevo)** | ContactoSDR con `sin_calificar` + sin actividad en 48hs | `no_llego` | — |
+
+#### Código del cron para `no_llego`
+
+```javascript
+// backend/src/jobs/botTimeoutJob.js
+const cron = require('node-cron');
+
+async function marcarNoLlego() {
+    const hace48hs = new Date(Date.now() - 48 * 60 * 60 * 1000);
+
+    const contactos = await ContactoSDR.find({
+        precalificacionBot: 'sin_calificar',
+        'datosBot.interaccionFecha': { $lte: hace48hs },
+        estado: 'nuevo' // Solo si no avanzaron por otro medio
+    });
+
+    for (const c of contactos) {
+        await ContactoSDR.findByIdAndUpdate(c._id, {
+            $set: { precalificacionBot: 'no_llego' }
+        });
+
+        await HistorialSDR.create({
+            contacto: c._id,
+            tipo: 'bot_interaccion',
+            descripcion: 'Bot: timeout 48hs sin completar recorrido → no_llego',
+            empresaId: c.empresaId,
+            realizadoPor: 'sistema',
+            realizadoPorNombre: 'Bot'
+        });
+    }
+
+    if (contactos.length > 0) {
+        console.log(`[botTimeoutJob] ${contactos.length} contactos marcados como no_llego`);
+    }
+}
+
+// Ejecutar cada 6 horas
+cron.schedule('0 */6 * * *', marcarNoLlego);
+
+module.exports = { marcarNoLlego };
+```
+
+#### Diferencia clave: `null` vs `sin_calificar` vs `no_llego`
+
+| Valor | Significado | Origen |
+|---|---|---|
+| `null` | Nunca interactuó con el bot | Contacto outbound (Notion/Excel/manual) |
+| `sin_calificar` | Interactuó con el bot pero no completó el recorrido | Bot: primer mensaje recibido |
+| `no_llego` | Interactuó pero abandonó (timeout 48hs) | Cron: botTimeoutJob |
+| `calificado` | Completó el recorrido del bot (creó empresa/dio datos) | Bot: function `crear_empresa` |
+| `quiere_meet` | Pidió hablar con un humano explícitamente | Bot: opción 4 / opción 6 / function `solicitar_reunion` |
 
 ---
 
@@ -1451,10 +1592,15 @@ async function migrar() {
                 numero: 1,
                 estado: 'realizada',       // Asumimos que si estaba en 'meet' es porque ocurrió
                 fecha: c.ultimaAccion || c.updatedAt || new Date(),
-                notasPost: 'Migrada desde estado meet',
+                notas: 'Migrada desde estado meet',
                 creadoPor: 'migracion'
             });
         }
+
+        // Outbound (importados de Notion/Excel): precalificacionBot queda null
+        // porque nunca pasaron por el bot. null ≠ sin_calificar:
+        //   null         → nunca interactuó con bot (outbound puro)
+        //   sin_calificar → interactuó con bot pero no completó el recorrido
 
         await ContactoSDR.findByIdAndUpdate(c._id, { $set: cambios });
     }
