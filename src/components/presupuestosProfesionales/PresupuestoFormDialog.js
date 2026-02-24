@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   Box,
   Button,
@@ -26,7 +26,125 @@ import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
 import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
-import { MONEDAS, formatCurrency, formatPct } from './constants';
+import {
+  MONEDAS,
+  formatCurrency,
+  formatPct,
+  TEXTO_NOTAS_DEFAULT,
+  formatNumberForInput,
+  parseNumberInput,
+  handleNumericKeyDown,
+} from './constants';
+import { sumaIncidenciasObjetivo } from './incidenciaHelpers';
+
+const COEF_PATIOS_DEFAULT = 0.5;
+
+const computeSupPonderada = (supCubierta, supPatios, coefPatios) => {
+  const a = Number(supCubierta) || 0;
+  const b = Number(supPatios) || 0;
+  const c = Number(coefPatios) >= 0 ? (Number(coefPatios) || COEF_PATIOS_DEFAULT) : COEF_PATIOS_DEFAULT;
+  if (a < 0 || b < 0) return null;
+  const result = a + b * c;
+  return Math.round(result * 100) / 100;
+};
+
+const AnalisisSuperficiesBlock = ({ form, onFormChange }) => {
+  const as = form.analisis_superficies || {};
+  const supCubierta = as.sup_cubierta_m2 ?? '';
+  const supPatios = as.sup_patios_m2 ?? '';
+  const coefPatios = as.coef_patios ?? COEF_PATIOS_DEFAULT;
+
+  const supPonderada = useMemo(() => {
+    const computed = computeSupPonderada(supCubierta, supPatios, coefPatios);
+    return computed !== null ? computed : '';
+  }, [supCubierta, supPatios, coefPatios]);
+
+  const handleChange = (field, value) => {
+    const next = { ...as, [field]: value };
+    const nextSupCubierta = field === 'sup_cubierta_m2' ? value : supCubierta;
+    const nextSupPatios = field === 'sup_patios_m2' ? value : supPatios;
+    const nextCoefPatios = field === 'coef_patios' ? value : coefPatios;
+    const nextPonderada = computeSupPonderada(nextSupCubierta, nextSupPatios, nextCoefPatios);
+    if (nextPonderada !== null) next.sup_ponderada_m2 = nextPonderada;
+    onFormChange({ ...form, analisis_superficies: next });
+  };
+
+  const handleBlur = (field, value) => {
+    const num = parseNumberInput(value) ?? Number(value);
+    if (value !== '' && num !== null && !Number.isNaN(num) && num < 0) {
+      handleChange(field, 0);
+    }
+  };
+
+  return (
+    <>
+      <Typography variant="subtitle2" color="text.secondary">
+        Análisis de superficies (opcional)
+      </Typography>
+      <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} flexWrap="wrap">
+        <TextField
+          size="small"
+          label="Sup. cubierta (m²)"
+          value={formatNumberForInput(supCubierta, 2)}
+          onChange={(e) => {
+            const raw = e.target.value;
+            if (raw === '') {
+              handleChange('sup_cubierta_m2', '');
+              return;
+            }
+            const v = parseNumberInput(raw);
+            if (v !== null) handleChange('sup_cubierta_m2', v);
+          }}
+          onBlur={(e) => handleBlur('sup_cubierta_m2', e.target.value)}
+          onKeyDown={handleNumericKeyDown}
+          inputProps={{ inputMode: 'decimal', autoComplete: 'off' }}
+        />
+        <TextField
+          size="small"
+          label="Sup. patios (m²)"
+          value={formatNumberForInput(supPatios, 2)}
+          onChange={(e) => {
+            const raw = e.target.value;
+            if (raw === '') {
+              handleChange('sup_patios_m2', '');
+              return;
+            }
+            const v = parseNumberInput(raw);
+            if (v !== null) handleChange('sup_patios_m2', v);
+          }}
+          onBlur={(e) => handleBlur('sup_patios_m2', e.target.value)}
+          onKeyDown={handleNumericKeyDown}
+          inputProps={{ inputMode: 'decimal', autoComplete: 'off' }}
+        />
+        <TextField
+          size="small"
+          label="Coef. patios"
+          value={formatNumberForInput(coefPatios, 2)}
+          onChange={(e) => {
+            const raw = e.target.value;
+            if (raw === '') {
+              handleChange('coef_patios', '');
+              return;
+            }
+            const v = parseNumberInput(raw);
+            if (v !== null) handleChange('coef_patios', v);
+          }}
+          onBlur={(e) => handleBlur('coef_patios', e.target.value)}
+          onKeyDown={handleNumericKeyDown}
+          helperText="Ponderación de superficie de patios"
+          inputProps={{ inputMode: 'decimal', autoComplete: 'off' }}
+        />
+        <TextField
+          size="small"
+          label="Sup. ponderada (m²)"
+          value={supPonderada !== '' ? formatNumberForInput(supPonderada, 2) : ''}
+          disabled
+          inputProps={{ readOnly: true }}
+        />
+      </Stack>
+    </>
+  );
+};
 
 const PresupuestoFormDialog = ({
   open,
@@ -41,6 +159,10 @@ const PresupuestoFormDialog = ({
   onSave,
   onProyectoChange,
   onAplicarPlantilla,
+  modoDistribuir = false,
+  onModoDistribuirChange,
+  onDistribuirPorTotal,
+  onUpdateIncidenciaObjetivo,
   addRubro,
   removeRubro,
   updateRubro,
@@ -49,7 +171,15 @@ const PresupuestoFormDialog = ({
   removeTarea,
   updateTarea,
   focusRef,
-}) => (
+}) => {
+  const hayIncidenciasObjetivo =
+    form.plantilla_id &&
+    form.rubros.some((r) => r.incidencia_objetivo_pct != null && !Number.isNaN(Number(r.incidencia_objetivo_pct)));
+  const sumaIncidencias = useMemo(() => sumaIncidenciasObjetivo(form.rubros), [form.rubros]);
+  const sumaInvalida = sumaIncidencias > 100;
+  const sumaBaja = sumaIncidencias < 100 && sumaIncidencias >= 0;
+
+  return (
   <Dialog open={open} onClose={onClose} fullWidth maxWidth="lg">
     <DialogTitle>{isEdit ? 'Editar Presupuesto' : 'Nuevo Presupuesto Profesional'}</DialogTitle>
     <DialogContent dividers>
@@ -120,15 +250,64 @@ const PresupuestoFormDialog = ({
           </Stack>
         )}
 
+        {hayIncidenciasObjetivo && (
+          <FormControlLabel
+            control={
+              <Switch
+                checked={modoDistribuir}
+                onChange={(e) => onModoDistribuirChange?.(e.target.checked)}
+              />
+            }
+            label="Distribuir por incidencias"
+          />
+        )}
+
+        {modoDistribuir && hayIncidenciasObjetivo && (
+          <Stack direction="row" spacing={2} alignItems="center">
+            <TextField
+              size="small"
+              label="Total neto"
+              value={formatNumberForInput(totalVivo, 2)}
+              onChange={(e) => {
+                const raw = e.target.value;
+                if (raw === '') {
+                  onDistribuirPorTotal?.('0');
+                  return;
+                }
+                const v = parseNumberInput(raw);
+                if (v !== null) onDistribuirPorTotal?.(String(v));
+              }}
+              onKeyDown={handleNumericKeyDown}
+              InputProps={{
+                startAdornment: <InputAdornment position="start">$</InputAdornment>,
+              }}
+              inputProps={{ inputMode: 'decimal', autoComplete: 'off' }}
+              sx={{ width: 180 }}
+            />
+            {sumaInvalida && (
+              <Typography variant="body2" color="error">
+                La suma de incidencias supera 100%
+              </Typography>
+            )}
+            {sumaBaja && !sumaInvalida && (
+              <Typography variant="body2" color="warning.main">
+                Falta {(100 - sumaIncidencias).toFixed(1)}% sin asignar
+              </Typography>
+            )}
+          </Stack>
+        )}
+
         <Box>
           <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1}>
             <Typography variant="subtitle1" fontWeight={600}>
               Rubros ({form.rubros.length})
             </Typography>
             <Stack direction="row" spacing={1} alignItems="center">
-              <Typography variant="body2" color="text.secondary">
-                Total: {formatCurrency(totalVivo, form.moneda)}
-              </Typography>
+              {!modoDistribuir && (
+                <Typography variant="body2" color="text.secondary">
+                  Total: {formatCurrency(totalVivo, form.moneda)}
+                </Typography>
+              )}
               <Button size="small" startIcon={<AddIcon />} onClick={addRubro}>
                 Agregar rubro
               </Button>
@@ -160,18 +339,66 @@ const PresupuestoFormDialog = ({
                     }
                   }}
                 />
+                {modoDistribuir && hayIncidenciasObjetivo && (
+                  <TextField
+                    size="small"
+                    label="Incidencia %"
+                    value={
+                      typeof rubro.incidencia_objetivo_pct === 'string' && /[.,]$/.test(rubro.incidencia_objetivo_pct)
+                        ? rubro.incidencia_objetivo_pct
+                        : formatNumberForInput(rubro.incidencia_objetivo_pct ?? '', 1)
+                    }
+                    onChange={(e) => {
+                      const raw = e.target.value;
+                      if (raw === '') {
+                        onUpdateIncidenciaObjetivo?.(ri, '');
+                        return;
+                      }
+                      if (/[.,]$/.test(raw)) {
+                        onUpdateIncidenciaObjetivo?.(ri, raw);
+                        return;
+                      }
+                      const v = parseNumberInput(raw);
+                      if (v !== null) onUpdateIncidenciaObjetivo?.(ri, v);
+                    }}
+                    onBlur={(e) => {
+                      const v = parseNumberInput(e.target.value);
+                      if (e.target.value !== '' && v !== null) {
+                        if (v < 0) onUpdateIncidenciaObjetivo?.(ri, 0);
+                        else if (v > 100) onUpdateIncidenciaObjetivo?.(ri, 100);
+                      }
+                    }}
+                    onKeyDown={handleNumericKeyDown}
+                    placeholder="%"
+                    sx={{ width: 90 }}
+                    inputProps={{ inputMode: 'decimal', autoComplete: 'off' }}
+                    error={
+                      rubro.incidencia_objetivo_pct != null &&
+                      (Number(rubro.incidencia_objetivo_pct) < 0 || Number(rubro.incidencia_objetivo_pct) > 100)
+                    }
+                  />
+                )}
                 <TextField
                   size="small"
                   label="Monto"
-                  type="number"
-                  value={rubro.monto}
-                  onChange={(e) => updateRubro(ri, 'monto', e.target.value)}
+                  value={formatNumberForInput(rubro.monto, 2)}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    if (raw === '') {
+                      updateRubro(ri, 'monto', 0);
+                      return;
+                    }
+                    const v = parseNumberInput(raw);
+                    if (v !== null) updateRubro(ri, 'monto', Math.round(v * 100) / 100);
+                  }}
+                  onKeyDown={handleNumericKeyDown}
                   sx={{ width: 150 }}
                   InputProps={{
                     startAdornment: (
                       <InputAdornment position="start">$</InputAdornment>
                     ),
                   }}
+                  inputProps={{ inputMode: 'decimal', autoComplete: 'off' }}
                 />
                 {totalVivo > 0 && (
                   <Typography variant="caption" color="text.secondary" sx={{ minWidth: 50 }}>
@@ -254,68 +481,28 @@ const PresupuestoFormDialog = ({
           maxRows={10}
           value={form.notas_texto}
           onChange={(e) => onFormChange({ ...form, notas_texto: e.target.value })}
-          helperText="Se pre-carga un texto sugerido por SorbyData al crear. Podés editarlo libremente."
+          helperText={
+            form.notas_texto === TEXTO_NOTAS_DEFAULT && !form.plantilla_id
+              ? 'Se pre-carga un texto sugerido por SorbyData al crear. Podés editarlo libremente.'
+              : ''
+          }
         />
 
-        <Typography variant="subtitle2" color="text.secondary">
-          Análisis de superficies (opcional)
-        </Typography>
-        <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
-          <TextField
-            size="small"
-            label="Sup. cubierta (m²)"
-            type="number"
-            value={form.analisis_superficies?.sup_cubierta_m2 || ''}
-            onChange={(e) =>
-              onFormChange({
-                ...form,
-                analisis_superficies: {
-                  ...form.analisis_superficies,
-                  sup_cubierta_m2: e.target.value,
-                },
-              })
-            }
-          />
-          <TextField
-            size="small"
-            label="Sup. patios (m²)"
-            type="number"
-            value={form.analisis_superficies?.sup_patios_m2 || ''}
-            onChange={(e) =>
-              onFormChange({
-                ...form,
-                analisis_superficies: {
-                  ...form.analisis_superficies,
-                  sup_patios_m2: e.target.value,
-                },
-              })
-            }
-          />
-          <TextField
-            size="small"
-            label="Sup. ponderada (m²)"
-            type="number"
-            value={form.analisis_superficies?.sup_ponderada_m2 || ''}
-            onChange={(e) =>
-              onFormChange({
-                ...form,
-                analisis_superficies: {
-                  ...form.analisis_superficies,
-                  sup_ponderada_m2: e.target.value,
-                },
-              })
-            }
-          />
-        </Stack>
+        <AnalisisSuperficiesBlock form={form} onFormChange={onFormChange} />
       </Stack>
     </DialogContent>
     <DialogActions>
       <Button onClick={onClose}>Cancelar</Button>
-      <Button variant="contained" onClick={onSave} disabled={saving}>
+      <Button
+        variant="contained"
+        onClick={onSave}
+        disabled={saving || (modoDistribuir && sumaInvalida)}
+      >
         {saving ? <CircularProgress size={20} /> : isEdit ? 'Guardar cambios' : 'Crear presupuesto'}
       </Button>
     </DialogActions>
   </Dialog>
-);
+  );
+};
 
 export default PresupuestoFormDialog;

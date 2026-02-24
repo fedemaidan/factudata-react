@@ -7,3 +7,4 @@ export { default as PlantillaFormDialog } from './PlantillaFormDialog';
 export { default as PlantillaDeleteDialog } from './PlantillaDeleteDialog';
 export { default as ImportarPlantillaDialog } from './ImportarPlantillaDialog';
 export * from './constants';
+export * from './incidenciaHelpers';

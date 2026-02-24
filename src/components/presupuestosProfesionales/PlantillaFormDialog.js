@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   Box,
   Button,
@@ -20,6 +20,9 @@ import {
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
 
+const sumaIncidenciasPlantilla = (rubros) =>
+  (rubros || []).reduce((s, r) => s + (Number(r.incidencia_pct_sugerida) || 0), 0);
+
 const PlantillaFormDialog = ({
   open,
   onClose,
@@ -31,11 +34,18 @@ const PlantillaFormDialog = ({
   addRubro,
   removeRubro,
   updateRubroNombre,
+  updateRubroIncidencia,
   addTarea,
   removeTarea,
   updateTarea,
   focusRef,
-}) => (
+}) => {
+  const sumaIncidencias = useMemo(() => sumaIncidenciasPlantilla(form.rubros), [form.rubros]);
+  const sumaInvalida = sumaIncidencias > 100;
+  const sumaOk = sumaIncidencias >= 99.5 && sumaIncidencias <= 100.5;
+  const sumaBaja = sumaIncidencias < 99.5 && sumaIncidencias >= 0;
+
+  return (
   <Dialog open={open} onClose={onClose} fullWidth maxWidth="md">
     <DialogTitle>{isEdit ? 'Editar Plantilla' : 'Nueva Plantilla de Rubros'}</DialogTitle>
     <DialogContent dividers>
@@ -66,6 +76,17 @@ const PlantillaFormDialog = ({
           />
         </Stack>
 
+        <TextField
+          label="Notas / Condiciones"
+          multiline
+          minRows={3}
+          maxRows={6}
+          value={form.notas || ''}
+          onChange={(e) => onFormChange({ ...form, notas: e.target.value })}
+          helperText="Incluí aclaraciones comerciales, forma de pago y validez."
+          fullWidth
+        />
+
         <Divider />
 
         <Stack direction="row" justifyContent="space-between" alignItems="center">
@@ -80,6 +101,17 @@ const PlantillaFormDialog = ({
         {form.rubros.length === 0 && (
           <Typography variant="body2" color="text.secondary">
             Agregá rubros y tareas para armar la plantilla.
+          </Typography>
+        )}
+
+        {form.rubros.length > 0 && (
+          <Typography
+            variant="body2"
+            sx={{
+              color: sumaInvalida ? 'error.main' : sumaOk ? 'success.main' : sumaBaja ? 'warning.main' : 'text.secondary',
+            }}
+          >
+            Suma incidencias: {sumaIncidencias.toFixed(1)}%
           </Typography>
         )}
 
@@ -101,6 +133,23 @@ const PlantillaFormDialog = ({
                     focusRef.current = null;
                   }
                 }}
+              />
+              <TextField
+                size="small"
+                label="Incidencia %"
+                type="number"
+                value={rubro.incidencia_pct_sugerida ?? ''}
+                onChange={(e) => updateRubroIncidencia(ri, e.target.value)}
+                onBlur={(e) => {
+                  const v = Number(e.target.value);
+                  if (e.target.value !== '' && !Number.isNaN(v)) {
+                    if (v < 0) updateRubroIncidencia(ri, 0);
+                    else if (v > 100) updateRubroIncidencia(ri, 100);
+                  }
+                }}
+                placeholder="Ej: 20"
+                sx={{ width: 100 }}
+                inputProps={{ min: 0, max: 100, step: 0.1 }}
               />
               <Tooltip title="Eliminar rubro">
                 <IconButton size="small" color="error" onClick={() => removeRubro(ri)}>
@@ -153,11 +202,12 @@ const PlantillaFormDialog = ({
     </DialogContent>
     <DialogActions>
       <Button onClick={onClose}>Cancelar</Button>
-      <Button variant="contained" onClick={onSave} disabled={saving}>
+      <Button variant="contained" onClick={onSave} disabled={saving || sumaInvalida}>
         {saving ? <CircularProgress size={20} /> : isEdit ? 'Guardar cambios' : 'Crear plantilla'}
       </Button>
     </DialogActions>
   </Dialog>
-);
+  );
+};
 
 export default PlantillaFormDialog;

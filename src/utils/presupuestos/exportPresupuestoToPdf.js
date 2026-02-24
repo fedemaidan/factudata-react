@@ -103,8 +103,9 @@ const buildSurfaceLines = (analisis, totalNeto, currency) => {
 
   const cubierta = Number(analisis.sup_cubierta_m2) || 0;
   const patios = Number(analisis.sup_patios_m2) || 0;
+  const coef = Number(analisis.coef_patios) >= 0 ? (Number(analisis.coef_patios) || 0.5) : 0.5;
   const ponderadaOriginal = Number(analisis.sup_ponderada_m2) || 0;
-  const ponderada = ponderadaOriginal || cubierta + patios * 0.5;
+  const ponderada = ponderadaOriginal || cubierta + patios * coef;
   const promedio = ponderada > 0 ? totalNeto / ponderada : null;
 
   const lines = [

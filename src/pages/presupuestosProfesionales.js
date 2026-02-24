@@ -57,6 +57,7 @@ import {
   PlantillaFormDialog,
   PlantillaDeleteDialog,
   ImportarPlantillaDialog,
+  distribuirMontosPorIncidencia,
   ESTADOS,
   ESTADO_LABEL,
   ESTADO_COLOR,
@@ -65,6 +66,7 @@ import {
   formatCurrency,
   formatDate,
   formatPct,
+  TEXTO_NOTAS_DEFAULT,
 } from 'src/components/presupuestosProfesionales';
 
 /* ================================================================
@@ -82,12 +84,13 @@ const emptyPresupuesto = {
   analisis_superficies: {
     sup_cubierta_m2: '',
     sup_patios_m2: '',
+    coef_patios: 0.5,
     sup_ponderada_m2: '',
   },
   plantilla_id: '',
 };
 
-const emptyRubro = { nombre: '', monto: 0, tareas: [] };
+const emptyRubro = { nombre: '', monto: 0, incidencia_objetivo_pct: null, tareas: [] };
 const emptyTarea = { descripcion: '' };
 
 /* ================================================================
@@ -99,6 +102,7 @@ const emptyPlantilla = {
   tipo: '',
   activa: true,
   rubros: [],
+  notas: '',
 };
 
 /* ================================================================
@@ -136,6 +140,7 @@ const PresupuestosProfesionales = () => {
   const [ppForm, setPpForm] = useState(emptyPresupuesto);
   const [ppEditId, setPpEditId] = useState(null);
   const [ppSaving, setPpSaving] = useState(false);
+  const [ppModoDistribuir, setPpModoDistribuir] = useState(false);
 
   // ── Presupuestos: eliminar ──
   const [openPPDelete, setOpenPPDelete] = useState(false);
@@ -182,24 +187,56 @@ const PresupuestosProfesionales = () => {
 
   // ── Plantillas: importar archivo ──
   const [openImport, setOpenImport] = useState(false);
-  const [importFile, setImportFile] = useState(null);
+  const [importFiles, setImportFiles] = useState([]);
   const [importLoading, setImportLoading] = useState(false);
   const [importName, setImportName] = useState('');
   const [importTipo, setImportTipo] = useState('');
   const [importPhase, setImportPhase] = useState('idle');
+  const isImageFile = (file) =>
+    file.type?.startsWith('image/') || /\.(png|jpe?g|webp)$/i.test(file.name);
+  const validateImportFiles = (files) => {
+    if (!files.length) return null;
+    const allImages = files.every(isImageFile);
+    const hasNonImages = files.some((file) => !isImageFile(file));
+    if (allImages && hasNonImages) return 'Subí solo imágenes o solo un PDF/Excel.';
+    if (allImages && files.length > 10) return 'Máximo 10 imágenes por importación.';
+    if (!allImages && files.length > 1) return 'Solo se permite un archivo PDF o Excel.';
+    if (!allImages) {
+      const file = files[0];
+      if (!/\.(xls|xlsx|pdf)$/i.test(file.name)) {
+        return 'Formato no soportado.';
+      }
+    }
+    return null;
+  };
+  const fileGroupError = useMemo(() => validateImportFiles(importFiles), [importFiles]);
+
+  const handleAddImportFiles = (files = []) => {
+    if (!files.length) return;
+    setImportFiles((prev) => [...prev, ...files]);
+  };
+
+  const handleRemoveImportFile = (index) => {
+    setImportFiles((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleMoveImportFile = (fromIndex, toIndex) => {
+    setImportFiles((prev) => {
+      if (fromIndex < 0 || toIndex < 0 || fromIndex >= prev.length || toIndex >= prev.length) {
+        return prev;
+      }
+      const next = [...prev];
+      const [moved] = next.splice(fromIndex, 1);
+      next.splice(toIndex, 0, moved);
+      return next;
+    });
+  };
 
   const resetImportDialog = () => {
-    setImportFile(null);
+    setImportFiles([]);
     setImportName('');
     setImportTipo('');
     setImportPhase('idle');
-  };
-
-  const handleImportFileChange = (file) => {
-    setImportFile(file);
-    setImportPhase('idle');
-    setImportName(file ? file.name.replace(/\.[^/.]+$/, '') : '');
-    setImportTipo('');
   };
 
   const handleCloseImportDialog = () => {
@@ -306,9 +343,14 @@ const PresupuestosProfesionales = () => {
      ================================================================ */
 
   const handleOpenPPCreate = () => {
-    setPpForm({ ...emptyPresupuesto, plantilla_id: '' });
+    setPpForm({
+      ...emptyPresupuesto,
+      plantilla_id: '',
+      notas_texto: TEXTO_NOTAS_DEFAULT,
+    });
     setPpIsEdit(false);
     setPpEditId(null);
+    setPpModoDistribuir(false);
     setOpenPPForm(true);
   };
 
@@ -324,14 +366,27 @@ const PresupuestosProfesionales = () => {
         rubros: (full.rubros || []).map((r) => ({
           nombre: r.nombre || '',
           monto: r.monto || 0,
+          incidencia_objetivo_pct:
+            r.incidencia_objetivo_pct != null && !Number.isNaN(Number(r.incidencia_objetivo_pct))
+              ? Number(r.incidencia_objetivo_pct)
+              : null,
           tareas: (r.tareas || []).map((t) => ({ descripcion: t.descripcion || '' })),
         })),
         notas_texto: full.notas_texto || '',
-        analisis_superficies: full.analisis_superficies || {
-          sup_cubierta_m2: '',
-          sup_patios_m2: '',
-          sup_ponderada_m2: '',
-        },
+        analisis_superficies: (() => {
+          const a = Number(full.analisis_superficies?.sup_cubierta_m2) || 0;
+          const b = Number(full.analisis_superficies?.sup_patios_m2) || 0;
+          const c = Number(full.analisis_superficies?.coef_patios) >= 0
+            ? (Number(full.analisis_superficies?.coef_patios) || 0.5)
+            : 0.5;
+          const computed = a >= 0 && b >= 0 ? Math.round((a + b * c) * 100) / 100 : '';
+          return {
+            sup_cubierta_m2: full.analisis_superficies?.sup_cubierta_m2 ?? '',
+            sup_patios_m2: full.analisis_superficies?.sup_patios_m2 ?? '',
+            coef_patios: full.analisis_superficies?.coef_patios ?? 0.5,
+            sup_ponderada_m2: computed,
+          };
+        })(),
         plantilla_id: '',
       });
       setPpIsEdit(true);
@@ -366,12 +421,29 @@ const PresupuestosProfesionales = () => {
           .map((r) => ({
             nombre: r.nombre.trim(),
             monto: Number(r.monto) || 0,
+            incidencia_objetivo_pct:
+              r.incidencia_objetivo_pct != null && !Number.isNaN(Number(r.incidencia_objetivo_pct))
+                ? Number(r.incidencia_objetivo_pct)
+                : null,
             tareas: (r.tareas || [])
               .filter((t) => t.descripcion?.trim())
               .map((t) => ({ descripcion: t.descripcion.trim() })),
           })),
         notas_texto: ppForm.notas_texto,
-        analisis_superficies: ppForm.analisis_superficies,
+        analisis_superficies: (() => {
+          const as = ppForm.analisis_superficies || {};
+          const a = Number(as.sup_cubierta_m2) || 0;
+          const b = Number(as.sup_patios_m2) || 0;
+          const c = Number(as.coef_patios) >= 0 ? (Number(as.coef_patios) || 0.5) : 0.5;
+          const supPonderada = a >= 0 && b >= 0 ? Math.round((a + b * c) * 100) / 100 : null;
+          return {
+            ...as,
+            sup_cubierta_m2: as.sup_cubierta_m2 !== '' && as.sup_cubierta_m2 != null ? Number(as.sup_cubierta_m2) : null,
+            sup_patios_m2: as.sup_patios_m2 !== '' && as.sup_patios_m2 != null ? Number(as.sup_patios_m2) : null,
+            coef_patios: c,
+            sup_ponderada_m2: supPonderada,
+          };
+        })(),
       };
 
 
@@ -566,7 +638,46 @@ const PresupuestosProfesionales = () => {
     setPpForm((f) => {
       const rubros = [...f.rubros];
       rubros[idx] = { ...rubros[idx], [field]: value };
+      if (field === 'monto') {
+        const total = rubros.reduce((s, r) => s + (Number(r.monto) || 0), 0);
+        if (total > 0) {
+          rubros[idx] = {
+            ...rubros[idx],
+            incidencia_objetivo_pct: ((Number(rubros[idx].monto) || 0) / total) * 100,
+          };
+        }
+      }
       return { ...f, rubros };
+    });
+  };
+
+  const ppDistribuirPorTotal = (totalStr) => {
+    const total = Number(totalStr) || 0;
+    setPpForm((f) => {
+      const rubrosDist = distribuirMontosPorIncidencia(total, f.rubros);
+      return { ...f, rubros: rubrosDist };
+    });
+  };
+
+  const ppUpdateIncidenciaObjetivo = (idx, value) => {
+    setPpForm((f) => {
+      const rubros = [...f.rubros];
+      let stored;
+      if (value === '' || value == null) {
+        stored = null;
+      } else if (typeof value === 'string' && /[.,]$/.test(value)) {
+        stored = value;
+      } else {
+        const parsed = Number(value);
+        stored = parsed != null && !Number.isNaN(parsed) ? parsed : null;
+      }
+      rubros[idx] = {
+        ...rubros[idx],
+        incidencia_objetivo_pct: stored,
+      };
+      const totalActual = f.rubros.reduce((s, r) => s + (Number(r.monto) || 0), 0);
+      const rubrosDist = distribuirMontosPorIncidencia(totalActual, rubros);
+      return { ...f, rubros: rubrosDist };
     });
   };
 
@@ -621,7 +732,16 @@ const PresupuestosProfesionales = () => {
 
   // Aplicar plantilla seleccionada al form
   const handleAplicarPlantilla = async (plantillaId) => {
-    if (!plantillaId) return;
+    if (!plantillaId) {
+      setPpForm((f) => ({
+        ...f,
+        plantilla_id: '',
+        rubros: [],
+        notas_texto: TEXTO_NOTAS_DEFAULT,
+      }));
+      setPpModoDistribuir(false);
+      return;
+    }
     try {
       const pl = await PresupuestoProfesionalService.obtenerPlantilla(plantillaId);
       if (pl && pl.rubros) {
@@ -631,8 +751,16 @@ const PresupuestosProfesionales = () => {
           rubros: pl.rubros.map((r) => ({
             nombre: r.nombre,
             monto: 0,
+            incidencia_objetivo_pct:
+              r.incidencia_pct_sugerida != null &&
+              !Number.isNaN(Number(r.incidencia_pct_sugerida)) &&
+              r.incidencia_pct_sugerida >= 0 &&
+              r.incidencia_pct_sugerida <= 100
+                ? Number(r.incidencia_pct_sugerida)
+                : null,
             tareas: (r.tareas || []).map((t) => ({ descripcion: t.descripcion })),
           })),
+          notas_texto: pl.notas?.trim() || '',
         }));
         showAlert('Rubros cargados desde plantilla', 'info');
       }
@@ -659,8 +787,12 @@ const PresupuestosProfesionales = () => {
         nombre: full.nombre || '',
         tipo: full.tipo || '',
         activa: full.activa !== false,
+        notas: full.notas || '',
         rubros: (full.rubros || []).map((r) => ({
           nombre: r.nombre || '',
+          incidencia_pct_sugerida: r.incidencia_pct_sugerida != null && !Number.isNaN(Number(r.incidencia_pct_sugerida))
+            ? Number(r.incidencia_pct_sugerida)
+            : null,
           tareas: (r.tareas || []).map((t) => ({ descripcion: t.descripcion || '' })),
         })),
       });
@@ -681,6 +813,11 @@ const PresupuestosProfesionales = () => {
       showAlert('El nombre es obligatorio', 'warning');
       return;
     }
+    const sumaInc = plForm.rubros.reduce((s, r) => s + (Number(r.incidencia_pct_sugerida) || 0), 0);
+    if (sumaInc > 100) {
+      showAlert('La suma de incidencias no puede superar 100%', 'warning');
+      return;
+    }
     setPlSaving(true);
     try {
       const payload = {
@@ -688,10 +825,14 @@ const PresupuestosProfesionales = () => {
         nombre: plForm.nombre,
         tipo: plForm.tipo || null,
         activa: plForm.activa,
+        notas: plForm.notas?.trim() || '',
         rubros: plForm.rubros
           .filter((r) => r.nombre?.trim())
           .map((r) => ({
             nombre: r.nombre.trim(),
+            incidencia_pct_sugerida: r.incidencia_pct_sugerida != null && !Number.isNaN(Number(r.incidencia_pct_sugerida))
+              ? Number(r.incidencia_pct_sugerida)
+              : null,
             tareas: (r.tareas || [])
               .filter((t) => t.descripcion?.trim())
               .map((t) => ({ descripcion: t.descripcion.trim() })),
@@ -736,7 +877,7 @@ const PresupuestosProfesionales = () => {
   const plAddRubro = () => {
     setPlForm((f) => {
       plFocusRef.current = { type: 'rubro', rubroIdx: f.rubros.length };
-      return { ...f, rubros: [...f.rubros, { nombre: '', tareas: [] }] };
+      return { ...f, rubros: [...f.rubros, { nombre: '', tareas: [], incidencia_pct_sugerida: null }] };
     });
   };
 
@@ -748,6 +889,18 @@ const PresupuestosProfesionales = () => {
     setPlForm((f) => {
       const rubros = [...f.rubros];
       rubros[idx] = { ...rubros[idx], nombre: value };
+      return { ...f, rubros };
+    });
+  };
+
+  const plUpdateRubroIncidencia = (idx, value) => {
+    setPlForm((f) => {
+      const rubros = [...f.rubros];
+      const parsed = value === '' || value == null ? null : Number(value);
+      rubros[idx] = {
+        ...rubros[idx],
+        incidencia_pct_sugerida: parsed != null && !Number.isNaN(parsed) ? parsed : null,
+      };
       return { ...f, rubros };
     });
   };
@@ -791,8 +944,12 @@ const PresupuestosProfesionales = () => {
      ================================================================ */
 
   const handleImportPlantilla = async () => {
-    if (!importFile) {
+    if (!importFiles.length) {
       showAlert('Seleccioná un archivo', 'warning');
+      return;
+    }
+    if (fileGroupError) {
+      showAlert(fileGroupError, 'warning');
       return;
     }
     setImportPhase('uploading');
@@ -800,24 +957,29 @@ const PresupuestosProfesionales = () => {
     try {
       setImportPhase('analizando');
       const result = await PresupuestoProfesionalService.uploadPlantilla(
-        importFile,
+        importFiles,
         empresaId,
         importName,
         importTipo
       );
       const rubrosParseados = (result.rubros || []).map((r) => ({
         nombre: r.nombre || '',
+        incidencia_pct_sugerida: r.incidencia_pct_sugerida != null && !Number.isNaN(Number(r.incidencia_pct_sugerida))
+          ? Number(r.incidencia_pct_sugerida)
+          : null,
         tareas: (r.tareas || []).map((t) => ({ descripcion: t.descripcion || '' })),
       }));
 
       // Abrir el form de plantilla con los rubros pre-cargados para que el usuario revise y guarde
-      const nombreSug = result.nombre_sugerido || importName || importFile.name.replace(/\.[^.]+$/, '') || 'Importada';
+      const sourceName = importFiles[0]?.name || '';
+      const nombreSug = result.nombre_sugerido || importName || sourceName.replace(/\.[^.]+$/, '') || 'Importada';
       const tipoSug = result.tipo_sugerido || importTipo || '';
       setPlForm({
         nombre: nombreSug,
         tipo: tipoSug,
         activa: true,
         rubros: rubrosParseados,
+        notas: result.notas || '',
       });
       setPlIsEdit(false);
       setPlEditId(null);
@@ -1246,6 +1408,13 @@ const PresupuestosProfesionales = () => {
                                     rubros: (pl.rubros || []).map((r) => ({
                                       nombre: r.nombre,
                                       monto: 0,
+                                      incidencia_objetivo_pct:
+                                        r.incidencia_pct_sugerida != null &&
+                                        !Number.isNaN(Number(r.incidencia_pct_sugerida)) &&
+                                        r.incidencia_pct_sugerida >= 0 &&
+                                        r.incidencia_pct_sugerida <= 100
+                                          ? Number(r.incidencia_pct_sugerida)
+                                          : null,
                                       tareas: (r.tareas || []).map((t) => ({
                                         descripcion: t.descripcion,
                                       })),
@@ -1302,6 +1471,10 @@ const PresupuestosProfesionales = () => {
         onSave={handleSavePP}
         onProyectoChange={handleProyectoChange}
         onAplicarPlantilla={handleAplicarPlantilla}
+        modoDistribuir={ppModoDistribuir}
+        onModoDistribuirChange={setPpModoDistribuir}
+        onDistribuirPorTotal={ppDistribuirPorTotal}
+        onUpdateIncidenciaObjetivo={ppUpdateIncidenciaObjetivo}
         addRubro={ppAddRubro}
         removeRubro={ppRemoveRubro}
         updateRubro={ppUpdateRubro}
@@ -1360,6 +1533,7 @@ const PresupuestosProfesionales = () => {
         addRubro={plAddRubro}
         removeRubro={plRemoveRubro}
         updateRubroNombre={plUpdateRubroNombre}
+        updateRubroIncidencia={plUpdateRubroIncidencia}
         addTarea={plAddTarea}
         removeTarea={plRemoveTarea}
         updateTarea={plUpdateTarea}
@@ -1376,8 +1550,11 @@ const PresupuestosProfesionales = () => {
       <ImportarPlantillaDialog
         open={openImport}
         onClose={handleCloseImportDialog}
-        importFile={importFile}
-        onImportFileChange={handleImportFileChange}
+        importFiles={importFiles}
+        onAddFiles={handleAddImportFiles}
+        onRemoveFile={handleRemoveImportFile}
+        onMoveFile={handleMoveImportFile}
+        fileGroupError={fileGroupError}
         onImport={handleImportPlantilla}
         loading={importLoading}
         nombre={importName}

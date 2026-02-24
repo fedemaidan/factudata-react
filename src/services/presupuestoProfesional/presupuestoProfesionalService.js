@@ -137,9 +137,13 @@ const PresupuestoProfesionalService = {
 
   /* ---------- Importar archivo → plantilla ---------- */
 
-  uploadPlantilla: async (file, empresaId, nombrePlantilla, tipoPlantilla) => {
+  uploadPlantilla: async (files, empresaId, nombrePlantilla, tipoPlantilla) => {
     const formData = new FormData();
-    formData.append('archivo', file);
+    if (Array.isArray(files)) {
+      files.forEach((file) => formData.append('archivos', file));
+    } else {
+      formData.append('archivo', files);
+    }
     formData.append('empresa_id', empresaId);
     if (nombrePlantilla) formData.append('nombre_plantilla', nombrePlantilla.trim());
     if (tipoPlantilla) formData.append('tipo_plantilla', tipoPlantilla.trim());
