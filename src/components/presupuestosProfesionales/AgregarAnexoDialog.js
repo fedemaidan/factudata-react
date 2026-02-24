@@ -83,8 +83,6 @@ const AgregarAnexoDialog = ({
               const parsed = parseMontoInput(e.target.value);
               onFormChange({ ...form, monto: parsed === '' ? '' : parsed });
             }}
-            placeholder="0"
-            helperText="Valor absoluto. El signo se aplica según el tipo."
           />
           {isModificacion && (
             <FormControl fullWidth>

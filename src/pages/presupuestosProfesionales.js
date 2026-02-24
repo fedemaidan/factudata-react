@@ -184,6 +184,28 @@ const PresupuestosProfesionales = () => {
   const [openImport, setOpenImport] = useState(false);
   const [importFile, setImportFile] = useState(null);
   const [importLoading, setImportLoading] = useState(false);
+  const [importName, setImportName] = useState('');
+  const [importTipo, setImportTipo] = useState('');
+  const [importPhase, setImportPhase] = useState('idle');
+
+  const resetImportDialog = () => {
+    setImportFile(null);
+    setImportName('');
+    setImportTipo('');
+    setImportPhase('idle');
+  };
+
+  const handleImportFileChange = (file) => {
+    setImportFile(file);
+    setImportPhase('idle');
+    setImportName(file ? file.name.replace(/\.[^/.]+$/, '') : '');
+    setImportTipo('');
+  };
+
+  const handleCloseImportDialog = () => {
+    setOpenImport(false);
+    resetImportDialog();
+  };
 
   // ── Rubros expandidos ──
   const [expandedRubros, setExpandedRubros] = useState(new Set());
@@ -352,9 +374,6 @@ const PresupuestosProfesionales = () => {
         analisis_superficies: ppForm.analisis_superficies,
       };
 
-      if (ppForm.plantilla_id) {
-        payload.plantilla_id = ppForm.plantilla_id;
-      }
 
       if (ppIsEdit) {
         await PresupuestoProfesionalService.actualizar(ppEditId, payload);
@@ -776,38 +795,41 @@ const PresupuestosProfesionales = () => {
       showAlert('Seleccioná un archivo', 'warning');
       return;
     }
+    setImportPhase('uploading');
     setImportLoading(true);
     try {
-      const result = await PresupuestoProfesionalService.uploadPlantilla(importFile, empresaId);
+      setImportPhase('analizando');
+      const result = await PresupuestoProfesionalService.uploadPlantilla(
+        importFile,
+        empresaId,
+        importName,
+        importTipo
+      );
       const rubrosParseados = (result.rubros || []).map((r) => ({
         nombre: r.nombre || '',
         tareas: (r.tareas || []).map((t) => ({ descripcion: t.descripcion || '' })),
       }));
 
       // Abrir el form de plantilla con los rubros pre-cargados para que el usuario revise y guarde
+      const nombreSug = result.nombre_sugerido || importName || importFile.name.replace(/\.[^.]+$/, '') || 'Importada';
+      const tipoSug = result.tipo_sugerido || importTipo || '';
       setPlForm({
-        nombre: importFile.name.replace(/\.[^.]+$/, '') || 'Importada',
-        tipo: '',
+        nombre: nombreSug,
+        tipo: tipoSug,
         activa: true,
         rubros: rubrosParseados,
       });
       setPlIsEdit(false);
       setPlEditId(null);
       setOpenImport(false);
-      setImportFile(null);
+      resetImportDialog();
       setOpenPlForm(true);
-
-      const confianza = result.confianza || 'N/A';
-      const tipo = result.tipo_extraccion || '';
-      showAlert(
-        `Se extrajeron ${rubrosParseados.length} rubros (${tipo}, confianza: ${confianza}). Revisá y guardá la plantilla.`,
-        'info'
-      );
     } catch (err) {
       const msg = err?.response?.data?.error?.message || err?.response?.data?.message || err.message || 'Error al importar';
       showAlert(msg, 'error');
     } finally {
       setImportLoading(false);
+      setImportPhase('idle');
     }
   };
 
@@ -1155,7 +1177,10 @@ const PresupuestosProfesionales = () => {
                   <Button
                     variant="outlined"
                     startIcon={<UploadFileIcon />}
-                    onClick={() => setOpenImport(true)}
+                    onClick={() => {
+                      resetImportDialog();
+                      setOpenImport(true);
+                    }}
                   >
                     Importar archivo
                   </Button>
@@ -1350,11 +1375,16 @@ const PresupuestosProfesionales = () => {
 
       <ImportarPlantillaDialog
         open={openImport}
-        onClose={() => { setOpenImport(false); setImportFile(null); }}
+        onClose={handleCloseImportDialog}
         importFile={importFile}
-        onImportFileChange={setImportFile}
+        onImportFileChange={handleImportFileChange}
         onImport={handleImportPlantilla}
         loading={importLoading}
+        nombre={importName}
+        tipo={importTipo}
+        onNombreChange={setImportName}
+        onTipoChange={setImportTipo}
+        status={importPhase}
       />
 
       {/* ── Snackbar global ── */}
