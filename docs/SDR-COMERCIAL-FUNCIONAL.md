@@ -21,6 +21,7 @@ Cambios respecto a la versión anterior, incorporando feedback de Fernando Falas
 | 6 | **Cadencia real de 14 días** | Cadencia genérica de 5 pasos en 3 días | 4 pasos en 14 días con templates reales de Fernando, variaciones por rubro, y secuencia progresiva donde cada mensaje referencia al anterior | Cadencia basada en el proceso real que Fernando ejecuta manualmente hoy |
 | 7 | **Status Sum = Historial** | El historial era un registro plano de acciones | Se aclara que el historial es el equivalente del "Status Sum" de Notion: un log acumulativo de todo lo que pasó con el contacto. Los estados de Notion NO son estados exclusivos sino entradas de log | Fernando explicó que en Notion los "status" son entradas de log, no estados mutuamente exclusivos |
 | 8 | **Presupuesto y Negociación** | Mapeaban a estado `cierre` directamente | Son acciones del historial (`presupuesto_enviado`, `negociacion_iniciada`). El estado `cierre` se activa cuando hay intención concreta post-meet | Son eventos que ocurren durante el proceso de cierre, no el estado en sí |
+| 9 | **Fuentes de leads y deduplicación** | No existía. Lead (Firestore) y ContactoSDR (MongoDB) eran dos mundos sin vínculo | Se define el puente entre ambos: el bot crea/actualiza ContactoSDR automáticamente; importaciones desde Notion deduplicat por teléfono; contactos fríos se enriquecen si después interactúan con el bot | Hoy un mismo contacto puede existir dos veces sin saberlo. El teléfono es la clave de deduplicación universal |
 
 ---
 
@@ -782,17 +783,173 @@ Todas las métricas se calculan desde el historial de acciones. No hay carga man
 
 ---
 
-## 7. Ingreso Automático de Leads
+## 7. Ingreso de Leads, Fuentes y Deduplicación
 
-Eliminar el paso manual de copiar teléfonos de la Sheet "Métricas Leads":
+### Contexto técnico actual
 
-- Los eventos `nuevo_contacto` de la base de datos de eventos (la tabla de Google Sheets "event") se procesan automáticamente
-- El lead se crea en el sistema con estado `nuevo` y se asigna al SDR de turno (o al pool)
-- Si hay datos del bot, se llenan automáticamente: `precalificacionBot`, rubro, datos recopilados
-- El SDR ve los nuevos en su bandeja sin hacer nada
-- Si el lead ya existe (mismo teléfono), no se duplica
+Hoy existen **dos modelos separados sin vínculo entre sí**:
 
-### Vista del lead recién ingresado
+| | **Lead** (Firestore) | **ContactoSDR** (MongoDB) |
+|---|---|---|
+| **Se crea cuando** | Un usuario escribe por WhatsApp o llega de la landing | Se importa manualmente desde Notion o Excel |
+| **Sync con Notion** | Crea la página en Notion automáticamente | Lee desde Notion |
+| **Propósito** | Tracking de marketing + onboarding del bot | Gestión comercial del SDR |
+| **Vínculo entre ellos** | ❌ No existe | ❌ No existe |
+
+Esto genera que un mismo contacto pueda existir como Lead en Firestore y como ContactoSDR en MongoDB sin que el sistema lo sepa. El objetivo es **unificar ambos mundos** usando el **teléfono como clave de deduplicación universal**.
+
+### Principio de diseño
+
+> **El ContactoSDR es la entidad maestra del módulo comercial.** Todo lead, venga de donde venga, debe terminar como un ContactoSDR. El Lead de Firestore sigue existiendo para marketing y atribución (Facebook, campañas), pero el SDR solo trabaja con ContactoSDR.
+
+### Escenario A: Nuevo contacto por Bot (inbound)
+
+Flujo actual:
+```
+Usuario escribe por WA → Lead (Firestore) → Página en Notion → [Fernando importa manualmente] → ContactoSDR
+```
+
+Flujo nuevo:
+```
+Usuario escribe por WA → Lead (Firestore)  → ContactoSDR se crea automáticamente
+                          (se mantiene)       con datos del bot
+                               │
+                               ▼
+                         Notion sigue sincronizando
+                         (para el período de transición)
+```
+
+**Comportamiento detallado:**
+
+1. El usuario escribe por WhatsApp → `flowInicioGeneral` se ejecuta
+2. Se crea/actualiza el **Lead en Firestore** (comportamiento actual — se mantiene para atribución FB, follow-up automático, etc.)
+3. **NUEVO**: Se busca un ContactoSDR por teléfono en MongoDB
+   - **Si no existe** → se crea un ContactoSDR con:
+     - `estado`: `nuevo`
+     - `origen`: `inbound`
+     - `precalificacionBot`: `sin_calificar` (se irá actualizando)
+     - `telefono`: del contexto de WhatsApp
+     - `nombre`: pushName del WhatsApp + últimos 4 dígitos
+     - `leadId`: referencia al Lead de Firestore (para trazabilidad)
+     - `notionPageId`: si la sincronización con Notion lo creó
+   - **Si ya existe** → se enriquece (ver Escenario C)
+4. A medida que el usuario avanza en el bot:
+   - Elige "Quiero probar" → `precalificacionBot` se actualiza a `calificado`, se registra `interes: probar`
+   - Elige "Quiero hablar con humano" → `precalificacionBot` = `quiere_meet`
+   - Da info de rubro/obras → se actualizan los campos en el ContactoSDR
+   - Cada interacción se registra en el **historial del ContactoSDR** como acción tipo `bot_interaccion`
+5. El SDR ve el contacto aparecer en su bandeja sin hacer nada
+
+**Mapeo bot → precalificacionBot:**
+
+| Evento del bot | → precalificacionBot | → Se registra en historial |
+|---|---|---|
+| Primer mensaje (menú) | `sin_calificar` | `bot_interaccion`: "Menú inicial mostrado" |
+| Elige opción 1 (usuario existente) | `sin_calificar` | `bot_interaccion`: "Seleccionó: usuario existente" |
+| Elige opción 2 (probar) + da datos | `calificado` | `bot_interaccion`: "Seleccionó: probar. Rubro: X, Obras: Y" |
+| Elige opción 3 (info) | `sin_calificar` | `bot_interaccion`: "Seleccionó: más info" |
+| Elige opción 4 (humano) | `quiere_meet` | `bot_interaccion`: "Pidió hablar con humano" |
+| No interactúa (solo envió mensaje) | `no_llego` | `bot_interaccion`: "Envió mensaje pero no respondió al menú" |
+
+### Escenario B: Importado de Notion o Excel (outbound / frío)
+
+Flujo actual:
+```
+Notion / Excel → Importación manual → ContactoSDR (MongoDB)
+```
+
+Flujo nuevo:
+```
+Notion / Excel → Importación → Deduplicar por teléfono → ContactoSDR
+                                      │
+                                      ├─ Si no existe → crear con origen: outbound
+                                      └─ Si ya existe → NO duplicar, avisar
+```
+
+**Comportamiento detallado:**
+
+1. El manager importa contactos desde Notion o Excel (funcionalidad existente)
+2. **NUEVO**: Antes de crear, se busca por teléfono normalizado en MongoDB
+   - **Si no existe** → se crea el ContactoSDR con `origen: outbound`
+   - **Si ya existe** → se muestra al usuario: "Este contacto ya existe como [nombre] en estado [estado]. ¿Actualizar datos?" → si acepta, se enriquecen los datos (empresa, cargo, etc.) sin perder el historial existente
+3. Los contactos importados de Notion **no** crean Lead en Firestore (no tienen interacción de marketing)
+4. Si más adelante ese contacto interactúa con el bot → Escenario C
+
+### Escenario C: Contacto frío que después interactúa con el Bot
+
+El contacto fue importado de Notion (outbound), el SDR lo llamó, no avanzó. Semanas después, el contacto ve un ad y escribe por WhatsApp.
+
+```
+                    Ya existe como ContactoSDR (outbound)
+                              │
+                              ▼
+Usuario escribe por WA → Lead (Firestore) se crea
+                              │
+                              ▼
+                    Buscar ContactoSDR por teléfono
+                              │
+                              ▼
+                    ✅ ENCONTRADO → Enriquecer, no duplicar
+```
+
+**Comportamiento detallado:**
+
+1. Se crea el Lead en Firestore normalmente (para atribución FB)
+2. Se busca ContactoSDR por teléfono → **se encuentra**
+3. Se enriquece el ContactoSDR existente:
+   - `precalificacionBot` se actualiza según progreso en bot
+   - `leadId` se vincula al Lead de Firestore (para atribución)
+   - Se agrega al historial: `bot_interaccion` con nota "Contacto existente (outbound) interactuó con el bot"
+   - Los datos del bot (rubro, interés) se agregan si el ContactoSDR no los tenía
+4. **Se notifica al SDR asignado**: "🔔 Tu contacto [nombre] acaba de interactuar con el bot. Origen original: outbound"
+5. El contacto **sube en prioridad** (la frescura se recalcula por la nueva interacción)
+6. El estado del contacto **no cambia automáticamente** — el SDR decide. Pero si estaba en `no_contacto` o `no_responde`, se sugiere volver a `nuevo` o `contactado`
+
+### Escenario D: Contacto del Bot que después se importa de Notion
+
+Fernando tiene un contacto en Notion que quiere importar, pero resulta que ese contacto ya escribió por WhatsApp y ya existe como ContactoSDR.
+
+```
+                    Ya existe como ContactoSDR (inbound, del bot)
+                              │
+                              ▼
+Importación desde Notion → Buscar por teléfono
+                              │
+                              ▼
+                    ✅ ENCONTRADO → Enriquecer, no duplicar
+```
+
+**Comportamiento detallado:**
+
+1. Al importar, se busca por teléfono normalizado → **se encuentra**
+2. Se muestra al usuario: "Este contacto ya existe como [nombre] (inbound, del bot). ¿Enriquecer con datos de Notion?"
+3. Si acepta:
+   - Se agregan/actualizan: empresa, cargo, tamaño, datos que Notion tenga y el bot no
+   - Se vincula `notionPageId` y `notionDbId`
+   - Se agrega al historial: `contacto_enriquecido` con nota "Datos importados desde Notion"
+   - El `origen` **no cambia** (sigue siendo `inbound`)
+4. Si rechaza: no se hace nada, el contacto queda como está
+
+### Normalización de teléfono (clave de deduplicación)
+
+Para que la deduplicación funcione, el teléfono debe normalizarse siempre igual:
+
+| Input | → Normalizado |
+|---|---|
+| +5491145678900 | 5491145678900 |
+| 5491145678900 | 5491145678900 |
+| 011-4567-8900 | 5491145678900 |
+| 1145678900 | 5491145678900 |
+| 54 9 11 4567-8900 | 5491145678900 |
+
+Reglas:
+- Eliminar espacios, guiones, paréntesis, signo `+`
+- Si empieza con `15` o tiene 8 dígitos → agregar `549` + código de área
+- Si empieza con `0` → reemplazar por `549`
+- Si ya tiene 13 dígitos y empieza con `549` → dejarlo
+- Almacenar siempre el formato limpio de 13 dígitos
+
+### Vista del lead recién ingresado (por bot)
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -806,12 +963,69 @@ Eliminar el paso manual de copiar teléfonos de la Sheet "Métricas Leads":
 │  • Rubro: Fábrica / Manufactura                                    │
 │  • Obras: ~894 puertas activas                                      │
 │  • Interacción con bot: hace 2 horas                                │
+│  • Intención: probar                                                │
 │                                                                     │
-│  Origen: Inbound (nuevo_contacto)                                   │
+│  Origen: Inbound (bot)                                              │
 │  Sin asignar                                                        │
 │                                                                     │
 │  [📞 Llamar]  [💬 WhatsApp]  [👤 Asignarme]                       │
 └─────────────────────────────────────────────────────────────────────┘
+```
+
+### Vista de contacto frío que interactuó con bot (notificación al SDR)
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│  🔔 ACTIVIDAD DE BOT                                 hace 5 min    │
+│                                                                     │
+│  Tu contacto Juan Pérez (Constructora ABC) acaba de                │
+│  interactuar con el bot.                                            │
+│                                                                     │
+│  Estado actual: 📵 No contacto                                      │
+│  Origen original: Outbound (Notion)                                 │
+│  Bot: Eligió "Quiero probar"  → precalificación: calificado        │
+│                                                                     │
+│  ¿Qué querés hacer?                                                │
+│  [📞 Llamar ahora]  [⏰ Programar contacto]  [👁️ Ver ficha]       │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### Resumen de flujo unificado
+
+```
+         FUENTES DE LEADS
+              │
+    ┌─────────┼──────────┐
+    │         │          │
+    ▼         ▼          ▼
+  WhatsApp   Notion    Excel
+   (Bot)    (Import)  (Import)
+    │         │          │
+    ▼         ▼          ▼
+  Lead      ────────────────
+ (Firestore)      │
+    │              ▼
+    │      ┌──────────────┐
+    └─────▶│ DEDUPLICAR   │
+           │ por teléfono │
+           └──────┬───────┘
+                  │
+          ┌───────┼────────┐
+          ▼                ▼
+     No existe          Ya existe
+          │                │
+          ▼                ▼
+     Crear nuevo      Enriquecer
+     ContactoSDR      ContactoSDR
+          │                │
+          └───────┬────────┘
+                  ▼
+           ContactoSDR
+           (MongoDB)
+              │
+              ▼
+        SDR lo ve en
+        su bandeja
 ```
 
 ---
