@@ -37,6 +37,8 @@ import ModalAgregarContacto from 'src/components/sdr/ModalAgregarContacto';
 import ModalImportarExcel from 'src/components/sdr/ModalImportarExcel';
 import ModalAdminTemplates from 'src/components/sdr/ModalAdminTemplates';
 import SettingsIcon from '@mui/icons-material/Settings';
+import SmartToyIcon from '@mui/icons-material/SmartToy';
+import { PRECALIFICACION_BOT } from 'src/constant/sdrConstants';
 
 const ContactosSDRPage = () => {
     const { user } = useAuthContext();
@@ -556,18 +558,18 @@ const ContactosSDRPage = () => {
                         onClick={() => setFiltroEstado(filtroEstado === 'nuevo' ? '' : 'nuevo')}
                     />
                     <Chip 
-                        label={`En Gestión: ${contarPorEstado('en_gestion')}`} 
+                        label={`Contactados: ${contarPorEstado('contactado')}`} 
                         color="warning" 
                         size="small"
-                        variant={filtroEstado === 'en_gestion' ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroEstado(filtroEstado === 'en_gestion' ? '' : 'en_gestion')}
+                        variant={filtroEstado === 'contactado' ? 'filled' : 'outlined'}
+                        onClick={() => setFiltroEstado(filtroEstado === 'contactado' ? '' : 'contactado')}
                     />
                     <Chip 
-                        label={`Reuniones: ${contarPorEstado('meet')}`} 
+                        label={`En Cierre: ${contarPorEstado('cierre')}`} 
                         color="secondary" 
                         size="small"
-                        variant={filtroEstado === 'meet' ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroEstado(filtroEstado === 'meet' ? '' : 'meet')}
+                        variant={filtroEstado === 'cierre' ? 'filled' : 'outlined'}
+                        onClick={() => setFiltroEstado(filtroEstado === 'cierre' ? '' : 'cierre')}
                     />
                     <Chip 
                         label={`Calificados: ${contarPorEstado('calificado')}`} 
@@ -581,6 +583,33 @@ const ContactosSDRPage = () => {
                         size="small"
                         variant={filtroEstado === 'no_responde' ? 'filled' : 'outlined'}
                         onClick={() => setFiltroEstado(filtroEstado === 'no_responde' ? '' : 'no_responde')}
+                    />
+                    <Chip 
+                        label={`Ganados: ${contarPorEstado('ganado')}`} 
+                        color="success"
+                        size="small"
+                        variant={filtroEstado === 'ganado' ? 'filled' : 'outlined'}
+                        onClick={() => setFiltroEstado(filtroEstado === 'ganado' ? '' : 'ganado')}
+                    />
+                    <Chip 
+                        label={`No Contactado: ${contarPorEstado('no_contacto')}`} 
+                        size="small"
+                        variant={filtroEstado === 'no_contacto' ? 'filled' : 'outlined'}
+                        onClick={() => setFiltroEstado(filtroEstado === 'no_contacto' ? '' : 'no_contacto')}
+                    />
+                    <Chip 
+                        label={`Revisar: ${contarPorEstado('revisar_mas_adelante')}`} 
+                        color="warning"
+                        size="small"
+                        variant={filtroEstado === 'revisar_mas_adelante' ? 'filled' : 'outlined'}
+                        onClick={() => setFiltroEstado(filtroEstado === 'revisar_mas_adelante' ? '' : 'revisar_mas_adelante')}
+                    />
+                    <Chip 
+                        label={`Perdidos: ${contarPorEstado('perdido')}`} 
+                        color="error"
+                        size="small"
+                        variant={filtroEstado === 'perdido' ? 'filled' : 'outlined'}
+                        onClick={() => setFiltroEstado(filtroEstado === 'perdido' ? '' : 'perdido')}
                     />
                 </Stack>
             </Box>
@@ -736,6 +765,28 @@ const ContactosSDRPage = () => {
                                         <Typography variant="body2" color="text.secondary" noWrap>
                                             {contacto.empresa || contacto.telefono}
                                         </Typography>
+                                        {/* Badges: precalificación bot + prioridad */}
+                                        <Stack direction="row" spacing={0.5} alignItems="center" sx={{ mt: 0.3 }}>
+                                            {contacto.precalificacionBot && contacto.precalificacionBot !== 'sin_calificar' && (
+                                                <Chip 
+                                                    size="small" 
+                                                    icon={<SmartToyIcon sx={{ fontSize: 12 }} />}
+                                                    label={PRECALIFICACION_BOT[contacto.precalificacionBot]?.label || contacto.precalificacionBot}
+                                                    color={PRECALIFICACION_BOT[contacto.precalificacionBot]?.color || 'default'}
+                                                    variant="outlined"
+                                                    sx={{ height: 20, fontSize: '0.65rem' }}
+                                                />
+                                            )}
+                                            {contacto.prioridadScore > 0 && (
+                                                <Chip 
+                                                    size="small" 
+                                                    label={`P:${contacto.prioridadScore}`}
+                                                    color={contacto.prioridadScore >= 70 ? 'error' : contacto.prioridadScore >= 40 ? 'warning' : 'default'}
+                                                    variant="outlined"
+                                                    sx={{ height: 20, fontSize: '0.65rem' }}
+                                                />
+                                            )}
+                                        </Stack>
                                         {proximo && (
                                             <Stack direction="row" spacing={0.5} alignItems="center" sx={{ mt: 0.5 }}>
                                                 <AccessTimeIcon sx={{ fontSize: 14, color: `${proximo.color}.main` }} />
@@ -926,16 +977,16 @@ const ContactosSDRPage = () => {
                         onClick={() => setFiltroEstado(filtroEstado === 'nuevo' ? '' : 'nuevo')}
                     />
                     <Chip 
-                        label={`En Gestión: ${contarPorEstado('en_gestion')}`} 
+                        label={`Contactados: ${contarPorEstado('contactado')}`} 
                         color="warning" 
-                        variant={filtroEstado === 'en_gestion' ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroEstado(filtroEstado === 'en_gestion' ? '' : 'en_gestion')}
+                        variant={filtroEstado === 'contactado' ? 'filled' : 'outlined'}
+                        onClick={() => setFiltroEstado(filtroEstado === 'contactado' ? '' : 'contactado')}
                     />
                     <Chip 
-                        label={`Reuniones: ${contarPorEstado('meet')}`} 
+                        label={`En Cierre: ${contarPorEstado('cierre')}`} 
                         color="secondary" 
-                        variant={filtroEstado === 'meet' ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroEstado(filtroEstado === 'meet' ? '' : 'meet')}
+                        variant={filtroEstado === 'cierre' ? 'filled' : 'outlined'}
+                        onClick={() => setFiltroEstado(filtroEstado === 'cierre' ? '' : 'cierre')}
                     />
                     <Chip 
                         label={`Calificados: ${contarPorEstado('calificado')}`} 
@@ -954,6 +1005,30 @@ const ContactosSDRPage = () => {
                         color="default" 
                         variant={filtroEstado === 'no_responde' ? 'filled' : 'outlined'}
                         onClick={() => setFiltroEstado(filtroEstado === 'no_responde' ? '' : 'no_responde')}
+                    />
+                    <Chip 
+                        label={`Ganados: ${contarPorEstado('ganado')}`} 
+                        color="success" 
+                        variant={filtroEstado === 'ganado' ? 'filled' : 'outlined'}
+                        onClick={() => setFiltroEstado(filtroEstado === 'ganado' ? '' : 'ganado')}
+                    />
+                    <Chip 
+                        label={`No Contactado: ${contarPorEstado('no_contacto')}`} 
+                        color="default" 
+                        variant={filtroEstado === 'no_contacto' ? 'filled' : 'outlined'}
+                        onClick={() => setFiltroEstado(filtroEstado === 'no_contacto' ? '' : 'no_contacto')}
+                    />
+                    <Chip 
+                        label={`Revisar: ${contarPorEstado('revisar_mas_adelante')}`} 
+                        color="warning" 
+                        variant={filtroEstado === 'revisar_mas_adelante' ? 'filled' : 'outlined'}
+                        onClick={() => setFiltroEstado(filtroEstado === 'revisar_mas_adelante' ? '' : 'revisar_mas_adelante')}
+                    />
+                    <Chip 
+                        label={`Perdidos: ${contarPorEstado('perdido')}`} 
+                        color="error" 
+                        variant={filtroEstado === 'perdido' ? 'filled' : 'outlined'}
+                        onClick={() => setFiltroEstado(filtroEstado === 'perdido' ? '' : 'perdido')}
                     />
                 </Stack>
 
@@ -1054,6 +1129,8 @@ const ContactosSDRPage = () => {
                                     <TableCell>Empresa</TableCell>
                                     <TableCell>Teléfono</TableCell>
                                     <TableCell>Estado</TableCell>
+                                    <TableCell>Bot</TableCell>
+                                    <TableCell>Prior.</TableCell>
                                     <TableCell>Próximo</TableCell>
                                 </TableRow>
                             </TableHead>
@@ -1091,6 +1168,29 @@ const ContactosSDRPage = () => {
                                                 <EstadoChip estado={contacto.estado} />
                                             </TableCell>
                                             <TableCell>
+                                                {contacto.precalificacionBot && contacto.precalificacionBot !== 'sin_calificar' ? (
+                                                    <Chip 
+                                                        size="small" 
+                                                        icon={<SmartToyIcon sx={{ fontSize: 14 }} />}
+                                                        label={PRECALIFICACION_BOT[contacto.precalificacionBot]?.label || contacto.precalificacionBot}
+                                                        color={PRECALIFICACION_BOT[contacto.precalificacionBot]?.color || 'default'}
+                                                        variant="outlined"
+                                                        sx={{ height: 22, fontSize: '0.7rem' }}
+                                                    />
+                                                ) : '-'}
+                                            </TableCell>
+                                            <TableCell>
+                                                {contacto.prioridadScore > 0 ? (
+                                                    <Chip 
+                                                        size="small" 
+                                                        label={contacto.prioridadScore}
+                                                        color={contacto.prioridadScore >= 70 ? 'error' : contacto.prioridadScore >= 40 ? 'warning' : 'default'}
+                                                        variant="filled"
+                                                        sx={{ height: 22, fontWeight: 700 }}
+                                                    />
+                                                ) : '-'}
+                                            </TableCell>
+                                            <TableCell>
                                                 {proximo ? (
                                                     <Chip 
                                                         size="small" 
@@ -1105,7 +1205,7 @@ const ContactosSDRPage = () => {
                                 })}
                                 {contactos.length === 0 && (
                                     <TableRow>
-                                        <TableCell colSpan={5} align="center" sx={{ py: 4 }}>
+                                        <TableCell colSpan={7} align="center" sx={{ py: 4 }}>
                                             <Typography color="text.secondary">
                                                 {filtroEstado 
                                                     ? `No hay contactos con estado "${filtroEstado}"`

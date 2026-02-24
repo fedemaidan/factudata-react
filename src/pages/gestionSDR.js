@@ -37,6 +37,8 @@ import PhoneMissedIcon from '@mui/icons-material/PhoneMissed';
 import DoNotDisturbIcon from '@mui/icons-material/DoNotDisturb';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import FilterListIcon from '@mui/icons-material/FilterList';
+import PersonRemoveIcon from '@mui/icons-material/PersonRemove';
+import CancelIcon from '@mui/icons-material/Cancel';
 
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import SDRService from 'src/services/sdrService';
@@ -45,17 +47,14 @@ import * as XLSX from 'xlsx';
 
 // Componente compartido del Drawer
 import DrawerDetalleContactoSDR, { EstadoChip } from 'src/components/sdr/DrawerDetalleContactoSDR';
+import { ESTADOS_CONTACTO as ESTADOS_SDR, ESTADOS_REUNION } from 'src/constant/sdrConstants';
 
 // ==================== CONSTANTES ====================
 
-const ESTADOS_CONTACTO = {
-    nuevo: { label: 'Nuevo', color: 'info' },
-    en_gestion: { label: 'En gestión', color: 'warning' },
-    meet: { label: 'Meet', color: 'primary' },
-    calificado: { label: 'Calificado', color: 'success' },
-    no_califica: { label: 'No califica', color: 'error' },
-    no_responde: { label: 'No responde', color: 'default' }
-};
+// Mapear formato de sdrConstants a formato local (solo label + color, sin icon)
+const ESTADOS_CONTACTO = Object.fromEntries(
+    Object.entries(ESTADOS_SDR).map(([key, val]) => [key, { label: val.label, color: val.color }])
+);
 
 const TAMANOS_EMPRESA = ['1-10', '11-50', '51-200', '200+'];
 
@@ -231,7 +230,7 @@ const GestionSDRPage = () => {
         if (!userId) return;
         
         try {
-            const data = await SDRService.listarReuniones({ estado: 'pendiente' });
+            const data = await SDRService.listarReuniones({ estado: 'agendada' });
             setReuniones(data.reuniones);
         } catch (error) {
             console.error('Error cargando reuniones:', error);
@@ -392,15 +391,17 @@ const GestionSDRPage = () => {
         }
     };
     
-    const handleEvaluarReunion = async (estado, motivoRechazo, notasEvaluador) => {
-        if (!modalEvaluar.reunion) return;
+    const handleEvaluarReunion = async (estado, motivoRechazo, notasEvaluador, reunionDirecta = null) => {
+        const reunion = reunionDirecta || modalEvaluar.reunion;
+        if (!reunion) return;
         try {
-            await SDRService.evaluarReunion(modalEvaluar.reunion._id, {
+            await SDRService.evaluarReunion(reunion._id, {
                 estado,
                 motivoRechazo,
                 notasEvaluador
             });
-            mostrarSnackbar(`Reunión ${estado === 'aprobada' ? 'aprobada' : 'rechazada'}`);
+            const labels = { realizada: 'marcada como realizada', no_show: 'marcada como no show', cancelada: 'cancelada', aprobada: 'aprobada', rechazada: 'rechazada' };
+            mostrarSnackbar(`Reunión ${labels[estado] || estado}`);
             setModalEvaluar({ open: false, reunion: null });
             cargarReuniones();
             cargarContactos();
@@ -554,16 +555,16 @@ const GestionSDRPage = () => {
                 </>
             )}
             
-            {/* Reuniones pendientes */}
+            {/* Reuniones agendadas */}
             <Typography variant="h6" sx={{ mb: 2 }}>
-                Reuniones pendientes de evaluación
+                Próximas reuniones
                 {reuniones.length > 0 && (
                     <Chip label={reuniones.length} color="warning" size="small" sx={{ ml: 1 }} />
                 )}
             </Typography>
             {reuniones.length === 0 ? (
                 <Alert severity="success" icon={<CheckCircleIcon />}>
-                    No hay reuniones pendientes de evaluación
+                    No hay reuniones agendadas
                 </Alert>
             ) : (
                 <TableContainer component={Paper}>
@@ -584,7 +585,7 @@ const GestionSDRPage = () => {
                                     <TableCell>{reunion.empresaNombre}</TableCell>
                                     <TableCell><Chip label={reunion.tamanoEmpresa} size="small" variant="outlined" /></TableCell>
                                     <TableCell>
-                                        {new Date(reunion.fechaHora).toLocaleString('es-AR', {
+                                        {new Date(reunion.fecha || reunion.fechaHora).toLocaleString('es-AR', {
                                             day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
                                         })}
                                     </TableCell>
@@ -996,11 +997,11 @@ const GestionSDRPage = () => {
     
     const renderReuniones = () => (
         <Box>
-            <Typography variant="h6" sx={{ mb: 2 }}>Todas las reuniones pendientes de evaluación</Typography>
+            <Typography variant="h6" sx={{ mb: 2 }}>Próximas reuniones agendadas</Typography>
             
             {reuniones.length === 0 ? (
                 <Alert severity="success" icon={<CheckCircleIcon />}>
-                    No hay reuniones pendientes de evaluación
+                    No hay reuniones agendadas
                 </Alert>
             ) : (
                 <Grid container spacing={2}>
@@ -1017,7 +1018,7 @@ const GestionSDRPage = () => {
                                         <Stack direction="row" spacing={1}>
                                             <Chip label={reunion.tamanoEmpresa} size="small" />
                                             <Chip 
-                                                label={new Date(reunion.fechaHora).toLocaleString('es-AR', {
+                                                label={new Date(reunion.fecha || reunion.fechaHora).toLocaleString('es-AR', {
                                                     day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
                                                 })} 
                                                 size="small" 
@@ -1042,21 +1043,31 @@ const GestionSDRPage = () => {
                                             variant="contained" 
                                             color="success" 
                                             size="small"
-                                            startIcon={<ThumbUpIcon />}
+                                            startIcon={<CheckCircleIcon />}
                                             fullWidth
-                                            onClick={() => setModalEvaluar({ open: true, reunion })}
+                                            onClick={() => handleEvaluarReunion('realizada', null, null, reunion)}
                                         >
-                                            Aprobar
+                                            Realizada
+                                        </Button>
+                                        <Button 
+                                            variant="outlined" 
+                                            color="warning" 
+                                            size="small"
+                                            startIcon={<PersonRemoveIcon />}
+                                            fullWidth
+                                            onClick={() => handleEvaluarReunion('no_show', null, null, reunion)}
+                                        >
+                                            No Show
                                         </Button>
                                         <Button 
                                             variant="outlined" 
                                             color="error" 
                                             size="small"
-                                            startIcon={<ThumbDownIcon />}
+                                            startIcon={<CancelIcon />}
                                             fullWidth
-                                            onClick={() => setModalEvaluar({ open: true, reunion })}
+                                            onClick={() => handleEvaluarReunion('cancelada', null, null, reunion)}
                                         >
-                                            Rechazar
+                                            Cancelar
                                         </Button>
                                     </Stack>
                                 </Box>
@@ -1559,7 +1570,6 @@ const GestionSDRPage = () => {
     };
     
     const ModalEvaluarReunion = () => {
-        const [motivoRechazo, setMotivoRechazo] = useState('');
         const [notasEvaluador, setNotasEvaluador] = useState('');
         
         const { reunion } = modalEvaluar;
@@ -1580,7 +1590,7 @@ const GestionSDRPage = () => {
                         </Box>
                         <Box>
                             <Typography variant="subtitle2" color="text.secondary">Fecha</Typography>
-                            <Typography>{new Date(reunion.fechaHora).toLocaleString('es-AR')}</Typography>
+                            <Typography>{new Date(reunion.fecha || reunion.fechaHora).toLocaleString('es-AR')}</Typography>
                         </Box>
                         {reunion.puntosDeDolor && (
                             <Box>
@@ -1589,17 +1599,19 @@ const GestionSDRPage = () => {
                             </Box>
                         )}
                         <Divider />
-                        <TextField label="Notas del evaluador" value={notasEvaluador} onChange={(e) => setNotasEvaluador(e.target.value)} fullWidth multiline rows={2} />
-                        <TextField label="Motivo de rechazo (requerido si rechazás)" value={motivoRechazo} onChange={(e) => setMotivoRechazo(e.target.value)} fullWidth />
+                        <TextField label="Notas" value={notasEvaluador} onChange={(e) => setNotasEvaluador(e.target.value)} fullWidth multiline rows={2} placeholder="¿Cómo fue la reunión?" />
                     </Stack>
                 </DialogContent>
                 <DialogActions>
-                    <Button onClick={() => setModalEvaluar({ open: false, reunion: null })}>Cancelar</Button>
-                    <Button variant="contained" color="error" startIcon={<ThumbDownIcon />} onClick={() => handleEvaluarReunion('rechazada', motivoRechazo, notasEvaluador)} disabled={!motivoRechazo}>
-                        Rechazar
+                    <Button onClick={() => setModalEvaluar({ open: false, reunion: null })}>Cerrar</Button>
+                    <Button variant="outlined" color="error" startIcon={<CancelIcon />} onClick={() => handleEvaluarReunion('cancelada', null, notasEvaluador)}>
+                        Cancelar reunión
                     </Button>
-                    <Button variant="contained" color="success" startIcon={<ThumbUpIcon />} onClick={() => handleEvaluarReunion('aprobada', null, notasEvaluador)}>
-                        Aprobar
+                    <Button variant="outlined" color="warning" startIcon={<PersonRemoveIcon />} onClick={() => handleEvaluarReunion('no_show', null, notasEvaluador)}>
+                        No Show
+                    </Button>
+                    <Button variant="contained" color="success" startIcon={<CheckCircleIcon />} onClick={() => handleEvaluarReunion('realizada', null, notasEvaluador)}>
+                        Realizada
                     </Button>
                 </DialogActions>
             </Dialog>

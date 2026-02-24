@@ -134,10 +134,63 @@ const SDRService = {
     },
 
     /**
-     * Evaluar reunión (aprobar/rechazar)
+     * Evaluar reunión (v2: realizada/no_show/cancelada | legacy: aprobar/rechazar)
      */
     evaluarReunion: async (reunionId, data) => {
         const res = await api.put(`/sdr/reuniones/${reunionId}/evaluar`, data);
+        return res.data;
+    },
+
+    /**
+     * Actualizar datos de una reunión (v2)
+     */
+    actualizarReunion: async (reunionId, data) => {
+        const res = await api.put(`/sdr/reuniones/${reunionId}`, data);
+        return res.data;
+    },
+
+    // ==================== SCORING / CALIFICACIÓN (v2) ====================
+
+    /**
+     * Actualizar plan estimado de un contacto
+     */
+    actualizarPlanEstimado: async (contactoId, plan) => {
+        const res = await api.post('/sdr/acciones/plan-estimado', { contactoId, plan });
+        return res.data;
+    },
+
+    /**
+     * Actualizar intención de compra de un contacto
+     */
+    actualizarIntencionCompra: async (contactoId, intencion) => {
+        const res = await api.post('/sdr/acciones/intencion-compra', { contactoId, intencion });
+        return res.data;
+    },
+
+    /**
+     * Obtener siguiente contacto para llamar (priorizado por score)
+     */
+    obtenerSiguienteContacto: async (empresaId, sdrId = null) => {
+        const params = { empresaId };
+        if (sdrId) params.sdrId = sdrId;
+        const res = await api.get('/sdr/contactos/siguiente', { params });
+        return res.data;
+    },
+
+    /**
+     * Obtener funnel/embudo de conversión
+     */
+    obtenerFunnel: async (empresaId, filtros = {}) => {
+        const params = { empresaId, ...filtros };
+        const res = await api.get('/sdr/metricas/funnel', { params });
+        return res.data;
+    },
+
+    /**
+     * Webhook para nuevo lead (usado internamente)
+     */
+    webhookNuevoLead: async (phone, leadData, evento) => {
+        const res = await api.post('/sdr/webhook/nuevo-lead', { phone, leadData, evento });
         return res.data;
     },
 
