@@ -106,12 +106,54 @@ const formatCurrency = (value, currency = 'ARS') => {
   return num.toLocaleString('es-AR', { style: 'currency', currency });
 };
 
+const formatCostoM2 = (value, currency = 'ARS') => {
+  if (value == null || !Number.isFinite(value)) return '—';
+  return formatCurrency(value, currency);
+};
+
+const formatCostoM2Cac = (value, cacMesReferencia) => {
+  if (value == null || !Number.isFinite(value)) return '—';
+  const valorStr = `CAC ${Number(value).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return cacMesReferencia ? `${valorStr} (índice ${cacMesReferencia})` : valorStr;
+};
+
+const renderCostoM2Rows = (costoM2Data = {}, inTable = false) => {
+  const ars = costoM2Data?.ars;
+  const usd = costoM2Data?.usd;
+  const cac = costoM2Data?.cac;
+  const cacMesReferencia = costoM2Data?.cacMesReferencia;
+  const rowStyle = inTable
+    ? styles.tableRow
+    : [styles.tableRow, { flexDirection: 'row', justifyContent: 'space-between' }];
+  const Row = ({ label, value }) =>
+    inTable ? (
+      <View style={rowStyle}>
+        <Text style={styles.tableCellItem} />
+        <Text style={[styles.tableCellDesc, { flex: 3.5 }]}>{label}</Text>
+        <Text style={styles.tableCellRight}>{value}</Text>
+        <Text style={[styles.tableCellRight, { flex: 0.6 }]} />
+      </View>
+    ) : (
+      <View style={rowStyle}>
+        <Text style={styles.tableCellDesc}>{label}</Text>
+        <Text style={styles.tableCellRight}>{value}</Text>
+      </View>
+    );
+  return (
+    <>
+      <Row label="Costo por m² (ARS)" value={formatCostoM2(ars, 'ARS')} />
+      <Row label="Costo por m² (USD)" value={formatCostoM2(usd, 'USD')} />
+      <Row label="Costo por m² (CAC último mes)" value={formatCostoM2Cac(cac, cacMesReferencia)} />
+    </>
+  );
+};
+
 const capitalize = (str) => {
   if (!str || typeof str !== 'string') return str || '';
   return str.charAt(0).toUpperCase() + str.slice(1);
 };
 
-const renderRubros = (rubros = [], currency, totalNeto) => {
+const renderRubros = (rubros = [], currency, totalNeto, costoM2Data, tieneAnexos) => {
   const rows = [];
   rubros.forEach((rubro, idx) => {
     const monto = Number(rubro.monto) || 0;
@@ -158,6 +200,14 @@ const renderRubros = (rubros = [], currency, totalNeto) => {
       <Text style={[styles.tableCellRight, { flex: 0.6, color: '#fff' }]}>100%</Text>
     </View>
   );
+
+  if (!tieneAnexos && costoM2Data) {
+    rows.push(
+      <View key="costo-m2-rows">
+        {renderCostoM2Rows(costoM2Data, true)}
+      </View>
+    );
+  }
 
   return rows;
 };
@@ -231,7 +281,7 @@ const renderAnexos = (anexos = [], currency) => {
   );
 };
 
-const renderResumenContractual = (totalOriginal, impactoAnexos, totalActualizado, currency) => (
+const renderResumenContractual = (totalOriginal, impactoAnexos, totalActualizado, currency, costoM2Data) => (
   <View style={[styles.notesBox, { marginTop: 10 }]} wrap>
     <Text style={styles.sectionTitle}>RESUMEN CONTRACTUAL</Text>
     <View style={[styles.tableRow, { flexDirection: 'row', justifyContent: 'space-between' }]}>
@@ -250,10 +300,11 @@ const renderResumenContractual = (totalOriginal, impactoAnexos, totalActualizado
         {formatCurrency(totalActualizado, currency)}
       </Text>
     </View>
+    {costoM2Data && renderCostoM2Rows(costoM2Data)}
   </View>
 );
 
-export const PresupuestoPdfDocument = ({ presupuesto, empresa }) => {
+export const PresupuestoPdfDocument = ({ presupuesto, empresa, costoM2Data = {} }) => {
   const rubros = presupuesto?.rubros || [];
   const totalNeto =
     Number(presupuesto.total_neto) ||
@@ -293,10 +344,10 @@ export const PresupuestoPdfDocument = ({ presupuesto, empresa }) => {
             <Text style={styles.tableCellRight}>Total</Text>
             <Text style={[styles.tableCellRight, { flex: 0.6 }]}>Inc.</Text>
           </View>
-          {renderRubros(rubros, currency, totalNeto)}
+          {renderRubros(rubros, currency, totalNeto, costoM2Data, tieneAnexos)}
         </View>
         {tieneAnexos && renderAnexos(anexos, currency)}
-        {tieneAnexos && renderResumenContractual(totalNeto, impactoAnexos, totalActualizado, currency)}
+        {tieneAnexos && renderResumenContractual(totalNeto, impactoAnexos, totalActualizado, currency, costoM2Data)}
         {(notes || surfaceLines.length > 0) && (
           <View style={styles.notesBox} wrap>
             {notes ? (
