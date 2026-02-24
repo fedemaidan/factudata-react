@@ -1,8 +1,26 @@
-# Rediseño Módulo Comercial — Documento Funcional
+# Rediseño Módulo Comercial — Documento Funcional v2
 
-> **Fecha**: 23/02/2026  
+> **Versión**: 2.0  
+> **Fecha**: 24/02/2026  
 > **Origen**: Reunión Federico Maidan + Fernando Falasca — Procesos Área Comercial  
 > **Objetivo**: Unificar todo el flujo comercial (SDR + Ventas) dentro de la app interna, eliminando la dependencia de Notion, Google Sheets y procesos manuales fragmentados.
+
+---
+
+## Changelog v2
+
+Cambios respecto a la versión anterior, incorporando feedback de Fernando Falasca:
+
+| # | Cambio | Antes (v1) | Ahora (v2) | Motivo |
+|---|--------|-----------|------------|--------|
+| 1 | **Estados simplificados** | 12 estados incluyendo `meet_agendada` y `meet_realizada` como estados del contacto | 10 estados puros. Las reuniones dejan de ser estados del contacto | Las meets son eventos con ciclo de vida propio, no un estado del contacto. Un contacto calificado puede tener 3 meets sin que su estado cambie |
+| 2 | **Reuniones como entidad separada** | Las reuniones eran un estado más en el flujo lineal | Entidad independiente con lifecycle propio: `agendada` → `realizada` / `no_show` / `cancelada`. Cada reunión tiene número (1ª, 2ª, 3ª...) | Fernando hace Meet, Meet2, NoShow, CancelMeet — esto no encaja en un estado lineal del contacto |
+| 3 | **Pre-calificación del Bot** | No existía. El bot era parte del estado "nuevo" | Nuevo campo `precalificacionBot` con valores: `sin_calificar`, `no_llego`, `calificado`, `quiere_meet` | Los estados de Notion BOTNew, BOT, BOTQualified, BotMeet representan el progreso del lead en el bot antes de llegar al SDR |
+| 4 | **Canal ≠ Estado** | Humano, WA, Llamado, Instagram aparecían en el mapeo como estados | El canal es implícito en el tipo de acción del historial (`llamada_atendida`, `whatsapp_enviado`, `instagram_contacto`). No es un estado | En Notion son "Status Sum" (log de acciones), no estados exclusivos. Un contacto puede haber sido llamado Y whatsappeado |
+| 5 | **Alias = Link de pago** | Alias mapeaba a `no_califica` | Alias es una acción del historial: `link_pago_enviado`. Significa que se envió el link de pago/onboarding | En el proceso real, "Alias" es cuando Fernando envía el link de pago. Es una acción de cierre, no un descarte |
+| 6 | **Cadencia real de 14 días** | Cadencia genérica de 5 pasos en 3 días | 4 pasos en 14 días con templates reales de Fernando, variaciones por rubro, y secuencia progresiva donde cada mensaje referencia al anterior | Cadencia basada en el proceso real que Fernando ejecuta manualmente hoy |
+| 7 | **Status Sum = Historial** | El historial era un registro plano de acciones | Se aclara que el historial es el equivalente del "Status Sum" de Notion: un log acumulativo de todo lo que pasó con el contacto. Los estados de Notion NO son estados exclusivos sino entradas de log | Fernando explicó que en Notion los "status" son entradas de log, no estados mutuamente exclusivos |
+| 8 | **Presupuesto y Negociación** | Mapeaban a estado `cierre` directamente | Son acciones del historial (`presupuesto_enviado`, `negociacion_iniciada`). El estado `cierre` se activa cuando hay intención concreta post-meet | Son eventos que ocurren durante el proceso de cierre, no el estado en sí |
 
 ---
 
@@ -29,15 +47,19 @@ Hoy el proceso comercial está fragmentado en 4 herramientas: **Google Sheets** 
 | **Estados** | ~25 estados en Notion (confusos, no delegables) | Estados limpios + scoring multidimensional + historial completo |
 | **Métricas** | Manual en Google Sheets (Looker Studio 2) | Automáticas a partir de las acciones registradas |
 | **Seguimiento** | Filtros por fecha en Notion (se mezclan contactos) | Por estado + próximo contacto + scoring |
-| **Reuniones** | Checkbox en Notion + fecha manual | Registro completo con evaluación |
+| **Reuniones** | Checkbox en Notion + fecha manual | Entidad independiente con lifecycle completo |
 | **Ventas** | Columna en Sheets con fecha manual | Pipeline integrado con plan y ticket |
-| **Cadencias** | Templates manuales sueltos | Cadencias configurables con pasos |
+| **Cadencias** | Templates manuales sueltos | Cadencias de 14 días con pasos, templates por rubro y seguimiento automático |
 
 ---
 
 ## 1. Rediseño de Estados
 
-El problema principal identificado en la reunión: los estados actuales no representan la realidad del contacto, por eso Fernando necesita filtrar por fecha. Los estados deben ser **puros** y representar el paso real en el funnel.
+### Principio de diseño
+
+> **Los estados representan dónde está el contacto en el funnel comercial, no qué acciones se hicieron ni qué canal se usó.**
+
+Los estados de Notion (Humano, WA, Llamado, Instagram, BOT, BOTQualified, etc.) son en realidad entradas del **Status Sum** — un log de acciones. En nuestro sistema, eso va al **historial**. El estado del contacto es uno solo y representa su posición real en el embudo.
 
 ### Flujo principal de estados
 
@@ -45,24 +67,28 @@ El problema principal identificado en la reunión: los estados actuales no repre
 > Ver instrucciones al final del documento para crearlo.
 
 ```
-                              FLUJO PRINCIPAL (happy path)
- ┌──────────┐     ┌────────────┐     ┌────────────┐     ┌────────────┐     ┌──────────┐     ┌──────────┐
- │  NUEVO   │────▶│ CONTACTADO │────▶│ CALIFICADO │────▶│   MEET     │────▶│  MEET    │────▶│  CIERRE  │──▶ GANADO
- │   ℹ️     │     │    💬      │     │    ⭐      │     │  AGENDADA  │     │ REALIZADA│     │   🤝     │
- └────┬─────┘     └─────┬──────┘     └─────┬──────┘     │    📅      │     │   ✅     │     └────┬─────┘
-      │                 │                   │            └────────────┘     └──────────┘          │
-      │                 │                   │                                                     │
-      ▼                 ▼                   ▼                                                     ▼
- ┌──────────┐     ┌───────────┐     ┌─────────────────┐                                    ┌──────────┐
- │    NO    │     │    NO     │     │    REVISAR      │                                    │ PERDIDO  │
- │ CONTACTO │     │ RESPONDE  │     │  MÁS ADELANTE   │                                    │    ❌    │
- │   📵     │     │    👻     │     │      ⏰         │                                    └──────────┘
+                           FLUJO PRINCIPAL (happy path)
+
+ ┌──────────┐     ┌────────────┐     ┌────────────┐     ┌──────────┐     ┌──────────┐
+ │  NUEVO   │────▶│ CONTACTADO │────▶│ CALIFICADO │────▶│  CIERRE  │────▶│  GANADO  │
+ │   ℹ️     │     │    💬      │     │    ⭐      │     │   🤝     │     │   🏆     │
+ └────┬─────┘     └─────┬──────┘     └─────┬──────┘     └────┬─────┘     └──────────┘
+      │                 │                   │                  │
+      │                 │                   │                  │
+      ▼                 ▼                   ▼                  ▼
+ ┌──────────┐     ┌───────────┐     ┌─────────────────┐  ┌──────────┐
+ │    NO    │     │    NO     │     │    REVISAR      │  │ PERDIDO  │
+ │ CONTACTO │     │ RESPONDE  │     │  MÁS ADELANTE   │  │    ❌    │
+ │   📵     │     │    👻     │     │      ⏰         │  └──────────┘
  └──────────┘     └───────────┘     └─────────────────┘
                                                          ┌──────────┐
                        (Desde cualquier estado) ────────▶│    NO    │
                                                          │ CALIFICA │
                                                          │    🚫    │
                                                          └──────────┘
+
+     Las reuniones NO son estados del contacto.
+     Son una entidad aparte (ver sección 3).
 ```
 
 ### Definición de estados
@@ -72,33 +98,66 @@ El problema principal identificado en la reunión: los estados actuales no repre
 | **nuevo** | ℹ️ | Celeste | Acaba de llegar, no se intentó contactar | Lead entra al sistema | SDR |
 | **contactado** | 💬 | Amarillo | Se habló al menos una vez | Llamada atendida o respuesta de WhatsApp | SDR |
 | **calificado** | ⭐ | Verde | Dio información útil: rubro, obras, tamaño, interés | SDR obtiene datos de calificación | SDR |
-| **meet_agendada** | 📅 | Azul | Se coordinó reunión con fecha/hora | SDR agenda reunión | SDR + Manager |
-| **meet_realizada** | ✅ | Azul oscuro | La reunión ocurrió (pendiente evaluar resultado) | Se marca que la meet se hizo | Manager |
-| **cierre** | 🤝 | Verde fuerte | En negociación activa / propuesta enviada | Post-meet con interés concreto | Vendedor |
-| **ganado** | 🏆 | Verde brillante | Venta concretada | Se cierra la venta | Manager |
-| **no_contacto** | 📵 | Gris | Intentos hechos sin lograr contacto | Múltiples intentos sin respuesta | SDR |
-| **no_responde** | 👻 | Gris claro | Contactó pero dejó de responder | Contacto ghost | SDR |
+| **cierre** | 🤝 | Verde fuerte | En negociación activa / propuesta enviada | Post-meet con interés concreto o envío de presupuesto | Vendedor |
+| **ganado** | 🏆 | Verde brillante | Venta concretada | Se cierra la venta (link de pago enviado y aceptado) | Manager |
+| **no_contacto** | 📵 | Gris | Intentos hechos sin lograr contacto | Cadencia completa sin respuesta (14 días) | SDR |
+| **no_responde** | 👻 | Gris claro | Contactó pero dejó de responder | Contacto ghost: respondió alguna vez y luego silencio | SDR |
 | **revisar_mas_adelante** | ⏰ | Naranja | Interés pero timing no es ahora | "Háblame en 2 meses" | SDR |
 | **no_califica** | 🚫 | Rojo | No es target (no es del rubro, no aplica) | SDR descarta | Archivo |
-| **perdido** | ❌ | Rojo oscuro | Pasó por pipeline pero no se concretó | Tras meet o propuesta sin éxito | Archivo |
+| **perdido** | ❌ | Rojo oscuro | Pasó por pipeline pero no se concretó | Tras meet/propuesta sin éxito, eligió competencia | Archivo |
 
-### Mapeo desde Notion → Nuevos Estados
+### Mapeo desde Notion → Nuevos Estados + Historial
 
-| Notion Status | → Nuevo Estado |
-|---------------|----------------|
-| BOT, Lead | nuevo |
-| Cadence2..5 | nuevo (con paso de cadencia registrado) |
-| NoContact | no_contacto |
-| Humano, Whatsapp, Llamado, Instagram | contactado |
-| Qualified | calificado |
-| BotQualified, Consulta Valores | calificado |
-| BotMeet, BookedMeet | meet_agendada |
-| Meet, Meet2 | meet_realizada |
-| NoMeet, NoShow | meet_realizada (con resultado negativo) |
-| Presupuesto, Negotiation | cierre |
-| NoInteres | no_califica |
-| Lost | perdido |
-| Alias | no_califica (con nota) |
+> **Concepto clave**: Los "Status" de Notion son en realidad entradas del **Status Sum** (log acumulativo). Muchos de ellos no mapean a un estado exclusivo sino a una **acción del historial** o a un **campo del contacto**.
+
+| Notion Status | → ¿A dónde va? | Detalle |
+|---------------|----------------|---------|
+| Lead | **Estado**: `nuevo` | Lead recién ingresado |
+| BOTNew, BOT | **Campo**: `precalificacionBot` = `sin_calificar` | El lead interactuó con el bot pero no completó |
+| BOTQualified | **Campo**: `precalificacionBot` = `calificado` | Bot recopiló datos mínimos |
+| BotMeet | **Campo**: `precalificacionBot` = `quiere_meet` | Bot detectó intención de reunirse |
+| Cadence2..5 | **Historial**: paso de cadencia completado | El estado sigue siendo `nuevo` (no respondió aún) |
+| NoContact | **Estado**: `no_contacto` | Cadencia agotada sin respuesta |
+| Humano | **Historial**: acción tipo `llamada_atendida` | Es un canal/acción, no un estado |
+| Whatsapp | **Historial**: acción tipo `whatsapp_enviado` | Es un canal/acción, no un estado |
+| Llamado | **Historial**: acción tipo `llamada_no_atendida` o `llamada_atendida` | Es un canal/acción, no un estado |
+| Instagram | **Historial**: acción tipo `instagram_contacto` | Es un canal/acción, no un estado |
+| Qualified, Consulta Valores | **Estado**: `calificado` | Contacto dio info de calificación |
+| BookedMeet | **Reunión** creada con estado `agendada` | Entidad separada |
+| Meet | **Reunión** con estado `realizada` (número 1) | Entidad separada |
+| Meet2 | **Reunión** con estado `realizada` (número 2) | Entidad separada |
+| NoShow | **Reunión** con estado `no_show` | Entidad separada |
+| CancelMeet | **Reunión** con estado `cancelada` | Entidad separada |
+| Presupuesto | **Historial**: acción tipo `presupuesto_enviado` | Acción dentro del estado `cierre` |
+| Negotiation | **Historial**: acción tipo `negociacion_iniciada` | Acción dentro del estado `cierre` |
+| Alias | **Historial**: acción tipo `link_pago_enviado` | Envío del link de pago/onboarding |
+| NoInteres | **Estado**: `no_califica` | No es target |
+| Lost | **Estado**: `perdido` | No se concretó |
+
+### Campo: Pre-calificación del Bot
+
+Antes de que el SDR toque al contacto, el bot ya puede haber recopilado información. Este campo captura ese progreso sin agregar estados al funnel del SDR.
+
+| Valor | Significado | Datos que el bot recopiló |
+|-------|-------------|---------------------------|
+| `sin_calificar` | El bot interactuó pero no sacó datos útiles | Solo el teléfono |
+| `no_llego` | El lead no llegó a interactuar con el bot | Entró por formulario/ads directo |
+| `calificado` | El bot recopiló rubro, tamaño, necesidades | Rubro, cantidad de obras, equipo |
+| `quiere_meet` | El bot detectó que quiere reunirse | Todo lo anterior + intención explícita |
+
+Esto se muestra como un badge en la ficha del contacto:
+
+```
+┌───────────────────────────────────────────────────────────────────┐
+│  Juan Pérez                                                       │
+│  [ℹ️ Nuevo]  [🤖 Bot: calificado]                                │
+│                                                                   │
+│  Info del bot:                                                    │
+│  • Rubro: Constructora                                            │
+│  • Obras: 3 activas                                               │
+│  • Interacción: hace 2 horas                                      │
+└───────────────────────────────────────────────────────────────────┘
+```
 
 ### Visualización del estado en la UI
 
@@ -110,8 +169,9 @@ El estado se muestra como un **Chip de color** con emoji, consistente en toda la
 │                                                                     │
 │  Juan Pérez                          [⭐ Calificado]               │
 │  Constructora ABC · 51-200 emp.      [🟣 Premium] [🔴 Alta]       │
-│  📞 +5491145678900                                                  │
+│  📞 +5491145678900                   [🤖 Bot: calificado]         │
 │  Próximo: mañana 10:00               Intentos: 3                   │
+│  📅 1 reunión agendada (26/02 15:00)                               │
 │  "Lo charla con su socio, llamar el 26"                            │
 │                                                                     │
 │  [📞 Llamar]  [💬 WhatsApp]  [⋮]                                  │
@@ -122,6 +182,8 @@ Los chips visibles en cada tarjeta:
 - **Chip de estado** (ej: `⭐ Calificado` en verde)
 - **Chip de plan estimado** (ej: `🟣 Premium` en violeta) — solo si está definido
 - **Chip de intención** (ej: `🔴 Alta` en rojo) — solo si está definido
+- **Badge de bot** (ej: `🤖 Bot: calificado`) — solo si hay data del bot
+- **Info de reuniones** — si tiene reuniones, se muestra la próxima
 
 ---
 
@@ -221,9 +283,11 @@ La lista de contactos se ordena por un **score compuesto** que mezcla todas las 
 | **Próximo contacto vencido** | Máximo | +100 por día vencido (cap en 500). Siempre primero |
 | **Intención de compra** | Alto | Alta: +300, Media: +200, Baja: +100, Sin definir: 0 |
 | **Plan estimado** | Alto | A medida: +500, Premium: +400, Avanzado: +250, Básico: +150, Sin definir: 0 |
+| **Pre-calificación bot** | Medio | quiere_meet: +200, calificado: +100, sin_calificar: +30, no_llego: 0 |
 | **Tamaño empresa** | Medio | 200+: +100, 51-200: +60, 11-50: +30, 1-10: +10 |
 | **Frescura** | Medio | ≤1 día: +200, ≤7 días: +150, ≤14 días: +100, ≤30 días: +50 |
-| **Estado avanzado** | Medio | meet_agendada/cierre: +250, calificado: +150, contactado: +100 |
+| **Estado avanzado** | Medio | cierre: +300, calificado: +150, contactado: +100 |
+| **Reuniones** | Medio | Con reunión agendada: +250, con meet realizada: +200 |
 | **Sin próximo contacto** | Penalización | -50 (para que aparezcan pero no arriba del todo) |
 
 #### Ejemplo práctico de ordenamiento
@@ -232,14 +296,143 @@ La lista de contactos se ordena por un **score compuesto** que mezcla todas las 
 |---|----------|------|-----------|---------|-------|-------------------|
 | 1° | Constructora ABC | 🟣 Premium | 🔴 Alta | 2 días | **1160** | Premium + Alta + vencido |
 | 2° | Estudio Arq. XYZ | 🔵 Avanzado | 🟠 Media | 1 día | **730** | Avanzado + Media + vencido |
-| 3° | María (lead nueva) | ⚪ Sin definir | ⚪ Sin definir | — | **280** | Nueva de hoy (frescura alta) |
+| 3° | María (lead nueva) | ⚪ Sin definir | ⚪ Sin definir | — | **330** | Nueva de hoy (frescura alta) + bot calificado |
 | 4° | Pedro (básico) | 🟢 Básico | 🟡 Baja | — | **210** | Básico + Baja, sin urgencia |
 
 **El SDR no ve el número de score**, solo ve la lista ordenada. Pero el manager puede ver un indicador visual (barra o color) del score relativo.
 
 ---
 
-## 3. Ficha del Contacto (Drawer de Detalle)
+## 3. Reuniones (Entidad Independiente)
+
+> **Cambio v2**: Las reuniones dejan de ser estados del contacto y pasan a ser una **entidad independiente** vinculada al contacto. Esto permite que un contacto tenga múltiples reuniones sin que su estado cambie entre "meet_agendada" y "meet_realizada" cada vez.
+
+### ¿Por qué entidad separada?
+
+En la realidad de Fernando:
+- Un contacto puede tener **Meet, Meet2, Meet3** (varias reuniones)
+- Puede haber **NoShow** (no se presentó) y re-agendar
+- Puede haber **CancelMeet** y re-agendar
+- El contacto puede estar en estado `calificado` y tener una meet agendada, sin que su estado cambie
+
+Si las meets fueran estados, el contacto saltaría entre `calificado` → `meet_agendada` → `calificado` → `meet_agendada` cada vez. No tiene sentido.
+
+### Lifecycle de una Reunión
+
+```
+                  ┌──────────┐
+                  │ AGENDADA │
+                  │    📅    │
+                  └────┬─────┘
+                       │
+          ┌────────────┼────────────┐
+          │            │            │
+          ▼            ▼            ▼
+   ┌──────────┐  ┌──────────┐  ┌──────────┐
+   │REALIZADA │  │ NO SHOW  │  │CANCELADA │
+   │    ✅    │  │    ❌    │  │    🚫    │
+   └──────────┘  └────┬─────┘  └────┬─────┘
+                      │             │
+                      └──────┬──────┘
+                             ▼
+                      Re-agendar (nueva reunión)
+```
+
+### Datos de una Reunión
+
+| Campo | Tipo | Descripción |
+|-------|------|-------------|
+| Número | Auto | 1ª, 2ª, 3ª... se incrementa automáticamente |
+| Estado | Selector | `agendada` / `realizada` / `no_show` / `cancelada` |
+| Fecha y hora | DateTime | Cuándo está/estuvo agendada |
+| Link/Lugar | Text | Zoom, Google Meet, dirección física, etc. |
+| Notas pre-meet | Text | Qué preparar, qué preguntar |
+| Notas post-meet | Text | Resultado, next steps, impresiones |
+| Participantes | Array | Quiénes participaron (de nuestro lado y del contacto) |
+| Asistió | Boolean | Solo para `realizada` — ¿vino el contacto? |
+
+### Wireframe: Modal de Agendar Reunión
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│  📅 AGENDAR REUNIÓN                                    [✕]      │
+│                                                                  │
+│  Con: Juan Pérez · Constructora ABC                              │
+│  Reunión #1                                                      │
+│                                                                  │
+│  Fecha:  [26/02/2026]    Hora: [15:00]                          │
+│                                                                  │
+│  Link/Lugar:                                                     │
+│  ┌──────────────────────────────────────────────────────────┐    │
+│  │ https://meet.google.com/abc-defg-hij                     │    │
+│  └──────────────────────────────────────────────────────────┘    │
+│                                                                  │
+│  Notas:                                                          │
+│  ┌──────────────────────────────────────────────────────────┐    │
+│  │ Preguntar por cantidad de obras activas, mostrar demo    │    │
+│  │ del módulo de materiales                                 │    │
+│  └──────────────────────────────────────────────────────────┘    │
+│                                                                  │
+│  [Cancelar]                                    [Agendar reunión] │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+### Wireframe: Evaluar Reunión (post-meet)
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│  ✅ EVALUAR REUNIÓN #1                                  [✕]     │
+│                                                                  │
+│  Con: Juan Pérez · Constructora ABC                              │
+│  Fecha: 26/02/2026 15:00                                        │
+│                                                                  │
+│  Resultado:                                                      │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐                      │
+│  │✅ Asistió │  │❌ No Show │  │🚫Canceló │                      │
+│  └──────────┘  └──────────┘  └──────────┘                      │
+│       ● seleccionado                                             │
+│                                                                  │
+│  Notas de la reunión:                                            │
+│  ┌──────────────────────────────────────────────────────────┐    │
+│  │ Le gustó mucho el módulo de caja. Quiere arrancar con   │    │
+│  │ el plan Avanzado. Pide presupuesto formal para          │    │
+│  │ presentar a su socio.                                    │    │
+│  └──────────────────────────────────────────────────────────┘    │
+│                                                                  │
+│  ¿Cambiar estado del contacto?                                   │
+│  [🤝 Pasar a Cierre]  [⭐ Mantener Calificado]  [⏰ Revisar]   │
+│                                                                  │
+│  Plan:      [🔵 Avanzado ▼]    Intención: [🔴 Alta ▼]          │
+│                                                                  │
+│  ¿Agendar otra reunión?                                          │
+│  [Sí, agendar Meet #2]  [No por ahora]                          │
+│                                                                  │
+│  [Cancelar]                                           [Guardar]  │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+### Reuniones en la ficha del contacto
+
+Las reuniones se muestran como una sección propia en el drawer:
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│  REUNIONES                                      [+ Agendar nueva]│
+│                                                                  │
+│  📅 Meet #2 — 28/02 10:00 — AGENDADA                           │
+│     Link: meet.google.com/xyz                                    │
+│     "Presentar propuesta formal con detalle de módulos"          │
+│                                                                  │
+│  ✅ Meet #1 — 26/02 15:00 — REALIZADA                           │
+│     "Le gustó el módulo de caja. Pide presupuesto formal."       │
+│     Duración: 35 min                                             │
+│                                                                  │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 4. Ficha del Contacto (Drawer de Detalle)
 
 El drawer es la pantalla principal donde el SDR trabaja cada contacto. Se abre al tocar un contacto de la lista.
 
@@ -255,6 +448,7 @@ El drawer es la pantalla principal donde el SDR trabaja cada contacto. Se abre a
 │  ┌───────────────────┐  ┌──────────────────┐  ┌──────────────────┐ │
 │  │ ⭐ Calificado  ▼  │  │  🟣 Premium  ▼   │  │  🔴 Alta  ▼     │ │
 │  └───────────────────┘  └──────────────────┘  └──────────────────┘ │
+│  [🤖 Bot: calificado]                                              │
 │                                                                     │
 │  ┌─────────────────────────────┐  ┌────────────────────────────┐   │
 │  │                             │  │                            │   │
@@ -271,6 +465,13 @@ El drawer es la pantalla principal donde el SDR trabaja cada contacto. Se abre a
 │  │ 🏢 Constructora ABC · 51-200 empleados                     │   │
 │  │ 👤 Director de Obra                                         │   │
 │  │ 🏗️ Construcción                                             │   │
+│  └──────────────────────────────────────────────────────────────┘   │
+│                                                                     │
+│  ┌──────────────────────────────────────────────────────────────┐   │
+│  │ REUNIONES                                    [+ Agendar nueva]│  │
+│  │                                                              │   │
+│  │ 📅 Meet #1 — 26/02 15:00 — AGENDADA                        │   │
+│  │    "Presentar demo de materiales"                            │   │
 │  └──────────────────────────────────────────────────────────────┘   │
 │                                                                     │
 │  ┌──────────────────────────────────────────────────────────────┐   │
@@ -302,7 +503,7 @@ El drawer es la pantalla principal donde el SDR trabaja cada contacto. Se abre a
 │  │  ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─   │   │
 │  │  💬 22/02 16:00 — WhatsApp enviado                          │   │
 │  │     Template: "Primer contacto - Constructoras"              │   │
-│  │     SDR: Fernando | Cadencia: Paso 3                         │   │
+│  │     SDR: Fernando | Cadencia: Paso 1                         │   │
 │  └──────────────────────────────────────────────────────────────┘   │
 │                                                                     │
 │  ╔══════════════════════════════════════════════════════════════╗   │
@@ -322,10 +523,9 @@ Los tres chips de la parte superior son **tocables** y abren un menú desplegabl
   │ ℹ️ Nuevo          │                │ 🟢 Básico        │          │ 🟡 Baja          │
   │ 💬 Contactado     │                │ 🔵 Avanzado      │          │ 🟠 Media         │
   │ ⭐ Calificado  ✓  │                │ 🟣 Premium    ✓  │          │ 🔴 Alta       ✓  │
-  │ 📅 Meet agendada  │                │ 🟡 A medida      │          │ ⚪ Sin definir    │
-  │ ✅ Meet realizada  │                │ ⚪ Sin definir    │          └──────────────────┘
-  │ 🤝 En cierre      │                └──────────────────┘
-  │ ─ ─ ─ ─ ─ ─ ─ ─  │
+  │ 🤝 En cierre      │                │ 🟡 A medida      │          │ ⚪ Sin definir    │
+  │ 🏆 Ganado         │                │ ⚪ Sin definir    │          └──────────────────┘
+  │ ─ ─ ─ ─ ─ ─ ─ ─  │                └──────────────────┘
   │ 📵 No contacto    │
   │ 👻 No responde    │
   │ ⏰ Revisar luego  │
@@ -334,9 +534,11 @@ Los tres chips de la parte superior son **tocables** y abren un menú desplegabl
   └──────────────────┘
 ```
 
+> **Nota v2**: Ya no hay `📅 Meet agendada` ni `✅ Meet realizada` en el dropdown de estados. Las reuniones se gestionan desde su propia sección.
+
 ---
 
-## 4. Loop de Llamadas (Modo Llamadas)
+## 5. Loop de Llamadas (Modo Llamadas)
 
 El flujo que Fernando describió como ideal: **"Siguiente → Llamar → Registrar → Siguiente"**
 
@@ -359,6 +561,7 @@ Se accede desde un botón prominente en la vista de contactos. Es una pantalla d
 │                                                                     │
 │                                                                     │
 │            [⭐ Calificado]  [🟣 Premium]  [🔴 Alta]                │
+│            [🤖 Bot: calificado]                                     │
 │                                                                     │
 │                      Juan Pérez                                     │
 │                   Constructora ABC                                  │
@@ -370,7 +573,8 @@ Se accede desde un botón prominente en la vista de contactos. Es una pantalla d
 │  │   Llamar el 26 para ver si avanzó."                          │   │
 │  └──────────────────────────────────────────────────────────────┘   │
 │                                                                     │
-│        Cadencia: Paso 2/5 · Intentos: 3                            │
+│        Cadencia: Paso 2/4 · Intentos: 3                            │
+│        📅 Meet #1 agendada: 26/02 15:00                            │
 │                                                                     │
 │                                                                     │
 │  ┌──────────────────────────────────────────────────────────────┐   │
@@ -431,10 +635,10 @@ Antes de entrar, el SDR elige qué grupo de contactos trabajar:
 ### Flujos post-acción
 
 #### "No atendió"
-1. Se registra intento automáticamente
+1. Se registra intento automáticamente en el historial
 2. Se incrementa contador de intentos
-3. Aparece opción: **"¿Enviar WhatsApp?"** → si sí, abre selector de template
-4. Si tiene 3+ intentos sin respuesta → sugerir cambiar a `no_contacto`
+3. Aparece opción: **"¿Enviar WhatsApp?"** → si sí, abre selector de template del paso actual de cadencia
+4. Si completó toda la cadencia (paso 4 + espera 6 días) → sugerir cambiar a `no_contacto`
 5. Se avanza al siguiente contacto
 
 #### "Atendió"
@@ -458,33 +662,36 @@ Antes de entrar, el SDR elige qué grupo de contactos trabajar:
    ```
 2. El plan e intención se muestran solo si el estado es `calificado` o superior
 3. "Guardar + Sig" guarda todo y avanza al siguiente contacto
+4. La cadencia se detiene automáticamente al registrar una llamada atendida
 
 #### "WhatsApp"
 1. Abre selector de template (por paso de cadencia)
-2. Se reemplazan variables (`{{first_name}}`, `{{company}}`, `{{assigned_to}}`)
+2. Se reemplazan variables (`{{nombre}}`, `{{rubro_texto}}`, `{{sdr_nombre}}`, `{{momento_bot}}`)
 3. Se abre `wa.me` con el mensaje pre-cargado
-4. Al volver a la app: se registra automáticamente
+4. Al volver a la app: se registra automáticamente en historial
 5. Se avanza al siguiente contacto
 
 #### "Agendar Reunión"
-1. Se abre modal de reunión con campos: fecha, hora, link, notas
-2. Estado cambia a `meet_agendada`
-3. Se avanza al siguiente contacto
+1. Se abre modal de reunión con campos: fecha, hora, link, notas (ver sección 3)
+2. Se crea la entidad Reunión vinculada al contacto
+3. Estado del contacto **no cambia automáticamente** — el SDR decide si pasar a otro estado
+4. Se avanza al siguiente contacto
 
 ### Tabla resumen de acciones
 
-| Resultado | Nota | Próximo contacto | Estado | Plan | Intención |
-|-----------|------|-------------------|--------|------|-----------|
-| No atendió | Opcional | Auto: mañana | → no_contacto (si 3+) | — | — |
-| Atendió - sin info | Requerida | Manual | → contactado | — | Opcional |
-| Atendió - con info | Requerida | Manual | → calificado | **Selector** | **Selector** |
-| Quiere meet | Requerida | Fecha de meet | → meet_agendada | **Selector** | **Selector** |
-| No interesa | Motivo requerido | — | → no_califica | — | — |
-| "Hablame más adelante" | Requerida | Obligatorio | → revisar_mas_adelante | Opcional | Opcional |
+| Resultado | Nota | Próximo contacto | Estado | Plan | Intención | Reunión |
+|-----------|------|-------------------|--------|------|-----------|---------|
+| No atendió | Opcional | Auto: según cadencia | Sin cambio | — | — | — |
+| Atendió - sin info | Requerida | Manual | → contactado | — | Opcional | — |
+| Atendió - con info | Requerida | Manual | → calificado | **Selector** | **Selector** | — |
+| Quiere meet | Requerida | Fecha de meet | Sin cambio | **Selector** | **Selector** | **Se crea** |
+| No interesa | Motivo requerido | — | → no_califica | — | — | — |
+| "Hablame más adelante" | Requerida | Obligatorio | → revisar_mas_adelante | Opcional | Opcional | — |
+| Link pago enviado | Requerida | Auto: 3 días | → cierre o ganado | — | — | — |
 
 ---
 
-## 5. Métricas Automáticas
+## 6. Métricas Automáticas
 
 Todas las métricas se calculan desde el historial de acciones. No hay carga manual.
 
@@ -541,7 +748,7 @@ Todas las métricas se calculan desde el historial de acciones. No hay carga man
 │  │  Nuevo      ████████████████████████████████████████  200    │   │
 │  │  Contactado ████████████████████████░░░░░░░░░░░░░░░  120    │   │
 │  │  Calificado █████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░   45    │   │
-│  │  Meet       ████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░   18    │   │
+│  │  Con Meet   ████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░   18    │   │
 │  │  Cierre     ██░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░    8    │   │
 │  │  Ganado     █░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░    3    │   │
 │  │                                                              │   │
@@ -571,14 +778,17 @@ Todas las métricas se calculan desde el historial de acciones. No hay carga man
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
+> **Nota v2**: "Con Meet" en el funnel ahora se calcula como "contactos que tienen al menos 1 reunión realizada", no por estado del contacto.
+
 ---
 
-## 6. Ingreso Automático de Leads
+## 7. Ingreso Automático de Leads
 
 Eliminar el paso manual de copiar teléfonos de la Sheet "Métricas Leads":
 
 - Los eventos `nuevo_contacto` de la base de datos de eventos (la tabla de Google Sheets "event") se procesan automáticamente
 - El lead se crea en el sistema con estado `nuevo` y se asigna al SDR de turno (o al pool)
+- Si hay datos del bot, se llenan automáticamente: `precalificacionBot`, rubro, datos recopilados
 - El SDR ve los nuevos en su bandeja sin hacer nada
 - Si el lead ya existe (mismo teléfono), no se duplica
 
@@ -588,9 +798,14 @@ Eliminar el paso manual de copiar teléfonos de la Sheet "Métricas Leads":
 ┌─────────────────────────────────────────────────────────────────────┐
 │  🆕 NUEVO                                            hace 3 min    │
 │                                                                     │
-│  5491122439888                                                      │
+│  5491122439888                     [🤖 Bot: calificado]            │
 │  "Yo trabajo en una fábrica de puertas de madera,                  │
 │   en este momento... 894 puertas"                                   │
+│                                                                     │
+│  Info del bot:                                                      │
+│  • Rubro: Fábrica / Manufactura                                    │
+│  • Obras: ~894 puertas activas                                      │
+│  • Interacción con bot: hace 2 horas                                │
 │                                                                     │
 │  Origen: Inbound (nuevo_contacto)                                   │
 │  Sin asignar                                                        │
@@ -601,38 +816,141 @@ Eliminar el paso manual de copiar teléfonos de la Sheet "Métricas Leads":
 
 ---
 
-## 7. Sistema de Cadencias
+## 8. Sistema de Cadencias
 
-Una cadencia es una secuencia de pasos de contacto con tiempos definidos.
+Una cadencia es una secuencia de pasos de contacto con tiempos definidos. El ciclo de vida de un lead dura aproximadamente **14 días**: 8 días de cadencia activa + 6 días de espera antes de marcar como `no_contacto`.
 
-### Cadencia por defecto: "Primer Contacto"
+### Cadencia por defecto: "Ciclo de Vida de Lead"
 
-Lo que Fernando ya hace manualmente, sistematizado:
+Basada en el proceso real que Fernando ejecuta manualmente hoy, sistematizado en 4 pasos:
 
-| Paso | Momento | Acción | Template | Condición |
-|------|---------|--------|----------|-----------|
-| 1 | D+0 (AM) | 📞 Llamada | — | Siempre |
-| 2 | D+0 (PM) | 📞 Llamada | — | Si paso 1 no atendió |
-| 3 | D+0 (PM) | 💬 WhatsApp | "Primer contacto" (según rubro) | Si paso 2 no atendió |
-| 4 | D+1 | 💬 WhatsApp | "Video + presentación" | Si no respondió |
-| 5 | D+3 | 💬 WhatsApp | "Último follow-up" | Si no respondió |
+| Paso | Día | Acciones | Objetivo | Condición |
+|------|-----|----------|----------|-----------|
+| **1** | D+1 | 📞 Llamada + 💬 WhatsApp personalizado | **Gancho**: pedir permiso para compartir un ejemplo relevante al rubro | Siempre (primer intento) |
+| **2** | D+3 | 💬 WhatsApp con caso de uso / mini video / testimonio | **Entregar valor**: mandar el recurso prometido en el paso anterior | Si no respondió o se acordó enviar video |
+| **3** | D+5 | 📞 Llamada + 💬 Follow-up sobre visualización | **Evaluar interés**: preguntar si vio el material, probar engagement | Si no respondió |
+| **4** | D+8 | 📞 Llamada + 💬 WhatsApp de cierre suave | **Último intento**: cerrar con puerta abierta, dejar contacto | Si no respondió |
 
-### Comportamiento
+```
+Línea de tiempo:
 
-- Al crear un contacto `nuevo`, se asigna la cadencia "Primer Contacto"
-- El sistema programa los `proximoContacto` automáticamente según el paso
+D+1          D+3          D+5          D+8                D+14
+ │            │            │            │                   │
+ ▼            ▼            ▼            ▼                   ▼
+📞+💬        💬           📞+💬        📞+💬              ⏹️ no_contacto
+Gancho     Entregar      Evaluar      Cierre             (si no respondió)
+           valor         interés      suave
+ │                                     │
+ └── Si responde en cualquier punto ──→ CADENCIA SE DETIENE
+                                        Estado → contactado
+```
+
+### Pasos con múltiples acciones
+
+Cada paso puede tener **más de una acción**. El sistema sugiere ambas y el SDR las ejecuta en orden:
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│  PASO 1 — Día 1: Primer contacto                                │
+│                                                                  │
+│  Acciones:                                                       │
+│  ┌─────────────────────────────────────────────────────────┐     │
+│  │  1. 📞 Llamar                                 [Llamar] │     │
+│  │     Si atiende → registrar y detener cadencia           │     │
+│  │     Si no atiende → pasar a acción 2                    │     │
+│  ├─────────────────────────────────────────────────────────┤     │
+│  │  2. 💬 WhatsApp personalizado                [Enviar]  │     │
+│  │     Template: "Gancho - {{rubro}}"                      │     │
+│  │     Preview: "Hola, {{nombre}}! Fer de Sorby Data..."   │     │
+│  └─────────────────────────────────────────────────────────┘     │
+│                                                                  │
+│  [Saltar paso]                              [Marcar completado]  │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+### Templates por paso (con variaciones)
+
+Cada paso tiene múltiples variantes de template. El sistema selecciona la variante según **rubro del contacto** y **contexto del bot** (cuándo interactuó, qué hizo).
+
+#### Paso 1 — "Gancho" (variaciones reales)
+
+**Variables disponibles**: `{{nombre}}`, `{{rubro_texto}}`, `{{momento_bot}}`, `{{sdr_nombre}}`
+
+| Variante | Para rubro | Template |
+|----------|-----------|----------|
+| A | Constructoras | Hola, {{nombre}}! {{sdr_nombre}} de Sorby Data por acá! Estuviste en contacto con nuestro BOT {{momento_bot}}. Te escribo cortito: te viene bien que te comparta 1 ejemplo de cómo otras constructoras están ordenando materiales sin planillas? |
+| B | Estudios | ...cómo otros estudios gestionan gastos directo por WhatsApp, sin usar planillas? |
+| C | Profesionales independientes | ...cómo otros profesionales independientes gestionan gastos directo por WhatsApp, sin usar planillas? |
+| D | General (más consultivo) | Hola, {{nombre}}! 👋 Soy {{sdr_nombre}}, tu asesor de Sorby Data. Sé que estuviste en contacto con nuestro bot y quería conocer un poco más cómo venís gestionando tus obras. Cómo venís gestionando hoy caja, materiales y pedidos? Con Sorby podés ordenar todo eso de forma simple y ahorrar tiempo ⏳ Querés que lo charlemos por acá o preferís que hagamos una llamada rápida? |
+| E | General (más directo) | Hola, {{nombre}}! 👋 Soy {{sdr_nombre}} de Sorby Data. Vi que hablaste con nuestro bot y que estás con algunas obras activas. Cómo vienen manejando la parte de caja y materiales? Podemos charlarlo por acá o agendar una llamadita corta, como te quede más cómodo |
+
+> **Nota**: `{{momento_bot}}` se calcula automáticamente a partir de la fecha de interacción con el bot: "ayer por la noche", "el sábado por la tarde", "el lunes", etc.
+
+#### Paso 2 — "Entrega de valor"
+
+| Variante | Template |
+|----------|----------|
+| A (con video) | Hola, {{nombre}}! Soy {{sdr_nombre}} de Sorby Data. Te dejo el video que te mencioné ayer. En un minuto vas a ver cómo {{rubro_texto}} están ordenando caja y materiales directo desde WhatsApp, y sin planillas. Cómo lo vienen manejando ustedes? |
+| B (con ejemplo) | ...Te dejo el ejemplo que te comenté. Es solo para que tengas contexto de cómo se usa en el día a día. Si te sirve, lo vemos |
+
+#### Paso 3 — "Evaluar interés"
+
+| Variante | Template |
+|----------|----------|
+| A (consultivo) | {{nombre}}! Cómo estás? Te escribo para saber si pudiste ver la presentación que te compartí el otro día. Me gustaría entender si estamos alineados y si nuestra solución te resultaría útil 😁 Charlamos? |
+| B (corto) | {{nombre}}! Cómo va? Te escribo por el video que te pasé hace unos días. Si te sirve, esta semana lo vemos 10 min. Y si ahora no es momento, todo bien |
+| C (directo) | {{nombre}}! Viendo lo que te compartí el otro día, te hago una consulta cortita. Hoy estás llevando caja y materiales con planillas o por WhatsApp? Así te muestro un ejemplo parecido al tuyo. |
+
+#### Paso 4 — "Cierre suave"
+
+| Variante | Template |
+|----------|----------|
+| A | {{nombre}}! Prometo que este es mi último mensaje por ahora 😅 Vi que no pudimos coordinar todavía, y capaz estás a mil con las obras. Igual te dejo mi contacto directo por si más adelante querés optimizar tu gestión con Sorby. Lo bueno es que no necesitás instalar nada ni aprender un sistema nuevo. Es todo por WhatsApp y en 24hs lo tenés activo 👌 Abrazo, {{sdr_nombre}}. |
+
+### Secuencia progresiva (cada paso referencia al anterior)
+
+Detalle clave: los mensajes **no son independientes entre sí**. Cada paso hace referencia a lo que se envió antes ("el video que te mencioné", "la presentación que te compartí el otro día"). El sistema debe trackear qué se envió en cada paso para que los templates posteriores tengan contexto.
+
+```
+Paso 1: "Te viene bien que te comparta 1 ejemplo?"
+                    │
+                    ▼  (el SDR envía el video/ejemplo)
+Paso 2: "Te dejo el video que te mencioné ayer"
+                    │
+                    ▼  (espera a que lo vea)
+Paso 3: "Pudiste ver la presentación que te compartí?"
+                    │
+                    ▼  (último intento)
+Paso 4: "Prometo que este es mi último mensaje 😅"
+```
+
+### Selección automática de variante
+
+El sistema sugiere la variante más apropiada según:
+
+| Factor | Cómo influye |
+|--------|-------------|
+| **Rubro** del contacto | Constructora → variante con "otras constructoras". Estudio → "otros estudios" |
+| **Precalificación del bot** | Si el bot ya recopiló info → variante más consultiva. Si no → más genérica |
+| **Paso de cadencia** | Cada paso tiene sus propias variantes |
+| **SDR** puede elegir otra | El sistema sugiere pero el SDR puede cambiar antes de enviar |
+
+### Comportamiento de la cadencia
+
+- Al crear un contacto `nuevo`, se asigna la cadencia "Ciclo de Vida de Lead"
+- El sistema programa los `proximoContacto` automáticamente según los días de cada paso
 - **Si el contacto responde** (estado cambia a `contactado` o superior) → la cadencia se **detiene**
-- **Si no responde tras paso 5** → estado cambia a `no_contacto` automáticamente
+- **Si no responde tras paso 4** → 6 días de espera → estado cambia a `no_contacto`
 - El SDR ve el paso actual de la cadencia en la tarjeta del contacto
-- El SDR **puede saltear pasos** o **pausar** la cadencia manualmente
+- El SDR **puede saltear pasos**, **pausar** la cadencia, o **elegir otra variante** de template
 
 ### Cadencias adicionales (configurables por el manager)
 
-| Cadencia | Para quién | Trigger |
-|----------|-----------|---------|
-| "Re-engagement" | Contactos `revisar_mas_adelante` | Cuando llega la fecha programada |
-| "Post-meet sin respuesta" | Contactos `meet_realizada` que no avanzan | 3 días después de la meet sin cambio |
-| "Follow-up calificado" | Contactos `calificado` que no llegan a meet | 5 días sin acción |
+| Cadencia | Para quién | Trigger | Duración aprox. |
+|----------|-----------|---------|-----------------|
+| "Re-engagement" | Contactos `revisar_mas_adelante` | Cuando llega la fecha programada | 5 días |
+| "Post-meet sin respuesta" | Contactos con meet `realizada` que no avanzan | 3 días después de la meet sin cambio | 5 días |
+| "Follow-up calificado" | Contactos `calificado` que no llegan a meet | 5 días sin acción | 5 días |
 
 ### Indicador visual de cadencia en la tarjeta
 
@@ -640,12 +958,12 @@ Lo que Fernando ya hace manualmente, sistematizado:
 ┌─────────────────────────────────────────────────────────────────────┐
 │  Juan Pérez · Constructora ABC              [ℹ️ Nuevo]             │
 │                                                                     │
-│  Cadencia: Primer Contacto                                          │
-│  ● ● ● ○ ○   Paso 3/5 — WhatsApp "Primer contacto"               │
-│  ▲▲▲                                                               │
+│  Cadencia: Ciclo de Vida de Lead                                    │
+│  ● ● ○ ○   Paso 2/4 — 💬 Video/caso de uso                       │
+│  ▲▲                                                                │
 │  completados                                                        │
 │                                                                     │
-│  Próximo: Hoy 16:00 (en 2h)                                        │
+│  Próximo: Mañana 09:00 (en 18h)                                    │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -653,13 +971,37 @@ Lo que Fernando ya hace manualmente, sistematizado:
 > "Primero pasar por eso y después vemos" — Fernando  
 > "Si hacemos lo 100% automático, se nos podía [ir de las manos]" — Federico
 
-Las cadencias **NO envían mensajes automáticamente**. Solo organizan la cola y sugieren la acción. El SDR siempre confirma manualmente. En una fase futura se podrían automatizar los WhatsApp.
+Las cadencias **NO envían mensajes automáticamente**. Solo organizan la cola y sugieren la acción + template. El SDR siempre confirma manualmente (puede editar el mensaje antes de enviar). En una fase futura se podrían automatizar los WhatsApp.
 
 ---
 
-## 8. Historial Enriquecido (Status Sum)
+## 9. Historial Enriquecido (Status Sum)
 
-Equivalente al "Status Sum" de Notion: un registro de todos los estados por los que pasó el contacto, más todas las acciones realizadas.
+> **Concepto v2**: El historial es el equivalente directo del **"Status Sum"** de Notion. En Notion, los "Status" no son estados exclusivos — son un log acumulativo de todo lo que pasó con el contacto. Nuestro historial replica y mejora ese concepto.
+
+### Tipos de acciones en el historial
+
+| Tipo | Emoji | Descripción | Origen |
+|------|-------|-------------|--------|
+| `llamada_atendida` | 📞✅ | Se llamó y atendió | SDR registra |
+| `llamada_no_atendida` | 📞❌ | Se llamó y no atendió | SDR registra |
+| `whatsapp_enviado` | 💬 | Se envió WhatsApp | SDR desde la app |
+| `whatsapp_respuesta` | 💬✅ | El contacto respondió al WhatsApp | Automático (bot detecta) |
+| `instagram_contacto` | 📷 | Interacción por Instagram | SDR registra |
+| `email_enviado` | 📧 | Se envió email | SDR registra |
+| `reunion_agendada` | 📅 | Se creó una reunión | SDR desde la app |
+| `reunion_realizada` | ✅📅 | Reunión se concretó | SDR evalúa |
+| `reunion_no_show` | ❌📅 | Contacto no se presentó | SDR evalúa |
+| `reunion_cancelada` | 🚫📅 | Reunión fue cancelada | SDR o contacto |
+| `presupuesto_enviado` | 📄 | Se envió presupuesto/propuesta | SDR registra |
+| `negociacion_iniciada` | 🤝 | Se abrió negociación formal | SDR registra |
+| `link_pago_enviado` | 💳 | Se envió link de pago/onboarding (Alias) | SDR registra |
+| `cambio_estado` | 🔄 | Cambio de estado del contacto | Automático |
+| `cambio_plan` | 🔄💰 | Cambio de plan estimado | SDR cambia |
+| `cambio_intencion` | 🔄🎯 | Cambio de intención de compra | SDR cambia |
+| `nota` | 📝 | Nota manual del SDR | SDR escribe |
+| `contacto_creado` | ℹ️ | El contacto fue creado en el sistema | Automático |
+| `cadencia_paso` | ⏩ | Se ejecutó un paso de la cadencia | Sistema + SDR |
 
 ### Vista del historial en el Drawer
 
@@ -669,29 +1011,30 @@ Equivalente al "Status Sum" de Notion: un registro de todos los estados por los 
 │                                                                  │
 │  ┌───── Hoy ──────────────────────────────────────────────────┐  │
 │  │                                                            │  │
-│  │  14:30  📞 Llamada atendida                                │  │
+│  │  14:30  📞✅ Llamada atendida                              │  │
 │  │         ┌─────────────────────────────────────────────┐    │  │
 │  │         │ "Tiene 3 obras, estudio de 15 personas.     │    │  │
 │  │         │  Quiere ver el video. Lo charla con su      │    │  │
 │  │         │  socio. Llamar el 26."                      │    │  │
 │  │         └─────────────────────────────────────────────┘    │  │
 │  │         SDR: Fernando                                      │  │
-│  │         Estado: 💬 Contactado → ⭐ Calificado              │  │
-│  │         Plan: ⚪ → 🟣 Premium   Intención: ⚪ → 🟠 Media   │  │
+│  │         🔄 Estado: 💬 Contactado → ⭐ Calificado           │  │
+│  │         🔄 Plan: ⚪ → 🟣 Premium   Intención: ⚪ → 🟠 Media│  │
 │  │                                                            │  │
-│  │  10:00  📞 Llamada no atendida                             │  │
-│  │         SDR: Fernando · Cadencia: Paso 1                   │  │
+│  │  10:00  📞❌ Llamada no atendida                           │  │
+│  │         SDR: Fernando · Cadencia: Paso 1, Acción 1         │  │
+│  │                                                            │  │
+│  │  10:02  💬 WhatsApp enviado                                │  │
+│  │         Template: "Gancho - Constructoras"                 │  │
+│  │         SDR: Fernando · Cadencia: Paso 1, Acción 2         │  │
 │  │                                                            │  │
 │  └────────────────────────────────────────────────────────────┘  │
 │                                                                  │
 │  ┌───── Ayer ─────────────────────────────────────────────────┐  │
 │  │                                                            │  │
-│  │  16:00  💬 WhatsApp enviado                                │  │
-│  │         Template: "Primer contacto - Constructoras"        │  │
-│  │         SDR: Fernando · Cadencia: Paso 3                   │  │
-│  │                                                            │  │
-│  │  09:00  📞 Llamada no atendida                             │  │
-│  │         SDR: Fernando · Cadencia: Paso 2                   │  │
+│  │  09:00  📅 Reunión #1 agendada                             │  │
+│  │         26/02 15:00 · Google Meet                          │  │
+│  │         SDR: Fernando                                      │  │
 │  │                                                            │  │
 │  └────────────────────────────────────────────────────────────┘  │
 │                                                                  │
@@ -699,6 +1042,7 @@ Equivalente al "Status Sum" de Notion: un registro de todos los estados por los 
 │  │                                                            │  │
 │  │  12:00  ℹ️ Contacto creado                                 │  │
 │  │         Origen: Inbound (nuevo_contacto)                   │  │
+│  │         Bot: calificado · Rubro: Constructora              │  │
 │  │         Asignado a: Fernando Falasca                       │  │
 │  │                                                            │  │
 │  └────────────────────────────────────────────────────────────┘  │
@@ -709,25 +1053,17 @@ Equivalente al "Status Sum" de Notion: un registro de todos los estados por los 
 ### Filtros del historial
 
 El dropdown "Filtrar por tipo" permite ver solo:
-- 📞 Llamadas
-- 💬 WhatsApp
-- 📅 Reuniones
+- 📞 Llamadas (atendidas + no atendidas)
+- 💬 WhatsApp (enviados + respuestas)
+- 📅 Reuniones (agendadas + realizadas + no show + canceladas)
 - 📝 Notas
-- 🔄 Cambios de estado
+- 🔄 Cambios (estado, plan, intención)
+- 📄 Acciones comerciales (presupuesto, negociación, link pago)
 - Todos (default)
-
-### Novedades vs. historial actual
-
-Lo que se agrega al historial que ya existe:
-- **Cambios de plan/intención visibles**: cuando cambia plan estimado o intención, se registra con `antes → después`
-- **Paso de cadencia visible** en cada acción
-- **Notas más prominentes**: las notas se muestran en un recuadro visual destacado, no como texto plano
-- **Agrupado por día** con separadores visuales claros
-- **Filtro por tipo de evento**: para que el SDR pueda buscar rápido
 
 ---
 
-## 9. Búsqueda y Filtros Avanzados
+## 10. Búsqueda y Filtros Avanzados
 
 Para reemplazar las vistas personalizadas de Notion.
 
@@ -747,12 +1083,14 @@ Para reemplazar las vistas personalizadas de Notion.
 
 | Filtro | Opciones |
 |--------|----------|
-| **Estado** | Multi-select: todos los estados |
+| **Estado** | Multi-select: todos los 10 estados |
 | **Plan estimado** | Premium / Avanzado / Básico / A medida / Sin definir |
 | **Intención de compra** | Alta / Media / Baja / Sin definir |
+| **Pre-calificación bot** | sin_calificar / no_llego / calificado / quiere_meet |
 | **Tamaño empresa** | 1-10 / 11-50 / 51-200 / 200+ |
-| **Paso de cadencia** | Paso 1, 2, 3, 4, 5 / Sin cadencia |
+| **Paso de cadencia** | Paso 1, 2, 3, 4 / Sin cadencia / Cadencia completada |
 | **Próximo contacto** | Vencido / Hoy / Esta semana / Sin programar |
+| **Reuniones** | Con reunión agendada / Con meet realizada / Sin reuniones |
 | **SDR asignado** | Dropdown con SDRs (solo vista manager) |
 | **Segmento** | Outbound / Inbound |
 | **Fecha de creación** | Rango de fechas |
@@ -774,7 +1112,8 @@ Aparecen como tabs/chips encima de la lista:
 |-------|-------------------|-------|
 | "Para llamar hoy" | Próximo = Vencido + Hoy | Por score desc |
 | "Nuevos sin contactar" | Estado = nuevo, intentos = 0 | Más reciente primero |
-| "Calificados sin meet" | Estado = calificado, sin reunión | Por score desc |
+| "Calificados sin meet" | Estado = calificado, reuniones = Sin reuniones | Por score desc |
+| "Con meet pendiente" | Reuniones = Con reunión agendada | Por fecha de reunión |
 | "Revisar esta semana" | Estado = revisar_mas_adelante, próximo = esta semana | Por fecha próximo contacto |
 | "Reintentar" | Estado = no_contacto, creado hace > 1 semana | Por fecha creación |
 
@@ -782,16 +1121,18 @@ El manager puede crear vistas propias y compartirlas con el equipo.
 
 ---
 
-## 10. Pipeline de Ventas Post-Meet
+## 11. Pipeline de Ventas Post-Meet
 
 Hoy el proceso termina en "calificado" o "meet". Pero Fernando también trackea ventas, planes, tickets. El pipeline extiende el flujo:
 
 ### Flujo post-meet
 
 ```
-meet_realizada → cierre → ganado
-                       └→ perdido
+Contacto calificado + meet realizada → cierre → ganado
+                                             └→ perdido
 ```
+
+> **Nota v2**: El contacto puede pasar a `cierre` tras una meet, pero también puede ir directo si hay una propuesta sin meet (caso raro pero posible). El estado `cierre` se activa cuando hay negociación concreta.
 
 ### Datos de la Oportunidad de Venta
 
@@ -805,6 +1146,16 @@ Cuando un contacto pasa a `cierre`, se le agregan estos datos:
 | Módulos interesados | Multi-select | Qué módulos de Sorby le interesan |
 | Probabilidad | % | Manual: 25%, 50%, 75%, 90% |
 | Notas de negociación | Text | Objeciones, condiciones, next steps |
+
+### Acciones comerciales en el historial
+
+Las acciones de cierre se registran en el historial, no como estados separados:
+
+| Acción | Qué registra |
+|--------|-------------|
+| `presupuesto_enviado` | Se envió propuesta económica formal |
+| `negociacion_iniciada` | Se abrió negociación (contraoferta, condiciones) |
+| `link_pago_enviado` | Se envió el link de pago/alta ("Alias" en Notion) |
 
 ### Vista Pipeline (Manager)
 
@@ -855,6 +1206,7 @@ Cuando un contacto pasa a `ganado`:
 - Se registra: plan, fecha de alta, ticket, módulos
 - El contacto SDR queda vinculado al cliente para trazabilidad
 - El SDR recibe crédito en sus métricas
+- En historial queda registrado `link_pago_enviado` + cambio a `ganado`
 
 ### Métricas de Google Sheets Reemplazadas
 
@@ -869,21 +1221,21 @@ La hoja "Looker Studio2" quedaría obsoleta:
 | Basura | Estado `no_califica` |
 | Leads_Llamada | Historial: eventos `llamada_atendida` |
 | Leads_Whatsapp | Historial: eventos `whatsapp_enviado` |
-| Meets_Realizadas / Meets_Agendadas | Reuniones (por estado) |
+| Meets_Realizadas / Meets_Agendadas | Entidad Reunión (por estado) |
 | Fecha_Reunion / Mes_Reunion | Auto (fecha de la reunión) |
 | Ventas_A | Contactos en estado `ganado` |
 | Fecha_Venta / Mes_Venta | Auto (fecha de cambio a `ganado`) |
 
 ---
 
-## 11. Automatización de WhatsApp
+## 12. Automatización de WhatsApp
 
 ### Etapa A: Asistido (primera implementación)
 
 - El sistema **sugiere** el mensaje del paso actual de la cadencia
 - El SDR toca "Enviar" → se abre WhatsApp pre-cargado → confirma
-- Se registra automáticamente el envío y avanza al siguiente paso
-- Es lo que ya existe, pero integrado con las cadencias
+- Se registra automáticamente el envío en historial y avanza al siguiente paso
+- Es lo que ya existe, pero integrado con las cadencias y los templates por rubro
 
 ### Etapa B: Bot Dedicado (futuro)
 
@@ -905,14 +1257,16 @@ La hoja "Looker Studio2" quedaría obsoleta:
 Cuando el contacto responde al WhatsApp:
 - Notificación al SDR
 - Se pausa la cadencia automática
-- Se registra en historial como "respuesta recibida"
+- Se registra en historial como `whatsapp_respuesta`
 - El contacto sube en prioridad
 
 ---
 
-## 12. Reportes e Inteligencia
+## 13. Reportes e Inteligencia
 
 ### Funnel de Conversión Visual
+
+> **Nota v2**: El escalón "Con Meet" ahora se calcula cruzando contactos con la entidad Reunión (al menos 1 reunión realizada), no por estado del contacto.
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
@@ -924,7 +1278,7 @@ Cuando el contacto responde al WhatsApp:
 │                                                    ↓ 37.5%      │
 │  Calificado ████████░░░░░░░░░░░░░░░░░░░░░░░░░░░   45  (22.5%) │
 │                                                    ↓ 40%        │
-│  Meet       ████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░   18  (9%)    │
+│  Con Meet   ████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░   18  (9%)    │
 │                                                    ↓ 44.4%      │
 │  Cierre     ██░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░    8  (4%)    │
 │                                                    ↓ 37.5%      │
@@ -945,6 +1299,8 @@ Cuando el contacto responde al WhatsApp:
 | Contacto sin acción hace 5 días | Manager | In-app |
 | Reunión pendiente de evaluar | Manager | In-app |
 | Premium con intención Alta sin acción | Manager | In-app |
+| No show en reunión | SDR + Manager | Push |
+| Cadencia completada sin respuesta | SDR | In-app |
 
 ---
 
@@ -952,11 +1308,11 @@ Cuando el contacto responde al WhatsApp:
 
 | Fase | Funcionalidades |
 |------|----------------|
-| **1** | Estados puros · Scoring (plan + intención) · Loop de llamadas · Métricas auto · Ingreso automático de leads |
-| **2** | Cadencias configurables · Historial enriquecido · Filtros avanzados · Vistas guardadas |
-| **3** | Pipeline de ventas · Transición a cliente · Reemplazo de Google Sheets |
+| **1** | Estados puros (10) · Scoring (plan + intención) · Pre-calificación bot · Loop de llamadas · Métricas auto · Ingreso automático de leads |
+| **2** | Cadencias de 14 días con templates · Reuniones como entidad independiente · Historial enriquecido (Status Sum) · Filtros avanzados · Vistas guardadas |
+| **3** | Pipeline de ventas · Acciones comerciales en historial · Transición a cliente · Reemplazo de Google Sheets |
 | **4** | WhatsApp asistido con cadencias · Bot dedicado (futuro) |
-| **5** | Funnel visual · Alertas · Comparativas de período |
+| **5** | Funnel visual · Alertas · Comparativas de período · Reportes avanzados |
 
 ---
 
@@ -966,8 +1322,11 @@ Cuando el contacto responde al WhatsApp:
 - **Las cadencias NO deben ser inmutables**: "No tan inmutable por así decir" — el SDR debe poder ajustar tiempos
 - **Delegabilidad**: "Si es difícil delegar después no lo puede delegar" — pocos estados, flujo simple
 - **Revivir contactos**: Leads viejos que vuelven necesitan un camino claro (→ `revisar_mas_adelante` con próximo contacto)
-- **Meet ≠ Qualify**: Hay que separar "tuve meet" de "lo califiqué". Un contacto puede estar calificado sin meet y con meet sin estar en cierre
-- **Plan estimado ≠ Intención de compra**: Son dos dimensiones distintas. Plan = qué plan le conviene por perfil. Intención = cuántas ganas tiene de comprar. Un contacto puede ser Premium con intención baja (empresa grande que no tiene urgencia) o Básico con intención alta (equipo chico que quiere arrancar ya)
+- **Meet ≠ Qualify**: Hay que separar "tuve meet" de "lo califiqué". Un contacto puede estar calificado sin meet y con meet sin estar en cierre. Por eso las meets son entidad separada
+- **Status Sum ≠ Estado**: En Notion los "status" son un log acumulativo, no estados exclusivos. Nuestro historial replica este concepto correctamente
+- **Canal ≠ Estado**: Humano, WA, Llamado, Instagram son canales de contacto (tipos de acción), no estados del contacto
+- **Alias = Link de pago**: No es un descarte, es el envío del link de pago/onboarding. Es una acción de cierre
+- **Plan estimado ≠ Intención de compra**: Son dos dimensiones distintas. Plan = qué plan le conviene por perfil. Intención = cuántas ganas tiene de comprar
 - **El control sigue siendo del SDR**: "Si hacemos lo 100% automático, se nos podía [correr]" — nada se envía sin confirmación humana (al menos en las primeras fases)
 
 ---
@@ -980,7 +1339,13 @@ Para crear los diagramas sugeridos, usar estos lineamientos:
 - **Tipo**: Diagrama de flujo con nodos y flechas
 - **Nodos**: Rectángulos redondeados con emoji + nombre del estado + color de fondo
 - **Flechas**: Líneas sólidas para el happy path, punteadas para salidas negativas
-- **Colores**: Celeste (nuevo), Amarillo (contactado), Verde (calificado), Azul (meets), Verde fuerte (cierre/ganado), Gris (no_contacto/no_responde), Naranja (revisar), Rojo (no_califica/perdido)
+- **Colores**: Celeste (nuevo), Amarillo (contactado), Verde (calificado), Verde fuerte (cierre/ganado), Gris (no_contacto/no_responde), Naranja (revisar), Rojo (no_califica/perdido)
+- **Nota**: Las reuniones NO aparecen en este diagrama — tienen su propio lifecycle
+
+### `lifecycle-reuniones.excalidraw` (NUEVO en v2)
+- **Tipo**: Diagrama de estados de la entidad Reunión
+- **Nodos**: agendada → realizada / no_show / cancelada
+- **Flechas**: no_show y cancelada pueden generar una nueva reunión (re-agendar)
 
 ### `matriz-plan-intencion.excalidraw`
 - **Tipo**: Grilla/tabla 4×4 con colores de calor
@@ -992,11 +1357,11 @@ Para crear los diagramas sugeridos, usar estos lineamientos:
 ### `drawer-contacto-mobile.excalidraw`
 - **Tipo**: Wireframe de pantalla mobile
 - **Dimensiones**: 375×812 (iPhone)
-- **Secciones**: Header con chips, CTAs, datos, próximo contacto, comentario, historial, FAB
+- **Secciones**: Header con chips, CTAs, datos, **sección de reuniones** (NUEVO), próximo contacto, comentario, historial, FAB
 
 ### `modo-llamadas.excalidraw`
 - **Tipo**: Wireframe de pantalla mobile
-- **Foco**: Botón LLAMAR enorme en el centro, barra de progreso arriba, acciones rápidas abajo
+- **Foco**: Botón LLAMAR enorme en el centro, barra de progreso arriba, acciones rápidas abajo (incluyendo "Agendar reunión")
 
 ### `dashboard-sdr.excalidraw`
 - **Tipo**: Wireframe de dashboard
