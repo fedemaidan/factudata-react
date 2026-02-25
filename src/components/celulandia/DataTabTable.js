@@ -20,9 +20,7 @@ import {
   TablePagination,
   IconButton,
   Tooltip,
-  InputAdornment,
 } from "@mui/material";
-import ClearIcon from "@mui/icons-material/Clear";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import FileDownloadIcon from "@mui/icons-material/FileDownload";
 import { ascByOrderKey, descByOrderKey } from "src/utils/dateOrder";
@@ -36,7 +34,6 @@ import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import dayjs from "dayjs";
 import agregarSaldoCalculado from "src/utils/celulandia/agregarSaldoCalculado";
-import useDebouncedValue from "src/hooks/useDebouncedValue";
 
 const n = (x) => (Number.isFinite(Number(x)) ? Number(x) : 0);
 const r2 = (x) => Math.round((x + Number.EPSILON) * 100) / 100;
@@ -51,48 +48,6 @@ const getTimeSafe = (v) => {
   );
   return p.isValid() ? p.valueOf() : 0;
 };
-
-// Input aislado: estado local + debounce. Solo notifica al padre cuando el valor debounced cambia.
-// Evita re-renders del padre (y de la tabla) en cada tecla.
-const SearchInput = memo(({ onDebouncedChange }) => {
-  const [value, setValue] = useState("");
-  const debounced = useDebouncedValue(value, 300);
-
-  useEffect(() => {
-    onDebouncedChange(debounced);
-  }, [debounced, onDebouncedChange]);
-
-  const handleClear = useCallback(() => {
-    setValue("");
-    onDebouncedChange("");
-  }, [onDebouncedChange]);
-
-  return (
-    <TextField
-      label="Buscar"
-      size="small"
-      value={value}
-      onChange={(e) => setValue(e.target.value)}
-      sx={{ width: 220 }}
-      InputProps={{
-        endAdornment: value.length > 0 && (
-          <InputAdornment position="end">
-            <IconButton
-              onClick={handleClear}
-              edge="end"
-              size="small"
-              sx={{ color: "text.secondary" }}
-            >
-              <ClearIcon />
-            </IconButton>
-          </InputAdornment>
-        ),
-      }}
-    />
-  );
-});
-
-SearchInput.displayName = "SearchInput";
 
 const DataTabTable = ({
   items = [],
@@ -124,10 +79,8 @@ const DataTabTable = ({
   onFiltroFechaChange = null,
   onOptionChange = null,
   showSaldoColumn = false,
-  searchFields = null, // null = [cliente, monto] por defecto; [] = buscar en todas las columnas
 }) => {
-  const [busquedaParaFiltro, setBusquedaParaFiltro] = useState("");
-  const handleSearchDebounced = useCallback((v) => setBusquedaParaFiltro(v || ""), []);
+  const [busqueda, setBusqueda] = useState("");
   const [internalFiltroFecha, setInternalFiltroFecha] = useState(filtroFecha);
   const [internalSelectedDate, setInternalSelectedDate] = useState(null);
 
@@ -249,23 +202,13 @@ const DataTabTable = ({
 
     let rows = items;
 
-    if (showSearch && busquedaParaFiltro.trim()) {
-      const q = busquedaParaFiltro.toLowerCase();
-      const fieldsToSearch =
-        searchFields && searchFields.length > 0
-          ? searchFields
-          : ["cliente", "monto"];
-      rows = rows.filter((r) => {
-        const values = fieldsToSearch.flatMap((key) => {
-          const v = r[key];
-          if (v == null) return [];
-          if (typeof v === "object" && v !== null) {
-            return Object.values(v).map((x) => (x != null ? String(x) : ""));
-          }
-          return [String(v)];
-        });
-        return values.some((v) => v && v.toLowerCase().includes(q));
-      });
+    if (showSearch && busqueda.trim()) {
+      const q = busqueda.toLowerCase();
+      rows = rows.filter((r) =>
+        [r.cliente, r.monto && String(r.monto)].some(
+          (v) => v && String(v).toLowerCase().includes(q)
+        )
+      );
     }
 
     if (showDateFilterOptions) {
@@ -301,13 +244,12 @@ const DataTabTable = ({
     return rows;
   }, [
     items,
-    busquedaParaFiltro,
+    busqueda,
     finalFiltroFecha,
     selectedDate,
     finalSortDirection,
     finalSortField,
     showSearch,
-    searchFields,
     showDateFilterOptions,
     showDatePicker,
     internalSelectedDate,
@@ -327,54 +269,26 @@ const DataTabTable = ({
     return map;
   }, [sortedAndFilteredItems, options]);
 
-  // Totales SIN búsqueda: el buscador filtra la tabla pero no afecta ARS/USD BLUE/USD OFICIAL
-  const totals = useMemo(() => {
-    const res = new Map();
-    options.forEach((opt) => res.set(opt.value, 0));
-    items.forEach((it) => {
-      const key = it.group;
-      if (res.has(key)) {
-        res.set(key, (res.get(key) || 0) + (Number(it.monto) || 0));
-      }
-    });
-    return res;
-  }, [items, options]);
-
-  // Saldos calculados SIN búsqueda: debe/haber/saldoAcumulado desde el dataset completo
-  const saldoByItemId = useMemo(() => {
-    const byId = new Map();
-    options.forEach((opt) => {
-      const groupItems = items.filter((it) => it.group === opt.value);
-      const sorted = [...groupItems].sort((a, b) => getTimeSafe(a.fecha) - getTimeSafe(b.fecha));
-      const computed = agregarSaldoCalculado(sorted);
-      computed.forEach((it) => {
-        byId.set(it.id, {
-          debe: it.debe,
-          haber: it.haber,
-          saldoAcumulado: it.saldoAcumulado,
-        });
-      });
-    });
-    return byId;
-  }, [items, options]);
-
-  // Tabla filtrada pero con saldos del dataset completo (el buscador no afecta saldos)
+  // Recalcular Debe/Haber/Saldo por grupo según la pestaña (CC) y en orden cronológico ASC
   const groupedWithSaldo = useMemo(() => {
     const map = new Map();
     for (const [key, itemsArr] of grouped.entries()) {
+      // const asc = [...itemsArr].sort((a, b) => getTimeSafe(a.fecha) - getTimeSafe(b.fecha));
+      const computedAsc = agregarSaldoCalculado(itemsArr);
+      const byId = new Map(computedAsc.map((it) => [it.id, it]));
       const merged = itemsArr.map((it) => {
-        const saldo = saldoByItemId.get(it.id) || {};
+        const comp = byId.get(it.id) || {};
         return {
           ...it,
-          debe: saldo.debe ?? it.debe,
-          haber: saldo.haber ?? it.haber,
-          saldoAcumulado: saldo.saldoAcumulado ?? it.saldoAcumulado,
+          debe: comp.debe ?? it.debe,
+          haber: comp.haber ?? it.haber,
+          saldoAcumulado: comp.saldoAcumulado ?? it.saldoAcumulado,
         };
       });
       map.set(key, merged);
     }
     return map;
-  }, [grouped, saldoByItemId]);
+  }, [grouped]);
 
   const paginatedGrouped = useMemo(() => {
     const map = new Map();
@@ -385,6 +299,15 @@ const DataTabTable = ({
     }
     return map;
   }, [groupedWithSaldo, finalPage, finalRowsPerPage]);
+
+  const totals = useMemo(() => {
+    const res = new Map();
+    for (const [k, arr] of grouped.entries()) {
+      const sum = arr.reduce((acc, it) => acc + (it.monto || 0), 0);
+      res.set(k, sum);
+    }
+    return res;
+  }, [grouped]);
 
   // Exportar a Excel (pestaña actual) — con Debe/Haber/Saldo acumulado y números puros
   const handleExportExcel = () => {
@@ -494,7 +417,12 @@ const DataTabTable = ({
         <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
           <Stack direction="row" spacing={1} alignItems="center">
             {showSearch && (
-              <SearchInput onDebouncedChange={handleSearchDebounced} />
+              <TextField
+                label="Buscar"
+                value={busqueda}
+                onChange={(e) => setBusqueda(e.target.value)}
+                sx={{ minWidth: 300 }}
+              />
             )}
 
             {showDateFilterOptions && (
