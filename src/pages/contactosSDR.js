@@ -1075,9 +1075,13 @@ const ContactosSDRPage = () => {
                 {metricas && (
                     <Box>
                         <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
-                            <Typography variant="h6">
-                                Mis Métricas {metricas._estimado && <Typography component="span" variant="caption" color="text.secondary">(estimado)</Typography>}
-                            </Typography>
+                            <Stack direction="row" spacing={1} alignItems="baseline">
+                                <Typography variant="h6">Mi Actividad</Typography>
+                                <Typography variant="caption" color="text.secondary">
+                                    {periodoMetricas === 'hoy' ? 'hoy' : periodoMetricas === 'semana' ? 'últimos 7 días' : 'último mes'}
+                                    {metricas._estimado && ' (estimado)'}
+                                </Typography>
+                            </Stack>
                             <Stack direction="row" spacing={1}>
                                 <Chip 
                                     label="Hoy" 
@@ -1107,41 +1111,45 @@ const ContactosSDRPage = () => {
                                 <Paper sx={{ p: 2, textAlign: 'center' }}>
                                     <PhoneIcon color="primary" />
                                     <Typography variant="h5">{metricas.llamadasRealizadas}</Typography>
-                                    <Typography variant="caption">Llamadas</Typography>
+                                    <Typography variant="caption" color="text.secondary">Llamadas</Typography>
                                 </Paper>
                             </Grid>
                             <Grid item xs={6} sm={4} md={2}>
                                 <Paper sx={{ p: 2, textAlign: 'center' }}>
                                     <CheckCircleIcon color="success" />
                                     <Typography variant="h5">{metricas.llamadasAtendidas}</Typography>
-                                    <Typography variant="caption">Atendidas</Typography>
+                                    <Typography variant="caption" color="text.secondary">Atendidas</Typography>
                                 </Paper>
                             </Grid>
                             <Grid item xs={6} sm={4} md={2}>
                                 <Paper sx={{ p: 2, textAlign: 'center' }}>
                                     <WhatsAppIcon sx={{ color: '#25D366' }} />
                                     <Typography variant="h5">{metricas.whatsappEnviados}</Typography>
-                                    <Typography variant="caption">WhatsApp</Typography>
+                                    <Typography variant="caption" color="text.secondary">WhatsApp</Typography>
                                 </Paper>
                             </Grid>
                             <Grid item xs={6} sm={4} md={2}>
                                 <Paper sx={{ p: 2, textAlign: 'center' }}>
                                     <EventIcon color="secondary" />
                                     <Typography variant="h5">{metricas.reunionesCoordinadas}</Typography>
-                                    <Typography variant="caption">Reuniones</Typography>
+                                    <Typography variant="caption" color="text.secondary">Reuniones</Typography>
                                 </Paper>
                             </Grid>
                             <Grid item xs={6} sm={4} md={2}>
-                                <Paper sx={{ p: 2, textAlign: 'center', bgcolor: 'info.light' }}>
-                                    <TrendingUpIcon sx={{ color: 'white' }} />
-                                    <Typography variant="h5" sx={{ color: 'white' }}>{contarPorEstado('nuevo')}</Typography>
-                                    <Typography variant="caption" sx={{ color: 'white' }}>Nuevos</Typography>
+                                <Paper sx={{ p: 2, textAlign: 'center' }}>
+                                    <TrendingUpIcon color={metricas.llamadasRealizadas > 0 ? 'success' : 'action'} />
+                                    <Typography variant="h5">
+                                        {metricas.llamadasRealizadas > 0
+                                            ? `${Math.round((metricas.llamadasAtendidas / metricas.llamadasRealizadas) * 100)}%`
+                                            : '—'}
+                                    </Typography>
+                                    <Typography variant="caption" color="text.secondary">Tasa contacto</Typography>
                                 </Paper>
                             </Grid>
                             <Grid item xs={6} sm={4} md={2}>
                                 <Paper sx={{ p: 2, textAlign: 'center' }}>
                                     <Typography variant="h5">{contactos.length}</Typography>
-                                    <Typography variant="caption">Total asignados</Typography>
+                                    <Typography variant="caption" color="text.secondary">Total asignados</Typography>
                                 </Paper>
                             </Grid>
                         </Grid>

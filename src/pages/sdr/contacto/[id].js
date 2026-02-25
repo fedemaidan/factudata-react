@@ -45,6 +45,8 @@ import {
 } from '@mui/icons-material';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
+import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
+import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import { useAuthContext } from 'src/contexts/auth-context';
 import SDRService from 'src/services/sdrService';
@@ -57,6 +59,7 @@ import {
     PRECALIFICACION_BOT,
     ESTADOS_REUNION
 } from 'src/constant/sdrConstants';
+import MiniChatViewer from 'src/components/sdr/MiniChatViewer';
 
 // ==================== CONSTANTES ====================
 
@@ -1055,6 +1058,15 @@ const ContactoSDRDetailPage = () => {
                                 </Stack>
                             </Paper>
                         )
+                    )}
+
+                    {/* ==================== CONVERSACIÓN ==================== */}
+                    {contacto.telefono && (
+                        <Paper variant="outlined" sx={{ mb: 3, overflow: 'hidden' }}>
+                            <Box sx={{ height: 400 }}>
+                                <MiniChatViewer telefono={contacto.telefono} />
+                            </Box>
+                        </Paper>
                     )}
 
                     {/* ==================== COMENTARIO + HISTORIAL ==================== */}
