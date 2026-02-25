@@ -322,6 +322,7 @@ const GestionSDRPage = () => {
             await SDRService.registrarIntento(contacto._id, {
                 tipo: tipo === 'llamada' ? (atendida ? 'llamada_atendida' : 'llamada_no_atendida') : 'whatsapp_enviado',
                 canal: tipo === 'llamada' ? 'llamada' : 'whatsapp',
+                resultado: tipo === 'llamada' ? (atendida ? 'atendio' : 'no_atendio') : undefined,
                 nota,
                 empresaId
             });
