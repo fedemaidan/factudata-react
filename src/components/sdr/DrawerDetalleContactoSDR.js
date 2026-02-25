@@ -49,7 +49,8 @@ import {
     Fullscreen as FullscreenIcon,
     FullscreenExit as FullscreenExitIcon,
     OpenInFull as OpenInFullIcon,
-    CloseFullscreen as CloseFullscreenIcon
+    CloseFullscreen as CloseFullscreenIcon,
+    ChatBubbleOutline as ChatBubbleOutlineIcon
 } from '@mui/icons-material';
 import SDRService from '../../services/sdrService';
 import ModalSelectorTemplate from './ModalSelectorTemplate';
@@ -58,6 +59,7 @@ import { getWhatsAppLink, getTelLink } from '../../utils/phoneUtils';
 import { PLANES_SORBY, INTENCIONES_COMPRA, PRECALIFICACION_BOT } from '../../constant/sdrConstants';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
+import MiniChatViewer from './MiniChatViewer';
 
 // Opciones de tamaño de empresa
 const TAMANO_EMPRESA_OPTIONS = [
@@ -603,6 +605,7 @@ const DrawerDetalleContactoSDR = ({
     // Estado para secciones colapsables en mobile
     const [mostrarHistorial, setMostrarHistorial] = useState(false);
     const [mostrarAcciones, setMostrarAcciones] = useState(false);
+    const [mostrarConversacion, setMostrarConversacion] = useState(false);
 
     if (!contacto || !contactoLocal) return null;
 
@@ -868,6 +871,32 @@ const DrawerDetalleContactoSDR = ({
                                 </Stack>
                             </Paper>
                         )}
+
+                        {/* Conversación del contacto */}
+                        <Paper elevation={0} sx={{ borderRadius: 3, overflow: 'hidden', mb: 2 }}>
+                            <Box 
+                                onClick={() => setMostrarConversacion(!mostrarConversacion)}
+                                sx={{ 
+                                    p: 2, 
+                                    display: 'flex', 
+                                    alignItems: 'center', 
+                                    justifyContent: 'space-between',
+                                    cursor: 'pointer',
+                                    '&:active': { bgcolor: 'grey.100' }
+                                }}
+                            >
+                                <Stack direction="row" spacing={1} alignItems="center">
+                                    <ChatBubbleOutlineIcon color="action" fontSize="small" />
+                                    <Typography variant="subtitle2">Conversación</Typography>
+                                </Stack>
+                                {mostrarConversacion ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                            </Box>
+                            <Collapse in={mostrarConversacion} unmountOnExit>
+                                <Box sx={{ height: 350 }}>
+                                    <MiniChatViewer telefono={contactoLocal?.telefono} />
+                                </Box>
+                            </Collapse>
+                        </Paper>
 
                         {/* Próximo contacto */}
                         <Paper elevation={0} sx={{ p: 2, mb: 2, borderRadius: 3 }}>
@@ -1333,6 +1362,15 @@ const DrawerDetalleContactoSDR = ({
                         } 
                         sx={{ minHeight: 40, py: 0 }} 
                     />
+                    <Tab 
+                        label={
+                            <Stack direction="row" spacing={0.5} alignItems="center">
+                                <ChatBubbleOutlineIcon sx={{ fontSize: 16 }} />
+                                <span>Chat</span>
+                            </Stack>
+                        } 
+                        sx={{ minHeight: 40, py: 0 }} 
+                    />
                 </Tabs>
 
                 {/* Tab 0: Información */}
@@ -1409,6 +1447,14 @@ const DrawerDetalleContactoSDR = ({
                             sx={{ bgcolor: '#25D366', '&:hover': { bgcolor: '#128C7E' } }}
                         >
                             WhatsApp
+                        </Button>
+                        <Button
+                            variant="outlined"
+                            size="small"
+                            startIcon={<ChatBubbleOutlineIcon />}
+                            onClick={() => setDrawerTab(2)}
+                        >
+                            Ver chat
                         </Button>
                     </Stack>
 
@@ -1772,6 +1818,13 @@ const DrawerDetalleContactoSDR = ({
                         </Stack>
                     )}
                 </Box>
+                </Box>
+                )}
+
+                {/* Tab 2: Conversación */}
+                {drawerTab === 2 && (
+                <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                    <MiniChatViewer telefono={contactoLocal?.telefono} />
                 </Box>
                 )}
             </Box>
