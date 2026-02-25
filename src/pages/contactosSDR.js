@@ -228,10 +228,20 @@ const ContactosSDRPage = () => {
     const handleOpenDrawer = (contacto) => {
         // Guardar IDs de contactos en sessionStorage para navegación ← →
         try {
-            const ids = contactos.map(c => c._id);
+            const ids = contactosOrdenados.map(c => c._id);
             sessionStorage.setItem('sdr_contacto_ids', JSON.stringify(ids));
         } catch { /* ignore */ }
         router.push(`/sdr/contacto/${contacto._id}`);
+    };
+
+    // Navegar al primer contacto de la lista (flujo secuencial)
+    const handleSiguienteContacto = () => {
+        if (contactosOrdenados.length === 0) return;
+        try {
+            const ids = contactosOrdenados.map(c => c._id);
+            sessionStorage.setItem('sdr_contacto_ids', JSON.stringify(ids));
+        } catch { /* ignore */ }
+        router.push(`/sdr/contacto/${contactosOrdenados[0]._id}`);
     };
 
     // Cerrar drawer y limpiar query param
@@ -479,6 +489,17 @@ const ContactosSDRPage = () => {
                     <Typography variant="h6" fontWeight={700}>Mis Contactos</Typography>
                     <Stack direction="row" spacing={0.5} alignItems="center">
                         {loading && <CircularProgress size={20} />}
+                        <Button
+                            size="small"
+                            variant="contained"
+                            color="primary"
+                            endIcon={<ChevronRightIcon />}
+                            onClick={handleSiguienteContacto}
+                            disabled={contactosOrdenados.length === 0}
+                            sx={{ mr: 0.5, textTransform: 'none', minWidth: 'auto', px: 1.5 }}
+                        >
+                            Siguiente
+                        </Button>
                         <IconButton 
                             onClick={() => setModalAgregarContacto(true)} 
                             size="small"
@@ -856,6 +877,15 @@ const ContactosSDRPage = () => {
                 <Stack direction="row" justifyContent="space-between" alignItems="center">
                     <Typography variant="h4">Mis Contactos</Typography>
                     <Stack direction="row" spacing={1}>
+                        <Button
+                            startIcon={<ChevronRightIcon />}
+                            onClick={handleSiguienteContacto}
+                            variant="contained"
+                            color="success"
+                            disabled={contactosOrdenados.length === 0}
+                        >
+                            Siguiente contacto
+                        </Button>
                         <Button
                             startIcon={<AddIcon />}
                             onClick={() => setModalAgregarContacto(true)}

@@ -5,7 +5,7 @@ import {
     Box, Container, Stack, Typography, Button, TextField, Chip,
     CircularProgress, Paper, IconButton, Card, CardContent,
     Snackbar, Alert, Avatar, Tooltip, Divider, Grid,
-    useTheme, useMediaQuery, Breadcrumbs, Link as MuiLink, Skeleton
+    useTheme, useMediaQuery, Skeleton
 } from '@mui/material';
 import {
     ArrowBack as ArrowBackIcon,
@@ -41,7 +41,6 @@ import {
 } from '@mui/icons-material';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
-import NavigateNextIcon from '@mui/icons-material/NavigateNext';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import { useAuthContext } from 'src/contexts/auth-context';
 import SDRService from 'src/services/sdrService';
@@ -387,9 +386,52 @@ const ContactoSDRDetailPage = () => {
 
     // ==================== RENDER ====================
 
+    // ==================== TOP-NAV TITLE & ACTIONS ====================
+    const topNavTitle = loading ? 'Cargando...' : (contacto?.nombre || 'Contacto no encontrado');
+
+    const topNavActions = contacto ? (
+        <Stack direction="row" spacing={1} alignItems="center">
+            <EstadoChipEditable
+                estado={contacto.estado}
+                contactoId={contacto._id}
+                onEstadoCambiado={cargarContacto}
+                mostrarSnackbar={mostrarSnackbar}
+            />
+            {contacto.segmento && (
+                <Chip size="small" variant="outlined" label={contacto.segmento === 'outbound' ? 'Outbound' : 'Inbound'} />
+            )}
+            {contacto.sdrAsignadoNombre && (
+                <Chip size="small" icon={<PersonIcon />} label={contacto.sdrAsignadoNombre} color="primary" variant="outlined" />
+            )}
+            {contactoIds.length > 1 && (
+                <>
+                    <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
+                    <IconButton onClick={() => navegar('anterior')} disabled={!puedeAnterior} size="small">
+                        <ChevronLeftIcon />
+                    </IconButton>
+                    <Typography variant="caption" color="text.secondary">
+                        {indiceActual + 1} / {contactoIds.length}
+                    </Typography>
+                    <IconButton onClick={() => navegar('siguiente')} disabled={!puedeSiguiente} size="small">
+                        <ChevronRightIcon />
+                    </IconButton>
+                </>
+            )}
+            <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
+            <Tooltip title="Refrescar">
+                <IconButton onClick={cargarContacto} size="small">
+                    <RefreshIcon fontSize="small" />
+                </IconButton>
+            </Tooltip>
+            <IconButton size="small" onClick={() => router.back()}>
+                <ArrowBackIcon fontSize="small" />
+            </IconButton>
+        </Stack>
+    ) : null;
+
     if (loading) {
         return (
-            <>
+            <DashboardLayout title={topNavTitle}>
                 <Head><title>Cargando contacto...</title></Head>
                 <Box sx={{ py: 4 }}>
                     <Container maxWidth="lg">
@@ -402,13 +444,13 @@ const ContactoSDRDetailPage = () => {
                         <Skeleton variant="rounded" height={400} sx={{ mt: 3 }} />
                     </Container>
                 </Box>
-            </>
+            </DashboardLayout>
         );
     }
 
     if (!contacto) {
         return (
-            <>
+            <DashboardLayout title={topNavTitle}>
                 <Head><title>Contacto no encontrado</title></Head>
                 <Box sx={{ py: 8, textAlign: 'center' }}>
                     <Typography variant="h5" gutterBottom>Contacto no encontrado</Typography>
@@ -416,98 +458,17 @@ const ContactoSDRDetailPage = () => {
                         Volver
                     </Button>
                 </Box>
-            </>
+            </DashboardLayout>
         );
     }
 
     return (
-        <>
+        <DashboardLayout title={topNavTitle} headerActions={topNavActions}>
             <Head>
                 <title>{contacto.nombre} | SDR</title>
             </Head>
             <Box sx={{ py: { xs: 2, md: 3 } }}>
                 <Container maxWidth="lg">
-                    {/* ==================== HEADER ==================== */}
-                    <Stack
-                        direction={{ xs: 'column', sm: 'row' }}
-                        justifyContent="space-between"
-                        alignItems={{ xs: 'stretch', sm: 'center' }}
-                        spacing={2}
-                        sx={{ mb: 3 }}
-                    >
-                        <Box>
-                            {/* Breadcrumb */}
-                            <Breadcrumbs separator={<NavigateNextIcon fontSize="small" />} sx={{ mb: 1 }}>
-                                <MuiLink
-                                    component="button"
-                                    variant="body2"
-                                    underline="hover"
-                                    color="inherit"
-                                    onClick={() => router.back()}
-                                >
-                                    Contactos SDR
-                                </MuiLink>
-                                <Typography variant="body2" color="text.primary">
-                                    {contacto.nombre}
-                                </Typography>
-                            </Breadcrumbs>
-
-                            {/* Nombre + chips */}
-                            <Stack direction="row" spacing={2} alignItems="center" flexWrap="wrap" useFlexGap>
-                                <Typography variant="h5" fontWeight={700}>
-                                    {contacto.nombre}
-                                </Typography>
-                                <EstadoChipEditable
-                                    estado={contacto.estado}
-                                    contactoId={contacto._id}
-                                    onEstadoCambiado={cargarContacto}
-                                    mostrarSnackbar={mostrarSnackbar}
-                                />
-                                {contacto.segmento && (
-                                    <Chip size="small" variant="outlined" label={contacto.segmento === 'outbound' ? 'Outbound' : 'Inbound'} />
-                                )}
-                                {contacto.sdrAsignadoNombre && (
-                                    <Chip size="small" icon={<PersonIcon />} label={contacto.sdrAsignadoNombre} color="primary" variant="outlined" />
-                                )}
-                            </Stack>
-                        </Box>
-
-                        {/* Navegación ← → y acciones */}
-                        <Stack direction="row" spacing={1} alignItems="center">
-                            {contactoIds.length > 1 && (
-                                <>
-                                    <IconButton onClick={() => navegar('anterior')} disabled={!puedeAnterior} size="small">
-                                        <ChevronLeftIcon />
-                                    </IconButton>
-                                    <Typography variant="caption" color="text.secondary">
-                                        {indiceActual + 1} / {contactoIds.length}
-                                    </Typography>
-                                    <IconButton onClick={() => navegar('siguiente')} disabled={!puedeSiguiente} size="small">
-                                        <ChevronRightIcon />
-                                    </IconButton>
-                                    {!isMobile && (
-                                        <Tooltip title="Usa ← → para navegar">
-                                            <Typography variant="caption" color="text.disabled" sx={{ ml: 0.5 }}>⌨</Typography>
-                                        </Tooltip>
-                                    )}
-                                    <Divider orientation="vertical" flexItem sx={{ mx: 1 }} />
-                                </>
-                            )}
-                            <Tooltip title="Refrescar">
-                                <IconButton onClick={cargarContacto} size="small">
-                                    <RefreshIcon />
-                                </IconButton>
-                            </Tooltip>
-                            <Button
-                                variant="outlined"
-                                size="small"
-                                startIcon={<ArrowBackIcon />}
-                                onClick={() => router.back()}
-                            >
-                                Volver
-                            </Button>
-                        </Stack>
-                    </Stack>
 
                     {/* ==================== FILA DE CARDS ==================== */}
                     <Grid container spacing={2} sx={{ mb: 3 }}>
@@ -945,10 +906,8 @@ const ContactoSDRDetailPage = () => {
                     {snackbar.message}
                 </Alert>
             </Snackbar>
-        </>
+        </DashboardLayout>
     );
 };
-
-ContactoSDRDetailPage.getLayout = (page) => <DashboardLayout>{page}</DashboardLayout>;
 
 export default ContactoSDRDetailPage;
