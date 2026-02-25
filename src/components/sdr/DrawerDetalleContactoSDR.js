@@ -3,7 +3,8 @@ import {
     Drawer, Box, Typography, IconButton, Divider, Chip, Stack,
     Button, TextField, CircularProgress, Paper, Tooltip, Avatar, useMediaQuery, useTheme,
     Dialog, DialogTitle, DialogContent, DialogActions, Collapse, Fab, Badge,
-    Menu, MenuItem, ListItemIcon, ListItemText, Select, FormControl, InputLabel
+    Menu, MenuItem, ListItemIcon, ListItemText, Select, FormControl, InputLabel,
+    Tabs, Tab
 } from '@mui/material';
 import {
     Close as CloseIcon,
@@ -285,6 +286,9 @@ const DrawerDetalleContactoSDR = ({
     
     // Estado para drawer expandido (pantalla completa)
     const [drawerExpandido, setDrawerExpandido] = useState(false);
+    
+    // Tab activo en vista desktop (0=Info, 1=Historial)
+    const [drawerTab, setDrawerTab] = useState(0);
     
     // Estado local del contacto para poder actualizarlo sin refrescar
     const [contactoLocal, setContactoLocal] = useState(contacto);
@@ -1310,8 +1314,32 @@ const DrawerDetalleContactoSDR = ({
                     </Stack>
                 </Box>
 
+                {/* Tabs: Info | Actividad */}
+                <Tabs 
+                    value={drawerTab} 
+                    onChange={(_, v) => setDrawerTab(v)} 
+                    sx={{ px: 2, borderBottom: 1, borderColor: 'divider', minHeight: 40 }}
+                    variant="fullWidth"
+                >
+                    <Tab label="Información" sx={{ minHeight: 40, py: 0 }} />
+                    <Tab 
+                        label={
+                            <Stack direction="row" spacing={0.5} alignItems="center">
+                                <span>Actividad</span>
+                                {historial.length > 0 && (
+                                    <Chip size="small" label={historial.length} sx={{ height: 20, fontSize: '0.7rem' }} />
+                                )}
+                            </Stack>
+                        } 
+                        sx={{ minHeight: 40, py: 0 }} 
+                    />
+                </Tabs>
+
+                {/* Tab 0: Información */}
+                {drawerTab === 0 && (
+                <Box sx={{ flex: 1, overflow: 'auto', p: 2 }}>
+
                 {/* Info del contacto */}
-                <Box sx={{ p: 2 }}>
                     <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
                         <Typography variant="subtitle2" color="text.secondary">Información</Typography>
                         <Button
@@ -1556,8 +1584,11 @@ const DrawerDetalleContactoSDR = ({
                         </Button>
                     )}
                 </Box>
+                )}
 
-                <Divider />
+                {/* Tab 1: Actividad (Acciones + Comentario + Historial) */}
+                {drawerTab === 1 && (
+                <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
                 {/* Acciones rápidas */}
                 <Box sx={{ p: 2 }}>
@@ -1741,6 +1772,8 @@ const DrawerDetalleContactoSDR = ({
                         </Stack>
                     )}
                 </Box>
+                </Box>
+                )}
             </Box>
 
             {/* Modal de confirmación de próximo contacto */}

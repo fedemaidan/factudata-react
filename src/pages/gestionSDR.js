@@ -1097,10 +1097,18 @@ const GestionSDRPage = () => {
             // Cargar SDRs disponibles
             const snapshot = await getDocs(query(collection(db, 'profile'), where('sdr', '==', true)));
             const sdrsBase = snapshot.docs
+                .filter(doc => {
+                    const d = doc.data();
+                    if (!d.user_id) {
+                        console.warn(`⚠️ SDR sin user_id excluido en vista asignación: ${d.email}`);
+                        return false;
+                    }
+                    return true;
+                })
                 .map(doc => {
                     const d = doc.data();
                     return {
-                        id: doc.id, // Usar ID del documento Firestore para consistencia
+                        id: d.user_id, // Firebase UID — debe coincidir con sdrAsignado guardado en MongoDB
                         docId: doc.id,
                         nombre: `${d.firstName || ''} ${d.lastName || ''}`.trim() || d.email,
                         email: d.email,
