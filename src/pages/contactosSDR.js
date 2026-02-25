@@ -273,7 +273,10 @@ const ContactosSDRPage = () => {
     // Cerrar drawer y limpiar query param
     const handleCloseDrawer = () => {
         setDrawerOpen(false);
-        setContactoSeleccionado(null);
+        // No limpiar contactoSeleccionado si el modal de reunión está abierto
+        if (!modalReunion) {
+            setContactoSeleccionado(null);
+        }
         // Remover el query param del contacto
         const { contacto, ...restQuery } = router.query;
         router.push(

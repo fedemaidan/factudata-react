@@ -19,8 +19,8 @@
 
 ## Tabla de contenidos
 
-1. [Modelos y validaciones (Backend)](#1-modelos-y-validaciones-backend)
-2. [Endpoints API (Backend)](#2-endpoints-api-backend)
+1. [Contactos — Crear y validar](#1-contactos--crear-y-validar)
+2. [Scoring y métricas desde la web](#2-scoring-y-métricas-desde-la-web)
 3. [Normalización de teléfonos](#3-normalización-de-teléfonos)
 4. [Prioridad Score](#4-prioridad-score)
 5. [Lista de Contactos — contactosSDR.js](#5-lista-de-contactos)
@@ -36,63 +36,60 @@
 
 ---
 
-## 1. Modelos y validaciones (Backend)
+## 1. Contactos — Crear y validar
 
-### 1.1 ContactoSDR
-
-| # | Caso | Pasos | Resultado esperado | ✅/❌ | Obs |
-|---|------|-------|--------------------|-------|-----|
-| 1.1.1 | Crear contacto con campos mínimos | POST `/api/sdr/contactos` con `{ nombre, telefono, empresaId }` | Se crea con `estado: 'nuevo'`, `origen: 'manual'`, `prioridadScore: 0` | | |
-| 1.1.2 | Estado válido | Intentar crear con `estado: 'inexistente'` | Error de validación Mongoose | | |
-| 1.1.3 | Los 10 estados aceptados | Crear o cambiar estado a cada uno: `nuevo`, `contactado`, `calificado`, `cierre`, `ganado`, `no_contacto`, `no_responde`, `revisar_mas_adelante`, `no_califica`, `perdido` | Todos aceptados sin error | | |
-| 1.1.4 | Teléfono duplicado misma empresa | Crear 2 contactos con mismo teléfono y empresaId | Error de duplicado (unique index) | | |
-| 1.1.5 | Teléfono duplicado distinta empresa | Crear contacto con mismo teléfono pero otro empresaId | Se crea correctamente | | |
-| 1.1.6 | planEstimado válido | Setear `planEstimado: 'avanzado'` | Se guarda | | |
-| 1.1.7 | planEstimado inválido | Setear `planEstimado: 'mega'` | Error de validación (enum) | | |
-| 1.1.8 | intencionCompra válida | Setear `intencionCompra: 'alta'` | Se guarda | | |
-| 1.1.9 | precalificacionBot válida | Setear `precalificacionBot: 'quiere_meet'` | Se guarda | | |
-| 1.1.10 | tamanoEmpresa vacío → null | Setear `tamanoEmpresa: ''` | Se guarda como `null` | | |
-
-### 1.2 ReunionSDR
+### 1.1 Crear contacto desde la web
 
 | # | Caso | Pasos | Resultado esperado | ✅/❌ | Obs |
 |---|------|-------|--------------------|-------|-----|
-| 1.2.1 | Crear reunión mínima | POST con `{ contactoId, fecha, empresaId }` | Se crea con `estado: 'agendada'`, `numero` auto-generado | | |
-| 1.2.2 | Numero auto-incremental | Crear 2 reuniones para el mismo contacto | Primera `numero: 1`, segunda `numero: 2` | | |
-| 1.2.3 | Estados de reunión válidos | Cambiar a `agendada`, `realizada`, `no_show`, `cancelada` | Todos aceptados | | |
-| 1.2.4 | Campo `fecha` requerido | Crear reunión sin `fecha` | Error de validación | | |
-| 1.2.5 | Mapping `fechaHora` → `fecha` | Enviar `{ fechaHora: '2026-03-01', ... }` desde frontend | El servicio mapea a `fecha` y se guarda correctamente | | |
+| 1.1.1 | Crear contacto con campos mínimos | En `/contactosSDR` → click "+" → llenar solo Nombre y Teléfono → Crear | Se crea con chip "Nuevo", aparece en la lista | | |
+| 1.1.2 | Los 10 estados | Abrir drawer del contacto → click en chip de estado → cambiar a cada uno de los 10 estados disponibles en el menú | Todos los cambios se aceptan sin error, chip se actualiza | | |
+| 1.1.3 | Teléfono duplicado misma empresa | Click "+" → crear contacto con el mismo teléfono de uno existente → Crear | Error "Ya existe un contacto con ese teléfono" | | |
+| 1.1.4 | Plan estimado desde drawer | Abrir drawer → sección "Calificación comercial" → click chip "🔵 Avanzado" | Chip se marca filled, snackbar confirma | | |
+| 1.1.5 | Intención compra desde drawer | Abrir drawer → sección "Calificación comercial" → click chip "🔴 Alta" | Chip se marca filled, snackbar confirma | | |
+| 1.1.6 | Plan inválido no existe en UI | Verificar chips de plan en el drawer | Solo aparecen Básico, Avanzado, Premium, A medida — no se puede setear un valor inválido | | |
 
-### 1.3 EventoHistorialSDR
+> **Nota**: Las validaciones de modelo (enum, unique index, precalificacionBot) están cubiertas por tests automatizados. Ejecutar: `cd backend && npx jest --runInBand test/unit/`
+
+### 1.2 Reuniones desde la web
 
 | # | Caso | Pasos | Resultado esperado | ✅/❌ | Obs |
 |---|------|-------|--------------------|-------|-----|
-| 1.3.1 | Eventos de nuevos canales | Registrar intento tipo `instagram_contacto`, `email_enviado`, `presupuesto_enviado`, `link_pago_enviado`, `negociacion_iniciada` | Se crea evento en historial con tipo correcto | | |
-| 1.3.2 | Eventos de scoring | Actualizar planEstimado e intencionCompra | Se crean eventos `plan_estimado_actualizado` e `intencion_compra_actualizada` | | |
+| 1.2.1 | Crear reunión desde drawer | Abrir contacto → "Registrar Acción" → "Reunión agendada" → llenar fecha, empresa, tamaño, contacto principal → "Registrar Reunión" | Snackbar "¡Reunión registrada!", aparece en sección Reuniones del drawer | | |
+| 1.2.2 | Reunión aparece en Gestión | Después de crear → ir a `/gestionSDR` → tab "Reuniones" | La reunión recién creada aparece en la lista | | |
+| 1.2.3 | Número auto-incremental | Crear 2 reuniones para el mismo contacto → ver en drawer | Primera muestra #1, segunda #2 | | |
+| 1.2.4 | Fecha requerida | En modal de reunión → dejar campo "Fecha y hora" vacío | Botón "Registrar Reunión" está deshabilitado (gris) | | |
+| 1.2.5 | Evaluar como Realizada | En `/gestionSDR` → tab Reuniones → click "Realizada" en una reunión | Estado cambia a `realizada`, snackbar confirma | | |
+| 1.2.6 | Evaluar como No Show | En tab Reuniones → click "No Show" | Estado cambia a `no_show` | | |
+| 1.2.7 | Evaluar como Cancelada | En tab Reuniones → click "Cancelar" | Estado cambia a `cancelada` | | |
+
+### 1.3 Historial de eventos
+
+| # | Caso | Pasos | Resultado esperado | ✅/❌ | Obs |
+|---|------|-------|--------------------|-------|-----|
+| 1.3.1 | Eventos de nuevos canales | Abrir drawer → "Registrar Acción" → seleccionar Instagram/Email/Presupuesto/Link pago/Negociación, una por una | Cada acción aparece en el historial con su icono y tipo correcto | | |
+| 1.3.2 | Eventos de scoring | Abrir drawer → cambiar Plan Estimado y luego Intención de Compra | Aparecen en historial: "Plan estimado actualizado" e "Intención de compra actualizada" | | |
 
 ---
 
-## 2. Endpoints API (Backend)
+## 2. Scoring y métricas desde la web
 
-### 2.1 Acciones de scoring (nuevos)
-
-| # | Caso | Pasos | Resultado esperado | ✅/❌ | Obs |
-|---|------|-------|--------------------|-------|-----|
-| 2.1.1 | Actualizar plan estimado | POST `/api/sdr/acciones/plan-estimado` con `{ contactoId, plan: 'premium', empresaId }` | 200, contacto actualizado con `planEstimado: 'premium'` | | |
-| 2.1.2 | Actualizar intención compra | POST `/api/sdr/acciones/intencion-compra` con `{ contactoId, intencion: 'alta', empresaId }` | 200, contacto actualizado con `intencionCompra: 'alta'` | | |
-| 2.1.3 | Obtener siguiente contacto | GET `/api/sdr/contactos/siguiente?empresaId=X&sdrId=Y` | 200, devuelve el contacto con mayor prioridad o próximo vencido | | |
-| 2.1.4 | Obtener funnel | GET `/api/sdr/metricas/funnel?empresaId=X` | 200, devuelve contadores por cada uno de los 10 estados | | |
-| 2.1.5 | Actualizar reunión v2 | PUT `/api/sdr/reuniones/:id` con campos actualizados | 200, reunión actualizada | | |
-| 2.1.6 | Webhook nuevo lead | POST `/api/sdr/webhook/nuevo-lead` (sin auth Firebase) | 200, crea o actualiza contacto, retorna `{ contactoId }` | | |
-
-### 2.2 Evaluar reunión v2
+### 2.1 Calificación comercial
 
 | # | Caso | Pasos | Resultado esperado | ✅/❌ | Obs |
 |---|------|-------|--------------------|-------|-----|
-| 2.2.1 | Marcar reunión como realizada | PUT `/api/sdr/reuniones/:id/evaluar` con `{ estado: 'realizada', notas }` | Estado cambia a `realizada` | | |
-| 2.2.2 | Marcar reunión como no_show | PUT con `{ estado: 'no_show' }` | Estado cambia a `no_show` | | |
-| 2.2.3 | Marcar reunión como cancelada | PUT con `{ estado: 'cancelada' }` | Estado cambia a `cancelada` | | |
-| 2.2.4 | Evaluar con datos de scoring | PUT con `{ estado: 'realizada', interesado: true, planEstimado: 'basico' }` | Reunión evaluada + contacto actualizado | | |
+| 2.1.1 | Actualizar plan estimado | Abrir drawer → click chip "🟣 Premium" | Chip se marca, snackbar confirma, cerrar y reabrir: persiste | | |
+| 2.1.2 | Actualizar intención compra | Abrir drawer → click chip "🔴 Alta" | Chip se marca, snackbar confirma, cerrar y reabrir: persiste | | |
+| 2.1.3 | Funnel en Gestión SDR | Ir a `/gestionSDR` → ver dashboard de métricas | Cards muestran contadores correctos por cada estado (10 estados) | | |
+| 2.1.4 | Siguiente contacto | Navegar entre contactos usando flechas ← → en el drawer (desktop) | Se navega al siguiente contacto ordenado por prioridad | | |
+
+### 2.2 Webhook (solo backend)
+
+| # | Caso | Pasos | Resultado esperado | ✅/❌ | Obs |
+|---|------|-------|--------------------|-------|-----|
+| 2.2.1 | Webhook nuevo lead | `curl -X POST http://localhost:3003/api/sdr/webhook/nuevo-lead -H "Content-Type: application/json" -d '{"nombre":"Test","telefono":"5491199887766","empresaId":"<ID>"}'` | 200, crea contacto, retorna `{ contactoId }` | | |
+
+> **Nota**: El webhook es un endpoint externo sin auth. Se prueba con curl o se verifica que los leads del bot aparezcan automáticamente en la lista de contactos SDR.
 
 ---
 
@@ -499,8 +496,8 @@ Ejecutar todos: `cd backend && npx jest --runInBand --forceExit`
 
 | Sección | Total casos | Pasan | Fallan | N/A |
 |---------|-------------|-------|--------|-----|
-| 1. Modelos | 15 | | | |
-| 2. Endpoints | 10 | | | |
+| 1. Contactos (crear/validar/reuniones/historial) | 16 | | | |
+| 2. Scoring y métricas | 5 | | | |
 | 3. Normalización | 8 | | | |
 | 4. Prioridad | 5 | | | |
 | 5. Lista contactos | 18 | | | |
@@ -513,7 +510,7 @@ Ejecutar todos: `cd backend && npx jest --runInBand --forceExit`
 | 12. Timeout job | 3 | | | |
 | 13. Vistas guardadas | 8 | | | |
 | 14. Flujos cross | 8 | | | |
-| **TOTAL** | **145** | | | |
+| **TOTAL** | **141** | | | |
 
 **Firma del tester**: ________________________  
 **Fecha completado**: ____/____/______  
