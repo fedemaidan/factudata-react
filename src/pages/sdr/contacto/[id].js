@@ -5,7 +5,7 @@ import {
     Box, Container, Stack, Typography, Button, TextField, Chip,
     CircularProgress, Paper, IconButton, Card, CardContent,
     Snackbar, Alert, Avatar, Tooltip, Divider, Grid,
-    useTheme, Skeleton, SpeedDial, SpeedDialAction
+    useTheme, useMediaQuery, Skeleton
 } from '@mui/material';
 import {
     ArrowBack as ArrowBackIcon,
@@ -43,8 +43,6 @@ import {
     SkipNext as SkipNextIcon,
     ContentCopy as ContentCopyIcon
 } from '@mui/icons-material';
-import AddIcon from '@mui/icons-material/Add';
-import CloseIcon from '@mui/icons-material/Close';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
@@ -145,6 +143,7 @@ const ContactoSDRDetailPage = () => {
     const { user } = useAuthContext();
     const empresaId = user?.empresa?.id || 'demo-empresa';
     const theme = useTheme();
+    const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
     // Estado principal
     const [contacto, setContacto] = useState(null);
@@ -497,34 +496,35 @@ const ContactoSDRDetailPage = () => {
     const topNavTitle = loading ? 'Cargando...' : (contacto?.nombre || 'Contacto no encontrado');
 
     const topNavActions = contacto ? (
-        <Stack direction="row" spacing={1} alignItems="center">
+        <Stack direction="row" spacing={0.5} alignItems="center" sx={{ flexShrink: 0 }}>
             <EstadoChipEditable
                 estado={contacto.estado}
                 contactoId={contacto._id}
                 onEstadoCambiado={cargarContacto}
                 mostrarSnackbar={mostrarSnackbar}
             />
-            {contacto.segmento && (
+            {!isMobile && contacto.segmento && (
                 <Chip size="small" variant="outlined" label={contacto.segmento === 'outbound' ? 'Outbound' : 'Inbound'} />
             )}
-            {contacto.sdrAsignadoNombre && (
+            {!isMobile && contacto.sdrAsignadoNombre && (
                 <Chip size="small" icon={<PersonIcon />} label={contacto.sdrAsignadoNombre} color="primary" variant="outlined" />
             )}
             {contactoIds.length > 1 && (
                 <>
-                    <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
+                    {!isMobile && <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />}
                     <IconButton onClick={() => navegar('anterior')} disabled={!puedeAnterior} size="small">
                         <ChevronLeftIcon />
                     </IconButton>
-                    <Typography variant="caption" color="text.secondary">
-                        {indiceActual + 1} / {contactoIds.length}
-                    </Typography>
+                    {!isMobile && (
+                        <Typography variant="caption" color="text.secondary">
+                            {indiceActual + 1} / {contactoIds.length}
+                        </Typography>
+                    )}
                     <IconButton onClick={() => navegar('siguiente')} disabled={!puedeSiguiente} size="small">
                         <ChevronRightIcon />
                     </IconButton>
                 </>
             )}
-            <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
             <Tooltip title="Refrescar">
                 <IconButton onClick={cargarContacto} size="small">
                     <RefreshIcon fontSize="small" />
@@ -574,69 +574,8 @@ const ContactoSDRDetailPage = () => {
             <Head>
                 <title>{contacto.nombre} | SDR</title>
             </Head>
-            <Box sx={{ py: { xs: 1, md: 3 }, pb: { xs: 5, md: 3 } }}>
+            <Box sx={{ py: { xs: 1, md: 3 }, pb: { xs: 10, md: 3 } }}>
                 <Container maxWidth="lg">
-
-                    {/* ==================== FAB MOBILE: Acciones rápidas ==================== */}
-                    <Box sx={{ display: { xs: 'block', md: 'none' }, position: 'fixed', bottom: 'calc(16px + env(safe-area-inset-bottom))', right: 16, zIndex: 1200 }}>
-                        <SpeedDial
-                            ariaLabel="Acciones rápidas"
-                            sx={{
-                                '& .MuiFab-primary': { bgcolor: '#6366f1', '&:hover': { bgcolor: '#4f46e5' } }
-                            }}
-                            icon={<AddIcon />}
-                        >
-                            {contactoIds.length > 1 && puedeSiguiente && (
-                                <SpeedDialAction
-                                    icon={<ChevronRightIcon />}
-                                    tooltipTitle="Siguiente"
-                                    tooltipOpen
-                                    onClick={() => navegar('siguiente')}
-                                    FabProps={{ sx: { bgcolor: 'primary.main', color: 'white', '&:hover': { bgcolor: 'primary.dark' } } }}
-                                />
-                            )}
-                            <SpeedDialAction
-                                icon={<EditIcon />}
-                                tooltipTitle="Avanzada"
-                                tooltipOpen
-                                onClick={() => setModalRegistrarAccion(true)}
-                            />
-                            <SpeedDialAction
-                                icon={<DoNotDisturbIcon />}
-                                tooltipTitle="No califica"
-                                tooltipOpen
-                                onClick={handleMarcarNoCalifica}
-                                FabProps={{ sx: { bgcolor: '#fce4ec', color: '#c62828' } }}
-                            />
-                            <SpeedDialAction
-                                icon={<PhoneDisabledIcon />}
-                                tooltipTitle="No responde"
-                                tooltipOpen
-                                onClick={() => handleAccion('no_responde')}
-                            />
-                            <SpeedDialAction
-                                icon={<WhatsAppIcon />}
-                                tooltipTitle="WhatsApp"
-                                tooltipOpen
-                                onClick={() => handleAccion('whatsapp')}
-                                FabProps={{ sx: { bgcolor: '#25D366', color: 'white', '&:hover': { bgcolor: '#128C7E' } } }}
-                            />
-                            <SpeedDialAction
-                                icon={<PhoneMissedIcon />}
-                                tooltipTitle="No atendió"
-                                tooltipOpen
-                                onClick={() => handleAccion('llamada', false)}
-                                FabProps={{ sx: { bgcolor: '#ff9800', color: 'white', '&:hover': { bgcolor: '#f57c00' } } }}
-                            />
-                            <SpeedDialAction
-                                icon={<PhoneIcon />}
-                                tooltipTitle="Atendió"
-                                tooltipOpen
-                                onClick={() => handleAccion('llamada', true)}
-                                FabProps={{ sx: { bgcolor: '#4caf50', color: 'white', '&:hover': { bgcolor: '#388e3c' } } }}
-                            />
-                        </SpeedDial>
-                    </Box>
 
                     {/* ==================== FILA DE CARDS ==================== */}
                     <Grid container spacing={2} sx={{ mb: 3 }}>
@@ -1221,6 +1160,47 @@ const ContactoSDRDetailPage = () => {
 
                 </Container>
             </Box>
+
+            {/* ==================== BARRA FIJA MOBILE: Acciones ==================== */}
+            {isMobile && (
+                <Box
+                    sx={{
+                        position: 'fixed',
+                        bottom: 0,
+                        left: 0,
+                        right: 0,
+                        zIndex: 1200,
+                        bgcolor: 'background.paper',
+                        borderTop: 1,
+                        borderColor: 'divider',
+                        boxShadow: '0 -2px 10px rgba(0,0,0,0.1)',
+                        px: 1.5,
+                        py: 1,
+                        pb: 'calc(8px + env(safe-area-inset-bottom))',
+                    }}
+                >
+                    <Stack direction="row" justifyContent="space-around" alignItems="center">
+                        <IconButton onClick={() => handleAccion('llamada', true)} sx={{ bgcolor: '#4caf50', color: 'white', '&:hover': { bgcolor: '#388e3c' }, width: 42, height: 42 }}>
+                            <PhoneIcon fontSize="small" />
+                        </IconButton>
+                        <IconButton onClick={() => handleAccion('llamada', false)} sx={{ bgcolor: '#ff9800', color: 'white', '&:hover': { bgcolor: '#f57c00' }, width: 42, height: 42 }}>
+                            <PhoneMissedIcon fontSize="small" />
+                        </IconButton>
+                        <IconButton onClick={() => handleAccion('whatsapp')} sx={{ bgcolor: '#25D366', color: 'white', '&:hover': { bgcolor: '#128C7E' }, width: 42, height: 42 }}>
+                            <WhatsAppIcon fontSize="small" />
+                        </IconButton>
+                        <IconButton onClick={() => handleAccion('no_responde')} sx={{ border: 1, borderColor: 'grey.400', width: 42, height: 42 }}>
+                            <PhoneDisabledIcon fontSize="small" />
+                        </IconButton>
+                        <IconButton onClick={handleMarcarNoCalifica} sx={{ border: 1, borderColor: 'error.light', color: 'error.main', width: 42, height: 42 }}>
+                            <DoNotDisturbIcon fontSize="small" />
+                        </IconButton>
+                        <IconButton onClick={() => setModalRegistrarAccion(true)} sx={{ border: 1, borderColor: 'primary.light', color: 'primary.main', width: 42, height: 42 }}>
+                            <EditIcon fontSize="small" />
+                        </IconButton>
+                    </Stack>
+                </Box>
+            )}
 
             {/* Modal acción avanzada */}
             {modalRegistrarAccion && (
