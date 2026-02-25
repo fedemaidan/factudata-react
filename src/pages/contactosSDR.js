@@ -27,7 +27,11 @@ import {
     Schedule as ScheduleIcon,
     EventBusy as EventBusyIcon,
     HourglassEmpty as HourglassEmptyIcon,
-    Checkbox as CheckboxIcon
+    Checkbox as CheckboxIcon,
+    BookmarkBorder as BookmarkBorderIcon,
+    Bookmark as BookmarkIcon,
+    Save as SaveIcon,
+    Delete as DeleteIcon
 } from '@mui/icons-material';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
@@ -92,6 +96,13 @@ const ContactosSDRPage = () => {
     
     // Snackbar
     const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
+
+    // Vistas guardadas
+    const [vistas, setVistas] = useState([]);
+    const [vistaActiva, setVistaActiva] = useState(null);
+    const [modalGuardarVista, setModalGuardarVista] = useState(false);
+    const [nombreVista, setNombreVista] = useState('');
+    const [vistaCompartida, setVistaCompartida] = useState(false);
 
     // Refrescar contacto individual seleccionado
     const refrescarContactoSeleccionado = useCallback(async () => {
@@ -206,6 +217,10 @@ const ContactosSDRPage = () => {
         SDRService.listarCadencias(empresaId)
             .then(data => setCadenciasDisponibles(data || []))
             .catch(() => setCadenciasDisponibles([]));
+        // Cargar vistas guardadas
+        SDRService.listarVistas(empresaId)
+            .then(data => setVistas(data || []))
+            .catch(() => setVistas([]));
     }, [empresaId]);
 
     // Abrir contacto desde query param si existe
@@ -455,6 +470,71 @@ const ContactosSDRPage = () => {
             setActionLoading(false);
         }
     };
+
+    // ==================== VISTAS GUARDADAS ====================
+
+    const aplicarVista = (vista) => {
+        setVistaActiva(vista);
+        // Aplicar filtros de la vista
+        const f = vista.filtros || {};
+        setFiltroEstado(f.estados?.length === 1 ? f.estados[0] : '');
+        setFiltroProximoContacto(f.proximoContacto || '');
+        setBusqueda(f.busqueda || '');
+        // Determinar filtroTipo según los estados guardados
+        if (f.estados?.length === 1 && f.estados[0] === 'no_califica') {
+            setFiltroTipo('no_calificados');
+        } else if (f.proximoContacto === 'vencido') {
+            setFiltroTipo('vencidos');
+        } else {
+            setFiltroTipo('activos');
+        }
+    };
+
+    const handleGuardarVista = async () => {
+        if (!nombreVista.trim()) return;
+        try {
+            const data = {
+                nombre: nombreVista.trim(),
+                empresaId,
+                compartida: vistaCompartida,
+                filtros: {
+                    estados: filtroEstado ? [filtroEstado] : [],
+                    proximoContacto: filtroProximoContacto || null,
+                    busqueda: busqueda || ''
+                },
+                ordenarPor: 'prioridadScore',
+                ordenDir: 'desc'
+            };
+            const nuevaVista = await SDRService.crearVista(data);
+            setVistas(prev => [nuevaVista, ...prev]);
+            setVistaActiva(nuevaVista);
+            setModalGuardarVista(false);
+            setNombreVista('');
+            setVistaCompartida(false);
+            setSnackbar({ open: true, message: 'Vista guardada', severity: 'success' });
+        } catch (err) {
+            setSnackbar({ open: true, message: 'Error guardando vista', severity: 'error' });
+        }
+    };
+
+    const handleEliminarVista = async (vistaId) => {
+        try {
+            await SDRService.eliminarVista(vistaId);
+            setVistas(prev => prev.filter(v => v._id !== vistaId));
+            if (vistaActiva?._id === vistaId) setVistaActiva(null);
+            setSnackbar({ open: true, message: 'Vista eliminada', severity: 'success' });
+        } catch (err) {
+            setSnackbar({ open: true, message: 'Error eliminando vista', severity: 'error' });
+        }
+    };
+
+    const handleLimpiarVista = () => {
+        setVistaActiva(null);
+        setFiltroEstado('');
+        setFiltroTipo('activos');
+        setFiltroProximoContacto('');
+        setBusqueda('');
+    };
     
     // Ordenar contactos: vencidos primero, luego por próximo contacto (ascendente)
     const contactosOrdenadosBase = [...contactos].sort((a, b) => {
@@ -567,6 +647,33 @@ const ContactosSDRPage = () => {
                     </Stack>
                 </Stack>
             </Box>
+
+            {/* Vistas guardadas */}
+            {vistas.length > 0 && (
+                <Box sx={{ px: 2, pb: 1, overflowX: 'auto' }}>
+                    <Stack direction="row" spacing={0.5} alignItems="center" sx={{ minWidth: 'max-content' }}>
+                        <BookmarkBorderIcon sx={{ fontSize: 16, color: 'text.secondary' }} />
+                        {vistas.map(v => (
+                            <Chip
+                                key={v._id}
+                                label={v.nombre}
+                                size="small"
+                                color={vistaActiva?._id === v._id ? 'primary' : 'default'}
+                                variant={vistaActiva?._id === v._id ? 'filled' : 'outlined'}
+                                onClick={() => vistaActiva?._id === v._id ? handleLimpiarVista() : aplicarVista(v)}
+                                onDelete={vistaActiva?._id === v._id ? () => handleEliminarVista(v._id) : undefined}
+                            />
+                        ))}
+                        <Chip
+                            label="Guardar"
+                            size="small"
+                            icon={<SaveIcon sx={{ fontSize: 14 }} />}
+                            variant="outlined"
+                            onClick={() => setModalGuardarVista(true)}
+                        />
+                    </Stack>
+                </Box>
+            )}
 
             {/* Filtros principales: Activos / Vencidos / No Calificados */}
             <Box sx={{ px: 2, pb: 1 }}>
@@ -1038,6 +1145,39 @@ const ContactosSDRPage = () => {
                     </Box>
                 )}
 
+                {/* Vistas guardadas */}
+                <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                    <BookmarkIcon sx={{ fontSize: 20, color: 'text.secondary' }} />
+                    <Typography variant="body2" color="text.secondary" sx={{ mr: 0.5 }}>
+                        Vistas:
+                    </Typography>
+                    {vistas.map(v => (
+                        <Chip
+                            key={v._id}
+                            label={v.nombre}
+                            size="small"
+                            color={vistaActiva?._id === v._id ? 'primary' : 'default'}
+                            variant={vistaActiva?._id === v._id ? 'filled' : 'outlined'}
+                            onClick={() => vistaActiva?._id === v._id ? handleLimpiarVista() : aplicarVista(v)}
+                            onDelete={vistaActiva?._id === v._id ? () => handleEliminarVista(v._id) : undefined}
+                        />
+                    ))}
+                    <Chip
+                        label="Guardar vista actual"
+                        size="small"
+                        icon={<SaveIcon />}
+                        variant="outlined"
+                        onClick={() => setModalGuardarVista(true)}
+                    />
+                    {vistaActiva && (
+                        <Chip
+                            label="Limpiar"
+                            size="small"
+                            onDelete={handleLimpiarVista}
+                        />
+                    )}
+                </Stack>
+
                 {/* Estadísticas por estado */}
                 <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
                     <Chip 
@@ -1436,6 +1576,51 @@ const ContactosSDRPage = () => {
                 </DialogContent>
                 <DialogActions>
                     <Button onClick={() => setModalCadenciaMasiva(false)}>Cancelar</Button>
+                </DialogActions>
+            </Dialog>
+
+            {/* Modal Guardar Vista */}
+            <Dialog
+                open={modalGuardarVista}
+                onClose={() => setModalGuardarVista(false)}
+                maxWidth="xs"
+                fullWidth
+            >
+                <DialogTitle>💾 Guardar vista actual</DialogTitle>
+                <DialogContent>
+                    <Stack spacing={2} sx={{ mt: 1 }}>
+                        <TextField
+                            label="Nombre de la vista"
+                            value={nombreVista}
+                            onChange={(e) => setNombreVista(e.target.value)}
+                            fullWidth
+                            size="small"
+                            placeholder="Ej: Leads calientes, Vencidos esta semana..."
+                            autoFocus
+                        />
+                        <Stack direction="row" alignItems="center" spacing={1}>
+                            <Checkbox
+                                checked={vistaCompartida}
+                                onChange={(e) => setVistaCompartida(e.target.checked)}
+                                size="small"
+                            />
+                            <Typography variant="body2">Compartir con el equipo</Typography>
+                        </Stack>
+                        <Typography variant="caption" color="text.secondary">
+                            Se guardarán los filtros actuales: estado, tipo, próximo contacto y búsqueda.
+                        </Typography>
+                    </Stack>
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => setModalGuardarVista(false)}>Cancelar</Button>
+                    <Button
+                        variant="contained"
+                        onClick={handleGuardarVista}
+                        disabled={!nombreVista.trim()}
+                        startIcon={<SaveIcon />}
+                    >
+                        Guardar
+                    </Button>
                 </DialogActions>
             </Dialog>
         </>

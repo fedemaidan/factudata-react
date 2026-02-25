@@ -663,6 +663,40 @@ const SDRService = {
     avanzarPasoCadencia: async (contactoId) => {
         const res = await api.post('/sdr/cadencias/avanzar', { contactoId });
         return res.data;
+    },
+
+    // ==================== VISTAS GUARDADAS ====================
+
+    /**
+     * Listar vistas guardadas (propias + compartidas)
+     */
+    listarVistas: async (empresaId) => {
+        const res = await api.get('/sdr/vistas', { params: { empresaId } });
+        return res.data;
+    },
+
+    /**
+     * Crear nueva vista guardada
+     */
+    crearVista: async (data) => {
+        const res = await api.post('/sdr/vistas', data);
+        return res.data;
+    },
+
+    /**
+     * Actualizar vista guardada
+     */
+    actualizarVista: async (vistaId, data) => {
+        const res = await api.put(`/sdr/vistas/${vistaId}`, data);
+        return res.data;
+    },
+
+    /**
+     * Eliminar vista guardada
+     */
+    eliminarVista: async (vistaId) => {
+        const res = await api.delete(`/sdr/vistas/${vistaId}`);
+        return res.data;
     }
 };
 
