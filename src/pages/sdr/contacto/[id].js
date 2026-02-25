@@ -37,7 +37,11 @@ import {
     FiberNew as NewIcon,
     Verified as VerifiedIcon,
     Block as BlockIcon,
-    Delete as DeleteIcon
+    Delete as DeleteIcon,
+    PlayArrow as PlayArrowIcon,
+    Stop as StopIcon,
+    SkipNext as SkipNextIcon,
+    ContentCopy as ContentCopyIcon
 } from '@mui/icons-material';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
@@ -163,6 +167,12 @@ const ContactoSDRDetailPage = () => {
     // Modal de acción avanzada
     const [modalRegistrarAccion, setModalRegistrarAccion] = useState(false);
 
+    // Cadencia
+    const [pasoActual, setPasoActual] = useState(null);
+    const [cadencias, setCadencias] = useState([]);
+    const [cargandoCadencia, setCargandoCadencia] = useState(false);
+    const [asignandoCadencia, setAsignandoCadencia] = useState(false);
+
     // Navegación entre contactos (IDs guardados en sessionStorage)
     const [contactoIds, setContactoIds] = useState([]);
     const [indiceActual, setIndiceActual] = useState(-1);
@@ -181,6 +191,18 @@ const ContactoSDRDetailPage = () => {
             setContacto(data);
             setHistorial(data.historial || []);
             setReuniones(data.reuniones || []);
+            
+            // Cargar paso actual de cadencia si tiene cadencia activa
+            if (data.cadenciaActiva?.cadenciaId && !data.cadenciaActiva?.completada) {
+                try {
+                    const paso = await SDRService.obtenerPasoActual(id);
+                    setPasoActual(paso);
+                } catch {
+                    setPasoActual(null);
+                }
+            } else {
+                setPasoActual(null);
+            }
         } catch (err) {
             console.error('Error cargando contacto:', err);
             mostrarSnackbar('Error al cargar contacto', 'error');
@@ -192,6 +214,14 @@ const ContactoSDRDetailPage = () => {
     useEffect(() => {
         cargarContacto();
     }, [cargarContacto]);
+
+    // Cargar cadencias disponibles
+    useEffect(() => {
+        if (!empresaId) return;
+        SDRService.listarCadencias(empresaId)
+            .then(data => setCadencias(data || []))
+            .catch(() => setCadencias([]));
+    }, [empresaId]);
 
     // Cargar IDs de contactos para navegación
     useEffect(() => {
@@ -376,6 +406,58 @@ const ContactoSDRDetailPage = () => {
         } catch (err) {
             mostrarSnackbar(err.response?.data?.error || 'Error al registrar', 'error');
         }
+    };
+
+    // ==================== HANDLERS CADENCIA ====================
+
+    const handleAsignarCadencia = async (cadenciaId) => {
+        if (!contacto?._id) return;
+        setAsignandoCadencia(true);
+        try {
+            await SDRService.asignarCadencia(contacto._id, cadenciaId);
+            mostrarSnackbar('Cadencia asignada');
+            cargarContacto();
+        } catch (err) {
+            mostrarSnackbar(err.response?.data?.error || 'Error al asignar cadencia', 'error');
+        } finally {
+            setAsignandoCadencia(false);
+        }
+    };
+
+    const handleDetenerCadencia = async () => {
+        if (!contacto?._id) return;
+        setCargandoCadencia(true);
+        try {
+            await SDRService.detenerCadencia(contacto._id, 'Detenida manualmente');
+            mostrarSnackbar('Cadencia detenida');
+            cargarContacto();
+        } catch (err) {
+            mostrarSnackbar(err.response?.data?.error || 'Error al detener cadencia', 'error');
+        } finally {
+            setCargandoCadencia(false);
+        }
+    };
+
+    const handleAvanzarPaso = async () => {
+        if (!contacto?._id) return;
+        setCargandoCadencia(true);
+        try {
+            await SDRService.avanzarPasoCadencia(contacto._id);
+            mostrarSnackbar('Avanzado al siguiente paso');
+            cargarContacto();
+        } catch (err) {
+            mostrarSnackbar(err.response?.data?.error || 'Error al avanzar paso', 'error');
+        } finally {
+            setCargandoCadencia(false);
+        }
+    };
+
+    const handleCopiarTemplate = (texto) => {
+        navigator.clipboard.writeText(texto).then(() => {
+            mostrarSnackbar('Template copiado al portapapeles');
+        }).catch(() => {
+            mostrarSnackbar('Error al copiar', 'error');
+        });
     };
 
     // ==================== HELPERS ====================
@@ -834,6 +916,144 @@ const ContactoSDRDetailPage = () => {
                                 })}
                             </Stack>
                         </Paper>
+                    )}
+
+                    {/* ==================== CADENCIA ==================== */}
+                    {contacto.cadenciaActiva?.cadenciaId && !contacto.cadenciaActiva?.completada ? (
+                        <Paper variant="outlined" sx={{ p: 2, mb: 3, borderColor: 'primary.main', borderWidth: 2 }}>
+                            <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1.5}>
+                                <Stack direction="row" spacing={1} alignItems="center">
+                                    <PlayArrowIcon fontSize="small" color="primary" />
+                                    <Typography variant="subtitle2" color="primary">
+                                        Cadencia activa
+                                    </Typography>
+                                    {pasoActual && (
+                                        <Chip
+                                            size="small"
+                                            label={`Paso ${(contacto.cadenciaActiva.pasoActual || 0) + 1}${pasoActual.paso ? ` — ${pasoActual.paso.nombre}` : ''}`}
+                                            color="primary"
+                                            variant="outlined"
+                                        />
+                                    )}
+                                    {cargandoCadencia && <CircularProgress size={16} />}
+                                </Stack>
+                                <Stack direction="row" spacing={0.5}>
+                                    <Tooltip title="Avanzar al siguiente paso">
+                                        <Button
+                                            size="small"
+                                            variant="outlined"
+                                            color="primary"
+                                            onClick={handleAvanzarPaso}
+                                            disabled={cargandoCadencia}
+                                            sx={{ minWidth: 'auto', px: 1 }}
+                                        >
+                                            <SkipNextIcon fontSize="small" />
+                                        </Button>
+                                    </Tooltip>
+                                    <Tooltip title="Detener cadencia">
+                                        <Button
+                                            size="small"
+                                            variant="outlined"
+                                            color="error"
+                                            onClick={handleDetenerCadencia}
+                                            disabled={cargandoCadencia}
+                                            sx={{ minWidth: 'auto', px: 1 }}
+                                        >
+                                            <StopIcon fontSize="small" />
+                                        </Button>
+                                    </Tooltip>
+                                </Stack>
+                            </Stack>
+
+                            {/* Acciones sugeridas del paso actual */}
+                            {pasoActual?.acciones && pasoActual.acciones.length > 0 && (
+                                <Stack spacing={1.5}>
+                                    {pasoActual.acciones.map((accion, idx) => (
+                                        <Box
+                                            key={idx}
+                                            sx={{
+                                                p: 1.5,
+                                                bgcolor: accion.canal === 'llamada' ? 'success.50' : accion.canal === 'whatsapp' ? '#e8f5e9' : 'grey.50',
+                                                borderRadius: 1,
+                                                border: 1,
+                                                borderColor: accion.canal === 'llamada' ? 'success.light' : accion.canal === 'whatsapp' ? '#81c784' : 'grey.300'
+                                            }}
+                                        >
+                                            <Stack direction="row" spacing={1} alignItems="center" mb={0.5}>
+                                                {accion.canal === 'llamada' && <PhoneIcon fontSize="small" color="success" />}
+                                                {accion.canal === 'whatsapp' && <WhatsAppIcon fontSize="small" sx={{ color: '#25D366' }} />}
+                                                {accion.canal === 'email' && <EmailIcon fontSize="small" color="action" />}
+                                                <Typography variant="body2" fontWeight={600}>
+                                                    {accion.canal === 'llamada' ? 'Llamar' : accion.canal === 'whatsapp' ? 'WhatsApp' : accion.canal}
+                                                </Typography>
+                                                {accion.condicion && (
+                                                    <Chip size="small" label={accion.condicion.replace(/_/g, ' ')} variant="outlined" sx={{ fontSize: '0.65rem', height: 20 }} />
+                                                )}
+                                                {accion.momentoBot && (
+                                                    <Typography variant="caption" color="text.secondary">
+                                                        {accion.momentoBot}
+                                                    </Typography>
+                                                )}
+                                            </Stack>
+
+                                            {/* Template sugerido */}
+                                            {accion.template && (
+                                                <Box sx={{ mt: 1, p: 1, bgcolor: 'background.paper', borderRadius: 1, position: 'relative' }}>
+                                                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                                                        Mensaje sugerido:
+                                                    </Typography>
+                                                    <Typography variant="body2" sx={{ whiteSpace: 'pre-line', fontSize: '0.85rem' }}>
+                                                        {accion.template}
+                                                    </Typography>
+                                                    <IconButton
+                                                        size="small"
+                                                        onClick={() => handleCopiarTemplate(accion.template)}
+                                                        sx={{ position: 'absolute', top: 4, right: 4 }}
+                                                    >
+                                                        <ContentCopyIcon sx={{ fontSize: 16 }} />
+                                                    </IconButton>
+                                                </Box>
+                                            )}
+                                        </Box>
+                                    ))}
+                                </Stack>
+                            )}
+
+                            {!pasoActual && !cargandoCadencia && (
+                                <Typography variant="body2" color="text.secondary">
+                                    No se pudo cargar el paso actual de la cadencia
+                                </Typography>
+                            )}
+                        </Paper>
+                    ) : (
+                        /* Sin cadencia activa: mostrar botón para asignar */
+                        cadencias.length > 0 && (
+                            <Paper variant="outlined" sx={{ p: 2, mb: 3 }}>
+                                <Stack direction="row" spacing={1} alignItems="center" mb={1}>
+                                    <PlayArrowIcon fontSize="small" color="action" />
+                                    <Typography variant="subtitle2" color="text.secondary">
+                                        Cadencia
+                                    </Typography>
+                                    {contacto.cadenciaActiva?.completada && (
+                                        <Chip size="small" label="Completada" color="success" variant="outlined" />
+                                    )}
+                                </Stack>
+                                <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                                    {cadencias.map((cad) => (
+                                        <Button
+                                            key={cad._id}
+                                            size="small"
+                                            variant="outlined"
+                                            startIcon={<PlayArrowIcon />}
+                                            onClick={() => handleAsignarCadencia(cad._id)}
+                                            disabled={asignandoCadencia}
+                                        >
+                                            {cad.nombre}
+                                        </Button>
+                                    ))}
+                                </Stack>
+                            </Paper>
+                        )
                     )}
 
                     {/* ==================== COMENTARIO + HISTORIAL ==================== */}

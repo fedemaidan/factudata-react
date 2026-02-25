@@ -589,6 +589,80 @@ const SDRService = {
     eliminarTipoTemplate: async (tipoId) => {
         const res = await api.delete(`/sdr/templates/tipos/${tipoId}`);
         return res.data;
+    },
+
+    // ==================== CADENCIAS ====================
+
+    /**
+     * Listar cadencias de una empresa
+     */
+    listarCadencias: async (empresaId) => {
+        const res = await api.get('/sdr/cadencias', { params: { empresaId } });
+        return res.data;
+    },
+
+    /**
+     * Crear nueva cadencia
+     */
+    crearCadencia: async (data) => {
+        const res = await api.post('/sdr/cadencias', data);
+        return res.data;
+    },
+
+    /**
+     * Actualizar cadencia
+     */
+    actualizarCadencia: async (cadenciaId, data) => {
+        const res = await api.put(`/sdr/cadencias/${cadenciaId}`, data);
+        return res.data;
+    },
+
+    /**
+     * Eliminar cadencia
+     */
+    eliminarCadencia: async (cadenciaId) => {
+        const res = await api.delete(`/sdr/cadencias/${cadenciaId}`);
+        return res.data;
+    },
+
+    /**
+     * Asignar cadencia a un contacto
+     */
+    asignarCadencia: async (contactoId, cadenciaId) => {
+        const res = await api.post('/sdr/cadencias/asignar', { contactoId, cadenciaId });
+        return res.data;
+    },
+
+    /**
+     * Asignar cadencia a múltiples contactos
+     */
+    asignarCadenciaMasiva: async (contactoIds, cadenciaId) => {
+        const res = await api.post('/sdr/cadencias/asignar-masiva', { contactoIds, cadenciaId });
+        return res.data;
+    },
+
+    /**
+     * Detener cadencia de un contacto
+     */
+    detenerCadencia: async (contactoId, motivo) => {
+        const res = await api.post('/sdr/cadencias/detener', { contactoId, motivo });
+        return res.data;
+    },
+
+    /**
+     * Obtener paso actual con templates resueltos
+     */
+    obtenerPasoActual: async (contactoId) => {
+        const res = await api.get(`/sdr/cadencias/paso-actual/${contactoId}`);
+        return res.data;
+    },
+
+    /**
+     * Avanzar al siguiente paso de cadencia
+     */
+    avanzarPasoCadencia: async (contactoId) => {
+        const res = await api.post('/sdr/cadencias/avanzar', { contactoId });
+        return res.data;
     }
 };
 

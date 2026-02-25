@@ -29,6 +29,7 @@ import {
     HourglassEmpty as HourglassEmptyIcon,
     Checkbox as CheckboxIcon
 } from '@mui/icons-material';
+import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import { useAuthContext } from 'src/contexts/auth-context';
 import SDRService from 'src/services/sdrService';
@@ -67,6 +68,8 @@ const ContactosSDRPage = () => {
     // Selección múltiple
     const [seleccionados, setSeleccionados] = useState([]);
     const [modalProximoMasivo, setModalProximoMasivo] = useState(false);
+    const [modalCadenciaMasiva, setModalCadenciaMasiva] = useState(false);
+    const [cadenciasDisponibles, setCadenciasDisponibles] = useState([]);
     
     // Drawer de contacto
     const [drawerOpen, setDrawerOpen] = useState(false);
@@ -196,6 +199,14 @@ const ContactosSDRPage = () => {
     useEffect(() => {
         cargarMetricas();
     }, [cargarMetricas]);
+
+    // Cargar cadencias disponibles para asignación masiva
+    useEffect(() => {
+        if (!empresaId) return;
+        SDRService.listarCadencias(empresaId)
+            .then(data => setCadenciasDisponibles(data || []))
+            .catch(() => setCadenciasDisponibles([]));
+    }, [empresaId]);
 
     // Abrir contacto desde query param si existe
     useEffect(() => {
@@ -415,6 +426,31 @@ const ContactosSDRPage = () => {
             cargarContactos();
         } catch (error) {
             setSnackbar({ open: true, message: 'Error al actualizar', severity: 'error' });
+        } finally {
+            setActionLoading(false);
+        }
+    };
+
+    // Asignar cadencia masivamente
+    const handleAsignarCadenciaMasiva = async (cadenciaId) => {
+        if (seleccionados.length === 0) return;
+        setActionLoading(true);
+        try {
+            const resultados = await SDRService.asignarCadenciaMasiva(seleccionados, cadenciaId);
+            const exitosos = resultados.filter(r => r.ok).length;
+            const fallidos = resultados.filter(r => !r.ok).length;
+            setSnackbar({
+                open: true,
+                message: fallidos > 0
+                    ? `Cadencia asignada a ${exitosos} contacto(s). ${fallidos} fallido(s).`
+                    : `Cadencia asignada a ${exitosos} contacto(s)`,
+                severity: fallidos > 0 ? 'warning' : 'success'
+            });
+            setSeleccionados([]);
+            setModalCadenciaMasiva(false);
+            cargarContactos();
+        } catch (error) {
+            setSnackbar({ open: true, message: 'Error al asignar cadencia', severity: 'error' });
         } finally {
             setActionLoading(false);
         }
@@ -678,6 +714,11 @@ const ContactosSDRPage = () => {
                                 <Button size="small" onClick={() => setModalProximoMasivo(true)}>
                                     📅 Fecha
                                 </Button>
+                                {cadenciasDisponibles.length > 0 && (
+                                    <Button size="small" onClick={() => setModalCadenciaMasiva(true)}>
+                                        🔄 Cadencia
+                                    </Button>
+                                )}
                                 <Button size="small" onClick={() => setSeleccionados([])}>
                                     ✕
                                 </Button>
@@ -1109,6 +1150,15 @@ const ContactosSDRPage = () => {
                                 >
                                     Actualizar fecha
                                 </Button>
+                                {cadenciasDisponibles.length > 0 && (
+                                    <Button 
+                                        size="small" 
+                                        startIcon={<PlayArrowIcon />}
+                                        onClick={() => setModalCadenciaMasiva(true)}
+                                    >
+                                        Asignar cadencia
+                                    </Button>
+                                )}
                                 <Button size="small" onClick={() => setSeleccionados([])}>
                                     Limpiar selección
                                 </Button>
@@ -1355,6 +1405,39 @@ const ContactosSDRPage = () => {
                 onSubmit={handleActualizarProximoMasivo}
                 loading={actionLoading}
             />
+
+            {/* Modal Asignar Cadencia Masiva */}
+            <Dialog
+                open={modalCadenciaMasiva}
+                onClose={() => setModalCadenciaMasiva(false)}
+                maxWidth="xs"
+                fullWidth
+            >
+                <DialogTitle>Asignar cadencia a {seleccionados.length} contacto(s)</DialogTitle>
+                <DialogContent>
+                    <Stack spacing={1} sx={{ mt: 1 }}>
+                        {cadenciasDisponibles.map((cad) => (
+                            <Button
+                                key={cad._id}
+                                variant="outlined"
+                                fullWidth
+                                startIcon={<PlayArrowIcon />}
+                                onClick={() => handleAsignarCadenciaMasiva(cad._id)}
+                                disabled={actionLoading}
+                                sx={{ justifyContent: 'flex-start', textTransform: 'none' }}
+                            >
+                                {cad.nombre}
+                                {cad.esDefault && (
+                                    <Chip size="small" label="Default" color="primary" variant="outlined" sx={{ ml: 1, height: 20, fontSize: '0.65rem' }} />
+                                )}
+                            </Button>
+                        ))}
+                    </Stack>
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => setModalCadenciaMasiva(false)}>Cancelar</Button>
+                </DialogActions>
+            </Dialog>
         </>
     );
 };
