@@ -49,6 +49,7 @@ import {
 import { formatDateDDMMYYYY } from "src/utils/handleDates";
 import productoService from "src/services/celulandia/productoService";
 import ProductDetailModal from "src/components/celulandia/proyecciones/productDetailModal";
+import { Box } from "@mui/system";
 const INITIAL_SORT_OPTIONS = {
   sortField: "createdAt",
   sortDirection: "desc",
@@ -265,6 +266,21 @@ const ProyeccionesV2Page = () => {
     }
   }, [notaParaEliminar, refetchProductos]);
 
+  const handleProyeccionCreada = useCallback((payload) => {
+    const id =
+      payload?.idProyeccion ??
+      payload?.data?.idProyeccion ??
+      payload?.data?.id ??
+      payload?.id;
+    if (!id) return;
+
+    const status = payload?.status || payload?.data?.status || "procesando";
+
+    setPendingProyeccionId(id);
+    setPendingProyeccionStatus(status);
+    setPendingProyeccionError(null);
+  }, []);
+
   const columns = useMemo(
     () => [
       { key: "codigo", label: "Código", sortable: true },
@@ -379,6 +395,9 @@ const ProyeccionesV2Page = () => {
 
   const [proyeccionMeta, setProyeccionMeta] = useState(null);
   const [isLoadingProyeccionMeta, setIsLoadingProyeccionMeta] = useState(false);
+  const [pendingProyeccionId, setPendingProyeccionId] = useState(null);
+  const [pendingProyeccionStatus, setPendingProyeccionStatus] = useState(null);
+  const [pendingProyeccionError, setPendingProyeccionError] = useState(null);
 
   const proyeccionIdsEnPagina = useMemo(() => {
     const ids = (Array.isArray(productos) ? productos : [])
@@ -447,6 +466,61 @@ const ProyeccionesV2Page = () => {
       isActive = false;
     };
   }, [proyeccionMayoritaria?.id]);
+
+  useEffect(() => {
+    if (!pendingProyeccionId) {
+      setPendingProyeccionStatus(null);
+      setPendingProyeccionError(null);
+      return undefined;
+    }
+
+    let isActive = true;
+    let intervalId = null;
+
+    const stopPolling = () => {
+      if (intervalId) {
+        clearInterval(intervalId);
+        intervalId = null;
+      }
+    };
+
+    const fetchStatus = async () => {
+      try {
+        const payload = await proyeccionService.getProyeccionStatus({ id: pendingProyeccionId });
+        if (!isActive) return;
+        const status = payload?.data?.status;
+        setPendingProyeccionStatus(status);
+        setPendingProyeccionError(payload?.data?.processingError || null);
+
+        if (status && status !== "procesando") {
+          stopPolling();
+          setPendingProyeccionId(null);
+          if (status === "finalizada") {
+            await refetchProductos();
+            await refetchLotes();
+          }
+        }
+      } catch (error) {
+        if (!isActive) return;
+        stopPolling();
+        setPendingProyeccionStatus("error");
+        setPendingProyeccionError(
+          error?.response?.data?.error ||
+            error?.message ||
+            "Error al consultar el estado de la proyección"
+        );
+        setPendingProyeccionId(null);
+      }
+    };
+
+    fetchStatus();
+    intervalId = setInterval(fetchStatus, 10000);
+
+    return () => {
+      isActive = false;
+      stopPolling();
+    };
+  }, [pendingProyeccionId, refetchProductos, refetchLotes]);
 
   const tablePagination = useMemo(
     () => ({
@@ -704,6 +778,12 @@ const ProyeccionesV2Page = () => {
         )}
         </Typography>
 
+        {pendingProyeccionStatus === "error" && pendingProyeccionError && (
+          <Typography variant="body2" color="error.main" sx={{ mb: 1 }}>
+            {`No se pudo procesar la proyección: ${pendingProyeccionError}`}
+          </Typography>
+        )}
+
         {/* Contador de productos seleccionados (debajo de acciones, arriba de la tabla) */}
         <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
           {selectedProducts.length > 0
@@ -713,21 +793,50 @@ const ProyeccionesV2Page = () => {
             : "Ningún producto seleccionado"}
         </Typography>
 
-        <TableSelectComponent
-          data={productos}
-          columns={columns}
-          isLoading={isLoading || isFetching}
-          sortField={sortOptions.sortField}
-          sortDirection={sortOptions.sortDirection}
-          onSortChange={handleSortChange}
-          getRowId={getProductId}
-          onSelectionChange={handleSelectionChange}
-          selectedItems={selectedProducts}
-          emptyMessage="No hay productos disponibles"
-          pagination={tablePagination}
-          onPageChange={handlePageChange}
-          onRowsPerPageChange={handleRowsPerPageChange}
-        />
+        <Box sx={{ position: "relative" }}>
+          <TableSelectComponent
+            data={productos}
+            columns={columns}
+            isLoading={isLoading || isFetching}
+            sortField={sortOptions.sortField}
+            sortDirection={sortOptions.sortDirection}
+            onSortChange={handleSortChange}
+            getRowId={getProductId}
+            onSelectionChange={handleSelectionChange}
+            selectedItems={selectedProducts}
+            emptyMessage="No hay productos disponibles"
+            pagination={tablePagination}
+            onPageChange={handlePageChange}
+            onRowsPerPageChange={handleRowsPerPageChange}
+          />
+          {pendingProyeccionStatus === "procesando" && (
+            <Box
+              sx={{
+                position: "absolute",
+                inset: 0,
+                bgcolor: (theme) =>
+                  theme.palette.mode === "dark"
+                    ? "rgba(0,0,0,0.65)"
+                    : "rgba(255,255,255,0.9)",
+                zIndex: 10,
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                px: 2,
+                textAlign: "center",
+              }}
+            >
+              <CircularProgress />
+              <Typography variant="body2" sx={{ mt: 1 }}>
+                Calculando proyección...
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                  Esto puede tomar unos minutos.
+              </Typography>
+            </Box>
+          )}
+        </Box>
 
         <Dialog open={isNotaDialogOpen} onClose={handleCloseNotaDialog} maxWidth="sm" fullWidth>
           <DialogTitle>{notaEditando?.notaId ? "Editar nota del producto" : "Agregar nota al producto"}</DialogTitle>
@@ -795,7 +904,7 @@ const ProyeccionesV2Page = () => {
         <AgregarProyeccionModal
           open={isAddOpen}
           onClose={() => setIsAddOpen(false)}
-          onCreated={() => {refetchProductos(); refetchLotes();}}
+          onCreated={handleProyeccionCreada}
         />
 
         <AgregarPedidoModal

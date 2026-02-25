@@ -43,6 +43,7 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
     obra: false,
     cliente: false,
     factura_cliente: false,
+    dolar_referencia: false,
   };
   const ingreso_info_default = {
     observacion: true,
@@ -50,6 +51,7 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
     categoria: false,
     subcategoria: false,
     tags_extra: false,
+    dolar_referencia: false,
   };
 
   const [ingresoInfo, setIngresoInfo] = useState({

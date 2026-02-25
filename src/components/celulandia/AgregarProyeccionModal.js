@@ -201,14 +201,14 @@ const AgregarProyeccionModal = ({ open, onClose, onCreated, onError }) => {
     }
     if (!canSubmit) return;
     try {
-      await mutateAsync({
+      const payload = await mutateAsync({
         fechaInicio: dayjs(fechaInicio).toISOString(),
         fechaFin: dayjs(fechaFin).toISOString(),
         archivoVentas,
         archivoStockQuiebre,
       });
       if (typeof onCreated === "function") {
-        await onCreated();
+        await onCreated(payload);
       }
 
       onClose?.();

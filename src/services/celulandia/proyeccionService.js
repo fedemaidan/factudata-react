@@ -47,6 +47,14 @@ const proyeccionService = {
     return response.data;
   },
 
+  getProyeccionStatus: async ({ id }) => {
+    if (!id) {
+      throw new Error("Se requiere un id de proyección");
+    }
+    const response = await axiosCelulandia.get(`/proyeccion/${id}/status`);
+    return response.data;
+  },
+
   getProyeccionesMetadata: async ({ ids } = {}) => {
     const safeIds = Array.isArray(ids) ? ids.filter(Boolean) : [];
     const response = await axiosCelulandia.post("/proyeccion/metadata", { ids: safeIds });
