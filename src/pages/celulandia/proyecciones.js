@@ -556,7 +556,7 @@ const ProyeccionesV2Page = () => {
 
   return (
     <DashboardLayout title="Proyecciones">
-      <Container maxWidth={false} disableGutters sx={{ width: "100%" }}>
+      <Container maxWidth={false} disableGutters sx={{ width: "98%" }}>
         <Stack direction="column" spacing={2} sx={{ mb: 3 }}>
           <Stack direction="row" alignItems="center" spacing={2} useFlexGap flexWrap="wrap">
             <TextField
