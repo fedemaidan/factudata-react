@@ -348,8 +348,23 @@ const ClienteCelulandiaCCPage = () => {
                 // Filtro de fecha (frontend) — comentado
                 // filtroFecha={filtroFecha}
                 // onFiltroFechaChange={handleFiltroFechaChange}
-                // Deshabilitar búsqueda y filtro de fecha en esta vista
-                showSearch={false}
+                showSearch={true}
+                searchFields={[
+                  "fecha",
+                  "fechaCreacion",
+                  "horaCreacion",
+                  "fechaEntrega",
+                  "descripcion",
+                  "cliente",
+                  "group",
+                  "monto",
+                  "montoCC",
+                  "tipoDeCambio",
+                  "descuentoAplicado",
+                  "montoOriginal",
+                  "monedaOriginal",
+                  "montoYMonedaOriginal",
+                ]}
                 showDateFilterOptions={false}
                 showSaldoColumn={true}
                 // Acciones
