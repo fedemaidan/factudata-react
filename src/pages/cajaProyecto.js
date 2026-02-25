@@ -31,6 +31,7 @@ import Alert from '@mui/material/Alert';
 import { useAuthContext } from 'src/contexts/auth-context';
 import { useBreadcrumbs } from 'src/contexts/breadcrumbs-context';
 import { useTrackPrimeraVisita } from 'src/hooks/useTrackPrimeraVisita';
+import { OnboardingProgress } from 'src/components/OnboardingProgress';
 import { getEmpresaDetailsFromUser, updateEmpresaDetails } from 'src/services/empresaService';
 import HomeIcon from '@mui/icons-material/Home';
 import FolderIcon from '@mui/icons-material/Folder';
@@ -1306,6 +1307,8 @@ useEffect(() => {
       <Box component="main" sx={{ flexGrow: 1, py: 8, paddingTop: 2 }}>
         <Container maxWidth="xl">
           <Stack spacing={3}>
+            {/* Progreso de Onboarding */}
+            <OnboardingProgress />
             
             <Stack direction={isMobile ? "column" : "row"} spacing={2} alignItems="stretch">
               {isMobile ? (
