@@ -1342,7 +1342,7 @@ async function enviarResumenesMensual()
 
 ```
 describe('Ciclo de vida de un cliente')
-  ✓ Crear empresa → se crea cadena post-venta + onboardings
+  ✓ Agregar usuario → se crea cadena post-venta + onboarding individual
   ✓ Crear movimiento → registra paso crearGasto en onboarding
   ✓ Editar movimiento → registra paso editarGasto
   ✓ Recalcular score empresa → refleja progreso

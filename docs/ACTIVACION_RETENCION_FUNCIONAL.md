@@ -160,7 +160,7 @@ Promedio ponderado de scores de todos los usuarios, ponderado por módulos activ
 | Hook de acceso web (caja, notas, acopio) | ✅ Implementado (`useTrackPrimeraVisita`) |
 | Módulos Nota Pedido / Acopio | ✅ Implementado (config + hooks) |
 | Módulo TomaDecisión | 📋 Diseñado, por implementar |
-| Creación automática al dar de alta empresa | ✅ Implementado (`onboardingCreaInicio`) |
+| Creación automática al agregar usuario (desde la web) | ✅ Implementado (`onboardingCreaInicio` + `POST /onboarding/iniciar-usuario`) |
 | Notificación de progreso por WhatsApp | ✅ Implementado (tras cada paso) |
 | Comando "mi progreso" en bot WhatsApp | ✅ Implementado (`VER_MI_PROGRESO`) |
 | Vista en frontend (OnboardingProgress) | ✅ Implementado (en cajaSimple y cajaProyecto) |
@@ -383,7 +383,7 @@ Todo esto se apoya en dos componentes ya implementados:
 | Envío diferido (mensajes programados) | ✅ Implementado |
 | Función respuestaConIA | ✅ Implementado |
 | Cadena post-venta (13 automatizaciones) | ✅ Implementado |
-| Creación automática cadena + bienvenida al dar de alta | ✅ Implementado (`onboardingCreaInicio`) |
+| Creación automática cadena + bienvenida al agregar usuario | ✅ Implementado (`onboardingCreaInicio` + `POST /onboarding/iniciar-usuario`) |
 | Nudges inteligentes | ✅ Implementado |
 | Mensajes de valor al dueño (semanal + mensual) | ✅ Implementado |
 | Resumen mensual (ventana rolling 30 días) | ✅ Implementado (`getResumenMensual`) |
