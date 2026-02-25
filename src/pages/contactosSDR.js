@@ -224,16 +224,14 @@ const ContactosSDRPage = () => {
         }
     }, [router.query.contacto, contactos]);
 
-    // Abrir drawer y actualizar URL
+    // Abrir página de detalle del contacto con contexto de navegación
     const handleOpenDrawer = (contacto) => {
-        setContactoSeleccionado(contacto);
-        setDrawerOpen(true);
-        // Actualizar URL con el ID del contacto para poder compartir
-        router.push(
-            { pathname: router.pathname, query: { ...router.query, contacto: contacto._id } },
-            undefined,
-            { shallow: true }
-        );
+        // Guardar IDs de contactos en sessionStorage para navegación ← →
+        try {
+            const ids = contactos.map(c => c._id);
+            sessionStorage.setItem('sdr_contacto_ids', JSON.stringify(ids));
+        } catch { /* ignore */ }
+        router.push(`/sdr/contacto/${contacto._id}`);
     };
 
     // Cerrar drawer y limpiar query param

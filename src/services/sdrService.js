@@ -154,16 +154,16 @@ const SDRService = {
     /**
      * Actualizar plan estimado de un contacto
      */
-    actualizarPlanEstimado: async (contactoId, plan) => {
-        const res = await api.post('/sdr/acciones/plan-estimado', { contactoId, plan });
+    actualizarPlanEstimado: async (contactoId, planEstimado) => {
+        const res = await api.post('/sdr/acciones/plan-estimado', { contactoId, planEstimado });
         return res.data;
     },
 
     /**
      * Actualizar intención de compra de un contacto
      */
-    actualizarIntencionCompra: async (contactoId, intencion) => {
-        const res = await api.post('/sdr/acciones/intencion-compra', { contactoId, intencion });
+    actualizarIntencionCompra: async (contactoId, intencionCompra) => {
+        const res = await api.post('/sdr/acciones/intencion-compra', { contactoId, intencionCompra });
         return res.data;
     },
 

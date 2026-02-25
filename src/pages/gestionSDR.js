@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import Head from 'next/head';
+import { useRouter } from 'next/router';
 import {
     Box, Container, Paper, Stack, Typography, Button, TextField, MenuItem,
     Select, FormControl, InputLabel, Tabs, Tab, Card, CardContent, Grid,
@@ -176,6 +177,7 @@ const GestionSDRPage = () => {
     
     // Obtener usuario del contexto de auth
     const { user, isLoading: authLoading } = useAuthContext();
+    const router = useRouter();
     const userId = user?.id || user?.user_id;
     const empresaId = user?.empresa?.id || 'demo-empresa';
     // Usar user_id del perfil (que es el Firebase UID guardado en Firestore)
@@ -185,6 +187,15 @@ const GestionSDRPage = () => {
     // Control de carga inicial
     const initialLoadDone = useRef(false);
     const prevFilters = useRef({ page: 1, filtros: {} });
+    
+    // Abrir contacto en página dedicada
+    const handleAbrirContacto = (contacto, idx) => {
+        try {
+            const ids = contactos.map(c => c._id);
+            sessionStorage.setItem('sdr_contacto_ids', JSON.stringify(ids));
+        } catch { /* ignore */ }
+        router.push(`/sdr/contacto/${contacto._id}`);
+    };
     
     // ==================== CARGA DE DATOS ====================
     
@@ -799,9 +810,7 @@ const GestionSDRPage = () => {
                                     cursor: 'pointer'
                                 }}
                                 onClick={() => {
-                                    setContactoSeleccionado(contacto);
-                                    setIndiceContactoActual(idx);
-                                    setModalDetalle(true);
+                                    handleAbrirContacto(contacto, idx);
                                 }}
                             >
                                 <Stack direction="row" alignItems="flex-start" spacing={1}>
@@ -918,9 +927,7 @@ const GestionSDRPage = () => {
                                         hover 
                                         sx={{ cursor: 'pointer' }}
                                         onClick={() => { 
-                                            setContactoSeleccionado(contacto); 
-                                            setIndiceContactoActual(idx);
-                                            setModalDetalle(true); 
+                                            handleAbrirContacto(contacto, idx);
                                         }}
                                     >
                                         <TableCell padding="checkbox" onClick={(e) => e.stopPropagation()}>
