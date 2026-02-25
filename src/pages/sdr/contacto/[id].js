@@ -150,6 +150,8 @@ const ContactoSDRDetailPage = () => {
 
     // Scoring
     const [guardandoScoring, setGuardandoScoring] = useState(false);
+    const [editandoPrioridadManual, setEditandoPrioridadManual] = useState(false);
+    const [valorPrioridadManual, setValorPrioridadManual] = useState('');
 
     // Próximo contacto
     const [guardandoProximo, setGuardandoProximo] = useState(false);
@@ -319,6 +321,27 @@ const ContactoSDRDetailPage = () => {
             cargarContacto();
         } catch (err) {
             mostrarSnackbar('Error al actualizar intención', 'error');
+        } finally {
+            setGuardandoScoring(false);
+        }
+    };
+
+    const handleGuardarPrioridadManual = async () => {
+        if (!contacto?._id) return;
+        const valor = parseInt(valorPrioridadManual, 10);
+        if (isNaN(valor)) {
+            mostrarSnackbar('Ingresá un número válido', 'error');
+            return;
+        }
+        setGuardandoScoring(true);
+        try {
+            await SDRService.actualizarPrioridadManual(contacto._id, valor);
+            setContacto(prev => ({ ...prev, prioridadManual: valor }));
+            mostrarSnackbar(`Prioridad manual: ${valor} pts`);
+            setEditandoPrioridadManual(false);
+            cargarContacto();
+        } catch (err) {
+            mostrarSnackbar('Error al actualizar prioridad manual', 'error');
         } finally {
             setGuardandoScoring(false);
         }
@@ -618,16 +641,59 @@ const ContactoSDRDetailPage = () => {
                                         ))}
                                     </Stack>
 
-                                    {/* Score + Bot */}
+                                    {/* Score + Prioridad manual + Bot */}
                                     <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
                                         {contacto.prioridadScore > 0 && (
+                                            <Tooltip title="Click para ajustar puntos manuales">
+                                                <Chip
+                                                    size="small"
+                                                    label={`Prioridad: ${contacto.prioridadScore}`}
+                                                    color={contacto.prioridadScore >= 70 ? 'error' : contacto.prioridadScore >= 40 ? 'warning' : 'default'}
+                                                    variant="filled"
+                                                    sx={{ fontWeight: 700, cursor: 'pointer' }}
+                                                    onClick={() => {
+                                                        setValorPrioridadManual(String(contacto.prioridadManual || 0));
+                                                        setEditandoPrioridadManual(true);
+                                                    }}
+                                                />
+                                            </Tooltip>
+                                        )}
+                                        {!editandoPrioridadManual && (contacto.prioridadManual > 0 || contacto.prioridadScore === 0) && (
                                             <Chip
                                                 size="small"
-                                                label={`Prioridad: ${contacto.prioridadScore}`}
-                                                color={contacto.prioridadScore >= 70 ? 'error' : contacto.prioridadScore >= 40 ? 'warning' : 'default'}
-                                                variant="filled"
-                                                sx={{ fontWeight: 700 }}
+                                                label={contacto.prioridadManual ? `Manual: +${contacto.prioridadManual}` : '+ Puntos'}
+                                                color={contacto.prioridadManual ? 'info' : 'default'}
+                                                variant={contacto.prioridadManual ? 'filled' : 'outlined'}
+                                                sx={{ cursor: 'pointer' }}
+                                                onClick={() => {
+                                                    setValorPrioridadManual(String(contacto.prioridadManual || 0));
+                                                    setEditandoPrioridadManual(true);
+                                                }}
                                             />
+                                        )}
+                                        {editandoPrioridadManual && (
+                                            <Stack direction="row" spacing={0.5} alignItems="center">
+                                                <TextField
+                                                    size="small"
+                                                    type="number"
+                                                    value={valorPrioridadManual}
+                                                    onChange={(e) => setValorPrioridadManual(e.target.value)}
+                                                    onKeyDown={(e) => {
+                                                        if (e.key === 'Enter') handleGuardarPrioridadManual();
+                                                        if (e.key === 'Escape') setEditandoPrioridadManual(false);
+                                                    }}
+                                                    autoFocus
+                                                    placeholder="Pts"
+                                                    sx={{ width: 80 }}
+                                                    InputProps={{ sx: { height: 28, fontSize: '0.8rem' } }}
+                                                />
+                                                <IconButton size="small" onClick={handleGuardarPrioridadManual} disabled={guardandoScoring} color="primary">
+                                                    <CheckCircleIcon sx={{ fontSize: 18 }} />
+                                                </IconButton>
+                                                <IconButton size="small" onClick={() => setEditandoPrioridadManual(false)}>
+                                                    <CancelIcon sx={{ fontSize: 18 }} />
+                                                </IconButton>
+                                            </Stack>
                                         )}
                                         {contacto.precalificacionBot && contacto.precalificacionBot !== 'sin_calificar' && (
                                             <Chip

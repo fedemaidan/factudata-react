@@ -168,6 +168,14 @@ const SDRService = {
     },
 
     /**
+     * Actualizar prioridad manual (puntos discrecionales)
+     */
+    actualizarPrioridadManual: async (contactoId, prioridadManual) => {
+        const res = await api.post('/sdr/acciones/prioridad-manual', { contactoId, prioridadManual });
+        return res.data;
+    },
+
+    /**
      * Obtener siguiente contacto para llamar (priorizado por score)
      */
     obtenerSiguienteContacto: async (empresaId, sdrId = null) => {
