@@ -573,13 +573,13 @@ const ContactoSDRDetailPage = () => {
             <Head>
                 <title>{contacto.nombre} | SDR</title>
             </Head>
-            <Box sx={{ py: { xs: 2, md: 3 }, pb: { xs: 10, md: 3 } }}>
+            <Box sx={{ py: { xs: 1, md: 3 }, pb: { xs: 12, md: 3 } }}>
                 <Container maxWidth="lg">
 
                     {/* ==================== FILA DE CARDS ==================== */}
                     <Grid container spacing={2} sx={{ mb: 3 }}>
                         {/* Card: Info del contacto */}
-                        <Grid item xs={12} md={4}>
+                        <Grid item xs={12} sm={6} md={4}>
                             <Card variant="outlined" sx={{ height: '100%' }}>
                                 <CardContent>
                                     <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1.5}>
@@ -675,7 +675,7 @@ const ContactoSDRDetailPage = () => {
                         </Grid>
 
                         {/* Card: Calificación comercial */}
-                        <Grid item xs={12} md={4}>
+                        <Grid item xs={12} sm={6} md={4}>
                             <Card variant="outlined" sx={{ height: '100%' }}>
                                 <CardContent>
                                     <Stack direction="row" spacing={1} alignItems="center" mb={1.5}>
@@ -846,7 +846,7 @@ const ContactoSDRDetailPage = () => {
                                         }}
                                         disabled={guardandoProximo}
                                         InputLabelProps={{ shrink: true }}
-                                        sx={{ mb: 2 }}
+                                        sx={{ mb: { xs: 0, md: 2 } }}
                                     />
 
                                     <Divider sx={{ mb: 1.5, display: { xs: 'none', md: 'block' } }} />
@@ -1173,36 +1173,37 @@ const ContactoSDRDetailPage = () => {
                         borderTop: 1,
                         borderColor: 'divider',
                         bgcolor: 'background.paper',
-                        px: 2,
-                        py: 1.5,
+                        px: 1,
+                        py: 1,
+                        pb: 'calc(8px + env(safe-area-inset-bottom))',
                         display: 'flex',
                         alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: 1
+                        justifyContent: 'space-evenly',
+                        gap: 0.5
                     }}
                 >
-                    <Button size="small" variant="contained" color="success" onClick={() => handleAccion('llamada', true)} sx={{ minWidth: 44, px: 1 }}>
+                    <IconButton size="small" onClick={() => handleAccion('llamada', true)} sx={{ bgcolor: '#4caf50', color: 'white', '&:hover': { bgcolor: '#388e3c' }, width: 40, height: 40 }}>
                         <PhoneIcon fontSize="small" />
-                    </Button>
-                    <Button size="small" variant="contained" color="warning" onClick={() => handleAccion('llamada', false)} sx={{ minWidth: 44, px: 1 }}>
+                    </IconButton>
+                    <IconButton size="small" onClick={() => handleAccion('llamada', false)} sx={{ bgcolor: '#ff9800', color: 'white', '&:hover': { bgcolor: '#f57c00' }, width: 40, height: 40 }}>
                         <PhoneMissedIcon fontSize="small" />
-                    </Button>
-                    <Button size="small" variant="contained" color="info" onClick={() => handleAccion('whatsapp')} sx={{ minWidth: 44, px: 1 }}>
+                    </IconButton>
+                    <IconButton size="small" onClick={() => handleAccion('whatsapp')} sx={{ bgcolor: '#25D366', color: 'white', '&:hover': { bgcolor: '#128C7E' }, width: 40, height: 40 }}>
                         <WhatsAppIcon fontSize="small" />
-                    </Button>
-                    <Button size="small" variant="outlined" color="inherit" onClick={() => handleAccion('no_responde')} sx={{ minWidth: 44, px: 1 }}>
+                    </IconButton>
+                    <IconButton size="small" onClick={() => handleAccion('no_responde')} sx={{ border: 1, borderColor: 'divider', width: 40, height: 40 }}>
                         <PhoneDisabledIcon fontSize="small" />
-                    </Button>
-                    <Button size="small" variant="outlined" color="error" onClick={handleMarcarNoCalifica} sx={{ minWidth: 44, px: 1 }}>
+                    </IconButton>
+                    <IconButton size="small" onClick={handleMarcarNoCalifica} sx={{ border: 1, borderColor: 'error.main', color: 'error.main', width: 40, height: 40 }}>
                         <DoNotDisturbIcon fontSize="small" />
-                    </Button>
-                    <Button size="small" variant="outlined" color="primary" onClick={() => setModalRegistrarAccion(true)} sx={{ minWidth: 44, px: 1 }}>
+                    </IconButton>
+                    <IconButton size="small" onClick={() => setModalRegistrarAccion(true)} sx={{ border: 1, borderColor: 'primary.main', color: 'primary.main', width: 40, height: 40 }}>
                         <EditIcon fontSize="small" />
-                    </Button>
+                    </IconButton>
                     {contactoIds.length > 1 && puedeSiguiente && (
-                        <Button size="small" variant="contained" color="primary" onClick={() => navegar('siguiente')} sx={{ minWidth: 44, px: 1 }}>
+                        <IconButton size="small" onClick={() => navegar('siguiente')} sx={{ bgcolor: 'primary.main', color: 'white', '&:hover': { bgcolor: 'primary.dark' }, width: 40, height: 40 }}>
                             <ChevronRightIcon fontSize="small" />
-                        </Button>
+                        </IconButton>
                     )}
                 </Paper>
             )}
