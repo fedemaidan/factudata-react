@@ -1924,7 +1924,7 @@ const DrawerDetalleContactoSDR = ({
 };
 
 // ==================== MODAL EDITAR CONTACTO ====================
-const ModalEditarContacto = ({ open, onClose, contacto, empresaId, onSuccess }) => {
+export const ModalEditarContacto = ({ open, onClose, contacto, empresaId, onSuccess }) => {
     const theme = useTheme();
     const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
     

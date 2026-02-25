@@ -50,7 +50,7 @@ import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import { useAuthContext } from 'src/contexts/auth-context';
 import SDRService from 'src/services/sdrService';
-import { EstadoChip, EstadoChipEditable } from 'src/components/sdr/DrawerDetalleContactoSDR';
+import { EstadoChip, EstadoChipEditable, ModalEditarContacto } from 'src/components/sdr/DrawerDetalleContactoSDR';
 import ModalRegistrarAccion from 'src/components/sdr/ModalRegistrarAccion';
 import { getWhatsAppLink, getTelLink } from 'src/utils/phoneUtils';
 import {
@@ -169,6 +169,9 @@ const ContactoSDRDetailPage = () => {
 
     // Modal de acción avanzada
     const [modalRegistrarAccion, setModalRegistrarAccion] = useState(false);
+    
+    // Modal editar contacto
+    const [modalEditarContacto, setModalEditarContacto] = useState(false);
 
     // Cadencia
     const [pasoActual, setPasoActual] = useState(null);
@@ -590,6 +593,13 @@ const ContactoSDRDetailPage = () => {
                                         <Typography variant="subtitle2" color="text.secondary">
                                             Información de contacto
                                         </Typography>
+                                        <Button
+                                            size="small"
+                                            startIcon={<EditIcon />}
+                                            onClick={() => setModalEditarContacto(true)}
+                                        >
+                                            Editar
+                                        </Button>
                                     </Stack>
                                     <Stack spacing={1.5}>
                                         {(contacto.empresa || contacto.tamanoEmpresa) && (
@@ -1060,17 +1070,20 @@ const ContactoSDRDetailPage = () => {
                         )
                     )}
 
-                    {/* ==================== CONVERSACIÓN ==================== */}
-                    {contacto.telefono && (
-                        <Paper variant="outlined" sx={{ mb: 3, overflow: 'hidden' }}>
-                            <Box sx={{ height: 400 }}>
+                    {/* ==================== CHAT + HISTORIAL (50/50) ==================== */}
+                    <Grid container spacing={2}>
+                        {/* Conversación */}
+                        {contacto.telefono && (
+                        <Grid item xs={12} md={6}>
+                            <Paper variant="outlined" sx={{ overflow: 'hidden', height: { md: 500 } }}>
                                 <MiniChatViewer telefono={contacto.telefono} />
-                            </Box>
-                        </Paper>
-                    )}
+                            </Paper>
+                        </Grid>
+                        )}
 
-                    {/* ==================== COMENTARIO + HISTORIAL ==================== */}
-                    <Paper variant="outlined" sx={{ p: 2 }}>
+                        {/* Comentario + Historial */}
+                        <Grid item xs={12} md={contacto.telefono ? 6 : 12}>
+                        <Paper variant="outlined" sx={{ p: 2, height: { md: 500 }, display: 'flex', flexDirection: 'column' }}>
                         {/* Comentario */}
                         <Stack direction="row" spacing={1} sx={{ mb: 2 }}>
                             <TextField
@@ -1104,6 +1117,7 @@ const ContactoSDRDetailPage = () => {
                             Historial ({historial.length})
                         </Typography>
 
+                        <Box sx={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
                         {historial.length === 0 ? (
                             <Typography variant="body2" color="text.secondary" sx={{ py: 2 }}>
                                 Sin historial aún
@@ -1168,7 +1182,10 @@ const ContactoSDRDetailPage = () => {
                                 })}
                             </Stack>
                         )}
+                    </Box>
                     </Paper>
+                    </Grid>
+                    </Grid>
 
                 </Container>
             </Box>
@@ -1213,6 +1230,20 @@ const ContactoSDRDetailPage = () => {
                     </Stack>
                 </Box>
             )}
+
+            {/* Modal editar contacto */}
+            <ModalEditarContacto
+                open={modalEditarContacto}
+                onClose={() => setModalEditarContacto(false)}
+                contacto={contacto}
+                empresaId={empresaId}
+                onSuccess={(contactoActualizado) => {
+                    if (contactoActualizado) setContacto(contactoActualizado);
+                    setModalEditarContacto(false);
+                    mostrarSnackbar('Contacto actualizado');
+                    cargarContacto();
+                }}
+            />
 
             {/* Modal acción avanzada */}
             {modalRegistrarAccion && (
