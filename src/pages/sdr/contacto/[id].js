@@ -491,7 +491,7 @@ const ContactoSDRDetailPage = () => {
             <Head>
                 <title>{contacto.nombre} | SDR</title>
             </Head>
-            <Box sx={{ py: { xs: 2, md: 3 } }}>
+            <Box sx={{ py: { xs: 2, md: 3 }, pb: { xs: 10, md: 3 } }}>
                 <Container maxWidth="lg">
 
                     {/* ==================== FILA DE CARDS ==================== */}
@@ -767,44 +767,46 @@ const ContactoSDRDetailPage = () => {
                                         sx={{ mb: 2 }}
                                     />
 
-                                    <Divider sx={{ mb: 1.5 }} />
+                                    <Divider sx={{ mb: 1.5, display: { xs: 'none', md: 'block' } }} />
 
-                                    {/* Acciones rápidas */}
-                                    <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                                        Registrar acción
-                                    </Typography>
-                                    <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
-                                        <Tooltip title="Llamada atendida">
-                                            <Button size="small" variant="outlined" color="success" onClick={() => handleAccion('llamada', true)}>
-                                                <PhoneIcon fontSize="small" />
-                                            </Button>
-                                        </Tooltip>
-                                        <Tooltip title="Llamada no atendida">
-                                            <Button size="small" variant="outlined" color="warning" onClick={() => handleAccion('llamada', false)}>
-                                                <PhoneMissedIcon fontSize="small" />
-                                            </Button>
-                                        </Tooltip>
-                                        <Tooltip title="WhatsApp">
-                                            <Button size="small" variant="outlined" color="info" onClick={() => handleAccion('whatsapp')}>
-                                                <WhatsAppIcon fontSize="small" />
-                                            </Button>
-                                        </Tooltip>
-                                        <Tooltip title="No responde">
-                                            <Button size="small" variant="outlined" color="inherit" onClick={() => handleAccion('no_responde')}>
-                                                <PhoneDisabledIcon fontSize="small" />
-                                            </Button>
-                                        </Tooltip>
-                                        <Tooltip title="No califica">
-                                            <Button size="small" variant="outlined" color="error" onClick={handleMarcarNoCalifica}>
-                                                <DoNotDisturbIcon fontSize="small" />
-                                            </Button>
-                                        </Tooltip>
-                                        <Tooltip title="Acción avanzada">
-                                            <Button size="small" variant="outlined" color="primary" onClick={() => setModalRegistrarAccion(true)}>
-                                                <EditIcon fontSize="small" />
-                                            </Button>
-                                        </Tooltip>
-                                    </Stack>
+                                    {/* Acciones rápidas - solo desktop (en mobile van en barra fija) */}
+                                    <Box sx={{ display: { xs: 'none', md: 'block' } }}>
+                                        <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                                            Registrar acción
+                                        </Typography>
+                                        <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
+                                            <Tooltip title="Llamada atendida">
+                                                <Button size="small" variant="outlined" color="success" onClick={() => handleAccion('llamada', true)}>
+                                                    <PhoneIcon fontSize="small" />
+                                                </Button>
+                                            </Tooltip>
+                                            <Tooltip title="Llamada no atendida">
+                                                <Button size="small" variant="outlined" color="warning" onClick={() => handleAccion('llamada', false)}>
+                                                    <PhoneMissedIcon fontSize="small" />
+                                                </Button>
+                                            </Tooltip>
+                                            <Tooltip title="WhatsApp">
+                                                <Button size="small" variant="outlined" color="info" onClick={() => handleAccion('whatsapp')}>
+                                                    <WhatsAppIcon fontSize="small" />
+                                                </Button>
+                                            </Tooltip>
+                                            <Tooltip title="No responde">
+                                                <Button size="small" variant="outlined" color="inherit" onClick={() => handleAccion('no_responde')}>
+                                                    <PhoneDisabledIcon fontSize="small" />
+                                                </Button>
+                                            </Tooltip>
+                                            <Tooltip title="No califica">
+                                                <Button size="small" variant="outlined" color="error" onClick={handleMarcarNoCalifica}>
+                                                    <DoNotDisturbIcon fontSize="small" />
+                                                </Button>
+                                            </Tooltip>
+                                            <Tooltip title="Acción avanzada">
+                                                <Button size="small" variant="outlined" color="primary" onClick={() => setModalRegistrarAccion(true)}>
+                                                    <EditIcon fontSize="small" />
+                                                </Button>
+                                            </Tooltip>
+                                        </Stack>
+                                    </Box>
                                 </CardContent>
                             </Card>
                         </Grid>
@@ -935,22 +937,55 @@ const ContactoSDRDetailPage = () => {
                         )}
                     </Paper>
 
-                    {/* Siguiente contacto (botón prominente mobile) */}
-                    {contactoIds.length > 1 && puedeSiguiente && isMobile && (
-                        <Button
-                            fullWidth
-                            variant="contained"
-                            color="primary"
-                            size="large"
-                            endIcon={<ChevronRightIcon />}
-                            onClick={() => navegar('siguiente')}
-                            sx={{ mt: 3 }}
-                        >
-                            Siguiente contacto
-                        </Button>
-                    )}
                 </Container>
             </Box>
+
+            {/* ==================== BARRA FIJA MOBILE: Acciones rápidas ==================== */}
+            {isMobile && (
+                <Paper
+                    elevation={8}
+                    sx={{
+                        position: 'fixed',
+                        bottom: 0,
+                        left: 0,
+                        right: 0,
+                        zIndex: 1200,
+                        borderTop: 1,
+                        borderColor: 'divider',
+                        bgcolor: 'background.paper',
+                        px: 2,
+                        py: 1.5,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 1
+                    }}
+                >
+                    <Button size="small" variant="contained" color="success" onClick={() => handleAccion('llamada', true)} sx={{ minWidth: 44, px: 1 }}>
+                        <PhoneIcon fontSize="small" />
+                    </Button>
+                    <Button size="small" variant="contained" color="warning" onClick={() => handleAccion('llamada', false)} sx={{ minWidth: 44, px: 1 }}>
+                        <PhoneMissedIcon fontSize="small" />
+                    </Button>
+                    <Button size="small" variant="contained" color="info" onClick={() => handleAccion('whatsapp')} sx={{ minWidth: 44, px: 1 }}>
+                        <WhatsAppIcon fontSize="small" />
+                    </Button>
+                    <Button size="small" variant="outlined" color="inherit" onClick={() => handleAccion('no_responde')} sx={{ minWidth: 44, px: 1 }}>
+                        <PhoneDisabledIcon fontSize="small" />
+                    </Button>
+                    <Button size="small" variant="outlined" color="error" onClick={handleMarcarNoCalifica} sx={{ minWidth: 44, px: 1 }}>
+                        <DoNotDisturbIcon fontSize="small" />
+                    </Button>
+                    <Button size="small" variant="outlined" color="primary" onClick={() => setModalRegistrarAccion(true)} sx={{ minWidth: 44, px: 1 }}>
+                        <EditIcon fontSize="small" />
+                    </Button>
+                    {contactoIds.length > 1 && puedeSiguiente && (
+                        <Button size="small" variant="contained" color="primary" onClick={() => navegar('siguiente')} sx={{ minWidth: 44, px: 1 }}>
+                            <ChevronRightIcon fontSize="small" />
+                        </Button>
+                    )}
+                </Paper>
+            )}
 
             {/* Modal acción avanzada */}
             {modalRegistrarAccion && (
