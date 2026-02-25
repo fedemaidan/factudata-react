@@ -14,6 +14,7 @@ import { useRouter } from 'next/router';
 
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import { useAuthContext } from 'src/contexts/auth-context';
+import { useTrackPrimeraVisita } from 'src/hooks/useTrackPrimeraVisita';
 import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
 import { getProyectosByEmpresa } from 'src/services/proyectosService';
 import ticketService from 'src/services/ticketService';
@@ -47,6 +48,7 @@ const colorFor = (val) => (val >= 0 ? 'success.main' : 'error.main');
 const CajaSimplePage = () => {
   const router = useRouter();
   const { user } = useAuthContext();
+  useTrackPrimeraVisita('caja', 'accederWeb');
 
   // Datos base
   const [empresa, setEmpresa] = useState(null);
