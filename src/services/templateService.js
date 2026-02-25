@@ -26,6 +26,16 @@ const templateService = {
   sendTemplate: async (data) => {
     const response = await api.post('/templates/send', data);
     return response.data;
+  },
+
+  /**
+   * Inicia onboarding para un usuario de empresa existente.
+   * Crea el doc de onboarding + cadena post-venta + opcionalmente envía bienvenida.
+   * @param {Object} data - { profileId, empresaId, phone, nombre, rol?, modulosActivos?, enviarBienvenida?, proveedorEjemplo?, proyectoEjemplo? }
+   */
+  iniciarOnboarding: async (data) => {
+    const response = await api.post('/onboarding/iniciar-usuario', data);
+    return response.data;
   }
 };
 
