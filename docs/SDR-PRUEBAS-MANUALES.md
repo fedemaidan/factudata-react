@@ -31,7 +31,8 @@
 10. [Reuniones](#10-reuniones)
 11. [Puente Bot ↔ Contacto SDR](#11-puente-bot--contacto-sdr)
 12. [Timeout Job del Bot](#12-timeout-job-del-bot)
-13. [Flujos cross-funcionales](#13-flujos-cross-funcionales)
+13. [Vistas Guardadas](#13-vistas-guardadas)
+14. [Flujos cross-funcionales](#14-flujos-cross-funcionales)
 
 ---
 
@@ -352,41 +353,58 @@
 
 | # | Caso | Pasos | Resultado esperado | ✅/❌ | Obs |
 |---|------|-------|--------------------|-------|-----|
-| 12.1 | Contacto sin respuesta > 24h | Contacto con `estado: 'nuevo'` y `datosBot.ultimaInteraccion` > 24h atrás | Job marca como `no_responde`, crea evento `bot_timeout` | | |
-| 12.2 | Contacto con respuesta | Contacto con interacción reciente (< 24h) | No se modifica | | |
-| 12.3 | Contacto ya procesado | Contacto con `estado: 'contactado'` | No se modifica (solo aplica a `nuevo`) | | |
+| 12.1 | Contacto sin actividad > 48h | Contacto con `precalificacionBot: 'sin_calificar'` y `createdAt` > 48h atrás | Job marca `precalificacionBot` como `no_llego`, crea evento `bot_timeout` | | |
+| 12.2 | Contacto reciente | Contacto con `precalificacionBot: 'sin_calificar'` y `createdAt` < 48h | No se modifica | | |
+| 12.3 | Contacto con otra precalificación | Contacto con `precalificacionBot: 'calificado'` (u otro valor ≠ `sin_calificar`) | No se modifica (solo aplica a `sin_calificar`) | | |
 
-> **Nota**: Cubierto por **5 tests unitarios** (`sdrBotTimeoutJob.test.js`). Verificar: `npx jest test/unit/sdrBotTimeoutJob.test.js`
+> **Ejecución manual**: `cd backend && node src/scripts/sdrBotTimeoutJob.js`  
+> **Crontab producción**: `0 */6 * * * cd /ruta/backend && node src/scripts/sdrBotTimeoutJob.js`  
+> **Tests unitarios** (5): `npx jest test/unit/sdrBotTimeoutJob.test.js`
 
 ---
 
-## 13. Flujos cross-funcionales
-
-### 13.1 Loop completo de llamadas
+## 13. Vistas Guardadas
 
 | # | Caso | Pasos | Resultado esperado | ✅/❌ | Obs |
 |---|------|-------|--------------------|-------|-----|
-| 13.1.1 | Flujo Llamar → Registrar → Siguiente | Abrir contacto → Llamar → Registrar "Llamada atendida" con nota → Siguiente contacto | Todo el flujo sin errores, historial actualizado, navega al siguiente | | |
-| 13.1.2 | Flujo WhatsApp → Registrar → Seguimiento | Abrir contacto → WhatsApp → Registrar "WhatsApp enviado" → Programar seguimiento 24h | WhatsApp se abre, acción registrada, próximo contacto en 24h | | |
-| 13.1.3 | Flujo No Responde → Siguiente | Registrar "Llamada no atendida" → aceptar seguimiento 3h → Siguiente | Acción registrada, próximo en 3h, navega | | |
+| 13.1 | Listar vistas | Abrir página de contactos SDR | Se cargan las vistas guardadas como chips | | |
+| 13.2 | Crear vista privada | Aplicar filtros → "Guardar vista" → nombre → desmarcar compartida → Guardar | Vista aparece como chip, solo visible para el usuario | | |
+| 13.3 | Crear vista compartida | Guardar vista con "Compartida" activado | Vista visible para todos los usuarios de la empresa | | |
+| 13.4 | Aplicar vista | Click en chip de vista guardada | Filtros se aplican automáticamente, lista se filtra | | |
+| 13.5 | Limpiar vista | Click en "Limpiar" o en la vista activa | Filtros se resetean, vista se deselecciona | | |
+| 13.6 | Eliminar vista | Click en ícono eliminar del chip de vista | Vista se elimina, desaparece de los chips | | |
+| 13.7 | Vista default | Crear vista con `esDefault: true` | Se aplica automáticamente al cargar la página | | |
+| 13.8 | Mobile + Desktop | Repetir 13.1-13.6 en ambos layouts | Vistas funcionan en ambos renders (mobile < 900px, desktop ≥ 900px) | | |
 
-### 13.2 Pipeline comercial completo
+---
+
+## 14. Flujos cross-funcionales
+
+### 14.1 Loop completo de llamadas
 
 | # | Caso | Pasos | Resultado esperado | ✅/❌ | Obs |
 |---|------|-------|--------------------|-------|-----|
-| 13.2.1 | Nuevo → Contactado | Contacto nuevo → registrar llamada atendida | Estado cambia a `contactado` | | |
-| 13.2.2 | Contactado → Calificado | Contacto contactado → marcar intención alta + plan premium | Estado se puede cambiar a `calificado` manualmente | | |
-| 13.2.3 | Calificado → Cierre | Contacto calificado → enviar presupuesto | Estado se puede cambiar a `cierre` | | |
-| 13.2.4 | Cierre → Ganado | Contacto en cierre → enviar link de pago → marcar ganado | Estado `ganado` | | |
-| 13.2.5 | Contacto → No califica | Registrar acción "No califica" con motivo | Estado cambia a `no_califica`, contacto sale del flujo activo | | |
+| 14.1.1 | Flujo Llamar → Registrar → Siguiente | Abrir contacto → Llamar → Registrar "Llamada atendida" con nota → Siguiente contacto | Todo el flujo sin errores, historial actualizado, navega al siguiente | | |
+| 14.1.2 | Flujo WhatsApp → Registrar → Seguimiento | Abrir contacto → WhatsApp → Registrar "WhatsApp enviado" → Programar seguimiento 24h | WhatsApp se abre, acción registrada, próximo contacto en 24h | | |
+| 14.1.3 | Flujo No Responde → Siguiente | Registrar "Llamada no atendida" → aceptar seguimiento 3h → Siguiente | Acción registrada, próximo en 3h, navega | | |
 
-### 13.3 Scoring end-to-end
+### 14.2 Pipeline comercial completo
 
 | # | Caso | Pasos | Resultado esperado | ✅/❌ | Obs |
 |---|------|-------|--------------------|-------|-----|
-| 13.3.1 | Plan + Intención → Prioridad | Seleccionar plan "Premium" + intención "Alta" | `prioridadScore` se recalcula y aumenta | | |
-| 13.3.2 | Prioridad se refleja en lista | Después de actualizar scoring → volver a lista | Contacto muestra badge de prioridad actualizado | | |
-| 13.3.3 | Bot data visible | Lead del bot con datos → abrir drawer | Sección "Datos del Bot" muestra rubro, interés, saludo | | |
+| 14.2.1 | Nuevo → Contactado | Contacto nuevo → registrar llamada atendida | Estado cambia a `contactado` | | |
+| 14.2.2 | Contactado → Calificado | Contacto contactado → marcar intención alta + plan premium | Estado se puede cambiar a `calificado` manualmente | | |
+| 14.2.3 | Calificado → Cierre | Contacto calificado → enviar presupuesto | Estado se puede cambiar a `cierre` | | |
+| 14.2.4 | Cierre → Ganado | Contacto en cierre → enviar link de pago → marcar ganado | Estado `ganado` | | |
+| 14.2.5 | Contacto → No califica | Registrar acción "No califica" con motivo | Estado cambia a `no_califica`, contacto sale del flujo activo | | |
+
+### 14.3 Scoring end-to-end
+
+| # | Caso | Pasos | Resultado esperado | ✅/❌ | Obs |
+|---|------|-------|--------------------|-------|-----|
+| 14.3.1 | Plan + Intención → Prioridad | Seleccionar plan "Premium" + intención "Alta" | `prioridadScore` se recalcula y aumenta | | |
+| 14.3.2 | Prioridad se refleja en lista | Después de actualizar scoring → volver a lista | Contacto muestra badge de prioridad actualizado | | |
+| 14.3.3 | Bot data visible | Lead del bot con datos → abrir drawer | Sección "Datos del Bot" muestra rubro, interés, saludo | | |
 
 ---
 
@@ -493,8 +511,9 @@ Ejecutar todos: `cd backend && npx jest --runInBand --forceExit`
 | 10. Reuniones | 6 | | | |
 | 11. Puente bot | 5 | | | |
 | 12. Timeout job | 3 | | | |
-| 13. Flujos cross | 8 | | | |
-| **TOTAL** | **137** | | | |
+| 13. Vistas guardadas | 8 | | | |
+| 14. Flujos cross | 8 | | | |
+| **TOTAL** | **145** | | | |
 
 **Firma del tester**: ________________________  
 **Fecha completado**: ____/____/______  

@@ -36,7 +36,7 @@ F1.2.3 HistorialSDR ────────────────────
                                    │    F1.4.2 flowInicioGeneral
                                    │    F1.4.3 flowOnboardingConstructora
                                    │    F1.4.4 flowOnboardingInfo
-                                   │    F1.4.5 botTimeoutJob
+                                   │    F1.4.5 sdrBotTimeoutJob
                                    │
                                    └──▶ F1.5.x Frontend (paralelo)
                                         F1.5.1 contactosSDR
@@ -592,32 +592,25 @@ IMPORTANTE: Envolver las llamadas al bridge en try/catch para que si falla el br
 
 ---
 
-#### F1.4.3 — Modificar `flowOnboardingConstructora.js` (puntos #3 y #4)
+#### F1.4.3 — Bridge `solicitar_reunion` (puntos #3 y #4) ✅ COMPLETADO
 
 **Tipo**: Modificar archivo existente  
 **Prioridad**: 🟡 Alta  
 **Depende de**: F1.4.1
 
 **Contexto para el agente**:
-> Este flow usa un asistente GPT que puede ejecutar function calls. Cuando el GPT ejecuta `crear_empresa`, significa que el usuario dio datos concretos (nombre de empresa, cantidad de obras) → debe marcarse como `calificado`. Cuando ejecuta `solicitar_reunion`, pidió reunión → debe marcarse como `quiere_meet`.
+> Este flow usa un asistente GPT que puede ejecutar function calls. Las function calls se procesan en `asistenteChatgptService.js`, no en el flow directamente.
 
-**Archivos a modificar**:
-- `backend/flows/onboardingFlows/flowOnboardingConstructora.js` (29 líneas)
+**Archivo modificado**:
+- `backend/src/services/chatgpt/asistenteChatgptService.js`
 
-**Archivos a leer como referencia**:
-- `backend/src/services/leadContactoBridge.js`
-- El archivo podría tener la lógica de function calls en otro lugar — buscar dónde se procesan las function calls del asistente GPT (probablemente en `flowOnboarding.js` o en un handler de asistentes)
-
-**Cambios requeridos**:
+**Cambios realizados**:
 ```
-Buscar dónde se procesan las function calls del asistente GPT:
-- Cuando function_name === 'crear_empresa':
-  await actualizarPrecalificacionBot(phone, 'calificado', { rubro: args.rubro, cantidadObras: args.cantidadObras })
-- Cuando function_name === 'solicitar_reunion':
+En el case 'solicitar_reunion' de asistenteChatgptService.js:
   await actualizarPrecalificacionBot(phone, 'quiere_meet', { interes: 'reunion' })
-
-Envolver en try/catch.
 ```
+
+**Nota**: La lógica para `crear_empresa` ya estaba implementada previamente en los flows de onboarding.
 
 **Criterios de aceptación**:
 - [ ] `calificado` se setea al crear empresa
@@ -648,46 +641,48 @@ Envolver en try/catch.
 
 ---
 
-#### F1.4.5 — Crear `botTimeoutJob.js` (punto #6)
+#### F1.4.5 — Crear `sdrBotTimeoutJob.js` (punto #6) ✅ COMPLETADO
 
 **Tipo**: Crear archivo nuevo  
 **Prioridad**: 🟢 Media  
 **Depende de**: F1.2.1
 
 **Contexto para el agente**:
-> Los contactos que interactúan con el bot pero nunca completan el recorrido (no eligen opción, no responden más) quedan en `precalificacionBot: 'sin_calificar'` para siempre. Necesitamos un cron job que tras 48hs sin actividad los marque como `no_llego`.
+> Los contactos que interactúan con el bot pero nunca completan el recorrido (no eligen opción, no responden más) quedan en `precalificacionBot: 'sin_calificar'` para siempre. Un script que tras 48hs sin actividad los marca como `no_llego`.
 
-**Archivos a crear**:
-- `backend/src/jobs/botTimeoutJob.js`
+**Archivo creado**:
+- `backend/src/scripts/sdrBotTimeoutJob.js`
 
-**Archivos a leer como referencia**:
-- `app-web/docs/SDR-COMERCIAL-TECNICO.md` (sección 1.10, "Código del cron para no_llego")
-- `backend/src/jobs/jobStore.js` (para ver estilo de jobs existentes)
-
-**Especificación**:
+**Implementación real**:
 ```
-Función: marcarNoLlego()
+Función: procesarTimeoutBot(deps = {})
+  - Inyección de dependencias para testing
   - Buscar ContactoSDR con:
     - precalificacionBot: 'sin_calificar'
-    - datosBot.interaccionFecha: <= hace 48 horas
-    - estado: 'nuevo' (solo si no avanzaron por otro medio)
+    - createdAt: < hace 48 horas
   - Para cada uno:
     - Actualizar precalificacionBot → 'no_llego'
-    - Crear HistorialSDR tipo 'bot_interaccion'
-  - Log: "[botTimeoutJob] X contactos marcados como no_llego"
+    - Crear EventoHistorialSDR tipo 'bot_timeout'
+  - Retorna: { actualizados, errores, totalEvaluados }
 
-Cron: cada 6 horas → '0 */6 * * *'
-
-Exportar: { marcarNoLlego } (para testing)
+Exportar: { procesarTimeoutBot, HORAS_TIMEOUT }
 ```
 
-**Integración**: Importar y ejecutar desde el archivo principal de la app (`app.js` o donde se inician los cron jobs).
+**Ejecución**: Script standalone, NO integrado como cron en `app.js`.
+```bash
+# Manual
+node src/scripts/sdrBotTimeoutJob.js
+
+# Crontab producción (cada 6 horas)
+0 */6 * * * cd /ruta/backend && node src/scripts/sdrBotTimeoutJob.js >> logs/sdr-timeout.log 2>&1
+```
 
 **Criterios de aceptación**:
-- [ ] Cron registrado correctamente
-- [ ] Solo afecta contactos con `sin_calificar` + 48hs + estado `nuevo`
-- [ ] Registra en historial
-- [ ] Exporta función para testing
+- [x] Script ejecutable standalone con conexión propia a MongoDB
+- [x] Solo afecta contactos con `sin_calificar` + 48hs
+- [x] Registra en historial (tipo `bot_timeout`)
+- [x] Exporta función con inyección de dependencias para testing
+- [x] 5 tests unitarios pasando (`sdrBotTimeoutJob.test.js`)
 
 ---
 
@@ -958,21 +953,21 @@ MODO: --dry-run por default (solo loggea), --execute para aplicar.
 | **F2.1.1** | Crear modelo `CadenciaSDR.js` | Crear | — |
 | **F2.1.2** | Crear `cadenciaEngine.js` | Crear | F2.1.1 |
 | **F2.1.3** | Crear `seedCadenciaDefault.js` | Crear | F2.1.1 |
-| **F2.1.4** | Crear modelo `VistaGuardadaSDR.js` | Crear | — |
+| **F2.1.4** | ✅ Crear modelo `VistaGuardadaSDR.js` | Crear | — |
 
 ### Grupo 2 — Backend
 
 | ID | Tarea | Tipo | Depende de |
 |---|---|---|---|
 | **F2.2.1** | Agregar CRUD cadencias al service/controller/routes | Modificar | F2.1.1, F2.1.2 |
-| **F2.2.2** | Agregar CRUD vistas guardadas | Modificar | F2.1.4 |
+| **F2.2.2** | ✅ Agregar CRUD vistas guardadas | Modificar | F2.1.4 |
 | **F2.2.3** | Integrar cadenciaEngine en registrarIntento | Modificar | F2.1.2 |
 
 ### Grupo 3 — Frontend
 
 | ID | Tarea | Tipo | Depende de |
 |---|---|---|---|
-| **F2.3.1** | Crear `FiltrosAvanzados.js` con vistas guardadas | Crear | F2.2.2 |
+| **F2.3.1** | ✅ Vistas guardadas integradas en `contactosSDR.js` | Modificar | F2.2.2 |
 | **F2.3.2** | Crear `MetricasDashboard.js` (extraer de gestionSDR) | Crear | — |
 | **F2.3.3** | Integrar cadencia en drawer (paso actual, template sugerido) | Modificar | F2.2.1 |
 | **F2.3.4** | Crear UI de configuración de cadencias (admin) | Crear | F2.2.1 |
@@ -1042,9 +1037,9 @@ Secuencial:
 Paralelo (después de F1.3.1):
   F1.4.1 leadContactoBridge
   F1.4.2 flowInicioGeneral
-  F1.4.3 flowOnboardingConstructora
+  F1.4.3 asistenteChatgptService (solicitar_reunion bridge)
   F1.4.4 flowOnboardingInfo
-  F1.4.5 botTimeoutJob
+  F1.4.5 sdrBotTimeoutJob
 ```
 
 ### Sprint 3 (Fase 1, Grupo 5): Frontend

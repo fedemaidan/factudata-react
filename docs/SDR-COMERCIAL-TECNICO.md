@@ -916,49 +916,57 @@ flowInicioGeneral → ContactoSDR creado con precalificacionBot = 'sin_calificar
 | 1 | `flowInicioGeneral.js` | Primer mensaje → crear ContactoSDR | `sin_calificar` | `{ interes: null }` |
 | 2 | `flowInicioGeneral.js` | Opción 4: "Hablar con humano" | `quiere_meet` | `{ interes: 'humano' }` |
 | 3 | `flowOnboardingConstructora.js` | Asistente GPT ejecuta `crear_empresa` | `calificado` | `{ rubro, cantidadObras }` |
-| 4 | `flowOnboardingConstructora.js` | Asistente GPT ejecuta `solicitar_reunion` | `quiere_meet` | `{ interes: 'reunion' }` |
+| 4 | `asistenteChatgptService.js` | Asistente GPT ejecuta `solicitar_reunion` | `quiere_meet` | `{ interes: 'reunion' }` |
 | 5 | `flowOnboardingInfo.js` | Opción 6 del sub-menú: "Hablar con humano" | `quiere_meet` | `{ interes: 'humano' }` |
-| 6 | **Cron job (nuevo)** | ContactoSDR con `sin_calificar` + sin actividad en 48hs | `no_llego` | — |
+| 6 | **Script standalone** (`sdrBotTimeoutJob.js`) | ContactoSDR con `sin_calificar` + `createdAt` > 48hs | `no_llego` | — |
 
-#### Código del cron para `no_llego`
+#### Script para `no_llego`
 
 ```javascript
-// backend/src/jobs/botTimeoutJob.js
-const cron = require('node-cron');
+// backend/src/scripts/sdrBotTimeoutJob.js
+const HORAS_TIMEOUT = 48;
 
-async function marcarNoLlego() {
-    const hace48hs = new Date(Date.now() - 48 * 60 * 60 * 1000);
+async function procesarTimeoutBot(deps = {}) {
+    const ContactoSDR = deps.ContactoSDR || require('../models/sdr').ContactoSDR;
+    const EventoHistorialSDR = deps.EventoHistorialSDR || require('../models/sdr').EventoHistorialSDR;
+
+    const limite = new Date();
+    limite.setHours(limite.getHours() - HORAS_TIMEOUT);
 
     const contactos = await ContactoSDR.find({
         precalificacionBot: 'sin_calificar',
-        'datosBot.interaccionFecha': { $lte: hace48hs },
-        estado: 'nuevo' // Solo si no avanzaron por otro medio
+        createdAt: { $lt: limite }
     });
 
-    for (const c of contactos) {
-        await ContactoSDR.findByIdAndUpdate(c._id, {
+    for (const contacto of contactos) {
+        await ContactoSDR.findByIdAndUpdate(contacto._id, {
             $set: { precalificacionBot: 'no_llego' }
         });
 
-        await HistorialSDR.create({
-            contacto: c._id,
-            tipo: 'bot_interaccion',
-            descripcion: 'Bot: timeout 48hs sin completar recorrido → no_llego',
-            empresaId: c.empresaId,
-            realizadoPor: 'sistema',
-            realizadoPorNombre: 'Bot'
-        });
+        await new EventoHistorialSDR({
+            contactoId: contacto._id,
+            tipo: 'bot_timeout',
+            descripcion: `Precalificación cambiada a no_llego (sin actividad en ${HORAS_TIMEOUT}h)`,
+            empresaId: contacto.empresaId,
+            realizadoPor: 'system-cron',
+            realizadoPorNombre: 'Sistema (cron)'
+        }).save();
     }
 
-    if (contactos.length > 0) {
-        console.log(`[botTimeoutJob] ${contactos.length} contactos marcados como no_llego`);
-    }
+    return { actualizados, errores, totalEvaluados: contactos.length };
 }
 
-// Ejecutar cada 6 horas
-cron.schedule('0 */6 * * *', marcarNoLlego);
+module.exports = { procesarTimeoutBot, HORAS_TIMEOUT };
+```
 
-module.exports = { marcarNoLlego };
+**Ejecución**: Script standalone, no integrado como cron en `app.js`.
+
+```bash
+# Ejecución manual
+node src/scripts/sdrBotTimeoutJob.js
+
+# Configurar en crontab de producción (cada 6 horas)
+0 */6 * * * cd /ruta/al/backend && node src/scripts/sdrBotTimeoutJob.js >> logs/sdr-timeout.log 2>&1
 ```
 
 #### Diferencia clave: `null` vs `sin_calificar` vs `no_llego`
@@ -967,7 +975,7 @@ module.exports = { marcarNoLlego };
 |---|---|---|
 | `null` | Nunca interactuó con el bot | Contacto outbound (Notion/Excel/manual) |
 | `sin_calificar` | Interactuó con el bot pero no completó el recorrido | Bot: primer mensaje recibido |
-| `no_llego` | Interactuó pero abandonó (timeout 48hs) | Cron: botTimeoutJob |
+| `no_llego` | Interactuó pero abandonó (timeout 48hs) | Script: `sdrBotTimeoutJob.js` |
 | `calificado` | Completó el recorrido del bot (creó empresa/dio datos) | Bot: function `crear_empresa` |
 | `quiere_meet` | Pidió hablar con un humano explícitamente | Bot: opción 4 / opción 6 / function `solicitar_reunion` |
 
@@ -1323,7 +1331,7 @@ router.post('/cadencias/detener', sdrController.detenerCadencia);
 router.get('/cadencias/paso-actual/:contactoId', sdrController.obtenerPasoActual);
 ```
 
-### 2.4 Vistas Guardadas
+### 2.4 Vistas Guardadas ✅ IMPLEMENTADO
 
 ```javascript
 // backend/src/models/sdr/VistaGuardadaSDR.js
@@ -1336,11 +1344,11 @@ const VistaGuardadaSDRSchema = new Schema({
         estados: [String],
         planEstimado: [String],
         intencionCompra: [String],
-        precalificacionBot: [String],      // NUEVO v2
+        precalificacionBot: [String],
         tamanoEmpresa: [String],
         cadenciaPaso: Number,
         proximoContacto: String,           // 'vencido', 'hoy', 'semana', 'sin_programar'
-        tieneReunion: String,              // NUEVO v2: 'agendada', 'realizada', 'sin_reunion'
+        tieneReunion: String,              // 'agendada', 'realizada', 'sin_reunion'
         sdrAsignado: String,
         segmento: String,
         fechaCreacionDesde: Date,
@@ -1349,9 +1357,18 @@ const VistaGuardadaSDRSchema = new Schema({
     },
     ordenarPor: { type: String, default: 'prioridadScore' },
     ordenDir: { type: String, default: 'desc' },
-    esDefault: { type: Boolean, default: false }
+    esDefault: { type: Boolean, default: false },
+    icono: { type: String, default: 'bookmark' },
+    color: { type: String, default: 'default' }
 }, { timestamps: true });
+
+// Indexes
+VistaGuardadaSDRSchema.index({ empresaId: 1, usuarioId: 1 });
+VistaGuardadaSDRSchema.index({ empresaId: 1, esDefault: 1 });
 ```
+
+**CRUD implementado**: `GET/POST/PUT/DELETE /api/sdr/vistas`  
+**Frontend**: chips de vistas + modal guardar/eliminar en `contactosSDR.js`
 
 ---
 
