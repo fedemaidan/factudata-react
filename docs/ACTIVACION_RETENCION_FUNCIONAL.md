@@ -157,9 +157,14 @@ Promedio ponderado de scores de todos los usuarios, ponderado por módulos activ
 | Servicio de tracking (módulo Caja) | ✅ Implementado |
 | Hooks en operaciones de caja | ✅ Implementado |
 | Sync de scores a Firestore | ✅ Implementado |
-| Hook de acceso web | 📋 Por implementar |
-| Módulos Nota Pedido / Acopio / TomaDecisión | 📋 Diseñado, por implementar |
-| Vista en frontend | 📋 Por implementar |
+| Hook de acceso web (caja, notas, acopio) | ✅ Implementado (`useTrackPrimeraVisita`) |
+| Módulos Nota Pedido / Acopio | ✅ Implementado (config + hooks) |
+| Módulo TomaDecisión | 📋 Diseñado, por implementar |
+| Creación automática al dar de alta empresa | ✅ Implementado (`onboardingCreaInicio`) |
+| Notificación de progreso por WhatsApp | ✅ Implementado (tras cada paso) |
+| Comando "mi progreso" en bot WhatsApp | ✅ Implementado (`VER_MI_PROGRESO`) |
+| Vista en frontend (OnboardingProgress) | ✅ Implementado (en cajaSimple y cajaProyecto) |
+| Endpoint progreso (`GET /onboarding/:profileId/progreso`) | ✅ Implementado |
 
 ---
 
@@ -209,8 +214,10 @@ Cuando una empresa cambia de estado, se dispara una acción:
 | Componente | Estado |
 |-----------|--------|
 | Métricas base en analyticsService | ✅ Implementado |
-| Cálculo de estadoSalud + cron | 📋 Diseñado, por implementar |
-| Alertas de transición | 📋 Diseñado, por implementar |
+| Modelo EstadoSaludEmpresa | ✅ Implementado |
+| Cálculo de estadoSalud + cron diario (6am) | ✅ Implementado |
+| Alertas de transición por WhatsApp a grupo CS | ✅ Implementado (3 transiciones con mensaje real) |
+| Reporte diario interno (9am) | ✅ Implementado |
 
 ---
 
@@ -375,9 +382,11 @@ Todo esto se apoya en dos componentes ya implementados:
 | Follow-up de leads (cadena de eventos) | ✅ Implementado |
 | Envío diferido (mensajes programados) | ✅ Implementado |
 | Función respuestaConIA | ✅ Implementado |
-| Cadena post-venta (13 automatizaciones) | 📋 Diseñado, por implementar |
-| Nudges inteligentes | 📋 Diseñado, por implementar |
-| Mensajes de valor al dueño | 📋 Diseñado, por implementar |
+| Cadena post-venta (13 automatizaciones) | ✅ Implementado |
+| Creación automática cadena + bienvenida al dar de alta | ✅ Implementado (`onboardingCreaInicio`) |
+| Nudges inteligentes | ✅ Implementado |
+| Mensajes de valor al dueño (semanal + mensual) | ✅ Implementado |
+| Resumen mensual (ventana rolling 30 días) | ✅ Implementado (`getResumenMensual`) |
 | PDF resumen mensual | 📋 Diseñado (infraestructura PDF existe) |
 
 ---

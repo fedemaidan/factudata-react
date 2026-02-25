@@ -207,25 +207,29 @@ onboardingClienteService.registrarPaso(empresaId, profileId, 'caja', 'eliminarGa
   .catch(err => console.error('[Onboarding hook]', err));
 ```
 
-### Por implementar
+### Implementado recientemente
 
-| Componente | Detalle |
-|-----------|---------|
-| Hook acceso web | Detectar primera visita a la app web y registrar paso `accederWeb` |
-| Módulo Nota Pedido | `crearEditarNota` (0.5) + `accederWeb` (0.5) |
-| Módulo Acopio | `crearAcopio` (0.3) + `registrarRemito` (0.4) + `accederWeb` (0.3) |
-| Módulo Toma Decisión | 5 pasos × 0.2 cada uno, ventana 30 días |
-| Creación automática | Al dar de alta cliente, crear onboarding para cada perfil |
+| Componente | Detalle | Estado |
+|-----------|---------|--------|
+| Hook acceso web | `useTrackPrimeraVisita` en caja, notas de pedido y acopio | ✅ Implementado |
+| Módulo Nota Pedido | `crearEditarNota` (0.5) + `accederWeb` (0.5) | ✅ Implementado |
+| Módulo Acopio | `crearAcopio` (0.3) + `registrarRemito` (0.4) + `accederWeb` (0.3) | ✅ Implementado |
+| Creación automática | `onboardingCreaInicio` crea onboarding + cadena + envía bienvenida | ✅ Implementado |
+| Progreso por WhatsApp | `_enviarProgresoAlUsuario` envía notificación tras cada paso | ✅ Implementado |
+| Comando "mi progreso" | `VER_MI_PROGRESO` en bot, `generarMensajeProgreso(profileId)` | ✅ Implementado |
+| OnboardingProgress | Componente React en cajaSimple y cajaProyecto | ✅ Implementado |
+| Endpoint progreso | `GET /onboarding/:profileId/progreso` | ✅ Implementado |
+| Módulo Toma Decisión | 5 pasos × 0.2 cada uno, ventana 30 días | 📋 Por implementar |
 
 ---
 
 ## 3. Eje 2 — Estado de Salud de Empresa
 
-### Estado: 📋 Diseñado, por implementar
+### Estado: ✅ Implementado
 
-### Modelo propuesto: EstadoSaludEmpresa
+### Modelo: EstadoSaludEmpresa
 
-**Archivo futuro:** `backend/src/models/EstadoSaludEmpresa.js`  
+**Archivo:** `backend/src/models/EstadoSaludEmpresa.js`  
 **Colección:** `estado_salud_empresa`
 
 ```javascript
@@ -250,7 +254,7 @@ onboardingClienteService.registrarPaso(empresaId, profileId, 'caja', 'eliminarGa
 }
 ```
 
-### Servicio propuesto: estadoSaludService
+### Servicio: estadoSaludService (✅ implementado)
 
 | Función | Descripción |
 |---------|------------|
@@ -306,11 +310,11 @@ const ACCIONES_TRANSICION = {
 
 ## 4. Eje 3 — Calidad de Interacciones WhatsApp
 
-### Estado: 📋 Diseñado, por implementar
+### Estado: ✅ Implementado
 
-### Modelo propuesto: FlowSession
+### Modelo: FlowSession
 
-**Archivo futuro:** `backend/src/models/FlowSession.js`  
+**Archivo:** `backend/src/models/FlowSession.js`  
 **Colección:** `flow_sessions`
 
 ```javascript
@@ -348,7 +352,7 @@ const ACCIONES_TRANSICION = {
 - `{ empresaId, flujo, estado }`
 - `{ estado, iniciadoEn }` — para cron de abandonadas
 
-### Servicio propuesto: flowSessionService
+### Servicio: flowSessionService (✅ implementado)
 
 | Función | Descripción |
 |---------|------------|
@@ -401,7 +405,7 @@ camposRanking = correcciones.reduce((acc, c) => { acc[c.campo] = (acc[c.campo] |
 
 ## 5. Eje 4 — Automatizaciones y Comunicación Proactiva
 
-### Estado: 📋 Diseñado (infraestructura de envío implementada)
+### Estado: ✅ Implementado
 
 ### Infraestructura existente
 
@@ -438,9 +442,9 @@ Sistema de envío diferido:
 - Cola con reintentos
 - Soporte adjuntos (PDF, imágenes)
 
-### Modelo propuesto: CadenaPostVenta
+### Modelo: CadenaPostVenta (✅ implementado)
 
-**Archivo futuro:** `backend/src/models/CadenaPostVenta.js`
+**Archivo:** `backend/src/models/CadenaPostVenta.js`
 
 Extiende el concepto de followUpService para la cadena de 13 automatizaciones:
 
@@ -505,8 +509,9 @@ async function enviarResumenSemanal(empresaId) {
 
 // Mensual (cron primer día del mes)
 async function enviarResumenMensual(empresaId) {
-  const pdf = await generarPDFResumen(empresaId, mesAnterior);
-  await mensajesProgramadosScheduler.programar(dueno.phone, 'Tu resumen mensual', { adjunto: pdf });
+  const stats = await analyticsService.getResumenMensual(empresaId); // ventana rolling 30 días
+  const mensaje = `Tu resumen mensual: ${stats.cantGastos} gastos por $${stats.totalGastos}, ${stats.cantIngresos} ingresos por $${stats.totalIngresos}`;
+  await mensajesProgramadosScheduler.programar(dueno.phone, mensaje);
 }
 ```
 
@@ -514,7 +519,7 @@ async function enviarResumenMensual(empresaId) {
 
 ## 6. Eje 5 — Reportes y Valor Recurrente
 
-### Estado: Parcialmente implementado (presupuestos ✅, reportes 📋)
+### Estado: Parcialmente implementado (presupuestos ✅, mensajes de valor ✅, reportes 📋)
 
 ### Reportes (diseñado — frontend)
 
@@ -582,17 +587,17 @@ Cuando tenga datos reales, será un diferenciador de retención fuerte.
 | Cualquier flujo de carga | Cancelación | `flowSessionService.finalizarSesion('cancelado')` |
 | Cualquier flujo de carga | Error | `flowSessionService.finalizarSesion('error')` |
 
-### 7.3 Hooks futuros en frontend (acceso web)
+### 7.3 Hooks en frontend (acceso web)
 
-| Evento | Hook | Servicio |
-|--------|------|---------|
-| Primera visita a `/caja` | `registrarPaso('caja', 'accederWeb')` | onboardingClienteService |
-| Primera visita a `/notas` | `registrarPaso('notaPedido', 'accederWeb')` | onboardingClienteService |
-| Primera visita a `/acopios` | `registrarPaso('acopio', 'accederWeb')` | onboardingClienteService |
-| Ver caja (dueño) | `registrarPaso('tomaDecision', 'verCaja')` | onboardingClienteService |
-| Crear filtro (dueño) | `registrarPaso('tomaDecision', 'crearFiltro')` | onboardingClienteService |
-| Crear reporte (dueño) | `registrarPaso('tomaDecision', 'crearReporte')` | onboardingClienteService |
-| Exportar PDF (dueño) | `registrarPaso('tomaDecision', 'exportarPDF')` | onboardingClienteService |
+| Evento | Hook | Servicio | Estado |
+|--------|------|---------|--------|
+| Primera visita a `/caja` | `registrarPaso('caja', 'accederWeb')` | onboardingClienteService | ✅ Implementado |
+| Primera visita a `/notas` | `registrarPaso('notaPedido', 'accederWeb')` | onboardingClienteService | ✅ Implementado |
+| Primera visita a `/acopios` | `registrarPaso('acopio', 'accederWeb')` | onboardingClienteService | ✅ Implementado |
+| Ver caja (dueño) | `registrarPaso('tomaDecision', 'verCaja')` | onboardingClienteService | 📋 Por implementar |
+| Crear filtro (dueño) | `registrarPaso('tomaDecision', 'crearFiltro')` | onboardingClienteService | 📋 Por implementar |
+| Crear reporte (dueño) | `registrarPaso('tomaDecision', 'crearReporte')` | onboardingClienteService | 📋 Por implementar |
+| Exportar PDF (dueño) | `registrarPaso('tomaDecision', 'exportarPDF')` | onboardingClienteService | 📋 Por implementar |
 
 ---
 
@@ -607,6 +612,7 @@ Cuando tenga datos reales, será un diferenciador de retención fuerte.
 | GET | `/api/onboarding/:empresaId/resumen` | Resumen con scores por módulo |
 | POST | `/api/onboarding/:empresaId/:profileId/paso` | Registrar paso (body: `{modulo, paso}`) |
 | POST | `/api/onboarding/:empresaId/recalcular` | Forzar recálculo de scores |
+| GET | `/api/onboarding/:profileId/progreso` | Progreso formateado del usuario (pasos, porcentaje, módulos) |
 
 ### 8.2 Estado de Salud
 
@@ -770,43 +776,53 @@ const EMPRESA_TEST = {
 backend/
 ├── src/
 │   ├── models/
-│   │   └── OnboardingCliente.js          # ✅ Modelo onboarding por usuario
-│   └── services/
-│       ├── onboardingClienteService.js   # ✅ Servicio completo onboarding
-│       ├── analyticsService.js           # ✅ Métricas de uso (932 líneas)
-│       ├── followUpService.js            # ✅ Motor de cadenas de eventos
-│       └── mensajesProgramadosScheduler.js # ✅ Envío diferido WA
+│   │   ├── OnboardingCliente.js          # ✅ Modelo onboarding por usuario
+│   │   ├── EstadoSaludEmpresa.js         # ✅ Modelo estado de salud (Ola 1)
+│   │   ├── FlowSession.js               # ✅ Modelo sesiones de flujo (Ola 2)
+│   │   └── CadenaPostVenta.js            # ✅ Modelo cadena post-venta (Ola 2)
+│   ├── services/
+│   │   ├── onboardingClienteService.js   # ✅ Servicio completo onboarding + progreso WA
+│   │   ├── onboardingService.js          # ✅ onboardingCreaInicio (auto-crea onboarding+cadena+bienvenida)
+│   │   ├── analyticsService.js           # ✅ Métricas de uso + getResumenMensual
+│   │   ├── estadoSaludService.js         # ✅ Cálculo estado + transiciones + alertas WA
+│   │   ├── flowSessionService.js         # ✅ Sesiones de flujo WA
+│   │   ├── reporteInternoService.js      # ✅ Reporte diario a CS
+│   │   ├── nudgeService.js              # ✅ Nudges inteligentes
+│   │   ├── cadenaPostVentaService.js     # ✅ 13 automatizaciones
+│   │   ├── mensajesValorService.js       # ✅ Resúmenes semanal + mensual al dueño
+│   │   ├── followUpService.js            # ✅ Motor de cadenas de eventos
+│   │   └── mensajesProgramadosScheduler.js # ✅ Envío diferido WA
+│   └── routes/
+│       └── onboardingRoutes.js           # ✅ Endpoints + GET /progreso
 ├── utils/
 │   └── dataService.js                    # ✅ Hooks de onboarding inyectados
-└── flows/
-    └── (flujos @builderbot existentes)
+├── flows/
+│   └── acciones.js                       # ✅ VER_MI_PROGRESO (comando "mi progreso")
+└── test/
+    └── unit/
+        ├── onboardingCliente.test.js     # ✅ Tests onboarding
+        ├── estadoSalud.test.js           # ✅ Tests estado de salud
+        ├── flowSession.test.js           # ✅ Tests sesiones de flujo
+        ├── cadenaPostVenta.test.js        # ✅ Tests cadena post-venta
+        └── activacionRetencion.e2e.test.js # ✅ Tests E2E
+
+app-web/
+├── src/
+│   ├── hooks/
+│   │   └── useTrackPrimeraVisita.js      # ✅ Hook acceso web (caja, notas, acopio)
+│   ├── components/
+│   │   └── OnboardingProgress.js         # ✅ Barra de progreso onboarding
+│   └── sections/
+│       └── empresa-salud/               # ✅ Panel CS (Ola 1)
 ```
 
 ### Por crear
 
 ```
-backend/
-├── src/
-│   ├── models/
-│   │   ├── EstadoSaludEmpresa.js         # 📋 Ola 1
-│   │   ├── FlowSession.js               # 📋 Ola 2
-│   │   └── CadenaPostVenta.js            # 📋 Ola 2
-│   └── services/
-│       ├── estadoSaludService.js         # 📋 Ola 1
-│       ├── flowSessionService.js         # 📋 Ola 2
-│       ├── reporteInternoService.js      # 📋 Ola 1
-│       └── nudgeService.js              # 📋 Ola 2
-├── test/
-│   ├── onboardingCliente.test.js         # 📋 Ola 1
-│   ├── estadoSalud.test.js              # 📋 Ola 1
-│   ├── flowSession.test.js              # 📋 Ola 2
-│   └── cadenaPostVenta.test.js          # 📋 Ola 2
 app-web/
-├── src/
-│   ├── sections/
-│   │   └── empresa-salud/               # 📋 Ola 1 (panel CS)
-│   └── pages/
-│       └── dashboard-cs/                # 📋 Ola 3
+└── src/
+    └── pages/
+        └── dashboard-cs/                # 📋 Ola 3 (dashboard matutino CS)
 ```
 
 ---
