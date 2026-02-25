@@ -5,7 +5,7 @@ import {
     Box, Container, Stack, Typography, Button, TextField, Chip,
     CircularProgress, Paper, IconButton, Card, CardContent,
     Snackbar, Alert, Avatar, Tooltip, Divider, Grid,
-    useTheme, useMediaQuery, Skeleton, SpeedDial, SpeedDialAction, Fab
+    useTheme, Skeleton, SpeedDial, SpeedDialAction
 } from '@mui/material';
 import {
     ArrowBack as ArrowBackIcon,
@@ -145,7 +145,6 @@ const ContactoSDRDetailPage = () => {
     const { user } = useAuthContext();
     const empresaId = user?.empresa?.id || 'demo-empresa';
     const theme = useTheme();
-    const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
     // Estado principal
     const [contacto, setContacto] = useState(null);
@@ -577,6 +576,67 @@ const ContactoSDRDetailPage = () => {
             </Head>
             <Box sx={{ py: { xs: 1, md: 3 }, pb: { xs: 5, md: 3 } }}>
                 <Container maxWidth="lg">
+
+                    {/* ==================== FAB MOBILE: Acciones rápidas ==================== */}
+                    <Box sx={{ display: { xs: 'block', md: 'none' }, position: 'fixed', bottom: 'calc(16px + env(safe-area-inset-bottom))', right: 16, zIndex: 1200 }}>
+                        <SpeedDial
+                            ariaLabel="Acciones rápidas"
+                            sx={{
+                                '& .MuiFab-primary': { bgcolor: '#6366f1', '&:hover': { bgcolor: '#4f46e5' } }
+                            }}
+                            icon={<AddIcon />}
+                        >
+                            {contactoIds.length > 1 && puedeSiguiente && (
+                                <SpeedDialAction
+                                    icon={<ChevronRightIcon />}
+                                    tooltipTitle="Siguiente"
+                                    tooltipOpen
+                                    onClick={() => navegar('siguiente')}
+                                    FabProps={{ sx: { bgcolor: 'primary.main', color: 'white', '&:hover': { bgcolor: 'primary.dark' } } }}
+                                />
+                            )}
+                            <SpeedDialAction
+                                icon={<EditIcon />}
+                                tooltipTitle="Avanzada"
+                                tooltipOpen
+                                onClick={() => setModalRegistrarAccion(true)}
+                            />
+                            <SpeedDialAction
+                                icon={<DoNotDisturbIcon />}
+                                tooltipTitle="No califica"
+                                tooltipOpen
+                                onClick={handleMarcarNoCalifica}
+                                FabProps={{ sx: { bgcolor: '#fce4ec', color: '#c62828' } }}
+                            />
+                            <SpeedDialAction
+                                icon={<PhoneDisabledIcon />}
+                                tooltipTitle="No responde"
+                                tooltipOpen
+                                onClick={() => handleAccion('no_responde')}
+                            />
+                            <SpeedDialAction
+                                icon={<WhatsAppIcon />}
+                                tooltipTitle="WhatsApp"
+                                tooltipOpen
+                                onClick={() => handleAccion('whatsapp')}
+                                FabProps={{ sx: { bgcolor: '#25D366', color: 'white', '&:hover': { bgcolor: '#128C7E' } } }}
+                            />
+                            <SpeedDialAction
+                                icon={<PhoneMissedIcon />}
+                                tooltipTitle="No atendió"
+                                tooltipOpen
+                                onClick={() => handleAccion('llamada', false)}
+                                FabProps={{ sx: { bgcolor: '#ff9800', color: 'white', '&:hover': { bgcolor: '#f57c00' } } }}
+                            />
+                            <SpeedDialAction
+                                icon={<PhoneIcon />}
+                                tooltipTitle="Atendió"
+                                tooltipOpen
+                                onClick={() => handleAccion('llamada', true)}
+                                FabProps={{ sx: { bgcolor: '#4caf50', color: 'white', '&:hover': { bgcolor: '#388e3c' } } }}
+                            />
+                        </SpeedDial>
+                    </Box>
 
                     {/* ==================== FILA DE CARDS ==================== */}
                     <Grid container spacing={2} sx={{ mb: 3 }}>
@@ -1161,71 +1221,6 @@ const ContactoSDRDetailPage = () => {
 
                 </Container>
             </Box>
-
-            {/* ==================== FAB MOBILE: Acciones rápidas ==================== */}
-            {isMobile && (
-                <SpeedDial
-                    ariaLabel="Acciones rápidas"
-                    sx={{
-                        position: 'fixed',
-                        bottom: 'calc(16px + env(safe-area-inset-bottom))',
-                        right: 16,
-                        zIndex: 1200,
-                        '& .MuiFab-primary': { bgcolor: '#6366f1', '&:hover': { bgcolor: '#4f46e5' } }
-                    }}
-                    icon={<AddIcon />}
-                >
-                    {contactoIds.length > 1 && puedeSiguiente && (
-                        <SpeedDialAction
-                            icon={<ChevronRightIcon />}
-                            tooltipTitle="Siguiente"
-                            tooltipOpen
-                            onClick={() => navegar('siguiente')}
-                            FabProps={{ sx: { bgcolor: 'primary.main', color: 'white', '&:hover': { bgcolor: 'primary.dark' } } }}
-                        />
-                    )}
-                    <SpeedDialAction
-                        icon={<EditIcon />}
-                        tooltipTitle="Avanzada"
-                        tooltipOpen
-                        onClick={() => setModalRegistrarAccion(true)}
-                    />
-                    <SpeedDialAction
-                        icon={<DoNotDisturbIcon />}
-                        tooltipTitle="No califica"
-                        tooltipOpen
-                        onClick={handleMarcarNoCalifica}
-                        FabProps={{ sx: { bgcolor: '#fce4ec', color: '#c62828' } }}
-                    />
-                    <SpeedDialAction
-                        icon={<PhoneDisabledIcon />}
-                        tooltipTitle="No responde"
-                        tooltipOpen
-                        onClick={() => handleAccion('no_responde')}
-                    />
-                    <SpeedDialAction
-                        icon={<WhatsAppIcon />}
-                        tooltipTitle="WhatsApp"
-                        tooltipOpen
-                        onClick={() => handleAccion('whatsapp')}
-                        FabProps={{ sx: { bgcolor: '#25D366', color: 'white', '&:hover': { bgcolor: '#128C7E' } } }}
-                    />
-                    <SpeedDialAction
-                        icon={<PhoneMissedIcon />}
-                        tooltipTitle="No atendió"
-                        tooltipOpen
-                        onClick={() => handleAccion('llamada', false)}
-                        FabProps={{ sx: { bgcolor: '#ff9800', color: 'white', '&:hover': { bgcolor: '#f57c00' } } }}
-                    />
-                    <SpeedDialAction
-                        icon={<PhoneIcon />}
-                        tooltipTitle="Atendió"
-                        tooltipOpen
-                        onClick={() => handleAccion('llamada', true)}
-                        FabProps={{ sx: { bgcolor: '#4caf50', color: 'white', '&:hover': { bgcolor: '#388e3c' } } }}
-                    />
-                </SpeedDial>
-            )}
 
             {/* Modal acción avanzada */}
             {modalRegistrarAccion && (
