@@ -33,6 +33,8 @@
 12. [Timeout Job del Bot](#12-timeout-job-del-bot)
 13. [Vistas Guardadas](#13-vistas-guardadas)
 14. [Flujos cross-funcionales](#14-flujos-cross-funcionales)
+15. [Visor de Conversación — MiniChatViewer](#15-visor-de-conversación)
+16. [Página de Detalle — /sdr/contacto/[id]](#16-página-de-detalle)
 
 ---
 
@@ -69,6 +71,8 @@
 |---|------|-------|--------------------|-------|-----|
 | 1.3.1 | Eventos de nuevos canales | Abrir drawer → "Registrar Acción" → seleccionar Instagram/Email/Presupuesto/Link pago/Negociación, una por una | Cada acción aparece en el historial con su icono y tipo correcto | | |
 | 1.3.2 | Eventos de scoring | Abrir drawer → cambiar Plan Estimado y luego Intención de Compra | Aparecen en historial: "Plan estimado actualizado" e "Intención de compra actualizada" | | |
+| 1.3.3 | Evento prioridad manual | Abrir detalle contacto → click "+ Puntos" → sumar puntos → confirmar | Aparece en historial evento tipo `prioridad_manual_actualizada` | | |
+| 1.3.4 | Evento comentario | Abrir detalle contacto → escribir comentario → enviar | Aparece en historial evento tipo `comentario` con el texto | | |
 
 ---
 
@@ -154,6 +158,16 @@
 | 5.2.9 | Badges en cards mobile | Mobile | Contacto con precalificación y prioridad | Badges aparecen debajo de nombre/empresa | | |
 | 5.2.10 | Cards mobile sin badges | Mobile | Contacto sin precalificación ni prioridad | No se muestran badges vacíos, no hay error | | |
 
+### 5.3 Métricas "Mi Actividad"
+
+| # | Caso | Plataforma | Pasos | Resultado esperado | ✅/❌ | Obs |
+|---|------|------------|-------|--------------------|-------|-----|
+| 5.3.1 | Título "Mi Actividad" | Ambos | Abrir `/contactosSDR` → ver sección métricas | Título dice "Mi Actividad" con subtítulo indicando período ("hoy", "últimos 7 días" o "último mes") | | |
+| 5.3.2 | Card "Tasa contacto" muestra % | Ambos | Ver card "Tasa contacto" | Muestra porcentaje (atendidas/realizadas), no número absoluto | | |
+| 5.3.3 | Card "Nuevos" ya no existe | Ambos | Verificar todas las cards | No existe card "Nuevos" (fue reemplazada por "Tasa contacto") | | |
+| 5.3.4 | Métricas fijas al filtrar por estado | Ambos | Cambiar filtro de estado (ej: "Ganados") → observar métricas | Las cards de métricas NO cambian al filtrar por estado | | |
+| 5.3.5 | Subtítulo cambia con período | Ambos | Cambiar selector de período en métricas | Subtítulo se actualiza: "hoy", "últimos 7 días" o "último mes" | | |
+
 ---
 
 ## 6. Drawer de Detalle
@@ -208,6 +222,17 @@
 | 6.4.8 | Navegación con confirmación | Ambos | Navegar cuando no hay próximo contacto | Muestra modal preguntando cuándo contactar | | |
 | 6.4.9 | Botón "Registrar Acción" sticky | Mobile | Scroll en drawer | Botón siempre visible en la parte inferior | | |
 | 6.4.10 | Editar contacto | Ambos | Click en "Editar" | Abre modal de edición con datos pre-cargados | | |
+
+### 6.5 Tab Chat / Conversación
+
+| # | Caso | Plataforma | Pasos | Resultado esperado | ✅/❌ | Obs |
+|---|------|------------|-------|--------------------|-------|-----|
+| 6.5.1 | Tab "Chat" visible | Desktop | Abrir drawer de contacto con teléfono | 3er tab "Chat" aparece junto a "Info" e "Historial" | | |
+| 6.5.2 | Tab Chat muestra mensajes | Desktop | Click en tab "Chat" | Se cargan hasta 50 mensajes, burbujas estilo WhatsApp | | |
+| 6.5.3 | Sección "Conversación" colapsable | Mobile | Abrir drawer → buscar sección "Conversación" | Sección se expande/colapsa mostrando los mensajes | | |
+| 6.5.4 | Sin conversación | Ambos | Abrir contacto sin mensajes de WhatsApp | Muestra estado vacío ("No se encontró conversación") sin errores | | |
+| 6.5.5 | Link "Ver completa" | Ambos | En el chat → click "Ver completa" | Navega a `/conversaciones?conversationId=<ID>` | | |
+| 6.5.6 | Mensajes diferenciados | Ambos | Verificar burbujas | Mensajes entrantes (izq) vs salientes (der) con colores distintos | | |
 
 ---
 
@@ -405,6 +430,50 @@
 
 ---
 
+## 15. Visor de Conversación
+
+### 15.1 MiniChatViewer — Componente
+
+| # | Caso | Plataforma | Pasos | Resultado esperado | ✅/❌ | Obs |
+|---|------|------------|-------|--------------------|-------|-----|
+| 15.1.1 | Carga mensajes | Ambos | Abrir contacto con teléfono que tiene conversación | Se muestran hasta 50 mensajes con burbujas estilo WhatsApp (fondo #efeae2) | | |
+| 15.1.2 | Auto-scroll al final | Ambos | Abrir visor con muchos mensajes | Scroll posicionado automáticamente al final (mensajes más recientes) | | |
+| 15.1.3 | Estado loading | Ambos | Abrir contacto → observar carga | Se muestra spinner mientras carga mensajes | | |
+| 15.1.4 | Contacto sin conversación | Ambos | Abrir contacto sin mensajes WhatsApp | Muestra "No se encontró conversación" (404), sin error en consola | | |
+| 15.1.5 | Contacto sin teléfono | Ambos | Abrir contacto sin campo teléfono | No intenta cargar, muestra estado vacío | | |
+| 15.1.6 | Tipos de mensaje | Ambos | Conversación con texto, imagen, audio | Cada tipo se renderiza correctamente en su burbuja | | |
+| 15.1.7 | Link "Ver completa" | Ambos | Click en link al pie del visor | Abre `/conversaciones?conversationId=<ID>` en nueva pestaña | | |
+
+---
+
+## 16. Página de Detalle
+
+### 16.1 Layout y navegación — `/sdr/contacto/[id]`
+
+| # | Caso | Plataforma | Pasos | Resultado esperado | ✅/❌ | Obs |
+|---|------|------------|-------|--------------------|-------|-----|
+| 16.1.1 | Página carga sin error | Ambos | Navegar a `/sdr/contacto/<ID_VÁLIDO>` | Página carga con datos del contacto, sin errores en consola | | |
+| 16.1.2 | Layout 50/50 | Desktop | Ver disposición en pantalla ancha | Chat a la izquierda (50%), comentario + historial a la derecha (50%) | | |
+| 16.1.3 | Tabs Chat/Historial en mobile | Mobile | Ver sección inferior | Aparecen 2 tabs: "Chat" e "Historial (N)" en vez de apilar todo | | |
+| 16.1.4 | Tab Chat mobile (400px) | Mobile | Click en tab "Chat" | MiniChatViewer con altura fija 400px, scroll interno | | |
+| 16.1.5 | Tab Historial mobile | Mobile | Click en tab "Historial" | Muestra campo comentario + lista de eventos | | |
+| 16.1.6 | Scroll independiente desktop | Desktop | Scroll en panel derecho | No afecta al panel izquierdo y viceversa | | |
+| 16.1.7 | Altura fija 500px desktop | Desktop | Verificar paneles | Ambos paneles con altura 500px con overflow scroll | | |
+| 16.1.8 | ID inválido | Ambos | Navegar a `/sdr/contacto/ID_INEXISTENTE` | Manejo de error (mensaje o redirect), sin pantalla en blanco | | |
+
+### 16.2 Acciones desde la página de detalle
+
+| # | Caso | Plataforma | Pasos | Resultado esperado | ✅/❌ | Obs |
+|---|------|------------|-------|--------------------|-------|-----|
+| 16.2.1 | Botón "Editar" | Ambos | Click en "Editar" en card de info | Abre ModalEditarContacto con datos pre-cargados | | |
+| 16.2.2 | Edición persiste | Ambos | Editar nombre → guardar → recargar página | Nombre actualizado se mantiene | | |
+| 16.2.3 | Chip "+ Puntos" siempre visible | Ambos | Verificar que aparece "+ Puntos" | Chip visible independientemente del score o prioridad manual actual | | |
+| 16.2.4 | Sumar puntos manuales | Ambos | Click "+ Puntos" → ingresar valor → confirmar | Prioridad manual se actualiza, evento en historial | | |
+| 16.2.5 | Agregar comentario | Ambos | Escribir comentario → enviar | Comentario aparece en historial del panel derecho | | |
+| 16.2.6 | Botones Llamar/WhatsApp | Ambos | Click en Llamar / WhatsApp | Se abren las apps correspondientes con el número correcto | | |
+
+---
+
 ## Datos de prueba
 
 ### Insertar contacto con todos los campos v2 en MongoDB
@@ -496,12 +565,12 @@ Ejecutar todos: `cd backend && npx jest --runInBand --forceExit`
 
 | Sección | Total casos | Pasan | Fallan | N/A |
 |---------|-------------|-------|--------|-----|
-| 1. Contactos (crear/validar/reuniones/historial) | 16 | | | |
+| 1. Contactos (crear/validar/reuniones/historial) | 18 | | | |
 | 2. Scoring y métricas | 5 | | | |
 | 3. Normalización | 8 | | | |
 | 4. Prioridad | 5 | | | |
-| 5. Lista contactos | 18 | | | |
-| 6. Drawer detalle | 22 | | | |
+| 5. Lista contactos (filtros + badges + métricas) | 23 | | | |
+| 6. Drawer detalle (+ tab Chat) | 28 | | | |
 | 7. Modal acción | 12 | | | |
 | 8. Modal agregar | 12 | | | |
 | 9. Gestión SDR | 13 | | | |
@@ -510,8 +579,10 @@ Ejecutar todos: `cd backend && npx jest --runInBand --forceExit`
 | 12. Timeout job | 3 | | | |
 | 13. Vistas guardadas | 8 | | | |
 | 14. Flujos cross | 8 | | | |
-| **TOTAL** | **141** | | | |
+| 15. Visor de conversación | 7 | | | |
+| 16. Página de detalle | 14 | | | |
+| **TOTAL** | **175** | | | |
 
 **Firma del tester**: ________________________  
 **Fecha completado**: ____/____/______  
-**Versión**: Sprint 3 completado — `Feat/comercial-nuevo-eje`
+**Versión**: Sprint 3 + conversación/detalle — `Feat/comercial-nuevo-eje`

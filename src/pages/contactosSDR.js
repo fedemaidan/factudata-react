@@ -211,10 +211,9 @@ const ContactosSDRPage = () => {
         cargarMetricas();
     }, [cargarMetricas]);
 
-    // Cargar cadencias disponibles para asignación masiva
+    // Cargar cadencias disponibles (globales)
     useEffect(() => {
-        if (!empresaId) return;
-        SDRService.listarCadencias(empresaId)
+        SDRService.listarCadencias()
             .then(data => setCadenciasDisponibles(data || []))
             .catch(() => setCadenciasDisponibles([]));
         // Cargar vistas guardadas

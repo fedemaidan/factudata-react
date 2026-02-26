@@ -594,10 +594,10 @@ const SDRService = {
     // ==================== CADENCIAS ====================
 
     /**
-     * Listar cadencias de una empresa
+     * Listar cadencias disponibles (globales)
      */
-    listarCadencias: async (empresaId) => {
-        const res = await api.get('/sdr/cadencias', { params: { empresaId } });
+    listarCadencias: async () => {
+        const res = await api.get('/sdr/cadencias');
         return res.data;
     },
 
