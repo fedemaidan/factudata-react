@@ -134,10 +134,71 @@ const SDRService = {
     },
 
     /**
-     * Evaluar reunión (aprobar/rechazar)
+     * Evaluar reunión (v2: realizada/no_show/cancelada | legacy: aprobar/rechazar)
      */
     evaluarReunion: async (reunionId, data) => {
         const res = await api.put(`/sdr/reuniones/${reunionId}/evaluar`, data);
+        return res.data;
+    },
+
+    /**
+     * Actualizar datos de una reunión (v2)
+     */
+    actualizarReunion: async (reunionId, data) => {
+        const res = await api.put(`/sdr/reuniones/${reunionId}`, data);
+        return res.data;
+    },
+
+    // ==================== SCORING / CALIFICACIÓN (v2) ====================
+
+    /**
+     * Actualizar plan estimado de un contacto
+     */
+    actualizarPlanEstimado: async (contactoId, planEstimado) => {
+        const res = await api.post('/sdr/acciones/plan-estimado', { contactoId, planEstimado });
+        return res.data;
+    },
+
+    /**
+     * Actualizar intención de compra de un contacto
+     */
+    actualizarIntencionCompra: async (contactoId, intencionCompra) => {
+        const res = await api.post('/sdr/acciones/intencion-compra', { contactoId, intencionCompra });
+        return res.data;
+    },
+
+    /**
+     * Actualizar prioridad manual (puntos discrecionales)
+     */
+    actualizarPrioridadManual: async (contactoId, prioridadManual) => {
+        const res = await api.post('/sdr/acciones/prioridad-manual', { contactoId, prioridadManual });
+        return res.data;
+    },
+
+    /**
+     * Obtener siguiente contacto para llamar (priorizado por score)
+     */
+    obtenerSiguienteContacto: async (empresaId, sdrId = null) => {
+        const params = { empresaId };
+        if (sdrId) params.sdrId = sdrId;
+        const res = await api.get('/sdr/contactos/siguiente', { params });
+        return res.data;
+    },
+
+    /**
+     * Obtener funnel/embudo de conversión
+     */
+    obtenerFunnel: async (empresaId, filtros = {}) => {
+        const params = { empresaId, ...filtros };
+        const res = await api.get('/sdr/metricas/funnel', { params });
+        return res.data;
+    },
+
+    /**
+     * Webhook para nuevo lead (usado internamente)
+     */
+    webhookNuevoLead: async (phone, leadData, evento) => {
+        const res = await api.post('/sdr/webhook/nuevo-lead', { phone, leadData, evento });
         return res.data;
     },
 
@@ -527,6 +588,114 @@ const SDRService = {
      */
     eliminarTipoTemplate: async (tipoId) => {
         const res = await api.delete(`/sdr/templates/tipos/${tipoId}`);
+        return res.data;
+    },
+
+    // ==================== CADENCIAS ====================
+
+    /**
+     * Listar cadencias disponibles (globales)
+     */
+    listarCadencias: async () => {
+        const res = await api.get('/sdr/cadencias');
+        return res.data;
+    },
+
+    /**
+     * Crear nueva cadencia
+     */
+    crearCadencia: async (data) => {
+        const res = await api.post('/sdr/cadencias', data);
+        return res.data;
+    },
+
+    /**
+     * Actualizar cadencia
+     */
+    actualizarCadencia: async (cadenciaId, data) => {
+        const res = await api.put(`/sdr/cadencias/${cadenciaId}`, data);
+        return res.data;
+    },
+
+    /**
+     * Eliminar cadencia
+     */
+    eliminarCadencia: async (cadenciaId) => {
+        const res = await api.delete(`/sdr/cadencias/${cadenciaId}`);
+        return res.data;
+    },
+
+    /**
+     * Asignar cadencia a un contacto
+     */
+    asignarCadencia: async (contactoId, cadenciaId) => {
+        const res = await api.post('/sdr/cadencias/asignar', { contactoId, cadenciaId });
+        return res.data;
+    },
+
+    /**
+     * Asignar cadencia a múltiples contactos
+     */
+    asignarCadenciaMasiva: async (contactoIds, cadenciaId) => {
+        const res = await api.post('/sdr/cadencias/asignar-masiva', { contactoIds, cadenciaId });
+        return res.data;
+    },
+
+    /**
+     * Detener cadencia de un contacto
+     */
+    detenerCadencia: async (contactoId, motivo) => {
+        const res = await api.post('/sdr/cadencias/detener', { contactoId, motivo });
+        return res.data;
+    },
+
+    /**
+     * Obtener paso actual con templates resueltos
+     */
+    obtenerPasoActual: async (contactoId) => {
+        const res = await api.get(`/sdr/cadencias/paso-actual/${contactoId}`);
+        return res.data;
+    },
+
+    /**
+     * Avanzar al siguiente paso de cadencia
+     */
+    avanzarPasoCadencia: async (contactoId) => {
+        const res = await api.post('/sdr/cadencias/avanzar', { contactoId });
+        return res.data;
+    },
+
+    // ==================== VISTAS GUARDADAS ====================
+
+    /**
+     * Listar vistas guardadas (propias + compartidas)
+     */
+    listarVistas: async (empresaId) => {
+        const res = await api.get('/sdr/vistas', { params: { empresaId } });
+        return res.data;
+    },
+
+    /**
+     * Crear nueva vista guardada
+     */
+    crearVista: async (data) => {
+        const res = await api.post('/sdr/vistas', data);
+        return res.data;
+    },
+
+    /**
+     * Actualizar vista guardada
+     */
+    actualizarVista: async (vistaId, data) => {
+        const res = await api.put(`/sdr/vistas/${vistaId}`, data);
+        return res.data;
+    },
+
+    /**
+     * Eliminar vista guardada
+     */
+    eliminarVista: async (vistaId) => {
+        const res = await api.delete(`/sdr/vistas/${vistaId}`);
         return res.data;
     }
 };

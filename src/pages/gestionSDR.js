@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import Head from 'next/head';
+import { useRouter } from 'next/router';
 import {
     Box, Container, Paper, Stack, Typography, Button, TextField, MenuItem,
     Select, FormControl, InputLabel, Tabs, Tab, Card, CardContent, Grid,
@@ -37,6 +38,8 @@ import PhoneMissedIcon from '@mui/icons-material/PhoneMissed';
 import DoNotDisturbIcon from '@mui/icons-material/DoNotDisturb';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import FilterListIcon from '@mui/icons-material/FilterList';
+import PersonRemoveIcon from '@mui/icons-material/PersonRemove';
+import CancelIcon from '@mui/icons-material/Cancel';
 
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import SDRService from 'src/services/sdrService';
@@ -45,17 +48,14 @@ import * as XLSX from 'xlsx';
 
 // Componente compartido del Drawer
 import DrawerDetalleContactoSDR, { EstadoChip } from 'src/components/sdr/DrawerDetalleContactoSDR';
+import { ESTADOS_CONTACTO as ESTADOS_SDR, ESTADOS_REUNION } from 'src/constant/sdrConstants';
 
 // ==================== CONSTANTES ====================
 
-const ESTADOS_CONTACTO = {
-    nuevo: { label: 'Nuevo', color: 'info' },
-    en_gestion: { label: 'En gestión', color: 'warning' },
-    meet: { label: 'Meet', color: 'primary' },
-    calificado: { label: 'Calificado', color: 'success' },
-    no_califica: { label: 'No califica', color: 'error' },
-    no_responde: { label: 'No responde', color: 'default' }
-};
+// Mapear formato de sdrConstants a formato local (solo label + color, sin icon)
+const ESTADOS_CONTACTO = Object.fromEntries(
+    Object.entries(ESTADOS_SDR).map(([key, val]) => [key, { label: val.label, color: val.color }])
+);
 
 const TAMANOS_EMPRESA = ['1-10', '11-50', '51-200', '200+'];
 
@@ -177,6 +177,7 @@ const GestionSDRPage = () => {
     
     // Obtener usuario del contexto de auth
     const { user, isLoading: authLoading } = useAuthContext();
+    const router = useRouter();
     const userId = user?.id || user?.user_id;
     const empresaId = user?.empresa?.id || 'demo-empresa';
     // Usar user_id del perfil (que es el Firebase UID guardado en Firestore)
@@ -186,6 +187,15 @@ const GestionSDRPage = () => {
     // Control de carga inicial
     const initialLoadDone = useRef(false);
     const prevFilters = useRef({ page: 1, filtros: {} });
+    
+    // Abrir contacto en página dedicada
+    const handleAbrirContacto = (contacto, idx) => {
+        try {
+            const ids = contactos.map(c => c._id);
+            sessionStorage.setItem('sdr_contacto_ids', JSON.stringify(ids));
+        } catch { /* ignore */ }
+        router.push(`/sdr/contacto/${contacto._id}`);
+    };
     
     // ==================== CARGA DE DATOS ====================
     
@@ -231,7 +241,7 @@ const GestionSDRPage = () => {
         if (!userId) return;
         
         try {
-            const data = await SDRService.listarReuniones({ estado: 'pendiente' });
+            const data = await SDRService.listarReuniones({ estado: 'agendada' });
             setReuniones(data.reuniones);
         } catch (error) {
             console.error('Error cargando reuniones:', error);
@@ -312,6 +322,7 @@ const GestionSDRPage = () => {
             await SDRService.registrarIntento(contacto._id, {
                 tipo: tipo === 'llamada' ? (atendida ? 'llamada_atendida' : 'llamada_no_atendida') : 'whatsapp_enviado',
                 canal: tipo === 'llamada' ? 'llamada' : 'whatsapp',
+                resultado: tipo === 'llamada' ? (atendida ? 'atendio' : 'no_atendio') : undefined,
                 nota,
                 empresaId
             });
@@ -392,15 +403,17 @@ const GestionSDRPage = () => {
         }
     };
     
-    const handleEvaluarReunion = async (estado, motivoRechazo, notasEvaluador) => {
-        if (!modalEvaluar.reunion) return;
+    const handleEvaluarReunion = async (estado, motivoRechazo, notasEvaluador, reunionDirecta = null) => {
+        const reunion = reunionDirecta || modalEvaluar.reunion;
+        if (!reunion) return;
         try {
-            await SDRService.evaluarReunion(modalEvaluar.reunion._id, {
+            await SDRService.evaluarReunion(reunion._id, {
                 estado,
                 motivoRechazo,
                 notasEvaluador
             });
-            mostrarSnackbar(`Reunión ${estado === 'aprobada' ? 'aprobada' : 'rechazada'}`);
+            const labels = { realizada: 'marcada como realizada', no_show: 'marcada como no show', cancelada: 'cancelada', aprobada: 'aprobada', rechazada: 'rechazada' };
+            mostrarSnackbar(`Reunión ${labels[estado] || estado}`);
             setModalEvaluar({ open: false, reunion: null });
             cargarReuniones();
             cargarContactos();
@@ -554,16 +567,16 @@ const GestionSDRPage = () => {
                 </>
             )}
             
-            {/* Reuniones pendientes */}
+            {/* Reuniones agendadas */}
             <Typography variant="h6" sx={{ mb: 2 }}>
-                Reuniones pendientes de evaluación
+                Próximas reuniones
                 {reuniones.length > 0 && (
                     <Chip label={reuniones.length} color="warning" size="small" sx={{ ml: 1 }} />
                 )}
             </Typography>
             {reuniones.length === 0 ? (
                 <Alert severity="success" icon={<CheckCircleIcon />}>
-                    No hay reuniones pendientes de evaluación
+                    No hay reuniones agendadas
                 </Alert>
             ) : (
                 <TableContainer component={Paper}>
@@ -584,7 +597,7 @@ const GestionSDRPage = () => {
                                     <TableCell>{reunion.empresaNombre}</TableCell>
                                     <TableCell><Chip label={reunion.tamanoEmpresa} size="small" variant="outlined" /></TableCell>
                                     <TableCell>
-                                        {new Date(reunion.fechaHora).toLocaleString('es-AR', {
+                                        {new Date(reunion.fecha || reunion.fechaHora).toLocaleString('es-AR', {
                                             day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
                                         })}
                                     </TableCell>
@@ -798,9 +811,7 @@ const GestionSDRPage = () => {
                                     cursor: 'pointer'
                                 }}
                                 onClick={() => {
-                                    setContactoSeleccionado(contacto);
-                                    setIndiceContactoActual(idx);
-                                    setModalDetalle(true);
+                                    handleAbrirContacto(contacto, idx);
                                 }}
                             >
                                 <Stack direction="row" alignItems="flex-start" spacing={1}>
@@ -917,9 +928,7 @@ const GestionSDRPage = () => {
                                         hover 
                                         sx={{ cursor: 'pointer' }}
                                         onClick={() => { 
-                                            setContactoSeleccionado(contacto); 
-                                            setIndiceContactoActual(idx);
-                                            setModalDetalle(true); 
+                                            handleAbrirContacto(contacto, idx);
                                         }}
                                     >
                                         <TableCell padding="checkbox" onClick={(e) => e.stopPropagation()}>
@@ -996,11 +1005,11 @@ const GestionSDRPage = () => {
     
     const renderReuniones = () => (
         <Box>
-            <Typography variant="h6" sx={{ mb: 2 }}>Todas las reuniones pendientes de evaluación</Typography>
+            <Typography variant="h6" sx={{ mb: 2 }}>Próximas reuniones agendadas</Typography>
             
             {reuniones.length === 0 ? (
                 <Alert severity="success" icon={<CheckCircleIcon />}>
-                    No hay reuniones pendientes de evaluación
+                    No hay reuniones agendadas
                 </Alert>
             ) : (
                 <Grid container spacing={2}>
@@ -1017,7 +1026,7 @@ const GestionSDRPage = () => {
                                         <Stack direction="row" spacing={1}>
                                             <Chip label={reunion.tamanoEmpresa} size="small" />
                                             <Chip 
-                                                label={new Date(reunion.fechaHora).toLocaleString('es-AR', {
+                                                label={new Date(reunion.fecha || reunion.fechaHora).toLocaleString('es-AR', {
                                                     day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
                                                 })} 
                                                 size="small" 
@@ -1042,21 +1051,31 @@ const GestionSDRPage = () => {
                                             variant="contained" 
                                             color="success" 
                                             size="small"
-                                            startIcon={<ThumbUpIcon />}
+                                            startIcon={<CheckCircleIcon />}
                                             fullWidth
-                                            onClick={() => setModalEvaluar({ open: true, reunion })}
+                                            onClick={() => handleEvaluarReunion('realizada', null, null, reunion)}
                                         >
-                                            Aprobar
+                                            Realizada
+                                        </Button>
+                                        <Button 
+                                            variant="outlined" 
+                                            color="warning" 
+                                            size="small"
+                                            startIcon={<PersonRemoveIcon />}
+                                            fullWidth
+                                            onClick={() => handleEvaluarReunion('no_show', null, null, reunion)}
+                                        >
+                                            No Show
                                         </Button>
                                         <Button 
                                             variant="outlined" 
                                             color="error" 
                                             size="small"
-                                            startIcon={<ThumbDownIcon />}
+                                            startIcon={<CancelIcon />}
                                             fullWidth
-                                            onClick={() => setModalEvaluar({ open: true, reunion })}
+                                            onClick={() => handleEvaluarReunion('cancelada', null, null, reunion)}
                                         >
-                                            Rechazar
+                                            Cancelar
                                         </Button>
                                     </Stack>
                                 </Box>
@@ -1086,10 +1105,18 @@ const GestionSDRPage = () => {
             // Cargar SDRs disponibles
             const snapshot = await getDocs(query(collection(db, 'profile'), where('sdr', '==', true)));
             const sdrsBase = snapshot.docs
+                .filter(doc => {
+                    const d = doc.data();
+                    if (!d.user_id) {
+                        console.warn(`⚠️ SDR sin user_id excluido en vista asignación: ${d.email}`);
+                        return false;
+                    }
+                    return true;
+                })
                 .map(doc => {
                     const d = doc.data();
                     return {
-                        id: doc.id, // Usar ID del documento Firestore para consistencia
+                        id: d.user_id, // Firebase UID — debe coincidir con sdrAsignado guardado en MongoDB
                         docId: doc.id,
                         nombre: `${d.firstName || ''} ${d.lastName || ''}`.trim() || d.email,
                         email: d.email,
@@ -1505,61 +1532,9 @@ const GestionSDRPage = () => {
         );
     };
     
-    const ModalReunion = () => {
-        const [form, setForm] = useState({
-            fechaHora: '',
-            empresaNombre: contactoSeleccionado?.empresa || '',
-            tamanoEmpresa: '',
-            contactoPrincipal: contactoSeleccionado?.nombre || '',
-            rolContacto: contactoSeleccionado?.cargo || '',
-            puntosDeDolor: '',
-            modulosPotenciales: '',
-            linkAgenda: ''
-        });
-        
-        useEffect(() => {
-            if (contactoSeleccionado) {
-                setForm(prev => ({
-                    ...prev,
-                    empresaNombre: contactoSeleccionado.empresa || '',
-                    contactoPrincipal: contactoSeleccionado.nombre || '',
-                    rolContacto: contactoSeleccionado.cargo || ''
-                }));
-            }
-        }, [contactoSeleccionado]);
-        
-        return (
-            <Dialog open={modalReunion} onClose={() => setModalReunion(false)} maxWidth="sm" fullWidth>
-                <DialogTitle>Registrar Reunión</DialogTitle>
-                <DialogContent>
-                    <Stack spacing={2} sx={{ mt: 1 }}>
-                        <TextField label="Fecha y hora *" type="datetime-local" value={form.fechaHora} onChange={(e) => setForm({ ...form, fechaHora: e.target.value })} fullWidth InputLabelProps={{ shrink: true }} required />
-                        <TextField label="Nombre de la empresa *" value={form.empresaNombre} onChange={(e) => setForm({ ...form, empresaNombre: e.target.value })} fullWidth required />
-                        <FormControl fullWidth required>
-                            <InputLabel>Tamaño de empresa *</InputLabel>
-                            <Select value={form.tamanoEmpresa} label="Tamaño de empresa *" onChange={(e) => setForm({ ...form, tamanoEmpresa: e.target.value })}>
-                                {TAMANOS_EMPRESA.map(t => (<MenuItem key={t} value={t}>{t} empleados</MenuItem>))}
-                            </Select>
-                        </FormControl>
-                        <TextField label="Contacto principal *" value={form.contactoPrincipal} onChange={(e) => setForm({ ...form, contactoPrincipal: e.target.value })} fullWidth required />
-                        <TextField label="Rol del contacto" value={form.rolContacto} onChange={(e) => setForm({ ...form, rolContacto: e.target.value })} fullWidth placeholder="Ej: Gerente, Dueño, etc." />
-                        <TextField label="Puntos de dolor" value={form.puntosDeDolor} onChange={(e) => setForm({ ...form, puntosDeDolor: e.target.value })} fullWidth multiline rows={2} placeholder="¿Qué problemas tiene la empresa?" />
-                        <TextField label="Módulos potenciales" value={form.modulosPotenciales} onChange={(e) => setForm({ ...form, modulosPotenciales: e.target.value })} fullWidth placeholder="Ej: Facturación, Stock, etc." />
-                        <TextField label="Link de la reunión" value={form.linkAgenda} onChange={(e) => setForm({ ...form, linkAgenda: e.target.value })} fullWidth placeholder="Google Meet, Zoom, etc." />
-                    </Stack>
-                </DialogContent>
-                <DialogActions>
-                    <Button onClick={() => setModalReunion(false)}>Cancelar</Button>
-                    <Button variant="contained" onClick={() => handleRegistrarReunion(form)} disabled={!form.fechaHora || !form.empresaNombre || !form.tamanoEmpresa || !form.contactoPrincipal || actionLoading}>
-                        {actionLoading ? <CircularProgress size={20} /> : 'Registrar Reunión'}
-                    </Button>
-                </DialogActions>
-            </Dialog>
-        );
-    };
+    // ModalReunion extraído fuera del componente (ModalReunionGestion al final del archivo)
     
     const ModalEvaluarReunion = () => {
-        const [motivoRechazo, setMotivoRechazo] = useState('');
         const [notasEvaluador, setNotasEvaluador] = useState('');
         
         const { reunion } = modalEvaluar;
@@ -1580,7 +1555,7 @@ const GestionSDRPage = () => {
                         </Box>
                         <Box>
                             <Typography variant="subtitle2" color="text.secondary">Fecha</Typography>
-                            <Typography>{new Date(reunion.fechaHora).toLocaleString('es-AR')}</Typography>
+                            <Typography>{new Date(reunion.fecha || reunion.fechaHora).toLocaleString('es-AR')}</Typography>
                         </Box>
                         {reunion.puntosDeDolor && (
                             <Box>
@@ -1589,17 +1564,19 @@ const GestionSDRPage = () => {
                             </Box>
                         )}
                         <Divider />
-                        <TextField label="Notas del evaluador" value={notasEvaluador} onChange={(e) => setNotasEvaluador(e.target.value)} fullWidth multiline rows={2} />
-                        <TextField label="Motivo de rechazo (requerido si rechazás)" value={motivoRechazo} onChange={(e) => setMotivoRechazo(e.target.value)} fullWidth />
+                        <TextField label="Notas" value={notasEvaluador} onChange={(e) => setNotasEvaluador(e.target.value)} fullWidth multiline rows={2} placeholder="¿Cómo fue la reunión?" />
                     </Stack>
                 </DialogContent>
                 <DialogActions>
-                    <Button onClick={() => setModalEvaluar({ open: false, reunion: null })}>Cancelar</Button>
-                    <Button variant="contained" color="error" startIcon={<ThumbDownIcon />} onClick={() => handleEvaluarReunion('rechazada', motivoRechazo, notasEvaluador)} disabled={!motivoRechazo}>
-                        Rechazar
+                    <Button onClick={() => setModalEvaluar({ open: false, reunion: null })}>Cerrar</Button>
+                    <Button variant="outlined" color="error" startIcon={<CancelIcon />} onClick={() => handleEvaluarReunion('cancelada', null, notasEvaluador)}>
+                        Cancelar reunión
                     </Button>
-                    <Button variant="contained" color="success" startIcon={<ThumbUpIcon />} onClick={() => handleEvaluarReunion('aprobada', null, notasEvaluador)}>
-                        Aprobar
+                    <Button variant="outlined" color="warning" startIcon={<PersonRemoveIcon />} onClick={() => handleEvaluarReunion('no_show', null, notasEvaluador)}>
+                        No Show
+                    </Button>
+                    <Button variant="contained" color="success" startIcon={<CheckCircleIcon />} onClick={() => handleEvaluarReunion('realizada', null, notasEvaluador)}>
+                        Realizada
                     </Button>
                 </DialogActions>
             </Dialog>
@@ -2389,7 +2366,13 @@ const GestionSDRPage = () => {
             {/* Modales */}
             <ModalCrearContacto />
             <ModalNota />
-            <ModalReunion />
+            <ModalReunionGestion
+                open={modalReunion}
+                onClose={() => setModalReunion(false)}
+                contacto={contactoSeleccionado}
+                onSubmit={handleRegistrarReunion}
+                loading={actionLoading}
+            />
             <ModalEvaluarReunion />
             <ModalImportar />
             <ModalAsignar />
@@ -2406,6 +2389,68 @@ const GestionSDRPage = () => {
                 </Alert>
             </Snackbar>
         </>
+    );
+};
+
+// Componente Modal de Reunión (extraído fuera para evitar re-renders)
+const ModalReunionGestion = ({ open, onClose, contacto, onSubmit, loading }) => {
+    const [form, setForm] = useState({
+        fechaHora: '',
+        empresaNombre: '',
+        tamanoEmpresa: '',
+        contactoPrincipal: '',
+        rolContacto: '',
+        puntosDeDolor: '',
+        modulosPotenciales: '',
+        linkAgenda: ''
+    });
+
+    useEffect(() => {
+        if (contacto && open) {
+            setForm({
+                fechaHora: '',
+                empresaNombre: contacto.empresa || '',
+                tamanoEmpresa: contacto.tamanoEmpresa || '',
+                contactoPrincipal: contacto.nombre || '',
+                rolContacto: contacto.cargo || '',
+                puntosDeDolor: '',
+                modulosPotenciales: '',
+                linkAgenda: ''
+            });
+        }
+    }, [contacto, open]);
+
+    const handleSubmit = () => {
+        onSubmit(form);
+    };
+
+    return (
+        <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+            <DialogTitle>📅 Registrar Reunión</DialogTitle>
+            <DialogContent>
+                <Stack spacing={2} sx={{ mt: 1 }}>
+                    <TextField label="Fecha y hora *" type="datetime-local" value={form.fechaHora} onChange={(e) => setForm({ ...form, fechaHora: e.target.value })} fullWidth InputLabelProps={{ shrink: true }} required />
+                    <TextField label="Nombre de la empresa *" value={form.empresaNombre} onChange={(e) => setForm({ ...form, empresaNombre: e.target.value })} fullWidth required />
+                    <FormControl fullWidth required>
+                        <InputLabel>Tamaño de empresa *</InputLabel>
+                        <Select value={form.tamanoEmpresa} label="Tamaño de empresa *" onChange={(e) => setForm({ ...form, tamanoEmpresa: e.target.value })}>
+                            {TAMANOS_EMPRESA.map(t => (<MenuItem key={t} value={t}>{t} empleados</MenuItem>))}
+                        </Select>
+                    </FormControl>
+                    <TextField label="Contacto principal *" value={form.contactoPrincipal} onChange={(e) => setForm({ ...form, contactoPrincipal: e.target.value })} fullWidth required />
+                    <TextField label="Rol del contacto" value={form.rolContacto} onChange={(e) => setForm({ ...form, rolContacto: e.target.value })} fullWidth placeholder="Ej: Gerente, Dueño, etc." />
+                    <TextField label="Puntos de dolor" value={form.puntosDeDolor} onChange={(e) => setForm({ ...form, puntosDeDolor: e.target.value })} fullWidth multiline rows={2} placeholder="¿Qué problemas tiene la empresa?" />
+                    <TextField label="Módulos potenciales" value={form.modulosPotenciales} onChange={(e) => setForm({ ...form, modulosPotenciales: e.target.value })} fullWidth placeholder="Ej: Facturación, Stock, etc." />
+                    <TextField label="Link de la reunión" value={form.linkAgenda} onChange={(e) => setForm({ ...form, linkAgenda: e.target.value })} fullWidth placeholder="Google Meet, Zoom, etc." />
+                </Stack>
+            </DialogContent>
+            <DialogActions>
+                <Button onClick={onClose}>Cancelar</Button>
+                <Button variant="contained" onClick={handleSubmit} disabled={!form.fechaHora || !form.empresaNombre || !form.tamanoEmpresa || !form.contactoPrincipal || loading}>
+                    {loading ? <CircularProgress size={20} /> : 'Registrar Reunión'}
+                </Button>
+            </DialogActions>
+        </Dialog>
     );
 };
 

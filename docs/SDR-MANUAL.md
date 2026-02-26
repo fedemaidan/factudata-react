@@ -17,14 +17,42 @@ Los contactos se muestran ordenados por prioridad:
 2. **Por fecha de próximo contacto** (ascendente)
 3. **Sin fecha** al final
 
-#### Filtros Disponibles
+#### Filtros por Estado
 
-| Filtro | Descripción |
+Se muestran como chips seleccionables. Hay 10 estados:
+
+| Estado | Descripción |
 |--------|-------------|
-| **Activos** | Todos los contactos excepto los marcados como "No califica" |
-| **Vencidos** | Solo contactos con próximo contacto vencido |
-| **No calificados** | Contactos descartados (no se muestran por defecto) |
-| **Todos** | Vista completa sin filtros |
+| **Nuevos** | Contactos recién ingresados |
+| **Contactados** | Se hizo al menos un intento de contacto |
+| **Calificados** | Interés y datos confirmados |
+| **En Cierre** | Negociación activa |
+| **Ganados** | Conversión exitosa |
+| **No Contactado** | No se pudo establecer contacto |
+| **No Responde** | Múltiples intentos sin respuesta |
+| **Revisar** | Para revisar más adelante |
+| **No Califica** | Descartado |
+| **Perdidos** | Oportunidad perdida |
+
+#### Filtros Avanzados
+
+- **Plan estimado**: básico, avanzado, premium
+- **Intención de compra**: baja, media, alta
+- **Precalificación bot**: sin_calificar, calificado, quiere_meet, no_llego
+- **Tamaño empresa**: 1-10, 11-50, 51-200, 200+
+- **Próximo contacto**: vencido, hoy, esta semana, sin programar
+
+#### Vistas Guardadas
+
+Permite guardar combinaciones de filtros como "vistas" reutilizables:
+
+1. Aplicar los filtros deseados
+2. Click en **"Guardar vista"**
+3. Asignar un nombre descriptivo (ej: "Leads calientes")
+4. Elegir si es **privada** (solo vos) o **compartida** (todo el equipo)
+5. La vista aparece como un chip rápido para aplicar con un click
+
+Para eliminar una vista, click en el ícono de eliminar (🗑️) del chip.
 
 ---
 
