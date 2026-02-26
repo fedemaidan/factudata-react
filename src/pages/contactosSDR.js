@@ -68,6 +68,7 @@ const ContactosSDRPage = () => {
     const [filtroEstado, setFiltroEstado] = useState('');
     const [filtroTipo, setFiltroTipo] = useState('activos'); // 'activos' | 'vencidos' | 'no_calificados' | 'todos'
     const [filtroProximoContacto, setFiltroProximoContacto] = useState(''); // '' | 'sin_proximo' | 'vencido' | 'pendiente'
+    const [filtroSegmento, setFiltroSegmento] = useState(''); // '' | 'inbound' | 'outbound'
     
     // Selección múltiple
     const [seleccionados, setSeleccionados] = useState([]);
@@ -141,6 +142,7 @@ const ContactosSDRPage = () => {
             
             if (filtroEstado && filtroTipo !== 'no_calificados') params.estado = filtroEstado;
             if (busqueda) params.busqueda = busqueda;
+            if (filtroSegmento) params.segmento = filtroSegmento;
             
             const data = await SDRService.listarContactos(params);
             setContactos(data.contactos || []);
@@ -150,7 +152,7 @@ const ContactosSDRPage = () => {
         } finally {
             setLoading(false);
         }
-    }, [empresaId, sdrId, filtroEstado, filtroTipo, busqueda]);
+    }, [empresaId, sdrId, filtroEstado, filtroTipo, busqueda, filtroSegmento]);
 
     // Cargar métricas del SDR - soporta día, semana y mes
     const cargarMetricas = useCallback(async () => {
@@ -813,6 +815,31 @@ const ContactosSDRPage = () => {
                 </Stack>
             </Box>
 
+            {/* Filtros por segmento (inbound / outbound) */}
+            <Box sx={{ px: 2, pb: 1, overflowX: 'auto' }}>
+                <Stack direction="row" spacing={1} sx={{ minWidth: 'max-content' }}>
+                    <Typography variant="caption" color="text.secondary" sx={{ alignSelf: 'center', mr: 0.5 }}>
+                        Segmento:
+                    </Typography>
+                    <Chip 
+                        label="Inbound"
+                        size="small"
+                        icon={<span style={{ fontSize: 12 }}>🔵</span>}
+                        color={filtroSegmento === 'inbound' ? 'info' : 'default'}
+                        variant={filtroSegmento === 'inbound' ? 'filled' : 'outlined'}
+                        onClick={() => setFiltroSegmento(filtroSegmento === 'inbound' ? '' : 'inbound')}
+                    />
+                    <Chip 
+                        label="Outbound"
+                        size="small"
+                        icon={<span style={{ fontSize: 12 }}>🟠</span>}
+                        color={filtroSegmento === 'outbound' ? 'warning' : 'default'}
+                        variant={filtroSegmento === 'outbound' ? 'filled' : 'outlined'}
+                        onClick={() => setFiltroSegmento(filtroSegmento === 'outbound' ? '' : 'outbound')}
+                    />
+                </Stack>
+            </Box>
+
             {/* Barra de acciones masivas */}
             {seleccionados.length > 0 && (
                 <Box sx={{ px: 2, pb: 2 }}>
@@ -953,6 +980,15 @@ const ContactosSDRPage = () => {
                                                     label={`P:${contacto.prioridadScore}`}
                                                     color={contacto.prioridadScore >= 70 ? 'error' : contacto.prioridadScore >= 40 ? 'warning' : 'default'}
                                                     variant="outlined"
+                                                    sx={{ height: 20, fontSize: '0.65rem' }}
+                                                />
+                                            )}
+                                            {contacto.segmento && (
+                                                <Chip 
+                                                    size="small" 
+                                                    label={contacto.segmento === 'inbound' ? '🔵 In' : '🟠 Out'}
+                                                    variant="outlined"
+                                                    color={contacto.segmento === 'inbound' ? 'info' : 'warning'}
                                                     sx={{ height: 20, fontSize: '0.65rem' }}
                                                 />
                                             )}

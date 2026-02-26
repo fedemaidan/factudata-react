@@ -408,6 +408,14 @@ const SDRService = {
         return res.data;
     },
 
+    /**
+     * Eliminar un evento del historial
+     */
+    eliminarEventoHistorial: async (eventoId) => {
+        const res = await api.delete(`/sdr/historial/${eventoId}`);
+        return res.data;
+    },
+
     // ==================== SDRs ====================
 
     /**

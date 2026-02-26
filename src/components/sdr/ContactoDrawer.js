@@ -173,7 +173,7 @@ const ContactoDrawer = ({
     const handleLlamar = () => {
         const tel = formatTelefono(contacto?.telefono);
         if (!tel) return;
-        window.open(`tel:${tel}`, '_self');
+        window.open(`tel:+${tel}`, '_self');
     };
 
     // Registrar acción

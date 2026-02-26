@@ -79,6 +79,8 @@ const cadenciaVacia = () => ({
     estadoAlCompletar: 'no_contacto',
     activa: true,
     esDefault: false,
+    defaultInbound: false,
+    defaultOutbound: false,
 });
 
 // ==================== COMPONENTE PRINCIPAL ====================
@@ -152,6 +154,8 @@ const CadenciasABMPage = () => {
             estadoAlCompletar: cadencia.estadoAlCompletar || 'no_contacto',
             activa: cadencia.activa ?? true,
             esDefault: cadencia.esDefault ?? false,
+            defaultInbound: cadencia.defaultInbound ?? false,
+            defaultOutbound: cadencia.defaultOutbound ?? false,
         });
         setModoEdicion(true);
     };
@@ -174,6 +178,8 @@ const CadenciasABMPage = () => {
             estadoAlCompletar: cadencia.estadoAlCompletar || 'no_contacto',
             activa: true,
             esDefault: false,
+            defaultInbound: false,
+            defaultOutbound: false,
         });
         setModoEdicion(true);
     };
@@ -462,7 +468,13 @@ const CadenciasABMPage = () => {
                                                             <Typography variant="h6" sx={{ fontSize: '1.1rem' }}>
                                                                 {cad.nombre}
                                                             </Typography>
-                                                            {cad.esDefault && (
+                                                            {cad.defaultInbound && (
+                                                                <Chip size="small" label="Default Inbound" color="primary" variant="filled" />
+                                                            )}
+                                                            {cad.defaultOutbound && (
+                                                                <Chip size="small" label="Default Outbound" color="secondary" variant="filled" />
+                                                            )}
+                                                            {cad.esDefault && !cad.defaultInbound && !cad.defaultOutbound && (
                                                                 <Chip size="small" label="Default" color="primary" variant="filled" />
                                                             )}
                                                             <Chip
@@ -608,11 +620,20 @@ const CadenciasABMPage = () => {
                                     <FormControlLabel
                                         control={
                                             <Switch
-                                                checked={form.esDefault}
-                                                onChange={(e) => setForm(f => ({ ...f, esDefault: e.target.checked }))}
+                                                checked={form.defaultInbound}
+                                                onChange={(e) => setForm(f => ({ ...f, defaultInbound: e.target.checked }))}
                                             />
                                         }
-                                        label="Default (se asigna a nuevos leads del bot)"
+                                        label="Default Inbound (leads del bot)"
+                                    />
+                                    <FormControlLabel
+                                        control={
+                                            <Switch
+                                                checked={form.defaultOutbound}
+                                                onChange={(e) => setForm(f => ({ ...f, defaultOutbound: e.target.checked }))}
+                                            />
+                                        }
+                                        label="Default Outbound (importados)"
                                     />
                                     <FormControlLabel
                                         control={

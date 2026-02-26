@@ -214,6 +214,19 @@ const ContactoSDRDetailPage = () => {
         setSnackbar({ open: true, message, severity });
     };
 
+    // Eliminar evento del historial
+    const handleEliminarEvento = async (eventoId) => {
+        if (!window.confirm('¿Estás seguro de eliminar este evento del historial?')) return;
+        try {
+            await SDRService.eliminarEventoHistorial(eventoId);
+            setHistorial(prev => prev.filter(e => e._id !== eventoId));
+            mostrarSnackbar('Evento eliminado');
+        } catch (err) {
+            console.error('Error eliminando evento:', err);
+            mostrarSnackbar('Error al eliminar evento', 'error');
+        }
+    };
+
     // ==================== CARGA DE DATOS ====================
 
     const cargarContacto = useCallback(async () => {
@@ -1830,6 +1843,15 @@ const ContactoSDRDetailPage = () => {
                                                                 {evento.sdrNombre && ` • ${evento.sdrNombre}`}
                                                             </Typography>
                                                         </Box>
+                                                        <Tooltip title="Eliminar evento">
+                                                            <IconButton 
+                                                                size="small" 
+                                                                onClick={() => handleEliminarEvento(evento._id)}
+                                                                sx={{ opacity: 0.4, '&:hover': { opacity: 1, color: 'error.main' } }}
+                                                            >
+                                                                <DeleteIcon sx={{ fontSize: 16 }} />
+                                                            </IconButton>
+                                                        </Tooltip>
                                                     </Stack>
                                                 </Paper>
                                             );
