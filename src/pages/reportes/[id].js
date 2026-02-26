@@ -14,6 +14,10 @@ import {
   Alert,
   Paper,
   Button,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import EditIcon from '@mui/icons-material/Edit';
@@ -21,6 +25,9 @@ import DownloadIcon from '@mui/icons-material/Download';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import SaveIcon from '@mui/icons-material/Save';
 import CloseIcon from '@mui/icons-material/Close';
+import ShareIcon from '@mui/icons-material/Share';
+import LinkIcon from '@mui/icons-material/Link';
+import ContentCopyOutlinedIcon from '@mui/icons-material/ContentCopyOutlined';
 
 import { useAuthContext } from 'src/contexts/auth-context';
 import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
@@ -41,6 +48,8 @@ const ReportDetailPage = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [filtersExpanded, setFiltersExpanded] = useState(true);
+  const [shareDialogOpen, setShareDialogOpen] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
 
   // ─── Empresa ───
   useEffect(() => {
@@ -91,6 +100,27 @@ const ReportDetailPage = () => {
   // ─── Handlers ───
   const handleBack = () => {
     router.push('/reportes');
+  };
+
+  const handleOpenShare = () => {
+    setShareDialogOpen(true);
+  };
+
+  const handleCloseShare = () => {
+    setShareDialogOpen(false);
+  };
+
+  const handleCopyLink = () => {
+    if (!selectedReport?.permisos?.link_token) return;
+    const url = `${typeof window !== 'undefined' ? window.location.origin : ''}/reportes/public/${selectedReport.permisos.link_token}`;
+    navigator.clipboard.writeText(url);
+    setLinkCopied(true);
+    setTimeout(() => setLinkCopied(false), 2000);
+  };
+
+  const getPublicLink = () => {
+    if (!selectedReport?.permisos?.link_token) return null;
+    return `${typeof window !== 'undefined' ? window.location.origin : ''}/reportes/public/${selectedReport.permisos.link_token}`;
   };
 
   const handleExport = () => {
@@ -218,6 +248,13 @@ const ReportDetailPage = () => {
             <PictureAsPdfIcon fontSize="small" />
           </IconButton>
         </Tooltip>
+        {selectedReport.permisos?.publico && selectedReport.permisos?.link_token && (
+          <Tooltip title="Compartir reporte">
+            <IconButton size="small" onClick={handleOpenShare}>
+              <ShareIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        )}
       </Stack>
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -315,6 +352,46 @@ const ReportDetailPage = () => {
           </Container>
         </Box>
       )}
+      
+      {/* Dialog para compartir reporte */}
+      <Dialog open={shareDialogOpen} onClose={handleCloseShare} maxWidth="sm" fullWidth>
+        <DialogTitle>Compartir reporte</DialogTitle>
+        <DialogContent dividers>
+          <Stack spacing={2}>
+            <Typography variant="body2" color="text.secondary">
+              Comparte este link con tus clientes o terceros para que puedan ver el reporte sin necesidad de login.
+            </Typography>
+            {getPublicLink() && (
+              <Alert
+                severity="info"
+                icon={<LinkIcon fontSize="small" />}
+                action={
+                  <Tooltip title={linkCopied ? 'Copiado!' : 'Copiar link'}>
+                    <IconButton size="small" onClick={handleCopyLink}>
+                      <ContentCopyOutlinedIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                }
+              >
+                <Typography 
+                  variant="caption" 
+                  sx={{ 
+                    wordBreak: 'break-all',
+                    fontFamily: 'monospace',
+                    fontSize: '0.8rem',
+                    userSelect: 'all'
+                  }}
+                >
+                  {getPublicLink()}
+                </Typography>
+              </Alert>
+            )}
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseShare}>Cerrar</Button>
+        </DialogActions>
+      </Dialog>
     </DashboardLayout>
   );
 };

@@ -6,6 +6,8 @@ import {
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import DownloadIcon from '@mui/icons-material/Download';
+import ImageIcon from '@mui/icons-material/Image';
+import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import { formatValue } from 'src/tools/reportEngine';
 
 const formatDate = (d) => {
@@ -21,7 +23,11 @@ const formatDate = (d) => {
  */
 const DrillDownDialog = ({ open, onClose, movimientos = [], titulo = '', displayCurrency = 'ARS' }) => {
   const [page, setPage] = useState(0);
+  const [imgPreview, setImgPreview] = useState({ open: false, url: null });
   const rowsPerPage = 25;
+
+  const openImg = (url) => setImgPreview({ open: true, url });
+  const closeImg = () => setImgPreview({ open: false, url: null });
 
   const sortedMovs = useMemo(() => {
     return [...movimientos].sort((a, b) => {
@@ -80,6 +86,7 @@ const DrillDownDialog = ({ open, onClose, movimientos = [], titulo = '', display
                 <TableCell sx={{ fontWeight: 700, backgroundColor: 'grey.100' }}>Usuario</TableCell>
                 <TableCell sx={{ fontWeight: 700, backgroundColor: 'grey.100' }} align="right">Monto</TableCell>
                 <TableCell sx={{ fontWeight: 700, backgroundColor: 'grey.100' }}>Notas</TableCell>
+                <TableCell sx={{ fontWeight: 700, backgroundColor: 'grey.100', textAlign: 'center' }}>Archivo</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -112,11 +119,22 @@ const DrillDownDialog = ({ open, onClose, movimientos = [], titulo = '', display
                       {m.observacion || '-'}
                     </Typography>
                   </TableCell>
+                  <TableCell sx={{ textAlign: 'center' }}>
+                    {m.url_imagen && (
+                      <IconButton
+                        size="small"
+                        onClick={() => openImg(m.url_imagen)}
+                        title="Ver archivo"
+                      >
+                        <ImageIcon fontSize="small" />
+                      </IconButton>
+                    )}
+                  </TableCell>
                 </TableRow>
               ))}
               {visibleRows.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={9} align="center">
+                  <TableCell colSpan={10} align="center">
                     <Typography variant="body2" color="text.secondary" py={3}>
                       Sin movimientos
                     </Typography>
@@ -141,6 +159,54 @@ const DrillDownDialog = ({ open, onClose, movimientos = [], titulo = '', display
       <DialogActions>
         <Button onClick={onClose}>Cerrar</Button>
       </DialogActions>
+
+      {/* Dialog para preview de imagen */}
+      <Dialog open={imgPreview.open} onClose={closeImg} maxWidth="md" fullWidth>
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          Archivo adjunto
+          <Box>
+            {imgPreview.url && (
+              <IconButton
+                size="small"
+                component="a"
+                href={imgPreview.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                sx={{ mr: 1 }}
+              >
+                <OpenInNewIcon fontSize="small" />
+              </IconButton>
+            )}
+            <IconButton size="small" onClick={closeImg}>
+              <CloseIcon fontSize="small" />
+            </IconButton>
+          </Box>
+        </DialogTitle>
+        <DialogContent dividers>
+          {imgPreview.url ? (
+            imgPreview.url.toLowerCase().includes('.pdf') ? (
+              <Box sx={{ height: '70vh' }}>
+                <iframe
+                  src={imgPreview.url}
+                  style={{ width: '100%', height: '100%', border: 'none' }}
+                  title="PDF Preview"
+                />
+              </Box>
+            ) : (
+              <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+                <Box
+                  component="img"
+                  src={imgPreview.url}
+                  alt="Preview"
+                  sx={{ maxWidth: '100%', maxHeight: '70vh', objectFit: 'contain' }}
+                />
+              </Box>
+            )
+          ) : (
+            <Typography color="text.secondary">Cargando...</Typography>
+          )}
+        </DialogContent>
+      </Dialog>
     </Dialog>
   );
 };
