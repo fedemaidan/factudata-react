@@ -2,20 +2,12 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Head from 'next/head';
 import {
   Alert,
-  Autocomplete,
   Box,
   Button,
   Chip,
-  CircularProgress,
   Collapse,
   Container,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
-  Divider,
   FormControl,
-  FormControlLabel,
   IconButton,
   InputAdornment,
   InputLabel,
@@ -25,7 +17,6 @@ import {
   Select,
   Snackbar,
   Stack,
-  Switch,
   Tab,
   Table,
   TableBody,
@@ -37,6 +28,7 @@ import {
   TextField,
   Tooltip,
   Typography,
+  CircularProgress,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
@@ -46,73 +38,36 @@ import UploadFileIcon from '@mui/icons-material/UploadFile';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import PostAddIcon from '@mui/icons-material/PostAdd';
-import HistoryIcon from '@mui/icons-material/History';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
-import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
-import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import { useAuthContext } from 'src/contexts/auth-context';
 import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
 import { getProyectosFromUser } from 'src/services/proyectosService';
 import PresupuestoProfesionalService from 'src/services/presupuestoProfesional/presupuestoProfesionalService';
-
-/* ================================================================
-   Constantes
-   ================================================================ */
-
-const ESTADOS = ['borrador', 'enviado', 'aceptado', 'rechazado', 'vencido'];
-
-const ESTADO_LABEL = {
-  borrador: 'Borrador',
-  enviado: 'Enviado',
-  aceptado: 'Aceptado',
-  rechazado: 'Rechazado',
-  vencido: 'Vencido',
-};
-
-const ESTADO_COLOR = {
-  borrador: 'default',
-  enviado: 'info',
-  aceptado: 'success',
-  rechazado: 'error',
-  vencido: 'warning',
-};
-
-const TRANSICIONES_VALIDAS = {
-  borrador: ['enviado'],
-  enviado: ['aceptado', 'rechazado'],
-  aceptado: ['vencido'],
-  rechazado: ['borrador'],
-  vencido: [],
-};
-
-const MONEDAS = ['ARS', 'USD'];
-
-const TIPOS_ANEXO = [
-  { value: 'adicion', label: 'Adición' },
-  { value: 'deduccion', label: 'Deducción' },
-  { value: 'modificacion', label: 'Modificación' },
-];
-
-const formatCurrency = (val, moneda = 'ARS') => {
-  const num = Number(val) || 0;
-  return num.toLocaleString('es-AR', {
-    style: 'currency',
-    currency: moneda,
-    minimumFractionDigits: 2,
-  });
-};
-
-const formatDate = (d) => {
-  if (!d) return '—';
-  const date = new Date(d);
-  return date.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
-};
-
-const formatPct = (v) => `${(Number(v) || 0).toFixed(1)}%`;
+import {
+  PresupuestoFormDialog,
+  PresupuestoDeleteDialog,
+  CambiarEstadoDialog,
+  PresupuestoDetalleDialog,
+  AgregarAnexoDialog,
+  PlantillaFormDialog,
+  PlantillaDeleteDialog,
+  ImportarPlantillaDialog,
+  distribuirMontosPorIncidencia,
+  ESTADOS,
+  ESTADO_LABEL,
+  ESTADO_COLOR,
+  TRANSICIONES_VALIDAS,
+  MONEDAS,
+  formatCurrency,
+  formatDate,
+  formatPct,
+  TEXTO_NOTAS_DEFAULT,
+} from 'src/components/presupuestosProfesionales';
 
 /* ================================================================
    Formulario vacío – Presupuesto
@@ -129,12 +84,13 @@ const emptyPresupuesto = {
   analisis_superficies: {
     sup_cubierta_m2: '',
     sup_patios_m2: '',
+    coef_patios: 0.5,
     sup_ponderada_m2: '',
   },
   plantilla_id: '',
 };
 
-const emptyRubro = { nombre: '', monto: 0, tareas: [] };
+const emptyRubro = { nombre: '', monto: 0, incidencia_objetivo_pct: null, tareas: [] };
 const emptyTarea = { descripcion: '' };
 
 /* ================================================================
@@ -146,6 +102,7 @@ const emptyPlantilla = {
   tipo: '',
   activa: true,
   rubros: [],
+  notas: '',
 };
 
 /* ================================================================
@@ -183,6 +140,7 @@ const PresupuestosProfesionales = () => {
   const [ppForm, setPpForm] = useState(emptyPresupuesto);
   const [ppEditId, setPpEditId] = useState(null);
   const [ppSaving, setPpSaving] = useState(false);
+  const [ppModoDistribuir, setPpModoDistribuir] = useState(false);
 
   // ── Presupuestos: eliminar ──
   const [openPPDelete, setOpenPPDelete] = useState(false);
@@ -198,11 +156,20 @@ const PresupuestosProfesionales = () => {
   const [detalleData, setDetalleData] = useState(null);
   const [detalleLoading, setDetalleLoading] = useState(false);
   const [detalleTab, setDetalleTab] = useState(0);
+  const [detallePdfExporting, setDetallePdfExporting] = useState(false);
+  const [exportingPdfId, setExportingPdfId] = useState(null);
 
   // ── Presupuestos: agregar anexo ──
   const [openAnexo, setOpenAnexo] = useState(false);
   const [anexoTarget, setAnexoTarget] = useState(null);
-  const [anexoForm, setAnexoForm] = useState({ motivo: '', tipo: 'adicion', rubros_cambios: [] });
+  const [anexoForm, setAnexoForm] = useState({
+    motivo: '',
+    tipo: 'adicion',
+    monto: '',
+    fecha: new Date().toISOString().slice(0, 10),
+    detalle: '',
+    impacto: 'positivo',
+  });
 
   // ── Plantillas: lista ──
   const [plantillasLoading, setPlantillasLoading] = useState(false);
@@ -220,8 +187,62 @@ const PresupuestosProfesionales = () => {
 
   // ── Plantillas: importar archivo ──
   const [openImport, setOpenImport] = useState(false);
-  const [importFile, setImportFile] = useState(null);
+  const [importFiles, setImportFiles] = useState([]);
   const [importLoading, setImportLoading] = useState(false);
+  const [importName, setImportName] = useState('');
+  const [importTipo, setImportTipo] = useState('');
+  const [importPhase, setImportPhase] = useState('idle');
+  const isImageFile = (file) =>
+    file.type?.startsWith('image/') || /\.(png|jpe?g|webp)$/i.test(file.name);
+  const validateImportFiles = (files) => {
+    if (!files.length) return null;
+    const allImages = files.every(isImageFile);
+    const hasNonImages = files.some((file) => !isImageFile(file));
+    if (allImages && hasNonImages) return 'Subí solo imágenes o solo un PDF/Excel.';
+    if (allImages && files.length > 10) return 'Máximo 10 imágenes por importación.';
+    if (!allImages && files.length > 1) return 'Solo se permite un archivo PDF o Excel.';
+    if (!allImages) {
+      const file = files[0];
+      if (!/\.(xls|xlsx|pdf)$/i.test(file.name)) {
+        return 'Formato no soportado.';
+      }
+    }
+    return null;
+  };
+  const fileGroupError = useMemo(() => validateImportFiles(importFiles), [importFiles]);
+
+  const handleAddImportFiles = (files = []) => {
+    if (!files.length) return;
+    setImportFiles((prev) => [...prev, ...files]);
+  };
+
+  const handleRemoveImportFile = (index) => {
+    setImportFiles((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleMoveImportFile = (fromIndex, toIndex) => {
+    setImportFiles((prev) => {
+      if (fromIndex < 0 || toIndex < 0 || fromIndex >= prev.length || toIndex >= prev.length) {
+        return prev;
+      }
+      const next = [...prev];
+      const [moved] = next.splice(fromIndex, 1);
+      next.splice(toIndex, 0, moved);
+      return next;
+    });
+  };
+
+  const resetImportDialog = () => {
+    setImportFiles([]);
+    setImportName('');
+    setImportTipo('');
+    setImportPhase('idle');
+  };
+
+  const handleCloseImportDialog = () => {
+    setOpenImport(false);
+    resetImportDialog();
+  };
 
   // ── Rubros expandidos ──
   const [expandedRubros, setExpandedRubros] = useState(new Set());
@@ -322,9 +343,14 @@ const PresupuestosProfesionales = () => {
      ================================================================ */
 
   const handleOpenPPCreate = () => {
-    setPpForm({ ...emptyPresupuesto, plantilla_id: '' });
+    setPpForm({
+      ...emptyPresupuesto,
+      plantilla_id: '',
+      notas_texto: TEXTO_NOTAS_DEFAULT,
+    });
     setPpIsEdit(false);
     setPpEditId(null);
+    setPpModoDistribuir(false);
     setOpenPPForm(true);
   };
 
@@ -340,14 +366,27 @@ const PresupuestosProfesionales = () => {
         rubros: (full.rubros || []).map((r) => ({
           nombre: r.nombre || '',
           monto: r.monto || 0,
+          incidencia_objetivo_pct:
+            r.incidencia_objetivo_pct != null && !Number.isNaN(Number(r.incidencia_objetivo_pct))
+              ? Number(r.incidencia_objetivo_pct)
+              : null,
           tareas: (r.tareas || []).map((t) => ({ descripcion: t.descripcion || '' })),
         })),
         notas_texto: full.notas_texto || '',
-        analisis_superficies: full.analisis_superficies || {
-          sup_cubierta_m2: '',
-          sup_patios_m2: '',
-          sup_ponderada_m2: '',
-        },
+        analisis_superficies: (() => {
+          const a = Number(full.analisis_superficies?.sup_cubierta_m2) || 0;
+          const b = Number(full.analisis_superficies?.sup_patios_m2) || 0;
+          const c = Number(full.analisis_superficies?.coef_patios) >= 0
+            ? (Number(full.analisis_superficies?.coef_patios) || 0.5)
+            : 0.5;
+          const computed = a >= 0 && b >= 0 ? Math.round((a + b * c) * 100) / 100 : '';
+          return {
+            sup_cubierta_m2: full.analisis_superficies?.sup_cubierta_m2 ?? '',
+            sup_patios_m2: full.analisis_superficies?.sup_patios_m2 ?? '',
+            coef_patios: full.analisis_superficies?.coef_patios ?? 0.5,
+            sup_ponderada_m2: computed,
+          };
+        })(),
         plantilla_id: '',
       });
       setPpIsEdit(true);
@@ -382,17 +421,31 @@ const PresupuestosProfesionales = () => {
           .map((r) => ({
             nombre: r.nombre.trim(),
             monto: Number(r.monto) || 0,
+            incidencia_objetivo_pct:
+              r.incidencia_objetivo_pct != null && !Number.isNaN(Number(r.incidencia_objetivo_pct))
+                ? Number(r.incidencia_objetivo_pct)
+                : null,
             tareas: (r.tareas || [])
               .filter((t) => t.descripcion?.trim())
               .map((t) => ({ descripcion: t.descripcion.trim() })),
           })),
         notas_texto: ppForm.notas_texto,
-        analisis_superficies: ppForm.analisis_superficies,
+        analisis_superficies: (() => {
+          const as = ppForm.analisis_superficies || {};
+          const a = Number(as.sup_cubierta_m2) || 0;
+          const b = Number(as.sup_patios_m2) || 0;
+          const c = Number(as.coef_patios) >= 0 ? (Number(as.coef_patios) || 0.5) : 0.5;
+          const supPonderada = a >= 0 && b >= 0 ? Math.round((a + b * c) * 100) / 100 : null;
+          return {
+            ...as,
+            sup_cubierta_m2: as.sup_cubierta_m2 !== '' && as.sup_cubierta_m2 != null ? Number(as.sup_cubierta_m2) : null,
+            sup_patios_m2: as.sup_patios_m2 !== '' && as.sup_patios_m2 != null ? Number(as.sup_patios_m2) : null,
+            coef_patios: c,
+            sup_ponderada_m2: supPonderada,
+          };
+        })(),
       };
 
-      if (ppForm.plantilla_id) {
-        payload.plantilla_id = ppForm.plantilla_id;
-      }
 
       if (ppIsEdit) {
         await PresupuestoProfesionalService.actualizar(ppEditId, payload);
@@ -471,13 +524,65 @@ const PresupuestosProfesionales = () => {
     }
   };
 
+  const handleExportPdfFromRow = async (row) => {
+    if (exportingPdfId === row._id) return;
+    if (!row.rubros?.length) {
+      showAlert('El presupuesto no tiene rubros', 'warning');
+      return;
+    }
+
+    setExportingPdfId(row._id);
+    try {
+      const full = await PresupuestoProfesionalService.obtenerPorId(row._id);
+      const { exportPresupuestoToPdfRenderer } = await import(
+        'src/utils/presupuestos/exportPresupuestoToPdfRenderer'
+      );
+      await exportPresupuestoToPdfRenderer(full, { empresa: { nombre: empresaNombre } });
+      showAlert('PDF descargado', 'success');
+    } catch (err) {
+      console.error('Error exportando presupuesto a PDF:', err);
+      showAlert('Error al generar el PDF', 'error');
+    } finally {
+      setExportingPdfId((current) => (current === row._id ? null : current));
+    }
+  };
+
+  const handleExportPdfFromDetalle = async () => {
+    if (!detalleData) return;
+    if (!detalleData.rubros?.length) {
+      showAlert('El presupuesto no tiene rubros', 'warning');
+      return;
+    }
+
+    setDetallePdfExporting(true);
+    try {
+      const { exportPresupuestoToPdfRenderer } = await import(
+        'src/utils/presupuestos/exportPresupuestoToPdfRenderer'
+      );
+      await exportPresupuestoToPdfRenderer(detalleData, { empresa: { nombre: empresaNombre } });
+      showAlert('PDF descargado', 'success');
+    } catch (err) {
+      console.error('Error exportando PDF desde detalle:', err);
+      showAlert('Error al generar el PDF', 'error');
+    } finally {
+      setDetallePdfExporting(false);
+    }
+  };
+
   /* ================================================================
      Presupuesto: Agregar Anexo
      ================================================================ */
 
   const handleOpenAnexo = (row) => {
     setAnexoTarget(row);
-    setAnexoForm({ motivo: '', tipo: 'adicion', rubros_cambios: [] });
+    setAnexoForm({
+      motivo: '',
+      tipo: 'adicion',
+      monto: '',
+      fecha: new Date().toISOString().slice(0, 10),
+      detalle: '',
+      impacto: 'positivo',
+    });
     setOpenAnexo(true);
   };
 
@@ -486,15 +591,28 @@ const PresupuestosProfesionales = () => {
       showAlert('El motivo es obligatorio', 'warning');
       return;
     }
+    const monto = Number(anexoForm.monto);
+    if (!Number.isFinite(monto) || monto <= 0) {
+      showAlert('El monto es obligatorio y debe ser mayor a 0', 'warning');
+      return;
+    }
     try {
       await PresupuestoProfesionalService.agregarAnexo(anexoTarget._id, {
-        motivo: anexoForm.motivo,
+        motivo: anexoForm.motivo.trim(),
         tipo: anexoForm.tipo,
-        rubros_cambios: anexoForm.rubros_cambios,
+        monto,
+        fecha: anexoForm.fecha || undefined,
+        detalle: anexoForm.detalle?.trim() || undefined,
+        impacto: anexoForm.tipo === 'modificacion' ? anexoForm.impacto : undefined,
       });
       showAlert('Anexo agregado correctamente');
       setOpenAnexo(false);
+      setAnexoTarget(null);
       fetchPresupuestos();
+      if (openDetalle && detalleData?._id === anexoTarget._id) {
+        const full = await PresupuestoProfesionalService.obtenerPorId(anexoTarget._id);
+        setDetalleData(full);
+      }
     } catch (err) {
       const msg = err?.response?.data?.error?.message || err?.response?.data?.message || err.message || 'Error al agregar anexo';
       showAlert(msg, 'error');
@@ -520,7 +638,46 @@ const PresupuestosProfesionales = () => {
     setPpForm((f) => {
       const rubros = [...f.rubros];
       rubros[idx] = { ...rubros[idx], [field]: value };
+      if (field === 'monto') {
+        const total = rubros.reduce((s, r) => s + (Number(r.monto) || 0), 0);
+        if (total > 0) {
+          rubros[idx] = {
+            ...rubros[idx],
+            incidencia_objetivo_pct: ((Number(rubros[idx].monto) || 0) / total) * 100,
+          };
+        }
+      }
       return { ...f, rubros };
+    });
+  };
+
+  const ppDistribuirPorTotal = (totalStr) => {
+    const total = Number(totalStr) || 0;
+    setPpForm((f) => {
+      const rubrosDist = distribuirMontosPorIncidencia(total, f.rubros);
+      return { ...f, rubros: rubrosDist };
+    });
+  };
+
+  const ppUpdateIncidenciaObjetivo = (idx, value) => {
+    setPpForm((f) => {
+      const rubros = [...f.rubros];
+      let stored;
+      if (value === '' || value == null) {
+        stored = null;
+      } else if (typeof value === 'string' && /[.,]$/.test(value)) {
+        stored = value;
+      } else {
+        const parsed = Number(value);
+        stored = parsed != null && !Number.isNaN(parsed) ? parsed : null;
+      }
+      rubros[idx] = {
+        ...rubros[idx],
+        incidencia_objetivo_pct: stored,
+      };
+      const totalActual = f.rubros.reduce((s, r) => s + (Number(r.monto) || 0), 0);
+      const rubrosDist = distribuirMontosPorIncidencia(totalActual, rubros);
+      return { ...f, rubros: rubrosDist };
     });
   };
 
@@ -575,7 +732,16 @@ const PresupuestosProfesionales = () => {
 
   // Aplicar plantilla seleccionada al form
   const handleAplicarPlantilla = async (plantillaId) => {
-    if (!plantillaId) return;
+    if (!plantillaId) {
+      setPpForm((f) => ({
+        ...f,
+        plantilla_id: '',
+        rubros: [],
+        notas_texto: TEXTO_NOTAS_DEFAULT,
+      }));
+      setPpModoDistribuir(false);
+      return;
+    }
     try {
       const pl = await PresupuestoProfesionalService.obtenerPlantilla(plantillaId);
       if (pl && pl.rubros) {
@@ -585,8 +751,16 @@ const PresupuestosProfesionales = () => {
           rubros: pl.rubros.map((r) => ({
             nombre: r.nombre,
             monto: 0,
+            incidencia_objetivo_pct:
+              r.incidencia_pct_sugerida != null &&
+              !Number.isNaN(Number(r.incidencia_pct_sugerida)) &&
+              r.incidencia_pct_sugerida >= 0 &&
+              r.incidencia_pct_sugerida <= 100
+                ? Number(r.incidencia_pct_sugerida)
+                : null,
             tareas: (r.tareas || []).map((t) => ({ descripcion: t.descripcion })),
           })),
+          notas_texto: pl.notas?.trim() || '',
         }));
         showAlert('Rubros cargados desde plantilla', 'info');
       }
@@ -613,8 +787,12 @@ const PresupuestosProfesionales = () => {
         nombre: full.nombre || '',
         tipo: full.tipo || '',
         activa: full.activa !== false,
+        notas: full.notas || '',
         rubros: (full.rubros || []).map((r) => ({
           nombre: r.nombre || '',
+          incidencia_pct_sugerida: r.incidencia_pct_sugerida != null && !Number.isNaN(Number(r.incidencia_pct_sugerida))
+            ? Number(r.incidencia_pct_sugerida)
+            : null,
           tareas: (r.tareas || []).map((t) => ({ descripcion: t.descripcion || '' })),
         })),
       });
@@ -635,6 +813,11 @@ const PresupuestosProfesionales = () => {
       showAlert('El nombre es obligatorio', 'warning');
       return;
     }
+    const sumaInc = plForm.rubros.reduce((s, r) => s + (Number(r.incidencia_pct_sugerida) || 0), 0);
+    if (sumaInc > 100) {
+      showAlert('La suma de incidencias no puede superar 100%', 'warning');
+      return;
+    }
     setPlSaving(true);
     try {
       const payload = {
@@ -642,10 +825,14 @@ const PresupuestosProfesionales = () => {
         nombre: plForm.nombre,
         tipo: plForm.tipo || null,
         activa: plForm.activa,
+        notas: plForm.notas?.trim() || '',
         rubros: plForm.rubros
           .filter((r) => r.nombre?.trim())
           .map((r) => ({
             nombre: r.nombre.trim(),
+            incidencia_pct_sugerida: r.incidencia_pct_sugerida != null && !Number.isNaN(Number(r.incidencia_pct_sugerida))
+              ? Number(r.incidencia_pct_sugerida)
+              : null,
             tareas: (r.tareas || [])
               .filter((t) => t.descripcion?.trim())
               .map((t) => ({ descripcion: t.descripcion.trim() })),
@@ -690,7 +877,7 @@ const PresupuestosProfesionales = () => {
   const plAddRubro = () => {
     setPlForm((f) => {
       plFocusRef.current = { type: 'rubro', rubroIdx: f.rubros.length };
-      return { ...f, rubros: [...f.rubros, { nombre: '', tareas: [] }] };
+      return { ...f, rubros: [...f.rubros, { nombre: '', tareas: [], incidencia_pct_sugerida: null }] };
     });
   };
 
@@ -702,6 +889,18 @@ const PresupuestosProfesionales = () => {
     setPlForm((f) => {
       const rubros = [...f.rubros];
       rubros[idx] = { ...rubros[idx], nombre: value };
+      return { ...f, rubros };
+    });
+  };
+
+  const plUpdateRubroIncidencia = (idx, value) => {
+    setPlForm((f) => {
+      const rubros = [...f.rubros];
+      const parsed = value === '' || value == null ? null : Number(value);
+      rubros[idx] = {
+        ...rubros[idx],
+        incidencia_pct_sugerida: parsed != null && !Number.isNaN(parsed) ? parsed : null,
+      };
       return { ...f, rubros };
     });
   };
@@ -745,42 +944,54 @@ const PresupuestosProfesionales = () => {
      ================================================================ */
 
   const handleImportPlantilla = async () => {
-    if (!importFile) {
+    if (!importFiles.length) {
       showAlert('Seleccioná un archivo', 'warning');
       return;
     }
+    if (fileGroupError) {
+      showAlert(fileGroupError, 'warning');
+      return;
+    }
+    setImportPhase('uploading');
     setImportLoading(true);
     try {
-      const result = await PresupuestoProfesionalService.uploadPlantilla(importFile, empresaId);
+      setImportPhase('analizando');
+      const result = await PresupuestoProfesionalService.uploadPlantilla(
+        importFiles,
+        empresaId,
+        importName,
+        importTipo
+      );
       const rubrosParseados = (result.rubros || []).map((r) => ({
         nombre: r.nombre || '',
+        incidencia_pct_sugerida: r.incidencia_pct_sugerida != null && !Number.isNaN(Number(r.incidencia_pct_sugerida))
+          ? Number(r.incidencia_pct_sugerida)
+          : null,
         tareas: (r.tareas || []).map((t) => ({ descripcion: t.descripcion || '' })),
       }));
 
       // Abrir el form de plantilla con los rubros pre-cargados para que el usuario revise y guarde
+      const sourceName = importFiles[0]?.name || '';
+      const nombreSug = result.nombre_sugerido || importName || sourceName.replace(/\.[^.]+$/, '') || 'Importada';
+      const tipoSug = result.tipo_sugerido || importTipo || '';
       setPlForm({
-        nombre: importFile.name.replace(/\.[^.]+$/, '') || 'Importada',
-        tipo: '',
+        nombre: nombreSug,
+        tipo: tipoSug,
         activa: true,
         rubros: rubrosParseados,
+        notas: result.notas || '',
       });
       setPlIsEdit(false);
       setPlEditId(null);
       setOpenImport(false);
-      setImportFile(null);
+      resetImportDialog();
       setOpenPlForm(true);
-
-      const confianza = result.confianza || 'N/A';
-      const tipo = result.tipo_extraccion || '';
-      showAlert(
-        `Se extrajeron ${rubrosParseados.length} rubros (${tipo}, confianza: ${confianza}). Revisá y guardá la plantilla.`,
-        'info'
-      );
     } catch (err) {
       const msg = err?.response?.data?.error?.message || err?.response?.data?.message || err.message || 'Error al importar';
       showAlert(msg, 'error');
     } finally {
       setImportLoading(false);
+      setImportPhase('idle');
     }
   };
 
@@ -960,6 +1171,23 @@ const PresupuestosProfesionales = () => {
                             <TableCell>{row.moneda}</TableCell>
                             <TableCell align="right">
                               {formatCurrency(row.total_neto, row.moneda)}
+                              {row.estado === 'aceptado' &&
+                                (row.anexos || []).length > 0 && (
+                                  <>
+                                    <br />
+                                    <Typography variant="caption" color="primary">
+                                      Actualizado:{' '}
+                                      {formatCurrency(
+                                        (row.total_neto || 0) +
+                                          (row.anexos || []).reduce(
+                                            (s, a) => s + (Number(a.monto_diferencia) || 0),
+                                            0
+                                          ),
+                                        row.moneda
+                                      )}
+                                    </Typography>
+                                  </>
+                                )}
                             </TableCell>
                             <TableCell>
                               <Chip
@@ -979,6 +1207,23 @@ const PresupuestosProfesionales = () => {
                                     <VisibilityIcon fontSize="small" />
                                   </IconButton>
                                 </Tooltip>
+                                <Tooltip title={!row.rubros?.length ? 'Sin rubros' : 'Exportar PDF'}>
+                                  <span
+                                    style={{ display: 'inline-flex' }}
+                                    onClick={() => handleExportPdfFromRow(row)}
+                                  >
+                                    <IconButton
+                                      size="small"
+                                      disabled={exportingPdfId === row._id || !row.rubros?.length}
+                                    >
+                                      {exportingPdfId === row._id ? (
+                                        <CircularProgress size={20} />
+                                      ) : (
+                                        <PictureAsPdfIcon fontSize="small" />
+                                      )}
+                                    </IconButton>
+                                  </span>
+                                </Tooltip>
                                 {row.estado === 'borrador' && (
                                   <Tooltip title="Editar">
                                     <IconButton size="small" onClick={() => handleOpenPPEdit(row)}>
@@ -993,13 +1238,11 @@ const PresupuestosProfesionales = () => {
                                     </IconButton>
                                   </Tooltip>
                                 )}
-                                {row.estado === 'aceptado' && (
-                                  <Tooltip title="Agregar anexo">
-                                    <IconButton size="small" onClick={() => handleOpenAnexo(row)}>
-                                      <PostAddIcon fontSize="small" />
-                                    </IconButton>
-                                  </Tooltip>
-                                )}
+                                <Tooltip title="Agregar anexo">
+                                  <IconButton size="small" onClick={() => handleOpenAnexo(row)}>
+                                    <PostAddIcon fontSize="small" />
+                                  </IconButton>
+                                </Tooltip>
                                 {row.estado === 'borrador' && (
                                   <Tooltip title="Eliminar">
                                     <IconButton
@@ -1096,7 +1339,10 @@ const PresupuestosProfesionales = () => {
                   <Button
                     variant="outlined"
                     startIcon={<UploadFileIcon />}
-                    onClick={() => setOpenImport(true)}
+                    onClick={() => {
+                      resetImportDialog();
+                      setOpenImport(true);
+                    }}
                   >
                     Importar archivo
                   </Button>
@@ -1162,6 +1408,13 @@ const PresupuestosProfesionales = () => {
                                     rubros: (pl.rubros || []).map((r) => ({
                                       nombre: r.nombre,
                                       monto: 0,
+                                      incidencia_objetivo_pct:
+                                        r.incidencia_pct_sugerida != null &&
+                                        !Number.isNaN(Number(r.incidencia_pct_sugerida)) &&
+                                        r.incidencia_pct_sugerida >= 0 &&
+                                        r.incidencia_pct_sugerida <= 100
+                                          ? Number(r.incidencia_pct_sugerida)
+                                          : null,
                                       tareas: (r.tareas || []).map((t) => ({
                                         descripcion: t.descripcion,
                                       })),
@@ -1205,835 +1458,111 @@ const PresupuestosProfesionales = () => {
           DIALOGS
           ════════════════════════════════════════════════════════════ */}
 
-      {/* ── Dialog: Crear/Editar Presupuesto ── */}
-      <Dialog open={openPPForm} onClose={() => setOpenPPForm(false)} fullWidth maxWidth="lg">
-        <DialogTitle>{ppIsEdit ? 'Editar Presupuesto' : 'Nuevo Presupuesto Profesional'}</DialogTitle>
-        <DialogContent dividers>
-          <Stack spacing={2} sx={{ mt: 1 }}>
-            {/* Encabezado */}
-            <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
-              <TextField
-                label="Título *"
-                fullWidth
-                value={ppForm.titulo}
-                onChange={(e) => setPpForm((f) => ({ ...f, titulo: e.target.value }))}
-              />
-              <FormControl sx={{ minWidth: 140 }}>
-                <InputLabel>Moneda</InputLabel>
-                <Select
-                  value={ppForm.moneda}
-                  label="Moneda"
-                  onChange={(e) => setPpForm((f) => ({ ...f, moneda: e.target.value }))}
-                >
-                  {MONEDAS.map((m) => (
-                    <MenuItem key={m} value={m}>{m}</MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Stack>
+      <PresupuestoFormDialog
+        open={openPPForm}
+        onClose={() => setOpenPPForm(false)}
+        isEdit={ppIsEdit}
+        form={ppForm}
+        onFormChange={setPpForm}
+        proyectos={proyectos}
+        plantillas={plantillas}
+        totalVivo={ppTotalVivo}
+        saving={ppSaving}
+        onSave={handleSavePP}
+        onProyectoChange={handleProyectoChange}
+        onAplicarPlantilla={handleAplicarPlantilla}
+        modoDistribuir={ppModoDistribuir}
+        onModoDistribuirChange={setPpModoDistribuir}
+        onDistribuirPorTotal={ppDistribuirPorTotal}
+        onUpdateIncidenciaObjetivo={ppUpdateIncidenciaObjetivo}
+        addRubro={ppAddRubro}
+        removeRubro={ppRemoveRubro}
+        updateRubro={ppUpdateRubro}
+        moveRubro={ppMoveRubro}
+        addTarea={ppAddTarea}
+        removeTarea={ppRemoveTarea}
+        updateTarea={ppUpdateTarea}
+        focusRef={ppFocusRef}
+      />
 
-            <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
-              <FormControl fullWidth>
-                <InputLabel>Proyecto</InputLabel>
-                <Select
-                  value={ppForm.proyecto_id}
-                  label="Proyecto"
-                  onChange={(e) => handleProyectoChange(e.target.value)}
-                >
-                  <MenuItem value="">Sin proyecto</MenuItem>
-                  {proyectos.map((p) => (
-                    <MenuItem key={p.id} value={p.id}>{p.nombre}</MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-              <TextField
-                label="Dirección de obra"
-                fullWidth
-                value={ppForm.obra_direccion}
-                onChange={(e) => setPpForm((f) => ({ ...f, obra_direccion: e.target.value }))}
-              />
-            </Stack>
+      <PresupuestoDeleteDialog
+        open={openPPDelete}
+        onClose={() => setOpenPPDelete(false)}
+        presupuesto={ppToDelete}
+        onConfirm={handleConfirmDeletePP}
+      />
 
-            <Divider />
+      <CambiarEstadoDialog
+        open={openEstado}
+        onClose={() => setOpenEstado(false)}
+        presupuesto={estadoTarget}
+        nuevoEstado={nuevoEstado}
+        onNuevoEstadoChange={setNuevoEstado}
+        onConfirm={handleConfirmCambiarEstado}
+      />
 
-            {/* Cargar desde plantilla */}
-            {!ppIsEdit && plantillas.length > 0 && (
-              <Stack direction="row" spacing={2} alignItems="center">
-                <FormControl size="small" sx={{ minWidth: 260 }}>
-                  <InputLabel>Cargar rubros desde plantilla</InputLabel>
-                  <Select
-                    value={ppForm.plantilla_id || ''}
-                    label="Cargar rubros desde plantilla"
-                    onChange={(e) => handleAplicarPlantilla(e.target.value)}
-                  >
-                    <MenuItem value="">Ninguna</MenuItem>
-                    {plantillas.filter((p) => p.activa).map((p) => (
-                      <MenuItem key={p._id} value={p._id}>{p.nombre}</MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-                <Typography variant="caption" color="text.secondary">
-                  Reemplaza los rubros actuales con los de la plantilla.
-                </Typography>
-              </Stack>
-            )}
+      <PresupuestoDetalleDialog
+        open={openDetalle}
+        onClose={() => setOpenDetalle(false)}
+        data={detalleData}
+        loading={detalleLoading}
+        tab={detalleTab}
+        onTabChange={setDetalleTab}
+        onExportPDF={handleExportPdfFromDetalle}
+        exportingPdf={detallePdfExporting}
+        onAgregarAnexo={detalleData ? () => handleOpenAnexo(detalleData) : undefined}
+      />
 
-            {/* Rubros editor */}
-            <Box>
-              <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1}>
-                <Typography variant="subtitle1" fontWeight={600}>
-                  Rubros ({ppForm.rubros.length})
-                </Typography>
-                <Stack direction="row" spacing={1} alignItems="center">
-                  <Typography variant="body2" color="text.secondary">
-                    Total: {formatCurrency(ppTotalVivo, ppForm.moneda)}
-                  </Typography>
-                  <Button size="small" startIcon={<AddIcon />} onClick={ppAddRubro}>
-                    Agregar rubro
-                  </Button>
-                </Stack>
-              </Stack>
+      <AgregarAnexoDialog
+        open={openAnexo}
+        onClose={() => setOpenAnexo(false)}
+        presupuesto={anexoTarget}
+        form={anexoForm}
+        onFormChange={setAnexoForm}
+        onConfirm={handleConfirmAnexo}
+      />
 
-              {ppForm.rubros.length === 0 && (
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                  No hay rubros todavía. Agregá uno o cargalos desde una plantilla.
-                </Typography>
-              )}
+      <PlantillaFormDialog
+        open={openPlForm}
+        onClose={() => setOpenPlForm(false)}
+        isEdit={plIsEdit}
+        form={plForm}
+        onFormChange={setPlForm}
+        saving={plSaving}
+        onSave={handleSavePl}
+        addRubro={plAddRubro}
+        removeRubro={plRemoveRubro}
+        updateRubroNombre={plUpdateRubroNombre}
+        updateRubroIncidencia={plUpdateRubroIncidencia}
+        addTarea={plAddTarea}
+        removeTarea={plRemoveTarea}
+        updateTarea={plUpdateTarea}
+        focusRef={plFocusRef}
+      />
 
-              {ppForm.rubros.map((rubro, ri) => (
-                <Paper key={ri} variant="outlined" sx={{ p: 2, mb: 1.5 }}>
-                  <Stack direction="row" spacing={1} alignItems="center" mb={1}>
-                    <Typography variant="caption" color="text.secondary" sx={{ minWidth: 28 }}>
-                      #{ri + 1}
-                    </Typography>
-                    <TextField
-                      size="small"
-                      label="Nombre del rubro"
-                      value={rubro.nombre}
-                      onChange={(e) => ppUpdateRubro(ri, 'nombre', e.target.value)}
-                      sx={{ flexGrow: 1 }}
-                      inputRef={(el) => {
-                        if (el && ppFocusRef.current?.type === 'rubro' && ppFocusRef.current.rubroIdx === ri) {
-                          setTimeout(() => el.focus(), 0);
-                          ppFocusRef.current = null;
-                        }
-                      }}
-                    />
-                    <TextField
-                      size="small"
-                      label="Monto"
-                      type="number"
-                      value={rubro.monto}
-                      onChange={(e) => ppUpdateRubro(ri, 'monto', e.target.value)}
-                      sx={{ width: 150 }}
-                      InputProps={{
-                        startAdornment: (
-                          <InputAdornment position="start">$</InputAdornment>
-                        ),
-                      }}
-                    />
-                    {ppTotalVivo > 0 && (
-                      <Typography variant="caption" color="text.secondary" sx={{ minWidth: 50 }}>
-                        {formatPct(((Number(rubro.monto) || 0) / ppTotalVivo) * 100)}
-                      </Typography>
-                    )}
-                    <Tooltip title="Subir">
-                      <span>
-                        <IconButton size="small" disabled={ri === 0} onClick={() => ppMoveRubro(ri, -1)}>
-                          <ArrowUpwardIcon fontSize="small" />
-                        </IconButton>
-                      </span>
-                    </Tooltip>
-                    <Tooltip title="Bajar">
-                      <span>
-                        <IconButton
-                          size="small"
-                          disabled={ri === ppForm.rubros.length - 1}
-                          onClick={() => ppMoveRubro(ri, 1)}
-                        >
-                          <ArrowDownwardIcon fontSize="small" />
-                        </IconButton>
-                      </span>
-                    </Tooltip>
-                    <Tooltip title="Eliminar rubro">
-                      <IconButton size="small" color="error" onClick={() => ppRemoveRubro(ri)}>
-                        <DeleteIcon fontSize="small" />
-                      </IconButton>
-                    </Tooltip>
-                  </Stack>
+      <PlantillaDeleteDialog
+        open={openPlDelete}
+        onClose={() => setOpenPlDelete(false)}
+        plantilla={plToDelete}
+        onConfirm={handleConfirmDeletePl}
+      />
 
-                  {/* Tareas del rubro */}
-                  <Box sx={{ ml: 4 }}>
-                    {(rubro.tareas || []).map((tarea, ti) => (
-                      <Stack key={ti} direction="row" spacing={1} alignItems="center" mb={0.5}>
-                        <Typography variant="caption" color="text.secondary" sx={{ minWidth: 20 }}>
-                          {ri + 1}.{ti + 1}
-                        </Typography>
-                        <TextField
-                          size="small"
-                          fullWidth
-                          placeholder="Descripción de tarea"
-                          value={tarea.descripcion}
-                          onChange={(e) => ppUpdateTarea(ri, ti, e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter' && !e.shiftKey) {
-                              e.preventDefault();
-                              if (e.ctrlKey || e.metaKey) {
-                                ppAddRubro();
-                              } else {
-                                ppAddTarea(ri);
-                              }
-                            }
-                          }}
-                          inputRef={(el) => {
-                            if (el && ppFocusRef.current?.type === 'tarea' && ppFocusRef.current.rubroIdx === ri && ppFocusRef.current.tareaIdx === ti) {
-                              setTimeout(() => el.focus(), 0);
-                              ppFocusRef.current = null;
-                            }
-                          }}
-                        />
-                        <IconButton size="small" color="error" onClick={() => ppRemoveTarea(ri, ti)}>
-                          <DeleteIcon fontSize="inherit" />
-                        </IconButton>
-                      </Stack>
-                    ))}
-                    <Button size="small" onClick={() => ppAddTarea(ri)} sx={{ mt: 0.5 }}>
-                      + Tarea
-                    </Button>
-                  </Box>
-                </Paper>
-              ))}
-            </Box>
-
-            <Divider />
-
-            {/* Notas */}
-            <TextField
-              label="Notas / Condiciones"
-              multiline
-              minRows={4}
-              maxRows={10}
-              value={ppForm.notas_texto}
-              onChange={(e) => setPpForm((f) => ({ ...f, notas_texto: e.target.value }))}
-              helperText="Se pre-carga un texto sugerido por SorbyData al crear. Podés editarlo libremente."
-            />
-
-            {/* Análisis de superficies (opcional) */}
-            <Typography variant="subtitle2" color="text.secondary">
-              Análisis de superficies (opcional)
-            </Typography>
-            <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
-              <TextField
-                size="small"
-                label="Sup. cubierta (m²)"
-                type="number"
-                value={ppForm.analisis_superficies?.sup_cubierta_m2 || ''}
-                onChange={(e) =>
-                  setPpForm((f) => ({
-                    ...f,
-                    analisis_superficies: {
-                      ...f.analisis_superficies,
-                      sup_cubierta_m2: e.target.value,
-                    },
-                  }))
-                }
-              />
-              <TextField
-                size="small"
-                label="Sup. patios (m²)"
-                type="number"
-                value={ppForm.analisis_superficies?.sup_patios_m2 || ''}
-                onChange={(e) =>
-                  setPpForm((f) => ({
-                    ...f,
-                    analisis_superficies: {
-                      ...f.analisis_superficies,
-                      sup_patios_m2: e.target.value,
-                    },
-                  }))
-                }
-              />
-              <TextField
-                size="small"
-                label="Sup. ponderada (m²)"
-                type="number"
-                value={ppForm.analisis_superficies?.sup_ponderada_m2 || ''}
-                onChange={(e) =>
-                  setPpForm((f) => ({
-                    ...f,
-                    analisis_superficies: {
-                      ...f.analisis_superficies,
-                      sup_ponderada_m2: e.target.value,
-                    },
-                  }))
-                }
-              />
-            </Stack>
-          </Stack>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setOpenPPForm(false)}>Cancelar</Button>
-          <Button variant="contained" onClick={handleSavePP} disabled={ppSaving}>
-            {ppSaving ? <CircularProgress size={20} /> : ppIsEdit ? 'Guardar cambios' : 'Crear presupuesto'}
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* ── Dialog: Eliminar Presupuesto ── */}
-      <Dialog open={openPPDelete} onClose={() => setOpenPPDelete(false)} maxWidth="xs">
-        <DialogTitle>Eliminar presupuesto</DialogTitle>
-        <DialogContent>
-          <Typography>
-            ¿Estás seguro de eliminar <strong>{ppToDelete?.titulo || '(sin título)'}</strong>?
-            Esta acción no se puede deshacer.
-          </Typography>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setOpenPPDelete(false)}>Cancelar</Button>
-          <Button variant="contained" color="error" onClick={handleConfirmDeletePP}>
-            Eliminar
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* ── Dialog: Cambiar Estado ── */}
-      <Dialog open={openEstado} onClose={() => setOpenEstado(false)} maxWidth="xs" fullWidth>
-        <DialogTitle>Cambiar estado</DialogTitle>
-        <DialogContent>
-          <Typography variant="body2" sx={{ mb: 2 }}>
-            Presupuesto: <strong>{estadoTarget?.titulo}</strong>
-            <br />
-            Estado actual:{' '}
-            <Chip
-              label={ESTADO_LABEL[estadoTarget?.estado] || ''}
-              color={ESTADO_COLOR[estadoTarget?.estado] || 'default'}
-              size="small"
-            />
-          </Typography>
-          <FormControl fullWidth>
-            <InputLabel>Nuevo estado</InputLabel>
-            <Select
-              value={nuevoEstado}
-              label="Nuevo estado"
-              onChange={(e) => setNuevoEstado(e.target.value)}
-            >
-              {(TRANSICIONES_VALIDAS[estadoTarget?.estado] || []).map((e) => (
-                <MenuItem key={e} value={e}>{ESTADO_LABEL[e]}</MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-          {nuevoEstado === 'aceptado' && (
-            <Alert severity="info" sx={{ mt: 2 }}>
-              Al aceptar se congelará una versión del presupuesto con las equivalencias CAC/USD
-              actuales. Los rubros ya no podrán editarse directamente (solo mediante anexos).
-            </Alert>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setOpenEstado(false)}>Cancelar</Button>
-          <Button variant="contained" onClick={handleConfirmCambiarEstado} disabled={!nuevoEstado}>
-            Confirmar
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* ── Dialog: Ver Detalle (rubros, versiones, historial, anexos) ── */}
-      <Dialog open={openDetalle} onClose={() => setOpenDetalle(false)} fullWidth maxWidth="lg">
-        <DialogTitle>
-          Detalle: {detalleData?.titulo || '...'}
-          <Chip
-            label={ESTADO_LABEL[detalleData?.estado] || ''}
-            color={ESTADO_COLOR[detalleData?.estado] || 'default'}
-            size="small"
-            sx={{ ml: 2 }}
-          />
-        </DialogTitle>
-        <DialogContent dividers>
-          {detalleLoading ? (
-            <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-              <CircularProgress />
-            </Box>
-          ) : detalleData ? (
-            <>
-              {/* Info general */}
-              <Stack direction="row" spacing={4} mb={2}>
-                <Box>
-                  <Typography variant="caption" color="text.secondary">Moneda</Typography>
-                  <Typography>{detalleData.moneda}</Typography>
-                </Box>
-                <Box>
-                  <Typography variant="caption" color="text.secondary">Total neto</Typography>
-                  <Typography fontWeight={600}>
-                    {formatCurrency(detalleData.total_neto, detalleData.moneda)}
-                  </Typography>
-                </Box>
-                <Box>
-                  <Typography variant="caption" color="text.secondary">Proyecto</Typography>
-                  <Typography>{detalleData.proyecto_nombre || '—'}</Typography>
-                </Box>
-                <Box>
-                  <Typography variant="caption" color="text.secondary">Dirección</Typography>
-                  <Typography>{detalleData.obra_direccion || '—'}</Typography>
-                </Box>
-                <Box>
-                  <Typography variant="caption" color="text.secondary">Versión</Typography>
-                  <Typography>
-                    {detalleData.version_actual > 0 ? `v${detalleData.version_actual}` : 'Sin versión congelada'}
-                  </Typography>
-                </Box>
-              </Stack>
-
-              {/* Sub-tabs detalle */}
-              <Tabs
-                value={detalleTab}
-                onChange={(_, v) => setDetalleTab(v)}
-                sx={{ mb: 2, borderBottom: 1, borderColor: 'divider' }}
-              >
-                <Tab label="Rubros actuales" />
-                <Tab label={`Versiones (${(detalleData.versiones || []).length})`} />
-                <Tab label={`Historial (${(detalleData.historial_estados || []).length})`} />
-                <Tab label={`Anexos (${(detalleData.anexos || []).length})`} />
-              </Tabs>
-
-              {/* Sub-tab 0: Rubros */}
-              {detalleTab === 0 && (
-                <Table size="small">
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>#</TableCell>
-                      <TableCell>Rubro</TableCell>
-                      <TableCell align="right">Monto</TableCell>
-                      <TableCell align="right">Incidencia</TableCell>
-                      <TableCell>Tareas</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {(detalleData.rubros || []).map((r, i) => (
-                      <TableRow key={i}>
-                        <TableCell>{r.orden || i + 1}</TableCell>
-                        <TableCell>{r.nombre}</TableCell>
-                        <TableCell align="right">
-                          {formatCurrency(r.monto, detalleData.moneda)}
-                        </TableCell>
-                        <TableCell align="right">{formatPct(r.incidencia_pct)}</TableCell>
-                        <TableCell>
-                          {(r.tareas || []).map((t) => t.descripcion).join(', ') || '—'}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                    {(detalleData.rubros || []).length > 0 && (
-                      <TableRow>
-                        <TableCell />
-                        <TableCell>
-                          <Typography fontWeight={600}>TOTAL</Typography>
-                        </TableCell>
-                        <TableCell align="right">
-                          <Typography fontWeight={600}>
-                            {formatCurrency(detalleData.total_neto, detalleData.moneda)}
-                          </Typography>
-                        </TableCell>
-                        <TableCell align="right">
-                          <Typography fontWeight={600}>100%</Typography>
-                        </TableCell>
-                        <TableCell />
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              )}
-
-              {/* Sub-tab 1: Versiones */}
-              {detalleTab === 1 && (
-                <Box>
-                  {(detalleData.versiones || []).length === 0 ? (
-                    <Typography color="text.secondary">
-                      No hay versiones congeladas todavía.
-                    </Typography>
-                  ) : (
-                    (detalleData.versiones || []).map((v, i) => (
-                      <Paper key={i} variant="outlined" sx={{ p: 2, mb: 1.5 }}>
-                        <Stack direction="row" spacing={2} alignItems="center" mb={1}>
-                          <Chip label={`v${v.numero_version}`} size="small" color="primary" />
-                          <Typography variant="body2">{formatDate(v.fecha)}</Typography>
-                          <Typography variant="body2" color="text.secondary">
-                            {v.motivo || ''}
-                          </Typography>
-                          <Box sx={{ flexGrow: 1 }} />
-                          <Typography variant="body2" fontWeight={600}>
-                            Total: {formatCurrency(v.total_neto, detalleData.moneda)}
-                          </Typography>
-                        </Stack>
-                        {v.equivalencias && (
-                          <Stack direction="row" spacing={3} mb={1}>
-                            {v.equivalencias.valor_cac && (
-                              <Typography variant="caption">
-                                CAC: {v.equivalencias.valor_cac} → {v.equivalencias.monto_en_cac?.toFixed(2)} unidades
-                              </Typography>
-                            )}
-                            {v.equivalencias.tipo_cambio_usd && (
-                              <Typography variant="caption">
-                                USD Blue: ${v.equivalencias.tipo_cambio_usd} → {formatCurrency(v.equivalencias.monto_en_usd, 'USD')}
-                              </Typography>
-                            )}
-                          </Stack>
-                        )}
-                        <Table size="small">
-                          <TableHead>
-                            <TableRow>
-                              <TableCell>Rubro</TableCell>
-                              <TableCell align="right">Monto</TableCell>
-                              <TableCell align="right">Incidencia</TableCell>
-                            </TableRow>
-                          </TableHead>
-                          <TableBody>
-                            {(v.rubros_snapshot || []).map((rs, j) => (
-                              <TableRow key={j}>
-                                <TableCell>{rs.nombre}</TableCell>
-                                <TableCell align="right">
-                                  {formatCurrency(rs.monto, detalleData.moneda)}
-                                </TableCell>
-                                <TableCell align="right">{formatPct(rs.incidencia_pct)}</TableCell>
-                              </TableRow>
-                            ))}
-                          </TableBody>
-                        </Table>
-                      </Paper>
-                    ))
-                  )}
-                </Box>
-              )}
-
-              {/* Sub-tab 2: Historial de estados */}
-              {detalleTab === 2 && (
-                <Table size="small">
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Estado</TableCell>
-                      <TableCell>Fecha</TableCell>
-                      <TableCell>Usuario</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {(detalleData.historial_estados || []).length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={3} align="center">
-                          <Typography color="text.secondary">Sin historial.</Typography>
-                        </TableCell>
-                      </TableRow>
-                    ) : (
-                      (detalleData.historial_estados || []).map((h, i) => (
-                        <TableRow key={i}>
-                          <TableCell>
-                            <Chip
-                              label={ESTADO_LABEL[h.estado] || h.estado}
-                              color={ESTADO_COLOR[h.estado] || 'default'}
-                              size="small"
-                            />
-                          </TableCell>
-                          <TableCell>{formatDate(h.fecha)}</TableCell>
-                          <TableCell>{h.user_id || '—'}</TableCell>
-                        </TableRow>
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
-              )}
-
-              {/* Sub-tab 3: Anexos */}
-              {detalleTab === 3 && (
-                <Box>
-                  {(detalleData.anexos || []).length === 0 ? (
-                    <Typography color="text.secondary">No hay anexos.</Typography>
-                  ) : (
-                    (detalleData.anexos || []).map((ax, i) => (
-                      <Paper key={i} variant="outlined" sx={{ p: 2, mb: 1.5 }}>
-                        <Stack direction="row" spacing={2} alignItems="center" mb={1}>
-                          <Chip label={`Anexo #${ax.numero}`} size="small" color="secondary" />
-                          <Chip
-                            label={ax.tipo}
-                            size="small"
-                            variant="outlined"
-                            color={
-                              ax.tipo === 'adicion'
-                                ? 'success'
-                                : ax.tipo === 'deduccion'
-                                ? 'error'
-                                : 'info'
-                            }
-                          />
-                          <Typography variant="body2">{formatDate(ax.fecha)}</Typography>
-                          <Box sx={{ flexGrow: 1 }} />
-                          <Typography variant="body2" fontWeight={600}>
-                            Diferencia: {formatCurrency(ax.monto_diferencia, detalleData.moneda)}
-                          </Typography>
-                        </Stack>
-                        <Typography variant="body2" gutterBottom>
-                          <strong>Motivo:</strong> {ax.motivo}
-                        </Typography>
-                        {(ax.rubros_afectados || []).length > 0 && (
-                          <Table size="small">
-                            <TableHead>
-                              <TableRow>
-                                <TableCell>Rubro</TableCell>
-                                <TableCell align="right">Monto anterior</TableCell>
-                                <TableCell align="right">Monto nuevo</TableCell>
-                              </TableRow>
-                            </TableHead>
-                            <TableBody>
-                              {ax.rubros_afectados.map((ra, j) => (
-                                <TableRow key={j}>
-                                  <TableCell>{ra.rubro_nombre}</TableCell>
-                                  <TableCell align="right">
-                                    {formatCurrency(ra.monto_anterior, detalleData.moneda)}
-                                  </TableCell>
-                                  <TableCell align="right">
-                                    {formatCurrency(ra.monto_nuevo, detalleData.moneda)}
-                                  </TableCell>
-                                </TableRow>
-                              ))}
-                            </TableBody>
-                          </Table>
-                        )}
-                      </Paper>
-                    ))
-                  )}
-                </Box>
-              )}
-
-              {/* Notas */}
-              {detalleData.notas_texto && (
-                <Box sx={{ mt: 3 }}>
-                  <Typography variant="subtitle2">Notas / Condiciones</Typography>
-                  <Paper variant="outlined" sx={{ p: 2, mt: 1, whiteSpace: 'pre-wrap' }}>
-                    <Typography variant="body2">{detalleData.notas_texto}</Typography>
-                  </Paper>
-                </Box>
-              )}
-            </>
-          ) : null}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setOpenDetalle(false)}>Cerrar</Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* ── Dialog: Agregar Anexo ── */}
-      <Dialog open={openAnexo} onClose={() => setOpenAnexo(false)} fullWidth maxWidth="sm">
-        <DialogTitle>Agregar Anexo</DialogTitle>
-        <DialogContent dividers>
-          <Typography variant="body2" sx={{ mb: 2 }}>
-            Presupuesto: <strong>{anexoTarget?.titulo}</strong>
-          </Typography>
-          <Stack spacing={2}>
-            <TextField
-              label="Motivo del anexo *"
-              multiline
-              minRows={2}
-              value={anexoForm.motivo}
-              onChange={(e) => setAnexoForm((f) => ({ ...f, motivo: e.target.value }))}
-              placeholder="Ej: Cliente pidió ampliar cocina"
-            />
-            <FormControl fullWidth>
-              <InputLabel>Tipo</InputLabel>
-              <Select
-                value={anexoForm.tipo}
-                label="Tipo"
-                onChange={(e) => setAnexoForm((f) => ({ ...f, tipo: e.target.value }))}
-              >
-                {TIPOS_ANEXO.map((t) => (
-                  <MenuItem key={t.value} value={t.value}>{t.label}</MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-            <Alert severity="info">
-              Los rubros afectados y montos se calculan automáticamente en el backend al agregar
-              el anexo. Asegurate de haber editado los rubros del presupuesto antes si es necesario.
-            </Alert>
-          </Stack>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setOpenAnexo(false)}>Cancelar</Button>
-          <Button variant="contained" onClick={handleConfirmAnexo} disabled={!anexoForm.motivo.trim()}>
-            Agregar anexo
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* ── Dialog: Crear/Editar Plantilla ── */}
-      <Dialog open={openPlForm} onClose={() => setOpenPlForm(false)} fullWidth maxWidth="md">
-        <DialogTitle>{plIsEdit ? 'Editar Plantilla' : 'Nueva Plantilla de Rubros'}</DialogTitle>
-        <DialogContent dividers>
-          <Stack spacing={2} sx={{ mt: 1 }}>
-            <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
-              <TextField
-                label="Nombre *"
-                fullWidth
-                value={plForm.nombre}
-                onChange={(e) => setPlForm((f) => ({ ...f, nombre: e.target.value }))}
-                placeholder="Ej: Residencial estándar"
-              />
-              <TextField
-                label="Tipo (opcional)"
-                value={plForm.tipo}
-                onChange={(e) => setPlForm((f) => ({ ...f, tipo: e.target.value }))}
-                placeholder="Ej: residencial, comercial"
-                sx={{ minWidth: 200 }}
-              />
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={plForm.activa}
-                    onChange={(e) => setPlForm((f) => ({ ...f, activa: e.target.checked }))}
-                  />
-                }
-                label="Activa"
-              />
-            </Stack>
-
-            <Divider />
-
-            <Stack direction="row" justifyContent="space-between" alignItems="center">
-              <Typography variant="subtitle1" fontWeight={600}>
-                Rubros ({plForm.rubros.length})
-              </Typography>
-              <Button size="small" startIcon={<AddIcon />} onClick={plAddRubro}>
-                Agregar rubro
-              </Button>
-            </Stack>
-
-            {plForm.rubros.length === 0 && (
-              <Typography variant="body2" color="text.secondary">
-                Agregá rubros y tareas para armar la plantilla.
-              </Typography>
-            )}
-
-            {plForm.rubros.map((rubro, ri) => (
-              <Paper key={ri} variant="outlined" sx={{ p: 2 }}>
-                <Stack direction="row" spacing={1} alignItems="center" mb={1}>
-                  <Typography variant="caption" color="text.secondary" sx={{ minWidth: 28 }}>
-                    #{ri + 1}
-                  </Typography>
-                  <TextField
-                    size="small"
-                    label="Nombre del rubro"
-                    value={rubro.nombre}
-                    onChange={(e) => plUpdateRubroNombre(ri, e.target.value)}
-                    sx={{ flexGrow: 1 }}
-                    inputRef={(el) => {
-                      if (el && plFocusRef.current?.type === 'rubro' && plFocusRef.current.rubroIdx === ri) {
-                        setTimeout(() => el.focus(), 0);
-                        plFocusRef.current = null;
-                      }
-                    }}
-                  />
-                  <Tooltip title="Eliminar rubro">
-                    <IconButton size="small" color="error" onClick={() => plRemoveRubro(ri)}>
-                      <DeleteIcon fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
-                </Stack>
-
-                <Box sx={{ ml: 4 }}>
-                  {(rubro.tareas || []).map((tarea, ti) => (
-                    <Stack key={ti} direction="row" spacing={1} alignItems="center" mb={0.5}>
-                      <Typography variant="caption" color="text.secondary" sx={{ minWidth: 20 }}>
-                        {ri + 1}.{ti + 1}
-                      </Typography>
-                      <TextField
-                        size="small"
-                        fullWidth
-                        placeholder="Descripción de tarea"
-                        value={tarea.descripcion}
-                        onChange={(e) => plUpdateTarea(ri, ti, e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' && !e.shiftKey) {
-                            e.preventDefault();
-                            if (e.ctrlKey || e.metaKey) {
-                              plAddRubro();
-                            } else {
-                              plAddTarea(ri);
-                            }
-                          }
-                        }}
-                        inputRef={(el) => {
-                          if (el && plFocusRef.current?.type === 'tarea' && plFocusRef.current.rubroIdx === ri && plFocusRef.current.tareaIdx === ti) {
-                            setTimeout(() => el.focus(), 0);
-                            plFocusRef.current = null;
-                          }
-                        }}
-                      />
-                      <IconButton size="small" color="error" onClick={() => plRemoveTarea(ri, ti)}>
-                        <DeleteIcon fontSize="inherit" />
-                      </IconButton>
-                    </Stack>
-                  ))}
-                  <Button size="small" onClick={() => plAddTarea(ri)} sx={{ mt: 0.5 }}>
-                    + Tarea
-                  </Button>
-                </Box>
-              </Paper>
-            ))}
-          </Stack>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setOpenPlForm(false)}>Cancelar</Button>
-          <Button variant="contained" onClick={handleSavePl} disabled={plSaving}>
-            {plSaving ? <CircularProgress size={20} /> : plIsEdit ? 'Guardar cambios' : 'Crear plantilla'}
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* ── Dialog: Eliminar Plantilla ── */}
-      <Dialog open={openPlDelete} onClose={() => setOpenPlDelete(false)} maxWidth="xs">
-        <DialogTitle>Eliminar plantilla</DialogTitle>
-        <DialogContent>
-          <Typography>
-            ¿Eliminar la plantilla <strong>{plToDelete?.nombre}</strong>? Los presupuestos que
-            ya la usaron no se ven afectados.
-          </Typography>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setOpenPlDelete(false)}>Cancelar</Button>
-          <Button variant="contained" color="error" onClick={handleConfirmDeletePl}>
-            Eliminar
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* ── Dialog: Importar archivo de plantilla ── */}
-      <Dialog open={openImport} onClose={() => setOpenImport(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Importar plantilla desde archivo</DialogTitle>
-        <DialogContent dividers>
-          <Typography variant="body2" sx={{ mb: 2 }}>
-            Subí un archivo Excel (.xlsx), PDF o imagen con rubros y tareas. El sistema intentará
-            extraer la estructura automáticamente.
-          </Typography>
-          <Button variant="outlined" component="label" startIcon={<UploadFileIcon />}>
-            {importFile ? importFile.name : 'Seleccionar archivo'}
-            <input
-              type="file"
-              hidden
-              accept=".xlsx,.xls,.pdf,.png,.jpg,.jpeg,.webp"
-              onChange={(e) => setImportFile(e.target.files?.[0] || null)}
-            />
-          </Button>
-          {importFile && (
-            <Typography variant="caption" sx={{ ml: 1 }}>
-              {importFile.name} ({(importFile.size / 1024).toFixed(0)} KB)
-            </Typography>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => { setOpenImport(false); setImportFile(null); }}>Cancelar</Button>
-          <Button
-            variant="contained"
-            onClick={handleImportPlantilla}
-            disabled={!importFile || importLoading}
-          >
-            {importLoading ? <CircularProgress size={20} /> : 'Importar'}
-          </Button>
-        </DialogActions>
-      </Dialog>
+      <ImportarPlantillaDialog
+        open={openImport}
+        onClose={handleCloseImportDialog}
+        importFiles={importFiles}
+        onAddFiles={handleAddImportFiles}
+        onRemoveFile={handleRemoveImportFile}
+        onMoveFile={handleMoveImportFile}
+        fileGroupError={fileGroupError}
+        onImport={handleImportPlantilla}
+        loading={importLoading}
+        nombre={importName}
+        tipo={importTipo}
+        onNombreChange={setImportName}
+        onTipoChange={setImportTipo}
+        status={importPhase}
+      />
 
       {/* ── Snackbar global ── */}
       <Snackbar
@@ -2050,10 +1579,10 @@ const PresupuestosProfesionales = () => {
   );
 };
 
-/* ================================================================
-   Layout wrapper
-   ================================================================ */
-
-PresupuestosProfesionales.getLayout = (page) => <DashboardLayout>{page}</DashboardLayout>;
-
-export default PresupuestosProfesionales;
+export default function Page() {
+  return (
+    <DashboardLayout>
+      <PresupuestosProfesionales />
+    </DashboardLayout>
+  );
+}

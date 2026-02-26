@@ -158,6 +158,7 @@ const MovementFormPage = () => {
   const [categorias, setCategorias] = useState([]);
   const [proveedores, setProveedores] = useState([]);
   const [comprobante_info, setComprobanteInfo] = useState([]);
+  const [ingreso_info, setIngresoInfo] = useState({});
   const [categoriaSeleccionada, setCategoriaSeleccionada] = useState(null);
   const [empresa, setEmpresa] = useState(null);
   const [nuevoArchivo, setNuevoArchivo] = useState(null);
@@ -281,6 +282,7 @@ const MovementFormPage = () => {
       const cates = [...empresa.categorias, { name: 'Ingreso dinero', subcategorias: [] }, { name: 'Ajuste', subcategorias: ['Ajuste'] }];
       const provs = [...empresa.proveedores, 'Ajuste'];
       setComprobanteInfo(empresa.comprobante_info || []);
+      setIngresoInfo(empresa.ingreso_info || {});
       setCategorias(cates);
       setProveedores(provs);
       setTagsExtra(empresa.tags_extra || []);
@@ -1068,6 +1070,7 @@ function syncMaterialesWithMovs(currentMateriales = [], mmRows = [], { proyecto_
                         group="general"
                         formik={formik}
                         comprobante_info={comprobante_info}
+                        ingreso_info={ingreso_info}
                         empresa={empresa}
                         etapas={empresa?.etapas || []}
                         proveedores={proveedores}
@@ -1095,6 +1098,7 @@ function syncMaterialesWithMovs(currentMateriales = [], mmRows = [], { proyecto_
                         group="montos"
                         formik={formik}
                         comprobante_info={comprobante_info}
+                        ingreso_info={ingreso_info}
                         empresa={empresa}
                         etapas={empresa?.etapas || []}
                         proveedores={proveedores}
@@ -1315,35 +1319,55 @@ function syncMaterialesWithMovs(currentMateriales = [], mmRows = [], { proyecto_
                       const impuestosTotal = impuestos.reduce((a, i) => a + (Number(i.monto) || 0), 0);
                       const yesNo = (b) => (b ? 'Sí' : 'No');
 
+                      // Defaults para resumen (mismos que en configuracionGeneral)
+                      const comprobanteDefaults = {
+                        categoria: true, observacion: true, proveedor: true, proyecto: true,
+                        subcategoria: false, total_original: false, medio_pago: false,
+                        tipo_factura: false, tags_extra: false, caja_chica: false,
+                        impuestos: false, numero_factura: false, subtotal: false,
+                        cuenta_interna: false, etapa: false, empresa_facturacion: false,
+                        fecha_pago: false, obra: false, cliente: false, factura_cliente: false,
+                        dolar_referencia: false,
+                      };
+                      const ingresoDefaults = {
+                        observacion: true, medio_pago: false, categoria: false,
+                        subcategoria: false, tags_extra: false, dolar_referencia: false,
+                      };
+                      const tipoMov = V.type || 'egreso';
+                      const rawInfo = tipoMov === 'ingreso' ? ingreso_info : comprobante_info;
+                      const defaults = tipoMov === 'ingreso' ? ingresoDefaults : comprobanteDefaults;
+                      const camposCfg = { ...defaults, ...(rawInfo || {}) };
+
+                      // configKey: clave en comprobante_info/ingreso_info. null = siempre visible.
                       const summaryConfig = [
-                        { key: '__creator',     label: 'Creador',         render: () => (<Typography variant="body2">{creatorLabel}</Typography>) },
-                        { key: '__created_at',  label: 'Fecha de creación', render: () => (<Typography variant="body2">{createdAtStr || '—'}</Typography>) },
-                        { key: 'nombre_proveedor', label: 'Proveedor' },
-                        { key: 'fecha_factura',    label: 'Fecha' },
-                        { key: 'type',             label: 'Tipo', format: (v) => (v ? v.toUpperCase() : '-') },
-                        { key: 'categoria',        label: 'Categoría' },
-                        { key: 'subcategoria',     label: 'Subcategoría' },
-                        { key: 'numero_factura',   label: 'N° Factura' },
-                        { key: 'tipo_factura',     label: 'Tipo de Factura' },
-                        { key: 'medio_pago',       label: 'Medio de Pago' },
-                        { key: 'empresa_facturacion', label: 'Empresa de facturación' },
-                        { key: 'factura_cliente', label: 'Factura de cliente', format: yesNo },
-                        { key: 'fecha_pago',          label: 'Fecha de pago' },
-                        { key: 'moneda',           label: 'Moneda' },
-                        { key: 'subtotal',         label: 'Subtotal', format: (v)=>formatCurrency(v,2) },
-                        { key: 'total_original',   label: 'Total Original', format: (v)=>formatCurrency(v,2) },
-                        { key: 'total',            label: 'Total', format: (v)=>formatCurrency(v,2) },
-                        { key: 'estado',           label: 'Estado',
+                        { key: '__creator',     label: 'Creador',         configKey: null, render: () => (<Typography variant="body2">{creatorLabel}</Typography>) },
+                        { key: '__created_at',  label: 'Fecha de creación', configKey: null, render: () => (<Typography variant="body2">{createdAtStr || '—'}</Typography>) },
+                        { key: 'nombre_proveedor', label: 'Proveedor', configKey: 'proveedor' },
+                        { key: 'fecha_factura',    label: 'Fecha', configKey: null },
+                        { key: 'type',             label: 'Tipo', configKey: null, format: (v) => (v ? v.toUpperCase() : '-') },
+                        { key: 'categoria',        label: 'Categoría', configKey: 'categoria' },
+                        { key: 'subcategoria',     label: 'Subcategoría', configKey: 'subcategoria' },
+                        { key: 'numero_factura',   label: 'N° Factura', configKey: 'numero_factura' },
+                        { key: 'tipo_factura',     label: 'Tipo de Factura', configKey: 'tipo_factura' },
+                        { key: 'medio_pago',       label: 'Medio de Pago', configKey: 'medio_pago' },
+                        { key: 'empresa_facturacion', label: 'Empresa de facturación', configKey: 'empresa_facturacion' },
+                        { key: 'factura_cliente', label: 'Factura de cliente', configKey: 'factura_cliente', format: yesNo },
+                        { key: 'fecha_pago',          label: 'Fecha de pago', configKey: 'fecha_pago' },
+                        { key: 'moneda',           label: 'Moneda', configKey: null },
+                        { key: 'subtotal',         label: 'Subtotal', configKey: 'subtotal', format: (v)=>formatCurrency(v,2) },
+                        { key: 'total_original',   label: 'Total Original', configKey: 'total_original', format: (v)=>formatCurrency(v,2) },
+                        { key: 'total',            label: 'Total', configKey: null, format: (v)=>formatCurrency(v,2) },
+                        { key: 'estado',           label: 'Estado', configKey: null,
                           render: () => (
                             <Chip size="small" color={V.estado === 'Pagado' ? 'success' : 'warning'} label={V.estado || 'Pendiente'} sx={{ ml: 0.5 }} />
                           )
                         },
-                        { key: 'caja_chica',       label: 'Caja Chica', format: yesNo },
-                        { key: 'cuenta_interna',   label: 'Cuenta Interna' },
-                        { key: 'etapa',            label: 'Etapa' },
-                        { key: 'obra',    label: 'Obra' },
-                        { key: 'cliente', label: 'Cliente' },
-                        { key: 'tags_extra',       label: 'Tags',
+                        { key: 'caja_chica',       label: 'Caja Chica', configKey: 'caja_chica', format: yesNo },
+                        { key: 'cuenta_interna',   label: 'Cuenta Interna', configKey: 'cuenta_interna' },
+                        { key: 'etapa',            label: 'Etapa', configKey: 'etapa' },
+                        { key: 'obra',    label: 'Obra', configKey: 'obra' },
+                        { key: 'cliente', label: 'Cliente', configKey: 'cliente' },
+                        { key: 'tags_extra',       label: 'Tags', configKey: 'tags_extra',
                           render: () =>
                             Array.isArray(V.tags_extra) && V.tags_extra.length > 0 ? (
                               <Stack direction="row" spacing={0.5} flexWrap="wrap">
@@ -1354,6 +1378,8 @@ function syncMaterialesWithMovs(currentMateriales = [], mmRows = [], { proyecto_
                       ];
 
                       const rows = summaryConfig
+                        // Filtrar por configuración: si tiene configKey, solo mostrar si está habilitado
+                        .filter(({ configKey }) => configKey === null || configKey === undefined || camposCfg[configKey])
                         .filter(({ key, render }) => render || (V[key] !== undefined && String(V[key]).trim() !== ''))
                         .map(({ key, label, format, render }) => (
                           <Stack key={key} direction="row" spacing={0.75} alignItems="center" flexWrap="wrap">
@@ -1362,7 +1388,7 @@ function syncMaterialesWithMovs(currentMateriales = [], mmRows = [], { proyecto_
                           </Stack>
                         ));
 
-                      const impuestosRow = (
+                      const impuestosRow = camposCfg.impuestos ? (
                         <Stack key="__impuestos" spacing={0.5}>
                           <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap">
                             <Typography variant="body2" sx={{ fontWeight: 700, minWidth: 130 }}>Impuestos:</Typography>
@@ -1371,7 +1397,7 @@ function syncMaterialesWithMovs(currentMateriales = [], mmRows = [], { proyecto_
                             </Typography>
                           </Stack>
                         </Stack>
-                      );
+                      ) : null;
 
                       const materialesList = (formik.values.categoria === 'Materiales') && (
                         <Stack key="__materiales" spacing={0.5}>

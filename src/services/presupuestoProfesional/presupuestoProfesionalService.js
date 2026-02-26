@@ -137,10 +137,16 @@ const PresupuestoProfesionalService = {
 
   /* ---------- Importar archivo → plantilla ---------- */
 
-  uploadPlantilla: async (file, empresaId) => {
+  uploadPlantilla: async (files, empresaId, nombrePlantilla, tipoPlantilla) => {
     const formData = new FormData();
-    formData.append('archivo', file);
+    if (Array.isArray(files)) {
+      files.forEach((file) => formData.append('archivos', file));
+    } else {
+      formData.append('archivo', files);
+    }
     formData.append('empresa_id', empresaId);
+    if (nombrePlantilla) formData.append('nombre_plantilla', nombrePlantilla.trim());
+    if (tipoPlantilla) formData.append('tipo_plantilla', tipoPlantilla.trim());
     const res = await api.post(`${BASE}/plantillas/upload`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });

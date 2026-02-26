@@ -1,0 +1,377 @@
+import {
+  Box,
+  Button,
+  Chip,
+  CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  Paper,
+  Stack,
+  Tab,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableRow,
+  Tabs,
+  Typography,
+} from '@mui/material';
+import { ESTADO_LABEL, ESTADO_COLOR, formatCurrency, formatDate, formatPct } from './constants';
+import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
+import PostAddIcon from '@mui/icons-material/PostAdd';
+
+const PresupuestoDetalleDialog = ({
+  open,
+  onClose,
+  data,
+  loading,
+  tab,
+  onTabChange,
+  onExportPDF,
+  exportingPdf,
+  onAgregarAnexo,
+}) => (
+  <Dialog open={open} onClose={onClose} fullWidth maxWidth="lg">
+    <DialogTitle>
+      Detalle: {data?.titulo || '...'}
+      <Chip
+        label={ESTADO_LABEL[data?.estado] || ''}
+        color={ESTADO_COLOR[data?.estado] || 'default'}
+        size="small"
+        sx={{ ml: 2 }}
+      />
+    </DialogTitle>
+    <DialogContent dividers>
+      {loading ? (
+        <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+          <CircularProgress />
+        </Box>
+      ) : data ? (
+        <>
+          <Stack direction="row" spacing={4} mb={2}>
+            <Box>
+              <Typography variant="caption" color="text.secondary">Moneda</Typography>
+              <Typography>{data.moneda}</Typography>
+            </Box>
+            <Box>
+              <Typography variant="caption" color="text.secondary">Total neto</Typography>
+              <Typography fontWeight={600}>
+                {formatCurrency(data.total_neto, data.moneda)}
+              </Typography>
+            </Box>
+            <Box>
+              <Typography variant="caption" color="text.secondary">Proyecto</Typography>
+              <Typography>{data.proyecto_nombre || '—'}</Typography>
+            </Box>
+            <Box>
+              <Typography variant="caption" color="text.secondary">Dirección</Typography>
+              <Typography>{data.obra_direccion || '—'}</Typography>
+            </Box>
+            <Box>
+              <Typography variant="caption" color="text.secondary">Versión</Typography>
+              <Typography>
+                {data.version_actual > 0 ? `v${data.version_actual}` : 'Sin versión congelada'}
+              </Typography>
+            </Box>
+          </Stack>
+
+          <Tabs
+            value={tab}
+            onChange={(_, v) => onTabChange(v)}
+            sx={{ mb: 2, borderBottom: 1, borderColor: 'divider' }}
+          >
+            <Tab label="Rubros actuales" />
+            <Tab label={`Versiones (${(data.versiones || []).length})`} />
+            <Tab label={`Historial (${(data.historial_estados || []).length})`} />
+            <Tab label={`Anexos (${(data.anexos || []).length})`} />
+          </Tabs>
+
+          {tab === 0 && (
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell>#</TableCell>
+                  <TableCell>Rubro</TableCell>
+                  <TableCell align="right">Monto</TableCell>
+                  <TableCell align="right">Incidencia</TableCell>
+                  <TableCell>Tareas</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {(data.rubros || []).map((r, i) => (
+                  <TableRow key={i}>
+                    <TableCell>{r.orden || i + 1}</TableCell>
+                    <TableCell>{r.nombre}</TableCell>
+                    <TableCell align="right">
+                      {formatCurrency(r.monto, data.moneda)}
+                    </TableCell>
+                    <TableCell align="right">{formatPct(r.incidencia_pct)}</TableCell>
+                    <TableCell>
+                      {(r.tareas || []).map((t) => t.descripcion).join(', ') || '—'}
+                    </TableCell>
+                  </TableRow>
+                ))}
+                {(data.rubros || []).length > 0 && (
+                  <TableRow>
+                    <TableCell />
+                    <TableCell>
+                      <Typography fontWeight={600}>TOTAL</Typography>
+                    </TableCell>
+                    <TableCell align="right">
+                      <Typography fontWeight={600}>
+                        {formatCurrency(data.total_neto, data.moneda)}
+                      </Typography>
+                    </TableCell>
+                    <TableCell align="right">
+                      <Typography fontWeight={600}>100%</Typography>
+                    </TableCell>
+                    <TableCell />
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          )}
+
+          {tab === 1 && (
+            <Box>
+              {(data.versiones || []).length === 0 ? (
+                <Typography color="text.secondary">
+                  No hay versiones congeladas todavía.
+                </Typography>
+              ) : (
+                (data.versiones || []).map((v, i) => (
+                  <Paper key={i} variant="outlined" sx={{ p: 2, mb: 1.5 }}>
+                    <Stack direction="row" spacing={2} alignItems="center" mb={1}>
+                      <Chip label={`v${v.numero_version}`} size="small" color="primary" />
+                      <Typography variant="body2">{formatDate(v.fecha)}</Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        {v.motivo || ''}
+                      </Typography>
+                      <Box sx={{ flexGrow: 1 }} />
+                      <Typography variant="body2" fontWeight={600}>
+                        Total: {formatCurrency(v.total_neto, data.moneda)}
+                      </Typography>
+                    </Stack>
+                    {v.equivalencias && (
+                      <Stack direction="row" spacing={3} mb={1}>
+                        {v.equivalencias.valor_cac && (
+                          <Typography variant="caption">
+                            CAC: {v.equivalencias.valor_cac} → {v.equivalencias.monto_en_cac?.toFixed(2)} unidades
+                          </Typography>
+                        )}
+                        {v.equivalencias.tipo_cambio_usd && (
+                          <Typography variant="caption">
+                            USD Blue: ${v.equivalencias.tipo_cambio_usd} → {formatCurrency(v.equivalencias.monto_en_usd, 'USD')}
+                          </Typography>
+                        )}
+                      </Stack>
+                    )}
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>Rubro</TableCell>
+                          <TableCell align="right">Monto</TableCell>
+                          <TableCell align="right">Incidencia</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {(v.rubros_snapshot || []).map((rs, j) => (
+                          <TableRow key={j}>
+                            <TableCell>{rs.nombre}</TableCell>
+                            <TableCell align="right">
+                              {formatCurrency(rs.monto, data.moneda)}
+                            </TableCell>
+                            <TableCell align="right">{formatPct(rs.incidencia_pct)}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </Paper>
+                ))
+              )}
+            </Box>
+          )}
+
+          {tab === 2 && (
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell>Estado</TableCell>
+                  <TableCell>Fecha</TableCell>
+                  <TableCell>Usuario</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {(data.historial_estados || []).length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={3} align="center">
+                      <Typography color="text.secondary">Sin historial.</Typography>
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  (data.historial_estados || []).map((h, i) => (
+                    <TableRow key={i}>
+                      <TableCell>
+                        <Chip
+                          label={ESTADO_LABEL[h.estado] || h.estado}
+                          color={ESTADO_COLOR[h.estado] || 'default'}
+                          size="small"
+                        />
+                      </TableCell>
+                      <TableCell>{formatDate(h.fecha)}</TableCell>
+                      <TableCell>{h.user_id || '—'}</TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          )}
+
+          {tab === 3 && (
+            <Box>
+              {onAgregarAnexo && (
+                <Stack direction="row" justifyContent="flex-end" mb={2}>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    startIcon={<PostAddIcon />}
+                    onClick={() => onAgregarAnexo(data)}
+                  >
+                    Agregar anexo
+                  </Button>
+                </Stack>
+              )}
+              {(data.anexos || []).length === 0 ? (
+                <Typography color="text.secondary">
+                  No hay anexos. Usá el botón de arriba para agregar uno.
+                </Typography>
+              ) : (
+                <>
+                  <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
+                    <Typography variant="subtitle2" gutterBottom>Resumen contractual</Typography>
+                    <Stack direction="row" spacing={4} flexWrap="wrap">
+                      <Box>
+                        <Typography variant="caption" color="text.secondary">Total original</Typography>
+                        <Typography fontWeight={600}>
+                          {formatCurrency(data.total_neto, data.moneda)}
+                        </Typography>
+                      </Box>
+                      <Box>
+                        <Typography variant="caption" color="text.secondary">Impacto anexos</Typography>
+                        <Typography fontWeight={600}>
+                          {formatCurrency(
+                            (data.anexos || []).reduce((s, a) => s + (Number(a.monto_diferencia) || 0), 0),
+                            data.moneda
+                          )}
+                        </Typography>
+                      </Box>
+                      <Box>
+                        <Typography variant="caption" color="text.secondary">Total actualizado</Typography>
+                        <Typography fontWeight={700} color="primary">
+                          {formatCurrency(
+                            (data.total_neto || 0) +
+                            (data.anexos || []).reduce((s, a) => s + (Number(a.monto_diferencia) || 0), 0),
+                            data.moneda
+                          )}
+                        </Typography>
+                      </Box>
+                    </Stack>
+                  </Paper>
+                  {(data.anexos || []).map((ax, i) => (
+                    <Paper key={i} variant="outlined" sx={{ p: 2, mb: 1.5 }}>
+                      <Stack direction="row" spacing={2} alignItems="center" mb={1}>
+                        <Chip label={`Anexo #${ax.numero}`} size="small" color="secondary" />
+                        <Chip
+                          label={ax.tipo}
+                          size="small"
+                          variant="outlined"
+                          color={
+                            ax.tipo === 'adicion'
+                              ? 'success'
+                              : ax.tipo === 'deduccion'
+                              ? 'error'
+                              : 'info'
+                          }
+                        />
+                        <Typography variant="body2">{formatDate(ax.fecha)}</Typography>
+                        <Box sx={{ flexGrow: 1 }} />
+                        <Typography variant="body2" fontWeight={600}>
+                          Impacto: {formatCurrency(ax.monto_diferencia, data.moneda)}
+                        </Typography>
+                      </Stack>
+                      <Typography variant="body2" gutterBottom>
+                        <strong>Motivo:</strong> {ax.motivo}
+                      </Typography>
+                      {ax.detalle && (
+                        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                          {ax.detalle}
+                        </Typography>
+                      )}
+                      {(ax.rubros_afectados || []).length > 0 && (
+                        <Table size="small" sx={{ mt: 1 }}>
+                          <TableHead>
+                            <TableRow>
+                              <TableCell>Rubro</TableCell>
+                              <TableCell align="right">Monto anterior</TableCell>
+                              <TableCell align="right">Monto nuevo</TableCell>
+                            </TableRow>
+                          </TableHead>
+                          <TableBody>
+                            {ax.rubros_afectados.map((ra, j) => (
+                              <TableRow key={j}>
+                                <TableCell>{ra.rubro_nombre}</TableCell>
+                                <TableCell align="right">
+                                  {formatCurrency(ra.monto_anterior, data.moneda)}
+                                </TableCell>
+                                <TableCell align="right">
+                                  {formatCurrency(ra.monto_nuevo, data.moneda)}
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      )}
+                    </Paper>
+                  ))}
+                </>
+              )}
+            </Box>
+          )}
+
+          {data.notas_texto && (
+            <Box sx={{ mt: 3 }}>
+              <Typography variant="subtitle2">Notas / Condiciones</Typography>
+              <Paper variant="outlined" sx={{ p: 2, mt: 1, whiteSpace: 'pre-wrap' }}>
+                <Typography variant="body2">{data.notas_texto}</Typography>
+              </Paper>
+            </Box>
+          )}
+        </>
+      ) : null}
+    </DialogContent>
+    <DialogActions>
+      {onExportPDF && (
+        <Button
+          variant="contained"
+          color="primary"
+          startIcon={
+            exportingPdf ? (
+              <CircularProgress size={18} color="inherit" />
+            ) : (
+              <PictureAsPdfIcon fontSize="small" />
+            )
+          }
+          onClick={onExportPDF}
+          disabled={exportingPdf || !data?.rubros?.length}
+        >
+          {exportingPdf ? 'Generando PDF…' : 'Exportar PDF'}
+        </Button>
+      )}
+      <Button onClick={onClose}>Cerrar</Button>
+    </DialogActions>
+  </Dialog>
+);
+
+export default PresupuestoDetalleDialog;
