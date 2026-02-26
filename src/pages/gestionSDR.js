@@ -297,22 +297,6 @@ const GestionSDRPage = () => {
             cargarContactos();
             cargarReuniones();
             cargarMetricas();
-            // Cargar SDRs para el filtro
-            (async () => {
-                try {
-                    const snapshot = await getDocs(query(collection(db, 'profile'), where('sdr', '==', true)));
-                    const sdrs = snapshot.docs
-                        .filter(doc => doc.data().user_id)
-                        .map(doc => {
-                            const d = doc.data();
-                            return {
-                                id: d.user_id,
-                                nombre: `${d.firstName || ''} ${d.lastName || ''}`.trim() || d.email
-                            };
-                        });
-                    setSdrsParaFiltro(sdrs);
-                } catch (e) { console.error('Error cargando SDRs para filtro:', e); }
-            })();
             prevFilters.current = { page, filtros: JSON.stringify(filtros) };
             return;
         }
