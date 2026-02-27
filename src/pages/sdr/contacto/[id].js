@@ -468,6 +468,22 @@ const ContactoSDRDetailPage = () => {
         }
     };
 
+    const handleToggleQuiereReunion = async () => {
+        if (!contacto?._id) return;
+        setGuardandoScoring(true);
+        const nuevoValor = contacto.precalificacionBot === 'quiere_meet' ? 'calificado' : 'quiere_meet';
+        try {
+            await SDRService.actualizarContacto(contacto._id, { precalificacionBot: nuevoValor });
+            setContacto(prev => ({ ...prev, precalificacionBot: nuevoValor }));
+            mostrarSnackbar(nuevoValor === 'quiere_meet' ? 'Marcado como quiere reunión ✓' : 'Desmarcado quiere reunión');
+            cargarContacto();
+        } catch (err) {
+            mostrarSnackbar('Error al actualizar', 'error');
+        } finally {
+            setGuardandoScoring(false);
+        }
+    };
+
     const handleGuardarProximoContacto = async (fecha) => {
         if (!contacto?._id) return;
         setGuardandoProximo(true);
@@ -799,21 +815,8 @@ const ContactoSDRDetailPage = () => {
 
     const topNavActions = contacto ? (
         <Stack direction="row" spacing={0.5} alignItems="center" sx={{ flexShrink: 0 }}>
-            <EstadoChipEditable
-                estado={contacto.estado}
-                contactoId={contacto._id}
-                onEstadoCambiado={cargarContacto}
-                mostrarSnackbar={mostrarSnackbar}
-            />
-            {!isMobile && contacto.segmento && (
-                <Chip size="small" variant="outlined" label={contacto.segmento === 'outbound' ? 'Outbound' : 'Inbound'} />
-            )}
-            {!isMobile && contacto.sdrAsignadoNombre && (
-                <Chip size="small" icon={<PersonIcon />} label={contacto.sdrAsignadoNombre} color="primary" variant="outlined" />
-            )}
             {contactoIds.length > 1 && (
                 <>
-                    {!isMobile && <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />}
                     <IconButton onClick={() => navegar('anterior')} disabled={!puedeAnterior} size="small">
                         <ChevronLeftIcon />
                     </IconButton>
@@ -825,6 +828,7 @@ const ContactoSDRDetailPage = () => {
                     <IconButton onClick={() => navegar('siguiente')} disabled={!puedeSiguiente} size="small">
                         <ChevronRightIcon />
                     </IconButton>
+                    <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
                 </>
             )}
             <Tooltip title="Refrescar">
@@ -832,9 +836,15 @@ const ContactoSDRDetailPage = () => {
                     <RefreshIcon fontSize="small" />
                 </IconButton>
             </Tooltip>
-            <IconButton size="small" onClick={() => router.back()}>
-                <ArrowBackIcon fontSize="small" />
-            </IconButton>
+            <Button
+                startIcon={<ArrowBackIcon />}
+                size="small"
+                variant="outlined"
+                onClick={() => router.push('/contactosSDR')}
+                sx={{ textTransform: 'none', ml: 0.5 }}
+            >
+                Volver a contactos
+            </Button>
         </Stack>
     ) : null;
 
@@ -911,66 +921,88 @@ const ContactoSDRDetailPage = () => {
                         {/* Card: Info del contacto */}
                         <Grid item xs={12} sm={6} md={4}>
                             <Card variant="outlined" sx={{ height: '100%' }}>
-                                <CardContent>
-                                    <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1.5}>
-                                        <Typography variant="subtitle2" color="text.secondary">
-                                            Información de contacto
+                                <CardContent sx={{ pb: '12px !important' }}>
+                                    {/* Estado + Segmento */}
+                                    <Stack direction="row" spacing={0.5} alignItems="center" sx={{ mb: 1, flexWrap: 'wrap', gap: 0.5 }}>
+                                        <EstadoChipEditable
+                                            estado={contacto.estado}
+                                            contactoId={contacto._id}
+                                            onEstadoCambiado={cargarContacto}
+                                            mostrarSnackbar={mostrarSnackbar}
+                                        />
+                                        {contacto.segmento && (
+                                            <Chip size="small" variant="outlined" label={contacto.segmento === 'outbound' ? '🟠 Outbound' : '🟢 Inbound'} color={contacto.segmento === 'inbound' ? 'info' : 'warning'} />
+                                        )}
+                                    </Stack>
+
+                                    {/* SDR asignado */}
+                                    {contacto.sdrAsignadoNombre && (
+                                        <Chip size="small" icon={<PersonIcon />} label={contacto.sdrAsignadoNombre} color="primary" variant="outlined" sx={{ mb: 1.5 }} />
+                                    )}
+
+                                    <Divider sx={{ mb: 1.5 }} />
+
+                                    {/* Info de contacto */}
+                                    <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1}>
+                                        <Typography variant="caption" fontWeight={600} color="text.secondary" textTransform="uppercase" letterSpacing={0.5}>
+                                            Contacto
                                         </Typography>
                                         <Button
                                             size="small"
                                             startIcon={<EditIcon />}
                                             onClick={() => setModalEditarContacto(true)}
+                                            sx={{ minWidth: 'auto', fontSize: '0.7rem', textTransform: 'none' }}
                                         >
                                             Editar
                                         </Button>
                                     </Stack>
-                                    <Stack spacing={1.5}>
+                                    <Stack spacing={0.8}>
                                         {(contacto.empresa || contacto.tamanoEmpresa) && (
                                             <Stack direction="row" spacing={1} alignItems="center">
-                                                <BusinessIcon fontSize="small" color="action" />
-                                                <Typography variant="body2">
+                                                <BusinessIcon sx={{ fontSize: 16, color: 'text.disabled' }} />
+                                                <Typography variant="body2" fontSize="0.82rem">
                                                     {contacto.empresa || 'Sin empresa'}
                                                     {contacto.tamanoEmpresa && (
-                                                        <Chip size="small" label={contacto.tamanoEmpresa} sx={{ ml: 0.5, height: 18, fontSize: '0.7rem' }} />
+                                                        <Chip size="small" label={contacto.tamanoEmpresa} sx={{ ml: 0.5, height: 18, fontSize: '0.65rem' }} />
                                                     )}
                                                 </Typography>
                                             </Stack>
                                         )}
                                         {contacto.cargo && (
                                             <Stack direction="row" spacing={1} alignItems="center">
-                                                <PersonIcon fontSize="small" color="action" />
-                                                <Typography variant="body2">{contacto.cargo}</Typography>
+                                                <PersonIcon sx={{ fontSize: 16, color: 'text.disabled' }} />
+                                                <Typography variant="body2" fontSize="0.82rem">{contacto.cargo}</Typography>
                                             </Stack>
                                         )}
                                         <Stack direction="row" spacing={1} alignItems="center">
-                                            <PhoneIcon fontSize="small" color="action" />
-                                            <Typography variant="body2">{contacto.telefono}</Typography>
+                                            <PhoneIcon sx={{ fontSize: 16, color: 'text.disabled' }} />
+                                            <Typography variant="body2" fontSize="0.82rem">{contacto.telefono}</Typography>
                                         </Stack>
                                         {contacto.telefonosSecundarios?.map((tel, i) => (
-                                            <Stack key={i} direction="row" spacing={1} alignItems="center">
-                                                <PhoneIcon fontSize="small" color="action" sx={{ opacity: 0.5 }} />
-                                                <Typography variant="body2">
+                                            <Stack key={i} direction="row" spacing={1} alignItems="center" sx={{ pl: 0.5 }}>
+                                                <PhoneIcon sx={{ fontSize: 14, color: 'text.disabled', opacity: 0.5 }} />
+                                                <Typography variant="body2" fontSize="0.78rem" color="text.secondary">
                                                     {tel.numero}
-                                                    <Chip size="small" label={tel.etiqueta} sx={{ ml: 0.5, height: 18, fontSize: '0.7rem' }} />
+                                                    <Chip size="small" label={tel.etiqueta} sx={{ ml: 0.5, height: 16, fontSize: '0.6rem' }} />
                                                 </Typography>
                                             </Stack>
                                         ))}
                                         {contacto.email && (
                                             <Stack direction="row" spacing={1} alignItems="center">
-                                                <EmailIcon fontSize="small" color="action" />
-                                                <Typography variant="body2">{contacto.email}</Typography>
+                                                <EmailIcon sx={{ fontSize: 16, color: 'text.disabled' }} />
+                                                <Typography variant="body2" fontSize="0.82rem">{contacto.email}</Typography>
                                             </Stack>
                                         )}
                                     </Stack>
 
                                     {/* Botones de contacto */}
-                                    <Stack direction="row" spacing={1} mt={2}>
+                                    <Stack direction="row" spacing={1} mt={1.5}>
                                         <Button
                                             variant="contained"
                                             size="small"
                                             startIcon={<PhoneIcon />}
                                             onClick={handleLlamar}
-                                            sx={{ bgcolor: '#4caf50', '&:hover': { bgcolor: '#388e3c' }, flex: 1 }}
+                                            sx={{ bgcolor: '#4caf50', '&:hover': { bgcolor: '#388e3c' }, flex: 1, py: 0.6 }}
                                         >
                                             Llamar
                                         </Button>
@@ -979,33 +1011,50 @@ const ContactoSDRDetailPage = () => {
                                             size="small"
                                             startIcon={<WhatsAppIcon />}
                                             onClick={handleWhatsApp}
-                                            sx={{ bgcolor: '#25D366', '&:hover': { bgcolor: '#128C7E' }, flex: 1 }}
+                                            sx={{ bgcolor: '#25D366', '&:hover': { bgcolor: '#128C7E' }, flex: 1, py: 0.6 }}
                                         >
                                             WhatsApp
                                         </Button>
                                     </Stack>
 
                                     {/* Datos del Bot */}
-                                    {contacto.datosBot && (contacto.datosBot.rubro || contacto.datosBot.interes || contacto.datosBot.saludoInicial) && (
-                                        <Box sx={{ mt: 2, p: 1.5, bgcolor: 'grey.50', borderRadius: 1 }}>
-                                            <Stack direction="row" spacing={1} alignItems="center" mb={0.5}>
-                                                <SmartToyIcon fontSize="small" color="action" />
-                                                <Typography variant="caption" fontWeight={600}>Datos del Bot</Typography>
-                                            </Stack>
-                                            <Stack spacing={0.3}>
-                                                {contacto.datosBot.rubro && (
-                                                    <Typography variant="caption" color="text.secondary">🏗️ {contacto.datosBot.rubro}</Typography>
-                                                )}
-                                                {contacto.datosBot.interes && (
-                                                    <Typography variant="caption" color="text.secondary">💡 {contacto.datosBot.interes}</Typography>
-                                                )}
-                                                {contacto.datosBot.saludoInicial && (
-                                                    <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic' }}>
-                                                        💬 "{contacto.datosBot.saludoInicial}"
+                                    {contacto.datosBot && (contacto.datosBot.rubro || contacto.datosBot.interes || contacto.datosBot.saludoInicial || contacto.datosBot.cantidadObras) && (
+                                        <>
+                                        <Divider sx={{ my: 1.5 }} />
+                                        <Stack direction="row" spacing={1} alignItems="center" mb={0.8}>
+                                            <SmartToyIcon sx={{ fontSize: 16, color: 'text.disabled' }} />
+                                            <Typography variant="caption" fontWeight={600} color="text.secondary" textTransform="uppercase" letterSpacing={0.5}>
+                                                Datos del Bot
+                                            </Typography>
+                                        </Stack>
+                                        <Stack spacing={0.5}>
+                                            {contacto.datosBot.rubro && (
+                                                <Stack direction="row" spacing={0.8} alignItems="center">
+                                                    <Typography variant="caption" color="text.secondary" sx={{ minWidth: 50, fontWeight: 500 }}>Rubro</Typography>
+                                                    <Typography variant="caption">{contacto.datosBot.rubro}</Typography>
+                                                </Stack>
+                                            )}
+                                            {contacto.datosBot.cantidadObras && (
+                                                <Stack direction="row" spacing={0.8} alignItems="center">
+                                                    <Typography variant="caption" color="text.secondary" sx={{ minWidth: 50, fontWeight: 500 }}>Obras</Typography>
+                                                    <Typography variant="caption">{contacto.datosBot.cantidadObras}</Typography>
+                                                </Stack>
+                                            )}
+                                            {contacto.datosBot.interes && (
+                                                <Stack direction="row" spacing={0.8} alignItems="center">
+                                                    <Typography variant="caption" color="text.secondary" sx={{ minWidth: 50, fontWeight: 500 }}>Interés</Typography>
+                                                    <Typography variant="caption">{contacto.datosBot.interes}</Typography>
+                                                </Stack>
+                                            )}
+                                            {contacto.datosBot.saludoInicial && (
+                                                <Box sx={{ mt: 0.3, p: 0.8, bgcolor: 'action.hover', borderRadius: 0.5, borderLeft: 2, borderColor: 'divider' }}>
+                                                    <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic', fontSize: '0.72rem', lineHeight: 1.4 }}>
+                                                        "{contacto.datosBot.saludoInicial}"
                                                     </Typography>
-                                                )}
-                                            </Stack>
-                                        </Box>
+                                                </Box>
+                                            )}
+                                        </Stack>
+                                        </>
                                     )}
                                 </CardContent>
                             </Card>
@@ -1059,6 +1108,23 @@ const ContactoSDRDetailPage = () => {
                                                 sx={{ cursor: 'pointer' }}
                                             />
                                         ))}
+                                    </Stack>
+
+                                    {/* Quiere reunión */}
+                                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                                        Quiere reunión
+                                    </Typography>
+                                    <Stack direction="row" spacing={0.5} sx={{ mb: 1.5 }}>
+                                        <Chip
+                                            size="small"
+                                            icon={<EventIcon sx={{ fontSize: 14 }} />}
+                                            label={contacto.precalificacionBot === 'quiere_meet' ? '✅ Sí' : '❌ No'}
+                                            color={contacto.precalificacionBot === 'quiere_meet' ? 'primary' : 'default'}
+                                            variant={contacto.precalificacionBot === 'quiere_meet' ? 'filled' : 'outlined'}
+                                            onClick={handleToggleQuiereReunion}
+                                            disabled={guardandoScoring}
+                                            sx={{ cursor: 'pointer' }}
+                                        />
                                     </Stack>
 
                                     {/* Score + Prioridad manual + Bot */}
@@ -1260,10 +1326,118 @@ const ContactoSDRDetailPage = () => {
                         </Paper>
                     )}
 
+                    {/* ==================== HISTORIAL + CADENCIA SIDE BY SIDE (desktop) ==================== */}
+                    <Grid container spacing={2} sx={{ display: { xs: 'none', md: 'flex' } }}>
+                        {/* COLUMNA IZQUIERDA: Comentario + Historial */}
+                        <Grid item xs={12} md={6}>
+
+                    {/* ==================== COMENTARIO RÁPIDO ==================== */}
+                        <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
+                            <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                                Agregar comentario
+                            </Typography>
+                            <Stack direction="row" spacing={1}>
+                                <TextField
+                                    fullWidth
+                                    size="small"
+                                    placeholder="Escribe un comentario rápido..."
+                                    value={nuevoComentario}
+                                    onChange={(e) => setNuevoComentario(e.target.value)}
+                                    onKeyPress={(e) => {
+                                        if (e.key === 'Enter' && !e.shiftKey) {
+                                            e.preventDefault();
+                                            handleEnviarComentario();
+                                        }
+                                    }}
+                                    disabled={enviandoComentario}
+                                    multiline
+                                    maxRows={3}
+                                />
+                                <Button
+                                    variant="contained"
+                                    size="small"
+                                    onClick={handleEnviarComentario}
+                                    disabled={!nuevoComentario.trim() || enviandoComentario}
+                                    sx={{ minWidth: 'auto', px: 2 }}
+                                >
+                                    {enviandoComentario ? <CircularProgress size={20} /> : <SendIcon />}
+                                </Button>
+                            </Stack>
+                        </Paper>
+
+                    {/* ==================== HISTORIAL INLINE (desktop) ==================== */}
+                    {historial.length > 0 && (
+                        <Paper variant="outlined" sx={{ p: 2 }}>
+                            <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1.5}>
+                                <Stack direction="row" spacing={1} alignItems="center">
+                                    <HistoryIcon fontSize="small" color="action" />
+                                    <Typography variant="subtitle2" color="text.secondary">
+                                        Historial reciente ({historial.length})
+                                    </Typography>
+                                </Stack>
+                                <Button
+                                    size="small"
+                                    variant="text"
+                                    onClick={() => setTabDesktop(1)}
+                                    sx={{ textTransform: 'none', fontSize: '0.75rem' }}
+                                >
+                                    Ver todo →
+                                </Button>
+                            </Stack>
+                            <Stack spacing={1}>
+                                {historial.slice(0, 5).map((evento) => {
+                                    const colors = getEventoColor(evento.tipo);
+                                    return (
+                                        <Paper
+                                            key={evento._id}
+                                            elevation={0}
+                                            sx={{ p: 1, bgcolor: colors.bg, borderLeft: 3, borderColor: colors.border }}
+                                        >
+                                            <Stack direction="row" spacing={1} alignItems="flex-start">
+                                                <Avatar sx={{ width: 24, height: 24, bgcolor: colors.border, color: 'white' }}>
+                                                    {getEventoIcon(evento.tipo)}
+                                                </Avatar>
+                                                <Box sx={{ flex: 1, minWidth: 0 }}>
+                                                    <Typography variant="body2" fontWeight={500} fontSize="0.8rem">
+                                                        {evento.descripcion}
+                                                    </Typography>
+                                                    {evento.nota && (
+                                                        <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic', display: 'block' }}>
+                                                            &ldquo;{evento.nota.length > 120 ? evento.nota.substring(0, 120) + '...' : evento.nota}&rdquo;
+                                                        </Typography>
+                                                    )}
+                                                    <Typography variant="caption" color="text.secondary">
+                                                        {new Date(evento.createdAt).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                                                        {evento.sdrNombre && ` • ${evento.sdrNombre}`}
+                                                    </Typography>
+                                                </Box>
+                                            </Stack>
+                                        </Paper>
+                                    );
+                                })}
+                                {historial.length > 5 && (
+                                    <Button
+                                        size="small"
+                                        variant="text"
+                                        onClick={() => setTabDesktop(1)}
+                                        sx={{ textTransform: 'none', fontSize: '0.75rem', alignSelf: 'center' }}
+                                    >
+                                        Ver {historial.length - 5} evento(s) más →
+                                    </Button>
+                                )}
+                            </Stack>
+                        </Paper>
+                    )}
+
+                        </Grid>
+
+                        {/* COLUMNA DERECHA: Cadencia */}
+                        <Grid item xs={12} md={6}>
+
                     {/* ==================== CADENCIA - WIZARD ==================== */}
                     {/* En mobile la cadencia va en la barra fija de abajo */}
                     {contacto.cadenciaActiva?.cadenciaId && !contacto.cadenciaActiva?.completada ? (
-                        <Paper variant="outlined" sx={{ p: 2, mb: 3, borderColor: 'primary.main', borderWidth: 2, display: { xs: 'none', md: 'block' } }}>
+                        <Paper variant="outlined" sx={{ p: 2, borderColor: 'primary.main', borderWidth: 2 }}>
                             {/* Header */}
                             <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
                                 <Stack direction="row" spacing={1} alignItems="center">
@@ -1748,7 +1922,7 @@ const ContactoSDRDetailPage = () => {
                     ) : (
                         /* Sin cadencia activa: mostrar botón para asignar */
                         cadencias.length > 0 && (
-                            <Paper variant="outlined" sx={{ p: 2, mb: 3 }}>
+                            <Paper variant="outlined" sx={{ p: 2 }}>
                                 <Stack direction="row" spacing={1} alignItems="center" mb={1}>
                                     <PlayArrowIcon fontSize="small" color="action" />
                                     <Typography variant="subtitle2" color="text.secondary">
@@ -1774,6 +1948,109 @@ const ContactoSDRDetailPage = () => {
                                 </Stack>
                             </Paper>
                         )
+                    )}
+
+                        </Grid>
+                    </Grid>
+                    {/* ==================== FIN GRID DESKTOP HISTORIAL + CADENCIA ==================== */}
+
+                    {/* ==================== MOBILE: COMENTARIO + HISTORIAL ==================== */}
+                    {isMobile && (
+                        <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
+                            <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                                Agregar comentario
+                            </Typography>
+                            <Stack direction="row" spacing={1}>
+                                <TextField
+                                    fullWidth
+                                    size="small"
+                                    placeholder="Escribe un comentario rápido..."
+                                    value={nuevoComentario}
+                                    onChange={(e) => setNuevoComentario(e.target.value)}
+                                    onKeyPress={(e) => {
+                                        if (e.key === 'Enter' && !e.shiftKey) {
+                                            e.preventDefault();
+                                            handleEnviarComentario();
+                                        }
+                                    }}
+                                    disabled={enviandoComentario}
+                                    multiline
+                                    maxRows={3}
+                                />
+                                <Button
+                                    variant="contained"
+                                    size="small"
+                                    onClick={handleEnviarComentario}
+                                    disabled={!nuevoComentario.trim() || enviandoComentario}
+                                    sx={{ minWidth: 'auto', px: 2 }}
+                                >
+                                    {enviandoComentario ? <CircularProgress size={20} /> : <SendIcon />}
+                                </Button>
+                            </Stack>
+                        </Paper>
+                    )}
+
+                    {isMobile && historial.length > 0 && (
+                        <Paper variant="outlined" sx={{ p: 2, mb: 3 }}>
+                            <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1.5}>
+                                <Stack direction="row" spacing={1} alignItems="center">
+                                    <HistoryIcon fontSize="small" color="action" />
+                                    <Typography variant="subtitle2" color="text.secondary">
+                                        Historial reciente ({historial.length})
+                                    </Typography>
+                                </Stack>
+                                <Button
+                                    size="small"
+                                    variant="text"
+                                    onClick={() => setTabMobile(1)}
+                                    sx={{ textTransform: 'none', fontSize: '0.75rem' }}
+                                >
+                                    Ver todo →
+                                </Button>
+                            </Stack>
+                            <Stack spacing={1}>
+                                {historial.slice(0, 3).map((evento) => {
+                                    const colors = getEventoColor(evento.tipo);
+                                    return (
+                                        <Paper
+                                            key={evento._id}
+                                            elevation={0}
+                                            sx={{ p: 1, bgcolor: colors.bg, borderLeft: 3, borderColor: colors.border }}
+                                        >
+                                            <Stack direction="row" spacing={1} alignItems="flex-start">
+                                                <Avatar sx={{ width: 24, height: 24, bgcolor: colors.border, color: 'white' }}>
+                                                    {getEventoIcon(evento.tipo)}
+                                                </Avatar>
+                                                <Box sx={{ flex: 1, minWidth: 0 }}>
+                                                    <Typography variant="body2" fontWeight={500} fontSize="0.8rem">
+                                                        {evento.descripcion}
+                                                    </Typography>
+                                                    {evento.nota && (
+                                                        <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic', display: 'block' }}>
+                                                            &ldquo;{evento.nota.length > 80 ? evento.nota.substring(0, 80) + '...' : evento.nota}&rdquo;
+                                                        </Typography>
+                                                    )}
+                                                    <Typography variant="caption" color="text.secondary">
+                                                        {new Date(evento.createdAt).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                                                        {evento.sdrNombre && ` • ${evento.sdrNombre}`}
+                                                    </Typography>
+                                                </Box>
+                                            </Stack>
+                                        </Paper>
+                                    );
+                                })}
+                                {historial.length > 3 && (
+                                    <Button
+                                        size="small"
+                                        variant="text"
+                                        onClick={() => setTabMobile(1)}
+                                        sx={{ textTransform: 'none', fontSize: '0.75rem', alignSelf: 'center' }}
+                                    >
+                                        Ver {historial.length - 3} evento(s) más →
+                                    </Button>
+                                )}
+                            </Stack>
+                        </Paper>
                     )}
 
                     {/* ==================== FIN TAB INFO ==================== */}

@@ -48,7 +48,8 @@ import * as XLSX from 'xlsx';
 
 // Componente compartido del Drawer
 import DrawerDetalleContactoSDR, { EstadoChip } from 'src/components/sdr/DrawerDetalleContactoSDR';
-import { ESTADOS_CONTACTO as ESTADOS_SDR, ESTADOS_REUNION } from 'src/constant/sdrConstants';
+import { ESTADOS_CONTACTO as ESTADOS_SDR, ESTADOS_REUNION, PLANES_SORBY, PRECALIFICACION_BOT, INTENCIONES_COMPRA } from 'src/constant/sdrConstants';
+import SortIcon from '@mui/icons-material/Sort';
 
 // ==================== CONSTANTES ====================
 
@@ -141,9 +142,14 @@ const GestionSDRPage = () => {
         busqueda: '',
         soloSinAsignar: false,
         statusNotion: '',
+        precalificacionBot: '',
+        planEstimado: '',
+        intencionCompra: '',
+        proximoContactoHoy: false,
         ordenarPor: 'updatedAt',
         ordenDir: 'desc'
     });
+    const [mostrarFiltrosAvanzados, setMostrarFiltrosAvanzados] = useState(false);
     const [page, setPage] = useState(1);
     const [historialVersion, setHistorialVersion] = useState(0);
     
@@ -668,49 +674,63 @@ const GestionSDRPage = () => {
                             }}
                             sx={{ flex: 1 }}
                         />
-                        <IconButton onClick={() => setModalImportar(true)}>
-                            <UploadFileIcon />
+                        <IconButton onClick={() => setMostrarFiltrosAvanzados(v => !v)} color={mostrarFiltrosAvanzados ? 'primary' : 'default'}>
+                            <FilterListIcon />
                         </IconButton>
                         <IconButton onClick={(e) => setMenuAnchor(e.currentTarget)}>
                             <MoreVertIcon />
                         </IconButton>
                     </Stack>
-                    <Stack direction="row" spacing={1} sx={{ overflowX: 'auto', pb: 1 }}>
-                        <Chip
-                            label="Todos"
-                            size="small"
-                            color={!filtros.estado ? 'primary' : 'default'}
-                            variant={!filtros.estado ? 'filled' : 'outlined'}
-                            onClick={() => setFiltros({ ...filtros, estado: '' })}
-                        />
+                    {/* Estado */}
+                    <Stack direction="row" spacing={0.5} sx={{ overflowX: 'auto', pb: 0.5 }}>
+                        <Chip label="Todos" size="small" color={!filtros.estado ? 'primary' : 'default'} variant={!filtros.estado ? 'filled' : 'outlined'} onClick={() => setFiltros({ ...filtros, estado: '' })} />
                         {Object.entries(ESTADOS_CONTACTO).map(([key, { label, color }]) => (
-                            <Chip
-                                key={key}
-                                label={label}
-                                size="small"
-                                color={filtros.estado === key ? color : 'default'}
-                                variant={filtros.estado === key ? 'filled' : 'outlined'}
-                                onClick={() => setFiltros({ ...filtros, estado: key })}
-                            />
-                        ))}
-                        <Chip
-                            label="Sin asignar"
-                            size="small"
-                            color={filtros.soloSinAsignar ? 'secondary' : 'default'}
-                            variant={filtros.soloSinAsignar ? 'filled' : 'outlined'}
-                            onClick={() => setFiltros({ ...filtros, soloSinAsignar: !filtros.soloSinAsignar })}
-                        />
-                        {sdrsDisponibles.map((sdr) => (
-                            <Chip
-                                key={sdr.id}
-                                label={sdr.nombre}
-                                size="small"
-                                color={filtros.sdrAsignado === sdr.id ? 'info' : 'default'}
-                                variant={filtros.sdrAsignado === sdr.id ? 'filled' : 'outlined'}
-                                onClick={() => setFiltros({ ...filtros, sdrAsignado: filtros.sdrAsignado === sdr.id ? '' : sdr.id })}
-                            />
+                            <Chip key={key} label={label} size="small" color={filtros.estado === key ? color : 'default'} variant={filtros.estado === key ? 'filled' : 'outlined'} onClick={() => setFiltros({ ...filtros, estado: filtros.estado === key ? '' : key })} />
                         ))}
                     </Stack>
+                    {/* Ordenar */}
+                    <Stack direction="row" spacing={0.5} sx={{ overflowX: 'auto', py: 0.5 }}>
+                        <Typography variant="caption" color="text.secondary" sx={{ alignSelf: 'center', whiteSpace: 'nowrap' }}>Ordenar:</Typography>
+                        <Chip label="Vencidos" size="small" color={filtros.ordenarPor === 'proximoContacto' && filtros.ordenDir === 'asc' ? 'primary' : 'default'} variant={filtros.ordenarPor === 'proximoContacto' && filtros.ordenDir === 'asc' ? 'filled' : 'outlined'} onClick={() => setFiltros({ ...filtros, ordenarPor: 'proximoContacto', ordenDir: 'asc' })} />
+                        <Chip label="Más nuevos" size="small" color={filtros.ordenarPor === 'createdAt' ? 'primary' : 'default'} variant={filtros.ordenarPor === 'createdAt' ? 'filled' : 'outlined'} onClick={() => setFiltros({ ...filtros, ordenarPor: 'createdAt', ordenDir: 'desc' })} />
+                        <Chip label="Últ. actividad" size="small" color={filtros.ordenarPor === 'ultimaAccion' ? 'primary' : 'default'} variant={filtros.ordenarPor === 'ultimaAccion' ? 'filled' : 'outlined'} onClick={() => setFiltros({ ...filtros, ordenarPor: 'ultimaAccion', ordenDir: 'desc' })} />
+                        <Chip label="Prioridad" size="small" color={filtros.ordenarPor === 'prioridad' ? 'primary' : 'default'} variant={filtros.ordenarPor === 'prioridad' ? 'filled' : 'outlined'} onClick={() => setFiltros({ ...filtros, ordenarPor: 'prioridad', ordenDir: 'desc' })} />
+                    </Stack>
+                    {/* Filtros avanzados colapsables */}
+                    <Collapse in={mostrarFiltrosAvanzados}>
+                        <Stack spacing={0.5} sx={{ pt: 0.5 }}>
+                            {/* SDR */}
+                            <Stack direction="row" spacing={0.5} sx={{ overflowX: 'auto' }}>
+                                <Typography variant="caption" color="text.secondary" sx={{ alignSelf: 'center', whiteSpace: 'nowrap' }}>SDR:</Typography>
+                                <Chip label="Sin asignar" size="small" color={filtros.soloSinAsignar ? 'secondary' : 'default'} variant={filtros.soloSinAsignar ? 'filled' : 'outlined'} onClick={() => setFiltros({ ...filtros, soloSinAsignar: !filtros.soloSinAsignar })} />
+                                {sdrsDisponibles.map((sdr) => (
+                                    <Chip key={sdr.id} label={sdr.nombre.split(' ')[0]} size="small" color={filtros.sdrAsignado === sdr.id ? 'info' : 'default'} variant={filtros.sdrAsignado === sdr.id ? 'filled' : 'outlined'} onClick={() => setFiltros({ ...filtros, sdrAsignado: filtros.sdrAsignado === sdr.id ? '' : sdr.id })} />
+                                ))}
+                            </Stack>
+                            {/* Calificación bot */}
+                            <Stack direction="row" spacing={0.5} sx={{ overflowX: 'auto' }}>
+                                <Typography variant="caption" color="text.secondary" sx={{ alignSelf: 'center', whiteSpace: 'nowrap' }}>Bot:</Typography>
+                                {Object.entries(PRECALIFICACION_BOT).map(([key, { label }]) => (
+                                    <Chip key={key} label={label} size="small" color={filtros.precalificacionBot === key ? 'info' : 'default'} variant={filtros.precalificacionBot === key ? 'filled' : 'outlined'} onClick={() => setFiltros({ ...filtros, precalificacionBot: filtros.precalificacionBot === key ? '' : key })} />
+                                ))}
+                            </Stack>
+                            {/* Plan */}
+                            <Stack direction="row" spacing={0.5} sx={{ overflowX: 'auto' }}>
+                                <Typography variant="caption" color="text.secondary" sx={{ alignSelf: 'center', whiteSpace: 'nowrap' }}>Plan:</Typography>
+                                {Object.entries(PLANES_SORBY).map(([key, { label, icon }]) => (
+                                    <Chip key={key} label={`${icon} ${label}`} size="small" color={filtros.planEstimado === key ? 'primary' : 'default'} variant={filtros.planEstimado === key ? 'filled' : 'outlined'} onClick={() => setFiltros({ ...filtros, planEstimado: filtros.planEstimado === key ? '' : key })} />
+                                ))}
+                            </Stack>
+                            {/* Intención + Hoy */}
+                            <Stack direction="row" spacing={0.5} sx={{ overflowX: 'auto' }}>
+                                <Typography variant="caption" color="text.secondary" sx={{ alignSelf: 'center', whiteSpace: 'nowrap' }}>Intención:</Typography>
+                                {Object.entries(INTENCIONES_COMPRA).map(([key, { label, icon }]) => (
+                                    <Chip key={key} label={`${icon} ${label}`} size="small" color={filtros.intencionCompra === key ? 'warning' : 'default'} variant={filtros.intencionCompra === key ? 'filled' : 'outlined'} onClick={() => setFiltros({ ...filtros, intencionCompra: filtros.intencionCompra === key ? '' : key })} />
+                                ))}
+                                <Chip label="📅 Hoy" size="small" color={filtros.proximoContactoHoy ? 'error' : 'default'} variant={filtros.proximoContactoHoy ? 'filled' : 'outlined'} onClick={() => setFiltros({ ...filtros, proximoContactoHoy: !filtros.proximoContactoHoy })} />
+                            </Stack>
+                        </Stack>
+                    </Collapse>
                     <Menu
                         anchorEl={menuAnchor}
                         open={Boolean(menuAnchor)}
@@ -730,38 +750,77 @@ const GestionSDRPage = () => {
             ) : (
                 /* Barra de filtros - DESKTOP */
                 <Paper sx={{ p: 2, mb: 2 }}>
-                    <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems="center">
+                    {/* Fila 1: Búsqueda + acciones */}
+                    <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 1.5 }}>
                         <TextField
                             size="small"
-                            placeholder="Buscar..."
+                            placeholder="Buscar por nombre, empresa, teléfono..."
                             value={filtros.busqueda}
                             onChange={(e) => setFiltros({ ...filtros, busqueda: e.target.value })}
                             InputProps={{
                                 startAdornment: <InputAdornment position="start"><SearchIcon /></InputAdornment>
                             }}
-                            sx={{ minWidth: 200 }}
+                            sx={{ minWidth: 280, flex: 1 }}
                         />
-                        <FormControl size="small" sx={{ minWidth: 150 }}>
+                        <Box sx={{ flexGrow: 1 }} />
+                        <Stack direction="row" spacing={1}>
+                            <Button size="small" startIcon={<RefreshIcon />} onClick={refrescar}>Actualizar</Button>
+                            <Button size="small" startIcon={<DownloadIcon />} onClick={handleExportar}>Exportar</Button>
+                            <Button size="small" startIcon={<UploadFileIcon />} onClick={() => setModalImportar(true)}>Importar</Button>
+                            <Button size="small" variant="contained" startIcon={<AddIcon />} onClick={() => setModalCrear(true)}>Nuevo</Button>
+                        </Stack>
+                    </Stack>
+                    {/* Fila 2: Filtros compactos en una sola línea */}
+                    <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap sx={{ rowGap: 1 }}>
+                        <FormControl size="small" sx={{ minWidth: 130 }}>
                             <InputLabel>Estado</InputLabel>
-                            <Select
-                                value={filtros.estado}
-                                label="Estado"
-                                onChange={(e) => setFiltros({ ...filtros, estado: e.target.value })}
-                            >
+                            <Select value={filtros.estado} label="Estado" onChange={(e) => setFiltros({ ...filtros, estado: e.target.value })}>
                                 <MenuItem value="">Todos</MenuItem>
                                 {Object.entries(ESTADOS_CONTACTO).map(([key, { label }]) => (
                                     <MenuItem key={key} value={key}>{label}</MenuItem>
                                 ))}
                             </Select>
                         </FormControl>
+                        <FormControl size="small" sx={{ minWidth: 120 }}>
+                            <InputLabel>SDR</InputLabel>
+                            <Select value={filtros.sdrAsignado} label="SDR" onChange={(e) => setFiltros({ ...filtros, sdrAsignado: e.target.value })}>
+                                <MenuItem value="">Todos</MenuItem>
+                                {sdrsDisponibles.map((sdr) => (
+                                    <MenuItem key={sdr.id} value={sdr.id}>{sdr.nombre}</MenuItem>
+                                ))}
+                            </Select>
+                        </FormControl>
+                        <FormControl size="small" sx={{ minWidth: 130 }}>
+                            <InputLabel>Calificación</InputLabel>
+                            <Select value={filtros.precalificacionBot} label="Calificación" onChange={(e) => setFiltros({ ...filtros, precalificacionBot: e.target.value })}>
+                                <MenuItem value="">Todas</MenuItem>
+                                {Object.entries(PRECALIFICACION_BOT).map(([key, { label }]) => (
+                                    <MenuItem key={key} value={key}>{label}</MenuItem>
+                                ))}
+                            </Select>
+                        </FormControl>
+                        <FormControl size="small" sx={{ minWidth: 110 }}>
+                            <InputLabel>Plan</InputLabel>
+                            <Select value={filtros.planEstimado} label="Plan" onChange={(e) => setFiltros({ ...filtros, planEstimado: e.target.value })}>
+                                <MenuItem value="">Todos</MenuItem>
+                                {Object.entries(PLANES_SORBY).map(([key, { label, icon }]) => (
+                                    <MenuItem key={key} value={key}>{icon} {label}</MenuItem>
+                                ))}
+                            </Select>
+                        </FormControl>
+                        <FormControl size="small" sx={{ minWidth: 120 }}>
+                            <InputLabel>Intención</InputLabel>
+                            <Select value={filtros.intencionCompra} label="Intención" onChange={(e) => setFiltros({ ...filtros, intencionCompra: e.target.value })}>
+                                <MenuItem value="">Todas</MenuItem>
+                                {Object.entries(INTENCIONES_COMPRA).map(([key, { label, icon }]) => (
+                                    <MenuItem key={key} value={key}>{icon} {label}</MenuItem>
+                                ))}
+                            </Select>
+                        </FormControl>
                         {statusNotionOpciones.length > 0 && (
-                            <FormControl size="small" sx={{ minWidth: 150 }}>
+                            <FormControl size="small" sx={{ minWidth: 140 }}>
                                 <InputLabel>Status Notion</InputLabel>
-                                <Select
-                                    value={filtros.statusNotion}
-                                    label="Status Notion"
-                                    onChange={(e) => setFiltros({ ...filtros, statusNotion: e.target.value })}
-                                >
+                                <Select value={filtros.statusNotion} label="Status Notion" onChange={(e) => setFiltros({ ...filtros, statusNotion: e.target.value })}>
                                     <MenuItem value="">Todos</MenuItem>
                                     {statusNotionOpciones.map((status) => (
                                         <MenuItem key={status} value={status}>{status}</MenuItem>
@@ -769,40 +828,18 @@ const GestionSDRPage = () => {
                                 </Select>
                             </FormControl>
                         )}
-                        <FormControl size="small" sx={{ minWidth: 150 }}>
-                            <InputLabel>SDR</InputLabel>
-                            <Select
-                                value={filtros.sdrAsignado}
-                                label="SDR"
-                                onChange={(e) => setFiltros({ ...filtros, sdrAsignado: e.target.value })}
-                            >
-                                <MenuItem value="">Todos</MenuItem>
-                                {sdrsDisponibles.map((sdr) => (
-                                    <MenuItem key={sdr.id} value={sdr.id}>{sdr.nombre}</MenuItem>
-                                ))}
-                            </Select>
-                        </FormControl>
-                        <Button
-                            variant={filtros.soloSinAsignar ? 'contained' : 'outlined'}
-                            size="small"
-                            startIcon={<PeopleOutlineIcon />}
-                            onClick={() => setFiltros({ ...filtros, soloSinAsignar: !filtros.soloSinAsignar })}
-                        >
-                            Sin asignar
-                        </Button>
-                        <Box sx={{ flexGrow: 1 }} />
-                        <Button startIcon={<RefreshIcon />} onClick={refrescar}>
-                            Actualizar
-                        </Button>
-                        <Button startIcon={<DownloadIcon />} onClick={handleExportar}>
-                            Exportar
-                        </Button>
-                        <Button startIcon={<UploadFileIcon />} onClick={() => setModalImportar(true)}>
-                            Importar
-                        </Button>
-                        <Button variant="contained" startIcon={<AddIcon />} onClick={() => setModalCrear(true)}>
-                            Nuevo
-                        </Button>
+                        <Chip label="Sin asignar" size="small" color={filtros.soloSinAsignar ? 'secondary' : 'default'} variant={filtros.soloSinAsignar ? 'filled' : 'outlined'} onClick={() => setFiltros({ ...filtros, soloSinAsignar: !filtros.soloSinAsignar })} />
+                        <Chip label="📅 Contactar hoy" size="small" color={filtros.proximoContactoHoy ? 'error' : 'default'} variant={filtros.proximoContactoHoy ? 'filled' : 'outlined'} onClick={() => setFiltros({ ...filtros, proximoContactoHoy: !filtros.proximoContactoHoy })} />
+                    </Stack>
+                    {/* Fila 3: Ordenamiento */}
+                    <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 1.5, pt: 1.5, borderTop: '1px solid', borderColor: 'divider' }}>
+                        <SortIcon fontSize="small" color="action" />
+                        <Typography variant="caption" color="text.secondary">Ordenar:</Typography>
+                        <Chip label="Vencidos primero" size="small" color={filtros.ordenarPor === 'proximoContacto' && filtros.ordenDir === 'asc' ? 'primary' : 'default'} variant={filtros.ordenarPor === 'proximoContacto' && filtros.ordenDir === 'asc' ? 'filled' : 'outlined'} onClick={() => setFiltros({ ...filtros, ordenarPor: 'proximoContacto', ordenDir: 'asc' })} />
+                        <Chip label="Más nuevos" size="small" color={filtros.ordenarPor === 'createdAt' ? 'primary' : 'default'} variant={filtros.ordenarPor === 'createdAt' ? 'filled' : 'outlined'} onClick={() => setFiltros({ ...filtros, ordenarPor: 'createdAt', ordenDir: 'desc' })} />
+                        <Chip label="Última actividad" size="small" color={filtros.ordenarPor === 'ultimaAccion' ? 'primary' : 'default'} variant={filtros.ordenarPor === 'ultimaAccion' ? 'filled' : 'outlined'} onClick={() => setFiltros({ ...filtros, ordenarPor: 'ultimaAccion', ordenDir: 'desc' })} />
+                        <Chip label="Estado" size="small" color={filtros.ordenarPor === 'estado' ? 'primary' : 'default'} variant={filtros.ordenarPor === 'estado' ? 'filled' : 'outlined'} onClick={() => setFiltros({ ...filtros, ordenarPor: 'estado', ordenDir: 'asc' })} />
+                        <Chip label="Prioridad" size="small" color={filtros.ordenarPor === 'prioridad' ? 'primary' : 'default'} variant={filtros.ordenarPor === 'prioridad' ? 'filled' : 'outlined'} onClick={() => setFiltros({ ...filtros, ordenarPor: 'prioridad', ordenDir: 'desc' })} />
                     </Stack>
                 </Paper>
             )}
@@ -891,11 +928,20 @@ const GestionSDRPage = () => {
                                                 {contacto.empresa}
                                             </Typography>
                                         )}
-                                        <Stack direction="row" spacing={1} sx={{ mt: 1 }} alignItems="center">
+                                        <Stack direction="row" spacing={0.5} sx={{ mt: 1 }} alignItems="center" flexWrap="wrap" useFlexGap>
                                             {contacto.sdrAsignadoNombre ? (
                                                 <Chip label={contacto.sdrAsignadoNombre} size="small" variant="outlined" />
                                             ) : (
                                                 <Chip label="Pool" size="small" variant="outlined" color="secondary" />
+                                            )}
+                                            {contacto.precalificacionBot && contacto.precalificacionBot !== 'sin_calificar' && (
+                                                <Chip label={PRECALIFICACION_BOT[contacto.precalificacionBot]?.label || contacto.precalificacionBot} size="small" color={PRECALIFICACION_BOT[contacto.precalificacionBot]?.color || 'default'} variant="outlined" />
+                                            )}
+                                            {contacto.planEstimado && PLANES_SORBY[contacto.planEstimado] && (
+                                                <Chip label={`${PLANES_SORBY[contacto.planEstimado].icon} ${PLANES_SORBY[contacto.planEstimado].label}`} size="small" variant="outlined" />
+                                            )}
+                                            {contacto.scoring?.total != null && (
+                                                <Chip label={`⚡${contacto.scoring.total}`} size="small" color={contacto.scoring.total >= 400 ? 'error' : contacto.scoring.total >= 200 ? 'warning' : 'default'} />
                                             )}
                                             {contacto.proximoContacto && (
                                                 <Chip
@@ -941,36 +987,13 @@ const GestionSDRPage = () => {
                                     </TableCell>
                                     <TableCell>Nombre</TableCell>
                                     <TableCell>Empresa</TableCell>
-                                    <TableCell>Teléfono</TableCell>
                                     <TableCell>Estado</TableCell>
-                                    <TableCell>Status Notion</TableCell>
+                                    <TableCell>Calificado</TableCell>
+                                    <TableCell>Quiere reunión</TableCell>
+                                    <TableCell>Plan</TableCell>
                                     <TableCell>SDR</TableCell>
-                                    <TableCell>
-                                        <TableSortLabel
-                                            active={filtros.ordenarPor === 'ultimaAccion'}
-                                            direction={filtros.ordenarPor === 'ultimaAccion' ? filtros.ordenDir : 'desc'}
-                                            onClick={() => setFiltros({
-                                                ...filtros,
-                                                ordenarPor: 'ultimaAccion',
-                                                ordenDir: filtros.ordenarPor === 'ultimaAccion' && filtros.ordenDir === 'desc' ? 'asc' : 'desc'
-                                            })}
-                                        >
-                                            Última
-                                        </TableSortLabel>
-                                    </TableCell>
-                                    <TableCell>
-                                        <TableSortLabel
-                                            active={filtros.ordenarPor === 'proximoContacto'}
-                                            direction={filtros.ordenarPor === 'proximoContacto' ? filtros.ordenDir : 'asc'}
-                                            onClick={() => setFiltros({
-                                                ...filtros,
-                                                ordenarPor: 'proximoContacto',
-                                                ordenDir: filtros.ordenarPor === 'proximoContacto' && filtros.ordenDir === 'asc' ? 'desc' : 'asc'
-                                            })}
-                                        >
-                                            Próximo
-                                        </TableSortLabel>
-                                    </TableCell>
+                                    <TableCell sx={{ whiteSpace: 'nowrap' }}>Prior.</TableCell>
+                                    <TableCell>Próximo</TableCell>
                                 </TableRow>
                             </TableHead>
                             <TableBody>
@@ -997,28 +1020,34 @@ const GestionSDRPage = () => {
                                         </TableCell>
                                         <TableCell>
                                             <Typography variant="body2" fontWeight={600}>{contacto.nombre}</Typography>
-                                            {contacto.cargo && (
-                                                <Typography variant="caption" color="text.secondary">
-                                                    {contacto.cargo}
-                                                </Typography>
+                                            {contacto.segmento && (
+                                                <Chip label={contacto.segmento === 'inbound' ? 'In' : 'Out'} size="small" variant="outlined" color={contacto.segmento === 'inbound' ? 'info' : 'warning'} sx={{ height: 18, fontSize: 10, ml: 0.5 }} />
                                             )}
                                         </TableCell>
-                                        <TableCell>{contacto.empresa || '-'}</TableCell>
-                                        <TableCell>{contacto.telefono}</TableCell>
+                                        <TableCell>{contacto.empresa || '—'}</TableCell>
                                         <TableCell><EstadoChip estado={contacto.estado} /></TableCell>
                                         <TableCell>
-                                            {contacto.statusNotion ? (
-                                                <Chip label={contacto.statusNotion} size="small" variant="outlined" color="info" />
-                                            ) : '-'}
+                                            {contacto.precalificacionBot && contacto.precalificacionBot !== 'sin_calificar' ? (
+                                                <Chip label={PRECALIFICACION_BOT[contacto.precalificacionBot]?.label || contacto.precalificacionBot} size="small" color={PRECALIFICACION_BOT[contacto.precalificacionBot]?.color || 'default'} variant="outlined" />
+                                            ) : '—'}
+                                        </TableCell>
+                                        <TableCell>
+                                            {contacto.precalificacionBot === 'quiere_meet' ? (
+                                                <Chip label="✅ Sí" size="small" color="success" variant="filled" />
+                                            ) : '—'}
+                                        </TableCell>
+                                        <TableCell>
+                                            {contacto.planEstimado && PLANES_SORBY[contacto.planEstimado] ? (
+                                                <Chip label={`${PLANES_SORBY[contacto.planEstimado].icon} ${PLANES_SORBY[contacto.planEstimado].label}`} size="small" color={PLANES_SORBY[contacto.planEstimado].color} variant="outlined" />
+                                            ) : '—'}
                                         </TableCell>
                                         <TableCell>
                                             {contacto.sdrAsignadoNombre || <Chip label="Pool" size="small" variant="outlined" color="secondary" />}
                                         </TableCell>
                                         <TableCell>
-                                            {contacto.ultimaAccion 
-                                                ? new Date(contacto.ultimaAccion).toLocaleDateString('es-AR') 
-                                                : '-'
-                                            }
+                                            {contacto.scoring?.total != null ? (
+                                                <Chip label={contacto.scoring.total} size="small" color={contacto.scoring.total >= 400 ? 'error' : contacto.scoring.total >= 200 ? 'warning' : 'default'} />
+                                            ) : '—'}
                                         </TableCell>
                                         <TableCell>
                                             {contacto.proximoContacto ? (
@@ -1035,7 +1064,7 @@ const GestionSDRPage = () => {
                                                         variant="outlined"
                                                     />
                                                 </Tooltip>
-                                            ) : '-'}
+                                            ) : '—'}
                                         </TableCell>
                                     </TableRow>
                                 ))}

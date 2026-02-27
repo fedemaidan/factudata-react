@@ -43,7 +43,8 @@ import ModalImportarExcel from 'src/components/sdr/ModalImportarExcel';
 import ModalAdminTemplates from 'src/components/sdr/ModalAdminTemplates';
 import SettingsIcon from '@mui/icons-material/Settings';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
-import { PRECALIFICACION_BOT } from 'src/constant/sdrConstants';
+import SortIcon from '@mui/icons-material/Sort';
+import { PRECALIFICACION_BOT, PLANES_SORBY } from 'src/constant/sdrConstants';
 
 const ContactosSDRPage = () => {
     const { user } = useAuthContext();
@@ -69,6 +70,7 @@ const ContactosSDRPage = () => {
     const [filtroTipo, setFiltroTipo] = useState('activos'); // 'activos' | 'vencidos' | 'no_calificados' | 'todos'
     const [filtroProximoContacto, setFiltroProximoContacto] = useState(''); // '' | 'sin_proximo' | 'vencido' | 'pendiente'
     const [filtroSegmento, setFiltroSegmento] = useState(''); // '' | 'inbound' | 'outbound'
+    const [ordenarPor, setOrdenarPor] = useState('vencidos'); // 'vencidos' | 'fecha' | 'estado' | 'prioridad' | 'nuevo'
     
     // Selección múltiple
     const [seleccionados, setSeleccionados] = useState([]);
@@ -540,17 +542,39 @@ const ContactosSDRPage = () => {
         setBusqueda('');
     };
     
-    // Ordenar contactos: vencidos primero, luego por próximo contacto (ascendente)
+    // Ordenar contactos según criterio seleccionado
+    const ESTADO_PESO = { nuevo: 0, calificado: 1, contactado: 2, cierre: 3, ganado: 4, no_contacto: 5, no_responde: 6, revisar_mas_adelante: 7, no_califica: 8, perdido: 9 };
     const contactosOrdenadosBase = [...contactos].sort((a, b) => {
-        const aVencido = estaVencido(a);
-        const bVencido = estaVencido(b);
-        if (aVencido && !bVencido) return -1;
-        if (!aVencido && bVencido) return 1;
-        if (a.proximoContacto && b.proximoContacto) {
-            return new Date(a.proximoContacto) - new Date(b.proximoContacto);
+        if (ordenarPor === 'vencidos') {
+            // Vencidos primero, luego por próximo contacto (ascendente)
+            const aVencido = estaVencido(a);
+            const bVencido = estaVencido(b);
+            if (aVencido && !bVencido) return -1;
+            if (!aVencido && bVencido) return 1;
+            if (a.proximoContacto && b.proximoContacto) {
+                return new Date(a.proximoContacto) - new Date(b.proximoContacto);
+            }
+            if (a.proximoContacto) return -1;
+            if (b.proximoContacto) return 1;
+            return 0;
         }
-        if (a.proximoContacto) return -1;
-        if (b.proximoContacto) return 1;
+        if (ordenarPor === 'fecha') {
+            // Más recientes primero (por updatedAt)
+            return new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt);
+        }
+        if (ordenarPor === 'estado') {
+            const pesoA = ESTADO_PESO[a.estado] ?? 99;
+            const pesoB = ESTADO_PESO[b.estado] ?? 99;
+            if (pesoA !== pesoB) return pesoA - pesoB;
+            return (b.prioridadScore || 0) - (a.prioridadScore || 0);
+        }
+        if (ordenarPor === 'prioridad') {
+            return (b.prioridadScore || 0) - (a.prioridadScore || 0);
+        }
+        if (ordenarPor === 'nuevo') {
+            // Más nuevos primero (por createdAt)
+            return new Date(b.createdAt) - new Date(a.createdAt);
+        }
         return 0;
     });
     
@@ -837,6 +861,19 @@ const ContactosSDRPage = () => {
                         variant={filtroSegmento === 'outbound' ? 'filled' : 'outlined'}
                         onClick={() => setFiltroSegmento(filtroSegmento === 'outbound' ? '' : 'outbound')}
                     />
+                </Stack>
+            </Box>
+
+            {/* Ordenar por */}
+            <Box sx={{ px: 2, pb: 1, overflowX: 'auto' }}>
+                <Stack direction="row" spacing={1} sx={{ minWidth: 'max-content' }}>
+                    <Typography variant="caption" color="text.secondary" sx={{ alignSelf: 'center', mr: 0.5 }}>
+                        Ordenar:
+                    </Typography>
+                    <Chip label="Próximo" size="small" color={ordenarPor === 'proximo_contacto' ? 'primary' : 'default'} variant={ordenarPor === 'proximo_contacto' ? 'filled' : 'outlined'} onClick={() => setOrdenarPor('proximo_contacto')} />
+                    <Chip label="Más nuevo" size="small" color={ordenarPor === 'fecha_creacion' ? 'primary' : 'default'} variant={ordenarPor === 'fecha_creacion' ? 'filled' : 'outlined'} onClick={() => setOrdenarPor('fecha_creacion')} />
+                    <Chip label="Prioridad" size="small" color={ordenarPor === 'prioridad' ? 'primary' : 'default'} variant={ordenarPor === 'prioridad' ? 'filled' : 'outlined'} onClick={() => setOrdenarPor('prioridad')} />
+                    <Chip label="Estado" size="small" color={ordenarPor === 'estado' ? 'primary' : 'default'} variant={ordenarPor === 'estado' ? 'filled' : 'outlined'} onClick={() => setOrdenarPor('estado')} />
                 </Stack>
             </Box>
 
@@ -1355,22 +1392,45 @@ const ContactosSDRPage = () => {
                     </Alert>
                 )}
 
-                {/* Búsqueda */}
+                {/* Búsqueda + Ordenamiento */}
                 <Paper sx={{ p: 2 }}>
-                    <TextField
-                        fullWidth
-                        size="small"
-                        placeholder="Buscar por nombre, empresa, teléfono..."
-                        value={busqueda}
-                        onChange={(e) => setBusqueda(e.target.value)}
-                        InputProps={{
-                            startAdornment: (
-                                <InputAdornment position="start">
-                                    <SearchIcon fontSize="small" />
-                                </InputAdornment>
-                            )
-                        }}
-                    />
+                    <Stack direction="row" spacing={2} alignItems="center">
+                        <TextField
+                            fullWidth
+                            size="small"
+                            placeholder="Buscar por nombre, empresa, teléfono..."
+                            value={busqueda}
+                            onChange={(e) => setBusqueda(e.target.value)}
+                            InputProps={{
+                                startAdornment: (
+                                    <InputAdornment position="start">
+                                        <SearchIcon fontSize="small" />
+                                    </InputAdornment>
+                                )
+                            }}
+                        />
+                        <Stack direction="row" spacing={0.5} alignItems="center" sx={{ flexShrink: 0 }}>
+                            <SortIcon fontSize="small" color="action" />
+                            <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>Ordenar:</Typography>
+                            {[
+                                { value: 'vencidos', label: 'Vencidos primero' },
+                                { value: 'nuevo', label: 'Más nuevos' },
+                                { value: 'fecha', label: 'Última actividad' },
+                                { value: 'estado', label: 'Estado' },
+                                { value: 'prioridad', label: 'Prioridad' },
+                            ].map(opt => (
+                                <Chip
+                                    key={opt.value}
+                                    label={opt.label}
+                                    size="small"
+                                    color={ordenarPor === opt.value ? 'primary' : 'default'}
+                                    variant={ordenarPor === opt.value ? 'filled' : 'outlined'}
+                                    onClick={() => setOrdenarPor(opt.value)}
+                                    sx={{ cursor: 'pointer' }}
+                                />
+                            ))}
+                        </Stack>
+                    </Stack>
                 </Paper>
 
                 {/* Tabla */}
@@ -1380,7 +1440,7 @@ const ContactosSDRPage = () => {
                             <CircularProgress />
                         </Box>
                     ) : (
-                        <Table>
+                        <Table size="small">
                             <TableHead>
                                 <TableRow>
                                     <TableCell padding="checkbox">
@@ -1392,9 +1452,10 @@ const ContactosSDRPage = () => {
                                     </TableCell>
                                     <TableCell>Nombre</TableCell>
                                     <TableCell>Empresa</TableCell>
-                                    <TableCell>Teléfono</TableCell>
                                     <TableCell>Estado</TableCell>
-                                    <TableCell>Bot</TableCell>
+                                    <TableCell>Calificado</TableCell>
+                                    <TableCell>Quiere reunión</TableCell>
+                                    <TableCell>Plan</TableCell>
                                     <TableCell>Prior.</TableCell>
                                     <TableCell>Próximo</TableCell>
                                 </TableRow>
@@ -1404,6 +1465,8 @@ const ContactosSDRPage = () => {
                                     const proximo = formatearProximo(contacto.proximoContacto);
                                     const vencido = estaVencido(contacto);
                                     const seleccionado = seleccionados.includes(contacto._id);
+                                    const esCalificado = contacto.precalificacionBot === 'calificado' || contacto.precalificacionBot === 'quiere_meet';
+                                    const quiereReunion = contacto.precalificacionBot === 'quiere_meet';
                                     
                                     return (
                                         <TableRow 
@@ -1423,26 +1486,78 @@ const ContactosSDRPage = () => {
                                                 />
                                             </TableCell>
                                             <TableCell>
-                                                <Typography variant="body2" fontWeight={contacto.estado === 'nuevo' ? 600 : 400}>
-                                                    {contacto.nombre}
-                                                </Typography>
+                                                <Stack direction="row" spacing={0.5} alignItems="center">
+                                                    <Typography variant="body2" fontWeight={contacto.estado === 'nuevo' ? 600 : 400}>
+                                                        {contacto.nombre}
+                                                    </Typography>
+                                                    {contacto.segmento && (
+                                                        <Chip 
+                                                            size="small" 
+                                                            label={contacto.segmento === 'inbound' ? 'In' : 'Out'}
+                                                            variant="outlined"
+                                                            color={contacto.segmento === 'inbound' ? 'info' : 'warning'}
+                                                            sx={{ height: 18, fontSize: '0.6rem' }}
+                                                        />
+                                                    )}
+                                                </Stack>
+                                                {contacto.empresa && (
+                                                    <Typography variant="caption" color="text.secondary" display="block">
+                                                        {contacto.empresa}
+                                                    </Typography>
+                                                )}
                                             </TableCell>
-                                            <TableCell>{contacto.empresa || '-'}</TableCell>
-                                            <TableCell>{contacto.telefono}</TableCell>
+                                            <TableCell>
+                                                <Typography variant="caption">{contacto.telefono}</Typography>
+                                            </TableCell>
                                             <TableCell>
                                                 <EstadoChip estado={contacto.estado} />
                                             </TableCell>
                                             <TableCell>
-                                                {contacto.precalificacionBot && contacto.precalificacionBot !== 'sin_calificar' ? (
+                                                {esCalificado ? (
                                                     <Chip 
                                                         size="small" 
-                                                        icon={<SmartToyIcon sx={{ fontSize: 14 }} />}
-                                                        label={PRECALIFICACION_BOT[contacto.precalificacionBot]?.label || contacto.precalificacionBot}
-                                                        color={PRECALIFICACION_BOT[contacto.precalificacionBot]?.color || 'default'}
+                                                        label="✅ Sí"
+                                                        color="success"
                                                         variant="outlined"
                                                         sx={{ height: 22, fontSize: '0.7rem' }}
                                                     />
-                                                ) : '-'}
+                                                ) : contacto.precalificacionBot === 'no_llego' ? (
+                                                    <Chip 
+                                                        size="small" 
+                                                        label="No llegó"
+                                                        color="default"
+                                                        variant="outlined"
+                                                        sx={{ height: 22, fontSize: '0.7rem' }}
+                                                    />
+                                                ) : (
+                                                    <Typography variant="caption" color="text.secondary">—</Typography>
+                                                )}
+                                            </TableCell>
+                                            <TableCell>
+                                                {quiereReunion ? (
+                                                    <Chip 
+                                                        size="small" 
+                                                        label="📅 Sí"
+                                                        color="primary"
+                                                        variant="filled"
+                                                        sx={{ height: 22, fontSize: '0.7rem' }}
+                                                    />
+                                                ) : (
+                                                    <Typography variant="caption" color="text.secondary">—</Typography>
+                                                )}
+                                            </TableCell>
+                                            <TableCell>
+                                                {contacto.planEstimado ? (
+                                                    <Chip 
+                                                        size="small" 
+                                                        label={`${PLANES_SORBY[contacto.planEstimado]?.icon || ''} ${PLANES_SORBY[contacto.planEstimado]?.label || contacto.planEstimado}`}
+                                                        color={PLANES_SORBY[contacto.planEstimado]?.color || 'default'}
+                                                        variant="outlined"
+                                                        sx={{ height: 22, fontSize: '0.7rem' }}
+                                                    />
+                                                ) : (
+                                                    <Typography variant="caption" color="text.secondary">—</Typography>
+                                                )}
                                             </TableCell>
                                             <TableCell>
                                                 {contacto.prioridadScore > 0 ? (
@@ -1453,7 +1568,9 @@ const ContactosSDRPage = () => {
                                                         variant="filled"
                                                         sx={{ height: 22, fontWeight: 700 }}
                                                     />
-                                                ) : '-'}
+                                                ) : (
+                                                    <Typography variant="caption" color="text.secondary">—</Typography>
+                                                )}
                                             </TableCell>
                                             <TableCell>
                                                 {proximo ? (
@@ -1470,7 +1587,7 @@ const ContactosSDRPage = () => {
                                 })}
                                 {contactos.length === 0 && (
                                     <TableRow>
-                                        <TableCell colSpan={7} align="center" sx={{ py: 4 }}>
+                                        <TableCell colSpan={10} align="center" sx={{ py: 4 }}>
                                             <Typography color="text.secondary">
                                                 {filtroEstado 
                                                     ? `No hay contactos con estado "${filtroEstado}"`
