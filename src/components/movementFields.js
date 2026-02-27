@@ -300,6 +300,11 @@ const MovementFields = ({
           options={acOptions}
           value={value || ''}
           onChange={(_, val) => formik.setFieldValue(campo.name, val || '')}
+          onInputChange={(_, val, reason) => {
+            if (reason === 'input') {
+              formik.setFieldValue(campo.name, val || '');
+            }
+          }}
           renderInput={(params) => (
             <TextField {...params} label={campo.label} fullWidth />
           )}
