@@ -808,6 +808,7 @@ const ProyeccionesV2Page = () => {
             pagination={tablePagination}
             onPageChange={handlePageChange}
             onRowsPerPageChange={handleRowsPerPageChange}
+            onRowClick={(item) => console.log(item)}
           />
           {pendingProyeccionStatus === "procesando" && (
             <Box
