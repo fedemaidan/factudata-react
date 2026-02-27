@@ -811,7 +811,7 @@ const ContactoSDRDetailPage = () => {
     // ==================== RENDER ====================
 
     // ==================== TOP-NAV TITLE & ACTIONS ====================
-    const topNavTitle = loading ? 'Cargando...' : (contacto?.nombre || 'Contacto no encontrado');
+    const topNavTitle = loading ? 'Cargando...' : 'Contacto SDR';
 
     const topNavActions = contacto ? (
         <Stack direction="row" spacing={0.5} alignItems="center" sx={{ flexShrink: 0 }}>
@@ -922,7 +922,24 @@ const ContactoSDRDetailPage = () => {
                         <Grid item xs={12} sm={6} md={4}>
                             <Card variant="outlined" sx={{ height: '100%' }}>
                                 <CardContent sx={{ pb: '12px !important', pt: 1.5 }}>
-                                    {/* Línea 1: Estado · Segmento · SDR — todo inline como texto */}
+                                    {/* Nombre y cargo */}
+                                    <Stack direction="row" justifyContent="space-between" alignItems="flex-start" sx={{ mb: 0.8 }}>
+                                        <Box sx={{ minWidth: 0, flex: 1 }}>
+                                            <Typography variant="h6" fontWeight={700} noWrap>
+                                                {contacto.nombre}
+                                            </Typography>
+                                            {contacto.cargo && (
+                                                <Typography variant="caption" color="text.secondary">
+                                                    {contacto.cargo}
+                                                </Typography>
+                                            )}
+                                        </Box>
+                                        <IconButton size="small" onClick={() => setModalEditarContacto(true)} sx={{ p: 0.3, mt: 0.5 }}>
+                                            <EditIcon sx={{ fontSize: 16, color: 'text.disabled' }} />
+                                        </IconButton>
+                                    </Stack>
+
+                                    {/* Estado · Segmento · SDR */}
                                     <Stack direction="row" spacing={0.5} alignItems="center" sx={{ mb: 0.8, flexWrap: 'wrap', gap: 0.3 }}>
                                         <EstadoChipEditable
                                             estado={contacto.estado}
@@ -940,10 +957,6 @@ const ContactoSDRDetailPage = () => {
                                                 · 👤 {contacto.sdrAsignadoNombre}
                                             </Typography>
                                         )}
-                                        <Box sx={{ flex: 1 }} />
-                                        <IconButton size="small" onClick={() => setModalEditarContacto(true)} sx={{ p: 0.3 }}>
-                                            <EditIcon sx={{ fontSize: 14, color: 'text.disabled' }} />
-                                        </IconButton>
                                     </Stack>
 
                                     {/* Línea 2: Teléfono con icon buttons inline */}
@@ -978,13 +991,11 @@ const ContactoSDRDetailPage = () => {
                                         </Typography>
                                     ))}
 
-                                    {/* Línea 3: Empresa / cargo / email — compacto */}
+                                    {/* Empresa / email — compacto */}
                                     <Stack spacing={0.3} sx={{ mt: 0.5 }}>
-                                        {(contacto.empresa || contacto.cargo) && (
+                                        {(contacto.empresa || contacto.tamanoEmpresa) && (
                                             <Typography variant="caption" color="text.secondary" fontSize="0.78rem">
-                                                {contacto.empresa && <>🏢 {contacto.empresa}</>}
-                                                {contacto.empresa && contacto.cargo && ' · '}
-                                                {contacto.cargo && <>{contacto.cargo}</>}
+                                                🏢 {contacto.empresa || 'Sin empresa'}
                                                 {contacto.tamanoEmpresa && <> · {contacto.tamanoEmpresa}</>}
                                             </Typography>
                                         )}

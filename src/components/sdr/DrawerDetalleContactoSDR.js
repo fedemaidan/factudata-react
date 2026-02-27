@@ -629,9 +629,10 @@ const DrawerDetalleContactoSDR = ({
                 }}
             >
                 <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', bgcolor: 'grey.50' }}>
-                    {/* Header compacto */}
+                    {/* Header mínimo */}
                     <Box sx={{ 
-                        p: 2, 
+                        px: 1.5, 
+                        py: 1,
                         bgcolor: 'white',
                         borderBottom: 1, 
                         borderColor: 'divider',
@@ -639,11 +640,65 @@ const DrawerDetalleContactoSDR = ({
                         alignItems: 'center',
                         justifyContent: 'space-between'
                     }}>
-                        <Box sx={{ flex: 1 }}>
-                            <Typography variant="h6" fontWeight={700} noWrap>
-                                {contactoLocal.nombre}
-                            </Typography>
-                            <Stack direction="row" spacing={0.5} alignItems="center">
+                        <IconButton onClick={onClose} edge="start">
+                            <CloseIcon />
+                        </IconButton>
+                        <Stack direction="row" spacing={0.5} alignItems="center">
+                            {contactos.length > 1 && (
+                                <Chip 
+                                    size="small" 
+                                    label={`${indiceActual + 1} / ${contactos.length}`}
+                                    variant="outlined"
+                                />
+                            )}
+                            <IconButton 
+                                onClick={() => {
+                                    onRefresh?.();
+                                    cargarHistorial();
+                                    mostrarSnackbar?.('Datos actualizados', 'success');
+                                }}
+                                size="small"
+                            >
+                                <RefreshIcon fontSize="small" />
+                            </IconButton>
+                        </Stack>
+                    </Box>
+
+                    {/* Contenido scrolleable */}
+                    <Box sx={{ flex: 1, overflow: 'auto', p: 2, pb: 20 }}>
+                        
+                        {/* Card de identidad y contacto */}
+                        <Paper elevation={0} sx={{ p: 2.5, mb: 2, borderRadius: 3 }}>
+                            {/* Nombre y cargo */}
+                            <Stack direction="row" justifyContent="space-between" alignItems="flex-start" sx={{ mb: 1 }}>
+                                <Box sx={{ flex: 1, minWidth: 0 }}>
+                                    <Typography variant="h5" fontWeight={700} noWrap>
+                                        {contactoLocal.nombre}
+                                    </Typography>
+                                    {contactoLocal.cargo && (
+                                        <Typography variant="body2" color="text.secondary">
+                                            {contactoLocal.cargo}
+                                        </Typography>
+                                    )}
+                                    {contactoLocal.empresa && (
+                                        <Stack direction="row" spacing={0.5} alignItems="center" sx={{ mt: 0.3 }}>
+                                            <BusinessIcon fontSize="small" color="action" sx={{ fontSize: 15 }} />
+                                            <Typography variant="body2" color="text.secondary" noWrap>
+                                                {contactoLocal.empresa}
+                                                {contactoLocal.tamanoEmpresa && (
+                                                    <Chip size="small" label={contactoLocal.tamanoEmpresa} sx={{ ml: 0.5, height: 18, fontSize: '0.7rem' }} />
+                                                )}
+                                            </Typography>
+                                        </Stack>
+                                    )}
+                                </Box>
+                                <IconButton size="small" onClick={() => setModalEditarContacto(true)} sx={{ mt: 0.5 }}>
+                                    <EditIcon fontSize="small" />
+                                </IconButton>
+                            </Stack>
+
+                            {/* Estado + Segmento */}
+                            <Stack direction="row" spacing={0.5} alignItems="center" sx={{ mb: 2 }}>
                                 <EstadoChipEditable 
                                     estado={contactoLocal.estado} 
                                     contactoId={contactoLocal._id}
@@ -653,45 +708,48 @@ const DrawerDetalleContactoSDR = ({
                                     }}
                                     mostrarSnackbar={mostrarSnackbar}
                                 />
-                                {contactoLocal.empresa && (
-                                    <Typography variant="caption" color="text.secondary" noWrap>
-                                        • {contactoLocal.empresa}
-                                    </Typography>
+                                {contactoLocal.segmento && (
+                                    <Chip 
+                                        size="small" 
+                                        variant="outlined"
+                                        label={contactoLocal.segmento === 'outbound' ? 'Outbound' : '🟢 Inbound'} 
+                                    />
                                 )}
                             </Stack>
-                        </Box>
-                        {contactos.length > 1 && (
-                            <Chip 
-                                size="small" 
-                                label={`${indiceActual + 1}/${contactos.length}`}
-                                sx={{ mr: 1 }}
-                            />
-                        )}
-                        <Tooltip title="Refrescar datos">
-                            <IconButton 
-                                onClick={() => {
-                                    onRefresh?.();
-                                    cargarHistorial();
-                                    mostrarSnackbar?.('Datos actualizados', 'success');
-                                }}
-                                size="small"
-                                sx={{ mr: 0.5 }}
-                            >
-                                <RefreshIcon fontSize="small" />
-                            </IconButton>
-                        </Tooltip>
-                        <IconButton onClick={onClose} edge="end">
-                            <CloseIcon />
-                        </IconButton>
-                    </Box>
 
-                    {/* Contenido scrolleable */}
-                    <Box sx={{ flex: 1, overflow: 'auto', p: 2, pb: 20 }}>
-                        
-                        {/* Card principal de contacto */}
-                        <Paper elevation={0} sx={{ p: 2.5, mb: 2, borderRadius: 3 }}>
-                            {/* Botones grandes de acción - LLAMAR y WHATSAPP */}
-                            <Stack direction="row" spacing={2} sx={{ mb: 3 }}>
+                            <Divider sx={{ mb: 2 }} />
+
+                            {/* Datos de contacto con acciones inline */}
+                            <Stack spacing={0.8} sx={{ mb: 2 }}>
+                                <Stack direction="row" spacing={1} alignItems="center">
+                                    <PhoneIcon fontSize="small" color="action" />
+                                    <Typography variant="body1" fontWeight={500}>{contactoLocal.telefono}</Typography>
+                                    <IconButton size="small" href={getTelLink(contactoLocal.telefono)} sx={{ p: 0.3 }}>
+                                        <CallIcon fontSize="small" color="success" />
+                                    </IconButton>
+                                    <IconButton size="small" href={getWhatsAppLink(contactoLocal.telefono)} target="_blank" sx={{ p: 0.3 }}>
+                                        <WhatsAppIcon fontSize="small" sx={{ color: '#25D366' }} />
+                                    </IconButton>
+                                </Stack>
+                                {contactoLocal.telefonosSecundarios?.map((tel, i) => (
+                                    <Stack key={i} direction="row" spacing={1} alignItems="center">
+                                        <PhoneIcon fontSize="small" color="action" sx={{ opacity: 0.5 }} />
+                                        <Typography variant="body2" color="text.secondary">
+                                            {tel.numero}
+                                            <Chip size="small" label={tel.etiqueta} sx={{ ml: 0.5, height: 18, fontSize: '0.7rem' }} />
+                                        </Typography>
+                                    </Stack>
+                                ))}
+                                {contactoLocal.email && (
+                                    <Stack direction="row" spacing={1} alignItems="center">
+                                        <EmailIcon fontSize="small" color="action" />
+                                        <Typography variant="body2">{contactoLocal.email}</Typography>
+                                    </Stack>
+                                )}
+                            </Stack>
+
+                            {/* Botones de acción */}
+                            <Stack direction="row" spacing={1.5}>
                                 <Button
                                     fullWidth
                                     variant="contained"
@@ -699,11 +757,11 @@ const DrawerDetalleContactoSDR = ({
                                     startIcon={<PhoneIcon />}
                                     onClick={handleLlamar}
                                     sx={{ 
-                                        py: 2,
+                                        py: 1.5,
                                         bgcolor: '#4caf50', 
                                         '&:hover': { bgcolor: '#388e3c' },
                                         borderRadius: 2,
-                                        fontSize: '1rem'
+                                        fontSize: '0.95rem'
                                     }}
                                 >
                                     Llamar
@@ -715,61 +773,16 @@ const DrawerDetalleContactoSDR = ({
                                     startIcon={<WhatsAppIcon />}
                                     onClick={handleWhatsApp}
                                     sx={{ 
-                                        py: 2,
+                                        py: 1.5,
                                         bgcolor: '#25D366', 
                                         '&:hover': { bgcolor: '#128C7E' },
                                         borderRadius: 2,
-                                        fontSize: '1rem'
+                                        fontSize: '0.95rem'
                                     }}
                                 >
                                     WhatsApp
                                 </Button>
                             </Stack>
-
-                            {/* Info de contacto con botón editar */}
-                            <Box sx={{ mb: 2 }}>
-                                <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
-                                    <Typography variant="subtitle2" color="text.secondary">
-                                        Información
-                                    </Typography>
-                                    <Button
-                                        size="small"
-                                        startIcon={<EditIcon />}
-                                        onClick={() => setModalEditarContacto(true)}
-                                    >
-                                        Editar
-                                    </Button>
-                                </Stack>
-                                <Stack spacing={0.5}>
-                                    <Typography variant="body1" fontWeight={500}>
-                                        📞 {contactoLocal.telefono}
-                                    </Typography>
-                                    {/* Teléfonos secundarios */}
-                                    {contactoLocal.telefonosSecundarios?.map((tel, i) => (
-                                        <Typography key={i} variant="body2" color="text.secondary">
-                                            📱 {tel.numero} <Chip size="small" label={tel.etiqueta} sx={{ ml: 0.5, height: 18, fontSize: '0.7rem' }} />
-                                        </Typography>
-                                    ))}
-                                    {contactoLocal.cargo && (
-                                        <Typography variant="body2" color="text.secondary">
-                                            👤 {contactoLocal.cargo}
-                                        </Typography>
-                                    )}
-                                    {(contactoLocal.empresa || contactoLocal.tamanoEmpresa) && (
-                                        <Typography variant="body2" color="text.secondary">
-                                            🏢 {contactoLocal.empresa || 'Sin empresa'}
-                                            {contactoLocal.tamanoEmpresa && (
-                                                <Chip size="small" label={contactoLocal.tamanoEmpresa} sx={{ ml: 0.5, height: 18, fontSize: '0.7rem' }} />
-                                            )}
-                                        </Typography>
-                                    )}
-                                    {contactoLocal.email && (
-                                        <Typography variant="body2" color="text.secondary">
-                                            ✉️ {contactoLocal.email}
-                                        </Typography>
-                                    )}
-                                </Stack>
-                            </Box>
                         </Paper>
 
                         {/* Scoring: Plan, Intención, Prioridad, Bot */}
@@ -846,26 +859,41 @@ const DrawerDetalleContactoSDR = ({
                         </Paper>
 
                         {/* Datos del Bot (si existen) */}
-                        {contactoLocal.datosBot && (contactoLocal.datosBot.rubro || contactoLocal.datosBot.interes || contactoLocal.datosBot.saludoInicial) && (
-                            <Paper elevation={0} sx={{ p: 2, mb: 2, borderRadius: 3 }}>
+                        {contactoLocal.datosBot && (contactoLocal.datosBot.rubro || contactoLocal.datosBot.interes || contactoLocal.datosBot.saludoInicial || contactoLocal.datosBot.cantidadObras) && (
+                            <Paper elevation={0} sx={{ p: 2, mb: 2, borderRadius: 3, bgcolor: '#e3f2fd', border: '1px solid', borderColor: 'info.light' }}>
                                 <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
-                                    <SmartToyIcon color="action" fontSize="small" />
-                                    <Typography variant="subtitle2">Datos del Bot</Typography>
+                                    <SmartToyIcon color="info" fontSize="small" />
+                                    <Typography variant="subtitle2" color="info.dark">Información del Bot</Typography>
                                 </Stack>
-                                <Stack spacing={0.5}>
+                                <Stack spacing={0.8}>
                                     {contactoLocal.datosBot.rubro && (
-                                        <Typography variant="body2" color="text.secondary">
-                                            🏗️ Rubro: {contactoLocal.datosBot.rubro}
+                                        <Typography variant="body2">
+                                            <strong>🏗️ Rubro:</strong> {contactoLocal.datosBot.rubro}
                                         </Typography>
                                     )}
                                     {contactoLocal.datosBot.interes && (
-                                        <Typography variant="body2" color="text.secondary">
-                                            💡 Interés: {contactoLocal.datosBot.interes}
+                                        <Typography variant="body2">
+                                            <strong>💡 Interés:</strong> {contactoLocal.datosBot.interes === 'probar' ? 'Quiere probar' : contactoLocal.datosBot.interes === 'info' ? 'Pide info' : contactoLocal.datosBot.interes === 'humano' ? 'Pide hablar con humano' : contactoLocal.datosBot.interes === 'usuario_existente' ? 'Usuario existente' : contactoLocal.datosBot.interes}
+                                        </Typography>
+                                    )}
+                                    {contactoLocal.datosBot.cantidadObras && (
+                                        <Typography variant="body2">
+                                            <strong>📊 Cantidad de obras:</strong> {contactoLocal.datosBot.cantidadObras}
                                         </Typography>
                                     )}
                                     {contactoLocal.datosBot.saludoInicial && (
-                                        <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                                        <Typography variant="body2" sx={{ fontStyle: 'italic', bgcolor: 'white', p: 1, borderRadius: 1, mt: 0.5 }}>
                                             💬 "{contactoLocal.datosBot.saludoInicial}"
+                                        </Typography>
+                                    )}
+                                    {contactoLocal.datosBot.interaccionFecha && (
+                                        <Typography variant="caption" color="text.secondary">
+                                            📅 Última interacción: {new Date(contactoLocal.datosBot.interaccionFecha).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                        </Typography>
+                                    )}
+                                    {contactoLocal.datosBot.empresaFirestoreId && (
+                                        <Typography variant="caption" color="text.secondary">
+                                            ✅ Empresa creada en onboarding
                                         </Typography>
                                     )}
                                 </Stack>
@@ -1310,10 +1338,7 @@ const DrawerDetalleContactoSDR = ({
                         </Stack>
                     </Stack>
                     
-                    {/* Nombre y estado */}
-                    <Typography variant="h6" sx={{ mt: 1, fontWeight: 600 }}>
-                        {contactoLocal.nombre}
-                    </Typography>
+                    {/* Estado y metadatos */}
                     <Stack direction="row" spacing={1} mt={1} alignItems="center" flexWrap="wrap">
                         <EstadoChipEditable 
                             estado={contactoLocal.estado} 
@@ -1377,9 +1402,29 @@ const DrawerDetalleContactoSDR = ({
                 {drawerTab === 0 && (
                 <Box sx={{ flex: 1, overflow: 'auto', p: 2 }}>
 
-                {/* Info del contacto */}
-                    <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
-                        <Typography variant="subtitle2" color="text.secondary">Información</Typography>
+                {/* Nombre y datos principales */}
+                    <Stack direction="row" justifyContent="space-between" alignItems="flex-start" sx={{ mb: 2 }}>
+                        <Box>
+                            <Typography variant="h5" fontWeight={700}>
+                                {contactoLocal.nombre}
+                            </Typography>
+                            {contactoLocal.cargo && (
+                                <Typography variant="body2" color="text.secondary">
+                                    {contactoLocal.cargo}
+                                </Typography>
+                            )}
+                            {contactoLocal.empresa && (
+                                <Stack direction="row" spacing={0.5} alignItems="center" sx={{ mt: 0.3 }}>
+                                    <BusinessIcon fontSize="small" color="action" sx={{ fontSize: 16 }} />
+                                    <Typography variant="body2" color="text.secondary">
+                                        {contactoLocal.empresa}
+                                        {contactoLocal.tamanoEmpresa && (
+                                            <Chip size="small" label={contactoLocal.tamanoEmpresa} sx={{ ml: 0.5, height: 18, fontSize: '0.7rem' }} />
+                                        )}
+                                    </Typography>
+                                </Stack>
+                            )}
+                        </Box>
                         <Button
                             size="small"
                             startIcon={<EditIcon />}
@@ -1388,27 +1433,19 @@ const DrawerDetalleContactoSDR = ({
                             Editar
                         </Button>
                     </Stack>
-                    <Stack spacing={1.5}>
-                        {(contactoLocal.empresa || contactoLocal.tamanoEmpresa) && (
-                            <Stack direction="row" spacing={1} alignItems="center">
-                                <BusinessIcon fontSize="small" color="action" />
-                                <Typography variant="body2">
-                                    {contactoLocal.empresa || 'Sin empresa'}
-                                    {contactoLocal.tamanoEmpresa && (
-                                        <Chip size="small" label={contactoLocal.tamanoEmpresa} sx={{ ml: 0.5, height: 18, fontSize: '0.7rem' }} />
-                                    )}
-                                </Typography>
-                            </Stack>
-                        )}
-                        {contactoLocal.cargo && (
-                            <Stack direction="row" spacing={1} alignItems="center">
-                                <PersonIcon fontSize="small" color="action" />
-                                <Typography variant="body2">{contactoLocal.cargo}</Typography>
-                            </Stack>
-                        )}
+
+                {/* Datos de contacto */}
+                    <Paper variant="outlined" sx={{ p: 1.5, mb: 2, borderRadius: 2 }}>
+                    <Stack spacing={1}>
                         <Stack direction="row" spacing={1} alignItems="center">
                             <PhoneIcon fontSize="small" color="action" />
-                            <Typography variant="body2">{contactoLocal.telefono}</Typography>
+                            <Typography variant="body2" fontWeight={500}>{contactoLocal.telefono}</Typography>
+                            <IconButton size="small" href={getTelLink(contactoLocal.telefono)} sx={{ p: 0.3 }}>
+                                <CallIcon fontSize="small" color="success" />
+                            </IconButton>
+                            <IconButton size="small" href={getWhatsAppLink(contactoLocal.telefono)} target="_blank" sx={{ p: 0.3 }}>
+                                <WhatsAppIcon fontSize="small" sx={{ color: '#25D366' }} />
+                            </IconButton>
                         </Stack>
                         {/* Teléfonos secundarios */}
                         {contactoLocal.telefonosSecundarios?.map((tel, i) => (
@@ -1427,9 +1464,10 @@ const DrawerDetalleContactoSDR = ({
                             </Stack>
                         )}
                     </Stack>
+                    </Paper>
 
                     {/* Botones de contacto */}
-                    <Stack direction="row" spacing={1} mt={2} flexWrap="wrap" useFlexGap>
+                    <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
                         <Button
                             variant="contained"
                             size="small"
@@ -1528,26 +1566,41 @@ const DrawerDetalleContactoSDR = ({
                     </Box>
 
                     {/* Datos del Bot (si existen) */}
-                    {contactoLocal.datosBot && (contactoLocal.datosBot.rubro || contactoLocal.datosBot.interes || contactoLocal.datosBot.saludoInicial) && (
-                        <Box sx={{ mt: 1.5, p: 1.5, bgcolor: 'grey.50', borderRadius: 1 }}>
+                    {contactoLocal.datosBot && (contactoLocal.datosBot.rubro || contactoLocal.datosBot.interes || contactoLocal.datosBot.saludoInicial || contactoLocal.datosBot.cantidadObras) && (
+                        <Box sx={{ mt: 1.5, p: 1.5, bgcolor: '#e3f2fd', borderRadius: 1, border: '1px solid', borderColor: 'info.light' }}>
                             <Stack direction="row" spacing={1} alignItems="center" mb={1}>
-                                <SmartToyIcon fontSize="small" color="action" />
-                                <Typography variant="subtitle2">Datos del Bot</Typography>
+                                <SmartToyIcon fontSize="small" color="info" />
+                                <Typography variant="subtitle2" color="info.dark">Información del Bot</Typography>
                             </Stack>
-                            <Stack spacing={0.5}>
+                            <Stack spacing={0.8}>
                                 {contactoLocal.datosBot.rubro && (
-                                    <Typography variant="body2" color="text.secondary">
-                                        🏗️ Rubro: {contactoLocal.datosBot.rubro}
+                                    <Typography variant="body2">
+                                        <strong>🏗️ Rubro:</strong> {contactoLocal.datosBot.rubro}
                                     </Typography>
                                 )}
                                 {contactoLocal.datosBot.interes && (
-                                    <Typography variant="body2" color="text.secondary">
-                                        💡 Interés: {contactoLocal.datosBot.interes}
+                                    <Typography variant="body2">
+                                        <strong>💡 Interés:</strong> {contactoLocal.datosBot.interes === 'probar' ? 'Quiere probar' : contactoLocal.datosBot.interes === 'info' ? 'Pide info' : contactoLocal.datosBot.interes === 'humano' ? 'Pide hablar con humano' : contactoLocal.datosBot.interes === 'usuario_existente' ? 'Usuario existente' : contactoLocal.datosBot.interes}
+                                    </Typography>
+                                )}
+                                {contactoLocal.datosBot.cantidadObras && (
+                                    <Typography variant="body2">
+                                        <strong>📊 Cantidad de obras:</strong> {contactoLocal.datosBot.cantidadObras}
                                     </Typography>
                                 )}
                                 {contactoLocal.datosBot.saludoInicial && (
-                                    <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                                    <Typography variant="body2" sx={{ fontStyle: 'italic', bgcolor: 'white', p: 1, borderRadius: 1, mt: 0.5 }}>
                                         💬 "{contactoLocal.datosBot.saludoInicial}"
+                                    </Typography>
+                                )}
+                                {contactoLocal.datosBot.interaccionFecha && (
+                                    <Typography variant="caption" color="text.secondary">
+                                        📅 Última interacción: {new Date(contactoLocal.datosBot.interaccionFecha).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                    </Typography>
+                                )}
+                                {contactoLocal.datosBot.empresaFirestoreId && (
+                                    <Typography variant="caption" color="text.secondary">
+                                        ✅ Empresa creada en onboarding
                                     </Typography>
                                 )}
                             </Stack>

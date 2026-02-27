@@ -40,6 +40,8 @@ import MoreVertIcon from '@mui/icons-material/MoreVert';
 import FilterListIcon from '@mui/icons-material/FilterList';
 import PersonRemoveIcon from '@mui/icons-material/PersonRemove';
 import CancelIcon from '@mui/icons-material/Cancel';
+import NavigateBeforeIcon from '@mui/icons-material/NavigateBefore';
+import NavigateNextIcon from '@mui/icons-material/NavigateNext';
 
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import SDRService from 'src/services/sdrService';
@@ -145,6 +147,7 @@ const GestionSDRPage = () => {
         precalificacionBot: '',
         planEstimado: '',
         intencionCompra: '',
+        segmento: '',
         proximoContactoHoy: false,
         ordenarPor: 'updatedAt',
         ordenDir: 'desc'
@@ -293,6 +296,11 @@ const GestionSDRPage = () => {
         };
         fetchSDRs();
     }, [authLoading, userId]);
+
+    // Resetear página a 1 cuando cambian los filtros
+    useEffect(() => {
+        setPage(1);
+    }, [filtros.estado, filtros.sdrAsignado, filtros.busqueda, filtros.soloSinAsignar, filtros.statusNotion, filtros.precalificacionBot, filtros.planEstimado, filtros.intencionCompra, filtros.segmento, filtros.proximoContactoHoy]);
     
     // Cargar datos cuando el usuario esté listo
     useEffect(() => {
@@ -729,6 +737,13 @@ const GestionSDRPage = () => {
                                 ))}
                                 <Chip label="📅 Hoy" size="small" color={filtros.proximoContactoHoy ? 'error' : 'default'} variant={filtros.proximoContactoHoy ? 'filled' : 'outlined'} onClick={() => setFiltros({ ...filtros, proximoContactoHoy: !filtros.proximoContactoHoy })} />
                             </Stack>
+                            {/* Segmento */}
+                            <Stack direction="row" spacing={0.5} sx={{ overflowX: 'auto' }}>
+                                <Typography variant="caption" color="text.secondary" sx={{ alignSelf: 'center', whiteSpace: 'nowrap' }}>Segmento:</Typography>
+                                <Chip label="Todos" size="small" color={!filtros.segmento ? 'primary' : 'default'} variant={!filtros.segmento ? 'filled' : 'outlined'} onClick={() => setFiltros({ ...filtros, segmento: '' })} />
+                                <Chip label="🔵 Inbound" size="small" color={filtros.segmento === 'inbound' ? 'info' : 'default'} variant={filtros.segmento === 'inbound' ? 'filled' : 'outlined'} onClick={() => setFiltros({ ...filtros, segmento: filtros.segmento === 'inbound' ? '' : 'inbound' })} />
+                                <Chip label="🟠 Outbound" size="small" color={filtros.segmento === 'outbound' ? 'warning' : 'default'} variant={filtros.segmento === 'outbound' ? 'filled' : 'outlined'} onClick={() => setFiltros({ ...filtros, segmento: filtros.segmento === 'outbound' ? '' : 'outbound' })} />
+                            </Stack>
                         </Stack>
                     </Collapse>
                     <Menu
@@ -828,6 +843,14 @@ const GestionSDRPage = () => {
                                 </Select>
                             </FormControl>
                         )}
+                        <FormControl size="small" sx={{ minWidth: 120 }}>
+                            <InputLabel>Segmento</InputLabel>
+                            <Select value={filtros.segmento} label="Segmento" onChange={(e) => setFiltros({ ...filtros, segmento: e.target.value })}>
+                                <MenuItem value="">Todos</MenuItem>
+                                <MenuItem value="inbound">🔵 Inbound</MenuItem>
+                                <MenuItem value="outbound">🟠 Outbound</MenuItem>
+                            </Select>
+                        </FormControl>
                         <Chip label="Sin asignar" size="small" color={filtros.soloSinAsignar ? 'secondary' : 'default'} variant={filtros.soloSinAsignar ? 'filled' : 'outlined'} onClick={() => setFiltros({ ...filtros, soloSinAsignar: !filtros.soloSinAsignar })} />
                         <Chip label="📅 Contactar hoy" size="small" color={filtros.proximoContactoHoy ? 'error' : 'default'} variant={filtros.proximoContactoHoy ? 'filled' : 'outlined'} onClick={() => setFiltros({ ...filtros, proximoContactoHoy: !filtros.proximoContactoHoy })} />
                     </Stack>
@@ -920,8 +943,18 @@ const GestionSDRPage = () => {
                                         <Stack direction="row" justifyContent="space-between" alignItems="center">
                                             <Typography variant="subtitle2" fontWeight={700} noWrap>
                                                 {contacto.nombre}
+                                                {contacto.segmento && (
+                                                    <Chip label={contacto.segmento === 'inbound' ? '🔵 In' : '🟠 Out'} size="small" variant="outlined" color={contacto.segmento === 'inbound' ? 'info' : 'warning'} sx={{ height: 18, fontSize: 10, ml: 0.5 }} />
+                                                )}
                                             </Typography>
-                                            <EstadoChip estado={contacto.estado} />
+                                            <Stack direction="column" alignItems="flex-end" spacing={0.3}>
+                                                <EstadoChip estado={contacto.estado} />
+                                                {contacto.statusNotion && (
+                                                    <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.6rem', lineHeight: 1 }}>
+                                                        {contacto.statusNotion}
+                                                    </Typography>
+                                                )}
+                                            </Stack>
                                         </Stack>
                                         {contacto.empresa && (
                                             <Typography variant="caption" color="text.secondary" noWrap>
@@ -960,9 +993,25 @@ const GestionSDRPage = () => {
                             </Paper>
                         );
                     })}
-                    <Typography variant="body2" color="text.secondary" textAlign="center" sx={{ py: 2 }}>
-                        Mostrando {contactos.length} de {totalContactos}
-                    </Typography>
+                    <Stack direction="row" justifyContent="center" alignItems="center" spacing={2} sx={{ py: 2 }}>
+                        <IconButton 
+                            size="small" 
+                            disabled={page <= 1}
+                            onClick={() => { setPage(p => p - 1); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+                        >
+                            <NavigateBeforeIcon />
+                        </IconButton>
+                        <Typography variant="body2" color="text.secondary">
+                            Pág. {page} de {Math.ceil(totalContactos / 50) || 1} ({totalContactos} contactos)
+                        </Typography>
+                        <IconButton 
+                            size="small" 
+                            disabled={page >= Math.ceil(totalContactos / 50)}
+                            onClick={() => { setPage(p => p + 1); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+                        >
+                            <NavigateNextIcon />
+                        </IconButton>
+                    </Stack>
                 </Stack>
             ) : (
                 /* Tabla de contactos - DESKTOP */
@@ -1025,7 +1074,14 @@ const GestionSDRPage = () => {
                                             )}
                                         </TableCell>
                                         <TableCell>{contacto.empresa || '—'}</TableCell>
-                                        <TableCell><EstadoChip estado={contacto.estado} /></TableCell>
+                                        <TableCell>
+                                            <EstadoChip estado={contacto.estado} />
+                                            {contacto.statusNotion && (
+                                                <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.3, fontSize: '0.65rem' }}>
+                                                    {contacto.statusNotion}
+                                                </Typography>
+                                            )}
+                                        </TableCell>
                                         <TableCell>
                                             {contacto.precalificacionBot && contacto.precalificacionBot !== 'sin_calificar' ? (
                                                 <Chip label={PRECALIFICACION_BOT[contacto.precalificacionBot]?.label || contacto.precalificacionBot} size="small" color={PRECALIFICACION_BOT[contacto.precalificacionBot]?.color || 'default'} variant="outlined" />
@@ -1072,10 +1128,26 @@ const GestionSDRPage = () => {
                         </Table>
                     </TableContainer>
                     
-                    <Stack direction="row" justifyContent="center" sx={{ mt: 2 }}>
+                    <Stack direction="row" justifyContent="center" alignItems="center" spacing={2} sx={{ mt: 2 }}>
+                        <Button 
+                            size="small" 
+                            startIcon={<NavigateBeforeIcon />}
+                            disabled={page <= 1}
+                            onClick={() => setPage(p => p - 1)}
+                        >
+                            Anterior
+                        </Button>
                         <Typography variant="body2" color="text.secondary">
-                            Mostrando {contactos.length} de {totalContactos} contactos
+                            Página {page} de {Math.ceil(totalContactos / 50) || 1} ({totalContactos} contactos)
                         </Typography>
+                        <Button 
+                            size="small" 
+                            endIcon={<NavigateNextIcon />}
+                            disabled={page >= Math.ceil(totalContactos / 50)}
+                            onClick={() => setPage(p => p + 1)}
+                        >
+                            Siguiente
+                        </Button>
                     </Stack>
                 </>
             )}

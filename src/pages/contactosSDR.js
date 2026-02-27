@@ -44,7 +44,11 @@ import ModalAdminTemplates from 'src/components/sdr/ModalAdminTemplates';
 import SettingsIcon from '@mui/icons-material/Settings';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
 import SortIcon from '@mui/icons-material/Sort';
+import NavigateBeforeIcon from '@mui/icons-material/NavigateBefore';
+import NavigateNextIcon from '@mui/icons-material/NavigateNext';
 import { PRECALIFICACION_BOT, PLANES_SORBY } from 'src/constant/sdrConstants';
+
+const ITEMS_PER_PAGE = 50;
 
 const ContactosSDRPage = () => {
     const { user } = useAuthContext();
@@ -62,7 +66,9 @@ const ContactosSDRPage = () => {
 
     // Estado principal
     const [contactos, setContactos] = useState([]);
+    const [totalContactos, setTotalContactos] = useState(0);
     const [loading, setLoading] = useState(false);
+    const [page, setPage] = useState(1);
     
     // Filtros
     const [busqueda, setBusqueda] = useState('');
@@ -127,7 +133,9 @@ const ContactosSDRPage = () => {
         try {
             // Solo filtrar por sdrAsignado - el SDR ve TODOS sus contactos asignados
             const params = { 
-                sdrAsignado: sdrId
+                sdrAsignado: sdrId,
+                page,
+                limit: ITEMS_PER_PAGE
             };
             
             // Filtros de tipo
@@ -146,15 +154,31 @@ const ContactosSDRPage = () => {
             if (busqueda) params.busqueda = busqueda;
             if (filtroSegmento) params.segmento = filtroSegmento;
             
+            // Mapear ordenamiento al formato del backend
+            const ordenMap = {
+                'vencidos': { ordenarPor: 'proximoContacto', ordenDir: 'asc' },
+                'nuevo': { ordenarPor: 'createdAt', ordenDir: 'desc' },
+                'fecha': { ordenarPor: 'ultimaAccion', ordenDir: 'desc' },
+                'estado': { ordenarPor: 'estado', ordenDir: 'asc' },
+                'prioridad': { ordenarPor: 'prioridad', ordenDir: 'desc' },
+                // Mobile values
+                'proximo_contacto': { ordenarPor: 'proximoContacto', ordenDir: 'asc' },
+                'fecha_creacion': { ordenarPor: 'createdAt', ordenDir: 'desc' },
+            };
+            const orden = ordenMap[ordenarPor] || { ordenarPor: 'prioridad', ordenDir: 'desc' };
+            params.ordenarPor = orden.ordenarPor;
+            params.ordenDir = orden.ordenDir;
+            
             const data = await SDRService.listarContactos(params);
             setContactos(data.contactos || []);
+            setTotalContactos(data.total || 0);
         } catch (err) {
             console.error('Error cargando contactos:', err);
             setSnackbar({ open: true, message: 'Error cargando contactos', severity: 'error' });
         } finally {
             setLoading(false);
         }
-    }, [empresaId, sdrId, filtroEstado, filtroTipo, busqueda, filtroSegmento]);
+    }, [empresaId, sdrId, filtroEstado, filtroTipo, busqueda, filtroSegmento, ordenarPor, page]);
 
     // Cargar métricas del SDR - soporta día, semana y mes
     const cargarMetricas = useCallback(async () => {
@@ -206,6 +230,11 @@ const ContactosSDRPage = () => {
             setLoadingMetricas(false);
         }
     }, [empresaId, sdrId, periodoMetricas]);
+
+    // Resetear página a 1 cuando cambian los filtros u ordenamiento
+    useEffect(() => {
+        setPage(1);
+    }, [filtroEstado, filtroTipo, busqueda, filtroSegmento, ordenarPor]);
 
     useEffect(() => {
         cargarContactos();
@@ -542,44 +571,9 @@ const ContactosSDRPage = () => {
         setBusqueda('');
     };
     
-    // Ordenar contactos según criterio seleccionado
-    const ESTADO_PESO = { nuevo: 0, calificado: 1, contactado: 2, cierre: 3, ganado: 4, no_contacto: 5, no_responde: 6, revisar_mas_adelante: 7, no_califica: 8, perdido: 9 };
-    const contactosOrdenadosBase = [...contactos].sort((a, b) => {
-        if (ordenarPor === 'vencidos') {
-            // Vencidos primero, luego por próximo contacto (ascendente)
-            const aVencido = estaVencido(a);
-            const bVencido = estaVencido(b);
-            if (aVencido && !bVencido) return -1;
-            if (!aVencido && bVencido) return 1;
-            if (a.proximoContacto && b.proximoContacto) {
-                return new Date(a.proximoContacto) - new Date(b.proximoContacto);
-            }
-            if (a.proximoContacto) return -1;
-            if (b.proximoContacto) return 1;
-            return 0;
-        }
-        if (ordenarPor === 'fecha') {
-            // Más recientes primero (por updatedAt)
-            return new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt);
-        }
-        if (ordenarPor === 'estado') {
-            const pesoA = ESTADO_PESO[a.estado] ?? 99;
-            const pesoB = ESTADO_PESO[b.estado] ?? 99;
-            if (pesoA !== pesoB) return pesoA - pesoB;
-            return (b.prioridadScore || 0) - (a.prioridadScore || 0);
-        }
-        if (ordenarPor === 'prioridad') {
-            return (b.prioridadScore || 0) - (a.prioridadScore || 0);
-        }
-        if (ordenarPor === 'nuevo') {
-            // Más nuevos primero (por createdAt)
-            return new Date(b.createdAt) - new Date(a.createdAt);
-        }
-        return 0;
-    });
-    
-    // Aplicar filtro de próximo contacto
-    const contactosOrdenados = filtrarPorProximoContacto(contactosOrdenadosBase);
+    // Los contactos ya vienen ordenados del backend según ordenarPor/ordenDir
+    // Solo aplicamos filtro local de próximo contacto
+    const contactosOrdenados = filtrarPorProximoContacto(contactos);
     
     // Formatear próximo contacto para mostrar
     const formatearProximo = (fecha) => {
@@ -1075,6 +1069,31 @@ const ContactosSDRPage = () => {
                     })
                 )}
             </Stack>
+
+            {/* Paginación mobile */}
+            {totalContactos > ITEMS_PER_PAGE && (
+                <Box sx={{ px: 2, py: 2 }}>
+                    <Stack direction="row" justifyContent="center" alignItems="center" spacing={2}>
+                        <IconButton 
+                            size="small" 
+                            disabled={page <= 1}
+                            onClick={() => { setPage(p => p - 1); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+                        >
+                            <NavigateBeforeIcon />
+                        </IconButton>
+                        <Typography variant="body2" color="text.secondary">
+                            Página {page} de {Math.ceil(totalContactos / ITEMS_PER_PAGE)} ({totalContactos} contactos)
+                        </Typography>
+                        <IconButton 
+                            size="small" 
+                            disabled={page >= Math.ceil(totalContactos / ITEMS_PER_PAGE)}
+                            onClick={() => { setPage(p => p + 1); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+                        >
+                            <NavigateNextIcon />
+                        </IconButton>
+                    </Stack>
+                </Box>
+            )}
 
             {/* FAB para scroll to top */}
             <Fab
@@ -1601,6 +1620,31 @@ const ContactosSDRPage = () => {
                         </Table>
                     )}
                 </Paper>
+
+                {/* Paginación desktop */}
+                {totalContactos > ITEMS_PER_PAGE && (
+                    <Stack direction="row" justifyContent="center" alignItems="center" spacing={2} sx={{ mt: 2 }}>
+                        <Button 
+                            size="small" 
+                            startIcon={<NavigateBeforeIcon />}
+                            disabled={page <= 1}
+                            onClick={() => { setPage(p => p - 1); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+                        >
+                            Anterior
+                        </Button>
+                        <Typography variant="body2" color="text.secondary">
+                            Página {page} de {Math.ceil(totalContactos / ITEMS_PER_PAGE)} ({totalContactos} contactos)
+                        </Typography>
+                        <Button 
+                            size="small" 
+                            endIcon={<NavigateNextIcon />}
+                            disabled={page >= Math.ceil(totalContactos / ITEMS_PER_PAGE)}
+                            onClick={() => { setPage(p => p + 1); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+                        >
+                            Siguiente
+                        </Button>
+                    </Stack>
+                )}
             </Stack>
         </Container>
     );
