@@ -921,9 +921,9 @@ const ContactoSDRDetailPage = () => {
                         {/* Card: Info del contacto */}
                         <Grid item xs={12} sm={6} md={4}>
                             <Card variant="outlined" sx={{ height: '100%' }}>
-                                <CardContent sx={{ pb: '12px !important' }}>
-                                    {/* Estado + Segmento */}
-                                    <Stack direction="row" spacing={0.5} alignItems="center" sx={{ mb: 1, flexWrap: 'wrap', gap: 0.5 }}>
+                                <CardContent sx={{ pb: '12px !important', pt: 1.5 }}>
+                                    {/* Línea 1: Estado · Segmento · SDR — todo inline como texto */}
+                                    <Stack direction="row" spacing={0.5} alignItems="center" sx={{ mb: 0.8, flexWrap: 'wrap', gap: 0.3 }}>
                                         <EstadoChipEditable
                                             estado={contacto.estado}
                                             contactoId={contacto._id}
@@ -931,130 +931,99 @@ const ContactoSDRDetailPage = () => {
                                             mostrarSnackbar={mostrarSnackbar}
                                         />
                                         {contacto.segmento && (
-                                            <Chip size="small" variant="outlined" label={contacto.segmento === 'outbound' ? '🟠 Outbound' : '🟢 Inbound'} color={contacto.segmento === 'inbound' ? 'info' : 'warning'} />
-                                        )}
-                                    </Stack>
-
-                                    {/* SDR asignado */}
-                                    {contacto.sdrAsignadoNombre && (
-                                        <Chip size="small" icon={<PersonIcon />} label={contacto.sdrAsignadoNombre} color="primary" variant="outlined" sx={{ mb: 1.5 }} />
-                                    )}
-
-                                    <Divider sx={{ mb: 1.5 }} />
-
-                                    {/* Info de contacto */}
-                                    <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1}>
-                                        <Typography variant="caption" fontWeight={600} color="text.secondary" textTransform="uppercase" letterSpacing={0.5}>
-                                            Contacto
-                                        </Typography>
-                                        <Button
-                                            size="small"
-                                            startIcon={<EditIcon />}
-                                            onClick={() => setModalEditarContacto(true)}
-                                            sx={{ minWidth: 'auto', fontSize: '0.7rem', textTransform: 'none' }}
-                                        >
-                                            Editar
-                                        </Button>
-                                    </Stack>
-                                    <Stack spacing={0.8}>
-                                        {(contacto.empresa || contacto.tamanoEmpresa) && (
-                                            <Stack direction="row" spacing={1} alignItems="center">
-                                                <BusinessIcon sx={{ fontSize: 16, color: 'text.disabled' }} />
-                                                <Typography variant="body2" fontSize="0.82rem">
-                                                    {contacto.empresa || 'Sin empresa'}
-                                                    {contacto.tamanoEmpresa && (
-                                                        <Chip size="small" label={contacto.tamanoEmpresa} sx={{ ml: 0.5, height: 18, fontSize: '0.65rem' }} />
-                                                    )}
-                                                </Typography>
-                                            </Stack>
-                                        )}
-                                        {contacto.cargo && (
-                                            <Stack direction="row" spacing={1} alignItems="center">
-                                                <PersonIcon sx={{ fontSize: 16, color: 'text.disabled' }} />
-                                                <Typography variant="body2" fontSize="0.82rem">{contacto.cargo}</Typography>
-                                            </Stack>
-                                        )}
-                                        <Stack direction="row" spacing={1} alignItems="center">
-                                            <PhoneIcon sx={{ fontSize: 16, color: 'text.disabled' }} />
-                                            <Typography variant="body2" fontSize="0.82rem">{contacto.telefono}</Typography>
-                                        </Stack>
-                                        {contacto.telefonosSecundarios?.map((tel, i) => (
-                                            <Stack key={i} direction="row" spacing={1} alignItems="center" sx={{ pl: 0.5 }}>
-                                                <PhoneIcon sx={{ fontSize: 14, color: 'text.disabled', opacity: 0.5 }} />
-                                                <Typography variant="body2" fontSize="0.78rem" color="text.secondary">
-                                                    {tel.numero}
-                                                    <Chip size="small" label={tel.etiqueta} sx={{ ml: 0.5, height: 16, fontSize: '0.6rem' }} />
-                                                </Typography>
-                                            </Stack>
-                                        ))}
-                                        {contacto.email && (
-                                            <Stack direction="row" spacing={1} alignItems="center">
-                                                <EmailIcon sx={{ fontSize: 16, color: 'text.disabled' }} />
-                                                <Typography variant="body2" fontSize="0.82rem">{contacto.email}</Typography>
-                                            </Stack>
-                                        )}
-                                    </Stack>
-
-                                    {/* Botones de contacto */}
-                                    <Stack direction="row" spacing={1} mt={1.5}>
-                                        <Button
-                                            variant="contained"
-                                            size="small"
-                                            startIcon={<PhoneIcon />}
-                                            onClick={handleLlamar}
-                                            sx={{ bgcolor: '#4caf50', '&:hover': { bgcolor: '#388e3c' }, flex: 1, py: 0.6 }}
-                                        >
-                                            Llamar
-                                        </Button>
-                                        <Button
-                                            variant="contained"
-                                            size="small"
-                                            startIcon={<WhatsAppIcon />}
-                                            onClick={handleWhatsApp}
-                                            sx={{ bgcolor: '#25D366', '&:hover': { bgcolor: '#128C7E' }, flex: 1, py: 0.6 }}
-                                        >
-                                            WhatsApp
-                                        </Button>
-                                    </Stack>
-
-                                    {/* Datos del Bot */}
-                                    {contacto.datosBot && (contacto.datosBot.rubro || contacto.datosBot.interes || contacto.datosBot.saludoInicial || contacto.datosBot.cantidadObras) && (
-                                        <>
-                                        <Divider sx={{ my: 1.5 }} />
-                                        <Stack direction="row" spacing={1} alignItems="center" mb={0.8}>
-                                            <SmartToyIcon sx={{ fontSize: 16, color: 'text.disabled' }} />
-                                            <Typography variant="caption" fontWeight={600} color="text.secondary" textTransform="uppercase" letterSpacing={0.5}>
-                                                Datos del Bot
+                                            <Typography variant="caption" color="text.secondary">
+                                                · {contacto.segmento === 'inbound' ? '🟢 Inbound' : '🟠 Outbound'}
                                             </Typography>
-                                        </Stack>
-                                        <Stack spacing={0.5}>
-                                            {contacto.datosBot.rubro && (
-                                                <Stack direction="row" spacing={0.8} alignItems="center">
-                                                    <Typography variant="caption" color="text.secondary" sx={{ minWidth: 50, fontWeight: 500 }}>Rubro</Typography>
-                                                    <Typography variant="caption">{contacto.datosBot.rubro}</Typography>
-                                                </Stack>
-                                            )}
-                                            {contacto.datosBot.cantidadObras && (
-                                                <Stack direction="row" spacing={0.8} alignItems="center">
-                                                    <Typography variant="caption" color="text.secondary" sx={{ minWidth: 50, fontWeight: 500 }}>Obras</Typography>
-                                                    <Typography variant="caption">{contacto.datosBot.cantidadObras}</Typography>
-                                                </Stack>
-                                            )}
-                                            {contacto.datosBot.interes && (
-                                                <Stack direction="row" spacing={0.8} alignItems="center">
-                                                    <Typography variant="caption" color="text.secondary" sx={{ minWidth: 50, fontWeight: 500 }}>Interés</Typography>
-                                                    <Typography variant="caption">{contacto.datosBot.interes}</Typography>
-                                                </Stack>
-                                            )}
-                                            {contacto.datosBot.saludoInicial && (
-                                                <Box sx={{ mt: 0.3, p: 0.8, bgcolor: 'action.hover', borderRadius: 0.5, borderLeft: 2, borderColor: 'divider' }}>
-                                                    <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic', fontSize: '0.72rem', lineHeight: 1.4 }}>
+                                        )}
+                                        {contacto.sdrAsignadoNombre && (
+                                            <Typography variant="caption" color="text.secondary">
+                                                · 👤 {contacto.sdrAsignadoNombre}
+                                            </Typography>
+                                        )}
+                                        <Box sx={{ flex: 1 }} />
+                                        <IconButton size="small" onClick={() => setModalEditarContacto(true)} sx={{ p: 0.3 }}>
+                                            <EditIcon sx={{ fontSize: 14, color: 'text.disabled' }} />
+                                        </IconButton>
+                                    </Stack>
+
+                                    {/* Línea 2: Teléfono con icon buttons inline */}
+                                    <Stack direction="row" spacing={0.5} alignItems="center" sx={{ mb: 0.5 }}>
+                                        <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.88rem', fontWeight: 500 }}>
+                                            {contacto.telefono}
+                                        </Typography>
+                                        <Tooltip title="Llamar">
+                                            <IconButton
+                                                size="small"
+                                                onClick={handleLlamar}
+                                                sx={{ p: 0.4, bgcolor: '#e8f5e9', '&:hover': { bgcolor: '#c8e6c9' } }}
+                                            >
+                                                <PhoneIcon sx={{ fontSize: 16, color: '#4caf50' }} />
+                                            </IconButton>
+                                        </Tooltip>
+                                        <Tooltip title="WhatsApp">
+                                            <IconButton
+                                                size="small"
+                                                onClick={handleWhatsApp}
+                                                sx={{ p: 0.4, bgcolor: '#e8f5e9', '&:hover': { bgcolor: '#c8e6c9' } }}
+                                            >
+                                                <WhatsAppIcon sx={{ fontSize: 16, color: '#25D366' }} />
+                                            </IconButton>
+                                        </Tooltip>
+                                    </Stack>
+
+                                    {/* Teléfonos secundarios */}
+                                    {contacto.telefonosSecundarios?.map((tel, i) => (
+                                        <Typography key={i} variant="caption" color="text.secondary" sx={{ display: 'block', pl: 0.5, fontSize: '0.72rem' }}>
+                                            📞 {tel.numero} ({tel.etiqueta})
+                                        </Typography>
+                                    ))}
+
+                                    {/* Línea 3: Empresa / cargo / email — compacto */}
+                                    <Stack spacing={0.3} sx={{ mt: 0.5 }}>
+                                        {(contacto.empresa || contacto.cargo) && (
+                                            <Typography variant="caption" color="text.secondary" fontSize="0.78rem">
+                                                {contacto.empresa && <>🏢 {contacto.empresa}</>}
+                                                {contacto.empresa && contacto.cargo && ' · '}
+                                                {contacto.cargo && <>{contacto.cargo}</>}
+                                                {contacto.tamanoEmpresa && <> · {contacto.tamanoEmpresa}</>}
+                                            </Typography>
+                                        )}
+                                        {contacto.email && (
+                                            <Typography variant="caption" color="text.secondary" fontSize="0.78rem">
+                                                ✉️ {contacto.email}
+                                            </Typography>
+                                        )}
+                                    </Stack>
+
+                                    {/* Datos del Bot — inline key:value */}
+                                    {contacto.datosBot && (contacto.datosBot.rubro || contacto.datosBot.interes || contacto.datosBot.saludoInicial || contacto.datosBot.cantidadObras) && (
+                                        <Box sx={{ mt: 1, pt: 1, borderTop: 1, borderColor: 'divider' }}>
+                                            <Typography variant="caption" color="text.disabled" fontWeight={600} fontSize="0.68rem" textTransform="uppercase" letterSpacing={0.5}>
+                                                🤖 Bot
+                                            </Typography>
+                                            <Stack spacing={0.2} sx={{ mt: 0.3 }}>
+                                                {contacto.datosBot.rubro && (
+                                                    <Typography variant="caption" color="text.secondary" fontSize="0.75rem">
+                                                        <Box component="span" sx={{ color: 'text.disabled', fontWeight: 500 }}>Rubro:</Box> {contacto.datosBot.rubro}
+                                                    </Typography>
+                                                )}
+                                                {contacto.datosBot.cantidadObras && (
+                                                    <Typography variant="caption" color="text.secondary" fontSize="0.75rem">
+                                                        <Box component="span" sx={{ color: 'text.disabled', fontWeight: 500 }}>Obras:</Box> {contacto.datosBot.cantidadObras}
+                                                    </Typography>
+                                                )}
+                                                {contacto.datosBot.interes && (
+                                                    <Typography variant="caption" color="text.secondary" fontSize="0.75rem">
+                                                        <Box component="span" sx={{ color: 'text.disabled', fontWeight: 500 }}>Interés:</Box> {contacto.datosBot.interes}
+                                                    </Typography>
+                                                )}
+                                                {contacto.datosBot.saludoInicial && (
+                                                    <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic', fontSize: '0.72rem', mt: 0.2, lineHeight: 1.3 }}>
                                                         "{contacto.datosBot.saludoInicial}"
                                                     </Typography>
-                                                </Box>
-                                            )}
-                                        </Stack>
-                                        </>
+                                                )}
+                                            </Stack>
+                                        </Box>
                                     )}
                                 </CardContent>
                             </Card>
