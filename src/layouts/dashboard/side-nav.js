@@ -43,6 +43,7 @@ import ScheduleIcon from "@mui/icons-material/Schedule";
 import AdminPanelSettingsIcon from "@mui/icons-material/AdminPanelSettings";
 import ErrorOutlineIcon from "@mui/icons-material/ErrorOutline";
 import ContactsIcon from "@mui/icons-material/Contacts";
+import AccountTreeIcon from "@mui/icons-material/AccountTree";
 import AssessmentIcon from "@mui/icons-material/Assessment";
 
 export const SideNav = (props) => {
@@ -310,6 +311,15 @@ export const SideNav = (props) => {
           icon: (
             <SvgIcon fontSize="small">
               <ContactsIcon />
+            </SvgIcon>
+          ),
+        });
+        baseItems.push({
+          title: "Cadencias",
+          path: "/sdr/cadencias",
+          icon: (
+            <SvgIcon fontSize="small">
+              <AccountTreeIcon />
             </SvgIcon>
           ),
         });

@@ -60,6 +60,8 @@ import Tooltip from '@mui/material/Tooltip';
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 import DeleteIcon from '@mui/icons-material/Delete';
 import ListAltIcon from '@mui/icons-material/ListAlt';
+import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
+import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 
 // Helper: calcular totales de un resumen multimoneda (para ProyectoCard)
 // Si existe presupuesto general (sin categoría/etapa/proveedor), lo usa como techo
@@ -111,6 +113,12 @@ const ProyectoCard = ({ proyecto, resumen, onSelect, formatMonto, tipoCambio, mo
   const { egresosTotal, egresosEjecutado, ingresosTotal, ingresosEjecutado } = calcularTotalesResumen(resumen, tipoCambio, moneda);
   const porcentajeEgresos = egresosTotal > 0 ? (egresosEjecutado / egresosTotal) * 100 : 0;
   const gananciaProyectada = ingresosTotal - egresosTotal;
+
+  // Detectar si hay multi-moneda para mostrar indicador
+  const monedasIngreso = resumen?.ingresosPorMoneda ? Object.keys(resumen.ingresosPorMoneda) : [];
+  const monedasEgreso = resumen?.egresosPorMoneda ? Object.keys(resumen.egresosPorMoneda) : [];
+  const esMultiMonedaIng = monedasIngreso.length > 1;
+  const esMultiMonedaEgr = monedasEgreso.length > 1;
   const gananciaReal = ingresosEjecutado - egresosEjecutado;
   const gananciaProyectadaPendiente = gananciaProyectada - gananciaReal;
   const tieneIngresos = ingresosTotal > 0;
@@ -128,6 +136,11 @@ const ProyectoCard = ({ proyecto, resumen, onSelect, formatMonto, tipoCambio, mo
                   <Stack direction="row" spacing={0.5} alignItems="center">
                     <TrendingUpIcon sx={{ fontSize: 14, color: 'success.main' }} />
                     <Typography variant="body2" color="text.secondary">Pres. ingresos</Typography>
+                    {esMultiMonedaIng && (
+                      <Tooltip title="Incluye múltiples monedas (ver detalle adentro)" arrow>
+                        <SwapHorizIcon sx={{ fontSize: 12, color: 'text.disabled' }} />
+                      </Tooltip>
+                    )}
                   </Stack>
                   <Typography variant="body2" fontWeight={600}>{formatMonto(ingresosTotal, moneda)}</Typography>
                 </Stack>
@@ -144,6 +157,11 @@ const ProyectoCard = ({ proyecto, resumen, onSelect, formatMonto, tipoCambio, mo
               <Stack direction="row" spacing={0.5} alignItems="center">
                 <TrendingDownIcon sx={{ fontSize: 14, color: 'error.main' }} />
                 <Typography variant="body2" color="text.secondary">Pres. egresos</Typography>
+                {esMultiMonedaEgr && (
+                  <Tooltip title="Incluye múltiples monedas (ver detalle adentro)" arrow>
+                    <SwapHorizIcon sx={{ fontSize: 12, color: 'text.disabled' }} />
+                  </Tooltip>
+                )}
               </Stack>
               <Typography variant="body2" fontWeight={600}>{formatMonto(egresosTotal, moneda)}</Typography>
             </Stack>
@@ -582,6 +600,48 @@ const ControlPresupuestosPage = () => {
     }
     return formatCurrency(valor);
   };
+
+  // Helper: construir desglose multi-moneda para tooltips
+  // Muestra cuánto hay en cada moneda original antes de la conversión
+  const buildBreakdownTooltip = (tipo = 'egresos') => {
+    const porMoneda = tipo === 'ingresos' ? resumen?.ingresosPorMoneda : resumen?.egresosPorMoneda;
+    if (!porMoneda) return null;
+    const monedas = Object.keys(porMoneda);
+    if (monedas.length <= 1) return null; // No hay multi-moneda, no hace falta desglose
+    
+    const fmtNativo = (valor, mon) => {
+      if (mon === 'USD') return `USD ${Number(valor).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+      if (mon === 'CAC') return `CAC ${Number(valor).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+      return `$${Number(valor).toLocaleString('es-AR', { maximumFractionDigits: 0 })}`;
+    };
+
+    return (
+      <Box sx={{ fontSize: '0.75rem', lineHeight: 1.8 }}>
+        <strong>Composición ({tipo}):</strong>
+        {monedas.map(mon => {
+          const data = porMoneda[mon];
+          const totalNativo = data.total || 0;
+          const ejecutadoNativo = data.ejecutado || 0;
+          return (
+            <Box key={mon}>
+              {mon}: Pres. {fmtNativo(totalNativo, mon)} · Ejec. {fmtNativo(ejecutadoNativo, mon)}
+              {mon !== moneda && tipoCambio && mon === 'USD' && moneda === 'ARS' && (
+                <> (×${Number(tipoCambio).toLocaleString('es-AR', {maximumFractionDigits: 0})})</>)}
+              {mon !== moneda && cacIndiceActual && mon === 'CAC' && moneda === 'ARS' && (
+                <> (×{Number(cacIndiceActual).toLocaleString('es-AR', {maximumFractionDigits: 2})})</>)}
+            </Box>
+          );
+        })}
+      </Box>
+    );
+  };
+
+  // Helper: obtener info de conversiones de moneda del resumen
+  const conversionesInfo = useMemo(() => {
+    const conv = resumen?.conversionesPorMoneda;
+    if (!conv || Object.keys(conv).length === 0) return null;
+    return conv;
+  }, [resumen]);
 
   // Obtener presupuesto por agrupación
   const getPresupuestoPorAgrupacion = (tipoAgrupacion, valor) => {
@@ -1064,7 +1124,14 @@ const ControlPresupuestosPage = () => {
                               <TrendingUpIcon color="success" sx={{ fontSize: { xs: 28, md: 40 } }} />
                               <Box sx={{ minWidth: 0 }}>
                                 <Typography variant="body2" color="text.secondary" sx={{ fontSize: { xs: '0.65rem', sm: '0.75rem', md: '0.875rem' } }} noWrap>Ingresos Proyectados</Typography>
-                                <Typography variant="h5" sx={{ fontSize: { xs: '1rem', sm: '1.25rem', md: '1.5rem' } }} noWrap>{formatMonto(totales.ingresos.total, moneda)}</Typography>
+                                <Stack direction="row" alignItems="center" spacing={0.5}>
+                                  <Typography variant="h5" sx={{ fontSize: { xs: '1rem', sm: '1.25rem', md: '1.5rem' } }} noWrap>{formatMonto(totales.ingresos.total, moneda)}</Typography>
+                                  {buildBreakdownTooltip('ingresos') && (
+                                    <Tooltip title={buildBreakdownTooltip('ingresos')} arrow placement="bottom">
+                                      <InfoOutlinedIcon sx={{ fontSize: 16, color: 'text.disabled', cursor: 'help' }} />
+                                    </Tooltip>
+                                  )}
+                                </Stack>
                                 <Typography variant="body2" color="text.secondary" sx={{ fontSize: { xs: '0.6rem', sm: '0.7rem', md: '0.875rem' } }} noWrap>
                                   Recibido: {formatMonto(totales.ingresos.ejecutado, moneda)}
                                 </Typography>
@@ -1081,7 +1148,14 @@ const ControlPresupuestosPage = () => {
                               <TrendingDownIcon color="error" sx={{ fontSize: { xs: 28, md: 40 } }} />
                               <Box sx={{ minWidth: 0 }}>
                                 <Typography variant="body2" color="text.secondary" sx={{ fontSize: { xs: '0.65rem', sm: '0.75rem', md: '0.875rem' } }} noWrap>Egresos Proyectados</Typography>
-                                <Typography variant="h5" sx={{ fontSize: { xs: '1rem', sm: '1.25rem', md: '1.5rem' } }} noWrap>{formatMonto(totales.egresos.total, moneda)}</Typography>
+                                <Stack direction="row" alignItems="center" spacing={0.5}>
+                                  <Typography variant="h5" sx={{ fontSize: { xs: '1rem', sm: '1.25rem', md: '1.5rem' } }} noWrap>{formatMonto(totales.egresos.total, moneda)}</Typography>
+                                  {buildBreakdownTooltip('egresos') && (
+                                    <Tooltip title={buildBreakdownTooltip('egresos')} arrow placement="bottom">
+                                      <InfoOutlinedIcon sx={{ fontSize: 16, color: 'text.disabled', cursor: 'help' }} />
+                                    </Tooltip>
+                                  )}
+                                </Stack>
                                 <Typography variant="body2" color="text.secondary" sx={{ fontSize: { xs: '0.6rem', sm: '0.7rem', md: '0.875rem' } }} noWrap>
                                   Gastado: {formatMonto(totales.egresos.ejecutado, moneda)}
                                 </Typography>
@@ -1268,6 +1342,36 @@ const ControlPresupuestosPage = () => {
                     </Paper>
                   );
                 })()}
+
+                {/* Sección informativa: Conversiones de moneda (compra/venta USD) */}
+                {conversionesInfo && (
+                  <Paper sx={{ p: { xs: 1.5, md: 2 }, bgcolor: 'grey.50', border: '1px dashed', borderColor: 'grey.300' }}>
+                    <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
+                      <SwapHorizIcon sx={{ fontSize: { xs: 18, md: 22 }, color: 'text.secondary' }} />
+                      <Typography variant="subtitle2" color="text.secondary" sx={{ fontSize: { xs: '0.8rem', md: '0.9rem' } }}>
+                        Conversiones USD ↔ ARS
+                      </Typography>
+                      <Chip 
+                        label="No impactan presupuesto" 
+                        size="small" 
+                        variant="outlined" 
+                        sx={{ height: 20, '& .MuiChip-label': { px: 0.5, fontSize: '0.6rem' }, color: 'text.secondary' }} 
+                      />
+                    </Stack>
+                    <Stack direction="row" spacing={2} flexWrap="wrap" useFlexGap>
+                      {Object.entries(conversionesInfo).map(([mon, data]) => (
+                        <Box key={mon}>
+                          <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.65rem', sm: '0.75rem' } }}>
+                            {mon}: {data.ingresos > 0 && <>Ingresos: {mon === 'USD' ? `USD ${data.ingresos.toLocaleString('es-AR', {maximumFractionDigits: 2})}` : `$${data.ingresos.toLocaleString('es-AR', {maximumFractionDigits: 0})}`}</>}
+                            {data.ingresos > 0 && data.egresos > 0 && ' · '}
+                            {data.egresos > 0 && <>Egresos: {mon === 'USD' ? `USD ${data.egresos.toLocaleString('es-AR', {maximumFractionDigits: 2})}` : `$${data.egresos.toLocaleString('es-AR', {maximumFractionDigits: 0})}`}</>}
+                            {' '}({data.cantidad} mov.)
+                          </Typography>
+                        </Box>
+                      ))}
+                    </Stack>
+                  </Paper>
+                )}
 
                 {/* Tabs de Egresos */}
                 <Paper sx={{ p: { xs: 1.5, md: 2 } }}>

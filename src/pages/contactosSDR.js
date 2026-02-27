@@ -27,8 +27,13 @@ import {
     Schedule as ScheduleIcon,
     EventBusy as EventBusyIcon,
     HourglassEmpty as HourglassEmptyIcon,
-    Checkbox as CheckboxIcon
+    Checkbox as CheckboxIcon,
+    BookmarkBorder as BookmarkBorderIcon,
+    Bookmark as BookmarkIcon,
+    Save as SaveIcon,
+    Delete as DeleteIcon
 } from '@mui/icons-material';
+import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import { useAuthContext } from 'src/contexts/auth-context';
 import SDRService from 'src/services/sdrService';
@@ -37,6 +42,9 @@ import ModalAgregarContacto from 'src/components/sdr/ModalAgregarContacto';
 import ModalImportarExcel from 'src/components/sdr/ModalImportarExcel';
 import ModalAdminTemplates from 'src/components/sdr/ModalAdminTemplates';
 import SettingsIcon from '@mui/icons-material/Settings';
+import SmartToyIcon from '@mui/icons-material/SmartToy';
+import SortIcon from '@mui/icons-material/Sort';
+import { PRECALIFICACION_BOT, PLANES_SORBY } from 'src/constant/sdrConstants';
 
 const ContactosSDRPage = () => {
     const { user } = useAuthContext();
@@ -61,10 +69,14 @@ const ContactosSDRPage = () => {
     const [filtroEstado, setFiltroEstado] = useState('');
     const [filtroTipo, setFiltroTipo] = useState('activos'); // 'activos' | 'vencidos' | 'no_calificados' | 'todos'
     const [filtroProximoContacto, setFiltroProximoContacto] = useState(''); // '' | 'sin_proximo' | 'vencido' | 'pendiente'
+    const [filtroSegmento, setFiltroSegmento] = useState(''); // '' | 'inbound' | 'outbound'
+    const [ordenarPor, setOrdenarPor] = useState('vencidos'); // 'vencidos' | 'fecha' | 'estado' | 'prioridad' | 'nuevo'
     
     // Selección múltiple
     const [seleccionados, setSeleccionados] = useState([]);
     const [modalProximoMasivo, setModalProximoMasivo] = useState(false);
+    const [modalCadenciaMasiva, setModalCadenciaMasiva] = useState(false);
+    const [cadenciasDisponibles, setCadenciasDisponibles] = useState([]);
     
     // Drawer de contacto
     const [drawerOpen, setDrawerOpen] = useState(false);
@@ -87,6 +99,13 @@ const ContactosSDRPage = () => {
     
     // Snackbar
     const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
+
+    // Vistas guardadas
+    const [vistas, setVistas] = useState([]);
+    const [vistaActiva, setVistaActiva] = useState(null);
+    const [modalGuardarVista, setModalGuardarVista] = useState(false);
+    const [nombreVista, setNombreVista] = useState('');
+    const [vistaCompartida, setVistaCompartida] = useState(false);
 
     // Refrescar contacto individual seleccionado
     const refrescarContactoSeleccionado = useCallback(async () => {
@@ -125,6 +144,7 @@ const ContactosSDRPage = () => {
             
             if (filtroEstado && filtroTipo !== 'no_calificados') params.estado = filtroEstado;
             if (busqueda) params.busqueda = busqueda;
+            if (filtroSegmento) params.segmento = filtroSegmento;
             
             const data = await SDRService.listarContactos(params);
             setContactos(data.contactos || []);
@@ -134,7 +154,7 @@ const ContactosSDRPage = () => {
         } finally {
             setLoading(false);
         }
-    }, [empresaId, sdrId, filtroEstado, filtroTipo, busqueda]);
+    }, [empresaId, sdrId, filtroEstado, filtroTipo, busqueda, filtroSegmento]);
 
     // Cargar métricas del SDR - soporta día, semana y mes
     const cargarMetricas = useCallback(async () => {
@@ -195,6 +215,17 @@ const ContactosSDRPage = () => {
         cargarMetricas();
     }, [cargarMetricas]);
 
+    // Cargar cadencias disponibles (globales)
+    useEffect(() => {
+        SDRService.listarCadencias()
+            .then(data => setCadenciasDisponibles(data || []))
+            .catch(() => setCadenciasDisponibles([]));
+        // Cargar vistas guardadas
+        SDRService.listarVistas(empresaId)
+            .then(data => setVistas(data || []))
+            .catch(() => setVistas([]));
+    }, [empresaId]);
+
     // Abrir contacto desde query param si existe
     useEffect(() => {
         const contactoId = router.query.contacto;
@@ -222,22 +253,33 @@ const ContactosSDRPage = () => {
         }
     }, [router.query.contacto, contactos]);
 
-    // Abrir drawer y actualizar URL
+    // Abrir página de detalle del contacto con contexto de navegación
     const handleOpenDrawer = (contacto) => {
-        setContactoSeleccionado(contacto);
-        setDrawerOpen(true);
-        // Actualizar URL con el ID del contacto para poder compartir
-        router.push(
-            { pathname: router.pathname, query: { ...router.query, contacto: contacto._id } },
-            undefined,
-            { shallow: true }
-        );
+        // Guardar IDs de contactos en sessionStorage para navegación ← →
+        try {
+            const ids = contactosOrdenados.map(c => c._id);
+            sessionStorage.setItem('sdr_contacto_ids', JSON.stringify(ids));
+        } catch { /* ignore */ }
+        router.push(`/sdr/contacto/${contacto._id}`);
+    };
+
+    // Navegar al primer contacto de la lista (flujo secuencial)
+    const handleSiguienteContacto = () => {
+        if (contactosOrdenados.length === 0) return;
+        try {
+            const ids = contactosOrdenados.map(c => c._id);
+            sessionStorage.setItem('sdr_contacto_ids', JSON.stringify(ids));
+        } catch { /* ignore */ }
+        router.push(`/sdr/contacto/${contactosOrdenados[0]._id}`);
     };
 
     // Cerrar drawer y limpiar query param
     const handleCloseDrawer = () => {
         setDrawerOpen(false);
-        setContactoSeleccionado(null);
+        // No limpiar contactoSeleccionado si el modal de reunión está abierto
+        if (!modalReunion) {
+            setContactoSeleccionado(null);
+        }
         // Remover el query param del contacto
         const { contacto, ...restQuery } = router.query;
         router.push(
@@ -269,6 +311,7 @@ const ContactosSDRPage = () => {
             await SDRService.registrarIntento(contacto._id, {
                 tipo: tipo === 'llamada' ? (atendida ? 'llamada_atendida' : 'llamada_no_atendida') : 'whatsapp_enviado',
                 canal: tipo === 'llamada' ? 'llamada' : 'whatsapp',
+                resultado: tipo === 'llamada' ? (atendida ? 'atendio' : 'no_atendio') : undefined,
                 empresaId
             });
             setSnackbar({ 
@@ -408,18 +451,130 @@ const ContactosSDRPage = () => {
             setActionLoading(false);
         }
     };
-    
-    // Ordenar contactos: vencidos primero, luego por próximo contacto (ascendente)
-    const contactosOrdenadosBase = [...contactos].sort((a, b) => {
-        const aVencido = estaVencido(a);
-        const bVencido = estaVencido(b);
-        if (aVencido && !bVencido) return -1;
-        if (!aVencido && bVencido) return 1;
-        if (a.proximoContacto && b.proximoContacto) {
-            return new Date(a.proximoContacto) - new Date(b.proximoContacto);
+
+    // Asignar cadencia masivamente
+    const handleAsignarCadenciaMasiva = async (cadenciaId) => {
+        if (seleccionados.length === 0) return;
+        setActionLoading(true);
+        try {
+            const resultados = await SDRService.asignarCadenciaMasiva(seleccionados, cadenciaId);
+            const exitosos = resultados.filter(r => r.ok).length;
+            const fallidos = resultados.filter(r => !r.ok).length;
+            setSnackbar({
+                open: true,
+                message: fallidos > 0
+                    ? `Cadencia asignada a ${exitosos} contacto(s). ${fallidos} fallido(s).`
+                    : `Cadencia asignada a ${exitosos} contacto(s)`,
+                severity: fallidos > 0 ? 'warning' : 'success'
+            });
+            setSeleccionados([]);
+            setModalCadenciaMasiva(false);
+            cargarContactos();
+        } catch (error) {
+            setSnackbar({ open: true, message: 'Error al asignar cadencia', severity: 'error' });
+        } finally {
+            setActionLoading(false);
         }
-        if (a.proximoContacto) return -1;
-        if (b.proximoContacto) return 1;
+    };
+
+    // ==================== VISTAS GUARDADAS ====================
+
+    const aplicarVista = (vista) => {
+        setVistaActiva(vista);
+        // Aplicar filtros de la vista
+        const f = vista.filtros || {};
+        setFiltroEstado(f.estados?.length === 1 ? f.estados[0] : '');
+        setFiltroProximoContacto(f.proximoContacto || '');
+        setBusqueda(f.busqueda || '');
+        // Determinar filtroTipo según los estados guardados
+        if (f.estados?.length === 1 && f.estados[0] === 'no_califica') {
+            setFiltroTipo('no_calificados');
+        } else if (f.proximoContacto === 'vencido') {
+            setFiltroTipo('vencidos');
+        } else {
+            setFiltroTipo('activos');
+        }
+    };
+
+    const handleGuardarVista = async () => {
+        if (!nombreVista.trim()) return;
+        try {
+            const data = {
+                nombre: nombreVista.trim(),
+                empresaId,
+                compartida: vistaCompartida,
+                filtros: {
+                    estados: filtroEstado ? [filtroEstado] : [],
+                    proximoContacto: filtroProximoContacto || null,
+                    busqueda: busqueda || ''
+                },
+                ordenarPor: 'prioridadScore',
+                ordenDir: 'desc'
+            };
+            const nuevaVista = await SDRService.crearVista(data);
+            setVistas(prev => [nuevaVista, ...prev]);
+            setVistaActiva(nuevaVista);
+            setModalGuardarVista(false);
+            setNombreVista('');
+            setVistaCompartida(false);
+            setSnackbar({ open: true, message: 'Vista guardada', severity: 'success' });
+        } catch (err) {
+            setSnackbar({ open: true, message: 'Error guardando vista', severity: 'error' });
+        }
+    };
+
+    const handleEliminarVista = async (vistaId) => {
+        try {
+            await SDRService.eliminarVista(vistaId);
+            setVistas(prev => prev.filter(v => v._id !== vistaId));
+            if (vistaActiva?._id === vistaId) setVistaActiva(null);
+            setSnackbar({ open: true, message: 'Vista eliminada', severity: 'success' });
+        } catch (err) {
+            setSnackbar({ open: true, message: 'Error eliminando vista', severity: 'error' });
+        }
+    };
+
+    const handleLimpiarVista = () => {
+        setVistaActiva(null);
+        setFiltroEstado('');
+        setFiltroTipo('activos');
+        setFiltroProximoContacto('');
+        setBusqueda('');
+    };
+    
+    // Ordenar contactos según criterio seleccionado
+    const ESTADO_PESO = { nuevo: 0, calificado: 1, contactado: 2, cierre: 3, ganado: 4, no_contacto: 5, no_responde: 6, revisar_mas_adelante: 7, no_califica: 8, perdido: 9 };
+    const contactosOrdenadosBase = [...contactos].sort((a, b) => {
+        if (ordenarPor === 'vencidos') {
+            // Vencidos primero, luego por próximo contacto (ascendente)
+            const aVencido = estaVencido(a);
+            const bVencido = estaVencido(b);
+            if (aVencido && !bVencido) return -1;
+            if (!aVencido && bVencido) return 1;
+            if (a.proximoContacto && b.proximoContacto) {
+                return new Date(a.proximoContacto) - new Date(b.proximoContacto);
+            }
+            if (a.proximoContacto) return -1;
+            if (b.proximoContacto) return 1;
+            return 0;
+        }
+        if (ordenarPor === 'fecha') {
+            // Más recientes primero (por updatedAt)
+            return new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt);
+        }
+        if (ordenarPor === 'estado') {
+            const pesoA = ESTADO_PESO[a.estado] ?? 99;
+            const pesoB = ESTADO_PESO[b.estado] ?? 99;
+            if (pesoA !== pesoB) return pesoA - pesoB;
+            return (b.prioridadScore || 0) - (a.prioridadScore || 0);
+        }
+        if (ordenarPor === 'prioridad') {
+            return (b.prioridadScore || 0) - (a.prioridadScore || 0);
+        }
+        if (ordenarPor === 'nuevo') {
+            // Más nuevos primero (por createdAt)
+            return new Date(b.createdAt) - new Date(a.createdAt);
+        }
         return 0;
     });
     
@@ -479,6 +634,17 @@ const ContactosSDRPage = () => {
                     <Typography variant="h6" fontWeight={700}>Mis Contactos</Typography>
                     <Stack direction="row" spacing={0.5} alignItems="center">
                         {loading && <CircularProgress size={20} />}
+                        <Button
+                            size="small"
+                            variant="contained"
+                            color="primary"
+                            endIcon={<ChevronRightIcon />}
+                            onClick={handleSiguienteContacto}
+                            disabled={contactosOrdenados.length === 0}
+                            sx={{ mr: 0.5, textTransform: 'none', minWidth: 'auto', px: 1.5 }}
+                        >
+                            Siguiente
+                        </Button>
                         <IconButton 
                             onClick={() => setModalAgregarContacto(true)} 
                             size="small"
@@ -509,6 +675,33 @@ const ContactosSDRPage = () => {
                     </Stack>
                 </Stack>
             </Box>
+
+            {/* Vistas guardadas */}
+            {vistas.length > 0 && (
+                <Box sx={{ px: 2, pb: 1, overflowX: 'auto' }}>
+                    <Stack direction="row" spacing={0.5} alignItems="center" sx={{ minWidth: 'max-content' }}>
+                        <BookmarkBorderIcon sx={{ fontSize: 16, color: 'text.secondary' }} />
+                        {vistas.map(v => (
+                            <Chip
+                                key={v._id}
+                                label={v.nombre}
+                                size="small"
+                                color={vistaActiva?._id === v._id ? 'primary' : 'default'}
+                                variant={vistaActiva?._id === v._id ? 'filled' : 'outlined'}
+                                onClick={() => vistaActiva?._id === v._id ? handleLimpiarVista() : aplicarVista(v)}
+                                onDelete={vistaActiva?._id === v._id ? () => handleEliminarVista(v._id) : undefined}
+                            />
+                        ))}
+                        <Chip
+                            label="Guardar"
+                            size="small"
+                            icon={<SaveIcon sx={{ fontSize: 14 }} />}
+                            variant="outlined"
+                            onClick={() => setModalGuardarVista(true)}
+                        />
+                    </Stack>
+                </Box>
+            )}
 
             {/* Filtros principales: Activos / Vencidos / No Calificados */}
             <Box sx={{ px: 2, pb: 1 }}>
@@ -556,18 +749,18 @@ const ContactosSDRPage = () => {
                         onClick={() => setFiltroEstado(filtroEstado === 'nuevo' ? '' : 'nuevo')}
                     />
                     <Chip 
-                        label={`En Gestión: ${contarPorEstado('en_gestion')}`} 
+                        label={`Contactados: ${contarPorEstado('contactado')}`} 
                         color="warning" 
                         size="small"
-                        variant={filtroEstado === 'en_gestion' ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroEstado(filtroEstado === 'en_gestion' ? '' : 'en_gestion')}
+                        variant={filtroEstado === 'contactado' ? 'filled' : 'outlined'}
+                        onClick={() => setFiltroEstado(filtroEstado === 'contactado' ? '' : 'contactado')}
                     />
                     <Chip 
-                        label={`Reuniones: ${contarPorEstado('meet')}`} 
+                        label={`En Cierre: ${contarPorEstado('cierre')}`} 
                         color="secondary" 
                         size="small"
-                        variant={filtroEstado === 'meet' ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroEstado(filtroEstado === 'meet' ? '' : 'meet')}
+                        variant={filtroEstado === 'cierre' ? 'filled' : 'outlined'}
+                        onClick={() => setFiltroEstado(filtroEstado === 'cierre' ? '' : 'cierre')}
                     />
                     <Chip 
                         label={`Calificados: ${contarPorEstado('calificado')}`} 
@@ -581,6 +774,33 @@ const ContactosSDRPage = () => {
                         size="small"
                         variant={filtroEstado === 'no_responde' ? 'filled' : 'outlined'}
                         onClick={() => setFiltroEstado(filtroEstado === 'no_responde' ? '' : 'no_responde')}
+                    />
+                    <Chip 
+                        label={`Ganados: ${contarPorEstado('ganado')}`} 
+                        color="success"
+                        size="small"
+                        variant={filtroEstado === 'ganado' ? 'filled' : 'outlined'}
+                        onClick={() => setFiltroEstado(filtroEstado === 'ganado' ? '' : 'ganado')}
+                    />
+                    <Chip 
+                        label={`No Contactado: ${contarPorEstado('no_contacto')}`} 
+                        size="small"
+                        variant={filtroEstado === 'no_contacto' ? 'filled' : 'outlined'}
+                        onClick={() => setFiltroEstado(filtroEstado === 'no_contacto' ? '' : 'no_contacto')}
+                    />
+                    <Chip 
+                        label={`Revisar: ${contarPorEstado('revisar_mas_adelante')}`} 
+                        color="warning"
+                        size="small"
+                        variant={filtroEstado === 'revisar_mas_adelante' ? 'filled' : 'outlined'}
+                        onClick={() => setFiltroEstado(filtroEstado === 'revisar_mas_adelante' ? '' : 'revisar_mas_adelante')}
+                    />
+                    <Chip 
+                        label={`Perdidos: ${contarPorEstado('perdido')}`} 
+                        color="error"
+                        size="small"
+                        variant={filtroEstado === 'perdido' ? 'filled' : 'outlined'}
+                        onClick={() => setFiltroEstado(filtroEstado === 'perdido' ? '' : 'perdido')}
                     />
                 </Stack>
             </Box>
@@ -619,6 +839,44 @@ const ContactosSDRPage = () => {
                 </Stack>
             </Box>
 
+            {/* Filtros por segmento (inbound / outbound) */}
+            <Box sx={{ px: 2, pb: 1, overflowX: 'auto' }}>
+                <Stack direction="row" spacing={1} sx={{ minWidth: 'max-content' }}>
+                    <Typography variant="caption" color="text.secondary" sx={{ alignSelf: 'center', mr: 0.5 }}>
+                        Segmento:
+                    </Typography>
+                    <Chip 
+                        label="Inbound"
+                        size="small"
+                        icon={<span style={{ fontSize: 12 }}>🔵</span>}
+                        color={filtroSegmento === 'inbound' ? 'info' : 'default'}
+                        variant={filtroSegmento === 'inbound' ? 'filled' : 'outlined'}
+                        onClick={() => setFiltroSegmento(filtroSegmento === 'inbound' ? '' : 'inbound')}
+                    />
+                    <Chip 
+                        label="Outbound"
+                        size="small"
+                        icon={<span style={{ fontSize: 12 }}>🟠</span>}
+                        color={filtroSegmento === 'outbound' ? 'warning' : 'default'}
+                        variant={filtroSegmento === 'outbound' ? 'filled' : 'outlined'}
+                        onClick={() => setFiltroSegmento(filtroSegmento === 'outbound' ? '' : 'outbound')}
+                    />
+                </Stack>
+            </Box>
+
+            {/* Ordenar por */}
+            <Box sx={{ px: 2, pb: 1, overflowX: 'auto' }}>
+                <Stack direction="row" spacing={1} sx={{ minWidth: 'max-content' }}>
+                    <Typography variant="caption" color="text.secondary" sx={{ alignSelf: 'center', mr: 0.5 }}>
+                        Ordenar:
+                    </Typography>
+                    <Chip label="Próximo" size="small" color={ordenarPor === 'proximo_contacto' ? 'primary' : 'default'} variant={ordenarPor === 'proximo_contacto' ? 'filled' : 'outlined'} onClick={() => setOrdenarPor('proximo_contacto')} />
+                    <Chip label="Más nuevo" size="small" color={ordenarPor === 'fecha_creacion' ? 'primary' : 'default'} variant={ordenarPor === 'fecha_creacion' ? 'filled' : 'outlined'} onClick={() => setOrdenarPor('fecha_creacion')} />
+                    <Chip label="Prioridad" size="small" color={ordenarPor === 'prioridad' ? 'primary' : 'default'} variant={ordenarPor === 'prioridad' ? 'filled' : 'outlined'} onClick={() => setOrdenarPor('prioridad')} />
+                    <Chip label="Estado" size="small" color={ordenarPor === 'estado' ? 'primary' : 'default'} variant={ordenarPor === 'estado' ? 'filled' : 'outlined'} onClick={() => setOrdenarPor('estado')} />
+                </Stack>
+            </Box>
+
             {/* Barra de acciones masivas */}
             {seleccionados.length > 0 && (
                 <Box sx={{ px: 2, pb: 2 }}>
@@ -629,6 +887,11 @@ const ContactosSDRPage = () => {
                                 <Button size="small" onClick={() => setModalProximoMasivo(true)}>
                                     📅 Fecha
                                 </Button>
+                                {cadenciasDisponibles.length > 0 && (
+                                    <Button size="small" onClick={() => setModalCadenciaMasiva(true)}>
+                                        🔄 Cadencia
+                                    </Button>
+                                )}
                                 <Button size="small" onClick={() => setSeleccionados([])}>
                                     ✕
                                 </Button>
@@ -736,6 +999,37 @@ const ContactosSDRPage = () => {
                                         <Typography variant="body2" color="text.secondary" noWrap>
                                             {contacto.empresa || contacto.telefono}
                                         </Typography>
+                                        {/* Badges: precalificación bot + prioridad */}
+                                        <Stack direction="row" spacing={0.5} alignItems="center" sx={{ mt: 0.3 }}>
+                                            {contacto.precalificacionBot && contacto.precalificacionBot !== 'sin_calificar' && (
+                                                <Chip 
+                                                    size="small" 
+                                                    icon={<SmartToyIcon sx={{ fontSize: 12 }} />}
+                                                    label={PRECALIFICACION_BOT[contacto.precalificacionBot]?.label || contacto.precalificacionBot}
+                                                    color={PRECALIFICACION_BOT[contacto.precalificacionBot]?.color || 'default'}
+                                                    variant="outlined"
+                                                    sx={{ height: 20, fontSize: '0.65rem' }}
+                                                />
+                                            )}
+                                            {contacto.prioridadScore > 0 && (
+                                                <Chip 
+                                                    size="small" 
+                                                    label={`P:${contacto.prioridadScore}`}
+                                                    color={contacto.prioridadScore >= 70 ? 'error' : contacto.prioridadScore >= 40 ? 'warning' : 'default'}
+                                                    variant="outlined"
+                                                    sx={{ height: 20, fontSize: '0.65rem' }}
+                                                />
+                                            )}
+                                            {contacto.segmento && (
+                                                <Chip 
+                                                    size="small" 
+                                                    label={contacto.segmento === 'inbound' ? '🔵 In' : '🟠 Out'}
+                                                    variant="outlined"
+                                                    color={contacto.segmento === 'inbound' ? 'info' : 'warning'}
+                                                    sx={{ height: 20, fontSize: '0.65rem' }}
+                                                />
+                                            )}
+                                        </Stack>
                                         {proximo && (
                                             <Stack direction="row" spacing={0.5} alignItems="center" sx={{ mt: 0.5 }}>
                                                 <AccessTimeIcon sx={{ fontSize: 14, color: `${proximo.color}.main` }} />
@@ -808,6 +1102,15 @@ const ContactosSDRPage = () => {
                     <Typography variant="h4">Mis Contactos</Typography>
                     <Stack direction="row" spacing={1}>
                         <Button
+                            startIcon={<ChevronRightIcon />}
+                            onClick={handleSiguienteContacto}
+                            variant="contained"
+                            color="success"
+                            disabled={contactosOrdenados.length === 0}
+                        >
+                            Siguiente contacto
+                        </Button>
+                        <Button
                             startIcon={<AddIcon />}
                             onClick={() => setModalAgregarContacto(true)}
                             variant="contained"
@@ -844,9 +1147,13 @@ const ContactosSDRPage = () => {
                 {metricas && (
                     <Box>
                         <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
-                            <Typography variant="h6">
-                                Mis Métricas {metricas._estimado && <Typography component="span" variant="caption" color="text.secondary">(estimado)</Typography>}
-                            </Typography>
+                            <Stack direction="row" spacing={1} alignItems="baseline">
+                                <Typography variant="h6">Mi Actividad</Typography>
+                                <Typography variant="caption" color="text.secondary">
+                                    {periodoMetricas === 'hoy' ? 'hoy' : periodoMetricas === 'semana' ? 'últimos 7 días' : 'último mes'}
+                                    {metricas._estimado && ' (estimado)'}
+                                </Typography>
+                            </Stack>
                             <Stack direction="row" spacing={1}>
                                 <Chip 
                                     label="Hoy" 
@@ -876,46 +1183,83 @@ const ContactosSDRPage = () => {
                                 <Paper sx={{ p: 2, textAlign: 'center' }}>
                                     <PhoneIcon color="primary" />
                                     <Typography variant="h5">{metricas.llamadasRealizadas}</Typography>
-                                    <Typography variant="caption">Llamadas</Typography>
+                                    <Typography variant="caption" color="text.secondary">Llamadas</Typography>
                                 </Paper>
                             </Grid>
                             <Grid item xs={6} sm={4} md={2}>
                                 <Paper sx={{ p: 2, textAlign: 'center' }}>
                                     <CheckCircleIcon color="success" />
                                     <Typography variant="h5">{metricas.llamadasAtendidas}</Typography>
-                                    <Typography variant="caption">Atendidas</Typography>
+                                    <Typography variant="caption" color="text.secondary">Atendidas</Typography>
                                 </Paper>
                             </Grid>
                             <Grid item xs={6} sm={4} md={2}>
                                 <Paper sx={{ p: 2, textAlign: 'center' }}>
                                     <WhatsAppIcon sx={{ color: '#25D366' }} />
                                     <Typography variant="h5">{metricas.whatsappEnviados}</Typography>
-                                    <Typography variant="caption">WhatsApp</Typography>
+                                    <Typography variant="caption" color="text.secondary">WhatsApp</Typography>
                                 </Paper>
                             </Grid>
                             <Grid item xs={6} sm={4} md={2}>
                                 <Paper sx={{ p: 2, textAlign: 'center' }}>
                                     <EventIcon color="secondary" />
                                     <Typography variant="h5">{metricas.reunionesCoordinadas}</Typography>
-                                    <Typography variant="caption">Reuniones</Typography>
+                                    <Typography variant="caption" color="text.secondary">Reuniones</Typography>
                                 </Paper>
                             </Grid>
                             <Grid item xs={6} sm={4} md={2}>
-                                <Paper sx={{ p: 2, textAlign: 'center', bgcolor: 'info.light' }}>
-                                    <TrendingUpIcon sx={{ color: 'white' }} />
-                                    <Typography variant="h5" sx={{ color: 'white' }}>{contarPorEstado('nuevo')}</Typography>
-                                    <Typography variant="caption" sx={{ color: 'white' }}>Nuevos</Typography>
+                                <Paper sx={{ p: 2, textAlign: 'center' }}>
+                                    <TrendingUpIcon color={metricas.llamadasRealizadas > 0 ? 'success' : 'action'} />
+                                    <Typography variant="h5">
+                                        {metricas.llamadasRealizadas > 0
+                                            ? `${Math.round((metricas.llamadasAtendidas / metricas.llamadasRealizadas) * 100)}%`
+                                            : '—'}
+                                    </Typography>
+                                    <Typography variant="caption" color="text.secondary">Tasa contacto</Typography>
                                 </Paper>
                             </Grid>
                             <Grid item xs={6} sm={4} md={2}>
                                 <Paper sx={{ p: 2, textAlign: 'center' }}>
                                     <Typography variant="h5">{contactos.length}</Typography>
-                                    <Typography variant="caption">Total asignados</Typography>
+                                    <Typography variant="caption" color="text.secondary">Total asignados</Typography>
                                 </Paper>
                             </Grid>
                         </Grid>
                     </Box>
                 )}
+
+                {/* Vistas guardadas */}
+                <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                    <BookmarkIcon sx={{ fontSize: 20, color: 'text.secondary' }} />
+                    <Typography variant="body2" color="text.secondary" sx={{ mr: 0.5 }}>
+                        Vistas:
+                    </Typography>
+                    {vistas.map(v => (
+                        <Chip
+                            key={v._id}
+                            label={v.nombre}
+                            size="small"
+                            color={vistaActiva?._id === v._id ? 'primary' : 'default'}
+                            variant={vistaActiva?._id === v._id ? 'filled' : 'outlined'}
+                            onClick={() => vistaActiva?._id === v._id ? handleLimpiarVista() : aplicarVista(v)}
+                            onDelete={vistaActiva?._id === v._id ? () => handleEliminarVista(v._id) : undefined}
+                        />
+                    ))}
+                    <Chip
+                        label="Guardar vista actual"
+                        size="small"
+                        icon={<SaveIcon />}
+                        variant="outlined"
+                        onClick={() => setModalGuardarVista(true)}
+                    />
+                    {vistaActiva && (
+                        <Chip
+                            label="Limpiar"
+                            size="small"
+                            onDelete={handleLimpiarVista}
+                        />
+                    )}
+                </Stack>
 
                 {/* Estadísticas por estado */}
                 <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
@@ -926,16 +1270,16 @@ const ContactosSDRPage = () => {
                         onClick={() => setFiltroEstado(filtroEstado === 'nuevo' ? '' : 'nuevo')}
                     />
                     <Chip 
-                        label={`En Gestión: ${contarPorEstado('en_gestion')}`} 
+                        label={`Contactados: ${contarPorEstado('contactado')}`} 
                         color="warning" 
-                        variant={filtroEstado === 'en_gestion' ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroEstado(filtroEstado === 'en_gestion' ? '' : 'en_gestion')}
+                        variant={filtroEstado === 'contactado' ? 'filled' : 'outlined'}
+                        onClick={() => setFiltroEstado(filtroEstado === 'contactado' ? '' : 'contactado')}
                     />
                     <Chip 
-                        label={`Reuniones: ${contarPorEstado('meet')}`} 
+                        label={`En Cierre: ${contarPorEstado('cierre')}`} 
                         color="secondary" 
-                        variant={filtroEstado === 'meet' ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroEstado(filtroEstado === 'meet' ? '' : 'meet')}
+                        variant={filtroEstado === 'cierre' ? 'filled' : 'outlined'}
+                        onClick={() => setFiltroEstado(filtroEstado === 'cierre' ? '' : 'cierre')}
                     />
                     <Chip 
                         label={`Calificados: ${contarPorEstado('calificado')}`} 
@@ -954,6 +1298,30 @@ const ContactosSDRPage = () => {
                         color="default" 
                         variant={filtroEstado === 'no_responde' ? 'filled' : 'outlined'}
                         onClick={() => setFiltroEstado(filtroEstado === 'no_responde' ? '' : 'no_responde')}
+                    />
+                    <Chip 
+                        label={`Ganados: ${contarPorEstado('ganado')}`} 
+                        color="success" 
+                        variant={filtroEstado === 'ganado' ? 'filled' : 'outlined'}
+                        onClick={() => setFiltroEstado(filtroEstado === 'ganado' ? '' : 'ganado')}
+                    />
+                    <Chip 
+                        label={`No Contactado: ${contarPorEstado('no_contacto')}`} 
+                        color="default" 
+                        variant={filtroEstado === 'no_contacto' ? 'filled' : 'outlined'}
+                        onClick={() => setFiltroEstado(filtroEstado === 'no_contacto' ? '' : 'no_contacto')}
+                    />
+                    <Chip 
+                        label={`Revisar: ${contarPorEstado('revisar_mas_adelante')}`} 
+                        color="warning" 
+                        variant={filtroEstado === 'revisar_mas_adelante' ? 'filled' : 'outlined'}
+                        onClick={() => setFiltroEstado(filtroEstado === 'revisar_mas_adelante' ? '' : 'revisar_mas_adelante')}
+                    />
+                    <Chip 
+                        label={`Perdidos: ${contarPorEstado('perdido')}`} 
+                        color="error" 
+                        variant={filtroEstado === 'perdido' ? 'filled' : 'outlined'}
+                        onClick={() => setFiltroEstado(filtroEstado === 'perdido' ? '' : 'perdido')}
                     />
                 </Stack>
 
@@ -1005,6 +1373,15 @@ const ContactosSDRPage = () => {
                                 >
                                     Actualizar fecha
                                 </Button>
+                                {cadenciasDisponibles.length > 0 && (
+                                    <Button 
+                                        size="small" 
+                                        startIcon={<PlayArrowIcon />}
+                                        onClick={() => setModalCadenciaMasiva(true)}
+                                    >
+                                        Asignar cadencia
+                                    </Button>
+                                )}
                                 <Button size="small" onClick={() => setSeleccionados([])}>
                                     Limpiar selección
                                 </Button>
@@ -1015,22 +1392,45 @@ const ContactosSDRPage = () => {
                     </Alert>
                 )}
 
-                {/* Búsqueda */}
+                {/* Búsqueda + Ordenamiento */}
                 <Paper sx={{ p: 2 }}>
-                    <TextField
-                        fullWidth
-                        size="small"
-                        placeholder="Buscar por nombre, empresa, teléfono..."
-                        value={busqueda}
-                        onChange={(e) => setBusqueda(e.target.value)}
-                        InputProps={{
-                            startAdornment: (
-                                <InputAdornment position="start">
-                                    <SearchIcon fontSize="small" />
-                                </InputAdornment>
-                            )
-                        }}
-                    />
+                    <Stack direction="row" spacing={2} alignItems="center">
+                        <TextField
+                            fullWidth
+                            size="small"
+                            placeholder="Buscar por nombre, empresa, teléfono..."
+                            value={busqueda}
+                            onChange={(e) => setBusqueda(e.target.value)}
+                            InputProps={{
+                                startAdornment: (
+                                    <InputAdornment position="start">
+                                        <SearchIcon fontSize="small" />
+                                    </InputAdornment>
+                                )
+                            }}
+                        />
+                        <Stack direction="row" spacing={0.5} alignItems="center" sx={{ flexShrink: 0 }}>
+                            <SortIcon fontSize="small" color="action" />
+                            <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>Ordenar:</Typography>
+                            {[
+                                { value: 'vencidos', label: 'Vencidos primero' },
+                                { value: 'nuevo', label: 'Más nuevos' },
+                                { value: 'fecha', label: 'Última actividad' },
+                                { value: 'estado', label: 'Estado' },
+                                { value: 'prioridad', label: 'Prioridad' },
+                            ].map(opt => (
+                                <Chip
+                                    key={opt.value}
+                                    label={opt.label}
+                                    size="small"
+                                    color={ordenarPor === opt.value ? 'primary' : 'default'}
+                                    variant={ordenarPor === opt.value ? 'filled' : 'outlined'}
+                                    onClick={() => setOrdenarPor(opt.value)}
+                                    sx={{ cursor: 'pointer' }}
+                                />
+                            ))}
+                        </Stack>
+                    </Stack>
                 </Paper>
 
                 {/* Tabla */}
@@ -1040,7 +1440,7 @@ const ContactosSDRPage = () => {
                             <CircularProgress />
                         </Box>
                     ) : (
-                        <Table>
+                        <Table size="small">
                             <TableHead>
                                 <TableRow>
                                     <TableCell padding="checkbox">
@@ -1052,8 +1452,11 @@ const ContactosSDRPage = () => {
                                     </TableCell>
                                     <TableCell>Nombre</TableCell>
                                     <TableCell>Empresa</TableCell>
-                                    <TableCell>Teléfono</TableCell>
                                     <TableCell>Estado</TableCell>
+                                    <TableCell>Calificado</TableCell>
+                                    <TableCell>Quiere reunión</TableCell>
+                                    <TableCell>Plan</TableCell>
+                                    <TableCell>Prior.</TableCell>
                                     <TableCell>Próximo</TableCell>
                                 </TableRow>
                             </TableHead>
@@ -1062,6 +1465,8 @@ const ContactosSDRPage = () => {
                                     const proximo = formatearProximo(contacto.proximoContacto);
                                     const vencido = estaVencido(contacto);
                                     const seleccionado = seleccionados.includes(contacto._id);
+                                    const esCalificado = contacto.precalificacionBot === 'calificado' || contacto.precalificacionBot === 'quiere_meet';
+                                    const quiereReunion = contacto.precalificacionBot === 'quiere_meet';
                                     
                                     return (
                                         <TableRow 
@@ -1081,14 +1486,91 @@ const ContactosSDRPage = () => {
                                                 />
                                             </TableCell>
                                             <TableCell>
-                                                <Typography variant="body2" fontWeight={contacto.estado === 'nuevo' ? 600 : 400}>
-                                                    {contacto.nombre}
-                                                </Typography>
+                                                <Stack direction="row" spacing={0.5} alignItems="center">
+                                                    <Typography variant="body2" fontWeight={contacto.estado === 'nuevo' ? 600 : 400}>
+                                                        {contacto.nombre}
+                                                    </Typography>
+                                                    {contacto.segmento && (
+                                                        <Chip 
+                                                            size="small" 
+                                                            label={contacto.segmento === 'inbound' ? 'In' : 'Out'}
+                                                            variant="outlined"
+                                                            color={contacto.segmento === 'inbound' ? 'info' : 'warning'}
+                                                            sx={{ height: 18, fontSize: '0.6rem' }}
+                                                        />
+                                                    )}
+                                                </Stack>
+                                                {contacto.empresa && (
+                                                    <Typography variant="caption" color="text.secondary" display="block">
+                                                        {contacto.empresa}
+                                                    </Typography>
+                                                )}
                                             </TableCell>
-                                            <TableCell>{contacto.empresa || '-'}</TableCell>
-                                            <TableCell>{contacto.telefono}</TableCell>
+                                            <TableCell>
+                                                <Typography variant="caption">{contacto.telefono}</Typography>
+                                            </TableCell>
                                             <TableCell>
                                                 <EstadoChip estado={contacto.estado} />
+                                            </TableCell>
+                                            <TableCell>
+                                                {esCalificado ? (
+                                                    <Chip 
+                                                        size="small" 
+                                                        label="✅ Sí"
+                                                        color="success"
+                                                        variant="outlined"
+                                                        sx={{ height: 22, fontSize: '0.7rem' }}
+                                                    />
+                                                ) : contacto.precalificacionBot === 'no_llego' ? (
+                                                    <Chip 
+                                                        size="small" 
+                                                        label="No llegó"
+                                                        color="default"
+                                                        variant="outlined"
+                                                        sx={{ height: 22, fontSize: '0.7rem' }}
+                                                    />
+                                                ) : (
+                                                    <Typography variant="caption" color="text.secondary">—</Typography>
+                                                )}
+                                            </TableCell>
+                                            <TableCell>
+                                                {quiereReunion ? (
+                                                    <Chip 
+                                                        size="small" 
+                                                        label="📅 Sí"
+                                                        color="primary"
+                                                        variant="filled"
+                                                        sx={{ height: 22, fontSize: '0.7rem' }}
+                                                    />
+                                                ) : (
+                                                    <Typography variant="caption" color="text.secondary">—</Typography>
+                                                )}
+                                            </TableCell>
+                                            <TableCell>
+                                                {contacto.planEstimado ? (
+                                                    <Chip 
+                                                        size="small" 
+                                                        label={`${PLANES_SORBY[contacto.planEstimado]?.icon || ''} ${PLANES_SORBY[contacto.planEstimado]?.label || contacto.planEstimado}`}
+                                                        color={PLANES_SORBY[contacto.planEstimado]?.color || 'default'}
+                                                        variant="outlined"
+                                                        sx={{ height: 22, fontSize: '0.7rem' }}
+                                                    />
+                                                ) : (
+                                                    <Typography variant="caption" color="text.secondary">—</Typography>
+                                                )}
+                                            </TableCell>
+                                            <TableCell>
+                                                {contacto.prioridadScore > 0 ? (
+                                                    <Chip 
+                                                        size="small" 
+                                                        label={contacto.prioridadScore}
+                                                        color={contacto.prioridadScore >= 70 ? 'error' : contacto.prioridadScore >= 40 ? 'warning' : 'default'}
+                                                        variant="filled"
+                                                        sx={{ height: 22, fontWeight: 700 }}
+                                                    />
+                                                ) : (
+                                                    <Typography variant="caption" color="text.secondary">—</Typography>
+                                                )}
                                             </TableCell>
                                             <TableCell>
                                                 {proximo ? (
@@ -1105,7 +1587,7 @@ const ContactosSDRPage = () => {
                                 })}
                                 {contactos.length === 0 && (
                                     <TableRow>
-                                        <TableCell colSpan={5} align="center" sx={{ py: 4 }}>
+                                        <TableCell colSpan={10} align="center" sx={{ py: 4 }}>
                                             <Typography color="text.secondary">
                                                 {filtroEstado 
                                                     ? `No hay contactos con estado "${filtroEstado}"`
@@ -1226,6 +1708,84 @@ const ContactosSDRPage = () => {
                 onSubmit={handleActualizarProximoMasivo}
                 loading={actionLoading}
             />
+
+            {/* Modal Asignar Cadencia Masiva */}
+            <Dialog
+                open={modalCadenciaMasiva}
+                onClose={() => setModalCadenciaMasiva(false)}
+                maxWidth="xs"
+                fullWidth
+            >
+                <DialogTitle>Asignar cadencia a {seleccionados.length} contacto(s)</DialogTitle>
+                <DialogContent>
+                    <Stack spacing={1} sx={{ mt: 1 }}>
+                        {cadenciasDisponibles.map((cad) => (
+                            <Button
+                                key={cad._id}
+                                variant="outlined"
+                                fullWidth
+                                startIcon={<PlayArrowIcon />}
+                                onClick={() => handleAsignarCadenciaMasiva(cad._id)}
+                                disabled={actionLoading}
+                                sx={{ justifyContent: 'flex-start', textTransform: 'none' }}
+                            >
+                                {cad.nombre}
+                                {cad.esDefault && (
+                                    <Chip size="small" label="Default" color="primary" variant="outlined" sx={{ ml: 1, height: 20, fontSize: '0.65rem' }} />
+                                )}
+                            </Button>
+                        ))}
+                    </Stack>
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => setModalCadenciaMasiva(false)}>Cancelar</Button>
+                </DialogActions>
+            </Dialog>
+
+            {/* Modal Guardar Vista */}
+            <Dialog
+                open={modalGuardarVista}
+                onClose={() => setModalGuardarVista(false)}
+                maxWidth="xs"
+                fullWidth
+            >
+                <DialogTitle>💾 Guardar vista actual</DialogTitle>
+                <DialogContent>
+                    <Stack spacing={2} sx={{ mt: 1 }}>
+                        <TextField
+                            label="Nombre de la vista"
+                            value={nombreVista}
+                            onChange={(e) => setNombreVista(e.target.value)}
+                            fullWidth
+                            size="small"
+                            placeholder="Ej: Leads calientes, Vencidos esta semana..."
+                            autoFocus
+                        />
+                        <Stack direction="row" alignItems="center" spacing={1}>
+                            <Checkbox
+                                checked={vistaCompartida}
+                                onChange={(e) => setVistaCompartida(e.target.checked)}
+                                size="small"
+                            />
+                            <Typography variant="body2">Compartir con el equipo</Typography>
+                        </Stack>
+                        <Typography variant="caption" color="text.secondary">
+                            Se guardarán los filtros actuales: estado, tipo, próximo contacto y búsqueda.
+                        </Typography>
+                    </Stack>
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => setModalGuardarVista(false)}>Cancelar</Button>
+                    <Button
+                        variant="contained"
+                        onClick={handleGuardarVista}
+                        disabled={!nombreVista.trim()}
+                        startIcon={<SaveIcon />}
+                    >
+                        Guardar
+                    </Button>
+                </DialogActions>
+            </Dialog>
         </>
     );
 };

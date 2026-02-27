@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import Head from 'next/head';
+import { useRouter } from 'next/router';
 import {
     Box, Container, Paper, Stack, Typography, Button, TextField, MenuItem,
     Select, FormControl, InputLabel, Tabs, Tab, Card, CardContent, Grid,
@@ -37,6 +38,8 @@ import PhoneMissedIcon from '@mui/icons-material/PhoneMissed';
 import DoNotDisturbIcon from '@mui/icons-material/DoNotDisturb';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import FilterListIcon from '@mui/icons-material/FilterList';
+import PersonRemoveIcon from '@mui/icons-material/PersonRemove';
+import CancelIcon from '@mui/icons-material/Cancel';
 
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import SDRService from 'src/services/sdrService';
@@ -45,17 +48,15 @@ import * as XLSX from 'xlsx';
 
 // Componente compartido del Drawer
 import DrawerDetalleContactoSDR, { EstadoChip } from 'src/components/sdr/DrawerDetalleContactoSDR';
+import { ESTADOS_CONTACTO as ESTADOS_SDR, ESTADOS_REUNION, PLANES_SORBY, PRECALIFICACION_BOT, INTENCIONES_COMPRA } from 'src/constant/sdrConstants';
+import SortIcon from '@mui/icons-material/Sort';
 
 // ==================== CONSTANTES ====================
 
-const ESTADOS_CONTACTO = {
-    nuevo: { label: 'Nuevo', color: 'info' },
-    en_gestion: { label: 'En gestión', color: 'warning' },
-    meet: { label: 'Meet', color: 'primary' },
-    calificado: { label: 'Calificado', color: 'success' },
-    no_califica: { label: 'No califica', color: 'error' },
-    no_responde: { label: 'No responde', color: 'default' }
-};
+// Mapear formato de sdrConstants a formato local (solo label + color, sin icon)
+const ESTADOS_CONTACTO = Object.fromEntries(
+    Object.entries(ESTADOS_SDR).map(([key, val]) => [key, { label: val.label, color: val.color }])
+);
 
 const TAMANOS_EMPRESA = ['1-10', '11-50', '51-200', '200+'];
 
@@ -141,14 +142,22 @@ const GestionSDRPage = () => {
         busqueda: '',
         soloSinAsignar: false,
         statusNotion: '',
+        precalificacionBot: '',
+        planEstimado: '',
+        intencionCompra: '',
+        proximoContactoHoy: false,
         ordenarPor: 'updatedAt',
         ordenDir: 'desc'
     });
+    const [mostrarFiltrosAvanzados, setMostrarFiltrosAvanzados] = useState(false);
     const [page, setPage] = useState(1);
     const [historialVersion, setHistorialVersion] = useState(0);
     
     // Lista única de Status Notion disponibles (se llena al cargar contactos)
     const [statusNotionOpciones, setStatusNotionOpciones] = useState([]);
+    
+    // Lista de SDRs disponibles para filtro
+    const [sdrsDisponibles, setSdrsDisponibles] = useState([]);
     
     // Navegación de contactos
     const [indiceContactoActual, setIndiceContactoActual] = useState(-1);
@@ -177,6 +186,7 @@ const GestionSDRPage = () => {
     
     // Obtener usuario del contexto de auth
     const { user, isLoading: authLoading } = useAuthContext();
+    const router = useRouter();
     const userId = user?.id || user?.user_id;
     const empresaId = user?.empresa?.id || 'demo-empresa';
     // Usar user_id del perfil (que es el Firebase UID guardado en Firestore)
@@ -186,6 +196,15 @@ const GestionSDRPage = () => {
     // Control de carga inicial
     const initialLoadDone = useRef(false);
     const prevFilters = useRef({ page: 1, filtros: {} });
+    
+    // Abrir contacto en página dedicada
+    const handleAbrirContacto = (contacto, idx) => {
+        try {
+            const ids = contactos.map(c => c._id);
+            sessionStorage.setItem('sdr_contacto_ids', JSON.stringify(ids));
+        } catch { /* ignore */ }
+        router.push(`/sdr/contacto/${contacto._id}`);
+    };
     
     // ==================== CARGA DE DATOS ====================
     
@@ -231,7 +250,7 @@ const GestionSDRPage = () => {
         if (!userId) return;
         
         try {
-            const data = await SDRService.listarReuniones({ estado: 'pendiente' });
+            const data = await SDRService.listarReuniones({ estado: 'agendada' });
             setReuniones(data.reuniones);
         } catch (error) {
             console.error('Error cargando reuniones:', error);
@@ -248,6 +267,32 @@ const GestionSDRPage = () => {
             console.error('Error cargando métricas:', error);
         }
     };
+    
+    // Cargar SDRs disponibles para el filtro
+    useEffect(() => {
+        if (authLoading || !userId) return;
+        const fetchSDRs = async () => {
+            try {
+                const snapshot = await getDocs(query(
+                    collection(db, 'profile'),
+                    where('sdr', '==', true)
+                ));
+                const sdrs = snapshot.docs
+                    .filter(doc => doc.data().user_id)
+                    .map(doc => {
+                        const data = doc.data();
+                        return {
+                            id: data.user_id,
+                            nombre: `${data.firstName || ''} ${data.lastName || ''}`.trim() || data.email
+                        };
+                    });
+                setSdrsDisponibles(sdrs);
+            } catch (error) {
+                console.error('Error cargando SDRs para filtro:', error);
+            }
+        };
+        fetchSDRs();
+    }, [authLoading, userId]);
     
     // Cargar datos cuando el usuario esté listo
     useEffect(() => {
@@ -312,6 +357,7 @@ const GestionSDRPage = () => {
             await SDRService.registrarIntento(contacto._id, {
                 tipo: tipo === 'llamada' ? (atendida ? 'llamada_atendida' : 'llamada_no_atendida') : 'whatsapp_enviado',
                 canal: tipo === 'llamada' ? 'llamada' : 'whatsapp',
+                resultado: tipo === 'llamada' ? (atendida ? 'atendio' : 'no_atendio') : undefined,
                 nota,
                 empresaId
             });
@@ -392,15 +438,17 @@ const GestionSDRPage = () => {
         }
     };
     
-    const handleEvaluarReunion = async (estado, motivoRechazo, notasEvaluador) => {
-        if (!modalEvaluar.reunion) return;
+    const handleEvaluarReunion = async (estado, motivoRechazo, notasEvaluador, reunionDirecta = null) => {
+        const reunion = reunionDirecta || modalEvaluar.reunion;
+        if (!reunion) return;
         try {
-            await SDRService.evaluarReunion(modalEvaluar.reunion._id, {
+            await SDRService.evaluarReunion(reunion._id, {
                 estado,
                 motivoRechazo,
                 notasEvaluador
             });
-            mostrarSnackbar(`Reunión ${estado === 'aprobada' ? 'aprobada' : 'rechazada'}`);
+            const labels = { realizada: 'marcada como realizada', no_show: 'marcada como no show', cancelada: 'cancelada', aprobada: 'aprobada', rechazada: 'rechazada' };
+            mostrarSnackbar(`Reunión ${labels[estado] || estado}`);
             setModalEvaluar({ open: false, reunion: null });
             cargarReuniones();
             cargarContactos();
@@ -502,7 +550,7 @@ const GestionSDRPage = () => {
                         subtitle={!isMobile ? "por evaluar" : null}
                         icon={<ScheduleIcon />}
                         color="info"
-                        onClick={() => setTabActual(3)}
+                        onClick={() => setTabActual(2)}
                     />
                 </Grid>
                 {!isMobile && (
@@ -554,16 +602,16 @@ const GestionSDRPage = () => {
                 </>
             )}
             
-            {/* Reuniones pendientes */}
+            {/* Reuniones agendadas */}
             <Typography variant="h6" sx={{ mb: 2 }}>
-                Reuniones pendientes de evaluación
+                Próximas reuniones
                 {reuniones.length > 0 && (
                     <Chip label={reuniones.length} color="warning" size="small" sx={{ ml: 1 }} />
                 )}
             </Typography>
             {reuniones.length === 0 ? (
                 <Alert severity="success" icon={<CheckCircleIcon />}>
-                    No hay reuniones pendientes de evaluación
+                    No hay reuniones agendadas
                 </Alert>
             ) : (
                 <TableContainer component={Paper}>
@@ -584,7 +632,7 @@ const GestionSDRPage = () => {
                                     <TableCell>{reunion.empresaNombre}</TableCell>
                                     <TableCell><Chip label={reunion.tamanoEmpresa} size="small" variant="outlined" /></TableCell>
                                     <TableCell>
-                                        {new Date(reunion.fechaHora).toLocaleString('es-AR', {
+                                        {new Date(reunion.fecha || reunion.fechaHora).toLocaleString('es-AR', {
                                             day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
                                         })}
                                     </TableCell>
@@ -595,7 +643,7 @@ const GestionSDRPage = () => {
                     </Table>
                     {reuniones.length > 5 && (
                         <Box sx={{ p: 1, textAlign: 'center' }}>
-                            <Button size="small" onClick={() => setTabActual(3)}>
+                            <Button size="small" onClick={() => setTabActual(2)}>
                                 Ver todas ({reuniones.length})
                             </Button>
                         </Box>
@@ -626,39 +674,63 @@ const GestionSDRPage = () => {
                             }}
                             sx={{ flex: 1 }}
                         />
-                        <IconButton onClick={() => setModalImportar(true)}>
-                            <UploadFileIcon />
+                        <IconButton onClick={() => setMostrarFiltrosAvanzados(v => !v)} color={mostrarFiltrosAvanzados ? 'primary' : 'default'}>
+                            <FilterListIcon />
                         </IconButton>
                         <IconButton onClick={(e) => setMenuAnchor(e.currentTarget)}>
                             <MoreVertIcon />
                         </IconButton>
                     </Stack>
-                    <Stack direction="row" spacing={1} sx={{ overflowX: 'auto', pb: 1 }}>
-                        <Chip
-                            label="Todos"
-                            size="small"
-                            color={!filtros.estado ? 'primary' : 'default'}
-                            variant={!filtros.estado ? 'filled' : 'outlined'}
-                            onClick={() => setFiltros({ ...filtros, estado: '' })}
-                        />
+                    {/* Estado */}
+                    <Stack direction="row" spacing={0.5} sx={{ overflowX: 'auto', pb: 0.5 }}>
+                        <Chip label="Todos" size="small" color={!filtros.estado ? 'primary' : 'default'} variant={!filtros.estado ? 'filled' : 'outlined'} onClick={() => setFiltros({ ...filtros, estado: '' })} />
                         {Object.entries(ESTADOS_CONTACTO).map(([key, { label, color }]) => (
-                            <Chip
-                                key={key}
-                                label={label}
-                                size="small"
-                                color={filtros.estado === key ? color : 'default'}
-                                variant={filtros.estado === key ? 'filled' : 'outlined'}
-                                onClick={() => setFiltros({ ...filtros, estado: key })}
-                            />
+                            <Chip key={key} label={label} size="small" color={filtros.estado === key ? color : 'default'} variant={filtros.estado === key ? 'filled' : 'outlined'} onClick={() => setFiltros({ ...filtros, estado: filtros.estado === key ? '' : key })} />
                         ))}
-                        <Chip
-                            label="Sin asignar"
-                            size="small"
-                            color={filtros.soloSinAsignar ? 'secondary' : 'default'}
-                            variant={filtros.soloSinAsignar ? 'filled' : 'outlined'}
-                            onClick={() => setFiltros({ ...filtros, soloSinAsignar: !filtros.soloSinAsignar })}
-                        />
                     </Stack>
+                    {/* Ordenar */}
+                    <Stack direction="row" spacing={0.5} sx={{ overflowX: 'auto', py: 0.5 }}>
+                        <Typography variant="caption" color="text.secondary" sx={{ alignSelf: 'center', whiteSpace: 'nowrap' }}>Ordenar:</Typography>
+                        <Chip label="Vencidos" size="small" color={filtros.ordenarPor === 'proximoContacto' && filtros.ordenDir === 'asc' ? 'primary' : 'default'} variant={filtros.ordenarPor === 'proximoContacto' && filtros.ordenDir === 'asc' ? 'filled' : 'outlined'} onClick={() => setFiltros({ ...filtros, ordenarPor: 'proximoContacto', ordenDir: 'asc' })} />
+                        <Chip label="Más nuevos" size="small" color={filtros.ordenarPor === 'createdAt' ? 'primary' : 'default'} variant={filtros.ordenarPor === 'createdAt' ? 'filled' : 'outlined'} onClick={() => setFiltros({ ...filtros, ordenarPor: 'createdAt', ordenDir: 'desc' })} />
+                        <Chip label="Últ. actividad" size="small" color={filtros.ordenarPor === 'ultimaAccion' ? 'primary' : 'default'} variant={filtros.ordenarPor === 'ultimaAccion' ? 'filled' : 'outlined'} onClick={() => setFiltros({ ...filtros, ordenarPor: 'ultimaAccion', ordenDir: 'desc' })} />
+                        <Chip label="Prioridad" size="small" color={filtros.ordenarPor === 'prioridad' ? 'primary' : 'default'} variant={filtros.ordenarPor === 'prioridad' ? 'filled' : 'outlined'} onClick={() => setFiltros({ ...filtros, ordenarPor: 'prioridad', ordenDir: 'desc' })} />
+                    </Stack>
+                    {/* Filtros avanzados colapsables */}
+                    <Collapse in={mostrarFiltrosAvanzados}>
+                        <Stack spacing={0.5} sx={{ pt: 0.5 }}>
+                            {/* SDR */}
+                            <Stack direction="row" spacing={0.5} sx={{ overflowX: 'auto' }}>
+                                <Typography variant="caption" color="text.secondary" sx={{ alignSelf: 'center', whiteSpace: 'nowrap' }}>SDR:</Typography>
+                                <Chip label="Sin asignar" size="small" color={filtros.soloSinAsignar ? 'secondary' : 'default'} variant={filtros.soloSinAsignar ? 'filled' : 'outlined'} onClick={() => setFiltros({ ...filtros, soloSinAsignar: !filtros.soloSinAsignar })} />
+                                {sdrsDisponibles.map((sdr) => (
+                                    <Chip key={sdr.id} label={sdr.nombre.split(' ')[0]} size="small" color={filtros.sdrAsignado === sdr.id ? 'info' : 'default'} variant={filtros.sdrAsignado === sdr.id ? 'filled' : 'outlined'} onClick={() => setFiltros({ ...filtros, sdrAsignado: filtros.sdrAsignado === sdr.id ? '' : sdr.id })} />
+                                ))}
+                            </Stack>
+                            {/* Calificación bot */}
+                            <Stack direction="row" spacing={0.5} sx={{ overflowX: 'auto' }}>
+                                <Typography variant="caption" color="text.secondary" sx={{ alignSelf: 'center', whiteSpace: 'nowrap' }}>Bot:</Typography>
+                                {Object.entries(PRECALIFICACION_BOT).map(([key, { label }]) => (
+                                    <Chip key={key} label={label} size="small" color={filtros.precalificacionBot === key ? 'info' : 'default'} variant={filtros.precalificacionBot === key ? 'filled' : 'outlined'} onClick={() => setFiltros({ ...filtros, precalificacionBot: filtros.precalificacionBot === key ? '' : key })} />
+                                ))}
+                            </Stack>
+                            {/* Plan */}
+                            <Stack direction="row" spacing={0.5} sx={{ overflowX: 'auto' }}>
+                                <Typography variant="caption" color="text.secondary" sx={{ alignSelf: 'center', whiteSpace: 'nowrap' }}>Plan:</Typography>
+                                {Object.entries(PLANES_SORBY).map(([key, { label, icon }]) => (
+                                    <Chip key={key} label={`${icon} ${label}`} size="small" color={filtros.planEstimado === key ? 'primary' : 'default'} variant={filtros.planEstimado === key ? 'filled' : 'outlined'} onClick={() => setFiltros({ ...filtros, planEstimado: filtros.planEstimado === key ? '' : key })} />
+                                ))}
+                            </Stack>
+                            {/* Intención + Hoy */}
+                            <Stack direction="row" spacing={0.5} sx={{ overflowX: 'auto' }}>
+                                <Typography variant="caption" color="text.secondary" sx={{ alignSelf: 'center', whiteSpace: 'nowrap' }}>Intención:</Typography>
+                                {Object.entries(INTENCIONES_COMPRA).map(([key, { label, icon }]) => (
+                                    <Chip key={key} label={`${icon} ${label}`} size="small" color={filtros.intencionCompra === key ? 'warning' : 'default'} variant={filtros.intencionCompra === key ? 'filled' : 'outlined'} onClick={() => setFiltros({ ...filtros, intencionCompra: filtros.intencionCompra === key ? '' : key })} />
+                                ))}
+                                <Chip label="📅 Hoy" size="small" color={filtros.proximoContactoHoy ? 'error' : 'default'} variant={filtros.proximoContactoHoy ? 'filled' : 'outlined'} onClick={() => setFiltros({ ...filtros, proximoContactoHoy: !filtros.proximoContactoHoy })} />
+                            </Stack>
+                        </Stack>
+                    </Collapse>
                     <Menu
                         anchorEl={menuAnchor}
                         open={Boolean(menuAnchor)}
@@ -678,38 +750,77 @@ const GestionSDRPage = () => {
             ) : (
                 /* Barra de filtros - DESKTOP */
                 <Paper sx={{ p: 2, mb: 2 }}>
-                    <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems="center">
+                    {/* Fila 1: Búsqueda + acciones */}
+                    <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 1.5 }}>
                         <TextField
                             size="small"
-                            placeholder="Buscar..."
+                            placeholder="Buscar por nombre, empresa, teléfono..."
                             value={filtros.busqueda}
                             onChange={(e) => setFiltros({ ...filtros, busqueda: e.target.value })}
                             InputProps={{
                                 startAdornment: <InputAdornment position="start"><SearchIcon /></InputAdornment>
                             }}
-                            sx={{ minWidth: 200 }}
+                            sx={{ minWidth: 280, flex: 1 }}
                         />
-                        <FormControl size="small" sx={{ minWidth: 150 }}>
+                        <Box sx={{ flexGrow: 1 }} />
+                        <Stack direction="row" spacing={1}>
+                            <Button size="small" startIcon={<RefreshIcon />} onClick={refrescar}>Actualizar</Button>
+                            <Button size="small" startIcon={<DownloadIcon />} onClick={handleExportar}>Exportar</Button>
+                            <Button size="small" startIcon={<UploadFileIcon />} onClick={() => setModalImportar(true)}>Importar</Button>
+                            <Button size="small" variant="contained" startIcon={<AddIcon />} onClick={() => setModalCrear(true)}>Nuevo</Button>
+                        </Stack>
+                    </Stack>
+                    {/* Fila 2: Filtros compactos en una sola línea */}
+                    <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap sx={{ rowGap: 1 }}>
+                        <FormControl size="small" sx={{ minWidth: 130 }}>
                             <InputLabel>Estado</InputLabel>
-                            <Select
-                                value={filtros.estado}
-                                label="Estado"
-                                onChange={(e) => setFiltros({ ...filtros, estado: e.target.value })}
-                            >
+                            <Select value={filtros.estado} label="Estado" onChange={(e) => setFiltros({ ...filtros, estado: e.target.value })}>
                                 <MenuItem value="">Todos</MenuItem>
                                 {Object.entries(ESTADOS_CONTACTO).map(([key, { label }]) => (
                                     <MenuItem key={key} value={key}>{label}</MenuItem>
                                 ))}
                             </Select>
                         </FormControl>
+                        <FormControl size="small" sx={{ minWidth: 120 }}>
+                            <InputLabel>SDR</InputLabel>
+                            <Select value={filtros.sdrAsignado} label="SDR" onChange={(e) => setFiltros({ ...filtros, sdrAsignado: e.target.value })}>
+                                <MenuItem value="">Todos</MenuItem>
+                                {sdrsDisponibles.map((sdr) => (
+                                    <MenuItem key={sdr.id} value={sdr.id}>{sdr.nombre}</MenuItem>
+                                ))}
+                            </Select>
+                        </FormControl>
+                        <FormControl size="small" sx={{ minWidth: 130 }}>
+                            <InputLabel>Calificación</InputLabel>
+                            <Select value={filtros.precalificacionBot} label="Calificación" onChange={(e) => setFiltros({ ...filtros, precalificacionBot: e.target.value })}>
+                                <MenuItem value="">Todas</MenuItem>
+                                {Object.entries(PRECALIFICACION_BOT).map(([key, { label }]) => (
+                                    <MenuItem key={key} value={key}>{label}</MenuItem>
+                                ))}
+                            </Select>
+                        </FormControl>
+                        <FormControl size="small" sx={{ minWidth: 110 }}>
+                            <InputLabel>Plan</InputLabel>
+                            <Select value={filtros.planEstimado} label="Plan" onChange={(e) => setFiltros({ ...filtros, planEstimado: e.target.value })}>
+                                <MenuItem value="">Todos</MenuItem>
+                                {Object.entries(PLANES_SORBY).map(([key, { label, icon }]) => (
+                                    <MenuItem key={key} value={key}>{icon} {label}</MenuItem>
+                                ))}
+                            </Select>
+                        </FormControl>
+                        <FormControl size="small" sx={{ minWidth: 120 }}>
+                            <InputLabel>Intención</InputLabel>
+                            <Select value={filtros.intencionCompra} label="Intención" onChange={(e) => setFiltros({ ...filtros, intencionCompra: e.target.value })}>
+                                <MenuItem value="">Todas</MenuItem>
+                                {Object.entries(INTENCIONES_COMPRA).map(([key, { label, icon }]) => (
+                                    <MenuItem key={key} value={key}>{icon} {label}</MenuItem>
+                                ))}
+                            </Select>
+                        </FormControl>
                         {statusNotionOpciones.length > 0 && (
-                            <FormControl size="small" sx={{ minWidth: 150 }}>
+                            <FormControl size="small" sx={{ minWidth: 140 }}>
                                 <InputLabel>Status Notion</InputLabel>
-                                <Select
-                                    value={filtros.statusNotion}
-                                    label="Status Notion"
-                                    onChange={(e) => setFiltros({ ...filtros, statusNotion: e.target.value })}
-                                >
+                                <Select value={filtros.statusNotion} label="Status Notion" onChange={(e) => setFiltros({ ...filtros, statusNotion: e.target.value })}>
                                     <MenuItem value="">Todos</MenuItem>
                                     {statusNotionOpciones.map((status) => (
                                         <MenuItem key={status} value={status}>{status}</MenuItem>
@@ -717,27 +828,18 @@ const GestionSDRPage = () => {
                                 </Select>
                             </FormControl>
                         )}
-                        <Button
-                            variant={filtros.soloSinAsignar ? 'contained' : 'outlined'}
-                            size="small"
-                            startIcon={<PeopleOutlineIcon />}
-                            onClick={() => setFiltros({ ...filtros, soloSinAsignar: !filtros.soloSinAsignar })}
-                        >
-                            Sin asignar
-                        </Button>
-                        <Box sx={{ flexGrow: 1 }} />
-                        <Button startIcon={<RefreshIcon />} onClick={refrescar}>
-                            Actualizar
-                        </Button>
-                        <Button startIcon={<DownloadIcon />} onClick={handleExportar}>
-                            Exportar
-                        </Button>
-                        <Button startIcon={<UploadFileIcon />} onClick={() => setModalImportar(true)}>
-                            Importar
-                        </Button>
-                        <Button variant="contained" startIcon={<AddIcon />} onClick={() => setModalCrear(true)}>
-                            Nuevo
-                        </Button>
+                        <Chip label="Sin asignar" size="small" color={filtros.soloSinAsignar ? 'secondary' : 'default'} variant={filtros.soloSinAsignar ? 'filled' : 'outlined'} onClick={() => setFiltros({ ...filtros, soloSinAsignar: !filtros.soloSinAsignar })} />
+                        <Chip label="📅 Contactar hoy" size="small" color={filtros.proximoContactoHoy ? 'error' : 'default'} variant={filtros.proximoContactoHoy ? 'filled' : 'outlined'} onClick={() => setFiltros({ ...filtros, proximoContactoHoy: !filtros.proximoContactoHoy })} />
+                    </Stack>
+                    {/* Fila 3: Ordenamiento */}
+                    <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 1.5, pt: 1.5, borderTop: '1px solid', borderColor: 'divider' }}>
+                        <SortIcon fontSize="small" color="action" />
+                        <Typography variant="caption" color="text.secondary">Ordenar:</Typography>
+                        <Chip label="Vencidos primero" size="small" color={filtros.ordenarPor === 'proximoContacto' && filtros.ordenDir === 'asc' ? 'primary' : 'default'} variant={filtros.ordenarPor === 'proximoContacto' && filtros.ordenDir === 'asc' ? 'filled' : 'outlined'} onClick={() => setFiltros({ ...filtros, ordenarPor: 'proximoContacto', ordenDir: 'asc' })} />
+                        <Chip label="Más nuevos" size="small" color={filtros.ordenarPor === 'createdAt' ? 'primary' : 'default'} variant={filtros.ordenarPor === 'createdAt' ? 'filled' : 'outlined'} onClick={() => setFiltros({ ...filtros, ordenarPor: 'createdAt', ordenDir: 'desc' })} />
+                        <Chip label="Última actividad" size="small" color={filtros.ordenarPor === 'ultimaAccion' ? 'primary' : 'default'} variant={filtros.ordenarPor === 'ultimaAccion' ? 'filled' : 'outlined'} onClick={() => setFiltros({ ...filtros, ordenarPor: 'ultimaAccion', ordenDir: 'desc' })} />
+                        <Chip label="Estado" size="small" color={filtros.ordenarPor === 'estado' ? 'primary' : 'default'} variant={filtros.ordenarPor === 'estado' ? 'filled' : 'outlined'} onClick={() => setFiltros({ ...filtros, ordenarPor: 'estado', ordenDir: 'asc' })} />
+                        <Chip label="Prioridad" size="small" color={filtros.ordenarPor === 'prioridad' ? 'primary' : 'default'} variant={filtros.ordenarPor === 'prioridad' ? 'filled' : 'outlined'} onClick={() => setFiltros({ ...filtros, ordenarPor: 'prioridad', ordenDir: 'desc' })} />
                     </Stack>
                 </Paper>
             )}
@@ -798,9 +900,7 @@ const GestionSDRPage = () => {
                                     cursor: 'pointer'
                                 }}
                                 onClick={() => {
-                                    setContactoSeleccionado(contacto);
-                                    setIndiceContactoActual(idx);
-                                    setModalDetalle(true);
+                                    handleAbrirContacto(contacto, idx);
                                 }}
                             >
                                 <Stack direction="row" alignItems="flex-start" spacing={1}>
@@ -828,11 +928,20 @@ const GestionSDRPage = () => {
                                                 {contacto.empresa}
                                             </Typography>
                                         )}
-                                        <Stack direction="row" spacing={1} sx={{ mt: 1 }} alignItems="center">
+                                        <Stack direction="row" spacing={0.5} sx={{ mt: 1 }} alignItems="center" flexWrap="wrap" useFlexGap>
                                             {contacto.sdrAsignadoNombre ? (
                                                 <Chip label={contacto.sdrAsignadoNombre} size="small" variant="outlined" />
                                             ) : (
                                                 <Chip label="Pool" size="small" variant="outlined" color="secondary" />
+                                            )}
+                                            {contacto.precalificacionBot && contacto.precalificacionBot !== 'sin_calificar' && (
+                                                <Chip label={PRECALIFICACION_BOT[contacto.precalificacionBot]?.label || contacto.precalificacionBot} size="small" color={PRECALIFICACION_BOT[contacto.precalificacionBot]?.color || 'default'} variant="outlined" />
+                                            )}
+                                            {contacto.planEstimado && PLANES_SORBY[contacto.planEstimado] && (
+                                                <Chip label={`${PLANES_SORBY[contacto.planEstimado].icon} ${PLANES_SORBY[contacto.planEstimado].label}`} size="small" variant="outlined" />
+                                            )}
+                                            {contacto.scoring?.total != null && (
+                                                <Chip label={`⚡${contacto.scoring.total}`} size="small" color={contacto.scoring.total >= 400 ? 'error' : contacto.scoring.total >= 200 ? 'warning' : 'default'} />
                                             )}
                                             {contacto.proximoContacto && (
                                                 <Chip
@@ -878,36 +987,13 @@ const GestionSDRPage = () => {
                                     </TableCell>
                                     <TableCell>Nombre</TableCell>
                                     <TableCell>Empresa</TableCell>
-                                    <TableCell>Teléfono</TableCell>
                                     <TableCell>Estado</TableCell>
-                                    <TableCell>Status Notion</TableCell>
+                                    <TableCell>Calificado</TableCell>
+                                    <TableCell>Quiere reunión</TableCell>
+                                    <TableCell>Plan</TableCell>
                                     <TableCell>SDR</TableCell>
-                                    <TableCell>
-                                        <TableSortLabel
-                                            active={filtros.ordenarPor === 'ultimaAccion'}
-                                            direction={filtros.ordenarPor === 'ultimaAccion' ? filtros.ordenDir : 'desc'}
-                                            onClick={() => setFiltros({
-                                                ...filtros,
-                                                ordenarPor: 'ultimaAccion',
-                                                ordenDir: filtros.ordenarPor === 'ultimaAccion' && filtros.ordenDir === 'desc' ? 'asc' : 'desc'
-                                            })}
-                                        >
-                                            Última
-                                        </TableSortLabel>
-                                    </TableCell>
-                                    <TableCell>
-                                        <TableSortLabel
-                                            active={filtros.ordenarPor === 'proximoContacto'}
-                                            direction={filtros.ordenarPor === 'proximoContacto' ? filtros.ordenDir : 'asc'}
-                                            onClick={() => setFiltros({
-                                                ...filtros,
-                                                ordenarPor: 'proximoContacto',
-                                                ordenDir: filtros.ordenarPor === 'proximoContacto' && filtros.ordenDir === 'asc' ? 'desc' : 'asc'
-                                            })}
-                                        >
-                                            Próximo
-                                        </TableSortLabel>
-                                    </TableCell>
+                                    <TableCell sx={{ whiteSpace: 'nowrap' }}>Prior.</TableCell>
+                                    <TableCell>Próximo</TableCell>
                                 </TableRow>
                             </TableHead>
                             <TableBody>
@@ -917,9 +1003,7 @@ const GestionSDRPage = () => {
                                         hover 
                                         sx={{ cursor: 'pointer' }}
                                         onClick={() => { 
-                                            setContactoSeleccionado(contacto); 
-                                            setIndiceContactoActual(idx);
-                                            setModalDetalle(true); 
+                                            handleAbrirContacto(contacto, idx);
                                         }}
                                     >
                                         <TableCell padding="checkbox" onClick={(e) => e.stopPropagation()}>
@@ -936,28 +1020,34 @@ const GestionSDRPage = () => {
                                         </TableCell>
                                         <TableCell>
                                             <Typography variant="body2" fontWeight={600}>{contacto.nombre}</Typography>
-                                            {contacto.cargo && (
-                                                <Typography variant="caption" color="text.secondary">
-                                                    {contacto.cargo}
-                                                </Typography>
+                                            {contacto.segmento && (
+                                                <Chip label={contacto.segmento === 'inbound' ? 'In' : 'Out'} size="small" variant="outlined" color={contacto.segmento === 'inbound' ? 'info' : 'warning'} sx={{ height: 18, fontSize: 10, ml: 0.5 }} />
                                             )}
                                         </TableCell>
-                                        <TableCell>{contacto.empresa || '-'}</TableCell>
-                                        <TableCell>{contacto.telefono}</TableCell>
+                                        <TableCell>{contacto.empresa || '—'}</TableCell>
                                         <TableCell><EstadoChip estado={contacto.estado} /></TableCell>
                                         <TableCell>
-                                            {contacto.statusNotion ? (
-                                                <Chip label={contacto.statusNotion} size="small" variant="outlined" color="info" />
-                                            ) : '-'}
+                                            {contacto.precalificacionBot && contacto.precalificacionBot !== 'sin_calificar' ? (
+                                                <Chip label={PRECALIFICACION_BOT[contacto.precalificacionBot]?.label || contacto.precalificacionBot} size="small" color={PRECALIFICACION_BOT[contacto.precalificacionBot]?.color || 'default'} variant="outlined" />
+                                            ) : '—'}
+                                        </TableCell>
+                                        <TableCell>
+                                            {contacto.precalificacionBot === 'quiere_meet' ? (
+                                                <Chip label="✅ Sí" size="small" color="success" variant="filled" />
+                                            ) : '—'}
+                                        </TableCell>
+                                        <TableCell>
+                                            {contacto.planEstimado && PLANES_SORBY[contacto.planEstimado] ? (
+                                                <Chip label={`${PLANES_SORBY[contacto.planEstimado].icon} ${PLANES_SORBY[contacto.planEstimado].label}`} size="small" color={PLANES_SORBY[contacto.planEstimado].color} variant="outlined" />
+                                            ) : '—'}
                                         </TableCell>
                                         <TableCell>
                                             {contacto.sdrAsignadoNombre || <Chip label="Pool" size="small" variant="outlined" color="secondary" />}
                                         </TableCell>
                                         <TableCell>
-                                            {contacto.ultimaAccion 
-                                                ? new Date(contacto.ultimaAccion).toLocaleDateString('es-AR') 
-                                                : '-'
-                                            }
+                                            {contacto.scoring?.total != null ? (
+                                                <Chip label={contacto.scoring.total} size="small" color={contacto.scoring.total >= 400 ? 'error' : contacto.scoring.total >= 200 ? 'warning' : 'default'} />
+                                            ) : '—'}
                                         </TableCell>
                                         <TableCell>
                                             {contacto.proximoContacto ? (
@@ -974,7 +1064,7 @@ const GestionSDRPage = () => {
                                                         variant="outlined"
                                                     />
                                                 </Tooltip>
-                                            ) : '-'}
+                                            ) : '—'}
                                         </TableCell>
                                     </TableRow>
                                 ))}
@@ -996,11 +1086,11 @@ const GestionSDRPage = () => {
     
     const renderReuniones = () => (
         <Box>
-            <Typography variant="h6" sx={{ mb: 2 }}>Todas las reuniones pendientes de evaluación</Typography>
+            <Typography variant="h6" sx={{ mb: 2 }}>Próximas reuniones agendadas</Typography>
             
             {reuniones.length === 0 ? (
                 <Alert severity="success" icon={<CheckCircleIcon />}>
-                    No hay reuniones pendientes de evaluación
+                    No hay reuniones agendadas
                 </Alert>
             ) : (
                 <Grid container spacing={2}>
@@ -1017,7 +1107,7 @@ const GestionSDRPage = () => {
                                         <Stack direction="row" spacing={1}>
                                             <Chip label={reunion.tamanoEmpresa} size="small" />
                                             <Chip 
-                                                label={new Date(reunion.fechaHora).toLocaleString('es-AR', {
+                                                label={new Date(reunion.fecha || reunion.fechaHora).toLocaleString('es-AR', {
                                                     day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
                                                 })} 
                                                 size="small" 
@@ -1042,21 +1132,31 @@ const GestionSDRPage = () => {
                                             variant="contained" 
                                             color="success" 
                                             size="small"
-                                            startIcon={<ThumbUpIcon />}
+                                            startIcon={<CheckCircleIcon />}
                                             fullWidth
-                                            onClick={() => setModalEvaluar({ open: true, reunion })}
+                                            onClick={() => handleEvaluarReunion('realizada', null, null, reunion)}
                                         >
-                                            Aprobar
+                                            Realizada
+                                        </Button>
+                                        <Button 
+                                            variant="outlined" 
+                                            color="warning" 
+                                            size="small"
+                                            startIcon={<PersonRemoveIcon />}
+                                            fullWidth
+                                            onClick={() => handleEvaluarReunion('no_show', null, null, reunion)}
+                                        >
+                                            No Show
                                         </Button>
                                         <Button 
                                             variant="outlined" 
                                             color="error" 
                                             size="small"
-                                            startIcon={<ThumbDownIcon />}
+                                            startIcon={<CancelIcon />}
                                             fullWidth
-                                            onClick={() => setModalEvaluar({ open: true, reunion })}
+                                            onClick={() => handleEvaluarReunion('cancelada', null, null, reunion)}
                                         >
-                                            Rechazar
+                                            Cancelar
                                         </Button>
                                     </Stack>
                                 </Box>
@@ -1065,373 +1165,6 @@ const GestionSDRPage = () => {
                     ))}
                 </Grid>
             )}
-        </Box>
-    );
-    
-    // ==================== RENDER ASIGNACIÓN (VISTA KANBAN) ====================
-    
-    const [sdrsConContactos, setSdrsConContactos] = useState([]);
-    const [contactosSinAsignar, setContactosSinAsignar] = useState([]);
-    const [loadingAsignacion, setLoadingAsignacion] = useState(false);
-    const [seleccionAsignacion, setSeleccionAsignacion] = useState([]); // IDs seleccionados para mover
-    
-    const cargarVistaAsignacion = async () => {
-        setLoadingAsignacion(true);
-        try {
-            // Cargar todos los contactos
-            const params = { limit: 500 };
-            const data = await SDRService.listarContactos(params);
-            const todosContactos = data.contactos || [];
-            
-            // Cargar SDRs disponibles
-            const snapshot = await getDocs(query(collection(db, 'profile'), where('sdr', '==', true)));
-            const sdrsBase = snapshot.docs
-                .map(doc => {
-                    const d = doc.data();
-                    return {
-                        id: doc.id, // Usar ID del documento Firestore para consistencia
-                        docId: doc.id,
-                        nombre: `${d.firstName || ''} ${d.lastName || ''}`.trim() || d.email,
-                        email: d.email,
-                        contactos: [],
-                        metricas: { llamadas: 0, whatsapp: 0, reuniones: 0 }
-                    };
-                });
-            
-            // Separar sin asignar y agrupar por SDR
-            const sinAsignar = todosContactos.filter(c => !c.sdrAsignado);
-            setContactosSinAsignar(sinAsignar);
-            
-            // Asignar contactos a cada SDR
-            const sdrsConData = sdrsBase.map(sdr => ({
-                ...sdr,
-                contactos: todosContactos.filter(c => c.sdrAsignado === sdr.id)
-            }));
-            
-            // Obtener métricas del día para cada SDR
-            if (metricas?.metricasPorSDR) {
-                sdrsConData.forEach(sdr => {
-                    const metricaSDR = metricas.metricasPorSDR.find(m => m.sdrId === sdr.id);
-                    if (metricaSDR) {
-                        sdr.metricas = {
-                            llamadas: metricaSDR.llamadasRealizadas || 0,
-                            whatsapp: metricaSDR.whatsappEnviados || 0,
-                            reuniones: metricaSDR.reunionesCoordinadas || 0
-                        };
-                    }
-                });
-            }
-            
-            setSdrsConContactos(sdrsConData);
-        } catch (error) {
-            console.error('Error cargando vista asignación:', error);
-            mostrarSnackbar('Error cargando vista de asignación', 'error');
-        } finally {
-            setLoadingAsignacion(false);
-        }
-    };
-    
-    // Cargar vista asignación cuando se entra al tab
-    useEffect(() => {
-        if (tabActual === 1) {
-            cargarVistaAsignacion();
-        }
-    }, [tabActual, metricas]);
-    
-    const handleSeleccionarParaAsignar = (contactoId) => {
-        setSeleccionAsignacion(prev => 
-            prev.includes(contactoId) 
-                ? prev.filter(id => id !== contactoId)
-                : [...prev, contactoId]
-        );
-    };
-    
-    const handleAsignarASDR = async (sdrId, sdrNombre) => {
-        if (seleccionAsignacion.length === 0) return;
-        try {
-            await SDRService.asignarContactos(seleccionAsignacion, sdrId, sdrNombre, empresaId, null);
-            mostrarSnackbar(`${seleccionAsignacion.length} contacto(s) asignado(s) a ${sdrNombre}`);
-            setSeleccionAsignacion([]);
-            cargarVistaAsignacion();
-            cargarMetricas();
-        } catch (error) {
-            mostrarSnackbar('Error al asignar', 'error');
-        }
-    };
-    
-    const handleMoverAPool = async (contactoIds) => {
-        try {
-            await SDRService.desasignarContactos(contactoIds, empresaId);
-            mostrarSnackbar(`${contactoIds.length} contacto(s) movido(s) al pool`);
-            setSeleccionAsignacion([]);
-            cargarVistaAsignacion();
-        } catch (error) {
-            mostrarSnackbar('Error al desasignar', 'error');
-        }
-    };
-    
-    const renderAsignacion = () => (
-        <Box>
-            {/* Header con acciones */}
-            <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
-                <Typography variant="h6">
-                    Asignación de Contactos
-                    {seleccionAsignacion.length > 0 && (
-                        <Chip label={`${seleccionAsignacion.length} seleccionados`} color="primary" size="small" sx={{ ml: 1 }} />
-                    )}
-                </Typography>
-                <Stack direction="row" spacing={1}>
-                    {seleccionAsignacion.length > 0 && (
-                        <Button size="small" onClick={() => setSeleccionAsignacion([])}>
-                            Limpiar selección
-                        </Button>
-                    )}
-                    <Button startIcon={<RefreshIcon />} onClick={cargarVistaAsignacion} disabled={loadingAsignacion}>
-                        Actualizar
-                    </Button>
-                </Stack>
-            </Stack>
-            
-            {loadingAsignacion && <LinearProgress sx={{ mb: 2 }} />}
-            
-            {/* Vista de columnas */}
-            <Box sx={{ 
-                display: 'flex', 
-                gap: 2, 
-                overflowX: 'auto', 
-                pb: 2,
-                minHeight: 400
-            }}>
-                {/* Columna Pool (sin asignar) */}
-                <Paper 
-                    sx={{ 
-                        minWidth: 280, 
-                        maxWidth: 320,
-                        bgcolor: 'grey.50',
-                        display: 'flex',
-                        flexDirection: 'column'
-                    }}
-                >
-                    <Box sx={{ p: 2, bgcolor: 'secondary.main', color: 'white' }}>
-                        <Stack direction="row" justifyContent="space-between" alignItems="center">
-                            <Typography variant="subtitle1" fontWeight={700}>
-                                🗂️ Pool (Sin asignar)
-                            </Typography>
-                            <Chip label={contactosSinAsignar.length} size="small" sx={{ bgcolor: 'white', fontWeight: 700 }} />
-                        </Stack>
-                    </Box>
-                    <Box sx={{ p: 1, flex: 1, overflowY: 'auto', maxHeight: 500 }}>
-                        {contactosSinAsignar.length === 0 ? (
-                            <Typography variant="body2" color="text.secondary" sx={{ p: 2, textAlign: 'center' }}>
-                                No hay contactos sin asignar
-                            </Typography>
-                        ) : (
-                            <Stack spacing={1}>
-                                {contactosSinAsignar.slice(0, 50).map(contacto => (
-                                    <Paper
-                                        key={contacto._id}
-                                        elevation={seleccionAsignacion.includes(contacto._id) ? 4 : 1}
-                                        sx={{
-                                            p: 1.5,
-                                            cursor: 'pointer',
-                                            border: seleccionAsignacion.includes(contacto._id) ? 2 : 0,
-                                            borderColor: 'primary.main',
-                                            '&:hover': { bgcolor: 'grey.100' }
-                                        }}
-                                        onClick={() => handleSeleccionarParaAsignar(contacto._id)}
-                                    >
-                                        <Stack direction="row" spacing={1} alignItems="center">
-                                            <Checkbox 
-                                                size="small" 
-                                                checked={seleccionAsignacion.includes(contacto._id)}
-                                                onClick={(e) => e.stopPropagation()}
-                                                onChange={() => handleSeleccionarParaAsignar(contacto._id)}
-                                            />
-                                            <Box sx={{ flex: 1, minWidth: 0 }}>
-                                                <Typography variant="body2" fontWeight={600} noWrap>
-                                                    {contacto.nombre}
-                                                </Typography>
-                                                <Typography variant="caption" color="text.secondary" noWrap>
-                                                    {contacto.empresa || contacto.telefono}
-                                                </Typography>
-                                            </Box>
-                                            <EstadoChip estado={contacto.estado} />
-                                        </Stack>
-                                    </Paper>
-                                ))}
-                                {contactosSinAsignar.length > 50 && (
-                                    <Typography variant="caption" color="text.secondary" sx={{ textAlign: 'center', py: 1 }}>
-                                        +{contactosSinAsignar.length - 50} más
-                                    </Typography>
-                                )}
-                            </Stack>
-                        )}
-                    </Box>
-                </Paper>
-                
-                {/* Columnas por SDR */}
-                {sdrsConContactos.map(sdr => (
-                    <Paper 
-                        key={sdr.id}
-                        sx={{ 
-                            minWidth: 280, 
-                            maxWidth: 320,
-                            display: 'flex',
-                            flexDirection: 'column'
-                        }}
-                    >
-                        {/* Header del SDR */}
-                        <Box sx={{ p: 2, bgcolor: 'primary.main', color: 'white' }}>
-                            <Stack direction="row" justifyContent="space-between" alignItems="center">
-                                <Box>
-                                    <Typography variant="subtitle1" fontWeight={700}>
-                                        {sdr.nombre}
-                                    </Typography>
-                                    <Typography variant="caption" sx={{ opacity: 0.8 }}>
-                                        {sdr.email}
-                                    </Typography>
-                                </Box>
-                                <Chip label={sdr.contactos.length} size="small" sx={{ bgcolor: 'white', fontWeight: 700 }} />
-                            </Stack>
-                            {/* Métricas del día */}
-                            <Stack direction="row" spacing={2} sx={{ mt: 1 }}>
-                                <Stack direction="row" spacing={0.5} alignItems="center">
-                                    <PhoneIcon sx={{ fontSize: 14 }} />
-                                    <Typography variant="caption">{sdr.metricas.llamadas}</Typography>
-                                </Stack>
-                                <Stack direction="row" spacing={0.5} alignItems="center">
-                                    <WhatsAppIcon sx={{ fontSize: 14 }} />
-                                    <Typography variant="caption">{sdr.metricas.whatsapp}</Typography>
-                                </Stack>
-                                <Stack direction="row" spacing={0.5} alignItems="center">
-                                    <EventIcon sx={{ fontSize: 14 }} />
-                                    <Typography variant="caption">{sdr.metricas.reuniones}</Typography>
-                                </Stack>
-                            </Stack>
-                        </Box>
-                        
-                        {/* Botón para asignar seleccionados a este SDR */}
-                        {seleccionAsignacion.length > 0 && (
-                            <Box sx={{ p: 1, bgcolor: 'primary.light' }}>
-                                <Button 
-                                    fullWidth 
-                                    size="small" 
-                                    variant="contained"
-                                    onClick={() => handleAsignarASDR(sdr.id, sdr.nombre)}
-                                >
-                                    Asignar {seleccionAsignacion.length} aquí
-                                </Button>
-                            </Box>
-                        )}
-                        
-                        {/* Lista de contactos del SDR */}
-                        <Box sx={{ p: 1, flex: 1, overflowY: 'auto', maxHeight: 450 }}>
-                            {sdr.contactos.length === 0 ? (
-                                <Typography variant="body2" color="text.secondary" sx={{ p: 2, textAlign: 'center' }}>
-                                    Sin contactos asignados
-                                </Typography>
-                            ) : (
-                                <Stack spacing={1}>
-                                    {sdr.contactos.slice(0, 30).map(contacto => {
-                                        const vencido = contacto.proximoContacto && new Date(contacto.proximoContacto) < new Date();
-                                        return (
-                                            <Paper
-                                                key={contacto._id}
-                                                elevation={0}
-                                                sx={{
-                                                    p: 1.5,
-                                                    bgcolor: vencido ? 'error.50' : 'grey.50',
-                                                    borderLeft: 3,
-                                                    borderColor: vencido ? 'error.main' : 'primary.light'
-                                                }}
-                                            >
-                                                <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
-                                                    <Box sx={{ flex: 1, minWidth: 0 }}>
-                                                        <Typography variant="body2" fontWeight={600} noWrap>
-                                                            {contacto.nombre}
-                                                        </Typography>
-                                                        <Typography variant="caption" color="text.secondary" noWrap>
-                                                            {contacto.empresa || contacto.telefono}
-                                                        </Typography>
-                                                        {contacto.proximoContacto && (
-                                                            <Typography variant="caption" color={vencido ? 'error.main' : 'text.secondary'} display="block">
-                                                                ⏰ {new Date(contacto.proximoContacto).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })}
-                                                            </Typography>
-                                                        )}
-                                                    </Box>
-                                                    <Stack direction="row" spacing={0.5}>
-                                                        <EstadoChip estado={contacto.estado} />
-                                                        <Tooltip title="Mover al pool">
-                                                            <IconButton 
-                                                                size="small" 
-                                                                onClick={() => handleMoverAPool([contacto._id])}
-                                                            >
-                                                                <PersonOffIcon fontSize="small" />
-                                                            </IconButton>
-                                                        </Tooltip>
-                                                    </Stack>
-                                                </Stack>
-                                            </Paper>
-                                        );
-                                    })}
-                                    {sdr.contactos.length > 30 && (
-                                        <Typography variant="caption" color="text.secondary" sx={{ textAlign: 'center', py: 1 }}>
-                                            +{sdr.contactos.length - 30} más
-                                        </Typography>
-                                    )}
-                                </Stack>
-                            )}
-                        </Box>
-                    </Paper>
-                ))}
-                
-                {/* Columna para agregar SDR */}
-                <Paper 
-                    sx={{ 
-                        minWidth: 200, 
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        bgcolor: 'grey.100',
-                        border: '2px dashed',
-                        borderColor: 'grey.300',
-                        cursor: 'pointer',
-                        '&:hover': { borderColor: 'primary.main', bgcolor: 'grey.50' }
-                    }}
-                    onClick={() => setModalAgregarSDR(true)}
-                >
-                    <Stack alignItems="center" spacing={1}>
-                        <AddIcon sx={{ fontSize: 40, color: 'grey.400' }} />
-                        <Typography color="text.secondary">Agregar SDR</Typography>
-                    </Stack>
-                </Paper>
-            </Box>
-            
-            {/* Resumen rápido */}
-            <Paper sx={{ p: 2, mt: 2, bgcolor: 'grey.50' }}>
-                <Stack direction="row" spacing={4} justifyContent="center">
-                    <Box textAlign="center">
-                        <Typography variant="h5" color="secondary.main" fontWeight={700}>
-                            {contactosSinAsignar.length}
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary">Sin asignar</Typography>
-                    </Box>
-                    <Divider orientation="vertical" flexItem />
-                    <Box textAlign="center">
-                        <Typography variant="h5" color="primary.main" fontWeight={700}>
-                            {sdrsConContactos.reduce((acc, sdr) => acc + sdr.contactos.length, 0)}
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary">Asignados</Typography>
-                    </Box>
-                    <Divider orientation="vertical" flexItem />
-                    <Box textAlign="center">
-                        <Typography variant="h5" fontWeight={700}>
-                            {sdrsConContactos.length}
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary">SDRs activos</Typography>
-                    </Box>
-                </Stack>
-            </Paper>
         </Box>
     );
     
@@ -1505,61 +1238,9 @@ const GestionSDRPage = () => {
         );
     };
     
-    const ModalReunion = () => {
-        const [form, setForm] = useState({
-            fechaHora: '',
-            empresaNombre: contactoSeleccionado?.empresa || '',
-            tamanoEmpresa: '',
-            contactoPrincipal: contactoSeleccionado?.nombre || '',
-            rolContacto: contactoSeleccionado?.cargo || '',
-            puntosDeDolor: '',
-            modulosPotenciales: '',
-            linkAgenda: ''
-        });
-        
-        useEffect(() => {
-            if (contactoSeleccionado) {
-                setForm(prev => ({
-                    ...prev,
-                    empresaNombre: contactoSeleccionado.empresa || '',
-                    contactoPrincipal: contactoSeleccionado.nombre || '',
-                    rolContacto: contactoSeleccionado.cargo || ''
-                }));
-            }
-        }, [contactoSeleccionado]);
-        
-        return (
-            <Dialog open={modalReunion} onClose={() => setModalReunion(false)} maxWidth="sm" fullWidth>
-                <DialogTitle>Registrar Reunión</DialogTitle>
-                <DialogContent>
-                    <Stack spacing={2} sx={{ mt: 1 }}>
-                        <TextField label="Fecha y hora *" type="datetime-local" value={form.fechaHora} onChange={(e) => setForm({ ...form, fechaHora: e.target.value })} fullWidth InputLabelProps={{ shrink: true }} required />
-                        <TextField label="Nombre de la empresa *" value={form.empresaNombre} onChange={(e) => setForm({ ...form, empresaNombre: e.target.value })} fullWidth required />
-                        <FormControl fullWidth required>
-                            <InputLabel>Tamaño de empresa *</InputLabel>
-                            <Select value={form.tamanoEmpresa} label="Tamaño de empresa *" onChange={(e) => setForm({ ...form, tamanoEmpresa: e.target.value })}>
-                                {TAMANOS_EMPRESA.map(t => (<MenuItem key={t} value={t}>{t} empleados</MenuItem>))}
-                            </Select>
-                        </FormControl>
-                        <TextField label="Contacto principal *" value={form.contactoPrincipal} onChange={(e) => setForm({ ...form, contactoPrincipal: e.target.value })} fullWidth required />
-                        <TextField label="Rol del contacto" value={form.rolContacto} onChange={(e) => setForm({ ...form, rolContacto: e.target.value })} fullWidth placeholder="Ej: Gerente, Dueño, etc." />
-                        <TextField label="Puntos de dolor" value={form.puntosDeDolor} onChange={(e) => setForm({ ...form, puntosDeDolor: e.target.value })} fullWidth multiline rows={2} placeholder="¿Qué problemas tiene la empresa?" />
-                        <TextField label="Módulos potenciales" value={form.modulosPotenciales} onChange={(e) => setForm({ ...form, modulosPotenciales: e.target.value })} fullWidth placeholder="Ej: Facturación, Stock, etc." />
-                        <TextField label="Link de la reunión" value={form.linkAgenda} onChange={(e) => setForm({ ...form, linkAgenda: e.target.value })} fullWidth placeholder="Google Meet, Zoom, etc." />
-                    </Stack>
-                </DialogContent>
-                <DialogActions>
-                    <Button onClick={() => setModalReunion(false)}>Cancelar</Button>
-                    <Button variant="contained" onClick={() => handleRegistrarReunion(form)} disabled={!form.fechaHora || !form.empresaNombre || !form.tamanoEmpresa || !form.contactoPrincipal || actionLoading}>
-                        {actionLoading ? <CircularProgress size={20} /> : 'Registrar Reunión'}
-                    </Button>
-                </DialogActions>
-            </Dialog>
-        );
-    };
+    // ModalReunion extraído fuera del componente (ModalReunionGestion al final del archivo)
     
     const ModalEvaluarReunion = () => {
-        const [motivoRechazo, setMotivoRechazo] = useState('');
         const [notasEvaluador, setNotasEvaluador] = useState('');
         
         const { reunion } = modalEvaluar;
@@ -1580,7 +1261,7 @@ const GestionSDRPage = () => {
                         </Box>
                         <Box>
                             <Typography variant="subtitle2" color="text.secondary">Fecha</Typography>
-                            <Typography>{new Date(reunion.fechaHora).toLocaleString('es-AR')}</Typography>
+                            <Typography>{new Date(reunion.fecha || reunion.fechaHora).toLocaleString('es-AR')}</Typography>
                         </Box>
                         {reunion.puntosDeDolor && (
                             <Box>
@@ -1589,17 +1270,19 @@ const GestionSDRPage = () => {
                             </Box>
                         )}
                         <Divider />
-                        <TextField label="Notas del evaluador" value={notasEvaluador} onChange={(e) => setNotasEvaluador(e.target.value)} fullWidth multiline rows={2} />
-                        <TextField label="Motivo de rechazo (requerido si rechazás)" value={motivoRechazo} onChange={(e) => setMotivoRechazo(e.target.value)} fullWidth />
+                        <TextField label="Notas" value={notasEvaluador} onChange={(e) => setNotasEvaluador(e.target.value)} fullWidth multiline rows={2} placeholder="¿Cómo fue la reunión?" />
                     </Stack>
                 </DialogContent>
                 <DialogActions>
-                    <Button onClick={() => setModalEvaluar({ open: false, reunion: null })}>Cancelar</Button>
-                    <Button variant="contained" color="error" startIcon={<ThumbDownIcon />} onClick={() => handleEvaluarReunion('rechazada', motivoRechazo, notasEvaluador)} disabled={!motivoRechazo}>
-                        Rechazar
+                    <Button onClick={() => setModalEvaluar({ open: false, reunion: null })}>Cerrar</Button>
+                    <Button variant="outlined" color="error" startIcon={<CancelIcon />} onClick={() => handleEvaluarReunion('cancelada', null, notasEvaluador)}>
+                        Cancelar reunión
                     </Button>
-                    <Button variant="contained" color="success" startIcon={<ThumbUpIcon />} onClick={() => handleEvaluarReunion('aprobada', null, notasEvaluador)}>
-                        Aprobar
+                    <Button variant="outlined" color="warning" startIcon={<PersonRemoveIcon />} onClick={() => handleEvaluarReunion('no_show', null, notasEvaluador)}>
+                        No Show
+                    </Button>
+                    <Button variant="contained" color="success" startIcon={<CheckCircleIcon />} onClick={() => handleEvaluarReunion('realizada', null, notasEvaluador)}>
+                        Realizada
                     </Button>
                 </DialogActions>
             </Dialog>
@@ -2329,12 +2012,6 @@ const GestionSDRPage = () => {
                             sx={{ minWidth: isMobile ? 0 : 'auto' }}
                         />
                         <Tab 
-                            icon={<AssignmentIndIcon />} 
-                            label={isMobile ? "" : "Asignación"} 
-                            iconPosition="start" 
-                            sx={{ minWidth: isMobile ? 0 : 'auto' }}
-                        />
-                        <Tab 
                             icon={<GroupsIcon />} 
                             label={isMobile ? "" : "Contactos"} 
                             iconPosition="start" 
@@ -2360,9 +2037,8 @@ const GestionSDRPage = () => {
                     </Tabs>
                     
                     {tabActual === 0 && renderDashboard()}
-                    {tabActual === 1 && renderAsignacion()}
-                    {tabActual === 2 && renderContactos()}
-                    {tabActual === 3 && renderReuniones()}
+                    {tabActual === 1 && renderContactos()}
+                    {tabActual === 2 && renderReuniones()}
                 </Container>
             </Box>
             
@@ -2389,7 +2065,13 @@ const GestionSDRPage = () => {
             {/* Modales */}
             <ModalCrearContacto />
             <ModalNota />
-            <ModalReunion />
+            <ModalReunionGestion
+                open={modalReunion}
+                onClose={() => setModalReunion(false)}
+                contacto={contactoSeleccionado}
+                onSubmit={handleRegistrarReunion}
+                loading={actionLoading}
+            />
             <ModalEvaluarReunion />
             <ModalImportar />
             <ModalAsignar />
@@ -2406,6 +2088,68 @@ const GestionSDRPage = () => {
                 </Alert>
             </Snackbar>
         </>
+    );
+};
+
+// Componente Modal de Reunión (extraído fuera para evitar re-renders)
+const ModalReunionGestion = ({ open, onClose, contacto, onSubmit, loading }) => {
+    const [form, setForm] = useState({
+        fechaHora: '',
+        empresaNombre: '',
+        tamanoEmpresa: '',
+        contactoPrincipal: '',
+        rolContacto: '',
+        puntosDeDolor: '',
+        modulosPotenciales: '',
+        linkAgenda: ''
+    });
+
+    useEffect(() => {
+        if (contacto && open) {
+            setForm({
+                fechaHora: '',
+                empresaNombre: contacto.empresa || '',
+                tamanoEmpresa: contacto.tamanoEmpresa || '',
+                contactoPrincipal: contacto.nombre || '',
+                rolContacto: contacto.cargo || '',
+                puntosDeDolor: '',
+                modulosPotenciales: '',
+                linkAgenda: ''
+            });
+        }
+    }, [contacto, open]);
+
+    const handleSubmit = () => {
+        onSubmit(form);
+    };
+
+    return (
+        <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+            <DialogTitle>📅 Registrar Reunión</DialogTitle>
+            <DialogContent>
+                <Stack spacing={2} sx={{ mt: 1 }}>
+                    <TextField label="Fecha y hora *" type="datetime-local" value={form.fechaHora} onChange={(e) => setForm({ ...form, fechaHora: e.target.value })} fullWidth InputLabelProps={{ shrink: true }} required />
+                    <TextField label="Nombre de la empresa *" value={form.empresaNombre} onChange={(e) => setForm({ ...form, empresaNombre: e.target.value })} fullWidth required />
+                    <FormControl fullWidth required>
+                        <InputLabel>Tamaño de empresa *</InputLabel>
+                        <Select value={form.tamanoEmpresa} label="Tamaño de empresa *" onChange={(e) => setForm({ ...form, tamanoEmpresa: e.target.value })}>
+                            {TAMANOS_EMPRESA.map(t => (<MenuItem key={t} value={t}>{t} empleados</MenuItem>))}
+                        </Select>
+                    </FormControl>
+                    <TextField label="Contacto principal *" value={form.contactoPrincipal} onChange={(e) => setForm({ ...form, contactoPrincipal: e.target.value })} fullWidth required />
+                    <TextField label="Rol del contacto" value={form.rolContacto} onChange={(e) => setForm({ ...form, rolContacto: e.target.value })} fullWidth placeholder="Ej: Gerente, Dueño, etc." />
+                    <TextField label="Puntos de dolor" value={form.puntosDeDolor} onChange={(e) => setForm({ ...form, puntosDeDolor: e.target.value })} fullWidth multiline rows={2} placeholder="¿Qué problemas tiene la empresa?" />
+                    <TextField label="Módulos potenciales" value={form.modulosPotenciales} onChange={(e) => setForm({ ...form, modulosPotenciales: e.target.value })} fullWidth placeholder="Ej: Facturación, Stock, etc." />
+                    <TextField label="Link de la reunión" value={form.linkAgenda} onChange={(e) => setForm({ ...form, linkAgenda: e.target.value })} fullWidth placeholder="Google Meet, Zoom, etc." />
+                </Stack>
+            </DialogContent>
+            <DialogActions>
+                <Button onClick={onClose}>Cancelar</Button>
+                <Button variant="contained" onClick={handleSubmit} disabled={!form.fechaHora || !form.empresaNombre || !form.tamanoEmpresa || !form.contactoPrincipal || loading}>
+                    {loading ? <CircularProgress size={20} /> : 'Registrar Reunión'}
+                </Button>
+            </DialogActions>
+        </Dialog>
     );
 };
 

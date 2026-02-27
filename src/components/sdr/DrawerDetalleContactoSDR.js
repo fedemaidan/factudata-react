@@ -3,7 +3,8 @@ import {
     Drawer, Box, Typography, IconButton, Divider, Chip, Stack,
     Button, TextField, CircularProgress, Paper, Tooltip, Avatar, useMediaQuery, useTheme,
     Dialog, DialogTitle, DialogContent, DialogActions, Collapse, Fab, Badge,
-    Menu, MenuItem, ListItemIcon, ListItemText, Select, FormControl, InputLabel
+    Menu, MenuItem, ListItemIcon, ListItemText, Select, FormControl, InputLabel,
+    Tabs, Tab
 } from '@mui/material';
 import {
     Close as CloseIcon,
@@ -48,12 +49,17 @@ import {
     Fullscreen as FullscreenIcon,
     FullscreenExit as FullscreenExitIcon,
     OpenInFull as OpenInFullIcon,
-    CloseFullscreen as CloseFullscreenIcon
+    CloseFullscreen as CloseFullscreenIcon,
+    ChatBubbleOutline as ChatBubbleOutlineIcon
 } from '@mui/icons-material';
 import SDRService from '../../services/sdrService';
 import ModalSelectorTemplate from './ModalSelectorTemplate';
 import ModalRegistrarAccion from './ModalRegistrarAccion';
 import { getWhatsAppLink, getTelLink } from '../../utils/phoneUtils';
+import { PLANES_SORBY, INTENCIONES_COMPRA, PRECALIFICACION_BOT } from '../../constant/sdrConstants';
+import SmartToyIcon from '@mui/icons-material/SmartToy';
+import TrendingUpIcon from '@mui/icons-material/TrendingUp';
+import MiniChatViewer from './MiniChatViewer';
 
 // Opciones de tamaño de empresa
 const TAMANO_EMPRESA_OPTIONS = [
@@ -139,14 +145,18 @@ const getEventoIcon = (tipo) => {
 
 // ==================== CHIP DE ESTADO (EXPORT NAMED) ====================
 
-// Configuración de estados
+// Configuración de estados v2 (10 estados del pipeline comercial)
 const ESTADOS_CONFIG = {
     'nuevo': { color: 'info', label: 'Nuevo', icon: <NewIcon fontSize="small" /> },
-    'en_gestion': { color: 'warning', label: 'En Gestión', icon: <WorkIcon fontSize="small" /> },
-    'meet': { color: 'secondary', label: 'Reunión', icon: <MeetIcon fontSize="small" /> },
+    'contactado': { color: 'warning', label: 'Contactado', icon: <PhoneIcon fontSize="small" /> },
     'calificado': { color: 'success', label: 'Calificado', icon: <VerifiedIcon fontSize="small" /> },
-    'no_califica': { color: 'error', label: 'No Califica', icon: <BlockIcon fontSize="small" /> },
+    'cierre': { color: 'secondary', label: 'En Cierre', icon: <AssignmentIcon fontSize="small" /> },
+    'ganado': { color: 'success', label: 'Ganado', icon: <CheckCircleIcon fontSize="small" /> },
+    'no_contacto': { color: 'default', label: 'No Contactado', icon: <PhoneMissedIcon fontSize="small" /> },
     'no_responde': { color: 'default', label: 'No Responde', icon: <PhoneDisabledIcon fontSize="small" /> },
+    'revisar_mas_adelante': { color: 'warning', label: 'Revisar Después', icon: <ScheduleIcon fontSize="small" /> },
+    'no_califica': { color: 'error', label: 'No Califica', icon: <BlockIcon fontSize="small" /> },
+    'perdido': { color: 'error', label: 'Perdido', icon: <CancelIcon fontSize="small" /> },
 };
 
 export const EstadoChip = ({ estado }) => {
@@ -270,11 +280,17 @@ const DrawerDetalleContactoSDR = ({
     const [modalRegistrarAccion, setModalRegistrarAccion] = useState(false);
     const [modalEditarContacto, setModalEditarContacto] = useState(false);
     
+    // Scoring: plan estimado e intención de compra
+    const [guardandoScoring, setGuardandoScoring] = useState(false);
+    
     // Estado para historial expandido
     const [mostrarTodosEventos, setMostrarTodosEventos] = useState(false);
     
     // Estado para drawer expandido (pantalla completa)
     const [drawerExpandido, setDrawerExpandido] = useState(false);
+    
+    // Tab activo en vista desktop (0=Info, 1=Historial)
+    const [drawerTab, setDrawerTab] = useState(0);
     
     // Estado local del contacto para poder actualizarlo sin refrescar
     const [contactoLocal, setContactoLocal] = useState(contacto);
@@ -516,6 +532,40 @@ const DrawerDetalleContactoSDR = ({
         return d.toISOString().slice(0, 16);
     };
 
+    // ==================== SCORING: PLAN E INTENCIÓN ====================
+
+    const handleActualizarPlan = async (plan) => {
+        if (!contactoLocal?._id) return;
+        setGuardandoScoring(true);
+        try {
+            await SDRService.actualizarPlanEstimado(contactoLocal._id, plan, empresaId);
+            setContactoLocal(prev => ({ ...prev, planEstimado: plan }));
+            mostrarSnackbar?.(`Plan actualizado a "${PLANES_SORBY[plan]?.label || plan}"`, 'success');
+            onRefresh?.();
+        } catch (err) {
+            console.error('Error actualizando plan:', err);
+            mostrarSnackbar?.('Error al actualizar plan', 'error');
+        } finally {
+            setGuardandoScoring(false);
+        }
+    };
+
+    const handleActualizarIntencion = async (intencion) => {
+        if (!contactoLocal?._id) return;
+        setGuardandoScoring(true);
+        try {
+            await SDRService.actualizarIntencionCompra(contactoLocal._id, intencion, empresaId);
+            setContactoLocal(prev => ({ ...prev, intencionCompra: intencion }));
+            mostrarSnackbar?.(`Intención actualizada a "${INTENCIONES_COMPRA[intencion]?.label || intencion}"`, 'success');
+            onRefresh?.();
+        } catch (err) {
+            console.error('Error actualizando intención:', err);
+            mostrarSnackbar?.('Error al actualizar intención', 'error');
+        } finally {
+            setGuardandoScoring(false);
+        }
+    };
+
     // ==================== NAVEGACIÓN CON CONFIRMACIÓN ====================
     
     // Verificar si próximo contacto está vencido o vacío
@@ -555,6 +605,7 @@ const DrawerDetalleContactoSDR = ({
     // Estado para secciones colapsables en mobile
     const [mostrarHistorial, setMostrarHistorial] = useState(false);
     const [mostrarAcciones, setMostrarAcciones] = useState(false);
+    const [mostrarConversacion, setMostrarConversacion] = useState(false);
 
     if (!contacto || !contactoLocal) return null;
 
@@ -719,6 +770,132 @@ const DrawerDetalleContactoSDR = ({
                                     )}
                                 </Stack>
                             </Box>
+                        </Paper>
+
+                        {/* Scoring: Plan, Intención, Prioridad, Bot */}
+                        <Paper elevation={0} sx={{ p: 2, mb: 2, borderRadius: 3 }}>
+                            <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1.5 }}>
+                                <TrendingUpIcon color="action" fontSize="small" />
+                                <Typography variant="subtitle2">Calificación comercial</Typography>
+                                {guardandoScoring && <CircularProgress size={14} />}
+                            </Stack>
+
+                            {/* Plan Estimado */}
+                            <Box sx={{ mb: 1.5 }}>
+                                <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>
+                                    Plan estimado
+                                </Typography>
+                                <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
+                                    {Object.entries(PLANES_SORBY).map(([key, plan]) => (
+                                        <Chip
+                                            key={key}
+                                            size="small"
+                                            label={`${plan.icon} ${plan.label}`}
+                                            color={contactoLocal.planEstimado === key ? plan.color : 'default'}
+                                            variant={contactoLocal.planEstimado === key ? 'filled' : 'outlined'}
+                                            onClick={() => handleActualizarPlan(key)}
+                                            disabled={guardandoScoring}
+                                            sx={{ cursor: 'pointer' }}
+                                        />
+                                    ))}
+                                </Stack>
+                            </Box>
+
+                            {/* Intención de Compra */}
+                            <Box sx={{ mb: 1.5 }}>
+                                <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>
+                                    Intención de compra
+                                </Typography>
+                                <Stack direction="row" spacing={0.5}>
+                                    {Object.entries(INTENCIONES_COMPRA).map(([key, ic]) => (
+                                        <Chip
+                                            key={key}
+                                            size="small"
+                                            label={`${ic.icon} ${ic.label}`}
+                                            color={contactoLocal.intencionCompra === key ? ic.color : 'default'}
+                                            variant={contactoLocal.intencionCompra === key ? 'filled' : 'outlined'}
+                                            onClick={() => handleActualizarIntencion(key)}
+                                            disabled={guardandoScoring}
+                                            sx={{ cursor: 'pointer' }}
+                                        />
+                                    ))}
+                                </Stack>
+                            </Box>
+
+                            {/* Prioridad Score + Precalificación Bot */}
+                            <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                                {contactoLocal.prioridadScore > 0 && (
+                                    <Chip
+                                        size="small"
+                                        label={`Prioridad: ${contactoLocal.prioridadScore}`}
+                                        color={contactoLocal.prioridadScore >= 70 ? 'error' : contactoLocal.prioridadScore >= 40 ? 'warning' : 'default'}
+                                        variant="filled"
+                                        sx={{ fontWeight: 700 }}
+                                    />
+                                )}
+                                {contactoLocal.precalificacionBot && contactoLocal.precalificacionBot !== 'sin_calificar' && (
+                                    <Chip
+                                        size="small"
+                                        icon={<SmartToyIcon sx={{ fontSize: 14 }} />}
+                                        label={PRECALIFICACION_BOT[contactoLocal.precalificacionBot]?.label || contactoLocal.precalificacionBot}
+                                        color={PRECALIFICACION_BOT[contactoLocal.precalificacionBot]?.color || 'default'}
+                                        variant="outlined"
+                                    />
+                                )}
+                            </Stack>
+                        </Paper>
+
+                        {/* Datos del Bot (si existen) */}
+                        {contactoLocal.datosBot && (contactoLocal.datosBot.rubro || contactoLocal.datosBot.interes || contactoLocal.datosBot.saludoInicial) && (
+                            <Paper elevation={0} sx={{ p: 2, mb: 2, borderRadius: 3 }}>
+                                <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
+                                    <SmartToyIcon color="action" fontSize="small" />
+                                    <Typography variant="subtitle2">Datos del Bot</Typography>
+                                </Stack>
+                                <Stack spacing={0.5}>
+                                    {contactoLocal.datosBot.rubro && (
+                                        <Typography variant="body2" color="text.secondary">
+                                            🏗️ Rubro: {contactoLocal.datosBot.rubro}
+                                        </Typography>
+                                    )}
+                                    {contactoLocal.datosBot.interes && (
+                                        <Typography variant="body2" color="text.secondary">
+                                            💡 Interés: {contactoLocal.datosBot.interes}
+                                        </Typography>
+                                    )}
+                                    {contactoLocal.datosBot.saludoInicial && (
+                                        <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                                            💬 "{contactoLocal.datosBot.saludoInicial}"
+                                        </Typography>
+                                    )}
+                                </Stack>
+                            </Paper>
+                        )}
+
+                        {/* Conversación del contacto */}
+                        <Paper elevation={0} sx={{ borderRadius: 3, overflow: 'hidden', mb: 2 }}>
+                            <Box 
+                                onClick={() => setMostrarConversacion(!mostrarConversacion)}
+                                sx={{ 
+                                    p: 2, 
+                                    display: 'flex', 
+                                    alignItems: 'center', 
+                                    justifyContent: 'space-between',
+                                    cursor: 'pointer',
+                                    '&:active': { bgcolor: 'grey.100' }
+                                }}
+                            >
+                                <Stack direction="row" spacing={1} alignItems="center">
+                                    <ChatBubbleOutlineIcon color="action" fontSize="small" />
+                                    <Typography variant="subtitle2">Conversación</Typography>
+                                </Stack>
+                                {mostrarConversacion ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                            </Box>
+                            <Collapse in={mostrarConversacion} unmountOnExit>
+                                <Box sx={{ height: 350 }}>
+                                    <MiniChatViewer telefono={contactoLocal?.telefono} />
+                                </Box>
+                            </Collapse>
                         </Paper>
 
                         {/* Próximo contacto */}
@@ -1166,8 +1343,41 @@ const DrawerDetalleContactoSDR = ({
                     </Stack>
                 </Box>
 
+                {/* Tabs: Info | Actividad */}
+                <Tabs 
+                    value={drawerTab} 
+                    onChange={(_, v) => setDrawerTab(v)} 
+                    sx={{ px: 2, borderBottom: 1, borderColor: 'divider', minHeight: 40 }}
+                    variant="fullWidth"
+                >
+                    <Tab label="Información" sx={{ minHeight: 40, py: 0 }} />
+                    <Tab 
+                        label={
+                            <Stack direction="row" spacing={0.5} alignItems="center">
+                                <span>Actividad</span>
+                                {historial.length > 0 && (
+                                    <Chip size="small" label={historial.length} sx={{ height: 20, fontSize: '0.7rem' }} />
+                                )}
+                            </Stack>
+                        } 
+                        sx={{ minHeight: 40, py: 0 }} 
+                    />
+                    <Tab 
+                        label={
+                            <Stack direction="row" spacing={0.5} alignItems="center">
+                                <ChatBubbleOutlineIcon sx={{ fontSize: 16 }} />
+                                <span>Chat</span>
+                            </Stack>
+                        } 
+                        sx={{ minHeight: 40, py: 0 }} 
+                    />
+                </Tabs>
+
+                {/* Tab 0: Información */}
+                {drawerTab === 0 && (
+                <Box sx={{ flex: 1, overflow: 'auto', p: 2 }}>
+
                 {/* Info del contacto */}
-                <Box sx={{ p: 2 }}>
                     <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
                         <Typography variant="subtitle2" color="text.secondary">Información</Typography>
                         <Button
@@ -1238,7 +1448,111 @@ const DrawerDetalleContactoSDR = ({
                         >
                             WhatsApp
                         </Button>
+                        <Button
+                            variant="outlined"
+                            size="small"
+                            startIcon={<ChatBubbleOutlineIcon />}
+                            onClick={() => setDrawerTab(2)}
+                        >
+                            Ver chat
+                        </Button>
                     </Stack>
+
+                    {/* Scoring: Plan, Intención, Prioridad, Bot */}
+                    <Box sx={{ mt: 2, p: 1.5, bgcolor: 'grey.50', borderRadius: 1 }}>
+                        <Stack direction="row" spacing={1} alignItems="center" mb={1}>
+                            <TrendingUpIcon fontSize="small" color="action" />
+                            <Typography variant="subtitle2">Calificación comercial</Typography>
+                            {guardandoScoring && <CircularProgress size={14} />}
+                        </Stack>
+
+                        {/* Plan Estimado */}
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                            Plan estimado
+                        </Typography>
+                        <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap sx={{ mb: 1 }}>
+                            {Object.entries(PLANES_SORBY).map(([key, plan]) => (
+                                <Chip
+                                    key={key}
+                                    size="small"
+                                    label={`${plan.icon} ${plan.label}`}
+                                    color={contactoLocal.planEstimado === key ? plan.color : 'default'}
+                                    variant={contactoLocal.planEstimado === key ? 'filled' : 'outlined'}
+                                    onClick={() => handleActualizarPlan(key)}
+                                    disabled={guardandoScoring}
+                                    sx={{ cursor: 'pointer' }}
+                                />
+                            ))}
+                        </Stack>
+
+                        {/* Intención de Compra */}
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                            Intención de compra
+                        </Typography>
+                        <Stack direction="row" spacing={0.5} sx={{ mb: 1 }}>
+                            {Object.entries(INTENCIONES_COMPRA).map(([key, ic]) => (
+                                <Chip
+                                    key={key}
+                                    size="small"
+                                    label={`${ic.icon} ${ic.label}`}
+                                    color={contactoLocal.intencionCompra === key ? ic.color : 'default'}
+                                    variant={contactoLocal.intencionCompra === key ? 'filled' : 'outlined'}
+                                    onClick={() => handleActualizarIntencion(key)}
+                                    disabled={guardandoScoring}
+                                    sx={{ cursor: 'pointer' }}
+                                />
+                            ))}
+                        </Stack>
+
+                        {/* Prioridad Score + Bot */}
+                        <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                            {contactoLocal.prioridadScore > 0 && (
+                                <Chip
+                                    size="small"
+                                    label={`Prioridad: ${contactoLocal.prioridadScore}`}
+                                    color={contactoLocal.prioridadScore >= 70 ? 'error' : contactoLocal.prioridadScore >= 40 ? 'warning' : 'default'}
+                                    variant="filled"
+                                    sx={{ fontWeight: 700 }}
+                                />
+                            )}
+                            {contactoLocal.precalificacionBot && contactoLocal.precalificacionBot !== 'sin_calificar' && (
+                                <Chip
+                                    size="small"
+                                    icon={<SmartToyIcon sx={{ fontSize: 14 }} />}
+                                    label={PRECALIFICACION_BOT[contactoLocal.precalificacionBot]?.label || contactoLocal.precalificacionBot}
+                                    color={PRECALIFICACION_BOT[contactoLocal.precalificacionBot]?.color || 'default'}
+                                    variant="outlined"
+                                />
+                            )}
+                        </Stack>
+                    </Box>
+
+                    {/* Datos del Bot (si existen) */}
+                    {contactoLocal.datosBot && (contactoLocal.datosBot.rubro || contactoLocal.datosBot.interes || contactoLocal.datosBot.saludoInicial) && (
+                        <Box sx={{ mt: 1.5, p: 1.5, bgcolor: 'grey.50', borderRadius: 1 }}>
+                            <Stack direction="row" spacing={1} alignItems="center" mb={1}>
+                                <SmartToyIcon fontSize="small" color="action" />
+                                <Typography variant="subtitle2">Datos del Bot</Typography>
+                            </Stack>
+                            <Stack spacing={0.5}>
+                                {contactoLocal.datosBot.rubro && (
+                                    <Typography variant="body2" color="text.secondary">
+                                        🏗️ Rubro: {contactoLocal.datosBot.rubro}
+                                    </Typography>
+                                )}
+                                {contactoLocal.datosBot.interes && (
+                                    <Typography variant="body2" color="text.secondary">
+                                        💡 Interés: {contactoLocal.datosBot.interes}
+                                    </Typography>
+                                )}
+                                {contactoLocal.datosBot.saludoInicial && (
+                                    <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                                        💬 "{contactoLocal.datosBot.saludoInicial}"
+                                    </Typography>
+                                )}
+                            </Stack>
+                        </Box>
+                    )}
 
                     {/* Próximo Contacto */}
                     <Box sx={{ mt: 2, p: 1.5, bgcolor: 'grey.50', borderRadius: 1 }}>
@@ -1316,8 +1630,11 @@ const DrawerDetalleContactoSDR = ({
                         </Button>
                     )}
                 </Box>
+                )}
 
-                <Divider />
+                {/* Tab 1: Actividad (Acciones + Comentario + Historial) */}
+                {drawerTab === 1 && (
+                <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
                 {/* Acciones rápidas */}
                 <Box sx={{ p: 2 }}>
@@ -1501,6 +1818,15 @@ const DrawerDetalleContactoSDR = ({
                         </Stack>
                     )}
                 </Box>
+                </Box>
+                )}
+
+                {/* Tab 2: Conversación */}
+                {drawerTab === 2 && (
+                <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                    <MiniChatViewer telefono={contactoLocal?.telefono} />
+                </Box>
+                )}
             </Box>
 
             {/* Modal de confirmación de próximo contacto */}
@@ -1598,7 +1924,7 @@ const DrawerDetalleContactoSDR = ({
 };
 
 // ==================== MODAL EDITAR CONTACTO ====================
-const ModalEditarContacto = ({ open, onClose, contacto, empresaId, onSuccess }) => {
+export const ModalEditarContacto = ({ open, onClose, contacto, empresaId, onSuccess }) => {
     const theme = useTheme();
     const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
     

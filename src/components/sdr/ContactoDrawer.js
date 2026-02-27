@@ -93,15 +93,19 @@ const getEventoIcon = (tipo) => {
     return iconos[tipo] || <HistoryIcon fontSize="small" />;
 };
 
-// Chip de estado
+// Chip de estado (v2 — 10 estados del pipeline comercial)
 const EstadoChip = ({ estado }) => {
     const config = {
         'nuevo': { color: 'info', label: 'Nuevo' },
-        'en_gestion': { color: 'warning', label: 'En Gestión' },
-        'meet': { color: 'secondary', label: 'Reunión' },
+        'contactado': { color: 'warning', label: 'Contactado' },
         'calificado': { color: 'success', label: 'Calificado' },
-        'no_califica': { color: 'error', label: 'No Califica' },
+        'cierre': { color: 'secondary', label: 'En Cierre' },
+        'ganado': { color: 'success', label: 'Ganado' },
+        'no_contacto': { color: 'default', label: 'No Contactado' },
         'no_responde': { color: 'default', label: 'No Responde' },
+        'revisar_mas_adelante': { color: 'warning', label: 'Revisar Después' },
+        'no_califica': { color: 'error', label: 'No Califica' },
+        'perdido': { color: 'error', label: 'Perdido' },
     };
     const { color, label } = config[estado] || { color: 'default', label: estado };
     return <Chip size="small" color={color} label={label} />;
@@ -169,7 +173,7 @@ const ContactoDrawer = ({
     const handleLlamar = () => {
         const tel = formatTelefono(contacto?.telefono);
         if (!tel) return;
-        window.open(`tel:${tel}`, '_self');
+        window.open(`tel:+${tel}`, '_self');
     };
 
     // Registrar acción
