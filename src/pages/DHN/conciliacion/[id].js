@@ -2,11 +2,12 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/router';
 import Alerts from 'src/components/alerts';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
-import { Container, Stack, Alert, Box, TextField, InputAdornment, IconButton, Chip, Button, Typography } from '@mui/material';
+import { Container, Stack, Alert, Box, TextField, InputAdornment, IconButton, Chip, Button, Typography, CircularProgress } from '@mui/material';
 import ClearIcon from '@mui/icons-material/Clear';
 import SickIcon from '@mui/icons-material/Sick';
 import EditIcon from '@mui/icons-material/Edit';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import TableSelectComponent from 'src/components/TableSelectComponent';
 import FiltroTrabajoDiario from 'src/components/dhn/FiltroTrabajoDiario';
 import conciliacionService from 'src/services/dhn/conciliacionService';
@@ -15,6 +16,8 @@ import TrabajosDetectadosList from 'src/components/dhn/TrabajosDetectadosList';
 import HorasRawModal from 'src/components/dhn/HorasRawModal';
 import CorreccionConciliacionModal from 'src/components/dhn/CorreccionConciliacionModal';
 import { getHourChipSx } from 'src/components/dhn/hourChipStyles';
+import TrabajoRegistradoService from 'src/services/dhn/TrabajoRegistradoService';
+import exportTrabajoDiarioToPdfRenderer from 'src/utils/dhn/exportTrabajoDiarioToPdfRenderer';
 
 const DEFAULT_PAGE_SIZE = 200;
 const HORAS_EXCEL_FIELDS = [
@@ -85,6 +88,7 @@ const ConciliacionDetallePage = () => {
   const [rawModalTitle, setRawModalTitle] = useState('');
   const [rawModalFileName, setRawModalFileName] = useState('');
   const [rawModalUrl, setRawModalUrl] = useState('');
+  const [exportingRowId, setExportingRowId] = useState(null);
   const [alert, setAlert] = useState({ open: false, severity: 'success', message: '' });
 
   const handleOpenParteModal = useCallback((url, comp) => {
@@ -257,6 +261,7 @@ const ConciliacionDetallePage = () => {
         horasHormigon: normalizeValue(sheet.horasHormigon),
         horasZanjeo: normalizeValue(sheet.horasZanjeo),
         fechaLicencia: Boolean(sheet.fechaLicencia),
+        tipoLicencia: sheet.tipoLicencia ?? null,
       },
       estado: "okManual",
     };
@@ -367,6 +372,32 @@ const ConciliacionDetallePage = () => {
       console.error("Error actualizando horas", error);
     }
   }, [id, rowToEdit, formHoras, reloadRows]);
+
+  const handleExportRowPdf = useCallback(
+    async (row) => {
+      const rowId = getRowId(row);
+      if (!rowId) return;
+      if (!row?.trabajoDiarioRegistrado) {
+        showAlert("No hay trabajo diario registrado vinculado", "info");
+        return;
+      }
+      setExportingRowId(rowId);
+      try {
+        const registro = await TrabajoRegistradoService.getRegistroById(row.trabajoDiarioRegistrado);
+        const trabajo = registro?.data || registro;
+        if (!trabajo) {
+          throw new Error("No se encontró el trabajo diario");
+        }
+        await exportTrabajoDiarioToPdfRenderer(trabajo);
+      } catch (error) {
+        console.error("Error exportando comprobantes", error);
+        showAlert(error?.message || "Error al exportar el PDF", "error");
+      } finally {
+        setExportingRowId(null);
+      }
+    },
+    [getRowId, showAlert]
+  );
 
   const getEstadoChipProps = (estado) => {
     const e = (estado || '').toString().toLowerCase();
@@ -553,33 +584,54 @@ const ConciliacionDetallePage = () => {
     {
       key: 'acciones',
       label: '',
-      render: (row) => (
-        <IconButton
-          size="small"
-          onClick={(e) => {
-            e.stopPropagation();
-            const initial = {
-              horasNormales: row?.dbHoras?.horasNormales ?? null,
-              horas50: row?.dbHoras?.horas50 ?? null,
-              horas100: row?.dbHoras?.horas100 ?? null,
-              horasAltura: row?.dbHoras?.horasAltura ?? null,
-              horasHormigon: row?.dbHoras?.horasHormigon ?? null,
-              horasZanjeo: row?.dbHoras?.horasZanjeo ?? null,
-              horasNocturnas: row?.dbHoras?.horasNocturnas ?? null,
-              fechaLicencia: row?.dbHoras?.fechaLicencia ?? false,
-            };
-            setFormHoras(initial);
-            setRowToEdit(row);
-            setEditOpen(true);
-          }}
-          color="primary"
-          aria-label="Editar horas"
-        >
-          <EditIcon fontSize="small" />
-        </IconButton>
-      )
+      render: (row) => {
+        const rowId = getRowId(row);
+        return (
+          <Stack direction="row" spacing={0.5}>
+            <IconButton
+              size="small"
+              onClick={(e) => {
+                e.stopPropagation();
+                const initial = {
+                  horasNormales: row?.dbHoras?.horasNormales ?? null,
+                  horas50: row?.dbHoras?.horas50 ?? null,
+                  horas100: row?.dbHoras?.horas100 ?? null,
+                  horasAltura: row?.dbHoras?.horasAltura ?? null,
+                  horasHormigon: row?.dbHoras?.horasHormigon ?? null,
+                  horasZanjeo: row?.dbHoras?.horasZanjeo ?? null,
+                  horasNocturnas: row?.dbHoras?.horasNocturnas ?? null,
+                  fechaLicencia: row?.dbHoras?.fechaLicencia ?? false,
+                };
+                setFormHoras(initial);
+                setRowToEdit(row);
+                setEditOpen(true);
+              }}
+              color="primary"
+              aria-label="Editar horas"
+            >
+              <EditIcon fontSize="small" />
+            </IconButton>
+            <IconButton
+              size="small"
+              color="primary"
+              aria-label="Exportar comprobantes"
+              disabled={!row?.trabajoDiarioRegistrado || exportingRowId === rowId}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleExportRowPdf(row);
+              }}
+            >
+              {exportingRowId === rowId ? (
+                <CircularProgress size={16} color="inherit" />
+              ) : (
+                <PictureAsPdfIcon fontSize="small" />
+              )}
+            </IconButton>
+          </Stack>
+        );
+      }
     }
-  ]), [handleOpenParteModal]);
+  ]), [handleOpenParteModal, handleExportRowPdf, exportingRowId]);
 
   useEffect(() => {
     setSelectedRowsMap(new Map());
