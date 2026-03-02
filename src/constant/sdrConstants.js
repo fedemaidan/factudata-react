@@ -70,3 +70,13 @@ export const ESTADOS_REUNION = {
     no_show:   { label: 'No show',   color: 'error',   icon: '❌' },
     cancelada: { label: 'Cancelada', color: 'default', icon: '🚫' },
 };
+
+// ─────────────────────────────────────────────────
+// Contadores de actividad por contacto (v2.1)
+// ─────────────────────────────────────────────────
+export const CONTADORES_CONFIG = {
+    llamadasNoAtendidas: { label: 'No atendidas', icon: '📵', color: '#ff9800' },
+    llamadasAtendidas:   { label: 'Atendidas',    icon: '📞', color: '#4caf50' },
+    mensajesEnviados:    { label: 'Mensajes',     icon: '💬', color: '#2196f3' },
+    reunionesTotales:    { label: 'Reuniones',    icon: '📅', color: '#9c27b0' },
+};

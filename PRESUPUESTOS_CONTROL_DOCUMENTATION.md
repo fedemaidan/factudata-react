@@ -38,6 +38,7 @@ Cada presupuesto puede tener:
 - **Moneda**: ARS o USD (la que el usuario piensa)
 - **Indexación** (solo ARS): sin indexar, por CAC, o por USD
 - **Base de cálculo**: total (con impuestos) o subtotal/neto (sin impuestos)
+- **Fecha del presupuesto**: fecha a la que corresponde el presupuesto (determina qué CAC/USD se usa para la conversión). Default: hoy.
 
 ### 2.2 Ejecutado
 
@@ -98,12 +99,16 @@ Esto es relevante para constructoras que trabajan con Factura A (desglosan IVA) 
   monto_ingresado: 50000000,          // Monto que el usuario ingresó (en moneda_display)
   ejecutado: 312.10,                   // Suma de movimientos (en moneda de almacenamiento)
   
-  // Cotización al momento de crear/editar
+  // Fecha del presupuesto (determina qué cotización CAC/USD se usa)
+  fecha_presupuesto: "2026-02-13",     // YYYY-MM-DD — fecha a la que corresponde el presupuesto
+  
+  // Cotización al momento de crear/editar (basada en fecha_presupuesto)
   cotizacion_snapshot: {
     fecha: "2026-02-13",
+    fecha_presupuesto: "2026-02-13",   // Fecha del presupuesto usada para el cálculo
     dolar_blue: 1470,
     cac_indice: 95432.5,
-    cac_fecha: "2025-12",
+    cac_fecha: "2025-12",              // Mes del CAC efectivamente aplicado (regla -2 meses)
     cac_override: true,          // Presente si el usuario hizo override manual
     dolar_override: true,        // Presente si el usuario hizo override manual
   },
@@ -111,13 +116,20 @@ Esto es relevante para constructoras que trabajan con Factura A (desglosan IVA) 
   // Adicionales (incrementos posteriores al presupuesto original)
   adicionales: [
     {
-      fecha: Timestamp,
+      fecha: Timestamp,                  // Fecha de creación del registro
+      fecha_adicional: "2026-03-15",     // Fecha a la que corresponde el adicional (determina CAC/USD)
       tipo: "adicional",
       concepto: "Cambio de especificación",
       monto: 50.00,
       montoAnterior: 523.45,
       montoNuevo: 573.45,
-      creadoPor: "uid_usuario"
+      creadoPor: "uid_usuario",
+      cotizacion_snapshot: {             // Cotización usada para este adicional
+        fecha: "2026-03-15",
+        dolar_blue: 1520,
+        cac_indice: 98200.0,
+        cac_fecha: "2026-01",
+      }
     }
   ],
   
@@ -180,9 +192,9 @@ Del documento `movimientos/{id}`, el presupuesto usa:
 
 | Función | Qué hace |
 |---|---|
-| `crearPresupuesto(data)` | Crea presupuesto, convierte monto si hay indexación, toma snapshot de cotización (con override opcional), recalcula ejecutado |
-| `editarPresupuesto(data)` | Edita monto/moneda/indexación/base_calculo, guarda historial, toma nueva cotización (con override opcional) |
-| `agregarAdicional(data)` | Suma un adicional al monto total, registra en historial |
+| `crearPresupuesto(data)` | Crea presupuesto. Recibe `fecha_presupuesto` (default: hoy) que determina qué CAC/USD se usa para la conversión. Convierte monto si hay indexación, toma snapshot de cotización basado en la fecha, recalcula ejecutado |
+| `editarPresupuesto(data)` | Edita monto/moneda/indexación/base_calculo. Recibe `fecha_presupuesto` opcional. Guarda historial, toma nueva cotización basada en la fecha |
+| `agregarAdicional(data)` | Suma un adicional al monto total. Recibe `fecha_adicional` (default: `fecha_presupuesto` del padre) que determina qué CAC/USD se aplica al adicional. Guarda `cotizacion_snapshot` dentro de cada adicional |
 | `recalcularPresupuestoPorId({id})` | Re-suma movimientos que matchean. Usa `mov.equivalencias` como fuente de verdad; fallback a servicio de cotización. Soporta multi-moneda (USD↔ARS↔CAC) |
 | `sumarEgresoAPresupuesto(data)` | Llamado al crear un movimiento: busca presupuestos que matchean por tipo (egreso→egreso, ingreso→ingreso) y suma el monto. Acepta `moneda` del movimiento para conversión directa |
 | `recalcularPresupuestosPorMovimiento(data)` | Llamado al editar/eliminar movimiento: recalcula todos los presupuestos afectados. Matchea tipo del movimiento con tipo del presupuesto |
@@ -224,22 +236,29 @@ Del documento `movimientos/{id}`, el presupuesto usa:
 
 **Modo Crear:**
 1. Toggle **Egreso / Ingreso**
-2. Campo **Monto** + toggle **ARS / USD**
-3. Si ARS → selector de **Indexación**: Sin indexar | Indexar CAC | Indexar USD
-   - Si indexa: muestra preview de equivalencia ("Equivale a CAC X.XX")
-   - Link discreto **"Usar otro índice…"** que expande un panel con Autocomplete de los últimos 12 meses de CAC (o input manual de dólar). Permite hacer override del índice base.
-4. Selector de **Base de cálculo**: Total (con imp.) | Neto (sin imp.)
-5. Si `showFullForm` (página presupuestos): Proyecto, Categoría, Proveedor, Etapa, Subcategoría
-6. Preview resumen
+1. Toggle **Egreso / Ingreso**
+2. **Fecha del presupuesto** (DatePicker, default: hoy). Determina qué CAC/USD se usa.
+3. Campo **Monto** + toggle **ARS / USD**
+4. Si ARS → selector de **Indexación**: Sin indexar | Indexar CAC | Indexar USD
+   - Si indexa: muestra preview de equivalencia ("Equivale a CAC X.XX") con la fecha del índice aplicado visible
+   - Info: "Fecha presupuesto: Mayo 2026 → Índice CAC aplicado: Marzo 2026 (regla: -2 meses)"
+   - Link discreto **"Modificar índice manualmente…"** como escape hatch (override manual)
+5. Selector de **Base de cálculo**: Total (con imp.) | Neto (sin imp.)
+6. Si `showFullForm` (página presupuestos): Proyecto, Categoría, Proveedor, Etapa, Subcategoría
+7. Preview resumen
 
 **Modo Editar:**
-1. Resumen actual (tipo, monto en pesos con unidades indexadas como subtítulo, ejecutado con barra de progreso)
+1. Resumen actual (tipo, monto en pesos con unidades indexadas como subtítulo, ejecutado con barra de progreso, chip con fecha del presupuesto)
 2. Link "Ver movimientos" que abre la caja del proyecto filtrada
-3. Campos de edición: Monto + Moneda + Indexación + Base cálculo + Motivo
-   - Override de índice disponible (mismo que en crear)
-4. Sección de adicionales
-5. Historial de cambios (colapsable)
-6. Acciones: Guardar / Recalcular (con loading y barra de progreso) / Eliminar
+3. Tabs: **Editar** | **Adicional** | **Historial**
+4. Tab Editar: **Fecha del presupuesto** (editable) + Monto + Moneda + Indexación + Base cálculo + Motivo
+   - Info de fecha/índice aplicado visible
+   - Override de índice disponible como escape hatch
+5. Tab Adicional: **Fecha del adicional** (DatePicker, default: fecha del presupuesto) + Concepto + Monto
+   - Info de índice aplicado al adicional visible
+   - Cotizaciones se cargan para la fecha del adicional, NO para hoy
+6. Tab Historial: tabla con registros de ediciones y adicionales
+7. Acciones: Guardar / Recalcular / Eliminar
 
 ### 4.4 controlProyecto.js — Vista por proyecto
 
@@ -267,13 +286,17 @@ Del documento `movimientos/{id}`, el presupuesto usa:
 ### 5.1 Crear presupuesto indexado por CAC
 
 ```
-Usuario ingresa: $50.000.000 ARS, indexación CAC
+Usuario ingresa: $50.000.000 ARS, indexación CAC, fecha_presupuesto: 2026-05-15
     ↓
-Backend obtiene índice CAC actual (ej: 95432.5)
+Backend calcula fecha CAC: Mayo 2026 − 2 meses = Marzo 2026
+    ↓
+Backend obtiene índice CAC de Marzo 2026 (ej: 95432.5)
     ↓
 monto_almacenamiento = 50.000.000 / 95432.5 = 523.95 CAC
     ↓
-Se guarda: moneda="CAC", moneda_display="ARS", monto=523.95, monto_ingresado=50000000
+Se guarda: moneda="CAC", moneda_display="ARS", monto=523.95, 
+  monto_ingresado=50000000, fecha_presupuesto="2026-05-15",
+  cotizacion_snapshot.cac_fecha="2026-03"
     ↓
 Frontend muestra: $50.000.000 (recalculado: 523.95 × CAC_actual)
 ```

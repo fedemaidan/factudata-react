@@ -22,6 +22,7 @@ Cambios respecto a la versión anterior, incorporando feedback de Fernando Falas
 | 7 | **Status Sum = Historial** | El historial era un registro plano de acciones | Se aclara que el historial es el equivalente del "Status Sum" de Notion: un log acumulativo de todo lo que pasó con el contacto. Los estados de Notion NO son estados exclusivos sino entradas de log | Fernando explicó que en Notion los "status" son entradas de log, no estados mutuamente exclusivos |
 | 8 | **Presupuesto y Negociación** | Mapeaban a estado `cierre` directamente | Son acciones del historial (`presupuesto_enviado`, `negociacion_iniciada`). El estado `cierre` se activa cuando hay intención concreta post-meet | Son eventos que ocurren durante el proceso de cierre, no el estado en sí |
 | 9 | **Fuentes de leads y deduplicación** | No existía. Lead (Firestore) y ContactoSDR (MongoDB) eran dos mundos sin vínculo | Se define el puente entre ambos: el bot crea/actualiza ContactoSDR automáticamente; importaciones desde Notion deduplicat por teléfono; contactos fríos se enriquecen si después interactúan con el bot | Hoy un mismo contacto puede existir dos veces sin saberlo. El teléfono es la clave de deduplicación universal |
+| 10 | **Contadores de actividad por contacto** | Solo se mostraba "Intentos: 3" genérico en la tarjeta | 4 contadores calculados automáticamente desde el historial: `llamadasNoAtendidas`, `llamadasAtendidas`, `mensajesEnviados`, `reunionesTotales`. Visibles como mini-badges en tarjeta, drawer y modo llamadas | Permite al SDR ver de un vistazo cuánto esfuerzo se invirtió en cada contacto y diferenciar leads vírgenes de leads trabajados sin cambiar de estado |
 
 ---
 
@@ -185,6 +186,59 @@ Los chips visibles en cada tarjeta:
 - **Chip de intención** (ej: `🔴 Alta` en rojo) — solo si está definido
 - **Badge de bot** (ej: `🤖 Bot: calificado`) — solo si hay data del bot
 - **Info de reuniones** — si tiene reuniones, se muestra la próxima
+- **Contadores de actividad** — mini-badges con el resumen de interacciones
+
+### Contadores de Actividad por Contacto
+
+Cada contacto tiene **4 contadores calculados automáticamente** a partir de las acciones registradas en el historial. No se editan manualmente: se incrementan cada vez que se registra una acción.
+
+| Contador | Emoji | Campo | Se incrementa cuando... | Incluye |
+|----------|-------|-------|-------------------------|--------|
+| **Llamadas no atendidas** | 📵 | `llamadasNoAtendidas` | Se registra acción `llamada_no_atendida` | Llamadas sin respuesta, ocupado, buzón de voz |
+| **Llamadas atendidas** | 📞 | `llamadasAtendidas` | Se registra acción `llamada_atendida` | Llamadas donde se habló con el contacto |
+| **Mensajes enviados** | 💬 | `mensajesEnviados` | Se registra acción `whatsapp_enviado`, `instagram_contacto`, `email_enviado` | WhatsApp, Instagram, Email — todos los canales de mensajería |
+| **Reuniones** | 📅 | `reunionesTotales` | Se crea una reunión (cualquier estado) | Agendadas, realizadas, no-show, canceladas |
+
+#### Visualización en la tarjeta de contacto (lista)
+
+Los contadores se muestran como **mini-badges compactos** debajo de los chips de estado:
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│  Tarjeta de contacto (lista)                                        │
+│                                                                     │
+│  Juan Pérez                          [⭐ Calificado]               │
+│  Constructora ABC · 51-200 emp.      [🟣 Premium] [🔴 Alta]       │
+│  📞 +5491145678900                   [🤖 Bot: calificado]         │
+│                                                                     │
+│  📵 2  📞 1  💬 3  📅 1             Próximo: mañana 10:00         │
+│  ▲ contadores de actividad                                         │
+│                                                                     │
+│  📅 1 reunión agendada (26/02 15:00)                               │
+│  "Lo charla con su socio, llamar el 26"                            │
+│                                                                     │
+│  [📞 Llamar]  [💬 WhatsApp]  [⋮]                                  │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+#### Cómo leer los contadores
+
+- `📵 2` → Se intentó llamar 2 veces y no atendió
+- `📞 1` → Se habló 1 vez por teléfono
+- `💬 3` → Se enviaron 3 mensajes (WA, IG, email)
+- `📅 1` → Tiene 1 reunión (agendada o realizada)
+
+#### Casos de uso para el SDR
+
+| Contadores | Lectura rápida |
+|-----------|----------------|
+| `📵 0  📞 0  💬 0  📅 0` | Lead virgen, nunca se intentó contactar |
+| `📵 3  📞 0  💬 2  📅 0` | Se intentó 3 veces por teléfono + 2 mensajes, nunca respondió |
+| `📵 1  📞 1  💬 2  📅 0` | Se habló 1 vez, se intentó otra sin éxito, 2 mensajes — falta agendar meet |
+| `📵 0  📞 2  💬 1  📅 1` | Contacto activo: 2 llamadas exitosas, 1 mensaje, 1 reunión |
+| `📵 5  📞 0  💬 4  📅 0` | Mucho esfuerzo sin resultado — candidato a `no_contacto` |
+
+> **Nota**: Los contadores resuelven el problema de diferenciar leads vírgenes de leads trabajados dentro del estado `nuevo`. Un lead `nuevo` con contadores en 0 es virgen; un lead `nuevo` con `📵 3 💬 2` ya fue trabajado pero no respondió aún.
 
 ---
 
@@ -451,6 +505,8 @@ El drawer es la pantalla principal donde el SDR trabaja cada contacto. Se abre a
 │  └───────────────────┘  └──────────────────┘  └──────────────────┘ │
 │  [🤖 Bot: calificado]                                              │
 │                                                                     │
+│  📵 2  📞 1  💬 3  📅 1                                            │
+│                                                                     │
 │  ┌─────────────────────────────┐  ┌────────────────────────────┐   │
 │  │                             │  │                            │   │
 │  │   📞  LLAMAR                │  │   💬  WHATSAPP             │   │
@@ -563,6 +619,7 @@ Se accede desde un botón prominente en la vista de contactos. Es una pantalla d
 │                                                                     │
 │            [⭐ Calificado]  [🟣 Premium]  [🔴 Alta]                │
 │            [🤖 Bot: calificado]                                     │
+│            📵 2  📞 1  💬 3  📅 1                                   │
 │                                                                     │
 │                      Juan Pérez                                     │
 │                   Constructora ABC                                  │

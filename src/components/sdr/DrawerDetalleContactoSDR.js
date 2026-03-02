@@ -60,6 +60,7 @@ import { PLANES_SORBY, INTENCIONES_COMPRA, PRECALIFICACION_BOT } from '../../con
 import SmartToyIcon from '@mui/icons-material/SmartToy';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import MiniChatViewer from './MiniChatViewer';
+import ContadoresActividad from './ContadoresActividad';
 
 // Opciones de tamaño de empresa
 const TAMANO_EMPRESA_OPTIONS = [
@@ -717,6 +718,9 @@ const DrawerDetalleContactoSDR = ({
                                 )}
                             </Stack>
 
+                            {/* Contadores de actividad */}
+                            <ContadoresActividad contadores={contactoLocal.contadores} size="small" />
+
                             <Divider sx={{ mb: 2 }} />
 
                             {/* Datos de contacto con acciones inline */}
@@ -1366,6 +1370,9 @@ const DrawerDetalleContactoSDR = ({
                             />
                         )}
                     </Stack>
+
+                    {/* Contadores de actividad */}
+                    <ContadoresActividad contadores={contactoLocal.contadores} />
                 </Box>
 
                 {/* Tabs: Info | Actividad */}

@@ -41,6 +41,7 @@ import DrawerDetalleContactoSDR, { EstadoChip } from 'src/components/sdr/DrawerD
 import ModalAgregarContacto from 'src/components/sdr/ModalAgregarContacto';
 import ModalImportarExcel from 'src/components/sdr/ModalImportarExcel';
 import ModalAdminTemplates from 'src/components/sdr/ModalAdminTemplates';
+import ContadoresActividad from 'src/components/sdr/ContadoresActividad';
 import SettingsIcon from '@mui/icons-material/Settings';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
 import SortIcon from '@mui/icons-material/Sort';
@@ -1024,6 +1025,8 @@ const ContactosSDRPage = () => {
                                                 />
                                             )}
                                         </Stack>
+                                        {/* Contadores de actividad */}
+                                        <ContadoresActividad contadores={contacto.contadores} size="small" />
                                         {proximo && (
                                             <Stack direction="row" spacing={0.5} alignItems="center" sx={{ mt: 0.5 }}>
                                                 <AccessTimeIcon sx={{ fontSize: 14, color: `${proximo.color}.main` }} />
@@ -1476,6 +1479,7 @@ const ContactosSDRPage = () => {
                                     <TableCell>Quiere reunión</TableCell>
                                     <TableCell>Plan</TableCell>
                                     <TableCell>Prior.</TableCell>
+                                    <TableCell>Actividad</TableCell>
                                     <TableCell>Próximo</TableCell>
                                 </TableRow>
                             </TableHead>
@@ -1592,6 +1596,9 @@ const ContactosSDRPage = () => {
                                                 )}
                                             </TableCell>
                                             <TableCell>
+                                                <ContadoresActividad contadores={contacto.contadores} size="small" />
+                                            </TableCell>
+                                            <TableCell>
                                                 {proximo ? (
                                                     <Chip 
                                                         size="small" 
@@ -1606,7 +1613,7 @@ const ContactosSDRPage = () => {
                                 })}
                                 {contactos.length === 0 && (
                                     <TableRow>
-                                        <TableCell colSpan={10} align="center" sx={{ py: 4 }}>
+                                        <TableCell colSpan={11} align="center" sx={{ py: 4 }}>
                                             <Typography color="text.secondary">
                                                 {filtroEstado 
                                                     ? `No hay contactos con estado "${filtroEstado}"`

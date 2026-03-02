@@ -23,6 +23,7 @@
 | 10 | **Constantes frontend** | Incluían meet_agendada/meet_realizada | Sin meets. Agrega PRECALIFICACION_BOT |
 | 11 | **Puntos de inserción bot** | No documentados | 6 puntos exactos donde el bot actualiza `precalificacionBot` progresivamente |
 | 12 | **Impacto reunión → estado** | No definido | Reunión NO cambia estado automáticamente. Prompts sugeridos al SDR |
+| 13 | **Contadores de actividad** | Solo `cantidadIntentos` genérico (Number) | 4 contadores desglosados: `llamadasNoAtendidas`, `llamadasAtendidas`, `mensajesEnviados`, `reunionesTotales`. Se incrementan atómicamente con `$inc` al registrar acciones. `cantidadIntentos` se mantiene como total backward-compatible. Nuevo componente `ContadoresActividad.js` |
 
 ---
 
@@ -118,6 +119,15 @@ intencionCompra: {
 prioridadScore: {
     type: Number,
     default: 0
+},
+
+// NUEVO v2.1: Contadores de actividad (calculados automáticamente con $inc)
+// Se incrementan atómicamente al registrar acciones. Nunca se editan manualmente.
+contadores: {
+    llamadasNoAtendidas: { type: Number, default: 0 },  // $inc con llamada_no_atendida
+    llamadasAtendidas:   { type: Number, default: 0 },  // $inc con llamada_atendida
+    mensajesEnviados:    { type: Number, default: 0 },  // $inc con whatsapp_enviado, email_enviado, instagram_contacto
+    reunionesTotales:    { type: Number, default: 0 },  // $inc al crear ReunionSDR
 },
 
 // NUEVO: Cadencia activa
@@ -695,6 +705,11 @@ async function enriquecerContactoDesdeImportacion(contactoId, datosNuevos) {
 // - Actualizar historialEstados cuando cambia el estado
 // - Avanzar paso de cadencia si aplica
 // - Detener cadencia si contacto responde (estado → contactado o superior)
+// - Incrementar contador específico según tipo de acción:
+//   · llamada + no_atendio → $inc: { cantidadIntentos: 1, 'contadores.llamadasNoAtendidas': 1 }
+//   · llamada + atendio    → $inc: { cantidadIntentos: 1, 'contadores.llamadasAtendidas': 1 }
+//   · whatsapp/email/ig    → $inc: { cantidadIntentos: 1, 'contadores.mensajesEnviados': 1 }
+//   · (reuniones se incrementan en crearReunion, no aquí)
 
 // NUEVO: POST /acciones/plan-estimado
 // - Actualizar planEstimado + registrar en historial + recalcular score
@@ -821,7 +836,8 @@ app-web/src/
 │   ├── ReunionesSection.js           # NUEVO: sección de reuniones en drawer
 │   ├── ModalAgendarReunion.js        # NUEVO: modal para agendar
 │   ├── ModalEvaluarReunion.js        # NUEVO: modal post-meet
-│   └── BadgePrecalificacionBot.js    # NUEVO: chip 🤖 Bot: calificado
+│   ├── BadgePrecalificacionBot.js    # NUEVO: chip 🤖 Bot: calificado
+│   └── ContadoresActividad.js        # NUEVO: mini-badges 📵 2 📞 1 💬 3 📅 1
 │
 ├── services/
 │   └── sdrService.js                 # MODIFICAR: agregar nuevos endpoints
@@ -876,6 +892,75 @@ const ESTADOS_REUNION = {
     no_show:   { label: 'No show',   color: 'error',   icon: '❌' },
     cancelada: { label: 'Cancelada', color: 'default', icon: '🚫' }
 };
+
+// NUEVO v2.1: Contadores de actividad
+const CONTADORES_CONFIG = {
+    llamadasNoAtendidas: { label: 'No atendidas', icon: '📵', color: '#ff9800' },
+    llamadasAtendidas:   { label: 'Atendidas',    icon: '📞', color: '#4caf50' },
+    mensajesEnviados:    { label: 'Mensajes',     icon: '💬', color: '#2196f3' },
+    reunionesTotales:    { label: 'Reuniones',    icon: '📅', color: '#9c27b0' },
+};
+```
+
+#### Componente `ContadoresActividad.js`
+
+```javascript
+// app-web/src/components/sdr/ContadoresActividad.js
+import { Stack, Typography, Tooltip } from '@mui/material';
+import { CONTADORES_CONFIG } from '../../constant/sdrConstants';
+
+/**
+ * Mini-badges compactos que muestran los contadores de actividad de un contacto.
+ * Se usan en: tarjeta de lista, drawer de detalle, modo llamadas.
+ *
+ * Props:
+ *   contadores: { llamadasNoAtendidas, llamadasAtendidas, mensajesEnviados, reunionesTotales }
+ *   size: 'small' | 'medium' (default: 'small')
+ */
+export default function ContadoresActividad({ contadores = {}, size = 'small' }) {
+    const fontSize = size === 'small' ? '0.75rem' : '0.85rem';
+    const items = Object.entries(CONTADORES_CONFIG).map(([key, cfg]) => ({
+        key,
+        value: contadores[key] || 0,
+        ...cfg
+    }));
+
+    // Si todos son 0, no mostrar nada (lead virgen)
+    const hayActividad = items.some(i => i.value > 0);
+    if (!hayActividad) return null;
+
+    return (
+        <Stack direction="row" spacing={1} alignItems="center">
+            {items.map(({ key, value, icon, label, color }) => (
+                <Tooltip key={key} title={`${label}: ${value}`} arrow>
+                    <Stack direction="row" spacing={0.3} alignItems="center">
+                        <Typography sx={{ fontSize }}>{icon}</Typography>
+                        <Typography sx={{ fontSize, fontWeight: 600, color }}>
+                            {value}
+                        </Typography>
+                    </Stack>
+                </Tooltip>
+            ))}
+        </Stack>
+    );
+}
+```
+
+#### Uso en DrawerDetalleContactoSDR.js (ambos modos)
+
+```javascript
+// Importar:
+import ContadoresActividad from './ContadoresActividad';
+
+// Insertar después del chip de segmento (modo compacto y expandido):
+<ContadoresActividad contadores={contactoLocal.contadores} />
+```
+
+#### Uso en tarjeta de lista (contactosSDR.js / gestionSDR.js)
+
+```javascript
+// En la tarjeta de cada contacto de la lista:
+<ContadoresActividad contadores={contacto.contadores} size="small" />
 ```
 
 ### 1.10 Actualización progresiva de `precalificacionBot` desde el Bot

@@ -39,12 +39,34 @@ import StorefrontIcon from '@mui/icons-material/Storefront';
 import AutorenewIcon from '@mui/icons-material/Autorenew';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import EditIcon from '@mui/icons-material/Edit';
+import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
 import Tooltip from '@mui/material/Tooltip';
 import Link from 'next/link';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
+import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
+import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
+import { DatePicker } from '@mui/x-date-pickers/DatePicker';
+import dayjs from 'dayjs';
+import 'dayjs/locale/es';
 import presupuestoService from 'src/services/presupuestoService';
 import MonedasService from 'src/services/monedasService';
 import { formatCurrency } from 'src/utils/formatters';
+
+// Helper: calcular la fecha YYYY-MM del CAC aplicado (regla -2 meses)
+const calcularFechaCACAplicada = (fechaStr) => {
+  if (!fechaStr) return null;
+  const d = new Date(fechaStr + 'T12:00:00');
+  d.setMonth(d.getMonth() - 2);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+};
+
+// Helper: formato legible de mes YYYY-MM → "Marzo 2026"
+const formatMesLegible = (fechaAAAAMM) => {
+  if (!fechaAAAAMM) return '';
+  const [anio, mes] = fechaAAAAMM.split('-');
+  const meses = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  return `${meses[parseInt(mes) - 1]} ${anio}`;
+};
 
 /**
  * PresupuestoDrawer - Drawer reutilizable para crear, editar y gestionar presupuestos
@@ -114,6 +136,24 @@ const PresupuestoDrawer = ({
   const [adicionalConcepto, setAdicionalConcepto] = useState('');
   const [adicionalMonto, setAdicionalMonto] = useState('');
 
+  // === Estado: Editar/Eliminar adicional ===
+  const [editandoAdicionalId, setEditandoAdicionalId] = useState(null);
+  const [editAdicConcepto, setEditAdicConcepto] = useState('');
+  const [editAdicMonto, setEditAdicMonto] = useState('');
+  const [editAdicFecha, setEditAdicFecha] = useState('');
+  const [confirmEliminarAdicId, setConfirmEliminarAdicId] = useState(null);
+
+  // === Estado: Fecha del presupuesto ===
+  const hoyStr = new Date().toISOString().split('T')[0];
+  const [fechaPresupuesto, setFechaPresupuesto] = useState(hoyStr);
+  const [fechaAdicional, setFechaAdicional] = useState(hoyStr);
+  const [cacFechaAplicada, setCacFechaAplicada] = useState(null); // YYYY-MM del CAC que se aplica
+
+  // === Estado: Cotizaciones para adicional (separado del principal)
+  const [adicionalDolarRate, setAdicionalDolarRate] = useState(null);
+  const [adicionalCacIndice, setAdicionalCacIndice] = useState(null);
+  const [adicionalCacFechaAplicada, setAdicionalCacFechaAplicada] = useState(null);
+
   // === Estado: Historial ===
   const [mostrarHistorial, setMostrarHistorial] = useState(false);
 
@@ -146,35 +186,76 @@ const PresupuestoDrawer = ({
   const cacEfectivo = cacOverride ? parseFloat(cacOverride) : cacIndice;
   const dolarEfectivo = dolarOverride ? parseFloat(dolarOverride) : dolarRate;
 
+  // Valor efectivo para adicionales
+  const adicionalCacEfectivo = adicionalCacIndice || cacEfectivo;
+  const adicionalDolarEfectivo = adicionalDolarRate || dolarEfectivo;
+
   // === Estado: Base de cálculo ===
   const [baseCalculo, setBaseCalculo] = useState('total'); // 'total' | 'subtotal'
   const [nuevaBaseCalculo, setNuevaBaseCalculo] = useState('total');
 
-  // Cargar cotizaciones al abrir el drawer
+  // Función para cargar cotizaciones basada en una fecha específica
+  const cargarCotizacionesPorFecha = async (fechaStr, target = 'principal') => {
+    const setDolar = target === 'adicional' ? setAdicionalDolarRate : setDolarRate;
+    const setCac = target === 'adicional' ? setAdicionalCacIndice : setCacIndice;
+    const setCacFecha = target === 'adicional' ? setAdicionalCacFechaAplicada : setCacFechaAplicada;
+
+    setLoadingRates(true);
+    try {
+      // Dólar: valor para la fecha exacta
+      const dolarData = await MonedasService.obtenerDolar(fechaStr).catch(() => null);
+      if (dolarData) {
+        setDolar(dolarData.blue?.venta || dolarData.blue?.promedio || dolarData.oficial?.venta || null);
+      } else {
+        // Fallback: último valor disponible
+        const dolarFallback = await MonedasService.listarDolar({ limit: 1 }).catch(() => null);
+        if (dolarFallback?.[0]) {
+          const d = dolarFallback[0];
+          setDolar(d.blue?.venta || d.blue?.promedio || d.oficial?.venta || null);
+        }
+      }
+
+      // CAC: aplicar regla de desfase (-2 meses) sobre la fecha del presupuesto
+      const cacFecha = calcularFechaCACAplicada(fechaStr);
+      setCacFecha(cacFecha);
+      if (cacFecha) {
+        const cacData = await MonedasService.obtenerCAC(cacFecha).catch(() => null);
+        if (cacData) {
+          setCac(cacData.general || cacData.valor || null);
+        } else {
+          // Fallback: último CAC disponible
+          const cacFallback = await MonedasService.listarCAC({ limit: 1 }).catch(() => null);
+          if (cacFallback?.[0]) {
+            setCac(cacFallback[0].general || cacFallback[0].valor || null);
+            setCacFecha(cacFallback[0].fecha || cacFecha);
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('No se pudieron cargar cotizaciones para fecha:', fechaStr, err);
+    } finally {
+      setLoadingRates(false);
+    }
+  };
+
+  // Cargar cotizaciones al abrir el drawer (basado en la fecha del presupuesto)
   useEffect(() => {
     if (!open) return;
-    const cargarCotizaciones = async () => {
-      setLoadingRates(true);
-      try {
-        const [dolarData, cacData] = await Promise.all([
-          MonedasService.listarDolar({ limit: 1 }).catch(() => null),
-          MonedasService.listarCAC({ limit: 1 }).catch(() => null),
-        ]);
-        if (dolarData?.[0]) {
-          const d = dolarData[0];
-          setDolarRate(d.blue?.venta || d.blue?.promedio || d.oficial?.venta || null);
-        }
-        if (cacData?.[0]) {
-          setCacIndice(cacData[0].general || cacData[0].valor || null);
-        }
-      } catch (err) {
-        console.warn('No se pudieron cargar cotizaciones:', err);
-      } finally {
-        setLoadingRates(false);
-      }
-    };
-    cargarCotizaciones();
-  }, [open]);
+    cargarCotizacionesPorFecha(fechaPresupuesto, 'principal');
+  }, [open, fechaPresupuesto]);
+
+  // Cargar cotizaciones para el adicional cuando cambia su fecha
+  useEffect(() => {
+    if (!open || mode !== 'editar' || activeTab !== 1) return;
+    if (fechaAdicional === fechaPresupuesto) {
+      // Misma fecha: usar las cotizaciones principales
+      setAdicionalDolarRate(null);
+      setAdicionalCacIndice(null);
+      setAdicionalCacFechaAplicada(null);
+      return;
+    }
+    cargarCotizacionesPorFecha(fechaAdicional, 'adicional');
+  }, [open, fechaAdicional, activeTab]);
 
   // Reset al abrir/cambiar modo
   useEffect(() => {
@@ -204,6 +285,8 @@ const PresupuestoDrawer = ({
         setCategoriaSel('');
         setSubcategoriaSel('');
         setEtapaSel('');
+        setFechaPresupuesto(hoyStr);
+        setCacFechaAplicada(calcularFechaCACAplicada(hoyStr));
       } else if (mode === 'editar' && presupuesto) {
         setNuevoMonto(presupuesto.monto_ingresado || presupuesto.monto || '');
         setNuevaMoneda(presupuesto.moneda_display || presupuesto.moneda || 'ARS');
@@ -211,6 +294,15 @@ const PresupuestoDrawer = ({
         setNuevaBaseCalculo(presupuesto.base_calculo || 'total');
         setMotivo('');
         setMostrarHistorial(drawerView === 'historial' || presupuesto.historial?.length > 0);
+        // Fecha del presupuesto: usar la guardada o hoy
+        const fechaP = presupuesto.fecha_presupuesto || presupuesto.cotizacion_snapshot?.fecha_presupuesto || hoyStr;
+        setFechaPresupuesto(fechaP);
+        setCacFechaAplicada(calcularFechaCACAplicada(fechaP));
+        // Fecha del adicional: default = fecha del presupuesto
+        setFechaAdicional(fechaP);
+        // Reset estados de edición de adicionales
+        setEditandoAdicionalId(null);
+        setConfirmEliminarAdicId(null);
       }
     }
   }, [open, mode, tipoDefault, presupuesto, drawerView]);
@@ -241,6 +333,7 @@ const PresupuestoDrawer = ({
         moneda: moneda,
         indexacion: moneda === 'ARS' ? (indexacion || null) : null,
         base_calculo: baseCalculo || 'total',
+        fecha_presupuesto: fechaPresupuesto || hoyStr,
       };
 
       // Si el usuario hizo override del índice, enviarlo al backend
@@ -295,6 +388,7 @@ const PresupuestoDrawer = ({
         nuevaMoneda: nuevaMoneda,
         nuevaIndexacion: nuevaMoneda === 'ARS' ? (nuevaIndexacion || null) : null,
         nuevaBaseCalculo: nuevaBaseCalculo || 'total',
+        fecha_presupuesto: fechaPresupuesto || null,
       };
 
       // Si el usuario hizo override del índice, enviarlo al backend
@@ -347,17 +441,19 @@ const PresupuestoDrawer = ({
 
     try {
       // Si el presupuesto está indexado, convertir de pesos a la unidad de almacenamiento
+      // Usa las cotizaciones cargadas para la fecha del adicional
       let montoFinal = parseFloat(adicionalMonto);
-      if (presupuesto?.indexacion === 'CAC' && cacEfectivo) {
-        montoFinal = parseFloat(adicionalMonto) / cacEfectivo;
-      } else if (presupuesto?.indexacion === 'USD' && dolarEfectivo) {
-        montoFinal = parseFloat(adicionalMonto) / dolarEfectivo;
+      if (presupuesto?.indexacion === 'CAC' && adicionalCacEfectivo) {
+        montoFinal = parseFloat(adicionalMonto) / adicionalCacEfectivo;
+      } else if (presupuesto?.indexacion === 'USD' && adicionalDolarEfectivo) {
+        montoFinal = parseFloat(adicionalMonto) / adicionalDolarEfectivo;
       }
 
       await presupuestoService.agregarAdicional(presupuesto.id, {
         concepto: adicionalConcepto || 'Adicional',
         monto: montoFinal,
         creadoPor: userId,
+        fecha_adicional: fechaAdicional || fechaPresupuesto || null,
       });
       setAdicionalConcepto('');
       setAdicionalMonto('');
@@ -369,6 +465,78 @@ const PresupuestoDrawer = ({
       setError('Error al agregar adicional');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleEditarAdicional = async (adicionalId) => {
+    if (!editAdicMonto || parseFloat(editAdicMonto) <= 0) {
+      setError('Ingresá un monto válido');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      // Si indexado, convertir de pesos a unidad de almacenamiento
+      let montoFinal = parseFloat(editAdicMonto);
+      if (presupuesto?.indexacion === 'CAC' && adicionalCacEfectivo) {
+        montoFinal = parseFloat(editAdicMonto) / adicionalCacEfectivo;
+      } else if (presupuesto?.indexacion === 'USD' && adicionalDolarEfectivo) {
+        montoFinal = parseFloat(editAdicMonto) / adicionalDolarEfectivo;
+      }
+
+      await presupuestoService.editarAdicional(presupuesto.id, adicionalId, {
+        concepto: editAdicConcepto || 'Adicional',
+        monto: montoFinal,
+        fecha_adicional: editAdicFecha || null,
+        creadoPor: userId,
+      });
+      setEditandoAdicionalId(null);
+      onSuccess?.('Adicional editado correctamente');
+      onClose();
+    } catch (err) {
+      console.error('Error al editar adicional:', err);
+      setError('Error al editar adicional');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleEliminarAdicional = async (adicionalId) => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      await presupuestoService.eliminarAdicional(presupuesto.id, adicionalId);
+      setConfirmEliminarAdicId(null);
+      onSuccess?.('Adicional eliminado correctamente');
+      onClose();
+    } catch (err) {
+      console.error('Error al eliminar adicional:', err);
+      setError('Error al eliminar adicional');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const iniciarEdicionAdicional = (adic) => {
+    setEditandoAdicionalId(adic.id);
+    setEditAdicConcepto(adic.concepto || '');
+    // Convertir de unidad de almacenamiento a pesos para mostrar en el input
+    let montoEnPesos = adic.monto || 0;
+    if (presupuesto?.indexacion === 'CAC') {
+      const cotiz = adic.cotizacion_snapshot?.cac_indice || cacEfectivo;
+      if (cotiz) montoEnPesos = adic.monto * cotiz;
+    } else if (presupuesto?.indexacion === 'USD') {
+      const cotiz = adic.cotizacion_snapshot?.dolar_blue || dolarEfectivo;
+      if (cotiz) montoEnPesos = adic.monto * cotiz;
+    }
+    setEditAdicMonto(String(Math.round(montoEnPesos)));
+    setEditAdicFecha(adic.fecha_adicional || presupuesto?.fecha_presupuesto || hoyStr);
+    // Cargar cotizaciones para la fecha del adicional editado
+    if (adic.fecha_adicional) {
+      setFechaAdicional(adic.fecha_adicional);
     }
   };
 
@@ -473,6 +641,42 @@ const PresupuestoDrawer = ({
                 </ToggleButtonGroup>
               </Box>
 
+              {/* Fecha del presupuesto */}
+              <Box>
+                <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
+                  Fecha del presupuesto
+                </Typography>
+                <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale="es">
+                  <DatePicker
+                    value={dayjs(fechaPresupuesto)}
+                    onChange={(val) => {
+                      if (val && val.isValid()) {
+                        const nuevaFecha = val.format('YYYY-MM-DD');
+                        setFechaPresupuesto(nuevaFecha);
+                        setCacOverride('');
+                        setDolarOverride('');
+                        setMostrarOverrideCotiz(false);
+                      }
+                    }}
+                    format="DD/MM/YYYY"
+                    slotProps={{
+                      textField: { size: 'small', fullWidth: true },
+                    }}
+                  />
+                </LocalizationProvider>
+                {(indexacion === 'CAC' || indexacion === 'USD') && cacFechaAplicada && (
+                  <Stack direction="row" spacing={0.5} alignItems="center" sx={{ mt: 0.5 }}>
+                    <CalendarMonthIcon sx={{ fontSize: 14, color: 'text.disabled' }} />
+                    <Typography variant="caption" color="text.secondary">
+                      {indexacion === 'CAC'
+                        ? <>Índice CAC aplicado: <strong>{formatMesLegible(cacFechaAplicada)}</strong> (fecha presupuesto − 2 meses)</>
+                        : <>Dólar blue aplicado: <strong>{dayjs(fechaPresupuesto).format('DD/MM/YYYY')}</strong></>
+                      }
+                    </Typography>
+                  </Stack>
+                )}
+              </Box>
+
               {/* Monto + Moneda */}
               <Box>
                 <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
@@ -546,13 +750,13 @@ const PresupuestoDrawer = ({
                     <Alert severity="info" variant="outlined" icon={<InfoOutlinedIcon fontSize="small" />} sx={{ mt: 1 }}>
                       <Typography variant="caption">
                         {indexacion === 'CAC' && cacEfectivo ? (
-                          <>Equivale a <strong>CAC {(parseFloat(monto) / cacEfectivo).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong> (1 CAC = ${Number(cacEfectivo).toLocaleString('es-AR')}). Se ajusta automáticamente por inflación.</>
+                          <>Equivale a <strong>CAC {(parseFloat(monto) / cacEfectivo).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong> (CAC {formatMesLegible(cacFechaAplicada)} = {Number(cacEfectivo).toLocaleString('es-AR')}). Se ajusta automáticamente por inflación.</>
                         ) : indexacion === 'USD' && dolarEfectivo ? (
-                          <>Equivale a <strong>USD {(parseFloat(monto) / dolarEfectivo).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong> (1 USD = ${Number(dolarEfectivo).toLocaleString('es-AR')}). Se ajusta al valor del dólar.</>
+                          <>Equivale a <strong>USD {(parseFloat(monto) / dolarEfectivo).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong> (USD {dayjs(fechaPresupuesto).format('DD/MM/YYYY')} = ${Number(dolarEfectivo).toLocaleString('es-AR')}). Se ajusta al valor del dólar.</>
                         ) : loadingRates ? (
                           <>Cargando cotizaciones...</>
                         ) : (
-                          <>No se pudo obtener la cotización actual. Se guardará en pesos sin indexar.</>
+                          <>No se pudo obtener la cotización para la fecha seleccionada. Se guardará en pesos sin indexar.</>
                         )}
                       </Typography>
                     </Alert>
@@ -578,7 +782,7 @@ const PresupuestoDrawer = ({
                             }
                           }}
                         >
-                          Usar otro índice…
+                          Modificar índice manualmente…
                         </Typography>
                       ) : (
                         <Stack spacing={1} sx={{ mt: 1, p: 1.5, bgcolor: 'grey.50', borderRadius: 1 }}>
@@ -842,9 +1046,20 @@ const PresupuestoDrawer = ({
                       color={presupuesto.tipo === 'ingreso' ? 'success' : 'error'}
                       variant="outlined"
                     />
-                    {presupuesto.indexacion && (
-                      <Chip label={`idx ${presupuesto.indexacion}`} size="small" color="secondary" variant="outlined" sx={{ height: 20, '& .MuiChip-label': { px: 0.5, fontSize: '0.65rem' } }} />
-                    )}
+                    <Stack direction="row" spacing={0.5} alignItems="center">
+                      {presupuesto.indexacion && (
+                        <Chip label={`idx ${presupuesto.indexacion}`} size="small" color="secondary" variant="outlined" sx={{ height: 20, '& .MuiChip-label': { px: 0.5, fontSize: '0.65rem' } }} />
+                      )}
+                      {presupuesto.fecha_presupuesto && (
+                        <Chip 
+                          icon={<CalendarMonthIcon sx={{ fontSize: 12 }} />}
+                          label={dayjs(presupuesto.fecha_presupuesto).format('DD/MM/YY')} 
+                          size="small" 
+                          variant="outlined" 
+                          sx={{ height: 20, '& .MuiChip-label': { px: 0.5, fontSize: '0.65rem' } }} 
+                        />
+                      )}
+                    </Stack>
                   </Stack>
                   {/* Métricas en fila */}
                   <Stack direction="row" spacing={2} justifyContent="space-between">
@@ -943,6 +1158,41 @@ const PresupuestoDrawer = ({
               {/* ── TAB 0: Editar ── */}
               {activeTab === 0 && (
                 <Stack spacing={2.5} sx={{ p: 2 }}>
+                  {/* Fecha del presupuesto */}
+                  <Box>
+                    <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
+                      Fecha del presupuesto
+                    </Typography>
+                    <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale="es">
+                      <DatePicker
+                        value={dayjs(fechaPresupuesto)}
+                        onChange={(val) => {
+                          if (val && val.isValid()) {
+                            const nuevaFecha = val.format('YYYY-MM-DD');
+                            setFechaPresupuesto(nuevaFecha);
+                            setCacOverride('');
+                            setDolarOverride('');
+                            setMostrarOverrideCotiz(false);
+                          }
+                        }}
+                        format="DD/MM/YYYY"
+                        slotProps={{
+                          textField: { size: 'small', fullWidth: true },
+                        }}
+                      />
+                    </LocalizationProvider>
+                    {(nuevaIndexacion === 'CAC' || nuevaIndexacion === 'USD') && cacFechaAplicada && (
+                      <Stack direction="row" spacing={0.5} alignItems="center" sx={{ mt: 0.5 }}>
+                        <CalendarMonthIcon sx={{ fontSize: 14, color: 'text.disabled' }} />
+                        <Typography variant="caption" color="text.secondary">
+                          {nuevaIndexacion === 'CAC'
+                            ? <>Índice CAC aplicado: <strong>{formatMesLegible(cacFechaAplicada)}</strong> (fecha presupuesto − 2 meses){cacEfectivo ? <> = {Number(cacEfectivo).toLocaleString('es-AR')}</> : ''}</>
+                            : <>Dólar blue aplicado: <strong>{dayjs(fechaPresupuesto).format('DD/MM/YYYY')}</strong>{dolarEfectivo ? <> = ${Number(dolarEfectivo).toLocaleString('es-AR')}</> : ''}</>
+                          }
+                        </Typography>
+                      </Stack>
+                    )}
+                  </Box>
                   {/* Monto */}
                   <Box>
                     <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
@@ -954,7 +1204,6 @@ const PresupuestoDrawer = ({
                         fullWidth
                         value={nuevoMonto}
                         onChange={(e) => setNuevoMonto(e.target.value)}
-                        autoFocus
                       />
                       <ToggleButtonGroup
                         value={nuevaMoneda}
@@ -1130,31 +1379,149 @@ const PresupuestoDrawer = ({
                       </Typography>
                       <Stack spacing={0.5}>
                         {presupuesto.adicionales.map((adic, idx) => (
-                          <Stack
-                            key={idx}
-                            direction="row"
-                            justifyContent="space-between"
-                            alignItems="center"
-                            sx={{ px: 1.5, py: 0.75, bgcolor: 'grey.50', borderRadius: 1 }}
-                          >
-                            <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0, flex: 1 }}>
-                              <Chip label="Adic." size="small" color="primary" variant="outlined" sx={{ height: 20, '& .MuiChip-label': { px: 0.5, fontSize: '0.65rem' } }} />
-                              <Typography variant="body2" noWrap sx={{ flex: 1 }}>
-                                {adic.concepto || 'Adicional'}
-                              </Typography>
-                            </Stack>
-                            <Stack alignItems="flex-end" sx={{ ml: 1, flexShrink: 0 }}>
-                              <Typography variant="body2" fontWeight={600}>
-                                {presupuesto.indexacion
-                                  ? `${presupuesto.indexacion === 'CAC' ? 'CAC' : 'USD'} ${Number(adic.monto).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                                  : formatMonto(adic.monto, presupuesto.moneda)
-                                }
-                              </Typography>
-                              <Typography variant="caption" color="text.secondary">
-                                {formatFechaHistorial(adic.fecha)}
-                              </Typography>
-                            </Stack>
-                          </Stack>
+                          <Box key={adic.id || idx}>
+                            {editandoAdicionalId === adic.id ? (
+                              /* ── Modo edición inline ── */
+                              <Stack spacing={1} sx={{ px: 1.5, py: 1, bgcolor: 'primary.50', borderRadius: 1, border: 1, borderColor: 'primary.200' }}>
+                                <TextField
+                                  label="Concepto"
+                                  fullWidth
+                                  size="small"
+                                  value={editAdicConcepto}
+                                  onChange={(e) => setEditAdicConcepto(e.target.value)}
+                                />
+                                <TextField
+                                  label={presupuesto?.indexacion ? 'Monto (en pesos, se convertirá)' : 'Monto'}
+                                  type="number"
+                                  fullWidth
+                                  size="small"
+                                  value={editAdicMonto}
+                                  onChange={(e) => setEditAdicMonto(e.target.value)}
+                                />
+                                <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale="es">
+                                  <DatePicker
+                                    label="Fecha"
+                                    value={dayjs(editAdicFecha)}
+                                    onChange={(val) => {
+                                      if (val && val.isValid()) {
+                                        const f = val.format('YYYY-MM-DD');
+                                        setEditAdicFecha(f);
+                                        setFechaAdicional(f);
+                                      }
+                                    }}
+                                    format="DD/MM/YYYY"
+                                    slotProps={{ textField: { size: 'small', fullWidth: true } }}
+                                  />
+                                </LocalizationProvider>
+                                <Stack direction="row" spacing={1}>
+                                  <Button
+                                    size="small"
+                                    variant="contained"
+                                    onClick={() => handleEditarAdicional(adic.id)}
+                                    disabled={loading || !editAdicMonto}
+                                    startIcon={loading ? <CircularProgress size={14} color="inherit" /> : null}
+                                  >
+                                    Guardar
+                                  </Button>
+                                  <Button
+                                    size="small"
+                                    onClick={() => setEditandoAdicionalId(null)}
+                                    disabled={loading}
+                                  >
+                                    Cancelar
+                                  </Button>
+                                </Stack>
+                              </Stack>
+                            ) : confirmEliminarAdicId === adic.id ? (
+                              /* ── Confirmación de eliminación ── */
+                              <Stack
+                                direction="row"
+                                justifyContent="space-between"
+                                alignItems="center"
+                                sx={{ px: 1.5, py: 0.75, bgcolor: 'error.50', borderRadius: 1, border: 1, borderColor: 'error.200' }}
+                              >
+                                <Typography variant="body2" color="error.main" sx={{ fontSize: '0.8rem' }}>
+                                  ¿Eliminar este adicional?
+                                </Typography>
+                                <Stack direction="row" spacing={0.5}>
+                                  <Button
+                                    size="small"
+                                    color="error"
+                                    variant="contained"
+                                    onClick={() => handleEliminarAdicional(adic.id)}
+                                    disabled={loading}
+                                    sx={{ minWidth: 0, px: 1.5, fontSize: '0.75rem' }}
+                                  >
+                                    {loading ? <CircularProgress size={14} color="inherit" /> : 'Sí, eliminar'}
+                                  </Button>
+                                  <Button
+                                    size="small"
+                                    onClick={() => setConfirmEliminarAdicId(null)}
+                                    disabled={loading}
+                                    sx={{ minWidth: 0, px: 1, fontSize: '0.75rem' }}
+                                  >
+                                    No
+                                  </Button>
+                                </Stack>
+                              </Stack>
+                            ) : (
+                              /* ── Vista normal del adicional ── */
+                              <Stack
+                                direction="row"
+                                justifyContent="space-between"
+                                alignItems="center"
+                                sx={{ px: 1.5, py: 0.75, bgcolor: 'grey.50', borderRadius: 1, '&:hover .adic-actions': { opacity: 1 } }}
+                              >
+                                <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0, flex: 1 }}>
+                                  <Chip label="Adic." size="small" color="primary" variant="outlined" sx={{ height: 20, '& .MuiChip-label': { px: 0.5, fontSize: '0.65rem' } }} />
+                                  <Typography variant="body2" noWrap sx={{ flex: 1 }}>
+                                    {adic.concepto || 'Adicional'}
+                                  </Typography>
+                                </Stack>
+                                <Stack direction="row" spacing={0.5} alignItems="center">
+                                  <Stack alignItems="flex-end" sx={{ flexShrink: 0 }}>
+                                    <Typography variant="body2" fontWeight={600}>
+                                      {presupuesto.indexacion
+                                        ? `${presupuesto.indexacion === 'CAC' ? 'CAC' : 'USD'} ${Number(adic.monto).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                        : formatMonto(adic.monto, presupuesto.moneda)
+                                      }
+                                    </Typography>
+                                    <Typography variant="caption" color="text.secondary">
+                                      {adic.fecha_adicional ? dayjs(adic.fecha_adicional).format('DD/MM/YYYY') : formatFechaHistorial(adic.fecha)}
+                                    </Typography>
+                                  </Stack>
+                                  {adic.id && (
+                                    <Stack
+                                      className="adic-actions"
+                                      direction="row"
+                                      spacing={0}
+                                      sx={{ opacity: { xs: 1, md: 0 }, transition: 'opacity 0.15s' }}
+                                    >
+                                      <Tooltip title="Editar adicional" arrow>
+                                        <IconButton
+                                          size="small"
+                                          onClick={() => iniciarEdicionAdicional(adic)}
+                                          sx={{ p: 0.5 }}
+                                        >
+                                          <EditIcon sx={{ fontSize: 15 }} />
+                                        </IconButton>
+                                      </Tooltip>
+                                      <Tooltip title="Eliminar adicional" arrow>
+                                        <IconButton
+                                          size="small"
+                                          color="error"
+                                          onClick={() => setConfirmEliminarAdicId(adic.id)}
+                                          sx={{ p: 0.5 }}
+                                        >
+                                          <DeleteIcon sx={{ fontSize: 15 }} />
+                                        </IconButton>
+                                      </Tooltip>
+                                    </Stack>
+                                  )}
+                                </Stack>
+                              </Stack>
+                            )}
+                          </Box>
                         ))}
                       </Stack>
                     </Box>
@@ -1164,6 +1531,39 @@ const PresupuestoDrawer = ({
 
                   {/* Formulario nuevo adicional */}
                   <Typography variant="subtitle2" color="text.secondary">Nuevo adicional</Typography>
+
+                  {/* Fecha del adicional */}
+                  <Box>
+                    <Typography variant="caption" color="text.secondary" fontWeight={600} sx={{ mb: 0.5, display: 'block' }}>
+                      Fecha del adicional
+                    </Typography>
+                    <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale="es">
+                      <DatePicker
+                        value={dayjs(fechaAdicional)}
+                        onChange={(val) => {
+                          if (val && val.isValid()) {
+                            setFechaAdicional(val.format('YYYY-MM-DD'));
+                          }
+                        }}
+                        format="DD/MM/YYYY"
+                        slotProps={{
+                          textField: { size: 'small', fullWidth: true },
+                        }}
+                      />
+                    </LocalizationProvider>
+                    {presupuesto?.indexacion && (
+                      <Stack direction="row" spacing={0.5} alignItems="center" sx={{ mt: 0.5 }}>
+                        <CalendarMonthIcon sx={{ fontSize: 14, color: 'text.disabled' }} />
+                        <Typography variant="caption" color="text.secondary">
+                          {presupuesto.indexacion === 'CAC'
+                            ? <>Índice CAC: <strong>{formatMesLegible(adicionalCacFechaAplicada || cacFechaAplicada)}</strong> = {Number(adicionalCacEfectivo).toLocaleString('es-AR')}</>
+                            : <>Dólar blue: <strong>{dayjs(fechaAdicional).format('DD/MM/YYYY')}</strong> = ${Number(adicionalDolarEfectivo).toLocaleString('es-AR')}</>
+                          }
+                        </Typography>
+                      </Stack>
+                    )}
+                  </Box>
+
                   <TextField
                     label="Concepto"
                     fullWidth
@@ -1181,7 +1581,7 @@ const PresupuestoDrawer = ({
                     onChange={(e) => setAdicionalMonto(e.target.value)}
                   />
                   {presupuesto?.indexacion && adicionalMonto && parseFloat(adicionalMonto) > 0 && (() => {
-                    const cotiz = presupuesto.indexacion === 'CAC' ? cacEfectivo : dolarEfectivo;
+                    const cotiz = presupuesto.indexacion === 'CAC' ? adicionalCacEfectivo : adicionalDolarEfectivo;
                     const unidad = presupuesto.indexacion === 'CAC' ? 'CAC' : 'USD';
                     if (!cotiz) return null;
                     const convertido = parseFloat(adicionalMonto) / cotiz;
