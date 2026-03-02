@@ -14,18 +14,12 @@ import EditarModal from "src/components/celulandia/EditarModal";
 import HistorialModal from "src/components/celulandia/HistorialModal";
 import ConfirmarEliminacionModal from "src/components/celulandia/ConfirmarEliminacionModal";
 import ComprobanteModal from "src/components/celulandia/ComprobanteModal";
-import { parseMovimiento } from "src/utils/celulandia/movimientos/parseMovimientos";
-import { parseCuentaPendiente } from "src/utils/celulandia/cuentasPendientes/parseCuentasPendientes";
 import {
   getMovimientoHistorialConfig,
   getCuentaPendienteHistorialConfig,
 } from "src/utils/celulandia/historial";
 import { getUser } from "src/utils/celulandia/currentUser";
 import EditarEntregaModal from "src/components/celulandia/EditarEntregaModal";
-
-// helpers numéricos simples
-const toNumber = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
-const round2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
 
 const ClienteCelulandiaCCPage = () => {
   const router = useRouter();
@@ -52,6 +46,11 @@ const ClienteCelulandiaCCPage = () => {
   // const [filtroFecha, setFiltroFecha] = useState("todos"); // comentado: filtro por fecha deshabilitado en esta vista
   const [sortField, setSortField] = useState("fechaEntrega");
   const [sortDirection, setSortDirection] = useState("desc");
+  const [totalesCC, setTotalesCC] = useState({
+    ARS: 0,
+    "USD BLUE": 0,
+    "USD OFICIAL": 0,
+  });
 
   const [clientes, setClientes] = useState([]);
   const [tipoDeCambio, setTipoDeCambio] = useState({
@@ -70,15 +69,13 @@ const ClienteCelulandiaCCPage = () => {
     try {
       const [
         clienteResponse,
-        movimientosData,
-        cuentasPendientesResponse,
+        cuentaCorrienteResponse,
         clientesResponse,
         tipoDeCambioResponse,
         cajasResponse,
       ] = await Promise.all([
         clientesService.getClienteById(id),
-        movimientosService.getMovimientosByCliente(id),
-        cuentasPendientesService.getByClienteId(id, "cliente"),
+        clientesService.getClienteCCComputed(id, { sortDirection: "desc" }),
         clientesService.getAllClientes(),
         dolarService.getTipoDeCambio(),
         cajasService.getAllCajas(),
@@ -98,20 +95,14 @@ const ClienteCelulandiaCCPage = () => {
       });
 
       setCajas(cajasResponse?.data || []);
-
-      const movimientosParseados = (movimientosData?.data || [])
-        .filter((m) => m.type === "INGRESO")
-        .map((m) => ({ ...parseMovimiento(m), itemType: "movimiento" }));
-
-      const cuentasRespData = Array.isArray(cuentasPendientesResponse?.data)
-        ? cuentasPendientesResponse.data
-        : cuentasPendientesResponse?.data || [];
-      const cuentasParseadas = (cuentasRespData || []).map((m) => ({
-        ...parseCuentaPendiente(m),
-        itemType: "cuentaPendiente",
-      }));
-
-      setMovimientos([...movimientosParseados, ...cuentasParseadas]);
+      setMovimientos(Array.isArray(cuentaCorrienteResponse?.data) ? cuentaCorrienteResponse.data : []);
+      setTotalesCC(
+        cuentaCorrienteResponse?.totalsCC || {
+          ARS: 0,
+          "USD BLUE": 0,
+          "USD OFICIAL": 0,
+        }
+      );
     } catch (error) {
       console.error("Error al cargar datos:", error);
     } finally {
@@ -124,51 +115,7 @@ const ClienteCelulandiaCCPage = () => {
   }, [id, fetchData]);
 
   const itemsDataTab = useMemo(() => {
-    if (!movimientos.length) return [];
-
-    return movimientos.map((m) => {
-      const isMov = m.itemType === "movimiento";
-      const fecha = isMov ? m.fecha : m.fechaCuenta;
-      // Campos para doble columna de fechas
-      const fechaCreacion = m.fechaCreacion || null;
-      const horaCreacion = m.horaCreacion || null;
-      const fechaEntrega = isMov ? m.fecha : m.fechaCuenta;
-
-      const monto = round2(toNumber(m.montoCC || 0)); // base en CC
-      const tipoDeCambio = toNumber(m.tipoDeCambio || 1);
-      const montoOriginalBase = round2(toNumber(m.montoEnviado || 0));
-      const montoOriginalAbs =
-        montoOriginalBase !== 0
-          ? Math.abs(montoOriginalBase)
-          : Math.abs(round2(monto * tipoDeCambio));
-
-      const shouldNegate = m.descuentoAplicado <= 1 && !isMov;
-
-      return {
-        id: m.id || m._id,
-        fecha,
-        fechaCreacion,
-        horaCreacion,
-        fechaEntrega,
-        descripcion:
-          m.concepto && m.concepto !== "-" ? m.concepto : m.descripcion ? m.descripcion : "-",
-        cliente: m?.nombreCliente || m?.clienteNombre || m.cliente?.nombre || "-",
-        group: m.cuentaCorriente || m.CC || m.cc,
-        monto,
-        montoCC: monto,
-        tipoDeCambio,
-        descuentoAplicado: m.descuentoAplicado,
-        montoOriginal: shouldNegate ? -montoOriginalAbs : montoOriginalAbs,
-        monedaOriginal: m.moneda || m.monedaDePago,
-        montoYMonedaOriginal: {
-          monto: shouldNegate ? -montoOriginalAbs : montoOriginalAbs,
-          moneda: m.moneda || m.monedaDePago || "ARS",
-        },
-        urlImagen: isMov ? m?.urlImagen : null,
-        itemType: m.itemType,
-        originalData: m,
-      };
-    });
+    return Array.isArray(movimientos) ? movimientos : [];
   }, [movimientos]);
 
   const itemsOrdenados = useMemo(() => {
@@ -193,19 +140,12 @@ const ClienteCelulandiaCCPage = () => {
     if (!itemsOrdenados.length) return;
 
     const preferredOrder = ["ARS", "USD BLUE", "USD OFICIAL"];
-    const totalsByGroup = itemsOrdenados.reduce((acc, it) => {
-      const key = it.group;
-      const current = acc[key] || 0;
-      acc[key] = current + (Number.isFinite(Number(it.monto)) ? Number(it.monto) : 0);
-      return acc;
-    }, {});
-
-    const firstNonZero = preferredOrder.find((g) => (totalsByGroup[g] || 0) !== 0);
+    const firstNonZero = preferredOrder.find((g) => (Number(totalesCC?.[g] || 0) !== 0));
     if (firstNonZero && firstNonZero !== grupoActual) {
       setGrupoActual(firstNonZero);
     }
     initialGroupSetRef.current = true;
-  }, [itemsOrdenados, grupoActual]);
+  }, [itemsOrdenados, grupoActual, totalesCC]);
 
   const handleVolver = useCallback(() => router.back(), [router]);
 
@@ -331,6 +271,7 @@ const ClienteCelulandiaCCPage = () => {
             ) : (
               <DataTabTable
                 items={itemsOrdenados}
+                backendTotals={totalesCC}
                 options={[
                   { label: "ARS", value: "ARS" },
                   { label: "USD BLUE", value: "USD BLUE" },
@@ -349,9 +290,10 @@ const ClienteCelulandiaCCPage = () => {
                 // filtroFecha={filtroFecha}
                 // onFiltroFechaChange={handleFiltroFechaChange}
                 // Deshabilitar búsqueda y filtro de fecha en esta vista
-                showSearch={false}
+                showSearch={true}
                 showDateFilterOptions={false}
                 showSaldoColumn={true}
+                useBackendComputedSaldo={true}
                 // Acciones
                 onEdit={handleEdit}
                 onViewHistory={handleViewHistory}
