@@ -1754,10 +1754,66 @@ const PresupuestoDrawer = ({
                                   {/* Sub-fila – motivo/concepto */}
                                   {(item.motivo || item.concepto) ? (
                                     <TableRow>
-                                      <TableCell colSpan={4} sx={{ ...cellSx, pt: 0, fontStyle: 'italic', color: 'text.secondary', fontSize: '0.68rem' }}>
+                                      <TableCell colSpan={4} sx={{ ...cellSx, pt: 0, fontStyle: 'italic', color: 'text.secondary', fontSize: '0.68rem', borderBottom: item.tipo === 'adicional' && item.id ? 0 : undefined }}>
                                         💬 {item.motivo || item.concepto}
                                       </TableCell>
                                     </TableRow>
+                                  ) : null}
+
+                                  {/* Sub-fila – acciones editar/eliminar para adicionales */}
+                                  {item.tipo === 'adicional' && item.id ? (
+                                    confirmEliminarAdicId === item.id ? (
+                                      <TableRow>
+                                        <TableCell colSpan={4} sx={{ ...cellSx, pt: 0.25 }}>
+                                          <Stack direction="row" spacing={0.5} alignItems="center" justifyContent="flex-end">
+                                            <Typography variant="caption" color="error.main" sx={{ fontSize: '0.7rem', mr: 0.5 }}>¿Eliminar?</Typography>
+                                            <Button size="small" color="error" variant="contained" onClick={() => handleEliminarAdicional(item.id)} disabled={loading} sx={{ minWidth: 0, px: 1, py: 0, fontSize: '0.7rem', height: 22 }}>
+                                              {loading ? <CircularProgress size={12} color="inherit" /> : 'Sí'}
+                                            </Button>
+                                            <Button size="small" onClick={() => setConfirmEliminarAdicId(null)} disabled={loading} sx={{ minWidth: 0, px: 1, py: 0, fontSize: '0.7rem', height: 22 }}>
+                                              No
+                                            </Button>
+                                          </Stack>
+                                        </TableCell>
+                                      </TableRow>
+                                    ) : editandoAdicionalId === item.id ? (
+                                      <TableRow>
+                                        <TableCell colSpan={4} sx={{ ...cellSx, pt: 0.5 }}>
+                                          <Stack spacing={1} sx={{ py: 0.5 }}>
+                                            <TextField label="Concepto" fullWidth size="small" value={editAdicConcepto} onChange={(e) => setEditAdicConcepto(e.target.value)} InputProps={{ sx: { fontSize: '0.8rem' } }} />
+                                            <TextField label={presupuesto?.indexacion ? 'Monto (en pesos)' : 'Monto'} type="number" fullWidth size="small" value={editAdicMonto} onChange={(e) => setEditAdicMonto(e.target.value)} InputProps={{ sx: { fontSize: '0.8rem' } }} />
+                                            <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale="es">
+                                              <DatePicker label="Fecha" value={dayjs(editAdicFecha)} onChange={(val) => { if (val?.isValid()) { const f = val.format('YYYY-MM-DD'); setEditAdicFecha(f); setFechaAdicional(f); } }} format="DD/MM/YYYY" slotProps={{ textField: { size: 'small', fullWidth: true, InputProps: { sx: { fontSize: '0.8rem' } } } }} />
+                                            </LocalizationProvider>
+                                            <Stack direction="row" spacing={1}>
+                                              <Button size="small" variant="contained" onClick={() => handleEditarAdicional(item.id)} disabled={loading || !editAdicMonto} startIcon={loading ? <CircularProgress size={12} color="inherit" /> : null} sx={{ fontSize: '0.75rem' }}>
+                                                Guardar
+                                              </Button>
+                                              <Button size="small" onClick={() => setEditandoAdicionalId(null)} disabled={loading} sx={{ fontSize: '0.75rem' }}>
+                                                Cancelar
+                                              </Button>
+                                            </Stack>
+                                          </Stack>
+                                        </TableCell>
+                                      </TableRow>
+                                    ) : (
+                                      <TableRow>
+                                        <TableCell colSpan={4} sx={{ ...cellSx, pt: 0 }}>
+                                          <Stack direction="row" spacing={0.5} justifyContent="flex-end">
+                                            <Tooltip title="Editar adicional" arrow>
+                                              <IconButton size="small" onClick={() => iniciarEdicionAdicional(item)} sx={{ p: 0.25 }}>
+                                                <EditIcon sx={{ fontSize: 14 }} />
+                                              </IconButton>
+                                            </Tooltip>
+                                            <Tooltip title="Eliminar adicional" arrow>
+                                              <IconButton size="small" color="error" onClick={() => setConfirmEliminarAdicId(item.id)} sx={{ p: 0.25 }}>
+                                                <DeleteIcon sx={{ fontSize: 14 }} />
+                                              </IconButton>
+                                            </Tooltip>
+                                          </Stack>
+                                        </TableCell>
+                                      </TableRow>
+                                    )
                                   ) : null}
                                 </Fragment>
                               );
