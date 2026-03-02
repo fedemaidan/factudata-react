@@ -148,18 +148,24 @@ const PresupuestoDrawer = ({
   const [fechaPresupuesto, setFechaPresupuesto] = useState(hoyStr);
   const [fechaAdicional, setFechaAdicional] = useState(hoyStr);
   const [cacFechaAplicada, setCacFechaAplicada] = useState(null); // YYYY-MM del CAC que se aplica
+  const [cacEsFallback, setCacEsFallback] = useState(false); // true si el CAC no existía y se usó el último disponible
+  const [cacFechaFallback, setCacFechaFallback] = useState(null); // YYYY-MM del CAC realmente usado (cuando es fallback)
 
   // === Estado: Cotizaciones para adicional (separado del principal)
   const [adicionalDolarRate, setAdicionalDolarRate] = useState(null);
   const [adicionalCacIndice, setAdicionalCacIndice] = useState(null);
   const [adicionalCacFechaAplicada, setAdicionalCacFechaAplicada] = useState(null);
+  const [adicionalCacEsFallback, setAdicionalCacEsFallback] = useState(false);
+  const [adicionalCacFechaFallback, setAdicionalCacFechaFallback] = useState(null);
 
   // === Estado: Historial ===
   const [mostrarHistorial, setMostrarHistorial] = useState(false);
 
   // === Estado: Tabs del drawer (modo editar) ===
   const TAB_MAP = { full: 0, adicional: 1, historial: 2 };
-  const [activeTab, setActiveTab] = useState(TAB_MAP[drawerView] ?? 0);
+  // En modo editar, abrir en historial por defecto (evita ediciones accidentales)
+  const defaultTab = mode === 'editar' && (!drawerView || drawerView === 'full') ? TAB_MAP.historial : (TAB_MAP[drawerView] ?? 0);
+  const [activeTab, setActiveTab] = useState(defaultTab);
 
   // === Estado: UI ===
   const [loading, setLoading] = useState(false);
@@ -171,8 +177,12 @@ const PresupuestoDrawer = ({
   // === Estado: Indexación ===
   const [indexacion, setIndexacion] = useState(null); // null | 'CAC' | 'USD'
   const [nuevaIndexacion, setNuevaIndexacion] = useState(null);
+  const [cacTipo, setCacTipo] = useState('general'); // 'general' | 'mano_obra' | 'materiales'
+  const [nuevoCacTipo, setNuevoCacTipo] = useState('general');
   const [dolarRate, setDolarRate] = useState(null);
   const [cacIndice, setCacIndice] = useState(null);
+  const [cacSubindices, setCacSubindices] = useState({ general: null, mano_obra: null, materiales: null });
+  const [adicionalCacSubindices, setAdicionalCacSubindices] = useState({ general: null, mano_obra: null, materiales: null });
   const [loadingRates, setLoadingRates] = useState(false);
 
   // === Estado: Override cotización ===
@@ -183,11 +193,12 @@ const PresupuestoDrawer = ({
   const [loadingHistorial, setLoadingHistorial] = useState(false);
 
   // Valor efectivo de CAC/dólar (override o el cargado automáticamente)
-  const cacEfectivo = cacOverride ? parseFloat(cacOverride) : cacIndice;
+  const cacTipoActivo = mode === 'crear' ? cacTipo : nuevoCacTipo;
+  const cacEfectivo = cacOverride ? parseFloat(cacOverride) : (cacSubindices[cacTipoActivo] || cacIndice);
   const dolarEfectivo = dolarOverride ? parseFloat(dolarOverride) : dolarRate;
 
-  // Valor efectivo para adicionales
-  const adicionalCacEfectivo = adicionalCacIndice || cacEfectivo;
+  // Valor efectivo para adicionales (hereda cac_tipo del principal)
+  const adicionalCacEfectivo = (adicionalCacSubindices[cacTipoActivo] || adicionalCacIndice) || cacEfectivo;
   const adicionalDolarEfectivo = adicionalDolarRate || dolarEfectivo;
 
   // === Estado: Base de cálculo ===
@@ -199,6 +210,9 @@ const PresupuestoDrawer = ({
     const setDolar = target === 'adicional' ? setAdicionalDolarRate : setDolarRate;
     const setCac = target === 'adicional' ? setAdicionalCacIndice : setCacIndice;
     const setCacFecha = target === 'adicional' ? setAdicionalCacFechaAplicada : setCacFechaAplicada;
+    const setSubs = target === 'adicional' ? setAdicionalCacSubindices : setCacSubindices;
+    const setEsFallback = target === 'adicional' ? setAdicionalCacEsFallback : setCacEsFallback;
+    const setFechaFb = target === 'adicional' ? setAdicionalCacFechaFallback : setCacFechaFallback;
 
     setLoadingRates(true);
     try {
@@ -222,12 +236,17 @@ const PresupuestoDrawer = ({
         const cacData = await MonedasService.obtenerCAC(cacFecha).catch(() => null);
         if (cacData) {
           setCac(cacData.general || cacData.valor || null);
+          setSubs({ general: cacData.general || cacData.valor || null, mano_obra: cacData.mano_obra || null, materiales: cacData.materiales || null });
+          setEsFallback(false);
+          setFechaFb(null);
         } else {
-          // Fallback: último CAC disponible
+          // Fallback: último CAC disponible (no sobreescribir la fecha calculada)
           const cacFallback = await MonedasService.listarCAC({ limit: 1 }).catch(() => null);
           if (cacFallback?.[0]) {
             setCac(cacFallback[0].general || cacFallback[0].valor || null);
-            setCacFecha(cacFallback[0].fecha || cacFecha);
+            setSubs({ general: cacFallback[0].general || cacFallback[0].valor || null, mano_obra: cacFallback[0].mano_obra || null, materiales: cacFallback[0].materiales || null });
+            setEsFallback(true);
+            setFechaFb(cacFallback[0].fecha || null);
           }
         }
       }
@@ -269,7 +288,8 @@ const PresupuestoDrawer = ({
       setDolarOverride('');
       setCacHistorial([]);
       setMostrarAdicional(drawerView === 'adicional');
-      setActiveTab(TAB_MAP[drawerView] ?? 0);
+      // En modo editar, abrir en historial por defecto (evita ediciones accidentales)
+      setActiveTab(mode === 'editar' && (!drawerView || drawerView === 'full') ? TAB_MAP.historial : (TAB_MAP[drawerView] ?? 0));
       setAdicionalConcepto('');
       setAdicionalMonto('');
       setLoading(false);
@@ -279,6 +299,7 @@ const PresupuestoDrawer = ({
         setMonto('');
         setMoneda('ARS');
         setIndexacion(null);
+        setCacTipo('general');
         setBaseCalculo('total');
         setProveedorInput('');
         setProyectoSel(proyectoId || '');
@@ -291,6 +312,7 @@ const PresupuestoDrawer = ({
         setNuevoMonto(presupuesto.monto_ingresado || presupuesto.monto || '');
         setNuevaMoneda(presupuesto.moneda_display || presupuesto.moneda || 'ARS');
         setNuevaIndexacion(presupuesto.indexacion || null);
+        setNuevoCacTipo(presupuesto.cac_tipo || 'general');
         setNuevaBaseCalculo(presupuesto.base_calculo || 'total');
         setMotivo('');
         setMostrarHistorial(drawerView === 'historial' || presupuesto.historial?.length > 0);
@@ -332,6 +354,7 @@ const PresupuestoDrawer = ({
         monto: parseFloat(monto),
         moneda: moneda,
         indexacion: moneda === 'ARS' ? (indexacion || null) : null,
+        cac_tipo: moneda === 'ARS' && indexacion === 'CAC' ? (cacTipo || 'general') : null,
         base_calculo: baseCalculo || 'total',
         fecha_presupuesto: fechaPresupuesto || hoyStr,
       };
@@ -387,6 +410,7 @@ const PresupuestoDrawer = ({
         creadoPor: userId,
         nuevaMoneda: nuevaMoneda,
         nuevaIndexacion: nuevaMoneda === 'ARS' ? (nuevaIndexacion || null) : null,
+        cac_tipo: nuevaMoneda === 'ARS' && nuevaIndexacion === 'CAC' ? (nuevoCacTipo || 'general') : null,
         nuevaBaseCalculo: nuevaBaseCalculo || 'total',
         fecha_presupuesto: fechaPresupuesto || null,
       };
@@ -669,7 +693,7 @@ const PresupuestoDrawer = ({
                     <CalendarMonthIcon sx={{ fontSize: 14, color: 'text.disabled' }} />
                     <Typography variant="caption" color="text.secondary">
                       {indexacion === 'CAC'
-                        ? <>Índice CAC aplicado: <strong>{formatMesLegible(cacFechaAplicada)}</strong> (fecha presupuesto − 2 meses)</>
+                        ? <>Índice CAC aplicado: <strong>{formatMesLegible(cacFechaAplicada)}</strong> (fecha presupuesto − 2 meses){cacEsFallback && cacFechaFallback ? <> · <em>último disponible: {formatMesLegible(cacFechaFallback)}</em></> : ''}{cacEfectivo ? <> = {Number(cacEfectivo).toLocaleString('es-AR', { maximumFractionDigits: 1 })}</> : ''}</>
                         : <>Dólar blue aplicado: <strong>{dayjs(fechaPresupuesto).format('DD/MM/YYYY')}</strong></>
                       }
                     </Typography>
@@ -744,6 +768,26 @@ const PresupuestoDrawer = ({
                       </Tooltip>
                     </ToggleButton>
                   </ToggleButtonGroup>
+
+                  {/* Selector de tipo de CAC (solo cuando se elige CAC) */}
+                  {indexacion === 'CAC' && (
+                    <Box sx={{ mt: 1 }}>
+                      <Typography variant="caption" color="text.secondary" fontWeight={600} sx={{ mb: 0.5, display: 'block' }}>
+                        Tipo de índice CAC
+                      </Typography>
+                      <ToggleButtonGroup
+                        value={cacTipo}
+                        exclusive
+                        onChange={(e, val) => val && setCacTipo(val)}
+                        size="small"
+                        fullWidth
+                      >
+                        <ToggleButton value="general" sx={{ flex: 1, fontSize: '0.7rem' }}>Promedio</ToggleButton>
+                        <ToggleButton value="mano_obra" sx={{ flex: 1, fontSize: '0.7rem' }}>Mano de obra</ToggleButton>
+                        <ToggleButton value="materiales" sx={{ flex: 1, fontSize: '0.7rem' }}>Materiales</ToggleButton>
+                      </ToggleButtonGroup>
+                    </Box>
+                  )}
 
                   {/* Preview de equivalencia */}
                   {indexacion && monto && parseFloat(monto) > 0 && (
@@ -1048,7 +1092,7 @@ const PresupuestoDrawer = ({
                     />
                     <Stack direction="row" spacing={0.5} alignItems="center">
                       {presupuesto.indexacion && (
-                        <Chip label={`idx ${presupuesto.indexacion}`} size="small" color="secondary" variant="outlined" sx={{ height: 20, '& .MuiChip-label': { px: 0.5, fontSize: '0.65rem' } }} />
+                        <Chip label={`idx ${presupuesto.indexacion}${presupuesto.indexacion === 'CAC' && presupuesto.cac_tipo && presupuesto.cac_tipo !== 'general' ? (presupuesto.cac_tipo === 'mano_obra' ? ' MO' : ' MAT') : ''}`} size="small" color="secondary" variant="outlined" sx={{ height: 20, '& .MuiChip-label': { px: 0.5, fontSize: '0.65rem' } }} />
                       )}
                       {presupuesto.fecha_presupuesto && (
                         <Chip 
@@ -1075,7 +1119,7 @@ const PresupuestoDrawer = ({
                       {presupuesto.indexacion && (
                         <Typography variant="caption" color="text.secondary">
                           {presupuesto.indexacion === 'CAC'
-                            ? `${Number(presupuesto.monto).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} CAC`
+                            ? `${Number(presupuesto.monto).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} CAC${presupuesto.cac_tipo === 'mano_obra' ? ' MO' : presupuesto.cac_tipo === 'materiales' ? ' MAT' : ''}`
                             : `USD ${Number(presupuesto.monto).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                           }
                         </Typography>
@@ -1186,7 +1230,7 @@ const PresupuestoDrawer = ({
                         <CalendarMonthIcon sx={{ fontSize: 14, color: 'text.disabled' }} />
                         <Typography variant="caption" color="text.secondary">
                           {nuevaIndexacion === 'CAC'
-                            ? <>Índice CAC aplicado: <strong>{formatMesLegible(cacFechaAplicada)}</strong> (fecha presupuesto − 2 meses){cacEfectivo ? <> = {Number(cacEfectivo).toLocaleString('es-AR')}</> : ''}</>
+                            ? <>Índice CAC aplicado: <strong>{formatMesLegible(cacFechaAplicada)}</strong> (fecha presupuesto − 2 meses){cacEsFallback && cacFechaFallback ? <> · <em>último disponible: {formatMesLegible(cacFechaFallback)}</em></> : ''}{cacEfectivo ? <> = {Number(cacEfectivo).toLocaleString('es-AR')}</> : ''}</>
                             : <>Dólar blue aplicado: <strong>{dayjs(fechaPresupuesto).format('DD/MM/YYYY')}</strong>{dolarEfectivo ? <> = ${Number(dolarEfectivo).toLocaleString('es-AR')}</> : ''}</>
                           }
                         </Typography>
@@ -1248,6 +1292,27 @@ const PresupuestoDrawer = ({
                         <ToggleButton value="CAC" sx={{ flex: 1, fontSize: '0.75rem' }}>Ajustar por CAC</ToggleButton>
                         <ToggleButton value="USD" sx={{ flex: 1, fontSize: '0.75rem' }}>Ajustar por dólar</ToggleButton>
                       </ToggleButtonGroup>
+
+                      {/* Selector de tipo de CAC (solo cuando se elige CAC) */}
+                      {nuevaIndexacion === 'CAC' && (
+                        <Box sx={{ mt: 1 }}>
+                          <Typography variant="caption" color="text.secondary" fontWeight={600} sx={{ mb: 0.5, display: 'block' }}>
+                            Tipo de índice CAC
+                          </Typography>
+                          <ToggleButtonGroup
+                            value={nuevoCacTipo}
+                            exclusive
+                            onChange={(e, val) => val && setNuevoCacTipo(val)}
+                            size="small"
+                            fullWidth
+                          >
+                            <ToggleButton value="general" sx={{ flex: 1, fontSize: '0.7rem' }}>Promedio</ToggleButton>
+                            <ToggleButton value="mano_obra" sx={{ flex: 1, fontSize: '0.7rem' }}>Mano de obra</ToggleButton>
+                            <ToggleButton value="materiales" sx={{ flex: 1, fontSize: '0.7rem' }}>Materiales</ToggleButton>
+                          </ToggleButtonGroup>
+                        </Box>
+                      )}
+
                       {nuevaIndexacion && nuevoMonto && parseFloat(nuevoMonto) > 0 && (
                         <Alert
                           severity="info"
@@ -1482,7 +1547,7 @@ const PresupuestoDrawer = ({
                                   <Stack alignItems="flex-end" sx={{ flexShrink: 0 }}>
                                     <Typography variant="body2" fontWeight={600}>
                                       {presupuesto.indexacion
-                                        ? `${presupuesto.indexacion === 'CAC' ? 'CAC' : 'USD'} ${Number(adic.monto).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                        ? `${presupuesto.indexacion === 'CAC' ? `CAC${presupuesto.cac_tipo === 'mano_obra' ? ' MO' : presupuesto.cac_tipo === 'materiales' ? ' MAT' : ''}` : 'USD'} ${Number(adic.monto).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                                         : formatMonto(adic.monto, presupuesto.moneda)
                                       }
                                     </Typography>
@@ -1582,7 +1647,7 @@ const PresupuestoDrawer = ({
                   />
                   {presupuesto?.indexacion && adicionalMonto && parseFloat(adicionalMonto) > 0 && (() => {
                     const cotiz = presupuesto.indexacion === 'CAC' ? adicionalCacEfectivo : adicionalDolarEfectivo;
-                    const unidad = presupuesto.indexacion === 'CAC' ? 'CAC' : 'USD';
+                    const unidad = presupuesto.indexacion === 'CAC' ? `CAC${presupuesto.cac_tipo === 'mano_obra' ? ' MO' : presupuesto.cac_tipo === 'materiales' ? ' MAT' : ''}` : 'USD';
                     if (!cotiz) return null;
                     const convertido = parseFloat(adicionalMonto) / cotiz;
                     return (

@@ -199,16 +199,16 @@ const CadenciasABMPage = () => {
             return;
         }
 
-        // Recalcular ordenes
+        // Recalcular ordenes (1-based: el engine busca paso con orden === 1, 2, 3...)
         const formConOrdenes = {
             ...form,
             pasos: form.pasos.map((paso, pi) => ({
                 ...paso,
-                orden: pi,
+                orden: pi + 1,
                 nombre: paso.nombre || `Paso ${pi + 1}`,
                 acciones: paso.acciones.map((accion, ai) => ({
                     ...accion,
-                    orden: ai,
+                    orden: ai + 1,
                     condicion: accion.condicion || null,
                 }))
             }))
