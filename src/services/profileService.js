@@ -239,7 +239,23 @@ const profileService = {
       console.error('Error al obtener el perfil por ID:', err);
       return null;
     }
-  }  
+  },
+
+  getProfileByUserId: async (userId) => {
+    try {
+      if (!userId) return null;
+      const profilesCollection = collection(db, 'profile');
+      const q = query(profilesCollection, where('user_id', '==', userId));
+      const querySnapshot = await getDocs(q);
+      if (querySnapshot.empty) return null;
+      const profileDoc = querySnapshot.docs[0];
+      const profileData = profileDoc.data();
+      return { id: profileDoc.id, ...profileData };
+    } catch (err) {
+      console.error('Error al obtener perfil por user_id:', err);
+      return null;
+    }
+  },
 };
 
 export default profileService;

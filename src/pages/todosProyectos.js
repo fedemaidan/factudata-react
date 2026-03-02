@@ -42,6 +42,7 @@ import {
   DialogActions,
 } from '@mui/material';
 import ticketService from 'src/services/ticketService';
+import profileService from 'src/services/profileService';
 import { getProyectosByEmpresa, getProyectosFromUser } from 'src/services/proyectosService';
 import { useAuthContext } from 'src/contexts/auth-context';
 import { formatCurrency, formatTimestamp } from 'src/utils/formatters';
@@ -55,7 +56,6 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { Tooltip } from '@mui/material';
 import { ColumnSelector } from 'src/components/columnSelector';
-import { match } from 'assert';
 
 const TodosProyectosPage = () => {
   const { user } = useAuthContext();
@@ -125,6 +125,7 @@ const TodosProyectosPage = () => {
     categoria: 'Categoría',
     subcategoria: 'Subcategoría',
     nombre_proveedor: 'Proveedor',
+    nombre_user: 'Usuario',
     // cuit_proveedor: 'CUIT Proveedor',
     observacion: 'Observación',
     total_original: 'Monto Original',
@@ -169,6 +170,7 @@ const TodosProyectosPage = () => {
 
     head_array.push(
       ['nombre_proveedor', 'Proveedor'],
+      ['nombre_user', 'Usuario'],
       ['etapa', 'Etapa'],
       ['observacion', 'Observación'],
       ['type', 'Tipo'],
@@ -477,6 +479,24 @@ const TodosProyectosPage = () => {
         }));
 
         movimientosData.push(...movsConEquivalencias);
+      }
+
+      const idsSinNombre = [...new Set(movimientosData
+        .filter((m) => m.id_user && !m.nombre_user)
+        .map((m) => m.id_user)
+      )];
+      const usuariosMap = {};
+      for (const id of idsSinNombre) {
+        const profile = await profileService.getProfileById(id)
+          || await profileService.getProfileByUserId(id);
+        if (profile) {
+          usuariosMap[id] = [profile.firstName, profile.lastName].filter(Boolean).join(' ').trim() || profile.email || '-';
+        }
+      }
+      for (const mov of movimientosData) {
+        if (mov.id_user && !mov.nombre_user && usuariosMap[mov.id_user]) {
+          mov.nombre_user = usuariosMap[mov.id_user];
+        }
       }
 
       setMovimientos(movimientosData);
