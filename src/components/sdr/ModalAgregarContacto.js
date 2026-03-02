@@ -33,6 +33,7 @@ const ModalAgregarContacto = ({
         email: '',
         empresa: '',
         cargo: '',
+        rubro: '',
         notas: ''
     });
     const [loading, setLoading] = useState(false);
@@ -46,6 +47,7 @@ const ModalAgregarContacto = ({
             email: '',
             empresa: '',
             cargo: '',
+            rubro: '',
             notas: ''
         });
         setError(null);
@@ -93,6 +95,7 @@ const ModalAgregarContacto = ({
                 email: form.email.trim() || undefined,
                 empresa: form.empresa.trim() || undefined,
                 cargo: form.cargo.trim() || undefined,
+                rubro: form.rubro.trim() || undefined,
                 empresaId,
                 sdrAsignado: sdrId,
                 sdrAsignadoNombre: sdrNombre,
@@ -221,6 +224,16 @@ const ModalAgregarContacto = ({
                         onChange={handleChange('cargo')}
                         fullWidth
                         placeholder="Ej: Gerente, Dueño, etc."
+                        sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                    />
+
+                    {/* Rubro */}
+                    <TextField
+                        label="Rubro"
+                        value={form.rubro}
+                        onChange={handleChange('rubro')}
+                        fullWidth
+                        placeholder="Ej: Construcción, Inmobiliaria, etc."
                         sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
                     />
 

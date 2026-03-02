@@ -153,6 +153,8 @@ export const useProductos = ({
           "Cant. a comprar (100 días)": Number(item?.cantidadCompraSugerida ?? 0),
           "Fecha compra sugerida": formatDateDDMMYYYY(item?.fechaCompraSugerida),
           Notas: getNotasString(item?.notas),
+          "Fecha ingreso": formatDateDDMMYYYY(item?.fechaIngreso),
+          "Fecha cero": formatDateDDMMYYYY(item?.fechaCero),
         };
       });
 

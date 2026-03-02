@@ -138,3 +138,16 @@ export async function syncConversationProfile(conversationId) {
   const response = await api.post(`/conversaciones/${conversationId}/sync-profile`);
   return response.data;
 }
+
+/**
+ * Obtiene los últimos mensajes de una conversación por número de teléfono.
+ * Usa GET /conversaciones/last que ya existe en el backend.
+ * @param {string} phone - Número de teléfono (ej: "5491162948395")
+ * @param {number} limit - Cantidad máxima de mensajes (default 50, max 100)
+ */
+export async function fetchLastMessages(phone, limit = 50) {
+  const { data } = await api.get('/conversaciones/last', {
+    params: { phone, limit, sort: 'desc' }
+  });
+  return data;
+}
