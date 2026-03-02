@@ -18,6 +18,13 @@ const clientesService = {
     return response.data;
   },
 
+  getClienteCCComputed: async (id, options = {}) => {
+    const response = await axiosCelulandia.get(`/clientes/${id}/cc`, {
+      params: options,
+    });
+    return response.data;
+  },
+
   getClienteLogs: async (id) => {
     const response = await axiosCelulandia.get(`/clientes/${id}/logs`);
     return response.data;
