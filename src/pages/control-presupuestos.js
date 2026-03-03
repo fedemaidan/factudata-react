@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, Fragment } from 'react';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import Head from 'next/head';
 import {
@@ -38,6 +38,8 @@ import {
   TableRow,
   Autocomplete
 } from '@mui/material';
+import Drawer from '@mui/material/Drawer';
+import CircularProgress from '@mui/material/CircularProgress';
 import AddCircleIcon from '@mui/icons-material/AddCircle';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
@@ -55,9 +57,12 @@ import MonedasService from 'src/services/monedasService';
 import { getEmpresaById, getEmpresaDetailsFromUser } from 'src/services/empresaService';
 import { getProyectosFromUser } from 'src/services/proyectosService';
 import { formatCurrency, formatTimestamp } from 'src/utils/formatters';
+import dayjs from 'dayjs';
 import PresupuestoDrawer from 'src/components/PresupuestoDrawer';
 import Tooltip from '@mui/material/Tooltip';
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
+import CloseIcon from '@mui/icons-material/Close';
+import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import ListAltIcon from '@mui/icons-material/ListAlt';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
@@ -357,8 +362,34 @@ const ControlPresupuestosPage = () => {
   // Modal agregar proveedor (se mantiene como dialog simple)
   const [proveedorModal, setProveedorModal] = useState(false);
   const [nuevoProveedor, setNuevoProveedor] = useState('');
+
+  // Drawer de movimientos (desde tarjetas resumen)
+  const [movDrawer, setMovDrawer] = useState({ open: false, tipo: null, label: '' });
+  const [movDrawerData, setMovDrawerData] = useState([]);
+  const [movDrawerLoading, setMovDrawerLoading] = useState(false);
+  const [movDrawerOrdenAsc, setMovDrawerOrdenAsc] = useState(true);
+  const [movDrawerEquiv, setMovDrawerEquiv] = useState({ usd: false, cac: false });
   
 
+
+  // Fetch movimientos cuando se abre el drawer de resumen
+  useEffect(() => {
+    if (!movDrawer.open || !proyectoSeleccionado) return;
+    let cancelled = false;
+    setMovDrawerLoading(true);
+    presupuestoService.obtenerMovimientosProyecto(proyectoSeleccionado, movDrawer.tipo)
+      .then(data => { if (!cancelled) setMovDrawerData(data); })
+      .catch(() => { if (!cancelled) setMovDrawerData([]); })
+      .finally(() => { if (!cancelled) setMovDrawerLoading(false); });
+    return () => { cancelled = true; };
+  }, [movDrawer.open, movDrawer.tipo, proyectoSeleccionado]);
+
+  // Helper: abrir drawer de movimientos
+  const abrirMovDrawer = (tipo, label) => {
+    setMovDrawerData([]);
+    setMovDrawerOrdenAsc(true);
+    setMovDrawer({ open: true, tipo, label });
+  };
 
   // Cargar cotización del dólar
   useEffect(() => {
@@ -1151,6 +1182,7 @@ const ControlPresupuestosPage = () => {
                     <Grid container spacing={{ xs: 1.5, md: 3 }}>
                       <Grid item xs={6} sm={4}>
                         <Card>
+                          <CardActionArea onClick={() => abrirMovDrawer('ingreso', 'Ingresos')}>
                           <CardContent sx={{ p: { xs: 1.5, md: 2 }, '&:last-child': { pb: { xs: 1.5, md: 2 } } }}>
                             <Stack direction="row" alignItems="center" spacing={{ xs: 1, md: 2 }}>
                               <TrendingUpIcon color="success" sx={{ fontSize: { xs: 28, md: 40 } }} />
@@ -1170,11 +1202,13 @@ const ControlPresupuestosPage = () => {
                               </Box>
                             </Stack>
                           </CardContent>
+                          </CardActionArea>
                         </Card>
                       </Grid>
                       
                       <Grid item xs={6} sm={4}>
                         <Card>
+                          <CardActionArea onClick={() => abrirMovDrawer('egreso', 'Egresos')}>
                           <CardContent sx={{ p: { xs: 1.5, md: 2 }, '&:last-child': { pb: { xs: 1.5, md: 2 } } }}>
                             <Stack direction="row" alignItems="center" spacing={{ xs: 1, md: 2 }}>
                               <TrendingDownIcon color="error" sx={{ fontSize: { xs: 28, md: 40 } }} />
@@ -1194,11 +1228,13 @@ const ControlPresupuestosPage = () => {
                               </Box>
                             </Stack>
                           </CardContent>
+                          </CardActionArea>
                         </Card>
                       </Grid>
                       
                       <Grid item xs={12} sm={4}>
                         <Card sx={{ bgcolor: totales.gananciaProyectada >= 0 ? 'success.light' : 'error.light' }}>
+                          <CardActionArea onClick={() => abrirMovDrawer(null, 'Todos los movimientos')}>
                           <CardContent sx={{ p: { xs: 1.5, md: 2 }, '&:last-child': { pb: { xs: 1.5, md: 2 } } }}>
                             <Stack direction="row" alignItems="center" spacing={{ xs: 1, md: 2 }}>
                               <AccountBalanceWalletIcon sx={{ fontSize: { xs: 28, md: 40 }, color: 'white' }} />
@@ -1211,6 +1247,7 @@ const ControlPresupuestosPage = () => {
                               </Box>
                             </Stack>
                           </CardContent>
+                          </CardActionArea>
                         </Card>
                       </Grid>
                     </Grid>
@@ -1711,6 +1748,197 @@ const ControlPresupuestosPage = () => {
           }
         }}
       />
+
+      {/* Drawer de movimientos del proyecto */}
+      <Drawer
+        anchor="right"
+        open={movDrawer.open}
+        onClose={() => setMovDrawer(prev => ({ ...prev, open: false }))}
+        PaperProps={{ sx: { width: { xs: '100%', sm: 720 }, p: 0 } }}
+      >
+        <Box sx={{ p: 2 }}>
+          <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
+            <Typography variant="h6" sx={{ fontSize: '1rem' }}>{movDrawer.label}</Typography>
+            <IconButton size="small" onClick={() => setMovDrawer(prev => ({ ...prev, open: false }))}>
+              <CloseIcon fontSize="small" />
+            </IconButton>
+          </Stack>
+
+          <Stack direction="row" spacing={0.5} sx={{ mb: 1.5, flexWrap: 'wrap', gap: 0.5 }}>
+            {[{ key: 'usd', label: 'USD' }, { key: 'cac', label: 'CAC' }].map(eq => (
+              <Chip
+                key={eq.key}
+                label={eq.label}
+                size="small"
+                variant={movDrawerEquiv[eq.key] ? 'filled' : 'outlined'}
+                onClick={() => setMovDrawerEquiv(prev => ({ ...prev, [eq.key]: !prev[eq.key] }))}
+                sx={{ cursor: 'pointer', fontSize: '0.7rem', height: 22 }}
+              />
+            ))}
+            <Typography variant="caption" color="text.secondary" sx={{ alignSelf: 'center', ml: 0.5 }}>
+              {movDrawerData.length} mov.
+            </Typography>
+            <Tooltip title={movDrawerOrdenAsc ? 'Más recientes primero' : 'Más antiguos primero'} arrow>
+              <Chip
+                label={movDrawerOrdenAsc ? '↑ Antiguos' : '↓ Recientes'}
+                size="small"
+                variant="outlined"
+                onClick={() => setMovDrawerOrdenAsc(prev => !prev)}
+                sx={{ cursor: 'pointer', fontSize: '0.65rem', height: 22, ml: 'auto' }}
+              />
+            </Tooltip>
+          </Stack>
+
+          {movDrawerLoading ? (
+            <Box sx={{ py: 6, textAlign: 'center' }}>
+              <CircularProgress size={28} />
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>Cargando movimientos…</Typography>
+            </Box>
+          ) : movDrawerData.length === 0 ? (
+            <Box sx={{ py: 6, textAlign: 'center' }}>
+              <ReceiptLongIcon sx={{ fontSize: 40, color: 'grey.300', mb: 1 }} />
+              <Typography color="text.secondary" variant="body2">No hay movimientos</Typography>
+            </Box>
+          ) : (
+            <Box sx={{ overflowX: 'auto' }}>
+              <Table size="small" sx={{ '& td, & th': { px: 0.75, py: 0.4, fontSize: '0.7rem', borderColor: 'grey.100' } }}>
+                <TableHead>
+                  <TableRow sx={{ '& th': { fontWeight: 700, fontSize: '0.65rem', color: 'text.secondary', whiteSpace: 'nowrap' } }}>
+                    <TableCell sx={{ width: 28 }} />
+                    <TableCell>Fecha</TableCell>
+                    <TableCell>Detalle</TableCell>
+                    <TableCell align="right">Monto</TableCell>
+                    <TableCell align="right">Acumulado</TableCell>
+                    {movDrawerEquiv.usd && <TableCell align="right" sx={{ color: 'success.main' }}>USD</TableCell>}
+                    {movDrawerEquiv.cac && <TableCell align="right" sx={{ color: 'secondary.main' }}>CAC</TableCell>}
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {(() => {
+                    const sorted = [...movDrawerData].sort((a, b) => {
+                      const ta = a.fecha_factura?._seconds || a.fecha_factura?.seconds || 0;
+                      const tb = b.fecha_factura?._seconds || b.fecha_factura?.seconds || 0;
+                      return movDrawerOrdenAsc ? ta - tb : tb - ta;
+                    });
+                    // Acumulado siempre cronológico
+                    const crono = movDrawerOrdenAsc ? sorted : [...sorted].reverse();
+                    const acumMap = {};
+                    let runARS = 0, runUSD = 0;
+                    crono.forEach(m => {
+                      const monto = m.total || 0;
+                      if ((m.moneda || 'ARS') === 'USD') runUSD += monto; else runARS += monto;
+                      acumMap[m.id] = { ars: runARS, usd: runUSD };
+                    });
+                    return sorted.map(mov => {
+                      const montoNativo = mov.total || 0;
+                      const monedaMov = mov.moneda || 'ARS';
+                      const acum = acumMap[mov.id] || { ars: 0, usd: 0 };
+                      const acumuladoDisplay = monedaMov === 'USD'
+                        ? `USD ${Number(acum.usd).toLocaleString('es-AR', { maximumFractionDigits: 0 })}`
+                        : `$${Number(acum.ars).toLocaleString('es-AR', { maximumFractionDigits: 0 })}`;
+                      const fechaSecs = mov.fecha_factura?._seconds || mov.fecha_factura?.seconds;
+                      const fechaStr = fechaSecs
+                        ? dayjs.unix(fechaSecs).format('DD/MM/YY')
+                        : mov.fecha_factura ? dayjs(mov.fecha_factura).format('DD/MM/YY') : '—';
+                      const eq = mov.equivalencias?.total || {};
+                      const detalle = mov.nombre_proveedor || 'Sin proveedor';
+                      const obs = mov.observacion;
+                      const comprobante = mov.tipo_comprobante ? `${mov.tipo_comprobante}${mov.nro_comprobante ? ` ${mov.nro_comprobante}` : ''}` : '';
+                      const tipoColor = mov.type === 'ingreso' ? 'success.main' : 'error.main';
+                      return (
+                        <Fragment key={mov.id}>
+                          <TableRow sx={{ '&:hover': { bgcolor: 'grey.50' } }}>
+                            <TableCell sx={{ p: 0, pl: 0.25, width: 28 }}>
+                              <Tooltip title="Editar movimiento" arrow>
+                                <IconButton
+                                  size="small"
+                                  color="primary"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    router.push({
+                                      pathname: '/movementForm',
+                                      query: {
+                                        movimientoId: mov.id,
+                                        proyectoId: proyectoSeleccionado,
+                                        lastPageUrl: router.asPath,
+                                      },
+                                    });
+                                  }}
+                                  sx={{ p: 0.25 }}
+                                >
+                                  <EditIcon sx={{ fontSize: 14 }} />
+                                </IconButton>
+                              </Tooltip>
+                            </TableCell>
+                            <TableCell sx={{ whiteSpace: 'nowrap', color: 'text.secondary' }}>{fechaStr}</TableCell>
+                            <TableCell sx={{ maxWidth: 200 }}>
+                              <Typography variant="caption" fontWeight={600} noWrap sx={{ display: 'block', fontSize: '0.7rem' }}>
+                                {detalle}
+                              </Typography>
+                              <Typography variant="caption" noWrap sx={{ display: 'block', fontSize: '0.6rem', lineHeight: 1.2 }}>
+                                <Box component="span" sx={{ color: tipoColor, fontWeight: 600 }}>{mov.type === 'ingreso' ? '↑' : '↓'}</Box>
+                                {' '}{[mov.categoria, mov.etapa, comprobante].filter(Boolean).join(' · ') || mov.type}
+                              </Typography>
+                            </TableCell>
+                            <TableCell align="right" sx={{ fontWeight: 600, whiteSpace: 'nowrap', color: mov.type === 'ingreso' ? 'success.main' : 'text.primary' }}>
+                              {monedaMov === 'USD' ? 'USD ' : '$'}
+                              {Number(montoNativo).toLocaleString('es-AR', { maximumFractionDigits: monedaMov === 'USD' ? 2 : 0 })}
+                            </TableCell>
+                            <TableCell align="right" sx={{ whiteSpace: 'nowrap', color: 'text.secondary', fontWeight: 500 }}>
+                              {acumuladoDisplay}
+                            </TableCell>
+                            {movDrawerEquiv.usd && (
+                              <TableCell align="right" sx={{ whiteSpace: 'nowrap', color: 'success.main' }}>
+                                {monedaMov === 'USD' ? `$${Number(eq.ars || 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })}` : (eq.usd_blue != null ? Number(eq.usd_blue).toLocaleString('es-AR', { maximumFractionDigits: 1 }) : '—')}
+                              </TableCell>
+                            )}
+                            {movDrawerEquiv.cac && (
+                              <TableCell align="right" sx={{ whiteSpace: 'nowrap', color: 'secondary.main' }}>
+                                {eq.cac != null ? Number(eq.cac).toLocaleString('es-AR', { maximumFractionDigits: 2 }) : '—'}
+                              </TableCell>
+                            )}
+                          </TableRow>
+                          {obs && (
+                            <TableRow>
+                              <TableCell colSpan={5 + (movDrawerEquiv.usd ? 1 : 0) + (movDrawerEquiv.cac ? 1 : 0)} sx={{ pt: 0, pb: 0.5, borderBottom: 0 }}>
+                                <Typography variant="caption" color="text.disabled" sx={{ fontSize: '0.6rem', fontStyle: 'italic', pl: 0.5 }}>
+                                  💬 {obs}
+                                </Typography>
+                              </TableCell>
+                            </TableRow>
+                          )}
+                        </Fragment>
+                      );
+                    });
+                  })()}
+                  {/* Fila total */}
+                  {(() => {
+                    const tots = { ars: 0, usd: 0 };
+                    movDrawerData.forEach(m => {
+                      if (m.moneda === 'USD') tots.usd += (m.total || 0); else tots.ars += (m.total || 0);
+                    });
+                    return (
+                      <TableRow sx={{ '& td': { borderTop: 2, borderColor: 'divider', fontWeight: 700, fontSize: '0.72rem' } }}>
+                        <TableCell />
+                        <TableCell>Total</TableCell>
+                        <TableCell />
+                        <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
+                          {tots.ars !== 0 && `$${Number(tots.ars).toLocaleString('es-AR', { maximumFractionDigits: 0 })}`}
+                          {tots.ars !== 0 && tots.usd !== 0 && <br />}
+                          {tots.usd !== 0 && <Typography component="span" sx={{ color: 'success.main', fontSize: 'inherit', fontWeight: 'inherit' }}>USD {Number(tots.usd).toLocaleString('es-AR', { maximumFractionDigits: 2 })}</Typography>}
+                        </TableCell>
+                        <TableCell />
+                        {movDrawerEquiv.usd && <TableCell />}
+                        {movDrawerEquiv.cac && <TableCell />}
+                      </TableRow>
+                    );
+                  })()}
+                </TableBody>
+              </Table>
+            </Box>
+          )}
+        </Box>
+      </Drawer>
 
       {/* Modal de Agregar Proveedor */}
       <Dialog open={proveedorModal} onClose={() => setProveedorModal(false)}>
