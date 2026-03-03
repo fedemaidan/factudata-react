@@ -8,7 +8,8 @@ import {
     Tabs, Tab,
     Dialog, DialogTitle, DialogContent, DialogActions,
     Select, MenuItem, FormControl, InputLabel,
-    useTheme, useMediaQuery, Skeleton
+    useTheme, useMediaQuery, Skeleton,
+    Menu, ListItemIcon, ListItemText
 } from '@mui/material';
 import {
     ArrowBack as ArrowBackIcon,
@@ -46,12 +47,17 @@ import {
     SkipNext as SkipNextIcon,
     ContentCopy as ContentCopyIcon,
     PhoneCallback as PhoneCallbackIcon,
-    ScheduleSend as ScheduleSendIcon
+    ScheduleSend as ScheduleSendIcon,
+    Mic as MicIcon,
+    Pause as PauseIcon,
+    GraphicEq as GraphicEqIcon,
+    DeleteOutline as DeleteOutlineIcon
 } from '@mui/icons-material';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
+import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import { useAuthContext } from 'src/contexts/auth-context';
 import SDRService from 'src/services/sdrService';
@@ -65,6 +71,7 @@ import {
     ESTADOS_REUNION
 } from 'src/constant/sdrConstants';
 import MiniChatViewer from 'src/components/sdr/MiniChatViewer';
+import useGrabadorAudio from 'src/hooks/useGrabadorAudio';
 
 // ==================== CONSTANTES ====================
 
@@ -90,6 +97,7 @@ const getEventoColor = (tipo) => {
         'contexto_inicial': { bg: '#f5f5f5', border: '#9e9e9e', icon: '#616161' },
         'nota_agregada': { bg: '#fffde7', border: '#ffee58', icon: '#f9a825' },
         'comentario': { bg: '#fffde7', border: '#ffee58', icon: '#f9a825' },
+        'audio_grabado': { bg: '#fce4ec', border: '#f48fb1', icon: '#c2185b' },
         'proximo_contacto_programado': { bg: '#e1f5fe', border: '#29b6f6', icon: '#0277bd' },
         'contacto_editado': { bg: '#eceff1', border: '#90a4ae', icon: '#546e7a' },
         'estado_cambiado': { bg: '#e8eaf6', border: '#5c6bc0', icon: '#3949ab' },
@@ -121,6 +129,7 @@ const getEventoIcon = (tipo) => {
         'contexto_inicial': <CommentIcon fontSize="small" />,
         'nota_agregada': <CommentIcon fontSize="small" />,
         'comentario': <CommentIcon fontSize="small" />,
+        'audio_grabado': <GraphicEqIcon fontSize="small" />,
         'proximo_contacto_programado': <EventIcon fontSize="small" />,
         'contacto_editado': <PersonIcon fontSize="small" />,
         'estado_cambiado': <EditIcon fontSize="small" />,
@@ -131,17 +140,52 @@ const getEventoIcon = (tipo) => {
 };
 
 const botonesProximoContacto = [
-    { label: '1h', cantidad: 1, unidad: 'hours' },
-    { label: '3h', cantidad: 3, unidad: 'hours' },
-    { label: 'Mañana', cantidad: 1, unidad: 'days' },
+    { label: 'Hoy tarde', cantidad: 0, unidad: 'tarde' },
+    { label: 'Mañana AM', cantidad: 1, unidad: 'manana' },
+    { label: 'Mañana PM', cantidad: 1, unidad: 'tarde_dia' },
     { label: '3 días', cantidad: 3, unidad: 'days' },
     { label: '1 semana', cantidad: 7, unidad: 'days' },
+    { label: '2 meses', cantidad: 2, unidad: 'months' },
+];
+
+// Categorías para filtrar historial
+const FILTROS_HISTORIAL = [
+    { key: 'todos', label: 'Todos', icon: '📋', tipos: null },
+    { key: 'comentarios', label: 'Comentarios', icon: '💭', tipos: ['comentario', 'nota_agregada', 'contexto_inicial'] },
+    { key: 'llamadas', label: 'Llamadas', icon: '📞', tipos: ['llamada_atendida', 'llamada_no_atendida'] },
+    { key: 'whatsapp', label: 'WhatsApp', icon: '💬', tipos: ['whatsapp_enviado', 'whatsapp_respuesta_confirmada'] },
+    { key: 'email', label: 'Email / LinkedIn', icon: '✉️', tipos: ['email_enviado', 'linkedin_enviado'] },
+    { key: 'reuniones', label: 'Reuniones', icon: '📅', tipos: ['reunion_coordinada', 'reunion_aprobada', 'reunion_rechazada'] },
+    { key: 'audio', label: 'Audios', icon: '🎙️', tipos: ['audio_grabado'] },
+    { key: 'sistema', label: 'Sistema', icon: '⚙️', tipos: ['contacto_creado', 'contacto_asignado', 'contacto_desasignado', 'contacto_reasignado', 'importado_excel', 'importado_notion', 'contacto_editado', 'estado_cambiado', 'plan_estimado_actualizado', 'intencion_compra_actualizada', 'proximo_contacto_programado', 'marcado_no_califica', 'marcado_no_responde', 'cadencia_iniciada', 'cadencia_paso_completado', 'cadencia_completada', 'cadencia_detenida'] },
 ];
 
 const calcularFecha = (cantidad, unidad) => {
     const ahora = new Date();
-    if (unidad === 'hours') ahora.setHours(ahora.getHours() + cantidad);
-    else if (unidad === 'days') ahora.setDate(ahora.getDate() + cantidad);
+    if (unidad === 'hours') {
+        ahora.setHours(ahora.getHours() + cantidad);
+    } else if (unidad === 'days') {
+        ahora.setDate(ahora.getDate() + cantidad);
+        ahora.setHours(9, 0, 0, 0);
+    } else if (unidad === 'months') {
+        ahora.setMonth(ahora.getMonth() + cantidad);
+        ahora.setHours(9, 0, 0, 0);
+    } else if (unidad === 'tarde') {
+        // Hoy a las 15:00 (si ya pasó, poner 17:00; si ya pasó también, mañana 15:00)
+        const hoy = new Date();
+        hoy.setHours(15, 0, 0, 0);
+        if (hoy <= ahora) { hoy.setHours(17, 0, 0, 0); }
+        if (hoy <= ahora) { hoy.setDate(hoy.getDate() + 1); hoy.setHours(15, 0, 0, 0); }
+        return hoy;
+    } else if (unidad === 'manana') {
+        // Mañana a las 9:00
+        ahora.setDate(ahora.getDate() + 1);
+        ahora.setHours(9, 0, 0, 0);
+    } else if (unidad === 'tarde_dia') {
+        // Mañana a las 15:00
+        ahora.setDate(ahora.getDate() + 1);
+        ahora.setHours(15, 0, 0, 0);
+    }
     return ahora;
 };
 
@@ -188,6 +232,14 @@ const ContactoSDRDetailPage = () => {
     const [tabMobile, setTabMobile] = useState(0);
     // Tab desktop (Info / Historial / Chat)
     const [tabDesktop, setTabDesktop] = useState(0);
+    // Filtro de historial por categoría
+    const [filtroHistorial, setFiltroHistorial] = useState('todos');
+
+    // Re-asignación de SDR
+    const [menuAsignarAnchor, setMenuAsignarAnchor] = useState(null);
+    const [sdrsDisponibles, setSdrsDisponibles] = useState([]);
+    const [cargandoSdrs, setCargandoSdrs] = useState(false);
+    const [asignando, setAsignando] = useState(false);
 
     // Cadencia
     const [pasoActual, setPasoActual] = useState(null);
@@ -206,6 +258,10 @@ const ContactoSDRDetailPage = () => {
     const [registrandoWizard, setRegistrandoWizard] = useState(false);
     const [proximoContactoWizard, setProximoContactoWizard] = useState(null); // Date or null
 
+    // Audio
+    const grabador = useGrabadorAudio();
+    const [subiendoAudio, setSubiendoAudio] = useState(false);
+
     // Navegación entre contactos (IDs guardados en sessionStorage)
     const [contactoIds, setContactoIds] = useState([]);
     const [indiceActual, setIndiceActual] = useState(-1);
@@ -213,6 +269,14 @@ const ContactoSDRDetailPage = () => {
     const mostrarSnackbar = (message, severity = 'success') => {
         setSnackbar({ open: true, message, severity });
     };
+
+    // Historial filtrado por categoría
+    const historialFiltrado = filtroHistorial === 'todos'
+        ? historial
+        : historial.filter(e => {
+            const cat = FILTROS_HISTORIAL.find(f => f.key === filtroHistorial);
+            return cat?.tipos?.includes(e.tipo);
+        });
 
     // Eliminar evento del historial
     const handleEliminarEvento = async (eventoId) => {
@@ -224,6 +288,56 @@ const ContactoSDRDetailPage = () => {
         } catch (err) {
             console.error('Error eliminando evento:', err);
             mostrarSnackbar('Error al eliminar evento', 'error');
+        }
+    };
+
+    // Abrir menú de re-asignación de SDR
+    const handleAbrirMenuAsignar = async (event) => {
+        setMenuAsignarAnchor(event.currentTarget);
+        if (sdrsDisponibles.length === 0) {
+            setCargandoSdrs(true);
+            try {
+                const data = await SDRService.obtenerSDRsDisponibles(empresaId);
+                setSdrsDisponibles(data.sdrs || data || []);
+            } catch (err) {
+                console.error('Error cargando SDRs:', err);
+                mostrarSnackbar('Error al cargar SDRs disponibles', 'error');
+            } finally {
+                setCargandoSdrs(false);
+            }
+        }
+    };
+
+    // Re-asignar a otro SDR
+    const handleReasignar = async (nuevoSdrId, nuevoSdrNombre) => {
+        setAsignando(true);
+        try {
+            await SDRService.asignarContactos([contacto._id], nuevoSdrId, nuevoSdrNombre, empresaId);
+            mostrarSnackbar(`Contacto re-asignado a ${nuevoSdrNombre}`);
+            setMenuAsignarAnchor(null);
+            await cargarContacto();
+        } catch (err) {
+            console.error('Error re-asignando:', err);
+            mostrarSnackbar('Error al re-asignar contacto', 'error');
+        } finally {
+            setAsignando(false);
+        }
+    };
+
+    // Desasignar contacto
+    const handleDesasignar = async () => {
+        if (!window.confirm('¿Desasignar este contacto? Quedará sin SDR asignado.')) return;
+        setAsignando(true);
+        try {
+            await SDRService.desasignarContactos([contacto._id], empresaId);
+            mostrarSnackbar('Contacto desasignado');
+            setMenuAsignarAnchor(null);
+            await cargarContacto();
+        } catch (err) {
+            console.error('Error desasignando:', err);
+            mostrarSnackbar('Error al desasignar contacto', 'error');
+        } finally {
+            setAsignando(false);
         }
     };
 
@@ -415,6 +529,27 @@ const ContactoSDRDetailPage = () => {
             mostrarSnackbar('Error al agregar comentario', 'error');
         } finally {
             setEnviandoComentario(false);
+        }
+    };
+
+    const handleEnviarAudio = async () => {
+        if (!grabador.audioBlob || !contacto?._id) return;
+        setSubiendoAudio(true);
+        try {
+            await SDRService.subirAudio(contacto._id, grabador.audioBlob, {
+                duracion: grabador.duracion,
+                nota: nuevoComentario.trim() || '',
+                empresaId
+            });
+            mostrarSnackbar('🎙️ Audio guardado y transcrito', 'success');
+            grabador.limpiar();
+            setNuevoComentario('');
+            await cargarContacto();
+        } catch (err) {
+            console.error('Error subiendo audio:', err);
+            mostrarSnackbar('Error al subir el audio', 'error');
+        } finally {
+            setSubiendoAudio(false);
         }
     };
 
@@ -953,10 +1088,32 @@ const ContactoSDRDetailPage = () => {
                                                 · {contacto.segmento === 'inbound' ? '🟢 Inbound' : '🟠 Outbound'}
                                             </Typography>
                                         )}
-                                        {contacto.sdrAsignadoNombre && (
-                                            <Typography variant="caption" color="text.secondary">
-                                                · 👤 {contacto.sdrAsignadoNombre}
-                                            </Typography>
+                                        {contacto.sdrAsignadoNombre ? (
+                                            <Tooltip title="Clic para re-asignar o desasignar">
+                                                <Chip
+                                                    size="small"
+                                                    icon={<SwapHorizIcon sx={{ fontSize: 14 }} />}
+                                                    label={`👤 ${contacto.sdrAsignadoNombre}`}
+                                                    variant="outlined"
+                                                    onClick={handleAbrirMenuAsignar}
+                                                    sx={{ 
+                                                        height: 22, 
+                                                        fontSize: '0.72rem',
+                                                        cursor: 'pointer',
+                                                        '&:hover': { bgcolor: 'action.hover' }
+                                                    }}
+                                                />
+                                            </Tooltip>
+                                        ) : (
+                                            <Chip
+                                                size="small"
+                                                icon={<PersonAddIcon sx={{ fontSize: 14 }} />}
+                                                label="Sin asignar"
+                                                variant="outlined"
+                                                color="warning"
+                                                onClick={handleAbrirMenuAsignar}
+                                                sx={{ height: 22, fontSize: '0.72rem', cursor: 'pointer' }}
+                                            />
                                         )}
                                     </Stack>
 
@@ -1312,48 +1469,136 @@ const ContactoSDRDetailPage = () => {
                         {/* COLUMNA IZQUIERDA: Comentario + Historial */}
                         <Grid item xs={12} md={6}>
 
-                    {/* ==================== COMENTARIO RÁPIDO ==================== */}
+                    {/* ==================== COMENTARIO RÁPIDO + AUDIO ==================== */}
                         <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
                             <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                                Agregar comentario
+                                Agregar comentario / audio
                             </Typography>
-                            <Stack direction="row" spacing={1}>
-                                <TextField
-                                    fullWidth
-                                    size="small"
-                                    placeholder="Escribe un comentario rápido..."
-                                    value={nuevoComentario}
-                                    onChange={(e) => setNuevoComentario(e.target.value)}
-                                    onKeyPress={(e) => {
-                                        if (e.key === 'Enter' && !e.shiftKey) {
-                                            e.preventDefault();
-                                            handleEnviarComentario();
-                                        }
-                                    }}
-                                    disabled={enviandoComentario}
-                                    multiline
-                                    maxRows={3}
-                                />
-                                <Button
-                                    variant="contained"
-                                    size="small"
-                                    onClick={handleEnviarComentario}
-                                    disabled={!nuevoComentario.trim() || enviandoComentario}
-                                    sx={{ minWidth: 'auto', px: 2 }}
-                                >
-                                    {enviandoComentario ? <CircularProgress size={20} /> : <SendIcon />}
-                                </Button>
-                            </Stack>
+
+                            {/* Indicador de grabación activa */}
+                            {(grabador.estado === 'grabando' || grabador.estado === 'pausado') && (
+                                <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.5, p: 1, bgcolor: grabador.estado === 'grabando' ? '#ffebee' : '#fff8e1', borderRadius: 2, border: 1, borderColor: grabador.estado === 'grabando' ? 'error.light' : 'warning.light' }}>
+                                    <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: grabador.estado === 'grabando' ? 'error.main' : 'warning.main', animation: grabador.estado === 'grabando' ? 'pulse 1.5s infinite' : 'none', '@keyframes pulse': { '0%, 100%': { opacity: 1 }, '50%': { opacity: 0.3 } } }} />
+                                    <Typography variant="body2" fontWeight={600} color={grabador.estado === 'grabando' ? 'error.main' : 'warning.main'}>
+                                        {grabador.estado === 'grabando' ? 'Grabando...' : 'Pausado'}
+                                    </Typography>
+                                    <Typography variant="body2" fontWeight={700} sx={{ fontFamily: 'monospace' }}>
+                                        {grabador.duracionFormateada}
+                                    </Typography>
+                                    <Box sx={{ flex: 1 }} />
+                                    {grabador.estado === 'grabando' ? (
+                                        <IconButton size="small" onClick={grabador.pausar} sx={{ color: 'warning.main' }}>
+                                            <PauseIcon fontSize="small" />
+                                        </IconButton>
+                                    ) : (
+                                        <IconButton size="small" onClick={grabador.reanudar} sx={{ color: 'success.main' }}>
+                                            <PlayArrowIcon fontSize="small" />
+                                        </IconButton>
+                                    )}
+                                    <IconButton size="small" onClick={grabador.detener} sx={{ color: 'error.main' }}>
+                                        <StopIcon fontSize="small" />
+                                    </IconButton>
+                                </Stack>
+                            )}
+
+                            {/* Audio listo para enviar */}
+                            {grabador.estado === 'detenido' && grabador.audioBlob && (
+                                <Stack spacing={1} sx={{ mb: 1.5, p: 1.5, bgcolor: '#e8f5e9', borderRadius: 2, border: 1, borderColor: 'success.light' }}>
+                                    <Stack direction="row" alignItems="center" spacing={1}>
+                                        <GraphicEqIcon sx={{ color: 'success.main' }} />
+                                        <Typography variant="body2" fontWeight={600} color="success.dark">
+                                            Audio listo ({grabador.duracionFormateada})
+                                        </Typography>
+                                        <Box sx={{ flex: 1 }} />
+                                        <IconButton size="small" onClick={grabador.limpiar} sx={{ color: 'text.secondary' }}>
+                                            <DeleteOutlineIcon fontSize="small" />
+                                        </IconButton>
+                                    </Stack>
+                                    <audio
+                                        controls
+                                        src={URL.createObjectURL(grabador.audioBlob)}
+                                        style={{ width: '100%', height: 36 }}
+                                    />
+                                    <TextField
+                                        fullWidth
+                                        size="small"
+                                        placeholder="Agregar nota al audio (opcional)..."
+                                        value={nuevoComentario}
+                                        onChange={(e) => setNuevoComentario(e.target.value)}
+                                    />
+                                    <Button
+                                        variant="contained"
+                                        color="success"
+                                        size="small"
+                                        startIcon={subiendoAudio ? <CircularProgress size={16} color="inherit" /> : <SendIcon />}
+                                        onClick={handleEnviarAudio}
+                                        disabled={subiendoAudio}
+                                        fullWidth
+                                        sx={{ textTransform: 'none', borderRadius: 2 }}
+                                    >
+                                        {subiendoAudio ? 'Subiendo y transcribiendo...' : 'Enviar audio'}
+                                    </Button>
+                                </Stack>
+                            )}
+
+                            {/* Error de grabación */}
+                            {grabador.error && (
+                                <Typography variant="caption" color="error" sx={{ mb: 1, display: 'block' }}>
+                                    {grabador.error}
+                                </Typography>
+                            )}
+
+                            {/* Input de texto + botones */}
+                            {grabador.estado !== 'detenido' && (
+                                <Stack direction="row" spacing={1}>
+                                    <TextField
+                                        fullWidth
+                                        size="small"
+                                        placeholder="Escribe un comentario rápido..."
+                                        value={nuevoComentario}
+                                        onChange={(e) => setNuevoComentario(e.target.value)}
+                                        onKeyPress={(e) => {
+                                            if (e.key === 'Enter' && !e.shiftKey) {
+                                                e.preventDefault();
+                                                handleEnviarComentario();
+                                            }
+                                        }}
+                                        disabled={enviandoComentario || grabador.estado === 'grabando' || grabador.estado === 'pausado'}
+                                        multiline
+                                        maxRows={3}
+                                    />
+                                    {grabador.estado === 'inactivo' && (
+                                        <Tooltip title="Grabar audio">
+                                            <IconButton
+                                                color="error"
+                                                onClick={grabador.iniciar}
+                                                sx={{ bgcolor: '#ffebee', '&:hover': { bgcolor: '#ffcdd2' } }}
+                                            >
+                                                <MicIcon />
+                                            </IconButton>
+                                        </Tooltip>
+                                    )}
+                                    <Button
+                                        variant="contained"
+                                        size="small"
+                                        onClick={handleEnviarComentario}
+                                        disabled={!nuevoComentario.trim() || enviandoComentario || grabador.estado !== 'inactivo'}
+                                        sx={{ minWidth: 'auto', px: 2 }}
+                                    >
+                                        {enviandoComentario ? <CircularProgress size={20} /> : <SendIcon />}
+                                    </Button>
+                                </Stack>
+                            )}
                         </Paper>
 
                     {/* ==================== HISTORIAL INLINE (desktop) ==================== */}
                     {historial.length > 0 && (
                         <Paper variant="outlined" sx={{ p: 2 }}>
-                            <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1.5}>
+                            <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1}>
                                 <Stack direction="row" spacing={1} alignItems="center">
                                     <HistoryIcon fontSize="small" color="action" />
                                     <Typography variant="subtitle2" color="text.secondary">
-                                        Historial reciente ({historial.length})
+                                        Historial reciente ({historialFiltrado.length})
                                     </Typography>
                                 </Stack>
                                 <Button
@@ -1365,8 +1610,30 @@ const ContactoSDRDetailPage = () => {
                                     Ver todo →
                                 </Button>
                             </Stack>
+                            <Stack direction="row" spacing={0.5} sx={{ mb: 1.5, overflowX: 'auto', pb: 0.5 }}>
+                                {FILTROS_HISTORIAL.map((filtro) => {
+                                    const count = filtro.tipos
+                                        ? historial.filter(e => filtro.tipos.includes(e.tipo)).length
+                                        : historial.length;
+                                    return (
+                                        <Chip
+                                            key={filtro.key}
+                                            label={`${filtro.icon} ${filtro.label}${count > 0 ? ` (${count})` : ''}`}
+                                            size="small"
+                                            color={filtroHistorial === filtro.key ? 'primary' : 'default'}
+                                            variant={filtroHistorial === filtro.key ? 'filled' : 'outlined'}
+                                            onClick={() => setFiltroHistorial(filtro.key)}
+                                            sx={{ fontSize: '0.68rem', flexShrink: 0 }}
+                                        />
+                                    );
+                                })}
+                            </Stack>
                             <Stack spacing={1}>
-                                {historial.slice(0, 5).map((evento) => {
+                                {historialFiltrado.length === 0 ? (
+                                    <Typography variant="body2" color="text.secondary" sx={{ py: 1, textAlign: 'center' }}>
+                                        No hay eventos de este tipo
+                                    </Typography>
+                                ) : historialFiltrado.slice(0, 5).map((evento) => {
                                     const colors = getEventoColor(evento.tipo);
                                     return (
                                         <Paper
@@ -1387,6 +1654,16 @@ const ContactoSDRDetailPage = () => {
                                                             &ldquo;{evento.nota.length > 120 ? evento.nota.substring(0, 120) + '...' : evento.nota}&rdquo;
                                                         </Typography>
                                                     )}
+                                                    {(evento.audioUrl || evento.metadata?.audioUrl) && (
+                                                        <Box sx={{ mt: 0.5 }}>
+                                                            <audio controls src={evento.audioUrl || evento.metadata?.audioUrl} style={{ width: '100%', height: 32 }} />
+                                                        </Box>
+                                                    )}
+                                                    {(evento.transcripcion || evento.metadata?.transcripcion) && (
+                                                        <Typography variant="caption" sx={{ display: 'block', mt: 0.3, p: 0.5, bgcolor: 'rgba(255,255,255,0.7)', borderRadius: 1, fontStyle: 'italic', fontSize: '0.72rem' }}>
+                                                            📝 {(evento.transcripcion || evento.metadata?.transcripcion).substring(0, 150)}{(evento.transcripcion || evento.metadata?.transcripcion).length > 150 ? '...' : ''}
+                                                        </Typography>
+                                                    )}
                                                     <Typography variant="caption" color="text.secondary">
                                                         {new Date(evento.createdAt).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
                                                         {evento.sdrNombre && ` • ${evento.sdrNombre}`}
@@ -1396,14 +1673,14 @@ const ContactoSDRDetailPage = () => {
                                         </Paper>
                                     );
                                 })}
-                                {historial.length > 5 && (
+                                {historialFiltrado.length > 5 && (
                                     <Button
                                         size="small"
                                         variant="text"
                                         onClick={() => setTabDesktop(1)}
                                         sx={{ textTransform: 'none', fontSize: '0.75rem', alignSelf: 'center' }}
                                     >
-                                        Ver {historial.length - 5} evento(s) más →
+                                        Ver {historialFiltrado.length - 5} evento(s) más →
                                     </Button>
                                 )}
                             </Stack>
@@ -1935,49 +2212,137 @@ const ContactoSDRDetailPage = () => {
                     </Grid>
                     {/* ==================== FIN GRID DESKTOP HISTORIAL + CADENCIA ==================== */}
 
-                    {/* ==================== MOBILE: COMENTARIO + HISTORIAL ==================== */}
+                    {/* ==================== MOBILE: COMENTARIO + AUDIO + HISTORIAL ==================== */}
                     {isMobile && (
                         <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
                             <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                                Agregar comentario
+                                Agregar comentario / audio
                             </Typography>
-                            <Stack direction="row" spacing={1}>
-                                <TextField
-                                    fullWidth
-                                    size="small"
-                                    placeholder="Escribe un comentario rápido..."
-                                    value={nuevoComentario}
-                                    onChange={(e) => setNuevoComentario(e.target.value)}
-                                    onKeyPress={(e) => {
-                                        if (e.key === 'Enter' && !e.shiftKey) {
-                                            e.preventDefault();
-                                            handleEnviarComentario();
-                                        }
-                                    }}
-                                    disabled={enviandoComentario}
-                                    multiline
-                                    maxRows={3}
-                                />
-                                <Button
-                                    variant="contained"
-                                    size="small"
-                                    onClick={handleEnviarComentario}
-                                    disabled={!nuevoComentario.trim() || enviandoComentario}
-                                    sx={{ minWidth: 'auto', px: 2 }}
-                                >
-                                    {enviandoComentario ? <CircularProgress size={20} /> : <SendIcon />}
-                                </Button>
-                            </Stack>
+
+                            {/* Indicador de grabación activa */}
+                            {(grabador.estado === 'grabando' || grabador.estado === 'pausado') && (
+                                <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.5, p: 1, bgcolor: grabador.estado === 'grabando' ? '#ffebee' : '#fff8e1', borderRadius: 2, border: 1, borderColor: grabador.estado === 'grabando' ? 'error.light' : 'warning.light' }}>
+                                    <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: grabador.estado === 'grabando' ? 'error.main' : 'warning.main', animation: grabador.estado === 'grabando' ? 'pulse 1.5s infinite' : 'none', '@keyframes pulse': { '0%, 100%': { opacity: 1 }, '50%': { opacity: 0.3 } } }} />
+                                    <Typography variant="body2" fontWeight={600} color={grabador.estado === 'grabando' ? 'error.main' : 'warning.main'}>
+                                        {grabador.estado === 'grabando' ? 'Grabando...' : 'Pausado'}
+                                    </Typography>
+                                    <Typography variant="body2" fontWeight={700} sx={{ fontFamily: 'monospace' }}>
+                                        {grabador.duracionFormateada}
+                                    </Typography>
+                                    <Box sx={{ flex: 1 }} />
+                                    {grabador.estado === 'grabando' ? (
+                                        <IconButton size="small" onClick={grabador.pausar} sx={{ color: 'warning.main' }}>
+                                            <PauseIcon fontSize="small" />
+                                        </IconButton>
+                                    ) : (
+                                        <IconButton size="small" onClick={grabador.reanudar} sx={{ color: 'success.main' }}>
+                                            <PlayArrowIcon fontSize="small" />
+                                        </IconButton>
+                                    )}
+                                    <IconButton size="small" onClick={grabador.detener} sx={{ color: 'error.main' }}>
+                                        <StopIcon fontSize="small" />
+                                    </IconButton>
+                                </Stack>
+                            )}
+
+                            {/* Audio listo para enviar */}
+                            {grabador.estado === 'detenido' && grabador.audioBlob && (
+                                <Stack spacing={1} sx={{ mb: 1.5, p: 1.5, bgcolor: '#e8f5e9', borderRadius: 2, border: 1, borderColor: 'success.light' }}>
+                                    <Stack direction="row" alignItems="center" spacing={1}>
+                                        <GraphicEqIcon sx={{ color: 'success.main' }} />
+                                        <Typography variant="body2" fontWeight={600} color="success.dark">
+                                            Audio listo ({grabador.duracionFormateada})
+                                        </Typography>
+                                        <Box sx={{ flex: 1 }} />
+                                        <IconButton size="small" onClick={grabador.limpiar} sx={{ color: 'text.secondary' }}>
+                                            <DeleteOutlineIcon fontSize="small" />
+                                        </IconButton>
+                                    </Stack>
+                                    <audio
+                                        controls
+                                        src={URL.createObjectURL(grabador.audioBlob)}
+                                        style={{ width: '100%', height: 36 }}
+                                    />
+                                    <TextField
+                                        fullWidth
+                                        size="small"
+                                        placeholder="Agregar nota al audio (opcional)..."
+                                        value={nuevoComentario}
+                                        onChange={(e) => setNuevoComentario(e.target.value)}
+                                    />
+                                    <Button
+                                        variant="contained"
+                                        color="success"
+                                        size="small"
+                                        startIcon={subiendoAudio ? <CircularProgress size={16} color="inherit" /> : <SendIcon />}
+                                        onClick={handleEnviarAudio}
+                                        disabled={subiendoAudio}
+                                        fullWidth
+                                        sx={{ textTransform: 'none', borderRadius: 2 }}
+                                    >
+                                        {subiendoAudio ? 'Subiendo y transcribiendo...' : 'Enviar audio'}
+                                    </Button>
+                                </Stack>
+                            )}
+
+                            {/* Error de grabación */}
+                            {grabador.error && (
+                                <Typography variant="caption" color="error" sx={{ mb: 1, display: 'block' }}>
+                                    {grabador.error}
+                                </Typography>
+                            )}
+
+                            {/* Input de texto + botones */}
+                            {grabador.estado !== 'detenido' && (
+                                <Stack direction="row" spacing={1}>
+                                    <TextField
+                                        fullWidth
+                                        size="small"
+                                        placeholder="Escribe un comentario rápido..."
+                                        value={nuevoComentario}
+                                        onChange={(e) => setNuevoComentario(e.target.value)}
+                                        onKeyPress={(e) => {
+                                            if (e.key === 'Enter' && !e.shiftKey) {
+                                                e.preventDefault();
+                                                handleEnviarComentario();
+                                            }
+                                        }}
+                                        disabled={enviandoComentario || grabador.estado === 'grabando' || grabador.estado === 'pausado'}
+                                        multiline
+                                        maxRows={3}
+                                    />
+                                    {grabador.estado === 'inactivo' && (
+                                        <Tooltip title="Grabar audio">
+                                            <IconButton
+                                                color="error"
+                                                onClick={grabador.iniciar}
+                                                sx={{ bgcolor: '#ffebee', '&:hover': { bgcolor: '#ffcdd2' } }}
+                                            >
+                                                <MicIcon />
+                                            </IconButton>
+                                        </Tooltip>
+                                    )}
+                                    <Button
+                                        variant="contained"
+                                        size="small"
+                                        onClick={handleEnviarComentario}
+                                        disabled={!nuevoComentario.trim() || enviandoComentario || grabador.estado !== 'inactivo'}
+                                        sx={{ minWidth: 'auto', px: 2 }}
+                                    >
+                                        {enviandoComentario ? <CircularProgress size={20} /> : <SendIcon />}
+                                    </Button>
+                                </Stack>
+                            )}
                         </Paper>
                     )}
 
                     {isMobile && historial.length > 0 && (
                         <Paper variant="outlined" sx={{ p: 2, mb: 3 }}>
-                            <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1.5}>
+                            <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1}>
                                 <Stack direction="row" spacing={1} alignItems="center">
                                     <HistoryIcon fontSize="small" color="action" />
                                     <Typography variant="subtitle2" color="text.secondary">
-                                        Historial reciente ({historial.length})
+                                        Historial reciente ({historialFiltrado.length})
                                     </Typography>
                                 </Stack>
                                 <Button
@@ -1989,8 +2354,30 @@ const ContactoSDRDetailPage = () => {
                                     Ver todo →
                                 </Button>
                             </Stack>
+                            <Stack direction="row" spacing={0.5} sx={{ mb: 1.5, overflowX: 'auto', pb: 0.5 }}>
+                                {FILTROS_HISTORIAL.map((filtro) => {
+                                    const count = filtro.tipos
+                                        ? historial.filter(e => filtro.tipos.includes(e.tipo)).length
+                                        : historial.length;
+                                    return (
+                                        <Chip
+                                            key={filtro.key}
+                                            label={`${filtro.icon} ${filtro.label}${count > 0 ? ` (${count})` : ''}`}
+                                            size="small"
+                                            color={filtroHistorial === filtro.key ? 'primary' : 'default'}
+                                            variant={filtroHistorial === filtro.key ? 'filled' : 'outlined'}
+                                            onClick={() => setFiltroHistorial(filtro.key)}
+                                            sx={{ fontSize: '0.68rem', flexShrink: 0 }}
+                                        />
+                                    );
+                                })}
+                            </Stack>
                             <Stack spacing={1}>
-                                {historial.slice(0, 3).map((evento) => {
+                                {historialFiltrado.length === 0 ? (
+                                    <Typography variant="body2" color="text.secondary" sx={{ py: 1, textAlign: 'center' }}>
+                                        No hay eventos de este tipo
+                                    </Typography>
+                                ) : historialFiltrado.slice(0, 3).map((evento) => {
                                     const colors = getEventoColor(evento.tipo);
                                     return (
                                         <Paper
@@ -2011,6 +2398,16 @@ const ContactoSDRDetailPage = () => {
                                                             &ldquo;{evento.nota.length > 80 ? evento.nota.substring(0, 80) + '...' : evento.nota}&rdquo;
                                                         </Typography>
                                                     )}
+                                                    {(evento.audioUrl || evento.metadata?.audioUrl) && (
+                                                        <Box sx={{ mt: 0.5 }}>
+                                                            <audio controls src={evento.audioUrl || evento.metadata?.audioUrl} style={{ width: '100%', height: 32 }} />
+                                                        </Box>
+                                                    )}
+                                                    {(evento.transcripcion || evento.metadata?.transcripcion) && (
+                                                        <Typography variant="caption" sx={{ display: 'block', mt: 0.3, p: 0.5, bgcolor: 'rgba(255,255,255,0.7)', borderRadius: 1, fontStyle: 'italic', fontSize: '0.72rem' }}>
+                                                            📝 {(evento.transcripcion || evento.metadata?.transcripcion).substring(0, 100)}{(evento.transcripcion || evento.metadata?.transcripcion).length > 100 ? '...' : ''}
+                                                        </Typography>
+                                                    )}
                                                     <Typography variant="caption" color="text.secondary">
                                                         {new Date(evento.createdAt).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
                                                         {evento.sdrNombre && ` • ${evento.sdrNombre}`}
@@ -2020,14 +2417,14 @@ const ContactoSDRDetailPage = () => {
                                         </Paper>
                                     );
                                 })}
-                                {historial.length > 3 && (
+                                {historialFiltrado.length > 3 && (
                                     <Button
                                         size="small"
                                         variant="text"
                                         onClick={() => setTabMobile(1)}
                                         sx={{ textTransform: 'none', fontSize: '0.75rem', alignSelf: 'center' }}
                                     >
-                                        Ver {historial.length - 3} evento(s) más →
+                                        Ver {historialFiltrado.length - 3} evento(s) más →
                                     </Button>
                                 )}
                             </Stack>
@@ -2040,42 +2437,109 @@ const ContactoSDRDetailPage = () => {
                     {/* ==================== TAB HISTORIAL ==================== */}
                     {((isMobile && tabMobile === 1) || (!isMobile && tabDesktop === 1)) && (
                         <Paper variant="outlined" sx={{ p: 2, height: { xs: 'auto', md: 600 }, display: 'flex', flexDirection: 'column' }}>
-                            {/* Comentario */}
-                            <Stack direction="row" spacing={1} sx={{ mb: 2 }}>
-                                <TextField
-                                    fullWidth
-                                    size="small"
-                                    placeholder="Escribe un comentario..."
-                                    value={nuevoComentario}
-                                    onChange={(e) => setNuevoComentario(e.target.value)}
-                                    onKeyPress={(e) => {
-                                        if (e.key === 'Enter' && !e.shiftKey) {
-                                            e.preventDefault();
-                                            handleEnviarComentario();
-                                        }
-                                    }}
-                                    disabled={enviandoComentario}
-                                />
-                                <Button
-                                    variant="contained"
-                                    size="small"
-                                    onClick={handleEnviarComentario}
-                                    disabled={!nuevoComentario.trim() || enviandoComentario}
-                                >
-                                    {enviandoComentario ? <CircularProgress size={20} /> : <SendIcon />}
-                                </Button>
-                            </Stack>
+                            {/* Comentario + Audio */}
+                            {/* Indicador de grabación en tab historial */}
+                            {(grabador.estado === 'grabando' || grabador.estado === 'pausado') && (
+                                <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1, p: 1, bgcolor: grabador.estado === 'grabando' ? '#ffebee' : '#fff8e1', borderRadius: 2, border: 1, borderColor: grabador.estado === 'grabando' ? 'error.light' : 'warning.light' }}>
+                                    <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: grabador.estado === 'grabando' ? 'error.main' : 'warning.main', animation: grabador.estado === 'grabando' ? 'pulse 1.5s infinite' : 'none', '@keyframes pulse': { '0%, 100%': { opacity: 1 }, '50%': { opacity: 0.3 } } }} />
+                                    <Typography variant="caption" fontWeight={600} color={grabador.estado === 'grabando' ? 'error.main' : 'warning.main'}>
+                                        {grabador.estado === 'grabando' ? 'Grabando' : 'Pausado'} {grabador.duracionFormateada}
+                                    </Typography>
+                                    <Box sx={{ flex: 1 }} />
+                                    {grabador.estado === 'grabando' ? (
+                                        <IconButton size="small" onClick={grabador.pausar}><PauseIcon sx={{ fontSize: 18 }} /></IconButton>
+                                    ) : (
+                                        <IconButton size="small" onClick={grabador.reanudar}><PlayArrowIcon sx={{ fontSize: 18 }} /></IconButton>
+                                    )}
+                                    <IconButton size="small" onClick={grabador.detener} sx={{ color: 'error.main' }}><StopIcon sx={{ fontSize: 18 }} /></IconButton>
+                                </Stack>
+                            )}
+                            {/* Audio listo en tab historial */}
+                            {grabador.estado === 'detenido' && grabador.audioBlob && (
+                                <Stack spacing={1} sx={{ mb: 1.5, p: 1, bgcolor: '#e8f5e9', borderRadius: 2, border: 1, borderColor: 'success.light' }}>
+                                    <Stack direction="row" alignItems="center" spacing={1}>
+                                        <GraphicEqIcon sx={{ color: 'success.main', fontSize: 20 }} />
+                                        <Typography variant="caption" fontWeight={600} color="success.dark">Audio listo ({grabador.duracionFormateada})</Typography>
+                                        <Box sx={{ flex: 1 }} />
+                                        <IconButton size="small" onClick={grabador.limpiar}><DeleteOutlineIcon sx={{ fontSize: 16 }} /></IconButton>
+                                    </Stack>
+                                    <audio controls src={URL.createObjectURL(grabador.audioBlob)} style={{ width: '100%', height: 32 }} />
+                                    <Stack direction="row" spacing={1}>
+                                        <TextField fullWidth size="small" placeholder="Nota (opcional)..." value={nuevoComentario} onChange={(e) => setNuevoComentario(e.target.value)} />
+                                        <Button variant="contained" color="success" size="small" onClick={handleEnviarAudio} disabled={subiendoAudio} sx={{ minWidth: 'auto', px: 2 }}>
+                                            {subiendoAudio ? <CircularProgress size={18} color="inherit" /> : <SendIcon />}
+                                        </Button>
+                                    </Stack>
+                                </Stack>
+                            )}
+                            {grabador.estado !== 'detenido' && (
+                                <Stack direction="row" spacing={1} sx={{ mb: 2 }}>
+                                    <TextField
+                                        fullWidth
+                                        size="small"
+                                        placeholder="Escribe un comentario..."
+                                        value={nuevoComentario}
+                                        onChange={(e) => setNuevoComentario(e.target.value)}
+                                        onKeyPress={(e) => {
+                                            if (e.key === 'Enter' && !e.shiftKey) {
+                                                e.preventDefault();
+                                                handleEnviarComentario();
+                                            }
+                                        }}
+                                        disabled={enviandoComentario || grabador.estado !== 'inactivo'}
+                                    />
+                                    {grabador.estado === 'inactivo' && (
+                                        <Tooltip title="Grabar audio">
+                                            <IconButton color="error" onClick={grabador.iniciar} sx={{ bgcolor: '#ffebee', '&:hover': { bgcolor: '#ffcdd2' } }}>
+                                                <MicIcon />
+                                            </IconButton>
+                                        </Tooltip>
+                                    )}
+                                    <Button
+                                        variant="contained"
+                                        size="small"
+                                        onClick={handleEnviarComentario}
+                                        disabled={!nuevoComentario.trim() || enviandoComentario || grabador.estado !== 'inactivo'}
+                                    >
+                                        {enviandoComentario ? <CircularProgress size={20} /> : <SendIcon />}
+                                    </Button>
+                                </Stack>
+                            )}
 
-                            <Divider sx={{ mb: 2 }} />
+                            <Divider sx={{ mb: 1 }} />
+
+                            {/* Filtro por categoría */}
+                            <Stack direction="row" spacing={0.5} sx={{ mb: 1.5, overflowX: 'auto', flexShrink: 0, pb: 0.5 }}>
+                                {FILTROS_HISTORIAL.map((filtro) => {
+                                    const count = filtro.tipos 
+                                        ? historial.filter(e => filtro.tipos.includes(e.tipo)).length
+                                        : historial.length;
+                                    return (
+                                        <Chip
+                                            key={filtro.key}
+                                            label={`${filtro.icon} ${filtro.label}${count > 0 ? ` (${count})` : ''}`}
+                                            size="small"
+                                            color={filtroHistorial === filtro.key ? 'primary' : 'default'}
+                                            variant={filtroHistorial === filtro.key ? 'filled' : 'outlined'}
+                                            onClick={() => setFiltroHistorial(filtro.key)}
+                                            sx={{ fontSize: '0.72rem', flexShrink: 0 }}
+                                        />
+                                    );
+                                })}
+                            </Stack>
 
                             <Box sx={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
                                 {historial.length === 0 ? (
                                     <Typography variant="body2" color="text.secondary" sx={{ py: 2 }}>
                                         Sin historial aún
                                     </Typography>
+                                ) : historialFiltrado.length === 0 ? (
+                                    <Typography variant="body2" color="text.secondary" sx={{ py: 2 }}>
+                                        No hay eventos de tipo &ldquo;{FILTROS_HISTORIAL.find(f => f.key === filtroHistorial)?.label}&rdquo;
+                                    </Typography>
                                 ) : (
                                     <Stack spacing={1}>
-                                        {historial.map((evento) => {
+                                        {historialFiltrado.map((evento) => {
                                             const colors = getEventoColor(evento.tipo);
                                             return (
                                                 <Paper
@@ -2094,6 +2558,16 @@ const ContactoSDRDetailPage = () => {
                                                             {evento.nota && (
                                                                 <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, fontStyle: 'italic' }}>
                                                                     &ldquo;{evento.nota}&rdquo;
+                                                                </Typography>
+                                                            )}
+                                                            {(evento.audioUrl || evento.metadata?.audioUrl) && (
+                                                                <Box sx={{ mt: 0.5 }}>
+                                                                    <audio controls src={evento.audioUrl || evento.metadata?.audioUrl} style={{ width: '100%', height: 36 }} />
+                                                                </Box>
+                                                            )}
+                                                            {(evento.transcripcion || evento.metadata?.transcripcion) && (
+                                                                <Typography variant="caption" sx={{ display: 'block', mt: 0.5, p: 0.8, bgcolor: 'rgba(255,255,255,0.7)', borderRadius: 1, fontStyle: 'italic', lineHeight: 1.4 }}>
+                                                                    📝 {evento.transcripcion || evento.metadata?.transcripcion}
                                                                 </Typography>
                                                             )}
                                                             <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
@@ -2611,6 +3085,61 @@ const ContactoSDRDetailPage = () => {
                 onSubmit={handleRegistrarReunion}
                 loading={guardandoReunion}
             />
+
+            {/* Menú de re-asignación SDR */}
+            <Menu
+                anchorEl={menuAsignarAnchor}
+                open={Boolean(menuAsignarAnchor)}
+                onClose={() => setMenuAsignarAnchor(null)}
+                PaperProps={{ sx: { minWidth: 220, maxHeight: 350 } }}
+            >
+                <Typography variant="caption" color="text.secondary" sx={{ px: 2, py: 0.5, display: 'block', fontWeight: 600 }}>
+                    Re-asignar a:
+                </Typography>
+                <Divider />
+                {cargandoSdrs ? (
+                    <MenuItem disabled>
+                        <CircularProgress size={18} sx={{ mr: 1 }} /> Cargando SDRs...
+                    </MenuItem>
+                ) : sdrsDisponibles.length === 0 ? (
+                    <MenuItem disabled>No hay SDRs disponibles</MenuItem>
+                ) : (
+                    sdrsDisponibles.map((sdr) => {
+                        const sdrIdVal = sdr._id || sdr.id || sdr.uid;
+                        const sdrNombreVal = sdr.nombre || sdr.displayName || `${sdr.firstName || ''} ${sdr.lastName || ''}`.trim() || sdr.email;
+                        const esActual = sdrIdVal === contacto?.sdrAsignado;
+                        return (
+                            <MenuItem
+                                key={sdrIdVal}
+                                onClick={() => !esActual && handleReasignar(sdrIdVal, sdrNombreVal)}
+                                disabled={esActual || asignando}
+                                sx={{ fontSize: '0.85rem' }}
+                            >
+                                <ListItemIcon>
+                                    {esActual ? <CheckCircleIcon fontSize="small" color="success" /> : <PersonIcon fontSize="small" />}
+                                </ListItemIcon>
+                                <ListItemText>
+                                    {sdrNombreVal}
+                                    {esActual && <Typography variant="caption" color="text.secondary"> (actual)</Typography>}
+                                </ListItemText>
+                            </MenuItem>
+                        );
+                    })
+                )}
+                <Divider />
+                {contacto?.sdrAsignado && (
+                    <MenuItem 
+                        onClick={handleDesasignar} 
+                        disabled={asignando}
+                        sx={{ color: 'error.main', fontSize: '0.85rem' }}
+                    >
+                        <ListItemIcon>
+                            <PersonRemoveIcon fontSize="small" color="error" />
+                        </ListItemIcon>
+                        <ListItemText>Desasignar</ListItemText>
+                    </MenuItem>
+                )}
+            </Menu>
 
             {/* Snackbar */}
             <Snackbar

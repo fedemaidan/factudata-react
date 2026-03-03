@@ -92,6 +92,27 @@ const SDRService = {
     },
 
     /**
+     * Subir audio grabado y asociarlo a un contacto
+     * @param {string} contactoId - ID del contacto
+     * @param {Blob} audioBlob - Blob del audio grabado
+     * @param {object} opts - { duracion, nota, empresaId }
+     */
+    subirAudio: async (contactoId, audioBlob, opts = {}) => {
+        const formData = new FormData();
+        formData.append('audio', audioBlob, `audio_${Date.now()}.webm`);
+        formData.append('contactoId', contactoId);
+        if (opts.duracion) formData.append('duracion', String(opts.duracion));
+        if (opts.nota) formData.append('nota', opts.nota);
+        if (opts.empresaId) formData.append('empresaId', opts.empresaId);
+        
+        const res = await api.post('/sdr/acciones/audio', formData, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+            timeout: 120000 // 2 min para audios largos + transcripción
+        });
+        return res.data;
+    },
+
+    /**
      * Marcar como "No califica"
      */
     marcarNoCalifica: async (contactoId, data) => {
