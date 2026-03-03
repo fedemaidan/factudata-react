@@ -121,6 +121,40 @@ const buildSurfaceLines = (analisis, totalNeto, currency) => {
   return lines;
 };
 
+const buildAjusteMonetarioLines = (presupuesto) => {
+  const moneda = (presupuesto?.moneda || 'ARS').toUpperCase();
+  const indexacion = moneda === 'USD'
+    ? 'USD'
+    : (presupuesto?.indexacion === 'CAC' || presupuesto?.indexacion === 'USD' ? presupuesto.indexacion : null);
+  const modo = moneda === 'USD'
+    ? 'Ajustar por dólar'
+    : indexacion === 'CAC'
+      ? 'Ajustar por CAC'
+      : indexacion === 'USD'
+        ? 'Ajustar por dólar'
+        : 'Pesos fijos';
+  const snap = presupuesto?.cotizacion_snapshot || null;
+
+  const lines = [`Modo: ${modo}`];
+  if (indexacion === 'CAC' && presupuesto?.cac_tipo) {
+    const label = presupuesto.cac_tipo === 'mano_obra'
+      ? 'Mano de Obra'
+      : presupuesto.cac_tipo === 'materiales'
+        ? 'Materiales'
+        : 'Promedio';
+    lines.push(`Tipo CAC: ${label}`);
+  }
+  if (indexacion === 'USD') {
+    if (presupuesto?.usd_fuente) lines.push(`Fuente USD: ${presupuesto.usd_fuente === 'blue' ? 'Blue' : 'Oficial'}`);
+    if (presupuesto?.usd_valor) lines.push(`Referencia: ${presupuesto.usd_valor}`);
+  }
+  if (Number.isFinite(Number(snap?.valor))) {
+    lines.push(`Valor guardado: ${Number(snap.valor).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+  }
+  if (snap?.fecha_origen) lines.push(`Fecha de cotización: ${snap.fecha_origen}`);
+  return lines;
+};
+
 const addMetadataBlock = (doc, presupuesto, empresaNombre, displayCurrency) => {
   const yStart = 40;
   const list = [
@@ -247,8 +281,9 @@ export async function exportPresupuestoToPdf(presupuesto, { empresa } = {}) {
   const notesForBlock = notes.replace(/Forma de pago[:\\-]\\s*.+/i, '').trim();
 
   const surfaceLines = buildSurfaceLines(presupuesto.analisis_superficies, totalNeto, currency);
+  const ajusteMonetarioLines = buildAjusteMonetarioLines(presupuesto);
 
-  if (notesForBlock || surfaceLines.length) {
+  if (notesForBlock || surfaceLines.length || ajusteMonetarioLines.length) {
     const infoWidth = PAGE_WIDTH - MARGIN * 2;
     const startY = currentY + 4;
     const padding = 6;
@@ -259,6 +294,7 @@ export async function exportPresupuestoToPdf(presupuesto, { empresa } = {}) {
       : [];
     blockHeight += noteLines.length * 5;
 
+    blockHeight += ajusteMonetarioLines.length * 5;
     blockHeight += surfaceLines.length * 5;
     blockHeight += 12; // headers and spacing
 
@@ -266,6 +302,20 @@ export async function exportPresupuestoToPdf(presupuesto, { empresa } = {}) {
     doc.rect(MARGIN, startY, infoWidth, blockHeight + padding, 'S');
 
     let textY = startY + 8;
+    if (ajusteMonetarioLines.length) {
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(11);
+      doc.text('Ajuste monetario', MARGIN + padding, textY);
+      textY += 5;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      ajusteMonetarioLines.forEach((line) => {
+        doc.text(line, MARGIN + padding, textY);
+        textY += 5;
+      });
+      textY += 3;
+    }
+
     if (noteLines.length) {
       doc.setFont('helvetica', 'bold');
       doc.text('Notas / Condiciones', MARGIN + padding, textY);

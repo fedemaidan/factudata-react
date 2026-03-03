@@ -49,7 +49,6 @@ Page (presupuestosProfesionales.js)
   │    └─ Usa axiosConfig.js (token Firebase inyectado por interceptor)
   ├─ Auth context: useAuthContext() → user
   │    └─ getEmpresaDetailsFromUser(user) → empresa_id
-  │    └─ getProyectosFromUser(user) → lista de proyectos
   └─ Estado: useState + useEffect + useCallback (sin React Query)
 ```
 
@@ -70,7 +69,7 @@ La página tiene **dos tabs principales**:
 
 ### Tab 0: Presupuestos
 
-- **Filtros:** búsqueda por título, estado, moneda, proyecto
+- **Filtros:** búsqueda por título, estado, moneda
 - **Tabla:** listado con expansión de rubros por fila
 - **Acciones por fila:**
   - 👁️ Ver detalle (abre dialog con sub-tabs: rubros, versiones, historial, anexos)
@@ -172,6 +171,7 @@ Tanto el form de presupuesto como el de plantilla incluyen un **editor inline de
 - Agregar/eliminar rubros
 - Agregar/eliminar tareas dentro de cada rubro
 - En presupuestos: campo de monto + cálculo de incidencia en vivo
+- En presupuestos: modo "Distribuir por incidencias" (total neto + % por rubro → montos automáticos)
 - En presupuestos: reordenar rubros (flechas arriba/abajo)
 - En presupuestos: selector para cargar rubros desde plantilla existente
 
@@ -182,7 +182,7 @@ Tanto el form de presupuesto como el de plantilla incluyen un **editor inline de
 ### Flujo 1: Crear presupuesto desde cero
 
 1. Tab "Presupuestos" → "Nuevo presupuesto"
-2. Completar título, moneda, proyecto (opcional), dirección
+2. Completar título, moneda, dirección
 3. Agregar rubros manualmente (nombre + monto + tareas)
 4. Editar notas (viene pre-cargado con texto sugerido por SorbyData)
 5. (Opcional) Completar análisis de superficies
@@ -269,4 +269,4 @@ borrador → enviado → aceptado → (anexos) → vencido
 
 ---
 
-*Última actualización: Enero 2025*
+*Última actualización: Marzo 2025*

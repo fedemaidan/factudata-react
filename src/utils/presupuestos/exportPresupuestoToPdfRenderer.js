@@ -37,6 +37,42 @@ const formatFechaMes = (fechaRef) => {
   return `${yyyy}-${mm}`;
 };
 
+const resolveVersionActual = (presupuesto) => {
+  const numero = Number(presupuesto?.version_actual);
+  if (!Array.isArray(presupuesto?.versiones) || !Number.isFinite(numero) || numero <= 0) return null;
+  return presupuesto.versiones.find((v) => Number(v?.numero_version) === numero) || null;
+};
+
+const resolveAjusteMonetarioData = (presupuesto) => {
+  const moneda = (presupuesto?.moneda || 'ARS').toUpperCase();
+  const indexacion = moneda === 'USD'
+    ? 'USD'
+    : (presupuesto?.indexacion === 'CAC' || presupuesto?.indexacion === 'USD' ? presupuesto.indexacion : null);
+  const modo = moneda === 'USD'
+    ? 'Ajustar por dólar'
+    : indexacion === 'CAC'
+      ? 'Ajustar por CAC'
+      : indexacion === 'USD'
+        ? 'Ajustar por dólar'
+        : 'Pesos fijos';
+
+  const cotizacion = presupuesto?.cotizacion_snapshot || null;
+  const cacTipo = presupuesto?.cac_tipo || null;
+  const usdFuente = presupuesto?.usd_fuente || null;
+  const usdValor = presupuesto?.usd_valor || null;
+
+  return {
+    modo,
+    indexacion: indexacion || null,
+    cac_tipo: cacTipo,
+    usd_fuente: usdFuente,
+    usd_valor: usdValor,
+    cotizacion_valor: Number.isFinite(Number(cotizacion?.valor)) ? Number(cotizacion.valor) : null,
+    cotizacion_fecha_origen: cotizacion?.fecha_origen || null,
+    cotizacion_tipo: cotizacion?.tipo || null,
+  };
+};
+
 const calcularCostoM2Data = async (presupuesto) => {
   const rubros = presupuesto?.rubros || [];
   const totalNeto = Number(presupuesto?.total_neto) || rubros.reduce((acc, r) => acc + (Number(r.monto) || 0), 0);
@@ -52,11 +88,15 @@ const calcularCostoM2Data = async (presupuesto) => {
   let tipoCambio = null;
   let valorCac = null;
 
-  const equivalencias = presupuesto?.version_actual?.equivalencias;
+  const versionActual = resolveVersionActual(presupuesto);
+  const equivalencias = versionActual?.equivalencias || null;
   const analisis = presupuesto?.analisis_superficies;
-  tipoCambio = equivalencias?.tipo_cambio_usd ?? analisis?.tipo_cambio_usado ?? null;
+  const snapshot = presupuesto?.cotizacion_snapshot || null;
+  tipoCambio = snapshot?.tipo === 'USD'
+    ? (Number(snapshot?.valor) || null)
+    : (equivalencias?.tipo_cambio_usd ?? analisis?.tipo_cambio_usado ?? null);
 
-  if (!tipoCambio) {
+  if (!tipoCambio && currency !== 'USD') {
     try {
       const dolarData = await MonedasService.listarDolar({ limit: 1 });
       const d = Array.isArray(dolarData) ? dolarData[0] : dolarData;
@@ -67,11 +107,15 @@ const calcularCostoM2Data = async (presupuesto) => {
   }
 
   const fechaMes = formatFechaMes(presupuesto?.fecha || presupuesto?.createdAt);
-  try {
-    const cacData = await cacService.getCacPorFecha(fechaMes);
-    valorCac = cacData?.general ?? null;
-  } catch (err) {
-    console.warn('No se pudo obtener CAC para PDF:', err);
+  if (snapshot?.tipo === 'CAC') {
+    valorCac = Number(snapshot?.valor) || null;
+  } else {
+    try {
+      const cacData = await cacService.getCacPorFecha(fechaMes);
+      valorCac = cacData?.general ?? null;
+    } catch (err) {
+      console.warn('No se pudo obtener CAC para PDF:', err);
+    }
   }
 
   // Formato legible del mes CAC para el PDF (ej: "02/2025")
@@ -95,6 +139,7 @@ const calcularCostoM2Data = async (presupuesto) => {
     usd: costoM2Usd != null && Number.isFinite(costoM2Usd) ? costoM2Usd : null,
     cac: costoM2Cac != null && Number.isFinite(costoM2Cac) ? costoM2Cac : null,
     cacMesReferencia,
+    ajusteMonetario: resolveAjusteMonetarioData(presupuesto),
   };
 };
 
@@ -111,7 +156,7 @@ export async function exportPresupuestoToPdfRenderer(presupuesto, { empresa } = 
     empresa?.nombre || presupuesto.empresa_nombre
   )}`;
 
-  let costoM2Data = { ars: null, usd: null, cac: null, cacMesReferencia: null };
+  let costoM2Data = { ars: null, usd: null, cac: null, cacMesReferencia: null, ajusteMonetario: null };
   try {
     costoM2Data = await calcularCostoM2Data(presupuesto);
   } catch (err) {
@@ -123,6 +168,7 @@ export async function exportPresupuestoToPdfRenderer(presupuesto, { empresa } = 
       presupuesto={presupuesto}
       empresa={empresa}
       costoM2Data={costoM2Data}
+      ajusteMonetarioData={costoM2Data?.ajusteMonetario || resolveAjusteMonetarioData(presupuesto)}
     />
   );
   const blob = await pdf(doc).toBlob();

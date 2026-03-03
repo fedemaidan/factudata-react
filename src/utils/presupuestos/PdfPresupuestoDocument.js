@@ -245,6 +245,49 @@ const formatFechaAnexo = (value) => {
   return date.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
 };
 
+const renderAjusteMonetario = (ajuste = {}) => {
+  if (!ajuste || !ajuste.modo) return null;
+
+  const lines = [`Modo: ${ajuste.modo}`];
+  if (ajuste.indexacion === 'CAC' && ajuste.cac_tipo) {
+    const label = ajuste.cac_tipo === 'mano_obra'
+      ? 'Mano de Obra'
+      : ajuste.cac_tipo === 'materiales'
+        ? 'Materiales'
+        : 'Promedio';
+    lines.push(`Tipo CAC: ${label}`);
+  }
+  if (ajuste.indexacion === 'USD') {
+    if (ajuste.usd_fuente) {
+      lines.push(`Fuente USD: ${ajuste.usd_fuente === 'blue' ? 'Blue' : 'Oficial'}`);
+    }
+    if (ajuste.usd_valor) {
+      const ref = ajuste.usd_valor.charAt(0).toUpperCase() + ajuste.usd_valor.slice(1);
+      lines.push(`Referencia: ${ref}`);
+    }
+  }
+  if (ajuste.cotizacion_valor != null && Number.isFinite(Number(ajuste.cotizacion_valor))) {
+    lines.push(
+      `Valor guardado: ${Number(ajuste.cotizacion_valor).toLocaleString('es-AR', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })}`
+    );
+  }
+  if (ajuste.cotizacion_fecha_origen) {
+    lines.push(`Fecha de cotización: ${ajuste.cotizacion_fecha_origen}`);
+  }
+
+  return (
+    <>
+      <Text style={[styles.sectionTitle, { marginTop: 8 }]}>Ajuste monetario</Text>
+      {lines.map((line, index) => (
+        <Text key={`ajuste-line-${index}`}>{line}</Text>
+      ))}
+    </>
+  );
+};
+
 const TIPO_ANEXO_LABEL = {
   adicion: 'Adición',
   deduccion: 'Deducción',
@@ -304,7 +347,7 @@ const renderResumenContractual = (totalOriginal, impactoAnexos, totalActualizado
   </View>
 );
 
-export const PresupuestoPdfDocument = ({ presupuesto, empresa, costoM2Data = {} }) => {
+export const PresupuestoPdfDocument = ({ presupuesto, empresa, costoM2Data = {}, ajusteMonetarioData = null }) => {
   const rubros = presupuesto?.rubros || [];
   const totalNeto =
     Number(presupuesto.total_neto) ||
@@ -348,8 +391,9 @@ export const PresupuestoPdfDocument = ({ presupuesto, empresa, costoM2Data = {} 
         </View>
         {tieneAnexos && renderAnexos(anexos, currency)}
         {tieneAnexos && renderResumenContractual(totalNeto, impactoAnexos, totalActualizado, currency, costoM2Data)}
-        {(notes || surfaceLines.length > 0) && (
+        {(notes || surfaceLines.length > 0 || ajusteMonetarioData?.modo) && (
           <View style={styles.notesBox} wrap>
+            {renderAjusteMonetario(ajusteMonetarioData)}
             {notes ? (
               <>
                 <Text style={styles.sectionTitle}>Notas / Condiciones</Text>

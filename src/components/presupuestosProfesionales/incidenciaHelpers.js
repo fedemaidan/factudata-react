@@ -36,15 +36,20 @@ export function distribuirMontosPorIncidencia(total, rubros) {
   const sumaMontos = montos.reduce((s, m) => s + m, 0);
   const diff = Math.round((totalNum - sumaMontos) * 100) / 100;
 
+  // Solo ajustar el último rubro para compensar redondeos cuando la suma de incidencias
+  // está cerca de 100%. Si la suma difiere (ej. 90% o 110%), no forzar el total.
+  const sumaCercaDe100 = Math.abs(sumaPct - 100) < 0.01;
   let lastIdx = -1;
-  for (let i = rubrosConPct.length - 1; i >= 0; i--) {
-    if (rubrosConPct[i]._pctValido) {
-      lastIdx = i;
-      break;
+  if (sumaCercaDe100) {
+    for (let i = rubrosConPct.length - 1; i >= 0; i--) {
+      if (rubrosConPct[i]._pctValido) {
+        lastIdx = i;
+        break;
+      }
     }
-  }
-  if (lastIdx >= 0 && Math.abs(diff) > 0.001) {
-    montos[lastIdx] = Math.round((montos[lastIdx] + diff) * 100) / 100;
+    if (lastIdx >= 0 && Math.abs(diff) > 0.001) {
+      montos[lastIdx] = Math.round((montos[lastIdx] + diff) * 100) / 100;
+    }
   }
 
   return rubrosConPct.map((r, i) => {

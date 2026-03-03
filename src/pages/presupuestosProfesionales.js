@@ -46,8 +46,9 @@ import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import { useAuthContext } from 'src/contexts/auth-context';
 import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
-import { getProyectosFromUser } from 'src/services/proyectosService';
 import PresupuestoProfesionalService from 'src/services/presupuestoProfesional/presupuestoProfesionalService';
+import MonedasService from 'src/services/monedasService';
+import cacService from 'src/services/cacService';
 import {
   PresupuestoFormDialog,
   PresupuestoDeleteDialog,
@@ -67,6 +68,13 @@ import {
   formatDate,
   formatPct,
   TEXTO_NOTAS_DEFAULT,
+  parseNumberInput,
+  CAC_TIPOS,
+  INDEXACION_VALUES,
+  USD_FUENTES,
+  USD_VALORES,
+  hoyIso,
+  normalizarAjusteMoneda,
 } from 'src/components/presupuestosProfesionales';
 
 /* ================================================================
@@ -79,6 +87,10 @@ const emptyPresupuesto = {
   proyecto_nombre: '',
   obra_direccion: '',
   moneda: 'ARS',
+  indexacion: INDEXACION_VALUES.FIJO,
+  cac_tipo: CAC_TIPOS.GENERAL,
+  usd_fuente: USD_FUENTES.OFICIAL,
+  usd_valor: USD_VALORES.PROMEDIO,
   rubros: [],
   notas_texto: '',
   analisis_superficies: {
@@ -92,6 +104,29 @@ const emptyPresupuesto = {
 
 const emptyRubro = { nombre: '', monto: 0, incidencia_objetivo_pct: null, tareas: [] };
 const emptyTarea = { descripcion: '' };
+
+const CAC_LABELS = {
+  [CAC_TIPOS.GENERAL]: 'Promedio',
+  [CAC_TIPOS.MANO_OBRA]: 'Mano de Obra',
+  [CAC_TIPOS.MATERIALES]: 'Materiales',
+};
+
+const toMes = (fechaIso = '') => {
+  if (!fechaIso || typeof fechaIso !== 'string' || fechaIso.length < 7) return '';
+  return fechaIso.slice(0, 7);
+};
+
+const pickUsdValue = (dolarData, fuente, tipo) => {
+  const bloque = dolarData?.[fuente];
+  if (!bloque) return null;
+  const value = Number(bloque?.[tipo]);
+  return Number.isFinite(value) && value > 0 ? value : null;
+};
+
+const pickCacValue = (cacData, tipo) => {
+  const value = Number(cacData?.[tipo]);
+  return Number.isFinite(value) && value > 0 ? value : null;
+};
 
 /* ================================================================
    Formulario vacío – Plantilla
@@ -115,7 +150,6 @@ const PresupuestosProfesionales = () => {
   // ── Datos globales ──
   const [empresaId, setEmpresaId] = useState(null);
   const [empresaNombre, setEmpresaNombre] = useState('');
-  const [proyectos, setProyectos] = useState([]);
   const [plantillas, setPlantillas] = useState([]);
 
   // ── Tab principal ──
@@ -132,7 +166,6 @@ const PresupuestosProfesionales = () => {
   const [filtroEstado, setFiltroEstado] = useState('');
   const [filtroMoneda, setFiltroMoneda] = useState('');
   const [filtroTitulo, setFiltroTitulo] = useState('');
-  const [filtroProyecto, setFiltroProyecto] = useState('');
 
   // ── Presupuestos: formulario crear / editar ──
   const [openPPForm, setOpenPPForm] = useState(false);
@@ -258,7 +291,7 @@ const PresupuestosProfesionales = () => {
   const showAlert = (message, severity = 'success') => setAlert({ open: true, message, severity });
 
   /* ================================================================
-     Init: cargar empresa, proyectos, plantillas
+     Init: cargar empresa, plantillas
      ================================================================ */
 
   useEffect(() => {
@@ -270,8 +303,6 @@ const PresupuestosProfesionales = () => {
           setEmpresaId(empresa.id);
           setEmpresaNombre(empresa.nombre || '');
         }
-        const proys = await getProyectosFromUser(user);
-        setProyectos(proys || []);
       } catch (err) {
         console.error('Error inicializando presupuestos profesionales:', err);
       }
@@ -294,8 +325,6 @@ const PresupuestosProfesionales = () => {
       if (filtroEstado) filters.estado = filtroEstado;
       if (filtroMoneda) filters.moneda = filtroMoneda;
       if (filtroTitulo.trim()) filters.titulo = filtroTitulo.trim();
-      if (filtroProyecto) filters.proyecto_id = filtroProyecto;
-
       const resp = await PresupuestoProfesionalService.listar(filters);
       setPresupuestos(resp.items || []);
       setTotalPresupuestos(resp.total || 0);
@@ -305,7 +334,7 @@ const PresupuestosProfesionales = () => {
     } finally {
       setPresupuestosLoading(false);
     }
-  }, [empresaId, ppPage, ppRowsPerPage, filtroEstado, filtroMoneda, filtroTitulo, filtroProyecto]);
+  }, [empresaId, ppPage, ppRowsPerPage, filtroEstado, filtroMoneda, filtroTitulo]);
 
   useEffect(() => {
     if (currentTab === 0) fetchPresupuestos();
@@ -343,6 +372,45 @@ const PresupuestosProfesionales = () => {
      Presupuesto: Crear / Editar
      ================================================================ */
 
+  const resolverCotizacionSnapshot = async (form) => {
+    const ajuste = normalizarAjusteMoneda(form);
+    const fechaHoy = hoyIso();
+
+    if (ajuste.moneda === 'USD' || ajuste.indexacion === INDEXACION_VALUES.USD) {
+      const dolarData = await MonedasService.obtenerDolar(fechaHoy);
+      const valorUsd = pickUsdValue(dolarData, ajuste.usd_fuente, ajuste.usd_valor);
+      if (!valorUsd) {
+        throw new Error(`No hay cotización USD ${ajuste.usd_fuente}/${ajuste.usd_valor} para ${fechaHoy}`);
+      }
+      return {
+        tipo: 'USD',
+        fuente: ajuste.usd_fuente,
+        referencia: ajuste.usd_valor,
+        valor: valorUsd,
+        fecha_origen: dolarData?.fecha || fechaHoy,
+      };
+    }
+
+    if (ajuste.indexacion === INDEXACION_VALUES.CAC) {
+      const mesReferencia = toMes(fechaHoy);
+      const cacData = await cacService.getCacPorFecha(mesReferencia);
+      const valorCac = pickCacValue(cacData, ajuste.cac_tipo);
+      if (!valorCac) {
+        const tipoLabel = CAC_LABELS[ajuste.cac_tipo] || ajuste.cac_tipo;
+        throw new Error(`No hay índice CAC (${tipoLabel}) para ${mesReferencia}`);
+      }
+      return {
+        tipo: 'CAC',
+        fuente: 'cac',
+        referencia: ajuste.cac_tipo,
+        valor: valorCac,
+        fecha_origen: cacData?.fecha || mesReferencia,
+      };
+    }
+
+    return null;
+  };
+
   const handleOpenPPCreate = () => {
     setPpForm({
       ...emptyPresupuesto,
@@ -365,6 +433,10 @@ const PresupuestosProfesionales = () => {
         proyecto_nombre: full.proyecto_nombre || '',
         obra_direccion: full.obra_direccion || '',
         moneda: full.moneda || 'ARS',
+        indexacion: full.indexacion ?? ((full.moneda || 'ARS') === 'USD' ? INDEXACION_VALUES.USD : INDEXACION_VALUES.FIJO),
+        cac_tipo: full.cac_tipo || CAC_TIPOS.GENERAL,
+        usd_fuente: full.usd_fuente || USD_FUENTES.OFICIAL,
+        usd_valor: full.usd_valor || USD_VALORES.PROMEDIO,
         rubros: (full.rubros || []).map((r) => ({
           nombre: r.nombre || '',
           monto: r.monto || 0,
@@ -410,6 +482,9 @@ const PresupuestosProfesionales = () => {
     }
     setPpSaving(true);
     try {
+      const ajuste = normalizarAjusteMoneda(ppForm);
+      const cotizacionSnapshot = await resolverCotizacionSnapshot(ppForm);
+
       const payload = {
         empresa_id: empresaId,
         empresa_nombre: empresaNombre,
@@ -417,7 +492,14 @@ const PresupuestosProfesionales = () => {
         proyecto_id: ppForm.proyecto_id || null,
         proyecto_nombre: ppForm.proyecto_nombre || null,
         obra_direccion: ppForm.obra_direccion || null,
-        moneda: ppForm.moneda,
+        moneda: ajuste.moneda,
+        fecha: hoyIso(),
+        fecha_presupuesto: hoyIso(),
+        indexacion: ajuste.moneda === 'ARS' ? ajuste.indexacion : INDEXACION_VALUES.USD,
+        cac_tipo: ajuste.indexacion === INDEXACION_VALUES.CAC ? ajuste.cac_tipo : null,
+        usd_fuente: (ajuste.moneda === 'USD' || ajuste.indexacion === INDEXACION_VALUES.USD) ? ajuste.usd_fuente : null,
+        usd_valor: (ajuste.moneda === 'USD' || ajuste.indexacion === INDEXACION_VALUES.USD) ? ajuste.usd_valor : null,
+        cotizacion_snapshot: cotizacionSnapshot,
         rubros: ppForm.rubros
           .filter((r) => r.nombre?.trim())
           .map((r) => ({
@@ -662,6 +744,9 @@ const PresupuestosProfesionales = () => {
     });
   };
 
+  const ppTotalObjetivoRef = useRef(ppTotalObjetivo);
+  ppTotalObjetivoRef.current = ppTotalObjetivo;
+
   const ppUpdateIncidenciaObjetivo = (idx, value) => {
     setPpForm((f) => {
       const rubros = [...f.rubros];
@@ -669,7 +754,8 @@ const PresupuestosProfesionales = () => {
       if (value === '' || value == null) {
         stored = null;
       } else if (typeof value === 'string' && /[.,]$/.test(value)) {
-        stored = value;
+        const parsed = parseNumberInput(value);
+        stored = parsed != null ? parsed : value;
       } else {
         const parsed = Number(value);
         stored = parsed != null && !Number.isNaN(parsed) ? parsed : null;
@@ -678,9 +764,10 @@ const PresupuestosProfesionales = () => {
         ...rubros[idx],
         incidencia_objetivo_pct: stored,
       };
+      const totalObjetivo = ppTotalObjetivoRef.current;
       const totalParaDistribuir =
-        ppTotalObjetivo !== '' && Number(ppTotalObjetivo) >= 0
-          ? Number(ppTotalObjetivo) || 0
+        totalObjetivo !== '' && Number(totalObjetivo) >= 0
+          ? Number(totalObjetivo) || 0
           : f.rubros.reduce((s, r) => s + (Number(r.monto) || 0), 0);
       const rubrosDist = distribuirMontosPorIncidencia(totalParaDistribuir, rubros);
       return { ...f, rubros: rubrosDist };
@@ -1017,19 +1104,6 @@ const PresupuestosProfesionales = () => {
   };
 
   /* ================================================================
-     Selección de proyecto en formulario
-     ================================================================ */
-
-  const handleProyectoChange = (proyId) => {
-    const proy = proyectos.find((p) => p.id === proyId);
-    setPpForm((f) => ({
-      ...f,
-      proyecto_id: proyId,
-      proyecto_nombre: proy?.nombre || '',
-    }));
-  };
-
-  /* ================================================================
      RENDER
      ================================================================ */
 
@@ -1099,19 +1173,6 @@ const PresupuestosProfesionales = () => {
                       ))}
                     </Select>
                   </FormControl>
-                  <FormControl size="small" sx={{ minWidth: 180 }}>
-                    <InputLabel>Proyecto</InputLabel>
-                    <Select
-                      value={filtroProyecto}
-                      label="Proyecto"
-                      onChange={(e) => { setFiltroProyecto(e.target.value); setPpPage(0); }}
-                    >
-                      <MenuItem value="">Todos</MenuItem>
-                      {proyectos.map((p) => (
-                        <MenuItem key={p.id} value={p.id}>{p.nombre}</MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
                   <Box sx={{ flexGrow: 1 }} />
                   <Button variant="contained" startIcon={<AddIcon />} onClick={handleOpenPPCreate}>
                     Nuevo presupuesto
@@ -1129,7 +1190,6 @@ const PresupuestosProfesionales = () => {
                     <TableRow>
                       <TableCell />
                       <TableCell>Título</TableCell>
-                      <TableCell>Proyecto</TableCell>
                       <TableCell>Moneda</TableCell>
                       <TableCell align="right">Total</TableCell>
                       <TableCell>Estado</TableCell>
@@ -1141,7 +1201,7 @@ const PresupuestosProfesionales = () => {
                   <TableBody>
                     {presupuestos.length === 0 && !presupuestosLoading && (
                       <TableRow>
-                        <TableCell colSpan={9} align="center" sx={{ py: 4 }}>
+                        <TableCell colSpan={8} align="center" sx={{ py: 4 }}>
                           <Typography color="text.secondary">
                             No hay presupuestos profesionales aún.
                           </Typography>
@@ -1165,7 +1225,6 @@ const PresupuestosProfesionales = () => {
                                 {row.titulo || '(Sin título)'}
                               </Typography>
                             </TableCell>
-                            <TableCell>{row.proyecto_nombre || '—'}</TableCell>
                             <TableCell>{row.moneda}</TableCell>
                             <TableCell align="right">
                               {formatCurrency(row.total_neto, row.moneda)}
@@ -1462,13 +1521,11 @@ const PresupuestosProfesionales = () => {
         isEdit={ppIsEdit}
         form={ppForm}
         onFormChange={setPpForm}
-        proyectos={proyectos}
         plantillas={plantillas}
         totalVivo={ppTotalVivo}
         totalObjetivo={ppTotalObjetivo}
         saving={ppSaving}
         onSave={handleSavePP}
-        onProyectoChange={handleProyectoChange}
         onAplicarPlantilla={handleAplicarPlantilla}
         modoDistribuir={ppModoDistribuir}
         onModoDistribuirChange={(checked) => {

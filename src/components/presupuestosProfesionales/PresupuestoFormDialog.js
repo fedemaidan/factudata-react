@@ -19,6 +19,8 @@ import {
   Stack,
   Switch,
   TextField,
+  ToggleButton,
+  ToggleButtonGroup,
   Tooltip,
   Typography,
 } from '@mui/material';
@@ -36,6 +38,13 @@ import {
   handleNumericKeyDown,
 } from './constants';
 import { sumaIncidenciasObjetivo } from './incidenciaHelpers';
+import {
+  CAC_TIPOS,
+  INDEXACION_VALUES,
+  USD_FUENTES,
+  USD_VALORES,
+  normalizarAjusteMoneda,
+} from './monedaAjusteConfig';
 
 const COEF_PATIOS_DEFAULT = 0.5;
 
@@ -146,19 +155,140 @@ const AnalisisSuperficiesBlock = ({ form, onFormChange }) => {
   );
 };
 
+const MonedaAjusteBlock = ({ form, onFormChange }) => {
+  const ajuste = normalizarAjusteMoneda(form);
+  const isArs = ajuste.moneda === 'ARS';
+  const mostrarConfigUsd = ajuste.moneda === 'USD' || ajuste.indexacion === INDEXACION_VALUES.USD;
+
+  const patchForm = (patch) => onFormChange({ ...form, ...patch });
+
+  return (
+    <Stack spacing={1.5}>
+      <FormControl sx={{ minWidth: 140 }}>
+        <InputLabel>Moneda</InputLabel>
+        <Select
+          value={ajuste.moneda}
+          label="Moneda"
+          onChange={(e) => {
+            const nextMoneda = e.target.value;
+            if (nextMoneda === 'USD') {
+              patchForm({ moneda: 'USD', indexacion: INDEXACION_VALUES.USD });
+              return;
+            }
+            patchForm({ moneda: 'ARS', indexacion: ajuste.indexacion === INDEXACION_VALUES.CAC ? INDEXACION_VALUES.CAC : INDEXACION_VALUES.FIJO });
+          }}
+        >
+          {MONEDAS.map((m) => (
+            <MenuItem key={m} value={m}>{m}</MenuItem>
+          ))}
+        </Select>
+      </FormControl>
+
+      {isArs && (
+        <Box>
+          <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
+            ¿Querés protegerte de la inflación?
+          </Typography>
+          <ToggleButtonGroup
+            value={ajuste.indexacion}
+            exclusive
+            onChange={(_, val) => patchForm({ indexacion: val })}
+            size="small"
+            fullWidth
+          >
+            <ToggleButton value={INDEXACION_VALUES.FIJO} sx={{ flex: 1 }}>
+              Pesos fijos
+            </ToggleButton>
+            <ToggleButton value={INDEXACION_VALUES.CAC} sx={{ flex: 1 }}>
+              Ajustar por CAC
+            </ToggleButton>
+            <ToggleButton value={INDEXACION_VALUES.USD} sx={{ flex: 1 }}>
+              Ajustar por dólar
+            </ToggleButton>
+          </ToggleButtonGroup>
+        </Box>
+      )}
+
+      {ajuste.indexacion === INDEXACION_VALUES.CAC && (
+        <Box>
+          <Typography variant="caption" color="text.secondary" fontWeight={600} sx={{ mb: 0.5, display: 'block' }}>
+            Tipo de índice CAC
+          </Typography>
+          <ToggleButtonGroup
+            value={ajuste.cac_tipo}
+            exclusive
+            onChange={(_, val) => val && patchForm({ cac_tipo: val })}
+            size="small"
+            fullWidth
+          >
+            <ToggleButton value={CAC_TIPOS.GENERAL} sx={{ flex: 1, fontSize: '0.75rem' }}>
+              Promedio
+            </ToggleButton>
+            <ToggleButton value={CAC_TIPOS.MANO_OBRA} sx={{ flex: 1, fontSize: '0.75rem' }}>
+              Mano de obra
+            </ToggleButton>
+            <ToggleButton value={CAC_TIPOS.MATERIALES} sx={{ flex: 1, fontSize: '0.75rem' }}>
+              Materiales
+            </ToggleButton>
+          </ToggleButtonGroup>
+        </Box>
+      )}
+
+      {mostrarConfigUsd && (
+        <Box>
+          <Typography variant="caption" color="text.secondary" fontWeight={600} sx={{ mb: 0.5, display: 'block' }}>
+            Configuración de dólar
+          </Typography>
+          <Stack spacing={1}>
+            <ToggleButtonGroup
+              value={ajuste.usd_fuente}
+              exclusive
+              onChange={(_, val) => val && patchForm({ usd_fuente: val })}
+              size="small"
+              fullWidth
+            >
+              <ToggleButton value={USD_FUENTES.OFICIAL} sx={{ flex: 1 }}>
+                USD Oficial
+              </ToggleButton>
+              <ToggleButton value={USD_FUENTES.BLUE} sx={{ flex: 1 }}>
+                USD Blue
+              </ToggleButton>
+            </ToggleButtonGroup>
+            <ToggleButtonGroup
+              value={ajuste.usd_valor}
+              exclusive
+              onChange={(_, val) => val && patchForm({ usd_valor: val })}
+              size="small"
+              fullWidth
+            >
+              <ToggleButton value={USD_VALORES.COMPRA} sx={{ flex: 1 }}>
+                Compra
+              </ToggleButton>
+              <ToggleButton value={USD_VALORES.VENTA} sx={{ flex: 1 }}>
+                Venta
+              </ToggleButton>
+              <ToggleButton value={USD_VALORES.PROMEDIO} sx={{ flex: 1 }}>
+                Promedio
+              </ToggleButton>
+            </ToggleButtonGroup>
+          </Stack>
+        </Box>
+      )}
+    </Stack>
+  );
+};
+
 const PresupuestoFormDialog = ({
   open,
   onClose,
   isEdit,
   form,
   onFormChange,
-  proyectos = [],
   plantillas = [],
   totalVivo,
   totalObjetivo = '',
   saving,
   onSave,
-  onProyectoChange,
   onAplicarPlantilla,
   modoDistribuir = false,
   onModoDistribuirChange,
@@ -190,41 +320,16 @@ const PresupuestoFormDialog = ({
             value={form.titulo}
             onChange={(e) => onFormChange({ ...form, titulo: e.target.value })}
           />
-          <FormControl sx={{ minWidth: 140 }}>
-            <InputLabel>Moneda</InputLabel>
-            <Select
-              value={form.moneda}
-              label="Moneda"
-              onChange={(e) => onFormChange({ ...form, moneda: e.target.value })}
-            >
-              {MONEDAS.map((m) => (
-                <MenuItem key={m} value={m}>{m}</MenuItem>
-              ))}
-            </Select>
-          </FormControl>
         </Stack>
 
-        <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
-          <FormControl fullWidth>
-            <InputLabel>Proyecto</InputLabel>
-            <Select
-              value={form.proyecto_id}
-              label="Proyecto"
-              onChange={(e) => onProyectoChange(e.target.value)}
-            >
-              <MenuItem value="">Sin proyecto</MenuItem>
-              {proyectos.map((p) => (
-                <MenuItem key={p.id} value={p.id}>{p.nombre}</MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-          <TextField
-            label="Dirección de obra"
-            fullWidth
-            value={form.obra_direccion}
-            onChange={(e) => onFormChange({ ...form, obra_direccion: e.target.value })}
-          />
-        </Stack>
+        <MonedaAjusteBlock form={form} onFormChange={onFormChange} />
+
+        <TextField
+          label="Dirección de obra"
+          fullWidth
+          value={form.obra_direccion}
+          onChange={(e) => onFormChange({ ...form, obra_direccion: e.target.value })}
+        />
 
         <Divider />
 
@@ -499,7 +604,7 @@ const PresupuestoFormDialog = ({
       <Button
         variant="contained"
         onClick={onSave}
-        disabled={saving || (modoDistribuir && sumaInvalida)}
+        disabled={saving || !form.titulo?.trim() || (modoDistribuir && (sumaInvalida || sumaBaja))}
       >
         {saving ? <CircularProgress size={20} /> : isEdit ? 'Guardar cambios' : 'Crear presupuesto'}
       </Button>
