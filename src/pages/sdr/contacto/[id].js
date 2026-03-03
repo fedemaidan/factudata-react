@@ -335,17 +335,18 @@ const ContactoSDRDetailPage = () => {
         }
     };
 
-    /** Ir al siguiente contacto o al listado, validando que tenga próximo contacto futuro */
+    /** Ir al siguiente contacto o al listado, validando que tenga próximo contacto futuro. */
     const handleSiguienteContacto = () => {
         const prox = contacto?.proximoContacto ? new Date(contacto.proximoContacto) : null;
-        if (!prox || prox <= new Date()) {
-            mostrarSnackbar('Definí una fecha de próximo contacto antes de continuar', 'warning');
-            return;
-        }
-        if (puedeSiguiente) {
-            navegar('siguiente');
+        
+        if (prox && prox > new Date()) {
+            if (puedeSiguiente) {
+                navegar('siguiente');
+            } else {
+                router.push('/contactosSDR');
+            }
         } else {
-            router.push('/contactosSDR');
+            mostrarSnackbar('Definí una fecha de próximo contacto antes de continuar', 'warning');
         }
     };
 

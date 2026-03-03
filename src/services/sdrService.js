@@ -23,6 +23,14 @@ const SDRService = {
     },
 
     /**
+     * Obtener contadores de bandejas (nuevos / reintentos / seguimiento)
+     */
+    contadorBandejas: async (params = {}) => {
+        const res = await api.get('/sdr/contactos/bandejas', { params });
+        return res.data;
+    },
+
+    /**
      * Obtener un contacto por ID (incluye historial y reuniones)
      */
     obtenerContacto: async (id) => {

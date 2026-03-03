@@ -8,7 +8,7 @@ import {
     Snackbar, Alert, Paper, InputAdornment, Grid, IconButton,
     Card, CardContent, CardActions, Divider, useTheme, useMediaQuery,
     Avatar, Badge, Fab, Dialog, DialogTitle, DialogContent, DialogActions,
-    Checkbox, Tooltip
+    Checkbox, Tooltip, Tabs, Tab
 } from '@mui/material';
 import {
     Search as SearchIcon,
@@ -34,6 +34,10 @@ import {
     Delete as DeleteIcon
 } from '@mui/icons-material';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
+import InboxIcon from '@mui/icons-material/Inbox';
+import ReplayIcon from '@mui/icons-material/Replay';
+import HandshakeIcon from '@mui/icons-material/Handshake';
+import ViewListIcon from '@mui/icons-material/ViewList';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import { useAuthContext } from 'src/contexts/auth-context';
 import SDRService from 'src/services/sdrService';
@@ -74,10 +78,13 @@ const ContactosSDRPage = () => {
     // Filtros
     const [busqueda, setBusqueda] = useState('');
     const [filtroEstado, setFiltroEstado] = useState('');
-    const [filtroTipo, setFiltroTipo] = useState('activos'); // 'activos' | 'vencidos' | 'no_calificados' | 'todos'
+    const [bandejaActiva, setBandejaActiva] = useState('nuevos'); // 'nuevos' | 'reintentos' | 'seguimiento' | 'todos'
     const [filtroProximoContacto, setFiltroProximoContacto] = useState(''); // '' | 'sin_proximo' | 'vencido' | 'pendiente'
     const [filtroSegmento, setFiltroSegmento] = useState(''); // '' | 'inbound' | 'outbound'
-    const [ordenarPor, setOrdenarPor] = useState('vencidos'); // 'vencidos' | 'fecha' | 'estado' | 'prioridad' | 'nuevo'
+    const [ordenarPor, setOrdenarPor] = useState(''); // vacío = el backend elige según bandeja
+    
+    // Contadores de bandejas (para badges)
+    const [contadoresBandejas, setContadoresBandejas] = useState({ nuevos: 0, reintentos: 0, seguimiento: 0 });
     
     // Selección múltiple
     const [seleccionados, setSeleccionados] = useState([]);
@@ -139,36 +146,36 @@ const ContactosSDRPage = () => {
                 limit: ITEMS_PER_PAGE
             };
             
-            // Filtros de tipo
-            if (filtroTipo === 'no_calificados') {
-                params.estado = 'no_califica';
-            } else if (filtroTipo === 'activos') {
-                // Excluir no_califica por defecto
+            // Enviar bandeja si no es 'todos'
+            if (bandejaActiva !== 'todos') {
+                params.bandeja = bandejaActiva;
+            } else {
+                // 'todos' excluye no_califica por defecto
                 params.excluirEstados = 'no_califica';
-            } else if (filtroTipo === 'vencidos') {
-                params.excluirEstados = 'no_califica';
-                params.soloVencidos = true;
             }
-            // 'todos' no agrega filtros adicionales
             
-            if (filtroEstado && filtroTipo !== 'no_calificados') params.estado = filtroEstado;
+            if (filtroEstado) params.estado = filtroEstado;
             if (busqueda) params.busqueda = busqueda;
             if (filtroSegmento) params.segmento = filtroSegmento;
             
             // Mapear ordenamiento al formato del backend
-            const ordenMap = {
-                'vencidos': { ordenarPor: 'proximoContacto', ordenDir: 'asc' },
-                'nuevo': { ordenarPor: 'createdAt', ordenDir: 'desc' },
-                'fecha': { ordenarPor: 'ultimaAccion', ordenDir: 'desc' },
-                'estado': { ordenarPor: 'estado', ordenDir: 'asc' },
-                'prioridad': { ordenarPor: 'prioridad', ordenDir: 'desc' },
-                // Mobile values
-                'proximo_contacto': { ordenarPor: 'proximoContacto', ordenDir: 'asc' },
-                'fecha_creacion': { ordenarPor: 'createdAt', ordenDir: 'desc' },
-            };
-            const orden = ordenMap[ordenarPor] || { ordenarPor: 'prioridad', ordenDir: 'desc' };
-            params.ordenarPor = orden.ordenarPor;
-            params.ordenDir = orden.ordenDir;
+            if (ordenarPor) {
+                const ordenMap = {
+                    'vencidos': { ordenarPor: 'proximoContacto', ordenDir: 'asc' },
+                    'nuevo': { ordenarPor: 'createdAt', ordenDir: 'desc' },
+                    'fecha': { ordenarPor: 'ultimaAccion', ordenDir: 'desc' },
+                    'estado': { ordenarPor: 'estado', ordenDir: 'asc' },
+                    'prioridad': { ordenarPor: 'prioridad', ordenDir: 'desc' },
+                    'proximo_contacto': { ordenarPor: 'proximoContacto', ordenDir: 'asc' },
+                    'fecha_creacion': { ordenarPor: 'createdAt', ordenDir: 'desc' },
+                };
+                const orden = ordenMap[ordenarPor];
+                if (orden) {
+                    params.ordenarPor = orden.ordenarPor;
+                    params.ordenDir = orden.ordenDir;
+                }
+            }
+            // Si no hay ordenarPor, el backend elige según la bandeja
             
             const data = await SDRService.listarContactos(params);
             setContactos(data.contactos || []);
@@ -179,7 +186,7 @@ const ContactosSDRPage = () => {
         } finally {
             setLoading(false);
         }
-    }, [empresaId, sdrId, filtroEstado, filtroTipo, busqueda, filtroSegmento, ordenarPor, page]);
+    }, [empresaId, sdrId, filtroEstado, bandejaActiva, busqueda, filtroSegmento, ordenarPor, page]);
 
     // Cargar métricas del SDR - soporta día, semana y mes
     const cargarMetricas = useCallback(async () => {
@@ -232,14 +239,35 @@ const ContactosSDRPage = () => {
         }
     }, [empresaId, sdrId, periodoMetricas]);
 
+    // Cargar contadores de bandejas
+    const cargarBandejas = useCallback(async () => {
+        if (!sdrId) return;
+        try {
+            const data = await SDRService.contadorBandejas({ sdrAsignado: sdrId });
+            setContadoresBandejas(data);
+        } catch (err) {
+            console.error('Error cargando bandejas:', err);
+        }
+    }, [sdrId]);
+
     // Resetear página a 1 cuando cambian los filtros u ordenamiento
     useEffect(() => {
         setPage(1);
-    }, [filtroEstado, filtroTipo, busqueda, filtroSegmento, ordenarPor]);
+        setFiltroEstado(''); // Limpiar filtro de estado al cambiar de bandeja
+    }, [bandejaActiva]);
+    
+    useEffect(() => {
+        setPage(1);
+    }, [filtroEstado, busqueda, filtroSegmento, ordenarPor]);
 
     useEffect(() => {
         cargarContactos();
+        cargarBandejas(); // Refrescar badges siempre que se cargan contactos
     }, [cargarContactos]);
+
+    useEffect(() => {
+        cargarBandejas();
+    }, [cargarBandejas]);
 
     useEffect(() => {
         cargarMetricas();
@@ -516,14 +544,8 @@ const ContactosSDRPage = () => {
         setFiltroEstado(f.estados?.length === 1 ? f.estados[0] : '');
         setFiltroProximoContacto(f.proximoContacto || '');
         setBusqueda(f.busqueda || '');
-        // Determinar filtroTipo según los estados guardados
-        if (f.estados?.length === 1 && f.estados[0] === 'no_califica') {
-            setFiltroTipo('no_calificados');
-        } else if (f.proximoContacto === 'vencido') {
-            setFiltroTipo('vencidos');
-        } else {
-            setFiltroTipo('activos');
-        }
+        // Las vistas se aplican sobre 'todos' para no chocar con bandejas
+        setBandejaActiva('todos');
     };
 
     const handleGuardarVista = async () => {
@@ -567,7 +589,7 @@ const ContactosSDRPage = () => {
     const handleLimpiarVista = () => {
         setVistaActiva(null);
         setFiltroEstado('');
-        setFiltroTipo('activos');
+        setBandejaActiva('nuevos');
         setFiltroProximoContacto('');
         setBusqueda('');
     };
@@ -698,42 +720,50 @@ const ContactosSDRPage = () => {
                 </Box>
             )}
 
-            {/* Filtros principales: Activos / Vencidos / No Calificados */}
-            <Box sx={{ px: 2, pb: 1 }}>
-                <Stack direction="row" spacing={1}>
-                    <Chip 
-                        label="Activos" 
-                        color={filtroTipo === 'activos' ? 'primary' : 'default'}
-                        size="small"
-                        variant={filtroTipo === 'activos' ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroTipo('activos')}
+            {/* ── Bandejas (Tabs) ── */}
+            <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
+                <Tabs
+                    value={bandejaActiva}
+                    onChange={(_, v) => setBandejaActiva(v)}
+                    variant="scrollable"
+                    scrollButtons={false}
+                    sx={{ minHeight: 40, '& .MuiTab-root': { minHeight: 40, py: 0.5, textTransform: 'none', fontSize: '0.8rem' } }}
+                >
+                    <Tab 
+                        value="nuevos"
+                        icon={<Badge badgeContent={contadoresBandejas.nuevos} color="info" max={99}><InboxIcon sx={{ fontSize: 18 }} /></Badge>}
+                        iconPosition="start"
+                        label="Nuevos"
                     />
-                    <Chip 
-                        label={`Vencidos (${contarVencidos()})`}
-                        color={filtroTipo === 'vencidos' ? 'error' : 'default'}
-                        size="small"
-                        variant={filtroTipo === 'vencidos' ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroTipo('vencidos')}
-                        icon={<WarningIcon sx={{ fontSize: 14 }} />}
+                    <Tab 
+                        value="reintentos"
+                        icon={<Badge badgeContent={contadoresBandejas.reintentos} color="warning" max={99}><ReplayIcon sx={{ fontSize: 18 }} /></Badge>}
+                        iconPosition="start"
+                        label="Reintentos"
                     />
-                    <Chip 
-                        label="No calificados" 
-                        color={filtroTipo === 'no_calificados' ? 'error' : 'default'}
-                        size="small"
-                        variant={filtroTipo === 'no_calificados' ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroTipo('no_calificados')}
+                    <Tab 
+                        value="seguimiento"
+                        icon={<Badge badgeContent={contadoresBandejas.seguimiento} color="success" max={99}><HandshakeIcon sx={{ fontSize: 18 }} /></Badge>}
+                        iconPosition="start"
+                        label="Seguimiento"
                     />
-                    <Chip 
-                        label="Todos" 
-                        size="small"
-                        variant={filtroTipo === 'todos' ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroTipo('todos')}
+                    <Tab 
+                        value="reuniones"
+                        icon={<Badge badgeContent={contadoresBandejas.reuniones || 0} color="secondary" max={99}><EventIcon sx={{ fontSize: 18 }} /></Badge>}
+                        iconPosition="start"
+                        label="Reuniones"
                     />
-                </Stack>
+                    <Tab 
+                        value="todos"
+                        icon={<ViewListIcon sx={{ fontSize: 18 }} />}
+                        iconPosition="start"
+                        label="Todos"
+                    />
+                </Tabs>
             </Box>
 
-            {/* Filtros por estado (solo si no es "no_calificados") */}
-            {filtroTipo !== 'no_calificados' && (
+            {/* Filtros por estado (solo en bandeja 'todos') */}
+            {bandejaActiva === 'todos' && (
             <Box sx={{ px: 2, pb: 2, overflowX: 'auto' }}>
                 <Stack direction="row" spacing={1} sx={{ minWidth: 'max-content' }}>
                     <Chip 
@@ -771,31 +801,11 @@ const ContactosSDRPage = () => {
                         onClick={() => setFiltroEstado(filtroEstado === 'no_responde' ? '' : 'no_responde')}
                     />
                     <Chip 
-                        label={`Ganados: ${contarPorEstado('ganado')}`} 
-                        color="success"
-                        size="small"
-                        variant={filtroEstado === 'ganado' ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroEstado(filtroEstado === 'ganado' ? '' : 'ganado')}
-                    />
-                    <Chip 
-                        label={`No Contactado: ${contarPorEstado('no_contacto')}`} 
-                        size="small"
-                        variant={filtroEstado === 'no_contacto' ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroEstado(filtroEstado === 'no_contacto' ? '' : 'no_contacto')}
-                    />
-                    <Chip 
-                        label={`Revisar: ${contarPorEstado('revisar_mas_adelante')}`} 
-                        color="warning"
-                        size="small"
-                        variant={filtroEstado === 'revisar_mas_adelante' ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroEstado(filtroEstado === 'revisar_mas_adelante' ? '' : 'revisar_mas_adelante')}
-                    />
-                    <Chip 
-                        label={`Perdidos: ${contarPorEstado('perdido')}`} 
+                        label={`No Califica: ${contarPorEstado('no_califica')}`} 
                         color="error"
                         size="small"
-                        variant={filtroEstado === 'perdido' ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroEstado(filtroEstado === 'perdido' ? '' : 'perdido')}
+                        variant={filtroEstado === 'no_califica' ? 'filled' : 'outlined'}
+                        onClick={() => setFiltroEstado(filtroEstado === 'no_califica' ? '' : 'no_califica')}
                     />
                 </Stack>
             </Box>
@@ -1283,7 +1293,48 @@ const ContactosSDRPage = () => {
                     )}
                 </Stack>
 
-                {/* Estadísticas por estado */}
+                {/* ── Bandejas (Tabs) ── */}
+                <Paper sx={{ borderRadius: 2 }}>
+                    <Tabs
+                        value={bandejaActiva}
+                        onChange={(_, v) => setBandejaActiva(v)}
+                        sx={{ '& .MuiTab-root': { textTransform: 'none', fontWeight: 600 } }}
+                    >
+                        <Tab 
+                            value="nuevos"
+                            icon={<Badge badgeContent={contadoresBandejas.nuevos} color="info" max={99}><InboxIcon /></Badge>}
+                            iconPosition="start"
+                            label="Nuevos"
+                        />
+                        <Tab 
+                            value="reintentos"
+                            icon={<Badge badgeContent={contadoresBandejas.reintentos} color="warning" max={99}><ReplayIcon /></Badge>}
+                            iconPosition="start"
+                            label="Reintentos"
+                        />
+                        <Tab 
+                            value="seguimiento"
+                            icon={<Badge badgeContent={contadoresBandejas.seguimiento} color="success" max={99}><HandshakeIcon /></Badge>}
+                            iconPosition="start"
+                            label="Seguimiento"
+                        />
+                        <Tab 
+                            value="reuniones"
+                            icon={<Badge badgeContent={contadoresBandejas.reuniones || 0} color="secondary" max={99}><EventIcon /></Badge>}
+                            iconPosition="start"
+                            label="Reuniones"
+                        />
+                        <Tab 
+                            value="todos"
+                            icon={<ViewListIcon />}
+                            iconPosition="start"
+                            label="Todos"
+                        />
+                    </Tabs>
+                </Paper>
+
+                {/* Filtros por estado (solo en bandeja 'todos') */}
+                {bandejaActiva === 'todos' && (
                 <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
                     <Chip 
                         label={`Nuevos: ${contarPorEstado('nuevo')}`} 
@@ -1346,6 +1397,7 @@ const ContactosSDRPage = () => {
                         onClick={() => setFiltroEstado(filtroEstado === 'perdido' ? '' : 'perdido')}
                     />
                 </Stack>
+                )}
 
                 {/* Filtros por próximo contacto */}
                 <Stack direction="row" spacing={1} alignItems="center">
