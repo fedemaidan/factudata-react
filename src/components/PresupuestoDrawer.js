@@ -192,14 +192,19 @@ const PresupuestoDrawer = ({
   const [dolarOverride, setDolarOverride] = useState('');
   const [loadingHistorial, setLoadingHistorial] = useState(false);
 
+  // === Estado: Override cotización para adicionales ===
+  const [mostrarOverrideAdicional, setMostrarOverrideAdicional] = useState(false);
+  const [adicionalCacOverride, setAdicionalCacOverride] = useState('');
+  const [adicionalDolarOverride, setAdicionalDolarOverride] = useState('');
+
   // Valor efectivo de CAC/dólar (override o el cargado automáticamente)
   const cacTipoActivo = mode === 'crear' ? cacTipo : nuevoCacTipo;
   const cacEfectivo = cacOverride ? parseFloat(cacOverride) : (cacSubindices[cacTipoActivo] || cacIndice);
   const dolarEfectivo = dolarOverride ? parseFloat(dolarOverride) : dolarRate;
 
-  // Valor efectivo para adicionales (hereda cac_tipo del principal)
-  const adicionalCacEfectivo = (adicionalCacSubindices[cacTipoActivo] || adicionalCacIndice) || cacEfectivo;
-  const adicionalDolarEfectivo = adicionalDolarRate || dolarEfectivo;
+  // Valor efectivo para adicionales (hereda cac_tipo del principal, con override propio)
+  const adicionalCacEfectivo = adicionalCacOverride ? parseFloat(adicionalCacOverride) : ((adicionalCacSubindices[cacTipoActivo] || adicionalCacIndice) || cacEfectivo);
+  const adicionalDolarEfectivo = adicionalDolarOverride ? parseFloat(adicionalDolarOverride) : (adicionalDolarRate || dolarEfectivo);
 
   // === Estado: Base de cálculo ===
   const [baseCalculo, setBaseCalculo] = useState('total'); // 'total' | 'subtotal'
@@ -287,6 +292,9 @@ const PresupuestoDrawer = ({
       setCacOverride('');
       setDolarOverride('');
       setCacHistorial([]);
+      setMostrarOverrideAdicional(false);
+      setAdicionalCacOverride('');
+      setAdicionalDolarOverride('');
       setMostrarAdicional(drawerView === 'adicional');
       // En modo editar, abrir en historial por defecto (evita ediciones accidentales)
       setActiveTab(mode === 'editar' && (!drawerView || drawerView === 'full') ? TAB_MAP.historial : (TAB_MAP[drawerView] ?? 0));
@@ -478,6 +486,13 @@ const PresupuestoDrawer = ({
         monto: montoFinal,
         creadoPor: userId,
         fecha_adicional: fechaAdicional || fechaPresupuesto || null,
+        // Si el usuario hizo override de la cotización, enviarlo al backend para el snapshot
+        ...(presupuesto?.indexacion === 'CAC' && adicionalCacOverride
+          ? { cotizacion_override: { cac_indice: parseFloat(adicionalCacOverride) } }
+          : presupuesto?.indexacion === 'USD' && adicionalDolarOverride
+            ? { cotizacion_override: { dolar_blue: parseFloat(adicionalDolarOverride) } }
+            : {}
+        ),
       });
       setAdicionalConcepto('');
       setAdicionalMonto('');
@@ -1617,14 +1632,73 @@ const PresupuestoDrawer = ({
                       />
                     </LocalizationProvider>
                     {presupuesto?.indexacion && (
-                      <Stack direction="row" spacing={0.5} alignItems="center" sx={{ mt: 0.5 }}>
-                        <CalendarMonthIcon sx={{ fontSize: 14, color: 'text.disabled' }} />
-                        <Typography variant="caption" color="text.secondary">
-                          {presupuesto.indexacion === 'CAC'
-                            ? <>Índice CAC: <strong>{formatMesLegible(adicionalCacFechaAplicada || cacFechaAplicada)}</strong> = {Number(adicionalCacEfectivo).toLocaleString('es-AR')}</>
-                            : <>Dólar blue: <strong>{dayjs(fechaAdicional).format('DD/MM/YYYY')}</strong> = ${Number(adicionalDolarEfectivo).toLocaleString('es-AR')}</>
-                          }
-                        </Typography>
+                      <Stack spacing={0.5} sx={{ mt: 0.5 }}>
+                        <Stack direction="row" spacing={0.5} alignItems="center">
+                          <CalendarMonthIcon sx={{ fontSize: 14, color: 'text.disabled' }} />
+                          <Typography variant="caption" color="text.secondary">
+                            {presupuesto.indexacion === 'CAC'
+                              ? <>Índice CAC{presupuesto.cac_tipo === 'mano_obra' ? ' MO' : presupuesto.cac_tipo === 'materiales' ? ' MAT' : ''}: <strong>{formatMesLegible(adicionalCacFechaAplicada || cacFechaAplicada)}</strong> = {Number(adicionalCacEfectivo).toLocaleString('es-AR')}{adicionalCacOverride ? ' (manual)' : ''}</>
+                              : <>Dólar blue: <strong>{dayjs(fechaAdicional).format('DD/MM/YYYY')}</strong> = ${Number(adicionalDolarEfectivo).toLocaleString('es-AR')}{adicionalDolarOverride ? ' (manual)' : ''}</>
+                            }
+                          </Typography>
+                        </Stack>
+                        <Button
+                          size="small"
+                          variant="text"
+                          sx={{ alignSelf: 'flex-start', fontSize: '0.7rem', textTransform: 'none', py: 0 }}
+                          onClick={() => setMostrarOverrideAdicional(!mostrarOverrideAdicional)}
+                        >
+                          {mostrarOverrideAdicional ? 'Ocultar' : 'Modificar cotización manualmente'}
+                        </Button>
+                        {mostrarOverrideAdicional && (
+                          <Stack spacing={1} sx={{ pl: 1, borderLeft: 2, borderColor: 'primary.light' }}>
+                            {presupuesto.indexacion === 'CAC' ? (
+                              <>
+                                <TextField
+                                  size="small"
+                                  type="number"
+                                  label={`CAC ${presupuesto.cac_tipo === 'mano_obra' ? 'MO' : presupuesto.cac_tipo === 'materiales' ? 'MAT' : 'General'} manual`}
+                                  placeholder={`Ej: ${adicionalCacSubindices[cacTipoActivo] || cacIndice || '1042.5'}`}
+                                  value={adicionalCacOverride}
+                                  onChange={(e) => setAdicionalCacOverride(e.target.value)}
+                                  fullWidth
+                                />
+                                {adicionalCacOverride && !isNaN(Number(adicionalCacOverride)) && (
+                                  <Typography variant="caption" color="text.secondary">
+                                    Usando CAC = {Number(adicionalCacOverride).toLocaleString('es-AR')} en vez de {(adicionalCacSubindices[cacTipoActivo] || cacIndice) ? Number(adicionalCacSubindices[cacTipoActivo] || cacIndice).toLocaleString('es-AR') : '(no cargado)'}
+                                  </Typography>
+                                )}
+                                {adicionalCacOverride && (
+                                  <Button size="small" variant="text" color="secondary" sx={{ alignSelf: 'flex-start', fontSize: '0.7rem', py: 0 }} onClick={() => setAdicionalCacOverride('')}>
+                                    Usar valor automático
+                                  </Button>
+                                )}
+                              </>
+                            ) : (
+                              <>
+                                <TextField
+                                  size="small"
+                                  type="number"
+                                  label="Dólar blue manual"
+                                  placeholder={`Ej: ${adicionalDolarRate || dolarRate || '1250'}`}
+                                  value={adicionalDolarOverride}
+                                  onChange={(e) => setAdicionalDolarOverride(e.target.value)}
+                                  fullWidth
+                                />
+                                {adicionalDolarOverride && !isNaN(Number(adicionalDolarOverride)) && (
+                                  <Typography variant="caption" color="text.secondary">
+                                    Usando USD = ${Number(adicionalDolarOverride).toLocaleString('es-AR')} en vez de ${(adicionalDolarRate || dolarRate) ? Number(adicionalDolarRate || dolarRate).toLocaleString('es-AR') : '(no cargado)'}
+                                  </Typography>
+                                )}
+                                {adicionalDolarOverride && (
+                                  <Button size="small" variant="text" color="secondary" sx={{ alignSelf: 'flex-start', fontSize: '0.7rem', py: 0 }} onClick={() => setAdicionalDolarOverride('')}>
+                                    Usar valor automático
+                                  </Button>
+                                )}
+                              </>
+                            )}
+                          </Stack>
+                        )}
                       </Stack>
                     )}
                   </Box>

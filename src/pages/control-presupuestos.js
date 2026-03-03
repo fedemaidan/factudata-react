@@ -68,17 +68,24 @@ import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 const calcularTotalesResumen = (resumen, tipoCambio = null, monedaVista = 'ARS') => {
   if (!resumen) return { egresosTotal: 0, egresosEjecutado: 0, ingresosTotal: 0, ingresosEjecutado: 0 };
   
-  const cacIndice = resumen.cotizacionActual?.cac_indice || null;
+  // Todos los subíndices CAC disponibles
+  const cacIndices = {
+    general: resumen.cotizacionActual?.cac_indice || null,
+    mano_obra: resumen.cotizacionActual?.cac_mano_obra || null,
+    materiales: resumen.cotizacionActual?.cac_materiales || null,
+  };
   
-  const convertir = (monto, monedaOriginal) => {
+  const convertir = (monto, monedaOriginal, cacTipoItem = null) => {
     if (monedaVista === monedaOriginal) return monto;
     if (!tipoCambio && monedaOriginal !== 'CAC') return monto;
+    // Seleccionar el subíndice CAC correcto según el cac_tipo del item
+    const cacIdx = cacIndices[cacTipoItem || 'general'] || cacIndices.general;
     if (monedaVista === 'USD' && monedaOriginal === 'ARS') return tipoCambio ? monto / tipoCambio : monto;
     if (monedaVista === 'ARS' && monedaOriginal === 'USD') return tipoCambio ? monto * tipoCambio : monto;
-    if (monedaOriginal === 'CAC' && monedaVista === 'ARS') return cacIndice ? monto * cacIndice : monto;
-    if (monedaOriginal === 'CAC' && monedaVista === 'USD') return (cacIndice && tipoCambio) ? (monto * cacIndice) / tipoCambio : monto;
-    if (monedaOriginal === 'ARS' && monedaVista === 'CAC') return cacIndice ? monto / cacIndice : monto;
-    if (monedaOriginal === 'USD' && monedaVista === 'CAC') return (cacIndice && tipoCambio) ? (monto * tipoCambio) / cacIndice : monto;
+    if (monedaOriginal === 'CAC' && monedaVista === 'ARS') return cacIdx ? monto * cacIdx : monto;
+    if (monedaOriginal === 'CAC' && monedaVista === 'USD') return (cacIdx && tipoCambio) ? (monto * cacIdx) / tipoCambio : monto;
+    if (monedaOriginal === 'ARS' && monedaVista === 'CAC') return cacIdx ? monto / cacIdx : monto;
+    if (monedaOriginal === 'USD' && monedaVista === 'CAC') return (cacIdx && tipoCambio) ? (monto * tipoCambio) / cacIdx : monto;
     return monto;
   };
 
@@ -89,16 +96,16 @@ const calcularTotalesResumen = (resumen, tipoCambio = null, monedaVista = 'ARS')
     const especificos = allItems.filter(i => i.categoria || i.etapa || i.proveedor);
     
     if (generales.length > 0) {
-      let total = generales.reduce((s, i) => s + convertir(i.monto || 0, i.moneda || 'ARS'), 0);
-      const ejecutado = generales.reduce((s, i) => s + convertir(i.ejecutado || 0, i.moneda || 'ARS'), 0);
-      const especTotal = especificos.reduce((s, i) => s + convertir(i.monto || 0, i.moneda || 'ARS'), 0);
+      let total = generales.reduce((s, i) => s + convertir(i.monto || 0, i.moneda || 'ARS', i.cac_tipo), 0);
+      const ejecutado = generales.reduce((s, i) => s + convertir(i.ejecutado || 0, i.moneda || 'ARS', i.cac_tipo), 0);
+      const especTotal = especificos.reduce((s, i) => s + convertir(i.monto || 0, i.moneda || 'ARS', i.cac_tipo), 0);
       if (especTotal > total) total = especTotal;
       return { total, ejecutado };
     }
     
     return allItems.reduce((acc, i) => ({
-      total: acc.total + convertir(i.monto || 0, i.moneda || 'ARS'),
-      ejecutado: acc.ejecutado + convertir(i.ejecutado || 0, i.moneda || 'ARS'),
+      total: acc.total + convertir(i.monto || 0, i.moneda || 'ARS', i.cac_tipo),
+      ejecutado: acc.ejecutado + convertir(i.ejecutado || 0, i.moneda || 'ARS', i.cac_tipo),
     }), { total: 0, ejecutado: 0 });
   };
 
@@ -214,7 +221,7 @@ const ProyectoCard = ({ proyecto, resumen, onSelect, formatMonto, tipoCambio, mo
 };
 
 // ============ COMPONENTE: ITEM DE PRESUPUESTO ============
-const PresupuestoItem = ({ label, presupuesto, ejecutado, formatMonto, onCrear, onClick, historial, moneda, indexacion, baseCalculo, cotizacionSnapshot, montoIngresado, cacIndiceActual: cacIdx, tipoCambioActual }) => {
+const PresupuestoItem = ({ label, presupuesto, ejecutado, formatMonto, onCrear, onClick, historial, moneda, indexacion, baseCalculo, cotizacionSnapshot, montoIngresado, cacIndiceActual: cacIdx, tipoCambioActual, cacTipo }) => {
   const tienePresupuesto = presupuesto !== null && presupuesto !== undefined;
   const ejec = ejecutado || 0;
   const porcentaje = tienePresupuesto && presupuesto > 0 ? (ejec / presupuesto) * 100 : 0;
@@ -222,7 +229,8 @@ const PresupuestoItem = ({ label, presupuesto, ejecutado, formatMonto, onCrear, 
   const monedaItem = moneda || 'ARS';
   const esIndexado = !!indexacion;
   const indiceActual = indexacion === 'CAC' ? cacIdx : (indexacion === 'USD' ? tipoCambioActual : null);
-  const unidadIdx = indexacion === 'CAC' ? 'CAC' : (indexacion === 'USD' ? 'USD' : '');
+  const cacTipoLabel = cacTipo === 'mano_obra' ? 'MO' : cacTipo === 'materiales' ? 'MAT' : '';
+  const unidadIdx = indexacion === 'CAC' ? `CAC${cacTipoLabel ? ' ' + cacTipoLabel : ''}` : (indexacion === 'USD' ? 'USD' : '');
 
   // Para indexados: mostrar equivalencia ARS hoy
   const fmtARS = (v) => v != null ? `$${Number(v).toLocaleString('es-AR', { maximumFractionDigits: 0 })}` : '';
@@ -257,7 +265,7 @@ const PresupuestoItem = ({ label, presupuesto, ejecutado, formatMonto, onCrear, 
       <Stack direction="row" spacing={0.5} alignItems="center" sx={{ minWidth: 0, mb: 0.5 }} flexWrap="wrap" useFlexGap>
         <Typography fontWeight={500} noWrap sx={{ fontSize: { xs: '0.85rem', md: '1rem' }, flex: { xs: '1 1 auto', sm: '0 1 auto' }, minWidth: 0 }}>{label}</Typography>
         {esIndexado && (
-          <Chip label={`idx ${indexacion}`} size="small" color="secondary" variant="outlined" sx={{ height: 20, '& .MuiChip-label': { px: 0.5, fontSize: '0.65rem' } }} />
+          <Chip label={`idx ${unidadIdx}`} size="small" color="secondary" variant="outlined" sx={{ height: 20, '& .MuiChip-label': { px: 0.5, fontSize: '0.65rem' } }} />
         )}
         {baseCalculo === 'subtotal' && (
           <Chip label="neto" size="small" color="default" variant="outlined" sx={{ height: 20, '& .MuiChip-label': { px: 0.5, fontSize: '0.65rem' } }} />
@@ -532,18 +540,18 @@ const ControlPresupuestosPage = () => {
       
       if (generales.length > 0) {
         // Hay presupuesto general: usarlo como techo
-        let total = generales.reduce((s, i) => s + convertir(i.monto || 0, i.moneda || 'ARS'), 0);
-        const ejecutado = generales.reduce((s, i) => s + convertir(i.ejecutado || 0, i.moneda || 'ARS'), 0);
+        let total = generales.reduce((s, i) => s + convertir(i.monto || 0, i.moneda || 'ARS', i.cac_tipo), 0);
+        const ejecutado = generales.reduce((s, i) => s + convertir(i.ejecutado || 0, i.moneda || 'ARS', i.cac_tipo), 0);
         // Si la suma de específicos excede el general, mostrar la suma real
-        const especTotal = especificos.reduce((s, i) => s + convertir(i.monto || 0, i.moneda || 'ARS'), 0);
+        const especTotal = especificos.reduce((s, i) => s + convertir(i.monto || 0, i.moneda || 'ARS', i.cac_tipo), 0);
         if (especTotal > total) total = especTotal;
         return { total, ejecutado };
       }
       
       // Sin general: sumar todos
       return items.reduce((acc, i) => ({
-        total: acc.total + convertir(i.monto || 0, i.moneda || 'ARS'),
-        ejecutado: acc.ejecutado + convertir(i.ejecutado || 0, i.moneda || 'ARS'),
+        total: acc.total + convertir(i.monto || 0, i.moneda || 'ARS', i.cac_tipo),
+        ejecutado: acc.ejecutado + convertir(i.ejecutado || 0, i.moneda || 'ARS', i.cac_tipo),
       }), { total: 0, ejecutado: 0 });
     };
     
@@ -562,24 +570,36 @@ const ControlPresupuestosPage = () => {
   };
 
   // Función para convertir montos según la moneda del presupuesto y la moneda de visualización
-  const cacIndiceActual = resumen?.cotizacionActual?.cac_indice || null;
+  // Todos los subíndices CAC disponibles
+  const cacIndicesActuales = {
+    general: resumen?.cotizacionActual?.cac_indice || null,
+    mano_obra: resumen?.cotizacionActual?.cac_mano_obra || null,
+    materiales: resumen?.cotizacionActual?.cac_materiales || null,
+  };
+  const cacIndiceActual = cacIndicesActuales.general; // backward compat para header chip
 
-  const convertir = (monto, monedaOriginal = 'ARS') => {
+  // Helper: obtener el subíndice CAC correcto para un tipo dado
+  const getCacIndice = (cacTipo) => cacIndicesActuales[cacTipo || 'general'] || cacIndicesActuales.general || null;
+
+  const convertir = (monto, monedaOriginal = 'ARS', cacTipoItem = null) => {
     // Si la moneda de visualización y la original son iguales, no convertir
     if (moneda === monedaOriginal) return monto;
+    
+    // Seleccionar el subíndice CAC correcto según el cac_tipo del item
+    const cacIdx = getCacIndice(cacTipoItem);
     
     // ARS ↔ USD
     if (moneda === 'USD' && monedaOriginal === 'ARS') return tipoCambio ? monto / tipoCambio : monto;
     if (moneda === 'ARS' && monedaOriginal === 'USD') return tipoCambio ? monto * tipoCambio : monto;
     
     // CAC → ARS: monto_cac * cac_indice (presupuestos indexados por CAC vistos en ARS)
-    if (monedaOriginal === 'CAC' && moneda === 'ARS') return cacIndiceActual ? monto * cacIndiceActual : monto;
+    if (monedaOriginal === 'CAC' && moneda === 'ARS') return cacIdx ? monto * cacIdx : monto;
     // CAC → USD: (monto_cac * cac_indice) / tipoCambio
-    if (monedaOriginal === 'CAC' && moneda === 'USD') return (cacIndiceActual && tipoCambio) ? (monto * cacIndiceActual) / tipoCambio : monto;
+    if (monedaOriginal === 'CAC' && moneda === 'USD') return (cacIdx && tipoCambio) ? (monto * cacIdx) / tipoCambio : monto;
     // ARS → CAC
-    if (monedaOriginal === 'ARS' && moneda === 'CAC') return cacIndiceActual ? monto / cacIndiceActual : monto;
+    if (monedaOriginal === 'ARS' && moneda === 'CAC') return cacIdx ? monto / cacIdx : monto;
     // USD → CAC
-    if (monedaOriginal === 'USD' && moneda === 'CAC') return (cacIndiceActual && tipoCambio) ? (monto * tipoCambio) / cacIndiceActual : monto;
+    if (monedaOriginal === 'USD' && moneda === 'CAC') return (cacIdx && tipoCambio) ? (monto * tipoCambio) / cacIdx : monto;
     
     return monto;
   };
@@ -809,7 +829,7 @@ const ControlPresupuestosPage = () => {
     if (!resumen) return { porCategoria: 0, porEtapa: 0, porProveedor: 0, general: 0 };
     
     const items = obtenerTodosLosItemsEgresos();
-    const conv = (i) => convertir(i.monto || 0, i.moneda || 'ARS');
+    const conv = (i) => convertir(i.monto || 0, i.moneda || 'ARS', i.cac_tipo);
     
     // Presupuesto general (sin categoria, etapa ni proveedor)
     const general = items
@@ -1248,8 +1268,9 @@ const ControlPresupuestosPage = () => {
                             const porcentaje = item.monto > 0 ? (item.ejecutado / item.monto) * 100 : 0;
                             const monedaItem = item.moneda || 'ARS';
                             const esIdx = !!item.indexacion;
-                            const unidadIdx = item.indexacion === 'CAC' ? 'CAC' : (item.indexacion === 'USD' ? 'USD' : '');
-                            const idxActual = item.indexacion === 'CAC' ? cacIndiceActual : (item.indexacion === 'USD' ? tipoCambio : null);
+                            const cacTipoLbl = item.cac_tipo === 'mano_obra' ? ' MO' : item.cac_tipo === 'materiales' ? ' MAT' : '';
+                            const unidadIdx = item.indexacion === 'CAC' ? `CAC${cacTipoLbl}` : (item.indexacion === 'USD' ? 'USD' : '');
+                            const idxActual = item.indexacion === 'CAC' ? getCacIndice(item.cac_tipo) : (item.indexacion === 'USD' ? tipoCambio : null);
                             const presEnARS = esIdx && idxActual ? item.monto * idxActual : null;
                             const ejEnARS = esIdx && idxActual ? (item.ejecutado || 0) * idxActual : null;
                             const saldoEnARS = esIdx && idxActual ? (item.monto - (item.ejecutado || 0)) * idxActual : null;
@@ -1427,8 +1448,9 @@ const ControlPresupuestosPage = () => {
                               const gi = calcularSumas.generalItem;
                               const esIdx = gi && !!gi.indexacion;
                               const monedaItem = gi?.moneda || 'ARS';
-                              const unidadIdx = gi?.indexacion === 'CAC' ? 'CAC' : (gi?.indexacion === 'USD' ? 'USD' : '');
-                              const idxActual = gi?.indexacion === 'CAC' ? cacIndiceActual : (gi?.indexacion === 'USD' ? tipoCambio : null);
+                              const cacTipoLbl = gi?.cac_tipo === 'mano_obra' ? ' MO' : gi?.cac_tipo === 'materiales' ? ' MAT' : '';
+                              const unidadIdx = gi?.indexacion === 'CAC' ? `CAC${cacTipoLbl}` : (gi?.indexacion === 'USD' ? 'USD' : '');
+                              const idxActual = gi?.indexacion === 'CAC' ? getCacIndice(gi?.cac_tipo) : (gi?.indexacion === 'USD' ? tipoCambio : null);
                               const presEnARS = esIdx && idxActual ? gi.monto * idxActual : null;
                               const fmtARS = (v) => v != null ? `$${Number(v).toLocaleString('es-AR', { maximumFractionDigits: 0 })}` : '';
                               const fmtUnidad = (v) => `${Number(v).toLocaleString('es-AR', { maximumFractionDigits: 2 })} ${unidadIdx}`;
@@ -1542,8 +1564,9 @@ const ControlPresupuestosPage = () => {
                                 baseCalculo={data.base_calculo}
                                 cotizacionSnapshot={data.cotizacion_snapshot}
                                 montoIngresado={data.monto_ingresado}
-                                cacIndiceActual={cacIndiceActual}
+                                cacIndiceActual={getCacIndice(data.cac_tipo)}
                                 tipoCambioActual={tipoCambio}
+                                cacTipo={data.cac_tipo}
                                 onCrear={() => abrirDrawerCrear('categoria', catName)}
                                 onClick={data.id ? () => abrirDrawerEditar(data, catName) : undefined}
                               />
@@ -1581,8 +1604,9 @@ const ControlPresupuestosPage = () => {
                                 baseCalculo={data.base_calculo}
                                 cotizacionSnapshot={data.cotizacion_snapshot}
                                 montoIngresado={data.monto_ingresado}
-                                cacIndiceActual={cacIndiceActual}
+                                cacIndiceActual={getCacIndice(data.cac_tipo)}
                                 tipoCambioActual={tipoCambio}
+                                cacTipo={data.cac_tipo}
                                 onCrear={() => abrirDrawerCrear('etapa', etapaName)}
                                 onClick={data.id ? () => abrirDrawerEditar(data, etapaName) : undefined}
                               />
@@ -1638,8 +1662,9 @@ const ControlPresupuestosPage = () => {
                                 baseCalculo={data.base_calculo}
                                 cotizacionSnapshot={data.cotizacion_snapshot}
                                 montoIngresado={data.monto_ingresado}
-                                cacIndiceActual={cacIndiceActual}
+                                cacIndiceActual={getCacIndice(data.cac_tipo)}
                                 tipoCambioActual={tipoCambio}
+                                cacTipo={data.cac_tipo}
                                 onCrear={() => abrirDrawerCrear('proveedor', proveedor)}
                                 onClick={data.id ? () => abrirDrawerEditar(data, proveedor) : undefined}
                               />
