@@ -141,6 +141,7 @@ const PresupuestosProfesionales = () => {
   const [ppEditId, setPpEditId] = useState(null);
   const [ppSaving, setPpSaving] = useState(false);
   const [ppModoDistribuir, setPpModoDistribuir] = useState(false);
+  const [ppTotalObjetivo, setPpTotalObjetivo] = useState('');
 
   // ── Presupuestos: eliminar ──
   const [openPPDelete, setOpenPPDelete] = useState(false);
@@ -351,6 +352,7 @@ const PresupuestosProfesionales = () => {
     setPpIsEdit(false);
     setPpEditId(null);
     setPpModoDistribuir(false);
+    setPpTotalObjetivo('');
     setOpenPPForm(true);
   };
 
@@ -652,6 +654,7 @@ const PresupuestosProfesionales = () => {
   };
 
   const ppDistribuirPorTotal = (totalStr) => {
+    setPpTotalObjetivo(totalStr);
     const total = Number(totalStr) || 0;
     setPpForm((f) => {
       const rubrosDist = distribuirMontosPorIncidencia(total, f.rubros);
@@ -675,8 +678,11 @@ const PresupuestosProfesionales = () => {
         ...rubros[idx],
         incidencia_objetivo_pct: stored,
       };
-      const totalActual = f.rubros.reduce((s, r) => s + (Number(r.monto) || 0), 0);
-      const rubrosDist = distribuirMontosPorIncidencia(totalActual, rubros);
+      const totalParaDistribuir =
+        ppTotalObjetivo !== '' && Number(ppTotalObjetivo) >= 0
+          ? Number(ppTotalObjetivo) || 0
+          : f.rubros.reduce((s, r) => s + (Number(r.monto) || 0), 0);
+      const rubrosDist = distribuirMontosPorIncidencia(totalParaDistribuir, rubros);
       return { ...f, rubros: rubrosDist };
     });
   };
@@ -740,8 +746,10 @@ const PresupuestosProfesionales = () => {
         notas_texto: TEXTO_NOTAS_DEFAULT,
       }));
       setPpModoDistribuir(false);
+      setPpTotalObjetivo('');
       return;
     }
+    setPpTotalObjetivo('');
     try {
       const pl = await PresupuestoProfesionalService.obtenerPlantilla(plantillaId);
       if (pl && pl.rubros) {
@@ -1031,23 +1039,13 @@ const PresupuestosProfesionales = () => {
         <title>Presupuestos Profesionales | SorbyData</title>
       </Head>
 
-      <Box component="main" sx={{ flexGrow: 1, py: 4 }}>
+      <Box component="main" sx={{ flexGrow: 1, pb: 4 }}>
         <Container maxWidth="xl">
-          {/* ── Header ── */}
-          <Stack direction="row" justifyContent="space-between" alignItems="center" mb={3}>
-            <Box>
-              <Typography variant="h4">Presupuestos Profesionales</Typography>
-              <Typography variant="body2" color="text.secondary">
-                Creá, gestioná y seguí tus presupuestos de obra.
-              </Typography>
-            </Box>
-          </Stack>
-
           {/* ── Tabs ── */}
           <Tabs
             value={currentTab}
             onChange={(_, v) => setCurrentTab(v)}
-            sx={{ mb: 3, borderBottom: 1, borderColor: 'divider' }}
+            sx={{ mb: 0, borderBottom: 1, borderColor: 'divider' }}
           >
             <Tab label="Presupuestos" />
             <Tab label="Plantillas de Rubros" />
@@ -1467,12 +1465,16 @@ const PresupuestosProfesionales = () => {
         proyectos={proyectos}
         plantillas={plantillas}
         totalVivo={ppTotalVivo}
+        totalObjetivo={ppTotalObjetivo}
         saving={ppSaving}
         onSave={handleSavePP}
         onProyectoChange={handleProyectoChange}
         onAplicarPlantilla={handleAplicarPlantilla}
         modoDistribuir={ppModoDistribuir}
-        onModoDistribuirChange={setPpModoDistribuir}
+        onModoDistribuirChange={(checked) => {
+          setPpModoDistribuir(checked);
+          if (!checked) setPpTotalObjetivo('');
+        }}
         onDistribuirPorTotal={ppDistribuirPorTotal}
         onUpdateIncidenciaObjetivo={ppUpdateIncidenciaObjetivo}
         addRubro={ppAddRubro}
@@ -1581,7 +1583,7 @@ const PresupuestosProfesionales = () => {
 
 export default function Page() {
   return (
-    <DashboardLayout>
+    <DashboardLayout title="Presupuestos Profesionales">
       <PresupuestosProfesionales />
     </DashboardLayout>
   );

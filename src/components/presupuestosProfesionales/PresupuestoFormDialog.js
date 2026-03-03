@@ -155,6 +155,7 @@ const PresupuestoFormDialog = ({
   proyectos = [],
   plantillas = [],
   totalVivo,
+  totalObjetivo = '',
   saving,
   onSave,
   onProyectoChange,
@@ -172,9 +173,7 @@ const PresupuestoFormDialog = ({
   updateTarea,
   focusRef,
 }) => {
-  const hayIncidenciasObjetivo =
-    form.plantilla_id &&
-    form.rubros.some((r) => r.incidencia_objetivo_pct != null && !Number.isNaN(Number(r.incidencia_objetivo_pct)));
+  const puedeDistribuirPorIncidencias = !isEdit;
   const sumaIncidencias = useMemo(() => sumaIncidenciasObjetivo(form.rubros), [form.rubros]);
   const sumaInvalida = sumaIncidencias > 100;
   const sumaBaja = sumaIncidencias < 100 && sumaIncidencias >= 0;
@@ -250,7 +249,7 @@ const PresupuestoFormDialog = ({
           </Stack>
         )}
 
-        {hayIncidenciasObjetivo && (
+        {puedeDistribuirPorIncidencias && (
           <FormControlLabel
             control={
               <Switch
@@ -262,16 +261,20 @@ const PresupuestoFormDialog = ({
           />
         )}
 
-        {modoDistribuir && hayIncidenciasObjetivo && (
+        {modoDistribuir && puedeDistribuirPorIncidencias && (
           <Stack direction="row" spacing={2} alignItems="center">
             <TextField
               size="small"
               label="Total neto"
-              value={formatNumberForInput(totalVivo, 2)}
+              value={
+                totalObjetivo !== ''
+                  ? formatNumberForInput(totalObjetivo, 2)
+                  : formatNumberForInput(totalVivo, 2)
+              }
               onChange={(e) => {
                 const raw = e.target.value;
                 if (raw === '') {
-                  onDistribuirPorTotal?.('0');
+                  onDistribuirPorTotal?.('');
                   return;
                 }
                 const v = parseNumberInput(raw);
@@ -339,7 +342,7 @@ const PresupuestoFormDialog = ({
                     }
                   }}
                 />
-                {modoDistribuir && hayIncidenciasObjetivo && (
+                {modoDistribuir && puedeDistribuirPorIncidencias && (
                   <TextField
                     size="small"
                     label="Incidencia %"
