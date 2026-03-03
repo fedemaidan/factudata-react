@@ -99,7 +99,9 @@ const SDRService = {
      */
     subirAudio: async (contactoId, audioBlob, opts = {}) => {
         const formData = new FormData();
-        formData.append('audio', audioBlob, `audio_${Date.now()}.webm`);
+        // Si es un File (del input), usar su nombre original; si es Blob (de grabación), usar .webm
+        const fileName = audioBlob.name || `audio_${Date.now()}.webm`;
+        formData.append('audio', audioBlob, fileName);
         formData.append('contactoId', contactoId);
         if (opts.duracion) formData.append('duracion', String(opts.duracion));
         if (opts.nota) formData.append('nota', opts.nota);

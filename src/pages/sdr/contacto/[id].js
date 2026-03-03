@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import {
@@ -51,7 +51,9 @@ import {
     Mic as MicIcon,
     Pause as PauseIcon,
     GraphicEq as GraphicEqIcon,
-    DeleteOutline as DeleteOutlineIcon
+    DeleteOutline as DeleteOutlineIcon,
+    FileUpload as FileUploadIcon,
+    Download as DownloadIcon
 } from '@mui/icons-material';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
@@ -72,6 +74,16 @@ import {
 } from 'src/constant/sdrConstants';
 import MiniChatViewer from 'src/components/sdr/MiniChatViewer';
 import useGrabadorAudio from 'src/hooks/useGrabadorAudio';
+import config from 'src/config/config';
+
+// Helper: convierte URL relativa de audio (/api/sdr/audios/...) a URL absoluta del backend
+const resolveAudioUrl = (url) => {
+    if (!url) return '';
+    if (url.startsWith('http')) return url;
+    // config.apiUrl = 'http://localhost:3003/api' → base = 'http://localhost:3003'
+    const baseUrl = config.apiUrl.replace(/\/api\/?$/, '');
+    return `${baseUrl}${url}`;
+};
 
 // ==================== CONSTANTES ====================
 
@@ -261,6 +273,8 @@ const ContactoSDRDetailPage = () => {
     // Audio
     const grabador = useGrabadorAudio();
     const [subiendoAudio, setSubiendoAudio] = useState(false);
+    const [subiendoArchivo, setSubiendoArchivo] = useState(false);
+    const fileInputRef = useRef(null);
 
     // Navegación entre contactos (IDs guardados en sessionStorage)
     const [contactoIds, setContactoIds] = useState([]);
@@ -550,6 +564,28 @@ const ContactoSDRDetailPage = () => {
             mostrarSnackbar('Error al subir el audio', 'error');
         } finally {
             setSubiendoAudio(false);
+        }
+    };
+
+    const handleSubirGrabacion = async (e) => {
+        const file = e.target.files?.[0];
+        if (!file || !contacto?._id) return;
+        // Reset input para poder seleccionar el mismo archivo de nuevo
+        e.target.value = '';
+        setSubiendoArchivo(true);
+        try {
+            await SDRService.subirAudio(contacto._id, file, {
+                duracion: null,
+                nota: `📁 Archivo subido: ${file.name}`,
+                empresaId
+            });
+            mostrarSnackbar('📁 Grabación subida y transcrita', 'success');
+            await cargarContacto();
+        } catch (err) {
+            console.error('Error subiendo grabación:', err);
+            mostrarSnackbar('Error al subir la grabación', 'error');
+        } finally {
+            setSubiendoArchivo(false);
         }
     };
 
@@ -1578,6 +1614,18 @@ const ContactoSDRDetailPage = () => {
                                             </IconButton>
                                         </Tooltip>
                                     )}
+                                    {grabador.estado === 'inactivo' && (
+                                        <Tooltip title="Subir grabación de llamada">
+                                            <IconButton
+                                                color="primary"
+                                                onClick={() => fileInputRef.current?.click()}
+                                                disabled={subiendoArchivo}
+                                                sx={{ bgcolor: '#e3f2fd', '&:hover': { bgcolor: '#bbdefb' } }}
+                                            >
+                                                {subiendoArchivo ? <CircularProgress size={24} /> : <FileUploadIcon />}
+                                            </IconButton>
+                                        </Tooltip>
+                                    )}
                                     <Button
                                         variant="contained"
                                         size="small"
@@ -1656,7 +1704,14 @@ const ContactoSDRDetailPage = () => {
                                                     )}
                                                     {(evento.audioUrl || evento.metadata?.audioUrl) && (
                                                         <Box sx={{ mt: 0.5 }}>
-                                                            <audio controls src={evento.audioUrl || evento.metadata?.audioUrl} style={{ width: '100%', height: 32 }} />
+                                                            <Stack direction="row" alignItems="center" spacing={0.5}>
+                                                                <audio controls src={resolveAudioUrl(evento.audioUrl || evento.metadata?.audioUrl)} style={{ flex: 1, height: 32 }} />
+                                                                <Tooltip title="Descargar audio">
+                                                                    <IconButton size="small" component="a" href={resolveAudioUrl(evento.audioUrl || evento.metadata?.audioUrl)} download={evento.audioNombre || evento.metadata?.audioNombre || 'audio.mp3'} sx={{ color: 'primary.main' }}>
+                                                                        <DownloadIcon sx={{ fontSize: 18 }} />
+                                                                    </IconButton>
+                                                                </Tooltip>
+                                                            </Stack>
                                                         </Box>
                                                     )}
                                                     {(evento.transcripcion || evento.metadata?.transcripcion) && (
@@ -2322,6 +2377,18 @@ const ContactoSDRDetailPage = () => {
                                             </IconButton>
                                         </Tooltip>
                                     )}
+                                    {grabador.estado === 'inactivo' && (
+                                        <Tooltip title="Subir grabación de llamada">
+                                            <IconButton
+                                                color="primary"
+                                                onClick={() => fileInputRef.current?.click()}
+                                                disabled={subiendoArchivo}
+                                                sx={{ bgcolor: '#e3f2fd', '&:hover': { bgcolor: '#bbdefb' } }}
+                                            >
+                                                {subiendoArchivo ? <CircularProgress size={24} /> : <FileUploadIcon />}
+                                            </IconButton>
+                                        </Tooltip>
+                                    )}
                                     <Button
                                         variant="contained"
                                         size="small"
@@ -2400,7 +2467,14 @@ const ContactoSDRDetailPage = () => {
                                                     )}
                                                     {(evento.audioUrl || evento.metadata?.audioUrl) && (
                                                         <Box sx={{ mt: 0.5 }}>
-                                                            <audio controls src={evento.audioUrl || evento.metadata?.audioUrl} style={{ width: '100%', height: 32 }} />
+                                                            <Stack direction="row" alignItems="center" spacing={0.5}>
+                                                                <audio controls src={resolveAudioUrl(evento.audioUrl || evento.metadata?.audioUrl)} style={{ flex: 1, height: 32 }} />
+                                                                <Tooltip title="Descargar audio">
+                                                                    <IconButton size="small" component="a" href={resolveAudioUrl(evento.audioUrl || evento.metadata?.audioUrl)} download={evento.audioNombre || evento.metadata?.audioNombre || 'audio.mp3'} sx={{ color: 'primary.main' }}>
+                                                                        <DownloadIcon sx={{ fontSize: 18 }} />
+                                                                    </IconButton>
+                                                                </Tooltip>
+                                                            </Stack>
                                                         </Box>
                                                     )}
                                                     {(evento.transcripcion || evento.metadata?.transcripcion) && (
@@ -2495,6 +2569,13 @@ const ContactoSDRDetailPage = () => {
                                             </IconButton>
                                         </Tooltip>
                                     )}
+                                    {grabador.estado === 'inactivo' && (
+                                        <Tooltip title="Subir grabación">
+                                            <IconButton color="primary" onClick={() => fileInputRef.current?.click()} disabled={subiendoArchivo} sx={{ bgcolor: '#e3f2fd', '&:hover': { bgcolor: '#bbdefb' } }}>
+                                                {subiendoArchivo ? <CircularProgress size={24} /> : <FileUploadIcon />}
+                                            </IconButton>
+                                        </Tooltip>
+                                    )}
                                     <Button
                                         variant="contained"
                                         size="small"
@@ -2562,7 +2643,14 @@ const ContactoSDRDetailPage = () => {
                                                             )}
                                                             {(evento.audioUrl || evento.metadata?.audioUrl) && (
                                                                 <Box sx={{ mt: 0.5 }}>
-                                                                    <audio controls src={evento.audioUrl || evento.metadata?.audioUrl} style={{ width: '100%', height: 36 }} />
+                                                                    <Stack direction="row" alignItems="center" spacing={0.5}>
+                                                                        <audio controls src={resolveAudioUrl(evento.audioUrl || evento.metadata?.audioUrl)} style={{ flex: 1, height: 36 }} />
+                                                                        <Tooltip title="Descargar audio">
+                                                                            <IconButton size="small" component="a" href={resolveAudioUrl(evento.audioUrl || evento.metadata?.audioUrl)} download={evento.audioNombre || evento.metadata?.audioNombre || 'audio.mp3'} sx={{ color: 'primary.main' }}>
+                                                                                <DownloadIcon sx={{ fontSize: 20 }} />
+                                                                            </IconButton>
+                                                                        </Tooltip>
+                                                                    </Stack>
                                                                 </Box>
                                                             )}
                                                             {(evento.transcripcion || evento.metadata?.transcripcion) && (
@@ -3140,6 +3228,15 @@ const ContactoSDRDetailPage = () => {
                     </MenuItem>
                 )}
             </Menu>
+
+            {/* Input file oculto para subir grabaciones */}
+            <input
+                type="file"
+                ref={fileInputRef}
+                accept="audio/*,.m4a,.mp3,.wav,.ogg,.webm,.aac,.amr,.3gp"
+                style={{ display: 'none' }}
+                onChange={handleSubirGrabacion}
+            />
 
             {/* Snackbar */}
             <Snackbar
