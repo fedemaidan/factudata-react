@@ -226,6 +226,7 @@ const ContactoSDRDetailPage = () => {
 
     // Próximo contacto
     const [guardandoProximo, setGuardandoProximo] = useState(false);
+    const [proximoManualInput, setProximoManualInput] = useState(''); // valor pendiente del datetime-local
 
     // Comentario
     const [nuevoComentario, setNuevoComentario] = useState('');
@@ -815,7 +816,7 @@ const ContactoSDRDetailPage = () => {
             // Todas las sub-acciones completadas → avanzar paso
             setCargandoCadencia(true);
             try {
-                await SDRService.avanzarPasoCadencia(contacto._id);
+                await SDRService.avanzarPasoCadencia(contacto._id, proximoContactoWizard || undefined);
                 mostrarSnackbar('Paso completado ✓');
                 cargarContacto();
             } catch (err) {
@@ -961,7 +962,9 @@ const ContactoSDRDetailPage = () => {
         if (!fecha) return '';
         const d = new Date(fecha);
         if (isNaN(d.getTime())) return '';
-        return d.toISOString().slice(0, 16);
+        // Formatear en hora LOCAL (no UTC) para que el input datetime-local muestre correctamente
+        const pad = (n) => String(n).padStart(2, '0');
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
     };
 
     // ==================== PROXIMO CONTACTO PICKER ====================
@@ -1439,19 +1442,33 @@ const ContactoSDRDetailPage = () => {
                                         ))}
                                     </Stack>
 
-                                    <TextField
-                                        type="datetime-local"
-                                        size="small"
-                                        fullWidth
-                                        label="Elegir fecha/hora"
-                                        value={fechaParaInput(contacto.proximoContacto)}
-                                        onChange={(e) => {
-                                            if (e.target.value) handleGuardarProximoContacto(new Date(e.target.value));
-                                        }}
-                                        disabled={guardandoProximo}
-                                        InputLabelProps={{ shrink: true }}
-                                        sx={{ mb: { xs: 0, md: 2 } }}
-                                    />
+                                    <Stack direction="row" spacing={1} alignItems="flex-end">
+                                        <TextField
+                                            type="datetime-local"
+                                            size="small"
+                                            fullWidth
+                                            label="Elegir fecha/hora"
+                                            value={proximoManualInput || fechaParaInput(contacto.proximoContacto)}
+                                            onChange={(e) => setProximoManualInput(e.target.value)}
+                                            disabled={guardandoProximo}
+                                            InputLabelProps={{ shrink: true }}
+                                        />
+                                        {proximoManualInput && (
+                                            <Button
+                                                variant="contained"
+                                                size="small"
+                                                color="success"
+                                                disabled={guardandoProximo}
+                                                onClick={() => {
+                                                    handleGuardarProximoContacto(new Date(proximoManualInput));
+                                                    setProximoManualInput('');
+                                                }}
+                                                sx={{ minWidth: 'auto', px: 1.5, whiteSpace: 'nowrap' }}
+                                            >
+                                                {guardandoProximo ? <CircularProgress size={18} color="inherit" /> : '✅'}
+                                            </Button>
+                                        )}
+                                    </Stack>
 
                                     <Divider sx={{ mb: 1.5, display: { xs: 'none', md: 'block' } }} />
 

@@ -707,8 +707,8 @@ const SDRService = {
     /**
      * Avanzar al siguiente paso de cadencia
      */
-    avanzarPasoCadencia: async (contactoId) => {
-        const res = await api.post('/sdr/cadencias/avanzar', { contactoId });
+    avanzarPasoCadencia: async (contactoId, proximoContacto) => {
+        const res = await api.post('/sdr/cadencias/avanzar', { contactoId, proximoContacto });
         return res.data;
     },
 
