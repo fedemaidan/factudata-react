@@ -92,7 +92,7 @@ const PresupuestoProfesionalService = {
 
   cambiarEstado: async (id, nuevoEstado, metadata = {}) => {
     const res = await api.put(`${BASE}/${id}/estado`, {
-      nuevo_estado: nuevoEstado,
+      estado: nuevoEstado,
       ...metadata,
     });
     if (res.status === 200) return unwrap(res);

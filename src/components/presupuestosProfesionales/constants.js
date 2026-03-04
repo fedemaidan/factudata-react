@@ -17,11 +17,11 @@ export const ESTADO_COLOR = {
 };
 
 export const TRANSICIONES_VALIDAS = {
-  borrador: ['enviado'],
-  enviado: ['aceptado', 'rechazado'],
-  aceptado: ['vencido'],
+  borrador: ['enviado', 'rechazado', 'vencido'],
+  enviado: ['aceptado', 'rechazado', 'vencido'],
+  aceptado: [],
   rechazado: ['borrador'],
-  vencido: [],
+  vencido: ['borrador'],
 };
 
 export const MONEDAS = ['ARS', 'USD'];

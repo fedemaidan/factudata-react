@@ -1,6 +1,5 @@
 export { default as PresupuestoFormDialog } from './PresupuestoFormDialog';
 export { default as PresupuestoDeleteDialog } from './PresupuestoDeleteDialog';
-export { default as CambiarEstadoDialog } from './CambiarEstadoDialog';
 export { default as PresupuestoDetalleDialog } from './PresupuestoDetalleDialog';
 export { default as AgregarAnexoDialog } from './AgregarAnexoDialog';
 export { default as PlantillaFormDialog } from './PlantillaFormDialog';

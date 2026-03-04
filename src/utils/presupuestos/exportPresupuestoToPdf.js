@@ -1,5 +1,6 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { loadImageAsDataUrl } from './loadLogoForPdf';
 
 const PAGE_WIDTH = 210; // mm (A4)
 const PAGE_HEIGHT = 297;
@@ -20,28 +21,18 @@ const formatDate = (value) => {
   return date.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
 };
 
+const formatFechaCabecera = (value) => {
+  if (!value) return '';
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleDateString('es-AR', { day: 'numeric', month: 'long', year: 'numeric' });
+};
+
 const sanitizeFileName = (value) => {
   return (value || 'presupuesto')
     .replace(/\s+/g, '_')
     .replace(/[^\w-]/g, '')
     .slice(0, 40);
-};
-
-const loadImageAsDataUrl = async (url) => {
-  if (!url) return null;
-  try {
-    const response = await fetch(url, { mode: 'cors' });
-    if (!response.ok) return null;
-    const blob = await response.blob();
-    return await new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.onloadend = () => resolve(reader.result);
-      reader.readAsDataURL(blob);
-    });
-  } catch (error) {
-    console.debug('No se pudo cargar el logo para el PDF', error);
-    return null;
-  }
 };
 
 const buildRubroRows = (rubros = [], totalNeto) => {
@@ -109,9 +100,9 @@ const buildSurfaceLines = (analisis, totalNeto, currency) => {
   const promedio = ponderada > 0 ? totalNeto / ponderada : null;
 
   const lines = [
-    `Superficie cubierta: ${cubierta ? `${cubierta.toFixed(2)} m²` : '—'}`,
-    `Superficie patios: ${patios ? `${patios.toFixed(2)} m²` : '—'}`,
-    `Superficie ponderada: ${ponderada ? `${ponderada.toFixed(2)} m²` : '—'}`,
+    `Superficie cubierta: ${cubierta ? `${Math.round(cubierta)} m²` : '—'}`,
+    `Superficie patios: ${patios ? `${Math.round(patios)} m²` : '—'}`,
+    `Superficie ponderada: ${ponderada ? `${Math.round(ponderada)} m²` : '—'}`,
   ];
 
   if (promedio !== null && Number.isFinite(promedio)) {
@@ -157,19 +148,18 @@ const buildTotalEquivalenteRow = (presupuesto, totalActualizado) => {
 };
 
 const addMetadataBlock = (doc, presupuesto, empresaNombre, displayCurrency) => {
-  const yStart = 40;
+  const yStart = 58;
   const list = [
     ['Empresa', empresaNombre || presupuesto.empresa_nombre || '—'],
-    ['Dirección de obra', presupuesto.obra_direccion || '—'],
     ['Proyecto', presupuesto.proyecto_nombre || '—'],
     ['Moneda', displayCurrency],
     ['Fecha', formatDate(presupuesto.fecha || presupuesto.createdAt)],
   ];
 
   doc.setFontSize(10);
-  doc.setTextColor(255);
-  doc.setDrawColor(255);
-  doc.setLineWidth(0.7);
+  doc.setTextColor(0);
+  doc.setDrawColor(BORDER_COLOR);
+  doc.setLineWidth(0.3);
   doc.line(MARGIN, yStart + 4, PAGE_WIDTH - MARGIN, yStart + 4);
 
   let currentY = yStart + 12;
@@ -205,23 +195,35 @@ export async function exportPresupuestoToPdf(presupuesto, { empresa } = {}) {
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
   doc.setFont('helvetica', 'normal');
 
-  // Header
-  doc.setFillColor(...ACCENT_COLOR);
-  doc.rect(0, 0, PAGE_WIDTH, 38, 'F');
-  doc.setFontSize(18);
-  doc.setTextColor(255);
-  doc.text('Presupuesto Profesional', MARGIN, 16);
-
-  doc.setFontSize(10);
-  doc.text(formatDate(presupuesto.fecha || presupuesto.createdAt), MARGIN, 23);
-
+  // Header: fondo azul, obra izq, fecha der (misma altura), logo centrado 30% más grande
+  const FONT_SIZE_HEADER = 6;
   const logoUrl = presupuesto.empresa_logo_url;
   const logoDataUrl = await loadImageAsDataUrl(logoUrl);
+  const LOGO_WIDTH = 85;
+  const LOGO_HEIGHT = 47;
+  const logoX = (PAGE_WIDTH - LOGO_WIDTH) / 2;
+
+  const HEADER_HEIGHT = logoDataUrl ? 58 : 28;
+  doc.setFillColor(...ACCENT_COLOR);
+  doc.rect(0, 0, PAGE_WIDTH, HEADER_HEIGHT, 'F');
+
+  doc.setFontSize(FONT_SIZE_HEADER);
+  doc.setTextColor(255);
+  doc.text(presupuesto.obra_direccion || '—', MARGIN, 6);
+  doc.text(formatFechaCabecera(presupuesto.fecha || presupuesto.createdAt), PAGE_WIDTH - MARGIN, 6, {
+    align: 'right',
+  });
+
   if (logoDataUrl) {
-    doc.addImage(logoDataUrl, 'PNG', PAGE_WIDTH - MARGIN - 35, 5, 35, 28);
-  } else if (empresa?.nombre) {
-    doc.setFontSize(12);
-    doc.text(empresa.nombre, PAGE_WIDTH - MARGIN - 35, 23, { align: 'right' });
+    doc.addImage(logoDataUrl, 'PNG', logoX, 12, LOGO_WIDTH, LOGO_HEIGHT);
+  } else {
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.text(empresa?.nombre || presupuesto.empresa_nombre || '—', PAGE_WIDTH / 2, 18, {
+      align: 'center',
+    });
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(FONT_SIZE_HEADER);
   }
 
   // Metadata
@@ -267,6 +269,9 @@ export async function exportPresupuestoToPdf(presupuesto, { empresa } = {}) {
         data.cell.styles.fontStyle = 'bold';
         data.cell.styles.textColor = 255;
         data.cell.styles.fillColor = ACCENT_COLOR;
+        if (data.column.index === 1) {
+          data.cell.styles.halign = 'left';
+        }
       } else if (meta.type === 'equiv') {
         data.cell.styles.fontStyle = 'bold';
         data.cell.styles.textColor = 255;

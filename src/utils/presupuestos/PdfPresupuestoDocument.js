@@ -13,32 +13,29 @@ const styles = StyleSheet.create({
   header: {
     backgroundColor: '#0a4791',
     borderRadius: 2,
-    padding: 10,
+    padding: 6,
     marginBottom: 10,
-    color: '#fff',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    alignItems: 'center',
   },
-  headerLeft: {
-    flex: 1,
+  headerFecha: {
+    fontSize: 6,
+    color: '#fff',
   },
   headerLogo: {
-    width: 35,
-    height: 28,
+    width: 85,
+    height: 47,
     objectFit: 'contain',
+    marginTop: 2,
   },
-  headerTitle: {
-    fontSize: 16,
+  headerNombreEmpresa: {
+    fontSize: 10,
     fontWeight: 'bold',
-    letterSpacing: 1,
+    color: '#fff',
+    marginTop: 2,
   },
-  headerMeta: {
-    display: 'flex',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 6,
-    fontSize: 9,
+  headerObra: {
+    fontSize: 6,
+    color: '#fff',
   },
   metaRow: {
     display: 'flex',
@@ -204,7 +201,7 @@ const renderRubros = (rubros = [], currency, totalNeto, costoM2Data, tieneAnexos
       key="total-row"
     >
       <Text style={styles.tableCell} />
-      <Text style={[styles.tableCellDesc, { color: '#fff' }]}>TOTAL PRESUPUESTO</Text>
+      <Text style={[styles.tableCellDesc, { color: '#fff', textAlign: 'left' }]}>TOTAL PRESUPUESTO</Text>
       <Text style={[styles.tableCellRight, { color: '#fff' }]}>
         {formatCurrency(totalNeto, currency)}
       </Text>
@@ -244,9 +241,9 @@ const buildSurfaceLines = (analisis, totalNeto, currency) => {
   const ponderada = ponderadaOriginal || cubierta + patios * coef;
   const promedio = ponderada > 0 ? totalNeto / ponderada : null;
   const lines = [
-    `Superficie cubierta: ${cubierta ? `${cubierta.toFixed(2)} m²` : '—'}`,
-    `Superficie patios: ${patios ? `${patios.toFixed(2)} m²` : '—'}`,
-    `Superficie ponderada: ${ponderada ? `${ponderada.toFixed(2)} m²` : '—'}`,
+    `Superficie cubierta: ${cubierta ? `${Math.round(cubierta)} m²` : '—'}`,
+    `Superficie patios: ${patios ? `${Math.round(patios)} m²` : '—'}`,
+    `Superficie ponderada: ${ponderada ? `${Math.round(ponderada)} m²` : '—'}`,
   ];
   if (promedio !== null && Number.isFinite(promedio)) {
     lines.push(`Promedio por m²: ${formatCurrency(promedio, currency)}`);
@@ -388,20 +385,21 @@ export const PresupuestoPdfDocument = ({ presupuesto, empresa, costoM2Data = {},
     <Document>
       <Page size="A4" style={styles.page}>
         <View fixed style={styles.header}>
-          <View style={styles.headerLeft}>
-            <Text style={styles.headerTitle}>Presupuesto Profesional</Text>
-            <View style={styles.headerMeta}>
-              <Text>{empresa?.nombre || presupuesto?.empresa_nombre || 'Empresa'}</Text>
-              <Text>{formatFecha(presupuesto?.fecha || presupuesto?.createdAt)}</Text>
-            </View>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
+            <Text style={styles.headerObra}>
+              {presupuesto?.obra_direccion || '—'}
+            </Text>
+            <Text style={styles.headerFecha}>
+              {formatFecha(presupuesto?.fecha || presupuesto?.createdAt)}
+            </Text>
           </View>
-          {logoDataUrl && (
+          {logoDataUrl ? (
             <Image src={logoDataUrl} style={styles.headerLogo} />
+          ) : (
+            <Text style={styles.headerNombreEmpresa}>
+              {empresa?.nombre || presupuesto?.empresa_nombre || 'Empresa'}
+            </Text>
           )}
-        </View>
-        <View style={styles.metaRow}>
-          <Text style={styles.metaLabel}>Obra</Text>
-          <Text>{presupuesto?.obra_direccion || '—'}</Text>
         </View>
         <View style={styles.metaRow}>
           <Text style={styles.metaLabel}>Proyecto</Text>

@@ -1,10 +1,13 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Box,
   Chip,
   CircularProgress,
   Collapse,
+  FormControl,
   IconButton,
+  MenuItem,
+  Select,
   Stack,
   Table,
   TableBody,
@@ -17,7 +20,6 @@ import {
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import VisibilityIcon from '@mui/icons-material/Visibility';
-import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import PostAddIcon from '@mui/icons-material/PostAdd';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
@@ -35,14 +37,18 @@ const PresupuestosTableRow = ({
   row,
   isExpanded,
   exportingPdfId,
+  changingEstadoId,
   onToggleExpanded,
   onOpenDetalle,
   onExportPdf,
   onOpenEdit,
-  onOpenCambiarEstado,
+  onCambiarEstado,
   onOpenAnexo,
   onDelete,
 }) => {
+  const [selectOpen, setSelectOpen] = useState(false);
+  const estadosDisponibles = TRANSICIONES_VALIDAS[row.estado] || [];
+  const puedeCambiar = estadosDisponibles.length > 0 && changingEstadoId !== row._id;
   return (
     <React.Fragment>
       <TableRow hover>
@@ -76,11 +82,70 @@ const PresupuestosTableRow = ({
           )}
         </TableCell>
         <TableCell>
-          <Chip
-            label={ESTADO_LABEL[row.estado] || row.estado}
-            color={ESTADO_COLOR[row.estado] || 'default'}
-            size="small"
-          />
+          {puedeCambiar ? (
+            <FormControl size="small" sx={{ minWidth: 120 }}>
+              <Select
+                value={row.estado}
+                renderValue={(v) => ESTADO_LABEL[v] || v}
+                open={selectOpen}
+                onOpen={() => setSelectOpen(true)}
+                onClose={() => setSelectOpen(false)}
+                onChange={(e) => {
+                  const nuevo = e.target.value;
+                  if (nuevo && nuevo !== row.estado) {
+                    onCambiarEstado(row, nuevo);
+                    setSelectOpen(false);
+                  }
+                }}
+                disabled={changingEstadoId === row._id}
+                displayEmpty
+                sx={{
+                  height: 28,
+                  fontSize: '0.8125rem',
+                  fontWeight: 500,
+                  borderRadius: 1.5,
+                  '& .MuiSelect-select': { py: 0.5, px: 1.5 },
+                  ...(ESTADO_COLOR[row.estado] && ESTADO_COLOR[row.estado] !== 'default'
+                    ? {
+                        backgroundColor: (theme) =>
+                          theme.palette.mode === 'light'
+                            ? `${theme.palette[ESTADO_COLOR[row.estado]].main}15`
+                            : `${theme.palette[ESTADO_COLOR[row.estado]].dark}20`,
+                        color: (theme) => theme.palette[ESTADO_COLOR[row.estado]].main,
+                        '&:hover': {
+                          backgroundColor: (theme) =>
+                            theme.palette.mode === 'light'
+                              ? `${theme.palette[ESTADO_COLOR[row.estado]].main}25`
+                              : `${theme.palette[ESTADO_COLOR[row.estado]].dark}30`,
+                        },
+                      }
+                    : {}),
+                }}
+                MenuProps={{
+                  PaperProps: {
+                    sx: {
+                      mt: 1,
+                      boxShadow: 2,
+                      '& .MuiMenuItem-root': { fontSize: '0.8125rem' },
+                    },
+                  },
+                }}
+              >
+                {estadosDisponibles.map((e) => (
+                  <MenuItem key={e} value={e}>
+                    {ESTADO_LABEL[e] || e}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          ) : (
+            <Chip
+              icon={changingEstadoId === row._id ? <CircularProgress size={14} color="inherit" /> : undefined}
+              label={ESTADO_LABEL[row.estado] || row.estado}
+              color={ESTADO_COLOR[row.estado] || 'default'}
+              size="small"
+            />
+          )}
         </TableCell>
         <TableCell>{formatDate(row.fecha || row.createdAt)}</TableCell>
         <TableCell align="center">{row.version_actual > 0 ? `v${row.version_actual}` : '—'}</TableCell>
@@ -106,13 +171,6 @@ const PresupuestosTableRow = ({
               <Tooltip title="Editar">
                 <IconButton size="small" onClick={() => onOpenEdit(row)}>
                   <EditIcon fontSize="small" />
-                </IconButton>
-              </Tooltip>
-            )}
-            {TRANSICIONES_VALIDAS[row.estado]?.length > 0 && (
-              <Tooltip title="Cambiar estado">
-                <IconButton size="small" onClick={() => onOpenCambiarEstado(row)}>
-                  <SwapHorizIcon fontSize="small" />
                 </IconButton>
               </Tooltip>
             )}

@@ -30,7 +30,6 @@ import usePlantillaImport from 'src/hooks/presupuestosProfesionales/usePlantilla
 import {
   PresupuestoFormDialog,
   PresupuestoDeleteDialog,
-  CambiarEstadoDialog,
   PresupuestoDetalleDialog,
   AgregarAnexoDialog,
   PlantillaFormDialog,
@@ -44,7 +43,6 @@ import {
   ESTADOS,
   ESTADO_LABEL,
   ESTADO_COLOR,
-  TRANSICIONES_VALIDAS,
   MONEDAS,
   formatCurrency,
   formatPct,
@@ -170,10 +168,8 @@ const PresupuestosProfesionales = () => {
   const [openPPDelete, setOpenPPDelete] = useState(false);
   const [ppToDelete, setPpToDelete] = useState(null);
 
-  // ── Presupuestos: cambiar estado ──
-  const [openEstado, setOpenEstado] = useState(false);
-  const [estadoTarget, setEstadoTarget] = useState(null);
-  const [nuevoEstado, setNuevoEstado] = useState('');
+  // ── Presupuestos: cambiar estado (inline en tabla) ──
+  const [changingEstadoId, setChangingEstadoId] = useState(null);
 
   // ── Presupuestos: detalle / versiones ──
   const [openDetalle, setOpenDetalle] = useState(false);
@@ -499,25 +495,21 @@ const PresupuestosProfesionales = () => {
   };
 
   /* ================================================================
-     Presupuesto: Cambiar Estado
+     Presupuesto: Cambiar Estado (inline en columna Estado)
      ================================================================ */
 
-  const handleOpenCambiarEstado = (row) => {
-    setEstadoTarget(row);
-    setNuevoEstado('');
-    setOpenEstado(true);
-  };
-
-  const handleConfirmCambiarEstado = async () => {
-    if (!estadoTarget || !nuevoEstado) return;
+  const handleCambiarEstado = async (row, nuevoEstado) => {
+    if (!row?._id || !nuevoEstado || nuevoEstado === row.estado) return;
+    setChangingEstadoId(row._id);
     try {
-      await PresupuestoProfesionalService.cambiarEstado(estadoTarget._id, nuevoEstado);
+      await PresupuestoProfesionalService.cambiarEstado(row._id, nuevoEstado);
       showAlert(`Estado cambiado a "${ESTADO_LABEL[nuevoEstado]}"`);
-      setOpenEstado(false);
       refreshPresupuestos();
     } catch (err) {
       const msg = err?.response?.data?.error?.message || err?.response?.data?.message || err.message || 'Error al cambiar estado';
       showAlert(msg, 'error');
+    } finally {
+      setChangingEstadoId(null);
     }
   };
 
@@ -1073,11 +1065,12 @@ const PresupuestosProfesionales = () => {
                         row={row}
                         isExpanded={expandedRubros.has(row._id)}
                         exportingPdfId={exportingPdfId}
+                        changingEstadoId={changingEstadoId}
                         onToggleExpanded={toggleExpanded}
                         onOpenDetalle={handleOpenDetalle}
                         onExportPdf={handleExportPdfFromRow}
                         onOpenEdit={handleOpenPPEdit}
-                        onOpenCambiarEstado={handleOpenCambiarEstado}
+                        onCambiarEstado={handleCambiarEstado}
                         onOpenAnexo={handleOpenAnexo}
                         onDelete={(target) => {
                           setPpToDelete(target);
@@ -1196,15 +1189,6 @@ const PresupuestosProfesionales = () => {
         onClose={() => setOpenPPDelete(false)}
         presupuesto={ppToDelete}
         onConfirm={handleConfirmDeletePP}
-      />
-
-      <CambiarEstadoDialog
-        open={openEstado}
-        onClose={() => setOpenEstado(false)}
-        presupuesto={estadoTarget}
-        nuevoEstado={nuevoEstado}
-        onNuevoEstadoChange={setNuevoEstado}
-        onConfirm={handleConfirmCambiarEstado}
       />
 
       <PresupuestoDetalleDialog

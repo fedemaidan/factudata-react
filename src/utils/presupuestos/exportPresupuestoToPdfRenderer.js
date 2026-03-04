@@ -9,22 +9,7 @@ const sanitizeFileName = (value) =>
     .replace(/[^\w-]/g, '')
     .slice(0, 40);
 
-const loadImageAsDataUrl = async (url) => {
-  if (!url) return null;
-  try {
-    const response = await fetch(url, { mode: 'cors' });
-    if (!response.ok) return null;
-    const blob = await response.blob();
-    return await new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.onloadend = () => resolve(reader.result);
-      reader.readAsDataURL(blob);
-    });
-  } catch (error) {
-    console.debug('No se pudo cargar el logo para el PDF', error);
-    return null;
-  }
-};
+import { loadImageAsDataUrl } from './loadLogoForPdf';
 
 const downloadBlob = (blob, filename) => {
   const url = window.URL.createObjectURL(blob);

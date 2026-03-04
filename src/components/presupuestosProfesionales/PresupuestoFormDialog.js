@@ -163,6 +163,8 @@ const MonedaAjusteBlock = ({ form, onFormChange }) => {
   const ajuste = normalizarAjusteMoneda(form);
   const isArs = ajuste.moneda === 'ARS';
   const mostrarConfigUsd = ajuste.moneda === 'USD' || ajuste.indexacion === INDEXACION_VALUES.USD;
+  const INDEXACION_FIJO_UI_VALUE = '__FIJO__';
+  const indexacionToggleValue = ajuste.indexacion ?? INDEXACION_FIJO_UI_VALUE;
 
   const patchForm = (patch) => onFormChange({ ...form, ...patch });
 
@@ -194,13 +196,18 @@ const MonedaAjusteBlock = ({ form, onFormChange }) => {
             ¿Querés protegerte de la inflación?
           </Typography>
           <ToggleButtonGroup
-            value={ajuste.indexacion}
+            value={indexacionToggleValue}
             exclusive
-            onChange={(_, val) => patchForm({ indexacion: val })}
+            onChange={(_, val) =>
+              patchForm({
+                indexacion:
+                  val === INDEXACION_FIJO_UI_VALUE ? INDEXACION_VALUES.FIJO : val,
+              })
+            }
             size="small"
             fullWidth
           >
-            <ToggleButton value={INDEXACION_VALUES.FIJO} sx={{ flex: 1 }}>
+            <ToggleButton value={INDEXACION_FIJO_UI_VALUE} sx={{ flex: 1 }}>
               Pesos fijos
             </ToggleButton>
             <ToggleButton value={INDEXACION_VALUES.CAC} sx={{ flex: 1 }}>

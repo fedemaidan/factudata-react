@@ -57,7 +57,6 @@ El módulo de **Presupuestos Profesionales** permite a constructoras crear, gest
 |---|---|
 | `src/components/presupuestosProfesionales/PresupuestoFormDialog.js` | Form crear/editar presupuesto (rubros, moneda, notas, superficies) |
 | `src/components/presupuestosProfesionales/PresupuestoDeleteDialog.js` | Confirmación de eliminación |
-| `src/components/presupuestosProfesionales/CambiarEstadoDialog.js` | Cambio de estado con transiciones válidas |
 | `src/components/presupuestosProfesionales/PresupuestoDetalleDialog.js` | Detalle con sub-tabs (rubros, versiones, historial, anexos) |
 | `src/components/presupuestosProfesionales/AgregarAnexoDialog.js` | Form para agregar anexo (solo aceptado) |
 | `src/components/presupuestosProfesionales/PlantillaFormDialog.js` | Form crear/editar plantilla |
@@ -77,6 +76,7 @@ El módulo de **Presupuestos Profesionales** permite a constructoras crear, gest
 | `src/utils/presupuestos/exportPresupuestoToPdfRenderer.js` | Export PDF con @react-pdf/renderer (principal) |
 | `src/utils/presupuestos/exportPresupuestoToPdf.js` | Export PDF con jspdf (alternativo) |
 | `src/utils/presupuestos/PdfPresupuestoDocument.js` | Componente React para render del PDF |
+| `src/utils/presupuestos/loadLogoForPdf.js` | Carga logo para PDF (proxy CORS, conversión WebP→PNG) |
 
 ### Service
 
@@ -213,19 +213,28 @@ Plantilla predefinida del sistema (no se guarda en backend). ID especial: `sorby
 
 ### Contenido del PDF
 
-- Encabezado (empresa, fecha)
+- **Encabezado (fondo azul):**
+  - Dirección de obra arriba a la izquierda
+  - Fecha arriba a la derecha (mismo tamaño que dirección)
+  - Logo centrado (o nombre de empresa si no hay logo)
 - Tabla de rubros y tareas
 - TOTAL PRESUPUESTO
 - **Total en USD/CAC** (si aplica): valor + (Fuente, Referencia, Fecha) entre paréntesis, con fondo azul
 - Con anexos: RESUMEN CONTRACTUAL + Total actualizado + Total en USD/CAC
 - Costo por m² (ARS, USD, CAC)
-- Notas / Análisis de superficies
+- Notas / Análisis de superficies (superficies sin decimales)
+
+### Carga del logo
+
+El logo se obtiene de `empresa_logo_url` (Firebase Storage). Para evitar CORS y soportar WebP (jsPDF no lo soporta), se usa:
+- `loadLogoForPdf.js`: si la URL es de GCS/Firebase, se pasa por proxy backend (`/presupuestos-profesionales/logo-proxy`) y se convierte a PNG vía canvas.
 
 ### Archivos
 
 - `exportPresupuestoToPdfRenderer.js` – flujo principal
 - `PdfPresupuestoDocument.js` – componente React del documento
 - `exportPresupuestoToPdf.js` – alternativa con jspdf
+- `loadLogoForPdf.js` – carga y conversión de imagen para PDF
 
 ---
 
@@ -302,14 +311,13 @@ archivo_origen { url, tipo_archivo, nombre_original }
 |---|---|
 | PresupuestoFormDialog | Crear/editar presupuesto (rubros, moneda, ajuste, notas, superficies) |
 | PresupuestoDeleteDialog | Confirmación eliminar |
-| CambiarEstadoDialog | Cambio de estado |
 | PresupuestoDetalleDialog | Detalle (rubros, versiones, historial, anexos) + export PDF |
 | AgregarAnexoDialog | Agregar anexo |
 | PlantillaFormDialog | Crear/editar plantilla |
 | PlantillaDeleteDialog | Confirmación eliminar plantilla |
 | ImportarPlantillaDialog | Upload archivo → plantilla |
 | PresupuestosFilters | Filtros de tabla |
-| PresupuestosTableRow | Fila expandible con acciones |
+| PresupuestosTableRow | Fila expandible con select de estado inline y acciones |
 | PlantillasTable | Tabla completa (SorbyData + plantillas propias) |
 
 ---
@@ -355,11 +363,16 @@ archivo_origen { url, tipo_archivo, nombre_original }
 2. Desde detalle: botón Exportar PDF
 3. Presupuesto completo → PDF con rubros, total actualizado, Total en USD/CAC (si aplica)
 
-### Ciclo de vida
+### Ciclo de vida y cambio de estado
+
+El cambio de estado se realiza **inline en la columna Estado** de la tabla: un select permite elegir entre los estados válidos según las transiciones. No hay botón ni diálogo separado.
 
 ```
-borrador → enviado → aceptado → (anexos) → vencido
-                  ↘ rechazado → borrador
+borrador → enviado, rechazado, vencido
+enviado  → aceptado, rechazado, vencido
+rechazado → borrador
+vencido   → borrador
+aceptado  → (sin transiciones; modificaciones vía anexos)
 ```
 
 ---
@@ -409,4 +422,4 @@ borrador → enviado → aceptado → (anexos) → vencido
 
 ---
 
-*Última actualización: Marzo 2025*
+*Última actualización: Marzo 2026*
