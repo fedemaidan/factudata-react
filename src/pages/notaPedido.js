@@ -76,7 +76,7 @@ import { useBreadcrumbs } from 'src/contexts/breadcrumbs-context';
 
 const NotaPedidoPage = () => {
   const router = useRouter();
-  const { user } = useAuthContext();
+  const { user, isSpying } = useAuthContext();
   const { setBreadcrumbs } = useBreadcrumbs();
   const [notas, setNotas] = useState([]);
   const [filteredNotas, setFilteredNotas] = useState([]);
@@ -95,6 +95,7 @@ const NotaPedidoPage = () => {
   const [comentariosDialogNota, setComentariosDialogNota] = useState(null);
   const [nuevoComentario, setNuevoComentario] = useState('');
   const nuevoComentarioRef = useRef();
+  const [userById, setUserById] = useState(null);
 
 const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
 
@@ -375,7 +376,18 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
   const fetchNotas = useCallback(async () => {
     try {
       setLoading(true);
-      const notasData = await notaPedidoService.getNotasByEmpresa(user.empresa.id);
+      const empresa = await getEmpresaDetailsFromUser(user);
+
+      // Si está en modo espía, enviar el user_id (Firebase Auth UID) directamente
+      let targetUserId = null;
+      if (isSpying()) {
+        setUserById(user);
+        targetUserId = user.user_id;
+      } else {
+        setUserById(null);
+      }
+
+      const notasData = await notaPedidoService.getNotasByEmpresa(empresa.id, targetUserId);
       setNotas(notasData);
       setFilteredNotas(notasData);
     } catch (error) {
@@ -383,7 +395,7 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
     } finally {
       setLoading(false);
     }
-  }, [user?.empresa?.id]);
+  }, [user, isSpying]);
   
 
   const applyFilters = () => {
@@ -543,12 +555,15 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
   
   // Setear breadcrumbs
   useEffect(() => {
+    const label = userById
+      ? `Notas de Pedido de ${userById.firstName || ''} ${userById.lastName || ''}`.trim()
+      : 'Notas de Pedido';
     setBreadcrumbs([
       { label: 'Inicio', href: '/', icon: <HomeIcon fontSize="small" /> },
-      { label: 'Notas de Pedido', icon: <AssignmentIcon fontSize="small" /> }
+      { label, icon: <AssignmentIcon fontSize="small" /> }
     ]);
     return () => setBreadcrumbs([]);
-  }, [setBreadcrumbs]);
+  }, [setBreadcrumbs, userById]);
 
   useEffect(() => {
     if (user) fetchNotas();
