@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Dialog, DialogTitle, DialogContent, DialogActions, Button,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
@@ -28,6 +28,11 @@ const DrillDownDialog = ({ open, onClose, movimientos = [], titulo = '', display
 
   const openImg = (url) => setImgPreview({ open: true, url });
   const closeImg = () => setImgPreview({ open: false, url: null });
+
+  // Cerrar preview si se cierra el dialog padre
+  useEffect(() => {
+    if (!open) closeImg();
+  }, [open]);
 
   const sortedMovs = useMemo(() => {
     return [...movimientos].sort((a, b) => {
