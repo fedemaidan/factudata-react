@@ -18,6 +18,7 @@ import {
   getMovimientoHistorialConfig,
   getCuentaPendienteHistorialConfig,
 } from "src/utils/celulandia/historial";
+import { parseCuentaPendiente } from "src/utils/celulandia/cuentasPendientes/parseCuentasPendientes";
 import { getUser } from "src/utils/celulandia/currentUser";
 import EditarEntregaModal from "src/components/celulandia/EditarEntregaModal";
 
@@ -163,23 +164,65 @@ const ClienteCelulandiaCCPage = () => {
     }
   }, [sortField]);
 
-  const handleSaveEdit = useCallback((id, updatedData) => {
-    setMovimientos((prevMovimientos) =>
-      prevMovimientos.map((mov) =>
-        mov.id === id || mov._id === id ? { ...mov, ...updatedData } : mov
-      )
-    );
-  }, []);
+  const normalizarCuentaPendienteParaEditar = useCallback(
+    (item) => {
+      if (!item || item.itemType !== "cuentaPendiente") return item?.originalData;
+
+      const originalData = item.originalData || {};
+      const parsedData = parseCuentaPendiente(originalData);
+      const clienteActual = originalData?.cliente;
+      const dataBase = {
+        ...originalData,
+        ...parsedData,
+        CC: parsedData?.CC || originalData?.CC || originalData?.cc || "ARS",
+        moneda:
+          originalData?.moneda || parsedData?.monedaDePago || originalData?.monedaDePago || "ARS",
+        monedaDePago:
+          parsedData?.monedaDePago || originalData?.monedaDePago || originalData?.moneda || "ARS",
+      };
+
+      if (clienteActual && typeof clienteActual === "object") {
+        return {
+          ...dataBase,
+        };
+      }
+
+      const clienteId = typeof clienteActual === "string" ? clienteActual : null;
+      const clienteEncontrado = clienteId
+        ? (Array.isArray(clientes) ? clientes : []).find((c) => c?._id === clienteId)
+        : null;
+
+      if (!clienteEncontrado) {
+        return {
+          ...dataBase,
+        };
+      }
+
+      return {
+        ...dataBase,
+        cliente: clienteEncontrado,
+        clienteNombre: clienteEncontrado.nombre || originalData.clienteNombre,
+        proveedorOCliente:
+          originalData.proveedorOCliente || clienteEncontrado.nombre || originalData.proveedorOCliente,
+      };
+    },
+    [clientes]
+  );
 
   const handleEdit = useCallback((item) => {
-    setSelectedData(item.originalData);
+    const dataParaEditar =
+      item?.itemType === "cuentaPendiente"
+        ? normalizarCuentaPendienteParaEditar(item)
+        : item?.originalData;
+
+    setSelectedData(dataParaEditar);
     setSelectedItemType(item.itemType);
     if (item.itemType === "movimiento") {
       setEditarModalOpen(true);
     } else {
       setEditarEntregaModalOpen(true);
     }
-  }, []);
+  }, [normalizarCuentaPendienteParaEditar]);
 
   const handleViewHistory = useCallback(
     (item) => {
