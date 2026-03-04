@@ -1,5 +1,6 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useRef } from 'react';
 import {
+  Avatar,
   Box,
   Button,
   CircularProgress,
@@ -13,6 +14,7 @@ import {
   IconButton,
   InputAdornment,
   InputLabel,
+  LinearProgress,
   MenuItem,
   Paper,
   Select,
@@ -25,6 +27,7 @@ import {
   Typography,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
+import CloudUploadOutlinedIcon from '@mui/icons-material/CloudUploadOutlined';
 import DeleteIcon from '@mui/icons-material/Delete';
 import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
@@ -33,6 +36,7 @@ import {
   formatCurrency,
   formatPct,
   TEXTO_NOTAS_DEFAULT,
+  PLANTILLA_SORBYDATA_ID,
   formatNumberForInput,
   parseNumberInput,
   handleNumericKeyDown,
@@ -209,31 +213,6 @@ const MonedaAjusteBlock = ({ form, onFormChange }) => {
         </Box>
       )}
 
-      {ajuste.indexacion === INDEXACION_VALUES.CAC && (
-        <Box>
-          <Typography variant="caption" color="text.secondary" fontWeight={600} sx={{ mb: 0.5, display: 'block' }}>
-            Tipo de índice CAC
-          </Typography>
-          <ToggleButtonGroup
-            value={ajuste.cac_tipo}
-            exclusive
-            onChange={(_, val) => val && patchForm({ cac_tipo: val })}
-            size="small"
-            fullWidth
-          >
-            <ToggleButton value={CAC_TIPOS.GENERAL} sx={{ flex: 1, fontSize: '0.75rem' }}>
-              Promedio
-            </ToggleButton>
-            <ToggleButton value={CAC_TIPOS.MANO_OBRA} sx={{ flex: 1, fontSize: '0.75rem' }}>
-              Mano de obra
-            </ToggleButton>
-            <ToggleButton value={CAC_TIPOS.MATERIALES} sx={{ flex: 1, fontSize: '0.75rem' }}>
-              Materiales
-            </ToggleButton>
-          </ToggleButtonGroup>
-        </Box>
-      )}
-
       {mostrarConfigUsd && (
         <Box>
           <Typography variant="caption" color="text.secondary" fontWeight={600} sx={{ mb: 0.5, display: 'block' }}>
@@ -274,6 +253,55 @@ const MonedaAjusteBlock = ({ form, onFormChange }) => {
           </Stack>
         </Box>
       )}
+
+      {ajuste.indexacion === INDEXACION_VALUES.CAC && (
+        <Box>
+          <Typography variant="caption" color="text.secondary" fontWeight={600} sx={{ mb: 0.5, display: 'block' }}>
+            Tipo de índice CAC
+          </Typography>
+          <ToggleButtonGroup
+            value={ajuste.cac_tipo}
+            exclusive
+            onChange={(_, val) => val && patchForm({ cac_tipo: val })}
+            size="small"
+            fullWidth
+          >
+            <ToggleButton value={CAC_TIPOS.GENERAL} sx={{ flex: 1, fontSize: '0.75rem' }}>
+              Promedio
+            </ToggleButton>
+            <ToggleButton value={CAC_TIPOS.MANO_OBRA} sx={{ flex: 1, fontSize: '0.75rem' }}>
+              Mano de obra
+            </ToggleButton>
+            <ToggleButton value={CAC_TIPOS.MATERIALES} sx={{ flex: 1, fontSize: '0.75rem' }}>
+              Materiales
+            </ToggleButton>
+          </ToggleButtonGroup>
+        </Box>
+      )}
+
+      <Box>
+        <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
+          ¿Cómo comparás contra las facturas?
+        </Typography>
+        <ToggleButtonGroup
+          value={form.base_calculo || 'total'}
+          exclusive
+          onChange={(_, val) => val && patchForm({ base_calculo: val })}
+          size="small"
+          fullWidth
+        >
+          <ToggleButton value="total" sx={{ flex: 1 }}>
+            <Tooltip title="Suma el total de cada factura (incluye impuestos)" arrow>
+              <span>Total (con imp.)</span>
+            </Tooltip>
+          </ToggleButton>
+          <ToggleButton value="subtotal" sx={{ flex: 1 }}>
+            <Tooltip title="Suma el subtotal neto de cada factura (sin impuestos)" arrow>
+              <span>Neto (sin imp.)</span>
+            </Tooltip>
+          </ToggleButton>
+        </ToggleButtonGroup>
+      </Box>
     </Stack>
   );
 };
@@ -302,11 +330,24 @@ const PresupuestoFormDialog = ({
   removeTarea,
   updateTarea,
   focusRef,
+  logoUploading = false,
+  logoPreviewUrl = '',
+  onUploadLogo,
+  onRemoveLogo,
 }) => {
   const puedeDistribuirPorIncidencias = !isEdit;
   const sumaIncidencias = useMemo(() => sumaIncidenciasObjetivo(form.rubros), [form.rubros]);
   const sumaInvalida = sumaIncidencias > 100;
   const sumaBaja = sumaIncidencias < 100 && sumaIncidencias >= 0;
+  const logoInputRef = useRef(null);
+
+  const handleLogoInputChange = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    if (!file.type?.startsWith('image/')) return;
+    await onUploadLogo?.(file);
+  };
 
   return (
   <Dialog open={open} onClose={onClose} fullWidth maxWidth="lg">
@@ -333,7 +374,7 @@ const PresupuestoFormDialog = ({
 
         <Divider />
 
-        {!isEdit && plantillas.length > 0 && (
+        {!isEdit && (
           <Stack direction="row" spacing={2} alignItems="center">
             <FormControl size="small" sx={{ minWidth: 260 }}>
               <InputLabel>Cargar rubros desde plantilla</InputLabel>
@@ -343,6 +384,7 @@ const PresupuestoFormDialog = ({
                 onChange={(e) => onAplicarPlantilla(e.target.value)}
               >
                 <MenuItem value="">Ninguna</MenuItem>
+                <MenuItem value={PLANTILLA_SORBYDATA_ID}>Plantilla SorbyData</MenuItem>
                 {plantillas.filter((p) => p.activa).map((p) => (
                   <MenuItem key={p._id} value={p._id}>{p.nombre}</MenuItem>
                 ))}
@@ -597,6 +639,69 @@ const PresupuestoFormDialog = ({
         />
 
         <AnalisisSuperficiesBlock form={form} onFormChange={onFormChange} />
+
+        <Paper
+          variant="outlined"
+          sx={{
+            p: 2,
+            borderStyle: 'dashed',
+            borderColor: 'divider',
+            bgcolor: 'background.default',
+          }}
+        >
+          <Stack spacing={1.5}>
+            <Typography variant="subtitle2" color="text.secondary">
+              Logo de la empresa (opcional)
+            </Typography>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems={{ xs: 'flex-start', sm: 'center' }}>
+              <Avatar
+                src={logoPreviewUrl || form.empresa_logo_url || ''}
+                alt="Logo empresa"
+                variant="rounded"
+                sx={{ width: 72, height: 72, bgcolor: 'grey.100', border: 1, borderColor: 'divider' }}
+              />
+              <Stack spacing={0.75} sx={{ flex: 1 }}>
+                <Typography variant="body2" color="text.secondary">
+                  Cargá una imagen clara para que aparezca en el presupuesto y PDF.
+                </Typography>
+                <Typography variant="caption" color="text.disabled">
+                  Formatos: JPG, PNG, o WEBP.
+                </Typography>
+                <Stack direction="row" spacing={1} flexWrap="wrap">
+                  <Button
+                    variant="contained"
+                    size="small"
+                    startIcon={logoUploading ? <CircularProgress size={14} color="inherit" /> : <CloudUploadOutlinedIcon />}
+                    disabled={logoUploading || saving}
+                    onClick={() => logoInputRef.current?.click()}
+                  >
+                    {form.empresa_logo_url ? 'Cambiar imagen' : 'Agregar imagen'}
+                  </Button>
+                  {form.empresa_logo_url && (
+                    <Button
+                      variant="text"
+                      size="small"
+                      color="inherit"
+                      startIcon={<DeleteIcon />}
+                      disabled={logoUploading || saving}
+                      onClick={onRemoveLogo}
+                    >
+                      Quitar
+                    </Button>
+                  )}
+                </Stack>
+              </Stack>
+            </Stack>
+            <input
+              ref={logoInputRef}
+              type="file"
+              accept="image/*"
+              style={{ display: 'none' }}
+              onChange={handleLogoInputChange}
+            />
+            {logoUploading && <LinearProgress />}
+          </Stack>
+        </Paper>
       </Stack>
     </DialogContent>
     <DialogActions>

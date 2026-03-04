@@ -121,38 +121,39 @@ const buildSurfaceLines = (analisis, totalNeto, currency) => {
   return lines;
 };
 
-const buildAjusteMonetarioLines = (presupuesto) => {
-  const moneda = (presupuesto?.moneda || 'ARS').toUpperCase();
-  const indexacion = moneda === 'USD'
-    ? 'USD'
-    : (presupuesto?.indexacion === 'CAC' || presupuesto?.indexacion === 'USD' ? presupuesto.indexacion : null);
-  const modo = moneda === 'USD'
-    ? 'Ajustar por dólar'
-    : indexacion === 'CAC'
-      ? 'Ajustar por CAC'
-      : indexacion === 'USD'
-        ? 'Ajustar por dólar'
-        : 'Pesos fijos';
+/** Genera fila Total en USD/CAC: { label, value } o null */
+const buildTotalEquivalenteRow = (presupuesto, totalActualizado) => {
   const snap = presupuesto?.cotizacion_snapshot || null;
-
-  const lines = [`Modo: ${modo}`];
-  if (indexacion === 'CAC' && presupuesto?.cac_tipo) {
-    const label = presupuesto.cac_tipo === 'mano_obra'
-      ? 'Mano de Obra'
-      : presupuesto.cac_tipo === 'materiales'
-        ? 'Materiales'
-        : 'Promedio';
-    lines.push(`Tipo CAC: ${label}`);
+  const moneda = (presupuesto?.moneda || 'ARS').toUpperCase();
+  if (!snap || !['CAC', 'USD'].includes(snap.tipo) || !Number.isFinite(Number(snap.valor))) return null;
+  const valor = Number(snap.valor);
+  let value = null;
+  let tipo = '';
+  if (snap.tipo === 'USD') {
+    tipo = 'USD';
+    value = moneda === 'USD' ? totalActualizado : totalActualizado / valor;
+  } else {
+    tipo = 'CAC';
+    value = totalActualizado / valor;
   }
-  if (indexacion === 'USD') {
-    if (presupuesto?.usd_fuente) lines.push(`Fuente USD: ${presupuesto.usd_fuente === 'blue' ? 'Blue' : 'Oficial'}`);
-    if (presupuesto?.usd_valor) lines.push(`Referencia: ${presupuesto.usd_valor}`);
+  if (!Number.isFinite(value) || value <= 0) return null;
+  const partes = [];
+  if (snap.tipo === 'USD') {
+    if (snap.fuente) partes.push(snap.fuente === 'blue' ? 'Blue' : 'Oficial');
+    if (snap.referencia) partes.push(snap.referencia.charAt(0).toUpperCase() + snap.referencia.slice(1));
+  } else {
+    const ref = snap.referencia === 'mano_obra' ? 'Mano de Obra' : snap.referencia === 'materiales' ? 'Materiales' : 'Promedio';
+    partes.push(ref);
   }
-  if (Number.isFinite(Number(snap?.valor))) {
-    lines.push(`Valor guardado: ${Number(snap.valor).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+  if (snap.fecha_origen) {
+    const f = snap.fecha_origen;
+    partes.push(f.length >= 7 ? `${f.slice(5, 7)}/${f.slice(0, 4)}` : f);
   }
-  if (snap?.fecha_origen) lines.push(`Fecha de cotización: ${snap.fecha_origen}`);
-  return lines;
+  const labelSuffix = partes.length ? ` (${partes.join(', ')})` : '';
+  const formatted = tipo === 'USD'
+    ? formatCurrency(value, 'USD')
+    : `CAC ${Number(value).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return { label: `Total en ${tipo}`, value: `${formatted}${labelSuffix}` };
 };
 
 const addMetadataBlock = (doc, presupuesto, empresaNombre, displayCurrency) => {
@@ -236,6 +237,12 @@ export async function exportPresupuestoToPdf(presupuesto, { empresa } = {}) {
   body.push(['', 'TOTAL PRESUPUESTO', formatCurrency(totalNeto, currency), '100%']);
   metadata.push({ type: 'total' });
 
+  const equivRow = buildTotalEquivalenteRow(presupuesto, totalNeto);
+  if (equivRow) {
+    body.push(['', equivRow.label, equivRow.value, '']);
+    metadata.push({ type: 'equiv' });
+  }
+
   autoTable(doc, {
     startY: finalMetaY + 4,
     head: [['Item', 'Descripción', 'Total', 'Inc.']],
@@ -260,6 +267,10 @@ export async function exportPresupuestoToPdf(presupuesto, { empresa } = {}) {
         data.cell.styles.fontStyle = 'bold';
         data.cell.styles.textColor = 255;
         data.cell.styles.fillColor = ACCENT_COLOR;
+      } else if (meta.type === 'equiv') {
+        data.cell.styles.fontStyle = 'bold';
+        data.cell.styles.textColor = 255;
+        data.cell.styles.fillColor = ACCENT_COLOR;
       } else {
         data.cell.styles.textColor = 90;
         if (data.column.index === 1) {
@@ -281,9 +292,8 @@ export async function exportPresupuestoToPdf(presupuesto, { empresa } = {}) {
   const notesForBlock = notes.replace(/Forma de pago[:\\-]\\s*.+/i, '').trim();
 
   const surfaceLines = buildSurfaceLines(presupuesto.analisis_superficies, totalNeto, currency);
-  const ajusteMonetarioLines = buildAjusteMonetarioLines(presupuesto);
 
-  if (notesForBlock || surfaceLines.length || ajusteMonetarioLines.length) {
+  if (notesForBlock || surfaceLines.length) {
     const infoWidth = PAGE_WIDTH - MARGIN * 2;
     const startY = currentY + 4;
     const padding = 6;
@@ -293,8 +303,6 @@ export async function exportPresupuestoToPdf(presupuesto, { empresa } = {}) {
       ? doc.splitTextToSize(notesForBlock, infoWidth - padding * 2)
       : [];
     blockHeight += noteLines.length * 5;
-
-    blockHeight += ajusteMonetarioLines.length * 5;
     blockHeight += surfaceLines.length * 5;
     blockHeight += 12; // headers and spacing
 
@@ -302,20 +310,6 @@ export async function exportPresupuestoToPdf(presupuesto, { empresa } = {}) {
     doc.rect(MARGIN, startY, infoWidth, blockHeight + padding, 'S');
 
     let textY = startY + 8;
-    if (ajusteMonetarioLines.length) {
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(11);
-      doc.text('Ajuste monetario', MARGIN + padding, textY);
-      textY += 5;
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(10);
-      ajusteMonetarioLines.forEach((line) => {
-        doc.text(line, MARGIN + padding, textY);
-        textY += 5;
-      });
-      textY += 3;
-    }
-
     if (noteLines.length) {
       doc.setFont('helvetica', 'bold');
       doc.text('Notas / Condiciones', MARGIN + padding, textY);

@@ -8,6 +8,22 @@ const parseIncidencia = (value) => {
   return Number.isNaN(parsed) ? null : parsed;
 };
 
+const parseIncidenciaSugerida = (value) => {
+  if (value == null) return null;
+  const parsed = Number(value);
+  if (Number.isNaN(parsed) || parsed < 0 || parsed > 100) return null;
+  return parsed;
+};
+
+export function plantillaRubrosToPresupuestoRubros(rubros = []) {
+  return (rubros || []).map((r) => ({
+    nombre: r.nombre || '',
+    monto: 0,
+    incidencia_objetivo_pct: parseIncidenciaSugerida(r.incidencia_pct_sugerida),
+    tareas: (r.tareas || []).map((t) => ({ descripcion: t.descripcion || '' })),
+  }));
+}
+
 export function sumaIncidenciasObjetivo(rubros) {
   return (rubros || []).reduce((s, r) => s + (Number(r.incidencia_objetivo_pct) || 0), 0);
 }
@@ -36,8 +52,7 @@ export function distribuirMontosPorIncidencia(total, rubros) {
   const sumaMontos = montos.reduce((s, m) => s + m, 0);
   const diff = Math.round((totalNum - sumaMontos) * 100) / 100;
 
-  // Solo ajustar el último rubro para compensar redondeos cuando la suma de incidencias
-  // está cerca de 100%. Si la suma difiere (ej. 90% o 110%), no forzar el total.
+
   const sumaCercaDe100 = Math.abs(sumaPct - 100) < 0.01;
   let lastIdx = -1;
   if (sumaCercaDe100) {

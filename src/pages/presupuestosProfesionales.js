@@ -3,20 +3,10 @@ import Head from 'next/head';
 import {
   Alert,
   Box,
-  Button,
-  Chip,
-  Collapse,
   Container,
-  FormControl,
-  IconButton,
-  InputAdornment,
-  InputLabel,
   LinearProgress,
-  MenuItem,
   Paper,
-  Select,
   Snackbar,
-  Stack,
   Tab,
   Table,
   TableBody,
@@ -25,23 +15,8 @@ import {
   TablePagination,
   TableRow,
   Tabs,
-  TextField,
-  Tooltip,
   Typography,
-  CircularProgress,
 } from '@mui/material';
-import AddIcon from '@mui/icons-material/Add';
-import EditIcon from '@mui/icons-material/Edit';
-import DeleteIcon from '@mui/icons-material/Delete';
-import SearchIcon from '@mui/icons-material/Search';
-import UploadFileIcon from '@mui/icons-material/UploadFile';
-import VisibilityIcon from '@mui/icons-material/Visibility';
-import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
-import PostAddIcon from '@mui/icons-material/PostAdd';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import ExpandLessIcon from '@mui/icons-material/ExpandLess';
-import ContentCopyIcon from '@mui/icons-material/ContentCopy';
-import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import { useAuthContext } from 'src/contexts/auth-context';
@@ -49,6 +24,9 @@ import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
 import PresupuestoProfesionalService from 'src/services/presupuestoProfesional/presupuestoProfesionalService';
 import MonedasService from 'src/services/monedasService';
 import cacService from 'src/services/cacService';
+import usePresupuestosList from 'src/hooks/presupuestosProfesionales/usePresupuestosList';
+import usePlantillasList from 'src/hooks/presupuestosProfesionales/usePlantillasList';
+import usePlantillaImport from 'src/hooks/presupuestosProfesionales/usePlantillaImport';
 import {
   PresupuestoFormDialog,
   PresupuestoDeleteDialog,
@@ -58,22 +36,28 @@ import {
   PlantillaFormDialog,
   PlantillaDeleteDialog,
   ImportarPlantillaDialog,
+  PresupuestosFilters,
+  PresupuestosTableRow,
+  PlantillasTable,
   distribuirMontosPorIncidencia,
+  plantillaRubrosToPresupuestoRubros,
   ESTADOS,
   ESTADO_LABEL,
   ESTADO_COLOR,
   TRANSICIONES_VALIDAS,
   MONEDAS,
   formatCurrency,
-  formatDate,
   formatPct,
   TEXTO_NOTAS_DEFAULT,
+  PLANTILLA_SORBYDATA_ID,
+  PLANTILLA_SORBYDATA,
   parseNumberInput,
   CAC_TIPOS,
   INDEXACION_VALUES,
   USD_FUENTES,
   USD_VALORES,
   hoyIso,
+  toMesAnterior,
   normalizarAjusteMoneda,
 } from 'src/components/presupuestosProfesionales';
 
@@ -89,8 +73,10 @@ const emptyPresupuesto = {
   moneda: 'ARS',
   indexacion: INDEXACION_VALUES.FIJO,
   cac_tipo: CAC_TIPOS.GENERAL,
+  base_calculo: 'total',
   usd_fuente: USD_FUENTES.OFICIAL,
   usd_valor: USD_VALORES.PROMEDIO,
+  empresa_logo_url: '',
   rubros: [],
   notas_texto: '',
   analisis_superficies: {
@@ -150,15 +136,11 @@ const PresupuestosProfesionales = () => {
   // ── Datos globales ──
   const [empresaId, setEmpresaId] = useState(null);
   const [empresaNombre, setEmpresaNombre] = useState('');
-  const [plantillas, setPlantillas] = useState([]);
 
   // ── Tab principal ──
   const [currentTab, setCurrentTab] = useState(0);
 
   // ── Presupuestos: lista ──
-  const [presupuestos, setPresupuestos] = useState([]);
-  const [presupuestosLoading, setPresupuestosLoading] = useState(false);
-  const [totalPresupuestos, setTotalPresupuestos] = useState(0);
   const [ppPage, setPpPage] = useState(0);
   const [ppRowsPerPage, setPpRowsPerPage] = useState(25);
 
@@ -173,8 +155,16 @@ const PresupuestosProfesionales = () => {
   const [ppForm, setPpForm] = useState(emptyPresupuesto);
   const [ppEditId, setPpEditId] = useState(null);
   const [ppSaving, setPpSaving] = useState(false);
+  const [ppLogoFile, setPpLogoFile] = useState(null);
+  const [ppLogoPreviewUrl, setPpLogoPreviewUrl] = useState('');
   const [ppModoDistribuir, setPpModoDistribuir] = useState(false);
   const [ppTotalObjetivo, setPpTotalObjetivo] = useState('');
+
+  useEffect(() => {
+    return () => {
+      if (ppLogoPreviewUrl) URL.revokeObjectURL(ppLogoPreviewUrl);
+    };
+  }, [ppLogoPreviewUrl]);
 
   // ── Presupuestos: eliminar ──
   const [openPPDelete, setOpenPPDelete] = useState(false);
@@ -205,9 +195,6 @@ const PresupuestosProfesionales = () => {
     impacto: 'positivo',
   });
 
-  // ── Plantillas: lista ──
-  const [plantillasLoading, setPlantillasLoading] = useState(false);
-
   // ── Plantillas: formulario crear / editar ──
   const [openPlForm, setOpenPlForm] = useState(false);
   const [plIsEdit, setPlIsEdit] = useState(false);
@@ -219,65 +206,6 @@ const PresupuestosProfesionales = () => {
   const [openPlDelete, setOpenPlDelete] = useState(false);
   const [plToDelete, setPlToDelete] = useState(null);
 
-  // ── Plantillas: importar archivo ──
-  const [openImport, setOpenImport] = useState(false);
-  const [importFiles, setImportFiles] = useState([]);
-  const [importLoading, setImportLoading] = useState(false);
-  const [importName, setImportName] = useState('');
-  const [importTipo, setImportTipo] = useState('');
-  const [importPhase, setImportPhase] = useState('idle');
-  const isImageFile = (file) =>
-    file.type?.startsWith('image/') || /\.(png|jpe?g|webp)$/i.test(file.name);
-  const validateImportFiles = (files) => {
-    if (!files.length) return null;
-    const allImages = files.every(isImageFile);
-    const hasNonImages = files.some((file) => !isImageFile(file));
-    if (allImages && hasNonImages) return 'Subí solo imágenes o solo un PDF/Excel.';
-    if (allImages && files.length > 10) return 'Máximo 10 imágenes por importación.';
-    if (!allImages && files.length > 1) return 'Solo se permite un archivo PDF o Excel.';
-    if (!allImages) {
-      const file = files[0];
-      if (!/\.(xls|xlsx|pdf)$/i.test(file.name)) {
-        return 'Formato no soportado.';
-      }
-    }
-    return null;
-  };
-  const fileGroupError = useMemo(() => validateImportFiles(importFiles), [importFiles]);
-
-  const handleAddImportFiles = (files = []) => {
-    if (!files.length) return;
-    setImportFiles((prev) => [...prev, ...files]);
-  };
-
-  const handleRemoveImportFile = (index) => {
-    setImportFiles((prev) => prev.filter((_, i) => i !== index));
-  };
-
-  const handleMoveImportFile = (fromIndex, toIndex) => {
-    setImportFiles((prev) => {
-      if (fromIndex < 0 || toIndex < 0 || fromIndex >= prev.length || toIndex >= prev.length) {
-        return prev;
-      }
-      const next = [...prev];
-      const [moved] = next.splice(fromIndex, 1);
-      next.splice(toIndex, 0, moved);
-      return next;
-    });
-  };
-
-  const resetImportDialog = () => {
-    setImportFiles([]);
-    setImportName('');
-    setImportTipo('');
-    setImportPhase('idle');
-  };
-
-  const handleCloseImportDialog = () => {
-    setOpenImport(false);
-    resetImportDialog();
-  };
-
   // ── Rubros expandidos ──
   const [expandedRubros, setExpandedRubros] = useState(new Set());
 
@@ -287,8 +215,61 @@ const PresupuestosProfesionales = () => {
 
   // ── Snackbar ──
   const [alert, setAlert] = useState({ open: false, message: '', severity: 'info' });
-  const closeAlert = () => setAlert((prev) => ({ ...prev, open: false }));
-  const showAlert = (message, severity = 'success') => setAlert({ open: true, message, severity });
+  const closeAlert = useCallback(() => {
+    setAlert((prev) => ({ ...prev, open: false }));
+  }, []);
+  const showAlert = useCallback((message, severity = 'success') => {
+    setAlert({ open: true, message, severity });
+  }, []);
+
+  const {
+    presupuestos,
+    presupuestosLoading,
+    totalPresupuestos,
+    refreshPresupuestos,
+  } = usePresupuestosList({
+    empresaId,
+    currentTab,
+    ppPage,
+    ppRowsPerPage,
+    filtroEstado,
+    filtroMoneda,
+    filtroTitulo,
+    showAlert,
+  });
+
+  const { plantillas, plantillasLoading, refreshPlantillas } = usePlantillasList({
+    empresaId,
+    currentTab,
+    showAlert,
+  });
+
+  const {
+    openImport,
+    importFiles,
+    importLoading,
+    importName,
+    importTipo,
+    importPhase,
+    fileGroupError,
+    setImportName,
+    setImportTipo,
+    handleOpenImportDialog,
+    handleCloseImportDialog,
+    handleAddImportFiles,
+    handleRemoveImportFile,
+    handleMoveImportFile,
+    handleImportPlantilla,
+  } = usePlantillaImport({
+    empresaId,
+    showAlert,
+    onImportSuccess: (formData) => {
+      setPlForm(formData);
+      setPlIsEdit(false);
+      setPlEditId(null);
+      setOpenPlForm(true);
+    },
+  });
 
   /* ================================================================
      Init: cargar empresa, plantillas
@@ -308,65 +289,6 @@ const PresupuestosProfesionales = () => {
       }
     })();
   }, [user]);
-
-  /* ================================================================
-     Fetch: Presupuestos
-     ================================================================ */
-
-  const fetchPresupuestos = useCallback(async () => {
-    if (!empresaId) return;
-    setPresupuestosLoading(true);
-    try {
-      const filters = {
-        empresa_id: empresaId,
-        limit: ppRowsPerPage,
-        page: ppPage,
-      };
-      if (filtroEstado) filters.estado = filtroEstado;
-      if (filtroMoneda) filters.moneda = filtroMoneda;
-      if (filtroTitulo.trim()) filters.titulo = filtroTitulo.trim();
-      const resp = await PresupuestoProfesionalService.listar(filters);
-      setPresupuestos(resp.items || []);
-      setTotalPresupuestos(resp.total || 0);
-    } catch (err) {
-      console.error('Error al listar presupuestos profesionales:', err);
-      showAlert('Error al cargar presupuestos', 'error');
-    } finally {
-      setPresupuestosLoading(false);
-    }
-  }, [empresaId, ppPage, ppRowsPerPage, filtroEstado, filtroMoneda, filtroTitulo]);
-
-  useEffect(() => {
-    if (currentTab === 0) fetchPresupuestos();
-  }, [currentTab, fetchPresupuestos]);
-
-  /* ================================================================
-     Fetch: Plantillas
-     ================================================================ */
-
-  const fetchPlantillas = useCallback(async () => {
-    if (!empresaId) return;
-    setPlantillasLoading(true);
-    try {
-      const items = await PresupuestoProfesionalService.listarPlantillas(empresaId, false);
-      setPlantillas(items);
-    } catch (err) {
-      console.error('Error al listar plantillas:', err);
-      showAlert('Error al cargar plantillas', 'error');
-    } finally {
-      setPlantillasLoading(false);
-    }
-  }, [empresaId]);
-
-  useEffect(() => {
-    if (empresaId) {
-      fetchPlantillas();
-    }
-  }, [empresaId, fetchPlantillas]);
-
-  useEffect(() => {
-    if (currentTab === 1) fetchPlantillas();
-  }, [currentTab, fetchPlantillas]);
 
   /* ================================================================
      Presupuesto: Crear / Editar
@@ -392,7 +314,7 @@ const PresupuestosProfesionales = () => {
     }
 
     if (ajuste.indexacion === INDEXACION_VALUES.CAC) {
-      const mesReferencia = toMes(fechaHoy);
+      const mesReferencia = toMesAnterior(fechaHoy);
       const cacData = await cacService.getCacPorFecha(mesReferencia);
       const valorCac = pickCacValue(cacData, ajuste.cac_tipo);
       if (!valorCac) {
@@ -419,6 +341,8 @@ const PresupuestosProfesionales = () => {
     });
     setPpIsEdit(false);
     setPpEditId(null);
+    setPpLogoFile(null);
+    setPpLogoPreviewUrl('');
     setPpModoDistribuir(false);
     setPpTotalObjetivo('');
     setOpenPPForm(true);
@@ -435,8 +359,10 @@ const PresupuestosProfesionales = () => {
         moneda: full.moneda || 'ARS',
         indexacion: full.indexacion ?? ((full.moneda || 'ARS') === 'USD' ? INDEXACION_VALUES.USD : INDEXACION_VALUES.FIJO),
         cac_tipo: full.cac_tipo || CAC_TIPOS.GENERAL,
+        base_calculo: full.base_calculo || 'total',
         usd_fuente: full.usd_fuente || USD_FUENTES.OFICIAL,
         usd_valor: full.usd_valor || USD_VALORES.PROMEDIO,
+        empresa_logo_url: full.empresa_logo_url || '',
         rubros: (full.rubros || []).map((r) => ({
           nombre: r.nombre || '',
           monto: r.monto || 0,
@@ -465,6 +391,8 @@ const PresupuestosProfesionales = () => {
       });
       setPpIsEdit(true);
       setPpEditId(full._id);
+      setPpLogoFile(null);
+      setPpLogoPreviewUrl('');
       setOpenPPForm(true);
     } catch (err) {
       showAlert('Error al cargar detalle del presupuesto', 'error');
@@ -497,9 +425,11 @@ const PresupuestosProfesionales = () => {
         fecha_presupuesto: hoyIso(),
         indexacion: ajuste.moneda === 'ARS' ? ajuste.indexacion : INDEXACION_VALUES.USD,
         cac_tipo: ajuste.indexacion === INDEXACION_VALUES.CAC ? ajuste.cac_tipo : null,
+        base_calculo: ppForm.base_calculo || 'total',
         usd_fuente: (ajuste.moneda === 'USD' || ajuste.indexacion === INDEXACION_VALUES.USD) ? ajuste.usd_fuente : null,
         usd_valor: (ajuste.moneda === 'USD' || ajuste.indexacion === INDEXACION_VALUES.USD) ? ajuste.usd_valor : null,
         cotizacion_snapshot: cotizacionSnapshot,
+        empresa_logo_url: ppForm.empresa_logo_url || null,
         rubros: ppForm.rubros
           .filter((r) => r.nombre?.trim())
           .map((r) => ({
@@ -535,11 +465,13 @@ const PresupuestosProfesionales = () => {
         await PresupuestoProfesionalService.actualizar(ppEditId, payload);
         showAlert('Presupuesto actualizado');
       } else {
-        await PresupuestoProfesionalService.crear(payload);
+        await PresupuestoProfesionalService.crear(payload, ppLogoFile);
         showAlert('Presupuesto creado');
       }
       setOpenPPForm(false);
-      fetchPresupuestos();
+      setPpLogoFile(null);
+      setPpLogoPreviewUrl('');
+      refreshPresupuestos();
     } catch (err) {
       const msg = err?.response?.data?.error?.message || err?.response?.data?.message || err.message || 'Error al guardar';
       showAlert(msg, 'error');
@@ -559,7 +491,7 @@ const PresupuestosProfesionales = () => {
       showAlert('Presupuesto eliminado');
       setOpenPPDelete(false);
       setPpToDelete(null);
-      fetchPresupuestos();
+      refreshPresupuestos();
     } catch (err) {
       const msg = err?.response?.data?.error?.message || err?.response?.data?.message || err.message || 'Error al eliminar';
       showAlert(msg, 'error');
@@ -582,7 +514,7 @@ const PresupuestosProfesionales = () => {
       await PresupuestoProfesionalService.cambiarEstado(estadoTarget._id, nuevoEstado);
       showAlert(`Estado cambiado a "${ESTADO_LABEL[nuevoEstado]}"`);
       setOpenEstado(false);
-      fetchPresupuestos();
+      refreshPresupuestos();
     } catch (err) {
       const msg = err?.response?.data?.error?.message || err?.response?.data?.message || err.message || 'Error al cambiar estado';
       showAlert(msg, 'error');
@@ -619,7 +551,7 @@ const PresupuestosProfesionales = () => {
     try {
       const full = await PresupuestoProfesionalService.obtenerPorId(row._id);
       const { exportPresupuestoToPdfRenderer } = await import(
-        'src/utils/presupuestos/exportPresupuestoToPdfRenderer'
+        '../utils/presupuestos/exportPresupuestoToPdfRenderer'
       );
       await exportPresupuestoToPdfRenderer(full, { empresa: { nombre: empresaNombre } });
       showAlert('PDF descargado', 'success');
@@ -641,7 +573,7 @@ const PresupuestosProfesionales = () => {
     setDetallePdfExporting(true);
     try {
       const { exportPresupuestoToPdfRenderer } = await import(
-        'src/utils/presupuestos/exportPresupuestoToPdfRenderer'
+        '../utils/presupuestos/exportPresupuestoToPdfRenderer'
       );
       await exportPresupuestoToPdfRenderer(detalleData, { empresa: { nombre: empresaNombre } });
       showAlert('PDF descargado', 'success');
@@ -692,7 +624,7 @@ const PresupuestosProfesionales = () => {
       showAlert('Anexo agregado correctamente');
       setOpenAnexo(false);
       setAnexoTarget(null);
-      fetchPresupuestos();
+      refreshPresupuestos();
       if (openDetalle && detalleData?._id === anexoTarget._id) {
         const full = await PresupuestoProfesionalService.obtenerPorId(anexoTarget._id);
         setDetalleData(full);
@@ -754,8 +686,7 @@ const PresupuestosProfesionales = () => {
       if (value === '' || value == null) {
         stored = null;
       } else if (typeof value === 'string' && /[.,]$/.test(value)) {
-        const parsed = parseNumberInput(value);
-        stored = parsed != null ? parsed : value;
+        stored = value;
       } else {
         const parsed = Number(value);
         stored = parsed != null && !Number.isNaN(parsed) ? parsed : null;
@@ -837,31 +768,42 @@ const PresupuestosProfesionales = () => {
       return;
     }
     setPpTotalObjetivo('');
+    if (plantillaId === PLANTILLA_SORBYDATA_ID) {
+      const pl = PLANTILLA_SORBYDATA;
+      setPpForm((f) => ({
+        ...f,
+        plantilla_id: PLANTILLA_SORBYDATA_ID,
+        rubros: plantillaRubrosToPresupuestoRubros(pl.rubros),
+        notas_texto: pl.notas?.trim() || TEXTO_NOTAS_DEFAULT,
+      }));
+      showAlert('Rubros cargados desde Plantilla SorbyData', 'info');
+      return;
+    }
     try {
       const pl = await PresupuestoProfesionalService.obtenerPlantilla(plantillaId);
       if (pl && pl.rubros) {
         setPpForm((f) => ({
           ...f,
           plantilla_id: plantillaId,
-          rubros: pl.rubros.map((r) => ({
-            nombre: r.nombre,
-            monto: 0,
-            incidencia_objetivo_pct:
-              r.incidencia_pct_sugerida != null &&
-              !Number.isNaN(Number(r.incidencia_pct_sugerida)) &&
-              r.incidencia_pct_sugerida >= 0 &&
-              r.incidencia_pct_sugerida <= 100
-                ? Number(r.incidencia_pct_sugerida)
-                : null,
-            tareas: (r.tareas || []).map((t) => ({ descripcion: t.descripcion })),
-          })),
-          notas_texto: pl.notas?.trim() || '',
+          rubros: plantillaRubrosToPresupuestoRubros(pl.rubros),
+          notas_texto: pl.notas?.trim() || TEXTO_NOTAS_DEFAULT,
         }));
         showAlert('Rubros cargados desde plantilla', 'info');
       }
     } catch (err) {
       showAlert('Error al cargar plantilla', 'error');
     }
+  };
+
+  const handleUploadLogo = async (file) => {
+    if (!file) return;
+    if (!file.type?.startsWith('image/')) {
+      showAlert('Seleccioná una imagen válida', 'warning');
+      return;
+    }
+    if (ppLogoPreviewUrl) URL.revokeObjectURL(ppLogoPreviewUrl);
+    setPpLogoFile(file);
+    setPpLogoPreviewUrl(URL.createObjectURL(file));
   };
 
   /* ================================================================
@@ -942,7 +884,7 @@ const PresupuestosProfesionales = () => {
         showAlert('Plantilla creada');
       }
       setOpenPlForm(false);
-      fetchPlantillas();
+      refreshPlantillas();
     } catch (err) {
       const msg = err?.response?.data?.error?.message || err?.response?.data?.message || err.message || 'Error al guardar plantilla';
       showAlert(msg, 'error');
@@ -958,7 +900,7 @@ const PresupuestosProfesionales = () => {
       showAlert('Plantilla eliminada');
       setOpenPlDelete(false);
       setPlToDelete(null);
-      fetchPlantillas();
+      refreshPlantillas();
     } catch (err) {
       const msg = err?.response?.data?.error?.message || err?.response?.data?.message || err.message || 'Error al eliminar plantilla';
       showAlert(msg, 'error');
@@ -1035,62 +977,6 @@ const PresupuestosProfesionales = () => {
   };
 
   /* ================================================================
-     Importar archivo → plantilla
-     ================================================================ */
-
-  const handleImportPlantilla = async () => {
-    if (!importFiles.length) {
-      showAlert('Seleccioná un archivo', 'warning');
-      return;
-    }
-    if (fileGroupError) {
-      showAlert(fileGroupError, 'warning');
-      return;
-    }
-    setImportPhase('uploading');
-    setImportLoading(true);
-    try {
-      setImportPhase('analizando');
-      const result = await PresupuestoProfesionalService.uploadPlantilla(
-        importFiles,
-        empresaId,
-        importName,
-        importTipo
-      );
-      const rubrosParseados = (result.rubros || []).map((r) => ({
-        nombre: r.nombre || '',
-        incidencia_pct_sugerida: r.incidencia_pct_sugerida != null && !Number.isNaN(Number(r.incidencia_pct_sugerida))
-          ? Number(r.incidencia_pct_sugerida)
-          : null,
-        tareas: (r.tareas || []).map((t) => ({ descripcion: t.descripcion || '' })),
-      }));
-
-      // Abrir el form de plantilla con los rubros pre-cargados para que el usuario revise y guarde
-      const sourceName = importFiles[0]?.name || '';
-      const nombreSug = result.nombre_sugerido || importName || sourceName.replace(/\.[^.]+$/, '') || 'Importada';
-      const tipoSug = result.tipo_sugerido || importTipo || '';
-      setPlForm({
-        nombre: nombreSug,
-        tipo: tipoSug,
-        activa: true,
-        rubros: rubrosParseados,
-        notas: result.notas || '',
-      });
-      setPlIsEdit(false);
-      setPlEditId(null);
-      setOpenImport(false);
-      resetImportDialog();
-      setOpenPlForm(true);
-    } catch (err) {
-      const msg = err?.response?.data?.error?.message || err?.response?.data?.message || err.message || 'Error al importar';
-      showAlert(msg, 'error');
-    } finally {
-      setImportLoading(false);
-      setImportPhase('idle');
-    }
-  };
-
-  /* ================================================================
      Toggle rubros expandidos en tabla
      ================================================================ */
 
@@ -1131,54 +1017,27 @@ const PresupuestosProfesionales = () => {
           {currentTab === 0 && (
             <>
               {/* ── Filtros ── */}
-              <Paper sx={{ p: 2, mb: 2 }}>
-                <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems="center">
-                  <TextField
-                    size="small"
-                    label="Buscar por título"
-                    value={filtroTitulo}
-                    onChange={(e) => { setFiltroTitulo(e.target.value); setPpPage(0); }}
-                    InputProps={{
-                      startAdornment: (
-                        <InputAdornment position="start">
-                          <SearchIcon fontSize="small" />
-                        </InputAdornment>
-                      ),
-                    }}
-                    sx={{ minWidth: 200 }}
-                  />
-                  <FormControl size="small" sx={{ minWidth: 140 }}>
-                    <InputLabel>Estado</InputLabel>
-                    <Select
-                      value={filtroEstado}
-                      label="Estado"
-                      onChange={(e) => { setFiltroEstado(e.target.value); setPpPage(0); }}
-                    >
-                      <MenuItem value="">Todos</MenuItem>
-                      {ESTADOS.map((e) => (
-                        <MenuItem key={e} value={e}>{ESTADO_LABEL[e]}</MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                  <FormControl size="small" sx={{ minWidth: 120 }}>
-                    <InputLabel>Moneda</InputLabel>
-                    <Select
-                      value={filtroMoneda}
-                      label="Moneda"
-                      onChange={(e) => { setFiltroMoneda(e.target.value); setPpPage(0); }}
-                    >
-                      <MenuItem value="">Todas</MenuItem>
-                      {MONEDAS.map((m) => (
-                        <MenuItem key={m} value={m}>{m}</MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                  <Box sx={{ flexGrow: 1 }} />
-                  <Button variant="contained" startIcon={<AddIcon />} onClick={handleOpenPPCreate}>
-                    Nuevo presupuesto
-                  </Button>
-                </Stack>
-              </Paper>
+              <PresupuestosFilters
+                filtroTitulo={filtroTitulo}
+                onFiltroTituloChange={(value) => {
+                  setFiltroTitulo(value);
+                  setPpPage(0);
+                }}
+                filtroEstado={filtroEstado}
+                onFiltroEstadoChange={(value) => {
+                  setFiltroEstado(value);
+                  setPpPage(0);
+                }}
+                estados={ESTADOS}
+                estadoLabel={ESTADO_LABEL}
+                filtroMoneda={filtroMoneda}
+                onFiltroMonedaChange={(value) => {
+                  setFiltroMoneda(value);
+                  setPpPage(0);
+                }}
+                monedas={MONEDAS}
+                onNuevoPresupuesto={handleOpenPPCreate}
+              />
 
               {/* ── Loading ── */}
               {presupuestosLoading && <LinearProgress sx={{ mb: 1 }} />}
@@ -1208,162 +1067,24 @@ const PresupuestosProfesionales = () => {
                         </TableCell>
                       </TableRow>
                     )}
-                    {presupuestos.map((row) => {
-                      const isExpanded = expandedRubros.has(row._id);
-                      return (
-                        <React.Fragment key={row._id}>
-                          <TableRow hover>
-                            <TableCell sx={{ width: 40 }}>
-                              {row.rubros?.length > 0 && (
-                                <IconButton size="small" onClick={() => toggleExpanded(row._id)}>
-                                  {isExpanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-                                </IconButton>
-                              )}
-                            </TableCell>
-                            <TableCell>
-                              <Typography variant="body2" fontWeight={600}>
-                                {row.titulo || '(Sin título)'}
-                              </Typography>
-                            </TableCell>
-                            <TableCell>{row.moneda}</TableCell>
-                            <TableCell align="right">
-                              {formatCurrency(row.total_neto, row.moneda)}
-                              {row.estado === 'aceptado' &&
-                                (row.anexos || []).length > 0 && (
-                                  <>
-                                    <br />
-                                    <Typography variant="caption" color="primary">
-                                      Actualizado:{' '}
-                                      {formatCurrency(
-                                        (row.total_neto || 0) +
-                                          (row.anexos || []).reduce(
-                                            (s, a) => s + (Number(a.monto_diferencia) || 0),
-                                            0
-                                          ),
-                                        row.moneda
-                                      )}
-                                    </Typography>
-                                  </>
-                                )}
-                            </TableCell>
-                            <TableCell>
-                              <Chip
-                                label={ESTADO_LABEL[row.estado] || row.estado}
-                                color={ESTADO_COLOR[row.estado] || 'default'}
-                                size="small"
-                              />
-                            </TableCell>
-                            <TableCell>{formatDate(row.fecha || row.createdAt)}</TableCell>
-                            <TableCell align="center">
-                              {row.version_actual > 0 ? `v${row.version_actual}` : '—'}
-                            </TableCell>
-                            <TableCell align="center">
-                              <Stack direction="row" spacing={0} justifyContent="center">
-                                <Tooltip title="Ver detalle">
-                                  <IconButton size="small" onClick={() => handleOpenDetalle(row)}>
-                                    <VisibilityIcon fontSize="small" />
-                                  </IconButton>
-                                </Tooltip>
-                                <Tooltip title={!row.rubros?.length ? 'Sin rubros' : 'Exportar PDF'}>
-                                  <span
-                                    style={{ display: 'inline-flex' }}
-                                    onClick={() => handleExportPdfFromRow(row)}
-                                  >
-                                    <IconButton
-                                      size="small"
-                                      disabled={exportingPdfId === row._id || !row.rubros?.length}
-                                    >
-                                      {exportingPdfId === row._id ? (
-                                        <CircularProgress size={20} />
-                                      ) : (
-                                        <PictureAsPdfIcon fontSize="small" />
-                                      )}
-                                    </IconButton>
-                                  </span>
-                                </Tooltip>
-                                {row.estado === 'borrador' && (
-                                  <Tooltip title="Editar">
-                                    <IconButton size="small" onClick={() => handleOpenPPEdit(row)}>
-                                      <EditIcon fontSize="small" />
-                                    </IconButton>
-                                  </Tooltip>
-                                )}
-                                {TRANSICIONES_VALIDAS[row.estado]?.length > 0 && (
-                                  <Tooltip title="Cambiar estado">
-                                    <IconButton size="small" onClick={() => handleOpenCambiarEstado(row)}>
-                                      <SwapHorizIcon fontSize="small" />
-                                    </IconButton>
-                                  </Tooltip>
-                                )}
-                                <Tooltip title="Agregar anexo">
-                                  <IconButton size="small" onClick={() => handleOpenAnexo(row)}>
-                                    <PostAddIcon fontSize="small" />
-                                  </IconButton>
-                                </Tooltip>
-                                {row.estado === 'borrador' && (
-                                  <Tooltip title="Eliminar">
-                                    <IconButton
-                                      size="small"
-                                      color="error"
-                                      onClick={() => {
-                                        setPpToDelete(row);
-                                        setOpenPPDelete(true);
-                                      }}
-                                    >
-                                      <DeleteIcon fontSize="small" />
-                                    </IconButton>
-                                  </Tooltip>
-                                )}
-                              </Stack>
-                            </TableCell>
-                          </TableRow>
-                          {/* Fila expandida con rubros */}
-                          {isExpanded && (
-                            <TableRow key={`${row._id}-rubros`}>
-                              <TableCell colSpan={9} sx={{ py: 0 }}>
-                                <Collapse in={isExpanded} timeout="auto" unmountOnExit>
-                                  <Box sx={{ m: 1, ml: 6 }}>
-                                    <Typography variant="subtitle2" gutterBottom>
-                                      Rubros ({row.rubros.length})
-                                    </Typography>
-                                    <Table size="small">
-                                      <TableHead>
-                                        <TableRow>
-                                          <TableCell>#</TableCell>
-                                          <TableCell>Rubro</TableCell>
-                                          <TableCell align="right">Monto</TableCell>
-                                          <TableCell align="right">Incidencia</TableCell>
-                                          <TableCell>Tareas</TableCell>
-                                        </TableRow>
-                                      </TableHead>
-                                      <TableBody>
-                                        {row.rubros.map((rubro, ri) => (
-                                          <TableRow key={ri}>
-                                            <TableCell>{rubro.orden || ri + 1}</TableCell>
-                                            <TableCell>{rubro.nombre}</TableCell>
-                                            <TableCell align="right">
-                                              {formatCurrency(rubro.monto, row.moneda)}
-                                            </TableCell>
-                                            <TableCell align="right">
-                                              {formatPct(rubro.incidencia_pct)}
-                                            </TableCell>
-                                            <TableCell>
-                                              {(rubro.tareas || []).length > 0
-                                                ? rubro.tareas.map((t) => t.descripcion).join(', ')
-                                                : '—'}
-                                            </TableCell>
-                                          </TableRow>
-                                        ))}
-                                      </TableBody>
-                                    </Table>
-                                  </Box>
-                                </Collapse>
-                              </TableCell>
-                            </TableRow>
-                          )}
-                        </React.Fragment>
-                      );
-                    })}
+                    {presupuestos.map((row) => (
+                      <PresupuestosTableRow
+                        key={row._id}
+                        row={row}
+                        isExpanded={expandedRubros.has(row._id)}
+                        exportingPdfId={exportingPdfId}
+                        onToggleExpanded={toggleExpanded}
+                        onOpenDetalle={handleOpenDetalle}
+                        onExportPdf={handleExportPdfFromRow}
+                        onOpenEdit={handleOpenPPEdit}
+                        onOpenCambiarEstado={handleOpenCambiarEstado}
+                        onOpenAnexo={handleOpenAnexo}
+                        onDelete={(target) => {
+                          setPpToDelete(target);
+                          setOpenPPDelete(true);
+                        }}
+                      />
+                    ))}
                   </TableBody>
                 </Table>
                 <TablePagination
@@ -1387,126 +1108,44 @@ const PresupuestosProfesionales = () => {
               TAB 1: PLANTILLAS DE RUBROS
               ════════════════════════════════════════════════════════ */}
           {currentTab === 1 && (
-            <>
-              <Paper sx={{ p: 2, mb: 2 }}>
-                <Stack direction="row" spacing={2} alignItems="center">
-                  <Typography variant="subtitle1" sx={{ flexGrow: 1 }}>
-                    Plantillas de rubros reutilizables para tus presupuestos.
-                  </Typography>
-                  <Button
-                    variant="outlined"
-                    startIcon={<UploadFileIcon />}
-                    onClick={() => {
-                      resetImportDialog();
-                      setOpenImport(true);
-                    }}
-                  >
-                    Importar archivo
-                  </Button>
-                  <Button variant="contained" startIcon={<AddIcon />} onClick={handleOpenPlCreate}>
-                    Nueva plantilla
-                  </Button>
-                </Stack>
-              </Paper>
-
-              {plantillasLoading && <LinearProgress sx={{ mb: 1 }} />}
-
-              <Paper>
-                <Table size="small">
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Nombre</TableCell>
-                      <TableCell>Tipo</TableCell>
-                      <TableCell align="center">Rubros</TableCell>
-                      <TableCell>Estado</TableCell>
-                      <TableCell>Creada</TableCell>
-                      <TableCell align="center">Acciones</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {plantillas.length === 0 && !plantillasLoading && (
-                      <TableRow>
-                        <TableCell colSpan={6} align="center" sx={{ py: 4 }}>
-                          <Typography color="text.secondary">
-                            No hay plantillas. Creá una o importá desde un archivo.
-                          </Typography>
-                        </TableCell>
-                      </TableRow>
-                    )}
-                    {plantillas.map((pl) => (
-                      <TableRow key={pl._id} hover>
-                        <TableCell>
-                          <Typography variant="body2" fontWeight={600}>{pl.nombre}</Typography>
-                        </TableCell>
-                        <TableCell>{pl.tipo || '—'}</TableCell>
-                        <TableCell align="center">{(pl.rubros || []).length}</TableCell>
-                        <TableCell>
-                          <Chip
-                            label={pl.activa ? 'Activa' : 'Inactiva'}
-                            color={pl.activa ? 'success' : 'default'}
-                            size="small"
-                          />
-                        </TableCell>
-                        <TableCell>{formatDate(pl.createdAt)}</TableCell>
-                        <TableCell align="center">
-                          <Stack direction="row" spacing={0} justifyContent="center">
-                            <Tooltip title="Editar">
-                              <IconButton size="small" onClick={() => handleOpenPlEdit(pl)}>
-                                <EditIcon fontSize="small" />
-                              </IconButton>
-                            </Tooltip>
-                            <Tooltip title="Duplicar como nuevo presupuesto">
-                              <IconButton
-                                size="small"
-                                onClick={() => {
-                                  setPpForm({
-                                    ...emptyPresupuesto,
-                                    plantilla_id: pl._id,
-                                    rubros: (pl.rubros || []).map((r) => ({
-                                      nombre: r.nombre,
-                                      monto: 0,
-                                      incidencia_objetivo_pct:
-                                        r.incidencia_pct_sugerida != null &&
-                                        !Number.isNaN(Number(r.incidencia_pct_sugerida)) &&
-                                        r.incidencia_pct_sugerida >= 0 &&
-                                        r.incidencia_pct_sugerida <= 100
-                                          ? Number(r.incidencia_pct_sugerida)
-                                          : null,
-                                      tareas: (r.tareas || []).map((t) => ({
-                                        descripcion: t.descripcion,
-                                      })),
-                                    })),
-                                  });
-                                  setPpIsEdit(false);
-                                  setPpEditId(null);
-                                  setCurrentTab(0);
-                                  setOpenPPForm(true);
-                                  showAlert('Rubros de plantilla cargados. Completá el presupuesto.', 'info');
-                                }}
-                              >
-                                <ContentCopyIcon fontSize="small" />
-                              </IconButton>
-                            </Tooltip>
-                            <Tooltip title="Eliminar">
-                              <IconButton
-                                size="small"
-                                color="error"
-                                onClick={() => {
-                                  setPlToDelete(pl);
-                                  setOpenPlDelete(true);
-                                }}
-                              >
-                                <DeleteIcon fontSize="small" />
-                              </IconButton>
-                            </Tooltip>
-                          </Stack>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </Paper>
-            </>
+            <PlantillasTable
+              plantillas={plantillas}
+              plantillasLoading={plantillasLoading}
+              sorbyRubrosCount={PLANTILLA_SORBYDATA.rubros.length}
+              onImportarArchivo={handleOpenImportDialog}
+              onNuevaPlantilla={handleOpenPlCreate}
+              onDuplicarSorbyData={() => {
+                setPpForm({
+                  ...emptyPresupuesto,
+                  plantilla_id: PLANTILLA_SORBYDATA_ID,
+                  notas_texto: TEXTO_NOTAS_DEFAULT,
+                  rubros: plantillaRubrosToPresupuestoRubros(PLANTILLA_SORBYDATA.rubros),
+                });
+                setPpIsEdit(false);
+                setPpEditId(null);
+                setCurrentTab(0);
+                setOpenPPForm(true);
+                showAlert('Rubros de plantilla cargados. Completá el presupuesto.', 'info');
+              }}
+              onEditarPlantilla={handleOpenPlEdit}
+              onDuplicarPlantilla={(pl) => {
+                setPpForm({
+                  ...emptyPresupuesto,
+                  plantilla_id: pl._id,
+                  notas_texto: pl.notas?.trim() || TEXTO_NOTAS_DEFAULT,
+                  rubros: plantillaRubrosToPresupuestoRubros(pl.rubros),
+                });
+                setPpIsEdit(false);
+                setPpEditId(null);
+                setCurrentTab(0);
+                setOpenPPForm(true);
+                showAlert('Rubros de plantilla cargados. Completá el presupuesto.', 'info');
+              }}
+              onEliminarPlantilla={(pl) => {
+                setPlToDelete(pl);
+                setOpenPlDelete(true);
+              }}
+            />
           )}
         </Container>
       </Box>
@@ -1542,6 +1181,14 @@ const PresupuestosProfesionales = () => {
         removeTarea={ppRemoveTarea}
         updateTarea={ppUpdateTarea}
         focusRef={ppFocusRef}
+        logoUploading={ppSaving}
+        logoPreviewUrl={ppLogoPreviewUrl}
+        onUploadLogo={handleUploadLogo}
+        onRemoveLogo={() => {
+          setPpLogoFile(null);
+          setPpLogoPreviewUrl('');
+          setPpForm((prev) => ({ ...prev, empresa_logo_url: '' }));
+        }}
       />
 
       <PresupuestoDeleteDialog

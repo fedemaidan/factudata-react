@@ -9,6 +9,23 @@ const sanitizeFileName = (value) =>
     .replace(/[^\w-]/g, '')
     .slice(0, 40);
 
+const loadImageAsDataUrl = async (url) => {
+  if (!url) return null;
+  try {
+    const response = await fetch(url, { mode: 'cors' });
+    if (!response.ok) return null;
+    const blob = await response.blob();
+    return await new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result);
+      reader.readAsDataURL(blob);
+    });
+  } catch (error) {
+    console.debug('No se pudo cargar el logo para el PDF', error);
+    return null;
+  }
+};
+
 const downloadBlob = (blob, filename) => {
   const url = window.URL.createObjectURL(blob);
   const anchor = document.createElement('a');
@@ -41,36 +58,6 @@ const resolveVersionActual = (presupuesto) => {
   const numero = Number(presupuesto?.version_actual);
   if (!Array.isArray(presupuesto?.versiones) || !Number.isFinite(numero) || numero <= 0) return null;
   return presupuesto.versiones.find((v) => Number(v?.numero_version) === numero) || null;
-};
-
-const resolveAjusteMonetarioData = (presupuesto) => {
-  const moneda = (presupuesto?.moneda || 'ARS').toUpperCase();
-  const indexacion = moneda === 'USD'
-    ? 'USD'
-    : (presupuesto?.indexacion === 'CAC' || presupuesto?.indexacion === 'USD' ? presupuesto.indexacion : null);
-  const modo = moneda === 'USD'
-    ? 'Ajustar por dólar'
-    : indexacion === 'CAC'
-      ? 'Ajustar por CAC'
-      : indexacion === 'USD'
-        ? 'Ajustar por dólar'
-        : 'Pesos fijos';
-
-  const cotizacion = presupuesto?.cotizacion_snapshot || null;
-  const cacTipo = presupuesto?.cac_tipo || null;
-  const usdFuente = presupuesto?.usd_fuente || null;
-  const usdValor = presupuesto?.usd_valor || null;
-
-  return {
-    modo,
-    indexacion: indexacion || null,
-    cac_tipo: cacTipo,
-    usd_fuente: usdFuente,
-    usd_valor: usdValor,
-    cotizacion_valor: Number.isFinite(Number(cotizacion?.valor)) ? Number(cotizacion.valor) : null,
-    cotizacion_fecha_origen: cotizacion?.fecha_origen || null,
-    cotizacion_tipo: cotizacion?.tipo || null,
-  };
 };
 
 const calcularCostoM2Data = async (presupuesto) => {
@@ -106,20 +93,29 @@ const calcularCostoM2Data = async (presupuesto) => {
     }
   }
 
-  const fechaMes = formatFechaMes(presupuesto?.fecha || presupuesto?.createdAt);
+  const fechaRef = presupuesto?.fecha || presupuesto?.createdAt;
+  const fechaMes = formatFechaMes(fechaRef);
+  const mesAnterior = (() => {
+    const m = fechaMes;
+    if (!m || m.length < 7) return '';
+    const [y, mo] = m.split('-').map(Number);
+    const d = new Date(y, mo - 2, 1);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  })();
   if (snapshot?.tipo === 'CAC') {
     valorCac = Number(snapshot?.valor) || null;
   } else {
     try {
-      const cacData = await cacService.getCacPorFecha(fechaMes);
+      const cacData = mesAnterior ? await cacService.getCacPorFecha(mesAnterior) : null;
       valorCac = cacData?.general ?? null;
     } catch (err) {
       console.warn('No se pudo obtener CAC para PDF:', err);
     }
   }
 
-  // Formato legible del mes CAC para el PDF (ej: "02/2025")
-  const cacMesReferencia = fechaMes ? `${fechaMes.slice(5, 7)}/${fechaMes.slice(0, 4)}` : null;
+  // Formato legible del mes CAC para el PDF (ej: "02/2025") — siempre mes anterior
+  const mesRefCac = snapshot?.tipo === 'CAC' ? (snapshot.fecha_origen || mesAnterior) : mesAnterior;
+  const cacMesReferencia = mesRefCac && mesRefCac.length >= 7 ? `${mesRefCac.slice(5, 7)}/${mesRefCac.slice(0, 4)}` : null;
 
   const totalFinalArs = currency === 'USD' && tipoCambio
     ? totalActualizado * tipoCambio
@@ -139,7 +135,6 @@ const calcularCostoM2Data = async (presupuesto) => {
     usd: costoM2Usd != null && Number.isFinite(costoM2Usd) ? costoM2Usd : null,
     cac: costoM2Cac != null && Number.isFinite(costoM2Cac) ? costoM2Cac : null,
     cacMesReferencia,
-    ajusteMonetario: resolveAjusteMonetarioData(presupuesto),
   };
 };
 
@@ -163,12 +158,18 @@ export async function exportPresupuestoToPdfRenderer(presupuesto, { empresa } = 
     console.warn('Error al calcular costo por m² para PDF:', err);
   }
 
+  let logoDataUrl = null;
+  const logoUrl = presupuesto.empresa_logo_url;
+  if (logoUrl) {
+    logoDataUrl = await loadImageAsDataUrl(logoUrl);
+  }
+
   const doc = (
     <PresupuestoPdfDocument
       presupuesto={presupuesto}
       empresa={empresa}
       costoM2Data={costoM2Data}
-      ajusteMonetarioData={costoM2Data?.ajusteMonetario || resolveAjusteMonetarioData(presupuesto)}
+      logoDataUrl={logoDataUrl}
     />
   );
   const blob = await pdf(doc).toBlob();

@@ -23,6 +23,16 @@ export const USD_VALORES = {
 
 export const hoyIso = () => new Date().toISOString().slice(0, 10);
 
+/** Devuelve el mes anterior en formato YYYY-MM para CAC (el índice se publica con retraso). */
+export const toMesAnterior = (fechaIso = '') => {
+  const str = typeof fechaIso === 'string' ? fechaIso : '';
+  const mes = str.length >= 7 ? str.slice(0, 7) : '';
+  if (!mes || mes.length < 7) return '';
+  const [y, m] = mes.split('-').map(Number);
+  const d = new Date(y, m - 2, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+};
+
 export const normalizarAjusteMoneda = (form = {}) => {
   const moneda = form.moneda === 'USD' ? 'USD' : 'ARS';
   const indexacion = moneda === 'USD'

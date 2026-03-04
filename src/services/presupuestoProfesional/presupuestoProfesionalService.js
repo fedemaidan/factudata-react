@@ -19,11 +19,19 @@ const unwrap = (res) => {
 // ── Presupuestos ───────────────────────────────────────────────
 
 const PresupuestoProfesionalService = {
-
   /* ---------- CRUD Presupuestos ---------- */
 
-  crear: async (data) => {
-    const res = await api.post(`${BASE}`, data);
+  crear: async (data, logoFile = null) => {
+    let body = data;
+    let headers;
+    if (logoFile) {
+      const formData = new FormData();
+      formData.append('payload', JSON.stringify(data));
+      formData.append('logo', logoFile);
+      body = formData;
+      headers = { 'Content-Type': 'multipart/form-data' };
+    }
+    const res = await api.post(`${BASE}`, body, headers ? { headers } : undefined);
     if (res.status === 200 || res.status === 201) return unwrap(res);
     throw new Error('No se pudo crear el presupuesto profesional');
   },
