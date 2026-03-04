@@ -18,7 +18,7 @@ import {
 } from "@mui/material";
 
 import { Autocomplete } from "@mui/material";
-import { actualizarSheetsDesdeBaseEmpresa } from "src/services/proyectosService";
+import { actualizarSheetsDesdeBaseEmpresa, getProyectosByEmpresa } from "src/services/proyectosService";
 
 export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission }) => {
   const comprobante_info_default = {
@@ -84,8 +84,32 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
   const [cuit, setCuit] = useState(empresa.cuit || "");
   const [domicilioFiscal, setDomicilioFiscal] = useState(empresa.domicilio_fiscal || "");
   const [carpetaEmpresaRef, setCarpetaEmpresaRef] = useState(empresa.carpetaEmpresaRef || "");
+  const [carpetaCentralComprobantes, setCarpetaCentralComprobantes] = useState(empresa.carpeta_central_comprobantes || "");
   const [isRegenerandoSheets, setIsRegenerandoSheets] = useState(false);
   const [cuentaSuspendida, setCuentaSuspendida] = useState(empresa.cuenta_suspendida || false);
+
+  // --- Config Drive Central ---
+  const configDriveCentralDefault = {
+    por_quincena: { filtro: 'ninguno', proyectos: [] },
+    por_proyecto_categoria: { filtro: 'todos', proyectos: [] },
+  };
+  const [configDriveCentral, setConfigDriveCentral] = useState({
+    ...configDriveCentralDefault,
+    ...empresa.config_drive_central,
+    por_quincena: { ...configDriveCentralDefault.por_quincena, ...empresa.config_drive_central?.por_quincena },
+    por_proyecto_categoria: { ...configDriveCentralDefault.por_proyecto_categoria, ...empresa.config_drive_central?.por_proyecto_categoria },
+  });
+  const [proyectosEmpresa, setProyectosEmpresa] = useState([]);
+
+  useEffect(() => {
+    const cargarProyectos = async () => {
+      if (empresa) {
+        const pys = await getProyectosByEmpresa(empresa);
+        setProyectosEmpresa(pys);
+      }
+    };
+    cargarProyectos();
+  }, [empresa]);
   // ----- Cuentas y defaults -----
   const empresaTieneCuentas = Array.isArray(empresa.cuentas) && empresa.cuentas.length > 0;
   const initialCuentas = empresaTieneCuentas
@@ -327,6 +351,8 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
       cuit,
       domicilio_fiscal: domicilioFiscal,
       carpetaEmpresaRef: carpetaEmpresaRef,
+      carpeta_central_comprobantes: carpetaCentralComprobantes,
+      config_drive_central: configDriveCentral,
       cuenta_suspendida: cuentaSuspendida,
       cuentas: cuentas,
       cuenta_default_texto: cuentaDefaultTexto,
@@ -625,6 +651,124 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
         sx={{ mt: 2 }}
         helperText="Ejemplo: 1a2B3cD4eFgHiJKLmNopQRStuvWxYzZ123"
       />
+
+      <TextField
+        label="Carpeta central de comprobantes (Drive)"
+        value={carpetaCentralComprobantes}
+        onChange={(e) => setCarpetaCentralComprobantes(e.target.value)}
+        fullWidth
+        sx={{ mt: 2 }}
+        helperText="ID de carpeta de Drive donde se copian los comprobantes (uso contable/fiscal). Dejar vacío para desactivar."
+      />
+
+      {carpetaCentralComprobantes && (
+        <>
+          <Typography variant="h6" sx={{ mt: 4 }}>
+            Organización de comprobantes en Drive
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Configurá cómo se organizan los comprobantes copiados a la carpeta central.
+          </Typography>
+
+          {/* --- Por quincena --- */}
+          <Typography variant="subtitle1" sx={{ mt: 2, fontWeight: 600 }}>
+            📅 Por quincena
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Crea subcarpetas por quincena (ej: &quot;2026-03 Q1&quot;). Nombre del archivo: fecha-proyecto-categoría.
+          </Typography>
+          <TextField
+            select
+            label="Proyectos a incluir (quincena)"
+            value={configDriveCentral.por_quincena.filtro}
+            onChange={(e) => setConfigDriveCentral(prev => ({
+              ...prev,
+              por_quincena: { ...prev.por_quincena, filtro: e.target.value, ...(e.target.value !== 'algunos' ? { proyectos: [] } : {}) }
+            }))}
+            fullWidth
+            sx={{ mt: 1 }}
+          >
+            <MenuItem value="todos">Todos los proyectos</MenuItem>
+            <MenuItem value="algunos">Algunos proyectos</MenuItem>
+            <MenuItem value="ninguno">Ninguno (desactivado)</MenuItem>
+          </TextField>
+          {configDriveCentral.por_quincena.filtro === 'algunos' && (
+            <FormControl fullWidth sx={{ mt: 1 }}>
+              <InputLabel>Proyectos (quincena)</InputLabel>
+              <Select
+                multiple
+                value={configDriveCentral.por_quincena.proyectos}
+                onChange={(e) => setConfigDriveCentral(prev => ({
+                  ...prev,
+                  por_quincena: { ...prev.por_quincena, proyectos: e.target.value }
+                }))}
+                renderValue={(selected) => {
+                  return selected.map(id => {
+                    const p = proyectosEmpresa.find(py => py.id === id);
+                    return p ? p.nombre : id;
+                  }).join(', ');
+                }}
+              >
+                {proyectosEmpresa.map((py) => (
+                  <MenuItem key={py.id} value={py.id}>
+                    <Checkbox checked={configDriveCentral.por_quincena.proyectos.includes(py.id)} />
+                    <ListItemText primary={py.nombre} />
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          )}
+
+          {/* --- Por proyecto y categoría --- */}
+          <Typography variant="subtitle1" sx={{ mt: 3, fontWeight: 600 }}>
+            📁 Por proyecto y categoría
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Crea subcarpetas por nombre de proyecto → categoría.
+          </Typography>
+          <TextField
+            select
+            label="Proyectos a incluir (proyecto/categoría)"
+            value={configDriveCentral.por_proyecto_categoria.filtro}
+            onChange={(e) => setConfigDriveCentral(prev => ({
+              ...prev,
+              por_proyecto_categoria: { ...prev.por_proyecto_categoria, filtro: e.target.value, ...(e.target.value !== 'algunos' ? { proyectos: [] } : {}) }
+            }))}
+            fullWidth
+            sx={{ mt: 1 }}
+          >
+            <MenuItem value="todos">Todos los proyectos</MenuItem>
+            <MenuItem value="algunos">Algunos proyectos</MenuItem>
+            <MenuItem value="ninguno">Ninguno (desactivado)</MenuItem>
+          </TextField>
+          {configDriveCentral.por_proyecto_categoria.filtro === 'algunos' && (
+            <FormControl fullWidth sx={{ mt: 1 }}>
+              <InputLabel>Proyectos (proyecto/categoría)</InputLabel>
+              <Select
+                multiple
+                value={configDriveCentral.por_proyecto_categoria.proyectos}
+                onChange={(e) => setConfigDriveCentral(prev => ({
+                  ...prev,
+                  por_proyecto_categoria: { ...prev.por_proyecto_categoria, proyectos: e.target.value }
+                }))}
+                renderValue={(selected) => {
+                  return selected.map(id => {
+                    const p = proyectosEmpresa.find(py => py.id === id);
+                    return p ? p.nombre : id;
+                  }).join(', ');
+                }}
+              >
+                {proyectosEmpresa.map((py) => (
+                  <MenuItem key={py.id} value={py.id}>
+                    <Checkbox checked={configDriveCentral.por_proyecto_categoria.proyectos.includes(py.id)} />
+                    <ListItemText primary={py.nombre} />
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          )}
+        </>
+      )}
 
       <Button
         onClick={handleRegenerarSheets}
