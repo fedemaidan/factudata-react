@@ -409,10 +409,12 @@ const PresupuestosProfesionales = () => {
       const ajuste = normalizarAjusteMoneda(ppForm);
       const cotizacionSnapshot = await resolverCotizacionSnapshot(ppForm);
 
+      const userEmail = user?.email;
       const payload = {
         empresa_id: empresaId,
         empresa_nombre: empresaNombre,
         titulo: ppForm.titulo,
+        ...(userEmail && !ppIsEdit ? { creado_por_user_id: userEmail } : {}),
         proyecto_id: ppForm.proyecto_id || null,
         proyecto_nombre: ppForm.proyecto_nombre || null,
         obra_direccion: ppForm.obra_direccion || null,
@@ -501,8 +503,9 @@ const PresupuestosProfesionales = () => {
   const handleCambiarEstado = async (row, nuevoEstado) => {
     if (!row?._id || !nuevoEstado || nuevoEstado === row.estado) return;
     setChangingEstadoId(row._id);
+    const userEmail = user?.email;
     try {
-      await PresupuestoProfesionalService.cambiarEstado(row._id, nuevoEstado);
+      await PresupuestoProfesionalService.cambiarEstado(row._id, nuevoEstado, userEmail ? { user_id: userEmail } : {});
       showAlert(`Estado cambiado a "${ESTADO_LABEL[nuevoEstado]}"`);
       refreshPresupuestos();
     } catch (err) {
@@ -604,6 +607,7 @@ const PresupuestosProfesionales = () => {
       showAlert('El monto es obligatorio y debe ser mayor a 0', 'warning');
       return;
     }
+    const userEmail = user?.email;
     try {
       await PresupuestoProfesionalService.agregarAnexo(anexoTarget._id, {
         motivo: anexoForm.motivo.trim(),
@@ -612,6 +616,7 @@ const PresupuestosProfesionales = () => {
         fecha: anexoForm.fecha || undefined,
         detalle: anexoForm.detalle?.trim() || undefined,
         impacto: anexoForm.tipo === 'modificacion' ? anexoForm.impacto : undefined,
+        ...(userEmail ? { user_id: userEmail } : {}),
       });
       showAlert('Anexo agregado correctamente');
       setOpenAnexo(false);
