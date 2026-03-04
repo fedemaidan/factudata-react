@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
+import NextLink from 'next/link';
 import {
     Box, Container, Stack, Typography, Button, TextField, Chip,
     Table, TableBody, TableCell, TableHead, TableRow,
@@ -51,6 +52,8 @@ import SmartToyIcon from '@mui/icons-material/SmartToy';
 import SortIcon from '@mui/icons-material/Sort';
 import NavigateBeforeIcon from '@mui/icons-material/NavigateBefore';
 import NavigateNextIcon from '@mui/icons-material/NavigateNext';
+import OpenInNewIcon from '@mui/icons-material/OpenInNew';
+import LinkIcon from '@mui/icons-material/Link';
 import { PRECALIFICACION_BOT, PLANES_SORBY } from 'src/constant/sdrConstants';
 
 const ITEMS_PER_PAGE = 50;
@@ -633,6 +636,209 @@ const ContactosSDRPage = () => {
         window.open(`https://wa.me/${tel}`, '_blank');
     };
 
+    // ==================== RENDER REUNIONES (LISTA SIMPLE) ====================
+    const renderReunionesLista = () => {
+        if (loading) {
+            return (
+                <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+                    <CircularProgress />
+                </Box>
+            );
+        }
+        if (contactosOrdenados.length === 0) {
+            return (
+                <Paper sx={{ p: 4, textAlign: 'center' }}>
+                    <Typography color="text.secondary">No hay reuniones agendadas</Typography>
+                </Paper>
+            );
+        }
+        return (
+            <Paper variant="outlined">
+                <Table size="small">
+                    <TableHead>
+                        <TableRow>
+                            <TableCell sx={{ fontWeight: 700 }}>📅 Fecha</TableCell>
+                            <TableCell sx={{ fontWeight: 700 }}>🕐 Hora</TableCell>
+                            <TableCell sx={{ fontWeight: 700 }}>Contacto</TableCell>
+                            <TableCell sx={{ fontWeight: 700 }}>Empresa</TableCell>
+                            <TableCell sx={{ fontWeight: 700 }}>Estado</TableCell>
+                            <TableCell sx={{ fontWeight: 700 }}>Link / Lugar</TableCell>
+                        </TableRow>
+                    </TableHead>
+                    <TableBody>
+                        {contactosOrdenados.map((contacto) => {
+                            const reunion = contacto.proximaReunion;
+                            const fechaReunion = reunion?.fecha ? new Date(reunion.fecha) : null;
+                            const esHoy = fechaReunion && new Date().toDateString() === fechaReunion.toDateString();
+                            const esPasada = fechaReunion && fechaReunion < new Date() && !esHoy;
+
+                            return (
+                                <TableRow 
+                                    key={contacto._id} 
+                                    hover
+                                    sx={{ 
+                                        bgcolor: esHoy ? 'warning.50' : esPasada ? 'error.50' : 'inherit',
+                                    }}
+                                >
+                                    <TableCell>
+                                        <Typography variant="body2" fontWeight={esHoy ? 700 : 400} color={esHoy ? 'warning.dark' : esPasada ? 'error.main' : 'text.primary'}>
+                                            {fechaReunion 
+                                                ? fechaReunion.toLocaleDateString('es-AR', { weekday: 'short', day: '2-digit', month: '2-digit' })
+                                                : '—'
+                                            }
+                                        </Typography>
+                                    </TableCell>
+                                    <TableCell>
+                                        <Typography variant="body2" fontWeight={esHoy ? 600 : 400}>
+                                            {reunion?.hora || '—'}
+                                        </Typography>
+                                    </TableCell>
+                                    <TableCell>
+                                        <NextLink href={`/sdr/contacto/${contacto._id}`} passHref legacyBehavior>
+                                            <Typography 
+                                                variant="body2" 
+                                                component="a"
+                                                fontWeight={600}
+                                                sx={{ 
+                                                    color: 'primary.main', 
+                                                    textDecoration: 'none',
+                                                    '&:hover': { textDecoration: 'underline' },
+                                                    cursor: 'pointer'
+                                                }}
+                                            >
+                                                {contacto.nombre}
+                                            </Typography>
+                                        </NextLink>
+                                    </TableCell>
+                                    <TableCell>
+                                        <Typography variant="body2" color="text.secondary">
+                                            {contacto.empresa || '—'}
+                                        </Typography>
+                                    </TableCell>
+                                    <TableCell>
+                                        <EstadoChip estado={contacto.estado} />
+                                    </TableCell>
+                                    <TableCell>
+                                        {reunion?.link ? (
+                                            <Button
+                                                size="small"
+                                                variant="outlined"
+                                                startIcon={<LinkIcon />}
+                                                href={reunion.link}
+                                                target="_blank"
+                                                sx={{ textTransform: 'none', fontSize: '0.75rem' }}
+                                            >
+                                                Unirse
+                                            </Button>
+                                        ) : reunion?.lugar ? (
+                                            <Typography variant="body2" color="text.secondary">{reunion.lugar}</Typography>
+                                        ) : (
+                                            <Typography variant="caption" color="text.secondary">—</Typography>
+                                        )}
+                                    </TableCell>
+                                </TableRow>
+                            );
+                        })}
+                    </TableBody>
+                </Table>
+            </Paper>
+        );
+    };
+
+    // ==================== RENDER REUNIONES MOBILE (LISTA SIMPLE) ====================
+    const renderReunionesMobileLista = () => {
+        if (loading) {
+            return (
+                <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+                    <CircularProgress />
+                </Box>
+            );
+        }
+        if (contactosOrdenados.length === 0) {
+            return (
+                <Paper sx={{ p: 4, textAlign: 'center' }}>
+                    <Typography color="text.secondary">No hay reuniones agendadas</Typography>
+                </Paper>
+            );
+        }
+        return (
+            <Stack spacing={1}>
+                {contactosOrdenados.map((contacto) => {
+                    const reunion = contacto.proximaReunion;
+                    const fechaReunion = reunion?.fecha ? new Date(reunion.fecha) : null;
+                    const esHoy = fechaReunion && new Date().toDateString() === fechaReunion.toDateString();
+                    const esPasada = fechaReunion && fechaReunion < new Date() && !esHoy;
+
+                    return (
+                        <Paper
+                            key={contacto._id}
+                            variant="outlined"
+                            sx={{ 
+                                p: 1.5, 
+                                borderLeft: 4,
+                                borderColor: esHoy ? 'warning.main' : esPasada ? 'error.main' : 'primary.main',
+                                bgcolor: esHoy ? 'warning.50' : esPasada ? 'error.50' : 'white',
+                            }}
+                        >
+                            <Stack direction="row" justifyContent="space-between" alignItems="center">
+                                <Box sx={{ flex: 1, minWidth: 0 }}>
+                                    <NextLink href={`/sdr/contacto/${contacto._id}`} passHref legacyBehavior>
+                                        <Typography 
+                                            variant="subtitle2" 
+                                            component="a"
+                                            fontWeight={600}
+                                            sx={{ 
+                                                color: 'primary.main', 
+                                                textDecoration: 'none',
+                                                '&:hover': { textDecoration: 'underline' }
+                                            }}
+                                        >
+                                            {contacto.nombre}
+                                        </Typography>
+                                    </NextLink>
+                                    {contacto.empresa && (
+                                        <Typography variant="caption" color="text.secondary" display="block">
+                                            {contacto.empresa}
+                                        </Typography>
+                                    )}
+                                </Box>
+                                <Stack alignItems="flex-end" spacing={0.3}>
+                                    <Typography variant="body2" fontWeight={esHoy ? 700 : 500} color={esHoy ? 'warning.dark' : esPasada ? 'error.main' : 'text.primary'}>
+                                        {fechaReunion 
+                                            ? fechaReunion.toLocaleDateString('es-AR', { weekday: 'short', day: '2-digit', month: '2-digit' })
+                                            : '—'
+                                        }
+                                    </Typography>
+                                    <Typography variant="caption" fontWeight={500}>
+                                        {reunion?.hora || ''}
+                                    </Typography>
+                                </Stack>
+                            </Stack>
+                            {(reunion?.link || reunion?.lugar) && (
+                                <Box sx={{ mt: 0.5 }}>
+                                    {reunion.link ? (
+                                        <Button
+                                            size="small"
+                                            variant="outlined"
+                                            startIcon={<LinkIcon />}
+                                            href={reunion.link}
+                                            target="_blank"
+                                            sx={{ textTransform: 'none', fontSize: '0.7rem', py: 0 }}
+                                        >
+                                            Unirse a la reunión
+                                        </Button>
+                                    ) : (
+                                        <Typography variant="caption" color="text.secondary">📍 {reunion.lugar}</Typography>
+                                    )}
+                                </Box>
+                            )}
+                        </Paper>
+                    );
+                })}
+            </Stack>
+        );
+    };
+
     // ==================== RENDER MOBILE ====================
     const renderMobile = () => (
         <Box sx={{ pb: 10 }}>
@@ -923,7 +1129,12 @@ const ContactosSDRPage = () => {
                 />
             </Box>
 
-            {/* Lista de contactos como cards */}
+            {/* Lista de contactos — vista reuniones o cards */}
+            {bandejaActiva === 'reuniones' ? (
+                <Box sx={{ px: 2 }}>
+                    {renderReunionesMobileLista()}
+                </Box>
+            ) : (
             <Stack spacing={1.5} sx={{ px: 2 }}>
                 {loading ? (
                     <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
@@ -1082,6 +1293,7 @@ const ContactosSDRPage = () => {
                     })
                 )}
             </Stack>
+            )}
 
             {/* Paginación mobile */}
             {totalContactos > ITEMS_PER_PAGE && (
@@ -1507,7 +1719,10 @@ const ContactosSDRPage = () => {
                     </Stack>
                 </Paper>
 
-                {/* Tabla */}
+                {/* Tabla o Lista reuniones */}
+                {bandejaActiva === 'reuniones' ? (
+                    renderReunionesLista()
+                ) : (
                 <Paper>
                     {loading ? (
                         <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
@@ -1679,6 +1894,7 @@ const ContactosSDRPage = () => {
                         </Table>
                     )}
                 </Paper>
+                )}
 
                 {/* Paginación desktop */}
                 {totalContactos > ITEMS_PER_PAGE && (
@@ -1899,11 +2115,12 @@ const ModalProximoContactoMasivo = ({ open, onClose, cantidad, onSubmit, loading
     const [fechaPersonalizada, setFechaPersonalizada] = useState('');
 
     const opciones = [
-        { value: '1h', label: 'En 1 hora' },
-        { value: '3h', label: 'En 3 horas' },
-        { value: '24h', label: 'Mañana' },
+        { value: 'tarde', label: 'Hoy a la tarde' },
+        { value: 'manana_am', label: 'Mañana AM' },
+        { value: 'manana_pm', label: 'Mañana PM' },
         { value: '3d', label: 'En 3 días' },
         { value: '1w', label: 'En 1 semana' },
+        { value: '2m', label: 'En 2 meses' },
         { value: 'custom', label: 'Fecha específica' },
         { value: 'clear', label: 'Quitar fecha' },
     ];
@@ -1913,12 +2130,33 @@ const ModalProximoContactoMasivo = ({ open, onClose, cantidad, onSubmit, loading
         if (opcionSeleccionada === 'custom') return fechaPersonalizada ? new Date(fechaPersonalizada) : null;
         
         const ahora = new Date();
+        const fecha = new Date();
         switch (opcionSeleccionada) {
-            case '1h': return new Date(ahora.getTime() + 1 * 60 * 60 * 1000);
-            case '3h': return new Date(ahora.getTime() + 3 * 60 * 60 * 1000);
-            case '24h': return new Date(ahora.getTime() + 24 * 60 * 60 * 1000);
-            case '3d': return new Date(ahora.getTime() + 3 * 24 * 60 * 60 * 1000);
-            case '1w': return new Date(ahora.getTime() + 7 * 24 * 60 * 60 * 1000);
+            case 'tarde':
+                fecha.setHours(15, 0, 0, 0);
+                if (fecha <= ahora) { fecha.setHours(17, 0, 0, 0); }
+                if (fecha <= ahora) { fecha.setDate(fecha.getDate() + 1); fecha.setHours(15, 0, 0, 0); }
+                return fecha;
+            case 'manana_am':
+                fecha.setDate(fecha.getDate() + 1);
+                fecha.setHours(9, 0, 0, 0);
+                return fecha;
+            case 'manana_pm':
+                fecha.setDate(fecha.getDate() + 1);
+                fecha.setHours(15, 0, 0, 0);
+                return fecha;
+            case '3d':
+                fecha.setDate(fecha.getDate() + 3);
+                fecha.setHours(9, 0, 0, 0);
+                return fecha;
+            case '1w':
+                fecha.setDate(fecha.getDate() + 7);
+                fecha.setHours(9, 0, 0, 0);
+                return fecha;
+            case '2m':
+                fecha.setMonth(fecha.getMonth() + 2);
+                fecha.setHours(9, 0, 0, 0);
+                return fecha;
             default: return null;
         }
     };

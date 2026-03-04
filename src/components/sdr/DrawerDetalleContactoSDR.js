@@ -50,7 +50,13 @@ import {
     FullscreenExit as FullscreenExitIcon,
     OpenInFull as OpenInFullIcon,
     CloseFullscreen as CloseFullscreenIcon,
-    ChatBubbleOutline as ChatBubbleOutlineIcon
+    ChatBubbleOutline as ChatBubbleOutlineIcon,
+    Mic as MicIcon,
+    Stop as StopIcon,
+    Pause as PauseIcon,
+    PlayArrow as PlayArrowIcon,
+    GraphicEq as GraphicEqIcon,
+    DeleteOutline as DeleteOutlineIcon
 } from '@mui/icons-material';
 import SDRService from '../../services/sdrService';
 import ModalSelectorTemplate from './ModalSelectorTemplate';
@@ -61,6 +67,7 @@ import SmartToyIcon from '@mui/icons-material/SmartToy';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import MiniChatViewer from './MiniChatViewer';
 import ContadoresActividad from './ContadoresActividad';
+import useGrabadorAudio from '../../hooks/useGrabadorAudio';
 
 // Opciones de tamaño de empresa
 const TAMANO_EMPRESA_OPTIONS = [
@@ -108,6 +115,7 @@ const getEventoColor = (tipo) => {
         // Notas
         'nota_agregada': { bg: '#fffde7', border: '#ffee58', icon: '#f9a825' },
         'comentario': { bg: '#fffde7', border: '#ffee58', icon: '#f9a825' },
+        'audio_grabado': { bg: '#fce4ec', border: '#f48fb1', icon: '#c2185b' },
         'proximo_contacto_programado': { bg: '#e1f5fe', border: '#29b6f6', icon: '#0277bd' },
         'contacto_editado': { bg: '#eceff1', border: '#90a4ae', icon: '#546e7a' },
         'estado_cambiado': { bg: '#e8eaf6', border: '#5c6bc0', icon: '#3949ab' },
@@ -137,6 +145,7 @@ const getEventoIcon = (tipo) => {
         'contexto_inicial': <CommentIcon fontSize="small" />,
         'nota_agregada': <CommentIcon fontSize="small" />,
         'comentario': <CommentIcon fontSize="small" />,
+        'audio_grabado': <GraphicEqIcon fontSize="small" />,
         'proximo_contacto_programado': <EventIcon fontSize="small" />,
         'contacto_editado': <PersonIcon fontSize="small" />,
         'estado_cambiado': <EditIcon fontSize="small" />,
@@ -289,6 +298,10 @@ const DrawerDetalleContactoSDR = ({
     
     // Estado para drawer expandido (pantalla completa)
     const [drawerExpandido, setDrawerExpandido] = useState(false);
+    
+    // Grabador de audio
+    const grabador = useGrabadorAudio();
+    const [subiendoAudio, setSubiendoAudio] = useState(false);
     
     // Tab activo en vista desktop (0=Info, 1=Historial)
     const [drawerTab, setDrawerTab] = useState(0);
@@ -450,6 +463,28 @@ const DrawerDetalleContactoSDR = ({
         }
     };
 
+    // Enviar audio grabado
+    const handleEnviarAudio = async () => {
+        if (!grabador.audioBlob || !contactoLocal?._id) return;
+        setSubiendoAudio(true);
+        try {
+            await SDRService.subirAudio(contactoLocal._id, grabador.audioBlob, {
+                duracion: grabador.duracion,
+                nota: nuevoComentario.trim() || '',
+                empresaId
+            });
+            mostrarSnackbar?.('🎙️ Audio guardado y transcrito', 'success');
+            grabador.limpiar();
+            setNuevoComentario('');
+            await cargarHistorial();
+        } catch (err) {
+            console.error('Error subiendo audio:', err);
+            mostrarSnackbar?.('Error al subir el audio', 'error');
+        } finally {
+            setSubiendoAudio(false);
+        }
+    };
+
     // ==================== PRÓXIMO CONTACTO ====================
     
     // Calcular fecha de próximo contacto
@@ -459,6 +494,21 @@ const DrawerDetalleContactoSDR = ({
             fecha.setHours(fecha.getHours() + cantidad);
         } else if (unidad === 'dias') {
             fecha.setDate(fecha.getDate() + cantidad);
+            fecha.setHours(9, 0, 0, 0);
+        } else if (unidad === 'meses') {
+            fecha.setMonth(fecha.getMonth() + cantidad);
+            fecha.setHours(9, 0, 0, 0);
+        } else if (unidad === 'tarde') {
+            const ahora = new Date();
+            fecha.setHours(15, 0, 0, 0);
+            if (fecha <= ahora) { fecha.setHours(17, 0, 0, 0); }
+            if (fecha <= ahora) { fecha.setDate(fecha.getDate() + 1); fecha.setHours(15, 0, 0, 0); }
+        } else if (unidad === 'manana') {
+            fecha.setDate(fecha.getDate() + 1);
+            fecha.setHours(9, 0, 0, 0);
+        } else if (unidad === 'tarde_dia') {
+            fecha.setDate(fecha.getDate() + 1);
+            fecha.setHours(15, 0, 0, 0);
         }
         return fecha;
     };
@@ -483,11 +533,12 @@ const DrawerDetalleContactoSDR = ({
 
     // Botones rápidos de próximo contacto
     const botonesProximoContacto = [
-        { label: '1h', cantidad: 1, unidad: 'horas' },
-        { label: '3h', cantidad: 3, unidad: 'horas' },
-        { label: '24h', cantidad: 24, unidad: 'horas' },
+        { label: 'Hoy tarde', cantidad: 0, unidad: 'tarde' },
+        { label: 'Mañana AM', cantidad: 1, unidad: 'manana' },
+        { label: 'Mañana PM', cantidad: 1, unidad: 'tarde_dia' },
         { label: '3 días', cantidad: 3, unidad: 'dias' },
         { label: '1 sem', cantidad: 7, unidad: 'dias' },
+        { label: '2 meses', cantidad: 2, unidad: 'meses' },
     ];
 
     // Formatear fecha para mostrar - AHORA INCLUYE HORA EXACTA
@@ -1003,31 +1054,122 @@ const DrawerDetalleContactoSDR = ({
                             />
                         </Paper>
 
-                        {/* Comentario rápido */}
+                        {/* Comentario rápido + Grabación de audio */}
                         <Paper elevation={0} sx={{ p: 2, mb: 2, borderRadius: 3 }}>
-                            <Stack direction="row" spacing={1}>
-                                <TextField
-                                    fullWidth
-                                    size="small"
-                                    placeholder="Agregar nota rápida..."
-                                    value={nuevoComentario}
-                                    onChange={(e) => setNuevoComentario(e.target.value)}
-                                    disabled={enviandoComentario}
-                                    sx={{ 
-                                        '& .MuiOutlinedInput-root': { 
-                                            borderRadius: 2,
-                                            bgcolor: 'grey.50'
-                                        }
-                                    }}
-                                />
-                                <IconButton 
-                                    color="primary"
-                                    onClick={handleEnviarComentario}
-                                    disabled={!nuevoComentario.trim() || enviandoComentario}
-                                >
-                                    {enviandoComentario ? <CircularProgress size={20} /> : <SendIcon />}
-                                </IconButton>
-                            </Stack>
+                            {/* Indicador de grabación activa */}
+                            {(grabador.estado === 'grabando' || grabador.estado === 'pausado') && (
+                                <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.5, p: 1, bgcolor: grabador.estado === 'grabando' ? 'error.50' : 'warning.50', borderRadius: 2, border: 1, borderColor: grabador.estado === 'grabando' ? 'error.200' : 'warning.200' }}>
+                                    <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: grabador.estado === 'grabando' ? 'error.main' : 'warning.main', animation: grabador.estado === 'grabando' ? 'pulse 1.5s infinite' : 'none', '@keyframes pulse': { '0%, 100%': { opacity: 1 }, '50%': { opacity: 0.3 } } }} />
+                                    <Typography variant="body2" fontWeight={600} color={grabador.estado === 'grabando' ? 'error.main' : 'warning.main'}>
+                                        {grabador.estado === 'grabando' ? 'Grabando...' : 'Pausado'}
+                                    </Typography>
+                                    <Typography variant="body2" fontWeight={700} sx={{ fontFamily: 'monospace' }}>
+                                        {grabador.duracionFormateada}
+                                    </Typography>
+                                    <Box sx={{ flex: 1 }} />
+                                    {grabador.estado === 'grabando' ? (
+                                        <IconButton size="small" onClick={grabador.pausar} sx={{ color: 'warning.main' }}>
+                                            <PauseIcon fontSize="small" />
+                                        </IconButton>
+                                    ) : (
+                                        <IconButton size="small" onClick={grabador.reanudar} sx={{ color: 'success.main' }}>
+                                            <PlayArrowIcon fontSize="small" />
+                                        </IconButton>
+                                    )}
+                                    <IconButton size="small" onClick={grabador.detener} sx={{ color: 'error.main' }}>
+                                        <StopIcon fontSize="small" />
+                                    </IconButton>
+                                </Stack>
+                            )}
+
+                            {/* Audio listo para enviar */}
+                            {grabador.estado === 'detenido' && grabador.audioBlob && (
+                                <Stack spacing={1} sx={{ mb: 1.5, p: 1.5, bgcolor: 'success.50', borderRadius: 2, border: 1, borderColor: 'success.200' }}>
+                                    <Stack direction="row" alignItems="center" spacing={1}>
+                                        <GraphicEqIcon sx={{ color: 'success.main' }} />
+                                        <Typography variant="body2" fontWeight={600} color="success.dark">
+                                            Audio listo ({grabador.duracionFormateada})
+                                        </Typography>
+                                        <Box sx={{ flex: 1 }} />
+                                        <IconButton size="small" onClick={grabador.limpiar} sx={{ color: 'text.secondary' }}>
+                                            <DeleteOutlineIcon fontSize="small" />
+                                        </IconButton>
+                                    </Stack>
+                                    <audio 
+                                        controls 
+                                        src={URL.createObjectURL(grabador.audioBlob)} 
+                                        style={{ width: '100%', height: 36 }} 
+                                    />
+                                    <TextField
+                                        fullWidth
+                                        size="small"
+                                        placeholder="Agregar nota al audio (opcional)..."
+                                        value={nuevoComentario}
+                                        onChange={(e) => setNuevoComentario(e.target.value)}
+                                        sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2, bgcolor: 'white' } }}
+                                    />
+                                    <Button
+                                        variant="contained"
+                                        color="success"
+                                        size="small"
+                                        startIcon={subiendoAudio ? <CircularProgress size={16} color="inherit" /> : <SendIcon />}
+                                        onClick={handleEnviarAudio}
+                                        disabled={subiendoAudio}
+                                        fullWidth
+                                        sx={{ textTransform: 'none', borderRadius: 2 }}
+                                    >
+                                        {subiendoAudio ? 'Subiendo y transcribiendo...' : 'Enviar audio'}
+                                    </Button>
+                                </Stack>
+                            )}
+
+                            {/* Error de grabación */}
+                            {grabador.error && (
+                                <Typography variant="caption" color="error" sx={{ mb: 1, display: 'block' }}>
+                                    {grabador.error}
+                                </Typography>
+                            )}
+
+                            {/* Input de texto + botones */}
+                            {grabador.estado !== 'detenido' && (
+                                <Stack direction="row" spacing={1}>
+                                    <TextField
+                                        fullWidth
+                                        size="small"
+                                        placeholder="Agregar nota rápida..."
+                                        value={nuevoComentario}
+                                        onChange={(e) => setNuevoComentario(e.target.value)}
+                                        disabled={enviandoComentario || grabador.estado === 'grabando' || grabador.estado === 'pausado'}
+                                        sx={{ 
+                                            '& .MuiOutlinedInput-root': { 
+                                                borderRadius: 2,
+                                                bgcolor: 'grey.50'
+                                            }
+                                        }}
+                                    />
+                                    {grabador.estado === 'inactivo' && (
+                                        <Tooltip title="Grabar audio">
+                                            <IconButton 
+                                                color="error"
+                                                onClick={grabador.iniciar}
+                                                sx={{ 
+                                                    bgcolor: 'error.50',
+                                                    '&:hover': { bgcolor: 'error.100' }
+                                                }}
+                                            >
+                                                <MicIcon />
+                                            </IconButton>
+                                        </Tooltip>
+                                    )}
+                                    <IconButton 
+                                        color="primary"
+                                        onClick={handleEnviarComentario}
+                                        disabled={!nuevoComentario.trim() || enviandoComentario || grabador.estado !== 'inactivo'}
+                                    >
+                                        {enviandoComentario ? <CircularProgress size={20} /> : <SendIcon />}
+                                    </IconButton>
+                                </Stack>
+                            )}
                         </Paper>
 
                         {/* Historial - Colapsable */}
@@ -1077,6 +1219,21 @@ const DrawerDetalleContactoSDR = ({
                                                         <Typography variant="body2" fontWeight={500}>
                                                             {evento.descripcion}
                                                         </Typography>
+                                                        {(evento.audioUrl || evento.metadata?.audioUrl) && (
+                                                            <Box sx={{ mt: 1 }}>
+                                                                <audio 
+                                                                    controls 
+                                                                    src={evento.audioUrl || evento.metadata?.audioUrl} 
+                                                                    style={{ width: '100%', height: 32 }} 
+                                                                    preload="none"
+                                                                />
+                                                                {(evento.transcripcion || evento.metadata?.transcripcion) && (
+                                                                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5, fontStyle: 'italic', lineHeight: 1.3 }}>
+                                                                        📝 {evento.transcripcion || evento.metadata?.transcripcion}
+                                                                    </Typography>
+                                                                )}
+                                                            </Box>
+                                                        )}
                                                         {evento.nota && (
                                                             <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic', mt: 0.5 }}>
                                                                 "{evento.nota}"
@@ -1847,6 +2004,21 @@ const DrawerDetalleContactoSDR = ({
                                                 <Typography variant="body2" fontWeight={500}>
                                                     {evento.descripcion}
                                                 </Typography>
+                                                {(evento.audioUrl || evento.metadata?.audioUrl) && (
+                                                    <Box sx={{ mt: 1 }}>
+                                                        <audio 
+                                                            controls 
+                                                            src={evento.audioUrl || evento.metadata?.audioUrl} 
+                                                            style={{ width: '100%', height: 32 }} 
+                                                            preload="none"
+                                                        />
+                                                        {(evento.transcripcion || evento.metadata?.transcripcion) && (
+                                                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5, fontStyle: 'italic', lineHeight: 1.3 }}>
+                                                                📝 {evento.transcripcion || evento.metadata?.transcripcion}
+                                                            </Typography>
+                                                        )}
+                                                    </Box>
+                                                )}
                                                 {evento.nota && (
                                                     <Typography 
                                                         variant="body2" 

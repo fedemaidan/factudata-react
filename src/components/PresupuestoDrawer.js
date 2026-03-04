@@ -42,7 +42,9 @@ import EditIcon from '@mui/icons-material/Edit';
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
 import Tooltip from '@mui/material/Tooltip';
 import Link from 'next/link';
+import { useRouter } from 'next/router';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
+import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
@@ -114,6 +116,8 @@ const PresupuestoDrawer = ({
   categorias = [],
   etapas = [],
 }) => {
+  const router = useRouter();
+
   // === Estado: Crear ===
   const [tipo, setTipo] = useState(tipoDefault);
   const [monto, setMonto] = useState('');
@@ -162,10 +166,17 @@ const PresupuestoDrawer = ({
   const [mostrarHistorial, setMostrarHistorial] = useState(false);
 
   // === Estado: Tabs del drawer (modo editar) ===
-  const TAB_MAP = { full: 0, adicional: 1, historial: 2 };
-  // En modo editar, abrir en historial por defecto (evita ediciones accidentales)
-  const defaultTab = mode === 'editar' && (!drawerView || drawerView === 'full') ? TAB_MAP.historial : (TAB_MAP[drawerView] ?? 0);
+  const TAB_MAP = { full: 0, adicional: 1, historial: 2, movimientos: 3 };
+  // En modo editar, abrir en movimientos por defecto
+  const defaultTab = mode === 'editar' && (!drawerView || drawerView === 'full') ? TAB_MAP.movimientos : (TAB_MAP[drawerView] ?? 0);
   const [activeTab, setActiveTab] = useState(defaultTab);
+
+  // === Estado: Movimientos (tab desglose) ===
+  const [movimientosProyecto, setMovimientosProyecto] = useState([]);
+  const [movimientosLoading, setMovimientosLoading] = useState(false);
+  const [movimientosFetched, setMovimientosFetched] = useState(false);
+  const [equivToggles, setEquivToggles] = useState({ ars: true, usd: false, cac: false });
+  const [movOrdenAsc, setMovOrdenAsc] = useState(true); // true = antiguos primero, false = recientes primero
 
   // === Estado: UI ===
   const [loading, setLoading] = useState(false);
@@ -192,14 +203,19 @@ const PresupuestoDrawer = ({
   const [dolarOverride, setDolarOverride] = useState('');
   const [loadingHistorial, setLoadingHistorial] = useState(false);
 
+  // === Estado: Override cotización para adicionales ===
+  const [mostrarOverrideAdicional, setMostrarOverrideAdicional] = useState(false);
+  const [adicionalCacOverride, setAdicionalCacOverride] = useState('');
+  const [adicionalDolarOverride, setAdicionalDolarOverride] = useState('');
+
   // Valor efectivo de CAC/dólar (override o el cargado automáticamente)
   const cacTipoActivo = mode === 'crear' ? cacTipo : nuevoCacTipo;
   const cacEfectivo = cacOverride ? parseFloat(cacOverride) : (cacSubindices[cacTipoActivo] || cacIndice);
   const dolarEfectivo = dolarOverride ? parseFloat(dolarOverride) : dolarRate;
 
-  // Valor efectivo para adicionales (hereda cac_tipo del principal)
-  const adicionalCacEfectivo = (adicionalCacSubindices[cacTipoActivo] || adicionalCacIndice) || cacEfectivo;
-  const adicionalDolarEfectivo = adicionalDolarRate || dolarEfectivo;
+  // Valor efectivo para adicionales (hereda cac_tipo del principal, con override propio)
+  const adicionalCacEfectivo = adicionalCacOverride ? parseFloat(adicionalCacOverride) : ((adicionalCacSubindices[cacTipoActivo] || adicionalCacIndice) || cacEfectivo);
+  const adicionalDolarEfectivo = adicionalDolarOverride ? parseFloat(adicionalDolarOverride) : (adicionalDolarRate || dolarEfectivo);
 
   // === Estado: Base de cálculo ===
   const [baseCalculo, setBaseCalculo] = useState('total'); // 'total' | 'subtotal'
@@ -287,9 +303,12 @@ const PresupuestoDrawer = ({
       setCacOverride('');
       setDolarOverride('');
       setCacHistorial([]);
+      setMostrarOverrideAdicional(false);
+      setAdicionalCacOverride('');
+      setAdicionalDolarOverride('');
       setMostrarAdicional(drawerView === 'adicional');
-      // En modo editar, abrir en historial por defecto (evita ediciones accidentales)
-      setActiveTab(mode === 'editar' && (!drawerView || drawerView === 'full') ? TAB_MAP.historial : (TAB_MAP[drawerView] ?? 0));
+      // En modo editar, abrir en movimientos por defecto
+      setActiveTab(mode === 'editar' && (!drawerView || drawerView === 'full') ? TAB_MAP.movimientos : (TAB_MAP[drawerView] ?? 0));
       setAdicionalConcepto('');
       setAdicionalMonto('');
       setLoading(false);
@@ -328,6 +347,67 @@ const PresupuestoDrawer = ({
       }
     }
   }, [open, mode, tipoDefault, presupuesto, drawerView]);
+
+  // === Fetch movimientos del proyecto (una sola vez al abrir, async) ===
+  useEffect(() => {
+    if (!open || mode !== 'editar' || !proyectoId || movimientosFetched) return;
+    let cancelled = false;
+    setMovimientosLoading(true);
+    presupuestoService.obtenerMovimientosProyecto(proyectoId)
+      .then(movs => {
+        if (!cancelled) {
+          setMovimientosProyecto(movs || []);
+          setMovimientosFetched(true);
+        }
+      })
+      .catch(err => { console.error('Error fetching movimientos:', err); })
+      .finally(() => { if (!cancelled) setMovimientosLoading(false); });
+    return () => { cancelled = true; };
+  }, [open, mode, proyectoId, movimientosFetched]);
+
+  // Reset movimientos cuando se cierra el drawer
+  useEffect(() => {
+    if (!open) {
+      setMovimientosProyecto([]);
+      setMovimientosFetched(false);
+      setMovimientosLoading(false);
+      setEquivToggles({ ars: true, usd: false, cac: false });
+      setMovOrdenAsc(true);
+    }
+  }, [open]);
+
+  // === Filtrar movimientos que matchean con este presupuesto (lógica soft-match del backend) ===
+  const movimientosFiltrados = (() => {
+    if (!presupuesto || movimientosProyecto.length === 0) return [];
+    const tipoMov = presupuesto.tipo === 'ingreso' ? 'ingreso' : 'egreso';
+    return movimientosProyecto.filter(m => {
+      if (m.type !== tipoMov) return false;
+      if (m.es_conversion_moneda) return false;
+      if (presupuesto.proveedor && m.nombre_proveedor !== presupuesto.proveedor) return false;
+      if (presupuesto.etapa && m.etapa !== presupuesto.etapa) return false;
+      if (presupuesto.categoria && m.categoria !== presupuesto.categoria) return false;
+      if (presupuesto.subcategoria && m.subcategoria !== presupuesto.subcategoria) return false;
+      // Filtro por fechaInicio
+      if (presupuesto.fechaInicio && m.fecha_factura) {
+        const fechaIni = presupuesto.fechaInicio?._seconds
+          ? presupuesto.fechaInicio._seconds * 1000
+          : presupuesto.fechaInicio?.seconds
+            ? presupuesto.fechaInicio.seconds * 1000
+            : typeof presupuesto.fechaInicio === 'string' ? new Date(presupuesto.fechaInicio).getTime() : null;
+        const fechaMov = m.fecha_factura?._seconds
+          ? m.fecha_factura._seconds * 1000
+          : m.fecha_factura?.seconds
+            ? m.fecha_factura.seconds * 1000
+            : typeof m.fecha_factura === 'string' ? new Date(m.fecha_factura).getTime() : null;
+        if (fechaIni && fechaMov && fechaMov < fechaIni) return false;
+      }
+      return true;
+    }).sort((a, b) => {
+      const fa = a.fecha_factura?._seconds || a.fecha_factura?.seconds || 0;
+      const fb = b.fecha_factura?._seconds || b.fecha_factura?.seconds || 0;
+      return movOrdenAsc ? fa - fb : fb - fa;
+    });
+  })();
 
   // === Handlers ===
 
@@ -478,6 +558,13 @@ const PresupuestoDrawer = ({
         monto: montoFinal,
         creadoPor: userId,
         fecha_adicional: fechaAdicional || fechaPresupuesto || null,
+        // Si el usuario hizo override de la cotización, enviarlo al backend para el snapshot
+        ...(presupuesto?.indexacion === 'CAC' && adicionalCacOverride
+          ? { cotizacion_override: { cac_indice: parseFloat(adicionalCacOverride) } }
+          : presupuesto?.indexacion === 'USD' && adicionalDolarOverride
+            ? { cotizacion_override: { dolar_blue: parseFloat(adicionalDolarOverride) } }
+            : {}
+        ),
       });
       setAdicionalConcepto('');
       setAdicionalMonto('');
@@ -591,7 +678,7 @@ const PresupuestoDrawer = ({
       anchor="right"
       open={open}
       onClose={onClose}
-      PaperProps={{ sx: { width: { xs: '100%', sm: 480 } } }}
+      PaperProps={{ sx: { width: { xs: '100%', sm: activeTab === TAB_MAP.movimientos ? 720 : 480 }, transition: 'width 0.3s ease' } }}
     >
       <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
         {/* Header */}
@@ -1188,7 +1275,7 @@ const PresupuestoDrawer = ({
                   if (v === 1) setMostrarAdicional(true);
                 }}
                 variant="fullWidth"
-                sx={{ borderBottom: 1, borderColor: 'divider', minHeight: 40, '& .MuiTab-root': { minHeight: 40, py: 0.5, textTransform: 'none', fontSize: '0.85rem' } }}
+                sx={{ borderBottom: 1, borderColor: 'divider', minHeight: 40, '& .MuiTab-root': { minHeight: 40, py: 0.5, textTransform: 'none', fontSize: '0.8rem' } }}
               >
                 <Tab icon={<EditIcon sx={{ fontSize: 16 }} />} iconPosition="start" label="Editar" />
                 <Tab icon={<AddCircleIcon sx={{ fontSize: 16 }} />} iconPosition="start" label="Adicional" />
@@ -1196,6 +1283,11 @@ const PresupuestoDrawer = ({
                   icon={<HistoryIcon sx={{ fontSize: 16 }} />}
                   iconPosition="start"
                   label={`Historial${presupuesto.historial?.length ? ` (${presupuesto.historial.length})` : ''}`}
+                />
+                <Tab
+                  icon={<ReceiptLongIcon sx={{ fontSize: 16 }} />}
+                  iconPosition="start"
+                  label={`Movim.${movimientosFetched ? ` (${movimientosFiltrados.length})` : ''}`}
                 />
               </Tabs>
 
@@ -1617,14 +1709,73 @@ const PresupuestoDrawer = ({
                       />
                     </LocalizationProvider>
                     {presupuesto?.indexacion && (
-                      <Stack direction="row" spacing={0.5} alignItems="center" sx={{ mt: 0.5 }}>
-                        <CalendarMonthIcon sx={{ fontSize: 14, color: 'text.disabled' }} />
-                        <Typography variant="caption" color="text.secondary">
-                          {presupuesto.indexacion === 'CAC'
-                            ? <>Índice CAC: <strong>{formatMesLegible(adicionalCacFechaAplicada || cacFechaAplicada)}</strong> = {Number(adicionalCacEfectivo).toLocaleString('es-AR')}</>
-                            : <>Dólar blue: <strong>{dayjs(fechaAdicional).format('DD/MM/YYYY')}</strong> = ${Number(adicionalDolarEfectivo).toLocaleString('es-AR')}</>
-                          }
-                        </Typography>
+                      <Stack spacing={0.5} sx={{ mt: 0.5 }}>
+                        <Stack direction="row" spacing={0.5} alignItems="center">
+                          <CalendarMonthIcon sx={{ fontSize: 14, color: 'text.disabled' }} />
+                          <Typography variant="caption" color="text.secondary">
+                            {presupuesto.indexacion === 'CAC'
+                              ? <>Índice CAC{presupuesto.cac_tipo === 'mano_obra' ? ' MO' : presupuesto.cac_tipo === 'materiales' ? ' MAT' : ''}: <strong>{formatMesLegible(adicionalCacFechaAplicada || cacFechaAplicada)}</strong> = {Number(adicionalCacEfectivo).toLocaleString('es-AR')}{adicionalCacOverride ? ' (manual)' : ''}</>
+                              : <>Dólar blue: <strong>{dayjs(fechaAdicional).format('DD/MM/YYYY')}</strong> = ${Number(adicionalDolarEfectivo).toLocaleString('es-AR')}{adicionalDolarOverride ? ' (manual)' : ''}</>
+                            }
+                          </Typography>
+                        </Stack>
+                        <Button
+                          size="small"
+                          variant="text"
+                          sx={{ alignSelf: 'flex-start', fontSize: '0.7rem', textTransform: 'none', py: 0 }}
+                          onClick={() => setMostrarOverrideAdicional(!mostrarOverrideAdicional)}
+                        >
+                          {mostrarOverrideAdicional ? 'Ocultar' : 'Modificar cotización manualmente'}
+                        </Button>
+                        {mostrarOverrideAdicional && (
+                          <Stack spacing={1} sx={{ pl: 1, borderLeft: 2, borderColor: 'primary.light' }}>
+                            {presupuesto.indexacion === 'CAC' ? (
+                              <>
+                                <TextField
+                                  size="small"
+                                  type="number"
+                                  label={`CAC ${presupuesto.cac_tipo === 'mano_obra' ? 'MO' : presupuesto.cac_tipo === 'materiales' ? 'MAT' : 'General'} manual`}
+                                  placeholder={`Ej: ${adicionalCacSubindices[cacTipoActivo] || cacIndice || '1042.5'}`}
+                                  value={adicionalCacOverride}
+                                  onChange={(e) => setAdicionalCacOverride(e.target.value)}
+                                  fullWidth
+                                />
+                                {adicionalCacOverride && !isNaN(Number(adicionalCacOverride)) && (
+                                  <Typography variant="caption" color="text.secondary">
+                                    Usando CAC = {Number(adicionalCacOverride).toLocaleString('es-AR')} en vez de {(adicionalCacSubindices[cacTipoActivo] || cacIndice) ? Number(adicionalCacSubindices[cacTipoActivo] || cacIndice).toLocaleString('es-AR') : '(no cargado)'}
+                                  </Typography>
+                                )}
+                                {adicionalCacOverride && (
+                                  <Button size="small" variant="text" color="secondary" sx={{ alignSelf: 'flex-start', fontSize: '0.7rem', py: 0 }} onClick={() => setAdicionalCacOverride('')}>
+                                    Usar valor automático
+                                  </Button>
+                                )}
+                              </>
+                            ) : (
+                              <>
+                                <TextField
+                                  size="small"
+                                  type="number"
+                                  label="Dólar blue manual"
+                                  placeholder={`Ej: ${adicionalDolarRate || dolarRate || '1250'}`}
+                                  value={adicionalDolarOverride}
+                                  onChange={(e) => setAdicionalDolarOverride(e.target.value)}
+                                  fullWidth
+                                />
+                                {adicionalDolarOverride && !isNaN(Number(adicionalDolarOverride)) && (
+                                  <Typography variant="caption" color="text.secondary">
+                                    Usando USD = ${Number(adicionalDolarOverride).toLocaleString('es-AR')} en vez de ${(adicionalDolarRate || dolarRate) ? Number(adicionalDolarRate || dolarRate).toLocaleString('es-AR') : '(no cargado)'}
+                                  </Typography>
+                                )}
+                                {adicionalDolarOverride && (
+                                  <Button size="small" variant="text" color="secondary" sx={{ alignSelf: 'flex-start', fontSize: '0.7rem', py: 0 }} onClick={() => setAdicionalDolarOverride('')}>
+                                    Usar valor automático
+                                  </Button>
+                                )}
+                              </>
+                            )}
+                          </Stack>
+                        )}
                       </Stack>
                     )}
                   </Box>
@@ -1826,6 +1977,194 @@ const PresupuestoDrawer = ({
                     <Box sx={{ py: 4, textAlign: 'center' }}>
                       <HistoryIcon sx={{ fontSize: 40, color: 'grey.300', mb: 1 }} />
                       <Typography color="text.secondary" variant="body2">Sin cambios registrados</Typography>
+                    </Box>
+                  )}
+                </Box>
+              )}
+
+              {/* ── TAB 3: Movimientos (desglose) ── */}
+              {activeTab === 3 && (
+                <Box sx={{ px: 1, py: 1.5 }}>
+                  {/* Toggles de equivalencias */}
+                  <Stack direction="row" spacing={0.5} sx={{ mb: 1, px: 1, flexWrap: 'wrap', gap: 0.5 }}>
+                    {[
+                      { key: 'ars', label: 'ARS', color: 'primary' },
+                      { key: 'usd', label: 'USD', color: 'success' },
+                      { key: 'cac', label: 'CAC', color: 'secondary' },
+                    ].map(eq => (
+                      <Chip
+                        key={eq.key}
+                        label={eq.label}
+                        size="small"
+                        color={equivToggles[eq.key] ? eq.color : 'default'}
+                        variant={equivToggles[eq.key] ? 'filled' : 'outlined'}
+                        onClick={() => setEquivToggles(prev => ({ ...prev, [eq.key]: !prev[eq.key] }))}
+                        sx={{ cursor: 'pointer', fontSize: '0.7rem', height: 22 }}
+                      />
+                    ))}
+                    <Typography variant="caption" color="text.secondary" sx={{ alignSelf: 'center', ml: 0.5 }}>
+                      {movimientosFetched ? `${movimientosFiltrados.length} mov.` : ''}
+                    </Typography>
+                    <Tooltip title={movOrdenAsc ? 'Más recientes primero' : 'Más antiguos primero'} arrow>
+                      <Chip
+                        label={movOrdenAsc ? '↑ Antiguos' : '↓ Recientes'}
+                        size="small"
+                        variant="outlined"
+                        onClick={() => setMovOrdenAsc(prev => !prev)}
+                        sx={{ cursor: 'pointer', fontSize: '0.65rem', height: 22, ml: 'auto' }}
+                      />
+                    </Tooltip>
+                  </Stack>
+
+                  {movimientosLoading ? (
+                    <Box sx={{ py: 4, textAlign: 'center' }}>
+                      <CircularProgress size={28} />
+                      <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>Cargando movimientos…</Typography>
+                    </Box>
+                  ) : movimientosFiltrados.length === 0 ? (
+                    <Box sx={{ py: 4, textAlign: 'center' }}>
+                      <ReceiptLongIcon sx={{ fontSize: 40, color: 'grey.300', mb: 1 }} />
+                      <Typography color="text.secondary" variant="body2">
+                        {movimientosFetched ? 'No hay movimientos que coincidan con este presupuesto' : 'Cargando…'}
+                      </Typography>
+                    </Box>
+                  ) : (
+                    <Box sx={{ overflowX: 'auto' }}>
+                      <Table size="small" sx={{ '& td, & th': { px: 0.75, py: 0.4, fontSize: '0.7rem', borderColor: 'grey.100' } }}>
+                        <TableHead>
+                          <TableRow sx={{ '& th': { fontWeight: 700, fontSize: '0.65rem', color: 'text.secondary', whiteSpace: 'nowrap' } }}>
+                            <TableCell sx={{ width: 28 }} />
+                            <TableCell>Fecha</TableCell>
+                            <TableCell>Detalle</TableCell>
+                            <TableCell align="right">Monto</TableCell>
+                            <TableCell align="right">Acumulado</TableCell>
+                            {equivToggles.usd && <TableCell align="right" sx={{ color: 'success.main' }}>USD</TableCell>}
+                            {equivToggles.cac && <TableCell align="right" sx={{ color: 'secondary.main' }}>CAC</TableCell>}
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {(() => {
+                            const campo = presupuesto?.base_calculo === 'subtotal' ? 'subtotal' : 'total';
+                            // Pre-calcular acumulado siempre en orden cronológico (antiguo→reciente)
+                            const cronologico = movOrdenAsc ? movimientosFiltrados : [...movimientosFiltrados].reverse();
+                            const acumMap = {};
+                            let runARS = 0, runUSD = 0;
+                            cronologico.forEach((m) => {
+                              const monto = (campo === 'subtotal' ? (m.subtotal || m.total) : m.total) || 0;
+                              if ((m.moneda || 'ARS') === 'USD') runUSD += monto;
+                              else runARS += monto;
+                              acumMap[m.id] = { ars: runARS, usd: runUSD };
+                            });
+                            return movimientosFiltrados.map((mov) => {
+                              const montoNativo = (campo === 'subtotal' ? (mov.subtotal || mov.total) : mov.total) || 0;
+                              const monedaMov = mov.moneda || 'ARS';
+                              const acum = acumMap[mov.id] || { ars: 0, usd: 0 };
+                              const acumuladoDisplay = monedaMov === 'USD'
+                                ? `USD ${Number(acum.usd).toLocaleString('es-AR', { maximumFractionDigits: 0 })}`
+                                : `$${Number(acum.ars).toLocaleString('es-AR', { maximumFractionDigits: 0 })}`;
+                              const fechaSecs = mov.fecha_factura?._seconds || mov.fecha_factura?.seconds;
+                              const fechaStr = fechaSecs
+                                ? dayjs.unix(fechaSecs).format('DD/MM/YY')
+                                : mov.fecha_factura ? dayjs(mov.fecha_factura).format('DD/MM/YY') : '—';
+                              const eq = mov.equivalencias?.[campo] || mov.equivalencias?.total || {};
+                              const detalle = mov.nombre_proveedor || 'Sin proveedor';
+                              const obs = mov.observacion;
+                              const comprobante = mov.tipo_comprobante ? `${mov.tipo_comprobante}${mov.nro_comprobante ? ` ${mov.nro_comprobante}` : ''}` : '';
+
+                              return (
+                                <Fragment key={mov.id}>
+                                  <TableRow sx={{ '&:hover': { bgcolor: 'grey.50' } }}>
+                                    <TableCell sx={{ p: 0, pl: 0.25, width: 28 }}>
+                                      <Tooltip title="Editar movimiento" arrow>
+                                        <IconButton
+                                          size="small"
+                                          color="primary"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            router.push({
+                                              pathname: '/movementForm',
+                                              query: {
+                                                movimientoId: mov.id,
+                                                proyectoId: proyectoId || presupuesto?.proyecto_id,
+                                                lastPageUrl: router.asPath,
+                                              },
+                                            });
+                                          }}
+                                          sx={{ p: 0.25 }}
+                                        >
+                                          <EditIcon sx={{ fontSize: 14 }} />
+                                        </IconButton>
+                                      </Tooltip>
+                                    </TableCell>
+                                    <TableCell sx={{ whiteSpace: 'nowrap', color: 'text.secondary' }}>{fechaStr}</TableCell>
+                                    <TableCell sx={{ maxWidth: 180 }}>
+                                      <Typography variant="caption" fontWeight={600} noWrap sx={{ display: 'block', fontSize: '0.7rem' }}>
+                                        {detalle}
+                                      </Typography>
+                                      {(mov.categoria || comprobante) && (
+                                        <Typography variant="caption" color="text.disabled" noWrap sx={{ display: 'block', fontSize: '0.6rem', lineHeight: 1.2 }}>
+                                          {[mov.categoria, mov.etapa, comprobante].filter(Boolean).join(' · ')}
+                                        </Typography>
+                                      )}
+                                    </TableCell>
+                                    <TableCell align="right" sx={{ fontWeight: 600, whiteSpace: 'nowrap' }}>
+                                      {monedaMov === 'USD' ? 'USD ' : '$'}
+                                      {Number(montoNativo).toLocaleString('es-AR', { maximumFractionDigits: monedaMov === 'USD' ? 2 : 0 })}
+                                    </TableCell>
+                                    <TableCell align="right" sx={{ whiteSpace: 'nowrap', color: 'text.secondary', fontWeight: 500 }}>
+                                      {acumuladoDisplay}
+                                    </TableCell>
+                                    {equivToggles.usd && (
+                                      <TableCell align="right" sx={{ whiteSpace: 'nowrap', color: 'success.main' }}>
+                                        {monedaMov === 'USD' ? `$${Number(eq.ars || 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })}` : (eq.usd_blue != null ? Number(eq.usd_blue).toLocaleString('es-AR', { maximumFractionDigits: 1 }) : '—')}
+                                      </TableCell>
+                                    )}
+                                    {equivToggles.cac && (
+                                      <TableCell align="right" sx={{ whiteSpace: 'nowrap', color: 'secondary.main' }}>
+                                        {eq.cac != null ? Number(eq.cac).toLocaleString('es-AR', { maximumFractionDigits: 2 }) : '—'}
+                                      </TableCell>
+                                    )}
+                                  </TableRow>
+                                  {obs && (
+                                    <TableRow>
+                                      <TableCell colSpan={5 + (equivToggles.usd ? 1 : 0) + (equivToggles.cac ? 1 : 0)} sx={{ pt: 0, pb: 0.5, borderBottom: 0 }}>
+                                        <Typography variant="caption" color="text.disabled" sx={{ fontSize: '0.6rem', fontStyle: 'italic', pl: 0.5 }}>
+                                          💬 {obs}
+                                        </Typography>
+                                      </TableCell>
+                                    </TableRow>
+                                  )}
+                                </Fragment>
+                              );
+                            });
+                          })()}
+                          {/* Fila total */}
+                          {(() => {
+                            const campo = presupuesto?.base_calculo === 'subtotal' ? 'subtotal' : 'total';
+                            const totales = { ars: 0, usd: 0 };
+                            movimientosFiltrados.forEach(m => {
+                              const monto = (campo === 'subtotal' ? (m.subtotal || m.total) : m.total) || 0;
+                              if (m.moneda === 'USD') totales.usd += monto;
+                              else totales.ars += monto;
+                            });
+                            return (
+                              <TableRow sx={{ '& td': { borderTop: 2, borderColor: 'divider', fontWeight: 700, fontSize: '0.72rem' } }}>
+                                <TableCell />
+                                <TableCell>Total</TableCell>
+                                <TableCell>{campo === 'subtotal' ? '(neto)' : '(c/imp.)'}</TableCell>
+                                <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
+                                  {totales.ars !== 0 && <>{`$${Number(totales.ars).toLocaleString('es-AR', { maximumFractionDigits: 0 })}`}</>}
+                                  {totales.ars !== 0 && totales.usd !== 0 && <br />}
+                                  {totales.usd !== 0 && <Typography component="span" sx={{ color: 'success.main', fontSize: 'inherit', fontWeight: 'inherit' }}>USD {Number(totales.usd).toLocaleString('es-AR', { maximumFractionDigits: 2 })}</Typography>}
+                                </TableCell>
+                                <TableCell />
+                                {equivToggles.usd && <TableCell />}
+                                {equivToggles.cac && <TableCell />}
+                              </TableRow>
+                            );
+                          })()}
+                        </TableBody>
+                      </Table>
                     </Box>
                   )}
                 </Box>

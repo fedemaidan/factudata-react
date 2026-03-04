@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
+import NextLink from 'next/link';
 import {
     Box, Container, Paper, Stack, Typography, Button, TextField, MenuItem,
     Select, FormControl, InputLabel, Tabs, Tab, Card, CardContent, Grid,
@@ -42,6 +43,9 @@ import PersonRemoveIcon from '@mui/icons-material/PersonRemove';
 import CancelIcon from '@mui/icons-material/Cancel';
 import NavigateBeforeIcon from '@mui/icons-material/NavigateBefore';
 import NavigateNextIcon from '@mui/icons-material/NavigateNext';
+import EditIcon from '@mui/icons-material/Edit';
+import LinkIcon from '@mui/icons-material/Link';
+import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import SDRService from 'src/services/sdrService';
@@ -178,6 +182,7 @@ const GestionSDRPage = () => {
     const [modalAgregarSDR, setModalAgregarSDR] = useState(false);
     const [modalReunion, setModalReunion] = useState(false);
     const [modalNota, setModalNota] = useState({ open: false, contacto: null, tipo: '', atendida: null });
+    const [modalEditarReunion, setModalEditarReunion] = useState({ open: false, reunion: null });
     
     // Estado para importación
     const [importTab, setImportTab] = useState(0);
@@ -254,7 +259,12 @@ const GestionSDRPage = () => {
         
         try {
             const data = await SDRService.listarReuniones({ estado: 'agendada' });
-            setReuniones(data.reuniones);
+            const ordenadas = (data.reuniones || []).sort((a, b) => {
+                const fa = new Date(a.fecha || a.fechaHora || 0);
+                const fb = new Date(b.fecha || b.fechaHora || 0);
+                return fa - fb;
+            });
+            setReuniones(ordenadas);
         } catch (error) {
             console.error('Error cargando reuniones:', error);
         }
@@ -465,6 +475,19 @@ const GestionSDRPage = () => {
             mostrarSnackbar(error.response?.data?.error || 'Error al evaluar reunión', 'error');
         }
     };
+
+    const handleGuardarEdicionReunion = async (formData) => {
+        const reunion = modalEditarReunion.reunion;
+        if (!reunion) return;
+        try {
+            await SDRService.actualizarReunion(reunion._id, formData);
+            mostrarSnackbar('Reunión actualizada correctamente');
+            setModalEditarReunion({ open: false, reunion: null });
+            cargarReuniones();
+        } catch (error) {
+            mostrarSnackbar(error.response?.data?.error || 'Error al actualizar reunión', 'error');
+        }
+    };
     
     const handleAsignarContactos = async (sdrIdAsignar, sdrNombreAsignar, proximoContacto = null) => {
         if (contactosSeleccionados.length === 0) return;
@@ -622,40 +645,114 @@ const GestionSDRPage = () => {
                     No hay reuniones agendadas
                 </Alert>
             ) : (
-                <TableContainer component={Paper}>
+                <TableContainer component={Paper} variant="outlined">
                     <Table size="small">
                         <TableHead>
                             <TableRow>
-                                <TableCell>Contacto</TableCell>
-                                <TableCell>Empresa</TableCell>
-                                <TableCell>Tamaño</TableCell>
-                                <TableCell>Fecha reunión</TableCell>
-                                <TableCell>SDR</TableCell>
+                                <TableCell sx={{ fontWeight: 700 }}>📅 Fecha</TableCell>
+                                <TableCell sx={{ fontWeight: 700 }}>🕐 Hora</TableCell>
+                                <TableCell sx={{ fontWeight: 700 }}>Contacto</TableCell>
+                                <TableCell sx={{ fontWeight: 700 }}>Empresa</TableCell>
+                                <TableCell sx={{ fontWeight: 700 }}>Tamaño</TableCell>
+                                <TableCell sx={{ fontWeight: 700 }}>SDR</TableCell>
+                                <TableCell sx={{ fontWeight: 700 }}>Link / Lugar</TableCell>
+                                <TableCell sx={{ fontWeight: 700 }} align="center">Acciones</TableCell>
                             </TableRow>
                         </TableHead>
                         <TableBody>
-                            {reuniones.slice(0, 5).map(reunion => (
-                                <TableRow key={reunion._id}>
-                                    <TableCell>{reunion.contactoPrincipal}</TableCell>
-                                    <TableCell>{reunion.empresaNombre}</TableCell>
-                                    <TableCell><Chip label={reunion.tamanoEmpresa} size="small" variant="outlined" /></TableCell>
-                                    <TableCell>
-                                        {new Date(reunion.fecha || reunion.fechaHora).toLocaleString('es-AR', {
-                                            day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
-                                        })}
-                                    </TableCell>
-                                    <TableCell>{reunion.registradoPorNombre}</TableCell>
-                                </TableRow>
-                            ))}
+                            {reuniones.map(reunion => {
+                                const fechaReunion = reunion.fecha || reunion.fechaHora ? new Date(reunion.fecha || reunion.fechaHora) : null;
+                                const esHoy = fechaReunion && new Date().toDateString() === fechaReunion.toDateString();
+                                const esPasada = fechaReunion && fechaReunion < new Date() && !esHoy;
+                                return (
+                                    <TableRow 
+                                        key={reunion._id}
+                                        sx={{ bgcolor: esHoy ? 'warning.50' : esPasada ? 'error.50' : 'inherit' }}
+                                    >
+                                        <TableCell>
+                                            <Typography variant="body2" fontWeight={esHoy ? 700 : 400} color={esHoy ? 'warning.dark' : esPasada ? 'error.main' : 'text.primary'}>
+                                                {fechaReunion
+                                                    ? fechaReunion.toLocaleDateString('es-AR', { weekday: 'short', day: '2-digit', month: '2-digit' })
+                                                    : '—'
+                                                }
+                                            </Typography>
+                                        </TableCell>
+                                        <TableCell>
+                                            <Typography variant="body2" fontWeight={esHoy ? 600 : 400}>
+                                                {reunion.hora || (fechaReunion ? fechaReunion.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) : '—')}
+                                            </Typography>
+                                        </TableCell>
+                                        <TableCell>
+                                            {reunion.contactoId ? (
+                                                <NextLink href={`/sdr/contacto/${reunion.contactoId._id || reunion.contactoId}`} passHref legacyBehavior>
+                                                    <Typography
+                                                        variant="body2"
+                                                        component="a"
+                                                        fontWeight={600}
+                                                        sx={{
+                                                            color: 'primary.main',
+                                                            textDecoration: 'none',
+                                                            '&:hover': { textDecoration: 'underline' },
+                                                            cursor: 'pointer'
+                                                        }}
+                                                    >
+                                                        {reunion.contactoPrincipal}
+                                                    </Typography>
+                                                </NextLink>
+                                            ) : (
+                                                <Typography variant="body2">{reunion.contactoPrincipal}</Typography>
+                                            )}
+                                        </TableCell>
+                                        <TableCell>
+                                            <Typography variant="body2" color="text.secondary">{reunion.empresaNombre || '—'}</Typography>
+                                        </TableCell>
+                                        <TableCell>
+                                            {reunion.tamanoEmpresa ? <Chip label={reunion.tamanoEmpresa} size="small" variant="outlined" /> : '—'}
+                                        </TableCell>
+                                        <TableCell>
+                                            <Typography variant="body2" color="text.secondary">{reunion.registradoPorNombre || reunion.sdrNombre || '—'}</Typography>
+                                        </TableCell>
+                                        <TableCell>
+                                            {reunion.link ? (
+                                                <Button
+                                                    size="small"
+                                                    variant="outlined"
+                                                    startIcon={<LinkIcon />}
+                                                    href={reunion.link}
+                                                    target="_blank"
+                                                    sx={{ textTransform: 'none', fontSize: '0.75rem' }}
+                                                >
+                                                    Unirse
+                                                </Button>
+                                            ) : reunion.lugar ? (
+                                                <Typography variant="body2" color="text.secondary">📍 {reunion.lugar}</Typography>
+                                            ) : reunion.linkAgenda ? (
+                                                <Button
+                                                    size="small"
+                                                    variant="outlined"
+                                                    startIcon={<LinkIcon />}
+                                                    href={reunion.linkAgenda}
+                                                    target="_blank"
+                                                    sx={{ textTransform: 'none', fontSize: '0.75rem' }}
+                                                >
+                                                    Unirse
+                                                </Button>
+                                            ) : (
+                                                <Typography variant="caption" color="text.secondary">—</Typography>
+                                            )}
+                                        </TableCell>
+                                        <TableCell align="center">
+                                            <Tooltip title="Editar reunión">
+                                                <IconButton size="small" onClick={() => setModalEditarReunion({ open: true, reunion })}>
+                                                    <EditIcon fontSize="small" />
+                                                </IconButton>
+                                            </Tooltip>
+                                        </TableCell>
+                                    </TableRow>
+                                );
+                            })}
                         </TableBody>
                     </Table>
-                    {reuniones.length > 5 && (
-                        <Box sx={{ p: 1, textAlign: 'center' }}>
-                            <Button size="small" onClick={() => setTabActual(2)}>
-                                Ver todas ({reuniones.length})
-                            </Button>
-                        </Box>
-                    )}
                 </TableContainer>
             )}
         </Box>
@@ -1166,15 +1263,25 @@ const GestionSDRPage = () => {
                 </Alert>
             ) : (
                 <Grid container spacing={2}>
-                    {reuniones.map(reunion => (
+                    {reuniones.map(reunion => {
+                        const reunContactoId = reunion.contactoId?._id || reunion.contactoId;
+                        return (
                         <Grid item xs={12} md={6} lg={4} key={reunion._id}>
                             <Card>
                                 <CardContent>
                                     <Stack spacing={1}>
                                         <Typography variant="h6">{reunion.empresaNombre}</Typography>
-                                        <Typography variant="body2" color="text.secondary">
-                                            {reunion.contactoPrincipal} {reunion.rolContacto && `- ${reunion.rolContacto}`}
-                                        </Typography>
+                                        {reunContactoId ? (
+                                            <NextLink href={`/sdr/contacto/${reunContactoId}`} passHref legacyBehavior>
+                                                <Typography variant="body2" component="a" sx={{ color: 'primary.main', textDecoration: 'none', '&:hover': { textDecoration: 'underline' }, cursor: 'pointer' }}>
+                                                    {reunion.contactoPrincipal} {reunion.rolContacto && `- ${reunion.rolContacto}`}
+                                                </Typography>
+                                            </NextLink>
+                                        ) : (
+                                            <Typography variant="body2" color="text.secondary">
+                                                {reunion.contactoPrincipal} {reunion.rolContacto && `- ${reunion.rolContacto}`}
+                                            </Typography>
+                                        )}
                                         <Divider />
                                         <Stack direction="row" spacing={1}>
                                             <Chip label={reunion.tamanoEmpresa} size="small" />
@@ -1199,42 +1306,55 @@ const GestionSDRPage = () => {
                                     </Stack>
                                 </CardContent>
                                 <Box sx={{ p: 2, pt: 0 }}>
-                                    <Stack direction="row" spacing={1}>
-                                        <Button 
-                                            variant="contained" 
-                                            color="success" 
+                                    <Stack spacing={1}>
+                                        <Stack direction="row" spacing={1}>
+                                            <Button 
+                                                variant="contained" 
+                                                color="success" 
+                                                size="small"
+                                                startIcon={<CheckCircleIcon />}
+                                                fullWidth
+                                                onClick={() => handleEvaluarReunion('realizada', null, null, reunion)}
+                                            >
+                                                Realizada
+                                            </Button>
+                                            <Button 
+                                                variant="outlined" 
+                                                color="warning" 
+                                                size="small"
+                                                startIcon={<PersonRemoveIcon />}
+                                                fullWidth
+                                                onClick={() => handleEvaluarReunion('no_show', null, null, reunion)}
+                                            >
+                                                No Show
+                                            </Button>
+                                            <Button 
+                                                variant="outlined" 
+                                                color="error" 
+                                                size="small"
+                                                startIcon={<CancelIcon />}
+                                                fullWidth
+                                                onClick={() => handleEvaluarReunion('cancelada', null, null, reunion)}
+                                            >
+                                                Cancelar
+                                            </Button>
+                                        </Stack>
+                                        <Button
+                                            variant="text"
                                             size="small"
-                                            startIcon={<CheckCircleIcon />}
+                                            startIcon={<EditIcon />}
                                             fullWidth
-                                            onClick={() => handleEvaluarReunion('realizada', null, null, reunion)}
+                                            onClick={() => setModalEditarReunion({ open: true, reunion })}
+                                            sx={{ textTransform: 'none', color: 'text.secondary' }}
                                         >
-                                            Realizada
-                                        </Button>
-                                        <Button 
-                                            variant="outlined" 
-                                            color="warning" 
-                                            size="small"
-                                            startIcon={<PersonRemoveIcon />}
-                                            fullWidth
-                                            onClick={() => handleEvaluarReunion('no_show', null, null, reunion)}
-                                        >
-                                            No Show
-                                        </Button>
-                                        <Button 
-                                            variant="outlined" 
-                                            color="error" 
-                                            size="small"
-                                            startIcon={<CancelIcon />}
-                                            fullWidth
-                                            onClick={() => handleEvaluarReunion('cancelada', null, null, reunion)}
-                                        >
-                                            Cancelar
+                                            Editar reunión
                                         </Button>
                                     </Stack>
                                 </Box>
                             </Card>
                         </Grid>
-                    ))}
+                        );
+                    })}
                 </Grid>
             )}
         </Box>
@@ -1361,6 +1481,158 @@ const GestionSDRPage = () => {
         );
     };
     
+    const ModalEditarReunion = () => {
+        const { reunion } = modalEditarReunion;
+        const [form, setForm] = useState({});
+        const [guardando, setGuardando] = useState(false);
+
+        useEffect(() => {
+            if (reunion) {
+                const fechaObj = reunion.fecha ? new Date(reunion.fecha) : null;
+                setForm({
+                    fecha: fechaObj ? fechaObj.toISOString().split('T')[0] : '',
+                    hora: reunion.hora || '',
+                    link: reunion.link || reunion.linkAgenda || '',
+                    lugar: reunion.lugar || '',
+                    notas: reunion.notas || '',
+                    empresaNombre: reunion.empresaNombre || '',
+                    contactoPrincipal: reunion.contactoPrincipal || '',
+                    rolContacto: reunion.rolContacto || '',
+                    tamanoEmpresa: reunion.tamanoEmpresa || '',
+                    puntosDeDolor: reunion.puntosDeDolor || '',
+                    modulosPotenciales: reunion.modulosPotenciales || '',
+                });
+            }
+        }, [reunion]);
+
+        if (!reunion) return null;
+
+        const handleGuardar = async () => {
+            setGuardando(true);
+            try {
+                await handleGuardarEdicionReunion(form);
+            } finally {
+                setGuardando(false);
+            }
+        };
+
+        return (
+            <Dialog 
+                open={modalEditarReunion.open} 
+                onClose={() => setModalEditarReunion({ open: false, reunion: null })} 
+                maxWidth="sm" 
+                fullWidth
+            >
+                <DialogTitle>✏️ Editar Reunión</DialogTitle>
+                <DialogContent dividers>
+                    <Stack spacing={2} sx={{ mt: 1 }}>
+                        <Stack direction="row" spacing={2}>
+                            <TextField
+                                label="Fecha"
+                                type="date"
+                                value={form.fecha || ''}
+                                onChange={(e) => setForm({ ...form, fecha: e.target.value })}
+                                fullWidth
+                                InputLabelProps={{ shrink: true }}
+                            />
+                            <TextField
+                                label="Hora"
+                                type="time"
+                                value={form.hora || ''}
+                                onChange={(e) => setForm({ ...form, hora: e.target.value })}
+                                fullWidth
+                                InputLabelProps={{ shrink: true }}
+                            />
+                        </Stack>
+                        <TextField
+                            label="Empresa"
+                            value={form.empresaNombre || ''}
+                            onChange={(e) => setForm({ ...form, empresaNombre: e.target.value })}
+                            fullWidth
+                        />
+                        <FormControl fullWidth>
+                            <InputLabel>Tamaño de empresa</InputLabel>
+                            <Select
+                                value={form.tamanoEmpresa || ''}
+                                label="Tamaño de empresa"
+                                onChange={(e) => setForm({ ...form, tamanoEmpresa: e.target.value })}
+                            >
+                                {TAMANOS_EMPRESA.map(t => (
+                                    <MenuItem key={t} value={t}>{t} empleados</MenuItem>
+                                ))}
+                            </Select>
+                        </FormControl>
+                        <Stack direction="row" spacing={2}>
+                            <TextField
+                                label="Contacto principal"
+                                value={form.contactoPrincipal || ''}
+                                onChange={(e) => setForm({ ...form, contactoPrincipal: e.target.value })}
+                                fullWidth
+                            />
+                            <TextField
+                                label="Rol"
+                                value={form.rolContacto || ''}
+                                onChange={(e) => setForm({ ...form, rolContacto: e.target.value })}
+                                fullWidth
+                                placeholder="Ej: Gerente, Dueño"
+                            />
+                        </Stack>
+                        <TextField
+                            label="Link de reunión"
+                            value={form.link || ''}
+                            onChange={(e) => setForm({ ...form, link: e.target.value })}
+                            fullWidth
+                            placeholder="Google Meet, Zoom, etc."
+                        />
+                        <TextField
+                            label="Lugar"
+                            value={form.lugar || ''}
+                            onChange={(e) => setForm({ ...form, lugar: e.target.value })}
+                            fullWidth
+                            placeholder="Dirección física (si aplica)"
+                        />
+                        <TextField
+                            label="Puntos de dolor"
+                            value={form.puntosDeDolor || ''}
+                            onChange={(e) => setForm({ ...form, puntosDeDolor: e.target.value })}
+                            fullWidth
+                            multiline
+                            rows={2}
+                        />
+                        <TextField
+                            label="Módulos potenciales"
+                            value={form.modulosPotenciales || ''}
+                            onChange={(e) => setForm({ ...form, modulosPotenciales: e.target.value })}
+                            fullWidth
+                            placeholder="Ej: Facturación, Stock, etc."
+                        />
+                        <TextField
+                            label="Notas"
+                            value={form.notas || ''}
+                            onChange={(e) => setForm({ ...form, notas: e.target.value })}
+                            fullWidth
+                            multiline
+                            rows={2}
+                        />
+                    </Stack>
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => setModalEditarReunion({ open: false, reunion: null })}>
+                        Cancelar
+                    </Button>
+                    <Button 
+                        variant="contained" 
+                        onClick={handleGuardar} 
+                        disabled={guardando}
+                        startIcon={guardando ? <CircularProgress size={16} /> : null}
+                    >
+                        Guardar cambios
+                    </Button>
+                </DialogActions>
+            </Dialog>
+        );
+    };
+
     const ModalImportar = () => {
         const [archivo, setArchivo] = useState(null);
         const [sinTelefonoNotion, setSinTelefonoNotion] = useState([]);
@@ -1604,22 +1876,44 @@ const GestionSDRPage = () => {
         const [sdrsParaDistribuir, setSdrsParaDistribuir] = useState([]); // SDRs seleccionados para distribución equitativa
         
         const botonesProximoContacto = [
-            { label: '1h', value: '1h' },
-            { label: '3h', value: '3h' },
-            { label: '24h', value: '24h' },
+            { label: 'Hoy tarde', value: 'tarde' },
+            { label: 'Mañana AM', value: 'manana_am' },
+            { label: 'Mañana PM', value: 'manana_pm' },
             { label: '3 días', value: '3d' },
             { label: '1 sem', value: '1w' },
+            { label: '2 meses', value: '2m' },
         ];
         
         const calcularFechaProximo = (valor) => {
             if (!valor) return null;
             const ahora = new Date();
+            const fecha = new Date();
             switch (valor) {
-                case '1h': return new Date(ahora.getTime() + 1 * 60 * 60 * 1000);
-                case '3h': return new Date(ahora.getTime() + 3 * 60 * 60 * 1000);
-                case '24h': return new Date(ahora.getTime() + 24 * 60 * 60 * 1000);
-                case '3d': return new Date(ahora.getTime() + 3 * 24 * 60 * 60 * 1000);
-                case '1w': return new Date(ahora.getTime() + 7 * 24 * 60 * 60 * 1000);
+                case 'tarde':
+                    fecha.setHours(15, 0, 0, 0);
+                    if (fecha <= ahora) { fecha.setHours(17, 0, 0, 0); }
+                    if (fecha <= ahora) { fecha.setDate(fecha.getDate() + 1); fecha.setHours(15, 0, 0, 0); }
+                    return fecha;
+                case 'manana_am':
+                    fecha.setDate(fecha.getDate() + 1);
+                    fecha.setHours(9, 0, 0, 0);
+                    return fecha;
+                case 'manana_pm':
+                    fecha.setDate(fecha.getDate() + 1);
+                    fecha.setHours(15, 0, 0, 0);
+                    return fecha;
+                case '3d':
+                    fecha.setDate(fecha.getDate() + 3);
+                    fecha.setHours(9, 0, 0, 0);
+                    return fecha;
+                case '1w':
+                    fecha.setDate(fecha.getDate() + 7);
+                    fecha.setHours(9, 0, 0, 0);
+                    return fecha;
+                case '2m':
+                    fecha.setMonth(fecha.getMonth() + 2);
+                    fecha.setHours(9, 0, 0, 0);
+                    return fecha;
                 default: return null;
             }
         };
@@ -2145,6 +2439,7 @@ const GestionSDRPage = () => {
                 loading={actionLoading}
             />
             <ModalEvaluarReunion />
+            <ModalEditarReunion />
             <ModalImportar />
             <ModalAsignar />
             <ModalAgregarSDR />
