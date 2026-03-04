@@ -56,6 +56,7 @@ import {
     Download as DownloadIcon
 } from '@mui/icons-material';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
+import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
@@ -274,6 +275,7 @@ const ContactoSDRDetailPage = () => {
     const grabador = useGrabadorAudio();
     const [subiendoAudio, setSubiendoAudio] = useState(false);
     const [subiendoArchivo, setSubiendoArchivo] = useState(false);
+    const [reanalizandoEvento, setReanalizandoEvento] = useState(null); // eventoId que se está re-analizando
     const fileInputRef = useRef(null);
 
     // Navegación entre contactos (IDs guardados en sessionStorage)
@@ -572,20 +574,45 @@ const ContactoSDRDetailPage = () => {
         if (!file || !contacto?._id) return;
         // Reset input para poder seleccionar el mismo archivo de nuevo
         e.target.value = '';
+        
+        // Pedir comentario opcional para contexto del análisis IA
+        const comentario = prompt('💬 Comentario para el análisis IA (opcional):\nEj: "Llamada de seguimiento, le interesaba el módulo de stock"', '');
+        if (comentario === null) return; // Canceló
+        
         setSubiendoArchivo(true);
         try {
+            const notaFinal = comentario.trim() 
+                ? `📁 ${file.name} — ${comentario.trim()}`
+                : `📁 Archivo subido: ${file.name}`;
             await SDRService.subirAudio(contacto._id, file, {
                 duracion: null,
-                nota: `📁 Archivo subido: ${file.name}`,
+                nota: notaFinal,
                 empresaId
             });
-            mostrarSnackbar('📁 Grabación subida y transcrita', 'success');
+            mostrarSnackbar('📁 Grabación subida y analizada', 'success');
             await cargarContacto();
         } catch (err) {
             console.error('Error subiendo grabación:', err);
             mostrarSnackbar('Error al subir la grabación', 'error');
         } finally {
             setSubiendoArchivo(false);
+        }
+    };
+
+    const handleReanalizarAudio = async (eventoId) => {
+        const comentario = prompt('💬 Indicación para el re-análisis (opcional):\nEj: "Enfocate en los problemas que mencionó", "Es una constructora grande"', '');
+        if (comentario === null) return; // Canceló
+        
+        setReanalizandoEvento(eventoId);
+        try {
+            await SDRService.reanalizarAudio(eventoId, comentario.trim());
+            mostrarSnackbar('🤖 Audio re-analizado', 'success');
+            await cargarContacto();
+        } catch (err) {
+            console.error('Error re-analizando:', err);
+            mostrarSnackbar('Error al re-analizar el audio', 'error');
+        } finally {
+            setReanalizandoEvento(null);
         }
     };
 
@@ -1714,10 +1741,34 @@ const ContactoSDRDetailPage = () => {
                                                             </Stack>
                                                         </Box>
                                                     )}
+                                                    {(evento.resumen || evento.metadata?.resumen) && (
+                                                        <Box sx={{ position: 'relative', mt: 0.5 }}>
+                                                            <Typography variant="caption" component="div" sx={{ display: 'block', p: 1, pr: 4, bgcolor: '#e8f5e9', borderRadius: 1, fontSize: '0.76rem', lineHeight: 1.5, border: '1px solid #c8e6c9', whiteSpace: 'pre-wrap' }}>
+                                                                {evento.resumen || evento.metadata?.resumen}
+                                                            </Typography>
+                                                            <Tooltip title="Copiar resumen">
+                                                                <IconButton size="small" onClick={() => { navigator.clipboard.writeText(evento.resumen || evento.metadata?.resumen); mostrarSnackbar('Resumen copiado', 'success'); }} sx={{ position: 'absolute', top: 4, right: 4, p: 0.3, opacity: 0.5, '&:hover': { opacity: 1 } }}>
+                                                                    <ContentCopyIcon sx={{ fontSize: 14 }} />
+                                                                </IconButton>
+                                                            </Tooltip>
+                                                        </Box>
+                                                    )}
                                                     {(evento.transcripcion || evento.metadata?.transcripcion) && (
-                                                        <Typography variant="caption" sx={{ display: 'block', mt: 0.3, p: 0.5, bgcolor: 'rgba(255,255,255,0.7)', borderRadius: 1, fontStyle: 'italic', fontSize: '0.72rem' }}>
-                                                            📝 {(evento.transcripcion || evento.metadata?.transcripcion).substring(0, 150)}{(evento.transcripcion || evento.metadata?.transcripcion).length > 150 ? '...' : ''}
-                                                        </Typography>
+                                                        <Stack direction="row" alignItems="center" spacing={0.5} sx={{ mt: 0.3 }}>
+                                                            <Typography variant="caption" sx={{ flex: 1, p: 0.5, bgcolor: 'rgba(255,255,255,0.7)', borderRadius: 1, fontStyle: 'italic', fontSize: '0.72rem', cursor: 'pointer' }} onClick={(e) => { const el = e.currentTarget; el.dataset.expanded = el.dataset.expanded === 'true' ? 'false' : 'true'; el.innerText = el.dataset.expanded === 'true' ? '📝 ' + (evento.transcripcion || evento.metadata?.transcripcion) : '📝 ' + (evento.transcripcion || evento.metadata?.transcripcion).substring(0, 100) + '...'; }} title="Click para expandir">
+                                                                📝 {(evento.transcripcion || evento.metadata?.transcripcion).substring(0, 100)}{(evento.transcripcion || evento.metadata?.transcripcion).length > 100 ? '...' : ''}
+                                                            </Typography>
+                                                            <Tooltip title="Copiar transcripción">
+                                                                <IconButton size="small" onClick={() => { navigator.clipboard.writeText(evento.transcripcion || evento.metadata?.transcripcion); mostrarSnackbar('Transcripción copiada', 'success'); }} sx={{ p: 0.3, opacity: 0.5, '&:hover': { opacity: 1 } }}>
+                                                                    <ContentCopyIcon sx={{ fontSize: 14 }} />
+                                                                </IconButton>
+                                                            </Tooltip>
+                                                            <Tooltip title="Re-analizar con IA">
+                                                                <IconButton size="small" onClick={() => handleReanalizarAudio(evento._id)} disabled={reanalizandoEvento === evento._id} sx={{ p: 0.3 }}>
+                                                                    {reanalizandoEvento === evento._id ? <CircularProgress size={14} /> : <AutoFixHighIcon sx={{ fontSize: 16, color: 'secondary.main' }} />}
+                                                                </IconButton>
+                                                            </Tooltip>
+                                                        </Stack>
                                                     )}
                                                     <Typography variant="caption" color="text.secondary">
                                                         {new Date(evento.createdAt).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
@@ -2477,10 +2528,34 @@ const ContactoSDRDetailPage = () => {
                                                             </Stack>
                                                         </Box>
                                                     )}
+                                                    {(evento.resumen || evento.metadata?.resumen) && (
+                                                        <Box sx={{ position: 'relative', mt: 0.5 }}>
+                                                            <Typography variant="caption" component="div" sx={{ display: 'block', p: 1, pr: 4, bgcolor: '#e8f5e9', borderRadius: 1, fontSize: '0.74rem', lineHeight: 1.5, border: '1px solid #c8e6c9', whiteSpace: 'pre-wrap' }}>
+                                                                {evento.resumen || evento.metadata?.resumen}
+                                                            </Typography>
+                                                            <Tooltip title="Copiar resumen">
+                                                                <IconButton size="small" onClick={() => { navigator.clipboard.writeText(evento.resumen || evento.metadata?.resumen); mostrarSnackbar('Resumen copiado', 'success'); }} sx={{ position: 'absolute', top: 4, right: 4, p: 0.3, opacity: 0.5, '&:hover': { opacity: 1 } }}>
+                                                                    <ContentCopyIcon sx={{ fontSize: 14 }} />
+                                                                </IconButton>
+                                                            </Tooltip>
+                                                        </Box>
+                                                    )}
                                                     {(evento.transcripcion || evento.metadata?.transcripcion) && (
-                                                        <Typography variant="caption" sx={{ display: 'block', mt: 0.3, p: 0.5, bgcolor: 'rgba(255,255,255,0.7)', borderRadius: 1, fontStyle: 'italic', fontSize: '0.72rem' }}>
-                                                            📝 {(evento.transcripcion || evento.metadata?.transcripcion).substring(0, 100)}{(evento.transcripcion || evento.metadata?.transcripcion).length > 100 ? '...' : ''}
-                                                        </Typography>
+                                                        <Stack direction="row" alignItems="center" spacing={0.5} sx={{ mt: 0.3 }}>
+                                                            <Typography variant="caption" sx={{ flex: 1, p: 0.5, bgcolor: 'rgba(255,255,255,0.7)', borderRadius: 1, fontStyle: 'italic', fontSize: '0.70rem', cursor: 'pointer' }} onClick={(e) => { const el = e.currentTarget; el.dataset.expanded = el.dataset.expanded === 'true' ? 'false' : 'true'; el.innerText = el.dataset.expanded === 'true' ? '📝 ' + (evento.transcripcion || evento.metadata?.transcripcion) : '📝 ' + (evento.transcripcion || evento.metadata?.transcripcion).substring(0, 80) + '...'; }} title="Click para expandir">
+                                                                📝 {(evento.transcripcion || evento.metadata?.transcripcion).substring(0, 80)}{(evento.transcripcion || evento.metadata?.transcripcion).length > 80 ? '...' : ''}
+                                                            </Typography>
+                                                            <Tooltip title="Copiar transcripción">
+                                                                <IconButton size="small" onClick={() => { navigator.clipboard.writeText(evento.transcripcion || evento.metadata?.transcripcion); mostrarSnackbar('Transcripción copiada', 'success'); }} sx={{ p: 0.3, opacity: 0.5, '&:hover': { opacity: 1 } }}>
+                                                                    <ContentCopyIcon sx={{ fontSize: 14 }} />
+                                                                </IconButton>
+                                                            </Tooltip>
+                                                            <Tooltip title="Re-analizar con IA">
+                                                                <IconButton size="small" onClick={() => handleReanalizarAudio(evento._id)} disabled={reanalizandoEvento === evento._id} sx={{ p: 0.3 }}>
+                                                                    {reanalizandoEvento === evento._id ? <CircularProgress size={14} /> : <AutoFixHighIcon sx={{ fontSize: 16, color: 'secondary.main' }} />}
+                                                                </IconButton>
+                                                            </Tooltip>
+                                                        </Stack>
                                                     )}
                                                     <Typography variant="caption" color="text.secondary">
                                                         {new Date(evento.createdAt).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
@@ -2653,10 +2728,34 @@ const ContactoSDRDetailPage = () => {
                                                                     </Stack>
                                                                 </Box>
                                                             )}
+                                                            {(evento.resumen || evento.metadata?.resumen) && (
+                                                                <Box sx={{ position: 'relative', mt: 0.5 }}>
+                                                                    <Typography variant="caption" component="div" sx={{ display: 'block', p: 1.5, pr: 4.5, bgcolor: '#e8f5e9', borderRadius: 1, fontSize: '0.82rem', lineHeight: 1.6, border: '1px solid #c8e6c9', whiteSpace: 'pre-wrap' }}>
+                                                                        {evento.resumen || evento.metadata?.resumen}
+                                                                    </Typography>
+                                                                    <Tooltip title="Copiar resumen">
+                                                                        <IconButton size="small" onClick={() => { navigator.clipboard.writeText(evento.resumen || evento.metadata?.resumen); mostrarSnackbar('Resumen copiado', 'success'); }} sx={{ position: 'absolute', top: 6, right: 6, p: 0.4, opacity: 0.5, '&:hover': { opacity: 1 } }}>
+                                                                            <ContentCopyIcon sx={{ fontSize: 16 }} />
+                                                                        </IconButton>
+                                                                    </Tooltip>
+                                                                </Box>
+                                                            )}
                                                             {(evento.transcripcion || evento.metadata?.transcripcion) && (
-                                                                <Typography variant="caption" sx={{ display: 'block', mt: 0.5, p: 0.8, bgcolor: 'rgba(255,255,255,0.7)', borderRadius: 1, fontStyle: 'italic', lineHeight: 1.4 }}>
-                                                                    📝 {evento.transcripcion || evento.metadata?.transcripcion}
-                                                                </Typography>
+                                                                <Stack direction="row" alignItems="center" spacing={0.5} sx={{ mt: 0.5 }}>
+                                                                    <Typography variant="caption" sx={{ flex: 1, p: 0.8, bgcolor: 'rgba(255,255,255,0.7)', borderRadius: 1, fontStyle: 'italic', lineHeight: 1.4, cursor: 'pointer' }} onClick={(e) => { const el = e.currentTarget; el.dataset.expanded = el.dataset.expanded === 'true' ? 'false' : 'true'; el.innerText = el.dataset.expanded === 'true' ? '📝 ' + (evento.transcripcion || evento.metadata?.transcripcion) : '📝 ' + (evento.transcripcion || evento.metadata?.transcripcion).substring(0, 150) + '... (click para ver)'; }} title="Click para expandir">
+                                                                        📝 {(evento.transcripcion || evento.metadata?.transcripcion).substring(0, 150)}{(evento.transcripcion || evento.metadata?.transcripcion).length > 150 ? '... (click para ver)' : ''}
+                                                                    </Typography>
+                                                                    <Tooltip title="Copiar transcripción">
+                                                                        <IconButton size="small" onClick={() => { navigator.clipboard.writeText(evento.transcripcion || evento.metadata?.transcripcion); mostrarSnackbar('Transcripción copiada', 'success'); }} sx={{ p: 0.4, opacity: 0.5, '&:hover': { opacity: 1 } }}>
+                                                                            <ContentCopyIcon sx={{ fontSize: 16 }} />
+                                                                        </IconButton>
+                                                                    </Tooltip>
+                                                                    <Tooltip title="Re-analizar con IA">
+                                                                        <IconButton size="small" onClick={() => handleReanalizarAudio(evento._id)} disabled={reanalizandoEvento === evento._id} sx={{ p: 0.4 }}>
+                                                                            {reanalizandoEvento === evento._id ? <CircularProgress size={16} /> : <AutoFixHighIcon sx={{ fontSize: 18, color: 'secondary.main' }} />}
+                                                                        </IconButton>
+                                                                    </Tooltip>
+                                                                </Stack>
                                                             )}
                                                             <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
                                                                 {new Date(evento.createdAt).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}

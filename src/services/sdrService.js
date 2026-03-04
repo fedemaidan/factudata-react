@@ -115,6 +115,14 @@ const SDRService = {
     },
 
     /**
+     * Re-analizar un audio existente con GPT-4o
+     */
+    reanalizarAudio: async (eventoId, comentarioExtra = '') => {
+        const res = await api.post('/sdr/acciones/audio/reanalizar', { eventoId, comentarioExtra }, { timeout: 120000 });
+        return res.data;
+    },
+
+    /**
      * Marcar como "No califica"
      */
     marcarNoCalifica: async (contactoId, data) => {

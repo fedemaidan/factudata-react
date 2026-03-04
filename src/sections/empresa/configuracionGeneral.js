@@ -190,6 +190,7 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
   const opcionesAcciones = [
     "CREAR_EGRESO",
     "CREAR_EGRESO_PRORATEADO",
+    "CREAR_EGRESOS_MASIVO",
     "CREAR_INGRESO",
     "VER_CAJAS",
     "AJUSTAR_CAJAS",
