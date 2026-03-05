@@ -23,6 +23,14 @@ const SDRService = {
     },
 
     /**
+     * Obtener contadores de bandejas (nuevos / reintentos / seguimiento)
+     */
+    contadorBandejas: async (params = {}) => {
+        const res = await api.get('/sdr/contactos/bandejas', { params });
+        return res.data;
+    },
+
+    /**
      * Obtener un contacto por ID (incluye historial y reuniones)
      */
     obtenerContacto: async (id) => {
@@ -84,6 +92,37 @@ const SDRService = {
     },
 
     /**
+     * Subir audio grabado y asociarlo a un contacto
+     * @param {string} contactoId - ID del contacto
+     * @param {Blob} audioBlob - Blob del audio grabado
+     * @param {object} opts - { duracion, nota, empresaId }
+     */
+    subirAudio: async (contactoId, audioBlob, opts = {}) => {
+        const formData = new FormData();
+        // Si es un File (del input), usar su nombre original; si es Blob (de grabación), usar .webm
+        const fileName = audioBlob.name || `audio_${Date.now()}.webm`;
+        formData.append('audio', audioBlob, fileName);
+        formData.append('contactoId', contactoId);
+        if (opts.duracion) formData.append('duracion', String(opts.duracion));
+        if (opts.nota) formData.append('nota', opts.nota);
+        if (opts.empresaId) formData.append('empresaId', opts.empresaId);
+        
+        const res = await api.post('/sdr/acciones/audio', formData, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+            timeout: 120000 // 2 min para audios largos + transcripción
+        });
+        return res.data;
+    },
+
+    /**
+     * Re-analizar un audio existente con GPT-4o
+     */
+    reanalizarAudio: async (eventoId, comentarioExtra = '') => {
+        const res = await api.post('/sdr/acciones/audio/reanalizar', { eventoId, comentarioExtra }, { timeout: 120000 });
+        return res.data;
+    },
+
+    /**
      * Marcar como "No califica"
      */
     marcarNoCalifica: async (contactoId, data) => {
@@ -108,10 +147,10 @@ const SDRService = {
     },
 
     /**
-     * Actualizar próximo contacto
+     * Actualizar próximo contacto / próxima tarea
      */
-    actualizarProximoContacto: async (contactoId, proximoContacto) => {
-        const res = await api.post('/sdr/acciones/proximo-contacto', { contactoId, proximoContacto });
+    actualizarProximoContacto: async (contactoId, proximoContacto, empresaId, proximaTarea = null) => {
+        const res = await api.post('/sdr/acciones/proximo-contacto', { contactoId, proximoContacto, proximaTarea });
         return res.data;
     },
 
@@ -668,8 +707,8 @@ const SDRService = {
     /**
      * Avanzar al siguiente paso de cadencia
      */
-    avanzarPasoCadencia: async (contactoId) => {
-        const res = await api.post('/sdr/cadencias/avanzar', { contactoId });
+    avanzarPasoCadencia: async (contactoId, proximoContacto) => {
+        const res = await api.post('/sdr/cadencias/avanzar', { contactoId, proximoContacto });
         return res.data;
     },
 

@@ -50,7 +50,13 @@ import {
     FullscreenExit as FullscreenExitIcon,
     OpenInFull as OpenInFullIcon,
     CloseFullscreen as CloseFullscreenIcon,
-    ChatBubbleOutline as ChatBubbleOutlineIcon
+    ChatBubbleOutline as ChatBubbleOutlineIcon,
+    Mic as MicIcon,
+    Stop as StopIcon,
+    Pause as PauseIcon,
+    PlayArrow as PlayArrowIcon,
+    GraphicEq as GraphicEqIcon,
+    DeleteOutline as DeleteOutlineIcon
 } from '@mui/icons-material';
 import SDRService from '../../services/sdrService';
 import ModalSelectorTemplate from './ModalSelectorTemplate';
@@ -60,6 +66,8 @@ import { PLANES_SORBY, INTENCIONES_COMPRA, PRECALIFICACION_BOT } from '../../con
 import SmartToyIcon from '@mui/icons-material/SmartToy';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import MiniChatViewer from './MiniChatViewer';
+import ContadoresActividad from './ContadoresActividad';
+import useGrabadorAudio from '../../hooks/useGrabadorAudio';
 
 // Opciones de tamaño de empresa
 const TAMANO_EMPRESA_OPTIONS = [
@@ -107,6 +115,7 @@ const getEventoColor = (tipo) => {
         // Notas
         'nota_agregada': { bg: '#fffde7', border: '#ffee58', icon: '#f9a825' },
         'comentario': { bg: '#fffde7', border: '#ffee58', icon: '#f9a825' },
+        'audio_grabado': { bg: '#fce4ec', border: '#f48fb1', icon: '#c2185b' },
         'proximo_contacto_programado': { bg: '#e1f5fe', border: '#29b6f6', icon: '#0277bd' },
         'contacto_editado': { bg: '#eceff1', border: '#90a4ae', icon: '#546e7a' },
         'estado_cambiado': { bg: '#e8eaf6', border: '#5c6bc0', icon: '#3949ab' },
@@ -136,6 +145,7 @@ const getEventoIcon = (tipo) => {
         'contexto_inicial': <CommentIcon fontSize="small" />,
         'nota_agregada': <CommentIcon fontSize="small" />,
         'comentario': <CommentIcon fontSize="small" />,
+        'audio_grabado': <GraphicEqIcon fontSize="small" />,
         'proximo_contacto_programado': <EventIcon fontSize="small" />,
         'contacto_editado': <PersonIcon fontSize="small" />,
         'estado_cambiado': <EditIcon fontSize="small" />,
@@ -274,6 +284,11 @@ const DrawerDetalleContactoSDR = ({
     const [proximoContactoLocal, setProximoContactoLocal] = useState(null);
     const [guardandoProximo, setGuardandoProximo] = useState(false);
     const [modalProximoContacto, setModalProximoContacto] = useState({ open: false, direccion: null });
+    // Editor de tarea
+    const [editandoTarea, setEditandoTarea] = useState(false);
+    const [editTareaTipo, setEditTareaTipo] = useState(null);
+    const [editTareaFecha, setEditTareaFecha] = useState(null);
+    const [editTareaNota, setEditTareaNota] = useState('');
     
     // Modales nuevos
     const [modalTemplateWhatsApp, setModalTemplateWhatsApp] = useState(false);
@@ -288,6 +303,10 @@ const DrawerDetalleContactoSDR = ({
     
     // Estado para drawer expandido (pantalla completa)
     const [drawerExpandido, setDrawerExpandido] = useState(false);
+    
+    // Grabador de audio
+    const grabador = useGrabadorAudio();
+    const [subiendoAudio, setSubiendoAudio] = useState(false);
     
     // Tab activo en vista desktop (0=Info, 1=Historial)
     const [drawerTab, setDrawerTab] = useState(0);
@@ -449,6 +468,28 @@ const DrawerDetalleContactoSDR = ({
         }
     };
 
+    // Enviar audio grabado
+    const handleEnviarAudio = async () => {
+        if (!grabador.audioBlob || !contactoLocal?._id) return;
+        setSubiendoAudio(true);
+        try {
+            await SDRService.subirAudio(contactoLocal._id, grabador.audioBlob, {
+                duracion: grabador.duracion,
+                nota: nuevoComentario.trim() || '',
+                empresaId
+            });
+            mostrarSnackbar?.('🎙️ Audio guardado y transcrito', 'success');
+            grabador.limpiar();
+            setNuevoComentario('');
+            await cargarHistorial();
+        } catch (err) {
+            console.error('Error subiendo audio:', err);
+            mostrarSnackbar?.('Error al subir el audio', 'error');
+        } finally {
+            setSubiendoAudio(false);
+        }
+    };
+
     // ==================== PRÓXIMO CONTACTO ====================
     
     // Calcular fecha de próximo contacto
@@ -458,18 +499,33 @@ const DrawerDetalleContactoSDR = ({
             fecha.setHours(fecha.getHours() + cantidad);
         } else if (unidad === 'dias') {
             fecha.setDate(fecha.getDate() + cantidad);
+            fecha.setHours(9, 0, 0, 0);
+        } else if (unidad === 'meses') {
+            fecha.setMonth(fecha.getMonth() + cantidad);
+            fecha.setHours(9, 0, 0, 0);
+        } else if (unidad === 'tarde') {
+            const ahora = new Date();
+            fecha.setHours(15, 0, 0, 0);
+            if (fecha <= ahora) { fecha.setHours(17, 0, 0, 0); }
+            if (fecha <= ahora) { fecha.setDate(fecha.getDate() + 1); fecha.setHours(15, 0, 0, 0); }
+        } else if (unidad === 'manana') {
+            fecha.setDate(fecha.getDate() + 1);
+            fecha.setHours(9, 0, 0, 0);
+        } else if (unidad === 'tarde_dia') {
+            fecha.setDate(fecha.getDate() + 1);
+            fecha.setHours(15, 0, 0, 0);
         }
         return fecha;
     };
 
-    // Guardar próximo contacto
+    // Guardar próximo contacto / tarea
     const handleGuardarProximoContacto = async (fecha) => {
         if (!contactoLocal?._id) return;
         setGuardandoProximo(true);
         try {
-            await SDRService.actualizarProximoContacto(contactoLocal._id, fecha);
+            await SDRService.actualizarProximoContacto(contactoLocal._id, fecha, contactoLocal.empresaId);
             setProximoContactoLocal(fecha);
-            mostrarSnackbar?.('Próximo contacto actualizado', 'success');
+            mostrarSnackbar?.('Próxima tarea actualizada', 'success');
             onRefresh?.();
             await cargarHistorial();
         } catch (err) {
@@ -480,13 +536,45 @@ const DrawerDetalleContactoSDR = ({
         }
     };
 
+    /** Guardar tarea completa (tipo + fecha + nota) */
+    const handleGuardarProximaTarea = async (tipo, fecha, nota) => {
+        if (!contactoLocal?._id || !tipo || !fecha) return;
+        setGuardandoProximo(true);
+        try {
+            const proximaTarea = { tipo, fecha, nota: nota?.trim() || null, autoGenerada: false };
+            await SDRService.actualizarProximoContacto(contactoLocal._id, fecha, contactoLocal.empresaId, proximaTarea);
+            setProximoContactoLocal(fecha);
+            setEditandoTarea(false);
+            setEditTareaTipo(null);
+            setEditTareaFecha(null);
+            setEditTareaNota('');
+            mostrarSnackbar?.('Próxima tarea guardada ✓', 'success');
+            onRefresh?.();
+            await cargarHistorial();
+        } catch (err) {
+            console.error('Error guardando tarea:', err);
+            mostrarSnackbar?.('Error al guardar tarea', 'error');
+        } finally {
+            setGuardandoProximo(false);
+        }
+    };
+
+    // Tipos de tarea para el editor
+    const TIPOS_TAREA = [
+        { key: 'llamada', icon: '📞', label: 'Llamar' },
+        { key: 'whatsapp', icon: '💬', label: 'WhatsApp' },
+        { key: 'email', icon: '✉️', label: 'Email' },
+        { key: 'recordatorio', icon: '📝', label: 'Recordatorio' },
+    ];
+
     // Botones rápidos de próximo contacto
     const botonesProximoContacto = [
-        { label: '1h', cantidad: 1, unidad: 'horas' },
-        { label: '3h', cantidad: 3, unidad: 'horas' },
-        { label: '24h', cantidad: 24, unidad: 'horas' },
+        { label: 'Hoy tarde', cantidad: 0, unidad: 'tarde' },
+        { label: 'Mañana AM', cantidad: 1, unidad: 'manana' },
+        { label: 'Mañana PM', cantidad: 1, unidad: 'tarde_dia' },
         { label: '3 días', cantidad: 3, unidad: 'dias' },
         { label: '1 sem', cantidad: 7, unidad: 'dias' },
+        { label: '2 meses', cantidad: 2, unidad: 'meses' },
     ];
 
     // Formatear fecha para mostrar - AHORA INCLUYE HORA EXACTA
@@ -629,9 +717,10 @@ const DrawerDetalleContactoSDR = ({
                 }}
             >
                 <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', bgcolor: 'grey.50' }}>
-                    {/* Header compacto */}
+                    {/* Header mínimo */}
                     <Box sx={{ 
-                        p: 2, 
+                        px: 1.5, 
+                        py: 1,
                         bgcolor: 'white',
                         borderBottom: 1, 
                         borderColor: 'divider',
@@ -639,11 +728,65 @@ const DrawerDetalleContactoSDR = ({
                         alignItems: 'center',
                         justifyContent: 'space-between'
                     }}>
-                        <Box sx={{ flex: 1 }}>
-                            <Typography variant="h6" fontWeight={700} noWrap>
-                                {contactoLocal.nombre}
-                            </Typography>
-                            <Stack direction="row" spacing={0.5} alignItems="center">
+                        <IconButton onClick={onClose} edge="start">
+                            <CloseIcon />
+                        </IconButton>
+                        <Stack direction="row" spacing={0.5} alignItems="center">
+                            {contactos.length > 1 && (
+                                <Chip 
+                                    size="small" 
+                                    label={`${indiceActual + 1} / ${contactos.length}`}
+                                    variant="outlined"
+                                />
+                            )}
+                            <IconButton 
+                                onClick={() => {
+                                    onRefresh?.();
+                                    cargarHistorial();
+                                    mostrarSnackbar?.('Datos actualizados', 'success');
+                                }}
+                                size="small"
+                            >
+                                <RefreshIcon fontSize="small" />
+                            </IconButton>
+                        </Stack>
+                    </Box>
+
+                    {/* Contenido scrolleable */}
+                    <Box sx={{ flex: 1, overflow: 'auto', p: 2, pb: 20 }}>
+                        
+                        {/* Card de identidad y contacto */}
+                        <Paper elevation={0} sx={{ p: 2.5, mb: 2, borderRadius: 3 }}>
+                            {/* Nombre y cargo */}
+                            <Stack direction="row" justifyContent="space-between" alignItems="flex-start" sx={{ mb: 1 }}>
+                                <Box sx={{ flex: 1, minWidth: 0 }}>
+                                    <Typography variant="h5" fontWeight={700} noWrap>
+                                        {contactoLocal.nombre}
+                                    </Typography>
+                                    {contactoLocal.cargo && (
+                                        <Typography variant="body2" color="text.secondary">
+                                            {contactoLocal.cargo}
+                                        </Typography>
+                                    )}
+                                    {contactoLocal.empresa && (
+                                        <Stack direction="row" spacing={0.5} alignItems="center" sx={{ mt: 0.3 }}>
+                                            <BusinessIcon fontSize="small" color="action" sx={{ fontSize: 15 }} />
+                                            <Typography variant="body2" color="text.secondary" noWrap>
+                                                {contactoLocal.empresa}
+                                                {contactoLocal.tamanoEmpresa && (
+                                                    <Chip size="small" label={contactoLocal.tamanoEmpresa} sx={{ ml: 0.5, height: 18, fontSize: '0.7rem' }} />
+                                                )}
+                                            </Typography>
+                                        </Stack>
+                                    )}
+                                </Box>
+                                <IconButton size="small" onClick={() => setModalEditarContacto(true)} sx={{ mt: 0.5 }}>
+                                    <EditIcon fontSize="small" />
+                                </IconButton>
+                            </Stack>
+
+                            {/* Estado + Segmento */}
+                            <Stack direction="row" spacing={0.5} alignItems="center" sx={{ mb: 2 }}>
                                 <EstadoChipEditable 
                                     estado={contactoLocal.estado} 
                                     contactoId={contactoLocal._id}
@@ -653,45 +796,51 @@ const DrawerDetalleContactoSDR = ({
                                     }}
                                     mostrarSnackbar={mostrarSnackbar}
                                 />
-                                {contactoLocal.empresa && (
-                                    <Typography variant="caption" color="text.secondary" noWrap>
-                                        • {contactoLocal.empresa}
-                                    </Typography>
+                                {contactoLocal.segmento && (
+                                    <Chip 
+                                        size="small" 
+                                        variant="outlined"
+                                        label={contactoLocal.segmento === 'outbound' ? 'Outbound' : '🟢 Inbound'} 
+                                    />
                                 )}
                             </Stack>
-                        </Box>
-                        {contactos.length > 1 && (
-                            <Chip 
-                                size="small" 
-                                label={`${indiceActual + 1}/${contactos.length}`}
-                                sx={{ mr: 1 }}
-                            />
-                        )}
-                        <Tooltip title="Refrescar datos">
-                            <IconButton 
-                                onClick={() => {
-                                    onRefresh?.();
-                                    cargarHistorial();
-                                    mostrarSnackbar?.('Datos actualizados', 'success');
-                                }}
-                                size="small"
-                                sx={{ mr: 0.5 }}
-                            >
-                                <RefreshIcon fontSize="small" />
-                            </IconButton>
-                        </Tooltip>
-                        <IconButton onClick={onClose} edge="end">
-                            <CloseIcon />
-                        </IconButton>
-                    </Box>
 
-                    {/* Contenido scrolleable */}
-                    <Box sx={{ flex: 1, overflow: 'auto', p: 2, pb: 20 }}>
-                        
-                        {/* Card principal de contacto */}
-                        <Paper elevation={0} sx={{ p: 2.5, mb: 2, borderRadius: 3 }}>
-                            {/* Botones grandes de acción - LLAMAR y WHATSAPP */}
-                            <Stack direction="row" spacing={2} sx={{ mb: 3 }}>
+                            {/* Contadores de actividad */}
+                            <ContadoresActividad contadores={contactoLocal.contadores} size="small" />
+
+                            <Divider sx={{ mb: 2 }} />
+
+                            {/* Datos de contacto con acciones inline */}
+                            <Stack spacing={0.8} sx={{ mb: 2 }}>
+                                <Stack direction="row" spacing={1} alignItems="center">
+                                    <PhoneIcon fontSize="small" color="action" />
+                                    <Typography variant="body1" fontWeight={500}>{contactoLocal.telefono}</Typography>
+                                    <IconButton size="small" href={getTelLink(contactoLocal.telefono)} sx={{ p: 0.3 }}>
+                                        <CallIcon fontSize="small" color="success" />
+                                    </IconButton>
+                                    <IconButton size="small" href={getWhatsAppLink(contactoLocal.telefono)} target="_blank" sx={{ p: 0.3 }}>
+                                        <WhatsAppIcon fontSize="small" sx={{ color: '#25D366' }} />
+                                    </IconButton>
+                                </Stack>
+                                {contactoLocal.telefonosSecundarios?.map((tel, i) => (
+                                    <Stack key={i} direction="row" spacing={1} alignItems="center">
+                                        <PhoneIcon fontSize="small" color="action" sx={{ opacity: 0.5 }} />
+                                        <Typography variant="body2" color="text.secondary">
+                                            {tel.numero}
+                                            <Chip size="small" label={tel.etiqueta} sx={{ ml: 0.5, height: 18, fontSize: '0.7rem' }} />
+                                        </Typography>
+                                    </Stack>
+                                ))}
+                                {contactoLocal.email && (
+                                    <Stack direction="row" spacing={1} alignItems="center">
+                                        <EmailIcon fontSize="small" color="action" />
+                                        <Typography variant="body2">{contactoLocal.email}</Typography>
+                                    </Stack>
+                                )}
+                            </Stack>
+
+                            {/* Botones de acción */}
+                            <Stack direction="row" spacing={1.5}>
                                 <Button
                                     fullWidth
                                     variant="contained"
@@ -699,11 +848,11 @@ const DrawerDetalleContactoSDR = ({
                                     startIcon={<PhoneIcon />}
                                     onClick={handleLlamar}
                                     sx={{ 
-                                        py: 2,
+                                        py: 1.5,
                                         bgcolor: '#4caf50', 
                                         '&:hover': { bgcolor: '#388e3c' },
                                         borderRadius: 2,
-                                        fontSize: '1rem'
+                                        fontSize: '0.95rem'
                                     }}
                                 >
                                     Llamar
@@ -715,61 +864,16 @@ const DrawerDetalleContactoSDR = ({
                                     startIcon={<WhatsAppIcon />}
                                     onClick={handleWhatsApp}
                                     sx={{ 
-                                        py: 2,
+                                        py: 1.5,
                                         bgcolor: '#25D366', 
                                         '&:hover': { bgcolor: '#128C7E' },
                                         borderRadius: 2,
-                                        fontSize: '1rem'
+                                        fontSize: '0.95rem'
                                     }}
                                 >
                                     WhatsApp
                                 </Button>
                             </Stack>
-
-                            {/* Info de contacto con botón editar */}
-                            <Box sx={{ mb: 2 }}>
-                                <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
-                                    <Typography variant="subtitle2" color="text.secondary">
-                                        Información
-                                    </Typography>
-                                    <Button
-                                        size="small"
-                                        startIcon={<EditIcon />}
-                                        onClick={() => setModalEditarContacto(true)}
-                                    >
-                                        Editar
-                                    </Button>
-                                </Stack>
-                                <Stack spacing={0.5}>
-                                    <Typography variant="body1" fontWeight={500}>
-                                        📞 {contactoLocal.telefono}
-                                    </Typography>
-                                    {/* Teléfonos secundarios */}
-                                    {contactoLocal.telefonosSecundarios?.map((tel, i) => (
-                                        <Typography key={i} variant="body2" color="text.secondary">
-                                            📱 {tel.numero} <Chip size="small" label={tel.etiqueta} sx={{ ml: 0.5, height: 18, fontSize: '0.7rem' }} />
-                                        </Typography>
-                                    ))}
-                                    {contactoLocal.cargo && (
-                                        <Typography variant="body2" color="text.secondary">
-                                            👤 {contactoLocal.cargo}
-                                        </Typography>
-                                    )}
-                                    {(contactoLocal.empresa || contactoLocal.tamanoEmpresa) && (
-                                        <Typography variant="body2" color="text.secondary">
-                                            🏢 {contactoLocal.empresa || 'Sin empresa'}
-                                            {contactoLocal.tamanoEmpresa && (
-                                                <Chip size="small" label={contactoLocal.tamanoEmpresa} sx={{ ml: 0.5, height: 18, fontSize: '0.7rem' }} />
-                                            )}
-                                        </Typography>
-                                    )}
-                                    {contactoLocal.email && (
-                                        <Typography variant="body2" color="text.secondary">
-                                            ✉️ {contactoLocal.email}
-                                        </Typography>
-                                    )}
-                                </Stack>
-                            </Box>
                         </Paper>
 
                         {/* Scoring: Plan, Intención, Prioridad, Bot */}
@@ -846,26 +950,41 @@ const DrawerDetalleContactoSDR = ({
                         </Paper>
 
                         {/* Datos del Bot (si existen) */}
-                        {contactoLocal.datosBot && (contactoLocal.datosBot.rubro || contactoLocal.datosBot.interes || contactoLocal.datosBot.saludoInicial) && (
-                            <Paper elevation={0} sx={{ p: 2, mb: 2, borderRadius: 3 }}>
+                        {contactoLocal.datosBot && (contactoLocal.datosBot.rubro || contactoLocal.datosBot.interes || contactoLocal.datosBot.saludoInicial || contactoLocal.datosBot.cantidadObras) && (
+                            <Paper elevation={0} sx={{ p: 2, mb: 2, borderRadius: 3, bgcolor: '#e3f2fd', border: '1px solid', borderColor: 'info.light' }}>
                                 <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
-                                    <SmartToyIcon color="action" fontSize="small" />
-                                    <Typography variant="subtitle2">Datos del Bot</Typography>
+                                    <SmartToyIcon color="info" fontSize="small" />
+                                    <Typography variant="subtitle2" color="info.dark">Información del Bot</Typography>
                                 </Stack>
-                                <Stack spacing={0.5}>
+                                <Stack spacing={0.8}>
                                     {contactoLocal.datosBot.rubro && (
-                                        <Typography variant="body2" color="text.secondary">
-                                            🏗️ Rubro: {contactoLocal.datosBot.rubro}
+                                        <Typography variant="body2">
+                                            <strong>🏗️ Rubro:</strong> {contactoLocal.datosBot.rubro}
                                         </Typography>
                                     )}
                                     {contactoLocal.datosBot.interes && (
-                                        <Typography variant="body2" color="text.secondary">
-                                            💡 Interés: {contactoLocal.datosBot.interes}
+                                        <Typography variant="body2">
+                                            <strong>💡 Interés:</strong> {contactoLocal.datosBot.interes === 'probar' ? 'Quiere probar' : contactoLocal.datosBot.interes === 'info' ? 'Pide info' : contactoLocal.datosBot.interes === 'humano' ? 'Pide hablar con humano' : contactoLocal.datosBot.interes === 'usuario_existente' ? 'Usuario existente' : contactoLocal.datosBot.interes}
+                                        </Typography>
+                                    )}
+                                    {contactoLocal.datosBot.cantidadObras && (
+                                        <Typography variant="body2">
+                                            <strong>📊 Cantidad de obras:</strong> {contactoLocal.datosBot.cantidadObras}
                                         </Typography>
                                     )}
                                     {contactoLocal.datosBot.saludoInicial && (
-                                        <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                                        <Typography variant="body2" sx={{ fontStyle: 'italic', bgcolor: 'white', p: 1, borderRadius: 1, mt: 0.5 }}>
                                             💬 "{contactoLocal.datosBot.saludoInicial}"
+                                        </Typography>
+                                    )}
+                                    {contactoLocal.datosBot.interaccionFecha && (
+                                        <Typography variant="caption" color="text.secondary">
+                                            📅 Última interacción: {new Date(contactoLocal.datosBot.interaccionFecha).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                        </Typography>
+                                    )}
+                                    {contactoLocal.datosBot.empresaFirestoreId && (
+                                        <Typography variant="caption" color="text.secondary">
+                                            ✅ Empresa creada en onboarding
                                         </Typography>
                                     )}
                                 </Stack>
@@ -898,104 +1017,229 @@ const DrawerDetalleContactoSDR = ({
                             </Collapse>
                         </Paper>
 
-                        {/* Próximo contacto */}
+                        {/* Próxima tarea — Editor completo */}
                         <Paper elevation={0} sx={{ p: 2, mb: 2, borderRadius: 3 }}>
                             <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1.5 }}>
                                 <Stack direction="row" spacing={1} alignItems="center">
                                     <AccessTimeIcon color="action" fontSize="small" />
-                                    <Typography variant="subtitle2">Próximo contacto</Typography>
+                                    <Typography variant="subtitle2">Próxima tarea</Typography>
                                 </Stack>
                                 {guardandoProximo && <CircularProgress size={16} />}
                             </Stack>
                             
-                            {proximoContactoLocal ? (
-                                <Chip
-                                    icon={<ScheduleIcon />}
-                                    label={proximoInfo?.texto || 'Programado'}
-                                    color={proximoInfo?.color === 'error' ? 'error' : proximoInfo?.color === 'warning' ? 'warning' : 'success'}
-                                    onDelete={() => handleGuardarProximoContacto(null)}
-                                    sx={{ mb: 1.5 }}
-                                />
-                            ) : (
-                                <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-                                    Sin definir
-                                </Typography>
+                            {/* Modo vista */}
+                            {proximoContactoLocal && !editandoTarea ? (
+                                <Box>
+                                    <Stack spacing={0.5} sx={{ mb: 1 }}>
+                                        <Stack direction="row" spacing={0.5} alignItems="center" flexWrap="wrap" useFlexGap>
+                                            {contacto?.proximaTarea?.tipo && (
+                                                <Chip size="small"
+                                                    label={contacto.proximaTarea.tipo === 'llamada' ? '📞 Llamar' : contacto.proximaTarea.tipo === 'whatsapp' ? '💬 WhatsApp' : contacto.proximaTarea.tipo === 'email' ? '✉️ Email' : '📝 Recordatorio'}
+                                                    color="primary" variant="outlined" sx={{ fontWeight: 600, fontSize: '0.7rem' }} />
+                                            )}
+                                            <Chip icon={<ScheduleIcon />}
+                                                label={proximoInfo?.texto || 'Programado'}
+                                                color={proximoInfo?.color === 'error' ? 'error' : proximoInfo?.color === 'warning' ? 'warning' : 'success'} />
+                                        </Stack>
+                                        {contacto?.proximaTarea?.nota && (
+                                            <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic', pl: 0.5 }}>
+                                                💬 {contacto.proximaTarea.nota}
+                                            </Typography>
+                                        )}
+                                    </Stack>
+                                    <Stack direction="row" spacing={0.5}>
+                                        <Button size="small" variant="outlined"
+                                            onClick={() => {
+                                                setEditandoTarea(true);
+                                                setEditTareaTipo(contacto?.proximaTarea?.tipo || null);
+                                                setEditTareaFecha(proximoContactoLocal ? new Date(proximoContactoLocal) : null);
+                                                setEditTareaNota(contacto?.proximaTarea?.nota || '');
+                                            }}
+                                            sx={{ fontSize: '0.7rem', textTransform: 'none' }}>✏️ Modificar</Button>
+                                        <Button size="small" variant="outlined" color="error"
+                                            onClick={() => handleGuardarProximoContacto(null)}
+                                            disabled={guardandoProximo}
+                                            sx={{ fontSize: '0.7rem', textTransform: 'none', minWidth: 'auto' }}>🗑️</Button>
+                                    </Stack>
+                                </Box>
+                            ) : !editandoTarea ? (
+                                <Button size="small" variant="outlined" color="primary"
+                                    onClick={() => { setEditandoTarea(true); setEditTareaTipo(null); setEditTareaFecha(null); setEditTareaNota(''); }}
+                                    sx={{ mb: 1, textTransform: 'none' }}>+ Crear tarea</Button>
+                            ) : null}
+
+                            {/* Editor */}
+                            {editandoTarea && (
+                                <Box sx={{ p: 1.5, bgcolor: 'action.hover', borderRadius: 1, border: '1px solid', borderColor: (editTareaTipo && editTareaFecha) ? 'success.light' : 'warning.light' }}>
+                                    <Typography variant="caption" fontWeight={600} sx={{ mb: 0.5, display: 'block' }}>Tipo</Typography>
+                                    <Stack direction="row" spacing={0.5} sx={{ mb: 1, flexWrap: 'wrap', gap: 0.5 }}>
+                                        {TIPOS_TAREA.map((t) => (
+                                            <Chip key={t.key} size="small"
+                                                icon={<span style={{ fontSize: '0.85rem' }}>{t.icon}</span>}
+                                                label={t.label}
+                                                color={editTareaTipo === t.key ? 'primary' : 'default'}
+                                                variant={editTareaTipo === t.key ? 'filled' : 'outlined'}
+                                                onClick={() => setEditTareaTipo(t.key)}
+                                                sx={{ cursor: 'pointer', fontSize: '0.7rem' }} />
+                                        ))}
+                                    </Stack>
+
+                                    <Typography variant="caption" fontWeight={600} sx={{ mb: 0.5, display: 'block' }}>Fecha</Typography>
+                                    {editTareaFecha ? (
+                                        <Chip size="small"
+                                            label={`📅 ${new Date(editTareaFecha).toLocaleDateString('es-AR', { weekday: 'short', day: 'numeric', month: 'short' })} ${new Date(editTareaFecha).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}`}
+                                            color="success" onDelete={() => setEditTareaFecha(null)} sx={{ fontWeight: 600, mb: 0.5 }} />
+                                    ) : (
+                                        <Stack spacing={0.5} sx={{ mb: 0.5 }}>
+                                            <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap', gap: 0.5 }}>
+                                                {botonesProximoContacto.map((btn) => (
+                                                    <Chip key={btn.label} label={btn.label} size="small" variant="outlined" color="primary"
+                                                        onClick={() => setEditTareaFecha(calcularFecha(btn.cantidad, btn.unidad))}
+                                                        sx={{ cursor: 'pointer', fontSize: '0.7rem' }} />
+                                                ))}
+                                            </Stack>
+                                            <input type="datetime-local" value={editTareaFecha ? fechaParaInput(editTareaFecha) : ''}
+                                                onChange={(e) => { if (e.target.value) setEditTareaFecha(new Date(e.target.value)); }}
+                                                style={{ fontSize: '0.8rem', padding: '4px 8px', borderRadius: 4, border: '1px solid #ccc', width: '100%', boxSizing: 'border-box' }} />
+                                        </Stack>
+                                    )}
+
+                                    <Typography variant="caption" fontWeight={600} sx={{ mt: 1, mb: 0.5, display: 'block' }}>Comentario (opcional)</Typography>
+                                    <input type="text" placeholder="Comentario para la tarea..."
+                                        value={editTareaNota} onChange={(e) => setEditTareaNota(e.target.value)}
+                                        style={{ fontSize: '0.8rem', padding: '4px 8px', borderRadius: 4, border: '1px solid #ccc', width: '100%', boxSizing: 'border-box' }} />
+
+                                    <Stack direction="row" spacing={1} sx={{ mt: 1.5 }}>
+                                        <Button variant="contained" size="small" color="success"
+                                            disabled={!editTareaTipo || !editTareaFecha || guardandoProximo}
+                                            onClick={() => handleGuardarProximaTarea(editTareaTipo, editTareaFecha, editTareaNota)}
+                                            sx={{ flex: 1, textTransform: 'none' }}>
+                                            {guardandoProximo ? <CircularProgress size={18} color="inherit" /> : '💾 Guardar'}
+                                        </Button>
+                                        <Button variant="outlined" size="small"
+                                            onClick={() => { setEditandoTarea(false); setEditTareaTipo(null); setEditTareaFecha(null); setEditTareaNota(''); }}
+                                            sx={{ textTransform: 'none' }}>Cancelar</Button>
+                                    </Stack>
+                                </Box>
                             )}
-                            
-                            {/* Botones rápidos */}
-                            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mb: 1.5 }}>
-                                {botonesProximoContacto.map((btn) => (
-                                    <Chip
-                                        key={btn.label}
-                                        label={btn.label}
-                                        size="small"
-                                        variant={proximoContactoLocal ? 'outlined' : 'filled'}
-                                        color="primary"
-                                        onClick={() => handleGuardarProximoContacto(calcularFecha(btn.cantidad, btn.unidad))}
-                                        disabled={guardandoProximo}
-                                        sx={{ cursor: 'pointer' }}
-                                    />
-                                ))}
-                            </Stack>
-                            
-                            {/* Selector de fecha/hora específica */}
-                            <TextField
-                                type="datetime-local"
-                                size="small"
-                                fullWidth
-                                label="Fecha y hora específica"
-                                value={fechaParaInput(proximoContactoLocal)}
-                                onChange={(e) => {
-                                    if (e.target.value) {
-                                        handleGuardarProximoContacto(new Date(e.target.value));
-                                    }
-                                }}
-                                disabled={guardandoProximo}
-                                InputLabelProps={{ 
-                                    shrink: true,
-                                    sx: { 
-                                        bgcolor: 'white', 
-                                        px: 0.5,
-                                        ml: -0.5
-                                    }
-                                }}
-                                sx={{ 
-                                    '& .MuiOutlinedInput-root': { 
-                                        borderRadius: 2,
-                                        bgcolor: 'grey.50'
-                                    },
-                                    '& .MuiOutlinedInput-input': {
-                                        pt: 1.5
-                                    }
-                                }}
-                            />
                         </Paper>
 
-                        {/* Comentario rápido */}
+                        {/* Comentario rápido + Grabación de audio */}
                         <Paper elevation={0} sx={{ p: 2, mb: 2, borderRadius: 3 }}>
-                            <Stack direction="row" spacing={1}>
-                                <TextField
-                                    fullWidth
-                                    size="small"
-                                    placeholder="Agregar nota rápida..."
-                                    value={nuevoComentario}
-                                    onChange={(e) => setNuevoComentario(e.target.value)}
-                                    disabled={enviandoComentario}
-                                    sx={{ 
-                                        '& .MuiOutlinedInput-root': { 
-                                            borderRadius: 2,
-                                            bgcolor: 'grey.50'
-                                        }
-                                    }}
-                                />
-                                <IconButton 
-                                    color="primary"
-                                    onClick={handleEnviarComentario}
-                                    disabled={!nuevoComentario.trim() || enviandoComentario}
-                                >
-                                    {enviandoComentario ? <CircularProgress size={20} /> : <SendIcon />}
-                                </IconButton>
-                            </Stack>
+                            {/* Indicador de grabación activa */}
+                            {(grabador.estado === 'grabando' || grabador.estado === 'pausado') && (
+                                <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.5, p: 1, bgcolor: grabador.estado === 'grabando' ? 'error.50' : 'warning.50', borderRadius: 2, border: 1, borderColor: grabador.estado === 'grabando' ? 'error.200' : 'warning.200' }}>
+                                    <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: grabador.estado === 'grabando' ? 'error.main' : 'warning.main', animation: grabador.estado === 'grabando' ? 'pulse 1.5s infinite' : 'none', '@keyframes pulse': { '0%, 100%': { opacity: 1 }, '50%': { opacity: 0.3 } } }} />
+                                    <Typography variant="body2" fontWeight={600} color={grabador.estado === 'grabando' ? 'error.main' : 'warning.main'}>
+                                        {grabador.estado === 'grabando' ? 'Grabando...' : 'Pausado'}
+                                    </Typography>
+                                    <Typography variant="body2" fontWeight={700} sx={{ fontFamily: 'monospace' }}>
+                                        {grabador.duracionFormateada}
+                                    </Typography>
+                                    <Box sx={{ flex: 1 }} />
+                                    {grabador.estado === 'grabando' ? (
+                                        <IconButton size="small" onClick={grabador.pausar} sx={{ color: 'warning.main' }}>
+                                            <PauseIcon fontSize="small" />
+                                        </IconButton>
+                                    ) : (
+                                        <IconButton size="small" onClick={grabador.reanudar} sx={{ color: 'success.main' }}>
+                                            <PlayArrowIcon fontSize="small" />
+                                        </IconButton>
+                                    )}
+                                    <IconButton size="small" onClick={grabador.detener} sx={{ color: 'error.main' }}>
+                                        <StopIcon fontSize="small" />
+                                    </IconButton>
+                                </Stack>
+                            )}
+
+                            {/* Audio listo para enviar */}
+                            {grabador.estado === 'detenido' && grabador.audioBlob && (
+                                <Stack spacing={1} sx={{ mb: 1.5, p: 1.5, bgcolor: 'success.50', borderRadius: 2, border: 1, borderColor: 'success.200' }}>
+                                    <Stack direction="row" alignItems="center" spacing={1}>
+                                        <GraphicEqIcon sx={{ color: 'success.main' }} />
+                                        <Typography variant="body2" fontWeight={600} color="success.dark">
+                                            Audio listo ({grabador.duracionFormateada})
+                                        </Typography>
+                                        <Box sx={{ flex: 1 }} />
+                                        <IconButton size="small" onClick={grabador.limpiar} sx={{ color: 'text.secondary' }}>
+                                            <DeleteOutlineIcon fontSize="small" />
+                                        </IconButton>
+                                    </Stack>
+                                    <audio 
+                                        controls 
+                                        src={URL.createObjectURL(grabador.audioBlob)} 
+                                        style={{ width: '100%', height: 36 }} 
+                                    />
+                                    <TextField
+                                        fullWidth
+                                        size="small"
+                                        placeholder="Agregar nota al audio (opcional)..."
+                                        value={nuevoComentario}
+                                        onChange={(e) => setNuevoComentario(e.target.value)}
+                                        sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2, bgcolor: 'white' } }}
+                                    />
+                                    <Button
+                                        variant="contained"
+                                        color="success"
+                                        size="small"
+                                        startIcon={subiendoAudio ? <CircularProgress size={16} color="inherit" /> : <SendIcon />}
+                                        onClick={handleEnviarAudio}
+                                        disabled={subiendoAudio}
+                                        fullWidth
+                                        sx={{ textTransform: 'none', borderRadius: 2 }}
+                                    >
+                                        {subiendoAudio ? 'Subiendo y transcribiendo...' : 'Enviar audio'}
+                                    </Button>
+                                </Stack>
+                            )}
+
+                            {/* Error de grabación */}
+                            {grabador.error && (
+                                <Typography variant="caption" color="error" sx={{ mb: 1, display: 'block' }}>
+                                    {grabador.error}
+                                </Typography>
+                            )}
+
+                            {/* Input de texto + botones */}
+                            {grabador.estado !== 'detenido' && (
+                                <Stack direction="row" spacing={1}>
+                                    <TextField
+                                        fullWidth
+                                        size="small"
+                                        placeholder="Agregar nota rápida..."
+                                        value={nuevoComentario}
+                                        onChange={(e) => setNuevoComentario(e.target.value)}
+                                        disabled={enviandoComentario || grabador.estado === 'grabando' || grabador.estado === 'pausado'}
+                                        sx={{ 
+                                            '& .MuiOutlinedInput-root': { 
+                                                borderRadius: 2,
+                                                bgcolor: 'grey.50'
+                                            }
+                                        }}
+                                    />
+                                    {grabador.estado === 'inactivo' && (
+                                        <Tooltip title="Grabar audio">
+                                            <IconButton 
+                                                color="error"
+                                                onClick={grabador.iniciar}
+                                                sx={{ 
+                                                    bgcolor: 'error.50',
+                                                    '&:hover': { bgcolor: 'error.100' }
+                                                }}
+                                            >
+                                                <MicIcon />
+                                            </IconButton>
+                                        </Tooltip>
+                                    )}
+                                    <IconButton 
+                                        color="primary"
+                                        onClick={handleEnviarComentario}
+                                        disabled={!nuevoComentario.trim() || enviandoComentario || grabador.estado !== 'inactivo'}
+                                    >
+                                        {enviandoComentario ? <CircularProgress size={20} /> : <SendIcon />}
+                                    </IconButton>
+                                </Stack>
+                            )}
                         </Paper>
 
                         {/* Historial - Colapsable */}
@@ -1045,6 +1289,21 @@ const DrawerDetalleContactoSDR = ({
                                                         <Typography variant="body2" fontWeight={500}>
                                                             {evento.descripcion}
                                                         </Typography>
+                                                        {(evento.audioUrl || evento.metadata?.audioUrl) && (
+                                                            <Box sx={{ mt: 1 }}>
+                                                                <audio 
+                                                                    controls 
+                                                                    src={evento.audioUrl || evento.metadata?.audioUrl} 
+                                                                    style={{ width: '100%', height: 32 }} 
+                                                                    preload="none"
+                                                                />
+                                                                {(evento.transcripcion || evento.metadata?.transcripcion) && (
+                                                                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5, fontStyle: 'italic', lineHeight: 1.3 }}>
+                                                                        📝 {evento.transcripcion || evento.metadata?.transcripcion}
+                                                                    </Typography>
+                                                                )}
+                                                            </Box>
+                                                        )}
                                                         {evento.nota && (
                                                             <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic', mt: 0.5 }}>
                                                                 "{evento.nota}"
@@ -1310,10 +1569,7 @@ const DrawerDetalleContactoSDR = ({
                         </Stack>
                     </Stack>
                     
-                    {/* Nombre y estado */}
-                    <Typography variant="h6" sx={{ mt: 1, fontWeight: 600 }}>
-                        {contactoLocal.nombre}
-                    </Typography>
+                    {/* Estado y metadatos */}
                     <Stack direction="row" spacing={1} mt={1} alignItems="center" flexWrap="wrap">
                         <EstadoChipEditable 
                             estado={contactoLocal.estado} 
@@ -1341,6 +1597,9 @@ const DrawerDetalleContactoSDR = ({
                             />
                         )}
                     </Stack>
+
+                    {/* Contadores de actividad */}
+                    <ContadoresActividad contadores={contactoLocal.contadores} />
                 </Box>
 
                 {/* Tabs: Info | Actividad */}
@@ -1377,9 +1636,29 @@ const DrawerDetalleContactoSDR = ({
                 {drawerTab === 0 && (
                 <Box sx={{ flex: 1, overflow: 'auto', p: 2 }}>
 
-                {/* Info del contacto */}
-                    <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
-                        <Typography variant="subtitle2" color="text.secondary">Información</Typography>
+                {/* Nombre y datos principales */}
+                    <Stack direction="row" justifyContent="space-between" alignItems="flex-start" sx={{ mb: 2 }}>
+                        <Box>
+                            <Typography variant="h5" fontWeight={700}>
+                                {contactoLocal.nombre}
+                            </Typography>
+                            {contactoLocal.cargo && (
+                                <Typography variant="body2" color="text.secondary">
+                                    {contactoLocal.cargo}
+                                </Typography>
+                            )}
+                            {contactoLocal.empresa && (
+                                <Stack direction="row" spacing={0.5} alignItems="center" sx={{ mt: 0.3 }}>
+                                    <BusinessIcon fontSize="small" color="action" sx={{ fontSize: 16 }} />
+                                    <Typography variant="body2" color="text.secondary">
+                                        {contactoLocal.empresa}
+                                        {contactoLocal.tamanoEmpresa && (
+                                            <Chip size="small" label={contactoLocal.tamanoEmpresa} sx={{ ml: 0.5, height: 18, fontSize: '0.7rem' }} />
+                                        )}
+                                    </Typography>
+                                </Stack>
+                            )}
+                        </Box>
                         <Button
                             size="small"
                             startIcon={<EditIcon />}
@@ -1388,27 +1667,19 @@ const DrawerDetalleContactoSDR = ({
                             Editar
                         </Button>
                     </Stack>
-                    <Stack spacing={1.5}>
-                        {(contactoLocal.empresa || contactoLocal.tamanoEmpresa) && (
-                            <Stack direction="row" spacing={1} alignItems="center">
-                                <BusinessIcon fontSize="small" color="action" />
-                                <Typography variant="body2">
-                                    {contactoLocal.empresa || 'Sin empresa'}
-                                    {contactoLocal.tamanoEmpresa && (
-                                        <Chip size="small" label={contactoLocal.tamanoEmpresa} sx={{ ml: 0.5, height: 18, fontSize: '0.7rem' }} />
-                                    )}
-                                </Typography>
-                            </Stack>
-                        )}
-                        {contactoLocal.cargo && (
-                            <Stack direction="row" spacing={1} alignItems="center">
-                                <PersonIcon fontSize="small" color="action" />
-                                <Typography variant="body2">{contactoLocal.cargo}</Typography>
-                            </Stack>
-                        )}
+
+                {/* Datos de contacto */}
+                    <Paper variant="outlined" sx={{ p: 1.5, mb: 2, borderRadius: 2 }}>
+                    <Stack spacing={1}>
                         <Stack direction="row" spacing={1} alignItems="center">
                             <PhoneIcon fontSize="small" color="action" />
-                            <Typography variant="body2">{contactoLocal.telefono}</Typography>
+                            <Typography variant="body2" fontWeight={500}>{contactoLocal.telefono}</Typography>
+                            <IconButton size="small" href={getTelLink(contactoLocal.telefono)} sx={{ p: 0.3 }}>
+                                <CallIcon fontSize="small" color="success" />
+                            </IconButton>
+                            <IconButton size="small" href={getWhatsAppLink(contactoLocal.telefono)} target="_blank" sx={{ p: 0.3 }}>
+                                <WhatsAppIcon fontSize="small" sx={{ color: '#25D366' }} />
+                            </IconButton>
                         </Stack>
                         {/* Teléfonos secundarios */}
                         {contactoLocal.telefonosSecundarios?.map((tel, i) => (
@@ -1427,9 +1698,10 @@ const DrawerDetalleContactoSDR = ({
                             </Stack>
                         )}
                     </Stack>
+                    </Paper>
 
                     {/* Botones de contacto */}
-                    <Stack direction="row" spacing={1} mt={2} flexWrap="wrap" useFlexGap>
+                    <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
                         <Button
                             variant="contained"
                             size="small"
@@ -1528,91 +1800,143 @@ const DrawerDetalleContactoSDR = ({
                     </Box>
 
                     {/* Datos del Bot (si existen) */}
-                    {contactoLocal.datosBot && (contactoLocal.datosBot.rubro || contactoLocal.datosBot.interes || contactoLocal.datosBot.saludoInicial) && (
-                        <Box sx={{ mt: 1.5, p: 1.5, bgcolor: 'grey.50', borderRadius: 1 }}>
+                    {contactoLocal.datosBot && (contactoLocal.datosBot.rubro || contactoLocal.datosBot.interes || contactoLocal.datosBot.saludoInicial || contactoLocal.datosBot.cantidadObras) && (
+                        <Box sx={{ mt: 1.5, p: 1.5, bgcolor: '#e3f2fd', borderRadius: 1, border: '1px solid', borderColor: 'info.light' }}>
                             <Stack direction="row" spacing={1} alignItems="center" mb={1}>
-                                <SmartToyIcon fontSize="small" color="action" />
-                                <Typography variant="subtitle2">Datos del Bot</Typography>
+                                <SmartToyIcon fontSize="small" color="info" />
+                                <Typography variant="subtitle2" color="info.dark">Información del Bot</Typography>
                             </Stack>
-                            <Stack spacing={0.5}>
+                            <Stack spacing={0.8}>
                                 {contactoLocal.datosBot.rubro && (
-                                    <Typography variant="body2" color="text.secondary">
-                                        🏗️ Rubro: {contactoLocal.datosBot.rubro}
+                                    <Typography variant="body2">
+                                        <strong>🏗️ Rubro:</strong> {contactoLocal.datosBot.rubro}
                                     </Typography>
                                 )}
                                 {contactoLocal.datosBot.interes && (
-                                    <Typography variant="body2" color="text.secondary">
-                                        💡 Interés: {contactoLocal.datosBot.interes}
+                                    <Typography variant="body2">
+                                        <strong>💡 Interés:</strong> {contactoLocal.datosBot.interes === 'probar' ? 'Quiere probar' : contactoLocal.datosBot.interes === 'info' ? 'Pide info' : contactoLocal.datosBot.interes === 'humano' ? 'Pide hablar con humano' : contactoLocal.datosBot.interes === 'usuario_existente' ? 'Usuario existente' : contactoLocal.datosBot.interes}
+                                    </Typography>
+                                )}
+                                {contactoLocal.datosBot.cantidadObras && (
+                                    <Typography variant="body2">
+                                        <strong>📊 Cantidad de obras:</strong> {contactoLocal.datosBot.cantidadObras}
                                     </Typography>
                                 )}
                                 {contactoLocal.datosBot.saludoInicial && (
-                                    <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                                    <Typography variant="body2" sx={{ fontStyle: 'italic', bgcolor: 'white', p: 1, borderRadius: 1, mt: 0.5 }}>
                                         💬 "{contactoLocal.datosBot.saludoInicial}"
+                                    </Typography>
+                                )}
+                                {contactoLocal.datosBot.interaccionFecha && (
+                                    <Typography variant="caption" color="text.secondary">
+                                        📅 Última interacción: {new Date(contactoLocal.datosBot.interaccionFecha).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                    </Typography>
+                                )}
+                                {contactoLocal.datosBot.empresaFirestoreId && (
+                                    <Typography variant="caption" color="text.secondary">
+                                        ✅ Empresa creada en onboarding
                                     </Typography>
                                 )}
                             </Stack>
                         </Box>
                     )}
 
-                    {/* Próximo Contacto */}
+                    {/* Próxima Tarea — Editor compacto */}
                     <Box sx={{ mt: 2, p: 1.5, bgcolor: 'grey.50', borderRadius: 1 }}>
                         <Stack direction="row" spacing={1} alignItems="center" mb={1}>
                             <AccessTimeIcon fontSize="small" color="action" />
-                            <Typography variant="subtitle2">Próximo contacto</Typography>
+                            <Typography variant="subtitle2">Próxima tarea</Typography>
                             {guardandoProximo && <CircularProgress size={14} />}
                         </Stack>
                         
-                        {proximoContactoLocal ? (
-                            <Chip
-                                size="small"
-                                icon={<ScheduleIcon />}
-                                label={proximoInfo?.texto || 'Programado'}
-                                color={proximoInfo?.color === 'error' ? 'error' : proximoInfo?.color === 'warning' ? 'warning' : 'success'}
-                                onDelete={() => handleGuardarProximoContacto(null)}
-                                sx={{ mb: 1 }}
-                            />
-                        ) : (
-                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-                                No definido
-                            </Typography>
+                        {/* Modo vista */}
+                        {proximoContactoLocal && !editandoTarea ? (
+                            <Box>
+                                <Stack spacing={0.5} sx={{ mb: 1 }}>
+                                    <Stack direction="row" spacing={0.5} alignItems="center" flexWrap="wrap" useFlexGap>
+                                        {contacto?.proximaTarea?.tipo && (
+                                            <Chip size="small"
+                                                label={contacto.proximaTarea.tipo === 'llamada' ? '📞 Llamar' : contacto.proximaTarea.tipo === 'whatsapp' ? '💬 WA' : contacto.proximaTarea.tipo === 'email' ? '✉️ Email' : '📝'}
+                                                color="primary" variant="outlined" sx={{ fontWeight: 600, fontSize: '0.65rem', height: 22 }} />
+                                        )}
+                                        <Chip size="small" icon={<ScheduleIcon />}
+                                            label={proximoInfo?.texto || 'Programado'}
+                                            color={proximoInfo?.color === 'error' ? 'error' : proximoInfo?.color === 'warning' ? 'warning' : 'success'} />
+                                    </Stack>
+                                    {contacto?.proximaTarea?.nota && (
+                                        <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic', fontSize: '0.65rem' }}>
+                                            💬 {contacto.proximaTarea.nota}
+                                        </Typography>
+                                    )}
+                                </Stack>
+                                <Stack direction="row" spacing={0.5}>
+                                    <Button size="small" variant="outlined"
+                                        onClick={() => {
+                                            setEditandoTarea(true);
+                                            setEditTareaTipo(contacto?.proximaTarea?.tipo || null);
+                                            setEditTareaFecha(proximoContactoLocal ? new Date(proximoContactoLocal) : null);
+                                            setEditTareaNota(contacto?.proximaTarea?.nota || '');
+                                        }}
+                                        sx={{ fontSize: '0.65rem', textTransform: 'none' }}>✏️ Modificar</Button>
+                                    <Button size="small" variant="outlined" color="error"
+                                        onClick={() => handleGuardarProximoContacto(null)} disabled={guardandoProximo}
+                                        sx={{ fontSize: '0.65rem', textTransform: 'none', minWidth: 'auto' }}>🗑️</Button>
+                                </Stack>
+                            </Box>
+                        ) : !editandoTarea ? (
+                            <Button size="small" variant="outlined" color="primary"
+                                onClick={() => { setEditandoTarea(true); setEditTareaTipo(null); setEditTareaFecha(null); setEditTareaNota(''); }}
+                                sx={{ mb: 1, textTransform: 'none', fontSize: '0.7rem' }}>+ Crear tarea</Button>
+                        ) : null}
+
+                        {/* Editor */}
+                        {editandoTarea && (
+                            <Box sx={{ p: 1, bgcolor: 'white', borderRadius: 1, border: '1px solid', borderColor: (editTareaTipo && editTareaFecha) ? 'success.light' : 'warning.light' }}>
+                                <Stack direction="row" spacing={0.5} sx={{ mb: 1, flexWrap: 'wrap', gap: 0.5 }}>
+                                    {TIPOS_TAREA.map((t) => (
+                                        <Chip key={t.key} size="small"
+                                            icon={<span style={{ fontSize: '0.8rem' }}>{t.icon}</span>}
+                                            label={t.label}
+                                            color={editTareaTipo === t.key ? 'primary' : 'default'}
+                                            variant={editTareaTipo === t.key ? 'filled' : 'outlined'}
+                                            onClick={() => setEditTareaTipo(t.key)}
+                                            sx={{ cursor: 'pointer', fontSize: '0.65rem' }} />
+                                    ))}
+                                </Stack>
+                                {editTareaFecha ? (
+                                    <Chip size="small"
+                                        label={`📅 ${new Date(editTareaFecha).toLocaleDateString('es-AR', { weekday: 'short', day: 'numeric', month: 'short' })} ${new Date(editTareaFecha).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}`}
+                                        color="success" onDelete={() => setEditTareaFecha(null)} sx={{ fontWeight: 600, mb: 0.5, fontSize: '0.7rem' }} />
+                                ) : (
+                                    <Stack spacing={0.5} sx={{ mb: 0.5 }}>
+                                        <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap', gap: 0.5 }}>
+                                            {botonesProximoContacto.map((btn) => (
+                                                <Button key={btn.label} size="small" variant="outlined"
+                                                    onClick={() => setEditTareaFecha(calcularFecha(btn.cantidad, btn.unidad))}
+                                                    sx={{ minWidth: 'auto', px: 0.8, py: 0.2, fontSize: '0.65rem', textTransform: 'none' }}>{btn.label}</Button>
+                                            ))}
+                                        </Stack>
+                                        <input type="datetime-local" value={editTareaFecha ? fechaParaInput(editTareaFecha) : ''}
+                                            onChange={(e) => { if (e.target.value) setEditTareaFecha(new Date(e.target.value)); }}
+                                            style={{ fontSize: '0.75rem', padding: '3px 6px', borderRadius: 4, border: '1px solid #ccc', width: '100%', boxSizing: 'border-box' }} />
+                                    </Stack>
+                                )}
+                                <input type="text" placeholder="Comentario (opcional)..."
+                                    value={editTareaNota} onChange={(e) => setEditTareaNota(e.target.value)}
+                                    style={{ fontSize: '0.75rem', padding: '3px 6px', borderRadius: 4, border: '1px solid #ccc', width: '100%', boxSizing: 'border-box', marginTop: 4 }} />
+                                <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
+                                    <Button variant="contained" size="small" color="success"
+                                        disabled={!editTareaTipo || !editTareaFecha || guardandoProximo}
+                                        onClick={() => handleGuardarProximaTarea(editTareaTipo, editTareaFecha, editTareaNota)}
+                                        sx={{ flex: 1, textTransform: 'none', fontSize: '0.7rem' }}>
+                                        {guardandoProximo ? <CircularProgress size={16} color="inherit" /> : '💾 Guardar'}
+                                    </Button>
+                                    <Button variant="outlined" size="small"
+                                        onClick={() => { setEditandoTarea(false); setEditTareaTipo(null); setEditTareaFecha(null); setEditTareaNota(''); }}
+                                        sx={{ textTransform: 'none', fontSize: '0.7rem' }}>Cancelar</Button>
+                                </Stack>
+                            </Box>
                         )}
-                        
-                        {/* Botones rápidos */}
-                        <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap sx={{ mb: 1 }}>
-                            {botonesProximoContacto.map((btn) => (
-                                <Button
-                                    key={btn.label}
-                                    size="small"
-                                    variant={proximoContactoLocal ? 'text' : 'outlined'}
-                                    onClick={() => handleGuardarProximoContacto(calcularFecha(btn.cantidad, btn.unidad))}
-                                    disabled={guardandoProximo}
-                                    sx={{ 
-                                        minWidth: 'auto', 
-                                        px: 1,
-                                        fontSize: '0.7rem'
-                                    }}
-                                >
-                                    {btn.label}
-                                </Button>
-                            ))}
-                        </Stack>
-                        
-                        {/* Selector de fecha/hora específica */}
-                        <TextField
-                            type="datetime-local"
-                            size="small"
-                            fullWidth
-                            label="Elegir fecha/hora"
-                            value={fechaParaInput(proximoContactoLocal)}
-                            onChange={(e) => {
-                                if (e.target.value) {
-                                    handleGuardarProximoContacto(new Date(e.target.value));
-                                }
-                            }}
-                            disabled={guardandoProximo}
-                            InputLabelProps={{ shrink: true }}
-                            sx={{ mt: 1 }}
-                        />
                     </Box>
                     
                     {/* Botón Siguiente contacto prominente */}
@@ -1787,6 +2111,21 @@ const DrawerDetalleContactoSDR = ({
                                                 <Typography variant="body2" fontWeight={500}>
                                                     {evento.descripcion}
                                                 </Typography>
+                                                {(evento.audioUrl || evento.metadata?.audioUrl) && (
+                                                    <Box sx={{ mt: 1 }}>
+                                                        <audio 
+                                                            controls 
+                                                            src={evento.audioUrl || evento.metadata?.audioUrl} 
+                                                            style={{ width: '100%', height: 32 }} 
+                                                            preload="none"
+                                                        />
+                                                        {(evento.transcripcion || evento.metadata?.transcripcion) && (
+                                                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5, fontStyle: 'italic', lineHeight: 1.3 }}>
+                                                                📝 {evento.transcripcion || evento.metadata?.transcripcion}
+                                                            </Typography>
+                                                        )}
+                                                    </Box>
+                                                )}
                                                 {evento.nota && (
                                                     <Typography 
                                                         variant="body2" 

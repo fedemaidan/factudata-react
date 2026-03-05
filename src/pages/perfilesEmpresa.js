@@ -33,6 +33,14 @@ const PerfilesEmpresaPage = () => {
   const [isTransferLoading, setIsTransferLoading] = useState(false);
   const [transferModalOpen, setTransferModalOpen] = useState(false);
   const [alert, setAlert] = useState({ open: false, message: '', severity: 'info' });
+  const [soloActivas, setSoloActivas] = useState(true);
+
+  const profilesVisibles = soloActivas
+    ? profiles.filter(p => {
+        const ocultos = p.permisosOcultos || [];
+        return !ocultos.includes('VER_MI_CAJA_CHICA');
+      })
+    : profiles;
 
   const fetchProfiles = async () => {
     if (!user?.empresa) return;
@@ -101,12 +109,19 @@ const PerfilesEmpresaPage = () => {
           <Stack spacing={3}>
             <Typography variant="h4">Cajas Chicas de la Empresa</Typography>
 
-            <Box display="flex" justifyContent="flex-end" gap={2}>
+            <Box display="flex" justifyContent="flex-end" alignItems="center" gap={2}>
+              <Button
+                variant={soloActivas ? 'contained' : 'outlined'}
+                size="small"
+                onClick={() => setSoloActivas(!soloActivas)}
+              >
+                {soloActivas ? 'Solo activas' : 'Todas'}
+              </Button>
               <Button 
                 variant="contained" 
                 color="primary"
                 onClick={handleOpenTransferModal}
-                disabled={profiles.length < 2}
+                disabled={profilesVisibles.length < 2}
               >
                 Transferir
               </Button>
@@ -131,7 +146,7 @@ const PerfilesEmpresaPage = () => {
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {profiles.map((profile) => (
+                    {profilesVisibles.map((profile) => (
                       <TableRow key={profile.id}>
                         <TableCell>{`${profile.firstName} ${profile.lastName}`}</TableCell>
                         <TableCell>{profile.email}</TableCell>

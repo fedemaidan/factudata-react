@@ -79,6 +79,8 @@ const DataTabTable = ({
   onFiltroFechaChange = null,
   onOptionChange = null,
   showSaldoColumn = false,
+  useBackendComputedSaldo = false,
+  backendTotals = null,
 }) => {
   const [busqueda, setBusqueda] = useState("");
   const [internalFiltroFecha, setInternalFiltroFecha] = useState(filtroFecha);
@@ -204,11 +206,21 @@ const DataTabTable = ({
 
     if (showSearch && busqueda.trim()) {
       const q = busqueda.toLowerCase();
-      rows = rows.filter((r) =>
-        [r.cliente, r.monto && String(r.monto)].some(
-          (v) => v && String(v).toLowerCase().includes(q)
-        )
-      );
+      rows = rows.filter((r) => {
+        const values = Object.values(r || {}).flatMap((value) => {
+          if (value == null) return [];
+          if (typeof value === "object") {
+            return Object.values(value);
+          }
+          return [value];
+        });
+        const hayTexto = values.some((v) => {
+          const text = String(v);
+          if (!text) return false;
+          return text.toLowerCase().includes(q);
+        });
+        return hayTexto;
+      });
     }
 
     if (showDateFilterOptions) {
@@ -273,22 +285,25 @@ const DataTabTable = ({
   const groupedWithSaldo = useMemo(() => {
     const map = new Map();
     for (const [key, itemsArr] of grouped.entries()) {
-      // const asc = [...itemsArr].sort((a, b) => getTimeSafe(a.fecha) - getTimeSafe(b.fecha));
-      const computedAsc = agregarSaldoCalculado(itemsArr);
-      const byId = new Map(computedAsc.map((it) => [it.id, it]));
-      const merged = itemsArr.map((it) => {
-        const comp = byId.get(it.id) || {};
-        return {
-          ...it,
-          debe: comp.debe ?? it.debe,
-          haber: comp.haber ?? it.haber,
-          saldoAcumulado: comp.saldoAcumulado ?? it.saldoAcumulado,
-        };
-      });
-      map.set(key, merged);
+      if (useBackendComputedSaldo) {
+        map.set(key, itemsArr);
+      } else {
+        const computedAsc = agregarSaldoCalculado(itemsArr);
+        const byId = new Map(computedAsc.map((it) => [it.id, it]));
+        const merged = itemsArr.map((it) => {
+          const comp = byId.get(it.id) || {};
+          return {
+            ...it,
+            debe: comp.debe ?? it.debe,
+            haber: comp.haber ?? it.haber,
+            saldoAcumulado: comp.saldoAcumulado ?? it.saldoAcumulado,
+          };
+        });
+        map.set(key, merged);
+      }
     }
     return map;
-  }, [grouped]);
+  }, [grouped, useBackendComputedSaldo]);
 
   const paginatedGrouped = useMemo(() => {
     const map = new Map();
@@ -302,12 +317,18 @@ const DataTabTable = ({
 
   const totals = useMemo(() => {
     const res = new Map();
+    if (backendTotals && typeof backendTotals === "object") {
+      for (const [k] of grouped.entries()) {
+        res.set(k, Number(backendTotals?.[k] || 0));
+      }
+      return res;
+    }
     for (const [k, arr] of grouped.entries()) {
       const sum = arr.reduce((acc, it) => acc + (it.monto || 0), 0);
       res.set(k, sum);
     }
     return res;
-  }, [grouped]);
+  }, [grouped, backendTotals]);
 
   // Exportar a Excel (pestaña actual) — con Debe/Haber/Saldo acumulado y números puros
   const handleExportExcel = () => {
