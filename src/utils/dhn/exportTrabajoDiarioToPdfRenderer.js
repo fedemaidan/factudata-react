@@ -1,5 +1,16 @@
 import { pdf } from '@react-pdf/renderer';
+import api from 'src/services/axiosConfig';
+import { getImageProxyUrl } from 'src/services/proxyService';
 import { PdfTrabajoDiarioDocument } from './PdfTrabajoDiarioDocument';
+
+const USE_PROXY_ORIGINS = ['storage.googleapis.com', 'firebasestorage.googleapis.com'];
+const COMPROBANTE_TIPOS_IMAGEN = ['licencia', 'parte'];
+
+const shouldUseProxy = (url, comprobanteType) =>
+  url &&
+  typeof url === 'string' &&
+  COMPROBANTE_TIPOS_IMAGEN.includes(comprobanteType) &&
+  USE_PROXY_ORIGINS.some((o) => url.includes(o));
 
 const downloadBlob = (blob, filename) => {
   const url = window.URL.createObjectURL(blob);
@@ -69,12 +80,19 @@ const isImageLikeSource = (value) => {
   return BASE64_REGEX.test(normalized);
 };
 
-const convertImageUrlToPngDataUrl = async (url) => {
-  const response = await fetch(url, { method: 'GET', cache: 'no-store' });
-  if (!response.ok) {
-    throw new Error(`HTTP ${response.status}`);
+const convertImageUrlToPngDataUrl = async (url, comprobanteType) => {
+  let blob;
+  if (shouldUseProxy(url, comprobanteType)) {
+    const proxyUrl = getImageProxyUrl(url);
+    const res = await api.get(proxyUrl, { responseType: 'blob' });
+    blob = res.data;
+  } else {
+    const response = await fetch(url, { method: 'GET', cache: 'no-store' });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    blob = await response.blob();
   }
-  const blob = await response.blob();
   if (!blob || blob.size === 0) {
     throw new Error('Blob de imagen vacío');
   }
@@ -86,72 +104,79 @@ const convertImageUrlToPngDataUrl = async (url) => {
       img.onerror = () => reject(new Error('No se pudo decodificar la imagen'));
       img.src = objectUrl;
     });
+    const w = image.naturalWidth || image.width || 1;
+    const h = image.naturalHeight || image.height || 1;
     const canvas = document.createElement('canvas');
-    canvas.width = image.naturalWidth || image.width || 1;
-    canvas.height = image.naturalHeight || image.height || 1;
+    canvas.width = w;
+    canvas.height = h;
     const ctx = canvas.getContext('2d');
     if (!ctx) {
       throw new Error('No se pudo obtener contexto 2D');
     }
     ctx.drawImage(image, 0, 0);
-    return canvas.toDataURL('image/png');
+    return { dataUrl: canvas.toDataURL('image/png'), width: w, height: h };
   } finally {
     URL.revokeObjectURL(objectUrl);
   }
 };
 
-const resolveImageSourceForPdf = async (rawUrl) => {
+const resolveImageSourceForPdf = async (rawUrl, comprobanteType) => {
   const normalized = normalizeImageSource(rawUrl);
   if (!normalized) return null;
   if (!isImageLikeSource(normalized)) return null;
-  if (normalized.startsWith('data:image/')) return normalized;
+  if (normalized.startsWith('data:image/')) {
+    return { dataUrl: normalized, width: null, height: null };
+  }
   try {
-    // Workaround recomendado para casos donde react-pdf no renderiza ciertos JPEG.
-    return await convertImageUrlToPngDataUrl(normalized);
+    return await convertImageUrlToPngDataUrl(normalized, comprobanteType);
   } catch (error) {
     console.warn('[PDF] No se pudo convertir a PNG, se usa URL original:', normalized, error);
-    return normalized;
+    return { dataUrl: normalized, width: null, height: null };
   }
 };
 
-const getSrcKind = (value) => {
-  if (!value) return 'none';
-  if (value.startsWith('data:image/')) return 'data-url';
-  if (value.startsWith('http')) return 'http-url';
-  return 'other';
-};
-
 const buildTrabajoPdfPayload = async (trabajo) => {
-  const comprobantes = Array.isArray(trabajo?.comprobantes) ? trabajo.comprobantes : [];
+  const todosComprobantes = Array.isArray(trabajo?.comprobantes) ? trabajo.comprobantes : [];
+  const comprobantes = todosComprobantes.filter(
+    (c) => COMPROBANTE_TIPOS_IMAGEN.includes(c?.type || '')
+  );
   if (comprobantes.length === 0) {
     return { ...trabajo, comprobantes: [] };
   }
 
   const comprobantesConImagen = await Promise.all(
     comprobantes.map(async (comprobante, index) => {
+      const comprobanteType = comprobante?.type || '';
       const normalizedUrl = normalizeImageSource(comprobante?.url);
       const isImageComprobante = isImageLikeSource(normalizedUrl || '');
       let imageSrc = null;
+      let imageWidth = null;
+      let imageHeight = null;
       try {
         if (isImageComprobante) {
-          imageSrc = await resolveImageSourceForPdf(comprobante?.url);
+          const result = await resolveImageSourceForPdf(comprobante?.url, comprobanteType);
+          if (result) {
+            imageSrc = result.dataUrl;
+            imageWidth = result.width;
+            imageHeight = result.height;
+          }
         }
       } catch (error) {
         console.warn('[PDF] Error resolviendo imagen de comprobante', error);
       }
       console.log('[PDF] comprobante', {
         index,
-        type: comprobante?.type || null,
+        type: comprobanteType || null,
         hasUrl: Boolean(comprobante?.url),
-        ignoredNonImage: !isImageComprobante,
-        normalizedUrl,
-        normalizedKind: getSrcKind(normalizedUrl || ''),
-        imageSrcKind: getSrcKind(imageSrc || ''),
-        imageSrcLength: imageSrc?.length || 0,
+        useProxy: shouldUseProxy(comprobante?.url, comprobanteType),
+        imageWidth,
+        imageHeight,
       });
       return {
         ...comprobante,
         imageSrc,
+        imageWidth,
+        imageHeight,
       };
     })
   );

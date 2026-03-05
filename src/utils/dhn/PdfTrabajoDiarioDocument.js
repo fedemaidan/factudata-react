@@ -92,17 +92,16 @@ const styles = StyleSheet.create({
     borderColor: '#d1d1d1',
     borderRadius: 4,
     backgroundColor: '#fafafa',
+    overflow: 'visible',
   },
   comprobanteLabel: {
     fontSize: 9,
     fontWeight: 'bold',
   },
-  comprobanteImage: {
+  comprobanteImageBase: {
     marginTop: 6,
-    width: '100%',
-    height: 170,
     borderRadius: 3,
-    objectFit: 'cover',
+    objectFit: 'contain',
   },
   footerNote: {
     marginTop: 12,
@@ -138,6 +137,22 @@ const capitalize = (value) => {
   return value.charAt(0).toUpperCase() + value.slice(1);
 };
 
+const PAGE_CONTENT_WIDTH = 555;
+const MAX_IMAGE_HEIGHT = 550;
+
+const getImageDimensions = (imageWidth, imageHeight) => {
+  if (!imageWidth || !imageHeight || imageWidth <= 0 || imageHeight <= 0) {
+    return { width: PAGE_CONTENT_WIDTH, height: MAX_IMAGE_HEIGHT };
+  }
+  const scaleW = PAGE_CONTENT_WIDTH / imageWidth;
+  const scaleH = MAX_IMAGE_HEIGHT / imageHeight;
+  const scale = Math.min(scaleW, scaleH, 1);
+  return {
+    width: Math.round(imageWidth * scale),
+    height: Math.round(imageHeight * scale),
+  };
+};
+
 export const PdfTrabajoDiarioDocument = ({ trabajo }) => {
   const trabajador = trabajo?.trabajadorId || trabajo?.trabajador || {};
   const apellido = trabajador?.apellido || '';
@@ -148,8 +163,11 @@ export const PdfTrabajoDiarioDocument = ({ trabajo }) => {
   const hasHoras = (Array.isArray(trabajo?.comprobantes) ? trabajo.comprobantes : []).some(
     (c) => (c?.type || '').toString().toLowerCase() === 'horas'
   );
+  const COMPROBANTE_TIPOS_IMAGEN = ['licencia', 'parte'];
   const comprobantesConImagen = (Array.isArray(trabajo?.comprobantes) ? trabajo.comprobantes : []).filter(
-    (comprobante) => Boolean(comprobante?.imageSrc || comprobante?.url)
+    (comprobante) =>
+      COMPROBANTE_TIPOS_IMAGEN.includes(comprobante?.type || '') &&
+      Boolean(comprobante?.imageSrc || comprobante?.url)
   );
 
   return (
@@ -210,10 +228,17 @@ export const PdfTrabajoDiarioDocument = ({ trabajo }) => {
             <View style={styles.comprobantesWrapper}>
               {comprobantesConImagen.map((comprobante, index) => {
                 const typeLabel = capitalize(comprobante?.type || 'comprobante');
+                const { width, height } = getImageDimensions(
+                  comprobante.imageWidth,
+                  comprobante.imageHeight
+                );
                 return (
                   <View key={`comprobante-${index}`} style={styles.comprobanteBlock}>
                     <Text style={styles.comprobanteLabel}>{typeLabel}</Text>
-                    <Image style={styles.comprobanteImage} src={comprobante.imageSrc || comprobante.url} />
+                    <Image
+                      style={[styles.comprobanteImageBase, { width, height }]}
+                      src={comprobante.imageSrc || comprobante.url}
+                    />
                   </View>
                 );
               })}
