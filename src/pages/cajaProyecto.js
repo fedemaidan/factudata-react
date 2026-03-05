@@ -2489,7 +2489,7 @@ useEffect(() => {
           ) : (
             <Stack spacing={1}>
               {[...(detalleMov.comentarios || [])]
-                .sort((a, b) => getTime(a.createdAt) - getTime(b.createdAt))
+                .sort((a, b) => getTime(b.createdAt) - getTime(a.createdAt))
                 .map((c) => (
                   <Paper key={c.id} variant="outlined" sx={{ p: 1 }}>
                     <Typography variant="caption" color="text.secondary" display="block" sx={{ fontSize: '0.7rem' }}>
