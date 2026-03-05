@@ -147,10 +147,10 @@ const SDRService = {
     },
 
     /**
-     * Actualizar próximo contacto
+     * Actualizar próximo contacto / próxima tarea
      */
-    actualizarProximoContacto: async (contactoId, proximoContacto) => {
-        const res = await api.post('/sdr/acciones/proximo-contacto', { contactoId, proximoContacto });
+    actualizarProximoContacto: async (contactoId, proximoContacto, empresaId, proximaTarea = null) => {
+        const res = await api.post('/sdr/acciones/proximo-contacto', { contactoId, proximoContacto, proximaTarea });
         return res.data;
     },
 

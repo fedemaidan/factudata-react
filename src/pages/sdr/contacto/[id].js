@@ -173,6 +173,43 @@ const FILTROS_HISTORIAL = [
     { key: 'sistema', label: 'Sistema', icon: '⚙️', tipos: ['contacto_creado', 'contacto_asignado', 'contacto_desasignado', 'contacto_reasignado', 'importado_excel', 'importado_notion', 'contacto_editado', 'estado_cambiado', 'plan_estimado_actualizado', 'intencion_compra_actualizada', 'proximo_contacto_programado', 'marcado_no_califica', 'marcado_no_responde', 'cadencia_iniciada', 'cadencia_paso_completado', 'cadencia_completada', 'cadencia_detenida'] },
 ];
 
+/** Agrupa eventos del historial por bloques temporales (misma sesión ~30min) */
+const agruparEventosPorBloque = (eventos) => {
+    if (!eventos?.length) return [];
+    const grupos = [];
+    let grupoActual = null;
+
+    for (const evento of eventos) {
+        const fecha = new Date(evento.createdAt);
+        // Nuevo grupo si: no hay grupo actual, o si pasaron más de 30 min desde el último evento del grupo
+        if (!grupoActual || (grupoActual.ultimaFecha - fecha) > 30 * 60 * 1000) {
+            grupoActual = { fecha, ultimaFecha: fecha, eventos: [evento] };
+            grupos.push(grupoActual);
+        } else {
+            grupoActual.eventos.push(evento);
+            grupoActual.ultimaFecha = fecha;
+        }
+    }
+    return grupos;
+};
+
+/** Formatea la etiqueta temporal del grupo */
+const formatearEtiquetaGrupo = (fecha) => {
+    const ahora = new Date();
+    const diff = ahora - fecha;
+    const dias = Math.floor(diff / 86400000);
+    const horas = fecha.getHours().toString().padStart(2, '0');
+    const mins = fecha.getMinutes().toString().padStart(2, '0');
+
+    if (dias === 0) return `Hoy ${horas}:${mins}`;
+    if (dias === 1) return `Ayer ${horas}:${mins}`;
+    if (dias < 7) {
+        const diasSemana = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+        return `${diasSemana[fecha.getDay()]} ${horas}:${mins}`;
+    }
+    return fecha.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' }) + ` ${horas}:${mins}`;
+};
+
 const calcularFecha = (cantidad, unidad) => {
     const ahora = new Date();
     if (unidad === 'hours') {
@@ -224,9 +261,14 @@ const ContactoSDRDetailPage = () => {
     const [editandoPrioridadManual, setEditandoPrioridadManual] = useState(false);
     const [valorPrioridadManual, setValorPrioridadManual] = useState('');
 
-    // Próximo contacto
+    // Próximo contacto / Tarea
     const [guardandoProximo, setGuardandoProximo] = useState(false);
     const [proximoManualInput, setProximoManualInput] = useState(''); // valor pendiente del datetime-local
+    // Editor de tarea
+    const [editandoTarea, setEditandoTarea] = useState(false);
+    const [editTareaTipo, setEditTareaTipo] = useState(null);
+    const [editTareaFecha, setEditTareaFecha] = useState(null);
+    const [editTareaNota, setEditTareaNota] = useState('');
 
     // Comentario
     const [nuevoComentario, setNuevoComentario] = useState('');
@@ -271,6 +313,8 @@ const ContactoSDRDetailPage = () => {
     const [mensajeWA, setMensajeWA] = useState('');
     const [registrandoWizard, setRegistrandoWizard] = useState(false);
     const [proximoContactoWizard, setProximoContactoWizard] = useState(null); // Date or null
+    const [tipoTareaWizard, setTipoTareaWizard] = useState(null); // 'llamada' | 'whatsapp' | 'email' | 'recordatorio'
+    const [notaTareaWizard, setNotaTareaWizard] = useState(''); // nota de la próxima tarea
 
     // Audio
     const grabador = useGrabadorAudio();
@@ -415,6 +459,8 @@ const ContactoSDRDetailPage = () => {
             setResultadoWA(null);
             setSeguimientoWizard(null);
             setProximoContactoWizard(null);
+            setTipoTareaWizard(null);
+            setNotaTareaWizard('');
             setNotaWizard('');
             setMensajeWA('');
         } else {
@@ -424,6 +470,8 @@ const ContactoSDRDetailPage = () => {
             setWizardFase('accion');
             setSeguimientoWizard(null);
             setProximoContactoWizard(null);
+            setTipoTareaWizard(null);
+            setNotaTareaWizard('');
             setNotaWizard('');
             const primeraAccion = pasoActual?.acciones?.[0];
             setMensajeWA(primeraAccion?.templateResuelto || primeraAccion?.varianteSeleccionada?.templateTexto || '');
@@ -688,12 +736,37 @@ const ContactoSDRDetailPage = () => {
         if (!contacto?._id) return;
         setGuardandoProximo(true);
         try {
-            await SDRService.actualizarProximoContacto(contacto._id, fecha);
+            await SDRService.actualizarProximoContacto(contacto._id, fecha, empresaId);
             setContacto(prev => ({ ...prev, proximoContacto: fecha }));
-            mostrarSnackbar(fecha ? 'Próximo contacto programado' : 'Próximo contacto eliminado');
+            mostrarSnackbar(fecha ? 'Próxima tarea programada' : 'Próxima tarea eliminada');
             cargarContacto();
         } catch (err) {
             mostrarSnackbar('Error al actualizar próximo contacto', 'error');
+        } finally {
+            setGuardandoProximo(false);
+        }
+    };
+
+    /** Guardar tarea completa (tipo + fecha + nota) */
+    const handleGuardarProximaTarea = async (tipo, fecha, nota) => {
+        if (!contacto?._id || !tipo || !fecha) return;
+        setGuardandoProximo(true);
+        try {
+            const proximaTarea = { tipo, fecha, nota: nota?.trim() || null, autoGenerada: false };
+            await SDRService.actualizarProximoContacto(contacto._id, fecha, empresaId, proximaTarea);
+            setContacto(prev => ({
+                ...prev,
+                proximoContacto: fecha,
+                proximaTarea
+            }));
+            setEditandoTarea(false);
+            setEditTareaTipo(null);
+            setEditTareaFecha(null);
+            setEditTareaNota('');
+            mostrarSnackbar('Próxima tarea guardada ✓');
+            cargarContacto();
+        } catch (err) {
+            mostrarSnackbar('Error al guardar tarea', 'error');
         } finally {
             setGuardandoProximo(false);
         }
@@ -835,21 +908,39 @@ const ContactoSDRDetailPage = () => {
         }
     };
 
+    /** Construye el objeto proximaTarea desde el estado del wizard */
+    const buildProximaTarea = () => {
+        if (!proximoContactoWizard) return undefined;
+        // Usar tipo auto-seleccionado del seguimiento, o el elegido manualmente, o 'recordatorio'
+        let tipo = tipoTareaWizard;
+        if (seguimientoWizard === 'llamar_despues') tipo = 'llamada';
+        else if (seguimientoWizard === 'mensaje_despues') tipo = 'whatsapp';
+        else if (seguimientoWizard === 'coordinar_reunion') tipo = 'recordatorio';
+        return {
+            tipo: tipo || 'recordatorio',
+            fecha: proximoContactoWizard,
+            nota: notaTareaWizard?.trim() || null,
+            autoGenerada: false
+        };
+    };
+
     /** Registra llamada del wizard y avanza */
     const handleWizardRegistrarLlamada = async () => {
         setRegistrandoWizard(true);
         try {
+            const proximaTarea = buildProximaTarea();
             await SDRService.registrarIntento(contacto._id, {
                 tipo: resultadoLlamada === 'atendio' ? 'llamada_atendida' : 'llamada_no_atendida',
                 canal: 'llamada',
                 resultado: resultadoLlamada,
                 seguimiento: seguimientoWizard || undefined,
                 proximoContacto: proximoContactoWizard || undefined,
+                proximaTarea,
                 empresaId
             });
-            // Actualizar próximo contacto en el contacto
+            // Actualizar próximo contacto y tarea en el contacto local
             if (proximoContactoWizard) {
-                setContacto(prev => ({ ...prev, proximoContacto: proximoContactoWizard }));
+                setContacto(prev => ({ ...prev, proximoContacto: proximoContactoWizard, proximaTarea: proximaTarea || prev.proximaTarea }));
             }
             mostrarSnackbar(resultadoLlamada === 'atendio' ? 'Llamada atendida ✓' : 'Llamada no atendida ✓');
             if (seguimientoWizard === 'coordinar_reunion') {
@@ -874,6 +965,7 @@ const ContactoSDRDetailPage = () => {
         setRegistrandoWizard(true);
         const esPendiente = contacto?.cadenciaActiva?.waPendienteRespuesta;
         try {
+            const proximaTarea = buildProximaTarea();
             await SDRService.registrarIntento(contacto._id, {
                 tipo: esPendiente ? 'whatsapp_respuesta_confirmada' : 'whatsapp_enviado',
                 canal: 'whatsapp',
@@ -881,11 +973,12 @@ const ContactoSDRDetailPage = () => {
                 seguimiento: seguimientoWizard || undefined,
                 nota: mensajeWA?.trim() || undefined,
                 proximoContacto: proximoContactoWizard || undefined,
+                proximaTarea,
                 confirmarRespuestaWA: esPendiente || undefined,
                 empresaId
             });
             if (proximoContactoWizard) {
-                setContacto(prev => ({ ...prev, proximoContacto: proximoContactoWizard }));
+                setContacto(prev => ({ ...prev, proximoContacto: proximoContactoWizard, proximaTarea: proximaTarea || prev.proximaTarea }));
             }
             if (esPendiente) {
                 setContacto(prev => ({ ...prev, cadenciaActiva: { ...prev.cadenciaActiva, waPendienteRespuesta: false } }));
@@ -907,12 +1000,20 @@ const ContactoSDRDetailPage = () => {
         if (!proximoContactoWizard) return;
         setRegistrandoWizard(true);
         try {
+            // Para "esperar respuesta", la tarea es un recordatorio para revisar si respondió
+            const proximaTarea = proximoContactoWizard ? {
+                tipo: 'recordatorio',
+                fecha: proximoContactoWizard,
+                nota: 'Revisar si respondió al WhatsApp',
+                autoGenerada: true
+            } : undefined;
             await SDRService.registrarIntento(contacto._id, {
                 tipo: 'whatsapp_enviado',
                 canal: 'whatsapp',
                 resultado: 'pendiente',
                 nota: mensajeWA?.trim() || undefined,
                 proximoContacto: proximoContactoWizard,
+                proximaTarea,
                 pendienteRespuesta: true,
                 waSubPasoIdx: subPasoIdx,
                 empresaId
@@ -920,6 +1021,7 @@ const ContactoSDRDetailPage = () => {
             setContacto(prev => ({
                 ...prev,
                 proximoContacto: proximoContactoWizard,
+                proximaTarea: proximaTarea || prev.proximaTarea,
                 cadenciaActiva: { ...prev.cadenciaActiva, waPendienteRespuesta: true, waSubPasoIdx: subPasoIdx }
             }));
             mostrarSnackbar('WA registrado. Te preguntaremos en el próximo contacto ⏳');
@@ -927,6 +1029,8 @@ const ContactoSDRDetailPage = () => {
             setResultadoWA(null);
             setNotaWizard('');
             setProximoContactoWizard(null);
+            setTipoTareaWizard(null);
+            setNotaTareaWizard('');
             setSeguimientoWizard(null);
         } catch (err) {
             mostrarSnackbar(err.response?.data?.error || 'Error al registrar', 'error');
@@ -967,19 +1071,58 @@ const ContactoSDRDetailPage = () => {
         return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
     };
 
-    // ==================== PROXIMO CONTACTO PICKER ====================
-    const renderProximoContactoPicker = (compact = false) => (
-        <Box sx={{ mb: compact ? 1 : 1.5, p: compact ? 1 : 1.5, bgcolor: 'action.hover', borderRadius: 1, border: '1px solid', borderColor: proximoContactoWizard ? 'success.light' : 'warning.light' }}>
+    // ==================== PROXIMO CONTACTO / TAREA PICKER ====================
+    
+    // Iconos y labels para tipos de tarea
+    const TIPOS_TAREA = [
+        { key: 'llamada', icon: '📞', label: 'Llamar' },
+        { key: 'whatsapp', icon: '💬', label: 'WhatsApp' },
+        { key: 'email', icon: '✉️', label: 'Email' },
+        { key: 'recordatorio', icon: '📝', label: 'Recordatorio' },
+    ];
+
+    // Auto-seleccionar tipo de tarea basado en seguimiento del wizard
+    const autoSeleccionarTipoTarea = () => {
+        if (seguimientoWizard === 'llamar_despues') return 'llamada';
+        if (seguimientoWizard === 'mensaje_despues') return 'whatsapp';
+        if (seguimientoWizard === 'coordinar_reunion') return 'recordatorio';
+        return tipoTareaWizard;
+    };
+
+    const renderProximoContactoPicker = (compact = false) => {
+        const tipoTareaActual = autoSeleccionarTipoTarea() || tipoTareaWizard;
+        const tareaCompleta = proximoContactoWizard && tipoTareaActual;
+
+        return (
+        <Box sx={{ mb: compact ? 1 : 1.5, p: compact ? 1 : 1.5, bgcolor: 'action.hover', borderRadius: 1, border: '1px solid', borderColor: tareaCompleta ? 'success.light' : 'warning.light' }}>
             <Typography variant="caption" fontWeight={600} sx={{ mb: 0.5, display: 'block' }}>
-                📅 Próximo contacto {!proximoContactoWizard && <span style={{ color: '#d32f2f' }}>*</span>}
+                🎯 Próxima tarea {!tareaCompleta && <span style={{ color: '#d32f2f' }}>*</span>}
             </Typography>
+
+            {/* Tipo de tarea */}
+            <Stack direction="row" spacing={0.5} sx={{ mb: 1, flexWrap: 'wrap', gap: 0.5 }}>
+                {TIPOS_TAREA.map((t) => (
+                    <Chip
+                        key={t.key}
+                        size="small"
+                        icon={<span style={{ fontSize: '0.85rem' }}>{t.icon}</span>}
+                        label={t.label}
+                        color={tipoTareaActual === t.key ? 'primary' : 'default'}
+                        variant={tipoTareaActual === t.key ? 'filled' : 'outlined'}
+                        onClick={() => setTipoTareaWizard(t.key)}
+                        sx={{ cursor: 'pointer', fontSize: '0.7rem' }}
+                    />
+                ))}
+            </Stack>
+
+            {/* Fecha */}
             {proximoContactoWizard ? (
                 <Chip
                     size="small"
                     label={`📅 ${new Date(proximoContactoWizard).toLocaleDateString('es-AR', { weekday: 'short', day: 'numeric', month: 'short' })} ${new Date(proximoContactoWizard).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}`}
                     color="success"
                     onDelete={() => setProximoContactoWizard(null)}
-                    sx={{ fontWeight: 600 }}
+                    sx={{ fontWeight: 600, mb: 0.5 }}
                 />
             ) : (
                 <Stack spacing={0.5}>
@@ -1007,8 +1150,20 @@ const ContactoSDRDetailPage = () => {
                     />
                 </Stack>
             )}
+
+            {/* Nota de tarea (opcional) */}
+            {(proximoContactoWizard || tipoTareaActual) && (
+                <input
+                    type="text"
+                    placeholder="Nota para la tarea (opcional)..."
+                    value={notaTareaWizard}
+                    onChange={(e) => setNotaTareaWizard(e.target.value)}
+                    style={{ fontSize: compact ? '0.7rem' : '0.8rem', padding: '4px 8px', borderRadius: 4, border: '1px solid #ccc', width: '100%', boxSizing: 'border-box', marginTop: 6 }}
+                />
+            )}
         </Box>
-    );
+        );
+    };
 
     // ==================== RENDER ====================
 
@@ -1399,76 +1554,181 @@ const ContactoSDRDetailPage = () => {
                             </Card>
                         </Grid>
 
-                        {/* Card: Próximo contacto + Acciones rápidas */}
+                        {/* Card: Próxima tarea — Editor completo */}
                         <Grid item xs={12} md={4}>
                             <Card variant="outlined" sx={{ height: '100%' }}>
                                 <CardContent>
-                                    {/* Próximo contacto */}
+                                    {/* Header */}
                                     <Stack direction="row" spacing={1} alignItems="center" mb={1}>
                                         <AccessTimeIcon fontSize="small" color="action" />
                                         <Typography variant="subtitle2" color="text.secondary">
-                                            Próximo contacto
+                                            Próxima tarea
                                         </Typography>
                                         {guardandoProximo && <CircularProgress size={14} />}
                                     </Stack>
 
-                                    {contacto.proximoContacto ? (
-                                        <Chip
+                                    {/* Tarea existente (modo vista) */}
+                                    {contacto.proximoContacto && !editandoTarea ? (
+                                        <Box>
+                                            <Stack spacing={0.5} sx={{ mb: 1 }}>
+                                                <Stack direction="row" spacing={0.5} alignItems="center" flexWrap="wrap" useFlexGap>
+                                                    {contacto.proximaTarea?.tipo && (
+                                                        <Chip
+                                                            size="small"
+                                                            label={
+                                                                contacto.proximaTarea.tipo === 'llamada' ? '📞 Llamar' :
+                                                                contacto.proximaTarea.tipo === 'whatsapp' ? '💬 WhatsApp' :
+                                                                contacto.proximaTarea.tipo === 'email' ? '✉️ Email' : '📝 Recordatorio'
+                                                            }
+                                                            color="primary"
+                                                            variant="outlined"
+                                                            sx={{ fontWeight: 600, fontSize: '0.7rem' }}
+                                                        />
+                                                    )}
+                                                    <Chip
+                                                        size="small"
+                                                        icon={<ScheduleIcon />}
+                                                        label={proximoInfo?.texto || 'Programado'}
+                                                        color={proximoInfo?.color || 'success'}
+                                                    />
+                                                </Stack>
+                                                {contacto.proximaTarea?.nota && (
+                                                    <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic', pl: 0.5 }}>
+                                                        💬 {contacto.proximaTarea.nota}
+                                                    </Typography>
+                                                )}
+                                            </Stack>
+                                            <Stack direction="row" spacing={0.5}>
+                                                <Button
+                                                    size="small"
+                                                    variant="outlined"
+                                                    onClick={() => {
+                                                        setEditandoTarea(true);
+                                                        setEditTareaTipo(contacto.proximaTarea?.tipo || null);
+                                                        setEditTareaFecha(contacto.proximoContacto ? new Date(contacto.proximoContacto) : null);
+                                                        setEditTareaNota(contacto.proximaTarea?.nota || '');
+                                                    }}
+                                                    sx={{ fontSize: '0.7rem', textTransform: 'none' }}
+                                                >
+                                                    ✏️ Modificar
+                                                </Button>
+                                                <Button
+                                                    size="small"
+                                                    variant="outlined"
+                                                    color="error"
+                                                    onClick={() => handleGuardarProximoContacto(null)}
+                                                    disabled={guardandoProximo}
+                                                    sx={{ fontSize: '0.7rem', textTransform: 'none', minWidth: 'auto' }}
+                                                >
+                                                    🗑️
+                                                </Button>
+                                            </Stack>
+                                        </Box>
+                                    ) : !editandoTarea ? (
+                                        /* Sin tarea: botón crear */
+                                        <Button
                                             size="small"
-                                            icon={<ScheduleIcon />}
-                                            label={proximoInfo?.texto || 'Programado'}
-                                            color={proximoInfo?.color || 'success'}
-                                            onDelete={() => handleGuardarProximoContacto(null)}
-                                            sx={{ mb: 1 }}
-                                        />
-                                    ) : (
-                                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-                                            No definido
-                                        </Typography>
+                                            variant="outlined"
+                                            color="primary"
+                                            onClick={() => {
+                                                setEditandoTarea(true);
+                                                setEditTareaTipo(null);
+                                                setEditTareaFecha(null);
+                                                setEditTareaNota('');
+                                            }}
+                                            sx={{ mb: 1, textTransform: 'none' }}
+                                        >
+                                            + Crear tarea
+                                        </Button>
+                                    ) : null}
+
+                                    {/* Editor de tarea (crear/modificar) */}
+                                    {editandoTarea && (
+                                        <Box sx={{ p: 1.5, bgcolor: 'action.hover', borderRadius: 1, border: '1px solid', borderColor: (editTareaTipo && editTareaFecha) ? 'success.light' : 'warning.light' }}>
+                                            {/* Tipo */}
+                                            <Typography variant="caption" fontWeight={600} sx={{ mb: 0.5, display: 'block' }}>Tipo de tarea</Typography>
+                                            <Stack direction="row" spacing={0.5} sx={{ mb: 1, flexWrap: 'wrap', gap: 0.5 }}>
+                                                {TIPOS_TAREA.map((t) => (
+                                                    <Chip
+                                                        key={t.key}
+                                                        size="small"
+                                                        icon={<span style={{ fontSize: '0.85rem' }}>{t.icon}</span>}
+                                                        label={t.label}
+                                                        color={editTareaTipo === t.key ? 'primary' : 'default'}
+                                                        variant={editTareaTipo === t.key ? 'filled' : 'outlined'}
+                                                        onClick={() => setEditTareaTipo(t.key)}
+                                                        sx={{ cursor: 'pointer', fontSize: '0.7rem' }}
+                                                    />
+                                                ))}
+                                            </Stack>
+
+                                            {/* Fecha */}
+                                            <Typography variant="caption" fontWeight={600} sx={{ mb: 0.5, display: 'block' }}>Fecha</Typography>
+                                            {editTareaFecha ? (
+                                                <Chip
+                                                    size="small"
+                                                    label={`📅 ${new Date(editTareaFecha).toLocaleDateString('es-AR', { weekday: 'short', day: 'numeric', month: 'short' })} ${new Date(editTareaFecha).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}`}
+                                                    color="success"
+                                                    onDelete={() => setEditTareaFecha(null)}
+                                                    sx={{ fontWeight: 600, mb: 0.5 }}
+                                                />
+                                            ) : (
+                                                <Stack spacing={0.5} sx={{ mb: 0.5 }}>
+                                                    <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap', gap: 0.5 }}>
+                                                        {botonesProximoContacto.map((btn) => (
+                                                            <Button
+                                                                key={btn.label}
+                                                                size="small"
+                                                                variant="outlined"
+                                                                onClick={() => setEditTareaFecha(calcularFecha(btn.cantidad, btn.unidad))}
+                                                                sx={{ minWidth: 'auto', px: 1, py: 0.3, fontSize: '0.7rem', textTransform: 'none' }}
+                                                            >
+                                                                {btn.label}
+                                                            </Button>
+                                                        ))}
+                                                    </Stack>
+                                                    <input
+                                                        type="datetime-local"
+                                                        value={fechaParaInput(editTareaFecha)}
+                                                        onChange={(e) => { if (e.target.value) setEditTareaFecha(new Date(e.target.value)); }}
+                                                        style={{ fontSize: '0.8rem', padding: '4px 8px', borderRadius: 4, border: '1px solid #ccc', width: '100%', boxSizing: 'border-box' }}
+                                                    />
+                                                </Stack>
+                                            )}
+
+                                            {/* Nota / Comentario */}
+                                            <Typography variant="caption" fontWeight={600} sx={{ mt: 1, mb: 0.5, display: 'block' }}>Comentario (opcional)</Typography>
+                                            <input
+                                                type="text"
+                                                placeholder="Comentario para la tarea..."
+                                                value={editTareaNota}
+                                                onChange={(e) => setEditTareaNota(e.target.value)}
+                                                style={{ fontSize: '0.8rem', padding: '4px 8px', borderRadius: 4, border: '1px solid #ccc', width: '100%', boxSizing: 'border-box' }}
+                                            />
+
+                                            {/* Botones guardar / cancelar */}
+                                            <Stack direction="row" spacing={1} sx={{ mt: 1.5 }}>
+                                                <Button
+                                                    variant="contained"
+                                                    size="small"
+                                                    color="success"
+                                                    disabled={!editTareaTipo || !editTareaFecha || guardandoProximo}
+                                                    onClick={() => handleGuardarProximaTarea(editTareaTipo, editTareaFecha, editTareaNota)}
+                                                    sx={{ flex: 1, textTransform: 'none' }}
+                                                >
+                                                    {guardandoProximo ? <CircularProgress size={18} color="inherit" /> : '💾 Guardar tarea'}
+                                                </Button>
+                                                <Button
+                                                    variant="outlined"
+                                                    size="small"
+                                                    onClick={() => { setEditandoTarea(false); setEditTareaTipo(null); setEditTareaFecha(null); setEditTareaNota(''); }}
+                                                    sx={{ textTransform: 'none' }}
+                                                >
+                                                    Cancelar
+                                                </Button>
+                                            </Stack>
+                                        </Box>
                                     )}
-
-                                    <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap sx={{ mb: 1 }}>
-                                        {botonesProximoContacto.map((btn) => (
-                                            <Button
-                                                key={btn.label}
-                                                size="small"
-                                                variant="outlined"
-                                                onClick={() => handleGuardarProximoContacto(calcularFecha(btn.cantidad, btn.unidad))}
-                                                disabled={guardandoProximo}
-                                                sx={{ minWidth: 'auto', px: 1, fontSize: '0.7rem' }}
-                                            >
-                                                {btn.label}
-                                            </Button>
-                                        ))}
-                                    </Stack>
-
-                                    <Stack direction="row" spacing={1} alignItems="flex-end">
-                                        <TextField
-                                            type="datetime-local"
-                                            size="small"
-                                            fullWidth
-                                            label="Elegir fecha/hora"
-                                            value={proximoManualInput || fechaParaInput(contacto.proximoContacto)}
-                                            onChange={(e) => setProximoManualInput(e.target.value)}
-                                            disabled={guardandoProximo}
-                                            InputLabelProps={{ shrink: true }}
-                                        />
-                                        {proximoManualInput && (
-                                            <Button
-                                                variant="contained"
-                                                size="small"
-                                                color="success"
-                                                disabled={guardandoProximo}
-                                                onClick={() => {
-                                                    handleGuardarProximoContacto(new Date(proximoManualInput));
-                                                    setProximoManualInput('');
-                                                }}
-                                                sx={{ minWidth: 'auto', px: 1.5, whiteSpace: 'nowrap' }}
-                                            >
-                                                {guardandoProximo ? <CircularProgress size={18} color="inherit" /> : '✅'}
-                                            </Button>
-                                        )}
-                                    </Stack>
 
                                     <Divider sx={{ mb: 1.5, display: { xs: 'none', md: 'block' } }} />
 
@@ -1725,77 +1985,101 @@ const ContactoSDRDetailPage = () => {
                                     <Typography variant="body2" color="text.secondary" sx={{ py: 1, textAlign: 'center' }}>
                                         No hay eventos de este tipo
                                     </Typography>
-                                ) : historialFiltrado.slice(0, 5).map((evento) => {
-                                    const colors = getEventoColor(evento.tipo);
-                                    return (
-                                        <Paper
-                                            key={evento._id}
-                                            elevation={0}
-                                            sx={{ p: 1, bgcolor: colors.bg, borderLeft: 3, borderColor: colors.border }}
-                                        >
-                                            <Stack direction="row" spacing={1} alignItems="flex-start">
-                                                <Avatar sx={{ width: 24, height: 24, bgcolor: colors.border, color: 'white' }}>
-                                                    {getEventoIcon(evento.tipo)}
-                                                </Avatar>
-                                                <Box sx={{ flex: 1, minWidth: 0 }}>
-                                                    <Typography variant="body2" fontWeight={500} fontSize="0.8rem">
-                                                        {evento.descripcion}
+                                ) : (() => {
+                                    const grupos = agruparEventosPorBloque(historialFiltrado.slice(0, 8));
+                                    let eventosRendered = 0;
+                                    return grupos.map((grupo, gi) => {
+                                        if (eventosRendered >= 5) return null;
+                                        return (
+                                            <Box key={gi}>
+                                                {/* Separador temporal del grupo */}
+                                                <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 0.5, mt: gi > 0 ? 1 : 0 }}>
+                                                    <Divider sx={{ flex: 1 }} />
+                                                    <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.68rem', fontWeight: 600, whiteSpace: 'nowrap', px: 0.5 }}>
+                                                        {formatearEtiquetaGrupo(grupo.fecha)}
                                                     </Typography>
-                                                    {evento.nota && (
-                                                        <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic', display: 'block' }}>
-                                                            &ldquo;{evento.nota.length > 120 ? evento.nota.substring(0, 120) + '...' : evento.nota}&rdquo;
-                                                        </Typography>
-                                                    )}
-                                                    {(evento.audioUrl || evento.metadata?.audioUrl) && (
-                                                        <Box sx={{ mt: 0.5 }}>
-                                                            <Stack direction="row" alignItems="center" spacing={0.5}>
-                                                                <audio controls src={resolveAudioUrl(evento.audioUrl || evento.metadata?.audioUrl)} style={{ flex: 1, height: 32 }} />
-                                                                <Tooltip title="Descargar audio">
-                                                                    <IconButton size="small" component="a" href={resolveAudioUrl(evento.audioUrl || evento.metadata?.audioUrl)} download={evento.audioNombre || evento.metadata?.audioNombre || 'audio.mp3'} sx={{ color: 'primary.main' }}>
-                                                                        <DownloadIcon sx={{ fontSize: 18 }} />
-                                                                    </IconButton>
-                                                                </Tooltip>
-                                                            </Stack>
-                                                        </Box>
-                                                    )}
-                                                    {(evento.resumen || evento.metadata?.resumen) && (
-                                                        <Box sx={{ position: 'relative', mt: 0.5 }}>
-                                                            <Typography variant="caption" component="div" sx={{ display: 'block', p: 1, pr: 4, bgcolor: '#e8f5e9', borderRadius: 1, fontSize: '0.76rem', lineHeight: 1.5, border: '1px solid #c8e6c9', whiteSpace: 'pre-wrap' }}>
-                                                                {evento.resumen || evento.metadata?.resumen}
-                                                            </Typography>
-                                                            <Tooltip title="Copiar resumen">
-                                                                <IconButton size="small" onClick={() => { navigator.clipboard.writeText(evento.resumen || evento.metadata?.resumen); mostrarSnackbar('Resumen copiado', 'success'); }} sx={{ position: 'absolute', top: 4, right: 4, p: 0.3, opacity: 0.5, '&:hover': { opacity: 1 } }}>
-                                                                    <ContentCopyIcon sx={{ fontSize: 14 }} />
-                                                                </IconButton>
-                                                            </Tooltip>
-                                                        </Box>
-                                                    )}
-                                                    {(evento.transcripcion || evento.metadata?.transcripcion) && (
-                                                        <Stack direction="row" alignItems="center" spacing={0.5} sx={{ mt: 0.3 }}>
-                                                            <Typography variant="caption" sx={{ flex: 1, p: 0.5, bgcolor: 'rgba(255,255,255,0.7)', borderRadius: 1, fontStyle: 'italic', fontSize: '0.72rem', cursor: 'pointer' }} onClick={(e) => { const el = e.currentTarget; el.dataset.expanded = el.dataset.expanded === 'true' ? 'false' : 'true'; el.innerText = el.dataset.expanded === 'true' ? '📝 ' + (evento.transcripcion || evento.metadata?.transcripcion) : '📝 ' + (evento.transcripcion || evento.metadata?.transcripcion).substring(0, 100) + '...'; }} title="Click para expandir">
-                                                                📝 {(evento.transcripcion || evento.metadata?.transcripcion).substring(0, 100)}{(evento.transcripcion || evento.metadata?.transcripcion).length > 100 ? '...' : ''}
-                                                            </Typography>
-                                                            <Tooltip title="Copiar transcripción">
-                                                                <IconButton size="small" onClick={() => { navigator.clipboard.writeText(evento.transcripcion || evento.metadata?.transcripcion); mostrarSnackbar('Transcripción copiada', 'success'); }} sx={{ p: 0.3, opacity: 0.5, '&:hover': { opacity: 1 } }}>
-                                                                    <ContentCopyIcon sx={{ fontSize: 14 }} />
-                                                                </IconButton>
-                                                            </Tooltip>
-                                                            <Tooltip title="Re-analizar con IA">
-                                                                <IconButton size="small" onClick={() => handleReanalizarAudio(evento._id)} disabled={reanalizandoEvento === evento._id} sx={{ p: 0.3 }}>
-                                                                    {reanalizandoEvento === evento._id ? <CircularProgress size={14} /> : <AutoFixHighIcon sx={{ fontSize: 16, color: 'secondary.main' }} />}
-                                                                </IconButton>
-                                                            </Tooltip>
-                                                        </Stack>
-                                                    )}
-                                                    <Typography variant="caption" color="text.secondary">
-                                                        {new Date(evento.createdAt).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
-                                                        {evento.sdrNombre && ` • ${evento.sdrNombre}`}
-                                                    </Typography>
-                                                </Box>
-                                            </Stack>
-                                        </Paper>
-                                    );
-                                })}
+                                                    <Divider sx={{ flex: 1 }} />
+                                                </Stack>
+                                                {/* Eventos del grupo */}
+                                                <Stack spacing={0.5}>
+                                                    {grupo.eventos.map((evento) => {
+                                                        if (eventosRendered >= 5) return null;
+                                                        eventosRendered++;
+                                                        const colors = getEventoColor(evento.tipo);
+                                                        const esGrupoMultiple = grupo.eventos.length > 1;
+                                                        return (
+                                                            <Paper key={evento._id} elevation={0}
+                                                                sx={{ p: esGrupoMultiple ? 0.8 : 1, bgcolor: colors.bg, borderLeft: 3, borderColor: colors.border }}>
+                                                                <Stack direction="row" spacing={0.8} alignItems="flex-start">
+                                                                    <Avatar sx={{ width: esGrupoMultiple ? 20 : 24, height: esGrupoMultiple ? 20 : 24, bgcolor: colors.border, color: 'white', '& .MuiSvgIcon-root': { fontSize: esGrupoMultiple ? '0.75rem' : '0.85rem' } }}>
+                                                                        {getEventoIcon(evento.tipo)}
+                                                                    </Avatar>
+                                                                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                                                                        <Typography variant="body2" fontWeight={500} fontSize={esGrupoMultiple ? '0.75rem' : '0.8rem'}>
+                                                                            {evento.descripcion}
+                                                                        </Typography>
+                                                                        {evento.nota && (
+                                                                            <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic', display: 'block', fontSize: '0.7rem' }}>
+                                                                                &ldquo;{evento.nota.length > 100 ? evento.nota.substring(0, 100) + '...' : evento.nota}&rdquo;
+                                                                            </Typography>
+                                                                        )}
+                                                                        {(evento.audioUrl || evento.metadata?.audioUrl) && (
+                                                                            <Box sx={{ mt: 0.5 }}>
+                                                                                <Stack direction="row" alignItems="center" spacing={0.5}>
+                                                                                    <audio controls src={resolveAudioUrl(evento.audioUrl || evento.metadata?.audioUrl)} style={{ flex: 1, height: 32 }} />
+                                                                                    <Tooltip title="Descargar audio">
+                                                                                        <IconButton size="small" component="a" href={resolveAudioUrl(evento.audioUrl || evento.metadata?.audioUrl)} download={evento.audioNombre || evento.metadata?.audioNombre || 'audio.mp3'} sx={{ color: 'primary.main' }}>
+                                                                                            <DownloadIcon sx={{ fontSize: 18 }} />
+                                                                                        </IconButton>
+                                                                                    </Tooltip>
+                                                                                </Stack>
+                                                                            </Box>
+                                                                        )}
+                                                                        {(evento.resumen || evento.metadata?.resumen) && (
+                                                                            <Box sx={{ position: 'relative', mt: 0.5 }}>
+                                                                                <Typography variant="caption" component="div" sx={{ display: 'block', p: 1, pr: 4, bgcolor: '#e8f5e9', borderRadius: 1, fontSize: '0.76rem', lineHeight: 1.5, border: '1px solid #c8e6c9', whiteSpace: 'pre-wrap' }}>
+                                                                                    {evento.resumen || evento.metadata?.resumen}
+                                                                                </Typography>
+                                                                                <Tooltip title="Copiar resumen">
+                                                                                    <IconButton size="small" onClick={() => { navigator.clipboard.writeText(evento.resumen || evento.metadata?.resumen); mostrarSnackbar('Resumen copiado', 'success'); }} sx={{ position: 'absolute', top: 4, right: 4, p: 0.3, opacity: 0.5, '&:hover': { opacity: 1 } }}>
+                                                                                        <ContentCopyIcon sx={{ fontSize: 14 }} />
+                                                                                    </IconButton>
+                                                                                </Tooltip>
+                                                                            </Box>
+                                                                        )}
+                                                                        {(evento.transcripcion || evento.metadata?.transcripcion) && (
+                                                                            <Stack direction="row" alignItems="center" spacing={0.5} sx={{ mt: 0.3 }}>
+                                                                                <Typography variant="caption" sx={{ flex: 1, p: 0.5, bgcolor: 'rgba(255,255,255,0.7)', borderRadius: 1, fontStyle: 'italic', fontSize: '0.72rem', cursor: 'pointer' }} onClick={(e) => { const el = e.currentTarget; el.dataset.expanded = el.dataset.expanded === 'true' ? 'false' : 'true'; el.innerText = el.dataset.expanded === 'true' ? '📝 ' + (evento.transcripcion || evento.metadata?.transcripcion) : '📝 ' + (evento.transcripcion || evento.metadata?.transcripcion).substring(0, 100) + '...'; }} title="Click para expandir">
+                                                                                    📝 {(evento.transcripcion || evento.metadata?.transcripcion).substring(0, 100)}{(evento.transcripcion || evento.metadata?.transcripcion).length > 100 ? '...' : ''}
+                                                                                </Typography>
+                                                                                <Tooltip title="Copiar transcripción">
+                                                                                    <IconButton size="small" onClick={() => { navigator.clipboard.writeText(evento.transcripcion || evento.metadata?.transcripcion); mostrarSnackbar('Transcripción copiada', 'success'); }} sx={{ p: 0.3, opacity: 0.5, '&:hover': { opacity: 1 } }}>
+                                                                                        <ContentCopyIcon sx={{ fontSize: 14 }} />
+                                                                                    </IconButton>
+                                                                                </Tooltip>
+                                                                                <Tooltip title="Re-analizar con IA">
+                                                                                    <IconButton size="small" onClick={() => handleReanalizarAudio(evento._id)} disabled={reanalizandoEvento === evento._id} sx={{ p: 0.3 }}>
+                                                                                        {reanalizandoEvento === evento._id ? <CircularProgress size={14} /> : <AutoFixHighIcon sx={{ fontSize: 16, color: 'secondary.main' }} />}
+                                                                                    </IconButton>
+                                                                                </Tooltip>
+                                                                            </Stack>
+                                                                        )}
+                                                                        {!esGrupoMultiple && (
+                                                                            <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.68rem' }}>
+                                                                                {new Date(evento.createdAt).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                                                                                {evento.sdrNombre && ` • ${evento.sdrNombre}`}
+                                                                            </Typography>
+                                                                        )}
+                                                                    </Box>
+                                                                </Stack>
+                                                            </Paper>
+                                                        );
+                                                    })}
+                                                </Stack>
+                                            </Box>
+                                        );
+                                    });
+                                })()}
                                 {historialFiltrado.length > 5 && (
                                     <Button
                                         size="small"
@@ -1812,524 +2096,459 @@ const ContactoSDRDetailPage = () => {
 
                         </Grid>
 
-                        {/* COLUMNA DERECHA: Cadencia */}
+                        {/* COLUMNA DERECHA: Wizard de acción (guiado por tarea) */}
                         <Grid item xs={12} md={6}>
 
-                    {/* ==================== CADENCIA - WIZARD ==================== */}
-                    {/* En mobile la cadencia va en la barra fija de abajo */}
-                    {contacto.cadenciaActiva?.cadenciaId && !contacto.cadenciaActiva?.completada ? (
-                        <Paper variant="outlined" sx={{ p: 2, borderColor: 'primary.main', borderWidth: 2 }}>
+                    {/* ==================== WIZARD GUIADO POR TAREA ==================== */}
+                    {(() => {
+                        const tipoTarea = contacto.proximaTarea?.tipo;
+                        const tieneTarea = !!tipoTarea;
+                        // Determinar canal del wizard según el tipo de tarea
+                        let canalWizard = tipoTarea === 'llamada' ? 'llamada' : tipoTarea === 'whatsapp' ? 'whatsapp' : tipoTarea === 'email' ? 'email' : null;
+                        // También detectar si hay WA pendiente de respuesta
+                        const waPendiente = contacto.cadenciaActiva?.waPendienteRespuesta;
+                        // Fallback: si no hay tarea pero hay cadencia activa, derivar del paso actual
+                        const tareaDeCadencia = !tieneTarea && pasoActual?.acciones?.[subPasoIdx];
+                        const tipoCadencia = tareaDeCadencia ? (tareaDeCadencia.tipo || tareaDeCadencia.canal) : null;
+                        if (!canalWizard && tipoCadencia && ['llamada', 'whatsapp', 'email'].includes(tipoCadencia)) {
+                            canalWizard = tipoCadencia;
+                        }
+                        const tieneAccionCadencia = !tieneTarea && !!canalWizard;
+
+                        return (
+                        <Paper variant="outlined" sx={{ p: 2, borderColor: tieneTarea ? 'primary.main' : tieneAccionCadencia ? 'info.main' : 'divider', borderWidth: (tieneTarea || tieneAccionCadencia) ? 2 : 1 }}>
                             {/* Header */}
                             <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
                                 <Stack direction="row" spacing={1} alignItems="center">
-                                    <PlayArrowIcon fontSize="small" color="primary" />
-                                    <Typography variant="subtitle2" color="primary">
-                                        Cadencia activa
-                                    </Typography>
-                                    {pasoActual && (
+                                    {(tieneTarea || tieneAccionCadencia) ? (
+                                        <>
+                                            <span style={{ fontSize: '1.1rem' }}>
+                                                {(tipoTarea || canalWizard) === 'llamada' ? '📞' : (tipoTarea || canalWizard) === 'whatsapp' ? '💬' : (tipoTarea || canalWizard) === 'email' ? '✉️' : '📝'}
+                                            </span>
+                                            <Typography variant="subtitle2" color={tieneTarea ? 'primary' : 'info.main'} fontWeight={700}>
+                                                {(tipoTarea || canalWizard) === 'llamada' ? 'Llamar' : (tipoTarea || canalWizard) === 'whatsapp' ? 'Enviar WhatsApp' : (tipoTarea || canalWizard) === 'email' ? 'Enviar Email' : 'Recordatorio'}
+                                            </Typography>
+                                            {tieneAccionCadencia && (
+                                                <Chip size="small" label="cadencia" variant="outlined" color="info" sx={{ height: 20, fontSize: '0.65rem' }} />
+                                            )}
+                                        </>
+                                    ) : (
+                                        <>
+                                            <PlayArrowIcon fontSize="small" color="action" />
+                                            <Typography variant="subtitle2" color="text.secondary">
+                                                Acción rápida
+                                            </Typography>
+                                        </>
+                                    )}
+                                    {tieneTarea && wizardFase === 'accion' && proximoInfo && (
                                         <Chip
                                             size="small"
-                                            label={`Paso ${(contacto.cadenciaActiva.pasoActual || 0) + 1}${pasoActual.paso ? ` — ${pasoActual.paso.nombre}` : ''}`}
-                                            color="primary"
-                                            variant="outlined"
+                                            label={proximoInfo.texto}
+                                            color={proximoInfo.color}
+                                            variant={proximoInfo.vencido ? 'filled' : 'outlined'}
+                                            sx={{ height: 22, fontSize: '0.7rem', fontWeight: 600 }}
                                         />
                                     )}
-                                    {(cargandoCadencia || registrandoWizard) && <CircularProgress size={16} />}
+                                    {(registrandoWizard) && <CircularProgress size={16} />}
                                 </Stack>
-                                <Stack direction="row" spacing={0.5}>
-                                    <Tooltip title="Avanzar paso manualmente">
-                                        <Button
-                                            size="small"
-                                            variant="outlined"
-                                            color="primary"
-                                            onClick={handleAvanzarPaso}
-                                            disabled={cargandoCadencia || registrandoWizard}
-                                            sx={{ minWidth: 'auto', px: 1 }}
-                                        >
-                                            <SkipNextIcon fontSize="small" />
-                                        </Button>
-                                    </Tooltip>
-                                    <Tooltip title="Detener cadencia">
-                                        <Button
-                                            size="small"
-                                            variant="outlined"
-                                            color="error"
-                                            onClick={handleDetenerCadencia}
-                                            disabled={cargandoCadencia || registrandoWizard}
-                                            sx={{ minWidth: 'auto', px: 1 }}
-                                        >
-                                            <StopIcon fontSize="small" />
-                                        </Button>
-                                    </Tooltip>
+                                <Stack direction="row" spacing={0.5} alignItems="center">
+                                    {contacto.proximaTarea?.nota && wizardFase === 'accion' && (
+                                        <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic', maxWidth: 180, textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                            💬 {contacto.proximaTarea.nota}
+                                        </Typography>
+                                    )}
+                                    {tieneTarea && wizardFase === 'accion' && (
+                                        <>
+                                            <Tooltip title="Modificar tarea">
+                                                <IconButton size="small" onClick={() => {
+                                                    setEditTareaTipo(contacto.proximaTarea?.tipo || 'llamada');
+                                                    setEditTareaFecha(contacto.proximaTarea?.fecha ? new Date(contacto.proximaTarea.fecha) : new Date());
+                                                    setEditTareaNota(contacto.proximaTarea?.nota || '');
+                                                    setEditandoTarea(true);
+                                                }} sx={{ color: 'text.secondary', p: 0.5 }}>
+                                                    <EditIcon sx={{ fontSize: 16 }} />
+                                                </IconButton>
+                                            </Tooltip>
+                                            <Tooltip title="Eliminar tarea">
+                                                <IconButton size="small" onClick={() => handleGuardarProximoContacto(null)} sx={{ color: 'error.light', p: 0.5 }}>
+                                                    <DeleteOutlineIcon sx={{ fontSize: 16 }} />
+                                                </IconButton>
+                                            </Tooltip>
+                                        </>
+                                    )}
                                 </Stack>
                             </Stack>
 
-                            {/* Wizard: una acción a la vez */}
-                            {pasoActual?.acciones?.length > 0 && (() => {
-                                const accion = pasoActual.acciones[subPasoIdx];
-                                if (!accion) {
-                                    return (
-                                        <Box sx={{ textAlign: 'center', py: 2 }}>
-                                            <CheckCircleIcon color="success" sx={{ fontSize: 40, mb: 1 }} />
-                                            <Typography variant="body2" color="text.secondary">
-                                                Todas las acciones de este paso completadas
-                                            </Typography>
-                                            <Button
-                                                size="small"
-                                                variant="contained"
-                                                onClick={handleAvanzarPaso}
-                                                sx={{ mt: 1 }}
-                                                disabled={cargandoCadencia}
-                                                endIcon={<SkipNextIcon />}
-                                            >
-                                                Avanzar al siguiente paso
-                                            </Button>
-                                        </Box>
-                                    );
-                                }
+                            {/* === LLAMADA WIZARD === */}
+                            {(canalWizard === 'llamada' || (!tieneTarea && wizardFase !== 'accion')) && canalWizard !== 'whatsapp' && canalWizard !== 'email' && (
+                            <Box>
+                                {wizardFase === 'accion' && canalWizard === 'llamada' && (
+                                    <Button
+                                        variant="contained"
+                                        startIcon={<PhoneIcon />}
+                                        onClick={() => {
+                                            handleLlamar();
+                                            setWizardFase('resultado');
+                                        }}
+                                        fullWidth
+                                        sx={{ bgcolor: '#4caf50', '&:hover': { bgcolor: '#388e3c' }, py: 1.2 }}
+                                    >
+                                        Llamar a {contacto.nombre?.split(' ')[0] || 'contacto'}
+                                    </Button>
+                                )}
 
-                                const canal = accion.tipo || accion.canal;
-
-                                return (
+                                {wizardFase === 'resultado' && (
                                     <Box>
-                                        {/* Indicador de sub-acción */}
-                                        <Stack direction="row" spacing={1} alignItems="center" mb={1.5}>
-                                            {canal === 'llamada' && <PhoneIcon fontSize="small" color="success" />}
-                                            {canal === 'whatsapp' && <WhatsAppIcon fontSize="small" sx={{ color: '#25D366' }} />}
-                                            {canal === 'email' && <EmailIcon fontSize="small" color="action" />}
-                                            <Typography variant="body2" fontWeight={600}>
-                                                {canal === 'llamada' ? 'Llamar' : canal === 'whatsapp' ? 'Enviar WhatsApp' : canal === 'email' ? 'Enviar Email' : canal}
-                                            </Typography>
-                                            {accion.condicion && (
-                                                <Chip size="small" label={accion.condicion.replace(/_/g, ' ')} variant="outlined" sx={{ fontSize: '0.65rem', height: 20 }} />
+                                        <Typography variant="body2" color="text.secondary" mb={1}>
+                                            ¿Cómo fue la llamada?
+                                        </Typography>
+                                        <Stack direction="row" spacing={1}>
+                                            <Button variant="contained" color="success" startIcon={<CheckCircleIcon />}
+                                                onClick={() => { setResultadoLlamada('atendio'); setWizardFase('seguimiento'); }}
+                                                sx={{ flex: 1, py: 1 }}>
+                                                Atendió
+                                            </Button>
+                                            <Button variant="contained" color="warning" startIcon={<PhoneMissedIcon />}
+                                                onClick={() => { setResultadoLlamada('no_atendio'); setWizardFase('nota'); }}
+                                                sx={{ flex: 1, py: 1 }}>
+                                                No atendió
+                                            </Button>
+                                        </Stack>
+                                    </Box>
+                                )}
+
+                                {wizardFase === 'seguimiento' && (
+                                    <Box>
+                                        <Chip size="small" label="✅ Atendió" color="success" sx={{ mb: 1.5 }} />
+                                        <Typography variant="body2" color="text.secondary" mb={1}>¿Qué acordaron?</Typography>
+                                        <Stack spacing={1}>
+                                            <Button variant={seguimientoWizard === 'llamar_despues' ? 'contained' : 'outlined'}
+                                                startIcon={<PhoneCallbackIcon />}
+                                                onClick={() => { setSeguimientoWizard('llamar_despues'); setWizardFase('nota'); }}
+                                                fullWidth sx={{ justifyContent: 'flex-start', py: 0.8 }}>
+                                                Llamar más adelante
+                                            </Button>
+                                            <Button variant={seguimientoWizard === 'mensaje_despues' ? 'contained' : 'outlined'}
+                                                startIcon={<ScheduleSendIcon />}
+                                                onClick={() => { setSeguimientoWizard('mensaje_despues'); setWizardFase('nota'); }}
+                                                fullWidth sx={{ justifyContent: 'flex-start', py: 0.8 }}>
+                                                Mandar mensaje más adelante
+                                            </Button>
+                                            <Button variant={seguimientoWizard === 'coordinar_reunion' ? 'contained' : 'outlined'}
+                                                startIcon={<EventIcon />}
+                                                onClick={() => { setSeguimientoWizard('coordinar_reunion'); setWizardFase('nota'); }}
+                                                fullWidth sx={{ justifyContent: 'flex-start', py: 0.8 }}>
+                                                Coordinar reunión
+                                            </Button>
+                                        </Stack>
+                                    </Box>
+                                )}
+
+                                {wizardFase === 'nota' && (
+                                    <Box>
+                                        <Stack direction="row" spacing={0.5} sx={{ mb: 1.5, flexWrap: 'wrap', gap: 0.5 }}>
+                                            <Chip size="small"
+                                                label={resultadoLlamada === 'atendio' ? '✅ Atendió' : '❌ No atendió'}
+                                                color={resultadoLlamada === 'atendio' ? 'success' : 'warning'} />
+                                            {seguimientoWizard && (
+                                                <Chip size="small"
+                                                    label={seguimientoWizard === 'llamar_despues' ? '📞 Llamar después' : seguimientoWizard === 'mensaje_despues' ? '💬 Mensaje después' : '📅 Coordinar reunión'}
+                                                    color="info" variant="outlined"
+                                                    onDelete={() => { setSeguimientoWizard(null); setWizardFase('seguimiento'); }} />
                                             )}
                                         </Stack>
-
-                                        {/* === LLAMADA: 3 fases === */}
-                                        {canal === 'llamada' && (
-                                            <Box>
-                                                {wizardFase === 'accion' && (
-                                                    <Button
-                                                        variant="contained"
-                                                        startIcon={<PhoneIcon />}
-                                                        onClick={() => {
-                                                            handleLlamar();
-                                                            setWizardFase('resultado');
-                                                        }}
-                                                        fullWidth
-                                                        sx={{ bgcolor: '#4caf50', '&:hover': { bgcolor: '#388e3c' }, py: 1.2 }}
-                                                    >
-                                                        Llamar a {contacto.nombre?.split(' ')[0] || 'contacto'}
-                                                    </Button>
-                                                )}
-
-                                                {wizardFase === 'resultado' && (
-                                                    <Box>
-                                                        <Typography variant="body2" color="text.secondary" mb={1}>
-                                                            ¿Cómo fue la llamada?
-                                                        </Typography>
-                                                        <Stack direction="row" spacing={1}>
-                                                            <Button
-                                                                variant="contained"
-                                                                color="success"
-                                                                startIcon={<CheckCircleIcon />}
-                                                                onClick={() => {
-                                                                    setResultadoLlamada('atendio');
-                                                                    setWizardFase('seguimiento');
-                                                                }}
-                                                                sx={{ flex: 1, py: 1 }}
-                                                            >
-                                                                Atendió
-                                                            </Button>
-                                                            <Button
-                                                                variant="contained"
-                                                                color="warning"
-                                                                startIcon={<PhoneMissedIcon />}
-                                                                onClick={() => {
-                                                                    setResultadoLlamada('no_atendio');
-                                                                    setWizardFase('nota');
-                                                                }}
-                                                                sx={{ flex: 1, py: 1 }}
-                                                            >
-                                                                No atendió
-                                                            </Button>
-                                                        </Stack>
-                                                    </Box>
-                                                )}
-
-                                                {wizardFase === 'seguimiento' && (
-                                                    <Box>
-                                                        <Chip size="small" label="✅ Atendió" color="success" sx={{ mb: 1.5 }} />
-                                                        <Typography variant="body2" color="text.secondary" mb={1}>
-                                                            ¿Qué acordaron?
-                                                        </Typography>
-                                                        <Stack spacing={1}>
-                                                            <Button
-                                                                variant={seguimientoWizard === 'llamar_despues' ? 'contained' : 'outlined'}
-                                                                startIcon={<PhoneCallbackIcon />}
-                                                                onClick={() => { setSeguimientoWizard('llamar_despues'); setWizardFase('nota'); }}
-                                                                fullWidth
-                                                                sx={{ justifyContent: 'flex-start', py: 0.8 }}
-                                                            >
-                                                                Llamar más adelante
-                                                            </Button>
-                                                            <Button
-                                                                variant={seguimientoWizard === 'mensaje_despues' ? 'contained' : 'outlined'}
-                                                                startIcon={<ScheduleSendIcon />}
-                                                                onClick={() => { setSeguimientoWizard('mensaje_despues'); setWizardFase('nota'); }}
-                                                                fullWidth
-                                                                sx={{ justifyContent: 'flex-start', py: 0.8 }}
-                                                            >
-                                                                Mandar mensaje más adelante
-                                                            </Button>
-                                                            <Button
-                                                                variant={seguimientoWizard === 'coordinar_reunion' ? 'contained' : 'outlined'}
-                                                                startIcon={<EventIcon />}
-                                                                onClick={() => { setSeguimientoWizard('coordinar_reunion'); setWizardFase('nota'); }}
-                                                                fullWidth
-                                                                sx={{ justifyContent: 'flex-start', py: 0.8 }}
-                                                            >
-                                                                Coordinar reunión
-                                                            </Button>
-                                                        </Stack>
-                                                    </Box>
-                                                )}
-
-                                                {wizardFase === 'nota' && (
-                                                    <Box>
-                                                        <Stack direction="row" spacing={0.5} sx={{ mb: 1.5, flexWrap: 'wrap', gap: 0.5 }}>
-                                                            <Chip
-                                                                size="small"
-                                                                label={resultadoLlamada === 'atendio' ? '✅ Atendió' : '❌ No atendió'}
-                                                                color={resultadoLlamada === 'atendio' ? 'success' : 'warning'}
-                                                            />
-                                                            {seguimientoWizard && (
-                                                                <Chip
-                                                                    size="small"
-                                                                    label={seguimientoWizard === 'llamar_despues' ? '📞 Llamar después' : seguimientoWizard === 'mensaje_despues' ? '💬 Mensaje después' : '📅 Coordinar reunión'}
-                                                                    color="info"
-                                                                    variant="outlined"
-                                                                    onDelete={() => { setSeguimientoWizard(null); setWizardFase('seguimiento'); }}
-                                                                />
-                                                            )}
-                                                        </Stack>
-                                                        {renderProximoContactoPicker()}
-                                                        <Button
-                                                            variant="contained"
-                                                            color="primary"
-                                                            onClick={handleWizardRegistrarLlamada}
-                                                            disabled={registrandoWizard || !proximoContactoWizard}
-                                                            endIcon={registrandoWizard ? <CircularProgress size={16} color="inherit" /> : <SkipNextIcon />}
-                                                            fullWidth
-                                                            sx={{ py: 1 }}
-                                                        >
-                                                            Registrar y continuar
-                                                        </Button>
-                                                    </Box>
-                                                )}
-                                            </Box>
-                                        )}
-
-                                        {/* === WHATSAPP: 3 fases === */}
-                                        {canal === 'whatsapp' && (
-                                            <Box>
-                                                {wizardFase === 'accion' && (
-                                                    <Box>
-                                                        <TextField
-                                                            fullWidth
-                                                            size="small"
-                                                            multiline
-                                                            minRows={3}
-                                                            maxRows={8}
-                                                            value={mensajeWA}
-                                                            onChange={(e) => setMensajeWA(e.target.value)}
-                                                            sx={{ mb: 1.5 }}
-                                                            placeholder="Mensaje para WhatsApp..."
-                                                        />
-                                                        <Button
-                                                            variant="contained"
-                                                            startIcon={<WhatsAppIcon />}
-                                                            onClick={handleWizardEnviarWA}
-                                                            disabled={!mensajeWA.trim()}
-                                                            fullWidth
-                                                            sx={{ bgcolor: '#25D366', '&:hover': { bgcolor: '#128C7E' }, py: 1 }}
-                                                        >
-                                                            Enviar por WhatsApp
-                                                        </Button>
-                                                    </Box>
-                                                )}
-
-                                                {wizardFase === 'resultado' && (
-                                                    <Box>
-                                                        <Chip size="small" icon={<CheckCircleIcon />} label="Mensaje enviado" color="success" sx={{ mb: 1.5 }} />
-                                                        <Typography variant="body2" color="text.secondary" mb={1}>
-                                                            ¿Te respondió el contacto?
-                                                        </Typography>
-                                                        <Stack direction="row" spacing={1}>
-                                                            <Button
-                                                                variant="contained"
-                                                                color="success"
-                                                                startIcon={<CheckCircleIcon />}
-                                                                onClick={() => {
-                                                                    setResultadoWA('respondio');
-                                                                    setWizardFase('seguimiento');
-                                                                }}
-                                                                sx={{ flex: 1, py: 1 }}
-                                                            >
-                                                                Ya respondió
-                                                            </Button>
-                                                            <Button
-                                                                variant="contained"
-                                                                color="info"
-                                                                startIcon={<AccessTimeIcon />}
-                                                                onClick={() => setWizardFase('esperar_respuesta')}
-                                                                sx={{ flex: 1, py: 1 }}
-                                                            >
-                                                                Esperar respuesta
-                                                            </Button>
-                                                        </Stack>
-                                                    </Box>
-                                                )}
-
-                                                {wizardFase === 'pendiente_confirmacion' && (
-                                                    <Box>
-                                                        <Chip size="small" icon={<AccessTimeIcon />} label="📩 WA enviado previamente" color="info" sx={{ mb: 1.5 }} />
-                                                        <Typography variant="body2" color="text.secondary" mb={1}>
-                                                            ¿Te respondió el contacto al WhatsApp que enviaste?
-                                                        </Typography>
-                                                        <Stack direction="row" spacing={1}>
-                                                            <Button
-                                                                variant="contained"
-                                                                color="success"
-                                                                startIcon={<CheckCircleIcon />}
-                                                                onClick={() => {
-                                                                    setResultadoWA('respondio');
-                                                                    setWizardFase('seguimiento');
-                                                                }}
-                                                                sx={{ flex: 1, py: 1 }}
-                                                            >
-                                                                Sí, respondió
-                                                            </Button>
-                                                            <Button
-                                                                variant="contained"
-                                                                color="warning"
-                                                                startIcon={<AccessTimeIcon />}
-                                                                onClick={() => {
-                                                                    setResultadoWA('no_respondio');
-                                                                    setWizardFase('nota');
-                                                                }}
-                                                                sx={{ flex: 1, py: 1 }}
-                                                            >
-                                                                No respondió
-                                                            </Button>
-                                                        </Stack>
-                                                    </Box>
-                                                )}
-
-                                                {wizardFase === 'esperar_respuesta' && (
-                                                    <Box>
-                                                        <Chip size="small" icon={<AccessTimeIcon />} label="Esperando respuesta" color="info" sx={{ mb: 1.5 }} />
-                                                        <Typography variant="body2" color="text.secondary" mb={1}>
-                                                            Agendá cuándo revisar si respondió
-                                                        </Typography>
-                                                        {renderProximoContactoPicker()}
-                                                        <Button
-                                                            variant="contained"
-                                                            color="primary"
-                                                            onClick={handleWizardEsperarRespuesta}
-                                                            disabled={registrandoWizard || !proximoContactoWizard}
-                                                            endIcon={registrandoWizard ? <CircularProgress size={16} color="inherit" /> : <CheckCircleIcon />}
-                                                            fullWidth
-                                                            sx={{ py: 1 }}
-                                                        >
-                                                            Confirmar y esperar
-                                                        </Button>
-                                                    </Box>
-                                                )}
-
-                                                {wizardFase === 'seguimiento' && (
-                                                    <Box>
-                                                        <Chip size="small" label="✅ Respondió" color="success" sx={{ mb: 1.5 }} />
-                                                        <Typography variant="body2" color="text.secondary" mb={1}>
-                                                            ¿Qué acordaron?
-                                                        </Typography>
-                                                        <Stack spacing={1}>
-                                                            <Button
-                                                                variant={seguimientoWizard === 'llamar_despues' ? 'contained' : 'outlined'}
-                                                                startIcon={<PhoneCallbackIcon />}
-                                                                onClick={() => { setSeguimientoWizard('llamar_despues'); setWizardFase('nota'); }}
-                                                                fullWidth
-                                                                sx={{ justifyContent: 'flex-start', py: 0.8 }}
-                                                            >
-                                                                Llamar más adelante
-                                                            </Button>
-                                                            <Button
-                                                                variant={seguimientoWizard === 'mensaje_despues' ? 'contained' : 'outlined'}
-                                                                startIcon={<ScheduleSendIcon />}
-                                                                onClick={() => { setSeguimientoWizard('mensaje_despues'); setWizardFase('nota'); }}
-                                                                fullWidth
-                                                                sx={{ justifyContent: 'flex-start', py: 0.8 }}
-                                                            >
-                                                                Mandar mensaje más adelante
-                                                            </Button>
-                                                            <Button
-                                                                variant={seguimientoWizard === 'coordinar_reunion' ? 'contained' : 'outlined'}
-                                                                startIcon={<EventIcon />}
-                                                                onClick={() => { setSeguimientoWizard('coordinar_reunion'); setWizardFase('nota'); }}
-                                                                fullWidth
-                                                                sx={{ justifyContent: 'flex-start', py: 0.8 }}
-                                                            >
-                                                                Coordinar reunión
-                                                            </Button>
-                                                        </Stack>
-                                                    </Box>
-                                                )}
-
-                                                {wizardFase === 'nota' && (
-                                                    <Box>
-                                                        <Stack direction="row" spacing={0.5} sx={{ mb: 1.5, flexWrap: 'wrap', gap: 0.5 }}>
-                                                            <Chip
-                                                                size="small"
-                                                                label={resultadoWA === 'respondio' ? '✅ Respondió' : '⏳ No respondió'}
-                                                                color={resultadoWA === 'respondio' ? 'success' : 'warning'}
-                                                            />
-                                                            {seguimientoWizard && (
-                                                                <Chip
-                                                                    size="small"
-                                                                    label={seguimientoWizard === 'llamar_despues' ? '📞 Llamar después' : seguimientoWizard === 'mensaje_despues' ? '💬 Mensaje después' : '📅 Coordinar reunión'}
-                                                                    color="info"
-                                                                    variant="outlined"
-                                                                    onDelete={() => { setSeguimientoWizard(null); setWizardFase('seguimiento'); }}
-                                                                />
-                                                            )}
-                                                        </Stack>
-                                                        {resultadoWA === 'no_respondio' && pasoActual?.paso?.delayDias > 0 && (
-                                                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1, fontStyle: 'italic' }}>
-                                                                El próximo paso se activa en {pasoActual.paso.delayDias} día{pasoActual.paso.delayDias > 1 ? 's' : ''}. Podés continuar con la siguiente acción.
-                                                            </Typography>
-                                                        )}
-                                                        {renderProximoContactoPicker()}
-                                                        <Button
-                                                            variant="contained"
-                                                            color="primary"
-                                                            onClick={handleWizardConfirmarWA}
-                                                            disabled={registrandoWizard || !proximoContactoWizard}
-                                                            endIcon={registrandoWizard ? <CircularProgress size={16} color="inherit" /> : <SkipNextIcon />}
-                                                            fullWidth
-                                                            sx={{ py: 1 }}
-                                                        >
-                                                            Registrar y continuar
-                                                        </Button>
-                                                    </Box>
-                                                )}
-                                            </Box>
-                                        )}
-
-                                        {/* === EMAIL: similar a WA === */}
-                                        {canal === 'email' && (
-                                            <Box>
-                                                <TextField
-                                                    fullWidth
-                                                    size="small"
-                                                    multiline
-                                                    minRows={3}
-                                                    value={mensajeWA}
-                                                    onChange={(e) => setMensajeWA(e.target.value)}
-                                                    sx={{ mb: 1.5 }}
-                                                    placeholder="Contenido del email..."
-                                                />
-                                                {renderProximoContactoPicker()}
-                                                <Button
-                                                    variant="contained"
-                                                    startIcon={<EmailIcon />}
-                                                    onClick={async () => {
-                                                        if (contacto.email) window.open(`mailto:${contacto.email}?body=${encodeURIComponent(mensajeWA)}`);
-                                                        setRegistrandoWizard(true);
-                                                        try {
-                                                            await SDRService.registrarIntento(contacto._id, { tipo: 'email_enviado', canal: 'email', nota: mensajeWA.trim() || undefined, empresaId, proximoContacto: proximoContactoWizard || undefined });
-                                                            if (proximoContactoWizard) {
-                                                                setContacto(prev => ({ ...prev, proximoContacto: proximoContactoWizard }));
-                                                            }
-                                                            mostrarSnackbar('Email registrado ✓');
-                                                            await avanzarSubPasoWizard(resultadoLlamada, resultadoWA);
-                                                        } catch (err) {
-                                                            mostrarSnackbar('Error al registrar', 'error');
-                                                        } finally {
-                                                            setRegistrandoWizard(false);
-                                                        }
-                                                    }}
-                                                    disabled={registrandoWizard || !proximoContactoWizard}
-                                                    fullWidth
-                                                    sx={{ py: 1 }}
-                                                >
-                                                    Enviar Email
-                                                </Button>
-                                            </Box>
-                                        )}
+                                        {renderProximoContactoPicker()}
+                                        <Button variant="contained" color="primary"
+                                            onClick={handleWizardRegistrarLlamada}
+                                            disabled={registrandoWizard || !proximoContactoWizard}
+                                            endIcon={registrandoWizard ? <CircularProgress size={16} color="inherit" /> : <SkipNextIcon />}
+                                            fullWidth sx={{ py: 1 }}>
+                                            Registrar y continuar
+                                        </Button>
                                     </Box>
-                                );
-                            })()}
+                                )}
+                            </Box>
+                            )}
 
-                            {!pasoActual && !cargandoCadencia && (
-                                <Typography variant="body2" color="text.secondary">
-                                    No se pudo cargar el paso actual de la cadencia
+                            {/* === WHATSAPP WIZARD === */}
+                            {(canalWizard === 'whatsapp' || waPendiente) && (
+                            <Box>
+                                {wizardFase === 'accion' && !waPendiente && (
+                                    <Box>
+                                        <TextField fullWidth size="small" multiline minRows={3} maxRows={8}
+                                            value={mensajeWA} onChange={(e) => setMensajeWA(e.target.value)}
+                                            sx={{ mb: 1.5 }} placeholder="Mensaje para WhatsApp..." />
+                                        <Button variant="contained" startIcon={<WhatsAppIcon />}
+                                            onClick={handleWizardEnviarWA}
+                                            disabled={!mensajeWA.trim()} fullWidth
+                                            sx={{ bgcolor: '#25D366', '&:hover': { bgcolor: '#128C7E' }, py: 1 }}>
+                                            Enviar por WhatsApp
+                                        </Button>
+                                    </Box>
+                                )}
+
+                                {wizardFase === 'accion' && waPendiente && (
+                                    <Box>
+                                        <Chip size="small" icon={<AccessTimeIcon />} label="📩 WA enviado previamente" color="info" sx={{ mb: 1.5 }} />
+                                        <Typography variant="body2" color="text.secondary" mb={1}>
+                                            ¿Te respondió el contacto al WhatsApp que enviaste?
+                                        </Typography>
+                                        <Stack direction="row" spacing={1}>
+                                            <Button variant="contained" color="success" startIcon={<CheckCircleIcon />}
+                                                onClick={() => { setResultadoWA('respondio'); setWizardFase('seguimiento'); }}
+                                                sx={{ flex: 1, py: 1 }}>Sí, respondió</Button>
+                                            <Button variant="contained" color="warning" startIcon={<AccessTimeIcon />}
+                                                onClick={() => { setResultadoWA('no_respondio'); setWizardFase('nota'); }}
+                                                sx={{ flex: 1, py: 1 }}>No respondió</Button>
+                                        </Stack>
+                                    </Box>
+                                )}
+
+                                {wizardFase === 'resultado' && (
+                                    <Box>
+                                        <Chip size="small" icon={<CheckCircleIcon />} label="Mensaje enviado" color="success" sx={{ mb: 1.5 }} />
+                                        <Typography variant="body2" color="text.secondary" mb={1}>¿Te respondió?</Typography>
+                                        <Stack direction="row" spacing={1}>
+                                            <Button variant="contained" color="success" startIcon={<CheckCircleIcon />}
+                                                onClick={() => { setResultadoWA('respondio'); setWizardFase('seguimiento'); }}
+                                                sx={{ flex: 1, py: 1 }}>Ya respondió</Button>
+                                            <Button variant="contained" color="info" startIcon={<AccessTimeIcon />}
+                                                onClick={() => setWizardFase('esperar_respuesta')}
+                                                sx={{ flex: 1, py: 1 }}>Esperar respuesta</Button>
+                                        </Stack>
+                                    </Box>
+                                )}
+
+                                {wizardFase === 'esperar_respuesta' && (
+                                    <Box>
+                                        <Chip size="small" icon={<AccessTimeIcon />} label="Esperando respuesta" color="info" sx={{ mb: 1.5 }} />
+                                        <Typography variant="body2" color="text.secondary" mb={1}>Agendá cuándo revisar si respondió</Typography>
+                                        {renderProximoContactoPicker()}
+                                        <Button variant="contained" color="primary"
+                                            onClick={handleWizardEsperarRespuesta}
+                                            disabled={registrandoWizard || !proximoContactoWizard}
+                                            endIcon={registrandoWizard ? <CircularProgress size={16} color="inherit" /> : <CheckCircleIcon />}
+                                            fullWidth sx={{ py: 1 }}>
+                                            Confirmar y esperar
+                                        </Button>
+                                    </Box>
+                                )}
+
+                                {wizardFase === 'seguimiento' && (
+                                    <Box>
+                                        <Chip size="small" label="✅ Respondió" color="success" sx={{ mb: 1.5 }} />
+                                        <Typography variant="body2" color="text.secondary" mb={1}>¿Qué acordaron?</Typography>
+                                        <Stack spacing={1}>
+                                            <Button variant={seguimientoWizard === 'llamar_despues' ? 'contained' : 'outlined'}
+                                                startIcon={<PhoneCallbackIcon />}
+                                                onClick={() => { setSeguimientoWizard('llamar_despues'); setWizardFase('nota'); }}
+                                                fullWidth sx={{ justifyContent: 'flex-start', py: 0.8 }}>Llamar más adelante</Button>
+                                            <Button variant={seguimientoWizard === 'mensaje_despues' ? 'contained' : 'outlined'}
+                                                startIcon={<ScheduleSendIcon />}
+                                                onClick={() => { setSeguimientoWizard('mensaje_despues'); setWizardFase('nota'); }}
+                                                fullWidth sx={{ justifyContent: 'flex-start', py: 0.8 }}>Mandar mensaje más adelante</Button>
+                                            <Button variant={seguimientoWizard === 'coordinar_reunion' ? 'contained' : 'outlined'}
+                                                startIcon={<EventIcon />}
+                                                onClick={() => { setSeguimientoWizard('coordinar_reunion'); setWizardFase('nota'); }}
+                                                fullWidth sx={{ justifyContent: 'flex-start', py: 0.8 }}>Coordinar reunión</Button>
+                                        </Stack>
+                                    </Box>
+                                )}
+
+                                {wizardFase === 'nota' && (
+                                    <Box>
+                                        <Stack direction="row" spacing={0.5} sx={{ mb: 1.5, flexWrap: 'wrap', gap: 0.5 }}>
+                                            <Chip size="small"
+                                                label={resultadoWA === 'respondio' ? '✅ Respondió' : '⏳ No respondió'}
+                                                color={resultadoWA === 'respondio' ? 'success' : 'warning'} />
+                                            {seguimientoWizard && (
+                                                <Chip size="small"
+                                                    label={seguimientoWizard === 'llamar_despues' ? '📞 Llamar después' : seguimientoWizard === 'mensaje_despues' ? '💬 Mensaje después' : '📅 Coordinar reunión'}
+                                                    color="info" variant="outlined"
+                                                    onDelete={() => { setSeguimientoWizard(null); setWizardFase('seguimiento'); }} />
+                                            )}
+                                        </Stack>
+                                        {renderProximoContactoPicker()}
+                                        <Button variant="contained" color="primary"
+                                            onClick={handleWizardConfirmarWA}
+                                            disabled={registrandoWizard || !proximoContactoWizard}
+                                            endIcon={registrandoWizard ? <CircularProgress size={16} color="inherit" /> : <SkipNextIcon />}
+                                            fullWidth sx={{ py: 1 }}>
+                                            Registrar y continuar
+                                        </Button>
+                                    </Box>
+                                )}
+
+                                {wizardFase === 'pendiente_confirmacion' && (
+                                    <Box>
+                                        <Chip size="small" icon={<AccessTimeIcon />} label="📩 WA pendiente" color="info" sx={{ mb: 1.5 }} />
+                                        <Typography variant="body2" color="text.secondary" mb={1}>¿Respondió al WA?</Typography>
+                                        <Stack direction="row" spacing={1}>
+                                            <Button variant="contained" color="success" startIcon={<CheckCircleIcon />}
+                                                onClick={() => { setResultadoWA('respondio'); setWizardFase('seguimiento'); }}
+                                                sx={{ flex: 1, py: 1 }}>Sí, respondió</Button>
+                                            <Button variant="contained" color="warning" startIcon={<AccessTimeIcon />}
+                                                onClick={() => { setResultadoWA('no_respondio'); setWizardFase('nota'); }}
+                                                sx={{ flex: 1, py: 1 }}>No respondió</Button>
+                                        </Stack>
+                                    </Box>
+                                )}
+                            </Box>
+                            )}
+
+                            {/* === EMAIL WIZARD === */}
+                            {canalWizard === 'email' && (
+                            <Box>
+                                <TextField fullWidth size="small" multiline minRows={3}
+                                    value={mensajeWA} onChange={(e) => setMensajeWA(e.target.value)}
+                                    sx={{ mb: 1.5 }} placeholder="Contenido del email..." />
+                                {renderProximoContactoPicker()}
+                                <Button variant="contained" startIcon={<EmailIcon />}
+                                    onClick={async () => {
+                                        if (contacto.email) window.open(`mailto:${contacto.email}?body=${encodeURIComponent(mensajeWA)}`);
+                                        setRegistrandoWizard(true);
+                                        try {
+                                            const proximaTarea = buildProximaTarea();
+                                            await SDRService.registrarIntento(contacto._id, { tipo: 'email_enviado', canal: 'email', nota: mensajeWA.trim() || undefined, empresaId, proximoContacto: proximoContactoWizard || undefined, proximaTarea });
+                                            if (proximoContactoWizard) {
+                                                setContacto(prev => ({ ...prev, proximoContacto: proximoContactoWizard, proximaTarea: proximaTarea || prev.proximaTarea }));
+                                            }
+                                            mostrarSnackbar('Email registrado ✓');
+                                            cargarContacto();
+                                        } catch (err) {
+                                            mostrarSnackbar('Error al registrar', 'error');
+                                        } finally {
+                                            setRegistrandoWizard(false);
+                                        }
+                                    }}
+                                    disabled={registrandoWizard || !proximoContactoWizard} fullWidth sx={{ py: 1 }}>
+                                    Enviar Email
+                                </Button>
+                            </Box>
+                            )}
+
+                            {/* === RECORDATORIO: completar === */}
+                            {tipoTarea === 'recordatorio' && wizardFase === 'accion' && (
+                            <Box>
+                                <Typography variant="body2" color="text.secondary" mb={1.5}>
+                                    {contacto.proximaTarea?.nota || 'Tienes un recordatorio pendiente'}
                                 </Typography>
+                                {renderProximoContactoPicker()}
+                                <Button variant="contained" color="primary"
+                                    onClick={async () => {
+                                        setRegistrandoWizard(true);
+                                        try {
+                                            const proximaTarea = buildProximaTarea();
+                                            await SDRService.registrarIntento(contacto._id, { tipo: 'recordatorio_completado', canal: 'otro', nota: notaWizard?.trim() || 'Recordatorio completado', empresaId, proximoContacto: proximoContactoWizard || undefined, proximaTarea });
+                                            mostrarSnackbar('Recordatorio completado ✓');
+                                            cargarContacto();
+                                        } catch (err) {
+                                            mostrarSnackbar('Error al registrar', 'error');
+                                        } finally {
+                                            setRegistrandoWizard(false);
+                                        }
+                                    }}
+                                    disabled={registrandoWizard || !proximoContactoWizard}
+                                    endIcon={registrandoWizard ? <CircularProgress size={16} color="inherit" /> : <CheckCircleIcon />}
+                                    fullWidth sx={{ py: 1 }}>
+                                    Completar y programar siguiente
+                                </Button>
+                            </Box>
+                            )}
+
+                            {/* === SIN TAREA: botones de acción directa === */}
+                            {!tieneTarea && !tieneAccionCadencia && wizardFase === 'accion' && (
+                            <Box>
+                                <Typography variant="body2" color="text.secondary" mb={1.5}>
+                                    No hay tarea programada. Elegí una acción:
+                                </Typography>
+                                <Stack spacing={1}>
+                                    <Button variant="outlined" startIcon={<PhoneIcon />} fullWidth
+                                        onClick={() => { handleLlamar(); setWizardFase('resultado'); }}
+                                        sx={{ justifyContent: 'flex-start', py: 0.8, color: '#4caf50', borderColor: '#4caf50' }}>
+                                        Llamar
+                                    </Button>
+                                    <Button variant="outlined" startIcon={<WhatsAppIcon />} fullWidth
+                                        onClick={() => setWizardFase('accion_wa')}
+                                        sx={{ justifyContent: 'flex-start', py: 0.8, color: '#25D366', borderColor: '#25D366' }}>
+                                        Enviar WhatsApp
+                                    </Button>
+                                    <Button variant="outlined" startIcon={<EmailIcon />} fullWidth
+                                        onClick={() => setWizardFase('accion_email')}
+                                        sx={{ justifyContent: 'flex-start', py: 0.8 }}>
+                                        Enviar Email
+                                    </Button>
+                                </Stack>
+                            </Box>
+                            )}
+
+                            {/* WA desde acción directa (sin tarea) */}
+                            {!tieneTarea && wizardFase === 'accion_wa' && (
+                            <Box>
+                                <TextField fullWidth size="small" multiline minRows={3} maxRows={8}
+                                    value={mensajeWA} onChange={(e) => setMensajeWA(e.target.value)}
+                                    sx={{ mb: 1.5 }} placeholder="Mensaje para WhatsApp..." />
+                                <Button variant="contained" startIcon={<WhatsAppIcon />}
+                                    onClick={handleWizardEnviarWA}
+                                    disabled={!mensajeWA.trim()} fullWidth
+                                    sx={{ bgcolor: '#25D366', '&:hover': { bgcolor: '#128C7E' }, py: 1 }}>
+                                    Enviar por WhatsApp
+                                </Button>
+                            </Box>
+                            )}
+
+                            {/* Email desde acción directa (sin tarea) */}
+                            {!tieneTarea && wizardFase === 'accion_email' && (
+                            <Box>
+                                <TextField fullWidth size="small" multiline minRows={3}
+                                    value={mensajeWA} onChange={(e) => setMensajeWA(e.target.value)}
+                                    sx={{ mb: 1.5 }} placeholder="Contenido del email..." />
+                                {renderProximoContactoPicker()}
+                                <Button variant="contained" startIcon={<EmailIcon />}
+                                    onClick={async () => {
+                                        if (contacto.email) window.open(`mailto:${contacto.email}?body=${encodeURIComponent(mensajeWA)}`);
+                                        setRegistrandoWizard(true);
+                                        try {
+                                            const proximaTarea = buildProximaTarea();
+                                            await SDRService.registrarIntento(contacto._id, { tipo: 'email_enviado', canal: 'email', nota: mensajeWA.trim() || undefined, empresaId, proximoContacto: proximoContactoWizard || undefined, proximaTarea });
+                                            mostrarSnackbar('Email registrado ✓');
+                                            cargarContacto();
+                                        } catch (err) {
+                                            mostrarSnackbar('Error al registrar', 'error');
+                                        } finally { setRegistrandoWizard(false); }
+                                    }}
+                                    disabled={registrandoWizard || !proximoContactoWizard} fullWidth sx={{ py: 1 }}>
+                                    Enviar Email
+                                </Button>
+                            </Box>
                             )}
 
                             {/* Escape: acción manual */}
                             <Box sx={{ mt: 1.5, textAlign: 'center' }}>
-                                <Button
-                                    size="small"
-                                    variant="text"
-                                    color="inherit"
+                                <Button size="small" variant="text" color="inherit"
                                     onClick={() => setModalRegistrarAccion(true)}
-                                    sx={{ fontSize: '0.75rem', textTransform: 'none', color: 'text.secondary' }}
-                                >
+                                    sx={{ fontSize: '0.75rem', textTransform: 'none', color: 'text.secondary' }}>
                                     Hacer otra acción →
                                 </Button>
+                                {wizardFase !== 'accion' && (
+                                    <Button size="small" variant="text" color="inherit"
+                                        onClick={() => { setWizardFase('accion'); setResultadoLlamada(null); setResultadoWA(null); setSeguimientoWizard(null); setNotaWizard(''); setProximoContactoWizard(null); setTipoTareaWizard(null); setNotaTareaWizard(''); setMensajeWA(''); }}
+                                        sx={{ fontSize: '0.75rem', textTransform: 'none', color: 'text.secondary', ml: 1 }}>
+                                        ← Volver al inicio
+                                    </Button>
+                                )}
                             </Box>
 
                             {/* Botón siguiente contacto */}
-                            <Button
-                                variant="contained"
-                                fullWidth
+                            <Button variant="contained" fullWidth
                                 onClick={handleSiguienteContacto}
                                 endIcon={<ChevronRightIcon />}
-                                sx={{ mt: 2, py: 1.2, fontWeight: 600, fontSize: '0.95rem', borderRadius: 2 }}
-                            >
+                                sx={{ mt: 2, py: 1.2, fontWeight: 600, fontSize: '0.95rem', borderRadius: 2 }}>
                                 {puedeSiguiente ? `Siguiente contacto (${indiceActual + 2}/${contactoIds.length})` : 'Volver al listado'}
                             </Button>
                         </Paper>
-                    ) : (
-                        /* Sin cadencia activa: mostrar botón para asignar */
-                        cadencias.length > 0 && (
-                            <Paper variant="outlined" sx={{ p: 2 }}>
-                                <Stack direction="row" spacing={1} alignItems="center" mb={1}>
-                                    <PlayArrowIcon fontSize="small" color="action" />
-                                    <Typography variant="subtitle2" color="text.secondary">
-                                        Cadencia
-                                    </Typography>
-                                    {contacto.cadenciaActiva?.completada && (
-                                        <Chip size="small" label="Completada" color="success" variant="outlined" />
-                                    )}
-                                </Stack>
-                                <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                                    {cadencias.map((cad) => (
-                                        <Button
-                                            key={cad._id}
-                                            size="small"
-                                            variant="outlined"
-                                            startIcon={<PlayArrowIcon />}
-                                            onClick={() => handleAsignarCadencia(cad._id)}
-                                            disabled={asignandoCadencia}
-                                        >
-                                            {cad.nombre}
-                                        </Button>
-                                    ))}
-                                </Stack>
-                            </Paper>
-                        )
-                    )}
+                        );
+                    })()}
 
                         </Grid>
                     </Grid>
@@ -2507,82 +2726,104 @@ const ContactoSDRDetailPage = () => {
                                     );
                                 })}
                             </Stack>
-                            <Stack spacing={1}>
+                            <Stack spacing={0.5}>
                                 {historialFiltrado.length === 0 ? (
                                     <Typography variant="body2" color="text.secondary" sx={{ py: 1, textAlign: 'center' }}>
                                         No hay eventos de este tipo
                                     </Typography>
-                                ) : historialFiltrado.slice(0, 3).map((evento) => {
-                                    const colors = getEventoColor(evento.tipo);
-                                    return (
-                                        <Paper
-                                            key={evento._id}
-                                            elevation={0}
-                                            sx={{ p: 1, bgcolor: colors.bg, borderLeft: 3, borderColor: colors.border }}
-                                        >
-                                            <Stack direction="row" spacing={1} alignItems="flex-start">
-                                                <Avatar sx={{ width: 24, height: 24, bgcolor: colors.border, color: 'white' }}>
-                                                    {getEventoIcon(evento.tipo)}
-                                                </Avatar>
-                                                <Box sx={{ flex: 1, minWidth: 0 }}>
-                                                    <Typography variant="body2" fontWeight={500} fontSize="0.8rem">
-                                                        {evento.descripcion}
+                                ) : (() => {
+                                    const grupos = agruparEventosPorBloque(historialFiltrado.slice(0, 6));
+                                    let eventosRendered = 0;
+                                    return grupos.map((grupo, gi) => {
+                                        if (eventosRendered >= 3) return null;
+                                        return (
+                                            <Box key={gi}>
+                                                <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 0.5, mt: gi > 0 ? 0.5 : 0 }}>
+                                                    <Divider sx={{ flex: 1 }} />
+                                                    <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem', fontWeight: 600, whiteSpace: 'nowrap', px: 0.5 }}>
+                                                        {formatearEtiquetaGrupo(grupo.fecha)}
                                                     </Typography>
-                                                    {evento.nota && (
-                                                        <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic', display: 'block' }}>
-                                                            &ldquo;{evento.nota.length > 80 ? evento.nota.substring(0, 80) + '...' : evento.nota}&rdquo;
-                                                        </Typography>
-                                                    )}
-                                                    {(evento.audioUrl || evento.metadata?.audioUrl) && (
-                                                        <Box sx={{ mt: 0.5 }}>
-                                                            <Stack direction="row" alignItems="center" spacing={0.5}>
-                                                                <audio controls src={resolveAudioUrl(evento.audioUrl || evento.metadata?.audioUrl)} style={{ flex: 1, height: 32 }} />
-                                                                <Tooltip title="Descargar audio">
-                                                                    <IconButton size="small" component="a" href={resolveAudioUrl(evento.audioUrl || evento.metadata?.audioUrl)} download={evento.audioNombre || evento.metadata?.audioNombre || 'audio.mp3'} sx={{ color: 'primary.main' }}>
-                                                                        <DownloadIcon sx={{ fontSize: 18 }} />
-                                                                    </IconButton>
-                                                                </Tooltip>
-                                                            </Stack>
-                                                        </Box>
-                                                    )}
-                                                    {(evento.resumen || evento.metadata?.resumen) && (
-                                                        <Box sx={{ position: 'relative', mt: 0.5 }}>
-                                                            <Typography variant="caption" component="div" sx={{ display: 'block', p: 1, pr: 4, bgcolor: '#e8f5e9', borderRadius: 1, fontSize: '0.74rem', lineHeight: 1.5, border: '1px solid #c8e6c9', whiteSpace: 'pre-wrap' }}>
-                                                                {evento.resumen || evento.metadata?.resumen}
-                                                            </Typography>
-                                                            <Tooltip title="Copiar resumen">
-                                                                <IconButton size="small" onClick={() => { navigator.clipboard.writeText(evento.resumen || evento.metadata?.resumen); mostrarSnackbar('Resumen copiado', 'success'); }} sx={{ position: 'absolute', top: 4, right: 4, p: 0.3, opacity: 0.5, '&:hover': { opacity: 1 } }}>
-                                                                    <ContentCopyIcon sx={{ fontSize: 14 }} />
-                                                                </IconButton>
-                                                            </Tooltip>
-                                                        </Box>
-                                                    )}
-                                                    {(evento.transcripcion || evento.metadata?.transcripcion) && (
-                                                        <Stack direction="row" alignItems="center" spacing={0.5} sx={{ mt: 0.3 }}>
-                                                            <Typography variant="caption" sx={{ flex: 1, p: 0.5, bgcolor: 'rgba(255,255,255,0.7)', borderRadius: 1, fontStyle: 'italic', fontSize: '0.70rem', cursor: 'pointer' }} onClick={(e) => { const el = e.currentTarget; el.dataset.expanded = el.dataset.expanded === 'true' ? 'false' : 'true'; el.innerText = el.dataset.expanded === 'true' ? '📝 ' + (evento.transcripcion || evento.metadata?.transcripcion) : '📝 ' + (evento.transcripcion || evento.metadata?.transcripcion).substring(0, 80) + '...'; }} title="Click para expandir">
-                                                                📝 {(evento.transcripcion || evento.metadata?.transcripcion).substring(0, 80)}{(evento.transcripcion || evento.metadata?.transcripcion).length > 80 ? '...' : ''}
-                                                            </Typography>
-                                                            <Tooltip title="Copiar transcripción">
-                                                                <IconButton size="small" onClick={() => { navigator.clipboard.writeText(evento.transcripcion || evento.metadata?.transcripcion); mostrarSnackbar('Transcripción copiada', 'success'); }} sx={{ p: 0.3, opacity: 0.5, '&:hover': { opacity: 1 } }}>
-                                                                    <ContentCopyIcon sx={{ fontSize: 14 }} />
-                                                                </IconButton>
-                                                            </Tooltip>
-                                                            <Tooltip title="Re-analizar con IA">
-                                                                <IconButton size="small" onClick={() => handleReanalizarAudio(evento._id)} disabled={reanalizandoEvento === evento._id} sx={{ p: 0.3 }}>
-                                                                    {reanalizandoEvento === evento._id ? <CircularProgress size={14} /> : <AutoFixHighIcon sx={{ fontSize: 16, color: 'secondary.main' }} />}
-                                                                </IconButton>
-                                                            </Tooltip>
-                                                        </Stack>
-                                                    )}
-                                                    <Typography variant="caption" color="text.secondary">
-                                                        {new Date(evento.createdAt).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
-                                                        {evento.sdrNombre && ` • ${evento.sdrNombre}`}
-                                                    </Typography>
-                                                </Box>
-                                            </Stack>
-                                        </Paper>
-                                    );
-                                })}
+                                                    <Divider sx={{ flex: 1 }} />
+                                                </Stack>
+                                                <Stack spacing={0.5}>
+                                                    {grupo.eventos.map((evento) => {
+                                                        if (eventosRendered >= 3) return null;
+                                                        eventosRendered++;
+                                                        const colors = getEventoColor(evento.tipo);
+                                                        const esGrupoMultiple = grupo.eventos.length > 1;
+                                                        return (
+                                                            <Paper key={evento._id} elevation={0}
+                                                                sx={{ p: esGrupoMultiple ? 0.7 : 1, bgcolor: colors.bg, borderLeft: 3, borderColor: colors.border }}>
+                                                                <Stack direction="row" spacing={0.8} alignItems="flex-start">
+                                                                    <Avatar sx={{ width: esGrupoMultiple ? 18 : 24, height: esGrupoMultiple ? 18 : 24, bgcolor: colors.border, color: 'white', '& .MuiSvgIcon-root': { fontSize: esGrupoMultiple ? '0.7rem' : '0.85rem' } }}>
+                                                                        {getEventoIcon(evento.tipo)}
+                                                                    </Avatar>
+                                                                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                                                                        <Typography variant="body2" fontWeight={500} fontSize={esGrupoMultiple ? '0.72rem' : '0.8rem'}>
+                                                                            {evento.descripcion}
+                                                                        </Typography>
+                                                                        {evento.nota && (
+                                                                            <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic', display: 'block', fontSize: '0.68rem' }}>
+                                                                                &ldquo;{evento.nota.length > 80 ? evento.nota.substring(0, 80) + '...' : evento.nota}&rdquo;
+                                                                            </Typography>
+                                                                        )}
+                                                                        {(evento.audioUrl || evento.metadata?.audioUrl) && (
+                                                                            <Box sx={{ mt: 0.5 }}>
+                                                                                <Stack direction="row" alignItems="center" spacing={0.5}>
+                                                                                    <audio controls src={resolveAudioUrl(evento.audioUrl || evento.metadata?.audioUrl)} style={{ flex: 1, height: 32 }} />
+                                                                                    <Tooltip title="Descargar audio">
+                                                                                        <IconButton size="small" component="a" href={resolveAudioUrl(evento.audioUrl || evento.metadata?.audioUrl)} download={evento.audioNombre || evento.metadata?.audioNombre || 'audio.mp3'} sx={{ color: 'primary.main' }}>
+                                                                                            <DownloadIcon sx={{ fontSize: 18 }} />
+                                                                                        </IconButton>
+                                                                                    </Tooltip>
+                                                                                </Stack>
+                                                                            </Box>
+                                                                        )}
+                                                                        {(evento.resumen || evento.metadata?.resumen) && (
+                                                                            <Box sx={{ position: 'relative', mt: 0.5 }}>
+                                                                                <Typography variant="caption" component="div" sx={{ display: 'block', p: 1, pr: 4, bgcolor: '#e8f5e9', borderRadius: 1, fontSize: '0.74rem', lineHeight: 1.5, border: '1px solid #c8e6c9', whiteSpace: 'pre-wrap' }}>
+                                                                                    {evento.resumen || evento.metadata?.resumen}
+                                                                                </Typography>
+                                                                                <Tooltip title="Copiar resumen">
+                                                                                    <IconButton size="small" onClick={() => { navigator.clipboard.writeText(evento.resumen || evento.metadata?.resumen); mostrarSnackbar('Resumen copiado', 'success'); }} sx={{ position: 'absolute', top: 4, right: 4, p: 0.3, opacity: 0.5, '&:hover': { opacity: 1 } }}>
+                                                                                        <ContentCopyIcon sx={{ fontSize: 14 }} />
+                                                                                    </IconButton>
+                                                                                </Tooltip>
+                                                                            </Box>
+                                                                        )}
+                                                                        {(evento.transcripcion || evento.metadata?.transcripcion) && (
+                                                                            <Stack direction="row" alignItems="center" spacing={0.5} sx={{ mt: 0.3 }}>
+                                                                                <Typography variant="caption" sx={{ flex: 1, p: 0.5, bgcolor: 'rgba(255,255,255,0.7)', borderRadius: 1, fontStyle: 'italic', fontSize: '0.70rem', cursor: 'pointer' }} onClick={(e) => { const el = e.currentTarget; el.dataset.expanded = el.dataset.expanded === 'true' ? 'false' : 'true'; el.innerText = el.dataset.expanded === 'true' ? '📝 ' + (evento.transcripcion || evento.metadata?.transcripcion) : '📝 ' + (evento.transcripcion || evento.metadata?.transcripcion).substring(0, 80) + '...'; }} title="Click para expandir">
+                                                                                    📝 {(evento.transcripcion || evento.metadata?.transcripcion).substring(0, 80)}{(evento.transcripcion || evento.metadata?.transcripcion).length > 80 ? '...' : ''}
+                                                                                </Typography>
+                                                                                <Tooltip title="Copiar transcripción">
+                                                                                    <IconButton size="small" onClick={() => { navigator.clipboard.writeText(evento.transcripcion || evento.metadata?.transcripcion); mostrarSnackbar('Transcripción copiada', 'success'); }} sx={{ p: 0.3, opacity: 0.5, '&:hover': { opacity: 1 } }}>
+                                                                                        <ContentCopyIcon sx={{ fontSize: 14 }} />
+                                                                                    </IconButton>
+                                                                                </Tooltip>
+                                                                                <Tooltip title="Re-analizar con IA">
+                                                                                    <IconButton size="small" onClick={() => handleReanalizarAudio(evento._id)} disabled={reanalizandoEvento === evento._id} sx={{ p: 0.3 }}>
+                                                                                        {reanalizandoEvento === evento._id ? <CircularProgress size={14} /> : <AutoFixHighIcon sx={{ fontSize: 16, color: 'secondary.main' }} />}
+                                                                                    </IconButton>
+                                                                                </Tooltip>
+                                                                            </Stack>
+                                                                        )}
+                                                                        {!esGrupoMultiple && (
+                                                                            <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem' }}>
+                                                                                {new Date(evento.createdAt).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                                                                                {evento.sdrNombre && ` • ${evento.sdrNombre}`}
+                                                                            </Typography>
+                                                                        )}
+                                                                    </Box>
+                                                                </Stack>
+                                                            </Paper>
+                                                        );
+                                                    })}
+                                                </Stack>
+                                            </Box>
+                                        );
+                                    });
+                                })()}
                                 {historialFiltrado.length > 3 && (
                                     <Button
                                         size="small"
@@ -2711,87 +2952,103 @@ const ContactoSDRDetailPage = () => {
                                         No hay eventos de tipo &ldquo;{FILTROS_HISTORIAL.find(f => f.key === filtroHistorial)?.label}&rdquo;
                                     </Typography>
                                 ) : (
-                                    <Stack spacing={1}>
-                                        {historialFiltrado.map((evento) => {
-                                            const colors = getEventoColor(evento.tipo);
-                                            return (
-                                                <Paper
-                                                    key={evento._id}
-                                                    elevation={0}
-                                                    sx={{ p: 1.5, bgcolor: colors.bg, borderLeft: 3, borderColor: colors.border }}
-                                                >
-                                                    <Stack direction="row" spacing={1} alignItems="flex-start">
-                                                        <Avatar sx={{ width: 28, height: 28, bgcolor: colors.border, color: 'white' }}>
-                                                            {getEventoIcon(evento.tipo)}
-                                                        </Avatar>
-                                                        <Box sx={{ flex: 1, minWidth: 0 }}>
-                                                            <Typography variant="body2" fontWeight={500}>
-                                                                {evento.descripcion}
-                                                            </Typography>
-                                                            {evento.nota && (
-                                                                <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, fontStyle: 'italic' }}>
-                                                                    &ldquo;{evento.nota}&rdquo;
-                                                                </Typography>
-                                                            )}
-                                                            {(evento.audioUrl || evento.metadata?.audioUrl) && (
-                                                                <Box sx={{ mt: 0.5 }}>
-                                                                    <Stack direction="row" alignItems="center" spacing={0.5}>
-                                                                        <audio controls src={resolveAudioUrl(evento.audioUrl || evento.metadata?.audioUrl)} style={{ flex: 1, height: 36 }} />
-                                                                        <Tooltip title="Descargar audio">
-                                                                            <IconButton size="small" component="a" href={resolveAudioUrl(evento.audioUrl || evento.metadata?.audioUrl)} download={evento.audioNombre || evento.metadata?.audioNombre || 'audio.mp3'} sx={{ color: 'primary.main' }}>
-                                                                                <DownloadIcon sx={{ fontSize: 20 }} />
-                                                                            </IconButton>
-                                                                        </Tooltip>
-                                                                    </Stack>
-                                                                </Box>
-                                                            )}
-                                                            {(evento.resumen || evento.metadata?.resumen) && (
-                                                                <Box sx={{ position: 'relative', mt: 0.5 }}>
-                                                                    <Typography variant="caption" component="div" sx={{ display: 'block', p: 1.5, pr: 4.5, bgcolor: '#e8f5e9', borderRadius: 1, fontSize: '0.82rem', lineHeight: 1.6, border: '1px solid #c8e6c9', whiteSpace: 'pre-wrap' }}>
-                                                                        {evento.resumen || evento.metadata?.resumen}
-                                                                    </Typography>
-                                                                    <Tooltip title="Copiar resumen">
-                                                                        <IconButton size="small" onClick={() => { navigator.clipboard.writeText(evento.resumen || evento.metadata?.resumen); mostrarSnackbar('Resumen copiado', 'success'); }} sx={{ position: 'absolute', top: 6, right: 6, p: 0.4, opacity: 0.5, '&:hover': { opacity: 1 } }}>
-                                                                            <ContentCopyIcon sx={{ fontSize: 16 }} />
-                                                                        </IconButton>
-                                                                    </Tooltip>
-                                                                </Box>
-                                                            )}
-                                                            {(evento.transcripcion || evento.metadata?.transcripcion) && (
-                                                                <Stack direction="row" alignItems="center" spacing={0.5} sx={{ mt: 0.5 }}>
-                                                                    <Typography variant="caption" sx={{ flex: 1, p: 0.8, bgcolor: 'rgba(255,255,255,0.7)', borderRadius: 1, fontStyle: 'italic', lineHeight: 1.4, cursor: 'pointer' }} onClick={(e) => { const el = e.currentTarget; el.dataset.expanded = el.dataset.expanded === 'true' ? 'false' : 'true'; el.innerText = el.dataset.expanded === 'true' ? '📝 ' + (evento.transcripcion || evento.metadata?.transcripcion) : '📝 ' + (evento.transcripcion || evento.metadata?.transcripcion).substring(0, 150) + '... (click para ver)'; }} title="Click para expandir">
-                                                                        📝 {(evento.transcripcion || evento.metadata?.transcripcion).substring(0, 150)}{(evento.transcripcion || evento.metadata?.transcripcion).length > 150 ? '... (click para ver)' : ''}
-                                                                    </Typography>
-                                                                    <Tooltip title="Copiar transcripción">
-                                                                        <IconButton size="small" onClick={() => { navigator.clipboard.writeText(evento.transcripcion || evento.metadata?.transcripcion); mostrarSnackbar('Transcripción copiada', 'success'); }} sx={{ p: 0.4, opacity: 0.5, '&:hover': { opacity: 1 } }}>
-                                                                            <ContentCopyIcon sx={{ fontSize: 16 }} />
-                                                                        </IconButton>
-                                                                    </Tooltip>
-                                                                    <Tooltip title="Re-analizar con IA">
-                                                                        <IconButton size="small" onClick={() => handleReanalizarAudio(evento._id)} disabled={reanalizandoEvento === evento._id} sx={{ p: 0.4 }}>
-                                                                            {reanalizandoEvento === evento._id ? <CircularProgress size={16} /> : <AutoFixHighIcon sx={{ fontSize: 18, color: 'secondary.main' }} />}
+                                    <Stack spacing={0.5}>
+                                        {agruparEventosPorBloque(historialFiltrado).map((grupo, gi) => (
+                                            <Box key={gi}>
+                                                {/* Separador temporal */}
+                                                <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 0.5, mt: gi > 0 ? 1.5 : 0 }}>
+                                                    <Divider sx={{ flex: 1 }} />
+                                                    <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.72rem', fontWeight: 600, whiteSpace: 'nowrap', px: 0.5 }}>
+                                                        {formatearEtiquetaGrupo(grupo.fecha)}
+                                                        {grupo.eventos.length > 1 && ` (${grupo.eventos.length})`}
+                                                    </Typography>
+                                                    <Divider sx={{ flex: 1 }} />
+                                                </Stack>
+                                                {/* Eventos agrupados */}
+                                                <Stack spacing={0.5}>
+                                                    {grupo.eventos.map((evento) => {
+                                                        const colors = getEventoColor(evento.tipo);
+                                                        const esGrupoMultiple = grupo.eventos.length > 1;
+                                                        return (
+                                                            <Paper key={evento._id} elevation={0}
+                                                                sx={{ p: esGrupoMultiple ? 1 : 1.5, bgcolor: colors.bg, borderLeft: 3, borderColor: colors.border }}>
+                                                                <Stack direction="row" spacing={1} alignItems="flex-start">
+                                                                    <Avatar sx={{ width: esGrupoMultiple ? 22 : 28, height: esGrupoMultiple ? 22 : 28, bgcolor: colors.border, color: 'white', '& .MuiSvgIcon-root': { fontSize: esGrupoMultiple ? '0.8rem' : 'inherit' } }}>
+                                                                        {getEventoIcon(evento.tipo)}
+                                                                    </Avatar>
+                                                                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                                                                        <Typography variant="body2" fontWeight={500} fontSize={esGrupoMultiple ? '0.82rem' : undefined}>
+                                                                            {evento.descripcion}
+                                                                        </Typography>
+                                                                        {evento.nota && (
+                                                                            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.3, fontStyle: 'italic', fontSize: esGrupoMultiple ? '0.78rem' : undefined }}>
+                                                                                &ldquo;{evento.nota.length > 200 ? evento.nota.substring(0, 200) + '...' : evento.nota}&rdquo;
+                                                                            </Typography>
+                                                                        )}
+                                                                        {(evento.audioUrl || evento.metadata?.audioUrl) && (
+                                                                            <Box sx={{ mt: 0.5 }}>
+                                                                                <Stack direction="row" alignItems="center" spacing={0.5}>
+                                                                                    <audio controls src={resolveAudioUrl(evento.audioUrl || evento.metadata?.audioUrl)} style={{ flex: 1, height: 36 }} />
+                                                                                    <Tooltip title="Descargar audio">
+                                                                                        <IconButton size="small" component="a" href={resolveAudioUrl(evento.audioUrl || evento.metadata?.audioUrl)} download={evento.audioNombre || evento.metadata?.audioNombre || 'audio.mp3'} sx={{ color: 'primary.main' }}>
+                                                                                            <DownloadIcon sx={{ fontSize: 20 }} />
+                                                                                        </IconButton>
+                                                                                    </Tooltip>
+                                                                                </Stack>
+                                                                            </Box>
+                                                                        )}
+                                                                        {(evento.resumen || evento.metadata?.resumen) && (
+                                                                            <Box sx={{ position: 'relative', mt: 0.5 }}>
+                                                                                <Typography variant="caption" component="div" sx={{ display: 'block', p: 1.5, pr: 4.5, bgcolor: '#e8f5e9', borderRadius: 1, fontSize: '0.82rem', lineHeight: 1.6, border: '1px solid #c8e6c9', whiteSpace: 'pre-wrap' }}>
+                                                                                    {evento.resumen || evento.metadata?.resumen}
+                                                                                </Typography>
+                                                                                <Tooltip title="Copiar resumen">
+                                                                                    <IconButton size="small" onClick={() => { navigator.clipboard.writeText(evento.resumen || evento.metadata?.resumen); mostrarSnackbar('Resumen copiado', 'success'); }} sx={{ position: 'absolute', top: 6, right: 6, p: 0.4, opacity: 0.5, '&:hover': { opacity: 1 } }}>
+                                                                                        <ContentCopyIcon sx={{ fontSize: 16 }} />
+                                                                                    </IconButton>
+                                                                                </Tooltip>
+                                                                            </Box>
+                                                                        )}
+                                                                        {(evento.transcripcion || evento.metadata?.transcripcion) && (
+                                                                            <Stack direction="row" alignItems="center" spacing={0.5} sx={{ mt: 0.5 }}>
+                                                                                <Typography variant="caption" sx={{ flex: 1, p: 0.8, bgcolor: 'rgba(255,255,255,0.7)', borderRadius: 1, fontStyle: 'italic', lineHeight: 1.4, cursor: 'pointer' }} onClick={(e) => { const el = e.currentTarget; el.dataset.expanded = el.dataset.expanded === 'true' ? 'false' : 'true'; el.innerText = el.dataset.expanded === 'true' ? '📝 ' + (evento.transcripcion || evento.metadata?.transcripcion) : '📝 ' + (evento.transcripcion || evento.metadata?.transcripcion).substring(0, 150) + '... (click para ver)'; }} title="Click para expandir">
+                                                                                    📝 {(evento.transcripcion || evento.metadata?.transcripcion).substring(0, 150)}{(evento.transcripcion || evento.metadata?.transcripcion).length > 150 ? '... (click para ver)' : ''}
+                                                                                </Typography>
+                                                                                <Tooltip title="Copiar transcripción">
+                                                                                    <IconButton size="small" onClick={() => { navigator.clipboard.writeText(evento.transcripcion || evento.metadata?.transcripcion); mostrarSnackbar('Transcripción copiada', 'success'); }} sx={{ p: 0.4, opacity: 0.5, '&:hover': { opacity: 1 } }}>
+                                                                                        <ContentCopyIcon sx={{ fontSize: 16 }} />
+                                                                                    </IconButton>
+                                                                                </Tooltip>
+                                                                                <Tooltip title="Re-analizar con IA">
+                                                                                    <IconButton size="small" onClick={() => handleReanalizarAudio(evento._id)} disabled={reanalizandoEvento === evento._id} sx={{ p: 0.4 }}>
+                                                                                        {reanalizandoEvento === evento._id ? <CircularProgress size={16} /> : <AutoFixHighIcon sx={{ fontSize: 18, color: 'secondary.main' }} />}
+                                                                                    </IconButton>
+                                                                                </Tooltip>
+                                                                            </Stack>
+                                                                        )}
+                                                                        {!esGrupoMultiple && (
+                                                                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                                                                                {new Date(evento.createdAt).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                                                                {evento.sdrNombre && ` • ${evento.sdrNombre}`}
+                                                                            </Typography>
+                                                                        )}
+                                                                    </Box>
+                                                                    <Tooltip title="Eliminar evento">
+                                                                        <IconButton 
+                                                                            size="small" 
+                                                                            onClick={() => handleEliminarEvento(evento._id)}
+                                                                            sx={{ opacity: 0.4, '&:hover': { opacity: 1, color: 'error.main' } }}
+                                                                        >
+                                                                            <DeleteIcon sx={{ fontSize: 16 }} />
                                                                         </IconButton>
                                                                     </Tooltip>
                                                                 </Stack>
-                                                            )}
-                                                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-                                                                {new Date(evento.createdAt).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                                                                {evento.sdrNombre && ` • ${evento.sdrNombre}`}
-                                                            </Typography>
-                                                        </Box>
-                                                        <Tooltip title="Eliminar evento">
-                                                            <IconButton 
-                                                                size="small" 
-                                                                onClick={() => handleEliminarEvento(evento._id)}
-                                                                sx={{ opacity: 0.4, '&:hover': { opacity: 1, color: 'error.main' } }}
-                                                            >
-                                                                <DeleteIcon sx={{ fontSize: 16 }} />
-                                                            </IconButton>
-                                                        </Tooltip>
-                                                    </Stack>
-                                                </Paper>
-                                            );
-                                        })}
+                                                            </Paper>
+                                                        );
+                                                    })}
+                                                </Stack>
+                                            </Box>
+                                        ))}
                                     </Stack>
                                 )}
                             </Box>
@@ -2825,433 +3082,299 @@ const ContactoSDRDetailPage = () => {
                         zIndex: 1200,
                         bgcolor: 'background.paper',
                         borderTop: 2,
-                        borderColor: contacto.cadenciaActiva?.cadenciaId && !contacto.cadenciaActiva?.completada ? 'primary.main' : 'divider',
+                        borderColor: contacto.proximaTarea?.tipo ? 'primary.main' : 'divider',
                         boxShadow: '0 -2px 10px rgba(0,0,0,0.12)',
                         px: 1.5,
                         py: 1,
                         pb: 'calc(8px + env(safe-area-inset-bottom))',
                     }}
                 >
-                    {/* --- CADENCIA ACTIVA: wizard en barra fija --- */}
-                    {contacto.cadenciaActiva?.cadenciaId && !contacto.cadenciaActiva?.completada ? (
+                    {(() => {
+                        const tipoTarea = contacto.proximaTarea?.tipo;
+                        const tieneTarea = !!tipoTarea;
+                        let canalWizard = tipoTarea === 'llamada' ? 'llamada' : tipoTarea === 'whatsapp' ? 'whatsapp' : tipoTarea === 'email' ? 'email' : null;
+                        const waPendiente = contacto.cadenciaActiva?.waPendienteRespuesta;
+                        // Fallback: si no hay tarea pero hay cadencia activa, derivar del paso actual
+                        const tareaDeCadencia = !tieneTarea && pasoActual?.acciones?.[subPasoIdx];
+                        const tipoCadencia = tareaDeCadencia ? (tareaDeCadencia.tipo || tareaDeCadencia.canal) : null;
+                        if (!canalWizard && tipoCadencia && ['llamada', 'whatsapp', 'email'].includes(tipoCadencia)) {
+                            canalWizard = tipoCadencia;
+                        }
+                        const tieneAccionCadencia = !tieneTarea && !!canalWizard;
+
+                        return (
                         <Box>
                             {/* Mini header */}
                             <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1}>
                                 <Stack direction="row" spacing={0.5} alignItems="center">
-                                    <PlayArrowIcon sx={{ fontSize: 16 }} color="primary" />
-                                    <Typography variant="caption" color="primary" fontWeight={600}>
-                                        {pasoActual?.paso?.nombre || `Paso ${(contacto.cadenciaActiva.pasoActual || 0) + 1}`}
-                                    </Typography>
-                                    {(cargandoCadencia || registrandoWizard) && <CircularProgress size={14} />}
+                                    {(tieneTarea || tieneAccionCadencia) ? (
+                                        <>
+                                            <span style={{ fontSize: '0.9rem' }}>
+                                                {(tipoTarea || canalWizard) === 'llamada' ? '📞' : (tipoTarea || canalWizard) === 'whatsapp' ? '💬' : (tipoTarea || canalWizard) === 'email' ? '✉️' : '📝'}
+                                            </span>
+                                            <Typography variant="caption" color={tieneTarea ? 'primary' : 'info.main'} fontWeight={600}>
+                                                {(tipoTarea || canalWizard) === 'llamada' ? 'Llamar' : (tipoTarea || canalWizard) === 'whatsapp' ? 'WhatsApp' : (tipoTarea || canalWizard) === 'email' ? 'Email' : 'Recordatorio'}
+                                            </Typography>
+                                            {tieneAccionCadencia && (
+                                                <Chip size="small" label="cadencia" variant="outlined" color="info" sx={{ height: 18, fontSize: '0.6rem' }} />
+                                            )}
+                                            {tieneTarea && wizardFase === 'accion' && proximoInfo && (
+                                                <Chip
+                                                    size="small"
+                                                    label={proximoInfo.texto}
+                                                    color={proximoInfo.color}
+                                                    variant={proximoInfo.vencido ? 'filled' : 'outlined'}
+                                                    sx={{ height: 20, fontSize: '0.6rem', fontWeight: 600 }}
+                                                />
+                                            )}
+                                        </>
+                                    ) : (
+                                        <Typography variant="caption" color="text.secondary" fontWeight={600}>Acción</Typography>
+                                    )}
+                                    {registrandoWizard && <CircularProgress size={14} />}
                                 </Stack>
-                                <Stack direction="row" spacing={0.5}>
-                                    <IconButton size="small" onClick={handleAvanzarPaso} disabled={cargandoCadencia || registrandoWizard} sx={{ width: 28, height: 28 }}>
-                                        <SkipNextIcon sx={{ fontSize: 16 }} />
-                                    </IconButton>
-                                    <IconButton size="small" color="error" onClick={handleDetenerCadencia} disabled={cargandoCadencia || registrandoWizard} sx={{ width: 28, height: 28 }}>
-                                        <StopIcon sx={{ fontSize: 16 }} />
-                                    </IconButton>
+                                <Stack direction="row" spacing={0.5} alignItems="center">
+                                    {tieneTarea && wizardFase === 'accion' && (
+                                        <>
+                                            <IconButton size="small" onClick={() => {
+                                                setEditTareaTipo(contacto.proximaTarea?.tipo || 'llamada');
+                                                setEditTareaFecha(contacto.proximaTarea?.fecha ? new Date(contacto.proximaTarea.fecha) : new Date());
+                                                setEditTareaNota(contacto.proximaTarea?.nota || '');
+                                                setEditandoTarea(true);
+                                            }} sx={{ color: 'text.secondary', p: 0.3 }}>
+                                                <EditIcon sx={{ fontSize: 14 }} />
+                                            </IconButton>
+                                            <IconButton size="small" onClick={() => handleGuardarProximoContacto(null)} sx={{ color: 'error.light', p: 0.3 }}>
+                                                <DeleteOutlineIcon sx={{ fontSize: 14 }} />
+                                            </IconButton>
+                                        </>
+                                    )}
+                                    {wizardFase !== 'accion' && (
+                                        <Button size="small" variant="text" color="inherit"
+                                            onClick={() => { setWizardFase('accion'); setResultadoLlamada(null); setResultadoWA(null); setSeguimientoWizard(null); setNotaWizard(''); setProximoContactoWizard(null); setTipoTareaWizard(null); setNotaTareaWizard(''); setMensajeWA(''); }}
+                                            sx={{ fontSize: '0.65rem', textTransform: 'none', color: 'text.secondary', py: 0, minWidth: 'auto' }}>
+                                            ← Inicio
+                                        </Button>
+                                    )}
                                 </Stack>
                             </Stack>
 
-                            {/* Wizard compacto */}
-                            {pasoActual?.acciones?.length > 0 && (() => {
-                                const accion = pasoActual.acciones[subPasoIdx];
-                                if (!accion) {
-                                    return (
-                                        <Button
-                                            size="small"
-                                            variant="contained"
-                                            onClick={handleAvanzarPaso}
-                                            disabled={cargandoCadencia}
-                                            endIcon={<SkipNextIcon />}
-                                            fullWidth
-                                        >
-                                            Avanzar al siguiente paso
-                                        </Button>
-                                    );
-                                }
-                                const canal = accion.tipo || accion.canal;
-
-                                return (
+                            {/* === LLAMADA MOBILE === */}
+                            {(canalWizard === 'llamada' || (!tieneTarea && !waPendiente && wizardFase !== 'accion' && wizardFase !== 'accion_wa' && wizardFase !== 'accion_email')) && canalWizard !== 'whatsapp' && canalWizard !== 'email' && (
+                            <Box>
+                                {wizardFase === 'accion' && canalWizard === 'llamada' && (
+                                    <Button variant="contained" startIcon={<PhoneIcon />}
+                                        onClick={() => { handleLlamar(); setWizardFase('resultado'); }}
+                                        fullWidth sx={{ bgcolor: '#4caf50', '&:hover': { bgcolor: '#388e3c' }, py: 1 }}>
+                                        Llamar a {contacto.nombre?.split(' ')[0] || 'contacto'}
+                                    </Button>
+                                )}
+                                {wizardFase === 'resultado' && (
+                                    <Stack direction="row" spacing={1}>
+                                        <Button variant="contained" color="success" startIcon={<CheckCircleIcon />}
+                                            onClick={() => { setResultadoLlamada('atendio'); setWizardFase('seguimiento'); }} sx={{ flex: 1 }}>Atendió</Button>
+                                        <Button variant="contained" color="warning" startIcon={<PhoneMissedIcon />}
+                                            onClick={() => { setResultadoLlamada('no_atendio'); setWizardFase('nota'); }} sx={{ flex: 1 }}>No atendió</Button>
+                                    </Stack>
+                                )}
+                                {wizardFase === 'seguimiento' && (
                                     <Box>
-                                        {/* LLAMADA */}
-                                        {canal === 'llamada' && (
-                                            <Box>
-                                                {wizardFase === 'accion' && (
-                                                    <Button
-                                                        variant="contained"
-                                                        startIcon={<PhoneIcon />}
-                                                        onClick={() => { handleLlamar(); setWizardFase('resultado'); }}
-                                                        fullWidth
-                                                        sx={{ bgcolor: '#4caf50', '&:hover': { bgcolor: '#388e3c' }, py: 1 }}
-                                                    >
-                                                        Llamar a {contacto.nombre?.split(' ')[0] || 'contacto'}
-                                                    </Button>
-                                                )}
-                                                {wizardFase === 'resultado' && (
-                                                    <Stack direction="row" spacing={1}>
-                                                        <Button
-                                                            variant="contained"
-                                                            color="success"
-                                                            startIcon={<CheckCircleIcon />}
-                                                            onClick={() => { setResultadoLlamada('atendio'); setWizardFase('seguimiento'); }}
-                                                            sx={{ flex: 1 }}
-                                                        >
-                                                            Atendió
-                                                        </Button>
-                                                        <Button
-                                                            variant="contained"
-                                                            color="warning"
-                                                            startIcon={<PhoneMissedIcon />}
-                                                            onClick={() => { setResultadoLlamada('no_atendio'); setWizardFase('nota'); }}
-                                                            sx={{ flex: 1 }}
-                                                        >
-                                                            No atendió
-                                                        </Button>
-                                                    </Stack>
-                                                )}
-                                                {wizardFase === 'seguimiento' && (
-                                                    <Box>
-                                                        <Chip size="small" label="✅ Atendió" color="success" sx={{ mb: 1 }} />
-                                                        <Stack direction="row" spacing={0.5}>
-                                                            <Button
-                                                                variant={seguimientoWizard === 'llamar_despues' ? 'contained' : 'outlined'}
-                                                                size="small"
-                                                                startIcon={<PhoneCallbackIcon />}
-                                                                onClick={() => { setSeguimientoWizard('llamar_despues'); setWizardFase('nota'); }}
-                                                                sx={{ flex: 1, fontSize: '0.65rem', px: 0.5 }}
-                                                            >
-                                                                Llamar después
-                                                            </Button>
-                                                            <Button
-                                                                variant={seguimientoWizard === 'mensaje_despues' ? 'contained' : 'outlined'}
-                                                                size="small"
-                                                                startIcon={<ScheduleSendIcon />}
-                                                                onClick={() => { setSeguimientoWizard('mensaje_despues'); setWizardFase('nota'); }}
-                                                                sx={{ flex: 1, fontSize: '0.65rem', px: 0.5 }}
-                                                            >
-                                                                Mensaje después
-                                                            </Button>
-                                                            <Button
-                                                                variant={seguimientoWizard === 'coordinar_reunion' ? 'contained' : 'outlined'}
-                                                                size="small"
-                                                                startIcon={<EventIcon />}
-                                                                onClick={() => { setSeguimientoWizard('coordinar_reunion'); setWizardFase('nota'); }}
-                                                                sx={{ flex: 1, fontSize: '0.65rem', px: 0.5 }}
-                                                            >
-                                                                Reunión
-                                                            </Button>
-                                                        </Stack>
-                                                    </Box>
-                                                )}
-                                                {wizardFase === 'nota' && (
-                                                    <Box>
-                                                        <Stack direction="row" spacing={0.5} alignItems="center" sx={{ mb: 1, flexWrap: 'wrap', gap: 0.5 }}>
-                                                            <Chip
-                                                                size="small"
-                                                                label={resultadoLlamada === 'atendio' ? '✅ Atendió' : '❌ No atendió'}
-                                                                color={resultadoLlamada === 'atendio' ? 'success' : 'warning'}
-                                                            />
-                                                            {seguimientoWizard && (
-                                                                <Chip
-                                                                    size="small"
-                                                                    label={seguimientoWizard === 'llamar_despues' ? '📞' : seguimientoWizard === 'mensaje_despues' ? '💬' : '📅'}
-                                                                    color="info"
-                                                                    variant="outlined"
-                                                                    onDelete={() => { setSeguimientoWizard(null); setWizardFase('seguimiento'); }}
-                                                                    sx={{ height: 22 }}
-                                                                />
-                                                            )}
-                                                        </Stack>
-                                                        {renderProximoContactoPicker(true)}
-                                                        <Button
-                                                            variant="contained"
-                                                            onClick={handleWizardRegistrarLlamada}
-                                                            disabled={registrandoWizard || !proximoContactoWizard}
-                                                            fullWidth
-                                                            size="small"
-                                                        >
-                                                            {registrandoWizard ? <CircularProgress size={20} color="inherit" /> : 'Registrar ✓'}
-                                                        </Button>
-                                                    </Box>
-                                                )}
-                                            </Box>
-                                        )}
-
-                                        {/* WHATSAPP */}
-                                        {canal === 'whatsapp' && (
-                                            <Box>
-                                                {wizardFase === 'accion' && (
-                                                    <Box>
-                                                        <TextField
-                                                            fullWidth
-                                                            size="small"
-                                                            multiline
-                                                            maxRows={3}
-                                                            value={mensajeWA}
-                                                            onChange={(e) => setMensajeWA(e.target.value)}
-                                                            sx={{ mb: 1 }}
-                                                            placeholder="Mensaje para WhatsApp..."
-                                                        />
-                                                        <Button
-                                                            variant="contained"
-                                                            startIcon={<WhatsAppIcon />}
-                                                            onClick={handleWizardEnviarWA}
-                                                            disabled={!mensajeWA.trim()}
-                                                            fullWidth
-                                                            sx={{ bgcolor: '#25D366', '&:hover': { bgcolor: '#128C7E' } }}
-                                                        >
-                                                            Enviar por WhatsApp
-                                                        </Button>
-                                                    </Box>
-                                                )}
-                                                {wizardFase === 'resultado' && (
-                                                    <Box>
-                                                        <Chip size="small" icon={<CheckCircleIcon />} label="Enviado" color="success" sx={{ mb: 1 }} />
-                                                        <Stack direction="row" spacing={1}>
-                                                            <Button
-                                                                variant="contained"
-                                                                color="success"
-                                                                size="small"
-                                                                startIcon={<CheckCircleIcon />}
-                                                                onClick={() => { setResultadoWA('respondio'); setWizardFase('seguimiento'); }}
-                                                                sx={{ flex: 1 }}
-                                                            >
-                                                                Ya respondió
-                                                            </Button>
-                                                            <Button
-                                                                variant="contained"
-                                                                color="info"
-                                                                size="small"
-                                                                startIcon={<AccessTimeIcon />}
-                                                                onClick={() => setWizardFase('esperar_respuesta')}
-                                                                sx={{ flex: 1 }}
-                                                            >
-                                                                Esperar
-                                                            </Button>
-                                                        </Stack>
-                                                    </Box>
-                                                )}
-                                                {wizardFase === 'pendiente_confirmacion' && (
-                                                    <Box>
-                                                        <Chip size="small" icon={<AccessTimeIcon />} label="📩 WA pendiente" color="info" sx={{ mb: 1 }} />
-                                                        <Typography variant="caption" color="text.secondary" mb={0.5} display="block">
-                                                            ¿Respondió al WA que enviaste?
-                                                        </Typography>
-                                                        <Stack direction="row" spacing={1}>
-                                                            <Button
-                                                                variant="contained"
-                                                                color="success"
-                                                                size="small"
-                                                                startIcon={<CheckCircleIcon />}
-                                                                onClick={() => { setResultadoWA('respondio'); setWizardFase('seguimiento'); }}
-                                                                sx={{ flex: 1 }}
-                                                            >
-                                                                Sí
-                                                            </Button>
-                                                            <Button
-                                                                variant="contained"
-                                                                color="warning"
-                                                                size="small"
-                                                                startIcon={<AccessTimeIcon />}
-                                                                onClick={() => { setResultadoWA('no_respondio'); setWizardFase('nota'); }}
-                                                                sx={{ flex: 1 }}
-                                                            >
-                                                                No
-                                                            </Button>
-                                                        </Stack>
-                                                    </Box>
-                                                )}
-                                                {wizardFase === 'esperar_respuesta' && (
-                                                    <Box>
-                                                        <Chip size="small" icon={<AccessTimeIcon />} label="Esperando" color="info" sx={{ mb: 1 }} />
-                                                        {renderProximoContactoPicker(true)}
-                                                        <Button
-                                                            variant="contained"
-                                                            onClick={handleWizardEsperarRespuesta}
-                                                            disabled={registrandoWizard || !proximoContactoWizard}
-                                                            fullWidth
-                                                            size="small"
-                                                        >
-                                                            {registrandoWizard ? <CircularProgress size={16} color="inherit" /> : 'Confirmar y esperar'}
-                                                        </Button>
-                                                    </Box>
-                                                )}
-                                                {wizardFase === 'seguimiento' && (
-                                                    <Box>
-                                                        <Chip size="small" label="✅ Respondió" color="success" sx={{ mb: 1 }} />
-                                                        <Stack direction="row" spacing={0.5}>
-                                                            <Button
-                                                                variant={seguimientoWizard === 'llamar_despues' ? 'contained' : 'outlined'}
-                                                                size="small"
-                                                                startIcon={<PhoneCallbackIcon />}
-                                                                onClick={() => { setSeguimientoWizard('llamar_despues'); setWizardFase('nota'); }}
-                                                                sx={{ flex: 1, fontSize: '0.65rem', px: 0.5 }}
-                                                            >
-                                                                Llamar después
-                                                            </Button>
-                                                            <Button
-                                                                variant={seguimientoWizard === 'mensaje_despues' ? 'contained' : 'outlined'}
-                                                                size="small"
-                                                                startIcon={<ScheduleSendIcon />}
-                                                                onClick={() => { setSeguimientoWizard('mensaje_despues'); setWizardFase('nota'); }}
-                                                                sx={{ flex: 1, fontSize: '0.65rem', px: 0.5 }}
-                                                            >
-                                                                Mensaje después
-                                                            </Button>
-                                                            <Button
-                                                                variant={seguimientoWizard === 'coordinar_reunion' ? 'contained' : 'outlined'}
-                                                                size="small"
-                                                                startIcon={<EventIcon />}
-                                                                onClick={() => { setSeguimientoWizard('coordinar_reunion'); setWizardFase('nota'); }}
-                                                                sx={{ flex: 1, fontSize: '0.65rem', px: 0.5 }}
-                                                            >
-                                                                Reunión
-                                                            </Button>
-                                                        </Stack>
-                                                    </Box>
-                                                )}
-                                                {wizardFase === 'nota' && (
-                                                    <Box>
-                                                        <Stack direction="row" spacing={0.5} alignItems="center" sx={{ mb: 1, flexWrap: 'wrap', gap: 0.5 }}>
-                                                            <Chip
-                                                                size="small"
-                                                                label={resultadoWA === 'respondio' ? '✅ Respondió' : '⏳ No respondió'}
-                                                                color={resultadoWA === 'respondio' ? 'success' : 'warning'}
-                                                            />
-                                                            {seguimientoWizard && (
-                                                                <Chip
-                                                                    size="small"
-                                                                    label={seguimientoWizard === 'llamar_despues' ? '📞' : seguimientoWizard === 'mensaje_despues' ? '💬' : '📅'}
-                                                                    color="info"
-                                                                    variant="outlined"
-                                                                    onDelete={() => { setSeguimientoWizard(null); setWizardFase('seguimiento'); }}
-                                                                    sx={{ height: 22 }}
-                                                                />
-                                                            )}
-                                                            {resultadoWA === 'no_respondio' && pasoActual?.paso?.delayDias > 0 && (
-                                                                <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic' }}>
-                                                                    Próximo paso en {pasoActual.paso.delayDias}d
-                                                                </Typography>
-                                                            )}
-                                                        </Stack>
-                                                        {renderProximoContactoPicker(true)}
-                                                        <Button
-                                                            variant="contained"
-                                                            onClick={handleWizardConfirmarWA}
-                                                            disabled={registrandoWizard || !proximoContactoWizard}
-                                                            fullWidth
-                                                            size="small"
-                                                        >
-                                                            {registrandoWizard ? <CircularProgress size={20} color="inherit" /> : 'Registrar ✓'}
-                                                        </Button>
-                                                    </Box>
-                                                )}
-                                            </Box>
-                                        )}
-
-                                        {/* EMAIL */}
-                                        {canal === 'email' && (
-                                            <Box>
-                                                <TextField
-                                                    fullWidth
-                                                    size="small"
-                                                    multiline
-                                                    maxRows={3}
-                                                    value={mensajeWA}
-                                                    onChange={(e) => setMensajeWA(e.target.value)}
-                                                    sx={{ mb: 1 }}
-                                                    placeholder="Contenido del email..."
-                                                />
-                                                {renderProximoContactoPicker(true)}
-                                                <Button
-                                                    variant="contained"
-                                                    startIcon={<EmailIcon />}
-                                                    onClick={async () => {
-                                                        if (contacto.email) window.open(`mailto:${contacto.email}?body=${encodeURIComponent(mensajeWA)}`);
-                                                        setRegistrandoWizard(true);
-                                                        try {
-                                                            await SDRService.registrarIntento(contacto._id, { tipo: 'email_enviado', canal: 'email', nota: mensajeWA.trim() || undefined, empresaId, proximoContacto: proximoContactoWizard || undefined });
-                                                            if (proximoContactoWizard) {
-                                                                setContacto(prev => ({ ...prev, proximoContacto: proximoContactoWizard }));
-                                                            }
-                                                            mostrarSnackbar('Email registrado ✓');
-                                                            await avanzarSubPasoWizard(resultadoLlamada, resultadoWA);
-                                                        } catch (err) {
-                                                            mostrarSnackbar('Error al registrar', 'error');
-                                                        } finally {
-                                                            setRegistrandoWizard(false);
-                                                        }
-                                                    }}
-                                                    disabled={registrandoWizard || !proximoContactoWizard}
-                                                    fullWidth
-                                                >
-                                                    Enviar Email
-                                                </Button>
-                                            </Box>
-                                        )}
+                                        <Chip size="small" label="✅ Atendió" color="success" sx={{ mb: 1 }} />
+                                        <Stack direction="row" spacing={0.5}>
+                                            <Button variant={seguimientoWizard === 'llamar_despues' ? 'contained' : 'outlined'} size="small" startIcon={<PhoneCallbackIcon />}
+                                                onClick={() => { setSeguimientoWizard('llamar_despues'); setWizardFase('nota'); }} sx={{ flex: 1, fontSize: '0.65rem', px: 0.5 }}>Llamar después</Button>
+                                            <Button variant={seguimientoWizard === 'mensaje_despues' ? 'contained' : 'outlined'} size="small" startIcon={<ScheduleSendIcon />}
+                                                onClick={() => { setSeguimientoWizard('mensaje_despues'); setWizardFase('nota'); }} sx={{ flex: 1, fontSize: '0.65rem', px: 0.5 }}>Mensaje después</Button>
+                                            <Button variant={seguimientoWizard === 'coordinar_reunion' ? 'contained' : 'outlined'} size="small" startIcon={<EventIcon />}
+                                                onClick={() => { setSeguimientoWizard('coordinar_reunion'); setWizardFase('nota'); }} sx={{ flex: 1, fontSize: '0.65rem', px: 0.5 }}>Reunión</Button>
+                                        </Stack>
                                     </Box>
-                                );
-                            })()}
-
-                            {!pasoActual && !cargandoCadencia && (
-                                <Typography variant="caption" color="text.secondary">
-                                    No se pudo cargar la cadencia
-                                </Typography>
+                                )}
+                                {wizardFase === 'nota' && (
+                                    <Box>
+                                        <Stack direction="row" spacing={0.5} alignItems="center" sx={{ mb: 1, flexWrap: 'wrap', gap: 0.5 }}>
+                                            <Chip size="small" label={resultadoLlamada === 'atendio' ? '✅ Atendió' : '❌ No atendió'} color={resultadoLlamada === 'atendio' ? 'success' : 'warning'} />
+                                            {seguimientoWizard && (
+                                                <Chip size="small" label={seguimientoWizard === 'llamar_despues' ? '📞' : seguimientoWizard === 'mensaje_despues' ? '💬' : '📅'}
+                                                    color="info" variant="outlined" onDelete={() => { setSeguimientoWizard(null); setWizardFase('seguimiento'); }} sx={{ height: 22 }} />
+                                            )}
+                                        </Stack>
+                                        {renderProximoContactoPicker(true)}
+                                        <Button variant="contained" onClick={handleWizardRegistrarLlamada} disabled={registrandoWizard || !proximoContactoWizard} fullWidth size="small">
+                                            {registrandoWizard ? <CircularProgress size={20} color="inherit" /> : 'Registrar ✓'}
+                                        </Button>
+                                    </Box>
+                                )}
+                            </Box>
                             )}
 
-                            {/* Botón para otra acción */}
-                            <Box sx={{ textAlign: 'center', mt: 1 }}>
-                                <Button
-                                    size="small"
-                                    variant="text"
-                                    color="inherit"
-                                    onClick={() => setModalRegistrarAccion(true)}
-                                    sx={{ fontSize: '0.7rem', textTransform: 'none', color: 'text.secondary', py: 0 }}
-                                >
-                                    Otra acción →
+                            {/* === WHATSAPP MOBILE === */}
+                            {(canalWizard === 'whatsapp' || waPendiente || wizardFase === 'accion_wa') && (
+                            <Box>
+                                {(wizardFase === 'accion' || wizardFase === 'accion_wa') && !waPendiente && (
+                                    <Box>
+                                        <TextField fullWidth size="small" multiline maxRows={3}
+                                            value={mensajeWA} onChange={(e) => setMensajeWA(e.target.value)} sx={{ mb: 1 }} placeholder="Mensaje para WhatsApp..." />
+                                        <Button variant="contained" startIcon={<WhatsAppIcon />}
+                                            onClick={handleWizardEnviarWA} disabled={!mensajeWA.trim()} fullWidth
+                                            sx={{ bgcolor: '#25D366', '&:hover': { bgcolor: '#128C7E' } }}>Enviar por WhatsApp</Button>
+                                    </Box>
+                                )}
+                                {wizardFase === 'accion' && waPendiente && (
+                                    <Box>
+                                        <Chip size="small" icon={<AccessTimeIcon />} label="📩 WA pendiente" color="info" sx={{ mb: 1 }} />
+                                        <Typography variant="caption" color="text.secondary" mb={0.5} display="block">¿Respondió al WA?</Typography>
+                                        <Stack direction="row" spacing={1}>
+                                            <Button variant="contained" color="success" size="small" startIcon={<CheckCircleIcon />}
+                                                onClick={() => { setResultadoWA('respondio'); setWizardFase('seguimiento'); }} sx={{ flex: 1 }}>Sí</Button>
+                                            <Button variant="contained" color="warning" size="small" startIcon={<AccessTimeIcon />}
+                                                onClick={() => { setResultadoWA('no_respondio'); setWizardFase('nota'); }} sx={{ flex: 1 }}>No</Button>
+                                        </Stack>
+                                    </Box>
+                                )}
+                                {wizardFase === 'resultado' && (
+                                    <Box>
+                                        <Chip size="small" icon={<CheckCircleIcon />} label="Enviado" color="success" sx={{ mb: 1 }} />
+                                        <Stack direction="row" spacing={1}>
+                                            <Button variant="contained" color="success" size="small" startIcon={<CheckCircleIcon />}
+                                                onClick={() => { setResultadoWA('respondio'); setWizardFase('seguimiento'); }} sx={{ flex: 1 }}>Ya respondió</Button>
+                                            <Button variant="contained" color="info" size="small" startIcon={<AccessTimeIcon />}
+                                                onClick={() => setWizardFase('esperar_respuesta')} sx={{ flex: 1 }}>Esperar</Button>
+                                        </Stack>
+                                    </Box>
+                                )}
+                                {wizardFase === 'esperar_respuesta' && (
+                                    <Box>
+                                        <Chip size="small" icon={<AccessTimeIcon />} label="Esperando" color="info" sx={{ mb: 1 }} />
+                                        {renderProximoContactoPicker(true)}
+                                        <Button variant="contained" onClick={handleWizardEsperarRespuesta} disabled={registrandoWizard || !proximoContactoWizard} fullWidth size="small">
+                                            {registrandoWizard ? <CircularProgress size={16} color="inherit" /> : 'Confirmar y esperar'}
+                                        </Button>
+                                    </Box>
+                                )}
+                                {wizardFase === 'seguimiento' && (
+                                    <Box>
+                                        <Chip size="small" label="✅ Respondió" color="success" sx={{ mb: 1 }} />
+                                        <Stack direction="row" spacing={0.5}>
+                                            <Button variant={seguimientoWizard === 'llamar_despues' ? 'contained' : 'outlined'} size="small" startIcon={<PhoneCallbackIcon />}
+                                                onClick={() => { setSeguimientoWizard('llamar_despues'); setWizardFase('nota'); }} sx={{ flex: 1, fontSize: '0.65rem', px: 0.5 }}>Llamar después</Button>
+                                            <Button variant={seguimientoWizard === 'mensaje_despues' ? 'contained' : 'outlined'} size="small" startIcon={<ScheduleSendIcon />}
+                                                onClick={() => { setSeguimientoWizard('mensaje_despues'); setWizardFase('nota'); }} sx={{ flex: 1, fontSize: '0.65rem', px: 0.5 }}>Mensaje después</Button>
+                                            <Button variant={seguimientoWizard === 'coordinar_reunion' ? 'contained' : 'outlined'} size="small" startIcon={<EventIcon />}
+                                                onClick={() => { setSeguimientoWizard('coordinar_reunion'); setWizardFase('nota'); }} sx={{ flex: 1, fontSize: '0.65rem', px: 0.5 }}>Reunión</Button>
+                                        </Stack>
+                                    </Box>
+                                )}
+                                {wizardFase === 'nota' && (
+                                    <Box>
+                                        <Stack direction="row" spacing={0.5} alignItems="center" sx={{ mb: 1, flexWrap: 'wrap', gap: 0.5 }}>
+                                            <Chip size="small" label={resultadoWA === 'respondio' ? '✅ Respondió' : '⏳ No respondió'} color={resultadoWA === 'respondio' ? 'success' : 'warning'} />
+                                            {seguimientoWizard && (
+                                                <Chip size="small" label={seguimientoWizard === 'llamar_despues' ? '📞' : seguimientoWizard === 'mensaje_despues' ? '💬' : '📅'}
+                                                    color="info" variant="outlined" onDelete={() => { setSeguimientoWizard(null); setWizardFase('seguimiento'); }} sx={{ height: 22 }} />
+                                            )}
+                                        </Stack>
+                                        {renderProximoContactoPicker(true)}
+                                        <Button variant="contained" onClick={handleWizardConfirmarWA} disabled={registrandoWizard || !proximoContactoWizard} fullWidth size="small">
+                                            {registrandoWizard ? <CircularProgress size={20} color="inherit" /> : 'Registrar ✓'}
+                                        </Button>
+                                    </Box>
+                                )}
+                                {wizardFase === 'pendiente_confirmacion' && (
+                                    <Box>
+                                        <Chip size="small" icon={<AccessTimeIcon />} label="📩 WA pendiente" color="info" sx={{ mb: 1 }} />
+                                        <Stack direction="row" spacing={1}>
+                                            <Button variant="contained" color="success" size="small" onClick={() => { setResultadoWA('respondio'); setWizardFase('seguimiento'); }} sx={{ flex: 1 }}>Sí respondió</Button>
+                                            <Button variant="contained" color="warning" size="small" onClick={() => { setResultadoWA('no_respondio'); setWizardFase('nota'); }} sx={{ flex: 1 }}>No respondió</Button>
+                                        </Stack>
+                                    </Box>
+                                )}
+                            </Box>
+                            )}
+
+                            {/* === EMAIL MOBILE === */}
+                            {(canalWizard === 'email' || wizardFase === 'accion_email') && (
+                            <Box>
+                                <TextField fullWidth size="small" multiline maxRows={3}
+                                    value={mensajeWA} onChange={(e) => setMensajeWA(e.target.value)} sx={{ mb: 1 }} placeholder="Contenido del email..." />
+                                {renderProximoContactoPicker(true)}
+                                <Button variant="contained" startIcon={<EmailIcon />}
+                                    onClick={async () => {
+                                        if (contacto.email) window.open(`mailto:${contacto.email}?body=${encodeURIComponent(mensajeWA)}`);
+                                        setRegistrandoWizard(true);
+                                        try {
+                                            const proximaTarea = buildProximaTarea();
+                                            await SDRService.registrarIntento(contacto._id, { tipo: 'email_enviado', canal: 'email', nota: mensajeWA.trim() || undefined, empresaId, proximoContacto: proximoContactoWizard || undefined, proximaTarea });
+                                            mostrarSnackbar('Email registrado ✓');
+                                            cargarContacto();
+                                        } catch (err) { mostrarSnackbar('Error al registrar', 'error'); }
+                                        finally { setRegistrandoWizard(false); }
+                                    }}
+                                    disabled={registrandoWizard || !proximoContactoWizard} fullWidth>Enviar Email</Button>
+                            </Box>
+                            )}
+
+                            {/* === RECORDATORIO MOBILE === */}
+                            {tipoTarea === 'recordatorio' && wizardFase === 'accion' && (
+                            <Box>
+                                <Typography variant="caption" color="text.secondary" mb={1} display="block">
+                                    {contacto.proximaTarea?.nota || 'Recordatorio pendiente'}
+                                </Typography>
+                                {renderProximoContactoPicker(true)}
+                                <Button variant="contained" color="primary"
+                                    onClick={async () => {
+                                        setRegistrandoWizard(true);
+                                        try {
+                                            const proximaTarea = buildProximaTarea();
+                                            await SDRService.registrarIntento(contacto._id, { tipo: 'recordatorio_completado', canal: 'otro', nota: 'Recordatorio completado', empresaId, proximoContacto: proximoContactoWizard || undefined, proximaTarea });
+                                            mostrarSnackbar('Recordatorio completado ✓');
+                                            cargarContacto();
+                                        } catch (err) { mostrarSnackbar('Error al registrar', 'error'); }
+                                        finally { setRegistrandoWizard(false); }
+                                    }}
+                                    disabled={registrandoWizard || !proximoContactoWizard} fullWidth size="small">
+                                    {registrandoWizard ? <CircularProgress size={16} color="inherit" /> : 'Completar ✓'}
                                 </Button>
                             </Box>
+                            )}
 
-                            {/* Botón siguiente contacto */}
-                            <Button
-                                variant="contained"
-                                fullWidth
-                                onClick={handleSiguienteContacto}
-                                endIcon={<ChevronRightIcon />}
-                                size="small"
-                                sx={{ mt: 1.5, py: 1, fontWeight: 600, borderRadius: 2 }}
-                            >
+                            {/* === SIN TAREA: botones de acción rápidos === */}
+                            {!tieneTarea && !tieneAccionCadencia && !waPendiente && wizardFase === 'accion' && (
+                                <Stack direction="row" justifyContent="space-around" alignItems="center">
+                                    <IconButton onClick={() => { handleLlamar(); setWizardFase('resultado'); }} sx={{ bgcolor: '#4caf50', color: 'white', '&:hover': { bgcolor: '#388e3c' }, width: 42, height: 42 }}>
+                                        <PhoneIcon fontSize="small" />
+                                    </IconButton>
+                                    <IconButton onClick={() => setWizardFase('accion_wa')} sx={{ bgcolor: '#25D366', color: 'white', '&:hover': { bgcolor: '#128C7E' }, width: 42, height: 42 }}>
+                                        <WhatsAppIcon fontSize="small" />
+                                    </IconButton>
+                                    <IconButton onClick={() => setWizardFase('accion_email')} sx={{ border: 1, borderColor: 'grey.400', width: 42, height: 42 }}>
+                                        <EmailIcon fontSize="small" />
+                                    </IconButton>
+                                    <IconButton onClick={() => setModalReunion(true)} sx={{ border: 1, borderColor: 'primary.light', color: 'primary.main', width: 42, height: 42 }}>
+                                        <EventIcon fontSize="small" />
+                                    </IconButton>
+                                    <IconButton onClick={() => setModalRegistrarAccion(true)} sx={{ border: 1, borderColor: 'primary.light', color: 'primary.main', width: 42, height: 42 }}>
+                                        <EditIcon fontSize="small" />
+                                    </IconButton>
+                                </Stack>
+                            )}
+
+                            {/* Otra acción + siguiente */}
+                            {wizardFase !== 'accion' && (
+                                <Box sx={{ textAlign: 'center', mt: 1 }}>
+                                    <Button size="small" variant="text" color="inherit"
+                                        onClick={() => setModalRegistrarAccion(true)}
+                                        sx={{ fontSize: '0.7rem', textTransform: 'none', color: 'text.secondary', py: 0 }}>Otra acción →</Button>
+                                </Box>
+                            )}
+
+                            <Button variant="contained" fullWidth onClick={handleSiguienteContacto} endIcon={<ChevronRightIcon />}
+                                size="small" sx={{ mt: 1.5, py: 1, fontWeight: 600, borderRadius: 2 }}>
                                 {puedeSiguiente ? `Siguiente (${indiceActual + 2}/${contactoIds.length})` : 'Volver al listado'}
                             </Button>
                         </Box>
-                    ) : (
-                        /* --- SIN CADENCIA: botones de acción clásicos --- */
-                        <Stack direction="row" justifyContent="space-around" alignItems="center">
-                            <IconButton onClick={() => handleAccion('llamada', true)} sx={{ bgcolor: '#4caf50', color: 'white', '&:hover': { bgcolor: '#388e3c' }, width: 42, height: 42 }}>
-                                <PhoneIcon fontSize="small" />
-                            </IconButton>
-                            <IconButton onClick={() => handleAccion('llamada', false)} sx={{ bgcolor: '#ff9800', color: 'white', '&:hover': { bgcolor: '#f57c00' }, width: 42, height: 42 }}>
-                                <PhoneMissedIcon fontSize="small" />
-                            </IconButton>
-                            <IconButton onClick={() => handleAccion('whatsapp')} sx={{ bgcolor: '#25D366', color: 'white', '&:hover': { bgcolor: '#128C7E' }, width: 42, height: 42 }}>
-                                <WhatsAppIcon fontSize="small" />
-                            </IconButton>
-                            <IconButton onClick={() => handleAccion('no_responde')} sx={{ border: 1, borderColor: 'grey.400', width: 42, height: 42 }}>
-                                <PhoneDisabledIcon fontSize="small" />
-                            </IconButton>
-                            <IconButton onClick={handleMarcarNoCalifica} sx={{ border: 1, borderColor: 'error.light', color: 'error.main', width: 42, height: 42 }}>
-                                <DoNotDisturbIcon fontSize="small" />
-                            </IconButton>
-                            <IconButton onClick={() => setModalReunion(true)} sx={{ border: 1, borderColor: 'primary.light', color: 'primary.main', width: 42, height: 42 }}>
-                                <EventIcon fontSize="small" />
-                            </IconButton>
-                            <IconButton onClick={() => setModalRegistrarAccion(true)} sx={{ border: 1, borderColor: 'primary.light', color: 'primary.main', width: 42, height: 42 }}>
-                                <EditIcon fontSize="small" />
-                            </IconButton>
-                        </Stack>
-                    )}
+                        );
+                    })()}
                 </Box>
             )}
 

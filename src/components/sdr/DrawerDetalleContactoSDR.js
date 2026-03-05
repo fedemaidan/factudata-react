@@ -284,6 +284,11 @@ const DrawerDetalleContactoSDR = ({
     const [proximoContactoLocal, setProximoContactoLocal] = useState(null);
     const [guardandoProximo, setGuardandoProximo] = useState(false);
     const [modalProximoContacto, setModalProximoContacto] = useState({ open: false, direccion: null });
+    // Editor de tarea
+    const [editandoTarea, setEditandoTarea] = useState(false);
+    const [editTareaTipo, setEditTareaTipo] = useState(null);
+    const [editTareaFecha, setEditTareaFecha] = useState(null);
+    const [editTareaNota, setEditTareaNota] = useState('');
     
     // Modales nuevos
     const [modalTemplateWhatsApp, setModalTemplateWhatsApp] = useState(false);
@@ -513,14 +518,14 @@ const DrawerDetalleContactoSDR = ({
         return fecha;
     };
 
-    // Guardar próximo contacto
+    // Guardar próximo contacto / tarea
     const handleGuardarProximoContacto = async (fecha) => {
         if (!contactoLocal?._id) return;
         setGuardandoProximo(true);
         try {
-            await SDRService.actualizarProximoContacto(contactoLocal._id, fecha);
+            await SDRService.actualizarProximoContacto(contactoLocal._id, fecha, contactoLocal.empresaId);
             setProximoContactoLocal(fecha);
-            mostrarSnackbar?.('Próximo contacto actualizado', 'success');
+            mostrarSnackbar?.('Próxima tarea actualizada', 'success');
             onRefresh?.();
             await cargarHistorial();
         } catch (err) {
@@ -530,6 +535,37 @@ const DrawerDetalleContactoSDR = ({
             setGuardandoProximo(false);
         }
     };
+
+    /** Guardar tarea completa (tipo + fecha + nota) */
+    const handleGuardarProximaTarea = async (tipo, fecha, nota) => {
+        if (!contactoLocal?._id || !tipo || !fecha) return;
+        setGuardandoProximo(true);
+        try {
+            const proximaTarea = { tipo, fecha, nota: nota?.trim() || null, autoGenerada: false };
+            await SDRService.actualizarProximoContacto(contactoLocal._id, fecha, contactoLocal.empresaId, proximaTarea);
+            setProximoContactoLocal(fecha);
+            setEditandoTarea(false);
+            setEditTareaTipo(null);
+            setEditTareaFecha(null);
+            setEditTareaNota('');
+            mostrarSnackbar?.('Próxima tarea guardada ✓', 'success');
+            onRefresh?.();
+            await cargarHistorial();
+        } catch (err) {
+            console.error('Error guardando tarea:', err);
+            mostrarSnackbar?.('Error al guardar tarea', 'error');
+        } finally {
+            setGuardandoProximo(false);
+        }
+    };
+
+    // Tipos de tarea para el editor
+    const TIPOS_TAREA = [
+        { key: 'llamada', icon: '📞', label: 'Llamar' },
+        { key: 'whatsapp', icon: '💬', label: 'WhatsApp' },
+        { key: 'email', icon: '✉️', label: 'Email' },
+        { key: 'recordatorio', icon: '📝', label: 'Recordatorio' },
+    ];
 
     // Botones rápidos de próximo contacto
     const botonesProximoContacto = [
@@ -981,77 +1017,111 @@ const DrawerDetalleContactoSDR = ({
                             </Collapse>
                         </Paper>
 
-                        {/* Próximo contacto */}
+                        {/* Próxima tarea — Editor completo */}
                         <Paper elevation={0} sx={{ p: 2, mb: 2, borderRadius: 3 }}>
                             <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1.5 }}>
                                 <Stack direction="row" spacing={1} alignItems="center">
                                     <AccessTimeIcon color="action" fontSize="small" />
-                                    <Typography variant="subtitle2">Próximo contacto</Typography>
+                                    <Typography variant="subtitle2">Próxima tarea</Typography>
                                 </Stack>
                                 {guardandoProximo && <CircularProgress size={16} />}
                             </Stack>
                             
-                            {proximoContactoLocal ? (
-                                <Chip
-                                    icon={<ScheduleIcon />}
-                                    label={proximoInfo?.texto || 'Programado'}
-                                    color={proximoInfo?.color === 'error' ? 'error' : proximoInfo?.color === 'warning' ? 'warning' : 'success'}
-                                    onDelete={() => handleGuardarProximoContacto(null)}
-                                    sx={{ mb: 1.5 }}
-                                />
-                            ) : (
-                                <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-                                    Sin definir
-                                </Typography>
+                            {/* Modo vista */}
+                            {proximoContactoLocal && !editandoTarea ? (
+                                <Box>
+                                    <Stack spacing={0.5} sx={{ mb: 1 }}>
+                                        <Stack direction="row" spacing={0.5} alignItems="center" flexWrap="wrap" useFlexGap>
+                                            {contacto?.proximaTarea?.tipo && (
+                                                <Chip size="small"
+                                                    label={contacto.proximaTarea.tipo === 'llamada' ? '📞 Llamar' : contacto.proximaTarea.tipo === 'whatsapp' ? '💬 WhatsApp' : contacto.proximaTarea.tipo === 'email' ? '✉️ Email' : '📝 Recordatorio'}
+                                                    color="primary" variant="outlined" sx={{ fontWeight: 600, fontSize: '0.7rem' }} />
+                                            )}
+                                            <Chip icon={<ScheduleIcon />}
+                                                label={proximoInfo?.texto || 'Programado'}
+                                                color={proximoInfo?.color === 'error' ? 'error' : proximoInfo?.color === 'warning' ? 'warning' : 'success'} />
+                                        </Stack>
+                                        {contacto?.proximaTarea?.nota && (
+                                            <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic', pl: 0.5 }}>
+                                                💬 {contacto.proximaTarea.nota}
+                                            </Typography>
+                                        )}
+                                    </Stack>
+                                    <Stack direction="row" spacing={0.5}>
+                                        <Button size="small" variant="outlined"
+                                            onClick={() => {
+                                                setEditandoTarea(true);
+                                                setEditTareaTipo(contacto?.proximaTarea?.tipo || null);
+                                                setEditTareaFecha(proximoContactoLocal ? new Date(proximoContactoLocal) : null);
+                                                setEditTareaNota(contacto?.proximaTarea?.nota || '');
+                                            }}
+                                            sx={{ fontSize: '0.7rem', textTransform: 'none' }}>✏️ Modificar</Button>
+                                        <Button size="small" variant="outlined" color="error"
+                                            onClick={() => handleGuardarProximoContacto(null)}
+                                            disabled={guardandoProximo}
+                                            sx={{ fontSize: '0.7rem', textTransform: 'none', minWidth: 'auto' }}>🗑️</Button>
+                                    </Stack>
+                                </Box>
+                            ) : !editandoTarea ? (
+                                <Button size="small" variant="outlined" color="primary"
+                                    onClick={() => { setEditandoTarea(true); setEditTareaTipo(null); setEditTareaFecha(null); setEditTareaNota(''); }}
+                                    sx={{ mb: 1, textTransform: 'none' }}>+ Crear tarea</Button>
+                            ) : null}
+
+                            {/* Editor */}
+                            {editandoTarea && (
+                                <Box sx={{ p: 1.5, bgcolor: 'action.hover', borderRadius: 1, border: '1px solid', borderColor: (editTareaTipo && editTareaFecha) ? 'success.light' : 'warning.light' }}>
+                                    <Typography variant="caption" fontWeight={600} sx={{ mb: 0.5, display: 'block' }}>Tipo</Typography>
+                                    <Stack direction="row" spacing={0.5} sx={{ mb: 1, flexWrap: 'wrap', gap: 0.5 }}>
+                                        {TIPOS_TAREA.map((t) => (
+                                            <Chip key={t.key} size="small"
+                                                icon={<span style={{ fontSize: '0.85rem' }}>{t.icon}</span>}
+                                                label={t.label}
+                                                color={editTareaTipo === t.key ? 'primary' : 'default'}
+                                                variant={editTareaTipo === t.key ? 'filled' : 'outlined'}
+                                                onClick={() => setEditTareaTipo(t.key)}
+                                                sx={{ cursor: 'pointer', fontSize: '0.7rem' }} />
+                                        ))}
+                                    </Stack>
+
+                                    <Typography variant="caption" fontWeight={600} sx={{ mb: 0.5, display: 'block' }}>Fecha</Typography>
+                                    {editTareaFecha ? (
+                                        <Chip size="small"
+                                            label={`📅 ${new Date(editTareaFecha).toLocaleDateString('es-AR', { weekday: 'short', day: 'numeric', month: 'short' })} ${new Date(editTareaFecha).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}`}
+                                            color="success" onDelete={() => setEditTareaFecha(null)} sx={{ fontWeight: 600, mb: 0.5 }} />
+                                    ) : (
+                                        <Stack spacing={0.5} sx={{ mb: 0.5 }}>
+                                            <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap', gap: 0.5 }}>
+                                                {botonesProximoContacto.map((btn) => (
+                                                    <Chip key={btn.label} label={btn.label} size="small" variant="outlined" color="primary"
+                                                        onClick={() => setEditTareaFecha(calcularFecha(btn.cantidad, btn.unidad))}
+                                                        sx={{ cursor: 'pointer', fontSize: '0.7rem' }} />
+                                                ))}
+                                            </Stack>
+                                            <input type="datetime-local" value={editTareaFecha ? fechaParaInput(editTareaFecha) : ''}
+                                                onChange={(e) => { if (e.target.value) setEditTareaFecha(new Date(e.target.value)); }}
+                                                style={{ fontSize: '0.8rem', padding: '4px 8px', borderRadius: 4, border: '1px solid #ccc', width: '100%', boxSizing: 'border-box' }} />
+                                        </Stack>
+                                    )}
+
+                                    <Typography variant="caption" fontWeight={600} sx={{ mt: 1, mb: 0.5, display: 'block' }}>Comentario (opcional)</Typography>
+                                    <input type="text" placeholder="Comentario para la tarea..."
+                                        value={editTareaNota} onChange={(e) => setEditTareaNota(e.target.value)}
+                                        style={{ fontSize: '0.8rem', padding: '4px 8px', borderRadius: 4, border: '1px solid #ccc', width: '100%', boxSizing: 'border-box' }} />
+
+                                    <Stack direction="row" spacing={1} sx={{ mt: 1.5 }}>
+                                        <Button variant="contained" size="small" color="success"
+                                            disabled={!editTareaTipo || !editTareaFecha || guardandoProximo}
+                                            onClick={() => handleGuardarProximaTarea(editTareaTipo, editTareaFecha, editTareaNota)}
+                                            sx={{ flex: 1, textTransform: 'none' }}>
+                                            {guardandoProximo ? <CircularProgress size={18} color="inherit" /> : '💾 Guardar'}
+                                        </Button>
+                                        <Button variant="outlined" size="small"
+                                            onClick={() => { setEditandoTarea(false); setEditTareaTipo(null); setEditTareaFecha(null); setEditTareaNota(''); }}
+                                            sx={{ textTransform: 'none' }}>Cancelar</Button>
+                                    </Stack>
+                                </Box>
                             )}
-                            
-                            {/* Botones rápidos */}
-                            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mb: 1.5 }}>
-                                {botonesProximoContacto.map((btn) => (
-                                    <Chip
-                                        key={btn.label}
-                                        label={btn.label}
-                                        size="small"
-                                        variant={proximoContactoLocal ? 'outlined' : 'filled'}
-                                        color="primary"
-                                        onClick={() => handleGuardarProximoContacto(calcularFecha(btn.cantidad, btn.unidad))}
-                                        disabled={guardandoProximo}
-                                        sx={{ cursor: 'pointer' }}
-                                    />
-                                ))}
-                            </Stack>
-                            
-                            {/* Selector de fecha/hora específica */}
-                            <TextField
-                                type="datetime-local"
-                                size="small"
-                                fullWidth
-                                label="Fecha y hora específica"
-                                value={fechaParaInput(proximoContactoLocal)}
-                                onChange={(e) => {
-                                    if (e.target.value) {
-                                        handleGuardarProximoContacto(new Date(e.target.value));
-                                    }
-                                }}
-                                disabled={guardandoProximo}
-                                InputLabelProps={{ 
-                                    shrink: true,
-                                    sx: { 
-                                        bgcolor: 'white', 
-                                        px: 0.5,
-                                        ml: -0.5
-                                    }
-                                }}
-                                sx={{ 
-                                    '& .MuiOutlinedInput-root': { 
-                                        borderRadius: 2,
-                                        bgcolor: 'grey.50'
-                                    },
-                                    '& .MuiOutlinedInput-input': {
-                                        pt: 1.5
-                                    }
-                                }}
-                            />
                         </Paper>
 
                         {/* Comentario rápido + Grabación de audio */}
@@ -1771,65 +1841,102 @@ const DrawerDetalleContactoSDR = ({
                         </Box>
                     )}
 
-                    {/* Próximo Contacto */}
+                    {/* Próxima Tarea — Editor compacto */}
                     <Box sx={{ mt: 2, p: 1.5, bgcolor: 'grey.50', borderRadius: 1 }}>
                         <Stack direction="row" spacing={1} alignItems="center" mb={1}>
                             <AccessTimeIcon fontSize="small" color="action" />
-                            <Typography variant="subtitle2">Próximo contacto</Typography>
+                            <Typography variant="subtitle2">Próxima tarea</Typography>
                             {guardandoProximo && <CircularProgress size={14} />}
                         </Stack>
                         
-                        {proximoContactoLocal ? (
-                            <Chip
-                                size="small"
-                                icon={<ScheduleIcon />}
-                                label={proximoInfo?.texto || 'Programado'}
-                                color={proximoInfo?.color === 'error' ? 'error' : proximoInfo?.color === 'warning' ? 'warning' : 'success'}
-                                onDelete={() => handleGuardarProximoContacto(null)}
-                                sx={{ mb: 1 }}
-                            />
-                        ) : (
-                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-                                No definido
-                            </Typography>
+                        {/* Modo vista */}
+                        {proximoContactoLocal && !editandoTarea ? (
+                            <Box>
+                                <Stack spacing={0.5} sx={{ mb: 1 }}>
+                                    <Stack direction="row" spacing={0.5} alignItems="center" flexWrap="wrap" useFlexGap>
+                                        {contacto?.proximaTarea?.tipo && (
+                                            <Chip size="small"
+                                                label={contacto.proximaTarea.tipo === 'llamada' ? '📞 Llamar' : contacto.proximaTarea.tipo === 'whatsapp' ? '💬 WA' : contacto.proximaTarea.tipo === 'email' ? '✉️ Email' : '📝'}
+                                                color="primary" variant="outlined" sx={{ fontWeight: 600, fontSize: '0.65rem', height: 22 }} />
+                                        )}
+                                        <Chip size="small" icon={<ScheduleIcon />}
+                                            label={proximoInfo?.texto || 'Programado'}
+                                            color={proximoInfo?.color === 'error' ? 'error' : proximoInfo?.color === 'warning' ? 'warning' : 'success'} />
+                                    </Stack>
+                                    {contacto?.proximaTarea?.nota && (
+                                        <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic', fontSize: '0.65rem' }}>
+                                            💬 {contacto.proximaTarea.nota}
+                                        </Typography>
+                                    )}
+                                </Stack>
+                                <Stack direction="row" spacing={0.5}>
+                                    <Button size="small" variant="outlined"
+                                        onClick={() => {
+                                            setEditandoTarea(true);
+                                            setEditTareaTipo(contacto?.proximaTarea?.tipo || null);
+                                            setEditTareaFecha(proximoContactoLocal ? new Date(proximoContactoLocal) : null);
+                                            setEditTareaNota(contacto?.proximaTarea?.nota || '');
+                                        }}
+                                        sx={{ fontSize: '0.65rem', textTransform: 'none' }}>✏️ Modificar</Button>
+                                    <Button size="small" variant="outlined" color="error"
+                                        onClick={() => handleGuardarProximoContacto(null)} disabled={guardandoProximo}
+                                        sx={{ fontSize: '0.65rem', textTransform: 'none', minWidth: 'auto' }}>🗑️</Button>
+                                </Stack>
+                            </Box>
+                        ) : !editandoTarea ? (
+                            <Button size="small" variant="outlined" color="primary"
+                                onClick={() => { setEditandoTarea(true); setEditTareaTipo(null); setEditTareaFecha(null); setEditTareaNota(''); }}
+                                sx={{ mb: 1, textTransform: 'none', fontSize: '0.7rem' }}>+ Crear tarea</Button>
+                        ) : null}
+
+                        {/* Editor */}
+                        {editandoTarea && (
+                            <Box sx={{ p: 1, bgcolor: 'white', borderRadius: 1, border: '1px solid', borderColor: (editTareaTipo && editTareaFecha) ? 'success.light' : 'warning.light' }}>
+                                <Stack direction="row" spacing={0.5} sx={{ mb: 1, flexWrap: 'wrap', gap: 0.5 }}>
+                                    {TIPOS_TAREA.map((t) => (
+                                        <Chip key={t.key} size="small"
+                                            icon={<span style={{ fontSize: '0.8rem' }}>{t.icon}</span>}
+                                            label={t.label}
+                                            color={editTareaTipo === t.key ? 'primary' : 'default'}
+                                            variant={editTareaTipo === t.key ? 'filled' : 'outlined'}
+                                            onClick={() => setEditTareaTipo(t.key)}
+                                            sx={{ cursor: 'pointer', fontSize: '0.65rem' }} />
+                                    ))}
+                                </Stack>
+                                {editTareaFecha ? (
+                                    <Chip size="small"
+                                        label={`📅 ${new Date(editTareaFecha).toLocaleDateString('es-AR', { weekday: 'short', day: 'numeric', month: 'short' })} ${new Date(editTareaFecha).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}`}
+                                        color="success" onDelete={() => setEditTareaFecha(null)} sx={{ fontWeight: 600, mb: 0.5, fontSize: '0.7rem' }} />
+                                ) : (
+                                    <Stack spacing={0.5} sx={{ mb: 0.5 }}>
+                                        <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap', gap: 0.5 }}>
+                                            {botonesProximoContacto.map((btn) => (
+                                                <Button key={btn.label} size="small" variant="outlined"
+                                                    onClick={() => setEditTareaFecha(calcularFecha(btn.cantidad, btn.unidad))}
+                                                    sx={{ minWidth: 'auto', px: 0.8, py: 0.2, fontSize: '0.65rem', textTransform: 'none' }}>{btn.label}</Button>
+                                            ))}
+                                        </Stack>
+                                        <input type="datetime-local" value={editTareaFecha ? fechaParaInput(editTareaFecha) : ''}
+                                            onChange={(e) => { if (e.target.value) setEditTareaFecha(new Date(e.target.value)); }}
+                                            style={{ fontSize: '0.75rem', padding: '3px 6px', borderRadius: 4, border: '1px solid #ccc', width: '100%', boxSizing: 'border-box' }} />
+                                    </Stack>
+                                )}
+                                <input type="text" placeholder="Comentario (opcional)..."
+                                    value={editTareaNota} onChange={(e) => setEditTareaNota(e.target.value)}
+                                    style={{ fontSize: '0.75rem', padding: '3px 6px', borderRadius: 4, border: '1px solid #ccc', width: '100%', boxSizing: 'border-box', marginTop: 4 }} />
+                                <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
+                                    <Button variant="contained" size="small" color="success"
+                                        disabled={!editTareaTipo || !editTareaFecha || guardandoProximo}
+                                        onClick={() => handleGuardarProximaTarea(editTareaTipo, editTareaFecha, editTareaNota)}
+                                        sx={{ flex: 1, textTransform: 'none', fontSize: '0.7rem' }}>
+                                        {guardandoProximo ? <CircularProgress size={16} color="inherit" /> : '💾 Guardar'}
+                                    </Button>
+                                    <Button variant="outlined" size="small"
+                                        onClick={() => { setEditandoTarea(false); setEditTareaTipo(null); setEditTareaFecha(null); setEditTareaNota(''); }}
+                                        sx={{ textTransform: 'none', fontSize: '0.7rem' }}>Cancelar</Button>
+                                </Stack>
+                            </Box>
                         )}
-                        
-                        {/* Botones rápidos */}
-                        <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap sx={{ mb: 1 }}>
-                            {botonesProximoContacto.map((btn) => (
-                                <Button
-                                    key={btn.label}
-                                    size="small"
-                                    variant={proximoContactoLocal ? 'text' : 'outlined'}
-                                    onClick={() => handleGuardarProximoContacto(calcularFecha(btn.cantidad, btn.unidad))}
-                                    disabled={guardandoProximo}
-                                    sx={{ 
-                                        minWidth: 'auto', 
-                                        px: 1,
-                                        fontSize: '0.7rem'
-                                    }}
-                                >
-                                    {btn.label}
-                                </Button>
-                            ))}
-                        </Stack>
-                        
-                        {/* Selector de fecha/hora específica */}
-                        <TextField
-                            type="datetime-local"
-                            size="small"
-                            fullWidth
-                            label="Elegir fecha/hora"
-                            value={fechaParaInput(proximoContactoLocal)}
-                            onChange={(e) => {
-                                if (e.target.value) {
-                                    handleGuardarProximoContacto(new Date(e.target.value));
-                                }
-                            }}
-                            disabled={guardandoProximo}
-                            InputLabelProps={{ shrink: true }}
-                            sx={{ mt: 1 }}
-                        />
                     </Box>
                     
                     {/* Botón Siguiente contacto prominente */}

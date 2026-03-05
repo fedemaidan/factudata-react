@@ -39,6 +39,8 @@ import InboxIcon from '@mui/icons-material/Inbox';
 import ReplayIcon from '@mui/icons-material/Replay';
 import HandshakeIcon from '@mui/icons-material/Handshake';
 import ViewListIcon from '@mui/icons-material/ViewList';
+import HistoryIcon from '@mui/icons-material/History';
+import EventAvailableIcon from '@mui/icons-material/EventAvailable';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import { useAuthContext } from 'src/contexts/auth-context';
 import SDRService from 'src/services/sdrService';
@@ -81,13 +83,13 @@ const ContactosSDRPage = () => {
     // Filtros
     const [busqueda, setBusqueda] = useState('');
     const [filtroEstado, setFiltroEstado] = useState('');
-    const [bandejaActiva, setBandejaActiva] = useState('nuevos'); // 'nuevos' | 'reintentos' | 'seguimiento' | 'todos'
+    const [bandejaActiva, setBandejaActiva] = useState('nuevos'); // 'nuevos' | 'reintentos' | 'seguimiento' | 'reunionesPendientes' | 'reunionesPasadas' | 'todos'
     const [filtroProximoContacto, setFiltroProximoContacto] = useState(''); // '' | 'sin_proximo' | 'vencido' | 'pendiente'
     const [filtroSegmento, setFiltroSegmento] = useState(''); // '' | 'inbound' | 'outbound'
     const [ordenarPor, setOrdenarPor] = useState(''); // vacío = el backend elige según bandeja
     
     // Contadores de bandejas (para badges)
-    const [contadoresBandejas, setContadoresBandejas] = useState({ nuevos: 0, reintentos: 0, seguimiento: 0 });
+    const [contadoresBandejas, setContadoresBandejas] = useState({ nuevos: 0, reintentos: 0, seguimiento: 0, reunionesPendientes: 0, reunionesPasadas: 0 });
     
     // Selección múltiple
     const [seleccionados, setSeleccionados] = useState([]);
@@ -648,7 +650,9 @@ const ContactosSDRPage = () => {
         if (contactosOrdenados.length === 0) {
             return (
                 <Paper sx={{ p: 4, textAlign: 'center' }}>
-                    <Typography color="text.secondary">No hay reuniones agendadas</Typography>
+                    <Typography color="text.secondary">
+                        {bandejaActiva === 'reunionesPasadas' ? 'No hay reuniones pasadas' : 'No hay reuniones pendientes'}
+                    </Typography>
                 </Paper>
             );
         }
@@ -662,7 +666,10 @@ const ContactosSDRPage = () => {
                             <TableCell sx={{ fontWeight: 700 }}>Contacto</TableCell>
                             <TableCell sx={{ fontWeight: 700 }}>Empresa</TableCell>
                             <TableCell sx={{ fontWeight: 700 }}>Estado</TableCell>
-                            <TableCell sx={{ fontWeight: 700 }}>Link / Lugar</TableCell>
+                            {bandejaActiva === 'reunionesPasadas' && (
+                                <TableCell sx={{ fontWeight: 700 }}>Resultado</TableCell>
+                            )}
+                            <TableCell sx={{ fontWeight: 700 }}>{bandejaActiva === 'reunionesPasadas' ? 'Lugar' : 'Link / Lugar'}</TableCell>
                         </TableRow>
                     </TableHead>
                     <TableBody>
@@ -718,6 +725,26 @@ const ContactosSDRPage = () => {
                                     <TableCell>
                                         <EstadoChip estado={contacto.estado} />
                                     </TableCell>
+                                    {bandejaActiva === 'reunionesPasadas' && (
+                                        <TableCell>
+                                            <Chip 
+                                                size="small"
+                                                label={
+                                                    reunion?.estadoReunion === 'realizada' ? 'Realizada' :
+                                                    reunion?.estadoReunion === 'no_show' ? 'No show' :
+                                                    reunion?.estadoReunion === 'cancelada' ? 'Cancelada' :
+                                                    'Vencida'
+                                                }
+                                                color={
+                                                    reunion?.estadoReunion === 'realizada' ? 'success' :
+                                                    reunion?.estadoReunion === 'no_show' ? 'error' :
+                                                    'warning'
+                                                }
+                                                variant="outlined"
+                                                sx={{ fontSize: '0.7rem' }}
+                                            />
+                                        </TableCell>
+                                    )}
                                     <TableCell>
                                         {reunion?.link ? (
                                             <Button
@@ -757,7 +784,9 @@ const ContactosSDRPage = () => {
         if (contactosOrdenados.length === 0) {
             return (
                 <Paper sx={{ p: 4, textAlign: 'center' }}>
-                    <Typography color="text.secondary">No hay reuniones agendadas</Typography>
+                    <Typography color="text.secondary">
+                        {bandejaActiva === 'reunionesPasadas' ? 'No hay reuniones pasadas' : 'No hay reuniones pendientes'}
+                    </Typography>
                 </Paper>
             );
         }
@@ -954,10 +983,16 @@ const ContactosSDRPage = () => {
                         label="Seguimiento"
                     />
                     <Tab 
-                        value="reuniones"
-                        icon={<Badge badgeContent={contadoresBandejas.reuniones || 0} color="secondary" max={99}><EventIcon sx={{ fontSize: 18 }} /></Badge>}
+                        value="reunionesPendientes"
+                        icon={<Badge badgeContent={contadoresBandejas.reunionesPendientes || 0} color="secondary" max={99}><EventAvailableIcon sx={{ fontSize: 18 }} /></Badge>}
                         iconPosition="start"
                         label="Reuniones"
+                    />
+                    <Tab 
+                        value="reunionesPasadas"
+                        icon={<Badge badgeContent={contadoresBandejas.reunionesPasadas || 0} color="default" max={99}><HistoryIcon sx={{ fontSize: 18 }} /></Badge>}
+                        iconPosition="start"
+                        label="Pasadas"
                     />
                     <Tab 
                         value="todos"
@@ -1130,7 +1165,7 @@ const ContactosSDRPage = () => {
             </Box>
 
             {/* Lista de contactos — vista reuniones o cards */}
-            {bandejaActiva === 'reuniones' ? (
+            {(bandejaActiva === 'reunionesPendientes' || bandejaActiva === 'reunionesPasadas') ? (
                 <Box sx={{ px: 2 }}>
                     {renderReunionesMobileLista()}
                 </Box>
@@ -1250,7 +1285,9 @@ const ContactosSDRPage = () => {
                                         <ContadoresActividad contadores={contacto.contadores} size="small" />
                                         {proximo && (
                                             <Stack direction="row" spacing={0.5} alignItems="center" sx={{ mt: 0.5 }}>
-                                                <AccessTimeIcon sx={{ fontSize: 14, color: `${proximo.color}.main` }} />
+                                                <Typography sx={{ fontSize: 12 }}>
+                                                    {contacto.proximaTarea?.tipo === 'llamada' ? '📞' : contacto.proximaTarea?.tipo === 'whatsapp' ? '💬' : contacto.proximaTarea?.tipo === 'email' ? '✉️' : '📅'}
+                                                </Typography>
                                                 <Typography 
                                                     variant="caption" 
                                                     color={`${proximo.color}.main`}
@@ -1258,6 +1295,11 @@ const ContactosSDRPage = () => {
                                                 >
                                                     {proximo.texto}
                                                 </Typography>
+                                                {contacto.proximaTarea?.nota && (
+                                                    <Typography variant="caption" color="text.secondary" noWrap sx={{ maxWidth: 120, fontSize: '0.6rem' }}>
+                                                        — {contacto.proximaTarea.nota}
+                                                    </Typography>
+                                                )}
                                             </Stack>
                                         )}
                                     </Box>
@@ -1531,10 +1573,16 @@ const ContactosSDRPage = () => {
                             label="Seguimiento"
                         />
                         <Tab 
-                            value="reuniones"
-                            icon={<Badge badgeContent={contadoresBandejas.reuniones || 0} color="secondary" max={99}><EventIcon /></Badge>}
+                            value="reunionesPendientes"
+                            icon={<Badge badgeContent={contadoresBandejas.reunionesPendientes || 0} color="secondary" max={99}><EventAvailableIcon /></Badge>}
                             iconPosition="start"
                             label="Reuniones"
+                        />
+                        <Tab 
+                            value="reunionesPasadas"
+                            icon={<Badge badgeContent={contadoresBandejas.reunionesPasadas || 0} color="default" max={99}><HistoryIcon /></Badge>}
+                            iconPosition="start"
+                            label="Pasadas"
                         />
                         <Tab 
                             value="todos"
@@ -1720,7 +1768,7 @@ const ContactosSDRPage = () => {
                 </Paper>
 
                 {/* Tabla o Lista reuniones */}
-                {bandejaActiva === 'reuniones' ? (
+                {(bandejaActiva === 'reunionesPendientes' || bandejaActiva === 'reunionesPasadas') ? (
                     renderReunionesLista()
                 ) : (
                 <Paper>
@@ -1747,7 +1795,7 @@ const ContactosSDRPage = () => {
                                     <TableCell>Plan</TableCell>
                                     <TableCell>Prior.</TableCell>
                                     <TableCell>Actividad</TableCell>
-                                    <TableCell>Próximo</TableCell>
+                                    <TableCell>Próxima tarea</TableCell>
                                 </TableRow>
                             </TableHead>
                             <TableBody>
@@ -1867,12 +1915,17 @@ const ContactosSDRPage = () => {
                                             </TableCell>
                                             <TableCell>
                                                 {proximo ? (
-                                                    <Chip 
-                                                        size="small" 
-                                                        label={proximo.texto}
-                                                        color={proximo.color}
-                                                        variant="outlined"
-                                                    />
+                                                    <Stack direction="row" spacing={0.5} alignItems="center">
+                                                        <Typography sx={{ fontSize: 12 }}>
+                                                            {contacto.proximaTarea?.tipo === 'llamada' ? '📞' : contacto.proximaTarea?.tipo === 'whatsapp' ? '💬' : contacto.proximaTarea?.tipo === 'email' ? '✉️' : '📅'}
+                                                        </Typography>
+                                                        <Chip 
+                                                            size="small" 
+                                                            label={proximo.texto}
+                                                            color={proximo.color}
+                                                            variant="outlined"
+                                                        />
+                                                    </Stack>
                                                 ) : '-'}
                                             </TableCell>
                                         </TableRow>
