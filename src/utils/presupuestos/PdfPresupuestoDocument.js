@@ -1,5 +1,5 @@
 import React from 'react';
-import { Document, Page, Text, View, StyleSheet } from '@react-pdf/renderer';
+import { Document, Page, Text, View, Image, StyleSheet } from '@react-pdf/renderer';
 
 const styles = StyleSheet.create({
   page: {
@@ -13,21 +13,29 @@ const styles = StyleSheet.create({
   header: {
     backgroundColor: '#0a4791',
     borderRadius: 2,
-    padding: 10,
+    padding: 6,
     marginBottom: 10,
+    alignItems: 'center',
+  },
+  headerFecha: {
+    fontSize: 6,
     color: '#fff',
   },
-  headerTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    letterSpacing: 1,
+  headerLogo: {
+    width: 85,
+    height: 47,
+    objectFit: 'contain',
+    marginTop: 2,
   },
-  headerMeta: {
-    display: 'flex',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 6,
-    fontSize: 9,
+  headerNombreEmpresa: {
+    fontSize: 10,
+    fontWeight: 'bold',
+    color: '#fff',
+    marginTop: 2,
+  },
+  headerObra: {
+    fontSize: 6,
+    color: '#fff',
   },
   metaRow: {
     display: 'flex',
@@ -153,7 +161,7 @@ const capitalize = (str) => {
   return str.charAt(0).toUpperCase() + str.slice(1);
 };
 
-const renderRubros = (rubros = [], currency, totalNeto, costoM2Data, tieneAnexos) => {
+const renderRubros = (rubros = [], currency, totalNeto, costoM2Data, tieneAnexos, presupuesto) => {
   const rows = [];
   rubros.forEach((rubro, idx) => {
     const monto = Number(rubro.monto) || 0;
@@ -193,13 +201,25 @@ const renderRubros = (rubros = [], currency, totalNeto, costoM2Data, tieneAnexos
       key="total-row"
     >
       <Text style={styles.tableCell} />
-      <Text style={[styles.tableCellDesc, { color: '#fff' }]}>TOTAL PRESUPUESTO</Text>
+      <Text style={[styles.tableCellDesc, { color: '#fff', textAlign: 'left' }]}>TOTAL PRESUPUESTO</Text>
       <Text style={[styles.tableCellRight, { color: '#fff' }]}>
         {formatCurrency(totalNeto, currency)}
       </Text>
       <Text style={[styles.tableCellRight, { flex: 0.6, color: '#fff' }]}>100%</Text>
     </View>
   );
+
+  const equivRow = !tieneAnexos && presupuesto ? buildTotalEquivalenteRow(presupuesto, totalNeto) : null;
+  if (equivRow) {
+    rows.push(
+      <View style={[styles.tableRow, { backgroundColor: '#0a4791', color: '#fff' }]} key="equiv-row">
+        <Text style={styles.tableCellItem} />
+        <Text style={[styles.tableCellDesc, { color: '#fff' }]}>Total en {equivRow.tipo}</Text>
+        <Text style={[styles.tableCellRight, { color: '#fff' }]}>{equivRow.value}</Text>
+        <Text style={[styles.tableCellRight, { flex: 0.6, color: '#fff' }]} />
+      </View>
+    );
+  }
 
   if (!tieneAnexos && costoM2Data) {
     rows.push(
@@ -221,9 +241,9 @@ const buildSurfaceLines = (analisis, totalNeto, currency) => {
   const ponderada = ponderadaOriginal || cubierta + patios * coef;
   const promedio = ponderada > 0 ? totalNeto / ponderada : null;
   const lines = [
-    `Superficie cubierta: ${cubierta ? `${cubierta.toFixed(2)} m²` : '—'}`,
-    `Superficie patios: ${patios ? `${patios.toFixed(2)} m²` : '—'}`,
-    `Superficie ponderada: ${ponderada ? `${ponderada.toFixed(2)} m²` : '—'}`,
+    `Superficie cubierta: ${cubierta ? `${Math.round(cubierta)} m²` : '—'}`,
+    `Superficie patios: ${patios ? `${Math.round(patios)} m²` : '—'}`,
+    `Superficie ponderada: ${ponderada ? `${Math.round(ponderada)} m²` : '—'}`,
   ];
   if (promedio !== null && Number.isFinite(promedio)) {
     lines.push(`Promedio por m²: ${formatCurrency(promedio, currency)}`);
@@ -243,6 +263,41 @@ const formatFechaAnexo = (value) => {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '—';
   return date.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+};
+
+/** Genera fila Total en USD/CAC: { value, label } o null */
+const buildTotalEquivalenteRow = (presupuesto, totalActualizado) => {
+  const snap = presupuesto?.cotizacion_snapshot || null;
+  const moneda = (presupuesto?.moneda || 'ARS').toUpperCase();
+  if (!snap || !['CAC', 'USD'].includes(snap.tipo) || !Number.isFinite(Number(snap.valor))) return null;
+  const valor = Number(snap.valor);
+  let value = null;
+  let tipo = '';
+  if (snap.tipo === 'USD') {
+    tipo = 'USD';
+    value = moneda === 'USD' ? totalActualizado : totalActualizado / valor;
+  } else {
+    tipo = 'CAC';
+    value = totalActualizado / valor;
+  }
+  if (!Number.isFinite(value) || value <= 0) return null;
+  const partes = [];
+  if (snap.tipo === 'USD') {
+    if (snap.fuente) partes.push(snap.fuente === 'blue' ? 'Blue' : 'Oficial');
+    if (snap.referencia) partes.push(snap.referencia.charAt(0).toUpperCase() + snap.referencia.slice(1));
+  } else {
+    const ref = snap.referencia === 'mano_obra' ? 'Mano de Obra' : snap.referencia === 'materiales' ? 'Materiales' : 'Promedio';
+    partes.push(ref);
+  }
+  if (snap.fecha_origen) {
+    const f = snap.fecha_origen;
+    partes.push(f.length >= 7 ? `${f.slice(5, 7)}/${f.slice(0, 4)}` : f);
+  }
+  const label = partes.length ? ` (${partes.join(', ')})` : '';
+  const formatted = tipo === 'USD'
+    ? formatCurrency(value, 'USD')
+    : `CAC ${Number(value).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return { value: `${formatted}${label}`, tipo };
 };
 
 const TIPO_ANEXO_LABEL = {
@@ -281,30 +336,39 @@ const renderAnexos = (anexos = [], currency) => {
   );
 };
 
-const renderResumenContractual = (totalOriginal, impactoAnexos, totalActualizado, currency, costoM2Data) => (
-  <View style={[styles.notesBox, { marginTop: 10 }]} wrap>
-    <Text style={styles.sectionTitle}>RESUMEN CONTRACTUAL</Text>
-    <View style={[styles.tableRow, { flexDirection: 'row', justifyContent: 'space-between' }]}>
-      <Text style={styles.tableCellDesc}>Total original</Text>
-      <Text style={styles.tableCellRight}>{formatCurrency(totalOriginal, currency)}</Text>
+const renderResumenContractual = (totalOriginal, impactoAnexos, totalActualizado, currency, costoM2Data, presupuesto) => {
+  const equivRow = presupuesto ? buildTotalEquivalenteRow(presupuesto, totalActualizado) : null;
+  return (
+    <View style={[styles.notesBox, { marginTop: 10 }]} wrap>
+      <Text style={styles.sectionTitle}>RESUMEN CONTRACTUAL</Text>
+      <View style={[styles.tableRow, { flexDirection: 'row', justifyContent: 'space-between' }]}>
+        <Text style={styles.tableCellDesc}>Total original</Text>
+        <Text style={styles.tableCellRight}>{formatCurrency(totalOriginal, currency)}</Text>
+      </View>
+      <View style={[styles.tableRow, { flexDirection: 'row', justifyContent: 'space-between' }]}>
+        <Text style={styles.tableCellDesc}>Impacto anexos</Text>
+        <Text style={styles.tableCellRight}>{formatCurrency(impactoAnexos, currency)}</Text>
+      </View>
+      <View style={[styles.tableRow, { backgroundColor: '#0a4791', flexDirection: 'row', justifyContent: 'space-between' }]}>
+        <Text style={[styles.tableCellDesc, { color: '#fff', fontWeight: 'bold' }]}>
+          Total actualizado (incluye anexos)
+        </Text>
+        <Text style={[styles.tableCellRight, { color: '#fff', fontWeight: 'bold' }]}>
+          {formatCurrency(totalActualizado, currency)}
+        </Text>
+      </View>
+      {equivRow && (
+        <View style={[styles.tableRow, { backgroundColor: '#0a4791', flexDirection: 'row', justifyContent: 'space-between' }]}>
+          <Text style={[styles.tableCellDesc, { color: '#fff', fontWeight: 'bold' }]}>Total en {equivRow.tipo}</Text>
+          <Text style={[styles.tableCellRight, { color: '#fff', fontWeight: 'bold' }]}>{equivRow.value}</Text>
+        </View>
+      )}
+      {costoM2Data && renderCostoM2Rows(costoM2Data)}
     </View>
-    <View style={[styles.tableRow, { flexDirection: 'row', justifyContent: 'space-between' }]}>
-      <Text style={styles.tableCellDesc}>Impacto anexos</Text>
-      <Text style={styles.tableCellRight}>{formatCurrency(impactoAnexos, currency)}</Text>
-    </View>
-    <View style={[styles.tableRow, { backgroundColor: '#0a4791', flexDirection: 'row', justifyContent: 'space-between' }]}>
-      <Text style={[styles.tableCellDesc, { color: '#fff', fontWeight: 'bold' }]}>
-        Total actualizado (incluye anexos)
-      </Text>
-      <Text style={[styles.tableCellRight, { color: '#fff', fontWeight: 'bold' }]}>
-        {formatCurrency(totalActualizado, currency)}
-      </Text>
-    </View>
-    {costoM2Data && renderCostoM2Rows(costoM2Data)}
-  </View>
-);
+  );
+};
 
-export const PresupuestoPdfDocument = ({ presupuesto, empresa, costoM2Data = {} }) => {
+export const PresupuestoPdfDocument = ({ presupuesto, empresa, costoM2Data = {}, logoDataUrl = null }) => {
   const rubros = presupuesto?.rubros || [];
   const totalNeto =
     Number(presupuesto.total_neto) ||
@@ -321,15 +385,21 @@ export const PresupuestoPdfDocument = ({ presupuesto, empresa, costoM2Data = {} 
     <Document>
       <Page size="A4" style={styles.page}>
         <View fixed style={styles.header}>
-          <Text style={styles.headerTitle}>Presupuesto Profesional</Text>
-          <View style={styles.headerMeta}>
-            <Text>{empresa?.nombre || presupuesto?.empresa_nombre || 'Empresa'}</Text>
-            <Text>{formatFecha(presupuesto?.fecha || presupuesto?.createdAt)}</Text>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
+            <Text style={styles.headerObra}>
+              {presupuesto?.obra_direccion || '—'}
+            </Text>
+            <Text style={styles.headerFecha}>
+              {formatFecha(presupuesto?.fecha || presupuesto?.createdAt)}
+            </Text>
           </View>
-        </View>
-        <View style={styles.metaRow}>
-          <Text style={styles.metaLabel}>Obra</Text>
-          <Text>{presupuesto?.obra_direccion || '—'}</Text>
+          {logoDataUrl ? (
+            <Image src={logoDataUrl} style={styles.headerLogo} />
+          ) : (
+            <Text style={styles.headerNombreEmpresa}>
+              {empresa?.nombre || presupuesto?.empresa_nombre || 'Empresa'}
+            </Text>
+          )}
         </View>
         <View style={styles.metaRow}>
           <Text style={styles.metaLabel}>Proyecto</Text>
@@ -344,10 +414,10 @@ export const PresupuestoPdfDocument = ({ presupuesto, empresa, costoM2Data = {} 
             <Text style={styles.tableCellRight}>Total</Text>
             <Text style={[styles.tableCellRight, { flex: 0.6 }]}>Inc.</Text>
           </View>
-          {renderRubros(rubros, currency, totalNeto, costoM2Data, tieneAnexos)}
+          {renderRubros(rubros, currency, totalNeto, costoM2Data, tieneAnexos, presupuesto)}
         </View>
         {tieneAnexos && renderAnexos(anexos, currency)}
-        {tieneAnexos && renderResumenContractual(totalNeto, impactoAnexos, totalActualizado, currency, costoM2Data)}
+        {tieneAnexos && renderResumenContractual(totalNeto, impactoAnexos, totalActualizado, currency, costoM2Data, presupuesto)}
         {(notes || surfaceLines.length > 0) && (
           <View style={styles.notesBox} wrap>
             {notes ? (

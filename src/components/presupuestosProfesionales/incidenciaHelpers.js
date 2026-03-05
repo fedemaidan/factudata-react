@@ -8,6 +8,22 @@ const parseIncidencia = (value) => {
   return Number.isNaN(parsed) ? null : parsed;
 };
 
+const parseIncidenciaSugerida = (value) => {
+  if (value == null) return null;
+  const parsed = Number(value);
+  if (Number.isNaN(parsed) || parsed < 0 || parsed > 100) return null;
+  return parsed;
+};
+
+export function plantillaRubrosToPresupuestoRubros(rubros = []) {
+  return (rubros || []).map((r) => ({
+    nombre: r.nombre || '',
+    monto: 0,
+    incidencia_objetivo_pct: parseIncidenciaSugerida(r.incidencia_pct_sugerida),
+    tareas: (r.tareas || []).map((t) => ({ descripcion: t.descripcion || '' })),
+  }));
+}
+
 export function sumaIncidenciasObjetivo(rubros) {
   return (rubros || []).reduce((s, r) => s + (Number(r.incidencia_objetivo_pct) || 0), 0);
 }
@@ -36,15 +52,19 @@ export function distribuirMontosPorIncidencia(total, rubros) {
   const sumaMontos = montos.reduce((s, m) => s + m, 0);
   const diff = Math.round((totalNum - sumaMontos) * 100) / 100;
 
+
+  const sumaCercaDe100 = Math.abs(sumaPct - 100) < 0.01;
   let lastIdx = -1;
-  for (let i = rubrosConPct.length - 1; i >= 0; i--) {
-    if (rubrosConPct[i]._pctValido) {
-      lastIdx = i;
-      break;
+  if (sumaCercaDe100) {
+    for (let i = rubrosConPct.length - 1; i >= 0; i--) {
+      if (rubrosConPct[i]._pctValido) {
+        lastIdx = i;
+        break;
+      }
     }
-  }
-  if (lastIdx >= 0 && Math.abs(diff) > 0.001) {
-    montos[lastIdx] = Math.round((montos[lastIdx] + diff) * 100) / 100;
+    if (lastIdx >= 0 && Math.abs(diff) > 0.001) {
+      montos[lastIdx] = Math.round((montos[lastIdx] + diff) * 100) / 100;
+    }
   }
 
   return rubrosConPct.map((r, i) => {
