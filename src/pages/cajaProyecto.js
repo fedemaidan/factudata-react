@@ -44,6 +44,10 @@ import IntercambioMonedaDialog from 'src/components/IntercambioMonedaDialog';
 import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import CurrencyExchangeIcon from '@mui/icons-material/CurrencyExchange';
 import BulkEditDialog from 'src/components/BulkEditDialog';
+import SortIcon from '@mui/icons-material/Sort';
+import OrdenarColumnasDialog from 'src/components/OrdenarColumnasDialog';
+import { getCajaColumnasConfig, applyColumnOrder, getHeaderLabel, getHeaderCellSx } from 'src/components/cajaProyecto/cajaColumnasConfig';
+import CajaTablaCell from 'src/components/cajaProyecto/CajaTablaCell';
 
 
 // tamaños mínimos por columna (px)
@@ -294,6 +298,8 @@ const ProyectoMovimientosPage = () => {
   // ---- Columnas visibles + modo compacto ----
 const [compactCols, setCompactCols] = useState(true);
 const [anchorColsEl, setAnchorColsEl] = useState(null);
+const [columnasOrden, setColumnasOrden] = useState([]);
+const [openOrdenar, setOpenOrdenar] = useState(false);
 
 // --- helpers de scroll horizontal ---
 const scrollRef = useRef(null);      // contenedor principal con overflow
@@ -407,6 +413,7 @@ const handleSaveCols = async () => {
           columnas: {
             compact: compactCols,
             visible: visibleCols,
+            orden: columnasOrden,
           },
         },
       });
@@ -525,6 +532,28 @@ const openCols = Boolean(anchorColsEl);
 const handleOpenCols = (e) => setAnchorColsEl(e.currentTarget);
 const handleCloseCols = () => setAnchorColsEl(null);
 
+const handleOrdenColumnasChange = async (nuevoOrden) => {
+  setColumnasOrden(nuevoOrden);
+  if (proyecto?.id) {
+    try {
+      await updateProyecto(proyecto.id, {
+        ...proyecto,
+        ui_prefs: {
+          ...(proyecto.ui_prefs || {}),
+          columnas: {
+            ...(proyecto.ui_prefs?.columnas || {}),
+            compact: compactCols,
+            visible: visibleCols,
+            orden: nuevoOrden,
+          },
+        },
+      });
+    } catch (e) {
+      setAlert((prev) => ({ ...prev, open: true, message: 'No se pudo guardar el orden', severity: 'error' }));
+    }
+  }
+};
+
 
   const {
     filters,
@@ -540,6 +569,15 @@ const handleCloseCols = () => setAnchorColsEl(null);
     cajaSeleccionada,
     userId: user?.user_id,
   });
+
+  const columnasConfig = useMemo(
+    () => getCajaColumnasConfig(visibleCols, compactCols, empresa, options),
+    [visibleCols, compactCols, empresa, options]
+  );
+  const columnasFiltradas = useMemo(
+    () => applyColumnOrder(columnasConfig, columnasOrden),
+    [columnasConfig, columnasOrden]
+  );
 
   const handleOpenCajaMenu = (event, index) => {
     setAnchorCajaEl(event.currentTarget);
@@ -732,6 +770,9 @@ const handleCloseCols = () => setAnchorColsEl(null);
           // merge con defaults actuales para no perder llaves nuevas
           setVisibleCols((prev) => ({ ...defaultVisible, ...savedCols.visible }));
         }
+        if (Array.isArray(savedCols.orden)) {
+          setColumnasOrden(savedCols.orden);
+        }
       }
       setPrefsHydrated(true);
       const movs = await ticketService.getMovimientosForProyecto(proyectoId, 'ARS');
@@ -779,6 +820,20 @@ const handleCloseCols = () => setAnchorColsEl(null);
     else
       return "$ 0";
   };
+
+  const cajaCellCtx = useMemo(() => ({
+    empresa,
+    compactCols,
+    formatTimestamp,
+    formatCurrency,
+    openImg,
+    goToEdit,
+    handleEliminarClick,
+    deletingElement,
+    COLS,
+    cellBase,
+    ellipsis,
+  }), [empresa, compactCols, deletingElement]);
 
   const onSelectCaja = (caja) => {
     setCajaSeleccionada(caja);
@@ -1450,6 +1505,16 @@ useEffect(() => {
       variant="outlined"
       size="small"
       fullWidth
+      startIcon={<SortIcon />}
+      onClick={() => setOpenOrdenar(true)}
+      sx={{ minWidth: 110, whiteSpace: 'nowrap' }}
+    >
+      Ordenar columnas
+    </Button>
+    <Button
+      variant="outlined"
+      size="small"
+      fullWidth
       onClick={handleOpenCols}
       sx={{ minWidth: 110, whiteSpace: 'nowrap' }}
     >
@@ -1778,6 +1843,15 @@ useEffect(() => {
   </Stack>
 </Popover>
 
+<OrdenarColumnasDialog
+  open={openOrdenar}
+  onClose={() => setOpenOrdenar(false)}
+  columnasFiltradas={columnasFiltradas}
+  columnasOrden={columnasOrden}
+  onOrdenChange={handleOrdenColumnasChange}
+  ordenPredeterminado={columnasConfig.map(([k]) => k)}
+/>
+
 {/* ===== Scrollbar superior sincronizada ===== */}
 <Box sx={{ position: 'relative', mb: 0.5 }}>
 <Box
@@ -1959,125 +2033,11 @@ useEffect(() => {
             onChange={toggleSelectAll}
           />
         </TableCell>
-        {visibleCols.codigo && (
-          <TableCell sx={{ ...cellBase, minWidth: COLS.codigo, position: 'sticky', left: 0, zIndex: 2, bgcolor: 'background.paper' }}>
-            CÓDIGO
+        {columnasFiltradas.map(([key]) => (
+          <TableCell key={key} sx={getHeaderCellSx(key, COLS, cellBase)}>
+            {getHeaderLabel(key, compactCols)}
           </TableCell>
-        )}
-
-        {compactCols ? (
-          visibleCols.fechas && (
-            <TableCell sx={{ ...cellBase, minWidth: COLS.fecha + 40 }}>
-              FECHAS
-            </TableCell>
-          )
-        ) : (
-          <>
-            {visibleCols.fechaFactura && (
-              <TableCell sx={{ ...cellBase, minWidth: COLS.fecha }}>FECHA FACTURA</TableCell>
-            )}
-            {visibleCols.fechaCreacion && (
-              <TableCell sx={{ ...cellBase, minWidth: COLS.fecha }}>FECHA CREACIÓN</TableCell>
-            )}
-          </>
-        )}
-
-        {!compactCols && visibleCols.tipo && (
-          <TableCell sx={{ ...cellBase, minWidth: COLS.tipo }}>TIPO</TableCell>
-        )}
-
-        {visibleCols.total && (
-          <TableCell sx={{ ...cellBase, minWidth: COLS.total, textAlign: 'right' }}>TOTAL</TableCell>
-        )}
-
-        {visibleCols.categoria && (
-          <TableCell sx={{ ...cellBase, minWidth: COLS.categoria }}>
-            {compactCols ? 'CATEGORÍA / SUBCAT.' : 'CATEGORÍA'}
-          </TableCell>
-        )}
-
-        {!compactCols && empresa?.comprobante_info?.subcategoria && visibleCols.subcategoria && (
-          <TableCell sx={{ ...cellBase, minWidth: COLS.subcategoria }}>SUBCATEGORÍA</TableCell>
-        )}
-
-        {empresa?.comprobante_info?.medio_pago && visibleCols.medioPago && (
-          <TableCell sx={{ ...cellBase, minWidth: COLS.medioPago }}>MEDIO DE PAGO</TableCell>
-        )}
-
-        {visibleCols.proveedor && (
-          <TableCell sx={{ ...cellBase, minWidth: COLS.proveedor }}>PROVEEDOR</TableCell>
-        )}
-
-        {visibleCols.obra && (   // <-- NUEVO
-          <TableCell sx={{ ...cellBase, minWidth: COLS.obra }}>OBRA</TableCell>
-        )}
-
-        {visibleCols.cliente && ( // <-- NUEVO
-          <TableCell sx={{ ...cellBase, minWidth: COLS.cliente }}>CLIENTE</TableCell>
-        )}
-
-        {visibleCols.observacion && (
-          <TableCell sx={{ ...cellBase, minWidth: COLS.observacion }}>OBSERVACIÓN</TableCell>
-        )}
-
-        {visibleCols.tc && (
-          <TableCell sx={{ ...cellBase, minWidth: COLS.tc }}>TC EJECUTADO</TableCell>
-        )}
-
-        {visibleCols.usd && (
-          <TableCell sx={{ ...cellBase, minWidth: COLS.usd }}>USD BLUE</TableCell>
-        )}
-        {visibleCols.mep && (
-          <TableCell sx={{ ...cellBase, minWidth: COLS.mep }}>USD MEP</TableCell>
-        )}
-        {empresa?.con_estados && visibleCols.estado && (
-          <TableCell sx={{ ...cellBase, minWidth: COLS.estado }}>ESTADO</TableCell>
-        )}
-        {visibleCols.empresaFacturacion && (
-          <TableCell sx={{ ...cellBase, minWidth: COLS.empresaFacturacion }}>EMPRESA FACTURACIÓN</TableCell>
-        )}
-
-        {visibleCols.facturaCliente && (
-          <TableCell sx={{ ...cellBase, minWidth: COLS.facturaCliente }}>FACTURA CLIENTE</TableCell>
-        )}
-
-        {visibleCols.fechaPago && (
-          <TableCell sx={{ ...cellBase, minWidth: COLS.fechaPago }}>FECHA PAGO</TableCell>
-        )}
-
-        {visibleCols.tagsExtra && (
-          <TableCell sx={{ ...cellBase, minWidth: COLS.tagsExtra }}>TAGS EXTRA</TableCell>
-        )}
-
-        {visibleCols.dolarReferencia && (
-          <TableCell sx={{ ...cellBase, minWidth: COLS.dolarReferencia }}>TC REF.</TableCell>
-        )}
-
-        {visibleCols.totalDolar && (
-          <TableCell sx={{ ...cellBase, minWidth: COLS.totalDolar, textAlign: 'right' }}>TOTAL USD</TableCell>
-        )}
-
-        {visibleCols.subtotalDolar && (
-          <TableCell sx={{ ...cellBase, minWidth: COLS.subtotalDolar, textAlign: 'right' }}>SUBTOTAL USD</TableCell>
-        )}
-
-
-{visibleCols.acciones && (
-  <TableCell
-    sx={{
-      ...cellBase,
-      minWidth: COLS.acciones,
-      textAlign: 'center',
-      position: 'sticky',
-      right: 0,
-      zIndex: 2,
-      bgcolor: 'background.paper',
-      boxShadow: 'inset 8px 0 8px -8px rgba(0,0,0,0.15)',
-    }}
-  >
-    ACCIONES
-  </TableCell>
-)}
+        ))}
 
       </TableRow>
     </TableHead>
@@ -2122,229 +2082,16 @@ useEffect(() => {
                         onChange={() => toggleSelectOne(mov.id)}
                       />
                     </TableCell>
-                    {visibleCols.codigo && (
-                      <TableCell
-                        sx={{ 
-                          ...cellBase, 
-                          minWidth: COLS.codigo, 
-                          position: 'sticky', 
-                          left: 0, 
-                          zIndex: 1, 
-                          bgcolor: 'background.paper'
-                        }}
-                      >
-                        <Stack direction="row" spacing={1} alignItems="center">
-                          <Typography variant="body2">
-                            {mov.codigo_operacion || mov.codigo || mov.id || 'Sin código'}
-                          </Typography>
-                          <Chip size="small" label="P" variant="outlined" color="info" sx={{ fontSize: '0.7rem', height: 16 }} />
-                        </Stack>
-                      </TableCell>
-                    )}
-
-                    {compactCols ? (
-                      visibleCols.fechas && (
-                        <TableCell sx={{ ...cellBase, minWidth: COLS.fecha + 40 }}>
-                          <Stack direction="row" spacing={1} divider={<span>•</span>}>
-                            <Typography variant="body2">Fac: {formatTimestamp(mov.fecha_factura, "DIA/MES/ANO")}</Typography>
-                            <Typography variant="body2" color="text.secondary">
-                              Cre: {formatTimestamp(mov.fecha_creacion, "DIA/MES/ANO")}
-                            </Typography>
-                          </Stack>
-                        </TableCell>
-                      )
-                    ) : (
-                      <>
-                        {visibleCols.fechaFactura && (
-                          <TableCell sx={{ ...cellBase, minWidth: COLS.fecha }}>
-                            {formatTimestamp(mov.fecha_factura, "DIA/MES/ANO")}
-                          </TableCell>
-                        )}
-                        {visibleCols.fechaCreacion && (
-                          <TableCell sx={{ ...cellBase, minWidth: COLS.fecha }}>
-                            {formatTimestamp(mov.fecha_creacion, "DIA/MES/ANO")}
-                          </TableCell>
-                        )}
-                      </>
-                    )}
-
-                    {!compactCols && visibleCols.tipo && (
-                      <TableCell sx={{ ...cellBase, minWidth: COLS.tipo }}>
-                        <Chip
-                          label={mov.type === 'ingreso' ? 'Ingreso' : 'Egreso'}
-                          color={mov.type === 'ingreso' ? 'success' : 'error'}
-                          size="small"
-                        />
-                      </TableCell>
-                    )}
-
-                    {visibleCols.total && (
-                      <TableCell
-                        sx={{ ...cellBase, minWidth: COLS.total, textAlign: 'right', fontWeight: 700, color: amountColor }}
-                      >
-                        {formatCurrency(mov.total)}
-                      </TableCell>
-                    )}
-
-                    {visibleCols.categoria && (
-                      <TableCell sx={{ ...cellBase, minWidth: COLS.categoria }}>
-                        {compactCols
-                          ? (
-                            <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
-                              <span>{mov.categoria}</span>
-                              {empresa?.comprobante_info?.subcategoria && mov.subcategoria && (
-                                <Typography variant="caption" color="text.secondary">/ {mov.subcategoria}</Typography>
-                              )}
-                            </Stack>
-                          )
-                          : mov.categoria}
-                      </TableCell>
-                    )}
-
-                    {!compactCols && empresa?.comprobante_info?.subcategoria && visibleCols.subcategoria && (
-                      <TableCell sx={{ ...cellBase, minWidth: COLS.subcategoria }}>
-                        {mov.subcategoria}
-                      </TableCell>
-                    )}
-
-                    {empresa?.comprobante_info?.medio_pago && visibleCols.medioPago && (
-                      <TableCell sx={{ ...cellBase, minWidth: COLS.medioPago }}>
-                        <Chip size="small" label={mov.medio_pago || '-'} />
-                      </TableCell>
-                    )}
-
-                    {visibleCols.proveedor && (
-                      <TableCell sx={ellipsis(COLS.proveedor)}>
-                        <Tooltip title={mov.nombre_proveedor || ''}>
-                          <span>{mov.nombre_proveedor}</span>
-                        </Tooltip>
-                      </TableCell>
-                    )}
-
-                    {visibleCols.obra && (
-                      <TableCell sx={ellipsis(COLS.obra)}>
-                        <Tooltip title={mov.obra || ''}>
-                          <span>{mov.obra || '—'}</span>
-                        </Tooltip>
-                      </TableCell>
-                    )}
-
-                    {visibleCols.cliente && (
-                      <TableCell sx={ellipsis(COLS.cliente)}>
-                        <Tooltip title={mov.cliente || ''}>
-                          <span>{mov.cliente || '—'}</span>
-                        </Tooltip>
-                      </TableCell>
-                    )}
-
-                    {visibleCols.observacion && (
-                      <TableCell sx={ellipsis(COLS.observacion)}>
-                        <Tooltip title={mov.observacion || ''}>
-                          <span>{mov.observacion}</span>
-                        </Tooltip>
-                      </TableCell>
-                    )}
-
-                    {visibleCols.tc && (
-                      <TableCell sx={{ ...cellBase, minWidth: COLS.tc }}>
-                        {mov.tc ? `$ ${mov.tc}` : '-'}
-                      </TableCell>
-                    )}
-
-                    {visibleCols.usd && (
-                      <TableCell sx={{ ...cellBase, minWidth: COLS.usd }}>
-                        {mov.equivalencias
-                          ? `US$ ${mov.equivalencias.total.usd_blue?.toLocaleString('es-AR', { minimumFractionDigits: 2 })}`
-                          : '-'}
-                      </TableCell>
-                    )}
-
-                    {visibleCols.mep && (
-                      <TableCell sx={{ ...cellBase, minWidth: COLS.mep }}>
-                        {mov.equivalencias
-                          ? `US$ ${mov.equivalencias.total.usd_mep_medio?.toLocaleString('es-AR', { minimumFractionDigits: 2 })}`
-                          : '-'}
-                      </TableCell>
-                    )}
-
-                    {empresa?.con_estados && visibleCols.estado && (
-                      <TableCell sx={{ ...cellBase, minWidth: COLS.estado }}>
-                        {mov.estado ? <Chip size="small" label={mov.estado} /> : ''}
-                      </TableCell>
-                    )}
-
-                    {visibleCols.empresaFacturacion && (
-                      <TableCell sx={{ ...cellBase, minWidth: COLS.empresaFacturacion }}>
-                        {mov.empresa_facturacion || '—'}
-                      </TableCell>
-                    )}
-
-                    {visibleCols.fechaPago && (
-                      <TableCell sx={{ ...cellBase, minWidth: COLS.fechaPago }}>
-                        {mov.fecha_pago ? formatTimestamp(mov.fecha_pago, "DIA/MES/ANO") : '—'}
-                      </TableCell>
-                    )}
-
-                    {visibleCols.tagsExtra && (
-                      <TableCell sx={{ ...cellBase, minWidth: COLS.tagsExtra }}>
-                        {Array.isArray(mov.tags_extra) && mov.tags_extra.length > 0
-                          ? mov.tags_extra.map((tag, i) => <Chip key={i} size="small" label={tag} sx={{ mr: 0.5, mb: 0.25 }} />)
-                          : '—'}
-                      </TableCell>
-                    )}
-
-                    {visibleCols.dolarReferencia && (
-                      <TableCell sx={{ ...cellBase, minWidth: COLS.dolarReferencia }}>
-                        {mov.dolar_referencia ? `$ ${mov.dolar_referencia.toLocaleString('es-AR', { minimumFractionDigits: 2 })}` : '—'}
-                      </TableCell>
-                    )}
-
-                    {visibleCols.totalDolar && (
-                      <TableCell sx={{ ...cellBase, minWidth: COLS.totalDolar, textAlign: 'right' }}>
-                        {mov.total_dolar ? `US$ ${mov.total_dolar.toLocaleString('es-AR', { minimumFractionDigits: 2 })}` : '—'}
-                      </TableCell>
-                    )}
-
-                    {visibleCols.subtotalDolar && (
-                      <TableCell sx={{ ...cellBase, minWidth: COLS.subtotalDolar, textAlign: 'right' }}>
-                        {mov.subtotal_dolar ? `US$ ${mov.subtotal_dolar.toLocaleString('es-AR', { minimumFractionDigits: 2 })}` : '—'}
-                      </TableCell>
-                    )}
-
-                    {visibleCols.acciones && (
-                      <TableCell sx={{
-                        ...cellBase,
-                        minWidth: COLS.acciones,
-                        textAlign: 'center',
-                        position: 'sticky',
-                        right: 0,
-                        zIndex: 1,
-                        bgcolor: 'background.paper',
-                        boxShadow: 'inset 8px 0 8px -8px rgba(0,0,0,0.12)',
-                      }}>    
-                          {mov.url_imagen && <IconButton
-                            size="small"
-                            onClick={(e) => { e.stopPropagation(); openImg(mov.url_imagen); }}
-                          >
-                            <ImageIcon fontSize="small" />
-                          </IconButton>}
-                        <IconButton
-                          size="small"
-                          color="primary"
-                          onClick={(e) => { e.stopPropagation(); goToEdit(mov); }}
-                        >
-                          <EditIcon fontSize="small" />
-                        </IconButton>
-                        <IconButton
-                          size="small"
-                          color="error"
-                          onClick={(e) => { e.stopPropagation(); handleEliminarClick(mov.id); }}
-                          disabled={deletingElement === mov.id}
-                        >
-                          <DeleteIcon fontSize="small" />
-                        </IconButton>
-                      </TableCell>
-                    )}
+                    {columnasFiltradas.map(([key]) => (
+                      <CajaTablaCell
+                        key={key}
+                        colKey={key}
+                        mov={mov}
+                        amountColor={amountColor}
+                        ctx={cajaCellCtx}
+                        isProrrateo
+                      />
+                    ))}
                   </TableRow>
                 );
               })}
@@ -2369,224 +2116,15 @@ useEffect(() => {
                 onChange={() => toggleSelectOne(mov.id)}
               />
             </TableCell>
-            {visibleCols.codigo && (
-              <TableCell
-                sx={{ ...cellBase, minWidth: COLS.codigo, position: 'sticky', left: 0, zIndex: 1, bgcolor: 'background.paper' }}
-              >
-                {mov.codigo_operacion}
-              </TableCell>
-            )}
-
-            {compactCols ? (
-              visibleCols.fechas && (
-                <TableCell sx={{ ...cellBase, minWidth: COLS.fecha + 40 }}>
-                  {/* compacto: ambas fechas en una sola celda */}
-                  <Stack direction="row" spacing={1} divider={<span>•</span>}>
-                    <Typography variant="body2">Fac: {formatTimestamp(mov.fecha_factura, "DIA/MES/ANO")}</Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      Cre: {formatTimestamp(mov.fecha_creacion, "DIA/MES/ANO")}
-                    </Typography>
-                  </Stack>
-                </TableCell>
-              )
-            ) : (
-              <>
-                {visibleCols.fechaFactura && (
-                  <TableCell sx={{ ...cellBase, minWidth: COLS.fecha }}>
-                    {formatTimestamp(mov.fecha_factura, "DIA/MES/ANO")}
-                  </TableCell>
-                )}
-                {visibleCols.fechaCreacion && (
-                  <TableCell sx={{ ...cellBase, minWidth: COLS.fecha }}>
-                    {formatTimestamp(mov.fecha_creacion, "DIA/MES/ANO")}
-                  </TableCell>
-                )}
-              </>
-            )}
-
-            {!compactCols && visibleCols.tipo && (
-              <TableCell sx={{ ...cellBase, minWidth: COLS.tipo }}>
-                <Chip
-                  label={mov.type === 'ingreso' ? 'Ingreso' : 'Egreso'}
-                  color={mov.type === 'ingreso' ? 'success' : 'error'}
-                  size="small"
-                />
-              </TableCell>
-            )}
-
-            {visibleCols.total && (
-              <TableCell
-                sx={{ ...cellBase, minWidth: COLS.total, textAlign: 'right', fontWeight: 700, color: amountColor }}
-              >
-                {formatCurrency(mov.total)}
-              </TableCell>
-            )}
-
-            {visibleCols.categoria && (
-              <TableCell sx={{ ...cellBase, minWidth: COLS.categoria }}>
-                {compactCols
-                  ? (
-                    <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
-                      <span>{mov.categoria}</span>
-                      {empresa?.comprobante_info?.subcategoria && mov.subcategoria && (
-                        <Typography variant="caption" color="text.secondary">/ {mov.subcategoria}</Typography>
-                      )}
-                    </Stack>
-                  )
-                  : mov.categoria}
-              </TableCell>
-            )}
-
-            {!compactCols && empresa?.comprobante_info?.subcategoria && visibleCols.subcategoria && (
-              <TableCell sx={{ ...cellBase, minWidth: COLS.subcategoria }}>
-                {mov.subcategoria}
-              </TableCell>
-            )}
-
-            {empresa?.comprobante_info?.medio_pago && visibleCols.medioPago && (
-              <TableCell sx={{ ...cellBase, minWidth: COLS.medioPago }}>
-                <Chip size="small" label={mov.medio_pago || '-'} />
-              </TableCell>
-            )}
-
-            {visibleCols.proveedor && (
-              <TableCell sx={ellipsis(COLS.proveedor)}>
-                <Tooltip title={mov.nombre_proveedor || ''}>
-                  <span>{mov.nombre_proveedor}</span>
-                </Tooltip>
-              </TableCell>
-            )}
-
-            {visibleCols.obra && (  // <-- NUEVO
-              <TableCell sx={ellipsis(COLS.obra)}>
-                <Tooltip title={mov.obra || ''}>
-                  <span>{mov.obra || '—'}</span>
-                </Tooltip>
-              </TableCell>
-            )}
-
-            {visibleCols.cliente && ( // <-- NUEVO
-              <TableCell sx={ellipsis(COLS.cliente)}>
-                <Tooltip title={mov.cliente || ''}>
-                  <span>{mov.cliente || '—'}</span>
-                </Tooltip>
-              </TableCell>
-            )}
-
-            {visibleCols.observacion && (
-              <TableCell sx={ellipsis(COLS.observacion)}>
-                <Tooltip title={mov.observacion || ''}>
-                  <span>{mov.observacion}</span>
-                </Tooltip>
-              </TableCell>
-            )}
-
-            {visibleCols.tc && (
-              <TableCell sx={{ ...cellBase, minWidth: COLS.tc }}>
-                {mov.tc ? `$ ${mov.tc}` : '-'}
-              </TableCell>
-            )}
-
-            {visibleCols.usd && (
-              <TableCell sx={{ ...cellBase, minWidth: COLS.usd }}>
-                {mov.equivalencias
-                  ? `US$ ${mov.equivalencias.total.usd_blue?.toLocaleString('es-AR', { minimumFractionDigits: 2 })}`
-                  : '-'}
-              </TableCell>
-            )}
-            {visibleCols.mep && (
-              <TableCell sx={{ ...cellBase, minWidth: COLS.mep }}>
-                {mov.equivalencias
-                  ? `US$ ${mov.equivalencias.total.usd_mep_medio?.toLocaleString('es-AR', { minimumFractionDigits: 2 })}`
-                  : '-'}
-              </TableCell>
-             )}
-
-            {empresa?.con_estados && visibleCols.estado && (
-              <TableCell sx={{ ...cellBase, minWidth: COLS.estado }}>
-                {mov.estado ? <Chip size="small" label={mov.estado} /> : ''}
-              </TableCell>
-            )}
-
-            {visibleCols.empresaFacturacion && (
-              <TableCell sx={{ ...cellBase, minWidth: COLS.empresaFacturacion }}>
-                {mov.empresa_facturacion || '—'}
-              </TableCell>
-            )}
-
-            {visibleCols.facturaCliente && (
-              <TableCell sx={{ ...cellBase, minWidth: COLS.facturaCliente }}>
-                {mov.factura_cliente ? 'Sí' : 'No'}
-              </TableCell>
-            )}
-
-            {visibleCols.fechaPago && (
-              <TableCell sx={{ ...cellBase, minWidth: COLS.fechaPago }}>
-                {mov.fecha_pago ? formatTimestamp(mov.fecha_pago, "DIA/MES/ANO") : '—'}
-              </TableCell>
-            )}
-
-            {visibleCols.tagsExtra && (
-              <TableCell sx={{ ...cellBase, minWidth: COLS.tagsExtra }}>
-                {Array.isArray(mov.tags_extra) && mov.tags_extra.length > 0
-                  ? mov.tags_extra.map((tag, i) => <Chip key={i} size="small" label={tag} sx={{ mr: 0.5, mb: 0.25 }} />)
-                  : '—'}
-              </TableCell>
-            )}
-
-            {visibleCols.dolarReferencia && (
-              <TableCell sx={{ ...cellBase, minWidth: COLS.dolarReferencia }}>
-                {mov.dolar_referencia ? `$ ${mov.dolar_referencia.toLocaleString('es-AR', { minimumFractionDigits: 2 })}` : '—'}
-              </TableCell>
-            )}
-
-            {visibleCols.totalDolar && (
-              <TableCell sx={{ ...cellBase, minWidth: COLS.totalDolar, textAlign: 'right' }}>
-                {mov.total_dolar ? `US$ ${mov.total_dolar.toLocaleString('es-AR', { minimumFractionDigits: 2 })}` : '—'}
-              </TableCell>
-            )}
-
-            {visibleCols.subtotalDolar && (
-              <TableCell sx={{ ...cellBase, minWidth: COLS.subtotalDolar, textAlign: 'right' }}>
-                {mov.subtotal_dolar ? `US$ ${mov.subtotal_dolar.toLocaleString('es-AR', { minimumFractionDigits: 2 })}` : '—'}
-              </TableCell>
-            )}
-
-
-            {visibleCols.acciones && (
-              <TableCell sx={{
-                ...cellBase,
-                minWidth: COLS.acciones,
-                textAlign: 'center',
-                position: 'sticky',
-                right: 0,
-                zIndex: 1,
-                bgcolor: 'background.paper',
-                boxShadow: 'inset 8px 0 8px -8px rgba(0,0,0,0.12)',
-              }}>    
-                  {mov.url_imagen && <IconButton
-                    size="small"
-                    onClick={(e) => { e.stopPropagation(); openImg(mov.url_imagen); }}
-                  >
-                    <ImageIcon fontSize="small" />
-                  </IconButton>}
-                <IconButton
-                  size="small"
-                  color="primary"
-                  onClick={(e) => { e.stopPropagation(); goToEdit(mov); }}
-                >
-                  <EditIcon fontSize="small" />
-                </IconButton>
-                <IconButton
-                  size="small"
-                  color="error"
-                  onClick={(e) => { e.stopPropagation(); handleEliminarClick(mov.id); }}
-                  disabled={deletingElement === mov.id}
-                >
-                  <DeleteIcon fontSize="small" />
-                </IconButton>
-              </TableCell>
-            )}
+            {columnasFiltradas.map(([key]) => (
+              <CajaTablaCell
+                key={key}
+                colKey={key}
+                mov={mov}
+                amountColor={amountColor}
+                ctx={cajaCellCtx}
+              />
+            ))}
           </TableRow>
         );
       })}

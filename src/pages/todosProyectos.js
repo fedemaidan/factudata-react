@@ -1120,6 +1120,9 @@ const TodosProyectosPage = () => {
                       setColumnasOrden(nuevoOrden);
                       localStorage.setItem(COLUMNAS_ORDEN_KEY, JSON.stringify(nuevoOrden));
                     }}
+                    ordenPredeterminado={tableHeadArray
+                      .filter(([key]) => key !== 'acciones' && columnasVisibles?.[key])
+                      .map(([k]) => k)}
                   />
                 </Stack>
                 <Paper>

@@ -23,6 +23,7 @@ const OrdenarColumnasDialog = ({
   columnasFiltradas,
   columnasOrden,
   onOrdenChange,
+  ordenPredeterminado,
 }) => {
   const draggingIndex = useRef(null);
 
@@ -63,6 +64,14 @@ const OrdenarColumnasDialog = ({
     onOrdenChange(nuevoOrden);
     onClose();
   }, [ordenActual, columnasOrden, onOrdenChange, onClose]);
+
+  const handleRestablecer = useCallback(() => {
+    if (!ordenPredeterminado?.length) return;
+    const visibleSet = new Set(columnasVisiblesKeys);
+    const ordenVisible = ordenPredeterminado.filter((k) => visibleSet.has(k));
+    const ocultas = (columnasOrden || []).filter((k) => !visibleSet.has(k));
+    onOrdenChange([...ordenVisible, ...ocultas]);
+  }, [ordenPredeterminado, columnasVisiblesKeys, columnasOrden, onOrdenChange]);
 
   if (!open) return null;
 
@@ -133,6 +142,11 @@ const OrdenarColumnasDialog = ({
         </Stack>
       </DialogContent>
       <DialogActions>
+        {ordenPredeterminado?.length > 0 && (
+          <Button onClick={handleRestablecer} color="inherit" sx={{ mr: 'auto' }}>
+            Restablecer orden
+          </Button>
+        )}
         <Button onClick={onClose}>Cancelar</Button>
         <Button variant="contained" onClick={handleGuardar}>
           Guardar orden
@@ -148,6 +162,7 @@ OrdenarColumnasDialog.propTypes = {
   columnasFiltradas: PropTypes.arrayOf(PropTypes.arrayOf(PropTypes.string)),
   columnasOrden: PropTypes.arrayOf(PropTypes.string),
   onOrdenChange: PropTypes.func.isRequired,
+  ordenPredeterminado: PropTypes.arrayOf(PropTypes.string),
 };
 
 export default OrdenarColumnasDialog;
