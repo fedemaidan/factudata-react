@@ -1,5 +1,5 @@
-import config from 'src/config/config';
 import api from 'src/services/axiosConfig';
+import { getImageProxyUrl } from 'src/services/proxyService';
 
 const USE_PROXY_ORIGINS = ['storage.googleapis.com', 'firebasestorage.googleapis.com'];
 
@@ -30,8 +30,7 @@ export const loadImageAsDataUrl = async (url) => {
   try {
     let blob;
     if (shouldUseProxy(url)) {
-      const base = (config.apiUrl || '').replace(/\/$/, '');
-      const proxyUrl = `${base}/presupuestos-profesionales/logo-proxy?url=${encodeURIComponent(url)}`;
+      const proxyUrl = getImageProxyUrl(url);
       const res = await api.get(proxyUrl, { responseType: 'blob' });
       blob = res.data;
     } else {

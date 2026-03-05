@@ -30,7 +30,8 @@ El módulo de **Presupuestos Profesionales** permite a constructoras crear, gest
 **URL de la página:** `/presupuestosProfesionales`
 
 **Funcionalidades principales:**
-- CRUD de presupuestos y plantillas de rubros
+- CRUD de presupuestos y plantillas
+- Al aceptar: modal para asignar proyecto y tipo (ingreso/egreso), crea presupuestos de control en Firebase de rubros
 - Moneda ARS/USD con opciones de ajuste (Pesos fijos, CAC, dólar)
 - Base de cálculo contra facturas (`total` o `subtotal`)
 - Plantilla predefinida SorbyData (9 rubros estándar)
@@ -58,6 +59,7 @@ El módulo de **Presupuestos Profesionales** permite a constructoras crear, gest
 | `src/components/presupuestosProfesionales/PresupuestoFormDialog.js` | Form crear/editar presupuesto (rubros, moneda, notas, superficies) |
 | `src/components/presupuestosProfesionales/PresupuestoDeleteDialog.js` | Confirmación de eliminación |
 | `src/components/presupuestosProfesionales/PresupuestoDetalleDialog.js` | Detalle con sub-tabs (rubros, versiones, historial, anexos) |
+| `src/components/presupuestosProfesionales/AceptarPresupuestoModal.js` | Modal para aceptar presupuesto: selección de proyecto y tipo (ingreso/egreso) antes de crear control de presupuestos |
 | `src/components/presupuestosProfesionales/AgregarAnexoDialog.js` | Form para agregar anexo (solo aceptado) |
 | `src/components/presupuestosProfesionales/PlantillaFormDialog.js` | Form crear/editar plantilla |
 | `src/components/presupuestosProfesionales/PlantillaDeleteDialog.js` | Confirmación de eliminación de plantilla |
@@ -82,7 +84,9 @@ El módulo de **Presupuestos Profesionales** permite a constructoras crear, gest
 
 | Archivo | Descripción |
 |---|---|
-| `src/services/presupuestoProfesional/presupuestoProfesionalService.js` | CRUD presupuestos y plantillas |
+| `src/services/presupuestoProfesional/presupuestoProfesionalService.js` | CRUD presupuestos y plantillas (incluye getImageProxyUrl) |
+| `src/services/presupuestoService.js` | Crear presupuestos de control en Firebase (usado al aceptar) |
+| `src/services/proxyService.js` | Proxy de imágenes (getImageProxyUrl) — genérico, usado por loadLogoForPdf y otros módulos |
 
 ---
 
@@ -118,9 +122,9 @@ Page (presupuestosProfesionales.js)
   - 👁️ Ver detalle
   - 📄 Exportar PDF
   - ✏️ Editar (solo borrador)
-  - 🔀 Cambiar estado
   - 📎 Agregar anexo (solo aceptado)
   - 🗑️ Eliminar (solo borrador)
+- **Estado:** Select inline en la columna Estado para cambiar entre transiciones válidas
 - **Paginación:** server-side (page, limit)
 
 ### Tab 1: Plantillas de Rubros
@@ -175,6 +179,16 @@ El form permite definir cómo comparar contra facturas:
 
 Se persiste en el campo `base_calculo` (default: `total`).
 
+### Detalle monetario en PresupuestoDetalleDialog
+
+En el encabezado del diálogo de detalle, debajo de la moneda se muestra un resumen condicional (`DetalleMonetarioResumen`):
+
+- **ARS:** Pesos fijos, Índice CAC (tipo: Promedio/Mano de obra/Materiales), o Dólar (fuente + valor)
+- **USD:** Dólar Oficial/Blue + Compra/Venta/Promedio (si está configurado)
+- **Base de cálculo:** Total (con imp.) o Neto (sin imp.)
+
+Solo se muestran los campos relevantes; no se muestran valores nulos (ej. no se muestra CAC si está indexado por dólar).
+
 ---
 
 ## Plantilla SorbyData
@@ -227,7 +241,7 @@ Plantilla predefinida del sistema (no se guarda en backend). ID especial: `sorby
 ### Carga del logo
 
 El logo se obtiene de `empresa_logo_url` (Firebase Storage). Para evitar CORS y soportar WebP (jsPDF no lo soporta), se usa:
-- `loadLogoForPdf.js`: si la URL es de GCS/Firebase, se pasa por proxy backend (`/presupuestos-profesionales/logo-proxy`) y se convierte a PNG vía canvas.
+- `loadLogoForPdf.js`: si la URL es de GCS/Firebase, se pasa por proxy backend (`/proxy/image`) y se convierte a PNG vía canvas.
 
 ### Archivos
 
@@ -310,8 +324,9 @@ archivo_origen { url, tipo_archivo, nombre_original }
 | Componente | Propósito |
 |---|---|
 | PresupuestoFormDialog | Crear/editar presupuesto (rubros, moneda, ajuste, notas, superficies) |
+| AceptarPresupuestoModal | Modal al cambiar estado a aceptado: selecciona proyecto y tipo (ingreso/egreso), crea presupuestos de control en Firebase |
 | PresupuestoDeleteDialog | Confirmación eliminar |
-| PresupuestoDetalleDialog | Detalle (rubros, versiones, historial, anexos) + export PDF |
+| PresupuestoDetalleDialog | Detalle (rubros, versiones, historial, anexos) + export PDF. Encabezado con moneda, detalle monetario (indexación CAC/USD, base cálculo), total, dirección, versión |
 | AgregarAnexoDialog | Agregar anexo |
 | PlantillaFormDialog | Crear/editar plantilla |
 | PlantillaDeleteDialog | Confirmación eliminar plantilla |
@@ -365,7 +380,7 @@ archivo_origen { url, tipo_archivo, nombre_original }
 
 ### Ciclo de vida y cambio de estado
 
-El cambio de estado se realiza **inline en la columna Estado** de la tabla: un select permite elegir entre los estados válidos según las transiciones. No hay botón ni diálogo separado.
+El cambio de estado se realiza **inline en la columna Estado** de la tabla: un select permite elegir entre los estados válidos según las transiciones.
 
 ```
 borrador → enviado, rechazado, vencido
@@ -374,6 +389,20 @@ rechazado → borrador
 vencido   → borrador
 aceptado  → (sin transiciones; modificaciones vía anexos)
 ```
+
+### Aceptar presupuesto → Control de presupuestos
+
+Cuando el usuario selecciona **aceptado**:
+
+1. Se abre **AceptarPresupuestoModal** (no se llama a `cambiarEstado` directamente).
+2. El usuario debe seleccionar:
+   - **Proyecto** (obligatorio; el control de presupuestos requiere proyecto).
+   - **Tipo de control**: Ingreso (cobro al cliente) o Egreso (gasto).
+3. Al confirmar:
+   - Se crean presupuestos de control en Firebase (uno por rubro) vía `presupuestoService.crearPresupuesto`.
+   - Mapeo: `etapa` = `rubro.nombre`, `monto` = `rubro.monto`, `categoria`/`subcategoria` = null.
+   - Solo si todos se crean correctamente, se llama a `cambiarEstado(id, 'aceptado')`.
+4. Si no hay proyectos disponibles, el modal muestra "No hay proyectos. Creá uno primero."
 
 ---
 

@@ -2,6 +2,7 @@ export { default as PresupuestoFormDialog } from './PresupuestoFormDialog';
 export { default as PresupuestoDeleteDialog } from './PresupuestoDeleteDialog';
 export { default as PresupuestoDetalleDialog } from './PresupuestoDetalleDialog';
 export { default as AgregarAnexoDialog } from './AgregarAnexoDialog';
+export { default as AceptarPresupuestoModal } from './AceptarPresupuestoModal';
 export { default as PlantillaFormDialog } from './PlantillaFormDialog';
 export { default as PlantillaDeleteDialog } from './PlantillaDeleteDialog';
 export { default as ImportarPlantillaDialog } from './ImportarPlantillaDialog';

@@ -25,6 +25,7 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import {
+  ESTADOS,
   ESTADO_COLOR,
   ESTADO_LABEL,
   TRANSICIONES_VALIDAS,
@@ -47,8 +48,10 @@ const PresupuestosTableRow = ({
   onDelete,
 }) => {
   const [selectOpen, setSelectOpen] = useState(false);
-  const estadosDisponibles = TRANSICIONES_VALIDAS[row.estado] || [];
-  const puedeCambiar = estadosDisponibles.length > 0 && changingEstadoId !== row._id;
+  const estado = ESTADOS.includes(row.estado) ? row.estado : (row.estado || 'borrador');
+  const transiciones = TRANSICIONES_VALIDAS[estado] || [];
+  const opcionesSelect = [estado, ...transiciones.filter((e) => e !== estado)].filter(Boolean);
+  const puedeCambiar = transiciones.length > 0 && changingEstadoId !== row._id;
   return (
     <React.Fragment>
       <TableRow hover>
@@ -67,7 +70,7 @@ const PresupuestosTableRow = ({
         <TableCell>{row.moneda}</TableCell>
         <TableCell align="right">
           {formatCurrency(row.total_neto, row.moneda)}
-          {row.estado === 'aceptado' && (row.anexos || []).length > 0 && (
+          {estado === 'aceptado' && (row.anexos || []).length > 0 && (
             <>
               <br />
               <Typography variant="caption" color="primary">
@@ -85,14 +88,14 @@ const PresupuestosTableRow = ({
           {puedeCambiar ? (
             <FormControl size="small" sx={{ minWidth: 120 }}>
               <Select
-                value={row.estado}
+                value={estado}
                 renderValue={(v) => ESTADO_LABEL[v] || v}
                 open={selectOpen}
                 onOpen={() => setSelectOpen(true)}
                 onClose={() => setSelectOpen(false)}
                 onChange={(e) => {
                   const nuevo = e.target.value;
-                  if (nuevo && nuevo !== row.estado) {
+                  if (nuevo && nuevo !== estado) {
                     onCambiarEstado(row, nuevo);
                     setSelectOpen(false);
                   }
@@ -105,18 +108,18 @@ const PresupuestosTableRow = ({
                   fontWeight: 500,
                   borderRadius: 1.5,
                   '& .MuiSelect-select': { py: 0.5, px: 1.5 },
-                  ...(ESTADO_COLOR[row.estado] && ESTADO_COLOR[row.estado] !== 'default'
+                  ...(ESTADO_COLOR[estado] && ESTADO_COLOR[estado] !== 'default'
                     ? {
                         backgroundColor: (theme) =>
                           theme.palette.mode === 'light'
-                            ? `${theme.palette[ESTADO_COLOR[row.estado]].main}15`
-                            : `${theme.palette[ESTADO_COLOR[row.estado]].dark}20`,
-                        color: (theme) => theme.palette[ESTADO_COLOR[row.estado]].main,
+                            ? `${theme.palette[ESTADO_COLOR[estado]].main}15`
+                            : `${theme.palette[ESTADO_COLOR[estado]].dark}20`,
+                        color: (theme) => theme.palette[ESTADO_COLOR[estado]].main,
                         '&:hover': {
                           backgroundColor: (theme) =>
                             theme.palette.mode === 'light'
-                              ? `${theme.palette[ESTADO_COLOR[row.estado]].main}25`
-                              : `${theme.palette[ESTADO_COLOR[row.estado]].dark}30`,
+                              ? `${theme.palette[ESTADO_COLOR[estado]].main}25`
+                              : `${theme.palette[ESTADO_COLOR[estado]].dark}30`,
                         },
                       }
                     : {}),
@@ -131,8 +134,8 @@ const PresupuestosTableRow = ({
                   },
                 }}
               >
-                {estadosDisponibles.map((e) => (
-                  <MenuItem key={e} value={e}>
+                {opcionesSelect.map((e) => (
+                  <MenuItem key={e ?? 'empty'} value={e}>
                     {ESTADO_LABEL[e] || e}
                   </MenuItem>
                 ))}
@@ -141,8 +144,8 @@ const PresupuestosTableRow = ({
           ) : (
             <Chip
               icon={changingEstadoId === row._id ? <CircularProgress size={14} color="inherit" /> : undefined}
-              label={ESTADO_LABEL[row.estado] || row.estado}
-              color={ESTADO_COLOR[row.estado] || 'default'}
+              label={ESTADO_LABEL[estado] || estado}
+              color={ESTADO_COLOR[estado] || 'default'}
               size="small"
             />
           )}
@@ -167,7 +170,7 @@ const PresupuestosTableRow = ({
                 </IconButton>
               </span>
             </Tooltip>
-            {row.estado === 'borrador' && (
+            {estado === 'borrador' && (
               <Tooltip title="Editar">
                 <IconButton size="small" onClick={() => onOpenEdit(row)}>
                   <EditIcon fontSize="small" />
@@ -179,7 +182,7 @@ const PresupuestosTableRow = ({
                 <PostAddIcon fontSize="small" />
               </IconButton>
             </Tooltip>
-            {row.estado === 'borrador' && (
+            {estado === 'borrador' && (
               <Tooltip title="Eliminar">
                 <IconButton size="small" color="error" onClick={() => onDelete(row)}>
                   <DeleteIcon fontSize="small" />
@@ -190,13 +193,13 @@ const PresupuestosTableRow = ({
         </TableCell>
       </TableRow>
 
-      {isExpanded && (
+      {isExpanded && (row.rubros?.length ?? 0) > 0 && (
         <TableRow>
           <TableCell colSpan={9} sx={{ py: 0 }}>
             <Collapse in={isExpanded} timeout="auto" unmountOnExit>
               <Box sx={{ m: 1, ml: 6 }}>
                 <Typography variant="subtitle2" gutterBottom>
-                  Rubros ({row.rubros.length})
+                  Rubros ({(row.rubros || []).length})
                 </Typography>
                 <Table size="small">
                   <TableHead>
@@ -209,7 +212,7 @@ const PresupuestosTableRow = ({
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {row.rubros.map((rubro, ri) => (
+                    {(row.rubros || []).map((rubro, ri) => (
                       <TableRow key={ri}>
                         <TableCell>{rubro.orden || ri + 1}</TableCell>
                         <TableCell>{rubro.nombre}</TableCell>

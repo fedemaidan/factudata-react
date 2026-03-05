@@ -1,9 +1,11 @@
 import api from '../axiosConfig';
+import { getImageProxyUrl } from '../proxyService';
 
 /* ================================================================
    PresupuestoProfesionalService
    Servicio frontend para el módulo de Presupuestos Profesionales.
    Base URL en backend: /presupuestos-profesionales
+   Proxy de imágenes: /proxy/image (genérico, reutilizable por otros módulos)
    ================================================================ */
 
 const BASE = '/presupuestos-profesionales';
@@ -144,6 +146,9 @@ const PresupuestoProfesionalService = {
   },
 
   /* ---------- Importar archivo → plantilla ---------- */
+
+  /** URL del proxy de imágenes (GCS/Firebase) para evitar CORS. Usar con api.get(proxyUrl, { responseType: 'blob' }) */
+  getImageProxyUrl,
 
   uploadPlantilla: async (files, empresaId, nombrePlantilla, tipoPlantilla) => {
     const formData = new FormData();

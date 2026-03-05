@@ -10,6 +10,12 @@ export const CAC_TIPOS = {
   MATERIALES: 'materiales',
 };
 
+export const CAC_LABELS = {
+  [CAC_TIPOS.GENERAL]: 'Promedio',
+  [CAC_TIPOS.MANO_OBRA]: 'Mano de obra',
+  [CAC_TIPOS.MATERIALES]: 'Materiales',
+};
+
 export const USD_FUENTES = {
   OFICIAL: 'oficial',
   BLUE: 'blue',
@@ -19,6 +25,17 @@ export const USD_VALORES = {
   COMPRA: 'compra',
   VENTA: 'venta',
   PROMEDIO: 'promedio',
+};
+
+export const USD_FUENTE_LABELS = {
+  [USD_FUENTES.OFICIAL]: 'USD Oficial',
+  [USD_FUENTES.BLUE]: 'USD Blue',
+};
+
+export const USD_VALOR_LABELS = {
+  [USD_VALORES.COMPRA]: 'compra',
+  [USD_VALORES.VENTA]: 'venta',
+  [USD_VALORES.PROMEDIO]: 'promedio',
 };
 
 export const hoyIso = () => new Date().toISOString().slice(0, 10);

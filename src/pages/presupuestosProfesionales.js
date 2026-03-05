@@ -21,7 +21,9 @@ import {
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import { useAuthContext } from 'src/contexts/auth-context';
 import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
+import { getProyectosFromUser } from 'src/services/proyectosService';
 import PresupuestoProfesionalService from 'src/services/presupuestoProfesional/presupuestoProfesionalService';
+import presupuestoService from 'src/services/presupuestoService';
 import MonedasService from 'src/services/monedasService';
 import cacService from 'src/services/cacService';
 import usePresupuestosList from 'src/hooks/presupuestosProfesionales/usePresupuestosList';
@@ -32,6 +34,7 @@ import {
   PresupuestoDeleteDialog,
   PresupuestoDetalleDialog,
   AgregarAnexoDialog,
+  AceptarPresupuestoModal,
   PlantillaFormDialog,
   PlantillaDeleteDialog,
   ImportarPlantillaDialog,
@@ -171,6 +174,10 @@ const PresupuestosProfesionales = () => {
   // ── Presupuestos: cambiar estado (inline en tabla) ──
   const [changingEstadoId, setChangingEstadoId] = useState(null);
 
+  // ── Presupuestos: aceptar → modal proyecto para control ──
+  const [aceptarModal, setAceptarModal] = useState({ open: false, row: null });
+  const [proyectos, setProyectos] = useState([]);
+
   // ── Presupuestos: detalle / versiones ──
   const [openDetalle, setOpenDetalle] = useState(false);
   const [detalleData, setDetalleData] = useState(null);
@@ -275,11 +282,15 @@ const PresupuestosProfesionales = () => {
     if (!user) return;
     (async () => {
       try {
-        const empresa = await getEmpresaDetailsFromUser(user);
+        const [empresa, proyectosData] = await Promise.all([
+          getEmpresaDetailsFromUser(user),
+          getProyectosFromUser(user),
+        ]);
         if (empresa) {
           setEmpresaId(empresa.id);
           setEmpresaNombre(empresa.nombre || '');
         }
+        setProyectos(proyectosData || []);
       } catch (err) {
         console.error('Error inicializando presupuestos profesionales:', err);
       }
@@ -502,6 +513,10 @@ const PresupuestosProfesionales = () => {
 
   const handleCambiarEstado = async (row, nuevoEstado) => {
     if (!row?._id || !nuevoEstado || nuevoEstado === row.estado) return;
+    if (nuevoEstado === 'aceptado') {
+      setAceptarModal({ open: true, row });
+      return;
+    }
     setChangingEstadoId(row._id);
     const userEmail = user?.email;
     try {
@@ -510,6 +525,51 @@ const PresupuestosProfesionales = () => {
       refreshPresupuestos();
     } catch (err) {
       const msg = err?.response?.data?.error?.message || err?.response?.data?.message || err.message || 'Error al cambiar estado';
+      showAlert(msg, 'error');
+    } finally {
+      setChangingEstadoId(null);
+    }
+  };
+
+  const mapCotizacionOverride = (snap) => {
+    if (!snap || typeof snap !== 'object') return null;
+    if (snap.tipo === 'CAC' && Number.isFinite(snap.valor)) return { cac_indice: snap.valor };
+    if (snap.tipo === 'USD' && Number.isFinite(snap.valor)) return { dolar_blue: snap.valor };
+    return null;
+  };
+
+  const handleConfirmarAceptar = async (proyectoId, tipo = 'ingreso') => {
+    const row = aceptarModal.row;
+    if (!row?._id || !proyectoId || !empresaId) return;
+    if (!row.rubros?.length) {
+      showAlert('El presupuesto no tiene rubros', 'warning');
+      return;
+    }
+    setChangingEstadoId(row._id);
+    try {
+      const cotizacionOverride = mapCotizacionOverride(row.cotizacion_snapshot);
+      const presupuestosToCreate = row.rubros.map((rubro) => ({
+        empresa_id: empresaId,
+        proyecto_id: proyectoId,
+        tipo,
+        monto: rubro.monto,
+        moneda: row.moneda || 'ARS',
+        indexacion: row.indexacion || null,
+        base_calculo: row.base_calculo || 'total',
+        fecha_presupuesto: row.fecha_presupuesto || new Date().toISOString().slice(0, 10),
+        cac_tipo: row.indexacion === 'CAC' ? (row.cac_tipo || 'general') : null,
+        etapa: rubro.nombre,
+        categoria: null,
+        subcategoria: null,
+        cotizacion_override: cotizacionOverride,
+      }));
+      await Promise.all(presupuestosToCreate.map((p) => presupuestoService.crearPresupuesto(p)));
+      await PresupuestoProfesionalService.cambiarEstado(row._id, 'aceptado', user?.email ? { user_id: user.email } : {});
+      showAlert(`Presupuesto aceptado. Se crearon ${presupuestosToCreate.length} presupuestos de control.`);
+      setAceptarModal({ open: false, row: null });
+      refreshPresupuestos();
+    } catch (err) {
+      const msg = err?.response?.data?.error?.message || err?.response?.data?.message || err.message || 'Error al crear control de presupuestos';
       showAlert(msg, 'error');
     } finally {
       setChangingEstadoId(null);
@@ -1215,6 +1275,15 @@ const PresupuestosProfesionales = () => {
         form={anexoForm}
         onFormChange={setAnexoForm}
         onConfirm={handleConfirmAnexo}
+      />
+
+      <AceptarPresupuestoModal
+        open={aceptarModal.open}
+        onClose={() => setAceptarModal({ open: false, row: null })}
+        onConfirm={handleConfirmarAceptar}
+        presupuesto={aceptarModal.row}
+        proyectos={proyectos}
+        loading={changingEstadoId === aceptarModal.row?._id}
       />
 
       <PlantillaFormDialog

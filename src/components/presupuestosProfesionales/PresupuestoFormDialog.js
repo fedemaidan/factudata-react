@@ -1,4 +1,4 @@
-import React, { useMemo, useRef } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Avatar,
   Box,
@@ -42,12 +42,19 @@ import {
   handleNumericKeyDown,
 } from './constants';
 import { sumaIncidenciasObjetivo } from './incidenciaHelpers';
+import MonedasService from 'src/services/monedasService';
+import cacService from 'src/services/cacService';
 import {
+  CAC_LABELS,
   CAC_TIPOS,
   INDEXACION_VALUES,
   USD_FUENTES,
+  USD_FUENTE_LABELS,
+  USD_VALOR_LABELS,
   USD_VALORES,
+  hoyIso,
   normalizarAjusteMoneda,
+  toMesAnterior,
 } from './monedaAjusteConfig';
 
 const COEF_PATIOS_DEFAULT = 0.5;
@@ -159,12 +166,74 @@ const AnalisisSuperficiesBlock = ({ form, onFormChange }) => {
   );
 };
 
+const pickUsdValue = (dolarData, fuente, tipo) => {
+  const bloque = dolarData?.[fuente];
+  if (!bloque) return null;
+  const value = Number(bloque?.[tipo]);
+  return Number.isFinite(value) && value > 0 ? value : null;
+};
+
+const pickCacValue = (cacData, tipo) => {
+  const value = Number(cacData?.[tipo]);
+  return Number.isFinite(value) && value > 0 ? value : null;
+};
+
 const MonedaAjusteBlock = ({ form, onFormChange }) => {
   const ajuste = normalizarAjusteMoneda(form);
   const isArs = ajuste.moneda === 'ARS';
   const mostrarConfigUsd = ajuste.moneda === 'USD' || ajuste.indexacion === INDEXACION_VALUES.USD;
+  const mostrarConfigCac = ajuste.indexacion === INDEXACION_VALUES.CAC;
   const INDEXACION_FIJO_UI_VALUE = '__FIJO__';
   const indexacionToggleValue = ajuste.indexacion ?? INDEXACION_FIJO_UI_VALUE;
+
+  const [valorUsd, setValorUsd] = useState(null);
+  const [fechaUsd, setFechaUsd] = useState(null);
+  const [loadingUsd, setLoadingUsd] = useState(false);
+  const [valorCac, setValorCac] = useState(null);
+  const [fechaCac, setFechaCac] = useState(null);
+  const [loadingCac, setLoadingCac] = useState(false);
+
+  useEffect(() => {
+    if (!mostrarConfigUsd) {
+      setValorUsd(null);
+      setFechaUsd(null);
+      return;
+    }
+    setLoadingUsd(true);
+    const fechaHoy = hoyIso();
+    MonedasService.obtenerDolar(fechaHoy)
+      .then((dolarData) => {
+        const valor = pickUsdValue(dolarData, ajuste.usd_fuente, ajuste.usd_valor);
+        setValorUsd(valor);
+        setFechaUsd(dolarData?.fecha || fechaHoy);
+      })
+      .catch(() => {
+        setValorUsd(null);
+        setFechaUsd(null);
+      })
+      .finally(() => setLoadingUsd(false));
+  }, [mostrarConfigUsd, ajuste.usd_fuente, ajuste.usd_valor]);
+
+  useEffect(() => {
+    if (!mostrarConfigCac) {
+      setValorCac(null);
+      setFechaCac(null);
+      return;
+    }
+    setLoadingCac(true);
+    const mesRef = toMesAnterior(hoyIso());
+    cacService.getCacPorFecha(mesRef)
+      .then((cacData) => {
+        const valor = pickCacValue(cacData, ajuste.cac_tipo);
+        setValorCac(valor);
+        setFechaCac(cacData?.fecha || mesRef);
+      })
+      .catch(() => {
+        setValorCac(null);
+        setFechaCac(null);
+      })
+      .finally(() => setLoadingCac(false));
+  }, [mostrarConfigCac, ajuste.cac_tipo]);
 
   const patchForm = (patch) => onFormChange({ ...form, ...patch });
 
@@ -257,6 +326,11 @@ const MonedaAjusteBlock = ({ form, onFormChange }) => {
                 Promedio
               </ToggleButton>
             </ToggleButtonGroup>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+              {loadingUsd ? 'Cargando…' : valorUsd != null
+                ? `${USD_FUENTE_LABELS[ajuste.usd_fuente]} (${USD_VALOR_LABELS[ajuste.usd_valor]}): ${formatCurrency(valorUsd, 'ARS')} — ${fechaUsd || ''}`
+                : '—'}
+            </Typography>
           </Stack>
         </Box>
       )}
@@ -283,6 +357,11 @@ const MonedaAjusteBlock = ({ form, onFormChange }) => {
               Materiales
             </ToggleButton>
           </ToggleButtonGroup>
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+            {loadingCac ? 'Cargando…' : valorCac != null
+              ? `Índice ${CAC_LABELS[ajuste.cac_tipo]} (mes anterior): ${formatCurrency(valorCac, 'ARS')} — ${fechaCac || ''}`
+              : '—'}
+          </Typography>
         </Box>
       )}
 
