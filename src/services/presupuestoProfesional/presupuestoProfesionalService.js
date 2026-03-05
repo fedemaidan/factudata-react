@@ -1,9 +1,11 @@
 import api from '../axiosConfig';
+import { getImageProxyUrl } from '../proxyService';
 
 /* ================================================================
    PresupuestoProfesionalService
    Servicio frontend para el módulo de Presupuestos Profesionales.
    Base URL en backend: /presupuestos-profesionales
+   Proxy de imágenes: /proxy/image (genérico, reutilizable por otros módulos)
    ================================================================ */
 
 const BASE = '/presupuestos-profesionales';
@@ -19,11 +21,19 @@ const unwrap = (res) => {
 // ── Presupuestos ───────────────────────────────────────────────
 
 const PresupuestoProfesionalService = {
-
   /* ---------- CRUD Presupuestos ---------- */
 
-  crear: async (data) => {
-    const res = await api.post(`${BASE}`, data);
+  crear: async (data, logoFile = null) => {
+    let body = data;
+    let headers;
+    if (logoFile) {
+      const formData = new FormData();
+      formData.append('payload', JSON.stringify(data));
+      formData.append('logo', logoFile);
+      body = formData;
+      headers = { 'Content-Type': 'multipart/form-data' };
+    }
+    const res = await api.post(`${BASE}`, body, headers ? { headers } : undefined);
     if (res.status === 200 || res.status === 201) return unwrap(res);
     throw new Error('No se pudo crear el presupuesto profesional');
   },
@@ -84,7 +94,7 @@ const PresupuestoProfesionalService = {
 
   cambiarEstado: async (id, nuevoEstado, metadata = {}) => {
     const res = await api.put(`${BASE}/${id}/estado`, {
-      nuevo_estado: nuevoEstado,
+      estado: nuevoEstado,
       ...metadata,
     });
     if (res.status === 200) return unwrap(res);
@@ -136,6 +146,9 @@ const PresupuestoProfesionalService = {
   },
 
   /* ---------- Importar archivo → plantilla ---------- */
+
+  /** URL del proxy de imágenes (GCS/Firebase) para evitar CORS. Usar con api.get(proxyUrl, { responseType: 'blob' }) */
+  getImageProxyUrl,
 
   uploadPlantilla: async (files, empresaId, nombrePlantilla, tipoPlantilla) => {
     const formData = new FormData();

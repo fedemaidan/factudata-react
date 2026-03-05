@@ -19,8 +19,72 @@ import {
   Typography,
 } from '@mui/material';
 import { ESTADO_LABEL, ESTADO_COLOR, formatCurrency, formatDate, formatPct } from './constants';
+import { CAC_TIPOS, INDEXACION_VALUES, USD_FUENTES, USD_VALORES } from './monedaAjusteConfig';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import PostAddIcon from '@mui/icons-material/PostAdd';
+
+const CAC_TIPO_LABEL = {
+  [CAC_TIPOS.GENERAL]: 'Promedio',
+  [CAC_TIPOS.MANO_OBRA]: 'Mano de obra',
+  [CAC_TIPOS.MATERIALES]: 'Materiales',
+};
+
+const USD_FUENTE_LABEL = {
+  [USD_FUENTES.OFICIAL]: 'Oficial',
+  [USD_FUENTES.BLUE]: 'Blue',
+};
+
+const USD_VALOR_LABEL = {
+  [USD_VALORES.COMPRA]: 'Compra',
+  [USD_VALORES.VENTA]: 'Venta',
+  [USD_VALORES.PROMEDIO]: 'Promedio',
+};
+
+const BASE_CALCULO_LABEL = {
+  total: 'Total (con imp.)',
+  subtotal: 'Neto (sin imp.)',
+};
+
+const DetalleMonetarioResumen = ({ data }) => {
+  if (!data) return null;
+  const moneda = data.moneda || 'ARS';
+  const indexacion = data.indexacion;
+  const isArs = moneda === 'ARS';
+  const isUsd = moneda === 'USD';
+
+  const partes = [];
+
+  if (isArs) {
+    if (!indexacion) {
+      partes.push('Pesos fijos');
+    } else if (indexacion === INDEXACION_VALUES.CAC && data.cac_tipo) {
+      partes.push(`Índice CAC: ${CAC_TIPO_LABEL[data.cac_tipo] || data.cac_tipo}`);
+    } else if (indexacion === INDEXACION_VALUES.USD && (data.usd_fuente || data.usd_valor)) {
+      const fuente = USD_FUENTE_LABEL[data.usd_fuente] || data.usd_fuente;
+      const valor = USD_VALOR_LABEL[data.usd_valor] || data.usd_valor;
+      if (fuente && valor) partes.push(`Dólar ${fuente} - ${valor}`);
+      else if (fuente) partes.push(`Dólar ${fuente}`);
+      else if (valor) partes.push(`Dólar ${valor}`);
+    }
+  } else if (isUsd && (data.usd_fuente || data.usd_valor)) {
+    const fuente = USD_FUENTE_LABEL[data.usd_fuente] || data.usd_fuente;
+    const valor = USD_VALOR_LABEL[data.usd_valor] || data.usd_valor;
+    if (fuente && valor) partes.push(`Dólar ${fuente} - ${valor}`);
+    else if (fuente) partes.push(`Dólar ${fuente}`);
+    else if (valor) partes.push(`Dólar ${valor}`);
+  }
+
+  const baseCalculo = data.base_calculo || 'total';
+  partes.push(BASE_CALCULO_LABEL[baseCalculo] || baseCalculo);
+
+  if (partes.length === 0) return null;
+
+  return (
+    <Typography variant="body2" color="text.secondary">
+      {partes.join(' · ')}
+    </Typography>
+  );
+};
 
 const PresupuestoDetalleDialog = ({
   open,
@@ -50,20 +114,17 @@ const PresupuestoDetalleDialog = ({
         </Box>
       ) : data ? (
         <>
-          <Stack direction="row" spacing={4} mb={2}>
-            <Box>
+          <Stack direction="row" spacing={4} mb={2} flexWrap="wrap">
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
               <Typography variant="caption" color="text.secondary">Moneda</Typography>
               <Typography>{data.moneda}</Typography>
+              <DetalleMonetarioResumen data={data} />
             </Box>
             <Box>
               <Typography variant="caption" color="text.secondary">Total neto</Typography>
               <Typography fontWeight={600}>
                 {formatCurrency(data.total_neto, data.moneda)}
               </Typography>
-            </Box>
-            <Box>
-              <Typography variant="caption" color="text.secondary">Proyecto</Typography>
-              <Typography>{data.proyecto_nombre || '—'}</Typography>
             </Box>
             <Box>
               <Typography variant="caption" color="text.secondary">Dirección</Typography>
