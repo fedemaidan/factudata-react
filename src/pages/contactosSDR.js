@@ -451,6 +451,14 @@ const ContactosSDRPage = () => {
     const contarSinProximo = () => contactos.filter(c => !c.proximoContacto).length;
     const contarProximoVencido = () => contactos.filter(c => c.proximoContacto && new Date(c.proximoContacto) < new Date()).length;
     const contarProximoPendiente = () => contactos.filter(c => c.proximoContacto && new Date(c.proximoContacto) >= new Date()).length;
+    const contarVencidosHoy = () => {
+        const hoy = new Date();
+        return contactos.filter(c => {
+            if (!c.proximoContacto) return false;
+            const d = new Date(c.proximoContacto);
+            return d < hoy && d.toDateString() === hoy.toDateString();
+        }).length;
+    };
     
     // Contar vencidos
     const contarVencidos = () => {
@@ -466,10 +474,16 @@ const ContactosSDRPage = () => {
     // Filtrar contactos según filtro de próximo contacto
     const filtrarPorProximoContacto = (lista) => {
         if (!filtroProximoContacto) return lista;
+        const hoy = new Date();
         return lista.filter(c => {
             if (filtroProximoContacto === 'sin_proximo') return !c.proximoContacto;
-            if (filtroProximoContacto === 'vencido') return c.proximoContacto && new Date(c.proximoContacto) < new Date();
-            if (filtroProximoContacto === 'pendiente') return c.proximoContacto && new Date(c.proximoContacto) >= new Date();
+            if (filtroProximoContacto === 'vencido') return c.proximoContacto && new Date(c.proximoContacto) < hoy;
+            if (filtroProximoContacto === 'vencido_hoy') {
+                if (!c.proximoContacto) return false;
+                const d = new Date(c.proximoContacto);
+                return d < hoy && d.toDateString() === hoy.toDateString();
+            }
+            if (filtroProximoContacto === 'pendiente') return c.proximoContacto && new Date(c.proximoContacto) >= hoy;
             return true;
         });
     };
@@ -1119,6 +1133,14 @@ const ContactosSDRPage = () => {
                         color={filtroProximoContacto === 'vencido' ? 'error' : 'default'}
                         variant={filtroProximoContacto === 'vencido' ? 'filled' : 'outlined'}
                         onClick={() => setFiltroProximoContacto(filtroProximoContacto === 'vencido' ? '' : 'vencido')}
+                    />
+                    <Chip 
+                        label={`Vencidos hoy (${contarVencidosHoy()})`}
+                        size="small"
+                        icon={<span style={{ fontSize: 12 }}>🔥</span>}
+                        color={filtroProximoContacto === 'vencido_hoy' ? 'warning' : 'default'}
+                        variant={filtroProximoContacto === 'vencido_hoy' ? 'filled' : 'outlined'}
+                        onClick={() => setFiltroProximoContacto(filtroProximoContacto === 'vencido_hoy' ? '' : 'vencido_hoy')}
                     />
                     <Chip 
                         label={`Pendientes (${contarProximoPendiente()})`}
@@ -1776,6 +1798,12 @@ const ContactosSDRPage = () => {
                         color={filtroProximoContacto === 'vencido' ? 'error' : 'default'}
                         variant={filtroProximoContacto === 'vencido' ? 'filled' : 'outlined'}
                         onClick={() => setFiltroProximoContacto(filtroProximoContacto === 'vencido' ? '' : 'vencido')}
+                    />
+                    <Chip 
+                        label={`🔥 Vencidos hoy (${contarVencidosHoy()})`}
+                        color={filtroProximoContacto === 'vencido_hoy' ? 'warning' : 'default'}
+                        variant={filtroProximoContacto === 'vencido_hoy' ? 'filled' : 'outlined'}
+                        onClick={() => setFiltroProximoContacto(filtroProximoContacto === 'vencido_hoy' ? '' : 'vencido_hoy')}
                     />
                     <Chip 
                         label={`Pendientes (${contarProximoPendiente()})`}

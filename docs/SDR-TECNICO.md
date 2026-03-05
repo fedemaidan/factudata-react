@@ -1,411 +1,610 @@
 # SDR — Documentación Técnica
 
+> **Última actualización**: Marzo 2026  
+> **Estado**: Fase 1 completa, Fase 2 pendiente
+
+---
+
 ## 1. Stack Tecnológico
 
 | Capa | Tecnología |
 |------|-----------|
-| **Frontend** | Next.js (React), Material UI v5, Axios |
-| **Backend** | Express.js, Node.js |
-| **Base de datos** | MongoDB (Mongoose ODM) |
-| **Auth** | Firebase Authentication |
-| **Usuarios** | Firestore (collection `profile`, campo `sdr: true`) |
-| **Chat** | Baileys (WhatsApp Web) |
+| **Frontend** | Next.js (Pages Router) + Material UI v5 |
+| **Backend** | Express.js + Node.js |
+| **Base de datos** | MongoDB + Mongoose |
+| **Auth** | Firebase Authentication (tokens verificados server-side) |
+| **WhatsApp** | Integración con API de WA (envío + recepción) |
+| **Transcripción** | GPT-4o para audio → texto |
+| **Deploy** | Firebase Hosting (frontend) + Docker (backend) |
 
 ---
 
-## 2. Modelos de Datos (MongoDB)
-
-### 2.1 ContactoSDR
-
-**Colección**: `contactosdrs`
+## 2. Arquitectura General
 
 ```
-{
-  nombre: String (required),
-  telefono: String (required, único por empresaId),
-  telefonosSecundarios: [String],
-  email: String,
-  empresa: String,
-  cargo: String,
-  tamanoEmpresa: Enum('1-10', '11-50', '51-200', '200+'),
-  
-  estado: Enum('nuevo', 'contactado', 'calificado', 'cierre', 'ganado', 
-               'no_contacto', 'no_responde', 'revisar_mas_adelante', 
-               'no_califica', 'perdido'),
-  segmento: Enum('outbound', 'inbound'),
-  
-  sdrAsignado: String (Firebase UID),
-  sdrAsignadoNombre: String,
-  ultimaAccion: Date,
-  proximoContacto: Date,
-  cantidadIntentos: Number,
-  
-  origenImportacion: Enum('manual', 'excel', 'notion', 'bot'),
-  notionId: String,
-  notionDatabaseId: String,
-  statusNotion: String,
-  
-  precalificacionBot: Enum('sin_calificar', 'no_llego', 'calificado', 'quiere_meet'),
-  datosBot: {
-    rubro: String,
-    interes: String,
-    cantidadObras: String,
-    interaccionFecha: Date,
-    saludoInicial: String,
-    empresaFirestoreId: String
-  },
-  leadId: String,
-  
-  planEstimado: Enum('basico', 'avanzado', 'premium', 'a_medida'),
-  intencionCompra: Enum('alta', 'media', 'baja'),
-  prioridadManual: Number,
-  prioridadScore: Number,
-  
-  cadenciaActiva: {
-    cadenciaId: ObjectId → CadenciaSDR,
-    pasoActual: Number,
-    iniciadaEn: Date,
-    pausada: Boolean,
-    completada: Boolean
-  },
-  
-  historialEstados: [{ estado, fecha, cambiadoPor }],
-  datosVenta: { monto, moneda, productoInteres, notas, cerradoEn, cerradoPor },
-  
-  rubro: String,
-  empresaId: String,
-  creadoPor: String,
-  creadoPorNombre: String
-}
+┌─────────────────────────────────────────────────┐
+│  Frontend (Next.js)                             │
+│  ├── pages/contactosSDR.js     (lista SDR)      │
+│  ├── pages/sdr/contacto/[id].js (detalle)       │
+│  ├── components/sdr/*           (9 componentes) │
+│  └── services/sdrService.js     (API client)    │
+└──────────────────┬──────────────────────────────┘
+                   │ Axios (Bearer token Firebase)
+                   ▼
+┌─────────────────────────────────────────────────┐
+│  Backend (Express)                 :3003         │
+│  ├── routes/sdrRoutes.js           (55 endpoints)│
+│  ├── controllers/sdrController.js  (1521 líneas) │
+│  ├── services/sdrService.js        (2491 líneas) │
+│  ├── services/cadenciaEngine.js    (282 líneas)  │
+│  └── models/sdr/*                  (5 modelos)   │
+└──────────────────┬──────────────────────────────┘
+                   │ Mongoose
+                   ▼
+┌─────────────────────────────────────────────────┐
+│  MongoDB                                         │
+│  ├── contactos_sdr     (12 índices)             │
+│  ├── reuniones_sdr     (4 índices)              │
+│  ├── eventos_historial_sdr (3 índices)          │
+│  ├── cadencias_sdr     (4 índices)              │
+│  └── vistas_guardadas_sdr (2 índices)           │
+└─────────────────────────────────────────────────┘
 ```
 
-**Índices clave**: 
-- `{ empresaId: 1, estado: 1 }` — filtro principal
-- `{ empresaId: 1, sdrAsignado: 1 }` — contactos por SDR
-- `{ telefono: 1, empresaId: 1 }` — unique, dedup
-- `{ empresaId: 1, proximoContacto: 1 }` — cola de trabajo
-- `{ 'cadenciaActiva.cadenciaId': 1 }` — contactos en cadencia
+---
 
-### 2.2 EventoHistorialSDR
+## 3. Modelos (Mongoose)
 
-**Colección**: `eventohistorialsdrs`
+### 3.1 ContactoSDR
 
-```
-{
-  contactoId: String (required),
-  tipo: Enum(38 tipos — ver SDR-FUNCIONAL.md §2.4),
-  canal: Enum('llamada', 'whatsapp', 'email', 'linkedin', 'otro'),
-  resultado: Enum('atendio', 'no_atendio', 'respondio', 'no_respondio', 'pendiente'),
-  descripcion: String,
+**Archivo**: `backend/src/models/sdr/ContactoSDR.js` (~240 líneas)  
+**Colección**: `contactos_sdr`
+
+**Campos principales:**
+
+| Campo | Tipo | Requerido | Notas |
+|-------|------|-----------|-------|
+| `nombre` | String | ✅ | trim |
+| `telefono` | String | ✅ | trim |
+| `telefonosSecundarios` | [String] | — | Teléfonos adicionales |
+| `email` | String | — | trim, lowercase |
+| `empresa` | String | — | |
+| `cargo` | String | — | |
+| `tamanoEmpresa` | String | — | enum: `1-10`, `11-50`, `51-200`, `200+` |
+| `estado` | String | — | enum de 10 estados, default `nuevo` |
+| `segmento` | String | — | enum: `outbound`, `inbound` |
+| `sdrAsignado` | String | — | Firebase UID |
+| `sdrAsignadoNombre` | String | — | Denormalizado |
+| `sdrAsignadoEmail` | String | — | Denormalizado |
+| `notas` | String | — | |
+| `origenImportacion` | String | — | enum: `manual`, `excel`, `notion`, `bot` |
+
+**Próxima Tarea (sub-documento):**
+
+```javascript
+proximaTarea: {
+  tipo: { type: String, enum: ['llamada', 'whatsapp', 'email', 'recordatorio'] },
+  fecha: Date,
   nota: String,
-  metadata: Mixed,
-  estadoAnterior: String,
-  estadoNuevo: String,
-  cadenciaPaso: Number,
-  cadenciaAccion: Number,
-  templateUsado: String,
-  reunionId: ObjectId,
-  realizadoPor: String,
-  realizadoPorNombre: String,
-  sdrNombre: String,
-  empresaId: String
+  autoGenerada: { type: Boolean, default: false }
 }
 ```
 
-### 2.3 ReunionSDR
+**Contadores (atómicos con `$inc`):**
 
-**Colección**: `reunionsdrs`
-
+```javascript
+contadores: {
+  llamadasNoAtendidas: { type: Number, default: 0 },
+  llamadasAtendidas: { type: Number, default: 0 },
+  mensajesEnviados: { type: Number, default: 0 },
+  reunionesTotales: { type: Number, default: 0 }
+}
 ```
+
+**Cadencia Activa (sub-documento — legacy/fallback):**
+
+```javascript
+cadenciaActiva: {
+  cadenciaId: { type: ObjectId, ref: 'CadenciaSDR' },
+  pasoActual: Number,
+  accionActual: Number,
+  estado: { type: String, enum: ['activa', 'pausada', 'completada', 'detenida'] },
+  fechaInicio: Date,
+  proximoContacto: Date,
+  intentosEnPaso: Number
+}
+```
+
+**Otros campos:**
+- `proximoContacto` (Date) — derivada de proximaTarea.fecha
+- `precalificacionBot` — enum: `sin_calificar`, `calificado`, `no_llego`, `quiere_meet`
+- `planEstimado` — enum: `basico`, `avanzado`, `premium`, `a_medida`
+- `intencionCompra` — enum: `alta`, `media`, `baja`
+- `prioridadScore` (Number, default 0)
+- `prioridadCalculada` (Mixed) — calculado por scoring engine
+- `leadFirestore` — `{ leadId, conversationId }` para bridge con bot
+- `importacion` (sub-doc) — metadata de importación
+- `reuniones` ([ObjectId] ref ReunionSDR) — embebido
+- `negociacion` (sub-doc) — Fase 3
+- `resumenSDR` (String) — Resumen ejecutivo generado por IA a pedido del SDR (Fase 3)
+- `empresaId` (String, required) — Firebase UID del tenant
+- `timestamps: true`
+
+**Índices (12):**
+
+```javascript
+{ empresaId: 1, estado: 1 }
+{ empresaId: 1, sdrAsignado: 1 }
+{ empresaId: 1, sdrAsignado: 1, estado: 1 }
+{ empresaId: 1, proximoContacto: 1 }
+{ empresaId: 1, telefono: 1 }                    // unique
+{ 'leadFirestore.leadId': 1, empresaId: 1 }      // sparse
+{ empresaId: 1, segmento: 1 }
+{ empresaId: 1, sdrAsignado: 1, proximoContacto: 1 }  // compound v2
+{ empresaId: 1, prioridadScore: -1 }
+{ empresaId: 1, createdAt: -1 }
+{ empresaId: 1, 'cadenciaActiva.estado': 1 }
+{ empresaId: 1, 'cadenciaActiva.proximoContacto': 1 }
+```
+
+### 3.2 ReunionSDR
+
+**Archivo**: `backend/src/models/sdr/ReunionSDR.js` (~175 líneas)  
+**Colección**: `reuniones_sdr`
+
+| Campo | Tipo | Requerido | Notas |
+|-------|------|-----------|-------|
+| `contactoId` | ObjectId ref | ✅ | Referencia a ContactoSDR |
+| `numero` | Number | — | Auto-incremental por contacto (pre-validate hook) |
+| `estado` | String | — | enum: `agendada`, `realizada`, `no_show`, `cancelada` |
+| `fecha` | Date | ✅ | |
+| `hora` | String | — | ej: "15:00" |
+| `link` | String | — | URL de videoconferencia |
+| `lugar` | String | — | |
+| `notas` | String | — | |
+| `participantes` | String | — | |
+| `duracion` | Number | — | Minutos |
+| `evaluacion` | Boolean | — | null = no evaluada |
+| `resumen` | String | — | |
+| Campos de calificación | String | — | `nombreEmpresa`, `tamanoEmpresa`, `puntosDeDolor`, `competencia`, `modulosPotenciales`, `etapaCompra` |
+| `transcripcion` | String | — | Transcripción de la reunión (Fase 3) |
+| `resumenIA` | String | — | Resumen IA de la transcripción (Fase 3) |
+| `nextSteps` | String | — | Siguientes pasos definidos (Fase 3) |
+| `modulosInteres` | [String] | — | Módulos de interés para contratar (Fase 3) |
+| `calificacionRapida` | String | — | enum: `frio`, `tibio`, `caliente`, `listo_para_cerrar` (Fase 3) |
+| `comentario` | String | — | Comentario obligatorio del SDR al registrar resultado (Fase 3) |
+| `empresaId` | String | ✅ | |
+| `creadoPor` | String | ✅ | Firebase UID |
+
+**Índices**: `{ contactoId }`, `{ empresaId, estado }`, `{ empresaId, fecha }`, `{ empresaId, creadoPor }`
+
+### 3.3 EventoHistorialSDR
+
+**Archivo**: `backend/src/models/sdr/EventoHistorialSDR.js` (~213 líneas)  
+**Colección**: `eventos_historial_sdr`
+
+| Campo | Tipo | Requerido | Notas |
+|-------|------|-----------|-------|
+| `contactoId` | ObjectId | ✅ | |
+| `tipo` | String | ✅ | ~40 tipos (ver constante `TIPOS_EVENTO`) |
+| `canal` | String | — | enum: `llamada`, `whatsapp`, `email`, `linkedin`, `otro` |
+| `resultado` | String | — | enum: `atendio`, `no_atendio`, `respondio`, `no_respondio`, `pendiente` |
+| `descripcion` | String | ✅ | Texto legible |
+| `detalles` | Mixed | — | Datos adicionales sin schema fijo |
+| `nota` | String | — | |
+| `seguimiento` | String | — | |
+| `reunionId` | ObjectId ref | — | Si el evento involucra reunión |
+| `realizadoPor` | String | ✅ | Firebase UID |
+| `realizadoPorNombre` | String | — | |
+| `duracion` | Number | — | Segundos (para llamadas) |
+| `transcripcion` / `resumenIA` | String | — | GPT-4o |
+| `audioUrl` | String | — | |
+
+**Tipos de evento (`TIPOS_EVENTO`)**: ~38 tipos agrupados en llamada, whatsapp, email, linkedin, instagram, reunión, bot, comercial, estado, cadencia, asignación, importación, otros.
+
+**Índices**: `{ contactoId, createdAt: -1 }`, `{ empresaId, createdAt: -1 }`, `{ empresaId, tipo, createdAt: -1 }`
+
+### 3.4 CadenciaSDR
+
+**Archivo**: `backend/src/models/sdr/CadenciaSDR.js` (~80 líneas)  
+**Colección**: `cadencias_sdr`
+
+Schema jerárquico: **Cadencia → Pasos → Acciones → Variantes**
+
+```javascript
 {
-  contactoId: String (required),
-  numero: Number (auto-incremental por contacto),
-  estado: Enum('agendada', 'realizada', 'no_show', 'cancelada'),
-  fecha: Date (required),
-  hora: String,
-  link: String,
-  lugar: String,
-  notas: String,
-  participantes: [String],
-  asistio: Boolean,
-  duracionMinutos: Number,
-  empresaNombre: String,
-  tamanoEmpresa: String,
-  contactoPrincipal: String,
-  rolContacto: String,
-  puntosDeDolor: [String],
-  modulosPotenciales: [String],
-  registradoPor: String,
-  registradoPorNombre: String,
-  sdrId: String,
-  empresaId: String
+  nombre: String,        // required
+  descripcion: String,
+  pasos: [{
+    orden: Number,
+    acciones: [{
+      tipo: String,      // enum: llamada, whatsapp, email
+      delayHoras: Number,
+      variantes: [{
+        rubro: String,
+        mensaje: String,
+        archivos: [Mixed]
+      }]
+    }]
+  }],
+  variables: [String],   // default: ['nombre_contacto', 'rubro_texto', 'momento_bot', 'sdr_nombre']
+  activa: Boolean,       // default: true
+  maxIntentosPorPaso: Number,    // default: 6
+  estadoAlCompletar: String,     // default: 'no_contacto'
+  empresaId: String,     // required
 }
 ```
 
-### 2.4 CadenciaSDR
+### 3.5 VistaGuardadaSDR
 
-**Colección**: `cadenciasdrs`
+**Archivo**: `backend/src/models/sdr/VistaGuardadaSDR.js` (~65 líneas)  
+**Colección**: `vistas_guardadas_sdr`
 
-Ver [SDR-CADENCIAS.md](SDR-CADENCIAS.md) §2 para estructura completa.
-
-### 2.5 VistaGuardadaSDR
-
-**Colección**: `vistaguardadasdrs`
-
-```
-{
-  nombre: String (required),
-  empresaId: String,
-  usuarioId: String (null = compartida),
-  filtros: {
-    estados: [String],
-    planEstimado: [String],
-    intencionCompra: [String],
-    precalificacionBot: [String],
-    tamanoEmpresa: [String],
-    cadenciaPaso: Number,
-    proximoContacto: String,
-    tieneReunion: Boolean,
-    sdrAsignado: String,
-    segmento: String,
-    fechaCreacionDesde: Date,
-    fechaCreacionHasta: Date,
-    busqueda: String
-  },
-  ordenarPor: String,
-  ordenDir: Enum('asc', 'desc'),
-  esDefault: Boolean,
-  icono: String,
-  color: String
-}
-```
+| Campo | Tipo | Notas |
+|-------|------|-------|
+| `nombre` | String | required |
+| `empresaId` | String | required |
+| `userId` | String | null = compartida |
+| `filtros` | Sub-doc | Todos los filtros aplicados |
+| `orden` | Number | default 0 |
+| `ordenDireccion` | String | enum: `asc`, `desc` |
+| `bandejaActiva` | Mixed | |
+| `mostrarSoloMios` | Mixed | |
 
 ---
 
-## 3. API REST
+## 4. API REST
 
-Todas las rutas están bajo el prefijo `/sdr` y requieren autenticación Firebase (`verifyFirebaseToken` middleware).
+**Base**: `/api/sdr` (montada en `app.js`)  
+**Auth**: Middleware `verifyToken` (Firebase) en todas las rutas excepto archivos estáticos.  
+**Total**: **55 endpoints**
 
-### 3.1 Contactos
+### 4.1 Contactos CRUD
 
-| Método | Ruta | Descripción | Query/Body params |
-|--------|------|-------------|-------------------|
-| `GET` | `/contactos` | Listar contactos | `empresaId, estado, sdrAsignado, segmento, busqueda, soloSinAsignar, excluirEstados, soloVencidos, statusNotion, planEstimado, intencionCompra, precalificacionBot, tieneReunion, ordenarPor, ordenDir, page, limit` |
-| `POST` | `/contactos` | Crear contacto | `{ nombre, telefono, email, empresa, cargo, empresaId, sdrId, ... }` |
-| `PUT` | `/contactos/:id` | Actualizar contacto | `{ campo: valor }` |
-| `GET` | `/contactos/:id` | Obtener contacto + historial + reuniones | — |
-| `GET` | `/contactos/siguiente` | Siguiente contacto pendiente | `sdrAsignado` |
-| `POST` | `/contactos/asignar` | Asignar contactos a SDR | `{ contactoIds, sdrId, sdrNombre, empresaId }` |
-| `POST` | `/contactos/desasignar` | Desasignar contactos | `{ contactoIds, empresaId }` |
-| `POST` | `/contactos/eliminar` | Eliminar contactos | `{ contactoIds }` |
-| `POST` | `/contactos/eliminar-todos` | Eliminar todos | `{ empresaId, confirmar: true }` |
-
-### 3.2 Acciones Rápidas
-
-| Método | Ruta | Descripción |
+| Método | Path | Descripción |
 |--------|------|-------------|
-| `POST` | `/acciones/registrar` | Registrar acción genérica |
-| `POST` | `/acciones/llamada` | Registrar llamada |
-| `POST` | `/acciones/whatsapp` | Registrar WhatsApp |
-| `POST` | `/acciones/email` | Registrar email |
-| `POST` | `/acciones/no-responde` | Marcar no responde |
-| `POST` | `/acciones/no-califica` | Marcar no califica |
-| `POST` | `/acciones/cambiar-estado` | Cambiar estado |
-| `POST` | `/acciones/reunion` | Crear reunión |
+| `POST` | `/contactos` | Crear contacto |
+| `GET` | `/contactos` | Listar contactos (con bandejas y filtros) |
+| `GET` | `/contactos/:id` | Obtener contacto por ID |
+| `GET` | `/contactos/buscar` | Búsqueda por teléfono/nombre |
+| `GET` | `/contactos/bandejas/contadores` | Contadores por bandeja |
+| `PUT` | `/contactos/:id` | Actualizar contacto |
+| `POST` | `/contactos/:id/asignar` | Asignar SDR |
+| `POST` | `/contactos/:id/desasignar` | Desasignar SDR |
+| `POST` | `/contactos/asignar-masivo` | Asignación masiva |
+| `POST` | `/contactos/eliminar-masivo` | Eliminación masiva |
 
-### 3.3 Reuniones
+### 4.2 Acciones (Wizard)
 
-| Método | Ruta | Descripción |
+| Método | Path | Descripción |
 |--------|------|-------------|
-| `GET` | `/reuniones` | Listar reuniones | 
+| `POST` | `/contactos/:id/registrar-intento` | Registrar acción (llamada/WA/email) + próxima tarea |
+| `POST` | `/contactos/:id/accion-rapida` | Acciones varias (marcar no califica, etc.) |
+| `POST` | `/contactos/:id/cambiar-estado` | Cambio manual de estado |
+| `POST` | `/contactos/:id/agregar-nota` | Agregar nota al historial |
+| `POST` | `/contactos/:id/proxima-tarea` | Establecer/modificar próxima tarea |
+| `POST` | `/contactos/:id/proximo-contacto` | Programar próximo contacto |
+| `POST` | `/contactos/:id/confirmar-respuesta-wa` | Confirmar que respondió WA |
+| `POST` | `/contactos/:id/recalificar-bot` | Recalificar del bot |
+| `POST` | `/contactos/:id/subir-audio` | Subir audio de llamada (multer) |
+| `POST` | `/contactos/:id/transcribir-audio` | Transcribir audio con GPT-4o |
+
+### 4.3 Reuniones
+
+| Método | Path | Descripción |
+|--------|------|-------------|
 | `POST` | `/reuniones` | Crear reunión |
+| `GET` | `/reuniones` | Listar reuniones (con filtros) |
 | `PUT` | `/reuniones/:id` | Actualizar reunión |
-| `PUT` | `/reuniones/:id/evaluar` | Evaluar reunión |
+| `PUT` | `/reuniones/:id/estado` | Cambiar estado de reunión |
+| `GET` | `/reuniones/:id` | Obtener reunión individual (Fase 3) |
+| `DELETE` | `/reuniones/:id` | Eliminar reunión (Fase 3) |
+| `POST` | `/reuniones/:id/procesar-transcripcion` | Procesar transcripción con GPT-4o (Fase 3) |
+| `POST` | `/contactos/:id/generar-resumen` | Generar resumen SDR del contacto con GPT-4o (Fase 3) |
 
-### 3.4 Importación / Exportación
+### 4.4 Importación
 
-| Método | Ruta | Descripción |
+| Método | Path | Descripción |
 |--------|------|-------------|
-| `POST` | `/importar/preview` | Vista previa de importación Excel |
-| `POST` | `/importar` | Ejecutar importación Excel |
-| `POST` | `/notion/consultar` | Consultar base de datos Notion |
-| `GET` | `/notion/schema` | Obtener schema de base Notion |
-| `POST` | `/notion/importar-pagina` | Importar página individual |
-| `GET` | `/exportar/contactos` | Exportar contactos a Excel |
-| `GET` | `/exportar/metricas` | Exportar métricas |
+| `POST` | `/contactos/validar-importacion` | Validar Excel antes de importar |
+| `POST` | `/importar` | Importar contactos desde Excel |
+| `GET` | `/contactos/verificar-duplicados` | Verificar duplicados por teléfono |
 
-### 3.5 Métricas
+### 4.5 Notion
 
-| Método | Ruta | Descripción |
+| Método | Path | Descripción |
 |--------|------|-------------|
-| `GET` | `/metricas/diarias` | Métricas del día (llamadas, WA, reuniones por SDR) |
-| `GET` | `/metricas/periodo` | Métricas por rango de fechas |
-| `GET` | `/metricas/funnel` | Funnel de conversión |
+| `POST` | `/notion/importar` | Importar desde Notion |
+| `GET` | `/notion/databases` | Listar bases de datos Notion |
+| `GET` | `/notion/databases/:id` | Leer base de datos específica |
+| `POST` | `/notion/config` | Guardar configuración Notion |
 
-### 3.6 Historial
+### 4.6 Métricas
 
-| Método | Ruta | Descripción |
+| Método | Path | Descripción |
 |--------|------|-------------|
-| `GET` | `/historial/:id` | Obtener historial de un contacto |
-| `DELETE` | `/historial/:eventoId` | Eliminar evento del historial |
+| `GET` | `/metricas/diarias` | Métricas del día |
+| `GET` | `/metricas/diarias-por-sdr` | Métricas del día por SDR |
+| `GET` | `/metricas/periodo` | Métricas en rango de fechas |
 
-### 3.7 Cadencias
+### 4.7 Historial
 
-| Método | Ruta | Descripción |
+| Método | Path | Descripción |
 |--------|------|-------------|
-| `GET` | `/cadencias` | Listar cadencias activas |
+| `GET` | `/contactos/:id/historial` | Historial del contacto |
+| `DELETE` | `/historial/:id` | Eliminar evento del historial |
+
+### 4.8 Cadencias
+
+| Método | Path | Descripción |
+|--------|------|-------------|
+| `GET` | `/cadencias` | Listar cadencias |
 | `POST` | `/cadencias` | Crear cadencia |
 | `PUT` | `/cadencias/:id` | Actualizar cadencia |
 | `DELETE` | `/cadencias/:id` | Eliminar cadencia |
-| `POST` | `/cadencias/asignar` | Asignar cadencia a 1 contacto |
-| `POST` | `/cadencias/asignar-masiva` | Asignar cadencia masivamente |
-| `POST` | `/cadencias/detener` | Detener cadencia |
-| `GET` | `/cadencias/paso-actual/:id` | Obtener paso actual resuelto |
-| `POST` | `/cadencias/avanzar` | Avanzar al siguiente paso |
+| `POST` | `/contactos/:id/asignar-cadencia` | Asignar cadencia a contacto |
+| `POST` | `/contactos/:id/detener-cadencia` | Detener cadencia del contacto |
+| `POST` | `/contactos/cadencia-masiva` | Asignar cadencia masivamente |
+| `GET` | `/cadencias/:id/estadisticas` | Estadísticas de cadencia |
+| `POST` | `/cadencias/:id/ejecutar-paso` | Ejecutar paso manualmente |
 
-### 3.8 Templates WhatsApp
+### 4.9 Templates WhatsApp
 
-| Método | Ruta | Descripción |
+| Método | Path | Descripción |
 |--------|------|-------------|
-| `GET` | `/templates/whatsapp` | Listar templates |
-| `POST` | `/templates/whatsapp` | Crear template |
-| `PUT` | `/templates/whatsapp/:id` | Actualizar template |
-| `DELETE` | `/templates/whatsapp/:id` | Eliminar template |
-| `GET` | `/templates/tipos` | Listar tipos de template |
-| `POST` | `/templates/tipos` | Crear tipo |
-| `PUT` | `/templates/tipos/:id` | Actualizar tipo |
-| `DELETE` | `/templates/tipos/:id` | Eliminar tipo |
+| `GET` | `/templates` | Listar templates |
+| `POST` | `/templates` | Crear template |
+| `PUT` | `/templates/:id` | Actualizar template |
+| `DELETE` | `/templates/:id` | Eliminar template |
 
-### 3.9 Vistas Guardadas
+### 4.10 Tipos de Templates
 
-| Método | Ruta | Descripción |
+| Método | Path | Descripción |
 |--------|------|-------------|
-| `GET` | `/vistas` | Listar vistas del usuario |
+| `GET` | `/template-tipos` | Listar tipos |
+| `POST` | `/template-tipos` | Crear tipo |
+| `PUT` | `/template-tipos/:id` | Actualizar tipo |
+| `DELETE` | `/template-tipos/:id` | Eliminar tipo |
+
+### 4.11 Vistas Guardadas
+
+| Método | Path | Descripción |
+|--------|------|-------------|
+| `GET` | `/vistas` | Listar vistas |
 | `POST` | `/vistas` | Crear vista |
 | `PUT` | `/vistas/:id` | Actualizar vista |
 | `DELETE` | `/vistas/:id` | Eliminar vista |
 
-### 3.10 Otros
+### 4.12 Otros
 
-| Método | Ruta | Descripción |
+| Método | Path | Descripción |
 |--------|------|-------------|
-| `GET` | `/sdrs` | Obtener SDRs disponibles (Firestore) |
-| `POST` | `/webhook/nuevo-lead` | Webhook para leads nuevos del bot |
+| `GET` | `/sdrs` | Listar SDRs del equipo |
+| `POST` | `/webhook/nuevo-lead` | Webhook para leads del bot |
+| `GET` | `/contactos/exportar` | Exportar contactos |
+| `GET` | `/contactos/exportar-metricas` | Exportar métricas |
+| `GET` | `/audios/*` | Archivos estáticos de audio (sin auth) |
 
 ---
 
-## 4. Servicios Backend
+## 5. Servicios Backend
 
-### 4.1 sdrService.js (~2100 líneas)
+### 5.1 SdrService (`sdrService.js` — 2491 líneas)
 
-Servicio principal. Contiene toda la lógica de negocio:
-- CRUD de contactos con validación de duplicados por teléfono
-- Registro de acciones con auto-incremento de `cantidadIntentos`
-- Gestión de reuniones con auto-numeración
-- Métricas agregadas por día/periodo/funnel
-- Importación Excel con validación y dedup
-- Integración Notion (consulta + importación)
-- CRUD de cadencias con lógica de `defaultInbound`/`defaultOutbound`
-- CRUD de vistas guardadas
+Clase principal con **59 métodos**. Patrón: clase con métodos async que reciben `empresaId` y datos.
 
-### 4.2 cadenciaEngine.js (282 líneas)
+**Métodos clave:**
 
-Motor de cadencias. Ver [SDR-CADENCIAS.md](SDR-CADENCIAS.md) §3.
+| Método | Líneas aprox. | Responsabilidad |
+|--------|---------------|-----------------|
+| `listarContactos()` | ~117-210 | Filtros + bandejas. Usa aggregation para nulls-last en proximoContacto |
+| `contadorBandejas()` | ~210-280 | Retorna `{ nuevos, reintentos, seguimiento, reunionesPendientes, reunionesPasadas }` |
+| `registrarIntento()` | ~563-750 | Core del wizard: registra acción, actualiza contadores (`$inc`), genera evento historial, cambia estado, sugiere próxima tarea |
+| `_sugerirProximaTarea()` | ~20-80 | Lógica pura: dado canal/resultado/contadores → retorna `{ tipo, fecha, nota }` |
+| `establecerProximaTarea()` | ~80-115 | Setea proximaTarea + proximoContacto + historial |
+| `crearReunion()` | ~800-900 | Crea reunión + actualiza contadores + historial + referencia en contacto |
+| `confirmarRespuestaWA()` | ~750-800 | Cambia estado si bidireccional + historial |
+| `calcularPrioridadScore()` | ~950-1050 | Scoring: segmento + bot + intención + contadores + antigüedad |
+| `metricasDiarias()` | ~1100-1150 | Aggregation pipeline por tipo de evento |
+| `metricasDiariasPorSdr()` | ~1150-1200 | Double $group pipeline |
+| `importarContactos()` | ~1300-1450 | Bulk import con validación de duplicados |
+| `importarDesdeNotion()` | ~1450-1600 | Import con mapeo de campos Notion → ContactoSDR |
 
-### 4.3 leadContactoBridge.js (244 líneas)
+**Lógica de bandejas:**
 
-Puente entre el sistema de leads (bot WhatsApp) y el módulo SDR:
-- Crea `ContactoSDR` con `segmento: 'inbound'` cuando llega un lead del bot
-- Auto-asigna cadencia `defaultInbound`
-- Enriquece contactos existentes con datos del bot
-- Evita duplicados por `leadId` o `telefono`
+```javascript
+// nuevos: estado nuevo, sin intentos
+nuevos: { estado: 'nuevo', 'contadores.llamadasNoAtendidas': 0, 
+           'contadores.mensajesEnviados': 0, 'contadores.llamadasAtendidas': 0 }
 
----
+// reintentos: intentando lograr contacto
+reintentos: { $or: [
+  { estado: 'nuevo', $or: [
+    { 'contadores.llamadasNoAtendidas': { $gt: 0 } },
+    { 'contadores.mensajesEnviados': { $gt: 0 } },
+    { 'contadores.llamadasAtendidas': { $gt: 0 } }
+  ]},
+  { 'cadenciaActiva.estado': 'activa', 'cadenciaActiva.proximoContacto': { $lte: now } }
+]}
 
-## 5. Frontend — Servicios
+// seguimiento: contactado/calificado/cierre SIN reunión agendada
+seguimiento: { estado: { $in: ['contactado', 'calificado', 'cierre'] },
+               _id: { $nin: idsConReunionAgendada } }
 
-### 5.1 sdrService.js (app-web, 704 líneas)
+// reunionesPendientes: con reunión agendada >= hoy
+reunionesPendientes: { _id: { $in: idsReunionPendiente } }
 
-Cliente API con axios. Todos los métodos son `async` y retornan `res.data`.
-
-Secciones:
-- Contactos (CRUD, listar, siguiente)
-- Acciones (registrar, llamada, WA, email, estado)
-- Reuniones (CRUD, evaluar)
-- Importación/Exportación
-- Notion
-- Métricas
-- Historial (obtener, eliminar)
-- SDRs
-- Templates WhatsApp + Tipos
-- Cadencias (CRUD, asignar, masiva, detener, paso actual, avanzar)
-- Vistas guardadas (CRUD)
-- Webhook
-
-### 5.2 sdrConstants.js
-
-Diccionarios compartidos con label, color, icono y emoji para:
-- `ESTADOS_CONTACTO` (10 estados)
-- `PLANES_SORBY` (4 planes con precio)
-- `INTENCIONES_COMPRA` (3 niveles)
-- `PRECALIFICACION_BOT` (4 estados)
-- `ESTADOS_REUNION` (4 estados)
-
----
-
-## 6. Arquitectura de Componentes Frontend
-
-```
-pages/
-├── gestionSDR.js               → Admin: Dashboard + Contactos + Reuniones
-│   ├── renderDashboard()       → Métricas, tabla SDRs, últimas reuniones
-│   ├── renderContactos()       → Tabla filtrable, acciones masivas
-│   ├── renderReuniones()       → Lista con evaluación
-│   └── ModalAsignar            → Asignar/distribuir contactos a SDRs
-│
-├── contactosSDR.js             → SDR: Lista de mis contactos
-│   ├── Filtros (tipo, estado, próximo, segmento, búsqueda)
-│   ├── Cards de contacto mobile
-│   ├── Vistas guardadas
-│   └── Acciones masivas (fecha, cadencia)
-│
-└── sdr/
-    ├── cadencias.js            → ABM de cadencias
-    │   ├── Lista con cards
-    │   └── Formulario editor (pasos, acciones, variantes)
-    │
-    └── contacto/[id].js        → Detalle contacto
-        ├── Tab Info             → Datos, estado editable, plan, intención
-        ├── Tab Historial        → Timeline de eventos + comentarios
-        ├── Tab Chat             → MiniChatViewer (WhatsApp)
-        └── Barra fija mobile    → Cadencia actual + acciones rápidas
-
-components/sdr/
-├── DrawerDetalleContactoSDR.js → Drawer + EstadoChip + EstadoChipEditable + ModalEditarContacto
-├── ModalRegistrarAccion.js     → Wizard 3 fases: tipo → resultado → seguimiento
-├── ModalSelectorTemplate.js    → Selector de templates WA por paso cadencia
-├── ModalAgregarContacto.js     → Form crear contacto
-├── ModalImportarExcel.js       → Upload + preview + importar Excel
-├── ModalAdminTemplates.js      → CRUD de templates WA
-├── MiniChatViewer.js           → Visor de chat WA embebido
-└── ContactoDrawer.js           → Drawer genérico
+// reunionesPasadas: con reunión pasada sin reunión pendiente
+reunionesPasadas: { _id: { $in: idsReunionPasada, $nin: idsReunionPendiente } }
 ```
 
+**Transición de estado en `registrarIntento()`:**
+
+```javascript
+const huboContactoEfectivo = 
+  (canal === 'llamada' && resultado === 'atendio') ||
+  confirmarRespuestaWA ||
+  (canal === 'whatsapp' && resultado === 'respondio');
+
+if (huboContactoEfectivo && contacto.estado === 'nuevo') {
+  contacto.estado = 'contactado';
+}
+```
+
+### 5.2 CadenciaEngine (`cadenciaEngine.js` — 282 líneas)
+
+Motor de cadencias secuenciales. **11 invocaciones desde sdrService**.
+
+| Método | Descripción |
+|--------|-------------|
+| `iniciarCadencia()` | Asigna cadencia a contacto, setea paso 0, acción 0 |
+| `avanzarPaso()` | Incrementa paso/acción, calcula próximo delay |
+| `ejecutarPasoActual()` | Obtiene definición del paso actual + template |
+| `detenerCadencia()` | Cambia estado a `detenida`, registra historial |
+| `obtenerEstadoCadencia()` | Estado actual del contacto en su cadencia |
+| `verificarTimeout()` | Verifica si se pasó el delay |
+| `completarCadencia()` | Marca como completada + historial |
+| `estaEnCadencia()` | Boolean helper |
+
+### 5.3 SdrController (`sdrController.js` — 1521 líneas)
+
+Capa controller Express: wrappea cada método del service con manejo de req/res, extracción de parámetros, y error handling. No contiene lógica de negocio.
+
 ---
 
-## 7. Variables de Entorno
+## 6. Frontend
 
-### Backend
+### 6.1 Service (`sdrService.js` — 751 líneas)
 
-| Variable | Uso |
-|----------|-----|
-| `MONGO_URI_DHN` | URI MongoDB (producción usa DigitalOcean) |
-| `FIREBASE_*` | Credenciales Firebase Admin SDK |
-| `NOTION_TOKEN` | Token de integración Notion |
+API client con Axios. Usa `apiClient` de `./axiosConfig` con interceptors para auth.
 
-### Frontend
+Funciones principales:
+- `crearContacto()`, `obtenerContactos()`, `obtenerContacto()`
+- `registrarIntento()`, `accionRapida()`, `cambiarEstado()`
+- `confirmarRespuestaWA()`, `establecerProximaTarea()`
+- `crearReunion()`, `actualizarReunion()`, `cambiarEstadoReunion()`
+- `importarContactos()`, `validarImportacion()`
+- `obtenerMetricasDiarias()`, `obtenerFunnelConversion()`
+- Templates: `obtenerTemplates()`, `crearTemplate()`, etc.
+- Cadencias: `obtenerCadencias()`, `asignarCadencia()`, etc.
+- Vistas: `obtenerVistas()`, `crearVista()`, etc.
+- Polling: `monitorearChatWA()`, `monitorearMensajesWA()`
 
-| Variable | Uso |
-|----------|-----|
-| `NEXT_PUBLIC_API_URL` | URL base del backend |
-| `NEXT_PUBLIC_FIREBASE_*` | Config Firebase client |
+### 6.2 Páginas
+
+| Página | Archivo | Líneas | Descripción |
+|--------|---------|--------|-------------|
+| Contactos SDR | `pages/contactosSDR.js` | ~2566 | Lista con 6 bandejas, filtros, vistas guardadas, móvil y desktop |
+| Detalle Contacto | `pages/sdr/contacto/[id].js` | ~2529 | 3 tabs (Info/Historial/Chat), wizard, historial agrupado |
+
+### 6.3 Componentes (`components/sdr/`)
+
+| Componente | Líneas | Propósito |
+|------------|--------|-----------|
+| `ContactDrawer.js` | 2504 | Drawer lateral con ficha completa del contacto (usado en gestionSDR) |
+| `ModalAdminTemplates.js` | 842 | ABM completo de templates WhatsApp con variantes por rubro |
+| `SDRWizard.js` | 742 | Wizard de registro de intento/acción (stepper multi-paso) |
+| `ContactDrawerSimple.js` | 577 | Drawer simplificado de contacto |
+| `ModalImportarExcel.js` | 455 | Modal de importación Excel con preview, mapeo y validación |
+| `ModalSelectorTemplate.js` | 370 | Selector de template para WA, filtra por `cadencia_step` |
+| `FormularioContacto.js` | 285 | Formulario de alta de contacto |
+| `ChatViewer.js` | 168 | Visor compacto de chat WhatsApp integrado |
+| `ActivityBadges.js` | 43 | Badges con contadores de actividad del contacto |
+
+**Total frontend SDR: ~10,281 líneas**
+
+### 6.4 Funciones de UI Relevantes (en `[id].js`)
+
+| Función | Descripción |
+|---------|-------------|
+| `agruparEventosPorBloque()` | Agrupa eventos del historial en bloques de 30 minutos |
+| `formatearEtiquetaGrupo()` | "Hoy 14:30", "Ayer 09:15", "Lun 11:00" |
+| Wizard IIFE (desktop ~L2097, mobile ~L3000) | Determina `canalWizard` desde `proximaTarea.tipo`, fallback a cadencia |
+
+---
+
+## 7. Aggregation Pipelines MongoDB
+
+### 7.1 Listado con nulls-last
+
+```javascript
+ContactoSDR.aggregate([
+  { $match: query },
+  { $addFields: { 
+    _hasProximoContacto: { 
+      $cond: [{ $ifNull: ['$proximoContacto', false] }, 1, 0] 
+    } 
+  }},
+  { $sort: sortObj },  // _hasProximoContacto: -1, proximoContacto: 1
+  { $skip }, { $limit },
+  { $project: { _hasProximoContacto: 0 } }
+])
+```
+
+### 7.2 Funnel de conversión
+
+```javascript
+ContactoSDR.aggregate([
+  { $match: { empresaId, createdAt: rango } },
+  { $group: { _id: '$estado', count: { $sum: 1 } } }
+])
+// Calcula tasas de conversión entre etapas
+```
+
+### 7.3 Métricas diarias
+
+```javascript
+EventoHistorialSDR.aggregate([
+  { $match: { createdAt: rango_dia, empresaId, realizadoPor? } },
+  { $group: { _id: '$tipo', count: { $sum: 1 } } }
+])
+```
+
+### 7.4 Métricas por período
+
+```javascript
+EventoHistorialSDR.aggregate([
+  { $match: { empresaId, createdAt: rango } },
+  { $group: { _id: { fecha: { $dateToString: '%Y-%m-%d' }, tipo: '$tipo' }, count: { $sum: 1 } } },
+  { $group: { _id: '$_id.fecha', eventos: { $push: { tipo: '$_id.tipo', count: '$count' } } } },
+  { $sort: { _id: 1 } }
+])
+```
+
+---
+
+## 8. Autenticación y Seguridad
+
+- **Middleware**: `verifyToken` en `backend/src/middleware/auth.js`
+- Verifica Firebase ID Token via `admin.auth().verifyIdToken()`
+- Inyecta `req.user` con `{ uid, email, name, ... }`
+- Retorna `401` (sin header) o `403` (token inválido)
+- **Autorización**: No hay middleware de roles. La lógica admin vs SDR se maneja en el service (ej: `listarContactos` filtra por `sdrAsignado` si no es admin)
+- **Excepción**: Archivos de audio estáticos (`/api/sdr/audios/*`) se sirven sin auth
+
+---
+
+## 9. Integraciones
+
+| Sistema | Integración | Mecanismo |
+|---------|-------------|-----------|
+| **Bot WhatsApp** | Lead → ContactoSDR | `leadContactoBridge.js` (244 líneas) |
+| **WhatsApp API** | Envío de mensajes | Endpoint directo desde wizard |
+| **Firebase Auth** | Autenticación | Token verification middleware |
+| **Notion API** | Importación de contactos | Endpoints dedicados con mapeo de campos |
+| **GPT-4o** | Transcripción de audio | `POST /contactos/:id/transcribir-audio` |
+
+---
+
+## 10. Resumen de Volumen
+
+| Capa | Archivos | Líneas |
+|------|----------|--------|
+| Models | 5 + index | ~730 |
+| Routes | 1 | ~245 |
+| Controller | 1 | ~1,521 |
+| Backend Services | 2 | ~2,773 |
+| Frontend Service | 1 | ~751 |
+| Frontend Pages | 2 | ~5,095 |
+| Frontend Components | 9 | ~5,986 |
+| **TOTAL** | **21** | **~17,101** |
