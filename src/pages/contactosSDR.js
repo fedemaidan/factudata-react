@@ -86,6 +86,7 @@ const ContactosSDRPage = () => {
     const [bandejaActiva, setBandejaActiva] = useState('nuevos'); // 'nuevos' | 'reintentos' | 'seguimiento' | 'reunionesPendientes' | 'reunionesPasadas' | 'todos'
     const [filtroProximoContacto, setFiltroProximoContacto] = useState(''); // '' | 'sin_proximo' | 'vencido' | 'pendiente'
     const [filtroSegmento, setFiltroSegmento] = useState(''); // '' | 'inbound' | 'outbound'
+    const [filtroActividad, setFiltroActividad] = useState(''); // '' | 'sin_llamadas' | 'con_llamadas_no_atendidas' | 'con_llamadas_atendidas' | 'con_mensajes' | 'con_reuniones' | 'sin_actividad'
     const [ordenarPor, setOrdenarPor] = useState(''); // vacío = el backend elige según bandeja
     
     // Contadores de bandejas (para badges)
@@ -472,6 +473,39 @@ const ContactosSDRPage = () => {
             return true;
         });
     };
+
+    // Contadores de actividad por tipo
+    const contarPorActividad = (tipo) => {
+        return contactos.filter(c => {
+            const cnt = c.contadores || {};
+            switch (tipo) {
+                case 'sin_actividad': return !cnt.llamadasNoAtendidas && !cnt.llamadasAtendidas && !cnt.mensajesEnviados && !cnt.reunionesTotales;
+                case 'con_llamadas_no_atendidas': return (cnt.llamadasNoAtendidas || 0) > 0;
+                case 'con_llamadas_atendidas': return (cnt.llamadasAtendidas || 0) > 0;
+                case 'sin_llamadas': return !(cnt.llamadasNoAtendidas || 0) && !(cnt.llamadasAtendidas || 0);
+                case 'con_mensajes': return (cnt.mensajesEnviados || 0) > 0;
+                case 'con_reuniones': return (cnt.reunionesTotales || 0) > 0;
+                default: return true;
+            }
+        }).length;
+    };
+
+    // Filtrar contactos según filtro de actividad
+    const filtrarPorActividad = (lista) => {
+        if (!filtroActividad) return lista;
+        return lista.filter(c => {
+            const cnt = c.contadores || {};
+            switch (filtroActividad) {
+                case 'sin_actividad': return !cnt.llamadasNoAtendidas && !cnt.llamadasAtendidas && !cnt.mensajesEnviados && !cnt.reunionesTotales;
+                case 'con_llamadas_no_atendidas': return (cnt.llamadasNoAtendidas || 0) > 0;
+                case 'con_llamadas_atendidas': return (cnt.llamadasAtendidas || 0) > 0;
+                case 'sin_llamadas': return !(cnt.llamadasNoAtendidas || 0) && !(cnt.llamadasAtendidas || 0);
+                case 'con_mensajes': return (cnt.mensajesEnviados || 0) > 0;
+                case 'con_reuniones': return (cnt.reunionesTotales || 0) > 0;
+                default: return true;
+            }
+        });
+    };
     
     // Selección múltiple
     const handleSeleccionar = (contactoId) => {
@@ -596,12 +630,13 @@ const ContactosSDRPage = () => {
         setFiltroEstado('');
         setBandejaActiva('nuevos');
         setFiltroProximoContacto('');
+        setFiltroActividad('');
         setBusqueda('');
     };
     
     // Los contactos ya vienen ordenados del backend según ordenarPor/ordenDir
-    // Solo aplicamos filtro local de próximo contacto
-    const contactosOrdenados = filtrarPorProximoContacto(contactos);
+    // Aplicamos filtros locales: próximo contacto + actividad
+    const contactosOrdenados = filtrarPorActividad(filtrarPorProximoContacto(contactos));
     
     // Formatear próximo contacto para mostrar
     const formatearProximo = (fecha) => {
@@ -610,7 +645,18 @@ const ContactosSDRPage = () => {
         const ahora = new Date();
         const diffMs = d - ahora;
         
-        if (diffMs < 0) return { texto: 'Vencido', color: 'error' };
+        if (diffMs < 0) {
+            const atrasoMs = Math.abs(diffMs);
+            const minutos = Math.floor(atrasoMs / (1000 * 60));
+            const horas = Math.floor(atrasoMs / (1000 * 60 * 60));
+            const dias = Math.floor(atrasoMs / (1000 * 60 * 60 * 24));
+            let textoAtraso;
+            if (minutos < 60) textoAtraso = `hace ${minutos}m`;
+            else if (horas < 24) textoAtraso = `hace ${horas}h`;
+            else if (dias === 1) textoAtraso = 'hace 1 día';
+            else textoAtraso = `hace ${dias} días`;
+            return { texto: `Vencido ${textoAtraso}`, color: 'error' };
+        }
         if (diffMs < 1000 * 60 * 60) return { texto: 'Ahora', color: 'warning' };
         if (diffMs < 1000 * 60 * 60 * 24) {
             return { 
@@ -1110,6 +1156,59 @@ const ContactosSDRPage = () => {
                 </Stack>
             </Box>
 
+            {/* Filtros por actividad (tipo de contacto y resultado) */}
+            <Box sx={{ px: 2, pb: 1, overflowX: 'auto' }}>
+                <Stack direction="row" spacing={1} sx={{ minWidth: 'max-content' }}>
+                    <Typography variant="caption" color="text.secondary" sx={{ alignSelf: 'center', mr: 0.5 }}>
+                        Actividad:
+                    </Typography>
+                    <Chip 
+                        label={`Sin actividad (${contarPorActividad('sin_actividad')})`}
+                        size="small"
+                        icon={<span style={{ fontSize: 12 }}>🆕</span>}
+                        color={filtroActividad === 'sin_actividad' ? 'default' : 'default'}
+                        variant={filtroActividad === 'sin_actividad' ? 'filled' : 'outlined'}
+                        onClick={() => setFiltroActividad(filtroActividad === 'sin_actividad' ? '' : 'sin_actividad')}
+                    />
+                    <Chip 
+                        label={`📵 No atendidas (${contarPorActividad('con_llamadas_no_atendidas')})`}
+                        size="small"
+                        color={filtroActividad === 'con_llamadas_no_atendidas' ? 'warning' : 'default'}
+                        variant={filtroActividad === 'con_llamadas_no_atendidas' ? 'filled' : 'outlined'}
+                        onClick={() => setFiltroActividad(filtroActividad === 'con_llamadas_no_atendidas' ? '' : 'con_llamadas_no_atendidas')}
+                    />
+                    <Chip 
+                        label={`📞 Atendidas (${contarPorActividad('con_llamadas_atendidas')})`}
+                        size="small"
+                        color={filtroActividad === 'con_llamadas_atendidas' ? 'success' : 'default'}
+                        variant={filtroActividad === 'con_llamadas_atendidas' ? 'filled' : 'outlined'}
+                        onClick={() => setFiltroActividad(filtroActividad === 'con_llamadas_atendidas' ? '' : 'con_llamadas_atendidas')}
+                    />
+                    <Chip 
+                        label={`Sin llamadas (${contarPorActividad('sin_llamadas')})`}
+                        size="small"
+                        icon={<span style={{ fontSize: 12 }}>📴</span>}
+                        color={filtroActividad === 'sin_llamadas' ? 'error' : 'default'}
+                        variant={filtroActividad === 'sin_llamadas' ? 'filled' : 'outlined'}
+                        onClick={() => setFiltroActividad(filtroActividad === 'sin_llamadas' ? '' : 'sin_llamadas')}
+                    />
+                    <Chip 
+                        label={`💬 Mensajes (${contarPorActividad('con_mensajes')})`}
+                        size="small"
+                        color={filtroActividad === 'con_mensajes' ? 'info' : 'default'}
+                        variant={filtroActividad === 'con_mensajes' ? 'filled' : 'outlined'}
+                        onClick={() => setFiltroActividad(filtroActividad === 'con_mensajes' ? '' : 'con_mensajes')}
+                    />
+                    <Chip 
+                        label={`📅 Reuniones (${contarPorActividad('con_reuniones')})`}
+                        size="small"
+                        color={filtroActividad === 'con_reuniones' ? 'secondary' : 'default'}
+                        variant={filtroActividad === 'con_reuniones' ? 'filled' : 'outlined'}
+                        onClick={() => setFiltroActividad(filtroActividad === 'con_reuniones' ? '' : 'con_reuniones')}
+                    />
+                </Stack>
+            </Box>
+
             {/* Ordenar por */}
             <Box sx={{ px: 2, pb: 1, overflowX: 'auto' }}>
                 <Stack direction="row" spacing={1} sx={{ minWidth: 'max-content' }}>
@@ -1293,7 +1392,7 @@ const ContactosSDRPage = () => {
                                                     color={`${proximo.color}.main`}
                                                     fontWeight={vencido ? 700 : 400}
                                                 >
-                                                    {proximo.texto}
+                                                    {contacto.proximaTarea?.tipo === 'llamada' ? 'Llamada' : contacto.proximaTarea?.tipo === 'whatsapp' ? 'WhatsApp' : contacto.proximaTarea?.tipo === 'email' ? 'Email' : 'Tarea'}{' · '}{proximo.texto}
                                                 </Typography>
                                                 {contacto.proximaTarea?.nota && (
                                                     <Typography variant="caption" color="text.secondary" noWrap sx={{ maxWidth: 120, fontSize: '0.6rem' }}>
@@ -1694,6 +1793,57 @@ const ContactosSDRPage = () => {
                     )}
                 </Stack>
 
+                {/* Filtros por actividad (tipo de contacto y resultado) */}
+                <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                    <Typography variant="body2" color="text.secondary">
+                        Actividad:
+                    </Typography>
+                    <Chip 
+                        label={`Sin actividad (${contarPorActividad('sin_actividad')})`}
+                        icon={<span style={{ fontSize: 14 }}>🆕</span>}
+                        color={filtroActividad === 'sin_actividad' ? 'default' : 'default'}
+                        variant={filtroActividad === 'sin_actividad' ? 'filled' : 'outlined'}
+                        onClick={() => setFiltroActividad(filtroActividad === 'sin_actividad' ? '' : 'sin_actividad')}
+                    />
+                    <Chip 
+                        label={`📵 No atendidas (${contarPorActividad('con_llamadas_no_atendidas')})`}
+                        color={filtroActividad === 'con_llamadas_no_atendidas' ? 'warning' : 'default'}
+                        variant={filtroActividad === 'con_llamadas_no_atendidas' ? 'filled' : 'outlined'}
+                        onClick={() => setFiltroActividad(filtroActividad === 'con_llamadas_no_atendidas' ? '' : 'con_llamadas_no_atendidas')}
+                    />
+                    <Chip 
+                        label={`📞 Atendidas (${contarPorActividad('con_llamadas_atendidas')})`}
+                        color={filtroActividad === 'con_llamadas_atendidas' ? 'success' : 'default'}
+                        variant={filtroActividad === 'con_llamadas_atendidas' ? 'filled' : 'outlined'}
+                        onClick={() => setFiltroActividad(filtroActividad === 'con_llamadas_atendidas' ? '' : 'con_llamadas_atendidas')}
+                    />
+                    <Chip 
+                        label={`📴 Sin llamadas (${contarPorActividad('sin_llamadas')})`}
+                        color={filtroActividad === 'sin_llamadas' ? 'error' : 'default'}
+                        variant={filtroActividad === 'sin_llamadas' ? 'filled' : 'outlined'}
+                        onClick={() => setFiltroActividad(filtroActividad === 'sin_llamadas' ? '' : 'sin_llamadas')}
+                    />
+                    <Chip 
+                        label={`💬 Mensajes (${contarPorActividad('con_mensajes')})`}
+                        color={filtroActividad === 'con_mensajes' ? 'info' : 'default'}
+                        variant={filtroActividad === 'con_mensajes' ? 'filled' : 'outlined'}
+                        onClick={() => setFiltroActividad(filtroActividad === 'con_mensajes' ? '' : 'con_mensajes')}
+                    />
+                    <Chip 
+                        label={`📅 Reuniones (${contarPorActividad('con_reuniones')})`}
+                        color={filtroActividad === 'con_reuniones' ? 'secondary' : 'default'}
+                        variant={filtroActividad === 'con_reuniones' ? 'filled' : 'outlined'}
+                        onClick={() => setFiltroActividad(filtroActividad === 'con_reuniones' ? '' : 'con_reuniones')}
+                    />
+                    {filtroActividad && (
+                        <Chip 
+                            label="Limpiar"
+                            size="small"
+                            onDelete={() => setFiltroActividad('')}
+                        />
+                    )}
+                </Stack>
+
                 {/* Barra de acciones masivas */}
                 {seleccionados.length > 0 && (
                     <Alert 
@@ -1921,7 +2071,7 @@ const ContactosSDRPage = () => {
                                                         </Typography>
                                                         <Chip 
                                                             size="small" 
-                                                            label={proximo.texto}
+                                                            label={`${contacto.proximaTarea?.tipo === 'llamada' ? 'Llamada' : contacto.proximaTarea?.tipo === 'whatsapp' ? 'WhatsApp' : contacto.proximaTarea?.tipo === 'email' ? 'Email' : 'Tarea'} · ${proximo.texto}`}
                                                             color={proximo.color}
                                                             variant="outlined"
                                                         />
