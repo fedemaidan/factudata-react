@@ -1,5 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
-import { useRef } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
@@ -26,6 +25,7 @@ import { useRouter } from 'next/router';
 import ticketService from 'src/services/ticketService';
 import { getProyectoById, recargarProyecto, updateProyecto } from 'src/services/proyectosService';
 import movimientosService from 'src/services/movimientosService';
+import profileService from 'src/services/profileService';
 import Snackbar from '@mui/material/Snackbar';
 import Alert from '@mui/material/Alert';
 import { useAuthContext } from 'src/contexts/auth-context';
@@ -63,6 +63,7 @@ const COLS = {
   medioPago: 150,
   proveedor: 220,
   observacion: 160,
+  usuario: 140,
   tc: 120,
   usd: 160,
   mep: 160,
@@ -74,7 +75,7 @@ const COLS = {
   totalDolar: 140,
   subtotalDolar: 140,
   tagsExtra: 180,
-  acciones: 96,
+  acciones: 120,
 };
 
 // estilos comunes
@@ -278,6 +279,11 @@ const ProyectoMovimientosPage = () => {
   const [showTotalsDetails, setShowTotalsDetails] = useState(false);
   const [mobileActionAnchor, setMobileActionAnchor] = useState(null);
   const [mobileActionMov, setMobileActionMov] = useState(null);
+  const [comentarioInput, setComentarioInput] = useState('');
+  const [comentarioLoading, setComentarioLoading] = useState(false);
+  const [comentarioError, setComentarioError] = useState(null);
+  const [usuariosComentariosMap, setUsuariosComentariosMap] = useState({});
+  const fetchedUserIdsRef = useRef(new Set());
   const [showCajasMobile, setShowCajasMobile] = useState(true);
   // ── Selección masiva ──
   const [selectedIds, setSelectedIds] = useState(new Set());
@@ -439,6 +445,7 @@ const handleSaveCols = async () => {
     obra: false,        // <-- NUEVO
     cliente: false,     // <-- NUEVO
     observacion: true,
+    usuario: false,     // desactivada por defecto (igual que todosProyectos)
     tc: false,
     usd: true,
     mep: false, // activala en true si querés que venga visible por defecto
@@ -697,10 +704,59 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
     });
   };
 
-  const openDetalle = (mov) => {
+  const openDetalle = useCallback((mov) => {
     setDetalleMov(mov);
     setDrawerOpen(true);
-  };
+    setComentarioInput('');
+    setComentarioError(null);
+  }, []);
+
+  const handleAgregarComentario = useCallback(async () => {
+    if (!detalleMov?.id || !comentarioInput?.trim()) return;
+    setComentarioLoading(true);
+    setComentarioError(null);
+    try {
+      const nuevoComentario = await movimientosService.addComentario(detalleMov.id, comentarioInput.trim());
+      if (nuevoComentario) {
+        const movActualizado = {
+          ...detalleMov,
+          comentarios: [...(detalleMov.comentarios || []), nuevoComentario],
+        };
+        setDetalleMov(movActualizado);
+        setComentarioInput('');
+        const updater = (m) => (m.id === detalleMov.id ? { ...m, comentarios: movActualizado.comentarios } : m);
+        setMovimientos((prev) => prev.map(updater));
+        setMovimientosUSD((prev) => prev.map(updater));
+        setAlert({ open: true, message: 'Comentario agregado', severity: 'success' });
+      }
+    } catch (err) {
+      setComentarioError(err?.response?.data?.error || 'Error al agregar comentario');
+    } finally {
+      setComentarioLoading(false);
+    }
+  }, [detalleMov, comentarioInput]);
+
+  useEffect(() => {
+    const comentarios = detalleMov?.comentarios || [];
+    const idsToFetch = [...new Set(comentarios.map((c) => c.userId).filter(Boolean))].filter(
+      (id) => !fetchedUserIdsRef.current.has(id)
+    );
+    if (idsToFetch.length === 0) return;
+    idsToFetch.forEach((id) => fetchedUserIdsRef.current.add(id));
+    (async () => {
+      for (const id of idsToFetch) {
+        try {
+          const profile = await profileService.getProfileById(id) || await profileService.getProfileByUserId(id);
+          const name = profile
+            ? ([profile.firstName, profile.lastName].filter(Boolean).join(' ').trim() || profile.email || 'Usuario')
+            : 'Usuario';
+          setUsuariosComentariosMap((prev) => ({ ...prev, [id]: name }));
+        } catch {
+          setUsuariosComentariosMap((prev) => ({ ...prev, [id]: 'Usuario' }));
+        }
+      }
+    })();
+  }, [detalleMov?.id, detalleMov?.comentarios?.length]);
 
   
   const handleEliminarClick = (movimientoId) => {
@@ -715,7 +771,20 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
   
     const movs = await ticketService.getMovimientosForProyecto(proyectoId, 'ARS');
     const movsUsd = await ticketService.getMovimientosForProyecto(proyectoId, 'USD');
-  
+    const allMovs = [...(movs || []), ...(movsUsd || [])];
+    const idsSinNombre = [...new Set(allMovs.filter((m) => m.id_user && !m.nombre_user).map((m) => m.id_user))];
+    const usuariosMap = {};
+    for (const id of idsSinNombre) {
+      const profile = await profileService.getProfileById(id) || await profileService.getProfileByUserId(id);
+      if (profile) {
+        usuariosMap[id] = [profile.firstName, profile.lastName].filter(Boolean).join(' ').trim() || profile.email || '-';
+      }
+    }
+    for (const mov of allMovs) {
+      if (mov.id_user && !mov.nombre_user && usuariosMap[mov.id_user]) {
+        mov.nombre_user = usuariosMap[mov.id_user];
+      }
+    }
     setMovimientos(movs);
     setMovimientosUSD(movsUsd);
   
@@ -777,6 +846,20 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
       setPrefsHydrated(true);
       const movs = await ticketService.getMovimientosForProyecto(proyectoId, 'ARS');
       const movsUsd = await ticketService.getMovimientosForProyecto(proyectoId, 'USD');
+      const allMovs = [...(movs || []), ...(movsUsd || [])];
+      const idsSinNombre = [...new Set(allMovs.filter((m) => m.id_user && !m.nombre_user).map((m) => m.id_user))];
+      const usuariosMap = {};
+      for (const id of idsSinNombre) {
+        const profile = await profileService.getProfileById(id) || await profileService.getProfileByUserId(id);
+        if (profile) {
+          usuariosMap[id] = [profile.firstName, profile.lastName].filter(Boolean).join(' ').trim() || profile.email || '-';
+        }
+      }
+      for (const mov of allMovs) {
+        if (mov.id_user && !mov.nombre_user && usuariosMap[mov.id_user]) {
+          mov.nombre_user = usuariosMap[mov.id_user];
+        }
+      }
       setMovimientos(movs);
       setMovimientosUSD(movsUsd);
 
@@ -827,13 +910,14 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
     formatTimestamp,
     formatCurrency,
     openImg,
+    openDetalle,
     goToEdit,
     handleEliminarClick,
     deletingElement,
     COLS,
     cellBase,
     ellipsis,
-  }), [empresa, compactCols, deletingElement]);
+  }), [empresa, compactCols, deletingElement, openDetalle]);
 
   const onSelectCaja = (caja) => {
     setCajaSeleccionada(caja);
@@ -1338,12 +1422,6 @@ useEffect(() => {
   if (page > maxPage) setPage(0);
 }, [totalRows, rowsPerPage]); // intencional: no incluimos 'page' para evitar loop
 
-
-  if (empresa?.cuenta_suspendida === true) {
-    return ("Cuenta suspendida. Contacte al administrador." )
-  }
-
-  // Construir el título con el código de sincronización si está activo
   const tituloConCodigo = useMemo(() => {
     if (filters.codigoSync && filters.codigoSync.trim() !== '') {
       return `${proyecto?.nombre || 'Proyecto'} - Código: ${filters.codigoSync}`;
@@ -1351,7 +1429,11 @@ useEffect(() => {
     return proyecto?.nombre || 'Proyecto';
   }, [proyecto?.nombre, filters.codigoSync]);
 
-    return (
+  if (empresa?.cuenta_suspendida === true) {
+    return 'Cuenta suspendida. Contacte al administrador.';
+  }
+
+  return (
     <DashboardLayout title={tituloConCodigo}>
       <Head>
         <title>{tituloConCodigo}</title>
@@ -1800,6 +1882,7 @@ useEffect(() => {
     <FormControlLabel control={<Checkbox size="small" checked={visibleCols.obra} onChange={() => toggleCol('obra')} />} label="Obra" />
     <FormControlLabel control={<Checkbox size="small" checked={visibleCols.cliente} onChange={() => toggleCol('cliente')} />} label="Cliente" />
     <FormControlLabel control={<Checkbox size="small" checked={visibleCols.observacion}  onChange={() => toggleCol('observacion')} />}  label="Observación" />
+    <FormControlLabel control={<Checkbox size="small" checked={visibleCols.usuario}      onChange={() => toggleCol('usuario')} />}      label="Usuario" />
     <FormControlLabel control={<Checkbox size="small" checked={visibleCols.tc}           onChange={() => toggleCol('tc')} />}           label="TC ejecutado" />
     <FormControlLabel control={<Checkbox size="small" checked={visibleCols.usd}          onChange={() => toggleCol('usd')} />}          label="USD blue" />
     <FormControlLabel control={<Checkbox size="small" checked={visibleCols.mep} onChange={() => toggleCol('mep')} />} label="USD MEP" />
@@ -2313,6 +2396,11 @@ useEffect(() => {
     </MenuItem>
   )}
   {mobileActionMov && (
+    <MenuItem onClick={() => { openDetalle(mobileActionMov); closeMobileActions(); }}>
+      Comentarios
+    </MenuItem>
+  )}
+  {mobileActionMov && (
     <MenuItem onClick={() => { goToEdit(mobileActionMov); closeMobileActions(); }}>
       Editar
     </MenuItem>
@@ -2335,36 +2423,88 @@ useEffect(() => {
 )}
 
 <Drawer anchor="right" open={drawerOpen} onClose={() => setDrawerOpen(false)}>
-  <Box sx={{ width: 360, p: 2 }}>
-    <Typography variant="h6" sx={{ mb: 1 }}>Detalle del movimiento</Typography>
-    {detalleMov ? (
-      <List dense>
-        <ListItem><ListItemText primary="Código" secondary={detalleMov.codigo_operacion || detalleMov.codigo || '—'} /></ListItem>
-        <ListItem><ListItemText primary="Fecha" secondary={formatTimestamp(detalleMov.fecha_factura, "DIA/MES/ANO") || '—'} /></ListItem>
-        <ListItem><ListItemText primary="Tipo" secondary={detalleMov.type || '—'} /></ListItem>
-        <ListItem><ListItemText primary="Total" secondary={formatCurrency(detalleMov.total)} /></ListItem>
-        <ListItem><ListItemText primary="Moneda" secondary={detalleMov.moneda || '—'} /></ListItem>
-        <ListItem><ListItemText primary="Proveedor" secondary={detalleMov.nombre_proveedor || '—'} /></ListItem>
-        <ListItem><ListItemText primary="Categoría" secondary={detalleMov.categoria || '—'} /></ListItem>
-        {detalleMov.subcategoria && (
-          <ListItem><ListItemText primary="Subcategoría" secondary={detalleMov.subcategoria} /></ListItem>
-        )}
-        {detalleMov.obra && (
-          <ListItem><ListItemText primary="Obra" secondary={detalleMov.obra} /></ListItem>
-        )}
-        {detalleMov.cliente && (
-          <ListItem><ListItemText primary="Cliente" secondary={detalleMov.cliente} /></ListItem>
-        )}
-        {empresa?.comprobante_info?.factura_cliente && (
-          <ListItem><ListItemText primary="Factura cliente" secondary={detalleMov.factura_cliente ? 'Sí' : 'No'} /></ListItem>
-        )}
-        {detalleMov.observacion && (
-          <ListItem><ListItemText primary="Observación" secondary={detalleMov.observacion} /></ListItem>
-        )}
-      </List>
-    ) : (
-      <Typography variant="body2" color="text.secondary">Sin datos.</Typography>
-    )}
+  <Box sx={{ width: 360, height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+    <Box sx={{ p: 1.5, overflow: 'auto', flex: 1, minHeight: 0 }}>
+      <Typography variant="subtitle1" sx={{ mb: 0.75, fontWeight: 600 }}>Detalle del movimiento</Typography>
+      {detalleMov ? (
+        <>
+          <List dense disablePadding sx={{ '& .MuiListItem-root': { py: 0.25 }, '& .MuiListItemText-root': { my: 0 } }}>
+            <ListItem><ListItemText primary="Código" secondary={detalleMov.codigo_operacion || detalleMov.codigo || '—'} primaryTypographyProps={{ variant: 'caption' }} secondaryTypographyProps={{ variant: 'body2' }} /></ListItem>
+            <ListItem><ListItemText primary="Fecha" secondary={formatTimestamp(detalleMov.fecha_factura, "DIA/MES/ANO") || '—'} primaryTypographyProps={{ variant: 'caption' }} secondaryTypographyProps={{ variant: 'body2' }} /></ListItem>
+            <ListItem><ListItemText primary="Tipo" secondary={detalleMov.type || '—'} primaryTypographyProps={{ variant: 'caption' }} secondaryTypographyProps={{ variant: 'body2' }} /></ListItem>
+            <ListItem><ListItemText primary="Total" secondary={formatCurrency(detalleMov.total)} primaryTypographyProps={{ variant: 'caption' }} secondaryTypographyProps={{ variant: 'body2' }} /></ListItem>
+            <ListItem><ListItemText primary="Moneda" secondary={detalleMov.moneda || '—'} primaryTypographyProps={{ variant: 'caption' }} secondaryTypographyProps={{ variant: 'body2' }} /></ListItem>
+            <ListItem><ListItemText primary="Proveedor" secondary={detalleMov.nombre_proveedor || '—'} primaryTypographyProps={{ variant: 'caption' }} secondaryTypographyProps={{ variant: 'body2' }} /></ListItem>
+            <ListItem><ListItemText primary="Categoría" secondary={detalleMov.categoria || '—'} primaryTypographyProps={{ variant: 'caption' }} secondaryTypographyProps={{ variant: 'body2' }} /></ListItem>
+            {detalleMov.subcategoria && (
+              <ListItem><ListItemText primary="Subcategoría" secondary={detalleMov.subcategoria} primaryTypographyProps={{ variant: 'caption' }} secondaryTypographyProps={{ variant: 'body2' }} /></ListItem>
+            )}
+            {detalleMov.obra && (
+              <ListItem><ListItemText primary="Obra" secondary={detalleMov.obra} primaryTypographyProps={{ variant: 'caption' }} secondaryTypographyProps={{ variant: 'body2' }} /></ListItem>
+            )}
+            {detalleMov.cliente && (
+              <ListItem><ListItemText primary="Cliente" secondary={detalleMov.cliente} primaryTypographyProps={{ variant: 'caption' }} secondaryTypographyProps={{ variant: 'body2' }} /></ListItem>
+            )}
+            {empresa?.comprobante_info?.factura_cliente && (
+              <ListItem><ListItemText primary="Factura cliente" secondary={detalleMov.factura_cliente ? 'Sí' : 'No'} primaryTypographyProps={{ variant: 'caption' }} secondaryTypographyProps={{ variant: 'body2' }} /></ListItem>
+            )}
+            {detalleMov.observacion && (
+              <ListItem><ListItemText primary="Observación" secondary={detalleMov.observacion} primaryTypographyProps={{ variant: 'caption' }} secondaryTypographyProps={{ variant: 'body2' }} /></ListItem>
+            )}
+          </List>
+          <Divider sx={{ my: 1 }} />
+          <Typography variant="caption" sx={{ fontWeight: 600, display: 'block', mb: 0.5 }}>
+            Comentarios ({detalleMov.comentarios?.length || 0})
+          </Typography>
+          <Stack direction="row" spacing={0.75} sx={{ mb: 1.5 }} alignItems="flex-end">
+            <TextField
+              size="small"
+              multiline
+              minRows={1}
+              maxRows={2}
+              placeholder="Agregar comentario..."
+              value={comentarioInput}
+              onChange={(e) => setComentarioInput(e.target.value)}
+              disabled={comentarioLoading}
+              sx={{ flex: 1, '& .MuiInputBase-input': { fontSize: '0.8125rem' } }}
+              inputProps={{ maxLength: 1000 }}
+            />
+            <Button
+              variant="contained"
+              size="small"
+              onClick={handleAgregarComentario}
+              disabled={!comentarioInput?.trim() || comentarioLoading}
+              sx={{ flexShrink: 0 }}
+            >
+              Agregar
+            </Button>
+          </Stack>
+          {comentarioError && (
+            <Alert severity="error" onClose={() => setComentarioError(null)} sx={{ mb: 1, py: 0.5 }}>
+              {comentarioError}
+            </Alert>
+          )}
+          {(!detalleMov.comentarios || detalleMov.comentarios.length === 0) ? (
+            <Typography variant="caption" color="text.secondary">Sin comentarios.</Typography>
+          ) : (
+            <Stack spacing={1}>
+              {[...(detalleMov.comentarios || [])]
+                .sort((a, b) => getTime(a.createdAt) - getTime(b.createdAt))
+                .map((c) => (
+                  <Paper key={c.id} variant="outlined" sx={{ p: 1 }}>
+                    <Typography variant="caption" color="text.secondary" display="block" sx={{ fontSize: '0.7rem' }}>
+                      {usuariosComentariosMap[c.userId] || 'Usuario'} · {formatTimestamp(c.createdAt, 'DIA/MES/ANO')}
+                    </Typography>
+                    <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', fontSize: '0.8125rem' }}>{c.comment}</Typography>
+                  </Paper>
+                ))}
+            </Stack>
+          )}
+        </>
+      ) : (
+        <Typography variant="body2" color="text.secondary">Sin datos.</Typography>
+      )}
+    </Box>
   </Box>
 </Drawer>
 

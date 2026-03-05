@@ -7,8 +7,10 @@ import {
   Chip,
   IconButton,
   Tooltip,
+  Badge,
 } from '@mui/material';
 import ImageIcon from '@mui/icons-material/Image';
+import CommentIcon from '@mui/icons-material/Comment';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 
@@ -19,6 +21,7 @@ const CajaTablaCell = ({ colKey, mov, amountColor, ctx, isProrrateo = false }) =
     formatTimestamp,
     formatCurrency,
     openImg,
+    openDetalle,
     goToEdit,
     handleEliminarClick,
     deletingElement,
@@ -105,6 +108,8 @@ const CajaTablaCell = ({ colKey, mov, amountColor, ctx, isProrrateo = false }) =
       return cell(ellipsis(COLS.cliente), <Tooltip title={mov.cliente || ''}><span>{mov.cliente || '—'}</span></Tooltip>);
     case 'observacion':
       return cell(ellipsis(COLS.observacion), <Tooltip title={mov.observacion || ''}><span>{mov.observacion}</span></Tooltip>);
+    case 'usuario':
+      return cell(ellipsis(COLS.usuario), <Tooltip title={mov.nombre_user || ''}><span>{mov.nombre_user || '—'}</span></Tooltip>);
     case 'tc':
       return cell({ ...cellBase, minWidth: COLS.tc }, mov.tc ? `$ ${mov.tc}` : '-');
     case 'usd':
@@ -159,6 +164,19 @@ const CajaTablaCell = ({ colKey, mov, amountColor, ctx, isProrrateo = false }) =
               <ImageIcon fontSize="small" />
             </IconButton>
           )}
+          <Tooltip title={mov.comentarios?.length ? `Comentarios (${mov.comentarios.length})` : 'Comentarios'}>
+            <IconButton size="small" onClick={(e) => { e.stopPropagation(); openDetalle(mov); }}>
+              <Badge
+                badgeContent={mov.comentarios?.length || 0}
+                color="error"
+                max={99}
+                showZero={false}
+                sx={{ '& .MuiBadge-badge': { fontSize: '0.65rem', minWidth: 14, height: 14 } }}
+              >
+                <CommentIcon fontSize="small" />
+              </Badge>
+            </IconButton>
+          </Tooltip>
           <IconButton size="small" color="primary" onClick={(e) => { e.stopPropagation(); goToEdit(mov); }}>
             <EditIcon fontSize="small" />
           </IconButton>
@@ -188,6 +206,7 @@ CajaTablaCell.propTypes = {
     formatTimestamp: PropTypes.func,
     formatCurrency: PropTypes.func,
     openImg: PropTypes.func,
+    openDetalle: PropTypes.func,
     goToEdit: PropTypes.func,
     handleEliminarClick: PropTypes.func,
     deletingElement: PropTypes.any,

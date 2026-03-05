@@ -28,7 +28,8 @@ export const CAJA_COL_DEFAULT_ORDER = [
   'dolarReferencia',
   'totalDolar',
   'subtotalDolar',
-  'acciones',
+  'usuario',  
+  'acciones',  
 ];
 
 const LABELS = {
@@ -45,6 +46,7 @@ const LABELS = {
   obra: 'Obra',
   cliente: 'Cliente',
   observacion: 'Observación',
+  usuario: 'Usuario',
   tc: 'TC ejecutado',
   usd: 'USD blue',
   mep: 'USD MEP',
@@ -88,6 +90,7 @@ export function getCajaColumnasConfig(visibleCols, compactCols, empresa, options
   if (visibleCols?.obra) result.push(['obra', LABELS.obra]);
   if (visibleCols?.cliente) result.push(['cliente', LABELS.cliente]);
   if (visibleCols?.observacion) result.push(['observacion', LABELS.observacion]);
+  if (visibleCols?.usuario) result.push(['usuario', LABELS.usuario]);
   if (visibleCols?.tc) result.push(['tc', LABELS.tc]);
   if (visibleCols?.usd) result.push(['usd', LABELS.usd]);
   if (visibleCols?.mep) result.push(['mep', LABELS.mep]);
@@ -108,15 +111,21 @@ export function getCajaColumnasConfig(visibleCols, compactCols, empresa, options
 
 /**
  * Aplica el orden personalizado (columnasOrden) al array de columnas visibles.
+ * La columna 'acciones' siempre queda al final.
  */
 export function applyColumnOrder(columnasConfig, columnasOrden) {
   if (!columnasOrden?.length) return columnasConfig;
   const ordenMap = Object.fromEntries(columnasOrden.map((k, i) => [k, i]));
-  return [...columnasConfig].sort((a, b) => {
-    const idxA = ordenMap[a[0]] ?? 999;
-    const idxB = ordenMap[b[0]] ?? 999;
+  const sorted = [...columnasConfig].sort((a, b) => {
+    const keyA = a[0];
+    const keyB = b[0];
+    if (keyA === 'acciones') return 1;
+    if (keyB === 'acciones') return -1;
+    const idxA = ordenMap[keyA] ?? 999;
+    const idxB = ordenMap[keyB] ?? 999;
     return idxA - idxB;
   });
+  return sorted;
 }
 
 /** Labels para headers de tabla (mayúsculas). categoria usa compactCols. */
@@ -135,6 +144,7 @@ export function getHeaderLabel(key, compactCols) {
     obra: 'OBRA',
     cliente: 'CLIENTE',
     observacion: 'OBSERVACIÓN',
+    usuario: 'USUARIO',
     tc: 'TC EJECUTADO',
     usd: 'USD BLUE',
     mep: 'USD MEP',
@@ -173,6 +183,7 @@ export function getHeaderCellSx(key, COLS, cellBase) {
     obra: { minWidth: COLS.obra },
     cliente: { minWidth: COLS.cliente },
     observacion: { minWidth: COLS.observacion },
+    usuario: { minWidth: COLS.usuario },
     tc: { minWidth: COLS.tc },
     usd: { minWidth: COLS.usd },
     mep: { minWidth: COLS.mep },
