@@ -18,7 +18,6 @@ import {
   IconButton,
   Tooltip,
 } from '@mui/material';
-import Divider from '@mui/material/Divider';
 import RefreshIcon from '@mui/icons-material/Refresh';
 
 import movimientosService from 'src/services/celulandia/movimientosService';

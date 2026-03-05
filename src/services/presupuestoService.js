@@ -213,6 +213,26 @@ const PresupuestoService = {
   },
 
   /**
+   * Obtener todos los movimientos de un proyecto (para desglose de presupuestos)
+   * @param {string} proyectoId - ID del proyecto
+   * @param {string} [tipo] - 'ingreso' | 'egreso' | null (todos)
+   * @returns {Promise<Array>} - Lista de movimientos
+   */
+  obtenerMovimientosProyecto: async (proyectoId, tipo = null) => {
+    try {
+      const params = tipo ? `?tipo=${tipo}` : '';
+      const response = await api.get(`/presupuesto/proyecto/${proyectoId}/movimientos${params}`);
+      if (response.status === 200) {
+        return response.data.movimientos || [];
+      }
+      throw new Error('Error al obtener movimientos');
+    } catch (error) {
+      console.error('❌ Error al obtener movimientos de proyecto:', error);
+      throw error;
+    }
+  },
+
+  /**
    * Eliminar presupuesto por ID de documento
    * @param {string} presupuestoId - ID del presupuesto
    * @returns {Promise<Object>}

@@ -8,6 +8,74 @@
     ],
     "rewrites": [
       {
+        "source": "/sdr/contacto/**",
+        "destination": "/sdr/contacto/[id]/index.html"
+      },
+      {
+        "source": "/reportes/public/**",
+        "destination": "/reportes/public/[token]/index.html"
+      },
+      {
+        "source": "/reportes/**",
+        "destination": "/reportes/[id]/index.html"
+      },
+      {
+        "source": "/materiales/**",
+        "destination": "/materiales/[materialId]/index.html"
+      },
+      {
+        "source": "/dhn/conciliacion/**",
+        "destination": "/dhn/conciliacion/[id]/index.html"
+      },
+      {
+        "source": "/dhn/controlQuincenal/diario/**",
+        "destination": "/dhn/controlQuincenal/diario/[dia]/index.html"
+      },
+      {
+        "source": "/dhn/controlQuincenal/**",
+        "destination": "/dhn/controlQuincenal/[quincena]/index.html"
+      },
+      {
+        "source": "/dhn/sync/**",
+        "destination": "/dhn/sync/[syncId]/index.html"
+      },
+      {
+        "source": "/dhn/trabajador/**",
+        "destination": "/dhn/trabajador/[trabajadorId]/index.html"
+      },
+      {
+        "source": "/celulandia/cuentaCorriente/**",
+        "destination": "/celulandia/cuentaCorriente/[id]/index.html"
+      },
+      {
+        "source": "/celulandia/proyecciones/**",
+        "destination": "/celulandia/proyecciones/[id]/index.html"
+      },
+      {
+        "source": "/loteParaTodosMock/contratos/**",
+        "destination": "/loteParaTodosMock/contratos/[id]/index.html"
+      },
+      {
+        "source": "/loteParaTodosMock/portal-cliente/**",
+        "destination": "/loteParaTodosMock/portal-cliente/[token]/index.html"
+      },
+      {
+        "source": "/loteParaTodosMock/emprendimientos/*/lotes/**",
+        "destination": "/loteParaTodosMock/emprendimientos/[id]/lotes/[loteId]/index.html"
+      },
+      {
+        "source": "/loteParaTodosMock/emprendimientos/*/edicion-masiva/**",
+        "destination": "/loteParaTodosMock/emprendimientos/[id]/edicion-masiva/index.html"
+      },
+      {
+        "source": "/loteParaTodosMock/emprendimientos/*/masterplan/**",
+        "destination": "/loteParaTodosMock/emprendimientos/[id]/masterplan/index.html"
+      },
+      {
+        "source": "/loteParaTodosMock/emprendimientos/**",
+        "destination": "/loteParaTodosMock/emprendimientos/[id]/index.html"
+      },
+      {
         "source": "**",
         "destination": "/index.html"
       }

@@ -117,6 +117,7 @@ const TodosProyectosPage = () => {
   const handleExportClick = (event) => setAnchorElExport(event.currentTarget);
   const handleExportClose = () => setAnchorElExport(null);
   const [filtroEtapa, setFiltroEtapa] = useState([]);
+  const [filtroFacturaCliente, setFiltroFacturaCliente] = useState('');
 
   const [alert, setAlert] = useState({ open: false, message: '', severity: 'info' });
   const [isLoading, setIsLoading] = useState(false);
@@ -558,6 +559,14 @@ const TodosProyectosPage = () => {
         (Array.isArray(mov.tags_extra) &&
           filtroTagsExtra.every((tag) => mov.tags_extra.includes(tag)));
 
+      const matchFacturaCliente = (() => {
+        if (!filtroFacturaCliente) return true;
+        const isCliente = mov.factura_cliente === true;
+        if (filtroFacturaCliente === 'cliente') return isCliente;
+        if (filtroFacturaCliente === 'propia') return !isCliente;
+        return true;
+      })();
+
       const matchPalabrasSueltas =
         filtroPalabrasSueltas === '' ||
         Object.values(mov).some((valor) => {
@@ -588,7 +597,8 @@ const TodosProyectosPage = () => {
         matchTagsExtra &&
         matchPalabrasSueltas &&
         matchCuentaInterna &&
-        matchEtapa
+        matchEtapa &&
+        matchFacturaCliente
       );
     });
 
@@ -633,6 +643,7 @@ const TodosProyectosPage = () => {
     filtroTagsExtra,
     filtroPalabrasSueltas,
     filtroCuentaInterna,
+    filtroFacturaCliente,
   ]);
 
   const movimientosPaginados = useMemo(() => {
@@ -967,6 +978,19 @@ const TodosProyectosPage = () => {
                       )}
                     </Select>
                   </FormControl>
+
+                    <FormControl sx={{ minWidth: 200 }}>
+                      <InputLabel>Factura cliente</InputLabel>
+                      <Select
+                        value={filtroFacturaCliente}
+                        onChange={(e) => setFiltroFacturaCliente(e.target.value)}
+                        label="Factura cliente"
+                      >
+                        <MenuItem value="">Todas</MenuItem>
+                        <MenuItem value="cliente">Cliente</MenuItem>
+                        <MenuItem value="propia">Propia</MenuItem>
+                      </Select>
+                    </FormControl>
 
                   <Stack direction="row" alignItems="center" sx={{ gap: 1 }}>
                     <DatePicker

@@ -17,11 +17,11 @@ export const ESTADO_COLOR = {
 };
 
 export const TRANSICIONES_VALIDAS = {
-  borrador: ['enviado'],
-  enviado: ['aceptado', 'rechazado'],
-  aceptado: ['vencido'],
+  borrador: ['enviado', 'rechazado', 'vencido'],
+  enviado: ['aceptado', 'rechazado', 'vencido'],
+  aceptado: [],
   rechazado: ['borrador'],
-  vencido: [],
+  vencido: ['borrador'],
 };
 
 export const MONEDAS = ['ARS', 'USD'];
@@ -115,3 +115,93 @@ Este presupuesto tiene una validez de 15 días corridos desde la fecha de emisi�
 
 CONDICIONES DE RECÁLCULO:
 Los precios fueron calculados considerando la ejecución conjunta de todas las tareas detalladas. Cualquier cambio de alcance, supresión parcial de rubros o modificación de proyecto implica un recálculo del presupuesto.`;
+
+/** ID especial para la plantilla SorbyData (no es un _id de backend) */
+export const PLANTILLA_SORBYDATA_ID = 'sorbydata';
+
+/** Plantilla predefinida SorbyData con rubros y tareas estándar */
+export const PLANTILLA_SORBYDATA = {
+  id: PLANTILLA_SORBYDATA_ID,
+  nombre: 'Plantilla SorbyData',
+  rubros: [
+    {
+      nombre: 'Demolición',
+      incidencia_pct_sugerida: null,
+      tareas: [
+        { descripcion: 'Demolición de muros según plano' },
+        { descripcion: 'Desmonte de artefactos sanitarios en baños, griferías, mesadas, muebles de cocina, puertas y roperos' },
+        { descripcion: 'Retiro de todas las ventanas y desecho de las mismas' },
+        { descripcion: 'Embolsado de escombros, servicio de volquetes y llenado de los mismos' },
+      ],
+    },
+    {
+      nombre: 'Albañilería General',
+      incidencia_pct_sugerida: null,
+      tareas: [
+        { descripcion: 'Elevaciones de muros en mampostería según plano' },
+        { descripcion: 'Revoque grueso de muros' },
+        { descripcion: 'Recuadro de vanos para puertas y ventanas' },
+        { descripcion: 'Ejecución de contrapiso y carpetas en ambientes húmedos con nuevas instalaciones. Y en sectores del patio para recibir nuevos pisos' },
+        { descripcion: 'Ejecución de banquinas en cocina y lavadero' },
+      ],
+    },
+    {
+      nombre: 'Instalación Sanitaria',
+      incidencia_pct_sugerida: null,
+      tareas: [
+        { descripcion: 'Desmonte y retiro de distribuciones de cañerías de agua y desagües obsoletas' },
+        { descripcion: 'Instalación de distribución interna de cañerías de desagües nuevas para baños, cocina y lavadero. Se tomarán desde acometidas existentes' },
+        { descripcion: 'Instalación de distribución interna de cañerías de agua fría y caliente nuevas para baños, cocina, lavadero y patio. Se tomarán desde acometidas existentes' },
+        { descripcion: 'Instalación y amurado de juegos de griferías de embutir y rejillas de desagües lineales. Provistas por cliente' },
+      ],
+    },
+    {
+      nombre: 'Instalación Eléctrica',
+      incidencia_pct_sugerida: null,
+      tareas: [
+        { descripcion: 'Desinstalación y desarmado de bocas y cableados de electricidad existentes' },
+        { descripcion: 'Instalación de bocas de electricidad e iluminación nuevas (Canaleteado, colocación de caños corrugados plásticos, amurado de cajas, cableado nuevo)' },
+        { descripcion: 'Instalación de tablero general nuevo de acuerdo a la nueva instalación eléctrica completa' },
+      ],
+    },
+    {
+      nombre: 'Colocaciones de Placas de Porcelanato y/o Marmetas',
+      incidencia_pct_sugerida: null,
+      tareas: [
+        { descripcion: 'Colocaciones de placas de porcelanatos y/o marmetas provistas por cliente en baños, área de servicio y en algunos sectores de patio' },
+      ],
+    },
+    {
+      nombre: 'Pintura',
+      incidencia_pct_sugerida: null,
+      tareas: [
+        { descripcion: 'Aplicación de Enduido en todos los muros interiores del departamento' },
+        { descripcion: 'Lijado' },
+        { descripcion: 'Aplicación de pintura de esmalte sintético satinada en paredes, puertas y zócalos' },
+      ],
+    },
+    {
+      nombre: 'Instalación de Toma Corrientes, Llaves de Enc. y Artef. de Iluminación',
+      incidencia_pct_sugerida: null,
+      tareas: [
+        { descripcion: 'Colocación de artefactos de iluminación en todo el departamento. Provistos por cliente' },
+      ],
+    },
+    {
+      nombre: 'Colocación de Artefactos Sanitarios, Griferías y Accesorios',
+      incidencia_pct_sugerida: null,
+      tareas: [
+        { descripcion: 'Instalación de vistas de griferías. Provistos por cliente' },
+        { descripcion: 'Instalación de inodoros, bidets, desagües de bachas, bañadera y accesorios. Provistos por cliente' },
+      ],
+    },
+    {
+      nombre: 'Varios',
+      incidencia_pct_sugerida: null,
+      tareas: [
+        { descripcion: 'Limpieza gruesa periódica' },
+        { descripcion: 'Ayuda de gremios' },
+      ],
+    },
+  ],
+};

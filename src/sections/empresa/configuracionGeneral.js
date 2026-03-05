@@ -83,9 +83,10 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
   const [razonSocial, setRazonSocial] = useState(empresa.razon_social || "");
   const [cuit, setCuit] = useState(empresa.cuit || "");
   const [domicilioFiscal, setDomicilioFiscal] = useState(empresa.domicilio_fiscal || "");
-  const [carpetaEmpresaRef, setCarpetaEmpresaRef] = useState(empresa.carpetaEmpresaRef || "");
   const [isRegenerandoSheets, setIsRegenerandoSheets] = useState(false);
   const [cuentaSuspendida, setCuentaSuspendida] = useState(empresa.cuenta_suspendida || false);
+
+
   // ----- Cuentas y defaults -----
   const empresaTieneCuentas = Array.isArray(empresa.cuentas) && empresa.cuentas.length > 0;
   const initialCuentas = empresaTieneCuentas
@@ -166,6 +167,7 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
   const opcionesAcciones = [
     "CREAR_EGRESO",
     "CREAR_EGRESO_PRORATEADO",
+    "CREAR_EGRESOS_MASIVO",
     "CREAR_INGRESO",
     "VER_CAJAS",
     "AJUSTAR_CAJAS",
@@ -326,7 +328,6 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
       razon_social: razonSocial,
       cuit,
       domicilio_fiscal: domicilioFiscal,
-      carpetaEmpresaRef: carpetaEmpresaRef,
       cuenta_suspendida: cuentaSuspendida,
       cuentas: cuentas,
       cuenta_default_texto: cuentaDefaultTexto,
@@ -616,15 +617,6 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
       <Typography variant="h6" sx={{ mt: 4 }}>
         Gestionar Google Sheets
       </Typography>
-
-      <TextField
-        label="ID de carpeta de Drive"
-        value={carpetaEmpresaRef}
-        onChange={(e) => setCarpetaEmpresaRef(e.target.value)}
-        fullWidth
-        sx={{ mt: 2 }}
-        helperText="Ejemplo: 1a2B3cD4eFgHiJKLmNopQRStuvWxYzZ123"
-      />
 
       <Button
         onClick={handleRegenerarSheets}
