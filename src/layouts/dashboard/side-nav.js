@@ -315,6 +315,15 @@ export const SideNav = (props) => {
           ),
         });
         baseItems.push({
+          title: "Mis Reuniones",
+          path: "/sdr/reuniones",
+          icon: (
+            <SvgIcon fontSize="small">
+              <TodayIcon />
+            </SvgIcon>
+          ),
+        });
+        baseItems.push({
           title: "Cadencias",
           path: "/sdr/cadencias",
           icon: (

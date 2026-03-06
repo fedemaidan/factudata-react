@@ -67,6 +67,7 @@ import SDRService from 'src/services/sdrService';
 import { EstadoChip, EstadoChipEditable, ModalEditarContacto } from 'src/components/sdr/DrawerDetalleContactoSDR';
 import ModalRegistrarAccion from 'src/components/sdr/ModalRegistrarAccion';
 import ModalSelectorTemplate, { replaceVariables } from 'src/components/sdr/ModalSelectorTemplate';
+import ModalCrearReunion from 'src/components/sdr/ModalCrearReunion';
 import { detectarContextoTemplate, obtenerMejorTemplate } from 'src/utils/templateContexto';
 import { getWhatsAppLink, getTelLink } from 'src/utils/phoneUtils';
 import {
@@ -1810,6 +1811,51 @@ const ContactoSDRDetailPage = () => {
                                 </CardContent>
                             </Card>
                         </Grid>
+
+                        {/* Card: Resumen SDR (IA) */}
+                        <Grid item xs={12}>
+                            <Card variant="outlined">
+                                <CardContent>
+                                    <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between" mb={1}>
+                                        <Stack direction="row" spacing={1} alignItems="center">
+                                            <AutoFixHighIcon fontSize="small" color="action" />
+                                            <Typography variant="subtitle2" color="text.secondary">
+                                                Resumen SDR (IA)
+                                            </Typography>
+                                        </Stack>
+                                        <Button
+                                            size="small"
+                                            variant={contacto.resumenSDR ? 'outlined' : 'contained'}
+                                            onClick={async () => {
+                                                try {
+                                                    setGuardandoScoring(true);
+                                                    const data = await SDRService.generarResumenContacto(contacto._id);
+                                                    setContacto(prev => ({ ...prev, resumenSDR: data.resumenSDR }));
+                                                    mostrarSnackbar('Resumen generado con IA ✨');
+                                                } catch (err) {
+                                                    mostrarSnackbar(err.response?.data?.error || 'Error al generar resumen', 'error');
+                                                } finally {
+                                                    setGuardandoScoring(false);
+                                                }
+                                            }}
+                                            disabled={guardandoScoring}
+                                            sx={{ textTransform: 'none', fontSize: '0.78rem' }}
+                                        >
+                                            {guardandoScoring ? <CircularProgress size={16} /> : contacto.resumenSDR ? '🔄 Regenerar' : '✨ Generar resumen'}
+                                        </Button>
+                                    </Stack>
+                                    {contacto.resumenSDR ? (
+                                        <Typography variant="body2" sx={{ whiteSpace: 'pre-line', fontSize: '0.82rem', lineHeight: 1.6 }}>
+                                            {contacto.resumenSDR}
+                                        </Typography>
+                                    ) : (
+                                        <Typography variant="body2" color="text.disabled" sx={{ fontStyle: 'italic' }}>
+                                            Sin resumen generado. Hacé click en "Generar resumen" para que la IA analice el historial del contacto.
+                                        </Typography>
+                                    )}
+                                </CardContent>
+                            </Card>
+                        </Grid>
                     </Grid>
 
                     {/* ==================== REUNIONES (si existen) ==================== */}
@@ -3464,7 +3510,7 @@ const ContactoSDRDetailPage = () => {
             )}
 
             {/* Modal Reunión */}
-            <ModalReunionSDR
+            <ModalCrearReunion
                 open={modalReunion}
                 onClose={() => setModalReunion(false)}
                 contacto={contacto}
@@ -3558,122 +3604,6 @@ const ContactoSDRDetailPage = () => {
                 onTemplateSelected={handleTemplateSelected}
             />
         </DashboardLayout>
-    );
-};
-
-// ==================== MODAL REUNIÓN ====================
-const TAMANOS_EMPRESA = ['1-10', '11-50', '51-200', '200+'];
-
-const ModalReunionSDR = ({ open, onClose, contacto, onSubmit, loading }) => {
-    const [form, setForm] = useState({
-        fechaHora: '',
-        empresaNombre: '',
-        tamanoEmpresa: '',
-        contactoPrincipal: '',
-        rolContacto: '',
-        puntosDeDolor: '',
-        modulosPotenciales: '',
-        linkAgenda: ''
-    });
-
-    useEffect(() => {
-        if (contacto && open) {
-            setForm({
-                fechaHora: '',
-                empresaNombre: contacto.empresa || '',
-                tamanoEmpresa: contacto.tamanoEmpresa || '',
-                contactoPrincipal: contacto.nombre || '',
-                rolContacto: contacto.cargo || '',
-                puntosDeDolor: '',
-                modulosPotenciales: '',
-                linkAgenda: ''
-            });
-        }
-    }, [contacto, open]);
-
-    return (
-        <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-            <DialogTitle>📅 Registrar Reunión</DialogTitle>
-            <DialogContent>
-                <Stack spacing={2} sx={{ mt: 1 }}>
-                    <TextField
-                        label="Fecha y hora *"
-                        type="datetime-local"
-                        value={form.fechaHora}
-                        onChange={(e) => setForm({ ...form, fechaHora: e.target.value })}
-                        fullWidth
-                        InputLabelProps={{ shrink: true }}
-                        required
-                    />
-                    <TextField
-                        label="Nombre de la empresa *"
-                        value={form.empresaNombre}
-                        onChange={(e) => setForm({ ...form, empresaNombre: e.target.value })}
-                        fullWidth
-                        required
-                    />
-                    <FormControl fullWidth required>
-                        <InputLabel>Tamaño de empresa *</InputLabel>
-                        <Select
-                            value={form.tamanoEmpresa}
-                            label="Tamaño de empresa *"
-                            onChange={(e) => setForm({ ...form, tamanoEmpresa: e.target.value })}
-                        >
-                            {TAMANOS_EMPRESA.map(t => (
-                                <MenuItem key={t} value={t}>{t} empleados</MenuItem>
-                            ))}
-                        </Select>
-                    </FormControl>
-                    <TextField
-                        label="Contacto principal *"
-                        value={form.contactoPrincipal}
-                        onChange={(e) => setForm({ ...form, contactoPrincipal: e.target.value })}
-                        fullWidth
-                        required
-                    />
-                    <TextField
-                        label="Rol del contacto"
-                        value={form.rolContacto}
-                        onChange={(e) => setForm({ ...form, rolContacto: e.target.value })}
-                        fullWidth
-                        placeholder="Ej: Gerente, Dueño, etc."
-                    />
-                    <TextField
-                        label="Puntos de dolor"
-                        value={form.puntosDeDolor}
-                        onChange={(e) => setForm({ ...form, puntosDeDolor: e.target.value })}
-                        fullWidth
-                        multiline
-                        rows={2}
-                        placeholder="¿Qué problemas tiene la empresa?"
-                    />
-                    <TextField
-                        label="Módulos potenciales"
-                        value={form.modulosPotenciales}
-                        onChange={(e) => setForm({ ...form, modulosPotenciales: e.target.value })}
-                        fullWidth
-                        placeholder="Ej: Facturación, Stock, etc."
-                    />
-                    <TextField
-                        label="Link de la reunión"
-                        value={form.linkAgenda}
-                        onChange={(e) => setForm({ ...form, linkAgenda: e.target.value })}
-                        fullWidth
-                        placeholder="Google Meet, Zoom, etc."
-                    />
-                </Stack>
-            </DialogContent>
-            <DialogActions>
-                <Button onClick={onClose}>Cancelar</Button>
-                <Button
-                    variant="contained"
-                    onClick={() => onSubmit(form)}
-                    disabled={!form.fechaHora || !form.empresaNombre || !form.tamanoEmpresa || !form.contactoPrincipal || loading}
-                >
-                    {loading ? <CircularProgress size={20} /> : 'Registrar Reunión'}
-                </Button>
-            </DialogActions>
-        </Dialog>
     );
 };
 
