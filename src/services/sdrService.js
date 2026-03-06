@@ -188,6 +188,38 @@ const SDRService = {
         return res.data;
     },
 
+    /**
+     * Obtener reunión por ID (con datos enriquecidos del contacto)
+     */
+    obtenerReunion: async (reunionId) => {
+        const res = await api.get(`/sdr/reuniones/${reunionId}`);
+        return res.data;
+    },
+
+    /**
+     * Eliminar reunión
+     */
+    eliminarReunion: async (reunionId) => {
+        const res = await api.delete(`/sdr/reuniones/${reunionId}`);
+        return res.data;
+    },
+
+    /**
+     * Procesar transcripción de reunión con IA (GPT-4o)
+     */
+    procesarTranscripcion: async (reunionId) => {
+        const res = await api.post(`/sdr/reuniones/${reunionId}/procesar-transcripcion`);
+        return res.data;
+    },
+
+    /**
+     * Generar resumen SDR de un contacto con IA (GPT-4o)
+     */
+    generarResumenContacto: async (contactoId) => {
+        const res = await api.post(`/sdr/contactos/${contactoId}/generar-resumen`);
+        return res.data;
+    },
+
     // ==================== SCORING / CALIFICACIÓN (v2) ====================
 
     /**

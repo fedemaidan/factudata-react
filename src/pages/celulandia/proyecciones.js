@@ -363,7 +363,7 @@ const ProyeccionesV2Page = () => {
       },
       {
         key: "cantidadCompraSugerida",
-        label: "Cant. a comprar (90 días)",
+        label: "Cant. a comprar (200 días)",
         sortable: true,
       },
       {
