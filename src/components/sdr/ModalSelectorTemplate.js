@@ -1,29 +1,30 @@
 /**
- * Modal Selector de Templates de WhatsApp
- * Permite seleccionar un template por etapa de cadencia y abre WhatsApp con el mensaje
+ * Modal Selector de Templates de WhatsApp — Fase 2: Templates Contextuales
+ * 
+ * Filtra y ordena templates automáticamente según el contexto del contacto.
+ * Usa tags en vez de cadencia_step. Recibe el contacto como prop para detectar contexto.
  */
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
     Dialog, DialogTitle, DialogContent, DialogActions,
     Box, Typography, Button, Chip, Stack, Paper, CircularProgress,
-    TextField, Tabs, Tab, IconButton, Divider, Alert
+    TextField, IconButton, Divider, Alert, Tabs, Tab, Tooltip
 } from '@mui/material';
 import {
     WhatsApp as WhatsAppIcon,
     Close as CloseIcon,
     Send as SendIcon,
     Edit as EditIcon,
-    ContentCopy as CopyIcon
+    ContentCopy as CopyIcon,
+    AutoFixHigh as AutoFixHighIcon
 } from '@mui/icons-material';
 import SDRService from '../../services/sdrService';
 import { getWhatsAppLink } from '../../utils/phoneUtils';
-
-// Etapas de cadencia
-const CADENCIA_STEPS = [
-    { step: 1, label: 'Primer contacto', color: 'info' },
-    { step: 2, label: 'Follow-up', color: 'warning' },
-    { step: 3, label: 'Último intento', color: 'error' },
-];
+import {
+    detectarContextoTemplate,
+    filtrarTemplatesPorContexto,
+    TAG_MAP,
+} from '../../utils/templateContexto';
 
 /**
  * Reemplaza variables en el template
@@ -33,24 +34,21 @@ const replaceVariables = (template, contacto, user = {}) => {
     if (!template) return '';
     
     let result = template;
-    
-    // {{first_name}} - Primer nombre del contacto
     const firstName = contacto?.nombre?.split(' ')[0] || contacto?.nombre || '';
     result = result.replace(/\{\{first_name\}\}/gi, firstName);
-    
-    // {{company}} - Empresa del contacto
     const company = contacto?.empresa || '';
     result = result.replace(/\{\{company\}\}/gi, company);
-    
-    // {{assigned_to}} - Nombre del SDR asignado
     const assignedTo = user?.firstName || user?.nombre || 'tu asesor';
     result = result.replace(/\{\{assigned_to\}\}/gi, assignedTo);
-    
-    // Limpiar variables no reemplazadas (opcionales)
-    result = result.replace(/\{\{company\}\}/gi, ''); // Si no hay empresa
-    
+    result = result.replace(/\{\{company\}\}/gi, '');
     return result.trim();
 };
+
+// Tabs de visualización
+const VIEW_TABS = [
+    { key: 'contexto', label: '✨ Sugeridos' },
+    { key: 'todos', label: '📋 Todos' },
+];
 
 const ModalSelectorTemplate = ({
     open,
@@ -58,24 +56,44 @@ const ModalSelectorTemplate = ({
     contacto,
     user,
     empresaId,
-    onTemplateUsed, // Callback cuando se usa un template
+    onTemplateUsed,
+    onTemplateSelected, // Nuevo callback: inserta template en wizard sin abrir WA
 }) => {
-    console.log('ModalSelectorTemplate render - open:', open, 'empresaId:', empresaId, 'contacto:', contacto?.nombre);
-    
     const [templates, setTemplates] = useState([]);
     const [loading, setLoading] = useState(false);
-    const [selectedStep, setSelectedStep] = useState(1);
     const [selectedTemplate, setSelectedTemplate] = useState(null);
     const [mensajeEditado, setMensajeEditado] = useState('');
     const [editMode, setEditMode] = useState(false);
     const [copied, setCopied] = useState(false);
+    const [viewTab, setViewTab] = useState(0);
+
+    // Detectar contexto del contacto
+    const contextoTags = useMemo(() => {
+        return detectarContextoTemplate(contacto);
+    }, [contacto?.estado, contacto?.contadores, contacto?.segmento, contacto?.reuniones]);
+
+    // Templates filtrados y ordenados por contexto
+    const templatesSugeridos = useMemo(() => {
+        return filtrarTemplatesPorContexto(templates, contextoTags);
+    }, [templates, contextoTags]);
+
+    const templatesVisibles = viewTab === 0 ? templatesSugeridos : templates.filter(t => t.active !== false);
 
     // Cargar templates al abrir
     useEffect(() => {
         if (open && empresaId) {
             cargarTemplates();
+            setViewTab(0);
+            setSelectedTemplate(null);
         }
     }, [open, empresaId]);
+
+    // Auto-seleccionar mejor template cuando los sugeridos cambian
+    useEffect(() => {
+        if (templatesSugeridos.length > 0 && !selectedTemplate && open) {
+            setSelectedTemplate(templatesSugeridos[0]);
+        }
+    }, [templatesSugeridos, open]);
 
     // Actualizar mensaje cuando cambia el template seleccionado
     useEffect(() => {
@@ -91,47 +109,13 @@ const ModalSelectorTemplate = ({
         try {
             const data = await SDRService.listarTemplatesWhatsApp(empresaId);
             setTemplates(data.templates || []);
-            
-            // Seleccionar el primer template de la cadencia actual
-            const templatesStep1 = (data.templates || []).filter(t => t.cadencia_step === 1);
-            if (templatesStep1.length > 0) {
-                setSelectedTemplate(templatesStep1[0]);
-            }
         } catch (error) {
             console.error('Error cargando templates:', error);
-            // Usar templates por defecto si falla
-            setTemplates(getDefaultTemplates());
+            setTemplates([]);
         } finally {
             setLoading(false);
         }
     };
-
-    // Templates por defecto si no hay en la base
-    const getDefaultTemplates = () => [
-        {
-            _id: 'default-1',
-            cadencia_step: 1,
-            label: 'Primer contacto',
-            body: '¡Hola {{first_name}}! 👋\n\nSoy {{assigned_to}} de Sorby. Vi que podrías estar interesado en optimizar la gestión de tu negocio.\n\n¿Tenés 5 minutos para que te cuente cómo podemos ayudarte?',
-            active: true
-        },
-        {
-            _id: 'default-2',
-            cadencia_step: 2,
-            label: 'Follow-up',
-            body: '¡Hola {{first_name}}! 👋\n\nTe escribo de nuevo porque no quería que te pierdas la oportunidad de conocer Sorby.\n\n¿Te gustaría agendar una llamada rápida esta semana?',
-            active: true
-        },
-        {
-            _id: 'default-3',
-            cadencia_step: 3,
-            label: 'Último intento',
-            body: 'Hola {{first_name}},\n\nÚltimo mensaje 😊 No quiero ser insistente, pero realmente creo que Sorby podría ayudarte.\n\nSi en algún momento querés conocer más, acá estoy.\n\n¡Éxitos!',
-            active: true
-        }
-    ];
-
-    const templatesActuales = templates.filter(t => t.cadencia_step === selectedStep && t.active);
 
     const handleSelectTemplate = (template) => {
         setSelectedTemplate(template);
@@ -143,7 +127,6 @@ const ModalSelectorTemplate = ({
         const link = getWhatsAppLink(contacto.telefono, mensajeEditado);
         window.open(link, '_blank');
         
-        // Notificar que se usó el template
         onTemplateUsed?.(selectedTemplate, mensajeEditado);
         onClose();
     };
@@ -155,6 +138,13 @@ const ModalSelectorTemplate = ({
             setTimeout(() => setCopied(false), 2000);
         } catch (error) {
             console.error('Error copiando:', error);
+        }
+    };
+
+    const handleUseTemplate = () => {
+        if (mensajeEditado && onTemplateSelected) {
+            onTemplateSelected(mensajeEditado, selectedTemplate);
+            handleClose();
         }
     };
 
@@ -187,6 +177,27 @@ const ModalSelectorTemplate = ({
                 <Typography variant="body2" color="text.secondary">
                     {contacto?.nombre} • {contacto?.telefono}
                 </Typography>
+                {/* Chips de contexto detectado */}
+                <Stack direction="row" spacing={0.5} sx={{ mt: 1, flexWrap: 'wrap', gap: 0.5 }}>
+                    {contextoTags.filter(t => t !== 'generico').map(tag => {
+                        const meta = TAG_MAP[tag];
+                        return meta ? (
+                            <Chip
+                                key={tag}
+                                label={meta.label}
+                                size="small"
+                                sx={{
+                                    bgcolor: meta.color + '15',
+                                    color: meta.color,
+                                    borderColor: meta.color + '40',
+                                    fontSize: '0.7rem',
+                                    height: 22,
+                                }}
+                                variant="outlined"
+                            />
+                        ) : null;
+                    })}
+                </Stack>
             </DialogTitle>
 
             <DialogContent dividers>
@@ -196,43 +207,33 @@ const ModalSelectorTemplate = ({
                     </Box>
                 ) : (
                     <Stack spacing={2}>
-                        {/* Selector de etapa de cadencia */}
-                        <Box>
-                            <Typography variant="subtitle2" gutterBottom>
-                                Etapa de cadencia
-                            </Typography>
-                            <Tabs 
-                                value={selectedStep} 
-                                onChange={(_, v) => {
-                                    setSelectedStep(v);
-                                    const templatesNuevos = templates.filter(t => t.cadencia_step === v);
-                                    if (templatesNuevos.length > 0) {
-                                        setSelectedTemplate(templatesNuevos[0]);
-                                    } else {
-                                        setSelectedTemplate(null);
+                        {/* Tabs: Sugeridos / Todos */}
+                        <Tabs
+                            value={viewTab}
+                            onChange={(_, v) => setViewTab(v)}
+                            variant="fullWidth"
+                            sx={{ minHeight: 36 }}
+                        >
+                            {VIEW_TABS.map((tab, idx) => (
+                                <Tab 
+                                    key={tab.key}
+                                    label={
+                                        <Stack direction="row" spacing={0.5} alignItems="center">
+                                            <span>{tab.label}</span>
+                                            {idx === 0 && templatesSugeridos.length > 0 && (
+                                                <Chip label={templatesSugeridos.length} size="small" color="primary" sx={{ height: 18, fontSize: '0.65rem', minWidth: 20 }} />
+                                            )}
+                                        </Stack>
                                     }
-                                }}
-                                variant="fullWidth"
-                                sx={{ mb: 2 }}
-                            >
-                                {CADENCIA_STEPS.map(step => (
-                                    <Tab 
-                                        key={step.step}
-                                        value={step.step}
-                                        label={step.label}
-                                        sx={{ textTransform: 'none' }}
-                                    />
-                                ))}
-                            </Tabs>
-                        </Box>
+                                    sx={{ textTransform: 'none', minHeight: 36, py: 0.5 }}
+                                />
+                            ))}
+                        </Tabs>
 
                         {/* Lista de templates */}
-                        {templatesActuales.length > 0 ? (
+                        {templatesVisibles.length > 0 ? (
                             <Stack spacing={1}>
-                                <Typography variant="subtitle2">
-                                    Templates disponibles
-                                </Typography>
-                                {templatesActuales.map(template => (
+                                {templatesVisibles.map(template => (
                                     <Paper
                                         key={template._id}
                                         elevation={0}
@@ -249,29 +250,66 @@ const ModalSelectorTemplate = ({
                                             }
                                         }}
                                     >
-                                        <Typography variant="subtitle2" fontWeight={600}>
-                                            {template.label}
-                                        </Typography>
-                                        <Typography 
-                                            variant="body2" 
-                                            color="text.secondary"
-                                            sx={{ 
-                                                mt: 0.5,
-                                                overflow: 'hidden',
-                                                textOverflow: 'ellipsis',
-                                                display: '-webkit-box',
-                                                WebkitLineClamp: 2,
-                                                WebkitBoxOrient: 'vertical'
-                                            }}
-                                        >
-                                            {template.body}
-                                        </Typography>
+                                        <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
+                                            <Box sx={{ flex: 1 }}>
+                                                <Stack direction="row" spacing={0.5} alignItems="center" mb={0.5}>
+                                                    <Typography variant="subtitle2" fontWeight={600}>
+                                                        {template.label}
+                                                    </Typography>
+                                                    {template._score > 0 && viewTab === 0 && (
+                                                        <Tooltip title={`Relevancia: ${Math.round(template._score * 10) / 10}`}>
+                                                            <AutoFixHighIcon sx={{ fontSize: 14, color: 'primary.main' }} />
+                                                        </Tooltip>
+                                                    )}
+                                                </Stack>
+                                                <Typography 
+                                                    variant="body2" 
+                                                    color="text.secondary"
+                                                    sx={{ 
+                                                        overflow: 'hidden',
+                                                        textOverflow: 'ellipsis',
+                                                        display: '-webkit-box',
+                                                        WebkitLineClamp: 2,
+                                                        WebkitBoxOrient: 'vertical'
+                                                    }}
+                                                >
+                                                    {template.body}
+                                                </Typography>
+                                            </Box>
+                                        </Stack>
+                                        {/* Tags del template */}
+                                        {template.tags?.length > 0 && (
+                                            <Stack direction="row" spacing={0.3} sx={{ mt: 1, flexWrap: 'wrap', gap: 0.3 }}>
+                                                {template.tags.map(tag => {
+                                                    const meta = TAG_MAP[tag];
+                                                    const isMatch = contextoTags.includes(tag);
+                                                    return (
+                                                        <Chip
+                                                            key={tag}
+                                                            label={meta?.icon || '📝'} 
+                                                            size="small"
+                                                            sx={{
+                                                                height: 18,
+                                                                fontSize: '0.6rem',
+                                                                bgcolor: isMatch ? (meta?.color || '#607d8b') + '20' : 'grey.100',
+                                                                color: isMatch ? meta?.color : 'text.disabled',
+                                                                border: isMatch ? `1px solid ${meta?.color}40` : '1px solid transparent',
+                                                                '& .MuiChip-label': { px: 0.5 }
+                                                            }}
+                                                            title={meta?.label || tag}
+                                                        />
+                                                    );
+                                                })}
+                                            </Stack>
+                                        )}
                                     </Paper>
                                 ))}
                             </Stack>
                         ) : (
                             <Alert severity="info">
-                                No hay templates para esta etapa. Se usarán los templates por defecto.
+                                {viewTab === 0 
+                                    ? 'No hay templates sugeridos para este contexto. Probá la pestaña "Todos".'
+                                    : 'No hay templates disponibles.'}
                             </Alert>
                         )}
 
@@ -344,10 +382,20 @@ const ModalSelectorTemplate = ({
                 )}
             </DialogContent>
 
-            <DialogActions sx={{ p: 2 }}>
+            <DialogActions sx={{ p: 2, gap: 1 }}>
                 <Button onClick={handleClose} color="inherit">
                     Cancelar
                 </Button>
+                {onTemplateSelected && (
+                    <Button
+                        variant="outlined"
+                        onClick={handleUseTemplate}
+                        disabled={!mensajeEditado}
+                        sx={{ borderRadius: 2 }}
+                    >
+                        Usar en wizard
+                    </Button>
+                )}
                 <Button
                     variant="contained"
                     startIcon={<SendIcon />}
@@ -367,4 +415,5 @@ const ModalSelectorTemplate = ({
     );
 };
 
+export { replaceVariables };
 export default ModalSelectorTemplate;

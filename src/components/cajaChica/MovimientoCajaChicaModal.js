@@ -69,7 +69,7 @@ const MovimientoCajaChicaModal = ({
       newErrors.total = 'El monto debe ser mayor a 0';
     }
 
-    if (!formData.categoria) {
+    if (formData.type === 'egreso' && !formData.categoria) {
       newErrors.categoria = 'Debe seleccionar una categoría';
     }
 
@@ -183,26 +183,28 @@ const MovimientoCajaChicaModal = ({
             ))}
           </TextField>
 
-          {/* Categoría */}
-          <TextField
-            select
-            label="Categoría"
-            value={formData.categoria}
-            onChange={handleChange('categoria')}
-            error={!!errors.categoria}
-            helperText={errors.categoria}
-            fullWidth
-            required
-          >
-            <MenuItem value="">
-              <em>Seleccionar categoría</em>
-            </MenuItem>
-            {categorias.map((cat, idx) => (
-              <MenuItem key={idx} value={cat.name || cat}>
-                {cat.name || cat}
+          {/* Categoría (solo para egresos) */}
+          {formData.type === 'egreso' && (
+            <TextField
+              select
+              label="Categoría"
+              value={formData.categoria}
+              onChange={handleChange('categoria')}
+              error={!!errors.categoria}
+              helperText={errors.categoria}
+              fullWidth
+              required
+            >
+              <MenuItem value="">
+                <em>Seleccionar categoría</em>
               </MenuItem>
-            ))}
-          </TextField>
+              {categorias.map((cat, idx) => (
+                <MenuItem key={idx} value={cat.name || cat}>
+                  {cat.name || cat}
+                </MenuItem>
+              ))}
+            </TextField>
+          )}
 
           {/* Proveedor (opcional) */}
           {formData.type === 'egreso' && (

@@ -66,6 +66,8 @@ import { useAuthContext } from 'src/contexts/auth-context';
 import SDRService from 'src/services/sdrService';
 import { EstadoChip, EstadoChipEditable, ModalEditarContacto } from 'src/components/sdr/DrawerDetalleContactoSDR';
 import ModalRegistrarAccion from 'src/components/sdr/ModalRegistrarAccion';
+import ModalSelectorTemplate, { replaceVariables } from 'src/components/sdr/ModalSelectorTemplate';
+import { detectarContextoTemplate, obtenerMejorTemplate } from 'src/utils/templateContexto';
 import { getWhatsAppLink, getTelLink } from 'src/utils/phoneUtils';
 import {
     PLANES_SORBY,
@@ -284,6 +286,10 @@ const ContactoSDRDetailPage = () => {
     // Modal editar contacto
     const [modalEditarContacto, setModalEditarContacto] = useState(false);
 
+    // Modal selector de templates WhatsApp (Fase 2)
+    const [modalTemplateWA, setModalTemplateWA] = useState(false);
+    const [templatesWA, setTemplatesWA] = useState([]); // Cache de templates cargados
+
     // Tab mobile para chat/historial
     const [tabMobile, setTabMobile] = useState(0);
     // Tab desktop (Info / Historial / Chat)
@@ -442,6 +448,26 @@ const ContactoSDRDetailPage = () => {
             .then(data => setCadencias(data || []))
             .catch(() => setCadencias([]));
     }, []);
+
+    // Cargar templates de WA (para auto-fill) — Fase 2
+    useEffect(() => {
+        if (empresaId) {
+            SDRService.listarTemplatesWhatsApp(empresaId)
+                .then(data => setTemplatesWA(data.templates || []))
+                .catch(() => setTemplatesWA([]));
+        }
+    }, [empresaId]);
+
+    // Auto-fill mensajeWA con mejor template cuando cambia el contacto (Fase 2)
+    useEffect(() => {
+        if (contacto && templatesWA.length > 0 && !mensajeWA) {
+            const mejor = obtenerMejorTemplate(templatesWA, contacto);
+            if (mejor) {
+                const mensaje = replaceVariables(mejor.body, contacto, user);
+                if (mensaje) setMensajeWA(mensaje);
+            }
+        }
+    }, [contacto?._id, contacto?.estado, templatesWA.length]);
 
     // Reset wizard cuando cambia el paso actual (respeta WA pendiente)
     useEffect(() => {
@@ -958,6 +984,12 @@ const ContactoSDRDetailPage = () => {
     const handleWizardEnviarWA = () => {
         window.open(getWhatsAppLink(contacto.telefono, mensajeWA), '_blank');
         setWizardFase('resultado');
+    };
+
+    /** Callback cuando el usuario elige un template desde el modal */
+    const handleTemplateSelected = (mensaje) => {
+        setMensajeWA(mensaje);
+        setModalTemplateWA(false);
     };
 
     /** Confirma envío de WA, registra y avanza */
@@ -2277,13 +2309,22 @@ const ContactoSDRDetailPage = () => {
                                     <Box>
                                         <TextField fullWidth size="small" multiline minRows={3} maxRows={8}
                                             value={mensajeWA} onChange={(e) => setMensajeWA(e.target.value)}
-                                            sx={{ mb: 1.5 }} placeholder="Mensaje para WhatsApp..." />
-                                        <Button variant="contained" startIcon={<WhatsAppIcon />}
-                                            onClick={handleWizardEnviarWA}
-                                            disabled={!mensajeWA.trim()} fullWidth
-                                            sx={{ bgcolor: '#25D366', '&:hover': { bgcolor: '#128C7E' }, py: 1 }}>
-                                            Enviar por WhatsApp
-                                        </Button>
+                                            sx={{ mb: 1 }} placeholder="Mensaje para WhatsApp..." />
+                                        <Stack direction="row" spacing={1} sx={{ mb: 1.5 }}>
+                                            <Button variant="contained" startIcon={<WhatsAppIcon />}
+                                                onClick={handleWizardEnviarWA}
+                                                disabled={!mensajeWA.trim()} fullWidth
+                                                sx={{ bgcolor: '#25D366', '&:hover': { bgcolor: '#128C7E' }, py: 1 }}>
+                                                Enviar por WhatsApp
+                                            </Button>
+                                            <Tooltip title="Elegir template">
+                                                <Button variant="outlined" size="small"
+                                                    onClick={() => setModalTemplateWA(true)}
+                                                    sx={{ minWidth: 40, px: 1 }}>
+                                                    📋
+                                                </Button>
+                                            </Tooltip>
+                                        </Stack>
                                     </Box>
                                 )}
 
@@ -2487,13 +2528,22 @@ const ContactoSDRDetailPage = () => {
                             <Box>
                                 <TextField fullWidth size="small" multiline minRows={3} maxRows={8}
                                     value={mensajeWA} onChange={(e) => setMensajeWA(e.target.value)}
-                                    sx={{ mb: 1.5 }} placeholder="Mensaje para WhatsApp..." />
-                                <Button variant="contained" startIcon={<WhatsAppIcon />}
-                                    onClick={handleWizardEnviarWA}
-                                    disabled={!mensajeWA.trim()} fullWidth
-                                    sx={{ bgcolor: '#25D366', '&:hover': { bgcolor: '#128C7E' }, py: 1 }}>
-                                    Enviar por WhatsApp
-                                </Button>
+                                    sx={{ mb: 1 }} placeholder="Mensaje para WhatsApp..." />
+                                <Stack direction="row" spacing={1} sx={{ mb: 1.5 }}>
+                                    <Button variant="contained" startIcon={<WhatsAppIcon />}
+                                        onClick={handleWizardEnviarWA}
+                                        disabled={!mensajeWA.trim()} fullWidth
+                                        sx={{ bgcolor: '#25D366', '&:hover': { bgcolor: '#128C7E' }, py: 1 }}>
+                                        Enviar por WhatsApp
+                                    </Button>
+                                    <Tooltip title="Elegir template">
+                                        <Button variant="outlined" size="small"
+                                            onClick={() => setModalTemplateWA(true)}
+                                            sx={{ minWidth: 40, px: 1 }}>
+                                            📋
+                                        </Button>
+                                    </Tooltip>
+                                </Stack>
                             </Box>
                             )}
 
@@ -3215,9 +3265,18 @@ const ContactoSDRDetailPage = () => {
                                     <Box>
                                         <TextField fullWidth size="small" multiline maxRows={3}
                                             value={mensajeWA} onChange={(e) => setMensajeWA(e.target.value)} sx={{ mb: 1 }} placeholder="Mensaje para WhatsApp..." />
-                                        <Button variant="contained" startIcon={<WhatsAppIcon />}
-                                            onClick={handleWizardEnviarWA} disabled={!mensajeWA.trim()} fullWidth
-                                            sx={{ bgcolor: '#25D366', '&:hover': { bgcolor: '#128C7E' } }}>Enviar por WhatsApp</Button>
+                                        <Stack direction="row" spacing={1}>
+                                            <Button variant="contained" startIcon={<WhatsAppIcon />}
+                                                onClick={handleWizardEnviarWA} disabled={!mensajeWA.trim()} fullWidth
+                                                sx={{ bgcolor: '#25D366', '&:hover': { bgcolor: '#128C7E' } }}>Enviar por WhatsApp</Button>
+                                            <Tooltip title="Elegir template">
+                                                <Button variant="outlined" size="small"
+                                                    onClick={() => setModalTemplateWA(true)}
+                                                    sx={{ minWidth: 40, px: 1 }}>
+                                                    📋
+                                                </Button>
+                                            </Tooltip>
+                                        </Stack>
                                     </Box>
                                 )}
                                 {wizardFase === 'accion' && waPendiente && (
@@ -3487,6 +3546,17 @@ const ContactoSDRDetailPage = () => {
                     {snackbar.message}
                 </Alert>
             </Snackbar>
+
+            {/* Modal Selector de Templates WA */}
+            <ModalSelectorTemplate
+                open={modalTemplateWA}
+                onClose={() => setModalTemplateWA(false)}
+                contacto={contacto}
+                user={user}
+                empresaId={empresaId}
+                onTemplateUsed={(template, mensaje) => setMensajeWA(mensaje)}
+                onTemplateSelected={handleTemplateSelected}
+            />
         </DashboardLayout>
     );
 };
