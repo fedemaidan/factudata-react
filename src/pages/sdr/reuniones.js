@@ -5,7 +5,7 @@ import NextLink from 'next/link';
 import {
     Box, Container, Stack, Typography, Button, Chip, Grid,
     CircularProgress, Paper, IconButton, Card, CardContent, CardActions,
-    Snackbar, Alert, Divider, Tabs, Tab, Badge,
+    Snackbar, Alert, Divider, Tabs, Tab, Badge, Switch, FormControlLabel,
     Tooltip, useTheme, useMediaQuery, Skeleton
 } from '@mui/material';
 import {
@@ -18,7 +18,8 @@ import {
     ArrowBack as ArrowBackIcon,
     EventBusy as EventBusyIcon,
     Add as AddIcon,
-    Today as TodayIcon
+    Today as TodayIcon,
+    People as PeopleIcon
 } from '@mui/icons-material';
 import WhatsAppIcon from '@mui/icons-material/WhatsApp';
 import EditCalendarIcon from '@mui/icons-material/EditCalendar';
@@ -108,7 +109,7 @@ const getCalificacionChip = (calificacion) => {
 
 // ==================== COMPONENTE CARD DE REUNIÓN ====================
 
-const ReunionCard = ({ reunion, variant = 'hoy', onMarcarRealizada, onMarcarNoShow, onCancelar, onVerContacto, onCopiarLink, mostrarSnackbar }) => {
+const ReunionCard = ({ reunion, variant = 'hoy', onMarcarRealizada, onMarcarNoShow, onCancelar, onVerContacto, onCopiarLink, mostrarSnackbar, mostrarSDR = false }) => {
     const contacto = reunion.contactoId || {};
     const fechaReunion = reunion.fecha || reunion.fechaHora;
     const countdown = getCountdown(fechaReunion);
@@ -159,6 +160,17 @@ const ReunionCard = ({ reunion, variant = 'hoy', onMarcarRealizada, onMarcarNoSh
                                 </Typography>
                             )}
                         </Typography>
+
+                        {/* SDR asignado (modo ver todas) */}
+                        {mostrarSDR && (contacto.sdrAsignadoNombre || reunion.sdrAsignadoNombre) && (
+                            <Chip
+                                icon={<PeopleIcon fontSize="small" />}
+                                label={contacto.sdrAsignadoNombre || reunion.sdrAsignadoNombre}
+                                size="small"
+                                variant="outlined"
+                                sx={{ mt: 0.5 }}
+                            />
+                        )}
 
                         {/* Resumen SDR del contacto (si existe) */}
                         {variant === 'hoy' && contacto.resumenSDR && (
@@ -306,6 +318,10 @@ const ReunionesSDRPage = () => {
     const [loading, setLoading] = useState(true);
     const [actionLoading, setActionLoading] = useState(false);
     const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
+    const [verTodas, setVerTodas] = useState(false);
+
+    // Determinar si el usuario puede ver todas las reuniones
+    const puedeVerTodas = user?.admin || user?.sdr_admin;
 
     // Modales
     const [modalResultado, setModalResultado] = useState(false);
@@ -320,11 +336,11 @@ const ReunionesSDRPage = () => {
     const cargarReuniones = useCallback(async () => {
         setLoading(true);
         try {
-            // Traer todas las reuniones del SDR (sin filtro de estado, las clasificamos en frontend)
-            const data = await SDRService.listarReuniones({
-                sdrAsignado: sdrId,
-                limit: 200
-            });
+            const params = { limit: 200 };
+            if (!verTodas) {
+                params.sdrAsignado = sdrId;
+            }
+            const data = await SDRService.listarReuniones(params);
             setReuniones(data.reuniones || []);
         } catch (error) {
             console.error('Error cargando reuniones:', error);
@@ -332,7 +348,7 @@ const ReunionesSDRPage = () => {
         } finally {
             setLoading(false);
         }
-    }, [sdrId]);
+    }, [sdrId, verTodas]);
 
     useEffect(() => {
         if (sdrId) cargarReuniones();
@@ -527,6 +543,7 @@ const ReunionesSDRPage = () => {
                 onVerContacto={handleVerContacto}
                 onCopiarLink={handleCopiarLink}
                 mostrarSnackbar={mostrarSnackbar}
+                mostrarSDR={verTodas}
             />
         </Grid>
     );
@@ -574,7 +591,7 @@ const ReunionesSDRPage = () => {
     return (
         <>
             <Head>
-                <title>Mis Reuniones | SDR</title>
+                <title>{verTodas ? 'Todas las Reuniones' : 'Mis Reuniones'} | SDR</title>
             </Head>
             <Box sx={{ flexGrow: 1, py: isMobile ? 1 : 3, px: isMobile ? 1 : 2 }}>
                 <Container maxWidth="xl">
@@ -585,17 +602,32 @@ const ReunionesSDRPage = () => {
                                 <ArrowBackIcon />
                             </IconButton>
                             <Typography variant={isMobile ? 'h6' : 'h5'} fontWeight={600}>
-                                📅 Mis Reuniones
+                                {verTodas ? '📅 Todas las Reuniones' : '📅 Mis Reuniones'}
                             </Typography>
                         </Stack>
-                        <Button
-                            startIcon={<RefreshIcon />}
-                            onClick={cargarReuniones}
-                            disabled={loading}
-                            size="small"
-                        >
-                            {isMobile ? '' : 'Actualizar'}
-                        </Button>
+                        <Stack direction="row" spacing={1} alignItems="center">
+                            {puedeVerTodas && (
+                                <FormControlLabel
+                                    control={
+                                        <Switch
+                                            checked={verTodas}
+                                            onChange={(e) => setVerTodas(e.target.checked)}
+                                            size="small"
+                                        />
+                                    }
+                                    label={isMobile ? 'Todas' : 'Ver todas'}
+                                    sx={{ mr: 0 }}
+                                />
+                            )}
+                            <Button
+                                startIcon={<RefreshIcon />}
+                                onClick={cargarReuniones}
+                                disabled={loading}
+                                size="small"
+                            >
+                                {isMobile ? '' : 'Actualizar'}
+                            </Button>
+                        </Stack>
                     </Stack>
 
                     {/* Tabs */}

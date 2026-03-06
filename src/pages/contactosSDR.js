@@ -88,6 +88,8 @@ const ContactosSDRPage = () => {
     const [filtroProximoContacto, setFiltroProximoContacto] = useState(''); // '' | 'sin_proximo' | 'vencido' | 'pendiente'
     const [filtroSegmento, setFiltroSegmento] = useState(''); // '' | 'inbound' | 'outbound'
     const [filtroActividad, setFiltroActividad] = useState(''); // '' | 'sin_llamadas' | 'con_llamadas_no_atendidas' | 'con_llamadas_atendidas' | 'con_mensajes' | 'con_reuniones' | 'sin_actividad'
+    const [filtroCalificadoBot, setFiltroCalificadoBot] = useState(''); // '' | 'calificado' | 'no_calificado' | 'quiere_meet' | 'no_llego'
+    const [filtroQuiereReunion, setFiltroQuiereReunion] = useState(''); // '' | 'si' | 'no'
     const [ordenarPor, setOrdenarPor] = useState(''); // vacío = el backend elige según bandeja
     
     // Contadores de bandejas (para badges)
@@ -261,6 +263,8 @@ const ContactosSDRPage = () => {
     useEffect(() => {
         setPage(1);
         setFiltroEstado(''); // Limpiar filtro de estado al cambiar de bandeja
+        setFiltroCalificadoBot('');
+        setFiltroQuiereReunion('');
     }, [bandejaActiva]);
     
     useEffect(() => {
@@ -522,6 +526,52 @@ const ContactosSDRPage = () => {
         });
     };
     
+    // Contadores de calificación bot
+    const contarPorCalificadoBot = (tipo) => {
+        return contactos.filter(c => {
+            switch (tipo) {
+                case 'calificado': return c.precalificacionBot === 'calificado' || c.precalificacionBot === 'quiere_meet';
+                case 'no_calificado': return !c.precalificacionBot || c.precalificacionBot === 'sin_calificar' || c.precalificacionBot === 'no_llego';
+                case 'quiere_meet': return c.precalificacionBot === 'quiere_meet';
+                case 'no_llego': return c.precalificacionBot === 'no_llego';
+                default: return true;
+            }
+        }).length;
+    };
+
+    // Filtrar contactos por calificación del bot
+    const filtrarPorCalificadoBot = (lista) => {
+        if (!filtroCalificadoBot) return lista;
+        return lista.filter(c => {
+            switch (filtroCalificadoBot) {
+                case 'calificado': return c.precalificacionBot === 'calificado' || c.precalificacionBot === 'quiere_meet';
+                case 'no_calificado': return !c.precalificacionBot || c.precalificacionBot === 'sin_calificar' || c.precalificacionBot === 'no_llego';
+                case 'quiere_meet': return c.precalificacionBot === 'quiere_meet';
+                case 'no_llego': return c.precalificacionBot === 'no_llego';
+                default: return true;
+            }
+        });
+    };
+
+    // Contadores de quiere reunión
+    const contarQuiereReunion = (tipo) => {
+        return contactos.filter(c => {
+            if (tipo === 'si') return c.precalificacionBot === 'quiere_meet';
+            if (tipo === 'no') return c.precalificacionBot !== 'quiere_meet';
+            return true;
+        }).length;
+    };
+
+    // Filtrar contactos por quiere reunión
+    const filtrarPorQuiereReunion = (lista) => {
+        if (!filtroQuiereReunion) return lista;
+        return lista.filter(c => {
+            if (filtroQuiereReunion === 'si') return c.precalificacionBot === 'quiere_meet';
+            if (filtroQuiereReunion === 'no') return c.precalificacionBot !== 'quiere_meet';
+            return true;
+        });
+    };
+
     // Selección múltiple
     const handleSeleccionar = (contactoId) => {
         setSeleccionados(prev => 
@@ -646,12 +696,14 @@ const ContactosSDRPage = () => {
         setBandejaActiva('nuevos');
         setFiltroProximoContacto('');
         setFiltroActividad('');
+        setFiltroCalificadoBot('');
+        setFiltroQuiereReunion('');
         setBusqueda('');
     };
     
     // Los contactos ya vienen ordenados del backend según ordenarPor/ordenDir
-    // Aplicamos filtros locales: próximo contacto + actividad
-    const contactosOrdenados = filtrarPorActividad(filtrarPorProximoContacto(contactos));
+    // Aplicamos filtros locales: próximo contacto + actividad + calificación bot + quiere reunión
+    const contactosOrdenados = filtrarPorQuiereReunion(filtrarPorCalificadoBot(filtrarPorActividad(filtrarPorProximoContacto(contactos))));
     
     // Formatear próximo contacto para mostrar
     const formatearProximo = (fecha) => {
@@ -1175,6 +1227,69 @@ const ContactosSDRPage = () => {
                         color={filtroSegmento === 'outbound' ? 'warning' : 'default'}
                         variant={filtroSegmento === 'outbound' ? 'filled' : 'outlined'}
                         onClick={() => setFiltroSegmento(filtroSegmento === 'outbound' ? '' : 'outbound')}
+                    />
+                </Stack>
+            </Box>
+
+            {/* Filtros por calificación del bot */}
+            <Box sx={{ px: 2, pb: 1, overflowX: 'auto' }}>
+                <Stack direction="row" spacing={1} sx={{ minWidth: 'max-content' }}>
+                    <Typography variant="caption" color="text.secondary" sx={{ alignSelf: 'center', mr: 0.5 }}>
+                        🤖 Bot:
+                    </Typography>
+                    <Chip 
+                        label={`Calificado (${contarPorCalificadoBot('calificado')})`}
+                        size="small"
+                        icon={<SmartToyIcon sx={{ fontSize: 14 }} />}
+                        color={filtroCalificadoBot === 'calificado' ? 'info' : 'default'}
+                        variant={filtroCalificadoBot === 'calificado' ? 'filled' : 'outlined'}
+                        onClick={() => setFiltroCalificadoBot(filtroCalificadoBot === 'calificado' ? '' : 'calificado')}
+                    />
+                    <Chip 
+                        label={`No calificado (${contarPorCalificadoBot('no_calificado')})`}
+                        size="small"
+                        color={filtroCalificadoBot === 'no_calificado' ? 'default' : 'default'}
+                        variant={filtroCalificadoBot === 'no_calificado' ? 'filled' : 'outlined'}
+                        onClick={() => setFiltroCalificadoBot(filtroCalificadoBot === 'no_calificado' ? '' : 'no_calificado')}
+                    />
+                    <Chip 
+                        label={`Quiere meet (${contarPorCalificadoBot('quiere_meet')})`}
+                        size="small"
+                        icon={<span style={{ fontSize: 12 }}>🤝</span>}
+                        color={filtroCalificadoBot === 'quiere_meet' ? 'primary' : 'default'}
+                        variant={filtroCalificadoBot === 'quiere_meet' ? 'filled' : 'outlined'}
+                        onClick={() => setFiltroCalificadoBot(filtroCalificadoBot === 'quiere_meet' ? '' : 'quiere_meet')}
+                    />
+                    <Chip 
+                        label={`No llegó (${contarPorCalificadoBot('no_llego')})`}
+                        size="small"
+                        color={filtroCalificadoBot === 'no_llego' ? 'warning' : 'default'}
+                        variant={filtroCalificadoBot === 'no_llego' ? 'filled' : 'outlined'}
+                        onClick={() => setFiltroCalificadoBot(filtroCalificadoBot === 'no_llego' ? '' : 'no_llego')}
+                    />
+                </Stack>
+            </Box>
+
+            {/* Filtro por quiere reunión */}
+            <Box sx={{ px: 2, pb: 1, overflowX: 'auto' }}>
+                <Stack direction="row" spacing={1} sx={{ minWidth: 'max-content' }}>
+                    <Typography variant="caption" color="text.secondary" sx={{ alignSelf: 'center', mr: 0.5 }}>
+                        Reunión:
+                    </Typography>
+                    <Chip 
+                        label={`Quiere reunión (${contarQuiereReunion('si')})`}
+                        size="small"
+                        icon={<EventAvailableIcon sx={{ fontSize: 14 }} />}
+                        color={filtroQuiereReunion === 'si' ? 'success' : 'default'}
+                        variant={filtroQuiereReunion === 'si' ? 'filled' : 'outlined'}
+                        onClick={() => setFiltroQuiereReunion(filtroQuiereReunion === 'si' ? '' : 'si')}
+                    />
+                    <Chip 
+                        label={`No quiere (${contarQuiereReunion('no')})`}
+                        size="small"
+                        color={filtroQuiereReunion === 'no' ? 'default' : 'default'}
+                        variant={filtroQuiereReunion === 'no' ? 'filled' : 'outlined'}
+                        onClick={() => setFiltroQuiereReunion(filtroQuiereReunion === 'no' ? '' : 'no')}
                     />
                 </Stack>
             </Box>
@@ -1869,6 +1984,73 @@ const ContactosSDRPage = () => {
                             label="Limpiar"
                             size="small"
                             onDelete={() => setFiltroActividad('')}
+                        />
+                    )}
+                </Stack>
+
+                {/* Filtros por calificación del bot */}
+                <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                    <Typography variant="body2" color="text.secondary">
+                        🤖 Calificado por bot:
+                    </Typography>
+                    <Chip 
+                        label={`Calificado (${contarPorCalificadoBot('calificado')})`}
+                        icon={<SmartToyIcon />}
+                        color={filtroCalificadoBot === 'calificado' ? 'info' : 'default'}
+                        variant={filtroCalificadoBot === 'calificado' ? 'filled' : 'outlined'}
+                        onClick={() => setFiltroCalificadoBot(filtroCalificadoBot === 'calificado' ? '' : 'calificado')}
+                    />
+                    <Chip 
+                        label={`No calificado (${contarPorCalificadoBot('no_calificado')})`}
+                        color={filtroCalificadoBot === 'no_calificado' ? 'default' : 'default'}
+                        variant={filtroCalificadoBot === 'no_calificado' ? 'filled' : 'outlined'}
+                        onClick={() => setFiltroCalificadoBot(filtroCalificadoBot === 'no_calificado' ? '' : 'no_calificado')}
+                    />
+                    <Chip 
+                        label={`Quiere meet (${contarPorCalificadoBot('quiere_meet')})`}
+                        icon={<span style={{ fontSize: 14 }}>🤝</span>}
+                        color={filtroCalificadoBot === 'quiere_meet' ? 'primary' : 'default'}
+                        variant={filtroCalificadoBot === 'quiere_meet' ? 'filled' : 'outlined'}
+                        onClick={() => setFiltroCalificadoBot(filtroCalificadoBot === 'quiere_meet' ? '' : 'quiere_meet')}
+                    />
+                    <Chip 
+                        label={`No llegó (${contarPorCalificadoBot('no_llego')})`}
+                        color={filtroCalificadoBot === 'no_llego' ? 'warning' : 'default'}
+                        variant={filtroCalificadoBot === 'no_llego' ? 'filled' : 'outlined'}
+                        onClick={() => setFiltroCalificadoBot(filtroCalificadoBot === 'no_llego' ? '' : 'no_llego')}
+                    />
+                    {filtroCalificadoBot && (
+                        <Chip 
+                            label="Limpiar"
+                            size="small"
+                            onDelete={() => setFiltroCalificadoBot('')}
+                        />
+                    )}
+                </Stack>
+
+                {/* Filtro por quiere reunión */}
+                <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                    <Typography variant="body2" color="text.secondary">
+                        Quiere reunión:
+                    </Typography>
+                    <Chip 
+                        label={`Sí (${contarQuiereReunion('si')})`}
+                        icon={<EventAvailableIcon />}
+                        color={filtroQuiereReunion === 'si' ? 'success' : 'default'}
+                        variant={filtroQuiereReunion === 'si' ? 'filled' : 'outlined'}
+                        onClick={() => setFiltroQuiereReunion(filtroQuiereReunion === 'si' ? '' : 'si')}
+                    />
+                    <Chip 
+                        label={`No (${contarQuiereReunion('no')})`}
+                        color={filtroQuiereReunion === 'no' ? 'default' : 'default'}
+                        variant={filtroQuiereReunion === 'no' ? 'filled' : 'outlined'}
+                        onClick={() => setFiltroQuiereReunion(filtroQuiereReunion === 'no' ? '' : 'no')}
+                    />
+                    {filtroQuiereReunion && (
+                        <Chip 
+                            label="Limpiar"
+                            size="small"
+                            onDelete={() => setFiltroQuiereReunion('')}
                         />
                     )}
                 </Stack>

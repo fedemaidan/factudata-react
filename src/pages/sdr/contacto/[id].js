@@ -1862,20 +1862,149 @@ const ContactoSDRDetailPage = () => {
                     {reuniones.length > 0 && (
                         <Paper variant="outlined" sx={{ p: 2, mb: 3 }}>
                             <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                                Reuniones ({reuniones.length})
+                                📅 Reuniones ({reuniones.length})
                             </Typography>
-                            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                                {reuniones.map((reunion) => {
+                            <Stack spacing={1.5}>
+                                {reuniones
+                                    .sort((a, b) => new Date(b.fecha || b.fechaHora) - new Date(a.fecha || a.fechaHora))
+                                    .map((reunion) => {
                                     const estadoConf = ESTADOS_REUNION[reunion.estado] || {};
+                                    const fechaReunion = reunion.fecha || reunion.fechaHora;
+                                    const calificacionMap = {
+                                        frio: { label: '❄️ Frío', color: 'info' },
+                                        tibio: { label: '🌤️ Tibio', color: 'warning' },
+                                        caliente: { label: '🔥 Caliente', color: 'error' },
+                                        listo_para_cerrar: { label: '🎯 Listo para cerrar', color: 'success' }
+                                    };
+                                    const calChip = reunion.calificacionRapida ? calificacionMap[reunion.calificacionRapida] : null;
+                                    const borderColorMap = {
+                                        realizada: '#4caf50',
+                                        no_show: '#f44336',
+                                        cancelada: '#9e9e9e',
+                                        agendada: '#2196f3'
+                                    };
+
                                     return (
-                                        <Chip
+                                        <Paper
                                             key={reunion._id}
-                                            icon={<EventIcon />}
-                                            label={`${reunion.fecha ? new Date(reunion.fecha).toLocaleDateString('es-AR') : 'Sin fecha'} ${reunion.hora || ''} — ${estadoConf.label || reunion.estado}`}
-                                            color={estadoConf.color || 'default'}
                                             variant="outlined"
-                                            size="small"
-                                        />
+                                            sx={{
+                                                p: 1.5,
+                                                borderLeft: `4px solid ${borderColorMap[reunion.estado] || '#e0e0e0'}`,
+                                                bgcolor: reunion.estado === 'realizada' ? 'rgba(76,175,80,0.04)'
+                                                    : reunion.estado === 'no_show' ? 'rgba(244,67,54,0.04)'
+                                                    : reunion.estado === 'cancelada' ? 'rgba(158,158,158,0.04)'
+                                                    : 'transparent'
+                                            }}
+                                        >
+                                            {/* Fila principal: fecha + estado + calificación */}
+                                            <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                                                <Chip
+                                                    icon={<EventIcon />}
+                                                    label={fechaReunion ? new Date(fechaReunion).toLocaleDateString('es-AR', { weekday: 'short', day: 'numeric', month: 'short' }) : 'Sin fecha'}
+                                                    size="small"
+                                                    variant="outlined"
+                                                />
+                                                {reunion.hora && (
+                                                    <Typography variant="caption" color="text.secondary">
+                                                        {reunion.hora}
+                                                    </Typography>
+                                                )}
+                                                <Chip
+                                                    label={`${estadoConf.icon || ''} ${estadoConf.label || reunion.estado}`}
+                                                    size="small"
+                                                    color={estadoConf.color || 'default'}
+                                                    sx={{ fontWeight: 600 }}
+                                                />
+                                                {calChip && (
+                                                    <Chip
+                                                        label={calChip.label}
+                                                        size="small"
+                                                        color={calChip.color}
+                                                        variant="outlined"
+                                                    />
+                                                )}
+                                                {reunion.numero && (
+                                                    <Typography variant="caption" color="text.secondary" fontWeight={600}>
+                                                        Meet #{reunion.numero}
+                                                    </Typography>
+                                                )}
+                                            </Stack>
+
+                                            {/* Comentario del SDR */}
+                                            {reunion.comentario && (
+                                                <Typography variant="body2" sx={{ mt: 1, pl: 1, borderLeft: '2px solid #e0e0e0', color: 'text.secondary', fontStyle: 'italic' }}>
+                                                    💬 {reunion.comentario}
+                                                </Typography>
+                                            )}
+
+                                            {/* Motivo de rechazo / cancelación */}
+                                            {reunion.estado === 'cancelada' && reunion.motivoRechazo && (
+                                                <Typography variant="body2" sx={{ mt: 1, pl: 1, borderLeft: '2px solid #f44336', color: 'error.main' }}>
+                                                    🚫 {reunion.motivoRechazo}
+                                                </Typography>
+                                            )}
+
+                                            {/* No show - mensaje destacado */}
+                                            {reunion.estado === 'no_show' && (
+                                                <Typography variant="body2" sx={{ mt: 1, color: 'error.main', fontWeight: 500 }}>
+                                                    ❌ El contacto no se presentó a la reunión
+                                                    {reunion.notasEvaluador ? ` — ${reunion.notasEvaluador}` : ''}
+                                                </Typography>
+                                            )}
+
+                                            {/* Resumen IA */}
+                                            {reunion.resumenIA && (
+                                                <Paper variant="outlined" sx={{ mt: 1, p: 1, bgcolor: 'grey.50', maxHeight: 120, overflow: 'auto' }}>
+                                                    <Typography variant="caption" color="text.secondary" fontWeight={600}>
+                                                        🤖 Resumen IA
+                                                    </Typography>
+                                                    <Typography variant="body2" sx={{ mt: 0.5, whiteSpace: 'pre-line', fontSize: '0.8rem' }}>
+                                                        {reunion.resumenIA.substring(0, 500)}{reunion.resumenIA.length > 500 ? '...' : ''}
+                                                    </Typography>
+                                                </Paper>
+                                            )}
+
+                                            {/* Next steps */}
+                                            {reunion.nextSteps && (
+                                                <Typography variant="body2" sx={{ mt: 1, fontSize: '0.8rem' }}>
+                                                    📋 <strong>Próximos pasos:</strong> {reunion.nextSteps}
+                                                </Typography>
+                                            )}
+
+                                            {/* Módulos de interés */}
+                                            {reunion.modulosInteres?.length > 0 && (
+                                                <Stack direction="row" spacing={0.5} sx={{ mt: 1, flexWrap: 'wrap', gap: 0.5 }}>
+                                                    <Typography variant="caption" color="text.secondary" sx={{ mr: 0.5 }}>
+                                                        Módulos:
+                                                    </Typography>
+                                                    {reunion.modulosInteres.map(m => (
+                                                        <Chip key={m} label={m} size="small" variant="outlined" sx={{ height: 20, fontSize: '0.7rem' }} />
+                                                    ))}
+                                                </Stack>
+                                            )}
+
+                                            {/* Duración */}
+                                            {reunion.duracionMinutos && (
+                                                <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                                                    ⏱️ Duración: {reunion.duracionMinutos} min
+                                                </Typography>
+                                            )}
+
+                                            {/* Link de reunión (solo si agendada) */}
+                                            {reunion.estado === 'agendada' && reunion.link && (
+                                                <Chip
+                                                    label="Abrir link"
+                                                    size="small"
+                                                    icon={<OpenInNewIcon />}
+                                                    onClick={() => window.open(reunion.link, '_blank')}
+                                                    clickable
+                                                    color="primary"
+                                                    variant="outlined"
+                                                    sx={{ mt: 1 }}
+                                                />
+                                            )}
+                                        </Paper>
                                     );
                                 })}
                             </Stack>

@@ -45,6 +45,7 @@ import ErrorOutlineIcon from "@mui/icons-material/ErrorOutline";
 import ContactsIcon from "@mui/icons-material/Contacts";
 import AccountTreeIcon from "@mui/icons-material/AccountTree";
 import AssessmentIcon from "@mui/icons-material/Assessment";
+import FilterListIcon from "@mui/icons-material/FilterList";
 
 export const SideNav = (props) => {
   const { open, onClose, collapsed = false, onToggleCollapsed, width = 280 } = props;
@@ -329,6 +330,15 @@ export const SideNav = (props) => {
           icon: (
             <SvgIcon fontSize="small">
               <AccountTreeIcon />
+            </SvgIcon>
+          ),
+        });
+        baseItems.push({
+          title: "Funnel",
+          path: "/funnel",
+          icon: (
+            <SvgIcon fontSize="small">
+              <FilterListIcon />
             </SvgIcon>
           ),
         });

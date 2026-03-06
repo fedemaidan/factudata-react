@@ -1,7 +1,7 @@
 # SDR — Documentación Funcional
 
 > **Última actualización**: Marzo 2026  
-> **Estado**: Fase 1 completa (tarea manda), Fase 2 pendiente (templates contextuales)
+> **Estado**: Fase 1, 2 y 3 completas
 
 ---
 
@@ -116,7 +116,7 @@ Campos post-reunión:
 
 ### 2.5 Evento Historial
 
-Cada acción sobre un contacto genera un evento en el historial. Hay **38 tipos** agrupados en:
+Cada acción sobre un contacto genera un evento en el historial. Hay **40 tipos** agrupados en:
 
 - **Llamadas**: `llamada_atendida`, `llamada_no_atendida`
 - **WhatsApp**: `whatsapp_enviado`, `whatsapp_respuesta`, `whatsapp_respuesta_confirmada`
@@ -128,6 +128,7 @@ Cada acción sobre un contacto genera un evento en el historial. Hay **38 tipos*
 - **Cadencia**: `cadencia_iniciada`, `cadencia_avanzada`, `cadencia_completada`, `cadencia_detenida`
 - **Asignaciones**: `contacto_creado`, `contacto_asignado`, `contacto_desasignado`, `contacto_reasignado`
 - **Importación**: `importado_excel`, `importado_notion`, `contexto_inicial`
+- **IA**: `resumen_ia_generado`, `resumen_sdr_generado`
 - **Otros**: `nota_agregada`, `comentario`, `proximo_contacto_programado`
 
 **Visualización agrupada**: El historial se agrupa por bloques temporales de **30 minutos**. Los eventos de una misma sesión de trabajo (ej: llamar → registrar resultado → programar siguiente) se muestran agrupados con un separador temporal ("Hoy 14:30", "Ayer 09:15", "Lun 11:00").
@@ -239,9 +240,7 @@ ABM completo de cadencias con pasos multi-acción, templates de WA por variante 
 
 ### 3.5 Reuniones SDR (`/sdr/reuniones`) — Fase 3
 
-> ⏳ **Pendiente de implementación**
-
-Página dedicada para gestionar reuniones. Complementa a contactosSDR (que mantiene sus bandejas de reuniones pendientes/pasadas como referencia rápida con un banner "📅 Tenés X reuniones hoy → Ir a Mis Reuniones").
+Página dedicada para gestionar reuniones. Acceso desde el sidebar con ícono de calendario ("Mis Reuniones"). Complementa a contactosSDR (que mantiene sus bandejas de reuniones pendientes/pasadas como referencia rápida con un banner "📅 Tenés X reuniones hoy → Ir a Mis Reuniones ↗️").
 
 #### Tabs
 
