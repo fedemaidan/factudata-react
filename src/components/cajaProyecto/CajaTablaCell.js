@@ -13,6 +13,7 @@ import ImageIcon from '@mui/icons-material/Image';
 import CommentIcon from '@mui/icons-material/Comment';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
+import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 
 const CajaTablaCell = ({ colKey, mov, amountColor, ctx, isProrrateo = false }) => {
   const {
@@ -44,16 +45,24 @@ const CajaTablaCell = ({ colKey, mov, amountColor, ctx, isProrrateo = false }) =
   };
 
   switch (colKey) {
-    case 'codigo':
+    case 'codigo': {
+      const codigoText = mov.codigo_operacion || mov.codigo || mov.id || 'Sin código';
+      const fueModificado = Array.isArray(mov.logs) && mov.logs.length > 0;
       return cell(
         stickyLeft,
-        isProrrateo ? (
-          <Stack direction="row" spacing={1} alignItems="center">
-            <Typography variant="body2">{mov.codigo_operacion || mov.codigo || mov.id || 'Sin código'}</Typography>
+        <Stack direction="row" spacing={0.75} alignItems="center">
+          {isProrrateo && (
             <Chip size="small" label="P" variant="outlined" color="info" sx={{ fontSize: '0.7rem', height: 16 }} />
-          </Stack>
-        ) : (mov.codigo_operacion || mov.codigo || mov.id || 'Sin código')
+          )}
+          <Typography variant="body2">{codigoText}</Typography>
+          {fueModificado && (
+            <Tooltip title="Este movimiento ha sido modificado. Revisá el registro de auditoría en el panel de cambios." arrow>
+              <ErrorOutlineIcon sx={{ fontSize: 16, color: 'error.main' }} />
+            </Tooltip>
+          )}
+        </Stack>
       );
+    }
     case 'fechas':
       return cell(
         { ...cellBase, minWidth: COLS.fecha + 40 },
