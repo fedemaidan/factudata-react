@@ -194,7 +194,8 @@ export const ProyectosDetails = ({ empresa, refreshEmpresa }) => {
       sheetWithClient: '',
       extraSheets: [],
       subproyectos: [],
-      usuariosAsignados: []
+      usuariosAsignados: [],
+      datos_facturacion_cliente: ''
     },
     enableReinitialize: true,
     validationSchema: Yup.object({
@@ -211,6 +212,7 @@ export const ProyectosDetails = ({ empresa, refreshEmpresa }) => {
         sheetWithClient: values.sheetWithClient,
         extraSheets: values.extraSheets,
         subproyectos: values.subproyectos || [],
+        datos_facturacion_cliente: values.datos_facturacion_cliente || '',
       };
 
       try {
@@ -755,6 +757,17 @@ export const ProyectosDetails = ({ empresa, refreshEmpresa }) => {
               error={formik.touched.sheetWithClient && (Boolean(formik.errors.sheetWithClient) || sheetPermissionError)}
               helperText={formik.touched.sheetWithClient && (formik.errors.sheetWithClient || (sheetPermissionError && "El google sheet no está configurado para que podamos editarlo. Asegúrate de que el id esté bien escrito y de darle permisos de edición a firebase-adminsdk-xts1d@factudata-3afdf.iam.gserviceaccount.com."))}
               style={{ marginTop: '1rem' }}
+            />
+            <TextField
+              fullWidth
+              name="datos_facturacion_cliente"
+              label="Datos de facturación del cliente"
+              value={formik.values.datos_facturacion_cliente}
+              onChange={formik.handleChange}
+              multiline
+              rows={3}
+              style={{ marginTop: '1rem' }}
+              helperText="Razón social, CUIT u otros datos del cliente que ayuden al bot a identificar si una factura es del cliente de este proyecto."
             />
             <Box sx={{ mt: 2 }}>
   <Typography variant="subtitle1">Google Sheets Adicionales</Typography>
