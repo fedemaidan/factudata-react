@@ -362,17 +362,15 @@ const ContactoSDRDetailPage = () => {
     // Abrir menú de re-asignación de SDR
     const handleAbrirMenuAsignar = async (event) => {
         setMenuAsignarAnchor(event.currentTarget);
-        if (sdrsDisponibles.length === 0) {
-            setCargandoSdrs(true);
-            try {
-                const data = await SDRService.obtenerSDRsDisponibles(empresaId);
-                setSdrsDisponibles(data.sdrs || data || []);
-            } catch (err) {
-                console.error('Error cargando SDRs:', err);
-                mostrarSnackbar('Error al cargar SDRs disponibles', 'error');
-            } finally {
-                setCargandoSdrs(false);
-            }
+        setCargandoSdrs(true);
+        try {
+            const data = await SDRService.obtenerSDRsDisponibles(empresaId);
+            setSdrsDisponibles(data.sdrs || data || []);
+        } catch (err) {
+            console.error('Error cargando SDRs:', err);
+            mostrarSnackbar('Error al cargar SDRs disponibles', 'error');
+        } finally {
+            setCargandoSdrs(false);
         }
     };
 

@@ -90,6 +90,7 @@ const ContactosSDRPage = () => {
     const [filtroActividad, setFiltroActividad] = useState(''); // '' | 'sin_llamadas' | 'con_llamadas_no_atendidas' | 'con_llamadas_atendidas' | 'con_mensajes' | 'con_reuniones' | 'sin_actividad'
     const [filtroCalificadoBot, setFiltroCalificadoBot] = useState(''); // '' | 'calificado' | 'no_calificado' | 'quiere_meet' | 'no_llego'
     const [filtroQuiereReunion, setFiltroQuiereReunion] = useState(''); // '' | 'si' | 'no'
+    const [filtroProximaTarea, setFiltroProximaTarea] = useState(''); // '' | 'llamada' | 'whatsapp' | 'email' | 'recordatorio' | 'sin_tarea'
     const [ordenarPor, setOrdenarPor] = useState(''); // vacío = el backend elige según bandeja
     
     // Contadores de bandejas (para badges)
@@ -265,6 +266,7 @@ const ContactosSDRPage = () => {
         setFiltroEstado(''); // Limpiar filtro de estado al cambiar de bandeja
         setFiltroCalificadoBot('');
         setFiltroQuiereReunion('');
+        setFiltroProximaTarea('');
     }, [bandejaActiva]);
     
     useEffect(() => {
@@ -572,6 +574,23 @@ const ContactosSDRPage = () => {
         });
     };
 
+    // Contadores de próxima tarea por tipo
+    const contarPorProximaTarea = (tipo) => {
+        return contactos.filter(c => {
+            if (tipo === 'sin_tarea') return !c.proximaTarea?.tipo;
+            return c.proximaTarea?.tipo === tipo;
+        }).length;
+    };
+
+    // Filtrar contactos por tipo de próxima tarea
+    const filtrarPorProximaTarea = (lista) => {
+        if (!filtroProximaTarea) return lista;
+        return lista.filter(c => {
+            if (filtroProximaTarea === 'sin_tarea') return !c.proximaTarea?.tipo;
+            return c.proximaTarea?.tipo === filtroProximaTarea;
+        });
+    };
+
     // Selección múltiple
     const handleSeleccionar = (contactoId) => {
         setSeleccionados(prev => 
@@ -698,12 +717,13 @@ const ContactosSDRPage = () => {
         setFiltroActividad('');
         setFiltroCalificadoBot('');
         setFiltroQuiereReunion('');
+        setFiltroProximaTarea('');
         setBusqueda('');
     };
     
     // Los contactos ya vienen ordenados del backend según ordenarPor/ordenDir
     // Aplicamos filtros locales: próximo contacto + actividad + calificación bot + quiere reunión
-    const contactosOrdenados = filtrarPorQuiereReunion(filtrarPorCalificadoBot(filtrarPorActividad(filtrarPorProximoContacto(contactos))));
+    const contactosOrdenados = filtrarPorProximaTarea(filtrarPorQuiereReunion(filtrarPorCalificadoBot(filtrarPorActividad(filtrarPorProximoContacto(contactos)))));
     
     // Formatear próximo contacto para mostrar
     const formatearProximo = (fecha) => {
@@ -1290,6 +1310,51 @@ const ContactosSDRPage = () => {
                         color={filtroQuiereReunion === 'no' ? 'default' : 'default'}
                         variant={filtroQuiereReunion === 'no' ? 'filled' : 'outlined'}
                         onClick={() => setFiltroQuiereReunion(filtroQuiereReunion === 'no' ? '' : 'no')}
+                    />
+                </Stack>
+            </Box>
+
+            {/* Filtro por próxima tarea */}
+            <Box sx={{ px: 2, pb: 1, overflowX: 'auto' }}>
+                <Stack direction="row" spacing={1} sx={{ minWidth: 'max-content' }}>
+                    <Typography variant="caption" color="text.secondary" sx={{ alignSelf: 'center', mr: 0.5 }}>
+                        Tarea:
+                    </Typography>
+                    <Chip 
+                        label={`Sin tarea (${contarPorProximaTarea('sin_tarea')})`}
+                        size="small"
+                        icon={<HourglassEmptyIcon sx={{ fontSize: 14 }} />}
+                        color={filtroProximaTarea === 'sin_tarea' ? 'warning' : 'default'}
+                        variant={filtroProximaTarea === 'sin_tarea' ? 'filled' : 'outlined'}
+                        onClick={() => setFiltroProximaTarea(filtroProximaTarea === 'sin_tarea' ? '' : 'sin_tarea')}
+                    />
+                    <Chip 
+                        label={`📞 Llamada (${contarPorProximaTarea('llamada')})`}
+                        size="small"
+                        color={filtroProximaTarea === 'llamada' ? 'success' : 'default'}
+                        variant={filtroProximaTarea === 'llamada' ? 'filled' : 'outlined'}
+                        onClick={() => setFiltroProximaTarea(filtroProximaTarea === 'llamada' ? '' : 'llamada')}
+                    />
+                    <Chip 
+                        label={`💬 WhatsApp (${contarPorProximaTarea('whatsapp')})`}
+                        size="small"
+                        color={filtroProximaTarea === 'whatsapp' ? 'info' : 'default'}
+                        variant={filtroProximaTarea === 'whatsapp' ? 'filled' : 'outlined'}
+                        onClick={() => setFiltroProximaTarea(filtroProximaTarea === 'whatsapp' ? '' : 'whatsapp')}
+                    />
+                    <Chip 
+                        label={`✉️ Email (${contarPorProximaTarea('email')})`}
+                        size="small"
+                        color={filtroProximaTarea === 'email' ? 'primary' : 'default'}
+                        variant={filtroProximaTarea === 'email' ? 'filled' : 'outlined'}
+                        onClick={() => setFiltroProximaTarea(filtroProximaTarea === 'email' ? '' : 'email')}
+                    />
+                    <Chip 
+                        label={`📝 Recordatorio (${contarPorProximaTarea('recordatorio')})`}
+                        size="small"
+                        color={filtroProximaTarea === 'recordatorio' ? 'secondary' : 'default'}
+                        variant={filtroProximaTarea === 'recordatorio' ? 'filled' : 'outlined'}
+                        onClick={() => setFiltroProximaTarea(filtroProximaTarea === 'recordatorio' ? '' : 'recordatorio')}
                     />
                 </Stack>
             </Box>
@@ -2051,6 +2116,51 @@ const ContactosSDRPage = () => {
                             label="Limpiar"
                             size="small"
                             onDelete={() => setFiltroQuiereReunion('')}
+                        />
+                    )}
+                </Stack>
+
+                {/* Filtro por próxima tarea */}
+                <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                    <Typography variant="body2" color="text.secondary">
+                        📋 Próxima tarea:
+                    </Typography>
+                    <Chip 
+                        label={`Sin tarea (${contarPorProximaTarea('sin_tarea')})`}
+                        icon={<HourglassEmptyIcon />}
+                        color={filtroProximaTarea === 'sin_tarea' ? 'warning' : 'default'}
+                        variant={filtroProximaTarea === 'sin_tarea' ? 'filled' : 'outlined'}
+                        onClick={() => setFiltroProximaTarea(filtroProximaTarea === 'sin_tarea' ? '' : 'sin_tarea')}
+                    />
+                    <Chip 
+                        label={`📞 Llamada (${contarPorProximaTarea('llamada')})`}
+                        color={filtroProximaTarea === 'llamada' ? 'success' : 'default'}
+                        variant={filtroProximaTarea === 'llamada' ? 'filled' : 'outlined'}
+                        onClick={() => setFiltroProximaTarea(filtroProximaTarea === 'llamada' ? '' : 'llamada')}
+                    />
+                    <Chip 
+                        label={`💬 WhatsApp (${contarPorProximaTarea('whatsapp')})`}
+                        color={filtroProximaTarea === 'whatsapp' ? 'info' : 'default'}
+                        variant={filtroProximaTarea === 'whatsapp' ? 'filled' : 'outlined'}
+                        onClick={() => setFiltroProximaTarea(filtroProximaTarea === 'whatsapp' ? '' : 'whatsapp')}
+                    />
+                    <Chip 
+                        label={`✉️ Email (${contarPorProximaTarea('email')})`}
+                        color={filtroProximaTarea === 'email' ? 'primary' : 'default'}
+                        variant={filtroProximaTarea === 'email' ? 'filled' : 'outlined'}
+                        onClick={() => setFiltroProximaTarea(filtroProximaTarea === 'email' ? '' : 'email')}
+                    />
+                    <Chip 
+                        label={`📝 Recordatorio (${contarPorProximaTarea('recordatorio')})`}
+                        color={filtroProximaTarea === 'recordatorio' ? 'secondary' : 'default'}
+                        variant={filtroProximaTarea === 'recordatorio' ? 'filled' : 'outlined'}
+                        onClick={() => setFiltroProximaTarea(filtroProximaTarea === 'recordatorio' ? '' : 'recordatorio')}
+                    />
+                    {filtroProximaTarea && (
+                        <Chip 
+                            label="Limpiar"
+                            size="small"
+                            onDelete={() => setFiltroProximaTarea('')}
                         />
                     )}
                 </Stack>
