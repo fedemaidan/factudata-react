@@ -132,7 +132,8 @@ export const updateProyecto = async (id, proyecto, empresaId = null) => {
       extraSheets: proyecto.extraSheets ?? [],
       subproyectos: proyecto.subproyectos ?? [],
       eliminado: proyecto.eliminado || false,
-      ui_prefs: proyecto.ui_prefs || {}
+      ui_prefs: proyecto.ui_prefs || {},
+      datos_facturacion_cliente: proyecto.datos_facturacion_cliente ?? "",
     }
     console.log("proyecto nuevo", proyecto);
     const proyectoDocRef = doc(db, 'proyectos', id);
