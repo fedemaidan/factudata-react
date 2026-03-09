@@ -442,10 +442,12 @@ const SDRService = {
     /**
      * Obtener métricas del día
      */
-    obtenerMetricasDiarias: async (empresaId, fecha = null, sdrId = null) => {
+    obtenerMetricasDiarias: async (empresaId, fecha = null, sdrId = null, desde = null, hasta = null) => {
         const params = { empresaId };
         if (fecha) params.fecha = fecha;
         if (sdrId) params.sdrId = sdrId;
+        if (desde) params.desde = desde;
+        if (hasta) params.hasta = hasta;
         const res = await api.get('/sdr/metricas/diarias', { params });
         return res.data;
     },

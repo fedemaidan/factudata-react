@@ -58,6 +58,7 @@ import ModalCrearReunion from 'src/components/sdr/ModalCrearReunion';
 import { ESTADOS_CONTACTO as ESTADOS_SDR, ESTADOS_REUNION, PLANES_SORBY, PRECALIFICACION_BOT, INTENCIONES_COMPRA } from 'src/constant/sdrConstants';
 import SortIcon from '@mui/icons-material/Sort';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
+import DateRangeIcon from '@mui/icons-material/DateRange';
 import BulkSendTemplateDialog from 'src/components/sdr/BulkSendTemplateDialog';
 
 // ==================== CONSTANTES ====================
@@ -162,6 +163,11 @@ const GestionSDRPage = () => {
     const [mostrarFiltrosAvanzados, setMostrarFiltrosAvanzados] = useState(false);
     const [page, setPage] = useState(1);
     const [historialVersion, setHistorialVersion] = useState(0);
+    
+    // Filtro de rango de fechas para métricas del dashboard
+    const [metricasRango, setMetricasRango] = useState('hoy');
+    const [metricasFechaDesde, setMetricasFechaDesde] = useState('');
+    const [metricasFechaHasta, setMetricasFechaHasta] = useState('');
     
     // Lista única de Status Notion disponibles (se llena al cargar contactos)
     const [statusNotionOpciones, setStatusNotionOpciones] = useState([]);
@@ -281,7 +287,51 @@ const GestionSDRPage = () => {
         if (!userId) return;
         
         try {
-            const data = await SDRService.obtenerMetricasDiarias();
+            let desde, hasta;
+            const hoy = new Date();
+            const inicioHoy = new Date();
+            inicioHoy.setHours(0, 0, 0, 0);
+            
+            switch (metricasRango) {
+                case 'ayer': {
+                    const ayer = new Date(inicioHoy);
+                    ayer.setDate(ayer.getDate() - 1);
+                    const finAyer = new Date(ayer);
+                    finAyer.setHours(23, 59, 59, 999);
+                    desde = ayer.toISOString();
+                    hasta = finAyer.toISOString();
+                    break;
+                }
+                case 'semana': {
+                    const lunes = new Date(inicioHoy);
+                    const dia = lunes.getDay();
+                    const diff = dia === 0 ? 6 : dia - 1;
+                    lunes.setDate(lunes.getDate() - diff);
+                    desde = lunes.toISOString();
+                    hasta = hoy.toISOString();
+                    break;
+                }
+                case 'mes': {
+                    const inicioMes = new Date(inicioHoy.getFullYear(), inicioHoy.getMonth(), 1);
+                    desde = inicioMes.toISOString();
+                    hasta = hoy.toISOString();
+                    break;
+                }
+                case 'custom': {
+                    if (!metricasFechaDesde || !metricasFechaHasta) return;
+                    desde = new Date(metricasFechaDesde).toISOString();
+                    hasta = new Date(metricasFechaHasta + 'T23:59:59.999').toISOString();
+                    break;
+                }
+                case 'hoy':
+                default: {
+                    desde = inicioHoy.toISOString();
+                    hasta = hoy.toISOString();
+                    break;
+                }
+            }
+            
+            const data = await SDRService.obtenerMetricasDiarias(null, null, null, desde, hasta);
             setMetricas(data);
         } catch (error) {
             console.error('Error cargando métricas:', error);
@@ -338,6 +388,12 @@ const GestionSDRPage = () => {
             cargarContactos();
         }
     }, [authLoading, userId, page, filtros]);
+    
+    // Recargar métricas cuando cambia el rango de fechas
+    useEffect(() => {
+        if (authLoading || !userId || !initialLoadDone.current) return;
+        cargarMetricas();
+    }, [metricasRango, metricasFechaDesde, metricasFechaHasta]);
     
     // ==================== HELPERS ====================
     
@@ -551,9 +607,74 @@ const GestionSDRPage = () => {
     
     // ==================== RENDER DASHBOARD ====================
     
+    const RANGOS_METRICAS = [
+        { key: 'hoy', label: 'Hoy' },
+        { key: 'ayer', label: 'Ayer' },
+        { key: 'semana', label: 'Esta semana' },
+        { key: 'mes', label: 'Este mes' },
+        { key: 'custom', label: '📅 Rango' },
+    ];
+    
+    const labelRango = {
+        hoy: 'Hoy',
+        ayer: 'Ayer',
+        semana: 'Esta semana',
+        mes: 'Este mes',
+        custom: metricasFechaDesde && metricasFechaHasta
+            ? `${new Date(metricasFechaDesde).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })} - ${new Date(metricasFechaHasta).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })}`
+            : 'Personalizado'
+    };
+    
     const renderDashboard = () => (
         <Box>
-            <Typography variant="h6" sx={{ mb: 2 }}>Métricas del equipo - Hoy</Typography>
+            {/* Título + Filtro de rango de fechas */}
+            <Stack 
+                direction={isMobile ? 'column' : 'row'} 
+                justifyContent="space-between" 
+                alignItems={isMobile ? 'flex-start' : 'center'} 
+                spacing={1}
+                sx={{ mb: 2 }}
+            >
+                <Typography variant="h6">
+                    Métricas del equipo - {labelRango[metricasRango] || 'Hoy'}
+                </Typography>
+                <Stack direction="row" spacing={0.5} alignItems="center" flexWrap="wrap" useFlexGap sx={{ rowGap: 0.5 }}>
+                    <DateRangeIcon fontSize="small" color="action" />
+                    {RANGOS_METRICAS.map(({ key, label }) => (
+                        <Chip
+                            key={key}
+                            label={label}
+                            size="small"
+                            color={metricasRango === key ? 'primary' : 'default'}
+                            variant={metricasRango === key ? 'filled' : 'outlined'}
+                            onClick={() => setMetricasRango(key)}
+                        />
+                    ))}
+                </Stack>
+            </Stack>
+            {/* Selectores de fecha custom */}
+            {metricasRango === 'custom' && (
+                <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 2 }}>
+                    <TextField
+                        type="date"
+                        size="small"
+                        label="Desde"
+                        value={metricasFechaDesde}
+                        onChange={(e) => setMetricasFechaDesde(e.target.value)}
+                        InputLabelProps={{ shrink: true }}
+                        sx={{ width: 160 }}
+                    />
+                    <TextField
+                        type="date"
+                        size="small"
+                        label="Hasta"
+                        value={metricasFechaHasta}
+                        onChange={(e) => setMetricasFechaHasta(e.target.value)}
+                        InputLabelProps={{ shrink: true }}
+                        sx={{ width: 160 }}
+                    />
+                </Stack>
+            )}
             <Grid container spacing={isMobile ? 1 : 2} sx={{ mb: 4 }}>
                 <Grid item xs={6} sm={6} md={2.4}>
                     <MetricCard
