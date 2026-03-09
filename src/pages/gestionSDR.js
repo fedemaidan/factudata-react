@@ -57,6 +57,8 @@ import DrawerDetalleContactoSDR, { EstadoChip } from 'src/components/sdr/DrawerD
 import ModalCrearReunion from 'src/components/sdr/ModalCrearReunion';
 import { ESTADOS_CONTACTO as ESTADOS_SDR, ESTADOS_REUNION, PLANES_SORBY, PRECALIFICACION_BOT, INTENCIONES_COMPRA } from 'src/constant/sdrConstants';
 import SortIcon from '@mui/icons-material/Sort';
+import SmartToyIcon from '@mui/icons-material/SmartToy';
+import BulkSendTemplateDialog from 'src/components/sdr/BulkSendTemplateDialog';
 
 // ==================== CONSTANTES ====================
 
@@ -184,6 +186,7 @@ const GestionSDRPage = () => {
     const [modalReunion, setModalReunion] = useState(false);
     const [modalNota, setModalNota] = useState({ open: false, contacto: null, tipo: '', atendida: null });
     const [modalEditarReunion, setModalEditarReunion] = useState({ open: false, reunion: null });
+    const [modalBulkTemplate, setModalBulkTemplate] = useState(false);
     
     // Estado para importación
     const [importTab, setImportTab] = useState(0);
@@ -201,6 +204,9 @@ const GestionSDRPage = () => {
     // Usar user_id del perfil (que es el Firebase UID guardado en Firestore)
     const sdrId = user?.user_id;
     const sdrNombre = `${user?.firstName || ''} ${user?.lastName || ''}`.trim() || user?.email || 'SDR';
+
+    // Permiso para enviar templates via bot
+    const tienePermisoEnviarBot = user?.admin || (user?.empresa?.acciones || []).includes('ENVIAR_MENSAJE_BOT');
     
     // Control de carga inicial
     const initialLoadDone = useRef(false);
@@ -979,6 +985,11 @@ const GestionSDRPage = () => {
                                 <IconButton size="small" onClick={handleDesasignarContactos}>
                                     <PersonOffIcon fontSize="small" />
                                 </IconButton>
+                                {tienePermisoEnviarBot && (
+                                    <IconButton size="small" color="success" onClick={() => setModalBulkTemplate(true)}>
+                                        <SmartToyIcon fontSize="small" />
+                                    </IconButton>
+                                )}
                                 <IconButton size="small" color="error" onClick={handleEliminarContactos}>
                                     <DeleteIcon fontSize="small" />
                                 </IconButton>
@@ -991,6 +1002,11 @@ const GestionSDRPage = () => {
                                 <Button size="small" startIcon={<PersonOffIcon />} onClick={handleDesasignarContactos}>
                                     Desasignar
                                 </Button>
+                                {tienePermisoEnviarBot && (
+                                    <Button size="small" startIcon={<SmartToyIcon />} color="success" onClick={() => setModalBulkTemplate(true)}>
+                                        Enviar template
+                                    </Button>
+                                )}
                                 <Button size="small" color="error" startIcon={<DeleteIcon />} onClick={handleEliminarContactos}>
                                     Eliminar
                                 </Button>
@@ -2444,6 +2460,25 @@ const GestionSDRPage = () => {
             <ModalImportar />
             <ModalAsignar />
             <ModalAgregarSDR />
+
+            {/* Modal Envío Masivo de Template Meta via Bot */}
+            {tienePermisoEnviarBot && (
+                <BulkSendTemplateDialog
+                    open={modalBulkTemplate}
+                    onClose={() => setModalBulkTemplate(false)}
+                    contacts={contactosSeleccionados.map(id => {
+                        const c = contactos.find(ct => ct._id === id);
+                        return c ? { phone: c.telefono, name: c.nombre || c.empresa } : null;
+                    }).filter(Boolean)}
+                    onComplete={(result) => {
+                        mostrarSnackbar(
+                            `${result.enviados} template(s) enviado(s)${result.errores.length ? `, ${result.errores.length} error(es)` : ''}`,
+                            result.errores.length === 0 ? 'success' : 'warning'
+                        );
+                        setContactosSeleccionados([]);
+                    }}
+                />
+            )}
             
             {/* Snackbar */}
             <Snackbar

@@ -78,6 +78,7 @@ import {
 } from 'src/constant/sdrConstants';
 import MiniChatViewer from 'src/components/sdr/MiniChatViewer';
 import useGrabadorAudio from 'src/hooks/useGrabadorAudio';
+import SendTemplateDialog from 'src/components/conversaciones/SendTemplateDialog';
 import config from 'src/config/config';
 
 // Helper: convierte URL relativa de audio (/api/sdr/audios/...) a URL absoluta del backend
@@ -156,6 +157,7 @@ const getEventoIcon = (tipo) => {
 };
 
 const botonesProximoContacto = [
+    { label: '⚡ Ahora', cantidad: 0, unidad: 'ahora' },
     { label: 'Hoy tarde', cantidad: 0, unidad: 'tarde' },
     { label: 'Mañana AM', cantidad: 1, unidad: 'manana' },
     { label: 'Mañana PM', cantidad: 1, unidad: 'tarde_dia' },
@@ -215,7 +217,10 @@ const formatearEtiquetaGrupo = (fecha) => {
 
 const calcularFecha = (cantidad, unidad) => {
     const ahora = new Date();
-    if (unidad === 'hours') {
+    if (unidad === 'ahora') {
+        ahora.setMinutes(ahora.getMinutes() + 1);
+        return ahora;
+    } else if (unidad === 'hours') {
         ahora.setHours(ahora.getHours() + cantidad);
     } else if (unidad === 'days') {
         ahora.setDate(ahora.getDate() + cantidad);
@@ -290,6 +295,10 @@ const ContactoSDRDetailPage = () => {
     // Modal selector de templates WhatsApp (Fase 2)
     const [modalTemplateWA, setModalTemplateWA] = useState(false);
     const [templatesWA, setTemplatesWA] = useState([]); // Cache de templates cargados
+
+    // Modal envío de template Meta (aprobado) via bot
+    const [modalMetaTemplate, setModalMetaTemplate] = useState(false);
+    const tienePermisoEnviarBot = user?.admin || (user?.empresa?.acciones || []).includes('ENVIAR_MENSAJE_BOT');
 
     // Tab mobile para chat/historial
     const [tabMobile, setTabMobile] = useState(0);
@@ -2497,6 +2506,15 @@ const ContactoSDRDetailPage = () => {
                                                     📋
                                                 </Button>
                                             </Tooltip>
+                                            {tienePermisoEnviarBot && (
+                                                <Tooltip title="Enviar template via Bot">
+                                                    <Button variant="outlined" size="small" color="success"
+                                                        onClick={() => setModalMetaTemplate(true)}
+                                                        sx={{ minWidth: 40, px: 1 }}>
+                                                        <SmartToyIcon fontSize="small" />
+                                                    </Button>
+                                                </Tooltip>
+                                            )}
                                         </Stack>
                                     </Box>
                                 )}
@@ -2716,6 +2734,15 @@ const ContactoSDRDetailPage = () => {
                                             📋
                                         </Button>
                                     </Tooltip>
+                                    {tienePermisoEnviarBot && (
+                                        <Tooltip title="Enviar template via Bot">
+                                            <Button variant="outlined" size="small" color="success"
+                                                onClick={() => setModalMetaTemplate(true)}
+                                                sx={{ minWidth: 40, px: 1 }}>
+                                                <SmartToyIcon fontSize="small" />
+                                            </Button>
+                                        </Tooltip>
+                                    )}
                                 </Stack>
                             </Box>
                             )}
@@ -3449,6 +3476,15 @@ const ContactoSDRDetailPage = () => {
                                                     📋
                                                 </Button>
                                             </Tooltip>
+                                            {tienePermisoEnviarBot && (
+                                                <Tooltip title="Enviar template via Bot">
+                                                    <Button variant="outlined" size="small" color="success"
+                                                        onClick={() => setModalMetaTemplate(true)}
+                                                        sx={{ minWidth: 40, px: 1 }}>
+                                                        <SmartToyIcon fontSize="small" />
+                                                    </Button>
+                                                </Tooltip>
+                                            )}
                                         </Stack>
                                     </Box>
                                 )}
@@ -3730,6 +3766,19 @@ const ContactoSDRDetailPage = () => {
                 onTemplateUsed={(template, mensaje) => setMensajeWA(mensaje)}
                 onTemplateSelected={handleTemplateSelected}
             />
+
+            {/* Modal Envío de Template Meta via Bot */}
+            {tienePermisoEnviarBot && (
+                <SendTemplateDialog
+                    open={modalMetaTemplate}
+                    onClose={() => setModalMetaTemplate(false)}
+                    phone={contacto?.telefono?.replace(/\D/g, '') || ''}
+                    contactName={contacto?.nombre || contacto?.empresa || ''}
+                    onSent={(result) => {
+                        setSnackbar({ open: true, message: result.message || 'Template enviado via bot', severity: 'success' });
+                    }}
+                />
+            )}
         </DashboardLayout>
     );
 };

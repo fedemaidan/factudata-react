@@ -53,6 +53,7 @@ import ContadoresActividad from 'src/components/sdr/ContadoresActividad';
 import SettingsIcon from '@mui/icons-material/Settings';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
 import SortIcon from '@mui/icons-material/Sort';
+import BulkSendTemplateDialog from 'src/components/sdr/BulkSendTemplateDialog';
 import NavigateBeforeIcon from '@mui/icons-material/NavigateBefore';
 import NavigateNextIcon from '@mui/icons-material/NavigateNext';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
@@ -112,7 +113,11 @@ const ContactosSDRPage = () => {
     const [modalImportarExcel, setModalImportarExcel] = useState(false);
     const [modalAdminTemplates, setModalAdminTemplates] = useState(false);
     const [modalReunion, setModalReunion] = useState(false);
+    const [modalBulkTemplate, setModalBulkTemplate] = useState(false);
     const [actionLoading, setActionLoading] = useState(false);
+
+    // Permiso para enviar templates via bot
+    const tienePermisoEnviarBot = user?.admin || (user?.empresa?.acciones || []).includes('ENVIAR_MENSAJE_BOT');
     
     // Métricas del SDR
     const [metricas, setMetricas] = useState(null);
@@ -1441,13 +1446,18 @@ const ContactosSDRPage = () => {
                     <Alert 
                         severity="info" 
                         action={
-                            <Stack direction="row" spacing={1}>
+                            <Stack direction="row" spacing={1} flexWrap="wrap">
                                 <Button size="small" onClick={() => setModalProximoMasivo(true)}>
                                     📅 Fecha
                                 </Button>
                                 {cadenciasDisponibles.length > 0 && (
                                     <Button size="small" onClick={() => setModalCadenciaMasiva(true)}>
                                         🔄 Cadencia
+                                    </Button>
+                                )}
+                                {tienePermisoEnviarBot && (
+                                    <Button size="small" onClick={() => setModalBulkTemplate(true)}>
+                                        🤖 Template Bot
                                     </Button>
                                 )}
                                 <Button size="small" onClick={() => setSeleccionados([])}>
@@ -2203,6 +2213,15 @@ const ContactosSDRPage = () => {
                                         Asignar cadencia
                                     </Button>
                                 )}
+                                {tienePermisoEnviarBot && (
+                                    <Button
+                                        size="small"
+                                        startIcon={<SmartToyIcon />}
+                                        onClick={() => setModalBulkTemplate(true)}
+                                    >
+                                        Enviar template
+                                    </Button>
+                                )}
                                 <Button size="small" onClick={() => setSeleccionados([])}>
                                     Limpiar selección
                                 </Button>
@@ -2566,6 +2585,26 @@ const ContactosSDRPage = () => {
                 onClose={() => setModalAdminTemplates(false)}
                 empresaId={empresaId}
             />
+
+            {/* Modal Envío Masivo de Template Meta via Bot */}
+            {tienePermisoEnviarBot && (
+                <BulkSendTemplateDialog
+                    open={modalBulkTemplate}
+                    onClose={() => setModalBulkTemplate(false)}
+                    contacts={seleccionados.map(id => {
+                        const c = contactos.find(ct => ct._id === id);
+                        return c ? { phone: c.telefono, name: c.nombre || c.empresa } : null;
+                    }).filter(Boolean)}
+                    onComplete={(result) => {
+                        setSnackbar({
+                            open: true,
+                            message: `${result.enviados} template(s) enviado(s)${result.errores.length ? `, ${result.errores.length} error(es)` : ''}`,
+                            severity: result.errores.length === 0 ? 'success' : 'warning'
+                        });
+                        setSeleccionados([]);
+                    }}
+                />
+            )}
 
             {/* Modal Registrar Reunión */}
             <ModalCrearReunion

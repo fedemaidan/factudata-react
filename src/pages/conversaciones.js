@@ -25,6 +25,8 @@ import DownloadIcon from '@mui/icons-material/Download';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import RestartAltIcon from '@mui/icons-material/RestartAlt';
+import WhatsAppIcon from '@mui/icons-material/WhatsApp';
+import SendTemplateDialog from 'src/components/conversaciones/SendTemplateDialog';
 import ConversationList from "src/components/conversaciones/ConversationList";
 import ChatWindow from "src/components/conversaciones/ChatWindow";
 import MessageInput from "src/components/conversaciones/MessageInput";
@@ -51,6 +53,7 @@ function ConversacionesContent() {
   const [downloadDates, setDownloadDates] = useState({ start: "", end: "" });
   const [resetOpen, setResetOpen] = useState(false);
   const [resetLoading, setResetLoading] = useState(false);
+  const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
   const [alert, setAlert] = useState({ open: false, message: "", severity: "info" });
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
@@ -72,8 +75,25 @@ function ConversacionesContent() {
     return selected?.wPid?.split('@')[0] || selected?.lid || selected?.ultimoMensaje?.receptor || "";
   }, [selected]);
 
+  const contactName = useMemo(() => {
+    if (!selected) return '';
+    return selected?.profile?.name || selected?.pushName || selectedPhone || '';
+  }, [selected, selectedPhone]);
+
   const headerActions = selected ? (
     <Box display="flex" alignItems="center" gap={{ xs: 0.25, sm: 0.5 }}>
+      <Tooltip title="Enviar template de WhatsApp">
+        <span>
+          <IconButton
+            onClick={() => setTemplateDialogOpen(true)}
+            size="small"
+            disabled={!selectedPhone}
+            sx={{ p: { xs: 0.5, sm: 1 }, color: 'success.main' }}
+          >
+            <WhatsAppIcon sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }} />
+          </IconButton>
+        </span>
+      </Tooltip>
       <IconButton 
         onClick={onRefreshCurrentConversation} 
         title="Refrescar conversación" 
@@ -318,6 +338,17 @@ function ConversacionesContent() {
           </Button>
         </DialogActions>
       </Dialog>
+
+      <SendTemplateDialog
+        open={templateDialogOpen}
+        onClose={() => setTemplateDialogOpen(false)}
+        phone={selectedPhone}
+        contactName={contactName}
+        onSent={(result) => {
+          setAlert({ open: true, message: result.message || 'Template enviado', severity: 'success' });
+          onRefreshCurrentConversation();
+        }}
+      />
 
       <Snackbar
         open={alert.open}
