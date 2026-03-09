@@ -92,6 +92,15 @@ const SDRService = {
     },
 
     /**
+     * Recalcular contadores de contactos basándose en el historial real
+     * @param {string[]} contactoIds - Array de IDs de contactos
+     */
+    recalcularContadores: async (contactoIds) => {
+        const res = await api.post('/sdr/acciones/recalcular-contadores', { contactoIds });
+        return res.data;
+    },
+
+    /**
      * Subir audio grabado y asociarlo a un contacto
      * @param {string} contactoId - ID del contacto
      * @param {Blob} audioBlob - Blob del audio grabado

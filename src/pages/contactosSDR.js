@@ -41,7 +41,6 @@ import HandshakeIcon from '@mui/icons-material/Handshake';
 import ViewListIcon from '@mui/icons-material/ViewList';
 import HistoryIcon from '@mui/icons-material/History';
 import EventAvailableIcon from '@mui/icons-material/EventAvailable';
-import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import { useAuthContext } from 'src/contexts/auth-context';
 import SDRService from 'src/services/sdrService';
@@ -54,10 +53,6 @@ import ContadoresActividad from 'src/components/sdr/ContadoresActividad';
 import SettingsIcon from '@mui/icons-material/Settings';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
 import SortIcon from '@mui/icons-material/Sort';
-import BulkSendTemplateDialog from 'src/components/sdr/BulkSendTemplateDialog';
-import BulkRegistrarAccionDialog from 'src/components/sdr/BulkRegistrarAccionDialog';
-import EditNoteIcon from '@mui/icons-material/EditNote';
-import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import NavigateBeforeIcon from '@mui/icons-material/NavigateBefore';
 import NavigateNextIcon from '@mui/icons-material/NavigateNext';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
@@ -100,7 +95,7 @@ const ContactosSDRPage = () => {
     const [ordenarPor, setOrdenarPor] = useState(''); // vacío = el backend elige según bandeja
     
     // Contadores de bandejas (para badges)
-    const [contadoresBandejas, setContadoresBandejas] = useState({ nuevos: 0, reintentos: 0, seguimiento: 0, reunionesPendientes: 0, reunionesPasadas: 0, reunionesSinConfirmar: 0 });
+    const [contadoresBandejas, setContadoresBandejas] = useState({ nuevos: 0, reintentos: 0, seguimiento: 0, reunionesPendientes: 0, reunionesPasadas: 0 });
     
     // Selección múltiple
     const [seleccionados, setSeleccionados] = useState([]);
@@ -117,13 +112,7 @@ const ContactosSDRPage = () => {
     const [modalImportarExcel, setModalImportarExcel] = useState(false);
     const [modalAdminTemplates, setModalAdminTemplates] = useState(false);
     const [modalReunion, setModalReunion] = useState(false);
-    const [modalBulkTemplate, setModalBulkTemplate] = useState(false);
-    const [modalBulkAccion, setModalBulkAccion] = useState(false);
-    const [modalCambiarEstadoMasivo, setModalCambiarEstadoMasivo] = useState(false);
     const [actionLoading, setActionLoading] = useState(false);
-
-    // Permiso para enviar templates via bot
-    const tienePermisoEnviarBot = user?.admin || (user?.empresa?.acciones || []).includes('ENVIAR_MENSAJE_BOT');
     
     // Métricas del SDR
     const [metricas, setMetricas] = useState(null);
@@ -1142,12 +1131,6 @@ const ContactosSDRPage = () => {
                         label="Pasadas"
                     />
                     <Tab 
-                        value="reunionesSinConfirmar"
-                        icon={<Badge badgeContent={contadoresBandejas.reunionesSinConfirmar || 0} color="error" max={99}><WarningAmberIcon sx={{ fontSize: 18 }} /></Badge>}
-                        iconPosition="start"
-                        label="Sin confirmar"
-                    />
-                    <Tab 
                         value="todos"
                         icon={<ViewListIcon sx={{ fontSize: 18 }} />}
                         iconPosition="start"
@@ -1458,7 +1441,7 @@ const ContactosSDRPage = () => {
                     <Alert 
                         severity="info" 
                         action={
-                            <Stack direction="row" spacing={1} flexWrap="wrap">
+                            <Stack direction="row" spacing={1}>
                                 <Button size="small" onClick={() => setModalProximoMasivo(true)}>
                                     📅 Fecha
                                 </Button>
@@ -1467,17 +1450,6 @@ const ContactosSDRPage = () => {
                                         🔄 Cadencia
                                     </Button>
                                 )}
-                                {tienePermisoEnviarBot && (
-                                    <Button size="small" onClick={() => setModalBulkTemplate(true)}>
-                                        🤖 Template Bot
-                                    </Button>
-                                )}
-                                <Button size="small" onClick={() => setModalBulkAccion(true)}>
-                                    📝 Acción
-                                </Button>
-                                <Button size="small" onClick={() => setModalCambiarEstadoMasivo(true)}>
-                                    🔄 Estado
-                                </Button>
                                 <Button size="small" onClick={() => setSeleccionados([])}>
                                     ✕
                                 </Button>
@@ -1925,12 +1897,6 @@ const ContactosSDRPage = () => {
                             label="Pasadas"
                         />
                         <Tab 
-                            value="reunionesSinConfirmar"
-                            icon={<Badge badgeContent={contadoresBandejas.reunionesSinConfirmar || 0} color="error" max={99}><WarningAmberIcon /></Badge>}
-                            iconPosition="start"
-                            label="Sin confirmar"
-                        />
-                        <Tab 
                             value="todos"
                             icon={<ViewListIcon />}
                             iconPosition="start"
@@ -2237,29 +2203,6 @@ const ContactosSDRPage = () => {
                                         Asignar cadencia
                                     </Button>
                                 )}
-                                {tienePermisoEnviarBot && (
-                                    <Button
-                                        size="small"
-                                        startIcon={<SmartToyIcon />}
-                                        onClick={() => setModalBulkTemplate(true)}
-                                    >
-                                        Enviar template
-                                    </Button>
-                                )}
-                                <Button
-                                    size="small"
-                                    startIcon={<EditNoteIcon />}
-                                    onClick={() => setModalBulkAccion(true)}
-                                >
-                                    Registrar acción
-                                </Button>
-                                <Button
-                                    size="small"
-                                    startIcon={<SwapHorizIcon />}
-                                    onClick={() => setModalCambiarEstadoMasivo(true)}
-                                >
-                                    Cambiar estado
-                                </Button>
                                 <Button size="small" onClick={() => setSeleccionados([])}>
                                     Limpiar selección
                                 </Button>
@@ -2623,115 +2566,6 @@ const ContactosSDRPage = () => {
                 onClose={() => setModalAdminTemplates(false)}
                 empresaId={empresaId}
             />
-
-            {/* Modal Envío Masivo de Template Meta via Bot */}
-            {tienePermisoEnviarBot && (
-                <BulkSendTemplateDialog
-                    open={modalBulkTemplate}
-                    onClose={() => setModalBulkTemplate(false)}
-                    empresaId={empresaId}
-                    contacts={seleccionados.map(id => {
-                        const c = contactos.find(ct => ct._id === id);
-                        return c ? { phone: c.telefono, name: c.nombre || c.empresa } : null;
-                    }).filter(Boolean)}
-                    onComplete={(result) => {
-                        setSnackbar({
-                            open: true,
-                            message: `${result.enviados} template(s) enviado(s)${result.errores.length ? `, ${result.errores.length} error(es)` : ''}`,
-                            severity: result.errores.length === 0 ? 'success' : 'warning'
-                        });
-                        setSeleccionados([]);
-                    }}
-                />
-            )}
-
-            {/* Modal Registrar Acción Masiva */}
-            <BulkRegistrarAccionDialog
-                open={modalBulkAccion}
-                onClose={() => setModalBulkAccion(false)}
-                contactoIds={seleccionados}
-                empresaId={empresaId}
-                onComplete={(result) => {
-                    setSnackbar({
-                        open: true,
-                        message: `${result.exitosos} acción(es) registrada(s)${result.fallidos > 0 ? `, ${result.fallidos} error(es)` : ''}`,
-                        severity: result.fallidos === 0 ? 'success' : 'warning'
-                    });
-                    setSeleccionados([]);
-                    cargarContactos();
-                }}
-            />
-
-            {/* Modal Cambiar Estado Masivo */}
-            <Dialog
-                open={modalCambiarEstadoMasivo}
-                onClose={() => setModalCambiarEstadoMasivo(false)}
-                maxWidth="xs"
-                fullWidth
-            >
-                <DialogTitle>🔄 Cambiar estado de {seleccionados.length} contacto(s)</DialogTitle>
-                <DialogContent>
-                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                        Seleccioná el nuevo estado para todos los contactos seleccionados
-                    </Typography>
-                    <Stack spacing={1}>
-                        {[
-                            { value: 'nuevo', label: 'Nuevo', color: 'info' },
-                            { value: 'contactado', label: 'Contactado', color: 'warning' },
-                            { value: 'calificado', label: 'Calificado', color: 'success' },
-                            { value: 'cierre', label: 'En Cierre', color: 'secondary' },
-                            { value: 'ganado', label: 'Ganado', color: 'success' },
-                            { value: 'no_contacto', label: 'No Contactado', color: 'inherit' },
-                            { value: 'no_responde', label: 'No Responde', color: 'inherit' },
-                            { value: 'revisar_mas_adelante', label: 'Revisar Después', color: 'warning' },
-                            { value: 'no_califica', label: 'No Califica', color: 'error' },
-                            { value: 'perdido', label: 'Perdido', color: 'error' },
-                        ].map((est) => (
-                            <Button
-                                key={est.value}
-                                variant="outlined"
-                                fullWidth
-                                color={est.color}
-                                onClick={async () => {
-                                    setActionLoading(true);
-                                    try {
-                                        let exitosos = 0;
-                                        let fallidos = 0;
-                                        for (const id of seleccionados) {
-                                            try {
-                                                await SDRService.cambiarEstado(id, est.value, 'Cambio masivo');
-                                                exitosos++;
-                                            } catch (err) {
-                                                fallidos++;
-                                            }
-                                        }
-                                        setSnackbar({
-                                            open: true,
-                                            message: `${exitosos} contacto(s) cambiados a "${est.label}"${fallidos > 0 ? `, ${fallidos} error(es)` : ''}`,
-                                            severity: fallidos === 0 ? 'success' : 'warning'
-                                        });
-                                        setSeleccionados([]);
-                                        setModalCambiarEstadoMasivo(false);
-                                        cargarContactos();
-                                    } catch (error) {
-                                        setSnackbar({ open: true, message: 'Error al cambiar estado', severity: 'error' });
-                                    } finally {
-                                        setActionLoading(false);
-                                    }
-                                }}
-                                disabled={actionLoading}
-                                sx={{ justifyContent: 'flex-start', textTransform: 'none' }}
-                            >
-                                {actionLoading ? <CircularProgress size={18} sx={{ mr: 1 }} /> : null}
-                                {est.label}
-                            </Button>
-                        ))}
-                    </Stack>
-                </DialogContent>
-                <DialogActions>
-                    <Button onClick={() => setModalCambiarEstadoMasivo(false)}>Cancelar</Button>
-                </DialogActions>
-            </Dialog>
 
             {/* Modal Registrar Reunión */}
             <ModalCrearReunion
