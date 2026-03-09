@@ -32,8 +32,9 @@ import { fetchMetaTemplates, sendTemplateFromConversation } from 'src/services/m
  * - phone: string (teléfono del contacto, sin @s.whatsapp.net)
  * - contactName: string (nombre para mostrar)
  * - onSent: (result) => void (callback al enviar exitosamente)
+ * - empresaId: string (ID de empresa para registro de evento SDR)
  */
-export default function SendTemplateDialog({ open, onClose, phone, contactName, onSent }) {
+export default function SendTemplateDialog({ open, onClose, phone, contactName, onSent, empresaId }) {
   const [templates, setTemplates] = useState([]);
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
@@ -159,6 +160,7 @@ export default function SendTemplateDialog({ open, onClose, phone, contactName, 
         parameterValues: paramValues,
       };
       if (fechaEnvio) payload.fechaEnvio = fechaEnvio.toISOString();
+      if (empresaId) payload.empresaId = empresaId;
       const result = await sendTemplateFromConversation(payload);
       setSuccess(result.message || 'Template enviado correctamente');
       if (onSent) onSent(result);

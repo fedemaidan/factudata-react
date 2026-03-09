@@ -32,8 +32,9 @@ import { fetchMetaTemplates, sendTemplateFromConversation } from 'src/services/m
  * - onClose: () => void
  * - contacts: Array<{ phone: string, name?: string }> — lista de contactos destinatarios
  * - onComplete: ({ enviados, errores }) => void — callback al finalizar
+ * - empresaId: string (ID de empresa para registro de evento SDR)
  */
-export default function BulkSendTemplateDialog({ open, onClose, contacts = [], onComplete }) {
+export default function BulkSendTemplateDialog({ open, onClose, contacts = [], onComplete, empresaId }) {
   const [templates, setTemplates] = useState([]);
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
@@ -182,6 +183,7 @@ export default function BulkSendTemplateDialog({ open, onClose, contacts = [], o
           parameterValues: contactParamValues,
         };
         if (fechaEnvio) payload.fechaEnvio = fechaEnvio.toISOString();
+        if (empresaId) payload.empresaId = empresaId;
         await sendTemplateFromConversation(payload);
         enviados.push({ name: contact.name || contact.nombre || phone });
         setProgress(prev => ({ ...prev, sent: prev.sent + 1 }));

@@ -34,9 +34,10 @@ export async function deleteMetaTemplate(id) {
 
 // === Envío de template desde conversaciones ===
 
-export async function sendTemplateFromConversation({ phone, templateId, parameterValues, fechaEnvio }) {
+export async function sendTemplateFromConversation({ phone, templateId, parameterValues, fechaEnvio, empresaId }) {
   const body = { phone, templateId, parameterValues };
   if (fechaEnvio) body.fechaEnvio = fechaEnvio;
+  if (empresaId) body.empresaId = empresaId;
   const { data } = await api.post('/meta-templates/send-from-conversation', body);
   return data;
 }

@@ -3774,6 +3774,7 @@ const ContactoSDRDetailPage = () => {
                     onClose={() => setModalMetaTemplate(false)}
                     phone={contacto?.telefono?.replace(/\D/g, '') || ''}
                     contactName={contacto?.nombre || contacto?.empresa || ''}
+                    empresaId={empresaId}
                     onSent={(result) => {
                         setSnackbar({ open: true, message: result.message || 'Template enviado via bot', severity: 'success' });
                     }}

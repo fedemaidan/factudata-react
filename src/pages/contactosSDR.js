@@ -41,6 +41,7 @@ import HandshakeIcon from '@mui/icons-material/Handshake';
 import ViewListIcon from '@mui/icons-material/ViewList';
 import HistoryIcon from '@mui/icons-material/History';
 import EventAvailableIcon from '@mui/icons-material/EventAvailable';
+import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import { useAuthContext } from 'src/contexts/auth-context';
 import SDRService from 'src/services/sdrService';
@@ -54,6 +55,8 @@ import SettingsIcon from '@mui/icons-material/Settings';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
 import SortIcon from '@mui/icons-material/Sort';
 import BulkSendTemplateDialog from 'src/components/sdr/BulkSendTemplateDialog';
+import BulkRegistrarAccionDialog from 'src/components/sdr/BulkRegistrarAccionDialog';
+import EditNoteIcon from '@mui/icons-material/EditNote';
 import NavigateBeforeIcon from '@mui/icons-material/NavigateBefore';
 import NavigateNextIcon from '@mui/icons-material/NavigateNext';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
@@ -96,7 +99,7 @@ const ContactosSDRPage = () => {
     const [ordenarPor, setOrdenarPor] = useState(''); // vacío = el backend elige según bandeja
     
     // Contadores de bandejas (para badges)
-    const [contadoresBandejas, setContadoresBandejas] = useState({ nuevos: 0, reintentos: 0, seguimiento: 0, reunionesPendientes: 0, reunionesPasadas: 0 });
+    const [contadoresBandejas, setContadoresBandejas] = useState({ nuevos: 0, reintentos: 0, seguimiento: 0, reunionesPendientes: 0, reunionesPasadas: 0, reunionesSinConfirmar: 0 });
     
     // Selección múltiple
     const [seleccionados, setSeleccionados] = useState([]);
@@ -114,6 +117,7 @@ const ContactosSDRPage = () => {
     const [modalAdminTemplates, setModalAdminTemplates] = useState(false);
     const [modalReunion, setModalReunion] = useState(false);
     const [modalBulkTemplate, setModalBulkTemplate] = useState(false);
+    const [modalBulkAccion, setModalBulkAccion] = useState(false);
     const [actionLoading, setActionLoading] = useState(false);
 
     // Permiso para enviar templates via bot
@@ -1136,6 +1140,12 @@ const ContactosSDRPage = () => {
                         label="Pasadas"
                     />
                     <Tab 
+                        value="reunionesSinConfirmar"
+                        icon={<Badge badgeContent={contadoresBandejas.reunionesSinConfirmar || 0} color="error" max={99}><WarningAmberIcon sx={{ fontSize: 18 }} /></Badge>}
+                        iconPosition="start"
+                        label="Sin confirmar"
+                    />
+                    <Tab 
                         value="todos"
                         icon={<ViewListIcon sx={{ fontSize: 18 }} />}
                         iconPosition="start"
@@ -1460,6 +1470,9 @@ const ContactosSDRPage = () => {
                                         🤖 Template Bot
                                     </Button>
                                 )}
+                                <Button size="small" onClick={() => setModalBulkAccion(true)}>
+                                    📝 Acción
+                                </Button>
                                 <Button size="small" onClick={() => setSeleccionados([])}>
                                     ✕
                                 </Button>
@@ -1907,6 +1920,12 @@ const ContactosSDRPage = () => {
                             label="Pasadas"
                         />
                         <Tab 
+                            value="reunionesSinConfirmar"
+                            icon={<Badge badgeContent={contadoresBandejas.reunionesSinConfirmar || 0} color="error" max={99}><WarningAmberIcon /></Badge>}
+                            iconPosition="start"
+                            label="Sin confirmar"
+                        />
+                        <Tab 
                             value="todos"
                             icon={<ViewListIcon />}
                             iconPosition="start"
@@ -2222,6 +2241,13 @@ const ContactosSDRPage = () => {
                                         Enviar template
                                     </Button>
                                 )}
+                                <Button
+                                    size="small"
+                                    startIcon={<EditNoteIcon />}
+                                    onClick={() => setModalBulkAccion(true)}
+                                >
+                                    Registrar acción
+                                </Button>
                                 <Button size="small" onClick={() => setSeleccionados([])}>
                                     Limpiar selección
                                 </Button>
@@ -2591,6 +2617,7 @@ const ContactosSDRPage = () => {
                 <BulkSendTemplateDialog
                     open={modalBulkTemplate}
                     onClose={() => setModalBulkTemplate(false)}
+                    empresaId={empresaId}
                     contacts={seleccionados.map(id => {
                         const c = contactos.find(ct => ct._id === id);
                         return c ? { phone: c.telefono, name: c.nombre || c.empresa } : null;
@@ -2605,6 +2632,23 @@ const ContactosSDRPage = () => {
                     }}
                 />
             )}
+
+            {/* Modal Registrar Acción Masiva */}
+            <BulkRegistrarAccionDialog
+                open={modalBulkAccion}
+                onClose={() => setModalBulkAccion(false)}
+                contactoIds={seleccionados}
+                empresaId={empresaId}
+                onComplete={(result) => {
+                    setSnackbar({
+                        open: true,
+                        message: `${result.exitosos} acción(es) registrada(s)${result.fallidos > 0 ? `, ${result.fallidos} error(es)` : ''}`,
+                        severity: result.fallidos === 0 ? 'success' : 'warning'
+                    });
+                    setSeleccionados([]);
+                    cargarContactos();
+                }}
+            />
 
             {/* Modal Registrar Reunión */}
             <ModalCrearReunion

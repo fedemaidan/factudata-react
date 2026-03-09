@@ -37,6 +37,7 @@ import {
   ConversationsProvider,
   useConversationsContext,
 } from "src/contexts/conversations-context";
+import { useAuthContext } from "src/contexts/auth-context";
 import { getTitulo } from "src/utils/conversacionesUtils";
 
 export default function ConversacionesPage() {
@@ -58,6 +59,8 @@ function ConversacionesContent() {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
   const myNumber = "sorby";
+  const { user } = useAuthContext();
+  const empresaId = user?.empresa?.id || null;
 
   const {
     selected,
@@ -344,6 +347,7 @@ function ConversacionesContent() {
         onClose={() => setTemplateDialogOpen(false)}
         phone={selectedPhone}
         contactName={contactName}
+        empresaId={empresaId}
         onSent={(result) => {
           setAlert({ open: true, message: result.message || 'Template enviado', severity: 'success' });
           onRefreshCurrentConversation();

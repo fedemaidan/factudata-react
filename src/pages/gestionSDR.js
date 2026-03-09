@@ -2466,6 +2466,7 @@ const GestionSDRPage = () => {
                 <BulkSendTemplateDialog
                     open={modalBulkTemplate}
                     onClose={() => setModalBulkTemplate(false)}
+                    empresaId={empresaId}
                     contacts={contactosSeleccionados.map(id => {
                         const c = contactos.find(ct => ct._id === id);
                         return c ? { phone: c.telefono, name: c.nombre || c.empresa } : null;
