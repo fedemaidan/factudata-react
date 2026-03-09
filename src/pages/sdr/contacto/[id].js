@@ -66,6 +66,9 @@ import { useAuthContext } from 'src/contexts/auth-context';
 import SDRService from 'src/services/sdrService';
 import { EstadoChip, EstadoChipEditable, ModalEditarContacto } from 'src/components/sdr/DrawerDetalleContactoSDR';
 import ModalRegistrarAccion from 'src/components/sdr/ModalRegistrarAccion';
+import ModalSelectorTemplate, { replaceVariables } from 'src/components/sdr/ModalSelectorTemplate';
+import ModalCrearReunion from 'src/components/sdr/ModalCrearReunion';
+import { detectarContextoTemplate, obtenerMejorTemplate } from 'src/utils/templateContexto';
 import { getWhatsAppLink, getTelLink } from 'src/utils/phoneUtils';
 import {
     PLANES_SORBY,
@@ -75,6 +78,7 @@ import {
 } from 'src/constant/sdrConstants';
 import MiniChatViewer from 'src/components/sdr/MiniChatViewer';
 import useGrabadorAudio from 'src/hooks/useGrabadorAudio';
+import SendTemplateDialog from 'src/components/conversaciones/SendTemplateDialog';
 import config from 'src/config/config';
 
 // Helper: convierte URL relativa de audio (/api/sdr/audios/...) a URL absoluta del backend
@@ -153,6 +157,7 @@ const getEventoIcon = (tipo) => {
 };
 
 const botonesProximoContacto = [
+    { label: '⚡ Ahora', cantidad: 0, unidad: 'ahora' },
     { label: 'Hoy tarde', cantidad: 0, unidad: 'tarde' },
     { label: 'Mañana AM', cantidad: 1, unidad: 'manana' },
     { label: 'Mañana PM', cantidad: 1, unidad: 'tarde_dia' },
@@ -212,7 +217,10 @@ const formatearEtiquetaGrupo = (fecha) => {
 
 const calcularFecha = (cantidad, unidad) => {
     const ahora = new Date();
-    if (unidad === 'hours') {
+    if (unidad === 'ahora') {
+        ahora.setMinutes(ahora.getMinutes() + 1);
+        return ahora;
+    } else if (unidad === 'hours') {
         ahora.setHours(ahora.getHours() + cantidad);
     } else if (unidad === 'days') {
         ahora.setDate(ahora.getDate() + cantidad);
@@ -283,6 +291,14 @@ const ContactoSDRDetailPage = () => {
 
     // Modal editar contacto
     const [modalEditarContacto, setModalEditarContacto] = useState(false);
+
+    // Modal selector de templates WhatsApp (Fase 2)
+    const [modalTemplateWA, setModalTemplateWA] = useState(false);
+    const [templatesWA, setTemplatesWA] = useState([]); // Cache de templates cargados
+
+    // Modal envío de template Meta (aprobado) via bot
+    const [modalMetaTemplate, setModalMetaTemplate] = useState(false);
+    const tienePermisoEnviarBot = user?.admin || (user?.empresa?.acciones || []).includes('ENVIAR_MENSAJE_BOT');
 
     // Tab mobile para chat/historial
     const [tabMobile, setTabMobile] = useState(0);
@@ -355,17 +371,15 @@ const ContactoSDRDetailPage = () => {
     // Abrir menú de re-asignación de SDR
     const handleAbrirMenuAsignar = async (event) => {
         setMenuAsignarAnchor(event.currentTarget);
-        if (sdrsDisponibles.length === 0) {
-            setCargandoSdrs(true);
-            try {
-                const data = await SDRService.obtenerSDRsDisponibles(empresaId);
-                setSdrsDisponibles(data.sdrs || data || []);
-            } catch (err) {
-                console.error('Error cargando SDRs:', err);
-                mostrarSnackbar('Error al cargar SDRs disponibles', 'error');
-            } finally {
-                setCargandoSdrs(false);
-            }
+        setCargandoSdrs(true);
+        try {
+            const data = await SDRService.obtenerSDRsDisponibles(empresaId);
+            setSdrsDisponibles(data.sdrs || data || []);
+        } catch (err) {
+            console.error('Error cargando SDRs:', err);
+            mostrarSnackbar('Error al cargar SDRs disponibles', 'error');
+        } finally {
+            setCargandoSdrs(false);
         }
     };
 
@@ -442,6 +456,26 @@ const ContactoSDRDetailPage = () => {
             .then(data => setCadencias(data || []))
             .catch(() => setCadencias([]));
     }, []);
+
+    // Cargar templates de WA (para auto-fill) — Fase 2
+    useEffect(() => {
+        if (empresaId) {
+            SDRService.listarTemplatesWhatsApp(empresaId)
+                .then(data => setTemplatesWA(data.templates || []))
+                .catch(() => setTemplatesWA([]));
+        }
+    }, [empresaId]);
+
+    // Auto-fill mensajeWA con mejor template cuando cambia el contacto (Fase 2)
+    useEffect(() => {
+        if (contacto && templatesWA.length > 0 && !mensajeWA) {
+            const mejor = obtenerMejorTemplate(templatesWA, contacto);
+            if (mejor) {
+                const mensaje = replaceVariables(mejor.body, contacto, user);
+                if (mensaje) setMensajeWA(mensaje);
+            }
+        }
+    }, [contacto?._id, contacto?.estado, templatesWA.length]);
 
     // Reset wizard cuando cambia el paso actual (respeta WA pendiente)
     useEffect(() => {
@@ -958,6 +992,12 @@ const ContactoSDRDetailPage = () => {
     const handleWizardEnviarWA = () => {
         window.open(getWhatsAppLink(contacto.telefono, mensajeWA), '_blank');
         setWizardFase('resultado');
+    };
+
+    /** Callback cuando el usuario elige un template desde el modal */
+    const handleTemplateSelected = (mensaje) => {
+        setMensajeWA(mensaje);
+        setModalTemplateWA(false);
     };
 
     /** Confirma envío de WA, registra y avanza */
@@ -1778,26 +1818,200 @@ const ContactoSDRDetailPage = () => {
                                 </CardContent>
                             </Card>
                         </Grid>
+
+                        {/* Card: Resumen SDR (IA) */}
+                        <Grid item xs={12}>
+                            <Card variant="outlined">
+                                <CardContent>
+                                    <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between" mb={1}>
+                                        <Stack direction="row" spacing={1} alignItems="center">
+                                            <AutoFixHighIcon fontSize="small" color="action" />
+                                            <Typography variant="subtitle2" color="text.secondary">
+                                                Resumen SDR (IA)
+                                            </Typography>
+                                        </Stack>
+                                        <Button
+                                            size="small"
+                                            variant={contacto.resumenSDR ? 'outlined' : 'contained'}
+                                            onClick={async () => {
+                                                try {
+                                                    setGuardandoScoring(true);
+                                                    const data = await SDRService.generarResumenContacto(contacto._id);
+                                                    setContacto(prev => ({ ...prev, resumenSDR: data.resumenSDR }));
+                                                    mostrarSnackbar('Resumen generado con IA ✨');
+                                                } catch (err) {
+                                                    mostrarSnackbar(err.response?.data?.error || 'Error al generar resumen', 'error');
+                                                } finally {
+                                                    setGuardandoScoring(false);
+                                                }
+                                            }}
+                                            disabled={guardandoScoring}
+                                            sx={{ textTransform: 'none', fontSize: '0.78rem' }}
+                                        >
+                                            {guardandoScoring ? <CircularProgress size={16} /> : contacto.resumenSDR ? '🔄 Regenerar' : '✨ Generar resumen'}
+                                        </Button>
+                                    </Stack>
+                                    {contacto.resumenSDR ? (
+                                        <Typography variant="body2" sx={{ whiteSpace: 'pre-line', fontSize: '0.82rem', lineHeight: 1.6 }}>
+                                            {contacto.resumenSDR}
+                                        </Typography>
+                                    ) : (
+                                        <Typography variant="body2" color="text.disabled" sx={{ fontStyle: 'italic' }}>
+                                            Sin resumen generado. Hacé click en "Generar resumen" para que la IA analice el historial del contacto.
+                                        </Typography>
+                                    )}
+                                </CardContent>
+                            </Card>
+                        </Grid>
                     </Grid>
 
                     {/* ==================== REUNIONES (si existen) ==================== */}
                     {reuniones.length > 0 && (
                         <Paper variant="outlined" sx={{ p: 2, mb: 3 }}>
                             <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                                Reuniones ({reuniones.length})
+                                📅 Reuniones ({reuniones.length})
                             </Typography>
-                            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                                {reuniones.map((reunion) => {
+                            <Stack spacing={1.5}>
+                                {reuniones
+                                    .sort((a, b) => new Date(b.fecha || b.fechaHora) - new Date(a.fecha || a.fechaHora))
+                                    .map((reunion) => {
                                     const estadoConf = ESTADOS_REUNION[reunion.estado] || {};
+                                    const fechaReunion = reunion.fecha || reunion.fechaHora;
+                                    const calificacionMap = {
+                                        frio: { label: '❄️ Frío', color: 'info' },
+                                        tibio: { label: '🌤️ Tibio', color: 'warning' },
+                                        caliente: { label: '🔥 Caliente', color: 'error' },
+                                        listo_para_cerrar: { label: '🎯 Listo para cerrar', color: 'success' }
+                                    };
+                                    const calChip = reunion.calificacionRapida ? calificacionMap[reunion.calificacionRapida] : null;
+                                    const borderColorMap = {
+                                        realizada: '#4caf50',
+                                        no_show: '#f44336',
+                                        cancelada: '#9e9e9e',
+                                        agendada: '#2196f3'
+                                    };
+
                                     return (
-                                        <Chip
+                                        <Paper
                                             key={reunion._id}
-                                            icon={<EventIcon />}
-                                            label={`${reunion.fecha ? new Date(reunion.fecha).toLocaleDateString('es-AR') : 'Sin fecha'} ${reunion.hora || ''} — ${estadoConf.label || reunion.estado}`}
-                                            color={estadoConf.color || 'default'}
                                             variant="outlined"
-                                            size="small"
-                                        />
+                                            sx={{
+                                                p: 1.5,
+                                                borderLeft: `4px solid ${borderColorMap[reunion.estado] || '#e0e0e0'}`,
+                                                bgcolor: reunion.estado === 'realizada' ? 'rgba(76,175,80,0.04)'
+                                                    : reunion.estado === 'no_show' ? 'rgba(244,67,54,0.04)'
+                                                    : reunion.estado === 'cancelada' ? 'rgba(158,158,158,0.04)'
+                                                    : 'transparent'
+                                            }}
+                                        >
+                                            {/* Fila principal: fecha + estado + calificación */}
+                                            <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                                                <Chip
+                                                    icon={<EventIcon />}
+                                                    label={fechaReunion ? new Date(fechaReunion).toLocaleDateString('es-AR', { weekday: 'short', day: 'numeric', month: 'short' }) : 'Sin fecha'}
+                                                    size="small"
+                                                    variant="outlined"
+                                                />
+                                                {reunion.hora && (
+                                                    <Typography variant="caption" color="text.secondary">
+                                                        {reunion.hora}
+                                                    </Typography>
+                                                )}
+                                                <Chip
+                                                    label={`${estadoConf.icon || ''} ${estadoConf.label || reunion.estado}`}
+                                                    size="small"
+                                                    color={estadoConf.color || 'default'}
+                                                    sx={{ fontWeight: 600 }}
+                                                />
+                                                {calChip && (
+                                                    <Chip
+                                                        label={calChip.label}
+                                                        size="small"
+                                                        color={calChip.color}
+                                                        variant="outlined"
+                                                    />
+                                                )}
+                                                {reunion.numero && (
+                                                    <Typography variant="caption" color="text.secondary" fontWeight={600}>
+                                                        Meet #{reunion.numero}
+                                                    </Typography>
+                                                )}
+                                            </Stack>
+
+                                            {/* Comentario del SDR */}
+                                            {reunion.comentario && (
+                                                <Typography variant="body2" sx={{ mt: 1, pl: 1, borderLeft: '2px solid #e0e0e0', color: 'text.secondary', fontStyle: 'italic' }}>
+                                                    💬 {reunion.comentario}
+                                                </Typography>
+                                            )}
+
+                                            {/* Motivo de rechazo / cancelación */}
+                                            {reunion.estado === 'cancelada' && reunion.motivoRechazo && (
+                                                <Typography variant="body2" sx={{ mt: 1, pl: 1, borderLeft: '2px solid #f44336', color: 'error.main' }}>
+                                                    🚫 {reunion.motivoRechazo}
+                                                </Typography>
+                                            )}
+
+                                            {/* No show - mensaje destacado */}
+                                            {reunion.estado === 'no_show' && (
+                                                <Typography variant="body2" sx={{ mt: 1, color: 'error.main', fontWeight: 500 }}>
+                                                    ❌ El contacto no se presentó a la reunión
+                                                    {reunion.notasEvaluador ? ` — ${reunion.notasEvaluador}` : ''}
+                                                </Typography>
+                                            )}
+
+                                            {/* Resumen IA */}
+                                            {reunion.resumenIA && (
+                                                <Paper variant="outlined" sx={{ mt: 1, p: 1, bgcolor: 'grey.50', maxHeight: 120, overflow: 'auto' }}>
+                                                    <Typography variant="caption" color="text.secondary" fontWeight={600}>
+                                                        🤖 Resumen IA
+                                                    </Typography>
+                                                    <Typography variant="body2" sx={{ mt: 0.5, whiteSpace: 'pre-line', fontSize: '0.8rem' }}>
+                                                        {reunion.resumenIA.substring(0, 500)}{reunion.resumenIA.length > 500 ? '...' : ''}
+                                                    </Typography>
+                                                </Paper>
+                                            )}
+
+                                            {/* Next steps */}
+                                            {reunion.nextSteps && (
+                                                <Typography variant="body2" sx={{ mt: 1, fontSize: '0.8rem' }}>
+                                                    📋 <strong>Próximos pasos:</strong> {reunion.nextSteps}
+                                                </Typography>
+                                            )}
+
+                                            {/* Módulos de interés */}
+                                            {reunion.modulosInteres?.length > 0 && (
+                                                <Stack direction="row" spacing={0.5} sx={{ mt: 1, flexWrap: 'wrap', gap: 0.5 }}>
+                                                    <Typography variant="caption" color="text.secondary" sx={{ mr: 0.5 }}>
+                                                        Módulos:
+                                                    </Typography>
+                                                    {reunion.modulosInteres.map(m => (
+                                                        <Chip key={m} label={m} size="small" variant="outlined" sx={{ height: 20, fontSize: '0.7rem' }} />
+                                                    ))}
+                                                </Stack>
+                                            )}
+
+                                            {/* Duración */}
+                                            {reunion.duracionMinutos && (
+                                                <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                                                    ⏱️ Duración: {reunion.duracionMinutos} min
+                                                </Typography>
+                                            )}
+
+                                            {/* Link de reunión (solo si agendada) */}
+                                            {reunion.estado === 'agendada' && reunion.link && (
+                                                <Chip
+                                                    label="Abrir link"
+                                                    size="small"
+                                                    icon={<OpenInNewIcon />}
+                                                    onClick={() => window.open(reunion.link, '_blank')}
+                                                    clickable
+                                                    color="primary"
+                                                    variant="outlined"
+                                                    sx={{ mt: 1 }}
+                                                />
+                                            )}
+                                        </Paper>
                                     );
                                 })}
                             </Stack>
@@ -2277,13 +2491,31 @@ const ContactoSDRDetailPage = () => {
                                     <Box>
                                         <TextField fullWidth size="small" multiline minRows={3} maxRows={8}
                                             value={mensajeWA} onChange={(e) => setMensajeWA(e.target.value)}
-                                            sx={{ mb: 1.5 }} placeholder="Mensaje para WhatsApp..." />
-                                        <Button variant="contained" startIcon={<WhatsAppIcon />}
-                                            onClick={handleWizardEnviarWA}
-                                            disabled={!mensajeWA.trim()} fullWidth
-                                            sx={{ bgcolor: '#25D366', '&:hover': { bgcolor: '#128C7E' }, py: 1 }}>
-                                            Enviar por WhatsApp
-                                        </Button>
+                                            sx={{ mb: 1 }} placeholder="Mensaje para WhatsApp..." />
+                                        <Stack direction="row" spacing={1} sx={{ mb: 1.5 }}>
+                                            <Button variant="contained" startIcon={<WhatsAppIcon />}
+                                                onClick={handleWizardEnviarWA}
+                                                disabled={!mensajeWA.trim()} fullWidth
+                                                sx={{ bgcolor: '#25D366', '&:hover': { bgcolor: '#128C7E' }, py: 1 }}>
+                                                Enviar por WhatsApp
+                                            </Button>
+                                            <Tooltip title="Elegir template">
+                                                <Button variant="outlined" size="small"
+                                                    onClick={() => setModalTemplateWA(true)}
+                                                    sx={{ minWidth: 40, px: 1 }}>
+                                                    📋
+                                                </Button>
+                                            </Tooltip>
+                                            {tienePermisoEnviarBot && (
+                                                <Tooltip title="Enviar template via Bot">
+                                                    <Button variant="outlined" size="small" color="success"
+                                                        onClick={() => setModalMetaTemplate(true)}
+                                                        sx={{ minWidth: 40, px: 1 }}>
+                                                        <SmartToyIcon fontSize="small" />
+                                                    </Button>
+                                                </Tooltip>
+                                            )}
+                                        </Stack>
                                     </Box>
                                 )}
 
@@ -2487,13 +2719,31 @@ const ContactoSDRDetailPage = () => {
                             <Box>
                                 <TextField fullWidth size="small" multiline minRows={3} maxRows={8}
                                     value={mensajeWA} onChange={(e) => setMensajeWA(e.target.value)}
-                                    sx={{ mb: 1.5 }} placeholder="Mensaje para WhatsApp..." />
-                                <Button variant="contained" startIcon={<WhatsAppIcon />}
-                                    onClick={handleWizardEnviarWA}
-                                    disabled={!mensajeWA.trim()} fullWidth
-                                    sx={{ bgcolor: '#25D366', '&:hover': { bgcolor: '#128C7E' }, py: 1 }}>
-                                    Enviar por WhatsApp
-                                </Button>
+                                    sx={{ mb: 1 }} placeholder="Mensaje para WhatsApp..." />
+                                <Stack direction="row" spacing={1} sx={{ mb: 1.5 }}>
+                                    <Button variant="contained" startIcon={<WhatsAppIcon />}
+                                        onClick={handleWizardEnviarWA}
+                                        disabled={!mensajeWA.trim()} fullWidth
+                                        sx={{ bgcolor: '#25D366', '&:hover': { bgcolor: '#128C7E' }, py: 1 }}>
+                                        Enviar por WhatsApp
+                                    </Button>
+                                    <Tooltip title="Elegir template">
+                                        <Button variant="outlined" size="small"
+                                            onClick={() => setModalTemplateWA(true)}
+                                            sx={{ minWidth: 40, px: 1 }}>
+                                            📋
+                                        </Button>
+                                    </Tooltip>
+                                    {tienePermisoEnviarBot && (
+                                        <Tooltip title="Enviar template via Bot">
+                                            <Button variant="outlined" size="small" color="success"
+                                                onClick={() => setModalMetaTemplate(true)}
+                                                sx={{ minWidth: 40, px: 1 }}>
+                                                <SmartToyIcon fontSize="small" />
+                                            </Button>
+                                        </Tooltip>
+                                    )}
+                                </Stack>
                             </Box>
                             )}
 
@@ -3215,9 +3465,27 @@ const ContactoSDRDetailPage = () => {
                                     <Box>
                                         <TextField fullWidth size="small" multiline maxRows={3}
                                             value={mensajeWA} onChange={(e) => setMensajeWA(e.target.value)} sx={{ mb: 1 }} placeholder="Mensaje para WhatsApp..." />
-                                        <Button variant="contained" startIcon={<WhatsAppIcon />}
-                                            onClick={handleWizardEnviarWA} disabled={!mensajeWA.trim()} fullWidth
-                                            sx={{ bgcolor: '#25D366', '&:hover': { bgcolor: '#128C7E' } }}>Enviar por WhatsApp</Button>
+                                        <Stack direction="row" spacing={1}>
+                                            <Button variant="contained" startIcon={<WhatsAppIcon />}
+                                                onClick={handleWizardEnviarWA} disabled={!mensajeWA.trim()} fullWidth
+                                                sx={{ bgcolor: '#25D366', '&:hover': { bgcolor: '#128C7E' } }}>Enviar por WhatsApp</Button>
+                                            <Tooltip title="Elegir template">
+                                                <Button variant="outlined" size="small"
+                                                    onClick={() => setModalTemplateWA(true)}
+                                                    sx={{ minWidth: 40, px: 1 }}>
+                                                    📋
+                                                </Button>
+                                            </Tooltip>
+                                            {tienePermisoEnviarBot && (
+                                                <Tooltip title="Enviar template via Bot">
+                                                    <Button variant="outlined" size="small" color="success"
+                                                        onClick={() => setModalMetaTemplate(true)}
+                                                        sx={{ minWidth: 40, px: 1 }}>
+                                                        <SmartToyIcon fontSize="small" />
+                                                    </Button>
+                                                </Tooltip>
+                                            )}
+                                        </Stack>
                                     </Box>
                                 )}
                                 {wizardFase === 'accion' && waPendiente && (
@@ -3405,7 +3673,7 @@ const ContactoSDRDetailPage = () => {
             )}
 
             {/* Modal Reunión */}
-            <ModalReunionSDR
+            <ModalCrearReunion
                 open={modalReunion}
                 onClose={() => setModalReunion(false)}
                 contacto={contacto}
@@ -3487,123 +3755,32 @@ const ContactoSDRDetailPage = () => {
                     {snackbar.message}
                 </Alert>
             </Snackbar>
+
+            {/* Modal Selector de Templates WA */}
+            <ModalSelectorTemplate
+                open={modalTemplateWA}
+                onClose={() => setModalTemplateWA(false)}
+                contacto={contacto}
+                user={user}
+                empresaId={empresaId}
+                onTemplateUsed={(template, mensaje) => setMensajeWA(mensaje)}
+                onTemplateSelected={handleTemplateSelected}
+            />
+
+            {/* Modal Envío de Template Meta via Bot */}
+            {tienePermisoEnviarBot && (
+                <SendTemplateDialog
+                    open={modalMetaTemplate}
+                    onClose={() => setModalMetaTemplate(false)}
+                    phone={contacto?.telefono?.replace(/\D/g, '') || ''}
+                    contactName={contacto?.nombre || contacto?.empresa || ''}
+                    empresaId={empresaId}
+                    onSent={(result) => {
+                        setSnackbar({ open: true, message: result.message || 'Template enviado via bot', severity: 'success' });
+                    }}
+                />
+            )}
         </DashboardLayout>
-    );
-};
-
-// ==================== MODAL REUNIÓN ====================
-const TAMANOS_EMPRESA = ['1-10', '11-50', '51-200', '200+'];
-
-const ModalReunionSDR = ({ open, onClose, contacto, onSubmit, loading }) => {
-    const [form, setForm] = useState({
-        fechaHora: '',
-        empresaNombre: '',
-        tamanoEmpresa: '',
-        contactoPrincipal: '',
-        rolContacto: '',
-        puntosDeDolor: '',
-        modulosPotenciales: '',
-        linkAgenda: ''
-    });
-
-    useEffect(() => {
-        if (contacto && open) {
-            setForm({
-                fechaHora: '',
-                empresaNombre: contacto.empresa || '',
-                tamanoEmpresa: contacto.tamanoEmpresa || '',
-                contactoPrincipal: contacto.nombre || '',
-                rolContacto: contacto.cargo || '',
-                puntosDeDolor: '',
-                modulosPotenciales: '',
-                linkAgenda: ''
-            });
-        }
-    }, [contacto, open]);
-
-    return (
-        <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-            <DialogTitle>📅 Registrar Reunión</DialogTitle>
-            <DialogContent>
-                <Stack spacing={2} sx={{ mt: 1 }}>
-                    <TextField
-                        label="Fecha y hora *"
-                        type="datetime-local"
-                        value={form.fechaHora}
-                        onChange={(e) => setForm({ ...form, fechaHora: e.target.value })}
-                        fullWidth
-                        InputLabelProps={{ shrink: true }}
-                        required
-                    />
-                    <TextField
-                        label="Nombre de la empresa *"
-                        value={form.empresaNombre}
-                        onChange={(e) => setForm({ ...form, empresaNombre: e.target.value })}
-                        fullWidth
-                        required
-                    />
-                    <FormControl fullWidth required>
-                        <InputLabel>Tamaño de empresa *</InputLabel>
-                        <Select
-                            value={form.tamanoEmpresa}
-                            label="Tamaño de empresa *"
-                            onChange={(e) => setForm({ ...form, tamanoEmpresa: e.target.value })}
-                        >
-                            {TAMANOS_EMPRESA.map(t => (
-                                <MenuItem key={t} value={t}>{t} empleados</MenuItem>
-                            ))}
-                        </Select>
-                    </FormControl>
-                    <TextField
-                        label="Contacto principal *"
-                        value={form.contactoPrincipal}
-                        onChange={(e) => setForm({ ...form, contactoPrincipal: e.target.value })}
-                        fullWidth
-                        required
-                    />
-                    <TextField
-                        label="Rol del contacto"
-                        value={form.rolContacto}
-                        onChange={(e) => setForm({ ...form, rolContacto: e.target.value })}
-                        fullWidth
-                        placeholder="Ej: Gerente, Dueño, etc."
-                    />
-                    <TextField
-                        label="Puntos de dolor"
-                        value={form.puntosDeDolor}
-                        onChange={(e) => setForm({ ...form, puntosDeDolor: e.target.value })}
-                        fullWidth
-                        multiline
-                        rows={2}
-                        placeholder="¿Qué problemas tiene la empresa?"
-                    />
-                    <TextField
-                        label="Módulos potenciales"
-                        value={form.modulosPotenciales}
-                        onChange={(e) => setForm({ ...form, modulosPotenciales: e.target.value })}
-                        fullWidth
-                        placeholder="Ej: Facturación, Stock, etc."
-                    />
-                    <TextField
-                        label="Link de la reunión"
-                        value={form.linkAgenda}
-                        onChange={(e) => setForm({ ...form, linkAgenda: e.target.value })}
-                        fullWidth
-                        placeholder="Google Meet, Zoom, etc."
-                    />
-                </Stack>
-            </DialogContent>
-            <DialogActions>
-                <Button onClick={onClose}>Cancelar</Button>
-                <Button
-                    variant="contained"
-                    onClick={() => onSubmit(form)}
-                    disabled={!form.fechaHora || !form.empresaNombre || !form.tamanoEmpresa || !form.contactoPrincipal || loading}
-                >
-                    {loading ? <CircularProgress size={20} /> : 'Registrar Reunión'}
-                </Button>
-            </DialogActions>
-        </Dialog>
     );
 };
 

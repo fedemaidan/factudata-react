@@ -27,6 +27,7 @@ import {
     MenuItem,
     ListItemIcon,
     ListItemText,
+    Autocomplete,
 } from '@mui/material';
 import {
     Close as CloseIcon,
@@ -40,8 +41,10 @@ import {
     Info as InfoIcon,
     Settings as SettingsIcon,
     MoreVert as MoreVertIcon,
+    LocalOffer as TagIcon,
 } from '@mui/icons-material';
 import SDRService from '../../services/sdrService';
+import { TAGS_DISPONIBLES, TAG_MAP } from '../../utils/templateContexto';
 
 const Transition = React.forwardRef(function Transition(props, ref) {
     return <Slide direction="up" ref={ref} {...props} />;
@@ -147,8 +150,8 @@ const ModalAdminTemplates = ({
     const [formData, setFormData] = useState({
         label: '',
         body: '',
-        tipo: 'cadencia',
-        cadencia_step: 1,
+        tipo: 'prospecto',
+        tags: [],
         active: true,
     });
     
@@ -234,6 +237,7 @@ const ModalAdminTemplates = ({
             label: '',
             body: '',
             tipo: tipoSeleccionado,
+            tags: [],
             active: true,
         });
     };
@@ -245,6 +249,7 @@ const ModalAdminTemplates = ({
             label: template.label || '',
             body: template.body || '',
             tipo: template.tipo || tipoSeleccionado,
+            tags: template.tags || [],
             active: template.active !== false,
         });
     };
@@ -256,6 +261,7 @@ const ModalAdminTemplates = ({
             label: '',
             body: '',
             tipo: tipoSeleccionado,
+            tags: [],
             active: true,
         });
     };
@@ -273,6 +279,7 @@ const ModalAdminTemplates = ({
             const templateData = {
                 ...formData,
                 tipo: tipoSeleccionado,
+                tags: formData.tags || [],
             };
             
             if (isCreating) {
@@ -464,6 +471,66 @@ const ModalAdminTemplates = ({
                             color="primary"
                             variant="outlined"
                         />
+                    </Box>
+
+                    {/* Tags contextuales (multi-select) */}
+                    <Box>
+                        <Typography variant="body2" color="text.secondary" gutterBottom>
+                            <TagIcon sx={{ fontSize: 14, verticalAlign: 'middle', mr: 0.5 }} />
+                            Tags contextuales — ¿cuándo sugerir este template?
+                        </Typography>
+                        <Autocomplete
+                            multiple
+                            options={TAGS_DISPONIBLES.map(t => t.tag)}
+                            value={formData.tags || []}
+                            onChange={(_, newValue) => setFormData(prev => ({ ...prev, tags: newValue }))}
+                            getOptionLabel={(option) => TAG_MAP[option]?.label || option}
+                            renderTags={(value, getTagProps) =>
+                                value.map((option, index) => {
+                                    const meta = TAG_MAP[option];
+                                    return (
+                                        <Chip
+                                            key={option}
+                                            label={`${meta?.icon || '📝'} ${meta?.label || option}`}
+                                            size="small"
+                                            {...getTagProps({ index })}
+                                            sx={{
+                                                bgcolor: (meta?.color || '#607d8b') + '15',
+                                                color: meta?.color || '#607d8b',
+                                                borderColor: (meta?.color || '#607d8b') + '40',
+                                                '& .MuiChip-deleteIcon': { color: (meta?.color || '#607d8b') + '80' }
+                                            }}
+                                            variant="outlined"
+                                        />
+                                    );
+                                })
+                            }
+                            renderOption={(props, option) => {
+                                const meta = TAG_MAP[option];
+                                return (
+                                    <li {...props} key={option}>
+                                        <Stack direction="row" spacing={1} alignItems="center" sx={{ width: '100%' }}>
+                                            <span>{meta?.icon || '📝'}</span>
+                                            <Box>
+                                                <Typography variant="body2">{meta?.label || option}</Typography>
+                                                <Typography variant="caption" color="text.secondary">{meta?.descripcion}</Typography>
+                                            </Box>
+                                        </Stack>
+                                    </li>
+                                );
+                            }}
+                            renderInput={(params) => (
+                                <TextField
+                                    {...params}
+                                    placeholder={formData.tags?.length ? '' : 'Seleccionar tags...'}
+                                    size="small"
+                                />
+                            )}
+                            disableCloseOnSelect
+                        />
+                        <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                            Los templates se mostrarán automáticamente cuando el contacto coincida con estos tags
+                        </Typography>
                     </Box>
 
                     {/* Variables disponibles */}
@@ -777,6 +844,35 @@ const ModalAdminTemplates = ({
                                                 {template.body?.length > 200 && '...'}
                                             </Typography>
                                         </Paper>
+
+                                        {/* Tags contextuales */}
+                                        {template.tags?.length > 0 && (
+                                            <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap', gap: 0.5 }}>
+                                                {template.tags.map(tag => {
+                                                    const meta = TAG_MAP[tag];
+                                                    return (
+                                                        <Chip
+                                                            key={tag}
+                                                            label={`${meta?.icon || '📝'} ${meta?.label || tag}`}
+                                                            size="small"
+                                                            sx={{
+                                                                height: 22,
+                                                                fontSize: '0.7rem',
+                                                                bgcolor: (meta?.color || '#607d8b') + '12',
+                                                                color: meta?.color || '#607d8b',
+                                                                borderColor: (meta?.color || '#607d8b') + '30',
+                                                            }}
+                                                            variant="outlined"
+                                                        />
+                                                    );
+                                                })}
+                                            </Stack>
+                                        )}
+                                        {(!template.tags || template.tags.length === 0) && (
+                                            <Typography variant="caption" color="text.disabled" sx={{ fontStyle: 'italic' }}>
+                                                Sin tags — no aparecerá en sugerencias contextuales
+                                            </Typography>
+                                        )}
 
                                         {/* Switch activo/inactivo */}
                                         {!template.isDefault && !template._id?.startsWith('default-') && (

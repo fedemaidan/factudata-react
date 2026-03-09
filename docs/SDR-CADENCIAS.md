@@ -126,6 +126,8 @@ El motor resuelve las variantes de template siguiendo esta prioridad:
 2. Fallback a variante con `rubro: 'general'`
 3. Fallback a la primera variante disponible
 
+> **Nota (Fase 2)**: En el frontend, el `ModalSelectorTemplate` ya no filtra por paso de cadencia (`cadencia_step`) sino por **tags de contexto** detectados automáticamente por `detectarContextoTemplate()`. Los tags se asignan según la situación del contacto (etapa, segmento, actividad). El motor de cadencias del backend sigue resolviendo variantes por rubro internamente.
+
 **Variables disponibles:**
 
 | Variable | Se reemplaza por |

@@ -1,1094 +1,402 @@
-# Plan de Implementación — Rediseño Módulo Comercial SDR
+# SDR — Plan de Implementación
 
-> **Fecha**: 24/02/2026  
-> **Optimizado para**: Agentes de programación (Claude Opus 4.6)  
-> **Documentos fuente**: [SDR-COMERCIAL-FUNCIONAL.md](SDR-COMERCIAL-FUNCIONAL.md) · [SDR-COMERCIAL-TECNICO.md](SDR-COMERCIAL-TECNICO.md)  
-> **Branch**: `Feat/comercial-nuevo-eje`
+> **Última actualización**: Marzo 2026
 
 ---
 
-## Convenciones del Plan
+## Resumen Ejecutivo
 
-- **Cada tarea = 1 prompt para un agente**. El agente recibe el contexto y ejecuta.
-- **Dependencias explícitas**: no empezar una tarea sin que sus deps estén completas.
-- **Criterios de aceptación**: cada tarea tiene condiciones verificables (tests, lint, compilación).
-- **Archivos exactos**: se listan los archivos a leer, modificar o crear.
-- Las tareas están numeradas `F{fase}.{grupo}.{secuencia}` (ej: `F1.1.1`).
+El módulo SDR se implementa en **3 fases**. Las 3 fases están **completas**.
 
----
-
-## Mapa de Dependencias (Fase 1)
-
-```
-F1.1.1 normalizarTelefono ──┐
-F1.1.2 calcularPrioridad ───┤
-                             ├──▶ F1.2.1 ContactoSDR ──┐
-F1.1.3 sdrConstants (FE) ───┘                          │
-                                                        ├──▶ F1.3.1 sdrService (BE)
-F1.2.2 ReunionSDR ──────────────────────────────────────┤
-F1.2.3 HistorialSDR ────────────────────────────────────┘
-                                                               │
-         F1.3.1 sdrService (BE) ──┐                            │
-                                   ├──▶ F1.3.2 sdrController ──┤
-                                   │    F1.3.3 sdrRoutes ──────┘
-                                   │
-                                   ├──▶ F1.4.1 leadContactoBridge
-                                   │    F1.4.2 flowInicioGeneral
-                                   │    F1.4.3 flowOnboardingConstructora
-                                   │    F1.4.4 flowOnboardingInfo
-                                   │    F1.4.5 sdrBotTimeoutJob
-                                   │
-                                   └──▶ F1.5.x Frontend (paralelo)
-                                        F1.5.1 contactosSDR
-                                        F1.5.2 gestionSDR
-                                        F1.5.3 DrawerDetalle
-                                        F1.5.4 ModalRegistrarAccion
-                                        F1.5.5 ModalImportarExcel
-                                        F1.5.6 ModalAgregarContacto
-                                        F1.5.7 sdrService (FE)
-                                        F1.5.8 componentes nuevos
-
-F1.6.1 migracion (último, cuando todo funciona)
-```
+| Fase | Nombre | Estado |
+|------|--------|--------|
+| **Fase 1** | Workflow Task-Driven | ✅ Completa |
+| **Fase 2** | Templates Contextuales | ✅ Completa |
+| **Fase 3** | Gestión Avanzada de Reuniones | ✅ Completa |
 
 ---
 
-## Fase 1: Estados + Scoring + Loop de Llamadas + Puente Lead↔ContactoSDR
+## Fase 1 — Workflow Task-Driven ✅
 
-### Grupo 1 — Utilidades (sin dependencias, ejecutar en paralelo)
+### Objetivo
+Reemplazar la cadencia como mecanismo principal de trabajo por un sistema basado en tareas concretas (`proximaTarea`), manteniendo cadencias como fallback.
+
+### Lo que se implementó
+
+#### 1.1 Próxima Tarea ✅
+- [x] Campo `proximaTarea` en modelo ContactoSDR: `{ tipo, fecha, nota, autoGenerada }`
+- [x] `_sugerirProximaTarea()` — lógica de sugerencia automática post-acción
+- [x] Tabla de reglas: canal × resultado × contadores → tipo + fecha + nota
+- [x] Endpoint `POST /contactos/:id/proxima-tarea`
+- [x] El SDR puede aceptar, modificar o rechazar la sugerencia
+
+#### 1.2 Wizard Híbrido ✅
+- [x] Wizard determina `canalWizard` desde `proximaTarea.tipo`
+- [x] Si no hay proximaTarea → fallback a cadencia activa (paso actual)
+- [x] Si no hay nada → botones genéricos (Llamar / WhatsApp / Otra acción)
+- [x] Chip con horario de la tarea (ej: "📅 Hoy 14:30")
+- [x] Botones de modificar ✏️ y eliminar 🗑️ en header del wizard
+- [x] Chip "📋 Cadencia" cuando se usa fallback
+- [x] Pre-selección automática de próxima tarea al completar acción
+- [x] Funciona en desktop y mobile
+
+#### 1.3 Bandejas Reorganizadas ✅
+- [x] **Nuevos**: estado `nuevo`, 0 intentos (contadores todos en 0)
+- [x] **Reintentos**: `nuevo` con contadores > 0 ó cadencia activa vencida
+- [x] **Seguimiento**: `contactado`/`calificado`/`cierre` **sin** reunión agendada
+- [x] **Reuniones Pendientes**: con reunión agendada, fecha ≥ hoy
+- [x] **Reuniones Pasadas**: reunión realizada/no_show/cancelada/vencida, sin reunión pendiente
+- [x] Sin solapamiento entre bandejas
+- [x] Contadores en tabs (mobile y desktop)
+- [x] Columna "Resultado" en tabla de reuniones pasadas (desktop)
+- [x] Empty states contextuales por bandeja
+
+#### 1.4 Historial Agrupado ✅
+- [x] Agrupación por bloques temporales de 30 minutos
+- [x] Etiquetas legibles: "Hoy 14:30", "Ayer 09:15", "Lun 11:00"
+- [x] Funciona en 3 vistas: resumen desktop, resumen mobile, tab historial completo
+- [x] Eventos dentro del bloque se muestran en orden cronológico inverso
+- [x] Separadores visuales entre bloques
+
+#### 1.5 Fix de Estado WA ✅
+- [x] Enviar WA sin respuesta **no** cambia estado `nuevo → contactado`
+- [x] Solo cambia con contacto efectivo bidireccional:
+  - Llamada atendida (`canal === 'llamada' && resultado === 'atendio'`)
+  - Confirmación de respuesta WA (`confirmarRespuestaWA`)
+  - WA con resultado respondió (`canal === 'whatsapp' && resultado === 'respondio'`)
+
+#### 1.6 Lo que NO se tocó (legacy funcional)
+- CadenciaEngine sigue activo (282 líneas, 11 invocaciones)
+- ABM de cadencias completo y funcional
+- `cadenciaActiva` sigue en el modelo con todos sus campos
+- Asignación masiva de cadencias funcional
+- Templates filtran por `cadencia_step` (1/2/3) — se refactoriza en Fase 2
 
 ---
 
-#### F1.1.1 — Crear `normalizarTelefono.js`
+## Fase 2 — Templates Contextuales ✅
 
-**Tipo**: Crear archivo nuevo  
-**Prioridad**: 🔴 Crítica (bloqueante para F1.2.1, F1.4.1)
+### Objetivo
+Reemplazar el filtrado de templates por `cadencia_step` con un sistema de **tags contextuales** que se adaptan automáticamente al estado del contacto.
 
-**Contexto para el agente**:
-> Necesitamos una función de normalización de teléfonos argentinos que será la clave de deduplicación universal del sistema. Se usa en: importación de contactos, puente bot→ContactoSDR, búsqueda de duplicados. Todos los teléfonos del sistema deben pasar por esta función antes de guardarse o compararse.
+### Problema actual
+- `ModalSelectorTemplate.js` filtra templates por `cadencia_step` (1, 2, 3)
+- Esto solo tiene sentido si el contacto está en una cadencia
+- Con el workflow task-driven, muchos contactos no tienen cadencia
+- El SDR tiene que buscar manualmente el template adecuado
 
-**Archivos a crear**:
-- `backend/utils/normalizarTelefono.js`
+### Diseño propuesto
 
-**Archivos a leer como referencia**:
-- `app-web/docs/SDR-COMERCIAL-TECNICO.md` (sección 1.6, "Normalización de teléfono")
-- `backend/utils/convertMoney.js` (para ver estilo del proyecto en utils)
+#### 2.1 Tags de contexto
 
-**Especificación**:
-```
-Función: normalizarTelefono(phone) → string|null
-Reglas de normalización (Argentina):
-- Limpiar +, espacios, guiones, paréntesis
-- 0XX... → 549XX... (quitar el 0, agregar 549)
-- 10 dígitos sin 54 → agregar 549 al inicio
-- 12 dígitos 54XX → 549XX (insertar 9 después del 54)
-- 15XXXXXXXX (10 dígitos) → 54911XXXXXXXX (asumiendo CABA/GBA)
-- null/undefined/vacío → return null
-Exportar: module.exports = { normalizarTelefono }
-```
+Reemplazar `cadencia_step` por tags que describen la situación del contacto:
 
-**Tests a crear** (`backend/test/normalizarTelefono.test.js`):
-```
-Casos:
-- "+54 9 11 4567-8900" → "5491145678900"
-- "01145678900" → "54911456789 00"  
-- "1145678900" → "5491145678900"
-- "541145678900" → "5491145678900"
-- "15 4567 8900" → "54911456789 00"
-- null → null
-- "" → null
-- "5491145678900" → "5491145678900" (ya normalizado)
-```
+| Tag | Cuándo aplica |
+|-----|---------------|
+| `primer_contacto_inbound` | Nuevo + segmento inbound + 0 intentos |
+| `primer_contacto_outbound` | Nuevo + segmento outbound + 0 intentos |
+| `post_llamada_no_atendio` | Última acción = llamada no atendida (1-2x) |
+| `post_llamada_no_atendio_3x` | 3+ llamadas no atendidas consecutivas |
+| `follow_up` | Contactado, sin actividad reciente |
+| `re_engagement` | `no_responde` o `revisar_mas_adelante` |
+| `post_reunion` | Reunión realizada, pendiente de propuesta |
+| `propuesta` | Estado `cierre`, propuesta enviada |
+| `generico` | Catch-all |
 
-**Criterios de aceptación**:
-- [ ] `normalizarTelefono` exportada correctamente
-- [ ] Todos los tests pasan
-- [ ] No tiene dependencias externas
+#### 2.2 Función `detectarContextoTemplate(contacto)`
 
----
+Nueva función pura que analiza el contacto y retorna un array ordenado de tags aplicables:
 
-#### F1.1.2 — Crear `calcularPrioridad.js`
-
-**Tipo**: Crear archivo nuevo  
-**Prioridad**: 🔴 Crítica (bloqueante para F1.2.1, F1.3.1)
-
-**Contexto para el agente**:
-> Sistema de scoring que prioriza contactos automáticamente. Se recalcula después de cada acción del SDR. El score determina el orden en que aparecen los contactos en la lista y en el modo llamadas. Tiene 9 factores ponderados.
-
-**Archivos a crear**:
-- `backend/utils/calcularPrioridad.js`
-
-**Archivos a leer como referencia**:
-- `app-web/docs/SDR-COMERCIAL-TECNICO.md` (sección 1.4)
-
-**Especificación**:
-```
-Exportar: { calcularPrioridadScore, PLANES_SORBY }
-
-PLANES_SORBY = {
-  a_medida: { score: 500, label: 'A medida', precio: null },
-  premium:  { score: 400, label: 'Premium',  precio: 625000 },
-  avanzado: { score: 250, label: 'Avanzado', precio: 375000 },
-  basico:   { score: 150, label: 'Básico',   precio: 250000 }
+```javascript
+function detectarContextoTemplate(contacto) {
+  const tags = [];
+  
+  if (contacto.estado === 'nuevo' && todosContadoresEnCero(contacto)) {
+    tags.push(contacto.segmento === 'inbound' 
+      ? 'primer_contacto_inbound' 
+      : 'primer_contacto_outbound');
+  }
+  
+  if (contacto.contadores.llamadasNoAtendidas >= 3) {
+    tags.push('post_llamada_no_atendio_3x');
+  } else if (contacto.contadores.llamadasNoAtendidas > 0) {
+    tags.push('post_llamada_no_atendio');
+  }
+  
+  // ... más reglas
+  
+  tags.push('generico'); // siempre incluir
+  return tags;
 }
-
-calcularPrioridadScore(contacto, reuniones = []) → Number
-  Factor 1: Próximo contacto vencido (+100/día, max 500)
-  Factor 2: Plan estimado (score de PLANES_SORBY)
-  Factor 3: Intención de compra (alta:300, media:200, baja:100)
-  Factor 4: precalificacionBot (quiere_meet:200, calificado:100, sin_calificar:30, no_llego:0)
-  Factor 5: Tamaño empresa ('200+':100, '51-200':60, '11-50':30, '1-10':10)
-  Factor 6: Frescura (≤1d:200, ≤7d:150, ≤14d:100, ≤30d:50)
-  Factor 7: Estado (cierre:300, calificado:150, contactado:100, nuevo:80, revisar:30, no_contacto:10)
-  Factor 8: Reuniones (agendada:+250, realizada:+200)
-  Factor 9: Sin próximo contacto (-50)
 ```
 
-**Tests a crear** (`backend/test/calcularPrioridad.test.js`):
-```
-Casos:
-- Contacto nuevo sin datos → score bajo (80 + frescura)
-- Contacto con plan premium + intención alta + bot quiere_meet → score alto
-- Contacto con próximo contacto vencido 3 días → +300
-- Contacto con reunión agendada → +250
-- Contacto sin próximo contacto → -50
-- PLANES_SORBY exporta correctamente los 4 planes
+#### 2.3 Cambios en modelo Template
+
+```javascript
+// ANTES (actual)
+{ cadencia_step: 1, tipo: 'prospecto', mensaje: '...' }
+
+// DESPUÉS
+{ tags: ['primer_contacto_inbound', 'primer_contacto_outbound'], 
+  tipo: 'prospecto', mensaje: '...' }
 ```
 
-**Criterios de aceptación**:
-- [ ] Ambas exports funcionan
-- [ ] Score es siempre un número (no NaN)
-- [ ] Todos los tests pasan
+#### 2.4 Cambios en ModalSelectorTemplate
+
+- Recibe `contacto` como prop (además del contactoId actual)
+- Llama a `detectarContextoTemplate(contacto)` para obtener tags
+- Filtra templates que tengan al menos un tag en común
+- Ordena por cantidad de tags coincidentes (más específico primero)
+- Muestra chips de tags en cada template para contexto
+
+#### 2.5 Cambios en ModalAdminTemplates
+
+- Reemplazar selector de `cadencia_step` por multi-select de tags
+- Chips visuales para cada tag
+- Preview del contexto donde aplica cada template
+
+#### 2.6 Auto-fill en Wizard
+
+- Cuando el wizard muestra acción WhatsApp, pre-detectar contexto
+- Pre-llenar el campo de mensaje con el mejor template (mayor coincidencia de tags)
+- SDR puede cambiar el template o escribir desde cero
+
+### Archivos a modificar
+
+| Archivo | Cambio |
+|---------|--------|
+| `ModalSelectorTemplate.js` | Filtrar por tags en vez de `cadencia_step` |
+| `ModalAdminTemplates.js` | UI de tags en vez de `cadencia_step` |
+| `sdr/contacto/[id].js` | Pasar `contacto` al modal, auto-fill en wizard |
+| Backend: `sdrService.js` | `detectarContextoTemplate()` (o frontend-only) |
+| Backend: modelo Template | Migrar `cadencia_step` → `tags[]` |
+| Backend: endpoint templates | Filtro por tags |
+
+### Migración
+
+1. Agregar campo `tags` al modelo template
+2. Script de migración: `cadencia_step: 1` → `['primer_contacto_inbound', 'primer_contacto_outbound']`, etc.
+3. Mantener `cadencia_step` temporalmente para backwards compatibility
+4. Eliminar `cadencia_step` después de verificar
 
 ---
 
-#### F1.1.3 — Crear `sdrConstants.js` (Frontend)
+## Fase 3 — Gestión Avanzada de Reuniones ✅
 
-**Tipo**: Crear archivo nuevo  
-**Prioridad**: 🔴 Crítica (bloqueante para todo el frontend)
+### Objetivo
+Crear una página dedicada (`/sdr/reuniones`) para gestionar el ciclo completo de reuniones: preparación, registro de resultado con transcripción/IA, y seguimiento post-reunión. Arquitectura **híbrida**: página separada + banner en contactosSDR.
 
-**Contexto para el agente**:
-> Hoy las constantes de estados SDR están inline en `gestionSDR.js` (línea 49) con solo 6 estados. Necesitamos un archivo centralizado con los 10 estados nuevos + planes + intenciones + precalificación bot + estados de reunión. Todos los componentes frontend importarán de aquí.
+### Arquitectura: Página separada + banner
 
-**Archivos a crear**:
-- `app-web/src/constant/sdrConstants.js`
-
-**Archivos a leer como referencia**:
-- `app-web/docs/SDR-COMERCIAL-TECNICO.md` (sección 1.9, "Constantes actualizadas v2")
-- `app-web/src/pages/gestionSDR.js` (líneas 49-60, para ver formato actual de constantes)
-- `app-web/src/constant/importSteps.js` (para ver estilo de constantes del proyecto)
-
-**Especificación**:
 ```
-Exportar:
-- ESTADOS_CONTACTO (10 estados con label, color, icon, emoji)
-- PLANES_SORBY (4 planes con label, color, precio, icon)
-- INTENCIONES_COMPRA (3 niveles con label, color, icon)
-- PRECALIFICACION_BOT (4 valores con label, color, icon)
-- ESTADOS_REUNION (4 estados con label, color, icon)
+/contactosSDR  → Se queda como está (6 tabs)
+  Nuevos | Reintentos | Seguimiento | Reuniones Pend. | Pasadas | Todos
+  En tabs de reuniones: banner "📅 Tenés X reuniones hoy → Ir a Mis Reuniones ↗"
 
-Nota: los icons son componentes MUI (FiberNewIcon, PhoneIcon, StarIcon, etc.).
-Importar de '@mui/icons-material'.
+/sdr/reuniones → Página nueva dedicada (6 tabs)
+  Hoy | Próximas | Sin registrar | Realizadas | No show | Propuestas
 ```
 
-**Criterios de aceptación**:
-- [ ] Archivo exporta las 5 constantes
-- [ ] Los icons importan correctamente de MUI
-- [ ] No hay errores de lint
+**Justificación**: Cada página tiene un propósito enfocado. contactosSDR es la "cola de trabajo" (¿a quién contacto?). Reuniones es el "modo reunión" (preparar, registrar, follow-up). 6 tabs por página es manejable; 12 no.
+
+### 3.1 Tab "📅 Hoy"
+
+Reuniones agendadas para hoy, ordenadas por hora. El SDR arranca el día acá.
+
+**Card de reunión (expandida):**
+- Hora + countdown ("En 45 min" / "Hace 20 min")
+- Nombre + empresa del contacto
+- Link de videoconferencia (botones Copiar / Abrir)
+- **Resumen SDR** — Campo `resumenSDR` del contacto (§3.7). Resumen ejecutivo generado por IA a pedido del SDR desde la ficha del contacto. Muestra clasificación del lead, motivación principal, datos clave, resumen de interacciones.
+- **Link WA con template recordatorio** — Abre WhatsApp con mensaje pre-armado: "Hola {nombre}! Te recuerdo nuestra reunión hoy a las {hora}. {link} ¡Nos vemos!". Template configurable por empresa.
+- Acciones: ✅ Realizada (→ modal resultado), ❌ No show, 📋 Ver contacto ↗
+
+**Empty state**: "🎉 No tenés reuniones para hoy."
+
+### 3.2 Tab "⏳ Próximas"
+
+Reuniones agendadas para los próximos días, agrupadas por día.
+
+```
+── Mañana (Viernes 7/3) ──────────────
+  09:00  María López — Ing. Delta    [Editar] [Cancelar] [Ver contacto ↗]
+  14:30  Pedro García — Est. Gamma    [Editar] [Cancelar] [Ver contacto ↗]
+
+── Lunes 10/3 ─────────────────────────
+  11:00  Ana Ruiz — Metal. Omega      [Editar] [Cancelar] [Ver contacto ↗]
+```
+
+### 3.3 Tab "📝 Sin registrar"
+
+Reuniones cuya fecha ya pasó pero siguen en `agendada`. **Este tab no debería tener items.** Alerta visual (badge rojo) si hay reuniones > 24hs sin registrar.
+
+Cada card muestra highlight naranja/rojo según antigüedad + "¿Cómo fue la reunión?" + botones de acción + link al contacto ↗.
+
+**Modal de resultado (al marcar "Realizada"):**
+
+| Paso | Campo | Obligatorio | Detalle |
+|------|-------|-------------|--------|
+| 1 | Estado | ✅ | Realizada / No show / Cancelada |
+| 2 | Comentario | ✅ | Qué se habló, conclusiones de la reunión |
+| 3 | Transcripción | ❌ | Subir archivo, subir audio, o pegar texto |
+| 4 | Resumen IA | Auto | Si hay transcripción → GPT-4o genera: clasificación, puntos de interés, pasos acordados, objeciones |
+| 5 | Módulos de interés | ❌ | Checkboxes: Stock, Acopios, Presupuestos, Movimientos, Plan de obra, Reportes, Otro |
+| 6 | Calificación rápida | ❌ | Frío / Tibio / Caliente / Listo para cerrar |
+| 7 | Próximo contacto | ✅ | Tipo (Llamar/WA/2da reunión/Propuesta/Recordatorio) + Fecha + Nota |
+
+**Al guardar:**
+1. `cambiarEstadoReunion(id, 'realizada', { comentario, transcripcion, modulosInteres, calificacionRapida })` 
+2. Si hay transcripción → `POST /reuniones/:id/procesar-transcripcion` → GPT-4o genera resumenIA
+3. `establecerProximaTarea(contactoId, { tipo, fecha, nota })`
+4. Si elige "Enviar propuesta" → cambia estado contacto a `cierre`
+
+### 3.4 Tab "✅ Realizadas"
+
+Reuniones marcadas como `realizada`. Sub-filtros:
+- **Sin next step** ⚠️ — Sin próxima tarea definida en el contacto
+- **Sin evaluación** — Sin calificación completada
+- **Todas**
+
+Datos por fila: Fecha, Contacto (link ↗), Empresa, Comentario, Estado contacto, Próxima tarea (o "⚠️ Sin definir").
+
+### 3.5 Tab "❌ No show"
+
+Reuniones donde el contacto no se presentó. Acciones:
+- **Reagendar** → Modal nueva reunión pre-llenado
+- **Revisar más adelante** → Cambia estado contacto
+- **Descartar** → Marca `no_califica`
+- **Ver contacto** ↗
+
+### 3.6 Tab "📄 Propuestas" (futuro)
+
+Contactos en estado `cierre` con reunión realizada. Requiere campos nuevos (`propuestaEnviada`, `montoEstimado`). Se implementa en una etapa posterior.
+
+### 3.7 Resumen SDR (campo del contacto)
+
+Campo `resumenSDR` en ContactoSDR. Generado por **GPT-4o a pedido del SDR** (botón "Generar resumen" en la ficha del contacto). No es automático.
+
+**Flujo:**
+1. SDR hace click en "Generar resumen" desde `/sdr/contacto/[id]`
+2. `POST /contactos/:id/generar-resumen`
+3. Backend arma prompt con: datos del contacto, historial completo, chat WA, reuniones previas, datos del bot
+4. GPT-4o genera resumen enfocado en:
+   - Clasificación del lead (frío/tibio/caliente + justificación)
+   - Motivación principal (qué problema quiere resolver)
+   - Datos clave (decididor, presupuesto, timeline, competencia)
+   - Resumen de interacciones relevantes
+5. Se guarda en `contacto.resumenSDR`. Se puede regenerar en cualquier momento.
+
+### Flujo diario del SDR
+
+```
+☀️ Arranca el día
+   → /sdr/reuniones → Tab "Hoy"
+   → Lee resumen SDR de cada contacto, copia link Zoom
+   → Envía recordatorio WA con template pre-armado
+   → Después de cada reunión → Marca "Realizada":
+     Comentario obligatorio + Transcripción + Módulos de interés + Próximo contacto
+   → Tab "Sin registrar" → Verifica que no quede ninguna sin cargar
+   → Tab "Realizadas" → Filtra "Sin next step" → Define siguiente acción
+   → Tab "No show" → Reagendar o descartar
+```
+
+### Cambios técnicos
+
+#### Backend — Nuevos campos
+
+| Modelo | Campo | Tipo | Detalle |
+|--------|-------|------|---------|
+| ContactoSDR | `resumenSDR` | String | Resumen IA del contacto |
+| ReunionSDR | `comentario` | String | Comentario obligatorio post-reunión |
+| ReunionSDR | `transcripcion` | String | Transcripción de la reunión |
+| ReunionSDR | `resumenIA` | String | Resumen IA de la transcripción |
+| ReunionSDR | `nextSteps` | String | Siguientes pasos (fix: ya se usaba sin estar en schema) |
+| ReunionSDR | `modulosInteres` | [String] | Módulos de interés |
+| ReunionSDR | `calificacionRapida` | String | enum: frio/tibio/caliente/listo_para_cerrar |
+
+#### Backend — Nuevos endpoints
+
+| Método | Path | Descripción |
+|--------|------|-------------|
+| `GET` | `/reuniones/:id` | Obtener reunión individual |
+| `DELETE` | `/reuniones/:id` | Eliminar reunión |
+| `POST` | `/reuniones/:id/procesar-transcripcion` | GPT-4o procesa transcripción → resumenIA |
+| `POST` | `/contactos/:id/generar-resumen` | GPT-4o genera resumenSDR del contacto |
+
+#### Backend — Modificaciones
+
+| Qué | Detalle |
+|-----|---------|
+| `listarReuniones()` | Enriquecer con datos del contacto (nombre, empresa, estado, proximaTarea, contadores, resumenSDR) |
+| Filtro por SDR | Filtrar por `sdrAsignado` del contacto (no solo `creadoPor`) |
+
+#### Frontend — Archivos nuevos
+
+| Archivo | Descripción |
+|---------|-------------|
+| `pages/sdr/reuniones.js` | Página principal con 6 tabs |
+| `components/sdr/ReunionCard.js` | Card reutilizable de reunión |
+| `components/sdr/ModalResultadoReunion.js` | Modal de resultado + transcripción + próximo contacto |
+| `components/sdr/ModalCrearReunion.js` | Extraer de las 3 copias inline actuales |
+
+#### Frontend — Modificaciones
+
+| Archivo | Cambio |
+|---------|--------|
+| `contactosSDR.js` | Banner en tabs reuniones → link a `/sdr/reuniones` |
+| `sdr/contacto/[id].js` | Botón "Generar resumen" + mostrar `resumenSDR` |
+| Nav/sidebar | Agregar link a `/sdr/reuniones` |
+
+### Orden de implementación
+
+| Paso | Qué | Esfuerzo |
+|------|-----|----------|
+| 1 | Fix schema ReunionSDR (`nextSteps` + campos nuevos) + endpoints GET/:id, DELETE | 🟢 Bajo |
+| 2 | Extraer `ModalCrearReunion.js` (elimina 3 copias inline) | 🟡 Medio |
+| 3 | `ModalResultadoReunion.js` (comentario + transcripción + módulos + próximo contacto) | 🟡 Medio |
+| 4 | Endpoint `generar-resumen` + botón en ficha contacto | 🟡 Medio |
+| 5 | Endpoint `procesar-transcripcion` (GPT-4o) | 🟡 Medio |
+| 6 | Página `/sdr/reuniones` — tabs Hoy + Próximas + Sin registrar | 🔴 Alto |
+| 7 | Tabs Realizadas + No show + banner en contactosSDR | 🟡 Medio |
+| 8 | Tab Propuestas (futuro, requiere campos nuevos) | 🟡 Medio |
 
 ---
 
-### Grupo 2 — Modelos de datos (dependen del Grupo 1)
+## Backlog (Ideas sin priorizar)
+
+### Mejoras de UX
+- [ ] Drag & drop para reordenar próximos contactos
+- [ ] Atajos de teclado en el wizard (desktop)
+- [ ] Notificaciones push cuando llega respuesta de WA
+- [ ] Modo "focus" que muestra solo el próximo contacto
+
+### Métricas avanzadas
+- [ ] Dashboard de conversión por cadencia vs task-driven
+- [ ] Heatmap de mejores horarios de contacto
+- [ ] Tiempo promedio entre intentos
+- [ ] Comparativa entre SDRs
+
+### Integraciones
+- [ ] Calendario (Google Calendar / Outlook) para reuniones
+- [ ] CRM sync (HubSpot, Pipedrive)
+- [ ] Enriquecimiento de datos (LinkedIn, Apollo)
+
+### Automatización
+- [ ] Auto-asignación de leads por reglas (rubro, zona, carga)
+- [ ] Alertas de contactos sin actividad > X días
+- [ ] Auto-follow-up con templates después de N días sin respuesta
 
 ---
 
-#### F1.2.1 — Actualizar modelo `ContactoSDR.js`
-
-**Tipo**: Modificar archivo existente  
-**Prioridad**: 🔴 Crítica  
-**Depende de**: F1.1.1, F1.1.2
-
-**Contexto para el agente**:
-> El modelo ContactoSDR es el corazón del sistema. Hoy tiene 6 estados y campos básicos. Necesita expandirse a 10 estados + 8 campos nuevos + 6 índices nuevos. Este cambio es backward compatible: los campos nuevos tienen defaults `null` o `0`, y el enum de estados se expande (no se renombra nada que rompa queries existentes — excepto `en_gestion`→`contactado` y `meet` que se manejan con migración).
-
-**Archivos a modificar**:
-- `backend/src/models/sdr/ContactoSDR.js` (123 líneas)
-
-**Archivos a leer como referencia**:
-- `app-web/docs/SDR-COMERCIAL-TECNICO.md` (sección 1.1)
-
-**Cambios requeridos**:
-```
-1. ESTADOS_CONTACTO: Reemplazar array de 6 por array de 10:
-   Quitar: 'en_gestion', 'meet'
-   Agregar: 'contactado', 'cierre', 'ganado', 'no_contacto', 'revisar_mas_adelante', 'perdido'
-   Mantener: 'nuevo', 'calificado', 'no_califica', 'no_responde'
-
-2. Campos nuevos (agregar al schema):
-   - precalificacionBot: String, enum ['sin_calificar','no_llego','calificado','quiere_meet',null], default null
-   - datosBot: { rubro, interes, cantidadObras, interaccionFecha, saludoInicial }
-   - leadId: String, default null
-   - planEstimado: String, enum ['basico','avanzado','premium','a_medida',null], default null
-   - intencionCompra: String, enum ['alta','media','baja',null], default null
-   - prioridadScore: Number, default 0
-   - cadenciaActiva: { cadenciaId (ObjectId ref CadenciaSDR), pasoActual, iniciadaEn, pausada, completada }
-   - historialEstados: [{ estado, fecha, cambiadoPor }]
-   - datosVenta: { planInteresado, ticketEstimado, fechaEstimadaCierre, modulosInteresados, fechaAlta, motivoPerdida }
-   - rubro: String, trim, default null
-
-3. Índices nuevos:
-   - { empresaId: 1, sdrAsignado: 1, estado: 1, prioridadScore: -1 }
-   - { empresaId: 1, 'cadenciaActiva.cadenciaId': 1 }
-   - { empresaId: 1, planEstimado: 1 }
-   - { empresaId: 1, intencionCompra: 1 }
-   - { empresaId: 1, precalificacionBot: 1 }
-   - { telefono: 1, empresaId: 1 } con unique: true
-
-4. Actualizar ESTADOS_CONTACTO export para que otros archivos puedan importarlo
-```
-
-**Criterios de aceptación**:
-- [ ] Enum tiene exactamente 10 estados
-- [ ] Todos los campos nuevos tienen defaults (no rompe documentos existentes)
-- [ ] Índice unique en telefono+empresaId creado
-- [ ] El archivo sigue exportando el modelo y las constantes
-- [ ] `node -e "require('./backend/src/models/sdr/ContactoSDR')"` no falla
-
----
-
-#### F1.2.2 — Actualizar modelo `ReunionSDR.js`
-
-**Tipo**: Modificar archivo existente  
-**Prioridad**: 🔴 Crítica  
-**Depende de**: Ninguna
-
-**Contexto para el agente**:
-> Las reuniones pasan de ser un sub-recurso simple a una entidad con lifecycle propio. Hoy el modelo tiene estados (pendiente/aprobada/rechazada) orientados a "solicitud". Necesitamos estados orientados a "evento": agendada/realizada/no_show/cancelada. Se agrega número auto-incremental por contacto y campos de evaluación post-meet. Las notas se simplifican a un solo campo `notas` (no pre/post).
-
-**Archivos a modificar**:
-- `backend/src/models/sdr/ReunionSDR.js` (125 líneas)
-
-**Archivos a leer como referencia**:
-- `app-web/docs/SDR-COMERCIAL-TECNICO.md` (sección 1.2 + sección 1.5 "Impacto de Reunión en Estado")
-
-**Cambios requeridos**:
-```
-1. ESTADOS_REUNION: Reemplazar ['pendiente','aprobada','rechazada'] → ['agendada','realizada','no_show','cancelada']
-   Default: 'agendada'
-
-2. Campos nuevos:
-   - numero: Number, required (auto-incremental por contacto)
-   - hora: String (ej: "15:00")
-   - link: String, default null (URL Zoom/Meet)
-   - lugar: String, default null
-   - notas: String, default '' (campo único, simplificado)
-   - participantes: [{ nombre: String, rol: String, esNuestro: Boolean }]
-   - asistio: Boolean, default null
-   - duracionMinutos: Number, default null
-
-3. Quitar campos obsoletos (si existen): notasPre, notasPost, evaluacion (separados)
-
-4. Pre-save hook: auto-calcular `numero` como count de reuniones del mismo contacto + 1
-
-5. Índices:
-   - { contacto: 1, estado: 1 }
-   - { empresaId: 1, fecha: 1 }
-   - { empresaId: 1, estado: 1 }
-
-6. Exportar ESTADOS_REUNION junto con el modelo
-```
-
-**Criterios de aceptación**:
-- [ ] Enum tiene 4 estados nuevos
-- [ ] Pre-save hook calcula `numero` correctamente
-- [ ] Campo `notas` es único (no hay notasPre/notasPost)
-- [ ] Índices creados
-
----
-
-#### F1.2.3 — Actualizar modelo `HistorialSDR.js`
-
-**Tipo**: Modificar archivo existente  
-**Prioridad**: 🟡 Alta  
-**Depende de**: Ninguna
-
-**Contexto para el agente**:
-> El historial es el equivalente del "Status Sum" de Notion: un log acumulativo de todo lo que pasó con un contacto. Hoy tiene 34 tipos de evento. Necesitamos agregar ~12 tipos nuevos y 5 campos adicionales para soportar: interacciones del bot, acciones comerciales avanzadas, reuniones como entidad separada, y cadencias.
-
-**Archivos a modificar**:
-- `backend/src/models/sdr/HistorialSDR.js` (127 líneas)
-
-**Archivos a leer como referencia**:
-- `app-web/docs/SDR-COMERCIAL-TECNICO.md` (sección 1.3)
-
-**Cambios requeridos**:
-```
-1. Agregar tipos de evento al enum (si no existen ya):
-   - 'whatsapp_respuesta'
-   - 'instagram_contacto'
-   - 'email_enviado'
-   - 'reunion_agendada', 'reunion_realizada', 'reunion_no_show', 'reunion_cancelada'
-   - 'presupuesto_enviado', 'negociacion_iniciada', 'link_pago_enviado'
-   - 'bot_interaccion'
-   - 'plan_estimado_actualizado', 'intencion_compra_actualizada'
-   - 'cadencia_iniciada', 'cadencia_avanzada', 'cadencia_completada', 'cadencia_detenida'
-   - 'contacto_creado', 'contacto_enriquecido'
-
-2. Campos nuevos en el schema:
-   - estadoAnterior: String, default null
-   - estadoNuevo: String, default null
-   - cadenciaPaso: Number, default null
-   - cadenciaAccion: Number, default null
-   - templateUsado: String, default null
-   - reunionId: ObjectId ref 'ReunionSDR', default null
-```
-
-**Criterios de aceptación**:
-- [ ] Todos los tipos nuevos existen en el enum
-- [ ] Campos nuevos tienen defaults (backward compatible)
-- [ ] No se eliminó ningún tipo existente
-
----
-
-#### F1.2.4 — Actualizar `index.js` de modelos SDR
-
-**Tipo**: Modificar archivo existente  
-**Prioridad**: 🟡 Alta  
-**Depende de**: F1.2.1, F1.2.2, F1.2.3
-
-**Archivos a modificar**:
-- `backend/src/models/sdr/index.js` (18 líneas)
-
-**Cambios**:
-```
-Asegurar que re-exporta: ContactoSDR, ReunionSDR, HistorialSDR + sus constantes (ESTADOS_CONTACTO, ESTADOS_REUNION, etc.)
-Si hay nuevos modelos en fases futuras (CadenciaSDR, etc.) se agregarán después.
-```
-
----
-
-### Grupo 3 — Lógica de negocio backend (depende del Grupo 2)
-
----
-
-#### F1.3.1 — Actualizar `sdrService.js` (Backend)
-
-**Tipo**: Modificar archivo existente  
-**Prioridad**: 🔴 Crítica  
-**Depende de**: F1.2.1, F1.2.2, F1.2.3, F1.1.1, F1.1.2
-
-**Contexto para el agente**:
-> El SDR Service es el archivo más grande del backend SDR (1531 líneas). Es una clase con métodos estáticos que maneja toda la lógica de negocio. Necesitamos: (1) recalcular prioridadScore después de cada acción, (2) nuevos métodos para scoring, (3) métodos actualizados para reuniones v2, (4) normalización de teléfono en importación, (5) nuevos filtros en listarContactos.
-
-**Archivos a modificar**:
-- `backend/src/services/sdrService.js` (1531 líneas)
-
-**Archivos a leer como referencia**:
-- `app-web/docs/SDR-COMERCIAL-TECNICO.md` (secciones 1.5, 1.7, métricas)
-- `backend/utils/calcularPrioridad.js` (creado en F1.1.2)
-- `backend/utils/normalizarTelefono.js` (creado en F1.1.1)
-
-**Cambios requeridos**:
-```
-1. Importar al inicio:
-   - const { calcularPrioridadScore } = require('../../utils/calcularPrioridad');
-   - const { normalizarTelefono } = require('../../utils/normalizarTelefono');
-
-2. Crear método helper: async recalcularPrioridad(contactoId)
-   - Carga contacto + reuniones
-   - Calcula score
-   - Guarda contacto.prioridadScore
-
-3. Modificar registrarIntento():
-   - Después de guardar acción → llamar recalcularPrioridad()
-   - Si el estado cambia a 'contactado' o superior → detener cadencia activa (si tiene)
-   - Registrar en historialEstados del contacto
-
-4. Nuevos métodos:
-   - actualizarPlanEstimado(contactoId, plan, userId, userName)
-   - actualizarIntencionCompra(contactoId, intencion, userId, userName)
-   - obtenerFunnel(empresaId, filtros) — aggregate por estado + conMeetRealizada
-   - obtenerSiguienteContacto(empresaId, sdrId) — contacto con mayor prioridadScore + proximoContacto vencido
-
-5. Modificar listarContactos():
-   - Agregar filtros: planEstimado, intencionCompra, precalificacionBot, tieneReunion
-   - Ordenamiento default: prioridadScore desc (mantener alternativas existentes)
-
-6. Modificar importación (importarContactos/processImport):
-   - Normalizar teléfono antes de buscar/crear
-   - Retornar info de duplicados para UI
-
-7. Actualizar métricas:
-   - Reuniones se cuentan desde ReunionSDR (no desde estados)
-   - Agregar conMeetRealizada al response de funnel
-```
-
-**Criterios de aceptación**:
-- [ ] `recalcularPrioridad` se llama después de cada acción
-- [ ] Nuevos métodos (actualizarPlanEstimado, etc.) funcionan
-- [ ] listarContactos acepta nuevos filtros
-- [ ] Importación normaliza teléfono
-- [ ] No se rompe funcionalidad existente
-
----
-
-#### F1.3.2 — Actualizar `sdrController.js`
-
-**Tipo**: Modificar archivo existente  
-**Prioridad**: 🔴 Crítica  
-**Depende de**: F1.3.1
-
-**Contexto para el agente**:
-> El controller es el punto de entrada HTTP que delega al service. Hoy tiene 32 funciones. Necesitamos agregar handlers para los nuevos endpoints y actualizar los existentes que cambiaron de firma.
-
-**Archivos a modificar**:
-- `backend/src/controllers/sdrController.js` (841 líneas)
-
-**Archivos a leer como referencia**:
-- `app-web/docs/SDR-COMERCIAL-TECNICO.md` (secciones 1.7, 1.8)
-- `backend/src/services/sdrService.js` (para ver firmas de nuevos métodos)
-
-**Cambios requeridos**:
-```
-Nuevos handlers:
-- actualizarPlanEstimado(req, res) — body: { contactoId, plan }
-- actualizarIntencionCompra(req, res) — body: { contactoId, intencion }
-- obtenerFunnel(req, res) — query: { empresaId, desde?, hasta?, sdrId? }
-- webhookNuevoLead(req, res) — body: { phone, leadData, evento }
-- obtenerSiguienteContacto(req, res) — query: { empresaId, sdrId }
-- actualizarReunion(req, res) — body: { id, campos a actualizar }
-
-Modificar handlers existentes:
-- listarContactos: pasar nuevos filtros al service
-- obtenerMetricasPeriodo: incluir datos de funnel y reuniones v2
-```
-
-**Criterios de aceptación**:
-- [ ] Todos los handlers nuevos exportados
-- [ ] Validación básica de parámetros en cada handler
-- [ ] try/catch con respuesta 500 en errores
-
----
-
-#### F1.3.3 — Actualizar `sdrRoutes.js`
-
-**Tipo**: Modificar archivo existente  
-**Prioridad**: 🔴 Crítica  
-**Depende de**: F1.3.2
-
-**Archivos a modificar**:
-- `backend/src/routes/sdrRoutes.js` (143 líneas)
-
-**Cambios requeridos**:
-```
-Agregar rutas:
-- POST /acciones/plan-estimado → sdrController.actualizarPlanEstimado
-- POST /acciones/intencion-compra → sdrController.actualizarIntencionCompra
-- PUT /reuniones/:id → sdrController.actualizarReunion
-- PUT /reuniones/:id/evaluar → sdrController.evaluarReunion
-- GET /metricas/funnel → sdrController.obtenerFunnel
-- POST /webhook/nuevo-lead → sdrController.webhookNuevoLead
-- GET /contactos/siguiente → sdrController.obtenerSiguienteContacto
-
-NOTA: Revisar que las rutas de reuniones existentes (crear, listar, evaluar) siguen funcionando.
-Las rutas nuevas deben estar ANTES de rutas con parámetros genéricos para evitar conflictos.
-```
-
-**Criterios de aceptación**:
-- [ ] Todas las rutas nuevas registradas
-- [ ] No hay conflictos de orden entre rutas
-- [ ] Middleware de auth aplicado a todas las rutas nuevas (mismo pattern que las existentes)
-
----
-
-### Grupo 4 — Integración Bot (depende del Grupo 3)
-
----
-
-#### F1.4.1 — Crear `leadContactoBridge.js`
-
-**Tipo**: Crear archivo nuevo  
-**Prioridad**: 🔴 Crítica  
-**Depende de**: F1.2.1, F1.1.1
-
-**Contexto para el agente**:
-> Este servicio es el puente entre el mundo de marketing (Lead en Firestore, creado por el bot principal) y el mundo comercial (ContactoSDR en MongoDB, usado por el SDR). Se llama desde los flows del bot de onboarding. Maneja dos funciones: (1) crear/enriquecer ContactoSDR cuando el bot interactúa con alguien, (2) actualizar precalificacionBot conforme el usuario avanza en el bot.
-
-**Archivos a crear**:
-- `backend/src/services/leadContactoBridge.js`
-
-**Archivos a leer como referencia**:
-- `app-web/docs/SDR-COMERCIAL-TECNICO.md` (sección 1.6 completa)
-- `backend/src/models/sdr/ContactoSDR.js` (modelo actualizado)
-- `backend/src/models/sdr/HistorialSDR.js` (para registrar eventos)
-- `backend/flows/onboardingFlows/flowInicioGeneral.js` (para entender cómo se llama)
-
-**Especificación**:
-```
-Exportar: { sincronizarLeadConContactoSDR, actualizarPrecalificacionBot }
-
-sincronizarLeadConContactoSDR(phone, leadData, evento):
-  - Normalizar teléfono
-  - Buscar ContactoSDR existente por telefono+empresaId
-  - Si NO existe → crear (Escenario A: nuevo contacto por bot)
-    - estado: 'nuevo', segmento: 'inbound', precalificacionBot: 'sin_calificar'
-    - Crear HistorialSDR tipo 'contacto_creado'
-  - Si existe → enriquecer (Escenario C: contacto existente interactúa con bot)
-    - Vincular leadId si no tenía
-    - Actualizar precalificacionBot si viene
-    - Enriquecer datosBot
-    - Crear HistorialSDR tipo 'bot_interaccion'
-    - Si tiene SDR asignado → TODO: notificar
-
-actualizarPrecalificacionBot(phone, precalificacion, datosExtra):
-  - Normalizar teléfono
-  - Buscar ContactoSDR
-  - Actualizar precalificacionBot + datosBot
-  - Crear HistorialSDR tipo 'bot_interaccion'
-```
-
-**Criterios de aceptación**:
-- [ ] Crea ContactoSDR si no existe
-- [ ] Enriquece si ya existe (no duplica)
-- [ ] Siempre normaliza teléfono antes de buscar
-- [ ] Registra en historial cada interacción
-
----
-
-#### F1.4.2 — Modificar `flowInicioGeneral.js` (puntos de inserción #1 y #2)
-
-**Tipo**: Modificar archivo existente  
-**Prioridad**: 🟡 Alta  
-**Depende de**: F1.4.1
-
-**Contexto para el agente**:
-> Este es el punto de entrada del bot cuando un usuario nuevo escribe por WhatsApp. Tiene un menú de 4 opciones. Necesitamos agregar dos llamadas al bridge: (1) al inicio, cuando se crea el lead, para crear el ContactoSDR correspondiente; (2) cuando elige opción 4 "hablar con humano", para marcar quiere_meet.
-
-**Archivos a modificar**:
-- `backend/flows/onboardingFlows/flowInicioGeneral.js` (81 líneas)
-
-**Archivos a leer como referencia**:
-- `backend/src/services/leadContactoBridge.js` (creado en F1.4.1)
-
-**Cambios requeridos**:
-```
-1. Al inicio del archivo: importar sincronizarLeadConContactoSDR y actualizarPrecalificacionBot
-
-2. En el primer addAction (donde se crea el lead):
-   Después de: await addEvent(phone, 'nuevo_contacto', null, ctx.body)
-   Agregar: await sincronizarLeadConContactoSDR(phone, { id: lead?.id, nombre, saludoInicial: ctx.body }, 'nuevo_contacto')
-
-3. En el switch del segundo addAction, case 4 (humano):
-   Agregar: await actualizarPrecalificacionBot(phone, 'quiere_meet', { interes: 'humano' })
-
-IMPORTANTE: Envolver las llamadas al bridge en try/catch para que si falla el bridge, no rompa el flow del bot.
-```
-
-**Criterios de aceptación**:
-- [ ] Se crea ContactoSDR al primer mensaje
-- [ ] Se marca `quiere_meet` al elegir opción 4
-- [ ] Error en bridge NO rompe el flow del bot (try/catch)
-- [ ] No cambia el comportamiento visible del bot
-
----
-
-#### F1.4.3 — Bridge `solicitar_reunion` (puntos #3 y #4) ✅ COMPLETADO
-
-**Tipo**: Modificar archivo existente  
-**Prioridad**: 🟡 Alta  
-**Depende de**: F1.4.1
-
-**Contexto para el agente**:
-> Este flow usa un asistente GPT que puede ejecutar function calls. Las function calls se procesan en `asistenteChatgptService.js`, no en el flow directamente.
-
-**Archivo modificado**:
-- `backend/src/services/chatgpt/asistenteChatgptService.js`
-
-**Cambios realizados**:
-```
-En el case 'solicitar_reunion' de asistenteChatgptService.js:
-  await actualizarPrecalificacionBot(phone, 'quiere_meet', { interes: 'reunion' })
-```
-
-**Nota**: La lógica para `crear_empresa` ya estaba implementada previamente en los flows de onboarding.
-
-**Criterios de aceptación**:
-- [ ] `calificado` se setea al crear empresa
-- [ ] `quiere_meet` se setea al solicitar reunión
-- [ ] try/catch para no romper el flow
-
----
-
-#### F1.4.4 — Modificar `flowOnboardingInfo.js` (punto #5)
-
-**Tipo**: Modificar archivo existente  
-**Prioridad**: 🟡 Alta  
-**Depende de**: F1.4.1
-
-**Contexto para el agente**:
-> Este flow tiene un sub-menú de 6 opciones. La opción 6 es "Hablar con un humano". Necesitamos marcar `quiere_meet` cuando la elige.
-
-**Archivos a modificar**:
-- `backend/flows/onboardingFlows/flowOnboardingInfo.js` (151 líneas)
-
-**Cambios requeridos**:
-```
-1. Importar actualizarPrecalificacionBot del bridge
-2. En la opción 6 del sub-menú ("hablar con humano"):
-   await actualizarPrecalificacionBot(phone, 'quiere_meet', { interes: 'humano' })
-3. Envolver en try/catch
-```
-
----
-
-#### F1.4.5 — Crear `sdrBotTimeoutJob.js` (punto #6) ✅ COMPLETADO
-
-**Tipo**: Crear archivo nuevo  
-**Prioridad**: 🟢 Media  
-**Depende de**: F1.2.1
-
-**Contexto para el agente**:
-> Los contactos que interactúan con el bot pero nunca completan el recorrido (no eligen opción, no responden más) quedan en `precalificacionBot: 'sin_calificar'` para siempre. Un script que tras 48hs sin actividad los marca como `no_llego`.
-
-**Archivo creado**:
-- `backend/src/scripts/sdrBotTimeoutJob.js`
-
-**Implementación real**:
-```
-Función: procesarTimeoutBot(deps = {})
-  - Inyección de dependencias para testing
-  - Buscar ContactoSDR con:
-    - precalificacionBot: 'sin_calificar'
-    - createdAt: < hace 48 horas
-  - Para cada uno:
-    - Actualizar precalificacionBot → 'no_llego'
-    - Crear EventoHistorialSDR tipo 'bot_timeout'
-  - Retorna: { actualizados, errores, totalEvaluados }
-
-Exportar: { procesarTimeoutBot, HORAS_TIMEOUT }
-```
-
-**Ejecución**: Script standalone, NO integrado como cron en `app.js`.
-```bash
-# Manual
-node src/scripts/sdrBotTimeoutJob.js
-
-# Crontab producción (cada 6 horas)
-0 */6 * * * cd /ruta/backend && node src/scripts/sdrBotTimeoutJob.js >> logs/sdr-timeout.log 2>&1
-```
-
-**Criterios de aceptación**:
-- [x] Script ejecutable standalone con conexión propia a MongoDB
-- [x] Solo afecta contactos con `sin_calificar` + 48hs
-- [x] Registra en historial (tipo `bot_timeout`)
-- [x] Exporta función con inyección de dependencias para testing
-- [x] 5 tests unitarios pasando (`sdrBotTimeoutJob.test.js`)
-
----
-
-### Grupo 5 — Frontend (depende del Grupo 3 para APIs, puede empezar UI en paralelo)
-
----
-
-#### F1.5.1 — Actualizar `contactosSDR.js`
-
-**Tipo**: Modificar archivo existente  
-**Prioridad**: 🔴 Crítica  
-**Depende de**: F1.1.3, F1.5.7
-
-**Contexto para el agente**:
-> Página principal de lista de contactos (1434 líneas). Necesita: usar los 10 nuevos estados desde sdrConstants, agregar badge de precalificacionBot, ordenar por prioridadScore por default, y agregar nuevos filtros.
-
-**Archivos a modificar**:
-- `app-web/src/pages/contactosSDR.js` (1434 líneas)
-
-**Archivos a leer como referencia**:
-- `app-web/src/constant/sdrConstants.js` (creado en F1.1.3)
-- `app-web/src/services/sdrService.js` (actualizado en F1.5.7)
-- `app-web/docs/SDR-COMERCIAL-TECNICO.md` (sección 1.9)
-
-**Cambios requeridos**:
-```
-1. Importar ESTADOS_CONTACTO, PRECALIFICACION_BOT, PLANES_SORBY desde sdrConstants
-2. Reemplazar constantes inline de estados por las importadas
-3. Agregar badge de precalificacionBot en cada fila de contacto (chip 🤖 con color)
-4. Agregar filtros: planEstimado, intencionCompra, precalificacionBot
-5. Ordenamiento default: prioridadScore desc
-6. Mostrar score en la fila del contacto (número o barra visual)
-```
-
-**Criterios de aceptación**:
-- [ ] Los 10 estados se muestran con sus colores correctos
-- [ ] Badge bot visible cuando precalificacionBot no es null
-- [ ] Filtros funcionan
-- [ ] Sin errores de consola
-
----
-
-#### F1.5.2 — Actualizar `gestionSDR.js`
-
-**Tipo**: Modificar archivo existente  
-**Prioridad**: 🔴 Crítica  
-**Depende de**: F1.1.3, F1.5.7
-
-**Contexto para el agente**:
-> Página de gestión/dashboard (2418 líneas). Tiene constantes inline de 6 estados que hay que reemplazar. Las métricas usan datos estimados que deben pasar a usar los endpoints reales. Es el archivo más grande y más propenso a errores.
-
-**Archivos a modificar**:
-- `app-web/src/pages/gestionSDR.js` (2418 líneas)
-
-**Cambios requeridos**:
-```
-1. Importar constantes desde sdrConstants (reemplazar las inline en línea ~49)
-2. Actualizar ESTADOS_CONTACTO de 6 → 10 (en toda la página)
-3. Actualizar métricas para incluir datos del funnel (si el endpoint está disponible)
-4. Ajustar filtros de estado en toda la página
-```
-
-**Criterios de aceptación**:
-- [ ] Constantes importadas de sdrConstants (no inline)
-- [ ] Los 10 estados se muestran correctamente
-- [ ] Métricas no se rompen (pueden seguir con datos actuales hasta que el backend tenga los endpoints nuevos)
-
----
-
-#### F1.5.3 — Actualizar `DrawerDetalleContactoSDR.js`
-
-**Tipo**: Modificar archivo existente  
-**Prioridad**: 🔴 Crítica  
-**Depende de**: F1.1.3, F1.5.7
-
-**Contexto para el agente**:
-> Drawer lateral que muestra todo el detalle de un contacto (1839 líneas). Es el componente más complejo del frontend SDR. Necesita: sección de scoring (plan + intención), badge de precalificacionBot, sección de reuniones v2 con lifecycle, y prompt post-evaluación de reunión.
-
-**Archivos a modificar**:
-- `app-web/src/components/sdr/DrawerDetalleContactoSDR.js` (1839 líneas)
-
-**Cambios requeridos**:
-```
-1. Importar constantes desde sdrConstants
-2. Agregar sección de Scoring:
-   - Selector de Plan Estimado (basico/avanzado/premium/a_medida)
-   - Selector de Intención de Compra (alta/media/baja)
-   - Mostrar prioridadScore numérico
-3. Agregar badge de precalificacionBot (si no es null)
-4. Actualizar sección de reuniones:
-   - Mostrar número de reunión (#1, #2, etc.)
-   - Mostrar estado con color (agendada/realizada/no_show/cancelada)
-   - Botón para evaluar reunión
-   - Prompt post-evaluación: "¿Mover a Cierre?" (si realizada), "¿Revisar más adelante?" (si 2+ no_show)
-5. Actualizar estados en selector de cambio de estado (10 estados)
-6. Mostrar datosBot si existen (rubro, interés, saludo inicial)
-```
-
-**Criterios de aceptación**:
-- [ ] Plan y intención editables desde el drawer
-- [ ] Reuniones muestran lifecycle completo
-- [ ] Prompt post-evaluación aparece correctamente
-- [ ] 10 estados en el selector
-
----
-
-#### F1.5.4 — Actualizar `ModalRegistrarAccion.js`
-
-**Tipo**: Modificar archivo existente  
-**Prioridad**: 🟡 Alta  
-**Depende de**: F1.1.3
-
-**Archivos a modificar**:
-- `app-web/src/components/sdr/ModalRegistrarAccion.js` (692 líneas)
-
-**Cambios requeridos**:
-```
-Agregar tipos de acción nuevos:
-- instagram_contacto
-- link_pago_enviado (Alias)
-- presupuesto_enviado
-- negociacion_iniciada
-- email_enviado
-```
-
----
-
-#### F1.5.5 — Actualizar `ModalImportarExcel.js`
-
-**Tipo**: Modificar archivo existente  
-**Prioridad**: 🟢 Media  
-**Depende de**: F1.5.7
-
-**Archivos a modificar**:
-- `app-web/src/components/sdr/ModalImportarExcel.js` (455 líneas)
-
-**Cambios requeridos**:
-```
-Mejorar UI de deduplicación:
-- Cuando el backend retorna duplicados, mostrar: nombre, estado, origen (inbound/outbound), precalificacionBot
-- Botón "Enriquecer datos" para fusionar campos vacíos del existente con los del import
-- Botón "Ignorar" para saltar el duplicado
-```
-
----
-
-#### F1.5.6 — Actualizar `ModalAgregarContacto.js`
-
-**Tipo**: Modificar archivo existente  
-**Prioridad**: 🟢 Media  
-**Depende de**: F1.1.3
-
-**Archivos a modificar**:
-- `app-web/src/components/sdr/ModalAgregarContacto.js` (272 líneas)
-
-**Cambios requeridos**:
-```
-Agregar campo 'rubro' al formulario de creación de contacto.
-Fase 2: agregar planEstimado e intencionCompra opcionales.
-```
-
----
-
-#### F1.5.7 — Actualizar `sdrService.js` (Frontend)
-
-**Tipo**: Modificar archivo existente  
-**Prioridad**: 🔴 Crítica (bloqueante para otros frontend)  
-**Depende de**: F1.3.3 (rutas backend deben existir)
-
-**Archivos a modificar**:
-- `app-web/src/services/sdrService.js` (535 líneas)
-
-**Cambios requeridos**:
-```
-Agregar llamadas API:
-- actualizarPlanEstimado(contactoId, plan)
-- actualizarIntencionCompra(contactoId, intencion)
-- obtenerFunnel(empresaId, filtros)
-- obtenerSiguienteContacto(empresaId, sdrId)
-- actualizarReunion(reunionId, datos)
-- evaluarReunion(reunionId, resultado)
-
-Mantener la misma convención de los métodos existentes (axios, headers con token, etc.)
-```
-
----
-
-#### F1.5.8 — Crear componentes nuevos (pueden hacerse en paralelo entre sí)
-
-**Tipo**: Crear archivos nuevos  
-**Prioridad**: 🟢 Media  
-**Depende de**: F1.1.3
-
-Cada componente es una tarea independiente para un agente:
-
-| ID | Componente | Propósito | Complejidad |
-|---|---|---|---|
-| F1.5.8a | `BadgePrecalificacionBot.js` | Chip 🤖 que muestra el valor de precalificacionBot con color | Simple |
-| F1.5.8b | `PlanEstimadoSelector.js` | Selector de plan (4 opciones con ícono y precio) | Simple |
-| F1.5.8c | `IntencionCompraSelector.js` | Selector de intención (3 opciones con color) | Simple |
-| F1.5.8d | `ReunionesSection.js` | Sección de reuniones dentro del drawer: lista + estados + evaluación | Media |
-| F1.5.8e | `ModalAgendarReunion.js` | Modal para agendar reunión: fecha, hora, link, notas | Media |
-| F1.5.8f | `ModalEvaluarReunion.js` | Modal post-meet: marcar realizada/no_show/cancelada + prompt sugerido | Media |
-| F1.5.8g | `ModoLlamadas.js` | Loop de llamadas: muestra 1 contacto → Llamar → Resultado → Siguiente | Alta |
-| F1.5.8h | `FunnelChart.js` | Embudo de conversión visual con % entre etapas | Media |
-
-Para cada componente, el agente debe:
-1. Leer `app-web/docs/SDR-COMERCIAL-TECNICO.md` (sección frontend)
-2. Leer `app-web/docs/SDR-COMERCIAL-FUNCIONAL.md` (sección correspondiente para UX)
-3. Leer un componente existente similar (ej: `ModalRegistrarAccion.js`) para mantener estilo
-4. Crear en `app-web/src/components/sdr/`
-
----
-
-### Grupo 6 — Migración (ÚLTIMO, cuando todo funciona)
-
----
-
-#### F1.6.1 — Crear script de migración de estados
-
-**Tipo**: Crear archivo nuevo  
-**Prioridad**: 🟡 Alta (pero ejecutar al final)  
-**Depende de**: Todos los anteriores
-
-**Archivos a crear**:
-- `backend/scripts/migrar-estados-sdr.js`
-
-**Archivos a leer como referencia**:
-- `app-web/docs/SDR-COMERCIAL-TECNICO.md` (sección "Plan de Migración")
-
-**Especificación**:
-```
-Mapeo:
-  'nuevo' → 'nuevo'
-  'en_gestion' → 'contactado'
-  'meet' → 'calificado' + crear ReunionSDR(estado:'realizada', numero:1)
-  'calificado' → 'calificado'
-  'no_califica' → 'no_califica'
-  'no_responde' → 'no_contacto'
-
-Para cada contacto:
-  1. Mapear estado
-  2. Inicializar historialEstados con el estado mapeado
-  3. Setear campos nuevos a null/0/defaults
-  4. Si era 'meet' → crear ReunionSDR
-  5. Outbound: precalificacionBot queda null (nunca interactuó con bot)
-
-Después: recalcular prioridadScore para todos.
-
-MODO: --dry-run por default (solo loggea), --execute para aplicar.
-```
-
-**Criterios de aceptación**:
-- [ ] Modo dry-run funciona y muestra preview
-- [ ] Modo execute aplica cambios
-- [ ] Contactos en 'meet' generan ReunionSDR
-- [ ] No hay contactos con estados viejos después de migrar
-- [ ] Scores recalculados
-
----
-
-## Fase 2: Cadencias + Historial Rico + Filtros
-
-### Grupo 1 — Modelo y Motor
-
-| ID | Tarea | Tipo | Depende de |
-|---|---|---|---|
-| **F2.1.1** | Crear modelo `CadenciaSDR.js` | Crear | — |
-| **F2.1.2** | Crear `cadenciaEngine.js` | Crear | F2.1.1 |
-| **F2.1.3** | Crear `seedCadenciaDefault.js` | Crear | F2.1.1 |
-| **F2.1.4** | ✅ Crear modelo `VistaGuardadaSDR.js` | Crear | — |
-
-### Grupo 2 — Backend
-
-| ID | Tarea | Tipo | Depende de |
-|---|---|---|---|
-| **F2.2.1** | Agregar CRUD cadencias al service/controller/routes | Modificar | F2.1.1, F2.1.2 |
-| **F2.2.2** | ✅ Agregar CRUD vistas guardadas | Modificar | F2.1.4 |
-| **F2.2.3** | Integrar cadenciaEngine en registrarIntento | Modificar | F2.1.2 |
-
-### Grupo 3 — Frontend
-
-| ID | Tarea | Tipo | Depende de |
-|---|---|---|---|
-| **F2.3.1** | ✅ Vistas guardadas integradas en `contactosSDR.js` | Modificar | F2.2.2 |
-| **F2.3.2** | Crear `MetricasDashboard.js` (extraer de gestionSDR) | Crear | — |
-| **F2.3.3** | Integrar cadencia en drawer (paso actual, template sugerido) | Modificar | F2.2.1 |
-| **F2.3.4** | Crear UI de configuración de cadencias (admin) | Crear | F2.2.1 |
-
----
-
-## Fase 3: Pipeline de Ventas
-
-| ID | Tarea | Tipo | Depende de |
-|---|---|---|---|
-| **F3.1.1** | Crear modelo `OportunidadSDR.js` | Crear | — |
-| **F3.1.2** | Agregar CRUD oportunidades al backend | Modificar | F3.1.1 |
-| **F3.1.3** | Crear endpoint métricas de pipeline | Modificar | F3.1.1 |
-| **F3.2.1** | Crear página/sección de Pipeline visual | Crear | F3.1.2 |
-| **F3.2.2** | Agregar métricas de ventas al dashboard | Modificar | F3.1.3 |
-
----
-
-## Fase 4: Automatización WhatsApp
-
-| ID | Tarea | Tipo | Depende de |
-|---|---|---|---|
-| **F4.1.1** | Crear `cadenciaScheduler.js` (cron 15 min) | Crear | F2.1.2 |
-| **F4.1.2** | Implementar rate limiting WhatsApp | Crear | F4.1.1 |
-| **F4.1.3** | Crear `sdrWhatsAppBot.js` (bot separado) | Crear | F4.1.2 |
-| **F4.1.4** | Kill switch y alertas de bloqueo | Crear | F4.1.3 |
-| **F4.2.1** | UI de estado de cadencia automática | Crear | F4.1.1 |
-
----
-
-## Fase 5: Reportes Avanzados
-
-| ID | Tarea | Tipo | Depende de |
-|---|---|---|---|
-| **F5.1.1** | Endpoints de reportes (comparativa, velocidad, conversión) | Crear | F1.* completo |
-| **F5.2.1** | `FunnelConversion.js` — embudo visual | Crear | F5.1.1 |
-| **F5.2.2** | `ComparativaPeriodos.js` — este mes vs anterior | Crear | F5.1.1 |
-| **F5.2.3** | `MetricasPorSDR.js` — tabla comparativa equipo | Crear | F5.1.1 |
-| **F5.2.4** | `MatrizPlanIntencion.js` — grilla de calor | Crear | F5.1.1 |
-| **F5.2.5** | `AlertasPanel.js` — situaciones que requieren atención | Crear | F5.1.1 |
-
----
-
-## Orden de Ejecución Recomendado
-
-### Sprint 1 (Fase 1, Grupos 1-2): Fundaciones
-```
-Paralelo:
-  F1.1.1 normalizarTelefono
-  F1.1.2 calcularPrioridad
-  F1.1.3 sdrConstants (FE)
-  F1.2.2 ReunionSDR
-  F1.2.3 HistorialSDR
-
-Después:
-  F1.2.1 ContactoSDR (depende de F1.1.1, F1.1.2)
-  F1.2.4 index.js de modelos
-```
-
-### Sprint 2 (Fase 1, Grupos 3-4): Backend + Bot
-```
-Secuencial:
-  F1.3.1 sdrService (BE)
-  F1.3.2 sdrController
-  F1.3.3 sdrRoutes
-
-Paralelo (después de F1.3.1):
-  F1.4.1 leadContactoBridge
-  F1.4.2 flowInicioGeneral
-  F1.4.3 asistenteChatgptService (solicitar_reunion bridge)
-  F1.4.4 flowOnboardingInfo
-  F1.4.5 sdrBotTimeoutJob
-```
-
-### Sprint 3 (Fase 1, Grupo 5): Frontend
-```
-Primero:
-  F1.5.7 sdrService (FE)
-
-Paralelo:
-  F1.5.1 contactosSDR
-  F1.5.2 gestionSDR
-  F1.5.3 DrawerDetalle
-  F1.5.4 ModalRegistrarAccion
-  F1.5.5 ModalImportarExcel
-  F1.5.6 ModalAgregarContacto
-  F1.5.8a-h componentes nuevos
-```
-
-### Sprint 4: Migración + QA
-```
-  F1.6.1 migración (dry-run primero)
-  QA manual con Fernando
-```
-
-### Sprint 5: Fase 2 (Cadencias)
-### Sprint 6: Fase 3 (Pipeline)
-### Sprint 7: Fase 4 (Automatización)
-### Sprint 8: Fase 5 (Reportes)
-
----
-
-## Notas para el Agente Ejecutor
-
-### Convenciones del proyecto
-- **Backend**: Express + Mongoose. Services como clases con métodos estáticos. Controllers como funciones sueltas.
-- **Frontend**: Next.js + MUI. Páginas en `pages/`, componentes en `components/sdr/`. Servicios con axios.
-- **Estilo**: Sin TypeScript. CommonJS (`require/module.exports`). ESLint configurado.
-- **Auth**: Firebase Auth. Token se pasa en headers.
-- **DB**: MongoDB con Mongoose. Las conexiones ya están configuradas.
-
-### Cómo leer contexto
-Antes de cada tarea, el agente DEBE:
-1. Leer el archivo que va a modificar completo
-2. Leer los archivos de referencia indicados
-3. Leer los docs funcional y técnico (secciones relevantes)
-4. Verificar que las dependencias de la tarea están completas
-
-### Cómo validar
-Después de cada tarea:
-1. `node -e "require('./path/to/file')"` — verificar que no crashea
-2. Correr tests si se crearon
-3. `npx eslint path/to/file` — sin errores de lint
-4. Si es frontend: verificar que compila sin errores
+## Cronograma Sugerido
+
+| Semana | Fase | Entregable |
+|--------|------|-----------|
+| S1 | Fase 2a | Migración modelo template + `detectarContextoTemplate()` |
+| S2 | Fase 2b | Refactor `ModalSelectorTemplate` + `ModalAdminTemplates` |
+| S3 | Fase 2c | Auto-fill en wizard + testing |
+| S4 | Fase 3a | Fix schema + endpoints faltantes + extraer `ModalCrearReunion` |
+| S5 | Fase 3b | `ModalResultadoReunion` + endpoint `generar-resumen` + `procesar-transcripcion` |
+| S6 | Fase 3c | Página `/sdr/reuniones` — tabs Hoy + Próximas + Sin registrar |
+| S7 | Fase 3d | Tabs Realizadas + No show + banner en contactosSDR |
+| S8 | Buffer | QA, ajustes, edge cases |

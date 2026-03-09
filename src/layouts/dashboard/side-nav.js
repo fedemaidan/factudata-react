@@ -45,6 +45,8 @@ import ErrorOutlineIcon from "@mui/icons-material/ErrorOutline";
 import ContactsIcon from "@mui/icons-material/Contacts";
 import AccountTreeIcon from "@mui/icons-material/AccountTree";
 import AssessmentIcon from "@mui/icons-material/Assessment";
+import FilterListIcon from "@mui/icons-material/FilterList";
+import WhatsAppIcon from "@mui/icons-material/WhatsApp";
 
 export const SideNav = (props) => {
   const { open, onClose, collapsed = false, onToggleCollapsed, width = 280 } = props;
@@ -315,11 +317,29 @@ export const SideNav = (props) => {
           ),
         });
         baseItems.push({
+          title: "Mis Reuniones",
+          path: "/sdr/reuniones",
+          icon: (
+            <SvgIcon fontSize="small">
+              <TodayIcon />
+            </SvgIcon>
+          ),
+        });
+        baseItems.push({
           title: "Cadencias",
           path: "/sdr/cadencias",
           icon: (
             <SvgIcon fontSize="small">
               <AccountTreeIcon />
+            </SvgIcon>
+          ),
+        });
+        baseItems.push({
+          title: "Funnel",
+          path: "/funnel",
+          icon: (
+            <SvgIcon fontSize="small">
+              <FilterListIcon />
             </SvgIcon>
           ),
         });
@@ -344,6 +364,18 @@ export const SideNav = (props) => {
           icon: (
             <SvgIcon fontSize="small">
               <SettingsIcon />
+            </SvgIcon>
+          ),
+        });
+      }
+
+      if (user?.admin) {
+        baseItems.push({
+          title: "Templates WhatsApp",
+          path: "/templatesMeta",
+          icon: (
+            <SvgIcon fontSize="small">
+              <WhatsAppIcon />
             </SvgIcon>
           ),
         });

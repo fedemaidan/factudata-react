@@ -165,6 +165,7 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
   const { user } = useAuthContext();
 
   const opcionesAcciones = [
+    "ENVIAR_MENSAJE_BOT",
     "CREAR_EGRESO",
     "CREAR_EGRESO_PRORATEADO",
     "CREAR_EGRESOS_MASIVO",

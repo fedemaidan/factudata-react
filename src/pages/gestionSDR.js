@@ -54,8 +54,11 @@ import * as XLSX from 'xlsx';
 
 // Componente compartido del Drawer
 import DrawerDetalleContactoSDR, { EstadoChip } from 'src/components/sdr/DrawerDetalleContactoSDR';
+import ModalCrearReunion from 'src/components/sdr/ModalCrearReunion';
 import { ESTADOS_CONTACTO as ESTADOS_SDR, ESTADOS_REUNION, PLANES_SORBY, PRECALIFICACION_BOT, INTENCIONES_COMPRA } from 'src/constant/sdrConstants';
 import SortIcon from '@mui/icons-material/Sort';
+import SmartToyIcon from '@mui/icons-material/SmartToy';
+import BulkSendTemplateDialog from 'src/components/sdr/BulkSendTemplateDialog';
 
 // ==================== CONSTANTES ====================
 
@@ -183,6 +186,7 @@ const GestionSDRPage = () => {
     const [modalReunion, setModalReunion] = useState(false);
     const [modalNota, setModalNota] = useState({ open: false, contacto: null, tipo: '', atendida: null });
     const [modalEditarReunion, setModalEditarReunion] = useState({ open: false, reunion: null });
+    const [modalBulkTemplate, setModalBulkTemplate] = useState(false);
     
     // Estado para importación
     const [importTab, setImportTab] = useState(0);
@@ -200,6 +204,9 @@ const GestionSDRPage = () => {
     // Usar user_id del perfil (que es el Firebase UID guardado en Firestore)
     const sdrId = user?.user_id;
     const sdrNombre = `${user?.firstName || ''} ${user?.lastName || ''}`.trim() || user?.email || 'SDR';
+
+    // Permiso para enviar templates via bot
+    const tienePermisoEnviarBot = user?.admin || (user?.empresa?.acciones || []).includes('ENVIAR_MENSAJE_BOT');
     
     // Control de carga inicial
     const initialLoadDone = useRef(false);
@@ -978,6 +985,11 @@ const GestionSDRPage = () => {
                                 <IconButton size="small" onClick={handleDesasignarContactos}>
                                     <PersonOffIcon fontSize="small" />
                                 </IconButton>
+                                {tienePermisoEnviarBot && (
+                                    <IconButton size="small" color="success" onClick={() => setModalBulkTemplate(true)}>
+                                        <SmartToyIcon fontSize="small" />
+                                    </IconButton>
+                                )}
                                 <IconButton size="small" color="error" onClick={handleEliminarContactos}>
                                     <DeleteIcon fontSize="small" />
                                 </IconButton>
@@ -990,6 +1002,11 @@ const GestionSDRPage = () => {
                                 <Button size="small" startIcon={<PersonOffIcon />} onClick={handleDesasignarContactos}>
                                     Desasignar
                                 </Button>
+                                {tienePermisoEnviarBot && (
+                                    <Button size="small" startIcon={<SmartToyIcon />} color="success" onClick={() => setModalBulkTemplate(true)}>
+                                        Enviar template
+                                    </Button>
+                                )}
                                 <Button size="small" color="error" startIcon={<DeleteIcon />} onClick={handleEliminarContactos}>
                                     Eliminar
                                 </Button>
@@ -2431,7 +2448,7 @@ const GestionSDRPage = () => {
             {/* Modales */}
             <ModalCrearContacto />
             <ModalNota />
-            <ModalReunionGestion
+            <ModalCrearReunion
                 open={modalReunion}
                 onClose={() => setModalReunion(false)}
                 contacto={contactoSeleccionado}
@@ -2443,6 +2460,26 @@ const GestionSDRPage = () => {
             <ModalImportar />
             <ModalAsignar />
             <ModalAgregarSDR />
+
+            {/* Modal Envío Masivo de Template Meta via Bot */}
+            {tienePermisoEnviarBot && (
+                <BulkSendTemplateDialog
+                    open={modalBulkTemplate}
+                    onClose={() => setModalBulkTemplate(false)}
+                    empresaId={empresaId}
+                    contacts={contactosSeleccionados.map(id => {
+                        const c = contactos.find(ct => ct._id === id);
+                        return c ? { phone: c.telefono, name: c.nombre || c.empresa } : null;
+                    }).filter(Boolean)}
+                    onComplete={(result) => {
+                        mostrarSnackbar(
+                            `${result.enviados} template(s) enviado(s)${result.errores.length ? `, ${result.errores.length} error(es)` : ''}`,
+                            result.errores.length === 0 ? 'success' : 'warning'
+                        );
+                        setContactosSeleccionados([]);
+                    }}
+                />
+            )}
             
             {/* Snackbar */}
             <Snackbar
@@ -2455,68 +2492,6 @@ const GestionSDRPage = () => {
                 </Alert>
             </Snackbar>
         </>
-    );
-};
-
-// Componente Modal de Reunión (extraído fuera para evitar re-renders)
-const ModalReunionGestion = ({ open, onClose, contacto, onSubmit, loading }) => {
-    const [form, setForm] = useState({
-        fechaHora: '',
-        empresaNombre: '',
-        tamanoEmpresa: '',
-        contactoPrincipal: '',
-        rolContacto: '',
-        puntosDeDolor: '',
-        modulosPotenciales: '',
-        linkAgenda: ''
-    });
-
-    useEffect(() => {
-        if (contacto && open) {
-            setForm({
-                fechaHora: '',
-                empresaNombre: contacto.empresa || '',
-                tamanoEmpresa: contacto.tamanoEmpresa || '',
-                contactoPrincipal: contacto.nombre || '',
-                rolContacto: contacto.cargo || '',
-                puntosDeDolor: '',
-                modulosPotenciales: '',
-                linkAgenda: ''
-            });
-        }
-    }, [contacto, open]);
-
-    const handleSubmit = () => {
-        onSubmit(form);
-    };
-
-    return (
-        <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-            <DialogTitle>📅 Registrar Reunión</DialogTitle>
-            <DialogContent>
-                <Stack spacing={2} sx={{ mt: 1 }}>
-                    <TextField label="Fecha y hora *" type="datetime-local" value={form.fechaHora} onChange={(e) => setForm({ ...form, fechaHora: e.target.value })} fullWidth InputLabelProps={{ shrink: true }} required />
-                    <TextField label="Nombre de la empresa *" value={form.empresaNombre} onChange={(e) => setForm({ ...form, empresaNombre: e.target.value })} fullWidth required />
-                    <FormControl fullWidth required>
-                        <InputLabel>Tamaño de empresa *</InputLabel>
-                        <Select value={form.tamanoEmpresa} label="Tamaño de empresa *" onChange={(e) => setForm({ ...form, tamanoEmpresa: e.target.value })}>
-                            {TAMANOS_EMPRESA.map(t => (<MenuItem key={t} value={t}>{t} empleados</MenuItem>))}
-                        </Select>
-                    </FormControl>
-                    <TextField label="Contacto principal *" value={form.contactoPrincipal} onChange={(e) => setForm({ ...form, contactoPrincipal: e.target.value })} fullWidth required />
-                    <TextField label="Rol del contacto" value={form.rolContacto} onChange={(e) => setForm({ ...form, rolContacto: e.target.value })} fullWidth placeholder="Ej: Gerente, Dueño, etc." />
-                    <TextField label="Puntos de dolor" value={form.puntosDeDolor} onChange={(e) => setForm({ ...form, puntosDeDolor: e.target.value })} fullWidth multiline rows={2} placeholder="¿Qué problemas tiene la empresa?" />
-                    <TextField label="Módulos potenciales" value={form.modulosPotenciales} onChange={(e) => setForm({ ...form, modulosPotenciales: e.target.value })} fullWidth placeholder="Ej: Facturación, Stock, etc." />
-                    <TextField label="Link de la reunión" value={form.linkAgenda} onChange={(e) => setForm({ ...form, linkAgenda: e.target.value })} fullWidth placeholder="Google Meet, Zoom, etc." />
-                </Stack>
-            </DialogContent>
-            <DialogActions>
-                <Button onClick={onClose}>Cancelar</Button>
-                <Button variant="contained" onClick={handleSubmit} disabled={!form.fechaHora || !form.empresaNombre || !form.tamanoEmpresa || !form.contactoPrincipal || loading}>
-                    {loading ? <CircularProgress size={20} /> : 'Registrar Reunión'}
-                </Button>
-            </DialogActions>
-        </Dialog>
     );
 };
 

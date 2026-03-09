@@ -1242,7 +1242,10 @@ const ControlPresupuestosPage = () => {
                                 <Typography variant="body2" sx={{ color: 'white', fontSize: { xs: '0.65rem', sm: '0.75rem', md: '0.875rem' } }} noWrap>Ganancia Proyectada</Typography>
                                 <Typography variant="h5" sx={{ color: 'white', fontSize: { xs: '1rem', sm: '1.25rem', md: '1.5rem' } }} noWrap>{formatMonto(totales.gananciaProyectada, moneda)}</Typography>
                                 <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.8)', fontSize: { xs: '0.6rem', sm: '0.7rem', md: '0.875rem' } }} noWrap>
-                                  Ejecutada: {formatMonto(totales.gananciaActual, moneda)} · Pendiente: {formatMonto(totales.gananciaProyectadaPendiente, moneda)}
+                                  Ejecutada: {formatMonto(totales.gananciaActual, moneda)}
+                                </Typography>
+                                <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.8)', fontSize: { xs: '0.6rem', sm: '0.7rem', md: '0.875rem' } }} noWrap>
+                                  Pendiente: {formatMonto(totales.gananciaProyectadaPendiente, moneda)}
                                 </Typography>
                               </Box>
                             </Stack>

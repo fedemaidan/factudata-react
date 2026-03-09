@@ -256,7 +256,7 @@ const CajaChicaPage = () => {
               </Box>
               
               <Box display="flex" gap={1}>
-                {false && (
+                {true && (
                   <>
                     <Button 
                       variant="contained" 
