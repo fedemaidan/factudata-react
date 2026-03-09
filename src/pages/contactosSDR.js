@@ -91,6 +91,7 @@ const ContactosSDRPage = () => {
     const [filtroCalificadoBot, setFiltroCalificadoBot] = useState(''); // '' | 'calificado' | 'no_calificado' | 'quiere_meet' | 'no_llego'
     const [filtroQuiereReunion, setFiltroQuiereReunion] = useState(''); // '' | 'si' | 'no'
     const [filtroProximaTarea, setFiltroProximaTarea] = useState(''); // '' | 'llamada' | 'whatsapp' | 'email' | 'recordatorio' | 'sin_tarea'
+    const [filtroExcluirConReunion, setFiltroExcluirConReunion] = useState(false); // true = excluir contactos con reunión
     const [ordenarPor, setOrdenarPor] = useState(''); // vacío = el backend elige según bandeja
     
     // Contadores de bandejas (para badges)
@@ -167,6 +168,7 @@ const ContactosSDRPage = () => {
             if (filtroEstado) params.estado = filtroEstado;
             if (busqueda) params.busqueda = busqueda;
             if (filtroSegmento) params.segmento = filtroSegmento;
+            if (filtroExcluirConReunion) params.excluirConReunion = 'true';
             
             // Mapear ordenamiento al formato del backend
             if (ordenarPor) {
@@ -196,7 +198,7 @@ const ContactosSDRPage = () => {
         } finally {
             setLoading(false);
         }
-    }, [empresaId, sdrId, filtroEstado, bandejaActiva, busqueda, filtroSegmento, ordenarPor, page]);
+    }, [empresaId, sdrId, filtroEstado, bandejaActiva, busqueda, filtroSegmento, filtroExcluirConReunion, ordenarPor, page]);
 
     // Cargar métricas del SDR - soporta día, semana y mes
     const cargarMetricas = useCallback(async () => {
@@ -718,6 +720,7 @@ const ContactosSDRPage = () => {
         setFiltroCalificadoBot('');
         setFiltroQuiereReunion('');
         setFiltroProximaTarea('');
+        setFiltroExcluirConReunion(false);
         setBusqueda('');
     };
     
@@ -1409,6 +1412,13 @@ const ContactosSDRPage = () => {
                         variant={filtroActividad === 'con_reuniones' ? 'filled' : 'outlined'}
                         onClick={() => setFiltroActividad(filtroActividad === 'con_reuniones' ? '' : 'con_reuniones')}
                     />
+                    <Chip 
+                        label="🚫 Excluir con reunión"
+                        size="small"
+                        color={filtroExcluirConReunion ? 'error' : 'default'}
+                        variant={filtroExcluirConReunion ? 'filled' : 'outlined'}
+                        onClick={() => setFiltroExcluirConReunion(!filtroExcluirConReunion)}
+                    />
                 </Stack>
             </Box>
 
@@ -2043,6 +2053,12 @@ const ContactosSDRPage = () => {
                         color={filtroActividad === 'con_reuniones' ? 'secondary' : 'default'}
                         variant={filtroActividad === 'con_reuniones' ? 'filled' : 'outlined'}
                         onClick={() => setFiltroActividad(filtroActividad === 'con_reuniones' ? '' : 'con_reuniones')}
+                    />
+                    <Chip 
+                        label="🚫 Excluir con reunión"
+                        color={filtroExcluirConReunion ? 'error' : 'default'}
+                        variant={filtroExcluirConReunion ? 'filled' : 'outlined'}
+                        onClick={() => setFiltroExcluirConReunion(!filtroExcluirConReunion)}
                     />
                     {filtroActividad && (
                         <Chip 
