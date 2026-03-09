@@ -623,8 +623,17 @@ export const SideNav = (props) => {
             </SvgIcon>
           ),
         };
+        const panelValidacion = {
+          title: "Panel de validación",
+          path: "/panelValidacion?empresaId=" + emp.id,
+          icon: (
+            <SvgIcon fontSize="small">
+              <Checklist />
+            </SvgIcon>
+          ),
+        };
 
-        baseItems = [ todos, revision, ...baseItems];
+        baseItems = [ todos, revision, panelValidacion, ...baseItems];
 
         // proyectos activos
         let proys = await getProyectosFromUser(user);
