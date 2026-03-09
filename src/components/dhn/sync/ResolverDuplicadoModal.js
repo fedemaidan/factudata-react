@@ -524,6 +524,8 @@ const ResolverDuplicadoModal = ({
     handleTrabajadorResuelto,
   ]);
 
+  const isLicenciaConflict = tipoComprobante === "licencia";
+
   const handleConfirm = useCallback(async () => {
     if (loading) return;
     const payload =
@@ -535,6 +537,14 @@ const ResolverDuplicadoModal = ({
       onConfirmarYContinuar?.();
     }
   }, [loading, manualPatch, onResolve, onConfirmarYContinuar, selectedSide]);
+
+  const handleAgregarAmbos = useCallback(async () => {
+    if (loading) return;
+    const result = await onResolve?.({ action: "keepBoth" });
+    if (result !== false) {
+      onConfirmarYContinuar?.();
+    }
+  }, [loading, onResolve, onConfirmarYContinuar]);
 
   if (!row) {
     return null;
@@ -656,6 +666,16 @@ const ResolverDuplicadoModal = ({
         <Button onClick={onClose} disabled={loading}>
           Cancelar
         </Button>
+        {isLicenciaConflict && (
+          <Button
+            variant="outlined"
+            onClick={handleAgregarAmbos}
+            disabled={loading || isLoadingTrabajo}
+            sx={{ textTransform: "none" }}
+          >
+            {loading || isLoadingTrabajo ? "Procesando..." : "Agregar ambos"}
+          </Button>
+        )}
         <Button
           variant="contained"
           onClick={handleConfirm}

@@ -16,6 +16,9 @@ const CargarDrive = () => {
   const [urlDrive, setUrlDrive] = useState("");
   const [isSyncing, setIsSyncing] = useState(false);
   const [googleSheetLink, setGoogleSheetLink] = useState("");
+  const [sheetName, setSheetName] = useState("");
+  const [sheetDateFrom, setSheetDateFrom] = useState(null);
+  const [sheetDateTo, setSheetDateTo] = useState(null);
   const [isUpdatingSyncSheet, setIsUpdatingSyncSheet] = useState(false);
   const [sheetDialogOpen, setSheetDialogOpen] = useState(false);
   const [driveDialogOpen, setDriveDialogOpen] = useState(false);
@@ -231,10 +234,54 @@ const CargarDrive = () => {
   // Eliminado detalle embebido: redirect a pantalla de detalle
 
   const updateSyncSheet = async () => {
-    if (!googleSheetLink) return;
+    if (!googleSheetLink || !sheetName.trim()) return false;
+    if ((sheetDateFrom && !sheetDateTo) || (!sheetDateFrom && sheetDateTo)) {
+      setAlert({
+        open: true,
+        message: "Para usar rango tenés que completar fecha desde y hasta.",
+        severity: "error",
+      });
+      return false;
+    }
+    if (sheetDateFrom && sheetDateTo && sheetDateFrom > sheetDateTo) {
+      setAlert({
+        open: true,
+        message: "Fecha desde no puede ser mayor a fecha hasta.",
+        severity: "error",
+      });
+      return false;
+    }
+
+    const formatDateOnly = (value) => {
+      if (!value) return null;
+      const year = value.getFullYear();
+      const month = String(value.getMonth() + 1).padStart(2, "0");
+      const day = String(value.getDate()).padStart(2, "0");
+      return `${year}-${month}-${day}`;
+    };
+
     setIsUpdatingSyncSheet(true);
     try {
-      await DhnDriveService.updateSyncSheet(googleSheetLink);
+      const response = await DhnDriveService.updateSyncSheet({
+        googleSheetLink,
+        sheetName: sheetName.trim(),
+        dateFrom: formatDateOnly(sheetDateFrom),
+        dateTo: formatDateOnly(sheetDateTo),
+      });
+      if (!response?.ok) {
+        setAlert({
+          open: true,
+          message: response?.error?.message || "Error al actualizar Google Sheet",
+          severity: "error",
+        });
+        return false;
+      }
+      setAlert({
+        open: true,
+        message: "Actualización de Google Sheet iniciada",
+        severity: "success",
+      });
+      return true;
     } catch (e) {
       console.error(e);
       setAlert({
@@ -242,15 +289,20 @@ const CargarDrive = () => {
         message: "Error al actualizar Google Sheet",
         severity: "error",
       });
+      return false;
     }
     finally {
       setIsUpdatingSyncSheet(false);
     }
   };
   const handleSheetSave = async () => {
-    await updateSyncSheet();
+    const started = await updateSyncSheet();
+    if (!started) return;
     setSheetDialogOpen(false);
     setGoogleSheetLink("");
+    setSheetName("");
+    setSheetDateFrom(null);
+    setSheetDateTo(null);
   };
   const handleCloseAlert = (event, reason) => {
     if (reason === "clickaway") return;
@@ -277,7 +329,7 @@ const CargarDrive = () => {
                 variant="contained"
                 onClick={() => setSheetDialogOpen(true)}
               >
-                Actualizar Google Sheet
+                Escribir en Google Sheet
               </Button>
               <Button
                 variant="contained"
@@ -354,15 +406,40 @@ const CargarDrive = () => {
                 margin="dense"
                 placeholder="Pega el enlace del Google Sheet"
               />
+              <TextField
+                label="Nombre exacto de la hoja"
+                value={sheetName}
+                onChange={(e) => setSheetName(e.target.value)}
+                fullWidth
+                size="small"
+                margin="dense"
+                placeholder="Ej: Foja medición Jornales 2Q IZRC"
+              />
+              <Stack direction={{ xs: "column", sm: "row" }} spacing={2} sx={{ mt: 1 }}>
+                <DatePicker
+                  label="Fecha desde (opcional)"
+                  value={sheetDateFrom}
+                  onChange={(newValue) => setSheetDateFrom(newValue)}
+                  format="dd/MM/yyyy"
+                  slotProps={{ textField: { size: "small", fullWidth: true } }}
+                />
+                <DatePicker
+                  label="Fecha hasta (opcional)"
+                  value={sheetDateTo}
+                  onChange={(newValue) => setSheetDateTo(newValue)}
+                  format="dd/MM/yyyy"
+                  slotProps={{ textField: { size: "small", fullWidth: true } }}
+                />
+              </Stack>
             </DialogContent>
             <DialogActions>
               <Button onClick={() => setSheetDialogOpen(false)}>Cancelar</Button>
               <Button
                 variant="contained"
                 onClick={handleSheetSave}
-                disabled={!googleSheetLink || isUpdatingSyncSheet}
+                disabled={!googleSheetLink || !sheetName.trim() || isUpdatingSyncSheet}
               >
-                {isUpdatingSyncSheet ? "Actualizando..." : "Guardar"}
+                {isUpdatingSyncSheet ? "Iniciando..." : "Iniciar actualización"}
               </Button>
             </DialogActions>
           </Dialog>
