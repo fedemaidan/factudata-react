@@ -57,6 +57,7 @@ import SortIcon from '@mui/icons-material/Sort';
 import BulkSendTemplateDialog from 'src/components/sdr/BulkSendTemplateDialog';
 import BulkRegistrarAccionDialog from 'src/components/sdr/BulkRegistrarAccionDialog';
 import EditNoteIcon from '@mui/icons-material/EditNote';
+import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import NavigateBeforeIcon from '@mui/icons-material/NavigateBefore';
 import NavigateNextIcon from '@mui/icons-material/NavigateNext';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
@@ -118,6 +119,7 @@ const ContactosSDRPage = () => {
     const [modalReunion, setModalReunion] = useState(false);
     const [modalBulkTemplate, setModalBulkTemplate] = useState(false);
     const [modalBulkAccion, setModalBulkAccion] = useState(false);
+    const [modalCambiarEstadoMasivo, setModalCambiarEstadoMasivo] = useState(false);
     const [actionLoading, setActionLoading] = useState(false);
 
     // Permiso para enviar templates via bot
@@ -1473,6 +1475,9 @@ const ContactosSDRPage = () => {
                                 <Button size="small" onClick={() => setModalBulkAccion(true)}>
                                     📝 Acción
                                 </Button>
+                                <Button size="small" onClick={() => setModalCambiarEstadoMasivo(true)}>
+                                    🔄 Estado
+                                </Button>
                                 <Button size="small" onClick={() => setSeleccionados([])}>
                                     ✕
                                 </Button>
@@ -2248,6 +2253,13 @@ const ContactosSDRPage = () => {
                                 >
                                     Registrar acción
                                 </Button>
+                                <Button
+                                    size="small"
+                                    startIcon={<SwapHorizIcon />}
+                                    onClick={() => setModalCambiarEstadoMasivo(true)}
+                                >
+                                    Cambiar estado
+                                </Button>
                                 <Button size="small" onClick={() => setSeleccionados([])}>
                                     Limpiar selección
                                 </Button>
@@ -2649,6 +2661,77 @@ const ContactosSDRPage = () => {
                     cargarContactos();
                 }}
             />
+
+            {/* Modal Cambiar Estado Masivo */}
+            <Dialog
+                open={modalCambiarEstadoMasivo}
+                onClose={() => setModalCambiarEstadoMasivo(false)}
+                maxWidth="xs"
+                fullWidth
+            >
+                <DialogTitle>🔄 Cambiar estado de {seleccionados.length} contacto(s)</DialogTitle>
+                <DialogContent>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                        Seleccioná el nuevo estado para todos los contactos seleccionados
+                    </Typography>
+                    <Stack spacing={1}>
+                        {[
+                            { value: 'nuevo', label: 'Nuevo', color: 'info' },
+                            { value: 'contactado', label: 'Contactado', color: 'warning' },
+                            { value: 'calificado', label: 'Calificado', color: 'success' },
+                            { value: 'cierre', label: 'En Cierre', color: 'secondary' },
+                            { value: 'ganado', label: 'Ganado', color: 'success' },
+                            { value: 'no_contacto', label: 'No Contactado', color: 'default' },
+                            { value: 'no_responde', label: 'No Responde', color: 'default' },
+                            { value: 'revisar_mas_adelante', label: 'Revisar Después', color: 'warning' },
+                            { value: 'no_califica', label: 'No Califica', color: 'error' },
+                            { value: 'perdido', label: 'Perdido', color: 'error' },
+                        ].map((est) => (
+                            <Button
+                                key={est.value}
+                                variant="outlined"
+                                fullWidth
+                                color={est.color}
+                                onClick={async () => {
+                                    setActionLoading(true);
+                                    try {
+                                        let exitosos = 0;
+                                        let fallidos = 0;
+                                        for (const id of seleccionados) {
+                                            try {
+                                                await SDRService.cambiarEstado(id, est.value, 'Cambio masivo');
+                                                exitosos++;
+                                            } catch (err) {
+                                                fallidos++;
+                                            }
+                                        }
+                                        setSnackbar({
+                                            open: true,
+                                            message: `${exitosos} contacto(s) cambiados a "${est.label}"${fallidos > 0 ? `, ${fallidos} error(es)` : ''}`,
+                                            severity: fallidos === 0 ? 'success' : 'warning'
+                                        });
+                                        setSeleccionados([]);
+                                        setModalCambiarEstadoMasivo(false);
+                                        cargarContactos();
+                                    } catch (error) {
+                                        setSnackbar({ open: true, message: 'Error al cambiar estado', severity: 'error' });
+                                    } finally {
+                                        setActionLoading(false);
+                                    }
+                                }}
+                                disabled={actionLoading}
+                                sx={{ justifyContent: 'flex-start', textTransform: 'none' }}
+                            >
+                                {actionLoading ? <CircularProgress size={18} sx={{ mr: 1 }} /> : null}
+                                {est.label}
+                            </Button>
+                        ))}
+                    </Stack>
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => setModalCambiarEstadoMasivo(false)}>Cancelar</Button>
+                </DialogActions>
+            </Dialog>
 
             {/* Modal Registrar Reunión */}
             <ModalCrearReunion
