@@ -394,12 +394,27 @@ const EmpresaOnboardingRow = ({ empresa, diasAnalisis = 7 }) => {
                                 )}
                               </TableCell>
                               <TableCell align="center">
-                                <Chip 
-                                  label={usuario.totalMovimientos || 0} 
-                                  size="small" 
-                                  color={usuario.totalMovimientos > 0 ? 'success' : 'default'}
-                                  variant={usuario.totalMovimientos > 0 ? 'filled' : 'outlined'}
-                                />
+                                <Stack direction="row" spacing={0.5} justifyContent="center" alignItems="center">
+                                  <Tooltip title={`En primeros ${diasAnalisis} días`}>
+                                    <Chip 
+                                      label={usuario.movimientosEnPeriodo ?? usuario.totalMovimientos ?? 0} 
+                                      size="small" 
+                                      color={(usuario.movimientosEnPeriodo ?? usuario.totalMovimientos) > 0 ? 'success' : 'default'}
+                                      variant={(usuario.movimientosEnPeriodo ?? usuario.totalMovimientos) > 0 ? 'filled' : 'outlined'}
+                                    />
+                                  </Tooltip>
+                                  {usuario.totalMovimientos != null && (
+                                    <Tooltip title="Total histórico">
+                                      <Chip 
+                                        label={usuario.totalMovimientos} 
+                                        size="small" 
+                                        color="default"
+                                        variant="outlined"
+                                        sx={{ fontSize: '0.7rem', opacity: 0.7 }}
+                                      />
+                                    </Tooltip>
+                                  )}
+                                </Stack>
                               </TableCell>
                               <TableCell align="center">
                                 <Chip 
