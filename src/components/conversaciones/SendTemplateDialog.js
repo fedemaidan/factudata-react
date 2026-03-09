@@ -80,6 +80,7 @@ export default function SendTemplateDialog({ open, onClose, phone, contactName, 
         componentIndex: ci,
         paramIndex: pi,
         componentType: comp.type,
+        componentSubType: comp.sub_type,
         key: `${comp.type}_${pi}_${param.name}`,
       }))
     ) || [];
@@ -99,21 +100,28 @@ export default function SendTemplateDialog({ open, onClose, phone, contactName, 
     return text;
   }, [selectedTemplate, paramValues]);
 
+  const URL_DEFAULT = 'Fn6gVt3kqjsnymMs5';
+
   const handleSelectTemplate = (e) => {
     const tplId = e.target.value;
     setSelectedTemplateId(tplId);
     setError('');
     setSuccess('');
 
-    // Pre-cargar parámetros de nombre con el nombre del contacto
+    // Pre-cargar parámetros de nombre y URL por defecto
     const tpl = templates.find(t => t._id === tplId);
     const prefilled = {};
-    if (tpl && contactName) {
+    if (tpl) {
       tpl.components?.forEach(comp => {
         (comp.parameters || []).forEach(param => {
           const n = (param.name || '').toLowerCase();
-          if (n === 'nombre' || n === 'nombre_cliente' || n === 'nombre_usuario') {
+          // Pre-cargar nombre del contacto si existe
+          if (contactName && (n === 'nombre' || n === 'nombre_cliente' || n === 'nombre_usuario')) {
             prefilled[param.name] = contactName;
+          }
+          // Pre-cargar URL por defecto para botones de tipo URL
+          if (comp.sub_type === 'url' && (n.includes('url') || param.type === 'text')) {
+            prefilled[param.name] = URL_DEFAULT;
           }
         });
       });

@@ -81,6 +81,7 @@ export default function BulkSendTemplateDialog({ open, onClose, contacts = [], o
         componentIndex: ci,
         paramIndex: pi,
         componentType: comp.type,
+        componentSubType: comp.sub_type,
         key: `${comp.type}_${pi}_${param.name}`,
       }))
     ) || [];
@@ -110,11 +111,27 @@ export default function BulkSendTemplateDialog({ open, onClose, contacts = [], o
     return null;
   }, [selectedTemplate]);
 
+  const URL_DEFAULT = 'Fn6gVt3kqjsnymMs5';
+
   const handleSelectTemplate = (e) => {
-    setSelectedTemplateId(e.target.value);
-    setParamValues({});
+    const tplId = e.target.value;
+    setSelectedTemplateId(tplId);
     setError('');
     setResults(null);
+
+    // Pre-cargar URL por defecto para botones de tipo URL
+    const tpl = templates.find(t => t._id === tplId);
+    const prefilled = {};
+    if (tpl) {
+      tpl.components?.forEach(comp => {
+        if (comp.sub_type === 'url') {
+          (comp.parameters || []).forEach(param => {
+            prefilled[param.name] = URL_DEFAULT;
+          });
+        }
+      });
+    }
+    setParamValues(prefilled);
   };
 
   const handleParamChange = (paramName) => (e) => {
