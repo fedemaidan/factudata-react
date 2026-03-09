@@ -160,9 +160,6 @@ export const PdfTrabajoDiarioDocument = ({ trabajo }) => {
   const dni = trabajador?.dni || trabajo?.dni || '-';
   const fechaLabel = trabajo?.fecha ? formatFechaLong(trabajo.fecha) : '-';
   const rawRows = Array.isArray(trabajo?.dataRawExcel) ? trabajo.dataRawExcel : [];
-  const hasHoras = (Array.isArray(trabajo?.comprobantes) ? trabajo.comprobantes : []).some(
-    (c) => (c?.type || '').toString().toLowerCase() === 'horas'
-  );
   const COMPROBANTE_TIPOS_IMAGEN = ['licencia', 'parte'];
   const comprobantesConImagen = (Array.isArray(trabajo?.comprobantes) ? trabajo.comprobantes : []).filter(
     (comprobante) =>
@@ -192,7 +189,7 @@ export const PdfTrabajoDiarioDocument = ({ trabajo }) => {
           </View>
         </View>
 
-        {hasHoras && rawRows.length > 0 && (
+        {rawRows.length > 0 && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Fichadas del Excel</Text>
             <View style={styles.tableHeaderRow}>

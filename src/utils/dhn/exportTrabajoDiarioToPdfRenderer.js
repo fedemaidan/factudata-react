@@ -141,7 +141,13 @@ const buildTrabajoPdfPayload = async (trabajo) => {
     (c) => COMPROBANTE_TIPOS_IMAGEN.includes(c?.type || '')
   );
   if (comprobantes.length === 0) {
-    return { ...trabajo, comprobantes: [] };
+    // Sin licencia/parte: preservar comprobantes originales (incl. 'horas') para que hasHoras funcione
+    const result = { ...trabajo };
+    console.log('[PDF] buildTrabajoPdfPayload SALIDA (sin licencia/parte)', {
+      comprobantesLength: result.comprobantes?.length ?? 0,
+      dataRawExcelEnResult: Array.isArray(result.dataRawExcel) ? result.dataRawExcel.length : 0,
+    });
+    return result;
   }
 
   const comprobantesConImagen = await Promise.all(
@@ -181,10 +187,14 @@ const buildTrabajoPdfPayload = async (trabajo) => {
     })
   );
 
-  return {
+  const comprobantesHoras = todosComprobantes.filter(
+    (c) => (c?.type || '').toString().toLowerCase() === 'horas'
+  );
+  const result = {
     ...trabajo,
-    comprobantes: comprobantesConImagen,
+    comprobantes: [...comprobantesConImagen, ...comprobantesHoras],
   };
+  return result;
 };
 
 export async function exportTrabajoDiarioToPdfRenderer(trabajo) {
@@ -198,9 +208,14 @@ export async function exportTrabajoDiarioToPdfRenderer(trabajo) {
   const fechaArchivo = formatFechaArchivo(trabajo.fecha);
   const fileName = `${sanitizeFileName(nombreCompleto)}_${dni}_${fechaArchivo}.pdf`;
   const trabajoPdf = await buildTrabajoPdfPayload(trabajo);
-  console.log('[PDF] resumen comprobantes', {
-    total: trabajoPdf?.comprobantes?.length || 0,
-    conImagen: (trabajoPdf?.comprobantes || []).filter((item) => Boolean(item?.imageSrc)).length,
+  console.log('[PDF] exportTrabajoDiarioToPdfRenderer - trabajoPdf para documento', {
+    comprobantesTotal: trabajoPdf?.comprobantes?.length || 0,
+    comprobantesConImagen: (trabajoPdf?.comprobantes || []).filter((item) => Boolean(item?.imageSrc)).length,
+    dataRawExcelLength: Array.isArray(trabajoPdf?.dataRawExcel) ? trabajoPdf.dataRawExcel.length : 0,
+    hasHorasParaTabla: (trabajoPdf?.comprobantes ?? []).some((c) => (c?.type || '').toLowerCase() === 'horas'),
+    mostraraTablaFichadas: (trabajoPdf?.comprobantes ?? []).some((c) => (c?.type || '').toLowerCase() === 'horas') &&
+      Array.isArray(trabajoPdf?.dataRawExcel) &&
+      trabajoPdf.dataRawExcel.length > 0,
   });
 
   const document = (

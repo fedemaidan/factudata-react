@@ -16,8 +16,7 @@ import TrabajosDetectadosList from 'src/components/dhn/TrabajosDetectadosList';
 import HorasRawModal from 'src/components/dhn/HorasRawModal';
 import CorreccionConciliacionModal from 'src/components/dhn/CorreccionConciliacionModal';
 import { getHourChipSx } from 'src/components/dhn/hourChipStyles';
-import TrabajoRegistradoService from 'src/services/dhn/TrabajoRegistradoService';
-import exportTrabajoDiarioToPdfRenderer from 'src/utils/dhn/exportTrabajoDiarioToPdfRenderer';
+import { useExportTrabajoDiarioPdf, getTrabajoFromConciliacionRow } from 'src/hooks/dhn/useExportTrabajoDiarioPdf';
 
 const DEFAULT_PAGE_SIZE = 200;
 const HORAS_EXCEL_FIELDS = [
@@ -88,8 +87,17 @@ const ConciliacionDetallePage = () => {
   const [rawModalTitle, setRawModalTitle] = useState('');
   const [rawModalFileName, setRawModalFileName] = useState('');
   const [rawModalUrl, setRawModalUrl] = useState('');
-  const [exportingRowId, setExportingRowId] = useState(null);
   const [alert, setAlert] = useState({ open: false, severity: 'success', message: '' });
+
+  const showAlert = useCallback((message, severity = 'success') => {
+    setAlert({ open: true, message, severity });
+  }, []);
+
+  const { handleExportPdf, exportingRowId } = useExportTrabajoDiarioPdf({
+    getTrabajoForItem: getTrabajoFromConciliacionRow,
+    onError: (msg) => showAlert(msg || 'Error al exportar el PDF', 'error'),
+    onSuccess: () => showAlert('PDF exportado correctamente'),
+  });
 
   const handleOpenParteModal = useCallback((url, comp) => {
     if (!url) return;
@@ -110,10 +118,6 @@ const ConciliacionDetallePage = () => {
     setRawModalTitle('');
     setRawModalFileName('');
     setRawModalUrl('');
-  }, []);
-
-  const showAlert = useCallback((message, severity = 'success') => {
-    setAlert({ open: true, message, severity });
   }, []);
 
   const handleAlertClose = useCallback(() => {
@@ -373,32 +377,6 @@ const ConciliacionDetallePage = () => {
     }
   }, [id, rowToEdit, formHoras, reloadRows]);
 
-  const handleExportRowPdf = useCallback(
-    async (row) => {
-      const rowId = getRowId(row);
-      if (!rowId) return;
-      if (!row?.trabajoDiarioRegistrado) {
-        showAlert("No hay trabajo diario registrado vinculado", "info");
-        return;
-      }
-      setExportingRowId(rowId);
-      try {
-        const registro = await TrabajoRegistradoService.getRegistroById(row.trabajoDiarioRegistrado);
-        const trabajo = registro?.data || registro;
-        if (!trabajo) {
-          throw new Error("No se encontró el trabajo diario");
-        }
-        await exportTrabajoDiarioToPdfRenderer(trabajo);
-      } catch (error) {
-        console.error("Error exportando comprobantes", error);
-        showAlert(error?.message || "Error al exportar el PDF", "error");
-      } finally {
-        setExportingRowId(null);
-      }
-    },
-    [getRowId, showAlert]
-  );
-
   const getEstadoChipProps = (estado) => {
     const e = (estado || '').toString().toLowerCase();
     if (['ok', 'completo'].includes(e)) {
@@ -618,7 +596,7 @@ const ConciliacionDetallePage = () => {
               disabled={!row?.trabajoDiarioRegistrado || exportingRowId === rowId}
               onClick={(e) => {
                 e.stopPropagation();
-                handleExportRowPdf(row);
+                handleExportPdf(row);
               }}
             >
               {exportingRowId === rowId ? (
@@ -631,7 +609,7 @@ const ConciliacionDetallePage = () => {
         );
       }
     }
-  ]), [handleOpenParteModal, handleExportRowPdf, exportingRowId]);
+  ]), [handleOpenParteModal, handleExportPdf, exportingRowId]);
 
   useEffect(() => {
     setSelectedRowsMap(new Map());

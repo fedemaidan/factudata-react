@@ -329,7 +329,7 @@ const CargarDrive = () => {
                 variant="contained"
                 onClick={() => setSheetDialogOpen(true)}
               >
-                Actualizar Google Sheet
+                Escribir en Google Sheet
               </Button>
               <Button
                 variant="contained"
