@@ -1,14 +1,17 @@
 import api from 'src/services/axiosConfig';
 
 const conciliacionService = {
-  async crearConciliacion(sheetLink) {
-    const { data } = await api.post('/dhn/conciliacion', { sheetLink });
+  async crearConciliacion(payload = {}) {
+    const { data } = await api.post('/dhn/conciliacion', payload);
     return data;
   },
 
-  async crearConciliacionConArchivo(archivoExcel) {
+  async crearConciliacionConArchivo({ archivoExcel, sheetName, dateFrom, dateTo }) {
     const formData = new FormData();
     formData.append('archivoExcel', archivoExcel);
+    formData.append('sheetName', sheetName);
+    if (dateFrom) formData.append('dateFrom', dateFrom);
+    if (dateTo) formData.append('dateTo', dateTo);
     const { data } = await api.post('/dhn/conciliacion', formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
@@ -43,6 +46,12 @@ const conciliacionService = {
   async getConciliacionStats(id) {
     if (!id) return null;
     const { data } = await api.get(`/dhn/conciliacion/${id}/stats`);
+    return data;
+  },
+
+  async getConciliacionStatus(id) {
+    if (!id) return null;
+    const { data } = await api.get(`/dhn/conciliacion/${id}/status`);
     return data;
   },
 

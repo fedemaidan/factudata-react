@@ -14,11 +14,6 @@ import {
 } from '@mui/material';
 import CircularProgress from '@mui/material/CircularProgress';
 
-const TIPO_OPTIONS = [
-  { value: 'ingreso', label: 'Ingreso (cobro al cliente)' },
-  { value: 'egreso', label: 'Egreso (gasto)' },
-];
-
 const AceptarPresupuestoModal = ({
   open,
   onClose,
@@ -28,20 +23,16 @@ const AceptarPresupuestoModal = ({
   loading = false,
 }) => {
   const [proyectoId, setProyectoId] = useState('');
-  const [tipo, setTipo] = useState('ingreso');
 
   useEffect(() => {
-    if (!open) {
-      setProyectoId('');
-      setTipo('ingreso');
-    }
+    if (!open) setProyectoId('');
   }, [open]);
 
   const canConfirm = proyectoId && proyectos.length > 0 && !loading;
 
   const handleConfirm = () => {
     if (!canConfirm) return;
-    onConfirm(proyectoId, tipo);
+    onConfirm(proyectoId, 'ingreso');
   };
 
   return (
@@ -49,7 +40,7 @@ const AceptarPresupuestoModal = ({
       <DialogTitle>Aceptar presupuesto - Asignar a proyecto</DialogTitle>
       <DialogContent dividers>
         <Typography variant="body2" sx={{ mb: 2 }}>
-          Para crear el control de presupuestos, seleccioná el proyecto y el tipo.
+          Para crear el control de presupuestos, seleccioná el proyecto.
         </Typography>
         {proyectos.length === 0 ? (
           <Typography variant="body2" color="text.secondary">
@@ -57,20 +48,6 @@ const AceptarPresupuestoModal = ({
           </Typography>
         ) : (
           <Stack spacing={2}>
-            <FormControl fullWidth>
-              <InputLabel>Tipo de control</InputLabel>
-              <Select
-                value={tipo}
-                label="Tipo de control"
-                onChange={(e) => setTipo(e.target.value)}
-              >
-                {TIPO_OPTIONS.map((o) => (
-                  <MenuItem key={o.value} value={o.value}>
-                    {o.label}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
             <FormControl fullWidth>
               <InputLabel>Proyecto</InputLabel>
               <Select

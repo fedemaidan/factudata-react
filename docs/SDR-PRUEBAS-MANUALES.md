@@ -2,7 +2,7 @@
 
 > **Fecha**: 25/02/2026  
 > **Branch**: `Feat/comercial-nuevo-eje`  
-> **Sprints cubiertos**: 1 (Utilidades + Modelos), 2 (Backend lógica v2), 3 (Frontend v2)  
+> **Sprints cubiertos**: 1 (Utilidades + Modelos), 2 (Backend lógica v2), 3 (Frontend v2), 4 (Templates contextuales — Fase 2), 5 (Reuniones avanzadas — Fase 3)  
 > **Tester**: ________________________  
 > **Fecha ejecución**: ____/____/______
 
@@ -35,6 +35,10 @@
 14. [Flujos cross-funcionales](#14-flujos-cross-funcionales)
 15. [Visor de Conversación — MiniChatViewer](#15-visor-de-conversación)
 16. [Página de Detalle — /sdr/contacto/[id]](#16-página-de-detalle)
+17. [Página de Reuniones — /sdr/reuniones](#17-página-de-reuniones)
+18. [ModalCrearReunion](#18-modalcrearreunion)
+19. [ModalResultadoReunion](#19-modalresultadoreunion)
+20. [Resumen SDR (IA)](#20-resumen-sdr-ia)
 
 ---
 
@@ -547,6 +551,121 @@ db.reunionsdrs.insertOne({
 
 ---
 
+## 17. Página de Reuniones — `/sdr/reuniones`
+
+### 17.1 Navegación y acceso
+
+| # | Caso | Pasos | Resultado esperado | ✅/❌ | Obs |
+|---|------|-------|--------------------|-------|-----|
+| 17.1.1 | Acceso desde sidebar | Click "Mis Reuniones" en sidebar | Abre `/sdr/reuniones` con 6 tabs | | |
+| 17.1.2 | Acceso desde banner | En contactosSDR tab Reuniones → click banner "Ir a Mis Reuniones" | Navega a `/sdr/reuniones` | | |
+| 17.1.3 | Botón volver | Click flecha ← en header | Navega a `/contactosSDR` | | |
+| 17.1.4 | Botón actualizar | Click "Actualizar" | Recarga reuniones sin perder tab seleccionado | | |
+
+### 17.2 Tab Hoy
+
+| # | Caso | Pasos | Resultado esperado | ✅/❌ | Obs |
+|---|------|-------|--------------------|-------|-----|
+| 17.2.1 | Cards con countdown | Tener reuniones agendadas para hoy | Cada card muestra hora + "En Xh Xmin" o "Hace Xmin" | | |
+| 17.2.2 | Resumen SDR visible | Contacto con `resumenSDR` poblado | Se muestra el resumen en la card | | |
+| 17.2.3 | Link de reunión | Reunión con campo `link` | Botón "Link reunión" abre URL, botón copiar funciona | | |
+| 17.2.4 | Marcar realizada | Click "✅ Realizada" | Abre ModalResultadoReunion | | |
+| 17.2.5 | Marcar no show | Click "❌ No show" | Reunión cambia a no_show, desaparece de Hoy, aparece en No show | | |
+| 17.2.6 | Ver contacto | Click "Ver contacto" | Navega a `/sdr/contacto/[id]` | | |
+| 17.2.7 | Empty state | Sin reuniones hoy | Muestra "🎉 No tenés reuniones para hoy" | | |
+
+### 17.3 Tab Próximas
+
+| # | Caso | Pasos | Resultado esperado | ✅/❌ | Obs |
+|---|------|-------|--------------------|-------|-----|
+| 17.3.1 | Agrupación por día | Reuniones en distintos días futuros | Se agrupan con separador "── lunes 9 de marzo ──" etc. | | |
+| 17.3.2 | Cancelar reunión | Click "Cancelar" en una reunión próxima | Reunión desaparece del tab | | |
+
+### 17.4 Tab Sin registrar
+
+| # | Caso | Pasos | Resultado esperado | ✅/❌ | Obs |
+|---|------|-------|--------------------|-------|-----|
+| 17.4.1 | Alerta visual | Reunión agendada con fecha pasada | Card con borde rojo/naranja + alerta "Hace Xh sin registrar" | | |
+| 17.4.2 | Alerta >24h | Reunión de hace más de 1 día | Alerta roja "⚠️ Hace más de X día(s) sin registrar" | | |
+| 17.4.3 | Forzar registro | Click "✅ Realizada" | Abre modal resultado, al completar desaparece del tab | | |
+
+### 17.5 Tab Realizadas
+
+| # | Caso | Pasos | Resultado esperado | ✅/❌ | Obs |
+|---|------|-------|--------------------|-------|-----|
+| 17.5.1 | Comentario visible | Reunión realizada con comentario | Se muestra el comentario en la card | | |
+| 17.5.2 | Módulos visible | Reunión con modulosInteres | Chips de módulos visibles | | |
+| 17.5.3 | Calificación visible | Reunión con calificacionRapida | Chip de calificación visible (❄️/🌤️/🔥/🎯) | | |
+| 17.5.4 | Próximo paso | Contacto con proximaTarea | Chip "Próximo: tipo" visible | | |
+| 17.5.5 | Sin próximo paso | Contacto sin proximaTarea | Chip "⚠️ Sin próximo paso" visible | | |
+
+### 17.6 Tab No show
+
+| # | Caso | Pasos | Resultado esperado | ✅/❌ | Obs |
+|---|------|-------|--------------------|-------|-----|
+| 17.6.1 | Reagendar | Click "Reagendar" | Abre modal resultado para definir nueva acción | | |
+
+### 17.7 Badges en tabs
+
+| # | Caso | Pasos | Resultado esperado | ✅/❌ | Obs |
+|---|------|-------|--------------------|-------|-----|
+| 17.7.1 | Badges con cantidad | Tener reuniones en distintos estados | Cada tab muestra badge con cantidad correcta | | |
+| 17.7.2 | Badge rojo sin registrar | Tener reuniones sin registrar | Tab "Sin registrar" con badge rojo | | |
+| 17.7.3 | Badge azul hoy | Tener reuniones hoy | Tab "Hoy" con badge azul | | |
+
+---
+
+## 18. ModalCrearReunion
+
+| # | Caso | Pasos | Resultado esperado | ✅/❌ | Obs |
+|---|------|-------|--------------------|-------|-----|
+| 18.1 | Abrir desde contactosSDR | En lista → abrir contacto → "Agendar reunión" | Modal se abre con campos del formulario | | |
+| 18.2 | Abrir desde contacto/[id] | En detalle contacto → "Agendar reunión" | Modal se abre con datos pre-cargados del contacto | | |
+| 18.3 | Campos del formulario | Verificar campos | Fecha/hora, empresa, tamaño, contacto principal, rol, puntos de dolor, módulos, link | | |
+| 18.4 | Enviar formulario | Completar y enviar | Reunión creada, modal se cierra, snackbar de éxito | | |
+| 18.5 | Cancelar | Click "Cancelar" | Modal se cierra sin crear reunión | | |
+
+---
+
+## 19. ModalResultadoReunion
+
+| # | Caso | Pasos | Resultado esperado | ✅/❌ | Obs |
+|---|------|-------|--------------------|-------|-----|
+| 19.1 | Paso 1: Estado | Seleccionar "Realizada" | Avanza al paso 2 (Comentario) | | |
+| 19.2 | Paso 1: No show | Seleccionar "No show" | Salta al paso 5 (Próximo contacto) | | |
+| 19.3 | Paso 1: Cancelada | Seleccionar "Cancelada" | Salta al paso 5 (Próximo contacto) | | |
+| 19.4 | Paso 2: Comentario obligatorio | Intentar avanzar sin comentario (estado=realizada) | No avanza, campo marcado como requerido | | |
+| 19.5 | Paso 3: Transcripción | Pegar texto de transcripción | Se guarda en el campo, botón "Siguiente" disponible | | |
+| 19.6 | Paso 4: Módulos | Seleccionar módulos de interés | Checkboxes se marcan correctamente | | |
+| 19.7 | Paso 4: Calificación | Seleccionar calificación rápida | Se selecciona una opción del grupo de radio buttons | | |
+| 19.8 | Paso 5: Próximo contacto | Seleccionar tipo + fecha + nota | Formulario completo, botón "Guardar" habilitado | | |
+| 19.9 | Submit completo | Completar todos los pasos y guardar | Reunión actualizada, próximo contacto programado, snackbar éxito | | |
+| 19.10 | Transcripción + IA | Pegar transcripción ≥50 chars y guardar | Se genera resumen IA automáticamente, snackbar "resumen IA generado ✨" | | |
+| 19.11 | Stepper navegación | Usar botones Atrás/Siguiente | Stepper navega correctamente entre pasos | | |
+
+---
+
+## 20. Resumen SDR (IA)
+
+### 20.1 Generar resumen desde contacto
+
+| # | Caso | Pasos | Resultado esperado | ✅/❌ | Obs |
+|---|------|-------|--------------------|-------|-----|
+| 20.1.1 | Botón visible | Abrir `/sdr/contacto/[id]` | Card "Resumen SDR (IA)" visible con botón "Generar resumen" | | |
+| 20.1.2 | Generar resumen | Click "Generar resumen" | Loading → se muestra el resumen generado por GPT-4o | | |
+| 20.1.3 | Regenerar | Contacto ya tiene resumen → click "🔄 Regenerar" | Nuevo resumen reemplaza al anterior | | |
+| 20.1.4 | Resumen en tab Hoy | Generar resumen → ir a /sdr/reuniones tab Hoy | El resumen aparece en la card de la reunión del contacto | | |
+
+### 20.2 Procesar transcripción
+
+| # | Caso | Pasos | Resultado esperado | ✅/❌ | Obs |
+|---|------|-------|--------------------|-------|-----|
+| 20.2.1 | Transcripción corta | Registrar resultado con transcripción <50 chars | No se intenta generar resumen IA | | |
+| 20.2.2 | Transcripción larga | Registrar resultado con transcripción ≥50 chars | Se genera `resumenIA` en la reunión automáticamente | | |
+| 20.2.3 | Error de IA | Simular error de red/API | Reunión se guarda igual, snackbar warning "error al generar resumen IA" | | |
+
+---
+
 ## Resumen de tests automatizados existentes
 
 | Suite | Tests | Comando |
@@ -581,8 +700,12 @@ Ejecutar todos: `cd backend && npx jest --runInBand --forceExit`
 | 14. Flujos cross | 8 | | | |
 | 15. Visor de conversación | 7 | | | |
 | 16. Página de detalle | 14 | | | |
-| **TOTAL** | **175** | | | |
+| 17. Página de reuniones | 23 | | | |
+| 18. ModalCrearReunion | 5 | | | |
+| 19. ModalResultadoReunion | 11 | | | |
+| 20. Resumen SDR (IA) | 7 | | | |
+| **TOTAL** | **221** | | | |
 
 **Firma del tester**: ________________________  
 **Fecha completado**: ____/____/______  
-**Versión**: Sprint 3 + conversación/detalle — `Feat/comercial-nuevo-eje`
+**Versión**: Sprint 5 + reuniones avanzadas (Fase 3) — `Feat/comercial-nuevo-eje`

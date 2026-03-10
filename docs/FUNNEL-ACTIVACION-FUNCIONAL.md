@@ -1,8 +1,9 @@
-# Funnel de Activación & Comercial — Documento Funcional
+# Funnel de Conversión — Documento Funcional
 
 > **Fecha**: Marzo 2026  
 > **Estado**: Diseño  
-> **Página**: `/funnel` (nueva)
+> **Página**: `/funnel` (nueva)  
+> **Nota**: No confundir con **Analytics de Onboarding** (`/analyticsOnboarding`) que mide la activación post-venta de clientes que ya pagan. Este funnel mide el camino previo: desde que un contacto SDR ingresa hasta que llega a usar el producto.
 
 ---
 
@@ -10,8 +11,8 @@
 
 Medir la conversión de contactos SDR a lo largo de dos ejes:
 
-- **Funnel de Activación**: ¿Cuántos contactos llegaron a usar el producto?
-- **Funnel Comercial**: ¿Cuántos avanzaron en el ciclo de venta?
+- **Conversión Producto**: ¿Cuántos contactos llegaron a usar el producto?
+- **Pipeline Comercial**: ¿Cuántos avanzaron en el ciclo de venta?
 
 Ambos funcionan con **análisis de cohortes** (agrupando contactos por su fecha de creación) y permiten **comparar dos períodos** lado a lado.
 
@@ -28,9 +29,9 @@ Ambos funcionan con **análisis de cohortes** (agrupando contactos por su fecha 
 │  [Segmento: ● Inbound ○ Outbound ○ Todos]                  │
 │  [Vista: ● Global ○ Solo mis contactos]                     │
 │                                                             │
-│  ┌──────────────────┐ ┌──────────────────┐                  │
-│  │ 📊 Activación    │ │ 🤝 Comercial     │  ← Tabs         │
-│  └──────────────────┘ └──────────────────┘                  │
+│  ┌────────────────────────┐ ┌────────────────────────┐      │
+│  │ 📊 Conversión Producto  │ │ 🤝 Pipeline Comercial  │ Tabs│
+│  └────────────────────────┘ └────────────────────────┘      │
 │                                                             │
 │  [Contenido del tab activo]                                 │
 └─────────────────────────────────────────────────────────────┘
@@ -49,7 +50,7 @@ La **cohorte** se define por el `createdAt` del ContactoSDR dentro del rango de 
 
 ---
 
-## 3. Tab: Funnel de Activación
+## 3. Tab: Conversión Producto
 
 ### 3.1 Definición de pasos
 
@@ -70,7 +71,7 @@ El funnel es **secuencial**: cada paso es un subconjunto del anterior.
 Cuando solo hay Período A:
 
 ```
-FUNNEL DE ACTIVACIÓN — Feb 2026
+CONVERSIÓN PRODUCTO — Feb 2026
 
 Contactos creados          ████████████████████████  247  (100%)
 Empresa creada             ██████████████████        183  (74.1%)
@@ -120,7 +121,7 @@ Esto identifica rápidamente **dónde se pierden más contactos**.
 
 ---
 
-## 4. Tab: Funnel Comercial
+## 4. Tab: Pipeline Comercial
 
 ### 4.1 Definición de pasos
 
@@ -150,7 +151,7 @@ Dado que un contacto hoy puede estar en `calificado` pero antes estuvo en `conta
 
 ### 4.3 Visualización
 
-Igual que el funnel de activación: barras horizontales con cantidad, % sobre base, % vs. paso anterior, y comparación opcional.
+Igual que Conversión Producto: barras horizontales con cantidad, % sobre base, % vs. paso anterior, y comparación opcional.
 
 ---
 
@@ -189,6 +190,6 @@ Igual que el funnel de activación: barras horizontales con cantidad, % sobre ba
 Métricas que se pueden agregar fácilmente una vez que el funnel base funcione:
 
 - **Tiempo medio entre pasos**: ¿Cuántos días tarda un contacto en pasar de "Empresa creada" a "Primer movimiento"?
-- **Tasa de activación por SDR**: Comparar funnels entre SDRs
+- **Tasa de conversión por SDR**: Comparar funnels entre SDRs
 - **Funnel por origen**: `manual` vs `excel` vs `notion` vs `bot`
 - **Tendencia mensual**: Gráfico de línea mostrando la tasa de conversión de cada paso mes a mes

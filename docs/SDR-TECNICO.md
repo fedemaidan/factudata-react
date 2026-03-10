@@ -1,7 +1,7 @@
 # SDR — Documentación Técnica
 
 > **Última actualización**: Marzo 2026  
-> **Estado**: Fase 1 completa, Fase 2 pendiente
+> **Estado**: Fase 1, 2 y 3 completas
 
 ---
 
@@ -25,8 +25,9 @@
 ┌─────────────────────────────────────────────────┐
 │  Frontend (Next.js)                             │
 │  ├── pages/contactosSDR.js     (lista SDR)      │
+│  ├── pages/sdr/reuniones.js   (reuniones 6tabs) │
 │  ├── pages/sdr/contacto/[id].js (detalle)       │
-│  ├── components/sdr/*           (9 componentes) │
+│  ├── components/sdr/*          (11 componentes) │
 │  └── services/sdrService.js     (API client)    │
 └──────────────────┬──────────────────────────────┘
                    │ Axios (Bearer token Firebase)
@@ -200,7 +201,7 @@ cadenciaActiva: {
 | `transcripcion` / `resumenIA` | String | — | GPT-4o |
 | `audioUrl` | String | — | |
 
-**Tipos de evento (`TIPOS_EVENTO`)**: ~38 tipos agrupados en llamada, whatsapp, email, linkedin, instagram, reunión, bot, comercial, estado, cadencia, asignación, importación, otros.
+**Tipos de evento (`TIPOS_EVENTO`)**: ~40 tipos agrupados en llamada, whatsapp, email, linkedin, instagram, reunión, bot, comercial, estado, cadencia, asignación, importación, IA (`resumen_ia_generado`, `resumen_sdr_generado`), otros.
 
 **Índices**: `{ contactoId, createdAt: -1 }`, `{ empresaId, createdAt: -1 }`, `{ empresaId, tipo, createdAt: -1 }`
 
@@ -483,6 +484,8 @@ Funciones principales:
 - `registrarIntento()`, `accionRapida()`, `cambiarEstado()`
 - `confirmarRespuestaWA()`, `establecerProximaTarea()`
 - `crearReunion()`, `actualizarReunion()`, `cambiarEstadoReunion()`
+- `obtenerReunion()`, `eliminarReunion()`
+- `procesarTranscripcion()`, `generarResumenContacto()`
 - `importarContactos()`, `validarImportacion()`
 - `obtenerMetricasDiarias()`, `obtenerFunnelConversion()`
 - Templates: `obtenerTemplates()`, `crearTemplate()`, etc.
@@ -495,7 +498,8 @@ Funciones principales:
 | Página | Archivo | Líneas | Descripción |
 |--------|---------|--------|-------------|
 | Contactos SDR | `pages/contactosSDR.js` | ~2566 | Lista con 6 bandejas, filtros, vistas guardadas, móvil y desktop |
-| Detalle Contacto | `pages/sdr/contacto/[id].js` | ~2529 | 3 tabs (Info/Historial/Chat), wizard, historial agrupado |
+| Reuniones SDR | `pages/sdr/reuniones.js` | ~690 | 6 tabs (Hoy/Próximas/Sin registrar/Realizadas/No show/Propuestas), cards con countdown, resultado con IA |
+| Detalle Contacto | `pages/sdr/contacto/[id].js` | ~2529 | 3 tabs (Info/Historial/Chat), wizard, historial agrupado, resumen SDR (IA) |
 
 ### 6.3 Componentes (`components/sdr/`)
 
@@ -506,12 +510,14 @@ Funciones principales:
 | `SDRWizard.js` | 742 | Wizard de registro de intento/acción (stepper multi-paso) |
 | `ContactDrawerSimple.js` | 577 | Drawer simplificado de contacto |
 | `ModalImportarExcel.js` | 455 | Modal de importación Excel con preview, mapeo y validación |
-| `ModalSelectorTemplate.js` | 370 | Selector de template para WA, filtra por `cadencia_step` |
+| `ModalSelectorTemplate.js` | 370 | Selector de template para WA, filtra por tags de contexto (`detectarContextoTemplate`) |
+| `ModalCrearReunion.js` | 180 | Modal compartido para agendar reunión (reemplazó 3 copias inline) |
+| `ModalResultadoReunion.js` | 280 | Wizard de 5 pasos para registrar resultado de reunión (estado/comentario/transcripción/detalles/próximo contacto) |
 | `FormularioContacto.js` | 285 | Formulario de alta de contacto |
 | `ChatViewer.js` | 168 | Visor compacto de chat WhatsApp integrado |
 | `ActivityBadges.js` | 43 | Badges con contadores de actividad del contacto |
 
-**Total frontend SDR: ~10,281 líneas**
+**Total frontend SDR: ~11,241 líneas**
 
 ### 6.4 Funciones de UI Relevantes (en `[id].js`)
 
@@ -593,6 +599,8 @@ EventoHistorialSDR.aggregate([
 | **Firebase Auth** | Autenticación | Token verification middleware |
 | **Notion API** | Importación de contactos | Endpoints dedicados con mapeo de campos |
 | **GPT-4o** | Transcripción de audio | `POST /contactos/:id/transcribir-audio` |
+| **GPT-4o** | Procesar transcripción de reunión | `POST /reuniones/:id/procesar-transcripcion` |
+| **GPT-4o** | Generar resumen SDR del contacto | `POST /contactos/:id/generar-resumen` |
 
 ---
 
@@ -604,7 +612,7 @@ EventoHistorialSDR.aggregate([
 | Routes | 1 | ~245 |
 | Controller | 1 | ~1,521 |
 | Backend Services | 2 | ~2,773 |
-| Frontend Service | 1 | ~751 |
-| Frontend Pages | 2 | ~5,095 |
-| Frontend Components | 9 | ~5,986 |
-| **TOTAL** | **21** | **~17,101** |
+| Frontend Service | 1 | ~783 |
+| Frontend Pages | 3 | ~5,785 |
+| Frontend Components | 11 | ~6,446 |
+| **TOTAL** | **23** | **~18,283** |

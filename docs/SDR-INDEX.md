@@ -30,6 +30,10 @@ El módulo SDR (Sales Development Representative) es el sistema de gestión come
 │  │                          (vista SDR individual)   │
 │  └── sdr/                                           │
 │      ├── cadencias.js     → ABM de cadencias        │
+│      ├── reuniones.js     → Gestión de reuniones    │
+│      │                      (6 tabs: Hoy/Próximas/  │
+│      │                       Sin registrar/Realizadas│
+│      │                       /No show/Propuestas)    │
 │      └── contacto/[id].js → Detalle contacto        │
 │                             (3 tabs: Info/Historial/ │
 │                              Chat + barra cadencia)  │
@@ -41,6 +45,8 @@ El módulo SDR (Sales Development Representative) es el sistema de gestión come
 │  ├── ModalAgregarContacto.js                        │
 │  ├── ModalImportarExcel.js                          │
 │  ├── ModalAdminTemplates.js                         │
+│  ├── ModalCrearReunion.js                           │
+│  ├── ModalResultadoReunion.js                       │
 │  ├── MiniChatViewer.js                              │
 │  └── ContactoDrawer.js                              │
 │                                                     │
@@ -51,7 +57,7 @@ El módulo SDR (Sales Development Representative) es el sistema de gestión come
 ┌────────────────────▼────────────────────────────────┐
 │                   BACKEND (Express)                  │
 │                                                     │
-│  routes/sdrRoutes.js      → ~50 endpoints           │
+│  routes/sdrRoutes.js      → ~58 endpoints           │
 │  controllers/sdrController.js → Handlers            │
 │  services/sdrService.js   → Lógica de negocio       │
 │  services/cadenciaEngine.js → Motor de cadencias    │
@@ -82,18 +88,20 @@ SDR importa Excel → Contactos creados (outbound)
                   → Empieza a trabajar
 
 Ciclo diario del SDR:
-  1. Abrir contactosSDR
-  2. Filtrar: vencidos primero
-  3. Abrir contacto
-  4. Llamar → registrar resultado
-  5. WhatsApp → usar template de cadencia
-  6. Programar próximo contacto
-  7. → Siguiente contacto
+  1. Abrir /sdr/reuniones → Tab "Hoy" → prepararse con resumen IA
+  2. Enviar recordatorio WA a cada contacto del día
+  3. Post-reunión → registrar resultado (comentario + transcripción + módulos + próximo contacto)
+  4. Abrir contactosSDR → Filtrar vencidos primero
+  5. Abrir contacto
+  6. Llamar → registrar resultado
+  7. WhatsApp → usar template contextual
+  8. Programar próximo contacto
+  9. → Siguiente contacto
 ```
 
 ---
 
 ### Última Actualización
 
-- **Fecha**: Febrero 2026
-- **Versión**: 3 tabs (Info/Historial/Chat), cadencias con defaultInbound/defaultOutbound, filtros por segmento y SDR
+- **Fecha**: Marzo 2026
+- **Versión**: Fase 3 completa — templates contextuales (tags), gestión avanzada de reuniones (/sdr/reuniones), resumen SDR con IA

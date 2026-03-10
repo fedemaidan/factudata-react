@@ -18,18 +18,24 @@ Vista completa de un contacto con 3 tabs: Info, Historial y Chat.
 ### Gestión de Cadencias: `/sdr/cadencias`
 ABM de cadencias de contacto (crear, editar, duplicar, eliminar).
 
+### Mis Reuniones: `/sdr/reuniones`
+Página dedicada para gestionar reuniones del día, registrar resultados y hacer seguimiento post-reunión. Acceso directo desde el sidebar (ícono de calendario).
+
 ---
 
 ## 2. Flujo Diario
 
 ```
-1. Abrí /contactosSDR
-2. Filtrá por "Vencidos" para ver los contactos pendientes
-3. Tocá un contacto para abrirlo
-4. Llamá (botón verde 📞)
+1. Abrí /sdr/reuniones → Tab "Hoy" → leé el resumen IA de cada contacto
+2. Enviá recordatorio WA a cada contacto del día
+3. Post-reunión → "✅ Realizada" → comentario + transcripción + módulos + próximo contacto
+4. Abrí /contactosSDR
+5. Filtrá por "Vencidos" para ver los contactos pendientes
+6. Tocá un contacto para abrirlo
+7. Llamá (botón verde 📞)
    ├── Si atiende → Registrar llamada → Programar siguiente / Coordinar reunión
-   └── Si no atiende → Registrar → WhatsApp (template de cadencia) → Siguiente
-5. Repetí con el siguiente contacto
+   └── Si no atiende → Registrar → WhatsApp (template contextual) → Siguiente
+8. Repetí con el siguiente contacto
 ```
 
 ---
@@ -137,7 +143,14 @@ Siempre visible en la parte inferior. Muestra:
 
 ## 6. Templates de WhatsApp
 
-Los templates están organizados por **paso de cadencia**. Al tocar el botón de WhatsApp, se muestra el template correspondiente al paso actual con las variables ya resueltas.
+Los templates se seleccionan automáticamente según el **contexto del contacto** (etapa, segmento, actividad reciente). Al tocar el botón de WhatsApp, el sistema detecta la situación del contacto y muestra los templates más relevantes con las variables ya resueltas.
+
+Ejemplos de contexto:
+- **Primer contacto inbound**: template de bienvenida para leads del bot
+- **Primer contacto outbound**: template de presentación en frío
+- **Post llamada no atendida**: template de seguimiento
+- **Follow-up**: template de re-engagement
+- **Post reunión**: template con resumen y próximos pasos
 
 ### Variables Disponibles
 
@@ -172,7 +185,51 @@ Si el contacto ya respondió o no corresponde seguir, tocá **"Detener cadencia"
 
 ---
 
-## 8. Alta de Contactos
+## 9. Mis Reuniones (`/sdr/reuniones`)
+
+Página dedicada para gestionar el ciclo completo de reuniones. Acceso desde el sidebar (ícono de calendario "📅 Mis Reuniones").
+
+### Tabs
+
+| Tab | Contenido | Qué hacer |
+|-----|-----------|----------|
+| **Hoy** | Reuniones del día con countdown y resumen IA | Prepararse, enviar recordatorio, registrar resultado |
+| **Próximas** | Agendadas para los próximos días, agrupadas por día | Ver pipeline de reuniones |
+| **Sin registrar** | Fecha pasada pero siguen en "agendada" | ⚠️ Registrar qué pasó (no debe quedar ninguna) |
+| **Realizadas** | Ya marcadas como realizadas | Verificar que tengan próximo paso definido |
+| **No show** | El contacto no se presentó | Reagendar o descartar |
+| **Propuestas** | Contactos en fase de cierre | Pipeline de propuestas |
+
+### Registrar Resultado de una Reunión
+
+Al tocar "✅ Realizada" se abre un modal con 5 pasos:
+
+1. **Estado**: Realizada / No show / Cancelada
+2. **Comentario** (obligatorio para "realizada"): Qué se habló, conclusiones
+3. **Transcripción** (opcional): Pegar o subir texto de la reunión
+4. **Detalles**: Módulos de interés (checkboxes) + Calificación rápida (Frío/Tibio/Caliente/Listo)
+5. **Próximo contacto** (obligatorio): Tipo + Fecha + Nota
+
+Si subiste una transcripción de +50 caracteres, el sistema genera automáticamente un **resumen IA** con: clasificación del lead, puntos de interés, objeciones, pasos acordados.
+
+### Resumen SDR (IA)
+
+Desde la ficha de cada contacto (`/sdr/contacto/[id]`), podés generar un resumen ejecutivo con IA:
+1. Tocá **"Generar resumen"** en la card "Resumen SDR (IA)"
+2. El sistema analiza todo: datos, historial, chat, reuniones
+3. GPT-4o genera: clasificación, motivación, datos clave, resumen de interacciones
+4. El resumen aparece en la ficha del contacto y también en la card de "Hoy" en Mis Reuniones
+
+### Flujo recomendado
+
+```
+☀️ Arranca el día
+  → Tab "Hoy" → Leé resumen SDR, copiá link Zoom, enviá recordatorio WA
+  → Después de cada reunión → "✅ Realizada" → Comentario + Módulos + Próximo contacto
+  → Tab "Sin registrar" → Verificá que no quede ninguna
+  → Tab "Realizadas" → Verificá que todas tengan next step
+  → Tab "No show" → Reagendar o descartar
+```
 
 ### Manual (botón "+")
 Campos:
@@ -200,7 +257,7 @@ El sistema normaliza automáticamente a formato E.164 argentino:
 
 ---
 
-## 9. Gestión SDR (`/gestionSDR`) — Solo Admin
+## 10. Gestión SDR (`/gestionSDR`) — Solo Admin
 
 ### Tab Dashboard
 - **Métricas del día**: llamadas realizadas, WhatsApp enviados, reuniones coordinadas, pendientes, sin asignar
@@ -218,7 +275,7 @@ El sistema normaliza automáticamente a formato E.164 argentino:
 
 ---
 
-## 10. Troubleshooting
+## 11. Troubleshooting
 
 ### No veo mis contactos
 - Verificá que estés logueado con el usuario correcto
@@ -229,8 +286,12 @@ El sistema normaliza automáticamente a formato E.164 argentino:
 - Revisá si se detuvo automáticamente (el contacto pasó a estado calificado/cierre/ganado)
 
 ### No veo templates al enviar WhatsApp
-- Los templates se cargan del paso actual de la cadencia
-- Si no hay cadencia asignada, se muestran templates generales
+- Los templates se seleccionan por contexto (tags que coincidan con la situación del contacto)
+- Si no hay tags que coincidan, se muestran todos los templates disponibles
+
+### No se genera el resumen IA
+- La transcripción debe tener al menos 50 caracteres
+- Verificá que no haya un error de red (el resumen se genera con GPT-4o)
 
 ### Error al importar Excel
 - Verificá que las columnas se llamen exactamente como en la plantilla
