@@ -618,6 +618,16 @@ export const SideNav = (props) => {
           ),
         });
 
+        baseItems.push({
+          title: "Presupuestos Profesionales",
+          path: "/presupuestosProfesionales",
+          icon: (
+            <SvgIcon fontSize="small">
+              <NoteAltIcon />
+            </SvgIcon>
+          ),
+        });
+
         const todos = {
           title: "Todos los movimientos",
           path: "/todosProyectos?empresaId=" + emp.id,
