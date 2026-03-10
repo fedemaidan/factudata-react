@@ -183,8 +183,16 @@ const MonedaAjusteBlock = ({ form, onFormChange }) => {
   const isArs = ajuste.moneda === 'ARS';
   const mostrarConfigUsd = ajuste.moneda === 'USD' || ajuste.indexacion === INDEXACION_VALUES.USD;
   const mostrarConfigCac = ajuste.indexacion === INDEXACION_VALUES.CAC;
+  const mostrarOverrideCotiz = isArs && (mostrarConfigCac || (mostrarConfigUsd && isArs));
   const INDEXACION_FIJO_UI_VALUE = '__FIJO__';
   const indexacionToggleValue = ajuste.indexacion ?? INDEXACION_FIJO_UI_VALUE;
+
+  const [mostrarOverrideInput, setMostrarOverrideInput] = useState(!!form.cotizacion_snapshot?.valor);
+  const cotizacionValor = form.cotizacion_snapshot?.valor != null ? String(form.cotizacion_snapshot.valor) : '';
+
+  useEffect(() => {
+    if (form.cotizacion_snapshot?.valor) setMostrarOverrideInput(true);
+  }, [form.cotizacion_snapshot?.valor]);
 
   const [valorUsd, setValorUsd] = useState(null);
   const [fechaUsd, setFechaUsd] = useState(null);
@@ -271,6 +279,7 @@ const MonedaAjusteBlock = ({ form, onFormChange }) => {
               patchForm({
                 indexacion:
                   val === INDEXACION_FIJO_UI_VALUE ? INDEXACION_VALUES.FIJO : val,
+                cotizacion_snapshot: null,
               })
             }
             size="small"
@@ -365,6 +374,87 @@ const MonedaAjusteBlock = ({ form, onFormChange }) => {
         </Box>
       )}
 
+      {mostrarOverrideCotiz && (
+        <Box sx={{ mt: 0.5 }}>
+          {!mostrarOverrideInput ? (
+            <Typography
+              variant="caption"
+              color="text.disabled"
+              sx={{ cursor: 'pointer', '&:hover': { color: 'text.secondary' } }}
+              onClick={() => setMostrarOverrideInput(true)}
+            >
+              Modificar índice manualmente…
+            </Typography>
+          ) : (
+            <Stack spacing={1} sx={{ mt: 1, p: 1.5, bgcolor: 'grey.50', borderRadius: 1 }}>
+              <Stack direction="row" justifyContent="space-between" alignItems="center">
+                <Typography variant="caption" color="text.secondary" fontWeight={600}>
+                  {ajuste.indexacion === INDEXACION_VALUES.CAC ? 'Índice CAC personalizado' : 'Dólar personalizado'}
+                </Typography>
+                <Typography
+                  variant="caption"
+                  color="primary"
+                  sx={{ cursor: 'pointer' }}
+                  onClick={() => {
+                    setMostrarOverrideInput(false);
+                    patchForm({ cotizacion_snapshot: null });
+                  }}
+                >
+                  Usar automático
+                </Typography>
+              </Stack>
+              {ajuste.indexacion === INDEXACION_VALUES.CAC ? (
+                <>
+                  <TextField
+                    size="small"
+                    type="number"
+                    placeholder="Ej: 48523.7"
+                    value={cotizacionValor}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      const parsed = v === '' ? null : parseFloat(v);
+                      patchForm({
+                        cotizacion_snapshot: parsed != null && !Number.isNaN(parsed)
+                          ? { tipo: 'CAC', fuente: 'cac', referencia: ajuste.cac_tipo, valor: parsed, fecha_origen: hoyIso() }
+                          : null,
+                      });
+                    }}
+                  />
+                  {cotizacionValor && !Number.isNaN(Number(cotizacionValor)) && (
+                    <Typography variant="caption" color="text.secondary">
+                      Usando CAC = {Number(cotizacionValor).toLocaleString('es-AR')} en vez de {valorCac != null ? formatCurrency(valorCac, 'ARS') : '(no cargado)'}
+                    </Typography>
+                  )}
+                </>
+              ) : (
+                <>
+                  <TextField
+                    size="small"
+                    type="number"
+                    placeholder="Ej: 1250"
+                    value={cotizacionValor}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      const parsed = v === '' ? null : parseFloat(v);
+                      patchForm({
+                        cotizacion_snapshot: parsed != null && !Number.isNaN(parsed)
+                          ? { tipo: 'USD', fuente: ajuste.usd_fuente, referencia: ajuste.usd_valor, valor: parsed, fecha_origen: hoyIso() }
+                          : null,
+                      });
+                    }}
+                  />
+                  {cotizacionValor && !Number.isNaN(Number(cotizacionValor)) && (
+                    <Typography variant="caption" color="text.secondary">
+                      Usando USD = ${Number(cotizacionValor).toLocaleString('es-AR')} en vez de {valorUsd != null ? formatCurrency(valorUsd, 'ARS') : '(no cargado)'}
+                    </Typography>
+                  )}
+                </>
+              )}
+            </Stack>
+          )}
+        </Box>
+      )}
+
       <Box>
         <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
           ¿Cómo comparás contra las facturas?
@@ -404,6 +494,7 @@ const PresupuestoFormDialog = ({
   saving,
   onSave,
   onAplicarPlantilla,
+  onAplicarPlantillaNotas,
   modoDistribuir = false,
   onModoDistribuirChange,
   onDistribuirPorTotal,
@@ -452,7 +543,7 @@ const PresupuestoFormDialog = ({
         <MonedaAjusteBlock form={form} onFormChange={onFormChange} />
 
         <TextField
-          label="Dirección de obra"
+          label="Domicilio de obra"
           fullWidth
           value={form.obra_direccion}
           onChange={(e) => onFormChange({ ...form, obra_direccion: e.target.value })}
@@ -710,6 +801,27 @@ const PresupuestoFormDialog = ({
 
         <Divider />
 
+        {!isEdit && (
+          <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems="center">
+            <FormControl size="small" sx={{ minWidth: 260 }}>
+              <Select
+                value={form.plantilla_notas_id || ''}
+                label=""
+                onChange={(e) => onAplicarPlantillaNotas?.(e.target.value)}
+              >
+                <MenuItem value="">Ninguna</MenuItem>
+                <MenuItem value={PLANTILLA_SORBYDATA_ID}>Plantilla SorbyData</MenuItem>
+                {plantillas.filter((p) => p.activa).map((p) => (
+                  <MenuItem key={p._id} value={p._id}>{p.nombre}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <Typography variant="caption" color="text.secondary">
+              Cargar notas/condiciones desde plantilla 
+            </Typography>
+          </Stack>
+        )}
+
         <TextField
           label="Notas / Condiciones"
           multiline
@@ -718,7 +830,7 @@ const PresupuestoFormDialog = ({
           value={form.notas_texto}
           onChange={(e) => onFormChange({ ...form, notas_texto: e.target.value })}
           helperText={
-            form.notas_texto === TEXTO_NOTAS_DEFAULT && !form.plantilla_id
+            form.notas_texto === TEXTO_NOTAS_DEFAULT && !form.plantilla_notas_id
               ? 'Se pre-carga un texto sugerido por SorbyData al crear. Podés editarlo libremente.'
               : ''
           }
