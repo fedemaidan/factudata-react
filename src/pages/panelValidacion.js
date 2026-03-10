@@ -1,10 +1,10 @@
-import { useEffect, useState, useMemo, useCallback } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import {
   Box, Container, Typography, Table, TableBody, TableCell, TableHead, TableRow,
   CircularProgress, Button, Stack, TextField, Checkbox, Snackbar, Alert,
-  Dialog, DialogTitle, DialogContent, Drawer, IconButton, Chip, FormControl, InputLabel, Select, MenuItem
+  Dialog, DialogTitle, DialogContent, IconButton, Chip
 } from '@mui/material';
 import ImageIcon from '@mui/icons-material/Image';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
@@ -14,13 +14,10 @@ import movimientosService from 'src/services/movimientosService';
 import { getEmpresaById } from 'src/services/empresaService';
 import { getProyectosByEmpresa } from 'src/services/proyectosService';
 import { formatCurrency, formatTimestamp } from 'src/utils/formatters';
-import { useAuthContext } from 'src/contexts/auth-context';
-
-const CAMPOS_EDITABLES = ['proyecto_id', 'nombre_proveedor', 'observacion', 'categoria', 'subcategoria', 'total', 'numero_factura', 'medio_pago'];
+import EditarBorradorDrawer from 'src/components/panelValidacion/EditarBorradorDrawer';
 
 const PanelValidacionPage = () => {
   const router = useRouter();
-  const { user } = useAuthContext();
   const { empresaId } = router.query;
 
   const [items, setItems] = useState([]);
@@ -32,6 +29,7 @@ const PanelValidacionPage = () => {
   const [editDrawer, setEditDrawer] = useState({ open: false, mov: null, form: {} });
   const [proyectos, setProyectos] = useState([]);
   const [confirming, setConfirming] = useState(false);
+  const [savingEdit, setSavingEdit] = useState(false);
 
   const hoy = new Date();
   const hace30Dias = new Date();
@@ -47,14 +45,17 @@ const PanelValidacionPage = () => {
   });
 
   const fetchBorradores = useCallback(async () => {
-    if (!empresaId) return;
+    if (!empresaId) {
+      setIsLoading(false);
+      return;
+    }
     setIsLoading(true);
     try {
       const res = await movimientosService.getBorradores(empresaId, filtros);
       setItems(res.items || []);
       setTotal(res.total ?? 0);
     } catch (e) {
-      setSnackbar({ open: true, message: 'Error al cargar borradores', severity: 'error' });
+      setSnackbar({ open: true, message: e.message || 'Error al cargar borradores', severity: 'error' });
       setItems([]);
     } finally {
       setIsLoading(false);
@@ -107,6 +108,16 @@ const PanelValidacionPage = () => {
     }
     setProyectos(proys);
 
+    const fechaVal = mov.fecha_factura;
+    const fechaStr =
+      typeof fechaVal === 'string' && fechaVal.includes('T')
+        ? fechaVal.split('T')[0]
+        : typeof fechaVal === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(fechaVal)
+          ? fechaVal
+          : fechaVal?.toDate
+            ? fechaVal.toDate().toISOString().split('T')[0]
+            : '';
+
     setEditDrawer({
       open: true,
       mov,
@@ -119,6 +130,7 @@ const PanelValidacionPage = () => {
         total: mov.total ?? '',
         numero_factura: mov.numero_factura || '',
         medio_pago: mov.medio_pago || '',
+        fecha_factura: fechaStr,
       },
     });
   };
@@ -134,6 +146,7 @@ const PanelValidacionPage = () => {
       payload.proyecto_id = null;
       payload.proyecto_nombre = null;
     }
+    setSavingEdit(true);
     try {
       const res = await movimientosService.updateBorrador(mov.id, payload);
       if (res.error) throw new Error(res.message);
@@ -142,6 +155,8 @@ const PanelValidacionPage = () => {
       fetchBorradores();
     } catch (e) {
       setSnackbar({ open: true, message: e.message || 'Error al guardar', severity: 'error' });
+    } finally {
+      setSavingEdit(false);
     }
   };
 
@@ -153,19 +168,23 @@ const PanelValidacionPage = () => {
     return (n && String(n).trim()) ? n : 'Sin proyecto';
   };
 
+  const getEstadoProcesamientoLabel = (mov) => {
+    const ep = mov?.estado_procesamiento;
+    if (!ep) return null;
+    if (ep === 'pendiente') return { label: 'Procesando...', color: 'warning' };
+    if (ep === 'completado') return { label: 'Listo', color: 'success' };
+    if (ep === 'error') return { label: 'Error', color: 'error', title: mov?.procesamiento_error };
+    return null;
+  };
+
   return (
     <>
       <Head>
         <title>Panel de Validación</title>
       </Head>
-      <Box component="main" sx={{ flexGrow: 1, py: 8 }}>
+      <Box component="main" sx={{ flexGrow: 1, pt: 2, pb: 8 }}>
         <Container maxWidth="xl">
           <Stack spacing={3}>
-            <Typography variant="h4">Panel de Validación</Typography>
-            <Typography variant="body2" color="text.secondary">
-              Borradores creados por WhatsApp pendientes de confirmar
-            </Typography>
-
             <Stack direction="row" spacing={2} alignItems="center" flexWrap="wrap" useFlexGap>
               <TextField
                 type="date"
@@ -207,13 +226,6 @@ const PanelValidacionPage = () => {
                 onChange={(e) => setFiltros((f) => ({ ...f, texto: e.target.value }))}
                 sx={{ minWidth: 180 }}
               />
-              <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                <Checkbox
-                  checked={filtros.sin_proyecto}
-                  onChange={(e) => setFiltros((f) => ({ ...f, sin_proyecto: e.target.checked }))}
-                />
-                <Typography variant="body2">Sin proyecto</Typography>
-              </Box>
               <Button variant="outlined" onClick={fetchBorradores}>
                 Filtrar
               </Button>
@@ -261,6 +273,7 @@ const PanelValidacionPage = () => {
                     <TableCell>Proveedor</TableCell>
                     <TableCell>Usuario</TableCell>
                     <TableCell>Total</TableCell>
+                    <TableCell>Estado</TableCell>
                     <TableCell>Adjunto</TableCell>
                     <TableCell>Acciones</TableCell>
                   </TableRow>
@@ -279,6 +292,16 @@ const PanelValidacionPage = () => {
                       <TableCell>{m.nombre_proveedor || '-'}</TableCell>
                       <TableCell>{m.nombre_user || '-'}</TableCell>
                       <TableCell>{formatCurrency(m.total)} {m.moneda || 'ARS'}</TableCell>
+                      <TableCell>
+                        {(() => {
+                          const epInfo = getEstadoProcesamientoLabel(m);
+                          return epInfo ? (
+                            <Chip size="small" label={epInfo.label} color={epInfo.color} title={epInfo.title} />
+                          ) : (
+                            <Typography variant="caption" color="text.secondary">-</Typography>
+                          );
+                        })()}
+                      </TableCell>
                       <TableCell>
                         {(m.url_imagen || m.url_image) && (
                           <IconButton
@@ -330,44 +353,16 @@ const PanelValidacionPage = () => {
         </DialogContent>
       </Dialog>
 
-      <Drawer anchor="right" open={editDrawer.open} onClose={() => setEditDrawer({ open: false, mov: null, form: {} })}>
-        <Box sx={{ width: 360, p: 2 }}>
-          <Typography variant="h6" sx={{ mb: 2 }}>Editar borrador</Typography>
-          <FormControl fullWidth sx={{ mb: 1.5 }}>
-            <InputLabel id="edit-proyecto-label">Proyecto</InputLabel>
-            <Select
-              labelId="edit-proyecto-label"
-              label="Proyecto"
-              value={editDrawer.form.proyecto_id ?? ''}
-              onChange={(e) => setEditDrawer((d) => ({ ...d, form: { ...d.form, proyecto_id: e.target.value || '' } }))}
-            >
-              <MenuItem value="">Sin proyecto</MenuItem>
-              {proyectos.map((p) => (
-                <MenuItem key={p.id} value={p.id}>{p.nombre || p.name || p.id}</MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-          {CAMPOS_EDITABLES.filter((k) => k !== 'proyecto_id').map((key) => (
-            <TextField
-              key={key}
-              fullWidth
-              label={key.replace(/_/g, ' ')}
-              value={editDrawer.form[key] ?? ''}
-              onChange={(e) => setEditDrawer((d) => ({ ...d, form: { ...d.form, [key]: e.target.value } }))}
-              sx={{ mb: 1.5 }}
-              type={key === 'total' ? 'number' : 'text'}
-            />
-          ))}
-          <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
-            <Button variant="contained" onClick={handleGuardarEdicion}>
-              Guardar
-            </Button>
-            <Button variant="outlined" onClick={() => setEditDrawer({ open: false, mov: null, form: {} })}>
-              Cancelar
-            </Button>
-          </Stack>
-        </Box>
-      </Drawer>
+      <EditarBorradorDrawer
+        open={editDrawer.open}
+        mov={editDrawer.mov}
+        form={editDrawer.form}
+        proyectos={proyectos}
+        onClose={() => setEditDrawer({ open: false, mov: null, form: {} })}
+        onSave={handleGuardarEdicion}
+        onFormChange={(form) => setEditDrawer((d) => ({ ...d, form }))}
+        saving={savingEdit}
+      />
 
       <Snackbar open={snackbar.open} autoHideDuration={4000} onClose={() => setSnackbar((s) => ({ ...s, open: false }))} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
         <Alert severity={snackbar.severity} onClose={() => setSnackbar((s) => ({ ...s, open: false }))}>
@@ -378,5 +373,7 @@ const PanelValidacionPage = () => {
   );
 };
 
-PanelValidacionPage.getLayout = (page) => <DashboardLayout>{page}</DashboardLayout>;
+PanelValidacionPage.getLayout = (page) => (
+  <DashboardLayout title="Panel de Validación">{page}</DashboardLayout>
+);
 export default PanelValidacionPage;

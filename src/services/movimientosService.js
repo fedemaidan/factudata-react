@@ -273,7 +273,8 @@ const movimientosService = {
       return response.data;
     } catch (err) {
       console.error('Error listando borradores:', err);
-      return { items: [], total: 0 };
+      const msg = err?.response?.data?.error || err?.message || 'Error al cargar borradores';
+      throw new Error(msg);
     }
   },
 
