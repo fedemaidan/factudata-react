@@ -1,9 +1,9 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import {
   Box, Container, Typography, Table, TableBody, TableCell, TableHead, TableRow,
-  CircularProgress, Button, Stack, TextField, Checkbox, Snackbar, Alert,
+  CircularProgress, Button, Stack, Checkbox, Snackbar, Alert,
   Dialog, DialogTitle, DialogContent, IconButton, Chip
 } from '@mui/material';
 import ImageIcon from '@mui/icons-material/Image';
@@ -15,6 +15,7 @@ import { getEmpresaById } from 'src/services/empresaService';
 import { getProyectosByEmpresa } from 'src/services/proyectosService';
 import { formatCurrency, formatTimestamp } from 'src/utils/formatters';
 import EditarBorradorDrawer from 'src/components/panelValidacion/EditarBorradorDrawer';
+import PanelValidacionFiltersBar from 'src/components/panelValidacion/PanelValidacionFiltersBar';
 
 const PanelValidacionPage = () => {
   const router = useRouter();
@@ -41,17 +42,38 @@ const PanelValidacionPage = () => {
     proveedor: '',
     nombre_user: '',
     texto: '',
-    sin_proyecto: false,
+    estado: '',
   });
 
-  const fetchBorradores = useCallback(async () => {
+  const filtrosRef = useRef(filtros);
+  filtrosRef.current = filtros;
+
+  const buildApiFilters = useCallback((f) => {
+    const api = {
+      fechaDesde: f.fechaDesde,
+      fechaHasta: f.fechaHasta,
+      proveedor: f.proveedor || undefined,
+      nombre_user: f.nombre_user || undefined,
+      texto: f.texto || undefined,
+    };
+    if (f.estado === 'confirmado') {
+      api.estado_borrador = 'confirmado';
+    } else if (f.estado && ['pendiente', 'completado', 'error'].includes(f.estado)) {
+      api.estado_procesamiento = f.estado;
+    }
+    return api;
+  }, []);
+
+  const fetchBorradores = useCallback(async (filtrosToUse) => {
     if (!empresaId) {
       setIsLoading(false);
       return;
     }
     setIsLoading(true);
     try {
-      const res = await movimientosService.getBorradores(empresaId, filtros);
+      const f = filtrosToUse ?? filtrosRef.current;
+      const apiFilters = buildApiFilters(f);
+      const res = await movimientosService.getBorradores(empresaId, apiFilters);
       setItems(res.items || []);
       setTotal(res.total ?? 0);
     } catch (e) {
@@ -60,11 +82,11 @@ const PanelValidacionPage = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [empresaId, filtros.fechaDesde, filtros.fechaHasta, filtros.proveedor, filtros.nombre_user, filtros.texto, filtros.sin_proyecto]);
+  }, [empresaId, buildApiFilters]);
 
   useEffect(() => {
-    fetchBorradores();
-  }, [fetchBorradores]);
+    if (empresaId) fetchBorradores();
+  }, [empresaId, fetchBorradores]);
 
   const handleSelectAll = (e) => {
     if (e.target.checked) setSelected(items.map((m) => m.id));
@@ -169,11 +191,13 @@ const PanelValidacionPage = () => {
   };
 
   const getEstadoProcesamientoLabel = (mov) => {
+    const eb = mov?.estado_borrador || mov?.estado_carga;
+    if (eb === 'confirmado') return { label: 'Confirmado', color: 'success', variant: 'filled' };
     const ep = mov?.estado_procesamiento;
     if (!ep) return null;
-    if (ep === 'pendiente') return { label: 'Procesando...', color: 'warning' };
-    if (ep === 'completado') return { label: 'Listo', color: 'success' };
-    if (ep === 'error') return { label: 'Error', color: 'error', title: mov?.procesamiento_error };
+    if (ep === 'pendiente') return { label: 'Procesando...', color: 'warning', variant: 'filled' };
+    if (ep === 'completado') return { label: 'Listo', color: 'success', variant: 'outlined' };
+    if (ep === 'error') return { label: 'Error', color: 'error', variant: 'filled', title: mov?.procesamiento_error };
     return null;
   };
 
@@ -186,49 +210,34 @@ const PanelValidacionPage = () => {
         <Container maxWidth="xl">
           <Stack spacing={3}>
             <Stack direction="row" spacing={2} alignItems="center" flexWrap="wrap" useFlexGap>
-              <TextField
-                type="date"
-                label="Desde"
-                size="small"
-                InputLabelProps={{ shrink: true }}
-                value={filtros.fechaDesde}
-                onChange={(e) => setFiltros((f) => ({ ...f, fechaDesde: e.target.value }))}
-                sx={{ width: 150 }}
+              <PanelValidacionFiltersBar
+                texto={filtros.texto}
+                setTexto={(v) => setFiltros((f) => ({ ...f, texto: v }))}
+                fechaDesde={filtros.fechaDesde}
+                setFechaDesde={(v) => setFiltros((f) => ({ ...f, fechaDesde: v }))}
+                fechaHasta={filtros.fechaHasta}
+                setFechaHasta={(v) => setFiltros((f) => ({ ...f, fechaHasta: v }))}
+                proveedor={filtros.proveedor}
+                setProveedor={(v) => setFiltros((f) => ({ ...f, proveedor: v }))}
+                nombre_user={filtros.nombre_user}
+                setNombre_user={(v) => setFiltros((f) => ({ ...f, nombre_user: v }))}
+                estado={filtros.estado}
+                setEstado={(v) => setFiltros((f) => ({ ...f, estado: v }))}
+                onFiltrar={() => fetchBorradores(filtros)}
+                onRestablecer={() => {
+                  const defaultFiltros = {
+                    fechaDesde: hace30Dias.toISOString().split('T')[0],
+                    fechaHasta: hoy.toISOString().split('T')[0],
+                    proveedor: '',
+                    nombre_user: '',
+                    texto: '',
+                    estado: '',
+                  };
+                  setFiltros(defaultFiltros);
+                  filtrosRef.current = defaultFiltros;
+                  fetchBorradores(defaultFiltros);
+                }}
               />
-              <TextField
-                type="date"
-                label="Hasta"
-                size="small"
-                InputLabelProps={{ shrink: true }}
-                value={filtros.fechaHasta}
-                onChange={(e) => setFiltros((f) => ({ ...f, fechaHasta: e.target.value }))}
-                sx={{ width: 150 }}
-              />
-              <TextField
-                size="small"
-                label="Proveedor"
-                value={filtros.proveedor}
-                onChange={(e) => setFiltros((f) => ({ ...f, proveedor: e.target.value }))}
-                sx={{ minWidth: 180 }}
-              />
-              <TextField
-                size="small"
-                label="Usuario"
-                value={filtros.nombre_user}
-                onChange={(e) => setFiltros((f) => ({ ...f, nombre_user: e.target.value }))}
-                sx={{ minWidth: 150 }}
-              />
-              <TextField
-                size="small"
-                label="Buscar"
-                placeholder="Texto libre"
-                value={filtros.texto}
-                onChange={(e) => setFiltros((f) => ({ ...f, texto: e.target.value }))}
-                sx={{ minWidth: 180 }}
-              />
-              <Button variant="outlined" onClick={fetchBorradores}>
-                Filtrar
-              </Button>
               <Typography variant="body2">
                 Total: {total} borradores
               </Typography>
@@ -296,7 +305,13 @@ const PanelValidacionPage = () => {
                         {(() => {
                           const epInfo = getEstadoProcesamientoLabel(m);
                           return epInfo ? (
-                            <Chip size="small" label={epInfo.label} color={epInfo.color} title={epInfo.title} />
+                            <Chip
+                              size="small"
+                              label={epInfo.label}
+                              color={epInfo.color}
+                              variant={epInfo.variant || 'filled'}
+                              title={epInfo.title}
+                            />
                           ) : (
                             <Typography variant="caption" color="text.secondary">-</Typography>
                           );
@@ -315,19 +330,23 @@ const PanelValidacionPage = () => {
                         {!m.url_imagen && !m.url_image && <Typography variant="caption" color="text.secondary">-</Typography>}
                       </TableCell>
                       <TableCell>
-                        <Stack direction="row" spacing={0.5}>
-                          <Button size="small" variant="outlined" startIcon={<EditIcon />} onClick={() => handleEditar(m)}>
-                            Editar
-                          </Button>
-                          <Button
-                            size="small"
-                            variant="contained"
-                            onClick={() => handleConfirmar([m.id])}
-                            disabled={confirming}
-                          >
-                            Confirmar
-                          </Button>
-                        </Stack>
+                        {(m?.estado_borrador === 'confirmado' || m?.estado_carga === 'confirmado') ? (
+                          <Typography variant="caption" color="text.secondary">-</Typography>
+                        ) : (
+                          <Stack direction="row" spacing={0.5}>
+                            <Button size="small" variant="outlined" startIcon={<EditIcon />} onClick={() => handleEditar(m)}>
+                              Editar
+                            </Button>
+                            <Button
+                              size="small"
+                              variant="contained"
+                              onClick={() => handleConfirmar([m.id])}
+                              disabled={confirming}
+                            >
+                              Confirmar
+                            </Button>
+                          </Stack>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}

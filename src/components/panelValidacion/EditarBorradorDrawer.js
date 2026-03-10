@@ -2,6 +2,7 @@ import {
   Box, Button, Drawer, FormControl, InputLabel, MenuItem, Select, Stack, TextField, Typography,
 } from '@mui/material';
 import ImagenModal from 'src/components/ImagenModal';
+import { formatNumberWithThousands, parsearMonto } from 'src/utils/celulandia/separacionMiles';
 
 const DRAWER_WIDTH = 720;
 
@@ -38,6 +39,49 @@ function EditarBorradorFormContent({
   saving,
   formatFecha,
 }) {
+  const camposSinProyecto = CAMPOS_EDITABLES.filter((k) => k !== 'proyecto_id');
+
+  const renderCampo = (key) => {
+    if (key === 'total') {
+      const displayValue = (form[key] === '' || form[key] === undefined || form[key] === null)
+        ? ''
+        : formatNumberWithThousands(form[key]);
+      return (
+        <TextField
+          key={key}
+          fullWidth
+          size="small"
+          label={LABELS[key]}
+          type="text"
+          value={displayValue}
+          onChange={(e) => {
+            const valorParseado = parsearMonto(e.target.value).replace(',', '.');
+            if (valorParseado === '') {
+              onFormChange({ ...form, [key]: '' });
+            } else {
+              const num = parseFloat(valorParseado);
+              if (!isNaN(num)) {
+                onFormChange({ ...form, [key]: num });
+              }
+            }
+          }}
+        />
+      );
+    }
+    return (
+      <TextField
+        key={key}
+        fullWidth
+        size="small"
+        label={LABELS[key] || key.replace(/_/g, ' ')}
+        value={key === 'fecha_factura' ? formatFecha(form[key]) : (form[key] ?? '')}
+        onChange={(e) => onFormChange({ ...form, [key]: e.target.value })}
+        type={key === 'fecha_factura' ? 'date' : 'text'}
+        InputLabelProps={key === 'fecha_factura' ? { shrink: true } : undefined}
+      />
+    );
+  };
+
   return (
     <Stack spacing={1.5}>
       <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 0.5 }}>
@@ -60,21 +104,21 @@ function EditarBorradorFormContent({
         </Select>
       </FormControl>
 
-      {CAMPOS_EDITABLES.filter((k) => k !== 'proyecto_id').map((key) => (
-        <TextField
-          key={key}
-          fullWidth
-          size="small"
-          label={LABELS[key] || key.replace(/_/g, ' ')}
-          value={key === 'fecha_factura' ? formatFecha(form[key]) : (form[key] ?? '')}
-          onChange={(e) => onFormChange({ ...form, [key]: e.target.value })}
-          type={key === 'total' ? 'number' : key === 'fecha_factura' ? 'date' : 'text'}
-          InputLabelProps={key === 'fecha_factura' ? { shrink: true } : undefined}
-        />
-      ))}
+      {camposSinProyecto.map((key) => renderCampo(key))}
 
       <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
-        <Button variant="contained" onClick={onSave} disabled={saving}>
+        <Button
+          variant="contained"
+          onClick={onSave}
+          disabled={
+            saving ||
+            !form.proyecto_id ||
+            form.total === '' ||
+            form.total === undefined ||
+            form.total === null ||
+            !form.fecha_factura
+          }
+        >
           {saving ? 'Guardando...' : 'Guardar'}
         </Button>
         <Button variant="outlined" onClick={onClose}>

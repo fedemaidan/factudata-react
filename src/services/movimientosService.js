@@ -267,6 +267,8 @@ const movimientosService = {
       if (filters.nombre_user) params.append('nombre_user', filters.nombre_user);
       if (filters.texto) params.append('texto', filters.texto);
       if (filters.sin_proyecto) params.append('sin_proyecto', 'true');
+      if (filters.estado_procesamiento) params.append('estado_procesamiento', filters.estado_procesamiento);
+      if (filters.estado_borrador) params.append('estado_borrador', filters.estado_borrador);
       if (filters.limit) params.append('limit', filters.limit);
       if (filters.offset) params.append('offset', filters.offset);
       const response = await api.get(`panel-validacion/borradores?${params.toString()}`);
