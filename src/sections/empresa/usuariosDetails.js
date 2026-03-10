@@ -29,6 +29,7 @@ import { useFormik } from 'formik';
 import * as Yup from 'yup';
 import { getProyectosByEmpresa, getProyectosFromUser } from 'src/services/proyectosService';
 import { useAuthContext } from 'src/contexts/auth-context';
+import api from 'src/services/axiosConfig';
 import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
@@ -330,7 +331,10 @@ export const UsuariosDetails = ({ empresa }) => {
           );
           setUsuarios(updatedUsuarios);
           const result = await profileService.updateProfile(editingUsuario.id, updatedUsuario);
-          console.log(result, "result")
+          const phone = normalizePhone(editingUsuario.phone);
+          if (phone) {
+            try { await api.post('/cache/invalidate', { tipo: 'phone', id: phone }); } catch (e) { console.warn('Cache invalidation:', e); }
+          }
           setSnackbarMessage('Usuario actualizado con éxito');
         } else {
           const newUsuario = {
@@ -573,6 +577,15 @@ export const UsuariosDetails = ({ empresa }) => {
         profileService.updateProfile(userId, updates)
       );
       await Promise.all(updatePromises);
+
+      // Invalidar caché del bot para que tome el perfil actualizado
+      const phonesToInvalidate = usuarios
+        .filter(u => selectedUsers.includes(u.id) && u.phone)
+        .map(u => normalizePhone(u.phone))
+        .filter(Boolean);
+      for (const phone of [...new Set(phonesToInvalidate)]) {
+        try { await api.post('/cache/invalidate', { tipo: 'phone', id: phone }); } catch (e) { console.warn('Cache invalidation:', e); }
+      }
 
       // Actualizar estado local
       setUsuarios(prev => prev.map(user => {
@@ -1406,7 +1419,7 @@ export const UsuariosDetails = ({ empresa }) => {
               </Select>
             </FormControl>
             <FormControl fullWidth margin="dense">
-              <InputLabel id="modo-estado-carga-label">Modo validación bot (registros pendientes)</InputLabel>
+              <InputLabel id="modo-estado-carga-label">Modo de validación bot</InputLabel>
               <Select
                 labelId="modo-estado-carga-label"
                 name="modo_estado_carga_bot"

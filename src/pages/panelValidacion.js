@@ -4,17 +4,19 @@ import { useRouter } from 'next/router';
 import {
   Box, Container, Typography, Table, TableBody, TableCell, TableHead, TableRow,
   CircularProgress, Button, Stack, TextField, Checkbox, Snackbar, Alert,
-  Dialog, DialogTitle, DialogContent, Drawer, IconButton, Chip
+  Dialog, DialogTitle, DialogContent, Drawer, IconButton, Chip, FormControl, InputLabel, Select, MenuItem
 } from '@mui/material';
 import ImageIcon from '@mui/icons-material/Image';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import EditIcon from '@mui/icons-material/Edit';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import movimientosService from 'src/services/movimientosService';
+import { getEmpresaById } from 'src/services/empresaService';
+import { getProyectosByEmpresa } from 'src/services/proyectosService';
 import { formatCurrency, formatTimestamp } from 'src/utils/formatters';
 import { useAuthContext } from 'src/contexts/auth-context';
 
-const CAMPOS_EDITABLES = ['nombre_proveedor', 'observacion', 'categoria', 'subcategoria', 'total', 'numero_factura', 'medio_pago'];
+const CAMPOS_EDITABLES = ['proyecto_id', 'nombre_proveedor', 'observacion', 'categoria', 'subcategoria', 'total', 'numero_factura', 'medio_pago'];
 
 const PanelValidacionPage = () => {
   const router = useRouter();
@@ -28,6 +30,7 @@ const PanelValidacionPage = () => {
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
   const [imgPreview, setImgPreview] = useState({ open: false, url: null });
   const [editDrawer, setEditDrawer] = useState({ open: false, mov: null, form: {} });
+  const [proyectos, setProyectos] = useState([]);
   const [confirming, setConfirming] = useState(false);
 
   const hoy = new Date();
@@ -40,6 +43,7 @@ const PanelValidacionPage = () => {
     proveedor: '',
     nombre_user: '',
     texto: '',
+    sin_proyecto: false,
   });
 
   const fetchBorradores = useCallback(async () => {
@@ -55,7 +59,7 @@ const PanelValidacionPage = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [empresaId, filtros.fechaDesde, filtros.fechaHasta, filtros.proveedor, filtros.nombre_user, filtros.texto]);
+  }, [empresaId, filtros.fechaDesde, filtros.fechaHasta, filtros.proveedor, filtros.nombre_user, filtros.texto, filtros.sin_proyecto]);
 
   useEffect(() => {
     fetchBorradores();
@@ -90,11 +94,24 @@ const PanelValidacionPage = () => {
     }
   };
 
-  const handleEditar = (mov) => {
+  const handleEditar = async (mov) => {
+    let proys = [];
+
+    if (empresaId) {
+      try {
+        const empresa = await getEmpresaById(empresaId);
+        if (empresa?.proyectosIds?.length) proys = await getProyectosByEmpresa(empresa);
+      } catch (e) {
+        console.warn('Error cargando proyectos:', e);
+      }
+    }
+    setProyectos(proys);
+
     setEditDrawer({
       open: true,
       mov,
       form: {
+        proyecto_id: mov.proyecto_id || '',
         nombre_proveedor: mov.nombre_proveedor || '',
         observacion: mov.observacion || '',
         categoria: mov.categoria || '',
@@ -109,8 +126,16 @@ const PanelValidacionPage = () => {
   const handleGuardarEdicion = async () => {
     const { mov, form } = editDrawer;
     if (!mov?.id) return;
+    const payload = { ...form };
+    if (form.proyecto_id) {
+      const proy = proyectos.find((p) => p.id === form.proyecto_id);
+      if (proy) payload.proyecto_nombre = proy.nombre;
+    } else {
+      payload.proyecto_id = null;
+      payload.proyecto_nombre = null;
+    }
     try {
-      const res = await movimientosService.updateBorrador(mov.id, form);
+      const res = await movimientosService.updateBorrador(mov.id, payload);
       if (res.error) throw new Error(res.message);
       setSnackbar({ open: true, message: 'Movimiento actualizado', severity: 'success' });
       setEditDrawer({ open: false, mov: null, form: {} });
@@ -123,7 +148,10 @@ const PanelValidacionPage = () => {
   const openImg = (url) => setImgPreview({ open: true, url });
   const closeImg = () => setImgPreview({ open: false, url: null });
 
-  const getProyectoNombre = (mov) => mov.proyecto_nombre || '-';
+  const getProyectoNombre = (mov) => {
+    const n = mov?.proyecto_nombre || mov?.proyecto;
+    return (n && String(n).trim()) ? n : 'Sin proyecto';
+  };
 
   return (
     <>
@@ -179,6 +207,13 @@ const PanelValidacionPage = () => {
                 onChange={(e) => setFiltros((f) => ({ ...f, texto: e.target.value }))}
                 sx={{ minWidth: 180 }}
               />
+              <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                <Checkbox
+                  checked={filtros.sin_proyecto}
+                  onChange={(e) => setFiltros((f) => ({ ...f, sin_proyecto: e.target.checked }))}
+                />
+                <Typography variant="body2">Sin proyecto</Typography>
+              </Box>
               <Button variant="outlined" onClick={fetchBorradores}>
                 Filtrar
               </Button>
@@ -298,7 +333,21 @@ const PanelValidacionPage = () => {
       <Drawer anchor="right" open={editDrawer.open} onClose={() => setEditDrawer({ open: false, mov: null, form: {} })}>
         <Box sx={{ width: 360, p: 2 }}>
           <Typography variant="h6" sx={{ mb: 2 }}>Editar borrador</Typography>
-          {CAMPOS_EDITABLES.map((key) => (
+          <FormControl fullWidth sx={{ mb: 1.5 }}>
+            <InputLabel id="edit-proyecto-label">Proyecto</InputLabel>
+            <Select
+              labelId="edit-proyecto-label"
+              label="Proyecto"
+              value={editDrawer.form.proyecto_id ?? ''}
+              onChange={(e) => setEditDrawer((d) => ({ ...d, form: { ...d.form, proyecto_id: e.target.value || '' } }))}
+            >
+              <MenuItem value="">Sin proyecto</MenuItem>
+              {proyectos.map((p) => (
+                <MenuItem key={p.id} value={p.id}>{p.nombre || p.name || p.id}</MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+          {CAMPOS_EDITABLES.filter((k) => k !== 'proyecto_id').map((key) => (
             <TextField
               key={key}
               fullWidth
