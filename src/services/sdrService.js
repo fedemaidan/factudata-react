@@ -787,6 +787,36 @@ const SDRService = {
     eliminarVista: async (vistaId) => {
         const res = await api.delete(`/sdr/vistas/${vistaId}`);
         return res.data;
+    },
+
+    // ==================== DOCUMENTOS ====================
+
+    /**
+     * Subir documento adjunto y asociarlo a un contacto
+     * @param {string} contactoId - ID del contacto
+     * @param {File} file - Archivo a subir
+     * @param {object} opts - { nota, empresaId }
+     */
+    subirDocumento: async (contactoId, file, opts = {}) => {
+        const formData = new FormData();
+        formData.append('documento', file, file.name);
+        formData.append('contactoId', contactoId);
+        if (opts.nota) formData.append('nota', opts.nota);
+        if (opts.empresaId) formData.append('empresaId', opts.empresaId);
+        
+        const res = await api.post('/sdr/acciones/documento', formData, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+            timeout: 60000
+        });
+        return res.data;
+    },
+
+    /**
+     * Eliminar documento adjunto
+     */
+    eliminarDocumento: async (eventoId) => {
+        const res = await api.delete(`/sdr/acciones/documento/${eventoId}`);
+        return res.data;
     }
 };
 

@@ -232,7 +232,7 @@ export const AccountPopover = (props) => {
             ) : (
               <MenuItem onClick={handleReturnToOriginalUser}>Volver a la cuenta original</MenuItem>
             ))}
-          {originalUser.admin && (
+          {user?.sdr === true && (
             <MenuItem onClick={handleOpenBuscar}>
               <SearchIcon sx={{ fontSize: 18, mr: 1, color: 'text.secondary' }} />
               Buscar contacto SDR
