@@ -1,8 +1,9 @@
-# Módulo de Materiales — Documento Técnico v3
+# Módulo de Materiales — Documento Técnico v4
 
-> **Fecha**: 26/02/2026  
+> **Fecha**: 10/03/2026  
 > **Estado**: Borrador para validación  
 > **Audiencia**: Equipo de desarrollo  
+> **Cambios v4**: Se agrega destino `pendiente_asignar`, configuración por empresa (ejes independientes), instancia de validación opcional, se aclara que reserva = transferencia existente, se quita pregunta de deprecar Inventario.  
 > **Cambios v3**: Se agregan Capa 0 (puente Caja → Stock/Acopio) y plan de deprecación de Stock V1
 
 ---
@@ -131,6 +132,7 @@ Usuario confirma factura en caja
   │   ├─ 🏭 "Enviar a depósito" → Crear Solicitud Stock V2 (INGRESO, sin proyecto)
   │   ├─ 🏗️ "Enviar a obra"     → Crear Solicitud Stock V2 (INGRESO, con proyecto)
   │   ├─ 📦 "Crear acopio"      → Crear Acopio + Compra en Firestore
+  │   ├─ ⏳ "Pendiente"         → Crear Solicitud Stock V2 (INGRESO, sin proyecto, subtipo=PENDIENTE_ASIGNAR)
   │   ├─ 🔀 "Distribuir"        → Modal por línea con destino individual
   │   └─ ❌ "No hacer nada"     → Comportamiento actual (no genera nada)
   │
@@ -293,7 +295,7 @@ Permitir que una solicitud de compra distribuya cada línea de material a un des
   
   destino: {
     type: String,
-    enum: ['deposito', 'obra', 'acopio'],
+    enum: ['deposito', 'obra', 'acopio', 'pendiente_asignar'],
     default: 'deposito'
   },
   destino_proyecto_id: String,      // si destino = 'obra'
@@ -320,6 +322,11 @@ Para cada movimiento:
     → proyecto_id = destino_proyecto_id
     → (funciona igual que hoy, solo que el UI permite elegir)
   
+  SI destino = 'pendiente_asignar':
+    → Ingreso a stock sin proyecto, subtipo = 'PENDIENTE_ASIGNAR'
+    → Estado temporal: el usuario puede después asignar a obra o descartar
+    → proyecto_id = null
+
   SI destino = 'acopio':
     → Crear/actualizar acopio en Firestore
     → Crear compra en el acopio con los materiales correspondientes
@@ -575,13 +582,65 @@ Los documentos en `movimientos_materiales` de Firestore **no se eliminan**. Qued
 
 ## 8. Decisiones pendientes
 
-1. **¿Deprecar módulo de Inventario?** (`inventarioproductos` / `inventariomovimientos` en MongoDB) — ¿Lo usa algún cliente activamente? Si no, conviene eliminarlo para reducir confusión.
+1. **¿Migración futura de Acopio a MongoDB?** — El puente (Capa 3) funciona bien a mediano plazo, pero a largo plazo tener dos BDs para datos relacionados genera fricción. Evaluar migración gradual post-implementación.
 
-2. **¿Migración futura de Acopio a MongoDB?** — El puente (Capa 3) funciona bien a mediano plazo, pero a largo plazo tener dos BDs para datos relacionados genera fricción. Evaluar migración gradual post-implementación.
+2. **¿Catálogo compartido?** — ¿Queremos que los materiales de acopio eventualmente sean los mismos `Material` de Stock V2? Esto simplificaría la conciliación pero requiere un proceso de migración de datos.
 
-3. **¿Catálogo compartido?** — ¿Queremos que los materiales de acopio eventualmente sean los mismos `Material` de Stock V2? Esto simplificaría la conciliación pero requiere un proceso de migración de datos.
+3. **UX de stock aún no estandarizada** — El equipo tiene dudas sobre cómo se ve la pantalla de stock para distintos perfiles de cliente. Mitigación: implementar Fases 0-1 primero y validar con clientes reales antes de avanzar.
 
 ## Decisiones tomadas
 
 - ✅ **Stock V1 (legacy Firestore) se depreca** — Se elimina UI y escrituras. Datos quedan como histórico. Se reemplaza por Capa 0 (puente Caja → Stock/Acopio). Ver sección 4.
 - ✅ **Precio siempre vivo** — No se congela precio al movimiento. El costo se calcula con `Material.precio_unitario` actual. Ver sección 3.
+- ✅ **Inventario NO se depreca** — Módulo de inventario (`inventarioproductos` / `inventariomovimientos`) es relevante para constructoras que trackean herramientas y bienes no consumibles entre obras. Se mantiene activo.
+- ✅ **Reserva = transferencia existente** — La funcionalidad de "reservar material en depósito para una obra" ya existe como tipo TRANSFERENCIA. El material sigue contando en stock del depósito (es informativo/lógico), cuando se retira físicamente recién sale del stock.
+- ✅ **Configuración por empresa** — El stock se configura con ejes independientes por empresa (acopio, distribución por línea, validación). La activación la hace el equipo de Sorby.
+
+---
+
+## 9. Configuración por empresa
+
+### Modelo de configuración
+
+Se agrega al modelo de empresa (o como subdocumento/colección aparte) un objeto de configuración de stock:
+
+```javascript
+// Configuración de stock por empresa
+{
+  empresa_id: String,
+  stock_config: {
+    acopio_habilitado: { type: Boolean, default: false },
+    distribucion_por_linea: { type: Boolean, default: false },
+    validacion_movimientos: { type: Boolean, default: false }
+  }
+}
+```
+
+### Impacto en UI
+
+| Eje | Si `false` | Si `true` |
+|---|---|---|
+| `acopio_habilitado` | No se muestra opción "Crear acopio" en acciones de factura. No se muestra selector de acopio como destino. | Se habilitan todas las opciones de acopio |
+| `distribucion_por_linea` | No se muestra opción "Distribuir" en acciones de factura. Solicitudes van todas al mismo destino. | Se habilita "Distribuir" y selector de destino por línea |
+| `validacion_movimientos` | Movimientos se confirman automáticamente al crearlos (`estado = ENTREGADO`) | Movimientos se crean con `estado = PENDIENTE_CONFIRMACION`. Cualquier usuario puede confirmar. El material ya cuenta en stock pero queda marcado. |
+
+### Impacto en backend
+
+- Los endpoints **leen** la config de la empresa antes de ejecutar
+- Si `acopio_habilitado = false` y llega un request con `destino = 'acopio'`, se rechaza con error claro
+- Si `validacion_movimientos = true`, las solicitudes se crean con `estado = PENDIENTE_CONFIRMACION` en vez de `ENTREGADO`
+- Se agrega endpoint `GET /api/empresa/:id/stock-config` y `PUT /api/empresa/:id/stock-config` (admin only)
+
+### Estado de validación
+
+Se agrega un nuevo estado al enum de MovimientoMaterial y Solicitud:
+
+```javascript
+estado: {
+  type: String,
+  enum: ['PENDIENTE', 'PENDIENTE_CONFIRMACION', 'PARCIALMENTE_ENTREGADO', 'ENTREGADO'],
+  //                    ^^^^^^^^^^^^^^^^^^^^^^ NUEVO
+}
+```
+
+`PENDIENTE_CONFIRMACION` significa: "el movimiento está registrado y el material ya cuenta, pero nadie confirmó que llegó físicamente". Cualquier usuario puede cambiar el estado a `ENTREGADO`.
