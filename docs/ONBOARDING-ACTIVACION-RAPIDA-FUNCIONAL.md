@@ -45,7 +45,38 @@ Uso → Valor → Setup → Calificación
 
 Objetivo central:
 
-> **Que cualquier lead inbound pueda registrar un primer gasto exitoso en menos de 30 segundos desde su primer mensaje.**
+> **Lograr que más leads inbound agenden una reunión de demo**, mostrándoles el valor del producto antes de pedirles datos. El mecanismo: que cualquier lead pueda registrar un primer gasto exitoso en menos de 30 segundos desde su primer mensaje.
+
+### Plan de ejecución en 2 fases
+
+#### Fase 1 — Normalización (Semana 0)
+
+Mejoras inmediatas al flujo actual, sin cambiar la lógica de onboarding:
+
+| Cambio | Descripción |
+|--------|-------------|
+| Timeout 1h | Si no responde en 1 hora, el bot envía link de Calendly |
+| Botonera | Menú pasa de 4 opciones de texto a 2 botones: `Probar Sorby gratis` y `Agendar demo` |
+| Info/Humano → Calendly | Si piden info o hablar con alguien, respuesta breve + link de agenda |
+| Keywords usuarios existentes | Detección automática para redirigir sin menú |
+
+Detalle completo: Sección 8.
+
+#### Fase 2 — A/B Test (Semanas 1-3)
+
+Sobre el flujo ya normalizado, se testean dos variantes:
+
+| | Variante A (control) | Variante B (tratamiento) |
+|---|---|---|
+| Primer mensaje | Botonera: Probar / Agendar | Activación directa: "Probá escribir un gasto" |
+| Onboarding | Calificación → Setup → Uso | Demo automática → Uso → Calificación después |
+| Timeout 1h | ✅ Calendly | ✅ Calendly |
+
+**Métrica ganadora:** % de reuniones agendadas por contacto.
+**Muestra:** ~50 contactos por variante (~12 días).
+**Monitoreo:** Página `/ab-tests` con panel en tiempo real.
+
+Detalle completo: Sección 9.
 
 ---
 
@@ -111,17 +142,34 @@ Eso tiene que pasar lo antes posible.
 
 ## 4. Objetivo del rediseño
 
-### North Star Metric
+### Objetivo de negocio
+
+**Lograr que más leads inbound agenden una reunión de demo.**
+
+Hoy la demo funciona bien (~30% cierra), el problema es que muy pocos llegan a ella. El rediseño apunta a que más leads experimenten el producto → entiendan su valor → quieran una demo.
+
+### Métrica ganadora del A/B test
+
+**% de reuniones agendadas por contacto**
+
+Se elige esta métrica porque es la más cercana a la venta. Activación y primer movimiento son intermedias — lo que importa al negocio es si el cambio genera más demos.
+
+### Mecanismo
+
+Que cualquier lead pueda registrar un primer gasto exitoso en menos de 30 segundos desde su primer mensaje. Si ven el valor rápido, más van a querer agendar.
+
+### North Star Metric (post-test)
 
 **% de conversaciones inbound con primer movimiento exitoso en 24h**
 
 ### Valor actual
 
-8 / 68 = **11.8%**
+8 / 68 = **11.8%** (primer movimiento)
+Reuniones agendadas: dato a medir desde el inicio del test como baseline.
 
 ### Objetivo inicial
 
-Llevar esa métrica a **20–25%** en una primera iteración.
+Que la variante B supere a la variante A en reuniones agendadas por contacto.
 
 ---
 
@@ -383,105 +431,463 @@ Si preferís, también podés seguir probando y agendar después.
 
 ---
 
-## 8. Hipótesis a validar
+## 8. Etapa previa — Normalización del flujo actual
 
-| Hipótesis                                      | Métrica                                 | Actual |             Objetivo |
-| ---------------------------------------------- | --------------------------------------- | -----: | -------------------: |
-| H1. Activación directa aumenta interacción     | % que envía segundo mensaje             |  69.1% |                 >75% |
-| H2. Demo automática aumenta activación         | % con primer movimiento en 24h          |  11.8% |                 >20% |
-| H3. Guía secuencial reduce abandono post-setup | % de usuarios activados tras crear demo |      — | subir sostenidamente |
-| H4. Auto-agenda mejora conversión a demo       | % intención demo → demo agendada        |    26% |                 >80% |
+Antes de arrancar el A/B test, se aplican cambios al flujo actual que nivelan la cancha. Estos cambios aplican a **ambas variantes** (o solo a A donde se indica) y no son parte de lo que se testea.
+
+El objetivo es que la variante A no pierda por problemas ya diagnosticados (falta de seguimiento, opciones inútiles en el menú), sino que la comparación sea exclusivamente sobre **activación directa vs. menú + calificación**.
+
+### N1 — Timeout de 1 hora → mensaje con Calendly
+
+**Aplica a:** Ambas variantes.
+
+Si el usuario no responde dentro de 1 hora después de recibir el primer mensaje del bot, se le envía automáticamente un mensaje con el link para agendar:
+
+```text
+Hola de nuevo 👋
+
+Si preferís, podés agendar una demo de 20 min y te mostramos Sorby aplicado a tu empresa:
+
+[link de Calendly]
+```
+
+**Justificación:** Hoy los leads que no responden se pierden completamente o quedan esperando una llamada del SDR (que en el 92% de los casos no se atiende). Este mensaje captura leads tibios que tal vez no quieren interactuar con el bot pero sí hablarían con alguien.
+
+**Implementación:** Usar el sistema de mensajes programados existente (`mensajesProgramadosService`). Al enviar el primer mensaje, programar uno para +1h. Si el usuario responde antes, cancelar el programado.
+
+### N2 — Botonera en menú + eliminar "Ya soy cliente"
+
+**Aplica a:** Variante A solamente (B no tiene menú).
+
+Reemplazar el menú actual de 4 opciones por texto con 2 opciones en botonera de WhatsApp:
+
+**Hoy:**
+
+```text
+¡Hola! Soy SorbyBot, tu asistente virtual 🤖
+
+Elegí una opción para continuar:
+
+1️⃣ Ya tengo cuenta
+2️⃣ Quiero probar Sorby gratis
+3️⃣ Quiero saber más de Sorby
+4️⃣ Quiero hablar con un humano
+```
+
+**Normalizado:**
+
+```text
+¡Hola! Soy SorbyBot, tu asistente virtual 🤖
+```
+
+Botones:
+- `[Probar Sorby gratis]`
+- `[Agendar demo de 20 min]`
+
+**Justificación:**
+- "Ya soy cliente" la eligen pocos y genera loops (caso Juan Lucas). Se reemplaza por detección por keywords.
+- "Saber más" es un callejón sin salida (23% de los que responden caen ahí sin avanzar).
+- "Hablar con humano" tiene 0 selecciones en el período medido.
+- Los botones de WhatsApp tienen mayor tasa de click que opciones numéricas.
+
+### N3 — "Info" y "Humano" redirigen a Calendly
+
+**Aplica a:** Variante A (en B se detecta por keywords).
+
+Si el usuario escribe algo que indica que quiere info o hablar con alguien (detectado por keywords), el bot responde brevemente y ofrece Calendly:
+
+**Para info:**
+
+```text
+Sorby es un asistente que registra gastos de obra automáticamente desde WhatsApp, con reportes y control por proyecto.
+
+¿Querés verlo en acción? Podés:
+
+[Probar ahora]
+[Agendar demo de 20 min]
+```
+
+**Para humano:**
+
+```text
+📅 ¡Perfecto! Podés agendar una demo de 20 min directamente acá:
+[link de Calendly]
+
+Si preferís, también podés probar el bot mientras tanto.
+
+[Probar ahora]
+```
+
+**Justificación:** Ambas rutas hoy terminan en callejones sin salida o esperando al SDR. Redirigir a Calendly convierte leads que de otra forma se perderían.
+
+### N4 — Detección de keywords para usuarios existentes
+
+**Aplica a:** Ambas variantes.
+
+Si el usuario escribe algo como "ya tengo cuenta", "mi usuario", "no puedo entrar", "mi cuenta", redirigir a `flowOnboardingUsuariosExistentes` sin pasar por el menú/activación.
+
+**Justificación:** Evita que usuarios existentes se cuenten como leads perdidos en el test.
+
+### Resumen de normalización
+
+| # | Cambio | Variante A | Variante B |
+|---|--------|:----------:|:----------:|
+| N1 | Timeout 1h → Calendly | ✅ | ✅ |
+| N2 | Botonera + sacar "Ya soy cliente" | ✅ | — (no tiene menú) |
+| N3 | Info/Humano → Calendly | ✅ | — (por keywords) |
+| N4 | Keywords usuarios existentes | ✅ | ✅ |
 
 ---
 
-## 9. Métricas de seguimiento
+## 9. A/B Test — Diseño del experimento
 
-### Métrica principal
+### 9.1 Hipótesis central
 
-**% de conversaciones inbound con primer movimiento exitoso en 24h**
+El flujo de activación directa (sin menú, con demo automática y guía al primer gasto) generará más reuniones agendadas por contacto que el flujo actual normalizado.
+
+### 9.2 Variantes
+
+**Variante A — Flujo normalizado (control)**
+
+El flujo actual con los cambios de normalización (Sección 8) aplicados:
+
+```text
+¡Hola! Soy SorbyBot, tu asistente virtual 🤖
+
+[Probar Sorby gratis]    [Agendar demo de 20 min]
+```
+
+Si elige "Probar" → flujo de calificación actual (rol → asistente GPT → crear empresa → probar).
+Si elige "Agendar" → link de Calendly directo.
+Si no responde en 1h → mensaje con Calendly (N1).
+Si escribe keywords de info/humano → respuesta breve + Calendly (N3).
+Si escribe keywords de usuario existente → redirige (N4).
+
+Todo el flujo posterior (calificación → onboarding → uso) se mantiene igual.
+
+**Variante B — Activación directa (tratamiento)**
+
+Se implementan los Cambios 1, 2 y 3 de este documento, más la normalización (Sección 8):
+
+```text
+Hola 👋
+
+Soy Sorby. Registro gastos de obra automáticamente desde WhatsApp.
+
+Te muestro cómo funciona — mandame un gasto de ejemplo como si fuera real:
+
+"Compré cemento por 120000 para la obra de Belgrano"
+
+Y mirá lo que pasa 👇
+```
+
+Se crea empresa demo automática en background. Se guía al primer gasto y primer resumen. Después se ofrecen opciones:
+
+```text
+¿Querés configurarlo para tus obras reales?
+1️⃣ Sí, configurar mi empresa
+2️⃣ Agendar demo de 20 min
+3️⃣ Seguir probando
+```
+
+Si no responde en 1h → mensaje con Calendly (N1).
+Si escribe keywords de info/humano → respuesta breve + Calendly.
+Si escribe keywords de usuario existente → redirige (N4).
+
+### 9.3 Asignación
+
+- **Método:** Aleatorio, 50/50.
+- **Implementación:** Al recibir el primer mensaje de un contacto nuevo, se asigna aleatoriamente a variante A o B (`Math.random() < 0.5`). La variante asignada se guarda en el lead/estado para que sea consistente si el usuario vuelve a escribir.
+- **Criterio de inclusión:** Solo contactos nuevos inbound (no outbound, no usuarios existentes).
+
+### 9.4 Métrica ganadora
+
+**% de reuniones agendadas por contacto**
+
+```
+reuniones agendadas de la variante / contactos totales de la variante
+```
+
+Se elige esta métrica porque es la que está más cerca de la venta. Activación y primer movimiento son intermedias — lo que importa al negocio es si el cambio genera más demos.
+
+### 9.5 Métricas secundarias (para diagnosticar)
+
+| Métrica | Para qué sirve |
+|---------|----------------|
+| % que envía segundo mensaje | Mide si el primer mensaje genera más o menos interacción |
+| % empresa creada | Mide si la demo automática supera a la calificación |
+| % primer movimiento en 24h | Mide si la activación directa realmente activa |
+| % que pide demo desde el bot | Mide si el flujo post-activación genera intención comercial |
+| Tiempo promedio hasta primer movimiento | Mide velocidad de activación |
+| % demo → venta | Verifica que la calidad de leads no baje |
+
+Estas métricas ayudan a entender **por qué** una variante ganó, no cuál ganó.
+
+### 9.6 Tamaño de muestra y duración
+
+- **Objetivo:** ~50 contactos por variante = ~100 contactos totales.
+- **Tráfico actual:** ~68 conversaciones/semana.
+- **Duración estimada:** ~10-12 días.
+- **Nota:** Con 50 por rama y una métrica binaria (agendó o no), se puede detectar una diferencia de ~15pp con confianza razonable. No es un test estadísticamente perfecto, pero es suficiente para tomar una decisión de producto con esta escala.
+
+### 9.7 Qué se aplica en ambas variantes (no es parte del test)
+
+Toda la **normalización** (Sección 8) se aplica antes de arrancar el test:
+
+- **N1** — Timeout 1h → Calendly
+- **N2** — Botonera en menú (solo A)
+- **N3** — Info/Humano → Calendly (solo A)
+- **N4** — Keywords usuarios existentes
+- **Tracking de eventos** nuevos (para poder medir el test)
+
+Estos no se testean porque nivelan la cancha, no son el cambio experimental.
+
+### 9.8 Hipótesis secundarias
+
+| Hipótesis | Métrica | Actual | Objetivo |
+|-----------|---------|-------:|---------:|
+| H1. La activación directa genera más interacción | % segundo mensaje | 69.1% | >75% en B |
+| H2. La demo automática produce más primer movimiento | % primer movimiento en 24h | 11.8% | >20% en B |
+| H3. La auto-agenda mejora conversión a demo | % intención demo → demo agendada | 26% | >80% en ambas |
+
+### 9.9 Panel web de monitoreo de A/B tests
+
+Se construye una página reutilizable para monitorear este y futuros A/B tests.
+
+**Ruta:** `/ab-tests` (nueva página en el admin)
+
+**Vista principal — Lista de tests**
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  A/B Tests                                                      │
+│                                                                 │
+│  ┌───────────────────────────────────────────────────────────┐  │
+│  │ 🟢 Onboarding Activación Rápida                          │  │
+│  │ Inicio: 15/03/2026  │  Estado: Activo  │  87/100 contactos│  │
+│  │ A: 8.5% reuniones   │  B: 19.5% reuniones  │  ↑ +11pp    │  │
+│  └───────────────────────────────────────────────────────────┘  │
+│                                                                 │
+│  ┌───────────────────────────────────────────────────────────┐  │
+│  │ ⚪ (futuro test)                                          │  │
+│  └───────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Vista de detalle de un test**
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  Onboarding Activación Rápida                                   │
+│  Inicio: 15/03/2026  │  Estado: 🟢 Activo                      │
+│                                                                 │
+│  ┌─────────────────────────────┬─────────────────────────────┐  │
+│  │ VARIANTE A (control)        │ VARIANTE B (tratamiento)    │  │
+│  │                             │                             │  │
+│  │ Contactos:         47       │ Contactos:         40       │  │
+│  │ 2do mensaje:       69%      │ 2do mensaje:       82%      │  │
+│  │ Empresa creada:    34%      │ Empresa creada:    72%      │  │
+│  │ 1er movimiento:    11%      │ 1er movimiento:    30%      │  │
+│  │ Pidió demo:        8%       │ Pidió demo:        22%      │  │
+│  │ ──────────────────────────  │ ──────────────────────────  │  │
+│  │ 🎯 Reuniones:      8.5%     │ 🎯 Reuniones:      19.5%    │  │
+│  │ Demo → venta:      30%      │ Demo → venta:      33%      │  │
+│  └─────────────────────────────┴─────────────────────────────┘  │
+│                                                                 │
+│  Δ métrica ganadora: +11pp  │  Confianza: Moderada             │
+│                                                                 │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │ Evolución diaria (gráfico de líneas)                     │   │
+│  │                                                          │   │
+│  │  Reuniones/contacto  — A (rojo) vs B (verde)             │   │
+│  │  Contactos acumulados — A vs B                           │   │
+│  └──────────────────────────────────────────────────────────┘   │
+│                                                                 │
+│  [ Pausar test ]  [ Finalizar test ]  [ Exportar datos ]        │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Datos que muestra por variante:**
+
+| Métrica | Descripción |
+|---------|-------------|
+| Contactos | Total asignados a esta variante |
+| % 2do mensaje | Respondió al primer mensaje del bot |
+| % empresa creada | Tiene empresa en Firestore |
+| % 1er movimiento | Registró al menos un gasto/ingreso en 24h |
+| % pidió demo | Expresó intención de demo (evento o keyword) |
+| 🎯 % reuniones | **Métrica ganadora** — reuniones agendadas / contactos |
+| % demo → venta | Para verificar calidad — solo si hay datos suficientes |
+
+**Datos del test:**
+
+| Campo | Descripción |
+|-------|-------------|
+| Nombre | Identificador del test |
+| Fecha inicio | Cuándo se activó |
+| Estado | Activo / Pausado / Finalizado |
+| Contactos objetivo | Meta de muestra (ej: 100) |
+| Contactos actuales | Cuántos van |
+| Métrica ganadora | Cuál se usa para decidir |
+| Regla de decisión | Resumen de cuándo se decide |
+
+**Gráfico de evolución diaria:**
+
+- Eje X: días desde inicio del test
+- Eje Y: % reuniones/contacto acumulado
+- Dos líneas: A (rojo) y B (verde)
+- Permite ver si la diferencia se estabiliza o si es ruido
+
+**Acciones:**
+
+- **Pausar test**: deja de asignar nuevos contactos, los existentes siguen su flujo
+- **Finalizar test**: marca como terminado, congela los números
+- **Exportar datos**: CSV con todos los contactos, variante asignada, eventos y métricas
+
+**Modelo de datos para soportar múltiples tests:**
+
+```
+AbTest {
+  _id
+  name: string              // "onboarding_activacion_rapida"
+  displayName: string       // "Onboarding Activación Rápida"
+  status: enum              // activo | pausado | finalizado
+  startDate: Date
+  endDate: Date | null
+  targetSampleSize: number  // 100
+  metricaGanadora: string   // "reuniones_por_contacto"
+  variantes: [
+    { key: "A", nombre: "Control — Flujo actual" },
+    { key: "B", nombre: "Activación directa" }
+  ]
+  reglaDecision: string     // Texto libre con la regla
+  resultado: string | null  // "B" | "A" | "empate" | null
+  createdAt
+  updatedAt
+}
+```
+
+La asignación de variante por contacto se guarda en el lead/ContactoSDR (campo `ab_test_variante`), no en este modelo. Este modelo solo define el test.
+
+**Permisos:** Solo admin.
+
+---
+
+## 10. Métricas de seguimiento
+
+### Métrica ganadora del A/B
+
+**% de reuniones agendadas por contacto** (por variante)
 
 ### Métricas secundarias
 
-- % que responde al segundo mensaje
-- % que pide resumen después del primer gasto
-- % que elige configurar cuenta real
-- % que agenda demo (desde bot + desde Calendly directo)
-- % demo → venta
-- Tiempo promedio hasta primer movimiento
+- % que envía segundo mensaje (por variante)
+- % empresa creada (por variante)
+- % primer movimiento en 24h (por variante)
+- % que pide demo desde el bot (por variante)
+- % demo → venta (por variante — para verificar calidad)
+- Tiempo promedio hasta primer movimiento (por variante)
 
 ### Eventos a trackear (nuevos)
 
+Todos los eventos deben incluir el campo `variante: 'A' | 'B'` para poder segmentar.
+
 | Evento | Cuándo se dispara |
 |--------|-------------------|
-| `activacion_directa_inicio` | Bot envía mensaje de activación |
-| `activacion_directa_empresa_demo_creada` | Se crea empresa+proyecto demo |
-| `activacion_directa_primer_gasto` | Usuario registra primer movimiento en demo |
-| `activacion_directa_pidio_resumen` | Usuario pide resumen post-primer gasto |
-| `activacion_directa_pidio_configurar` | Elige "Configurar mi empresa" |
-| `activacion_directa_pidio_demo` | Elige "Agendar demo" |
-| `activacion_directa_sigue_probando` | Elige "Seguir probando" |
-| `activacion_directa_autoagenda_enviada` | Se envió link de Calendly |
-| `activacion_directa_autoagenda_confirmada` | El usuario agendó por Calendly |
+| `ab_test_asignado` | Se asigna variante al contacto nuevo |
+| `activacion_directa_inicio` | Bot envía mensaje de activación (solo B) |
+| `activacion_directa_empresa_demo_creada` | Se crea empresa+proyecto demo (solo B) |
+| `activacion_directa_primer_gasto` | Usuario registra primer movimiento en demo (solo B) |
+| `activacion_directa_pidio_resumen` | Usuario pide resumen post-primer gasto (solo B) |
+| `activacion_directa_pidio_configurar` | Elige "Configurar mi empresa" (solo B) |
+| `activacion_directa_pidio_demo` | Elige "Agendar demo" (ambas) |
+| `activacion_directa_sigue_probando` | Elige "Seguir probando" (solo B) |
+| `autoagenda_enviada` | Se envió link de Calendly (ambas) |
+| `autoagenda_confirmada` | El usuario agendó por Calendly (ambas) |
+| `menu_opcion_elegida` | Opción elegida en menú inicial (solo A, para comparar distribución) |
 
 ---
 
-## 10. Regla de decisión
+## 11. Regla de decisión del A/B test
 
-Para evitar discusión infinita, conviene fijar criterios claros.
+Para evitar discusión infinita, se fijan criterios de decisión antes de empezar.
 
-### El rediseño se considera exitoso si:
+### Variante B gana si:
 
-- El primer movimiento sube de **11.8% a al menos 20%**
-- No cae significativamente el rate de demo → venta
-- No aumenta de forma problemática el soporte por confusión
+- **% reuniones/contacto de B > % reuniones/contacto de A**
+- Y el rate de **demo → venta no cae** significativamente (>20%)
 
-### Si mejora interacción pero no activación:
+Si se cumple: se apaga A, se queda B para todos los contactos nuevos.
 
-Revisar copy del primer mensaje y guía posterior.
+### Variante A gana si:
 
-### Si mejora activación pero no mejora demo:
+- B no supera a A en reuniones agendadas después de ~100 contactos.
 
-Revisar CTA post-activación.
+Si se cumple: se mantiene flujo actual y se revisan hipótesis.
 
-### Si confunde a usuarios existentes:
+### Empate / resultados no claros:
 
-Fortalecer detección por keywords o reintroducir fallback selectivo.
+- Extender el test 1 semana más (~50 contactos adicionales).
+- Si sigue sin diferencia clara, mirar métricas secundarias para decidir.
+
+### Independientemente de quién gane:
+
+- La auto-agenda Calendly (Cambio 8) se queda en ambos casos — es una mejora independiente del flujo.
+- Si B pierde en reuniones pero gana en activación, revisar el CTA post-activación (puede ser un problema de copy, no de flujo).
+- Si B confunde a usuarios existentes, fortalecer detección por keywords antes de descartar.
 
 ---
 
-## 11. Plan de implementación
+## 12. Plan de implementación
 
-### Semana 1 — MVP de activación
+### Semana 0 — Normalización (antes del A/B)
 
-- Crear empresa demo automática (Cambio 2)
-- Reemplazar menú por activación directa (Cambio 1)
-- Guiar al primer gasto y primer resumen (Cambio 3)
-- Auto-agenda Calendly para `quiere_meet` (Cambio 8)
-- Trackear eventos nuevos
+- Implementar timeout de 1h → mensaje con Calendly (N1)
+- Cambiar menú a botonera de 2 opciones + sacar "Ya soy cliente" (N2)
+- Info/Humano redirigen a Calendly (N3)
+- Detección keywords usuarios existentes (N4)
+- **Dejar correr unos días para verificar que la normalización no rompe nada**
 
-### Semana 2 — Robustez
+### Semana 1 — Implementación del A/B test
 
-- Arreglar bug de resumen/proyectos (Cambio 5)
+- Implementar lógica de asignación aleatoria 50/50 en `flowInicioGeneral`
+- Implementar Variante B: empresa demo automática (Cambio 2) + activación directa (Cambio 1) + guía al primer gasto y resumen (Cambio 3)
+- Variante A: flujo normalizado (Sección 8)
+- Trackear eventos nuevos + variante asignada en cada evento
+- Crear página `/ab-tests` con panel de monitoreo (Sección 9.9)
+- **Activar el test**
+
+### Semana 2 — Test corriendo + robustez
+
+- Monitorear métricas diarias desde `/ab-tests` (reuniones, activación, interacción)
+- Arreglar bug de resumen/proyectos (Cambio 5) — aplica a variante B
 - Mejorar mensajes de error (Cambio 5)
-- Ajustar flow de usuarios existentes (Cambio 7)
 - Reducir loadings (Cambio 6)
 
-### Semana 3 — Optimización
+### Semana 3 — Decisión + rollout
+
+- Con ~100 contactos: evaluar resultados según regla de decisión (Sección 11)
+- Si B gana: apagar A, rollout completo de variante B
+- Si A gana: mantener, revisar hipótesis
+- Si empate: extender test 1 semana
+- Independientemente: ajustar CTA y copy según datos observados
+
+### Post-test — Optimización
 
 - Detectar señales de compra → ofrecer demo
-- Ajustar CTA post-activación según datos de Semana 1-2
 - Dashboard de funnel con nuevos pasos
 - Limpieza automática de empresas demo inactivas
+- Mover calificación después de activación si B ganó (Cambio 4)
 
 ---
 
-## 12. Preguntas abiertas
+## 13. Preguntas abiertas
 
 1. **¿Cómo se define el paso de demo → cuenta real?** ¿Se migran datos demo o se arranca limpia?
 
 2. **¿Cuánto tiempo vive una cuenta demo?** Propuesta: 30 días, luego se archivan.
 
-3. **¿Conviene mantener algún fallback de menú si el usuario no responde?** Ej: si no responde en 5 min, enviar opciones.
+3. ~~¿Conviene mantener algún fallback si el usuario no responde?~~ **Resuelto:** Timeout de 1h con Calendly (N1).
 
 4. **¿Calendly o agenda propia en fase 2?** Calendly es Fase 1 por rapidez. ¿Se migra después a un flujo propio?
 
@@ -491,7 +897,7 @@ Fortalecer detección por keywords o reintroducir fallback selectivo.
 
 ---
 
-## 13. Conclusión
+## 14. Conclusión
 
 Sorby no necesita rediseñar toda su adquisición ni su demo comercial.
 Necesita mover el momento mágico al principio.

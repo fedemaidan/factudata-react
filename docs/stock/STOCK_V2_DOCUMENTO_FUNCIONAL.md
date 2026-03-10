@@ -1,8 +1,9 @@
-# Módulo de Materiales — Documento Funcional v3
+# Módulo de Materiales — Documento Funcional v4
 
-> **Fecha**: 26/02/2026  
+> **Fecha**: 10/03/2026  
 > **Estado**: Borrador para validación  
 > **Audiencia**: Equipo de negocio, clientes  
+> **Cambios v4**: Se agrega destino "Pendiente de asignar", configuración por empresa (ejes independientes), instancia de validación opcional, perfil de cliente Mica. Se aclara que la reserva de material a obra ya existe (transferencia).  
 > **Cambios v3**: Se agregan Mejora 4 (flujo caja → stock) y Mejora 5 (limpieza de módulo viejo)
 
 ---
@@ -22,6 +23,14 @@
 - Compran 1296 ladrillos al proveedor → 200 van a obra → el resto queda en el proveedor
 - Ven acopio y stock como lo mismo, no como dos módulos separados
 - Quieren controlar el desacopio: cuánto retiraron, cuánto queda disponible
+
+**Mica y Flor (constructora chica, refacciones):**
+- Operación caótica: 2-5 obras en paralelo, equipo chico, mucho WhatsApp
+- "Siempre tienen una caja chica" — trabajadores compran en ferreterías con tickets informales
+- Depósito poco central, la mayoría va directo a obra o queda en proveedor
+- Quieren saber dónde están las herramientas y materiales sin sentarse a mirar un dashboard
+- No necesitan distribución por línea: "todo a la misma obra" les alcanza
+- Necesitan que sea **liviano**, sin fricciones al registrar
 
 ### ¿Cuál es el problema de fondo?
 
@@ -85,30 +94,40 @@ SISTEMA VIEJO DE MATERIALES → Muestra datos desactualizados
 ### PROPUESTO (flujo conectado)
 
 ```
-FACTURA EN CAJA → IA extrae materiales → usuario elige destino:
+FACTURA/TICKET EN CAJA → IA extrae materiales → usuario elige destino:
          • 🏭 Enviar a depósito (stock)
          • 🏗️ Enviar a obra
          • 📦 Crear acopio (queda en proveedor)
+         • ⏳ Pendiente de asignar (compré, no sé a dónde va todavía)
          • 🔀 Distribuir (parte a cada destino)
 
 COMPRA DESDE STOCK → Distribución flexible por línea:
          • Parte al proveedor (acopio)
          • Parte al depósito (stock)
          • Parte directo a obra
+         • Parte pendiente de asignar
 
-RETIRO DE PROVEEDOR (desacopio) → El usuario elige destino:
-         • "Va a obra X" → aparece en costo de obra
-         • "Va a depósito" → aparece en stock disponible
-         • Mixto: parte a obra, parte a depósito
+RETIRO → Siempre es: origen → obra
+         • Del depósito → obra (egreso de stock)
+         • Del proveedor (desacopio) → obra
+
+RESERVA EN DEPÓSITO (ya existe como transferencia):
+         • Material está en depósito, pero se "reserva" para una obra
+         • El material sigue contando en stock del depósito (es informativo)
+         • El responsable de la obra puede consultar "qué materiales tengo reservados"
+         • Cuando se retira físicamente, recién sale del stock
 
 VISTA DE OBRA → Un solo lugar que muestra TODO:
          • Lo que vino del depósito
          • Lo que vino del proveedor (desacopio)
          • Lo que se compró directo desde caja
+         • Lo reservado en depósito (marcado como "en depósito, reservado")
          • Total valorizado a precios de hoy
 
 SISTEMA VIEJO → Eliminado (sin confusión)
 ```
+
+> **Nota**: Funciona igual con facturas, tickets de ferretería, recibos o cualquier comprobante. Mientras más información tenga el comprobante, más datos extrae la IA, pero el flujo es el mismo.
 
 ---
 
@@ -157,6 +176,10 @@ Cuando el cliente registra una compra de materiales, puede indicar para cada lí
 - 🏗️ **Obra** → Impacta directo en el costo de la obra
 - 🏭 **Depósito** → Queda como stock disponible de la empresa
 - 📦 **Proveedor (acopio)** → Queda registrado como pendiente de retirar
+- ⏳ **Pendiente de asignar** → Se compró, no se sabe a dónde va todavía
+
+**¿Y si ya sé que es para una obra pero lo dejo en depósito?**  
+Eso ya existe hoy: la **transferencia/reserva**. Mandás el material a depósito y lo reservás para una obra. El material sigue físicamente en el depósito (sigue contando en stock), pero la obra lo ve como "reservado". Cuando lo retirás, recién sale del stock.
 
 **¿Cambia algo para el que ya usa stock normal?**  
 No. Si no tenés acopio, simplemente el destino es siempre "depósito" u "obra". Funciona igual que hoy.
@@ -189,11 +212,13 @@ Cuando el cliente retira materiales del proveedor (desacopio), ahora puede elegi
 ### Mejora 4: Materiales de factura → Stock / Obra / Acopio (desde Caja)
 
 **¿Qué es?**  
-Cuando un usuario carga una factura de compra de materiales en caja, el sistema ya extrae los materiales con IA. Hoy esos materiales quedan en el limbo. Con esta mejora, el usuario puede elegir qué hacer con ellos.
+Cuando un usuario carga una factura o ticket de compra de materiales en caja, el sistema ya extrae los materiales con IA. Hoy esos materiales quedan en el limbo. Con esta mejora, el usuario puede elegir qué hacer con ellos.
+
+> Funciona con cualquier comprobante: factura, ticket de ferretería, recibo. Mientras más datos tenga, más extrae la IA, pero el flujo es el mismo.
 
 **¿Cómo funciona?**
 
-Después de confirmar la factura en caja, aparece un bloque:
+Después de confirmar la factura/ticket en caja, aparece un bloque:
 
 ```
 📦 Materiales detectados (5 items)
@@ -208,9 +233,13 @@ Después de confirmar la factura en caja, aparece un bloque:
   🏭 Enviar a depósito (quedan en stock)
   🏗️ Enviar a obra (se asignan al proyecto)
   📦 Crear acopio (quedan en el proveedor)
+  ⏳ Pendiente de asignar (no sé a dónde van todavía)
   🔀 Distribuir (parte a cada destino)
   ❌ No hacer nada
 ```
+
+**¿Qué es "Pendiente de asignar"?**  
+Cuando comprás materiales para la empresa en general y todavía no sabés a qué obra van. Quedan registrados en stock sin proyecto. Después los podés asignar a una obra o descartarlos.
 
 **Ejemplo concreto (caso Alvarado):**
 
@@ -271,7 +300,47 @@ Si un material no tiene precio, o el precio no se actualizó hace más de 30 dí
 
 ---
 
-## 6. ¿Qué cambia y qué NO cambia?
+## 6. Configuración por empresa
+
+### Principio: cada empresa usa stock a su manera
+
+No todas las empresas necesitan lo mismo. El módulo de stock se configura **por empresa** con ejes independientes que se activan según la necesidad. La activación la hace el equipo de Sorby.
+
+### Ejes de configuración
+
+| Eje | Desactivado (default) | Activado |
+|---|---|---|
+| **Acopio** | Solo depósito y obra como destinos | Se habilita "Crear acopio" + desacopio con destino |
+| **Distribución por línea** | Todo el material va al mismo destino | Cada línea de la compra puede ir a un destino diferente |
+| **Validación de movimientos** | El movimiento se confirma al instante | Los movimientos quedan en estado pendiente hasta que alguien confirma |
+
+### ¿Cómo se ve cada eje?
+
+**Sin acopio (default):**  
+Al comprar material, las opciones son: depósito, obra, pendiente de asignar. Simple.
+
+**Con acopio:**  
+Se agrega la opción "Crear acopio" al comprar y "Desacopio con destino" al retirar del proveedor.
+
+**Sin distribución por línea (default):**  
+Al comprar, todo va al mismo destino. "Enviar todo a obra Flores" → listo.
+
+**Con distribución por línea:**  
+Se agrega la opción "Distribuir" donde cada material puede ir a un destino diferente. Pensado para empresas que compran en volumen y distribuyen a varias obras.
+
+**Sin validación (default):**  
+Cuando registrás una compra o un retiro, el movimiento se confirma automáticamente. Sin fricción.
+
+**Con validación:**  
+Los movimientos quedan en estado "pendiente de confirmar" hasta que alguien los valida. El material **ya cuenta** en el stock (no se bloquea), pero queda marcado como pendiente. Cualquier usuario puede confirmar. Útil para empresas que quieren un doble chequeo (ej: "compré material, queda pendiente hasta que llega al depósito").
+
+### ¿Quién configura esto?
+
+Por ahora lo activa el equipo de Sorby según la necesidad del cliente. No es un switch que el usuario toque solo.
+
+---
+
+## 7. ¿Qué cambia y qué NO cambia?
 
 **No cambia:**
 - El módulo de Acopio sigue funcionando igual que hoy
@@ -282,15 +351,17 @@ Si un material no tiene precio, o el precio no se actualizó hace más de 30 dí
 
 **Sí cambia:**
 - Se **elimina** la pantalla vieja de movimientos de materiales (sistema legacy)
-- Se **reemplaza** la sección de materiales dentro del formulario de factura por las nuevas acciones (enviar a stock / obra / acopio)
-- Se **agrega** la vista unificada de materiales por obra
+- Se **reemplaza** la sección de materiales dentro del formulario de factura por las nuevas acciones (enviar a stock / obra / acopio / pendiente)
+- Se **agrega** la vista unificada de materiales por obra (incluye materiales reservados en depósito)
 - Se **agrega** la posibilidad de elegir destino al desacopiar
+- Se **agrega** el destino "Pendiente de asignar" para compras sin destino definido
+- Se **agrega** configuración por empresa para activar/desactivar ejes (acopio, distribución, validación)
 
 **Principio**: se quita lo que confunde, se agrega lo que conecta.
 
 ---
 
-## 7. Flujo del usuario — Caso completo
+## 8. Flujo del usuario — Caso completo
 
 ### Escenario: Constructora Alvarado, Obra Todo Moda Mendoza
 
@@ -335,13 +406,15 @@ Si un material no tiene precio, o el precio no se actualizó hace más de 30 dí
 
 ---
 
-## 8. Preguntas abiertas para validar
+## 9. Preguntas abiertas para validar
 
 1. ¿La vista de materiales por obra debería ser accesible para los arquitectos de campo o solo para administración?
 2. ¿Quieren recibir alertas automáticas cuando hay material pendiente de retirar del proveedor hace más de X días?
 3. ¿Es útil poder comparar el costo de materiales entre obras? (ej: "¿en qué obra gasté más en cemento?")
 4. ¿Necesitan poder exportar la vista de materiales por obra a PDF/Excel para presentar a clientes?
 5. Cuando cargan una factura de materiales en caja, ¿prefieren que el sistema les pregunte siempre qué hacer con los materiales, o que sea opcional (un botón que pueden ignorar)?
+6. Para "Pendiente de asignar": ¿debería haber un recordatorio automático después de X días? ¿O el usuario lo resuelve cuando quiere?
+7. ¿La validación de movimientos debería bloquear algo, o es solo informativa (el material ya cuenta, pero queda marcado como pendiente de confirmar)?
 
 ---
 
@@ -355,3 +428,6 @@ Si un material no tiene precio, o el precio no se actualizó hace más de 30 dí
 | **Solicitud** | Ticket que agrupa una operación de compra/retiro/transferencia con sus líneas de materiales |
 | **Conciliación** | Proceso de vincular un nombre de material (ej: de una factura) con un material del catálogo |
 | **Precio de referencia** | Precio actual del material, actualizable por el usuario |
+| **Pendiente de asignar** | Material comprado que todavía no tiene un destino definido (obra, depósito, acopio). Estado temporal que se resuelve o descarta |
+| **Reserva** | Material que está en depósito pero está asignado lógicamente a una obra. Sigue contando en stock del depósito. Es informativo. Funciona con la transferencia existente |
+| **Validación** | Instancia opcional donde un movimiento queda "pendiente de confirmar" hasta que alguien lo valida. El material ya cuenta, pero queda marcado |

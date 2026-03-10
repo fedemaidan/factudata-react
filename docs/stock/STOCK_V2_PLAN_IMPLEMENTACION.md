@@ -1,9 +1,9 @@
 # Módulo de Materiales — Plan de Implementación
 
-> **Fecha**: 09/03/2026  
-> **Basado en**: STOCK_V2_DOCUMENTO_TECNICO.md v3 y STOCK_V2_DOCUMENTO_FUNCIONAL.md v3  
+> **Fecha**: 10/03/2026  
+> **Basado en**: STOCK_V2_DOCUMENTO_TECNICO.md v4 y STOCK_V2_DOCUMENTO_FUNCIONAL.md v4  
 > **Estado**: Para revisión del equipo  
-> **Estimación total**: 5-7 semanas
+> **Estimación total**: 6-8 semanas
 
 ---
 
@@ -15,9 +15,10 @@
 4. [Fase 1 — Vista unificada por obra](#4-fase-1--vista-unificada-por-obra)
 5. [Fase 2 — Hook post-desacopio](#5-fase-2--hook-post-desacopio)
 6. [Fase 3 — Solicitud con destino flexible](#6-fase-3--solicitud-con-destino-flexible)
-7. [Fase 4 — Integración WhatsApp](#7-fase-4--integración-whatsapp)
-8. [Criterios de aceptación globales](#8-criterios-de-aceptación-globales)
-9. [Riesgos por fase](#9-riesgos-por-fase)
+7. [Fase T — Configuración por empresa + Validación](#7-fase-t--configuración-por-empresa--validación)
+8. [Fase 4 — Integración WhatsApp](#8-fase-4--integración-whatsapp)
+9. [Criterios de aceptación globales](#9-criterios-de-aceptación-globales)
+10. [Riesgos por fase](#10-riesgos-por-fase)
 
 ---
 
@@ -39,6 +40,7 @@ El core de Stock V2 está completo: modelos Mongoose (`material`, `movimientomat
 | **Fase 1** | Vista unificada de materiales por obra | 1 semana |
 | **Fase 2** | Hook post-desacopio (Acopio → Stock) | 1 semana |
 | **Fase 3** | Solicitud con destino flexible por línea | 1-2 semanas |
+| **Fase T** | Configuración por empresa + Validación (transversal) | 1 semana |
 | **Fase 4** | Integración WhatsApp | 1 semana |
 
 ### Orden y dependencias
@@ -50,8 +52,12 @@ Fase 0 (Caja→Stock + Deprecar V1)
   │                                      │
   └──────────────────────────────────────→ Fase 3 (Destino flexible)
                                                     │
+  Fase T (Config + Validación) ── transversal ──────┤
+                                                    │
                                                     └──→ Fase 4 (WhatsApp)
 ```
+
+> **Fase T** es transversal: se puede implementar en cualquier momento después de Fase 0. Impacta cómo se muestran las opciones en todas las demás fases.
 
 ---
 
@@ -188,8 +194,9 @@ origen_movimiento_caja_id: { type: String, default: null }  // trazabilidad haci
 {
   "empresa_id": "xxx",
   "movimiento_caja_id": "yyy",
-  "proyecto_id": "zzz",           // null si va a depósito
-  "proyecto_nombre": "Obra X",    // null si va a depósito
+  "proyecto_id": "zzz",           // null si va a depósito o pendiente
+  "proyecto_nombre": "Obra X",    // null si va a depósito o pendiente
+  "subtipo": "COMPRA",            // o "PENDIENTE_ASIGNAR"
   "proveedor": { "nombre": "Ferretería Norte" },
   "materiales": [
     { "nombre": "Caño 20x20", "cantidad": 10, "precio_unitario": 15000 }
@@ -200,15 +207,18 @@ origen_movimiento_caja_id: { type: String, default: null }  // trazabilidad haci
 **Lógica** (reutilizar lo que ya existe):
 1. Conciliar materiales con catálogo → reutilizar `conciliarConCatalogo()` de `utilsIngresarMateriales.js`
 2. Crear `Material` si no existe → reutilizar `materialesService.create()`
-3. Crear `Solicitud` tipo=INGRESO, subtipo=COMPRA, estado=ENTREGADO, `origen_movimiento_caja_id`
+3. Crear `Solicitud` tipo=INGRESO, subtipo=COMPRA (o PENDIENTE_ASIGNAR), estado=ENTREGADO (o PENDIENTE_CONFIRMACION si `validacion_movimientos`), `origen_movimiento_caja_id`
 4. Crear N `MovimientoMaterial` (uno por material, cantidad positiva)
 5. Retornar `{ solicitud_id, materiales_creados, materiales_conciliados }`
+
+> Si `subtipo = PENDIENTE_ASIGNAR`: solicitud se crea sin `proyecto_id`. El material queda en depósito sin destino fijo. Después el usuario puede asignar a obra o descartar.
 
 **Criterio de aceptación**: 
 - Crear solicitud desde caja con materiales → solicitud + movimientos existen en MongoDB
 - Materiales se concilian con catálogo existente (match por nombre/alias)
 - Materiales nuevos se crean en catálogo
 - Campo `origen_movimiento_caja_id` queda seteado
+- Con subtipo PENDIENTE_ASIGNAR: solicitud sin proyecto, estado correcto
 
 **Archivos**:
 | Archivo | Acción |
@@ -264,9 +274,12 @@ origen_movimiento_caja_id: { type: String, default: null }  // trazabilidad haci
 **Opciones**:
 - 🏭 Enviar a depósito → llama POST `/api/solicitud-material/from-caja` sin proyecto
 - 🏗️ Enviar a obra → llama POST `/api/solicitud-material/from-caja` con proyecto (selector de proyectos)
-- 📦 Crear acopio → llama POST `/api/acopio/from-caja` (selector de proveedor)
-- 🔀 Distribuir → modal donde por cada línea se elige destino
+- 📦 Crear acopio → llama POST `/api/acopio/from-caja` (selector de proveedor) — **solo si `acopio_habilitado`**
+- ⏳ Pendiente de asignar → llama POST `/api/solicitud-material/from-caja` sin proyecto, subtipo=PENDIENTE_ASIGNAR
+- 🔀 Distribuir → modal donde por cada línea se elige destino — **solo si `distribucion_por_linea`**
 - ❌ No hacer nada → cierra el bloque
+
+> Las opciones visibles dependen de la configuración de la empresa (Fase T). Sin config, se muestran: depósito, obra, pendiente, no hacer nada.
 
 **Props**:
 ```javascript
@@ -282,16 +295,17 @@ origen_movimiento_caja_id: { type: String, default: null }  // trazabilidad haci
 ```
 
 **Estados del componente**:
-1. **Sin referencia** → mostrar las 5 opciones
+1. **Sin referencia** → mostrar opciones (según config de la empresa)
 2. **Con `solicitud_stock_id`** → mostrar link "📦 Ver solicitud de stock" + botón deshacer
 3. **Con `acopio_id`** → mostrar link "📦 Ver acopio" + botón deshacer
 
 **Criterio de aceptación**:
-- Se ven las 5 opciones cuando no hay referencia previa
+- Se ven las opciones según la config de la empresa (sin config: depósito, obra, pendiente, no hacer nada)
 - "Enviar a depósito" crea solicitud + movimientos correctamente
 - "Enviar a obra" muestra selector de proyecto y crea solicitud vinculada
-- "Crear acopio" crea acopio en Firestore
-- "Distribuir" permite elegir destino por línea y ejecuta las acciones correspondientes
+- "Crear acopio" crea acopio en Firestore (solo si `acopio_habilitado`)
+- "Pendiente de asignar" crea solicitud sin proyecto, subtipo PENDIENTE_ASIGNAR
+- "Distribuir" permite elegir destino por línea y ejecuta las acciones correspondientes (solo si `distribucion_por_linea`)
 - "No hacer nada" no genera nada
 - Si ya se generó solicitud/acopio, muestra link en vez de acciones
 - No se puede duplicar (botón deshabilitado durante request, referencia cruzada)
@@ -365,12 +379,18 @@ origen_movimiento_caja_id: { type: String, default: null }  // trazabilidad haci
 - `createFromCaja` con materiales nuevos → crea Material + Solicitud + MovimientoMaterial
 - `createFromCaja` con materiales existentes → concilia con catálogo, no duplica
 - `createFromCaja` con proyecto → movimientos vinculados a proyecto
+- `createFromCaja` con subtipo PENDIENTE_ASIGNAR → solicitud sin proyecto
+- `createFromCaja` con `validacion_movimientos = true` → estado PENDIENTE_CONFIRMACION
 - Doble llamada con mismo `movimiento_caja_id` → error o idempotente
 - Endpoint deprecated devuelve 410
 
 **Tests frontend** (si hay infraestructura de testing):
-- `MaterialesFacturaActions` renderiza 5 opciones
+- `MaterialesFacturaActions` renderiza opciones según config de empresa
+- Sin config → muestra depósito, obra, pendiente, no hacer nada (4 opciones)
+- Con `acopio_habilitado` → muestra también acopio (5 opciones)
+- Con `distribucion_por_linea` → muestra también distribuir (6 opciones)
 - Click "Enviar a depósito" → llama endpoint correcto
+- Click "Pendiente de asignar" → llama endpoint con subtipo PENDIENTE_ASIGNAR
 - Con `solicitud_stock_id` → muestra link, no acciones
 
 **Archivos**:
@@ -399,22 +419,28 @@ origen_movimiento_caja_id: { type: String, default: null }  // trazabilidad haci
 1. MongoDB: MovimientoMaterial.find({ proyecto_id, empresa_id })
    → populate id_material para precio_unitario
    
-2. Firestore: buscar acopios donde proyecto_id = proyectoId
+2. MongoDB: buscar TRANSFERENCIAS tipo reserva para el proyecto
+   → material sigue en depósito pero está "reservado" para esta obra
+   → marcar origen: "reserva_deposito"
+   
+3. Firestore: buscar acopios donde proyecto_id = proyectoId
    → para cada acopio, traer remitos > movimientos_materiales (tipo desacopio)
    → intentar match con catálogo Stock V2 por nombre/alias
    
-3. Normalizar en formato común:
+4. Normalizar en formato común:
    { material_id, nombre, cantidad, origen, precio_unitario_actual, subtotal, estado }
    
-4. Agregar totales:
+5. Agregar totales:
    { items, total_valorizado, items_sin_precio, cantidad_pendiente_total }
 ```
 
 **Criterio de aceptación**:
 - Devuelve movimientos de Stock V2 normalizados
+- Devuelve materiales reservados (transferencia) con indicador "en depósito, reservado para esta obra"
 - Devuelve movimientos de Acopio (desacopios) normalizados
 - Materiales de acopio que matchean con catálogo usan precio de Material (MongoDB)
 - Materiales de acopio sin match usan precio del acopio como fallback y se marcan
+- Si `validacion_movimientos`: materiales en PENDIENTE_CONFIRMACION se muestran con indicador
 - Totales calculados correctamente
 
 **Archivos**:
@@ -636,7 +662,10 @@ origen_acopio_id: { type: String, default: null }
 > **Estimación**: 1-2 semanas  
 > **Impacto**: Medio — habilita distribución múltiple en una sola compra  
 > **Riesgo**: Medio — modifica modelos y UI existentes  
-> **Depende de**: Fases 0-2 (conceptos de destino ya probados)
+> **Depende de**: Fases 0-2 (conceptos de destino ya probados)  
+> **Nota**: La distribución por línea solo es visible si la empresa tiene `distribucion_por_linea = true` (Fase T). Sin ese flag, el destino se aplica a toda la solicitud completa.
+>
+> **Reserva (ya existe)**: Asignar material de depósito a una obra sin moverlo físicamente ya se resuelve con el tipo TRANSFERENCIA existente en Stock V2. No requiere desarrollo nuevo.
 
 ---
 
@@ -646,7 +675,7 @@ origen_acopio_id: { type: String, default: null }
 ```javascript
 destino: {
   type: String,
-  enum: ['deposito', 'obra', 'acopio'],
+  enum: ['deposito', 'obra', 'acopio', 'pendiente_asignar'],
   default: 'deposito'
 },
 destino_proyecto_id: { type: String, default: null },
@@ -671,7 +700,8 @@ destino_acopio_codigo: { type: String, default: null }
 Al crear una solicitud con movimientos, por cada movimiento:
 - Si `destino = 'deposito'` → comportamiento actual, `proyecto_id = null`
 - Si `destino = 'obra'` → `proyecto_id` del destino elegido
-- Si `destino = 'acopio'` → crear acopio/compra en Firestore (invocando AcopioService) + dejar movimiento vinculado
+- Si `destino = 'acopio'` → crear acopio/compra en Firestore (invocando AcopioService) + dejar movimiento vinculado — **solo si `acopio_habilitado`**
+- Si `destino = 'pendiente_asignar'` → sin `proyecto_id`, subtipo=PENDIENTE_ASIGNAR (se asigna o descarta después)
 
 **Archivos**:
 | Archivo | Acción |
@@ -686,15 +716,18 @@ Al crear una solicitud con movimientos, por cada movimiento:
 **Cambios en `stockSolicitudes.js` / `SolicitudFormDialog.js`**:
 
 En el modal de crear solicitud, agregar por cada línea:
-- Selector de destino: `Depósito` | `Obra (autocomplete)` | `Acopio (autocomplete)`
+- Selector de destino: `Depósito` | `Obra (autocomplete)` | `Pendiente de asignar` | `Acopio (autocomplete)` (si `acopio_habilitado`)
 - Si elige "Obra" → autocomplete de proyectos de la empresa
 - Si elige "Acopio" → autocomplete de acopios existentes o crear nuevo
 - Default: "Depósito" (comportamiento actual)
 
+> **Nota**: Este selector solo aparece si `distribucion_por_linea = true`. Sin ese flag, se usa el destino único ya elegido en Fase 0.
+
 **Criterio de aceptación**:
 - Crear solicitud sin cambiar destino → funciona exactamente como hoy
 - Crear solicitud con líneas mixtas (parte obra, parte depósito) → cada movimiento va a su destino
-- Crear solicitud con línea a acopio → se crea compra en Firestore
+- Crear solicitud con línea a acopio → se crea compra en Firestore (solo si `acopio_habilitado`)
+- Crear solicitud con línea a pendiente_asignar → solicitud sin proyecto, se puede asignar/descartar después
 
 **Archivos**:
 | Archivo | Acción |
@@ -709,9 +742,11 @@ En el modal de crear solicitud, agregar por cada línea:
 **Tests**:
 - Solicitud con todos a depósito → funciona como antes
 - Solicitud con líneas a obra → proyecto_id correcto
-- Solicitud con línea a acopio → acopio creado en Firestore
+- Solicitud con línea a acopio → acopio creado en Firestore (solo si `acopio_habilitado`)
+- Solicitud con línea a pendiente_asignar → sin proyecto, subtipo PENDIENTE_ASIGNAR
 - Solicitud mixta → cada movimiento tiene su destino
 - Validación: destino=obra sin proyecto_id → error
+- Validación: destino=acopio sin `acopio_habilitado` → error
 
 **Archivos**:
 | Archivo | Acción |
@@ -720,7 +755,109 @@ En el modal de crear solicitud, agregar por cada línea:
 
 ---
 
-## 7. Fase 4 — Integración WhatsApp
+## 7. Fase T — Configuración por empresa + Validación
+
+> **Estimación**: 1 semana  
+> **Impacto**: Medio — permite adaptar stock a cada cliente  
+> **Riesgo**: Bajo — son flags que condicionan UI y lógica, no cambian modelos core  
+> **Transversal**: se puede implementar en cualquier momento después de Fase 0
+
+---
+
+### Tarea T.1 — Modelo de configuración de stock por empresa
+
+**Objetivo**: Almacenar la configuración de stock de cada empresa.
+
+**Opción A**: Agregar campo `stock_config` al modelo de empresa existente.  
+**Opción B**: Colección separada `stockconfigs` con `empresa_id` único.
+
+**Schema**:
+```javascript
+stock_config: {
+  acopio_habilitado: { type: Boolean, default: false },
+  distribucion_por_linea: { type: Boolean, default: false },
+  validacion_movimientos: { type: Boolean, default: false }
+}
+```
+
+**Criterio de aceptación**: La config se lee correctamente, tiene defaults seguros (todo false), se puede modificar vía endpoint admin.
+
+**Archivos**:
+| Archivo | Acción |
+|---|---|
+| Modelo de empresa o `backend/src/models/stockConfig.js` | **Crear/Modificar** |
+| `backend/src/routes/` | **Crear** endpoint GET/PUT config (admin only) |
+
+---
+
+### Tarea T.2 — Condicionar UI según configuración
+
+**Objetivo**: Los componentes de stock leen la config de la empresa y muestran/ocultan opciones.
+
+**Cambios**:
+- `MaterialesFacturaActions` (Fase 0): ocultar "Crear acopio" si `!acopio_habilitado`, ocultar "Distribuir" si `!distribucion_por_linea`
+- `SolicitudFormDialog` (Fase 3): ocultar selector de destino por línea si `!distribucion_por_linea`, ocultar destino acopio si `!acopio_habilitado`
+- `DestinoDesacopioDialog` (Fase 2): siempre visible si hay acopio (ya está implícito)
+
+**Criterio de aceptación**: Empresa sin config ve: depósito, obra, pendiente, no hacer nada. Con `acopio_habilitado` ve además acopio. Con `distribucion_por_linea` ve además distribuir.
+
+**Archivos**:
+| Archivo | Acción |
+|---|---|
+| `app-web/src/components/stock/MaterialesFacturaActions.js` | **Modificar** — leer config |
+| `app-web/src/components/stock/solicitudes/SolicitudFormDialog.js` | **Modificar** — leer config |
+| `app-web/src/services/stockConfigService.js` | **Crear** — client API para config |
+
+---
+
+### Tarea T.3 — Estado PENDIENTE_CONFIRMACION
+
+**Objetivo**: Cuando `validacion_movimientos = true`, los movimientos se crean con estado `PENDIENTE_CONFIRMACION` en vez de `ENTREGADO`.
+
+**Cambios**:
+- Agregar `PENDIENTE_CONFIRMACION` al enum de estado en `movimientoMaterial.js` y `solicitud.js`
+- En `solicitudService.js`: si la empresa tiene `validacion_movimientos = true`, crear solicitud con `estado = PENDIENTE_CONFIRMACION`
+- Endpoint para confirmar: `PUT /api/solicitud-material/:id/confirmar` — cambia estado a `ENTREGADO`
+- El material **ya cuenta** en stock aunque esté en `PENDIENTE_CONFIRMACION` (no es un bloqueo)
+- En la UI: indicador visual "⏳ Pendiente de confirmar" + botón "Confirmar recepción"
+
+**Criterio de aceptación**:
+- Empresa con `validacion_movimientos = false`: solicitudes se crean como ENTREGADO (comportamiento actual)
+- Empresa con `validacion_movimientos = true`: solicitudes se crean como PENDIENTE_CONFIRMACION
+- Cualquier usuario puede confirmar
+- El stock calculado incluye materiales en PENDIENTE_CONFIRMACION (no se bloquean)
+- En la vista de stock/obra, los materiales pendientes de confirmar se muestran con indicador
+
+**Archivos**:
+| Archivo | Acción |
+|---|---|
+| `backend/src/models/movimientoMaterial.js` | **Modificar** — agregar estado |
+| `backend/src/models/solicitud.js` | **Modificar** — agregar estado |
+| `backend/src/services/stock/solicitudService.js` | **Modificar** — leer config al crear |
+| `backend/src/controllers/stock/solicitudController.js` | **Modificar** — endpoint confirmar |
+| `backend/src/routes/solicitudMovimientoMaterialesRoutes.js` | **Modificar** — ruta PUT confirmar |
+| `app-web/src/pages/stockSolicitudes.js` | **Modificar** — botón confirmar |
+
+---
+
+### Tarea T.4 — Tests Fase T
+
+**Tests**:
+- Empresa sin config → defaults correctos (todo false)
+- Empresa con `acopio_habilitado = false` + request destino acopio → error
+- Empresa con `validacion_movimientos = true` → solicitud en PENDIENTE_CONFIRMACION
+- Confirmar solicitud → estado cambia a ENTREGADO
+- Stock calculado incluye PENDIENTE_CONFIRMACION
+
+**Archivos**:
+| Archivo | Acción |
+|---|---|
+| `backend/test/stock/stockConfig.test.js` | **Crear** |
+| `backend/test/stock/validacionMovimientos.test.js` | **Crear** |
+
+---
+
+## 8. Fase 4 — Integración WhatsApp
 
 > **Estimación**: 1 semana  
 > **Impacto**: Medio — consulta rápida desde WhatsApp  
@@ -776,15 +913,18 @@ En el modal de crear solicitud, agregar por cada línea:
 
 ---
 
-## 8. Criterios de aceptación globales
+## 9. Criterios de aceptación globales
 
 ### Funcionales
-- [ ] Un usuario carga factura de materiales en caja → puede enviar a stock, obra o acopio
+- [ ] Un usuario carga factura/ticket de materiales en caja → puede enviar a stock, obra, acopio o pendiente de asignar
 - [ ] Un usuario desacopia → puede elegir destino (obra o depósito)
-- [ ] La vista de obra muestra todos los materiales de todas las fuentes
+- [ ] La vista de obra muestra todos los materiales de todas las fuentes (incluye reservados en depósito)
 - [ ] Los precios se calculan con valor actual del material (no histórico)
 - [ ] El sistema viejo de materiales (V1) no es visible ni escribible
 - [ ] No se pueden duplicar solicitudes desde la misma factura de caja
+- [ ] Las opciones de destino visibles dependen de la configuración de la empresa
+- [ ] La validación de movimientos funciona cuando está activada (pendiente → confirmar)
+- [ ] "Pendiente de asignar" permite asignar a obra o descartar después
 
 ### No funcionales
 - [ ] La vista de obra responde en < 3 segundos para obras con < 500 movimientos
@@ -793,7 +933,7 @@ En el modal de crear solicitud, agregar por cada línea:
 
 ---
 
-## 9. Riesgos por fase
+## 10. Riesgos por fase
 
 ### Fase 0
 | Riesgo | Probabilidad | Impacto | Mitigación |
@@ -817,8 +957,19 @@ En el modal de crear solicitud, agregar por cada línea:
 ### Fase 3
 | Riesgo | Probabilidad | Impacto | Mitigación |
 |---|---|---|---|
-| Complejidad de UI con destino por línea | Media | Medio | Default "depósito" para todos, distribución es opt-in |
+| Complejidad de UI con destino por línea | Media | Medio | Solo visible si `distribucion_por_linea = true`. Default "depósito" para todos |
 | Caso acopio + stock en misma solicitud cruza dos BDs | Media | Alto | Transacción MongoDB + compensación Firestore si falla |
+
+### Fase T
+| Riesgo | Probabilidad | Impacto | Mitigación |
+|---|---|---|---|
+| Config desincronizada entre frontend y backend | Baja | Medio | Frontend siempre lee config al cargar componentes de stock |
+| Nadie confirma movimientos y quedan en PENDIENTE_CONFIRMACION para siempre | Media | Bajo | Material ya cuenta en stock (no es bloqueo). Indicador visual suficiente |
+
+### Transversal
+| Riesgo | Probabilidad | Impacto | Mitigación |
+|---|---|---|---|
+| UX de stock aún no está estandarizada internamente | Alta | Medio | Implementar Fases 0-1 primero (bajo riesgo, alto valor) y validar con clientes reales antes de Fases 2-3 |
 
 ---
 
@@ -843,6 +994,10 @@ En el modal de crear solicitud, agregar por cada línea:
 | 2 | `app-web/src/components/acopio/DestinoDesacopioDialog.js` | Componente React |
 | 2 | `backend/test/stock/desacopioHook.test.js` | Test |
 | 3 | `backend/test/stock/solicitudDestinoFlexible.test.js` | Test |
+| T | `backend/src/models/stockConfig.js` (o campo en empresa) | Modelo |
+| T | `app-web/src/services/stockConfigService.js` | Client API |
+| T | `backend/test/stock/stockConfig.test.js` | Test |
+| T | `backend/test/stock/validacionMovimientos.test.js` | Test |
 | 4 | `backend/flows/flowVerMaterialesObra.js` | Flow WhatsApp |
 
 ### Archivos a MODIFICAR
@@ -872,5 +1027,12 @@ En el modal de crear solicitud, agregar por cada línea:
 | 3 | `backend/src/controllers/stock/solicitudController.js` | Validación destinos |
 | 3 | `app-web/src/pages/stockSolicitudes.js` | UI selector destino |
 | 3 | `app-web/src/components/stock/solicitudes/SolicitudFormDialog.js` | UI selector destino por línea |
+| T | `backend/src/models/movimientoMaterial.js` | + estado PENDIENTE_CONFIRMACION |
+| T | `backend/src/models/solicitud.js` | + estado PENDIENTE_CONFIRMACION |
+| T | `backend/src/services/stock/solicitudService.js` | Leer config al crear |
+| T | `backend/src/controllers/stock/solicitudController.js` | + endpoint confirmar |
+| T | `backend/src/routes/solicitudMovimientoMaterialesRoutes.js` | + ruta PUT confirmar |
+| T | `app-web/src/components/stock/MaterialesFacturaActions.js` | Condicionar opciones según config |
+| T | `app-web/src/pages/stockSolicitudes.js` | + botón confirmar |
 | 4 | `backend/src/acciones.js` | + intent VER_MATERIALES_OBRA |
 | 4 | Flow de desacopio existente | + paso "¿a dónde va?" |
