@@ -119,7 +119,7 @@ await mensajesProgramadosService.createMensaje({
 
 Para cancelar: buscar por `to` y `estado: 'PENDIENTE'` y marcar como `'CANCELADO'`.
 
-**Importante:** Si la ventana de 24h de WhatsApp está cerrada y no hay template, el mensaje se cancela automáticamente. Para el timeout de 1h, **necesitás un template aprobado en Meta** o asegurarte de que se envíe dentro de la ventana de 24h (que en este caso sí, porque el usuario escribió hace <1h).
+**Nota sobre ventana 24h:** Hay un template de Meta aprobado disponible para este caso. De todas formas, el timeout de 1h se envía dentro de la ventana de 24h (el usuario escribió hace <1h), así que no debería ser necesario. El template es un backup por si acaso.
 
 ### Event tracking
 
@@ -309,6 +309,80 @@ async function getVariante(phone) {
 }
 ```
 
+### Paso 3.5 — Pool de Empresas Demo (pre-requisito de Variante B)
+
+**Concepto:** Siempre tener **2 empresas demo pre-armadas** listas para asignar. Cuando llega un contacto nuevo (Variante B), se le asigna una del pool instantáneamente. En background, se repone el pool creando una nueva.
+
+**Modelo MongoDB — `EmpresaDemo`:**
+
+Crear `backend/src/models/EmpresaDemo.js`:
+
+```js
+const EmpresaDemoSchema = new Schema({
+    empresaFirestoreId: { type: String, required: true },
+    proyectoFirestoreId: { type: String, required: true },
+    estado: { type: String, enum: ['disponible', 'asignada', 'creando'], default: 'creando' },
+    asignadaA: { type: String, default: null },       // phone del contacto
+    fechaAsignacion: { type: Date, default: null },
+}, { timestamps: true });
+```
+
+**Servicio — `empresaDemoService.js`:**
+
+Crear `backend/src/services/empresaDemoService.js`:
+
+```js
+async function asignarEmpresaDemo(phone, nombreWhatsApp) {
+    // 1. findOneAndUpdate({ estado: 'disponible' } → { estado: 'asignada', asignadaA: phone })
+    // 2. Si no hay disponible → crear una en el momento (fallback sincrónico)
+    // 3. Crear profile vinculado al phone
+    // 4. Actualizar nombre empresa a "[nombreWhatsApp] - Demo"
+    // 5. Agregar campo esDemo: true en la empresa de Firestore
+    // 6. vincularEmpresaConContactoSDR(phone, { empresaFirestoreId, ... })
+    // 7. Trigger reponerPool() en background (no await)
+    // 8. Retornar { empresaFirestoreId, proyectoFirestoreId }
+}
+
+async function reponerPool() {
+    // 1. Contar empresas con estado 'disponible'
+    // 2. Si < 2 → crear las faltantes con crearEmpresaDemoCompleta()
+}
+
+async function crearEmpresaDemoCompleta() {
+    // 1. Marcar como 'creando' en MongoDB
+    // 2. crearEmpresa(formDataConstructora) — tipo: 'Constructora'
+    // 3. Agregar campo esDemo: true en Firestore
+    // 4. crearProyecto(phone_placeholder, { nombre: 'Obra Demo', empresa: empresaRef })
+    // 5. Insertar movimientos demo con createMovimiento() — actualizaSheets=true
+    // 6. Insertar presupuestos demo con crearPresupuesto()
+    // 7. Marcar como 'disponible' en MongoDB
+}
+```
+
+**Datos demo precargados:**
+
+Movimientos:
+| Tipo | Observación | Monto | Categoría | Proveedor |
+|------|------------|------:|-----------|----------|
+| Egreso | Cemento x 50 bolsas | $150.000 | Materiales | Corralón López |
+| Egreso | Arena y piedra | $85.000 | Materiales | Corralón López |
+| Egreso | Jornales albañilería semana 1 | $320.000 | Mano de Obra | — |
+| Ingreso | Aporte inicial del cliente | $2.000.000 | — | — |
+
+Presupuestos:
+| Categoría | Monto | Tipo |
+|-----------|------:|------|
+| Materiales | $3.000.000 | egreso |
+| Mano de Obra | $5.000.000 | egreso |
+
+**Importante:** `onboardingCreaInicioConstructora(phone, proyectos, nombre)` recibe `proyectos` como **array de strings** (ej: `['Obra Demo']`), no de objetos.
+
+**Replenishment:** Se ejecuta al startup del server y cada vez que se asigna una. NO bloquea al usuario — la asignación es instantánea (toma una pre-creada), la reposición es async.
+
+**Nota sobre Google Sheets:** Las empresas demo se crean con `actualizaSheets=true` para que funcionen igual que una empresa real. Esto implica que cada demo tiene su Sheet. La limpieza de Sheets se hará en un ciclo posterior (ver sección "Limpieza de demos").
+
+---
+
 ### Paso 4 — Flow de activación directa (Variante B)
 
 Crear `backend/flows/flowActivacionDirecta.js`:
@@ -317,9 +391,9 @@ Crear `backend/flows/flowActivacionDirecta.js`:
 
 **Secuencia:**
 
-1. **Crear empresa demo en background:**
-   - Usar `onboardingCreaInicioConstructora(phone, [{ nombre: 'Obra Demo' }], nombreWhatsApp + ' - Demo')`
-   - La empresa debe tener un flag para identificarla como demo: `tipo: 'demo'` o similar
+1. **Asignar empresa demo del pool:**
+   - Usar `empresaDemoService.asignarEmpresaDemo(phone, nombreWhatsApp)`
+   - La empresa tiene campo `esDemo: true` en Firestore (NO cambia el `tipo`, que sigue siendo `'Constructora'`)
    - Trackear evento `activacion_directa_empresa_demo_creada`
 
 2. **Enviar mensaje de activación:**
@@ -337,7 +411,8 @@ Y mirá lo que pasa 👇
    - Trackear evento `activacion_directa_inicio`
 
 3. **Capturar el mensaje del usuario:**
-   - Si escribe algo que parece un gasto → delegarlo al sistema de interpretación existente (que usará GPT para parsearlo y registrarlo en la empresa demo)
+   - Interceptar dentro del flow con un `capture`. Llamar a `accionarSegunEmpresa(input, datos, state, gotoFlow, provider, ctx)` directamente desde dentro del capture, pasándole los `datos` del usuario demo (obtenidos con `datosInicialesPorTelefono(phone)`). Esto mantiene el control de la secuencia guiada sin perder el contexto del flow.
+   - Si escribe algo que parece un gasto → el sistema de interpretación existente (GPT) lo parsea y registra en la empresa demo
    - Después del registro exitoso, mostrar resultado y guiar al resumen:
 ```
 ✅ Registré el gasto:
@@ -426,9 +501,9 @@ GET    /api/ab-tests/:id/export         → CSV con todos los contactos + evento
 
 **Registrar las rutas** en `backend/app.api.js`.
 
-### Paso 8 — Página web `/ab-tests`
+### Paso 8 — Página web `/abTestContactActivation`
 
-Crear `app-web/src/pages/ab-tests.js` (o `abTests.js` según la convención del proyecto — revisar cómo se nombran las otras páginas).
+Crear `app-web/src/pages/abTestContactActivation.js`.
 
 **Diseño funcional detallado en Sección 9.9 del documento funcional.** Incluye wireframes ASCII de las vistas de lista y detalle.
 
@@ -465,20 +540,21 @@ Crear un script o endpoint para crear el test inicial:
 ## Orden de implementación recomendado
 
 ```
-1. N4 — Keywords usuarios existentes (más simple, previene bugs)
-2. N2 — Botonera de 2 opciones (cambio de UI del menú)
-3. N3 — Info/Humano → Calendly (routing de keywords)
-4. N1 — Timeout 1h → Calendly (usa mensajes programados)
-5. [VALIDAR que normalización funciona — 2-3 días]
-6. Modelo AbTest + campo en ContactoSDR
-7. abTestService (asignación de variantes)
-8. flowActivacionDirecta (Variante B completa)
-9. Modificar flowInicioGeneral para routear por variante
-10. Eventos de tracking en ambas variantes
-11. API REST de A/B tests
-12. Página web /ab-tests
-13. Seed del test
-14. [ACTIVAR TEST]
+1.  N4 — Keywords usuarios existentes (más simple, previene bugs)
+2.  N2 — Botonera de 2 opciones (cambio de UI del menú)
+3.  N3 — Info/Humano → Calendly (routing de keywords)
+4.  N1 — Timeout 1h → Calendly (usa mensajes programados)
+5.  [VALIDAR que normalización funciona — 2-3 días]
+6.  Modelo EmpresaDemo + empresaDemoService + pool de demos con datos precargados
+7.  Modelo AbTest + campos ab_test_variante/ab_test_name en ContactoSDR
+8.  abTestService (asignación de variantes)
+9.  flowActivacionDirecta (Variante B completa, usa pool de demos)
+10. Modificar flowInicioGeneral para routear por variante
+11. Eventos de tracking en ambas variantes
+12. API REST de A/B tests
+13. Página web /abTestContactActivation
+14. Seed del test
+15. [ACTIVAR TEST]
 ```
 
 ---
@@ -505,8 +581,44 @@ ONBOARDING_TIMEOUT_MINUTES=60
 
 ---
 
-## Preguntas que el agente debe decidir durante la implementación
+## Decisiones técnicas confirmadas
 
-1. **Empresa demo:** ¿Usar `onboardingCreaInicioConstructora` directamente o crear un wrapper que marque la empresa como `tipo: 'demo'`? Recomendación: wrapper que llame a la función existente y luego actualice el campo `tipo`.
-2. **Capture del gasto en Variante B:** ¿Dejar que `flowProxy` (el flow principal) maneje el gasto, o interceptarlo dentro de `flowActivacionDirecta`? Recomendación: interceptar dentro del flow con un capture, detectar si parece un gasto, y delegarlo al sistema de interpretación existente para que registre el movimiento. Así se mantiene el control de la secuencia guiada.
-3. **"Seguir probando":** Después de esta opción, el usuario cae al flow normal (flowProxy). La empresa demo ya existe, los movimientos se registran ahí. Funciona sin cambios adicionales.
+1. **Empresa demo:** Se usa un **pool de 2 empresas demo pre-armadas** (modelo `EmpresaDemo` en MongoDB). Al asignar una, se repone el pool en background. La empresa mantiene `tipo: 'Constructora'` y se le agrega un campo separado `esDemo: true` en Firestore. NO se cambia el campo `tipo`.
+2. **Datos precargados:** Cada empresa demo se crea con movimientos (3 egresos + 1 ingreso) y presupuestos (Materiales + Mano de Obra) ya cargados. Se usa `createMovimiento()` con `actualizaSheets=true` y `crearPresupuesto()`. Todo funciona igual que una empresa real.
+3. **Capture del gasto en Variante B:** Se intercepta dentro de `flowActivacionDirecta` con un `capture`. Se llama a `accionarSegunEmpresa()` directamente pasándole los datos del usuario demo. Esto mantiene el control de la secuencia guiada.
+4. **Referencia a empresa del contacto:** Usar `datosBot.empresaFirestoreId` en ContactoSDR. El campo `empresaId` en la raíz del schema es del tenant SDR, no del lead.
+5. **Nombre del proyecto demo:** Siempre `"Obra Demo"`. Se pasa como `['Obra Demo']` (array de strings) a `onboardingCreaInicioConstructora`.
+6. **"Seguir probando":** Después de esta opción, el usuario cae al flow normal (flowProxy). La empresa demo ya existe, los movimientos se registran ahí. Funciona sin cambios adicionales.
+7. **Template de Meta:** Existe un template aprobado para el timeout de 1h. La ventana de 24h debería estar abierta (el usuario escribió hace <1h), el template es backup.
+8. **Página de A/B tests:** Se crea como `app-web/src/pages/abTestContactActivation.js`.
+9. **Charts:** Usar la library que mejor se adapte (apexcharts o @mui/x-charts, ambas están en el proyecto).
+10. **Calendly:** Se configura por variable de entorno `CALENDLY_DEMO_URL`.
+
+---
+
+## Limpieza de empresas demo (post-implementación)
+
+**No se implementa en esta fase**, pero se documenta como trabajo pendiente.
+
+### Qué hay que limpiar
+
+1. **Firestore:**
+   - Colección `empresas` — documentos con `esDemo: true` inactivos (sin movimientos nuevos en 30 días)
+   - Colección `movimientos` — todos los movimientos vinculados a esas empresas
+   - Colección `proyectos` — proyectos vinculados
+   - Colección `profile` — perfiles vinculados
+   - Colección `presupuestos` — presupuestos vinculados
+
+2. **Google Sheets:**
+   - Cada empresa demo genera un Sheet real. Hay que eliminar los Sheets de empresas demo archivadas.
+   - Usar la API de Google Drive para eliminar archivos/carpetas asociadas.
+
+3. **MongoDB:**
+   - Modelo `EmpresaDemo` — marcar como archivadas o eliminar registros viejos
+   - `ContactoSDR.datosBot.empresaFirestoreId` — limpiar referencia si se elimina la empresa
+
+### Criterio propuesto
+
+- **30 días sin actividad** desde la creación → archivar/eliminar
+- Implementar como **cron job** o script manual ejecutable desde el admin
+- Prioridad: post-test, cuando se valide que la Variante B funciona

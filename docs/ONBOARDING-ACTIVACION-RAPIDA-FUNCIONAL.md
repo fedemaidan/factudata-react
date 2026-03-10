@@ -74,7 +74,7 @@ Sobre el flujo ya normalizado, se testean dos variantes:
 
 **Métrica ganadora:** % de reuniones agendadas por contacto.
 **Muestra:** ~50 contactos por variante (~12 días).
-**Monitoreo:** Página `/ab-tests` con panel en tiempo real.
+**Monitoreo:** Página `/abTestContactActivation` con panel en tiempo real.
 
 Detalle completo: Sección 9.
 
@@ -210,7 +210,7 @@ El usuario debe actuar por iniciativa propia
 ```text
 Usuario escribe
     ↓
-Se crea empresa demo + proyecto demo en background
+Se asigna empresa demo del pool (instantáneo, ya tiene datos precargados)
     ↓
 Bot invita a registrar un gasto de ejemplo
     ↓
@@ -263,15 +263,31 @@ Probá escribir algo como:
 
 **Hoy:** La empresa y proyectos se crean después de varias preguntas.
 
-**Propuesta:** Al primer mensaje del usuario, crear automáticamente en background:
+**Propuesta:** Mantener un **pool de 2 empresas demo pre-armadas** en background, listas para asignar instantáneamente. Cuando llega un contacto nuevo en Variante B:
 
-- Empresa: `[Nombre de WhatsApp] - Demo`
+1. Se le asigna una empresa demo del pool (instantáneo)
+2. Se personaliza: `[Nombre de WhatsApp] - Demo`
+3. Se crea el perfil vinculado al teléfono
+4. En background, se repone el pool creando una nueva empresa demo
+
+Cada empresa demo incluye:
 - Proyecto: `Obra Demo`
-- Usuario vinculado al teléfono
+- **Movimientos precargados:**
+  - Egreso: Cemento x 50 bolsas — $150.000 (Materiales, Corralón López)
+  - Egreso: Arena y piedra — $85.000 (Materiales, Corralón López)
+  - Egreso: Jornales albañilería semana 1 — $320.000 (Mano de Obra)
+  - Ingreso: Aporte inicial del cliente — $2.000.000
+- **Presupuestos asignados:**
+  - Materiales: $3.000.000
+  - Mano de Obra: $5.000.000
 
-**Objetivo:** Eliminar la barrera de setup inicial y permitir uso inmediato. La infraestructura ya existe (`onboardingCreaInicioConstructora` en `flowOnboarding.js`).
+**Beneficio:** El usuario ve una obra "viva" con caja positiva, gastos reales y presupuestos con ejecución parcial desde el primer momento. Si pide un resumen, hay datos para mostrar.
 
-**Aclaración de producto:** Esto debe definirse explícitamente como **modo demo** (flag `tipo: 'demo'`), no como cuenta real final. Luego, si el usuario avanza, se migra/configura su cuenta real.
+**Marcado como demo:** Campo `esDemo: true` en el documento de la empresa en Firestore. El campo `tipo` se mantiene como `'Constructora'` para que toda la lógica existente funcione sin cambios.
+
+**Objetivo:** Eliminar la barrera de setup inicial y permitir uso inmediato. La asignación del pool es instantánea — la creación de nuevas demos es asincrónica y no bloquea al usuario.
+
+**Limpieza:** Las empresas demo inactivas (sin actividad en 30 días) se archivarán con un proceso de limpieza posterior. Ver Sección 15.
 
 ---
 
@@ -654,7 +670,7 @@ Estos no se testean porque nivelan la cancha, no son el cambio experimental.
 
 Se construye una página reutilizable para monitorear este y futuros A/B tests.
 
-**Ruta:** `/ab-tests` (nueva página en el admin)
+**Ruta:** `/abTestContactActivation` (nueva página en el admin)
 
 **Vista principal — Lista de tests**
 
@@ -876,28 +892,73 @@ Si se cumple: se mantiene flujo actual y se revisan hipótesis.
 
 - Detectar señales de compra → ofrecer demo
 - Dashboard de funnel con nuevos pasos
-- Limpieza automática de empresas demo inactivas
+- **Limpieza automática de empresas demo inactivas** — Firestore + Google Sheets/Drive + MongoDB (ver Sección 15)
 - Mover calificación después de activación si B ganó (Cambio 4)
 
 ---
 
 ## 13. Preguntas abiertas
 
-1. **¿Cómo se define el paso de demo → cuenta real?** ¿Se migran datos demo o se arranca limpia?
+1. ~~**¿Cómo se define el paso de demo → cuenta real?**~~ Pendiente. Se arranca limpia o se migra — a definir post-test.
 
-2. **¿Cuánto tiempo vive una cuenta demo?** Propuesta: 30 días, luego se archivan.
+2. ~~**¿Cuánto tiempo vive una cuenta demo?**~~ **Resuelto:** 30 días, luego se archivan con el proceso de limpieza (ver Sección 15).
 
 3. ~~¿Conviene mantener algún fallback si el usuario no responde?~~ **Resuelto:** Timeout de 1h con Calendly (N1).
 
 4. **¿Calendly o agenda propia en fase 2?** Calendly es Fase 1 por rapidez. ¿Se migra después a un flujo propio?
 
-5. **¿El proyecto demo se llama "Obra Demo" o algo más contextual?** Ej: "Obra de prueba - Pérez" si se llama Arq. Pérez.
+5. ~~**¿El proyecto demo se llama "Obra Demo" o algo más contextual?**~~ **Resuelto:** Siempre `"Obra Demo"`. Sin personalización por nombre.
 
 6. **¿Doble ruta en la landing?** Se sugiere agregar un CTA secundario de Calendly directo en la landing ("Agendá una demo de 20 min") como ruta alternativa al bot. Captura leads de alta intención que prefieren hablar con alguien. No canibaliza — el que iba a mandar WA sigue mandando WA. Es un botón, no requiere desarrollo.
 
 ---
 
-## 14. Conclusión
+## 14. Decisiones técnicas confirmadas
+
+| # | Decisión | Detalle |
+|---|----------|---------|
+| 1 | **Empresa demo: campo `esDemo`** | Se agrega `esDemo: true` en Firestore. NO se cambia el campo `tipo` (sigue siendo `'Constructora'`). Así toda la lógica existente funciona sin modificaciones. |
+| 2 | **Pool de 2 demos** | Siempre hay 2 empresas demo pre-creadas con datos. Al asignar una, se repone en background. Si no hay disponible, se crea una en el momento (fallback sincrónico). |
+| 3 | **Datos precargados** | Cada demo tiene 4 movimientos (3 egresos + 1 ingreso) y 2 presupuestos (Materiales + Mano de Obra). Se crean con `createMovimiento(actualizaSheets=true)` y `crearPresupuesto()`. |
+| 4 | **Procesamiento de gasto en Variante B** | Se intercepta dentro del flow con `capture` y se llama a `accionarSegunEmpresa()` directamente. Así se mantiene la secuencia guiada sin perder contexto. |
+| 5 | **Referencia a empresa del contacto** | Se usa `datosBot.empresaFirestoreId` en ContactoSDR. El campo `empresaId` en la raíz es del tenant SDR, no del lead. |
+| 6 | **Calendly** | Se configura por variable de entorno `CALENDLY_DEMO_URL`. |
+| 7 | **Template de Meta** | Hay template aprobado para el timeout de 1h. Es backup — la ventana de 24h debería estar abierta. |
+| 8 | **Página A/B** | Ruta: `/abTestContactActivation`. Archivo: `app-web/src/pages/abTestContactActivation.js`. |
+
+---
+
+## 15. Limpieza de empresas demo (trabajo pendiente)
+
+**No se implementa en esta fase.** Se documenta para el ciclo posterior.
+
+### Qué hay que limpiar
+
+1. **Firestore:**
+   - Colección `empresas` — documentos con `esDemo: true` inactivos (sin movimientos nuevos en 30 días)
+   - Colección `movimientos` — todos los movimientos vinculados a esas empresas
+   - Colección `proyectos` — proyectos vinculados
+   - Colección `profile` — perfiles vinculados
+   - Colección `presupuestos` — presupuestos vinculados
+
+2. **Google Sheets y Drive:**
+   - Cada empresa demo genera un Sheet y una carpeta en Drive (igual que una empresa real)
+   - Hay que eliminar los Sheets y carpetas de empresas demo archivadas usando la API de Google Drive
+
+3. **MongoDB:**
+   - Modelo `EmpresaDemo` — marcar como archivadas o eliminar registros de demos viejas
+   - `ContactoSDR.datosBot.empresaFirestoreId` — limpiar referencia si se elimina la empresa
+
+### Criterio propuesto
+
+- **30 días sin actividad** desde la creación → archivar/eliminar
+- Implementar como **cron job** o script manual ejecutable desde el admin
+- Ejecutar la limpieza en orden: Sheets/Drive → Firestore (movimientos, presupuestos, proyectos, profile, empresa) → MongoDB
+- Prioridad: post-test, cuando se valide que la Variante B funciona
+
+---
+
+## 16. Conclusión
 
 Sorby no necesita rediseñar toda su adquisición ni su demo comercial.
 Necesita mover el momento mágico al principio.
