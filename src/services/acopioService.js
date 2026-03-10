@@ -145,6 +145,16 @@ cambiarEstadoAcopio: async (acopioId, activo) => {
       formData.append('numero_remito', remitoData.numero_remito);
       formData.append('archivo', remitoData.archivo); // archivo es obligatorio ahora
       formData.append('materiales', JSON.stringify(materiales));
+      // Fase 2 — destino post-desacopio (opcional)
+      if (remitoData.destino) {
+        formData.append('destino', remitoData.destino);
+        if (remitoData.destino_proyecto_id) {
+          formData.append('destino_proyecto_id', remitoData.destino_proyecto_id);
+        }
+        if (remitoData.destino_proyecto_nombre) {
+          formData.append('destino_proyecto_nombre', remitoData.destino_proyecto_nombre);
+        }
+      }
   
       const response = await api.post(
         `/acopio/${acopioId}/remito/crear-con-movimientos`,

@@ -1,4 +1,5 @@
 import {
+  Autocomplete,
   Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle,
   Divider, FormControl, IconButton, InputLabel, MenuItem, Paper, Select, Stack,
   Table, TableBody, TableCell, TableHead, TableRow, TextField, Tooltip, Typography,
@@ -10,6 +11,13 @@ import ImageIcon from '@mui/icons-material/Image';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import MaterialAutocomplete from 'src/components/MaterialAutocomplete';
 import { TIPO_OPCIONES, SUBTIPO_POR_TIPO, SUBTIPO_LABELS, getEstadoChip } from './constants';
+
+/** Opciones de destino por línea */
+const DESTINO_OPCIONES = [
+  { value: 'deposito', label: '🏭 Depósito' },
+  { value: 'obra', label: '🏗️ Obra' },
+  { value: 'pendiente_asignar', label: '⏳ Pendiente de asignar' },
+];
 
 /**
  * Dialog para crear o editar una solicitud (ticket) con sus movimientos.
@@ -51,7 +59,17 @@ export default function SolicitudFormDialog({
   transProyectoIngreso,
   setTransProyectoIngreso,
   user,
+  stockConfig = {},
 }) {
+  const distribucionPorLinea = stockConfig.distribucion_por_linea || false;
+  const acopioHabilitado = stockConfig.acopio_habilitado || false;
+
+  // Opciones visibles según config
+  const destinoOpciones = [
+    ...DESTINO_OPCIONES,
+    ...(acopioHabilitado ? [{ value: 'acopio', label: '📦 Acopio' }] : []),
+  ];
+
   const agregarLineaVacia = () => {
     const newMov = {
       nombre_item: '',
@@ -283,6 +301,10 @@ export default function SolicitudFormDialog({
                   {(modalMode === 'ingreso' || form.tipo === 'INGRESO') && editMode && (
                     <TableCell align="center">ESTADO</TableCell>
                   )}
+                  {/* Fase 3 — Destino por línea (solo si distribucion_por_linea está activo) */}
+                  {distribucionPorLinea && !editMode && (
+                    <TableCell>DESTINO</TableCell>
+                  )}
                   <TableCell>OBSERVACIÓN</TableCell>
                   <TableCell align="right">ACCIONES</TableCell>
                 </TableRow>
@@ -345,6 +367,47 @@ export default function SolicitudFormDialog({
                       </TableCell>
                     )}
 
+                    {/* Fase 3 — Selector de destino por línea */}
+                    {distribucionPorLinea && !editMode && (
+                      <TableCell width={220}>
+                        <Stack spacing={1}>
+                          <Select
+                            value={m.destino || 'deposito'}
+                            onChange={(e) => {
+                              patchMov(idx, 'destino', e.target.value);
+                              if (e.target.value !== 'obra') {
+                                patchMov(idx, 'destino_proyecto_id', null);
+                                patchMov(idx, 'destino_proyecto_nombre', null);
+                              }
+                            }}
+                            size="small"
+                            fullWidth
+                          >
+                            {destinoOpciones.map((opt) => (
+                              <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>
+                            ))}
+                          </Select>
+                          {m.destino === 'obra' && (
+                            <Autocomplete
+                              options={proyectos}
+                              getOptionLabel={(p) => p.nombre || ''}
+                              value={proyectos.find((p) => p.id === m.destino_proyecto_id) || null}
+                              onChange={(_, newVal) => {
+                                patchMov(idx, 'destino_proyecto_id', newVal?.id || null);
+                                patchMov(idx, 'destino_proyecto_nombre', newVal?.nombre || null);
+                              }}
+                              renderInput={(params) => (
+                                <TextField {...params} label="Obra" size="small" placeholder="Buscar..." />
+                              )}
+                              size="small"
+                              isOptionEqualToValue={(opt, val) => opt.id === val?.id}
+                              noOptionsText="Sin proyectos"
+                            />
+                          )}
+                        </Stack>
+                      </TableCell>
+                    )}
+
                     <TableCell width={200}>
                       <TextField
                         value={m.observacion || ''}
@@ -367,7 +430,7 @@ export default function SolicitudFormDialog({
                 ))}
                 {movs.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={5}>
+                    <TableCell colSpan={distribucionPorLinea ? 6 : 5}>
                       <em>Sin movimientos. Agregá al menos uno (opcional).</em>
                     </TableCell>
                   </TableRow>

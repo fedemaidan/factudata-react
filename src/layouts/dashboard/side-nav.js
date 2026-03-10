@@ -47,6 +47,7 @@ import AccountTreeIcon from "@mui/icons-material/AccountTree";
 import AssessmentIcon from "@mui/icons-material/Assessment";
 import FilterListIcon from "@mui/icons-material/FilterList";
 import WhatsAppIcon from "@mui/icons-material/WhatsApp";
+import ConstructionIcon from "@mui/icons-material/Construction";
 
 export const SideNav = (props) => {
   const { open, onClose, collapsed = false, onToggleCollapsed, width = 280 } = props;
@@ -417,17 +418,15 @@ export const SideNav = (props) => {
         });
       }
 
-      if (permisosUsuario.includes("GESTIONAR_MATERIALES")) {
-        baseItems.push({
-          title: "Movimientos de material",
-          path: "movimientosMateriales/?empresaId=" + emp.id,
-          icon: (
-            <SvgIcon fontSize="small">
-              <SettingsIcon />
-            </SvgIcon>
-          ),
-        });
-      }
+      // LEGACY V1 — "Movimientos de material" ocultado en Fase 0 de Stock V2.
+      // La página sigue existiendo para acceso directo por URL si es necesario.
+      // if (permisosUsuario.includes("GESTIONAR_MATERIALES")) {
+      //   baseItems.push({
+      //     title: "Movimientos de material",
+      //     path: "movimientosMateriales/?empresaId=" + emp.id,
+      //     icon: ( <SvgIcon fontSize="small"><SettingsIcon /></SvgIcon> ),
+      //   });
+      // }
 
       if (permisosUsuario.includes("VER_STOCK_MATERIALES")) {
         baseItems.push({
@@ -460,6 +459,19 @@ export const SideNav = (props) => {
           icon: (
             <SvgIcon fontSize="small">
               <CompareArrowsIcon />
+            </SvgIcon>
+          ),
+        });
+      }
+
+      // Fase 1 — Vista unificada de materiales por obra
+      if (permisosUsuario.includes("VER_STOCK_MATERIALES") || permisosUsuario.includes("VER_STOCK_SOLICITUDES")) {
+        baseItems.push({
+          title: "Materiales por obra",
+          path: "/stockVistaObra?empresaId=" + emp.id,
+          icon: (
+            <SvgIcon fontSize="small">
+              <ConstructionIcon />
             </SvgIcon>
           ),
         });

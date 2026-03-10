@@ -2,11 +2,11 @@
 import Head from 'next/head';
 import {
   Box, Container, Typography, Button, CircularProgress, Snackbar, Alert,
-  Grid, Paper, Stack, Chip, Divider, TextField, MenuItem, Select,
-  FormControl, InputLabel, Tooltip, Menu, ListItemIcon, ListItemText
+  Grid, Paper, Stack, Chip, Divider, TextField, MenuItem,
+  Tooltip, Menu, ListItemIcon, ListItemText
 } from '@mui/material';
 import { useRouter } from 'next/router';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useFormik } from 'formik';
 import * as Yup from 'yup';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
@@ -29,8 +29,7 @@ import IconButton from '@mui/material/IconButton';
 import CloseIcon from '@mui/icons-material/Close';
 import { Tabs, Tab } from '@mui/material';
 import DocumentScannerIcon from '@mui/icons-material/DocumentScanner';
-import AssignToPlanDialog from 'src/components/planobra/AssignToPlanDialog';
-import MovimientoMaterialService from 'src/services/movimientoMaterialService';
+import MaterialesFacturaActions from 'src/components/stock/MaterialesFacturaActions';
 import { getProyectosByEmpresa } from 'src/services/proyectosService';
 import ProrrateoDialog from 'src/components/ProrrateoDialog';
 import TransferenciaInternaDialog from 'src/components/TransferenciaInternaDialog';
@@ -197,22 +196,11 @@ const MovementFormPage = () => {
   const [obrasOptions, setObrasOptions] = useState([]);
   const [clientesOptions, setClientesOptions] = useState([]);
 
-  // MM (movimientos de materiales) visibles en la sección inferior
-  const [mmRows, setMmRows] = useState([]);
-  const [assignOpen, setAssignOpen] = useState(false);
-  const [assignRow, setAssignRow] = useState(null);
-  const [assignPresetCantidad, setAssignPresetCantidad] = useState(null);
   const [proyectos, setProyectos] = useState([]);
-  // Alta rápida MM
-  const [mmQuick, setMmQuick] = useState({ descripcion: '', cantidad: '', tipo: 'entrada' });
   
   // Prorrateo
   const [prorrateoOpen, setProrrateoOpen] = useState(false);
 
-  // Flags y utilidades para sincronizar Materiales <-> MM
-  const SYNC_DEBOUNCE_MS = 500;
-  const syncTimer = useRef(null);
-  const syncingRef = useRef(false);
 
   const savePayload = async (payload) => {
     try {
@@ -327,7 +315,6 @@ const MovementFormPage = () => {
           factura_cliente: typeof data.factura_cliente === 'boolean' ? data.factura_cliente : false,
           dolar_referencia_manual: data.dolar_referencia_manual ?? false
         });
-        await fetchMmList();
       }
       
       // Éxito: resetear contador de reintentos
@@ -544,23 +531,6 @@ const createdAtStr = (() => {
     }
   });
 
-  // --- Carga inicial
-  const fetchMmList = async (retries = 2) => {
-    if (!movimientoId) return;
-    try {
-      const mmList = await MovimientoMaterialService.listarPorCompra(movimientoId, { limit: 500 });
-      setMmRows(mmList.items || []);
-    } catch (error) {
-      console.warn('Error cargando movimientos de materiales:', error);
-      if (retries > 0) {
-        console.log(`Reintentando cargar MM... quedan ${retries} intentos`);
-        setTimeout(() => fetchMmList(retries - 1), 1000);
-      } else {
-        console.error('Falló cargar movimientos de materiales después de todos los reintentos');
-        setMmRows([]);
-      }
-    }
-  };
 
   useEffect(() => {
     loadInitialData(1);
@@ -582,189 +552,6 @@ const createdAtStr = (() => {
   }, [formik.values.categoria, categorias]);
 
   const titulo = isEditMode ? `Editar Movimiento (${movimiento?.codigo_operacion || '-'})` : 'Agregar Movimiento';
-
-  // === 1) Sincronizar “Materiales” (del formulario) con MM (tabla de abajo)
-  //     - Sólo para tipo 'entrada' y atados a este movimiento_compra_id
-  //     - Crear/actualizar/borrar MM según cambios en Materiales
-  const reconcileMmFromMateriales = async () => {
-    if (!isEditMode || !empresa?.id) return;
-    if (syncingRef.current) return;
-    syncingRef.current = true;
-
-    try {
-      const materiales = Array.isArray(formik.values.materiales) ? formik.values.materiales : [];
-
-      // Index por descripcion normalizada
-      const norm = (s) => (s || '').trim().toLowerCase();
-      const wanted = new Map(); // key -> {descripcion, cantidad}
-      materiales.forEach(m => {
-        const key = norm(m.descripcion);
-        if (!key) return;
-        const cantidad = Number(m.cantidad) || 0;
-        if (cantidad <= 0) return;
-        wanted.set(key, { descripcion: m.descripcion, cantidad });
-      });
-
-      // MM actuales (solo entradas)
-      const current = (mmRows || []).filter(x => x.tipo === 'entrada');
-
-      // Crear/Actualizar
-      for (const [key, target] of wanted.entries()) {
-        const found = current.find(x => norm(x.descripcion) === key);
-        if (!found) {
-          // crear
-          await MovimientoMaterialService.crear({
-            empresa_id: empresa.id,
-            proyecto_id: proyectoId || '',
-            descripcion: target.descripcion,
-            cantidad: target.cantidad,
-            tipo: 'entrada',
-            movimiento_compra_id: movimientoId
-          });
-        } else {
-          // actualizar cantidad si cambió
-          const qtyNow = Number(found.cantidad) || 0;
-          if (Math.abs(qtyNow - Number(target.cantidad)) > 1e-9) {
-            await MovimientoMaterialService.actualizar(found.id, { cantidad: Number(target.cantidad) });
-          }
-        }
-      }
-
-      // Borrar MM que ya no están en “Materiales”
-      for (const mm of current) {
-        const key = norm(mm.descripcion);
-        if (!wanted.has(key)) {
-          await MovimientoMaterialService.eliminar(mm.id);
-        }
-      }
-
-      // refrescar lista
-      await fetchMmList();
-    } catch (e) {
-      setAlert({ open: true, message: e?.message || 'No se pudo sincronizar materiales', severity: 'error' });
-    } finally {
-      syncingRef.current = false;
-    }
-  };
-
-  // --- SYNC: materiales <-> movimientos de materiales (sin duplicar) ---
-function syncMaterialesWithMovs(currentMateriales = [], mmRows = [], { proyecto_id } = {}) {
-  // Mapear por clave estable (mm_id) y, como fallback, por descripcion normalizada
-  const norm = (s) => (s || '').trim().toLowerCase();
-  const byId = new Map();
-  const byDesc = new Map();
-
-  (currentMateriales || []).forEach((m, idx) => {
-    if (m.mm_id) byId.set(String(m.mm_id), { m, idx });
-    else byDesc.set(norm(m.descripcion), { m, idx }); // sólo si no tiene mm_id
-  });
-
-  const next = [...(currentMateriales || [])];
-
-  mmRows.forEach((mm) => {
-    const key = String(mm.id);
-    const desc = norm(mm.descripcion);
-    const matchById = byId.get(key);
-    const matchByDesc = byDesc.get(desc);
-
-    if (matchById) {
-      // Ya existe: actualizo descripción (por si cambió) y NO duplico
-      const i = matchById.idx;
-      next[i] = {
-        ...next[i],
-        descripcion: mm.descripcion ?? next[i].descripcion,
-        // NO piso cantidad si el usuario ya la ajustó; si querés forzar, descomentá:
-        // cantidad: next[i].cantidad ?? Number(mm.cantidad) || 0,
-        proyecto_id: next[i].proyecto_id ?? proyecto_id
-      };
-    } else if (matchByDesc) {
-      // Existía sólo por descripción ⇒ enlazo al movimiento (seteo mm_id)
-      const i = matchByDesc.idx;
-      next[i] = {
-        ...next[i],
-        mm_id: key,
-        descripcion: mm.descripcion ?? next[i].descripcion,
-        proyecto_id: next[i].proyecto_id ?? proyecto_id
-      };
-      // Además lo registro por id para no re-enlazar:
-      byId.set(key, { m: next[i], idx: i });
-    } else {
-      // No existía ⇒ lo agrego 1 vez
-      next.push({
-        mm_id: key,
-        descripcion: mm.descripcion || '',
-        cantidad: Number(mm.cantidad) || 0,
-        valorUnitario: 0,
-        validado: true,
-        proyecto_id
-      });
-    }
-     const mmIds = new Set(mmRows.map(r => String(r.id)));
-  const filtered = next.filter(m => !m.mm_id || mmIds.has(String(m.mm_id)));
-  return filtered;
-  });
-
-  // (Opcional) remover materiales huérfanos que tenían mm_id pero ya no están en la lista:
-  // const mmIds = new Set(mmRows.map(r => String(r.id)));
-  // const filtered = next.filter(m => !m.mm_id || mmIds.has(String(m.mm_id)));
-  // return filtered;
-
-  return next;
-}
-
-  // Disparar reconcile con debounce cuando cambian los “Materiales”
-  useEffect(() => {
-    if (!isEditMode) return;
-    if (!Array.isArray(mmRows) || mmRows.length === 0) return;
-  
-    // Evita loops: sólo sincroniza si realmente hay algo distinto
-    const current = formik.values.materiales || [];
-    const next = syncMaterialesWithMovs(current, mmRows, { proyecto_id: proyectoId });
-  
-    // Chequeo barato para no hacer set si no cambió
-    const sameLen = next.length === current.length;
-    const sameJson = sameLen && JSON.stringify(next) === JSON.stringify(current);
-    if (!sameJson) {
-      formik.setFieldValue('materiales', next, false);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [JSON.stringify(mmRows.map(r => r.id))]); 
-  
-  // Alta rápida de un MM manual (igual seguirá sincronizado si coinciden descripciones)
-  const crearMmRapido = async () => {
-    if (!empresa?.id || !movimientoId) return;
-    if (!mmQuick.descripcion || !mmQuick.cantidad) {
-      setAlert({ open: true, message: 'Completá descripción y cantidad', severity: 'warning' });
-      return;
-    }
-    try {
-      await MovimientoMaterialService.crear({
-        empresa_id: empresa.id,
-        proyecto_id: proyectoId || '',
-        descripcion: mmQuick.descripcion,
-        cantidad: Number(mmQuick.cantidad),
-        tipo: mmQuick.tipo || 'entrada',
-        movimiento_compra_id: movimientoId
-      });
-      setMmQuick({ descripcion: '', cantidad: '', tipo: 'entrada' });
-      await fetchMmList();
-      setAlert({ open: true, message: 'Movimiento de material creado', severity: 'success' });
-    } catch (e) {
-      setAlert({ open: true, message: e?.message || 'No se pudo crear el movimiento de material', severity: 'error' });
-    }
-  };
-
-  // Abrir diálogo de asignación con presets:
-  //   - proyecto → proyectoId de la compra
-  //   - etapa → formik.values.etapa (texto) (el diálogo intentará matchear por nombre)
-  //   - movimiento fijo → este mm (forceMovimientoId)
-  const abrirAsignacion = (mm, presetCantidad = null) => {
-    setAssignRow(mm);
-    setAssignPresetCantidad(presetCantidad);
-    setAssignOpen(true);
-  };
-
-  const pendienteDe = (mm) => Math.max(0, (Number(mm.cantidad) || 0) - (Number(mm.asignado_qty) || 0));
 
   const handleOpenTransferencia = () => {
     setOpenTransferencia(true);
@@ -1060,7 +847,7 @@ function syncMaterialesWithMovs(currentMateriales = [], mmRows = [], { proyecto_
                   <Tab label="Info general" />
                   <Tab label="Importes e impuestos" />
                   <Tab label="Imagen de la factura" />
-                  {formik.values.categoria === 'Materiales' && <Tab label="Materiales" />}
+                  {formik.values.categoria === 'Materiales' && empresa?.stock_config && <Tab label="Materiales" />}
                 </Tabs>
 
                 {tab === 0 && (
@@ -1160,7 +947,7 @@ function syncMaterialesWithMovs(currentMateriales = [], mmRows = [], { proyecto_
                   </Box>
                 )}
 
-                {formik.values.categoria === 'Materiales' && tab === 3 && (
+                {formik.values.categoria === 'Materiales' && empresa?.stock_config && tab === 3 && (
                   <Box sx={{ p: 2 }}>
                     <Typography variant="subtitle2" sx={{ mb: 1 }}>Materiales</Typography>
                     <Divider sx={{ mb: 2 }} />
@@ -1169,141 +956,35 @@ function syncMaterialesWithMovs(currentMateriales = [], mmRows = [], { proyecto_
                       proyecto_id={proyectoId}
                       onChange={(next) => formik.setFieldValue('materiales', next)}
                     />
+
+                    {/* Acciones de destino para materiales (solo en modo edición con movimiento guardado) */}
+                    {isEditMode && movimientoId && (
+                      <MaterialesFacturaActions
+                        materiales={formik.values.materiales || []}
+                        empresaId={empresa?.id}
+                        empresaNombre={empresa?.nombre}
+                        movimientoId={movimientoId}
+                        movimiento={movimiento}
+                        stockConfig={empresa?.stock_config || {}}
+                        proyectos={proyectos}
+                        proveedores={proveedores}
+                        nombreProveedor={formik.values.nombre_proveedor || ''}
+                        onComplete={(result) => {
+                          if (result.solicitud_stock_id) {
+                            setMovimiento(prev => ({ ...prev, solicitud_stock_id: result.solicitud_stock_id }));
+                          } else if (result.acopio_id) {
+                            setMovimiento(prev => ({ ...prev, acopio_id: result.acopio_id }));
+                          }
+                          setAlert({ open: true, message: 'Materiales procesados correctamente', severity: 'success' });
+                        }}
+                        onError={(msg) => setAlert({ open: true, message: msg, severity: 'error' })}
+                      />
+                    )}
                   </Box>
                 )}
               </Paper>
 
-              {/* ===== Movimientos de materiales + Asignación ===== */}
-              <Paper sx={{ p: 2, mt: 2 }}>
-                <Stack direction="row" alignItems="center" justifyContent="space-between">
-                  <Typography variant="h6">
-                    Movimientos de materiales (de esta compra)
-                  </Typography>
-                  {isEditMode && (
-                    <Button 
-                      size="small" 
-                      variant="outlined" 
-                      onClick={() => fetchMmList(2)}
-                      startIcon={<CircularProgress size={14} sx={{ display: 'none' }} />}
-                    >
-                      Refrescar
-                    </Button>
-                  )}
-                </Stack>
 
-                {!isEditMode ? (
-                  <Alert severity="info" sx={{ mt: 2 }}>
-                    Guardá el movimiento para habilitar la creación y asignación de <b>movimientos de materiales</b>.
-                  </Alert>
-                ) : (
-                  <>
-                    {/* Alta rápida */}
-                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mt: 2 }} alignItems="center">
-                      <TextField
-                        label="Descripción"
-                        value={mmQuick.descripcion}
-                        onChange={(e) => setMmQuick(q => ({ ...q, descripcion: e.target.value }))}
-                        fullWidth
-                      />
-                      <TextField
-                        label="Cantidad"
-                        type="number"
-                        value={mmQuick.cantidad}
-                        onChange={(e) => setMmQuick(q => ({ ...q, cantidad: e.target.value }))}
-                        sx={{ minWidth: 160 }}
-                      />
-                      <FormControl sx={{ minWidth: 160 }}>
-                        <InputLabel>Tipo</InputLabel>
-                        <Select
-                          label="Tipo"
-                          value={mmQuick.tipo}
-                          onChange={(e) => setMmQuick(q => ({ ...q, tipo: e.target.value }))}
-                        >
-                          <MenuItem value="entrada">Entrada</MenuItem>
-                          <MenuItem value="salida">Salida</MenuItem>
-                        </Select>
-                      </FormControl>
-                      <Button variant="contained" onClick={crearMmRapido}>Agregar</Button>
-                    </Stack>
-
-                    {mmRows.length === 0 ? (
-                      <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
-                        No se registraron movimientos de materiales para este comprobante.
-                      </Typography>
-                    ) : (
-                      <Stack spacing={1} sx={{ mt: 2 }}>
-                        {mmRows.map((mm) => {
-                          const pend = pendienteDe(mm);
-                          const estado = mm.tipo === 'salida'
-                            ? '—'
-                            : (mm.asignado_estado || (mm.asignado_qty > 0 ? 'parcial' : 'ninguno'));
-                          const estadoChip =
-                            mm.tipo === 'salida'
-                              ? { label: '—', color: 'default' }
-                              : estado === 'completo'
-                              ? { label: 'Completo', color: 'success' }
-                              : estado === 'parcial'
-                              ? { label: 'Parcial', color: 'warning' }
-                              : { label: 'No asignado', color: 'default' };
-
-                          return (
-                            <Paper key={mm.id} sx={{ p: 1.25 }}>
-                              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems="center">
-                                <Typography sx={{ flex: 1 }}>
-                                  <b>{mm.descripcion}</b> — {mm.tipo} — Cant: {mm.cantidad}
-                                </Typography>
-
-                                {mm.tipo === 'entrada' && (
-                                  <Stack direction="row" spacing={1} alignItems="center">
-                                    <Chip size="small" label={estadoChip.label} color={estadoChip.color} />
-                                    <Typography variant="body2">
-                                      {(Number(mm.asignado_qty) || 0)} / {(Number(mm.cantidad) || 0)}
-                                    </Typography>
-                                  </Stack>
-                                )}
-
-                                <Stack direction="row" spacing={1}>
-                                  <Button size="small" variant="outlined" onClick={() => abrirAsignacion(mm, null)}>
-                                    Asignar
-                                  </Button>
-                                  {mm.tipo === 'entrada' && pend > 0 && (
-                                    <Tooltip title={`Asignar todo: ${pend}`}>
-                                      <span>
-                                        <Button size="small" variant="contained" onClick={() => abrirAsignacion(mm, pend)}>
-                                          Asignar todo
-                                        </Button>
-                                      </span>
-                                    </Tooltip>
-                                  )}
-                                </Stack>
-                              </Stack>
-                            </Paper>
-                          );
-                        })}
-                      </Stack>
-                    )}
-                  </>
-                )}
-              </Paper>
-
-              {/* Diálogo de Asignación con presets/forzado */}
-              <AssignToPlanDialog
-  open={assignOpen}
-  onClose={async (result) => {
-    setAssignOpen(false);
-    setAssignRow(null);
-    if (result?.ok) {
-      setAlert({ open: true, message: 'Asignación creada', severity: 'success' });
-      await fetchMmList();
-    } else if (result && result.error) {
-      setAlert({ open: true, message: result.error, severity: 'error' });
-    }
-  }}
-  movimiento={assignRow}
-  empresaId={empresa?.id}
-  proyectos={proyectos}
-  presetProyectoId={assignRow?.proyecto_id}
-/>
 
             </Grid>
 

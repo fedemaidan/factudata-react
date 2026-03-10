@@ -28,12 +28,14 @@ import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import TuneIcon from '@mui/icons-material/Tune';
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 import PendingActionsIcon from '@mui/icons-material/PendingActions';
+import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import { useAuthContext } from 'src/contexts/auth-context';
 import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
 import StockSolicitudesService from 'src/services/stock/stockSolicitudesService';
 import StockMovimientosService from 'src/services/stock/stockMovimientosService';
+import StockConfigService from 'src/services/stock/stockConfigService';
 import api from 'src/services/axiosConfig';
 import { getProyectosFromUser } from 'src/services/proyectosService';
 
@@ -99,6 +101,9 @@ export default function StockSolicitudes() {
   const [openAjusteModal, setOpenAjusteModal] = useState(false);
   const [ajusteLoading, setAjusteLoading] = useState(false);
 
+  // ===== stock config de la empresa (Fase T / Fase 3)
+  const [stockConfig, setStockConfig] = useState({});
+
   // ===== menús desplegables
   const [anchorElNuevo, setAnchorElNuevo] = useState(null);
   const [anchorElIA, setAnchorElIA] = useState(null);
@@ -139,6 +144,8 @@ export default function StockSolicitudes() {
     (async () => {
       try {
         const empresa = await getEmpresaDetailsFromUser(user);
+        // Leer stock_config de la empresa (Fase T / Fase 3)
+        setStockConfig(empresa?.stock_config || {});
         try {
           const lista = await StockSolicitudesService.listarUsuarios({ empresa_id: empresa.id });
           setUsuarios(
@@ -843,6 +850,23 @@ export default function StockSolicitudes() {
                               </IconButton>
                             </Tooltip>
                           )}
+                          {s.estado === 'PENDIENTE_CONFIRMACION' && (
+                            <Tooltip title="Confirmar recepción (validación de movimientos)">
+                              <IconButton size="small" color="warning" onClick={async (ev) => {
+                                ev.stopPropagation();
+                                try {
+                                  await StockConfigService.confirmarSolicitud(s._id);
+                                  setSnackbar({ open: true, message: 'Solicitud confirmada correctamente', severity: 'success' });
+                                  // Recargar datos
+                                  setPage(0);
+                                } catch (err) {
+                                  setSnackbar({ open: true, message: err?.response?.data?.error?.message || 'Error al confirmar', severity: 'error' });
+                                }
+                              }}>
+                                <CheckCircleOutlineIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                          )}
                           <Tooltip title="Editar">
                             <IconButton onClick={() => openEdit(e)} size="small"><EditIcon /></IconButton>
                           </Tooltip>
@@ -924,6 +948,7 @@ export default function StockSolicitudes() {
         transProyectoIngreso={transProyectoIngreso}
         setTransProyectoIngreso={setTransProyectoIngreso}
         user={user}
+        stockConfig={stockConfig}
       />
 
       <EntregaParcialDialog
