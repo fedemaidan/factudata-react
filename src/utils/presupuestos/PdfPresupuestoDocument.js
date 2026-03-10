@@ -18,7 +18,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   headerFecha: {
-    fontSize: 6,
+    fontSize: 8,
     color: '#fff',
   },
   headerLogo: {
@@ -34,7 +34,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   headerObra: {
-    fontSize: 6,
+    fontSize: 8,
     color: '#fff',
   },
   metaRow: {
@@ -400,12 +400,6 @@ export const PresupuestoPdfDocument = ({ presupuesto, empresa, costoM2Data = {},
               {empresa?.nombre || presupuesto?.empresa_nombre || 'Empresa'}
             </Text>
           )}
-        </View>
-        <View style={styles.metaRow}>
-          <Text style={styles.metaLabel}>Proyecto</Text>
-          <Text>{presupuesto?.proyecto_nombre || '—'}</Text>
-          <Text style={[styles.metaLabel, { marginLeft: 12 }]}>Moneda</Text>
-          <Text>{currency}</Text>
         </View>
         <View style={{ marginTop: 6 }}>
           <View style={styles.tableHeader}>

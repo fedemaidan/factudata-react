@@ -78,6 +78,7 @@ import {
 } from 'src/constant/sdrConstants';
 import MiniChatViewer from 'src/components/sdr/MiniChatViewer';
 import useGrabadorAudio from 'src/hooks/useGrabadorAudio';
+import SendTemplateDialog from 'src/components/conversaciones/SendTemplateDialog';
 import config from 'src/config/config';
 
 // Helper: convierte URL relativa de audio (/api/sdr/audios/...) a URL absoluta del backend
@@ -156,6 +157,7 @@ const getEventoIcon = (tipo) => {
 };
 
 const botonesProximoContacto = [
+    { label: '⚡ Ahora', cantidad: 0, unidad: 'ahora' },
     { label: 'Hoy tarde', cantidad: 0, unidad: 'tarde' },
     { label: 'Mañana AM', cantidad: 1, unidad: 'manana' },
     { label: 'Mañana PM', cantidad: 1, unidad: 'tarde_dia' },
@@ -215,7 +217,10 @@ const formatearEtiquetaGrupo = (fecha) => {
 
 const calcularFecha = (cantidad, unidad) => {
     const ahora = new Date();
-    if (unidad === 'hours') {
+    if (unidad === 'ahora') {
+        ahora.setMinutes(ahora.getMinutes() + 1);
+        return ahora;
+    } else if (unidad === 'hours') {
         ahora.setHours(ahora.getHours() + cantidad);
     } else if (unidad === 'days') {
         ahora.setDate(ahora.getDate() + cantidad);
@@ -290,6 +295,10 @@ const ContactoSDRDetailPage = () => {
     // Modal selector de templates WhatsApp (Fase 2)
     const [modalTemplateWA, setModalTemplateWA] = useState(false);
     const [templatesWA, setTemplatesWA] = useState([]); // Cache de templates cargados
+
+    // Modal envío de template Meta (aprobado) via bot
+    const [modalMetaTemplate, setModalMetaTemplate] = useState(false);
+    const tienePermisoEnviarBot = user?.admin || (user?.empresa?.acciones || []).includes('ENVIAR_MENSAJE_BOT');
 
     // Tab mobile para chat/historial
     const [tabMobile, setTabMobile] = useState(0);
@@ -1883,126 +1892,18 @@ const ContactoSDRDetailPage = () => {
                                     };
 
                                     return (
-                                        <Paper
+                                        <ReunionCard
                                             key={reunion._id}
-                                            variant="outlined"
-                                            sx={{
-                                                p: 1.5,
-                                                borderLeft: `4px solid ${borderColorMap[reunion.estado] || '#e0e0e0'}`,
-                                                bgcolor: reunion.estado === 'realizada' ? 'rgba(76,175,80,0.04)'
-                                                    : reunion.estado === 'no_show' ? 'rgba(244,67,54,0.04)'
-                                                    : reunion.estado === 'cancelada' ? 'rgba(158,158,158,0.04)'
-                                                    : 'transparent'
+                                            reunion={reunion}
+                                            estadoConf={estadoConf}
+                                            fechaReunion={fechaReunion}
+                                            calChip={calChip}
+                                            borderColorMap={borderColorMap}
+                                            onCopy={(text, label) => {
+                                                navigator.clipboard.writeText(text);
+                                                setSnackbar({ open: true, message: `${label} copiado al portapapeles`, severity: 'success' });
                                             }}
-                                        >
-                                            {/* Fila principal: fecha + estado + calificación */}
-                                            <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
-                                                <Chip
-                                                    icon={<EventIcon />}
-                                                    label={fechaReunion ? new Date(fechaReunion).toLocaleDateString('es-AR', { weekday: 'short', day: 'numeric', month: 'short' }) : 'Sin fecha'}
-                                                    size="small"
-                                                    variant="outlined"
-                                                />
-                                                {reunion.hora && (
-                                                    <Typography variant="caption" color="text.secondary">
-                                                        {reunion.hora}
-                                                    </Typography>
-                                                )}
-                                                <Chip
-                                                    label={`${estadoConf.icon || ''} ${estadoConf.label || reunion.estado}`}
-                                                    size="small"
-                                                    color={estadoConf.color || 'default'}
-                                                    sx={{ fontWeight: 600 }}
-                                                />
-                                                {calChip && (
-                                                    <Chip
-                                                        label={calChip.label}
-                                                        size="small"
-                                                        color={calChip.color}
-                                                        variant="outlined"
-                                                    />
-                                                )}
-                                                {reunion.numero && (
-                                                    <Typography variant="caption" color="text.secondary" fontWeight={600}>
-                                                        Meet #{reunion.numero}
-                                                    </Typography>
-                                                )}
-                                            </Stack>
-
-                                            {/* Comentario del SDR */}
-                                            {reunion.comentario && (
-                                                <Typography variant="body2" sx={{ mt: 1, pl: 1, borderLeft: '2px solid #e0e0e0', color: 'text.secondary', fontStyle: 'italic' }}>
-                                                    💬 {reunion.comentario}
-                                                </Typography>
-                                            )}
-
-                                            {/* Motivo de rechazo / cancelación */}
-                                            {reunion.estado === 'cancelada' && reunion.motivoRechazo && (
-                                                <Typography variant="body2" sx={{ mt: 1, pl: 1, borderLeft: '2px solid #f44336', color: 'error.main' }}>
-                                                    🚫 {reunion.motivoRechazo}
-                                                </Typography>
-                                            )}
-
-                                            {/* No show - mensaje destacado */}
-                                            {reunion.estado === 'no_show' && (
-                                                <Typography variant="body2" sx={{ mt: 1, color: 'error.main', fontWeight: 500 }}>
-                                                    ❌ El contacto no se presentó a la reunión
-                                                    {reunion.notasEvaluador ? ` — ${reunion.notasEvaluador}` : ''}
-                                                </Typography>
-                                            )}
-
-                                            {/* Resumen IA */}
-                                            {reunion.resumenIA && (
-                                                <Paper variant="outlined" sx={{ mt: 1, p: 1, bgcolor: 'grey.50', maxHeight: 120, overflow: 'auto' }}>
-                                                    <Typography variant="caption" color="text.secondary" fontWeight={600}>
-                                                        🤖 Resumen IA
-                                                    </Typography>
-                                                    <Typography variant="body2" sx={{ mt: 0.5, whiteSpace: 'pre-line', fontSize: '0.8rem' }}>
-                                                        {reunion.resumenIA.substring(0, 500)}{reunion.resumenIA.length > 500 ? '...' : ''}
-                                                    </Typography>
-                                                </Paper>
-                                            )}
-
-                                            {/* Next steps */}
-                                            {reunion.nextSteps && (
-                                                <Typography variant="body2" sx={{ mt: 1, fontSize: '0.8rem' }}>
-                                                    📋 <strong>Próximos pasos:</strong> {reunion.nextSteps}
-                                                </Typography>
-                                            )}
-
-                                            {/* Módulos de interés */}
-                                            {reunion.modulosInteres?.length > 0 && (
-                                                <Stack direction="row" spacing={0.5} sx={{ mt: 1, flexWrap: 'wrap', gap: 0.5 }}>
-                                                    <Typography variant="caption" color="text.secondary" sx={{ mr: 0.5 }}>
-                                                        Módulos:
-                                                    </Typography>
-                                                    {reunion.modulosInteres.map(m => (
-                                                        <Chip key={m} label={m} size="small" variant="outlined" sx={{ height: 20, fontSize: '0.7rem' }} />
-                                                    ))}
-                                                </Stack>
-                                            )}
-
-                                            {/* Duración */}
-                                            {reunion.duracionMinutos && (
-                                                <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
-                                                    ⏱️ Duración: {reunion.duracionMinutos} min
-                                                </Typography>
-                                            )}
-
-                                            {/* Link de reunión (solo si agendada) */}
-                                            {reunion.estado === 'agendada' && reunion.link && (
-                                                <Chip
-                                                    label="Abrir link"
-                                                    size="small"
-                                                    icon={<OpenInNewIcon />}
-                                                    onClick={() => window.open(reunion.link, '_blank')}
-                                                    clickable
-                                                    color="primary"
-                                                    variant="outlined"
-                                                    sx={{ mt: 1 }}
-                                                />
-                                            )}
-                                        </Paper>
+                                        />
                                     );
                                 })}
                             </Stack>
@@ -2497,6 +2398,15 @@ const ContactoSDRDetailPage = () => {
                                                     📋
                                                 </Button>
                                             </Tooltip>
+                                            {tienePermisoEnviarBot && (
+                                                <Tooltip title="Enviar template via Bot">
+                                                    <Button variant="outlined" size="small" color="success"
+                                                        onClick={() => setModalMetaTemplate(true)}
+                                                        sx={{ minWidth: 40, px: 1 }}>
+                                                        <SmartToyIcon fontSize="small" />
+                                                    </Button>
+                                                </Tooltip>
+                                            )}
                                         </Stack>
                                     </Box>
                                 )}
@@ -2716,6 +2626,15 @@ const ContactoSDRDetailPage = () => {
                                             📋
                                         </Button>
                                     </Tooltip>
+                                    {tienePermisoEnviarBot && (
+                                        <Tooltip title="Enviar template via Bot">
+                                            <Button variant="outlined" size="small" color="success"
+                                                onClick={() => setModalMetaTemplate(true)}
+                                                sx={{ minWidth: 40, px: 1 }}>
+                                                <SmartToyIcon fontSize="small" />
+                                            </Button>
+                                        </Tooltip>
+                                    )}
                                 </Stack>
                             </Box>
                             )}
@@ -3449,6 +3368,15 @@ const ContactoSDRDetailPage = () => {
                                                     📋
                                                 </Button>
                                             </Tooltip>
+                                            {tienePermisoEnviarBot && (
+                                                <Tooltip title="Enviar template via Bot">
+                                                    <Button variant="outlined" size="small" color="success"
+                                                        onClick={() => setModalMetaTemplate(true)}
+                                                        sx={{ minWidth: 40, px: 1 }}>
+                                                        <SmartToyIcon fontSize="small" />
+                                                    </Button>
+                                                </Tooltip>
+                                            )}
                                         </Stack>
                                     </Box>
                                 )}
@@ -3730,7 +3658,228 @@ const ContactoSDRDetailPage = () => {
                 onTemplateUsed={(template, mensaje) => setMensajeWA(mensaje)}
                 onTemplateSelected={handleTemplateSelected}
             />
+
+            {/* Modal Envío de Template Meta via Bot */}
+            {tienePermisoEnviarBot && (
+                <SendTemplateDialog
+                    open={modalMetaTemplate}
+                    onClose={() => setModalMetaTemplate(false)}
+                    phone={contacto?.telefono?.replace(/\D/g, '') || ''}
+                    contactName={contacto?.nombre || contacto?.empresa || ''}
+                    empresaId={empresaId}
+                    onSent={(result) => {
+                        setSnackbar({ open: true, message: result.message || 'Template enviado via bot', severity: 'success' });
+                    }}
+                />
+            )}
         </DashboardLayout>
+    );
+};
+
+// ==================== COMPONENTE REUNION CARD ====================
+const ReunionCard = ({ reunion, estadoConf, fechaReunion, calChip, borderColorMap, onCopy }) => {
+    const [expandResumen, setExpandResumen] = useState(false);
+    const [expandTranscripcion, setExpandTranscripcion] = useState(false);
+
+    return (
+        <Paper
+            variant="outlined"
+            sx={{
+                p: 1.5,
+                borderLeft: `4px solid ${borderColorMap[reunion.estado] || '#e0e0e0'}`,
+                bgcolor: reunion.estado === 'realizada' ? 'rgba(76,175,80,0.04)'
+                    : reunion.estado === 'no_show' ? 'rgba(244,67,54,0.04)'
+                    : reunion.estado === 'cancelada' ? 'rgba(158,158,158,0.04)'
+                    : 'transparent'
+            }}
+        >
+            {/* Fila principal: fecha + estado + calificación */}
+            <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                <Chip
+                    icon={<EventIcon />}
+                    label={fechaReunion ? new Date(fechaReunion).toLocaleDateString('es-AR', { weekday: 'short', day: 'numeric', month: 'short' }) : 'Sin fecha'}
+                    size="small"
+                    variant="outlined"
+                />
+                {reunion.hora && (
+                    <Typography variant="caption" color="text.secondary">
+                        {reunion.hora}
+                    </Typography>
+                )}
+                <Chip
+                    label={`${estadoConf.icon || ''} ${estadoConf.label || reunion.estado}`}
+                    size="small"
+                    color={estadoConf.color || 'default'}
+                    sx={{ fontWeight: 600 }}
+                />
+                {calChip && (
+                    <Chip
+                        label={calChip.label}
+                        size="small"
+                        color={calChip.color}
+                        variant="outlined"
+                    />
+                )}
+                {reunion.numero && (
+                    <Typography variant="caption" color="text.secondary" fontWeight={600}>
+                        Meet #{reunion.numero}
+                    </Typography>
+                )}
+            </Stack>
+
+            {/* Comentario del SDR */}
+            {reunion.comentario && (
+                <Typography variant="body2" sx={{ mt: 1, pl: 1, borderLeft: '2px solid #e0e0e0', color: 'text.secondary', fontStyle: 'italic' }}>
+                    💬 {reunion.comentario}
+                </Typography>
+            )}
+
+            {/* Motivo de rechazo / cancelación */}
+            {reunion.estado === 'cancelada' && reunion.motivoRechazo && (
+                <Typography variant="body2" sx={{ mt: 1, pl: 1, borderLeft: '2px solid #f44336', color: 'error.main' }}>
+                    🚫 {reunion.motivoRechazo}
+                </Typography>
+            )}
+
+            {/* No show - mensaje destacado */}
+            {reunion.estado === 'no_show' && (
+                <Typography variant="body2" sx={{ mt: 1, color: 'error.main', fontWeight: 500 }}>
+                    ❌ El contacto no se presentó a la reunión
+                    {reunion.notasEvaluador ? ` — ${reunion.notasEvaluador}` : ''}
+                </Typography>
+            )}
+
+            {/* Resumen IA — completo, expandible */}
+            {reunion.resumenIA && (
+                <Paper variant="outlined" sx={{ mt: 1.5, p: 1.5, bgcolor: 'grey.50' }}>
+                    <Stack direction="row" justifyContent="space-between" alignItems="center">
+                        <Typography variant="caption" color="text.secondary" fontWeight={600}>
+                            🤖 Resumen IA
+                        </Typography>
+                        <Stack direction="row" spacing={0.5}>
+                            <Tooltip title="Copiar resumen">
+                                <IconButton size="small" onClick={() => onCopy(reunion.resumenIA, 'Resumen')}>
+                                    <ContentCopyIcon sx={{ fontSize: 16 }} />
+                                </IconButton>
+                            </Tooltip>
+                            {reunion.resumenIA.length > 300 && (
+                                <Chip
+                                    label={expandResumen ? 'Ver menos' : 'Ver todo'}
+                                    size="small"
+                                    variant="outlined"
+                                    onClick={() => setExpandResumen(!expandResumen)}
+                                    sx={{ height: 22, fontSize: '0.7rem' }}
+                                />
+                            )}
+                        </Stack>
+                    </Stack>
+                    <Typography
+                        variant="body2"
+                        sx={{
+                            mt: 0.5,
+                            whiteSpace: 'pre-line',
+                            fontSize: '0.8rem',
+                            ...((!expandResumen && reunion.resumenIA.length > 300) ? {
+                                maxHeight: 200,
+                                overflow: 'hidden',
+                                position: 'relative',
+                                '&::after': {
+                                    content: '""',
+                                    position: 'absolute',
+                                    bottom: 0,
+                                    left: 0,
+                                    right: 0,
+                                    height: 40,
+                                    background: 'linear-gradient(transparent, rgba(250,250,250,1))'
+                                }
+                            } : {})
+                        }}
+                    >
+                        {reunion.resumenIA}
+                    </Typography>
+                </Paper>
+            )}
+
+            {/* Transcripción — expandible con botón copiar */}
+            {reunion.transcripcion && (
+                <Paper variant="outlined" sx={{ mt: 1, p: 1.5, bgcolor: '#fafafa' }}>
+                    <Stack direction="row" justifyContent="space-between" alignItems="center">
+                        <Typography variant="caption" color="text.secondary" fontWeight={600}>
+                            📝 Transcripción
+                        </Typography>
+                        <Stack direction="row" spacing={0.5}>
+                            <Tooltip title="Copiar transcripción">
+                                <IconButton size="small" onClick={() => onCopy(reunion.transcripcion, 'Transcripción')}>
+                                    <ContentCopyIcon sx={{ fontSize: 16 }} />
+                                </IconButton>
+                            </Tooltip>
+                            <Chip
+                                label={expandTranscripcion ? 'Ocultar' : 'Mostrar'}
+                                size="small"
+                                variant="outlined"
+                                onClick={() => setExpandTranscripcion(!expandTranscripcion)}
+                                sx={{ height: 22, fontSize: '0.7rem' }}
+                            />
+                        </Stack>
+                    </Stack>
+                    {expandTranscripcion && (
+                        <Typography
+                            variant="body2"
+                            sx={{ mt: 1, whiteSpace: 'pre-line', fontSize: '0.75rem', color: 'text.secondary', maxHeight: 400, overflow: 'auto' }}
+                        >
+                            {reunion.transcripcion}
+                        </Typography>
+                    )}
+                </Paper>
+            )}
+
+            {/* Next steps */}
+            {reunion.nextSteps && (
+                <Stack direction="row" alignItems="flex-start" spacing={0.5} sx={{ mt: 1 }}>
+                    <Typography variant="body2" sx={{ fontSize: '0.8rem', flex: 1 }}>
+                        📋 <strong>Próximos pasos:</strong> {reunion.nextSteps}
+                    </Typography>
+                    <Tooltip title="Copiar próximos pasos">
+                        <IconButton size="small" onClick={() => onCopy(reunion.nextSteps, 'Próximos pasos')}>
+                            <ContentCopyIcon sx={{ fontSize: 14 }} />
+                        </IconButton>
+                    </Tooltip>
+                </Stack>
+            )}
+
+            {/* Módulos de interés */}
+            {reunion.modulosInteres?.length > 0 && (
+                <Stack direction="row" spacing={0.5} sx={{ mt: 1, flexWrap: 'wrap', gap: 0.5 }}>
+                    <Typography variant="caption" color="text.secondary" sx={{ mr: 0.5 }}>
+                        Módulos:
+                    </Typography>
+                    {reunion.modulosInteres.map(m => (
+                        <Chip key={m} label={m} size="small" variant="outlined" sx={{ height: 20, fontSize: '0.7rem' }} />
+                    ))}
+                </Stack>
+            )}
+
+            {/* Duración */}
+            {reunion.duracionMinutos && (
+                <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                    ⏱️ Duración: {reunion.duracionMinutos} min
+                </Typography>
+            )}
+
+            {/* Link de reunión (solo si agendada) */}
+            {reunion.estado === 'agendada' && reunion.link && (
+                <Chip
+                    label="Abrir link"
+                    size="small"
+                    icon={<OpenInNewIcon />}
+                    onClick={() => window.open(reunion.link, '_blank')}
+                    clickable
+                    color="primary"
+                    variant="outlined"
+                    sx={{ mt: 1 }}
+                />
+            )}
+        </Paper>
     );
 };
 

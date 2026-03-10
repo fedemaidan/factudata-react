@@ -46,6 +46,7 @@ import ContactsIcon from "@mui/icons-material/Contacts";
 import AccountTreeIcon from "@mui/icons-material/AccountTree";
 import AssessmentIcon from "@mui/icons-material/Assessment";
 import FilterListIcon from "@mui/icons-material/FilterList";
+import WhatsAppIcon from "@mui/icons-material/WhatsApp";
 
 export const SideNav = (props) => {
   const { open, onClose, collapsed = false, onToggleCollapsed, width = 280 } = props;
@@ -368,6 +369,18 @@ export const SideNav = (props) => {
         });
       }
 
+      if (user?.admin) {
+        baseItems.push({
+          title: "Templates WhatsApp",
+          path: "/templatesMeta",
+          icon: (
+            <SvgIcon fontSize="small">
+              <WhatsAppIcon />
+            </SvgIcon>
+          ),
+        });
+      }
+
       if (permisosUsuario.includes("ADMIN_USUARIOS")) {
         baseItems.push({
           title: "Administrar" + emp.nombre,
@@ -598,6 +611,16 @@ export const SideNav = (props) => {
         baseItems.push({
           title: "Control Presupuestos",
           path: "/control-presupuestos",
+          icon: (
+            <SvgIcon fontSize="small">
+              <NoteAltIcon />
+            </SvgIcon>
+          ),
+        });
+
+        baseItems.push({
+          title: "Presupuestos Profesionales",
+          path: "/presupuestosProfesionales",
           icon: (
             <SvgIcon fontSize="small">
               <NoteAltIcon />

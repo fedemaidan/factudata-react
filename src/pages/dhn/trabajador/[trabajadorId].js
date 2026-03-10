@@ -2,6 +2,7 @@ import { useEffect, useMemo, useCallback, useState } from 'react';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import { useRouter } from 'next/router';
 import dayjs from 'dayjs';
+import 'dayjs/locale/en';
 import { Container, Stack, Alert, Box, TextField, InputAdornment, IconButton, Typography } from '@mui/material';
 import BackButton from 'src/components/shared/BackButton';
 import ClearIcon from '@mui/icons-material/Clear';
@@ -16,44 +17,48 @@ import ImagenModal from 'src/components/ImagenModal';
 import TrabajosDetectadosList from 'src/components/dhn/TrabajosDetectadosList';
 import HistorialModal from 'src/components/dhn/HistorialModal';
 import HorasRawModal from 'src/components/dhn/HorasRawModal';
-import { parseDDMMYYYYAnyToISO, formatDateDDMMYYYY } from 'src/utils/handleDates';
+import { formatDateDDMMYYYY } from 'src/utils/handleDates';
+
+const DEFAULT_MES = dayjs().format('YYYY-MM');
+
+const parseMesParam = (raw) => {
+  if (!raw) return null;
+  const s = String(raw).trim();
+  if (!/^\d{4}-\d{2}$/.test(s)) return null;
+  const [y, m] = s.split('-').map(Number);
+  if (m < 1 || m > 12) return null;
+  return s;
+};
 
 const TrabajadorPage = () => {
   const router = useRouter();
   const { trabajadorId } = router.query;
-  const diaParam = useMemo(() => {
-    const raw = Array.isArray(router.query.dia) ? router.query.dia[0] : router.query.dia;
-    return raw ? String(raw) : null;
-  }, [router.query.dia]);
+  const mesParam = useMemo(() => {
+    const raw = Array.isArray(router.query.mes) ? router.query.mes[0] : router.query.mes;
+    return parseMesParam(raw) || null;
+  }, [router.query.mes]);
 
-  const diaISO = useMemo(() => {
-    if (diaParam) {
-      const iso = parseDDMMYYYYAnyToISO(diaParam);
-      if (iso) return iso;
-    }
-    return parseDDMMYYYYAnyToISO(dayjs().format('DD-MM-YYYY'));
-  }, [diaParam]);
-
-  const diaLabel = useMemo(() => {
-    if (!diaISO) return '-';
-    if (!diaParam) return formatDateDDMMYYYY(diaISO);
-    return formatDateDDMMYYYY(diaISO || diaParam);
-  }, [diaISO, diaParam]);
+  const mesLabel = useMemo(() => {
+    if (!mesParam) return '-';
+    const [y, m] = mesParam.split('-').map(Number);
+    const d = new Date(y, m - 1, 1);
+    return dayjs(d).locale('en').format('MMMM YYYY');
+  }, [mesParam]);
 
   useEffect(() => {
     if (!router.isReady) return;
     if (!trabajadorId) return;
-    if (diaParam) return;
+    if (mesParam) return;
     router.replace(
-      { pathname: router.pathname, query: { ...router.query, dia: dayjs().format('DD-MM-YYYY') } },
+      { pathname: router.pathname, query: { ...router.query, mes: DEFAULT_MES } },
       undefined,
       { shallow: true }
     );
-  }, [router.isReady, trabajadorId, diaParam, router]);
+  }, [router.isReady, trabajadorId, mesParam, router]);
 
-  const handleChangeDia = useCallback((nv) => {
-    const nextDia = (nv || dayjs()).format('DD-MM-YYYY');
-    const nextQuery = { ...router.query, dia: nextDia };
+  const handleChangeMes = useCallback((nv) => {
+    const nextMes = (nv || dayjs()).format('YYYY-MM');
+    const nextQuery = { ...router.query, mes: nextMes };
     delete nextQuery.page;
     router.replace({ pathname: router.pathname, query: nextQuery }, undefined, { shallow: true });
   }, [router]);
@@ -82,7 +87,7 @@ const TrabajadorPage = () => {
       const trabajador = item?.trabajadorId || {};
       const nombre = `${trabajador?.apellido || ''} ${trabajador?.nombre || ''}`.trim();
       const dni = trabajador?.dni ? `DNI: ${trabajador.dni}` : '';
-      const titleBase = nombre ? `${nombre} • ${diaLabel}` : `Fichadas raw • ${diaLabel}`;
+      const titleBase = nombre ? `${nombre} • ${mesLabel}` : `Fichadas raw • ${mesLabel}`;
       const title = dni ? `${titleBase} • ${dni}` : titleBase;
       setRawModalData(Array.isArray(item?.dataRawExcel) ? item.dataRawExcel : []);
       setRawModalTitle(title);
@@ -90,7 +95,7 @@ const TrabajadorPage = () => {
       setRawModalUrl(url || '');
       setRawModalOpen(true);
     }
-  }, [diaLabel]);
+  }, [mesLabel]);
 
   const handleCloseParteModal = useCallback(() => {
     setModalOpen(false);
@@ -119,7 +124,7 @@ const TrabajadorPage = () => {
     edit,
   } = useTrabajoDiarioPage({
     enabled: router.isReady && !!trabajadorId,
-    diaISO,
+    mesParam: mesParam || DEFAULT_MES,
     trabajadorId: trabajadorId ? String(trabajadorId) : undefined,
     incluirTrabajador: false,
     defaultLimit: 200,
@@ -167,13 +172,15 @@ const TrabajadorPage = () => {
               </Typography>
             )}
 
-            <LocalizationProvider dateAdapter={AdapterDayjs}>
+            <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale="en">
               <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
                 <DatePicker
-                  label="Día"
-                  value={dayjs(diaISO)}
-                  onChange={handleChangeDia}
-                  format="DD/MM/YYYY"
+                  label="Month"
+                  value={mesParam ? dayjs(`${mesParam}-01`) : dayjs()}
+                  onChange={handleChangeMes}
+                  views={['month', 'year']}
+                  openTo="month"
+                  format="MMM YYYY"
                   slotProps={{ textField: { size: 'small', sx: { width: 200 } } }}
                 />
                 <TextField

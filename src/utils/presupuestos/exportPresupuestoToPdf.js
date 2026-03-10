@@ -147,12 +147,10 @@ const buildTotalEquivalenteRow = (presupuesto, totalActualizado) => {
   return { label: `Total en ${tipo}`, value: `${formatted}${labelSuffix}` };
 };
 
-const addMetadataBlock = (doc, presupuesto, empresaNombre, displayCurrency) => {
+const addMetadataBlock = (doc, presupuesto, empresaNombre) => {
   const yStart = 58;
   const list = [
     ['Empresa', empresaNombre || presupuesto.empresa_nombre || '—'],
-    ['Proyecto', presupuesto.proyecto_nombre || '—'],
-    ['Moneda', displayCurrency],
     ['Fecha', formatDate(presupuesto.fecha || presupuesto.createdAt)],
   ];
 
@@ -190,13 +188,11 @@ export async function exportPresupuestoToPdf(presupuesto, { empresa } = {}) {
     Number(presupuesto.total_neto) ||
     rubros.reduce((acc, rubro) => acc + (Number(rubro.monto) || 0), 0);
   const currency = presupuesto.moneda || 'ARS';
-  const displayCurrency = currency.toUpperCase();
 
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
   doc.setFont('helvetica', 'normal');
 
-  // Header: fondo azul, obra izq, fecha der (misma altura), logo centrado 30% más grande
-  const FONT_SIZE_HEADER = 6;
+  const FONT_SIZE_HEADER = 8; 
   const logoUrl = presupuesto.empresa_logo_url;
   const logoDataUrl = await loadImageAsDataUrl(logoUrl);
   const LOGO_WIDTH = 85;
@@ -229,7 +225,7 @@ export async function exportPresupuestoToPdf(presupuesto, { empresa } = {}) {
   // Metadata
   doc.setTextColor(0);
   doc.setFontSize(11);
-  const finalMetaY = addMetadataBlock(doc, presupuesto, empresa?.nombre, displayCurrency);
+  const finalMetaY = addMetadataBlock(doc, presupuesto, empresa?.nombre);
 
   // Tabla de rubros y tareas
   const { body, metadata } = buildRubroRows(

@@ -286,10 +286,18 @@ const ModalRegistrarAccion = ({
                 }
             } else {
                 // Registrar intento (llamada, whatsapp, etc)
+                // Mapear resultado explícito según tipo de acción
+                let resultado;
+                if (tipoSeleccionado.id === 'llamada_atendida') resultado = 'atendio';
+                else if (tipoSeleccionado.id === 'llamada_no_atendida') resultado = 'no_atendio';
+                else if (tipoSeleccionado.id === 'whatsapp_enviado') resultado = 'pendiente';
+                else resultado = 'pendiente';
+
                 await SDRService.registrarIntento(contacto._id, {
                     tipo: tipoSeleccionado.id,
                     canal: tipoSeleccionado.id.includes('llamada') ? 'llamada' : 
                            tipoSeleccionado.id.includes('whatsapp') ? 'whatsapp' : 'otro',
+                    resultado,
                     nota: nota.trim() || undefined,
                     empresaId
                 });

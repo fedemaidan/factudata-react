@@ -87,6 +87,7 @@ const emptyPresupuesto = {
     sup_ponderada_m2: '',
   },
   plantilla_id: '',
+  plantilla_notas_id: '',
 };
 
 const emptyRubro = { nombre: '', monto: 0, incidencia_objetivo_pct: null, tareas: [] };
@@ -304,8 +305,20 @@ const PresupuestosProfesionales = () => {
   const resolverCotizacionSnapshot = async (form) => {
     const ajuste = normalizarAjusteMoneda(form);
     const fechaHoy = hoyIso();
+    const snap = form.cotizacion_snapshot;
+    const snapValor = snap?.valor;
+    const tieneOverride = snap && Number.isFinite(Number(snapValor)) && Number(snapValor) > 0;
 
     if (ajuste.moneda === 'USD' || ajuste.indexacion === INDEXACION_VALUES.USD) {
+      if (tieneOverride && snap.tipo === 'USD') {
+        return {
+          tipo: 'USD',
+          fuente: ajuste.usd_fuente,
+          referencia: ajuste.usd_valor,
+          valor: Number(snapValor),
+          fecha_origen: form.cotizacion_snapshot?.fecha_origen || fechaHoy,
+        };
+      }
       const dolarData = await MonedasService.obtenerDolar(fechaHoy);
       const valorUsd = pickUsdValue(dolarData, ajuste.usd_fuente, ajuste.usd_valor);
       if (!valorUsd) {
@@ -321,6 +334,15 @@ const PresupuestosProfesionales = () => {
     }
 
     if (ajuste.indexacion === INDEXACION_VALUES.CAC) {
+      if (tieneOverride && snap.tipo === 'CAC') {
+        return {
+          tipo: 'CAC',
+          fuente: 'cac',
+          referencia: ajuste.cac_tipo,
+          valor: Number(snapValor),
+          fecha_origen: form.cotizacion_snapshot?.fecha_origen || fechaHoy,
+        };
+      }
       const mesReferencia = toMesAnterior(fechaHoy);
       const cacData = await cacService.getCacPorFecha(mesReferencia);
       const valorCac = pickCacValue(cacData, ajuste.cac_tipo);
@@ -344,6 +366,7 @@ const PresupuestosProfesionales = () => {
     setPpForm({
       ...emptyPresupuesto,
       plantilla_id: '',
+      plantilla_notas_id: '',
       notas_texto: TEXTO_NOTAS_DEFAULT,
     });
     setPpIsEdit(false);
@@ -369,6 +392,8 @@ const PresupuestosProfesionales = () => {
         base_calculo: full.base_calculo || 'total',
         usd_fuente: full.usd_fuente || USD_FUENTES.OFICIAL,
         usd_valor: full.usd_valor || USD_VALORES.PROMEDIO,
+        cotizacion_snapshot: full.cotizacion_snapshot || null,
+        plantilla_notas_id: '',
         empresa_logo_url: full.empresa_logo_url || '',
         rubros: (full.rubros || []).map((r) => ({
           nombre: r.nombre || '',
@@ -533,8 +558,10 @@ const PresupuestosProfesionales = () => {
 
   const mapCotizacionOverride = (snap) => {
     if (!snap || typeof snap !== 'object') return null;
-    if (snap.tipo === 'CAC' && Number.isFinite(snap.valor)) return { cac_indice: snap.valor };
-    if (snap.tipo === 'USD' && Number.isFinite(snap.valor)) return { dolar_blue: snap.valor };
+    const valor = Number(snap.valor);
+    if (!Number.isFinite(valor) || valor <= 0) return null;
+    if (snap.tipo === 'CAC') return { cac_indice: valor };
+    if (snap.tipo === 'USD') return { dolar_blue: valor };
     return null;
   };
 
@@ -547,17 +574,18 @@ const PresupuestosProfesionales = () => {
     }
     setChangingEstadoId(row._id);
     try {
-      const cotizacionOverride = mapCotizacionOverride(row.cotizacion_snapshot);
-      const presupuestosToCreate = row.rubros.map((rubro) => ({
+      const full = await PresupuestoProfesionalService.obtenerPorId(row._id);
+      const cotizacionOverride = mapCotizacionOverride(full.cotizacion_snapshot);
+      const presupuestosToCreate = (full.rubros || row.rubros).map((rubro) => ({
         empresa_id: empresaId,
         proyecto_id: proyectoId,
         tipo,
         monto: rubro.monto,
-        moneda: row.moneda || 'ARS',
-        indexacion: row.indexacion || null,
-        base_calculo: row.base_calculo || 'total',
-        fecha_presupuesto: row.fecha_presupuesto || new Date().toISOString().slice(0, 10),
-        cac_tipo: row.indexacion === 'CAC' ? (row.cac_tipo || 'general') : null,
+        moneda: full.moneda || row.moneda || 'ARS',
+        indexacion: full.indexacion || row.indexacion || null,
+        base_calculo: full.base_calculo || row.base_calculo || 'total',
+        fecha_presupuesto: full.fecha_presupuesto || row.fecha_presupuesto || new Date().toISOString().slice(0, 10),
+        cac_tipo: (full.indexacion || row.indexacion) === 'CAC' ? (full.cac_tipo || row.cac_tipo || 'general') : null,
         etapa: rubro.nombre,
         categoria: null,
         subcategoria: null,
@@ -811,14 +839,12 @@ const PresupuestosProfesionales = () => {
     return ppForm.rubros.reduce((sum, r) => sum + (Number(r.monto) || 0), 0);
   }, [ppForm.rubros]);
 
-  // Aplicar plantilla seleccionada al form
   const handleAplicarPlantilla = async (plantillaId) => {
     if (!plantillaId) {
       setPpForm((f) => ({
         ...f,
         plantilla_id: '',
         rubros: [],
-        notas_texto: TEXTO_NOTAS_DEFAULT,
       }));
       setPpModoDistribuir(false);
       setPpTotalObjetivo('');
@@ -831,7 +857,6 @@ const PresupuestosProfesionales = () => {
         ...f,
         plantilla_id: PLANTILLA_SORBYDATA_ID,
         rubros: plantillaRubrosToPresupuestoRubros(pl.rubros),
-        notas_texto: pl.notas?.trim() || TEXTO_NOTAS_DEFAULT,
       }));
       showAlert('Rubros cargados desde Plantilla SorbyData', 'info');
       return;
@@ -843,12 +868,45 @@ const PresupuestosProfesionales = () => {
           ...f,
           plantilla_id: plantillaId,
           rubros: plantillaRubrosToPresupuestoRubros(pl.rubros),
-          notas_texto: pl.notas?.trim() || TEXTO_NOTAS_DEFAULT,
         }));
         showAlert('Rubros cargados desde plantilla', 'info');
       }
     } catch (err) {
       showAlert('Error al cargar plantilla', 'error');
+    }
+  };
+
+  const handleAplicarPlantillaNotas = async (plantillaNotasId) => {
+    if (!plantillaNotasId) {
+      setPpForm((f) => ({
+        ...f,
+        plantilla_notas_id: '',
+        notas_texto: TEXTO_NOTAS_DEFAULT,
+      }));
+      return;
+    }
+    if (plantillaNotasId === PLANTILLA_SORBYDATA_ID) {
+      const pl = PLANTILLA_SORBYDATA;
+      setPpForm((f) => ({
+        ...f,
+        plantilla_notas_id: PLANTILLA_SORBYDATA_ID,
+        notas_texto: pl.notas?.trim() || TEXTO_NOTAS_DEFAULT,
+      }));
+      showAlert('Notas cargadas desde Plantilla SorbyData', 'info');
+      return;
+    }
+    try {
+      const pl = await PresupuestoProfesionalService.obtenerPlantilla(plantillaNotasId);
+      if (pl) {
+        setPpForm((f) => ({
+          ...f,
+          plantilla_notas_id: plantillaNotasId,
+          notas_texto: pl.notas?.trim() || TEXTO_NOTAS_DEFAULT,
+        }));
+        showAlert('Notas cargadas desde plantilla', 'info');
+      }
+    } catch (err) {
+      showAlert('Error al cargar notas de plantilla', 'error');
     }
   };
 
@@ -1176,7 +1234,8 @@ const PresupuestosProfesionales = () => {
                 setPpForm({
                   ...emptyPresupuesto,
                   plantilla_id: PLANTILLA_SORBYDATA_ID,
-                  notas_texto: TEXTO_NOTAS_DEFAULT,
+                  plantilla_notas_id: PLANTILLA_SORBYDATA_ID,
+                  notas_texto: PLANTILLA_SORBYDATA.notas?.trim() || TEXTO_NOTAS_DEFAULT,
                   rubros: plantillaRubrosToPresupuestoRubros(PLANTILLA_SORBYDATA.rubros),
                 });
                 setPpIsEdit(false);
@@ -1190,6 +1249,7 @@ const PresupuestosProfesionales = () => {
                 setPpForm({
                   ...emptyPresupuesto,
                   plantilla_id: pl._id,
+                  plantilla_notas_id: pl._id,
                   notas_texto: pl.notas?.trim() || TEXTO_NOTAS_DEFAULT,
                   rubros: plantillaRubrosToPresupuestoRubros(pl.rubros),
                 });
@@ -1224,6 +1284,7 @@ const PresupuestosProfesionales = () => {
         saving={ppSaving}
         onSave={handleSavePP}
         onAplicarPlantilla={handleAplicarPlantilla}
+        onAplicarPlantillaNotas={handleAplicarPlantillaNotas}
         modoDistribuir={ppModoDistribuir}
         onModoDistribuirChange={(checked) => {
           setPpModoDistribuir(checked);

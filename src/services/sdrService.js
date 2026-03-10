@@ -92,6 +92,15 @@ const SDRService = {
     },
 
     /**
+     * Recalcular contadores de contactos basándose en el historial real
+     * @param {string[]} contactoIds - Array de IDs de contactos
+     */
+    recalcularContadores: async (contactoIds) => {
+        const res = await api.post('/sdr/acciones/recalcular-contadores', { contactoIds });
+        return res.data;
+    },
+
+    /**
      * Subir audio grabado y asociarlo a un contacto
      * @param {string} contactoId - ID del contacto
      * @param {Blob} audioBlob - Blob del audio grabado
@@ -433,10 +442,12 @@ const SDRService = {
     /**
      * Obtener métricas del día
      */
-    obtenerMetricasDiarias: async (empresaId, fecha = null, sdrId = null) => {
+    obtenerMetricasDiarias: async (empresaId, fecha = null, sdrId = null, desde = null, hasta = null) => {
         const params = { empresaId };
         if (fecha) params.fecha = fecha;
         if (sdrId) params.sdrId = sdrId;
+        if (desde) params.desde = desde;
+        if (hasta) params.hasta = hasta;
         const res = await api.get('/sdr/metricas/diarias', { params });
         return res.data;
     },

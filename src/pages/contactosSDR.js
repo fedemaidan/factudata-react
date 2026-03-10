@@ -53,6 +53,11 @@ import ContadoresActividad from 'src/components/sdr/ContadoresActividad';
 import SettingsIcon from '@mui/icons-material/Settings';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
 import SortIcon from '@mui/icons-material/Sort';
+import BulkSendTemplateDialog from 'src/components/sdr/BulkSendTemplateDialog';
+import BulkRegistrarAccionDialog from 'src/components/sdr/BulkRegistrarAccionDialog';
+import EditNoteIcon from '@mui/icons-material/EditNote';
+import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
+import CalculateIcon from '@mui/icons-material/Calculate';
 import NavigateBeforeIcon from '@mui/icons-material/NavigateBefore';
 import NavigateNextIcon from '@mui/icons-material/NavigateNext';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
@@ -91,6 +96,7 @@ const ContactosSDRPage = () => {
     const [filtroCalificadoBot, setFiltroCalificadoBot] = useState(''); // '' | 'calificado' | 'no_calificado' | 'quiere_meet' | 'no_llego'
     const [filtroQuiereReunion, setFiltroQuiereReunion] = useState(''); // '' | 'si' | 'no'
     const [filtroProximaTarea, setFiltroProximaTarea] = useState(''); // '' | 'llamada' | 'whatsapp' | 'email' | 'recordatorio' | 'sin_tarea'
+    const [filtroExcluirConReunion, setFiltroExcluirConReunion] = useState(false); // true = excluir contactos con reunión
     const [ordenarPor, setOrdenarPor] = useState(''); // vacío = el backend elige según bandeja
     
     // Contadores de bandejas (para badges)
@@ -111,7 +117,13 @@ const ContactosSDRPage = () => {
     const [modalImportarExcel, setModalImportarExcel] = useState(false);
     const [modalAdminTemplates, setModalAdminTemplates] = useState(false);
     const [modalReunion, setModalReunion] = useState(false);
+    const [modalBulkTemplate, setModalBulkTemplate] = useState(false);
+    const [modalBulkAccion, setModalBulkAccion] = useState(false);
+    const [modalCambiarEstadoMasivo, setModalCambiarEstadoMasivo] = useState(false);
     const [actionLoading, setActionLoading] = useState(false);
+
+    // Permiso para enviar templates via bot
+    const tienePermisoEnviarBot = user?.admin || (user?.empresa?.acciones || []).includes('ENVIAR_MENSAJE_BOT');
     
     // Métricas del SDR
     const [metricas, setMetricas] = useState(null);
@@ -167,6 +179,7 @@ const ContactosSDRPage = () => {
             if (filtroEstado) params.estado = filtroEstado;
             if (busqueda) params.busqueda = busqueda;
             if (filtroSegmento) params.segmento = filtroSegmento;
+            if (filtroExcluirConReunion) params.excluirConReunion = 'true';
             
             // Mapear ordenamiento al formato del backend
             if (ordenarPor) {
@@ -196,7 +209,7 @@ const ContactosSDRPage = () => {
         } finally {
             setLoading(false);
         }
-    }, [empresaId, sdrId, filtroEstado, bandejaActiva, busqueda, filtroSegmento, ordenarPor, page]);
+    }, [empresaId, sdrId, filtroEstado, bandejaActiva, busqueda, filtroSegmento, filtroExcluirConReunion, ordenarPor, page]);
 
     // Cargar métricas del SDR - soporta día, semana y mes
     const cargarMetricas = useCallback(async () => {
@@ -718,6 +731,7 @@ const ContactosSDRPage = () => {
         setFiltroCalificadoBot('');
         setFiltroQuiereReunion('');
         setFiltroProximaTarea('');
+        setFiltroExcluirConReunion(false);
         setBusqueda('');
     };
     
@@ -1409,6 +1423,13 @@ const ContactosSDRPage = () => {
                         variant={filtroActividad === 'con_reuniones' ? 'filled' : 'outlined'}
                         onClick={() => setFiltroActividad(filtroActividad === 'con_reuniones' ? '' : 'con_reuniones')}
                     />
+                    <Chip 
+                        label="🚫 Excluir con reunión"
+                        size="small"
+                        color={filtroExcluirConReunion ? 'error' : 'default'}
+                        variant={filtroExcluirConReunion ? 'filled' : 'outlined'}
+                        onClick={() => setFiltroExcluirConReunion(!filtroExcluirConReunion)}
+                    />
                 </Stack>
             </Box>
 
@@ -1431,7 +1452,7 @@ const ContactosSDRPage = () => {
                     <Alert 
                         severity="info" 
                         action={
-                            <Stack direction="row" spacing={1}>
+                            <Stack direction="row" spacing={1} flexWrap="wrap">
                                 <Button size="small" onClick={() => setModalProximoMasivo(true)}>
                                     📅 Fecha
                                 </Button>
@@ -1440,6 +1461,31 @@ const ContactosSDRPage = () => {
                                         🔄 Cadencia
                                     </Button>
                                 )}
+                                {tienePermisoEnviarBot && (
+                                    <Button size="small" onClick={() => setModalBulkTemplate(true)}>
+                                        🤖 Template Bot
+                                    </Button>
+                                )}
+                                <Button size="small" onClick={() => setModalBulkAccion(true)}>
+                                    📝 Acción
+                                </Button>
+                                <Button size="small" onClick={() => setModalCambiarEstadoMasivo(true)}>
+                                    🔄 Estado
+                                </Button>
+                                <Button size="small" onClick={async () => {
+                                    setActionLoading(true);
+                                    try {
+                                        const res = await SDRService.recalcularContadores(seleccionados);
+                                        setSnackbar({ open: true, message: `Contadores recalculados: ${res.exitosos} OK${res.fallidos > 0 ? `, ${res.fallidos} error(es)` : ''}`, severity: res.fallidos === 0 ? 'success' : 'warning' });
+                                        cargarContactos();
+                                    } catch (err) {
+                                        setSnackbar({ open: true, message: 'Error al recalcular contadores', severity: 'error' });
+                                    } finally {
+                                        setActionLoading(false);
+                                    }
+                                }} disabled={actionLoading}>
+                                    🔢 Contadores
+                                </Button>
                                 <Button size="small" onClick={() => setSeleccionados([])}>
                                     ✕
                                 </Button>
@@ -2044,6 +2090,12 @@ const ContactosSDRPage = () => {
                         variant={filtroActividad === 'con_reuniones' ? 'filled' : 'outlined'}
                         onClick={() => setFiltroActividad(filtroActividad === 'con_reuniones' ? '' : 'con_reuniones')}
                     />
+                    <Chip 
+                        label="🚫 Excluir con reunión"
+                        color={filtroExcluirConReunion ? 'error' : 'default'}
+                        variant={filtroExcluirConReunion ? 'filled' : 'outlined'}
+                        onClick={() => setFiltroExcluirConReunion(!filtroExcluirConReunion)}
+                    />
                     {filtroActividad && (
                         <Chip 
                             label="Limpiar"
@@ -2187,6 +2239,48 @@ const ContactosSDRPage = () => {
                                         Asignar cadencia
                                     </Button>
                                 )}
+                                {tienePermisoEnviarBot && (
+                                    <Button
+                                        size="small"
+                                        startIcon={<SmartToyIcon />}
+                                        onClick={() => setModalBulkTemplate(true)}
+                                    >
+                                        Enviar template
+                                    </Button>
+                                )}
+                                <Button
+                                    size="small"
+                                    startIcon={<EditNoteIcon />}
+                                    onClick={() => setModalBulkAccion(true)}
+                                >
+                                    Registrar acción
+                                </Button>
+                                <Button
+                                    size="small"
+                                    startIcon={<SwapHorizIcon />}
+                                    onClick={() => setModalCambiarEstadoMasivo(true)}
+                                >
+                                    Cambiar estado
+                                </Button>
+                                <Button
+                                    size="small"
+                                    startIcon={<CalculateIcon />}
+                                    onClick={async () => {
+                                        setActionLoading(true);
+                                        try {
+                                            const res = await SDRService.recalcularContadores(seleccionados);
+                                            setSnackbar({ open: true, message: `Contadores recalculados: ${res.exitosos} OK${res.fallidos > 0 ? `, ${res.fallidos} error(es)` : ''}`, severity: res.fallidos === 0 ? 'success' : 'warning' });
+                                            cargarContactos();
+                                        } catch (err) {
+                                            setSnackbar({ open: true, message: 'Error al recalcular contadores', severity: 'error' });
+                                        } finally {
+                                            setActionLoading(false);
+                                        }
+                                    }}
+                                    disabled={actionLoading}
+                                >
+                                    Recalcular contadores
+                                </Button>
                                 <Button size="small" onClick={() => setSeleccionados([])}>
                                     Limpiar selección
                                 </Button>
@@ -2550,6 +2644,115 @@ const ContactosSDRPage = () => {
                 onClose={() => setModalAdminTemplates(false)}
                 empresaId={empresaId}
             />
+
+            {/* Modal Envío Masivo de Template Meta via Bot */}
+            {tienePermisoEnviarBot && (
+                <BulkSendTemplateDialog
+                    open={modalBulkTemplate}
+                    onClose={() => setModalBulkTemplate(false)}
+                    empresaId={empresaId}
+                    contacts={seleccionados.map(id => {
+                        const c = contactos.find(ct => ct._id === id);
+                        return c ? { phone: c.telefono, name: c.nombre || c.empresa } : null;
+                    }).filter(Boolean)}
+                    onComplete={(result) => {
+                        setSnackbar({
+                            open: true,
+                            message: `${result.enviados} template(s) enviado(s)${result.errores.length ? `, ${result.errores.length} error(es)` : ''}`,
+                            severity: result.errores.length === 0 ? 'success' : 'warning'
+                        });
+                        setSeleccionados([]);
+                    }}
+                />
+            )}
+
+            {/* Modal Registrar Acción Masiva */}
+            <BulkRegistrarAccionDialog
+                open={modalBulkAccion}
+                onClose={() => setModalBulkAccion(false)}
+                contactoIds={seleccionados}
+                empresaId={empresaId}
+                onComplete={(result) => {
+                    setSnackbar({
+                        open: true,
+                        message: `${result.exitosos} acción(es) registrada(s)${result.fallidos > 0 ? `, ${result.fallidos} error(es)` : ''}`,
+                        severity: result.fallidos === 0 ? 'success' : 'warning'
+                    });
+                    setSeleccionados([]);
+                    cargarContactos();
+                }}
+            />
+
+            {/* Modal Cambiar Estado Masivo */}
+            <Dialog
+                open={modalCambiarEstadoMasivo}
+                onClose={() => setModalCambiarEstadoMasivo(false)}
+                maxWidth="xs"
+                fullWidth
+            >
+                <DialogTitle>🔄 Cambiar estado de {seleccionados.length} contacto(s)</DialogTitle>
+                <DialogContent>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                        Seleccioná el nuevo estado para todos los contactos seleccionados
+                    </Typography>
+                    <Stack spacing={1}>
+                        {[
+                            { value: 'nuevo', label: 'Nuevo', color: 'info' },
+                            { value: 'contactado', label: 'Contactado', color: 'warning' },
+                            { value: 'calificado', label: 'Calificado', color: 'success' },
+                            { value: 'cierre', label: 'En Cierre', color: 'secondary' },
+                            { value: 'ganado', label: 'Ganado', color: 'success' },
+                            { value: 'no_contacto', label: 'No Contactado', color: 'inherit' },
+                            { value: 'no_responde', label: 'No Responde', color: 'inherit' },
+                            { value: 'revisar_mas_adelante', label: 'Revisar Después', color: 'warning' },
+                            { value: 'no_califica', label: 'No Califica', color: 'error' },
+                            { value: 'perdido', label: 'Perdido', color: 'error' },
+                        ].map((est) => (
+                            <Button
+                                key={est.value}
+                                variant="outlined"
+                                fullWidth
+                                color={est.color}
+                                onClick={async () => {
+                                    setActionLoading(true);
+                                    try {
+                                        let exitosos = 0;
+                                        let fallidos = 0;
+                                        for (const id of seleccionados) {
+                                            try {
+                                                await SDRService.cambiarEstado(id, est.value, 'Cambio masivo');
+                                                exitosos++;
+                                            } catch (err) {
+                                                fallidos++;
+                                            }
+                                        }
+                                        setSnackbar({
+                                            open: true,
+                                            message: `${exitosos} contacto(s) cambiados a "${est.label}"${fallidos > 0 ? `, ${fallidos} error(es)` : ''}`,
+                                            severity: fallidos === 0 ? 'success' : 'warning'
+                                        });
+                                        setSeleccionados([]);
+                                        setModalCambiarEstadoMasivo(false);
+                                        cargarContactos();
+                                    } catch (error) {
+                                        setSnackbar({ open: true, message: 'Error al cambiar estado', severity: 'error' });
+                                    } finally {
+                                        setActionLoading(false);
+                                    }
+                                }}
+                                disabled={actionLoading}
+                                sx={{ justifyContent: 'flex-start', textTransform: 'none' }}
+                            >
+                                {actionLoading ? <CircularProgress size={18} sx={{ mr: 1 }} /> : null}
+                                {est.label}
+                            </Button>
+                        ))}
+                    </Stack>
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => setModalCambiarEstadoMasivo(false)}>Cancelar</Button>
+                </DialogActions>
+            </Dialog>
 
             {/* Modal Registrar Reunión */}
             <ModalCrearReunion
