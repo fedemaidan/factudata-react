@@ -45,6 +45,16 @@ const abTestService = {
         const { data } = await api.patch(`/ab-tests/${encodeURIComponent(name)}/estado`, { estado });
         return data;
     },
+
+    /**
+     * Actualiza los pesos (%) de distribución de variantes.
+     * @param {string} name - Nombre del test
+     * @param {{ A: number, B: number }} pesos - Pesos que suman 100
+     */
+    actualizarPesos: async (name, pesos) => {
+        const { data } = await api.patch(`/ab-tests/${encodeURIComponent(name)}/pesos`, { pesos });
+        return data;
+    },
 };
 
 export default abTestService;

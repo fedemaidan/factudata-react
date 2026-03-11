@@ -24,6 +24,7 @@ import {
     Divider,
     IconButton,
     Tooltip,
+    Slider,
 } from '@mui/material';
 import {
     Refresh as RefreshIcon,
@@ -55,7 +56,8 @@ function safeMetric(metricas, variante, key) {
     if (!metricas) return 0;
     const v = metricas[variante] || metricas.get?.(variante);
     if (!v) return 0;
-    return v[key] || 0;
+    const val = Number(v[key]);
+    return isFinite(val) ? val : 0;
 }
 
 function pct(numerador, denominador) {
@@ -82,13 +84,55 @@ function MetricasResumen({ test }) {
     const { metricas, contadores } = test;
     const variantes = ['A', 'B'];
 
-    const rows = [
+    const primaryRows = [
         { label: 'Asignados', key: 'contactos' },
         { label: 'Probaron', key: 'probaron' },
         { label: 'Completaron gasto', key: 'completaron' },
         { label: 'Agendaron demo', key: 'agendaron' },
         { label: 'Timeouts (1h)', key: 'timeouts' },
     ];
+
+    const secondaryRows = [
+        { label: 'Pidieron demo (voluntario)', key: 'pidieronDemo' },
+        { label: 'Generaron movimiento', key: 'generaronMovimiento' },
+        { label: 'Crearon empresa real', key: 'crearonEmpresaReal' },
+    ];
+
+    // Fila especial: promedio de mensajes
+    const msgA = safeMetric(metricas, 'A', 'mensajesEnviados');
+    const msgB = safeMetric(metricas, 'B', 'mensajesEnviados');
+    const totalA = safeMetric(metricas, 'A', 'contactos');
+    const totalB = safeMetric(metricas, 'B', 'contactos');
+    const avgA = totalA > 0 ? (msgA / totalA).toFixed(1) : '0';
+    const avgB = totalB > 0 ? (msgB / totalB).toFixed(1) : '0';
+
+    const renderRows = (rows) => rows.map((row) => {
+        const valA = safeMetric(metricas, 'A', row.key);
+        const valB = safeMetric(metricas, 'B', row.key);
+        const tA = safeMetric(metricas, 'A', 'contactos');
+        const tB = safeMetric(metricas, 'B', 'contactos');
+        return (
+            <TableRow key={row.key}>
+                <TableCell>{row.label}</TableCell>
+                <TableCell align="center">
+                    <strong>{valA}</strong>
+                    {row.key !== 'contactos' && (
+                        <Typography variant="caption" color="text.secondary" sx={{ ml: 0.5 }}>
+                            ({pct(valA, tA)})
+                        </Typography>
+                    )}
+                </TableCell>
+                <TableCell align="center">
+                    <strong>{valB}</strong>
+                    {row.key !== 'contactos' && (
+                        <Typography variant="caption" color="text.secondary" sx={{ ml: 0.5 }}>
+                            ({pct(valB, tB)})
+                        </Typography>
+                    )}
+                </TableCell>
+            </TableRow>
+        );
+    });
 
     return (
         <Card>
@@ -110,33 +154,35 @@ function MetricasResumen({ test }) {
                             </TableRow>
                         </TableHead>
                         <TableBody>
-                            {rows.map((row) => {
-                                const valA = safeMetric(metricas, 'A', row.key);
-                                const valB = safeMetric(metricas, 'B', row.key);
-                                const totalA = safeMetric(metricas, 'A', 'contactos');
-                                const totalB = safeMetric(metricas, 'B', 'contactos');
-                                return (
-                                    <TableRow key={row.key}>
-                                        <TableCell>{row.label}</TableCell>
-                                        <TableCell align="center">
-                                            <strong>{valA}</strong>
-                                            {row.key !== 'contactos' && (
-                                                <Typography variant="caption" color="text.secondary" sx={{ ml: 0.5 }}>
-                                                    ({pct(valA, totalA)})
-                                                </Typography>
-                                            )}
-                                        </TableCell>
-                                        <TableCell align="center">
-                                            <strong>{valB}</strong>
-                                            {row.key !== 'contactos' && (
-                                                <Typography variant="caption" color="text.secondary" sx={{ ml: 0.5 }}>
-                                                    ({pct(valB, totalB)})
-                                                </Typography>
-                                            )}
-                                        </TableCell>
-                                    </TableRow>
-                                );
-                            })}
+                            {renderRows(primaryRows)}
+
+                            {/* Separador visual */}
+                            <TableRow>
+                                <TableCell colSpan={3} sx={{ py: 0.5 }}>
+                                    <Divider>
+                                        <Chip label="Métricas secundarias" size="small" variant="outlined" />
+                                    </Divider>
+                                </TableCell>
+                            </TableRow>
+
+                            {/* Promedio de mensajes */}
+                            <TableRow>
+                                <TableCell>Promedio mensajes/cliente</TableCell>
+                                <TableCell align="center">
+                                    <strong>{avgA}</strong>
+                                    <Typography variant="caption" color="text.secondary" sx={{ ml: 0.5 }}>
+                                        ({msgA} total)
+                                    </Typography>
+                                </TableCell>
+                                <TableCell align="center">
+                                    <strong>{avgB}</strong>
+                                    <Typography variant="caption" color="text.secondary" sx={{ ml: 0.5 }}>
+                                        ({msgB} total)
+                                    </Typography>
+                                </TableCell>
+                            </TableRow>
+
+                            {renderRows(secondaryRows)}
                         </TableBody>
                     </Table>
                 </TableContainer>
@@ -155,6 +201,21 @@ function GraficoFunnel({ test }) {
     const seriesA = steps.map((s) => safeMetric(metricas, 'A', s));
     const seriesB = steps.map((s) => safeMetric(metricas, 'B', s));
 
+    // Si todo es cero, mostrar placeholder
+    const totalSum = [...seriesA, ...seriesB].reduce((a, b) => a + b, 0);
+    if (totalSum === 0) {
+        return (
+            <Card>
+                <CardHeader title="📈 Funnel de conversión" />
+                <CardContent>
+                    <Typography variant="body2" color="text.secondary" sx={{ py: 4, textAlign: 'center' }}>
+                        Sin datos suficientes para mostrar el funnel.
+                    </Typography>
+                </CardContent>
+            </Card>
+        );
+    }
+
     const options = {
         chart: { type: 'bar', toolbar: { show: false } },
         plotOptions: {
@@ -166,7 +227,7 @@ function GraficoFunnel({ test }) {
         legend: { position: 'top' },
         dataLabels: { enabled: true },
         tooltip: {
-            y: { formatter: (val) => `${val} contactos` },
+            y: { formatter: (val) => `${val != null ? val : 0} contactos` },
         },
     };
 
@@ -199,13 +260,36 @@ function GraficoConversion({ test }) {
     const convRateA = totalA > 0 ? ((compA + agA) / totalA * 100) : 0;
     const convRateB = totalB > 0 ? ((compB + agB) / totalB * 100) : 0;
 
+    // Si no hay datos aún, mostrar placeholder
+    if (totalA === 0 && totalB === 0) {
+        return (
+            <Card>
+                <CardHeader
+                    title="🎯 Tasa de conversión"
+                    subheader="Completaron + Agendaron / Total asignados"
+                />
+                <CardContent>
+                    <Typography variant="body2" color="text.secondary" sx={{ py: 4, textAlign: 'center' }}>
+                        Sin datos suficientes para mostrar el gráfico.
+                    </Typography>
+                </CardContent>
+            </Card>
+        );
+    }
+
     const options = {
         chart: { type: 'radialBar' },
         plotOptions: {
             radialBar: {
                 dataLabels: {
                     name: { fontSize: '14px' },
-                    value: { fontSize: '20px', formatter: (val) => val.toFixed(1) + '%' },
+                    value: {
+                        fontSize: '20px',
+                        formatter: (val) => {
+                            const n = parseFloat(val);
+                            return (isFinite(n) ? n.toFixed(1) : '0.0') + '%';
+                        },
+                    },
                 },
             },
         },
@@ -274,6 +358,8 @@ const AbTestContactActivationPage = () => {
     const [contactos, setContactos] = useState({ A: [], B: [] });
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
+    const [pesoA, setPesoA] = useState(50);
+    const [savingPesos, setSavingPesos] = useState(false);
 
     const fetchData = useCallback(async () => {
         try {
@@ -287,6 +373,12 @@ const AbTestContactActivationPage = () => {
 
             setTest(testRes.test || null);
             setContactos(contactosRes.contactos || { A: [], B: [] });
+
+            // Sincronizar slider de pesos con datos del test
+            if (testRes.test?.pesos) {
+                const p = testRes.test.pesos;
+                setPesoA(p.A ?? p?.get?.('A') ?? 50);
+            }
         } catch (err) {
             console.error('Error cargando datos del A/B test:', err);
             setError(err.response?.data?.error || err.message || 'Error cargando datos');
@@ -306,6 +398,19 @@ const AbTestContactActivationPage = () => {
         } catch (err) {
             console.error('Error cambiando estado:', err);
             setError(err.response?.data?.error || err.message);
+        }
+    };
+
+    const handleGuardarPesos = async () => {
+        try {
+            setSavingPesos(true);
+            await abTestService.actualizarPesos(TEST_NAME, { A: pesoA, B: 100 - pesoA });
+            fetchData();
+        } catch (err) {
+            console.error('Error guardando pesos:', err);
+            setError(err.response?.data?.error || err.message);
+        } finally {
+            setSavingPesos(false);
         }
     };
 
@@ -406,6 +511,36 @@ const AbTestContactActivationPage = () => {
                                                         Finalizar
                                                     </Button>
                                                 )}
+                                            </Stack>
+                                        </Grid>
+
+                                        {/* Distribución de variantes */}
+                                        <Grid item xs={12}>
+                                            <Divider sx={{ my: 1 }} />
+                                            <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                                                Distribución de variantes
+                                            </Typography>
+                                            <Stack direction="row" spacing={2} alignItems="center">
+                                                <Chip label={`A: ${pesoA}%`} color="primary" size="small" />
+                                                <Slider
+                                                    value={pesoA}
+                                                    onChange={(_, v) => setPesoA(v)}
+                                                    min={0}
+                                                    max={100}
+                                                    step={5}
+                                                    valueLabelDisplay="auto"
+                                                    valueLabelFormat={(v) => `A:${v}% / B:${100 - v}%`}
+                                                    sx={{ flex: 1, maxWidth: 300 }}
+                                                />
+                                                <Chip label={`B: ${100 - pesoA}%`} color="error" size="small" />
+                                                <Button
+                                                    size="small"
+                                                    variant="contained"
+                                                    onClick={handleGuardarPesos}
+                                                    disabled={savingPesos}
+                                                >
+                                                    {savingPesos ? 'Guardando...' : 'Guardar'}
+                                                </Button>
                                             </Stack>
                                         </Grid>
                                     </Grid>
