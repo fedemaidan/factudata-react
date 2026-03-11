@@ -95,6 +95,10 @@ Cuando `showInsight` está activo, la ventana debe mostrar los mensajes que tien
 - `patchInsightIdsInCache` se exporta desde Dexie y se ejecuta cada vez que se reciben IDs nuevos.
 - Solo actualiza mensajes que ya existen en cache y no tienen `insightId`, así que el flujo normal no se ve afectado.
 
+### Patrones y tipos de insight dinámicos
+
+Los patrones de detección de insights ya no están hardcodeados. Se cargan desde MongoDB (`insight_patterns`, `insight_types`, `error_types`). El botón "Agregar insight" en cada mensaje de texto permite crear nuevos patrones y tipos desde la UI; estos se usan para detectar insights en mensajes futuros. Ejecutar el script `dev_tools/conversaciones/seedInsightPatterns.js` para migrar los patrones iniciales.
+
 ### Filtros de insights y lista de conversaciones
 
 La lista del sidebar usa un flujo híbrido según los filtros activos:

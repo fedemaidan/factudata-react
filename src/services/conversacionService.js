@@ -112,6 +112,22 @@ export function getConversationTitle(conversation) {
   return conversation.displayName || conversation.userId || '';
 }
 
+export async function getInsightPatternsMeta() {
+  const { data } = await api.get('/conversaciones/insight-patterns/meta');
+  return data;
+}
+
+export async function createInsightPattern({ patternText, isError, insightTypeId, errorTypeId, customTypeName }) {
+  const response = await api.post('/conversaciones/insight-patterns', {
+    patternText,
+    isError,
+    insightTypeId,
+    errorTypeId,
+    customTypeName,
+  });
+  return response.data;
+}
+
 export async function addNoteToMessage({ messageId, content, userEmail }) {
   const response = await api.post(`/conversaciones/messages/${messageId}/notes`, {
     content,

@@ -4,6 +4,7 @@ import ImageIcon from '@mui/icons-material/Image';
 import VideocamIcon from '@mui/icons-material/Videocam';
 import AddIcon from '@mui/icons-material/Add';
 import DescriptionIcon from '@mui/icons-material/Description';
+import LightbulbOutlinedIcon from '@mui/icons-material/LightbulbOutlined';
 
 // Helper to check if src is a valid media URL (not an internal event identifier)
 const isValidMediaUrl = (src) => {
@@ -22,6 +23,7 @@ export default function MessageBubble({
   isFilteredInsight = false,
   onMediaClick,
   onAddAnnotation,
+  onAddInsight,
   notes = [],
   isLoadingNote = false,
 }) {
@@ -65,6 +67,14 @@ export default function MessageBubble({
     onAddAnnotation({ messageId: resolvedMessageId, message });
   };
 
+  const isTextMessage = message?.type === 'text' || message?.type === 'text_extended';
+  const hasInsight = Boolean(message?.insightId);
+  const showInsightButton = isMine && isTextMessage && onAddInsight && !hasInsight;
+  const handleAddInsightClick = () => {
+    if (!onAddInsight || !resolvedMessageId) return;
+    onAddInsight({ messageId: resolvedMessageId, message });
+  };
+
   const annotationButton = (
     <Tooltip title="Agregar nota">
       <span>
@@ -103,6 +113,46 @@ export default function MessageBubble({
     </Tooltip>
   );
 
+  const buttonsContent = (
+    <Box
+      className="MessageBubble-annotationButton"
+      sx={{
+        display: 'flex',
+        gap: 0.25,
+        flexShrink: 0,
+        opacity: 0,
+        pointerEvents: 'none',
+        transition: 'opacity 120ms ease',
+        '&.MessageBubble-annotationButton': {
+          opacity: 0,
+          pointerEvents: 'none',
+        },
+      }}
+    >
+      {annotationButton}
+      {showInsightButton && (
+        <Tooltip title="Agregar insight">
+          <span>
+            <IconButton
+              size="small"
+              onClick={handleAddInsightClick}
+              aria-label="Agregar insight"
+              disabled={!resolvedMessageId}
+              sx={{
+                bgcolor: 'background.paper',
+                border: 1,
+                borderColor: 'divider',
+                '&:hover': { bgcolor: 'action.hover' },
+              }}
+            >
+              <LightbulbOutlinedIcon fontSize="small" />
+            </IconButton>
+          </span>
+        </Tooltip>
+      )}
+    </Box>
+  );
+
   return (
     <Box
       display="flex"
@@ -111,35 +161,20 @@ export default function MessageBubble({
       py={0.5}
       id={anchorId}
     >
-      <Box display="flex" alignItems="flex-start" maxWidth="75%">
-        <Box
-          sx={{
-            position: 'relative',
-            display: 'inline-flex',
-            alignItems: 'flex-start',
-            overflow: 'visible',
-            '&::before': {
-              content: '""',
-              position: 'absolute',
-              top: -8,
-              bottom: -8,
-              width: 44,
-              ...(isMine ? { left: -44 } : { right: -44 }),
-              zIndex: 0,
-            },
-            '& .MessageBubble-annotationButton': {
-              opacity: 0,
-              pointerEvents: 'none',
-              transform: 'translateY(-2px)',
-              transition: 'opacity 120ms ease, transform 120ms ease',
-            },
-            '&:hover .MessageBubble-annotationButton, &:focus-within .MessageBubble-annotationButton': {
-              opacity: 1,
-              pointerEvents: 'auto',
-              transform: 'translateY(0px)',
-            },
-          }}
-        >
+      <Box
+        display="flex"
+        alignItems="flex-start"
+        maxWidth="75%"
+        gap={1}
+        sx={{
+          '&:hover .MessageBubble-annotationButton': {
+            opacity: 1,
+            pointerEvents: 'auto',
+          },
+        }}
+      >
+        {isMine && buttonsContent}
+        <Box sx={{ flex: 1, minWidth: 0 }}>
           <Paper
             elevation={0}
             sx={{
@@ -367,19 +402,8 @@ export default function MessageBubble({
             </Box>
           ) : null}
           </Paper>
-
-          <Box
-            className="MessageBubble-annotationButton"
-            sx={{
-              position: 'absolute',
-              top: 6,
-              ...(isMine ? { left: -38 } : { right: -38 }),
-              zIndex: 2,
-            }}
-          >
-            {annotationButton}
-          </Box>
         </Box>
+        {!isMine && buttonsContent}
       </Box>
     </Box>
   );

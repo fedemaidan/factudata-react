@@ -14,6 +14,12 @@ import {
   Tooltip,
   Link as MuiLink,
   CircularProgress,
+  FormControlLabel,
+  Switch,
+  MenuItem,
+  Select,
+  FormControl,
+  InputLabel,
 } from "@mui/material";
 import MenuIcon from "@mui/icons-material/Menu";
 import BusinessIcon from "@mui/icons-material/Business";
@@ -26,7 +32,7 @@ import MediaModal from "./MediaModal";
 import UserConfigDialog from "./UserConfigDialog";
 import { useConversationsContext } from "src/contexts/conversations-context";
 import { useAuth } from "src/hooks/use-auth";
-import { syncConversationProfile } from "src/services/conversacionService";
+import { syncConversationProfile, getInsightPatternsMeta, createInsightPattern } from "src/services/conversacionService";
 import Link from "next/link";
 
 export default function ChatWindow({ myNumber = "X", onOpenList }) {
@@ -45,6 +51,21 @@ export default function ChatWindow({ myNumber = "X", onOpenList }) {
   const [errorMessage, setErrorMessage] = useState("");
   const [userConfigOpen, setUserConfigOpen] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [insightDialog, setInsightDialog] = useState({
+    open: false,
+    message: null,
+  });
+  const [insightForm, setInsightForm] = useState({
+    patternText: "",
+    isError: false,
+    insightType: "",
+    errorType: "",
+    customType: "",
+    useCustomType: false,
+  });
+  const [insightMeta, setInsightMeta] = useState({ insightTypes: [], errorTypes: [] });
+  const [insightLoading, setInsightLoading] = useState(false);
+  const [insightError, setInsightError] = useState("");
   const {
     messages,
     hasMore,
@@ -131,6 +152,63 @@ export default function ChatWindow({ myNumber = "X", onOpenList }) {
     setAnnotationText("");
     setErrorMessage("");
   }, []);
+
+  const handleOpenInsightDialog = useCallback(async ({ message }) => {
+    const text = (message?.message || "").trim();
+    setInsightDialog({ open: true, message });
+    setInsightForm({
+      patternText: text,
+      isError: false,
+      insightType: "",
+      errorType: "",
+      customType: "",
+      useCustomType: false,
+    });
+    setInsightError("");
+    try {
+      const meta = await getInsightPatternsMeta();
+      setInsightMeta(meta);
+    } catch (err) {
+      console.error("Error loading insight meta:", err);
+      setInsightMeta({ insightTypes: [], errorTypes: [] });
+    }
+  }, []);
+
+  const handleCloseInsightDialog = useCallback(() => {
+    setInsightDialog({ open: false, message: null });
+    setInsightForm({ patternText: "", isError: false, insightType: "", errorType: "", customType: "", useCustomType: false });
+    setInsightError("");
+  }, []);
+
+  const handleSaveInsight = useCallback(async () => {
+    const { patternText, isError, insightType, errorType, customType, useCustomType } = insightForm;
+    const trimmed = (patternText || "").trim();
+    if (!trimmed) {
+      setInsightError("El texto del patrón es requerido");
+      return;
+    }
+    const typeValue = useCustomType ? (customType || "").trim() : (isError ? errorType : insightType);
+    if (!typeValue) {
+      setInsightError(isError ? "Seleccioná o creá un tipo de error" : "Seleccioná o creá un tipo de insight");
+      return;
+    }
+    setInsightLoading(true);
+    setInsightError("");
+    try {
+      await createInsightPattern({
+        patternText: trimmed,
+        isError,
+        insightTypeId: !isError && !useCustomType ? typeValue : undefined,
+        errorTypeId: isError && !useCustomType ? typeValue : undefined,
+        customTypeName: useCustomType ? typeValue : undefined,
+      });
+      handleCloseInsightDialog();
+    } catch (err) {
+      setInsightError(err.response?.data?.error || err.message || "Error al crear el patrón");
+    } finally {
+      setInsightLoading(false);
+    }
+  }, [insightForm, handleCloseInsightDialog]);
 
   const handleSaveAnnotation = useCallback(async () => {
     if (!annotationDialog?.messageId) return;
@@ -330,6 +408,7 @@ export default function ChatWindow({ myNumber = "X", onOpenList }) {
               isFilteredInsight={insightIdsSet.has(String(messageId))}
               onMediaClick={handleMediaClick}
               onAddAnnotation={handleOpenAnnotationDialog}
+              onAddInsight={handleOpenInsightDialog}
               notes={m.notas || []}
               isLoadingNote={loadingNotes[messageId] || false}
             />
@@ -343,6 +422,100 @@ export default function ChatWindow({ myNumber = "X", onOpenList }) {
         type={mediaModal.type}
         onClose={handleMediaClose}
       />
+      <Dialog open={insightDialog.open} onClose={handleCloseInsightDialog} fullWidth maxWidth="sm">
+        <DialogTitle>Agregar insight</DialogTitle>
+        <DialogContent>
+          <Box mt={1} display="flex" flexDirection="column" gap={2}>
+            <TextField
+              label="Texto del patrón"
+              value={insightForm.patternText}
+              onChange={(e) => setInsightForm((f) => ({ ...f, patternText: e.target.value }))}
+              fullWidth
+              multiline
+              minRows={2}
+              disabled={true}
+              helperText="El mensaje debe contener este texto para detectar el insight"
+            />
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={insightForm.isError}
+                  onChange={(e) => setInsightForm((f) => ({ ...f, isError: e.target.checked }))}
+                />
+              }
+              label="Es un error"
+            />
+            {insightForm.isError ? (
+              <FormControl fullWidth size="small">
+                <InputLabel>Tipo de error</InputLabel>
+                <Select
+                  value={insightForm.useCustomType ? "_custom" : insightForm.errorType}
+                  label="Tipo de error"
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setInsightForm((f) => ({
+                      ...f,
+                      useCustomType: v === "_custom",
+                      errorType: v === "_custom" ? "" : v,
+                      customType: v === "_custom" ? f.customType : "",
+                    }));
+                  }}
+                >
+                  {insightMeta.errorTypes.map((t) => (
+                    <MenuItem key={t.id} value={t.id}>{t.name}</MenuItem>
+                  ))}
+                  <MenuItem value="_custom">Otro (crear nuevo)</MenuItem>
+                </Select>
+              </FormControl>
+            ) : (
+              <FormControl fullWidth size="small">
+                <InputLabel>Tipo de insight</InputLabel>
+                <Select
+                  value={insightForm.useCustomType ? "_custom" : insightForm.insightType}
+                  label="Tipo de insight"
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setInsightForm((f) => ({
+                      ...f,
+                      useCustomType: v === "_custom",
+                      insightType: v === "_custom" ? "" : v,
+                      customType: v === "_custom" ? f.customType : "",
+                    }));
+                  }}
+                >
+                  {insightMeta.insightTypes.map((t) => (
+                    <MenuItem key={t.id} value={t.id}>{t.name}</MenuItem>
+                  ))}
+                  <MenuItem value="_custom">Otro (crear nuevo)</MenuItem>
+                </Select>
+              </FormControl>
+            )}
+            {insightForm.useCustomType && (
+              <TextField
+                label={insightForm.isError ? "Nuevo tipo de error" : "Nuevo tipo de insight"}
+                value={insightForm.customType}
+                onChange={(e) => setInsightForm((f) => ({ ...f, customType: e.target.value }))}
+                fullWidth
+                size="small"
+                placeholder="Ej: timeout_conexion"
+              />
+            )}
+            {insightError && (
+              <Typography variant="body2" color="error">{insightError}</Typography>
+            )}
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseInsightDialog} disabled={insightLoading}>Cancelar</Button>
+          <Button
+            onClick={handleSaveInsight}
+            variant="contained"
+            disabled={insightLoading || !insightForm.patternText.trim()}
+          >
+            {insightLoading ? "Guardando..." : "Crear patrón"}
+          </Button>
+        </DialogActions>
+      </Dialog>
       <Dialog open={annotationDialog.open} onClose={handleCloseAnnotationDialog} fullWidth maxWidth="sm">
         <DialogTitle>Agregar nota</DialogTitle>
         <DialogContent>
