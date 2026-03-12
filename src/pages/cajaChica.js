@@ -188,14 +188,16 @@ const CajaChicaPage = () => {
   };
             
   useEffect(() => {
+    if (!router.isReady) return;
     fetchMovimientos();
-  }, [user, userId]);
+  }, [user, userId, router.isReady]);
 
   const handleCloseAlert = () => setAlert({ ...alert, open: false });
 
   const saldoTotalCaja = useMemo(() => {
     return movimientos.reduce((acc, mov) => {
-      return acc + (mov.type === 'ingreso' ? mov.total : -mov.total);
+      const total = Number(mov.total) || 0;
+      return acc + (mov.type === 'ingreso' ? total : -total);
     }, 0);
   }, [movimientos]);
 
@@ -222,7 +224,8 @@ const CajaChicaPage = () => {
   
   const saldoFiltrado = useMemo(() => {
     return movimientosFiltrados.reduce((acc, mov) => {
-      return acc + (mov.type === 'ingreso' ? mov.total : -mov.total);
+      const total = Number(mov.total) || 0;
+      return acc + (mov.type === 'ingreso' ? total : -total);
     }, 0);
   }, [movimientosFiltrados]);
   
