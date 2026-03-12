@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import {
@@ -9,6 +9,7 @@ import {
 import ImageIcon from '@mui/icons-material/Image';
 import EditIcon from '@mui/icons-material/Edit';
 import RefreshIcon from '@mui/icons-material/Refresh';
+import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import movimientosService from 'src/services/movimientosService';
 import { getEmpresaById } from 'src/services/empresaService';
@@ -16,6 +17,9 @@ import { getProyectosByEmpresa } from 'src/services/proyectosService';
 import { formatCurrency, formatTimestamp } from 'src/utils/formatters';
 import EditarBorradorDrawer from 'src/components/panelValidacion/EditarBorradorDrawer';
 import PanelValidacionFiltersBar from 'src/components/panelValidacion/PanelValidacionFiltersBar';
+import useAssistedCorrectionFlow from 'src/hooks/common/useAssistedCorrectionFlow';
+import AssistedCorrectionNavigator from 'src/components/common/AssistedCorrectionNavigator';
+import { getCamposConfig } from 'src/components/movementFieldsConfig';
 
 const PanelValidacionPage = () => {
   const router = useRouter();
@@ -53,6 +57,31 @@ const PanelValidacionPage = () => {
 
   const filtrosRef = useRef(filtros);
   filtrosRef.current = filtros;
+
+  const panelCorreccionStrategies = useMemo(
+    () => ({
+      getRowId: (row) => row?.id ?? null,
+      isEligible: (row) =>
+        Boolean(row) &&
+        row.estado_borrador !== 'confirmado' &&
+        row.estado_carga !== 'confirmado',
+      getModalType: () => 'borrador',
+    }),
+    []
+  );
+
+  const {
+    activa: correccionActiva,
+    textoProgreso: correccionTextoProgreso,
+    iniciar: iniciarCorreccion,
+    detener: detenerCorreccion,
+    actualRow: correccionActualRow,
+    hasPrev: correccionHasPrev,
+    hasNext: correccionHasNext,
+    irAnterior: irCorreccionAnterior,
+    irSiguiente: irCorreccionSiguiente,
+    confirmarYAvanzar: correccionConfirmarYAvanzar,
+  } = useAssistedCorrectionFlow(items, panelCorreccionStrategies);
 
   const buildApiFilters = useCallback((f) => {
     const api = {
@@ -198,10 +227,75 @@ const PanelValidacionPage = () => {
     } catch (e) {
       setItems(previousItems);
       setSnackbar({ open: true, message: e.message || 'Error al guardar', severity: 'error', autoHideDuration: 4000 });
+      throw e;
     } finally {
       setSavingEdit(false);
     }
   };
+
+  const handleCloseCorreccionFlow = useCallback(() => {
+    detenerCorreccion();
+    setEditDrawer({ open: false, mov: null, form: {} });
+  }, [detenerCorreccion]);
+
+  const handleGuardarEdicionConAvance = useCallback(async () => {
+    try {
+      await handleGuardarEdicion();
+      const next = correccionConfirmarYAvanzar();
+      if (next) {
+        handleEditar(next);
+      } else {
+        handleCloseCorreccionFlow();
+        fetchBorradores();
+      }
+    } catch {
+      // handleGuardarEdicion ya mostró snackbar de error
+    }
+  }, [
+    handleGuardarEdicion,
+    correccionConfirmarYAvanzar,
+    handleCloseCorreccionFlow,
+    fetchBorradores,
+    handleEditar,
+  ]);
+
+  const handleIniciarCorreccion = useCallback(() => {
+    const firstRow = iniciarCorreccion();
+    if (!firstRow) {
+      setSnackbar({
+        open: true,
+        message: 'No hay borradores pendientes para corrección asistida',
+        severity: 'info',
+        autoHideDuration: 4000,
+      });
+      return;
+    }
+    handleEditar(firstRow);
+  }, [iniciarCorreccion]);
+
+  const handleCorreccionAnterior = useCallback(() => {
+    const row = irCorreccionAnterior();
+    if (row) handleEditar(row);
+  }, [irCorreccionAnterior]);
+
+  const handleCorreccionSiguiente = useCallback(() => {
+    const row = irCorreccionSiguiente();
+    if (row) handleEditar(row);
+  }, [irCorreccionSiguiente]);
+
+  const continuarDisabled = useMemo(() => {
+    const { form } = editDrawer;
+    const camposConfig = getCamposConfig(drawerCatalogos.comprobanteInfo, drawerCatalogos.ingresoInfo, 'egreso');
+    const shouldShowProyecto = Boolean(camposConfig?.proyecto);
+    return (
+      savingEdit ||
+      (shouldShowProyecto && !form?.proyecto_id) ||
+      form?.total === '' ||
+      form?.total === undefined ||
+      form?.total === null ||
+      !form?.fecha_factura
+    );
+  }, [editDrawer.form, drawerCatalogos.comprobanteInfo, drawerCatalogos.ingresoInfo, savingEdit]);
 
   const openImg = (url) => setImgPreview({ open: true, url });
   const closeImg = () => setImgPreview({ open: false, url: null });
@@ -259,7 +353,7 @@ const PanelValidacionPage = () => {
                   fetchBorradores(defaultFiltros);
                 }}
               />
-              <Box sx={{ display: 'flex', alignItems: 'center' }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                 <Tooltip title="Actualizar lista">
                   <IconButton
                     size="small"
@@ -278,6 +372,22 @@ const PanelValidacionPage = () => {
                     <RefreshIcon sx={{ fontSize: 18 }} />
                   </IconButton>
                 </Tooltip>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    startIcon={<AutoFixHighIcon />}
+                    onClick={handleIniciarCorreccion}
+                    disabled={isLoading || !empresaId || items.length === 0}
+                    sx={{
+                      borderRadius: 2,
+                      border: '1px solid',
+                      borderColor: 'divider',
+                      boxShadow: 1,
+                      '&:hover': { boxShadow: 2 },
+                    }}
+                  >
+                    Corrección asistida
+                  </Button>
               </Box>
               <Typography variant="body2">
                 Total: {total} borradores
@@ -388,17 +498,34 @@ const PanelValidacionPage = () => {
         etapas={drawerCatalogos.etapas}
         obrasOptions={drawerCatalogos.obrasOptions}
         clientesOptions={drawerCatalogos.clientesOptions}
-        onClose={() => setEditDrawer({ open: false, mov: null, form: {} })}
-        onSave={handleGuardarEdicion}
+        onClose={correccionActiva ? handleCloseCorreccionFlow : () => setEditDrawer({ open: false, mov: null, form: {} })}
+        onSave={correccionActiva ? handleGuardarEdicionConAvance : handleGuardarEdicion}
         onFormChange={(form) => setEditDrawer((d) => ({ ...d, form }))}
         saving={savingEdit}
       />
+
+      {correccionActiva && (
+        <AssistedCorrectionNavigator
+          visible
+          textoProgreso={correccionTextoProgreso}
+          hasPrev={correccionHasPrev}
+          hasNext={correccionHasNext}
+          onPrev={handleCorreccionAnterior}
+          onNext={handleCorreccionSiguiente}
+          onConfirmarYContinuar={handleGuardarEdicionConAvance}
+          onCloseFlow={handleCloseCorreccionFlow}
+          showConfirmButton
+          confirmLabel={savingEdit ? 'Continuando...' : 'Continuar'}
+          confirmDisabled={continuarDisabled}
+          position="top"
+        />
+      )}
 
       <Snackbar
         open={snackbar.open}
         autoHideDuration={snackbar.autoHideDuration}
         onClose={() => setSnackbar((s) => ({ ...s, open: false }))}
-        anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >
         <Alert severity={snackbar.severity} onClose={() => setSnackbar((s) => ({ ...s, open: false }))}>
           {snackbar.message}
