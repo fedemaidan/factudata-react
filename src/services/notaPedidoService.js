@@ -17,13 +17,13 @@ const notaPedidoService = {
     }
   },
 
-  getNotasByEmpresa: async (empresaId) => {
+  getNotasByEmpresa: async (empresaId, userId = null) => {
     try {
-      const response = await api.get(`nota-pedido/empresa/${empresaId}`);
+      const params = userId ? `?userId=${userId}` : '';
+      const response = await api.get(`nota-pedido/empresa/${empresaId}${params}`);
       if (response.status === 200) {
         console.log('Notas obtenidas con éxito');
-        console.log("responseeeeee", response.data)
-        return response.data; // Devuelve las notas
+        return response.data;
       } else {
         console.error('Error al obtener las notas');
         return [];

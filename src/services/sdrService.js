@@ -23,6 +23,14 @@ const SDRService = {
     },
 
     /**
+     * Obtener contadores de bandejas (nuevos / reintentos / seguimiento)
+     */
+    contadorBandejas: async (params = {}) => {
+        const res = await api.get('/sdr/contactos/bandejas', { params });
+        return res.data;
+    },
+
+    /**
      * Obtener un contacto por ID (incluye historial y reuniones)
      */
     obtenerContacto: async (id) => {
@@ -84,6 +92,46 @@ const SDRService = {
     },
 
     /**
+     * Recalcular contadores de contactos basándose en el historial real
+     * @param {string[]} contactoIds - Array de IDs de contactos
+     */
+    recalcularContadores: async (contactoIds) => {
+        const res = await api.post('/sdr/acciones/recalcular-contadores', { contactoIds });
+        return res.data;
+    },
+
+    /**
+     * Subir audio grabado y asociarlo a un contacto
+     * @param {string} contactoId - ID del contacto
+     * @param {Blob} audioBlob - Blob del audio grabado
+     * @param {object} opts - { duracion, nota, empresaId }
+     */
+    subirAudio: async (contactoId, audioBlob, opts = {}) => {
+        const formData = new FormData();
+        // Si es un File (del input), usar su nombre original; si es Blob (de grabación), usar .webm
+        const fileName = audioBlob.name || `audio_${Date.now()}.webm`;
+        formData.append('audio', audioBlob, fileName);
+        formData.append('contactoId', contactoId);
+        if (opts.duracion) formData.append('duracion', String(opts.duracion));
+        if (opts.nota) formData.append('nota', opts.nota);
+        if (opts.empresaId) formData.append('empresaId', opts.empresaId);
+        
+        const res = await api.post('/sdr/acciones/audio', formData, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+            timeout: 120000 // 2 min para audios largos + transcripción
+        });
+        return res.data;
+    },
+
+    /**
+     * Re-analizar un audio existente con GPT-4o
+     */
+    reanalizarAudio: async (eventoId, comentarioExtra = '') => {
+        const res = await api.post('/sdr/acciones/audio/reanalizar', { eventoId, comentarioExtra }, { timeout: 120000 });
+        return res.data;
+    },
+
+    /**
      * Marcar como "No califica"
      */
     marcarNoCalifica: async (contactoId, data) => {
@@ -108,10 +156,10 @@ const SDRService = {
     },
 
     /**
-     * Actualizar próximo contacto
+     * Actualizar próximo contacto / próxima tarea
      */
-    actualizarProximoContacto: async (contactoId, proximoContacto) => {
-        const res = await api.post('/sdr/acciones/proximo-contacto', { contactoId, proximoContacto });
+    actualizarProximoContacto: async (contactoId, proximoContacto, empresaId, proximaTarea = null) => {
+        const res = await api.post('/sdr/acciones/proximo-contacto', { contactoId, proximoContacto, proximaTarea });
         return res.data;
     },
 
@@ -134,10 +182,103 @@ const SDRService = {
     },
 
     /**
-     * Evaluar reunión (aprobar/rechazar)
+     * Evaluar reunión (v2: realizada/no_show/cancelada | legacy: aprobar/rechazar)
      */
     evaluarReunion: async (reunionId, data) => {
         const res = await api.put(`/sdr/reuniones/${reunionId}/evaluar`, data);
+        return res.data;
+    },
+
+    /**
+     * Actualizar datos de una reunión (v2)
+     */
+    actualizarReunion: async (reunionId, data) => {
+        const res = await api.put(`/sdr/reuniones/${reunionId}`, data);
+        return res.data;
+    },
+
+    /**
+     * Obtener reunión por ID (con datos enriquecidos del contacto)
+     */
+    obtenerReunion: async (reunionId) => {
+        const res = await api.get(`/sdr/reuniones/${reunionId}`);
+        return res.data;
+    },
+
+    /**
+     * Eliminar reunión
+     */
+    eliminarReunion: async (reunionId) => {
+        const res = await api.delete(`/sdr/reuniones/${reunionId}`);
+        return res.data;
+    },
+
+    /**
+     * Procesar transcripción de reunión con IA (GPT-4o)
+     */
+    procesarTranscripcion: async (reunionId) => {
+        const res = await api.post(`/sdr/reuniones/${reunionId}/procesar-transcripcion`);
+        return res.data;
+    },
+
+    /**
+     * Generar resumen SDR de un contacto con IA (GPT-4o)
+     */
+    generarResumenContacto: async (contactoId) => {
+        const res = await api.post(`/sdr/contactos/${contactoId}/generar-resumen`);
+        return res.data;
+    },
+
+    // ==================== SCORING / CALIFICACIÓN (v2) ====================
+
+    /**
+     * Actualizar plan estimado de un contacto
+     */
+    actualizarPlanEstimado: async (contactoId, planEstimado) => {
+        const res = await api.post('/sdr/acciones/plan-estimado', { contactoId, planEstimado });
+        return res.data;
+    },
+
+    /**
+     * Actualizar intención de compra de un contacto
+     */
+    actualizarIntencionCompra: async (contactoId, intencionCompra) => {
+        const res = await api.post('/sdr/acciones/intencion-compra', { contactoId, intencionCompra });
+        return res.data;
+    },
+
+    /**
+     * Actualizar prioridad manual (puntos discrecionales)
+     */
+    actualizarPrioridadManual: async (contactoId, prioridadManual) => {
+        const res = await api.post('/sdr/acciones/prioridad-manual', { contactoId, prioridadManual });
+        return res.data;
+    },
+
+    /**
+     * Obtener siguiente contacto para llamar (priorizado por score)
+     */
+    obtenerSiguienteContacto: async (empresaId, sdrId = null) => {
+        const params = { empresaId };
+        if (sdrId) params.sdrId = sdrId;
+        const res = await api.get('/sdr/contactos/siguiente', { params });
+        return res.data;
+    },
+
+    /**
+     * Obtener funnel/embudo de conversión
+     */
+    obtenerFunnel: async (empresaId, filtros = {}) => {
+        const params = { empresaId, ...filtros };
+        const res = await api.get('/sdr/metricas/funnel', { params });
+        return res.data;
+    },
+
+    /**
+     * Webhook para nuevo lead (usado internamente)
+     */
+    webhookNuevoLead: async (phone, leadData, evento) => {
+        const res = await api.post('/sdr/webhook/nuevo-lead', { phone, leadData, evento });
         return res.data;
     },
 
@@ -301,10 +442,12 @@ const SDRService = {
     /**
      * Obtener métricas del día
      */
-    obtenerMetricasDiarias: async (empresaId, fecha = null, sdrId = null) => {
+    obtenerMetricasDiarias: async (empresaId, fecha = null, sdrId = null, desde = null, hasta = null) => {
         const params = { empresaId };
         if (fecha) params.fecha = fecha;
         if (sdrId) params.sdrId = sdrId;
+        if (desde) params.desde = desde;
+        if (hasta) params.hasta = hasta;
         const res = await api.get('/sdr/metricas/diarias', { params });
         return res.data;
     },
@@ -344,6 +487,14 @@ const SDRService = {
      */
     obtenerHistorial: async (contactoId, limit = 100) => {
         const res = await api.get(`/sdr/historial/${contactoId}`, { params: { limit } });
+        return res.data;
+    },
+
+    /**
+     * Eliminar un evento del historial
+     */
+    eliminarEventoHistorial: async (eventoId) => {
+        const res = await api.delete(`/sdr/historial/${eventoId}`);
         return res.data;
     },
 
@@ -527,6 +678,144 @@ const SDRService = {
      */
     eliminarTipoTemplate: async (tipoId) => {
         const res = await api.delete(`/sdr/templates/tipos/${tipoId}`);
+        return res.data;
+    },
+
+    // ==================== CADENCIAS ====================
+
+    /**
+     * Listar cadencias disponibles (globales)
+     */
+    listarCadencias: async () => {
+        const res = await api.get('/sdr/cadencias');
+        return res.data;
+    },
+
+    /**
+     * Crear nueva cadencia
+     */
+    crearCadencia: async (data) => {
+        const res = await api.post('/sdr/cadencias', data);
+        return res.data;
+    },
+
+    /**
+     * Actualizar cadencia
+     */
+    actualizarCadencia: async (cadenciaId, data) => {
+        const res = await api.put(`/sdr/cadencias/${cadenciaId}`, data);
+        return res.data;
+    },
+
+    /**
+     * Eliminar cadencia
+     */
+    eliminarCadencia: async (cadenciaId) => {
+        const res = await api.delete(`/sdr/cadencias/${cadenciaId}`);
+        return res.data;
+    },
+
+    /**
+     * Asignar cadencia a un contacto
+     */
+    asignarCadencia: async (contactoId, cadenciaId) => {
+        const res = await api.post('/sdr/cadencias/asignar', { contactoId, cadenciaId });
+        return res.data;
+    },
+
+    /**
+     * Asignar cadencia a múltiples contactos
+     */
+    asignarCadenciaMasiva: async (contactoIds, cadenciaId) => {
+        const res = await api.post('/sdr/cadencias/asignar-masiva', { contactoIds, cadenciaId });
+        return res.data;
+    },
+
+    /**
+     * Detener cadencia de un contacto
+     */
+    detenerCadencia: async (contactoId, motivo) => {
+        const res = await api.post('/sdr/cadencias/detener', { contactoId, motivo });
+        return res.data;
+    },
+
+    /**
+     * Obtener paso actual con templates resueltos
+     */
+    obtenerPasoActual: async (contactoId) => {
+        const res = await api.get(`/sdr/cadencias/paso-actual/${contactoId}`);
+        return res.data;
+    },
+
+    /**
+     * Avanzar al siguiente paso de cadencia
+     */
+    avanzarPasoCadencia: async (contactoId, proximoContacto) => {
+        const res = await api.post('/sdr/cadencias/avanzar', { contactoId, proximoContacto });
+        return res.data;
+    },
+
+    // ==================== VISTAS GUARDADAS ====================
+
+    /**
+     * Listar vistas guardadas (propias + compartidas)
+     */
+    listarVistas: async (empresaId) => {
+        const res = await api.get('/sdr/vistas', { params: { empresaId } });
+        return res.data;
+    },
+
+    /**
+     * Crear nueva vista guardada
+     */
+    crearVista: async (data) => {
+        const res = await api.post('/sdr/vistas', data);
+        return res.data;
+    },
+
+    /**
+     * Actualizar vista guardada
+     */
+    actualizarVista: async (vistaId, data) => {
+        const res = await api.put(`/sdr/vistas/${vistaId}`, data);
+        return res.data;
+    },
+
+    /**
+     * Eliminar vista guardada
+     */
+    eliminarVista: async (vistaId) => {
+        const res = await api.delete(`/sdr/vistas/${vistaId}`);
+        return res.data;
+    },
+
+    // ==================== DOCUMENTOS ====================
+
+    /**
+     * Subir documento adjunto y asociarlo a un contacto
+     * @param {string} contactoId - ID del contacto
+     * @param {File} file - Archivo a subir
+     * @param {object} opts - { nota, empresaId }
+     */
+    subirDocumento: async (contactoId, file, opts = {}) => {
+        const formData = new FormData();
+        formData.append('documento', file, file.name);
+        formData.append('contactoId', contactoId);
+        if (opts.nota) formData.append('nota', opts.nota);
+        if (opts.empresaId) formData.append('empresaId', opts.empresaId);
+        
+        const res = await api.post('/sdr/acciones/documento', formData, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+            timeout: 60000
+        });
+        return res.data;
+    },
+
+    /**
+     * Eliminar documento adjunto
+     */
+    eliminarDocumento: async (eventoId) => {
+        const res = await api.delete(`/sdr/acciones/documento/${eventoId}`);
         return res.data;
     }
 };

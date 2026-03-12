@@ -62,6 +62,10 @@ import DescriptionIcon from '@mui/icons-material/Description';
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import AttachFileIcon from '@mui/icons-material/AttachFile';
 import SendIcon from '@mui/icons-material/Send';
+import MoreVertIcon from '@mui/icons-material/MoreVert';
+import SearchIcon from '@mui/icons-material/Search';
+import Paper from '@mui/material/Paper';
+import Menu from '@mui/material/Menu';
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 import { useCallback } from 'react';
@@ -76,7 +80,7 @@ import { useBreadcrumbs } from 'src/contexts/breadcrumbs-context';
 
 const NotaPedidoPage = () => {
   const router = useRouter();
-  const { user } = useAuthContext();
+  const { user, isSpying } = useAuthContext();
   const { setBreadcrumbs } = useBreadcrumbs();
   const [notas, setNotas] = useState([]);
   const [filteredNotas, setFilteredNotas] = useState([]);
@@ -95,6 +99,7 @@ const NotaPedidoPage = () => {
   const [comentariosDialogNota, setComentariosDialogNota] = useState(null);
   const [nuevoComentario, setNuevoComentario] = useState('');
   const nuevoComentarioRef = useRef();
+  const [userById, setUserById] = useState(null);
 
 const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
 
@@ -104,6 +109,8 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
   const [drawerTab, setDrawerTab] = useState(0); // 0: Detalles, 1: Comentarios, 2: Historial
   const [hoveredComentario, setHoveredComentario] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [mobileMenuAnchor, setMobileMenuAnchor] = useState(null);
+  const [mobileMenuNota, setMobileMenuNota] = useState(null);
 
   const [formData, setFormData] = useState({
     descripcion: '', proyecto_id: '', estado: '', owner: '', creador: '', proveedor: ''
@@ -375,7 +382,18 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
   const fetchNotas = useCallback(async () => {
     try {
       setLoading(true);
-      const notasData = await notaPedidoService.getNotasByEmpresa(user.empresa.id);
+      const empresa = await getEmpresaDetailsFromUser(user);
+
+      // Si está en modo espía, enviar el user_id (Firebase Auth UID) directamente
+      let targetUserId = null;
+      if (isSpying()) {
+        setUserById(user);
+        targetUserId = user.user_id;
+      } else {
+        setUserById(null);
+      }
+
+      const notasData = await notaPedidoService.getNotasByEmpresa(empresa.id, targetUserId);
       setNotas(notasData);
       setFilteredNotas(notasData);
     } catch (error) {
@@ -383,7 +401,7 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
     } finally {
       setLoading(false);
     }
-  }, [user?.empresa?.id]);
+  }, [user, isSpying]);
   
 
   const applyFilters = () => {
@@ -543,12 +561,15 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
   
   // Setear breadcrumbs
   useEffect(() => {
+    const label = userById
+      ? `Notas de Pedido de ${userById.firstName || ''} ${userById.lastName || ''}`.trim()
+      : 'Notas de Pedido';
     setBreadcrumbs([
       { label: 'Inicio', href: '/', icon: <HomeIcon fontSize="small" /> },
-      { label: 'Notas de Pedido', icon: <AssignmentIcon fontSize="small" /> }
+      { label, icon: <AssignmentIcon fontSize="small" /> }
     ]);
     return () => setBreadcrumbs([]);
-  }, [setBreadcrumbs]);
+  }, [setBreadcrumbs, userById]);
 
   useEffect(() => {
     if (user) fetchNotas();
@@ -560,7 +581,7 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
   }, [filters, notas]);
 
   return (
-    <Box component="main" sx={{ flexGrow: 1, py: 4, px: 3 }}>
+    <Box component="main" sx={{ flexGrow: 1, py: isMobile ? 2 : 4, px: isMobile ? 1.5 : 3 }}>
       <Container maxWidth={false}>
         <Stack
   direction={isMobile ? 'column' : 'row'}
@@ -570,33 +591,52 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
 >
   
   {isMobile ? (
-    <ButtonGroup variant="text" color="primary" orientation="horizontal">
-      {notasEstados.map((estado, index) => (
-        <Button
-          key={estado}
-          variant={filters.estado === estado ? 'contained' : 'outlined'}
-          startIcon={
+    <Box sx={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+      {/* Búsqueda rápida siempre visible */}
+      <TextField
+        placeholder="Buscar código, descripción, proveedor..."
+        value={filters.text}
+        onChange={(e) => setFilters({ ...filters, text: e.target.value })}
+        size="small"
+        fullWidth
+        InputProps={{
+          startAdornment: <SearchIcon sx={{ color: 'text.disabled', mr: 1 }} />,
+        }}
+        sx={{ bgcolor: 'background.paper', borderRadius: 1 }}
+      />
+      {/* Chips de estado scrolleables */}
+      <Box sx={{ 
+        display: 'flex', 
+        gap: 0.75, 
+        overflowX: 'auto', 
+        pb: 0.5,
+        '&::-webkit-scrollbar': { display: 'none' },
+        scrollbarWidth: 'none',
+      }}>
+        <Chip
+          label={`Todos (${notas.length})`}
+          size="small"
+          color={filters.estado === '' ? 'primary' : 'default'}
+          variant={filters.estado === '' ? 'filled' : 'outlined'}
+          onClick={() => setEstado('')}
+          sx={{ flexShrink: 0, fontWeight: filters.estado === '' ? 600 : 400 }}
+        />
+        {notasEstados.map((estado, index) => {
+          const count = notas.filter((n) => n.estado === estado).length;
+          return (
             <Chip
-              label={notas.filter((n) => n.estado === estado).length}
-              color={getEstadoColor(index)}
+              key={estado}
+              label={`${estado} (${count})`}
+              size="small"
+              color={filters.estado === estado ? getEstadoColor(index) : 'default'}
+              variant={filters.estado === estado ? 'filled' : 'outlined'}
+              onClick={() => setEstado(estado)}
+              sx={{ flexShrink: 0, fontWeight: filters.estado === estado ? 600 : 400 }}
             />
-          }
-          onClick={() => setEstado(estado)}
-        >
-          {estado.substr(0, 1)}
-        </Button>
-  ))}
-      <Button
-        variant="contained"
-        startIcon={<RefreshIcon />}
-        onClick={fetchNotas}
-      ></Button>
-      <Button
-        variant="contained"
-        startIcon={<DownloadIcon />}
-        onClick={handleExportToExcel}
-      ></Button>
-    </ButtonGroup>
+          );
+        })}
+      </Box>
+    </Box>
   ) : (
     <Box
       sx={{
@@ -803,76 +843,178 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
         )}
 
         {!loading && filteredNotas.length > 0 && (isMobile ? (
-          <Stack spacing={2}>
-            {paginatedNotas.map((nota) => (
-              <Card key={nota.id}>
-                <CardContent>
-                  <Typography variant="h6">Código: {nota.codigo} - {nota.proyecto_nombre}</Typography>
-                  <Typography variant="body2" color="textSecondary" sx={{ whiteSpace: 'pre-line' }}>
-                  {nota.descripcion}
-                  </Typography>
-                  <Typography variant="body2" sx={{ mt: 1 }}>
-                    Responsable: {nota.owner_name}
-                  </Typography>
-                  <Typography variant="body2" sx={{ mt: 1 }}>
-                    Creado el: {formatTimestamp(nota.fechaCreacion)} por {nota.creador_name}
-                  </Typography>
-                  <Typography variant="body2" sx={{ mt: 1 }}>
-                    Proveedor: {nota.proveedor}
-                  </Typography>
-                  <Chip
-                    label={nota.estado}
-                    color={
-                      getEstadoColor(notasEstados.indexOf(nota.estado))
-                    }
-                    sx={{ mt: 1 }}
-                  />
-                  {nota.notaUrl && nota.notaUrl.trim() !== '' && (
-                    <Button
-                      variant="outlined"
-                      size="small"
-                      onClick={() => window.open(nota.notaUrl, '_blank')}
-                    >
-                      Ver adjunto
-                    </Button>
-                  )}
-                  <Stack direction="row" spacing={1} mt={2}>
-                  {getEstadoSiguiente(nota.estado) && (<Button
-                        variant="outlined"
-                        color={getEstadoColor(notasEstados.indexOf(nota.estado)+1)}
-                        onClick={() => handleChangeEstado(nota)}
+          <Box sx={{ pb: 16 }}>{/* padding inferior para no tapar con la toolbar fija */}
+            <Stack spacing={1.5}>
+              {paginatedNotas.map((nota) => (
+                <Card 
+                  key={nota.id}
+                  onClick={() => setComentariosDialogNota(nota)}
+                  sx={{ 
+                    cursor: 'pointer',
+                    '&:active': { transform: 'scale(0.98)' },
+                    transition: 'transform 0.1s',
+                  }}
+                >
+                  <CardContent sx={{ py: 1.5, px: 2, '&:last-child': { pb: 1.5 } }}>
+                    {/* Header: código + estado + menú */}
+                    <Stack direction="row" alignItems="center" justifyContent="space-between">
+                      <Stack direction="row" spacing={1} alignItems="center" sx={{ flex: 1, minWidth: 0 }}>
+                        <Typography variant="subtitle2" fontWeight={700} noWrap>
+                          #{nota.codigo}
+                        </Typography>
+                        <Chip
+                          label={nota.estado}
+                          color={getEstadoColor(notasEstados.indexOf(nota.estado))}
+                          size="small"
+                          sx={{ fontSize: '0.65rem', height: 22 }}
+                        />
+                      </Stack>
+                      <IconButton 
+                        size="small" 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setMobileMenuAnchor(e.currentTarget);
+                          setMobileMenuNota(nota);
+                        }}
                       >
-                        Marcar en {getEstadoSiguiente(nota.estado)}
-                      </Button>)}
-                      <Button
-                        startIcon={<EditIcon />}
-                        color="secondary"
-                        onClick={() => handleEdit(nota)}
-                      >
-
-                      </Button>
-                      <Button
-                        startIcon={<DeleteIcon />}
-                        color="error"
-                        onClick={() => openDeleteConfirmation(nota)}
-                      >
-                      </Button>
-
+                        <MoreVertIcon fontSize="small" />
+                      </IconButton>
                     </Stack>
-                </CardContent>
-              </Card>
-            ))}
-            <TablePagination
-              component="div"
-              count={filteredNotas.length}
-              page={page}
-              onPageChange={handlePageChange}
-              rowsPerPage={rowsPerPage}
-              onRowsPerPageChange={handleRowsPerPageChange}
-              rowsPerPageOptions={[5, 10, 25]}
-              labelRowsPerPage="Filas:"
-            />
-          </Stack>
+
+                    {/* Proyecto */}
+                    {nota.proyecto_nombre && (
+                      <Typography variant="caption" color="text.secondary" fontWeight={500}>
+                        {nota.proyecto_nombre}
+                      </Typography>
+                    )}
+
+                    {/* Descripción truncada a 3 líneas */}
+                    <Typography
+                      variant="body2"
+                      color="text.secondary"
+                      sx={{
+                        mt: 0.5,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        display: '-webkit-box',
+                        WebkitLineClamp: 3,
+                        WebkitBoxOrient: 'vertical',
+                        whiteSpace: 'pre-line',
+                      }}
+                    >
+                      {nota.descripcion}
+                    </Typography>
+
+                    {/* Info compacta en una fila */}
+                    <Stack direction="row" spacing={2} mt={1} flexWrap="wrap">
+                      {nota.proveedor && (
+                        <Typography variant="caption" color="text.secondary">
+                          <BusinessIcon sx={{ fontSize: 12, mr: 0.3, verticalAlign: 'middle' }} />
+                          {nota.proveedor}
+                        </Typography>
+                      )}
+                      <Typography variant="caption" color="text.secondary">
+                        <PersonIcon sx={{ fontSize: 12, mr: 0.3, verticalAlign: 'middle' }} />
+                        {nota.owner_name}
+                      </Typography>
+                      <Typography variant="caption" color="text.disabled">
+                        {formatTimestamp(nota.fechaCreacion)}
+                      </Typography>
+                      {nota.comentarios?.length > 0 && (
+                        <Typography variant="caption" color="text.secondary">
+                          <CommentIcon sx={{ fontSize: 12, mr: 0.3, verticalAlign: 'middle' }} />
+                          {nota.comentarios.length}
+                        </Typography>
+                      )}
+                    </Stack>
+
+                    {/* Botón de acción principal */}
+                    {getEstadoSiguiente(nota.estado) && (
+                      <Button
+                        fullWidth
+                        variant="outlined"
+                        size="small"
+                        color={getEstadoColor(notasEstados.indexOf(nota.estado)+1)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleChangeEstado(nota);
+                        }}
+                        sx={{ mt: 1, textTransform: 'none', fontWeight: 500 }}
+                      >
+                        → {getEstadoSiguiente(nota.estado)}
+                      </Button>
+                    )}
+                  </CardContent>
+                </Card>
+              ))}
+            </Stack>
+
+            {/* Menú contextual de 3 puntos */}
+            <Menu
+              anchorEl={mobileMenuAnchor}
+              open={Boolean(mobileMenuAnchor)}
+              onClose={() => { setMobileMenuAnchor(null); setMobileMenuNota(null); }}
+              transformOrigin={{ horizontal: 'right', vertical: 'top' }}
+              anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
+            >
+              <MenuItem onClick={() => {
+                setComentariosDialogNota(mobileMenuNota);
+                setMobileMenuAnchor(null);
+                setMobileMenuNota(null);
+              }}>
+                <CommentIcon fontSize="small" sx={{ mr: 1 }} /> Ver detalles
+              </MenuItem>
+              <MenuItem onClick={() => {
+                handleEdit(mobileMenuNota);
+                setMobileMenuAnchor(null);
+                setMobileMenuNota(null);
+              }}>
+                <EditIcon fontSize="small" sx={{ mr: 1 }} /> Editar
+              </MenuItem>
+              {mobileMenuNota?.urlNota && (
+                <MenuItem onClick={() => {
+                  window.open(mobileMenuNota.urlNota, '_blank');
+                  setMobileMenuAnchor(null);
+                  setMobileMenuNota(null);
+                }}>
+                  <AttachFileIcon fontSize="small" sx={{ mr: 1 }} /> Ver adjunto
+                </MenuItem>
+              )}
+              <MenuItem onClick={() => {
+                openDeleteConfirmation(mobileMenuNota);
+                setMobileMenuAnchor(null);
+                setMobileMenuNota(null);
+              }} sx={{ color: 'error.main' }}>
+                <DeleteIcon fontSize="small" sx={{ mr: 1 }} /> Eliminar
+              </MenuItem>
+            </Menu>
+
+            {/* Paginación */}
+            <Card sx={{ mt: 2, boxShadow: 1 }}>
+              <TablePagination
+                component="div"
+                count={filteredNotas.length}
+                page={page}
+                onPageChange={handlePageChange}
+                rowsPerPage={rowsPerPage}
+                onRowsPerPageChange={handleRowsPerPageChange}
+                rowsPerPageOptions={[10, 25, 50, 100]}
+                labelRowsPerPage=""
+                labelDisplayedRows={({ from, to, count }) => `${from}-${to} de ${count}`}
+                sx={{
+                  '& .MuiTablePagination-toolbar': {
+                    flexWrap: 'wrap',
+                    justifyContent: 'center',
+                    minHeight: 48,
+                    py: 0.5,
+                  },
+                  '& .MuiTablePagination-actions': {
+                    '& .MuiIconButton-root': { p: 1.5 },
+                  },
+                }}
+              />
+            </Card>
+          </Box>
         ) : (
           <>
           <Table>
@@ -1016,31 +1158,52 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
             onPageChange={handlePageChange}
             rowsPerPage={rowsPerPage}
             onRowsPerPageChange={handleRowsPerPageChange}
-            rowsPerPageOptions={[5, 10, 25, 50]}
+            rowsPerPageOptions={[5, 10, 25, 50, 100]}
             labelRowsPerPage="Filas por página:"
           />
           </>
         ))}
   {isMobile && (
-    <>
-        <Fab
-          color="primary"
-          aria-label="filter"
-          onClick={() => setOpenFilters(true)}
-          sx={{ position: 'fixed', bottom: 16, right: 16 }}
-        >
+    <Paper
+      elevation={8}
+      sx={{
+        position: 'fixed',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        zIndex: 1100,
+        borderTop: '1px solid',
+        borderColor: 'divider',
+        bgcolor: 'background.paper',
+        px: 1,
+        py: 1,
+        display: 'flex',
+        justifyContent: 'space-around',
+        alignItems: 'center',
+        gap: 0.5,
+      }}
+    >
+      <Button
+        size="small"
+        variant="contained"
+        startIcon={<AddIcon />}
+        onClick={() => setOpenAddDialog(true)}
+        sx={{ flex: 1, textTransform: 'none', fontWeight: 600 }}
+      >
+        Agregar
+      </Button>
+      <IconButton onClick={() => setOpenFilters(true)} color="primary">
+        <Badge variant="dot" invisible={!filters.estado && !filters.proyecto_id && !filters.misNotas} color="error">
           <FilterListIcon />
-        </Fab>
-
-        <Fab
-          color="primary"
-          aria-label="add"
-          onClick={() => setOpenAddDialog(true)}
-          sx={{ position: 'fixed', bottom: 96, right: 16 }}
-        >
-          <AddIcon />
-        </Fab>
-        </>
+        </Badge>
+      </IconButton>
+      <IconButton onClick={fetchNotas} color="primary">
+        <RefreshIcon />
+      </IconButton>
+      <IconButton onClick={handleExportToExcel} color="primary">
+        <DownloadIcon />
+      </IconButton>
+    </Paper>
   )}
 
         {/* Dialog para editar nota */}
@@ -1780,13 +1943,13 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
                   ))}
                 </Select>
               </FormControl>
-              <FormControl>
+              <FormControl fullWidth>
                 <InputLabel>Proyecto</InputLabel>
                 <Select
                   value={filters.proyecto_id}
                   onChange={(e) => setFilters({ ...filters, proyecto_id: e.target.value })}
                 >
-                  <MenuItem value="">No definido</MenuItem>
+                  <MenuItem value="">Todos</MenuItem>
                     {proyectos.map((proyecto) => (
                       <MenuItem key={proyecto.id} value={proyecto.id}>
                         {proyecto.nombre}
@@ -1794,6 +1957,13 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
                     ))}
                   </Select>
                 </FormControl>
+              <Chip
+                label="Mis notas"
+                color={filters.misNotas ? 'primary' : 'default'}
+                variant={filters.misNotas ? 'filled' : 'outlined'}
+                onClick={() => setFilters({ ...filters, misNotas: !filters.misNotas })}
+                sx={{ cursor: 'pointer', alignSelf: 'flex-start' }}
+              />
             </Stack>
           </DialogContent>
           <DialogActions>

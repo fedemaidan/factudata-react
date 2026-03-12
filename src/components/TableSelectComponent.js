@@ -30,6 +30,7 @@ const TableSelectComponent = ({
   pagination = null, // { total, page, rowsPerPage, rowsPerPageOptions }
   onPageChange = () => {},
   onRowsPerPageChange = () => {},
+  onRowClick = () => {},
 }) => {
   const [selectedIds, setSelectedIds] = useState(new Set());
   const isSelectionControlled = Array.isArray(selectedItems);
@@ -188,27 +189,30 @@ const TableSelectComponent = ({
                 const rowId = getRowId(item);
 
                 return (
-                  <TableRow
-                    key={rowId || `row-${index}`}
-                    hover
-                    onClick={() => handleSelectOne(item)}
-                    role="checkbox"
-                    aria-checked={itemSelected}
-                    tabIndex={-1}
-                    selected={itemSelected}
-                    sx={{
-                      cursor: "pointer",
+                <TableRow
+                  key={rowId || `row-${index}`}
+                  hover
+                  onClick={(event) => {
+                    handleSelectOne(item);
+                    onRowClick(item, event);
+                  }}
+                  role="checkbox"
+                  aria-checked={itemSelected}
+                  tabIndex={-1}
+                  selected={itemSelected}
+                  sx={{
+                    cursor: "pointer",
+                    "&:hover": {
+                      backgroundColor: alpha("#1976d2", 0.04),
+                    },
+                    ...(itemSelected && {
+                      backgroundColor: alpha("#1976d2", 0.08),
                       "&:hover": {
-                        backgroundColor: alpha("#1976d2", 0.04),
+                        backgroundColor: alpha("#1976d2", 0.12),
                       },
-                      ...(itemSelected && {
-                        backgroundColor: alpha("#1976d2", 0.08),
-                        "&:hover": {
-                          backgroundColor: alpha("#1976d2", 0.12),
-                        },
-                      }),
-                    }}
-                  >
+                    }),
+                  }}
+                >
                     {/* Checkbox de selección */}
                     <TableCell padding="checkbox">
                       <Checkbox

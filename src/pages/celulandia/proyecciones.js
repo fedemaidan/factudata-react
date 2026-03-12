@@ -363,7 +363,7 @@ const ProyeccionesV2Page = () => {
       },
       {
         key: "cantidadCompraSugerida",
-        label: "Cant. a comprar (90 días)",
+        label: "Cant. a comprar (200 días)",
         sortable: true,
       },
       {
@@ -556,7 +556,7 @@ const ProyeccionesV2Page = () => {
 
   return (
     <DashboardLayout title="Proyecciones">
-      <Container maxWidth="xl">
+      <Container maxWidth={false} disableGutters sx={{ width: "98%" }}>
         <Stack direction="column" spacing={2} sx={{ mb: 3 }}>
           <Stack direction="row" alignItems="center" spacing={2} useFlexGap flexWrap="wrap">
             <TextField
@@ -808,6 +808,7 @@ const ProyeccionesV2Page = () => {
             pagination={tablePagination}
             onPageChange={handlePageChange}
             onRowsPerPageChange={handleRowsPerPageChange}
+            onRowClick={(item) => console.log(item)}
           />
           {pendingProyeccionStatus === "procesando" && (
             <Box

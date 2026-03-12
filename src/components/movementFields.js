@@ -22,7 +22,7 @@ const DEFINICION_CAMPOS = [
   { section: 'extras', name: 'tipo_factura', label: 'Tipo de Factura', type: 'select', options: ['FACTURA A', 'FACTURA B', 'FACTURA C', 'No definido'], visibleIf: (info) => info.tipo_factura },
   { section: 'basicos', name: 'numero_factura', label: 'Número de Factura', type: 'text', visibleIf: (info) => info.numero_factura },
   { section: 'basicos', name: 'fecha_factura', label: 'Fecha de la Factura', type: 'date' },
-  { section: 'basicos', name: 'fecha_pago', label: 'Fecha de pago', type: 'date' },
+  { section: 'basicos', name: 'fecha_pago', label: 'Fecha de pago', type: 'date', visibleIf: (info) => info.fecha_pago },
   { section: 'basicos', name: 'type', label: 'Tipo', type: 'select', options: ['egreso', 'ingreso'] },
   { section: 'basicos', name: 'nombre_proveedor', label: 'Proveedor', type: 'autocomplete', optionsKey: 'proveedores', visibleIf: (info) => info.proveedor },
   { section: 'basicos', name: 'categoria', label: 'Categoría', type: 'select', optionsKey: 'categorias', visibleIf: (info) => info.categoria },
@@ -35,32 +35,71 @@ const DEFINICION_CAMPOS = [
   
   // IMPORTES
   { section: 'importes', name: 'moneda', label: 'Moneda', type: 'select', options: ['ARS', 'USD'] },
-  { section: 'importes', name: 'subtotal', label: 'Subtotal', type: 'number' },
+  { section: 'importes', name: 'subtotal', label: 'Subtotal', type: 'number', visibleIf: (info) => info.subtotal },
   { section: 'importes', name: 'total', label: 'Total', type: 'number' },
   { section: 'importes', name: 'total_original', label: 'Total Original', type: 'number', visibleIf: (info) => info.total_original },
-  { section: 'importes', name: 'dolar_referencia', label: 'Dólar de Referencia', type: 'number' },
+  { section: 'importes', name: 'dolar_referencia', label: 'Dólar de Referencia', type: 'number', visibleIf: (info) => info.dolar_referencia },
   { section: 'importes', name: 'subtotal_dolar', label: 'Subtotal USD', type: 'number', readonly: true },
   { section: 'importes', name: 'total_dolar', label: 'Total USD', type: 'number', readonly: true },
 
   // PAGO
   { section: 'pago', name: 'medio_pago', label: 'Medio de Pago', type: 'select', optionsKey: 'mediosPago', visibleIf: (info) => info.medio_pago },
   { section: 'pago', name: 'estado', label: 'Estado', type: 'select', options: ['Pendiente', 'Pagado'], visibleIf: (_, empresa) => empresa?.con_estados },
-  { section: 'pago', name: 'caja_chica', label: 'Caja Chica', type: 'boolean' },
-  { section: 'pago', name: 'empresa_facturacion', label: 'Empresa de facturación', type: 'select', optionsKey: 'subempresas' },
+  { section: 'pago', name: 'caja_chica', label: 'Caja Chica', type: 'boolean', visibleIf: (info) => info.caja_chica },
+  { section: 'pago', name: 'empresa_facturacion', label: 'Empresa de facturación', type: 'select', optionsKey: 'subempresas', visibleIf: (info) => info.empresa_facturacion },
   { section: 'pago', name: 'factura_cliente', label: 'Factura de cliente', type: 'boolean', visibleIf: (info) => info.factura_cliente },
 
   // IMPUESTOS
-  { section: 'impuestos', name: 'impuestos', label: 'Impuestos', type: 'impuestos' },
+  { section: 'impuestos', name: 'impuestos', label: 'Impuestos', type: 'impuestos', visibleIf: (info) => info.impuestos },
 
   // EXTRAS
   { section: 'extras', name: 'tags_extra', label: 'Tags Extra', type: 'tags', optionsKey: 'tagsExtra', visibleIf: (info) => info.tags_extra },
-  { section: 'basicos', name: 'observacion', label: 'Observación', type: 'textarea' },
+  { section: 'basicos', name: 'observacion', label: 'Observación', type: 'textarea', visibleIf: (info) => info.observacion },
 ];
 
-function getCamposVisibles(comprobanteInfo, empresa) {
+// Defaults para empresas que aún no tienen configuración guardada
+const COMPROBANTE_INFO_DEFAULT = {
+  categoria: true,
+  observacion: true,
+  proveedor: true,
+  proyecto: true,
+  subcategoria: false,
+  total_original: false,
+  medio_pago: false,
+  tipo_factura: false,
+  tags_extra: false,
+  caja_chica: false,
+  impuestos: false,
+  numero_factura: false,
+  subtotal: false,
+  cuenta_interna: false,
+  etapa: false,
+  empresa_facturacion: false,
+  fecha_pago: false,
+  obra: false,
+  cliente: false,
+  factura_cliente: false,
+  dolar_referencia: false,
+};
+
+const INGRESO_INFO_DEFAULT = {
+  observacion: true,
+  medio_pago: false,
+  categoria: false,
+  subcategoria: false,
+  tags_extra: false,
+  dolar_referencia: false,
+};
+
+function getCamposVisibles(comprobanteInfo, empresa, ingresoInfo, tipoMovimiento) {
+  // Elegir la info de campos según el tipo de movimiento
+  const rawInfo = tipoMovimiento === 'ingreso' ? ingresoInfo : comprobanteInfo;
+  const defaults = tipoMovimiento === 'ingreso' ? INGRESO_INFO_DEFAULT : COMPROBANTE_INFO_DEFAULT;
+  const info = { ...defaults, ...rawInfo };
+
   return DEFINICION_CAMPOS.filter((campo) => {
     if (!campo.visibleIf) return true;
-    return campo.visibleIf(comprobanteInfo, empresa);
+    return campo.visibleIf(info, empresa);
   });
 }
 
@@ -75,6 +114,7 @@ const GROUP_SECTIONS = {
 const MovementFields = ({
   formik,
   comprobante_info,
+  ingreso_info,
   empresa,
   etapas,
   proveedores,
@@ -153,11 +193,13 @@ const MovementFields = ({
     }
   }
 
+  const tipoMovimiento = formik.values.type || 'egreso';
+
   const camposGrupo = useMemo(() => {
-    const visibles = getCamposVisibles(comprobante_info, empresa);
+    const visibles = getCamposVisibles(comprobante_info, empresa, ingreso_info, tipoMovimiento);
     const permitidas = new Set(GROUP_SECTIONS[group] || GROUP_SECTIONS.general);
     return visibles.filter(c => permitidas.has(c.section));
-  }, [group, comprobante_info, empresa]);
+  }, [group, comprobante_info, ingreso_info, empresa, tipoMovimiento]);
 
   const renderCampo = (campo) => {
     const value = formik.values[campo.name] ?? (campo.type === 'boolean' ? false : '');
@@ -258,6 +300,11 @@ const MovementFields = ({
           options={acOptions}
           value={value || ''}
           onChange={(_, val) => formik.setFieldValue(campo.name, val || '')}
+          onInputChange={(_, val, reason) => {
+            if (reason === 'input') {
+              formik.setFieldValue(campo.name, val || '');
+            }
+          }}
           renderInput={(params) => (
             <TextField {...params} label={campo.label} fullWidth />
           )}

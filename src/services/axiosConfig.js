@@ -8,7 +8,7 @@ const api = axios.create({
     headers: {
         'Content-Type': 'application/json'
     },
-    timeout: 1000 * 60 * 15 // 1 minuto
+    timeout: 1000 * 60 * 15 * 10 // 10 minutos
 });
 
 const waitForUser = () =>

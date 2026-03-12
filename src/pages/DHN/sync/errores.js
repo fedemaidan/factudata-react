@@ -314,6 +314,8 @@ const SyncErrorsPage = () => {
       const successMessage =
         action === "keepExisting"
           ? "Se conservó el registro original"
+          : action === "keepBoth"
+          ? "Se agregaron ambos documentos"
           : "Se actualizó el trabajo con el nuevo comprobante";
       setAlert({
         open: true,

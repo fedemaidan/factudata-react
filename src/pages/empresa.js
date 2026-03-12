@@ -40,6 +40,7 @@ import { SubEmpresasDetails } from 'src/sections/empresa/subEmpresasDetails';
 import { ObrasDetails } from 'src/sections/empresa/obrasDetails';
 import { CategoriasMaterialesDetails } from 'src/sections/empresa/categoriasMaterialesDetails';
 import { RegistroClienteDetails } from 'src/sections/empresa/registroClienteDetails';
+import { OrganizacionDrive } from 'src/sections/empresa/organizacionDrive';
 
 // Icons
 import BusinessIcon from '@mui/icons-material/Business';
@@ -61,6 +62,7 @@ import ConstructionIcon from '@mui/icons-material/Construction';
 import CorporateFareIcon from '@mui/icons-material/CorporateFare';
 import MoreHorizIcon from '@mui/icons-material/MoreHoriz';
 import AssignmentIndIcon from '@mui/icons-material/AssignmentInd';
+import CloudIcon from '@mui/icons-material/Cloud';
 
 
 const EmpresaPage = () => {
@@ -107,6 +109,7 @@ const EmpresaPage = () => {
     { value: 'medios_pago', label: 'Medios de Pago', icon: <PaymentIcon /> },
     { value: 'impuestos', label: 'Impuestos', icon: <ReceiptIcon /> },
     { value: 'obras', label: 'Obras', icon: <ConstructionIcon /> },
+    { value: 'drive', label: 'Drive', icon: <CloudIcon /> },
     { value: 'configuracion', label: 'Configuración', icon: <SettingsIcon /> },
     { value: 'permisos', label: 'Permisos', icon: <SecurityIcon /> },
   ];
@@ -450,6 +453,7 @@ const EmpresaPage = () => {
                 {currentTab === 'categorias_materiales' && <CategoriasMaterialesDetails empresa={empresa}/>}
                 {currentTab === 'proveedores' && <ProveedoresDetails empresa={empresa}/>}
                 {currentTab === 'etapas' && <EtapasDetails empresa={empresa} />} 
+                {currentTab === 'drive' && <OrganizacionDrive empresa={empresa} updateEmpresaData={updateEmpresaDetails} />}
                 {currentTab === 'configuracion' && <ConfiguracionGeneral empresa={empresa} updateEmpresaData={updateEmpresaDetails} hasPermission={hasPermission}/>}
                 {currentTab === 'permisos' && <PermisosUsuarios empresa={empresa} />}
                 {currentTab === 'medios_pago' && <MediosPagoDetails empresa={empresa} />}

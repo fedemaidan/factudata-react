@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, Fragment } from 'react';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import Head from 'next/head';
 import {
@@ -38,6 +38,8 @@ import {
   TableRow,
   Autocomplete
 } from '@mui/material';
+import Drawer from '@mui/material/Drawer';
+import CircularProgress from '@mui/material/CircularProgress';
 import AddCircleIcon from '@mui/icons-material/AddCircle';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
@@ -55,28 +57,40 @@ import MonedasService from 'src/services/monedasService';
 import { getEmpresaById, getEmpresaDetailsFromUser } from 'src/services/empresaService';
 import { getProyectosFromUser } from 'src/services/proyectosService';
 import { formatCurrency, formatTimestamp } from 'src/utils/formatters';
+import dayjs from 'dayjs';
 import PresupuestoDrawer from 'src/components/PresupuestoDrawer';
 import Tooltip from '@mui/material/Tooltip';
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
+import CloseIcon from '@mui/icons-material/Close';
+import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import ListAltIcon from '@mui/icons-material/ListAlt';
+import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
+import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 
 // Helper: calcular totales de un resumen multimoneda (para ProyectoCard)
 // Si existe presupuesto general (sin categoría/etapa/proveedor), lo usa como techo
 const calcularTotalesResumen = (resumen, tipoCambio = null, monedaVista = 'ARS') => {
   if (!resumen) return { egresosTotal: 0, egresosEjecutado: 0, ingresosTotal: 0, ingresosEjecutado: 0 };
   
-  const cacIndice = resumen.cotizacionActual?.cac_indice || null;
+  // Todos los subíndices CAC disponibles
+  const cacIndices = {
+    general: resumen.cotizacionActual?.cac_indice || null,
+    mano_obra: resumen.cotizacionActual?.cac_mano_obra || null,
+    materiales: resumen.cotizacionActual?.cac_materiales || null,
+  };
   
-  const convertir = (monto, monedaOriginal) => {
+  const convertir = (monto, monedaOriginal, cacTipoItem = null) => {
     if (monedaVista === monedaOriginal) return monto;
     if (!tipoCambio && monedaOriginal !== 'CAC') return monto;
+    // Seleccionar el subíndice CAC correcto según el cac_tipo del item
+    const cacIdx = cacIndices[cacTipoItem || 'general'] || cacIndices.general;
     if (monedaVista === 'USD' && monedaOriginal === 'ARS') return tipoCambio ? monto / tipoCambio : monto;
     if (monedaVista === 'ARS' && monedaOriginal === 'USD') return tipoCambio ? monto * tipoCambio : monto;
-    if (monedaOriginal === 'CAC' && monedaVista === 'ARS') return cacIndice ? monto * cacIndice : monto;
-    if (monedaOriginal === 'CAC' && monedaVista === 'USD') return (cacIndice && tipoCambio) ? (monto * cacIndice) / tipoCambio : monto;
-    if (monedaOriginal === 'ARS' && monedaVista === 'CAC') return cacIndice ? monto / cacIndice : monto;
-    if (monedaOriginal === 'USD' && monedaVista === 'CAC') return (cacIndice && tipoCambio) ? (monto * tipoCambio) / cacIndice : monto;
+    if (monedaOriginal === 'CAC' && monedaVista === 'ARS') return cacIdx ? monto * cacIdx : monto;
+    if (monedaOriginal === 'CAC' && monedaVista === 'USD') return (cacIdx && tipoCambio) ? (monto * cacIdx) / tipoCambio : monto;
+    if (monedaOriginal === 'ARS' && monedaVista === 'CAC') return cacIdx ? monto / cacIdx : monto;
+    if (monedaOriginal === 'USD' && monedaVista === 'CAC') return (cacIdx && tipoCambio) ? (monto * tipoCambio) / cacIdx : monto;
     return monto;
   };
 
@@ -87,16 +101,16 @@ const calcularTotalesResumen = (resumen, tipoCambio = null, monedaVista = 'ARS')
     const especificos = allItems.filter(i => i.categoria || i.etapa || i.proveedor);
     
     if (generales.length > 0) {
-      let total = generales.reduce((s, i) => s + convertir(i.monto || 0, i.moneda || 'ARS'), 0);
-      const ejecutado = generales.reduce((s, i) => s + convertir(i.ejecutado || 0, i.moneda || 'ARS'), 0);
-      const especTotal = especificos.reduce((s, i) => s + convertir(i.monto || 0, i.moneda || 'ARS'), 0);
+      let total = generales.reduce((s, i) => s + convertir(i.monto || 0, i.moneda || 'ARS', i.cac_tipo), 0);
+      const ejecutado = generales.reduce((s, i) => s + convertir(i.ejecutado || 0, i.moneda || 'ARS', i.cac_tipo), 0);
+      const especTotal = especificos.reduce((s, i) => s + convertir(i.monto || 0, i.moneda || 'ARS', i.cac_tipo), 0);
       if (especTotal > total) total = especTotal;
       return { total, ejecutado };
     }
     
     return allItems.reduce((acc, i) => ({
-      total: acc.total + convertir(i.monto || 0, i.moneda || 'ARS'),
-      ejecutado: acc.ejecutado + convertir(i.ejecutado || 0, i.moneda || 'ARS'),
+      total: acc.total + convertir(i.monto || 0, i.moneda || 'ARS', i.cac_tipo),
+      ejecutado: acc.ejecutado + convertir(i.ejecutado || 0, i.moneda || 'ARS', i.cac_tipo),
     }), { total: 0, ejecutado: 0 });
   };
 
@@ -111,6 +125,12 @@ const ProyectoCard = ({ proyecto, resumen, onSelect, formatMonto, tipoCambio, mo
   const { egresosTotal, egresosEjecutado, ingresosTotal, ingresosEjecutado } = calcularTotalesResumen(resumen, tipoCambio, moneda);
   const porcentajeEgresos = egresosTotal > 0 ? (egresosEjecutado / egresosTotal) * 100 : 0;
   const gananciaProyectada = ingresosTotal - egresosTotal;
+
+  // Detectar si hay multi-moneda para mostrar indicador
+  const monedasIngreso = resumen?.ingresosPorMoneda ? Object.keys(resumen.ingresosPorMoneda) : [];
+  const monedasEgreso = resumen?.egresosPorMoneda ? Object.keys(resumen.egresosPorMoneda) : [];
+  const esMultiMonedaIng = monedasIngreso.length > 1;
+  const esMultiMonedaEgr = monedasEgreso.length > 1;
   const gananciaReal = ingresosEjecutado - egresosEjecutado;
   const gananciaProyectadaPendiente = gananciaProyectada - gananciaReal;
   const tieneIngresos = ingresosTotal > 0;
@@ -128,6 +148,11 @@ const ProyectoCard = ({ proyecto, resumen, onSelect, formatMonto, tipoCambio, mo
                   <Stack direction="row" spacing={0.5} alignItems="center">
                     <TrendingUpIcon sx={{ fontSize: 14, color: 'success.main' }} />
                     <Typography variant="body2" color="text.secondary">Pres. ingresos</Typography>
+                    {esMultiMonedaIng && (
+                      <Tooltip title="Incluye múltiples monedas (ver detalle adentro)" arrow>
+                        <SwapHorizIcon sx={{ fontSize: 12, color: 'text.disabled' }} />
+                      </Tooltip>
+                    )}
                   </Stack>
                   <Typography variant="body2" fontWeight={600}>{formatMonto(ingresosTotal, moneda)}</Typography>
                 </Stack>
@@ -144,6 +169,11 @@ const ProyectoCard = ({ proyecto, resumen, onSelect, formatMonto, tipoCambio, mo
               <Stack direction="row" spacing={0.5} alignItems="center">
                 <TrendingDownIcon sx={{ fontSize: 14, color: 'error.main' }} />
                 <Typography variant="body2" color="text.secondary">Pres. egresos</Typography>
+                {esMultiMonedaEgr && (
+                  <Tooltip title="Incluye múltiples monedas (ver detalle adentro)" arrow>
+                    <SwapHorizIcon sx={{ fontSize: 12, color: 'text.disabled' }} />
+                  </Tooltip>
+                )}
               </Stack>
               <Typography variant="body2" fontWeight={600}>{formatMonto(egresosTotal, moneda)}</Typography>
             </Stack>
@@ -196,7 +226,7 @@ const ProyectoCard = ({ proyecto, resumen, onSelect, formatMonto, tipoCambio, mo
 };
 
 // ============ COMPONENTE: ITEM DE PRESUPUESTO ============
-const PresupuestoItem = ({ label, presupuesto, ejecutado, formatMonto, onCrear, onClick, historial, moneda, indexacion, baseCalculo, cotizacionSnapshot, montoIngresado, cacIndiceActual: cacIdx, tipoCambioActual }) => {
+const PresupuestoItem = ({ label, presupuesto, ejecutado, formatMonto, onCrear, onClick, historial, moneda, indexacion, baseCalculo, cotizacionSnapshot, montoIngresado, cacIndiceActual: cacIdx, tipoCambioActual, cacTipo }) => {
   const tienePresupuesto = presupuesto !== null && presupuesto !== undefined;
   const ejec = ejecutado || 0;
   const porcentaje = tienePresupuesto && presupuesto > 0 ? (ejec / presupuesto) * 100 : 0;
@@ -204,7 +234,8 @@ const PresupuestoItem = ({ label, presupuesto, ejecutado, formatMonto, onCrear, 
   const monedaItem = moneda || 'ARS';
   const esIndexado = !!indexacion;
   const indiceActual = indexacion === 'CAC' ? cacIdx : (indexacion === 'USD' ? tipoCambioActual : null);
-  const unidadIdx = indexacion === 'CAC' ? 'CAC' : (indexacion === 'USD' ? 'USD' : '');
+  const cacTipoLabel = cacTipo === 'mano_obra' ? 'MO' : cacTipo === 'materiales' ? 'MAT' : '';
+  const unidadIdx = indexacion === 'CAC' ? `CAC${cacTipoLabel ? ' ' + cacTipoLabel : ''}` : (indexacion === 'USD' ? 'USD' : '');
 
   // Para indexados: mostrar equivalencia ARS hoy
   const fmtARS = (v) => v != null ? `$${Number(v).toLocaleString('es-AR', { maximumFractionDigits: 0 })}` : '';
@@ -239,7 +270,7 @@ const PresupuestoItem = ({ label, presupuesto, ejecutado, formatMonto, onCrear, 
       <Stack direction="row" spacing={0.5} alignItems="center" sx={{ minWidth: 0, mb: 0.5 }} flexWrap="wrap" useFlexGap>
         <Typography fontWeight={500} noWrap sx={{ fontSize: { xs: '0.85rem', md: '1rem' }, flex: { xs: '1 1 auto', sm: '0 1 auto' }, minWidth: 0 }}>{label}</Typography>
         {esIndexado && (
-          <Chip label={`idx ${indexacion}`} size="small" color="secondary" variant="outlined" sx={{ height: 20, '& .MuiChip-label': { px: 0.5, fontSize: '0.65rem' } }} />
+          <Chip label={`idx ${unidadIdx}`} size="small" color="secondary" variant="outlined" sx={{ height: 20, '& .MuiChip-label': { px: 0.5, fontSize: '0.65rem' } }} />
         )}
         {baseCalculo === 'subtotal' && (
           <Chip label="neto" size="small" color="default" variant="outlined" sx={{ height: 20, '& .MuiChip-label': { px: 0.5, fontSize: '0.65rem' } }} />
@@ -331,8 +362,34 @@ const ControlPresupuestosPage = () => {
   // Modal agregar proveedor (se mantiene como dialog simple)
   const [proveedorModal, setProveedorModal] = useState(false);
   const [nuevoProveedor, setNuevoProveedor] = useState('');
+
+  // Drawer de movimientos (desde tarjetas resumen)
+  const [movDrawer, setMovDrawer] = useState({ open: false, tipo: null, label: '' });
+  const [movDrawerData, setMovDrawerData] = useState([]);
+  const [movDrawerLoading, setMovDrawerLoading] = useState(false);
+  const [movDrawerOrdenAsc, setMovDrawerOrdenAsc] = useState(true);
+  const [movDrawerEquiv, setMovDrawerEquiv] = useState({ usd: false, cac: false });
   
 
+
+  // Fetch movimientos cuando se abre el drawer de resumen
+  useEffect(() => {
+    if (!movDrawer.open || !proyectoSeleccionado) return;
+    let cancelled = false;
+    setMovDrawerLoading(true);
+    presupuestoService.obtenerMovimientosProyecto(proyectoSeleccionado, movDrawer.tipo)
+      .then(data => { if (!cancelled) setMovDrawerData(data); })
+      .catch(() => { if (!cancelled) setMovDrawerData([]); })
+      .finally(() => { if (!cancelled) setMovDrawerLoading(false); });
+    return () => { cancelled = true; };
+  }, [movDrawer.open, movDrawer.tipo, proyectoSeleccionado]);
+
+  // Helper: abrir drawer de movimientos
+  const abrirMovDrawer = (tipo, label) => {
+    setMovDrawerData([]);
+    setMovDrawerOrdenAsc(true);
+    setMovDrawer({ open: true, tipo, label });
+  };
 
   // Cargar cotización del dólar
   useEffect(() => {
@@ -514,18 +571,18 @@ const ControlPresupuestosPage = () => {
       
       if (generales.length > 0) {
         // Hay presupuesto general: usarlo como techo
-        let total = generales.reduce((s, i) => s + convertir(i.monto || 0, i.moneda || 'ARS'), 0);
-        const ejecutado = generales.reduce((s, i) => s + convertir(i.ejecutado || 0, i.moneda || 'ARS'), 0);
+        let total = generales.reduce((s, i) => s + convertir(i.monto || 0, i.moneda || 'ARS', i.cac_tipo), 0);
+        const ejecutado = generales.reduce((s, i) => s + convertir(i.ejecutado || 0, i.moneda || 'ARS', i.cac_tipo), 0);
         // Si la suma de específicos excede el general, mostrar la suma real
-        const especTotal = especificos.reduce((s, i) => s + convertir(i.monto || 0, i.moneda || 'ARS'), 0);
+        const especTotal = especificos.reduce((s, i) => s + convertir(i.monto || 0, i.moneda || 'ARS', i.cac_tipo), 0);
         if (especTotal > total) total = especTotal;
         return { total, ejecutado };
       }
       
       // Sin general: sumar todos
       return items.reduce((acc, i) => ({
-        total: acc.total + convertir(i.monto || 0, i.moneda || 'ARS'),
-        ejecutado: acc.ejecutado + convertir(i.ejecutado || 0, i.moneda || 'ARS'),
+        total: acc.total + convertir(i.monto || 0, i.moneda || 'ARS', i.cac_tipo),
+        ejecutado: acc.ejecutado + convertir(i.ejecutado || 0, i.moneda || 'ARS', i.cac_tipo),
       }), { total: 0, ejecutado: 0 });
     };
     
@@ -544,24 +601,36 @@ const ControlPresupuestosPage = () => {
   };
 
   // Función para convertir montos según la moneda del presupuesto y la moneda de visualización
-  const cacIndiceActual = resumen?.cotizacionActual?.cac_indice || null;
+  // Todos los subíndices CAC disponibles
+  const cacIndicesActuales = {
+    general: resumen?.cotizacionActual?.cac_indice || null,
+    mano_obra: resumen?.cotizacionActual?.cac_mano_obra || null,
+    materiales: resumen?.cotizacionActual?.cac_materiales || null,
+  };
+  const cacIndiceActual = cacIndicesActuales.general; // backward compat para header chip
 
-  const convertir = (monto, monedaOriginal = 'ARS') => {
+  // Helper: obtener el subíndice CAC correcto para un tipo dado
+  const getCacIndice = (cacTipo) => cacIndicesActuales[cacTipo || 'general'] || cacIndicesActuales.general || null;
+
+  const convertir = (monto, monedaOriginal = 'ARS', cacTipoItem = null) => {
     // Si la moneda de visualización y la original son iguales, no convertir
     if (moneda === monedaOriginal) return monto;
+    
+    // Seleccionar el subíndice CAC correcto según el cac_tipo del item
+    const cacIdx = getCacIndice(cacTipoItem);
     
     // ARS ↔ USD
     if (moneda === 'USD' && monedaOriginal === 'ARS') return tipoCambio ? monto / tipoCambio : monto;
     if (moneda === 'ARS' && monedaOriginal === 'USD') return tipoCambio ? monto * tipoCambio : monto;
     
     // CAC → ARS: monto_cac * cac_indice (presupuestos indexados por CAC vistos en ARS)
-    if (monedaOriginal === 'CAC' && moneda === 'ARS') return cacIndiceActual ? monto * cacIndiceActual : monto;
+    if (monedaOriginal === 'CAC' && moneda === 'ARS') return cacIdx ? monto * cacIdx : monto;
     // CAC → USD: (monto_cac * cac_indice) / tipoCambio
-    if (monedaOriginal === 'CAC' && moneda === 'USD') return (cacIndiceActual && tipoCambio) ? (monto * cacIndiceActual) / tipoCambio : monto;
+    if (monedaOriginal === 'CAC' && moneda === 'USD') return (cacIdx && tipoCambio) ? (monto * cacIdx) / tipoCambio : monto;
     // ARS → CAC
-    if (monedaOriginal === 'ARS' && moneda === 'CAC') return cacIndiceActual ? monto / cacIndiceActual : monto;
+    if (monedaOriginal === 'ARS' && moneda === 'CAC') return cacIdx ? monto / cacIdx : monto;
     // USD → CAC
-    if (monedaOriginal === 'USD' && moneda === 'CAC') return (cacIndiceActual && tipoCambio) ? (monto * tipoCambio) / cacIndiceActual : monto;
+    if (monedaOriginal === 'USD' && moneda === 'CAC') return (cacIdx && tipoCambio) ? (monto * tipoCambio) / cacIdx : monto;
     
     return monto;
   };
@@ -582,6 +651,48 @@ const ControlPresupuestosPage = () => {
     }
     return formatCurrency(valor);
   };
+
+  // Helper: construir desglose multi-moneda para tooltips
+  // Muestra cuánto hay en cada moneda original antes de la conversión
+  const buildBreakdownTooltip = (tipo = 'egresos') => {
+    const porMoneda = tipo === 'ingresos' ? resumen?.ingresosPorMoneda : resumen?.egresosPorMoneda;
+    if (!porMoneda) return null;
+    const monedas = Object.keys(porMoneda);
+    if (monedas.length <= 1) return null; // No hay multi-moneda, no hace falta desglose
+    
+    const fmtNativo = (valor, mon) => {
+      if (mon === 'USD') return `USD ${Number(valor).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+      if (mon === 'CAC') return `CAC ${Number(valor).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+      return `$${Number(valor).toLocaleString('es-AR', { maximumFractionDigits: 0 })}`;
+    };
+
+    return (
+      <Box sx={{ fontSize: '0.75rem', lineHeight: 1.8 }}>
+        <strong>Composición ({tipo}):</strong>
+        {monedas.map(mon => {
+          const data = porMoneda[mon];
+          const totalNativo = data.total || 0;
+          const ejecutadoNativo = data.ejecutado || 0;
+          return (
+            <Box key={mon}>
+              {mon}: Pres. {fmtNativo(totalNativo, mon)} · Ejec. {fmtNativo(ejecutadoNativo, mon)}
+              {mon !== moneda && tipoCambio && mon === 'USD' && moneda === 'ARS' && (
+                <> (×${Number(tipoCambio).toLocaleString('es-AR', {maximumFractionDigits: 0})})</>)}
+              {mon !== moneda && cacIndiceActual && mon === 'CAC' && moneda === 'ARS' && (
+                <> (×{Number(cacIndiceActual).toLocaleString('es-AR', {maximumFractionDigits: 2})})</>)}
+            </Box>
+          );
+        })}
+      </Box>
+    );
+  };
+
+  // Helper: obtener info de conversiones de moneda del resumen
+  const conversionesInfo = useMemo(() => {
+    const conv = resumen?.conversionesPorMoneda;
+    if (!conv || Object.keys(conv).length === 0) return null;
+    return conv;
+  }, [resumen]);
 
   // Obtener presupuesto por agrupación
   const getPresupuestoPorAgrupacion = (tipoAgrupacion, valor) => {
@@ -611,12 +722,20 @@ const ControlPresupuestosPage = () => {
       ejecutado: item.ejecutado || 0, 
       id: item.id,
       historial: item.historial || [],
+      adicionales: item.adicionales || [],
       moneda: item.moneda || 'ARS',
       moneda_display: item.moneda_display || item.moneda || 'ARS',
       indexacion: item.indexacion || null,
       monto_ingresado: item.monto_ingresado || item.monto,
       base_calculo: item.base_calculo || 'total',
       cotizacion_snapshot: item.cotizacion_snapshot || null,
+      cac_tipo: item.cac_tipo || null,
+      fecha_presupuesto: item.fecha_presupuesto || null,
+      tipo: item.tipo || 'egreso',
+      proveedor: item.proveedor || null,
+      categoria: item.categoria || null,
+      subcategoria: item.subcategoria || null,
+      etapa: item.etapa || null,
     };
   };
 
@@ -676,6 +795,8 @@ const ControlPresupuestosPage = () => {
         adicionales: item.adicionales || [],
         ejecutado: item.ejecutado || 0,
         cotizacion_snapshot: item.cotizacion_snapshot || null,
+        cac_tipo: item.cac_tipo || null,
+        fecha_presupuesto: item.fecha_presupuesto || null,
         proveedor: item.proveedor || null,
         categoria: item.categoria || null,
         subcategoria: item.subcategoria || null,
@@ -699,6 +820,8 @@ const ControlPresupuestosPage = () => {
     adicionales: item.adicionales || [],
     ejecutado: item.ejecutado || 0,
     cotizacion_snapshot: item.cotizacion_snapshot || null,
+    cac_tipo: item.cac_tipo || null,
+    fecha_presupuesto: item.fecha_presupuesto || null,
     proveedor: item.proveedor || null,
     categoria: item.categoria || null,
     subcategoria: item.subcategoria || null,
@@ -737,7 +860,7 @@ const ControlPresupuestosPage = () => {
     if (!resumen) return { porCategoria: 0, porEtapa: 0, porProveedor: 0, general: 0 };
     
     const items = obtenerTodosLosItemsEgresos();
-    const conv = (i) => convertir(i.monto || 0, i.moneda || 'ARS');
+    const conv = (i) => convertir(i.monto || 0, i.moneda || 'ARS', i.cac_tipo);
     
     // Presupuesto general (sin categoria, etapa ni proveedor)
     const general = items
@@ -1059,40 +1182,59 @@ const ControlPresupuestosPage = () => {
                     <Grid container spacing={{ xs: 1.5, md: 3 }}>
                       <Grid item xs={6} sm={4}>
                         <Card>
+                          <CardActionArea onClick={() => abrirMovDrawer('ingreso', 'Ingresos')}>
                           <CardContent sx={{ p: { xs: 1.5, md: 2 }, '&:last-child': { pb: { xs: 1.5, md: 2 } } }}>
                             <Stack direction="row" alignItems="center" spacing={{ xs: 1, md: 2 }}>
                               <TrendingUpIcon color="success" sx={{ fontSize: { xs: 28, md: 40 } }} />
                               <Box sx={{ minWidth: 0 }}>
                                 <Typography variant="body2" color="text.secondary" sx={{ fontSize: { xs: '0.65rem', sm: '0.75rem', md: '0.875rem' } }} noWrap>Ingresos Proyectados</Typography>
-                                <Typography variant="h5" sx={{ fontSize: { xs: '1rem', sm: '1.25rem', md: '1.5rem' } }} noWrap>{formatMonto(totales.ingresos.total, moneda)}</Typography>
+                                <Stack direction="row" alignItems="center" spacing={0.5}>
+                                  <Typography variant="h5" sx={{ fontSize: { xs: '1rem', sm: '1.25rem', md: '1.5rem' } }} noWrap>{formatMonto(totales.ingresos.total, moneda)}</Typography>
+                                  {buildBreakdownTooltip('ingresos') && (
+                                    <Tooltip title={buildBreakdownTooltip('ingresos')} arrow placement="bottom">
+                                      <InfoOutlinedIcon sx={{ fontSize: 16, color: 'text.disabled', cursor: 'help' }} />
+                                    </Tooltip>
+                                  )}
+                                </Stack>
                                 <Typography variant="body2" color="text.secondary" sx={{ fontSize: { xs: '0.6rem', sm: '0.7rem', md: '0.875rem' } }} noWrap>
                                   Recibido: {formatMonto(totales.ingresos.ejecutado, moneda)}
                                 </Typography>
                               </Box>
                             </Stack>
                           </CardContent>
+                          </CardActionArea>
                         </Card>
                       </Grid>
                       
                       <Grid item xs={6} sm={4}>
                         <Card>
+                          <CardActionArea onClick={() => abrirMovDrawer('egreso', 'Egresos')}>
                           <CardContent sx={{ p: { xs: 1.5, md: 2 }, '&:last-child': { pb: { xs: 1.5, md: 2 } } }}>
                             <Stack direction="row" alignItems="center" spacing={{ xs: 1, md: 2 }}>
                               <TrendingDownIcon color="error" sx={{ fontSize: { xs: 28, md: 40 } }} />
                               <Box sx={{ minWidth: 0 }}>
                                 <Typography variant="body2" color="text.secondary" sx={{ fontSize: { xs: '0.65rem', sm: '0.75rem', md: '0.875rem' } }} noWrap>Egresos Proyectados</Typography>
-                                <Typography variant="h5" sx={{ fontSize: { xs: '1rem', sm: '1.25rem', md: '1.5rem' } }} noWrap>{formatMonto(totales.egresos.total, moneda)}</Typography>
+                                <Stack direction="row" alignItems="center" spacing={0.5}>
+                                  <Typography variant="h5" sx={{ fontSize: { xs: '1rem', sm: '1.25rem', md: '1.5rem' } }} noWrap>{formatMonto(totales.egresos.total, moneda)}</Typography>
+                                  {buildBreakdownTooltip('egresos') && (
+                                    <Tooltip title={buildBreakdownTooltip('egresos')} arrow placement="bottom">
+                                      <InfoOutlinedIcon sx={{ fontSize: 16, color: 'text.disabled', cursor: 'help' }} />
+                                    </Tooltip>
+                                  )}
+                                </Stack>
                                 <Typography variant="body2" color="text.secondary" sx={{ fontSize: { xs: '0.6rem', sm: '0.7rem', md: '0.875rem' } }} noWrap>
                                   Gastado: {formatMonto(totales.egresos.ejecutado, moneda)}
                                 </Typography>
                               </Box>
                             </Stack>
                           </CardContent>
+                          </CardActionArea>
                         </Card>
                       </Grid>
                       
                       <Grid item xs={12} sm={4}>
                         <Card sx={{ bgcolor: totales.gananciaProyectada >= 0 ? 'success.light' : 'error.light' }}>
+                          <CardActionArea onClick={() => abrirMovDrawer(null, 'Todos los movimientos')}>
                           <CardContent sx={{ p: { xs: 1.5, md: 2 }, '&:last-child': { pb: { xs: 1.5, md: 2 } } }}>
                             <Stack direction="row" alignItems="center" spacing={{ xs: 1, md: 2 }}>
                               <AccountBalanceWalletIcon sx={{ fontSize: { xs: 28, md: 40 }, color: 'white' }} />
@@ -1100,11 +1242,15 @@ const ControlPresupuestosPage = () => {
                                 <Typography variant="body2" sx={{ color: 'white', fontSize: { xs: '0.65rem', sm: '0.75rem', md: '0.875rem' } }} noWrap>Ganancia Proyectada</Typography>
                                 <Typography variant="h5" sx={{ color: 'white', fontSize: { xs: '1rem', sm: '1.25rem', md: '1.5rem' } }} noWrap>{formatMonto(totales.gananciaProyectada, moneda)}</Typography>
                                 <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.8)', fontSize: { xs: '0.6rem', sm: '0.7rem', md: '0.875rem' } }} noWrap>
-                                  Ejecutada: {formatMonto(totales.gananciaActual, moneda)} · Pendiente: {formatMonto(totales.gananciaProyectadaPendiente, moneda)}
+                                  Ejecutada: {formatMonto(totales.gananciaActual, moneda)}
+                                </Typography>
+                                <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.8)', fontSize: { xs: '0.6rem', sm: '0.7rem', md: '0.875rem' } }} noWrap>
+                                  Pendiente: {formatMonto(totales.gananciaProyectadaPendiente, moneda)}
                                 </Typography>
                               </Box>
                             </Stack>
                           </CardContent>
+                          </CardActionArea>
                         </Card>
                       </Grid>
                     </Grid>
@@ -1162,8 +1308,9 @@ const ControlPresupuestosPage = () => {
                             const porcentaje = item.monto > 0 ? (item.ejecutado / item.monto) * 100 : 0;
                             const monedaItem = item.moneda || 'ARS';
                             const esIdx = !!item.indexacion;
-                            const unidadIdx = item.indexacion === 'CAC' ? 'CAC' : (item.indexacion === 'USD' ? 'USD' : '');
-                            const idxActual = item.indexacion === 'CAC' ? cacIndiceActual : (item.indexacion === 'USD' ? tipoCambio : null);
+                            const cacTipoLbl = item.cac_tipo === 'mano_obra' ? ' MO' : item.cac_tipo === 'materiales' ? ' MAT' : '';
+                            const unidadIdx = item.indexacion === 'CAC' ? `CAC${cacTipoLbl}` : (item.indexacion === 'USD' ? 'USD' : '');
+                            const idxActual = item.indexacion === 'CAC' ? getCacIndice(item.cac_tipo) : (item.indexacion === 'USD' ? tipoCambio : null);
                             const presEnARS = esIdx && idxActual ? item.monto * idxActual : null;
                             const ejEnARS = esIdx && idxActual ? (item.ejecutado || 0) * idxActual : null;
                             const saldoEnARS = esIdx && idxActual ? (item.monto - (item.ejecutado || 0)) * idxActual : null;
@@ -1269,6 +1416,36 @@ const ControlPresupuestosPage = () => {
                   );
                 })()}
 
+                {/* Sección informativa: Conversiones de moneda (compra/venta USD) */}
+                {conversionesInfo && (
+                  <Paper sx={{ p: { xs: 1.5, md: 2 }, bgcolor: 'grey.50', border: '1px dashed', borderColor: 'grey.300' }}>
+                    <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
+                      <SwapHorizIcon sx={{ fontSize: { xs: 18, md: 22 }, color: 'text.secondary' }} />
+                      <Typography variant="subtitle2" color="text.secondary" sx={{ fontSize: { xs: '0.8rem', md: '0.9rem' } }}>
+                        Conversiones USD ↔ ARS
+                      </Typography>
+                      <Chip 
+                        label="No impactan presupuesto" 
+                        size="small" 
+                        variant="outlined" 
+                        sx={{ height: 20, '& .MuiChip-label': { px: 0.5, fontSize: '0.6rem' }, color: 'text.secondary' }} 
+                      />
+                    </Stack>
+                    <Stack direction="row" spacing={2} flexWrap="wrap" useFlexGap>
+                      {Object.entries(conversionesInfo).map(([mon, data]) => (
+                        <Box key={mon}>
+                          <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.65rem', sm: '0.75rem' } }}>
+                            {mon}: {data.ingresos > 0 && <>Ingresos: {mon === 'USD' ? `USD ${data.ingresos.toLocaleString('es-AR', {maximumFractionDigits: 2})}` : `$${data.ingresos.toLocaleString('es-AR', {maximumFractionDigits: 0})}`}</>}
+                            {data.ingresos > 0 && data.egresos > 0 && ' · '}
+                            {data.egresos > 0 && <>Egresos: {mon === 'USD' ? `USD ${data.egresos.toLocaleString('es-AR', {maximumFractionDigits: 2})}` : `$${data.egresos.toLocaleString('es-AR', {maximumFractionDigits: 0})}`}</>}
+                            {' '}({data.cantidad} mov.)
+                          </Typography>
+                        </Box>
+                      ))}
+                    </Stack>
+                  </Paper>
+                )}
+
                 {/* Tabs de Egresos */}
                 <Paper sx={{ p: { xs: 1.5, md: 2 } }}>
                   <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
@@ -1311,8 +1488,9 @@ const ControlPresupuestosPage = () => {
                               const gi = calcularSumas.generalItem;
                               const esIdx = gi && !!gi.indexacion;
                               const monedaItem = gi?.moneda || 'ARS';
-                              const unidadIdx = gi?.indexacion === 'CAC' ? 'CAC' : (gi?.indexacion === 'USD' ? 'USD' : '');
-                              const idxActual = gi?.indexacion === 'CAC' ? cacIndiceActual : (gi?.indexacion === 'USD' ? tipoCambio : null);
+                              const cacTipoLbl = gi?.cac_tipo === 'mano_obra' ? ' MO' : gi?.cac_tipo === 'materiales' ? ' MAT' : '';
+                              const unidadIdx = gi?.indexacion === 'CAC' ? `CAC${cacTipoLbl}` : (gi?.indexacion === 'USD' ? 'USD' : '');
+                              const idxActual = gi?.indexacion === 'CAC' ? getCacIndice(gi?.cac_tipo) : (gi?.indexacion === 'USD' ? tipoCambio : null);
                               const presEnARS = esIdx && idxActual ? gi.monto * idxActual : null;
                               const fmtARS = (v) => v != null ? `$${Number(v).toLocaleString('es-AR', { maximumFractionDigits: 0 })}` : '';
                               const fmtUnidad = (v) => `${Number(v).toLocaleString('es-AR', { maximumFractionDigits: 2 })} ${unidadIdx}`;
@@ -1426,8 +1604,9 @@ const ControlPresupuestosPage = () => {
                                 baseCalculo={data.base_calculo}
                                 cotizacionSnapshot={data.cotizacion_snapshot}
                                 montoIngresado={data.monto_ingresado}
-                                cacIndiceActual={cacIndiceActual}
+                                cacIndiceActual={getCacIndice(data.cac_tipo)}
                                 tipoCambioActual={tipoCambio}
+                                cacTipo={data.cac_tipo}
                                 onCrear={() => abrirDrawerCrear('categoria', catName)}
                                 onClick={data.id ? () => abrirDrawerEditar(data, catName) : undefined}
                               />
@@ -1465,8 +1644,9 @@ const ControlPresupuestosPage = () => {
                                 baseCalculo={data.base_calculo}
                                 cotizacionSnapshot={data.cotizacion_snapshot}
                                 montoIngresado={data.monto_ingresado}
-                                cacIndiceActual={cacIndiceActual}
+                                cacIndiceActual={getCacIndice(data.cac_tipo)}
                                 tipoCambioActual={tipoCambio}
+                                cacTipo={data.cac_tipo}
                                 onCrear={() => abrirDrawerCrear('etapa', etapaName)}
                                 onClick={data.id ? () => abrirDrawerEditar(data, etapaName) : undefined}
                               />
@@ -1522,8 +1702,9 @@ const ControlPresupuestosPage = () => {
                                 baseCalculo={data.base_calculo}
                                 cotizacionSnapshot={data.cotizacion_snapshot}
                                 montoIngresado={data.monto_ingresado}
-                                cacIndiceActual={cacIndiceActual}
+                                cacIndiceActual={getCacIndice(data.cac_tipo)}
                                 tipoCambioActual={tipoCambio}
+                                cacTipo={data.cac_tipo}
                                 onCrear={() => abrirDrawerCrear('proveedor', proveedor)}
                                 onClick={data.id ? () => abrirDrawerEditar(data, proveedor) : undefined}
                               />
@@ -1570,6 +1751,197 @@ const ControlPresupuestosPage = () => {
           }
         }}
       />
+
+      {/* Drawer de movimientos del proyecto */}
+      <Drawer
+        anchor="right"
+        open={movDrawer.open}
+        onClose={() => setMovDrawer(prev => ({ ...prev, open: false }))}
+        PaperProps={{ sx: { width: { xs: '100%', sm: 720 }, p: 0 } }}
+      >
+        <Box sx={{ p: 2 }}>
+          <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
+            <Typography variant="h6" sx={{ fontSize: '1rem' }}>{movDrawer.label}</Typography>
+            <IconButton size="small" onClick={() => setMovDrawer(prev => ({ ...prev, open: false }))}>
+              <CloseIcon fontSize="small" />
+            </IconButton>
+          </Stack>
+
+          <Stack direction="row" spacing={0.5} sx={{ mb: 1.5, flexWrap: 'wrap', gap: 0.5 }}>
+            {[{ key: 'usd', label: 'USD' }, { key: 'cac', label: 'CAC' }].map(eq => (
+              <Chip
+                key={eq.key}
+                label={eq.label}
+                size="small"
+                variant={movDrawerEquiv[eq.key] ? 'filled' : 'outlined'}
+                onClick={() => setMovDrawerEquiv(prev => ({ ...prev, [eq.key]: !prev[eq.key] }))}
+                sx={{ cursor: 'pointer', fontSize: '0.7rem', height: 22 }}
+              />
+            ))}
+            <Typography variant="caption" color="text.secondary" sx={{ alignSelf: 'center', ml: 0.5 }}>
+              {movDrawerData.length} mov.
+            </Typography>
+            <Tooltip title={movDrawerOrdenAsc ? 'Más recientes primero' : 'Más antiguos primero'} arrow>
+              <Chip
+                label={movDrawerOrdenAsc ? '↑ Antiguos' : '↓ Recientes'}
+                size="small"
+                variant="outlined"
+                onClick={() => setMovDrawerOrdenAsc(prev => !prev)}
+                sx={{ cursor: 'pointer', fontSize: '0.65rem', height: 22, ml: 'auto' }}
+              />
+            </Tooltip>
+          </Stack>
+
+          {movDrawerLoading ? (
+            <Box sx={{ py: 6, textAlign: 'center' }}>
+              <CircularProgress size={28} />
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>Cargando movimientos…</Typography>
+            </Box>
+          ) : movDrawerData.length === 0 ? (
+            <Box sx={{ py: 6, textAlign: 'center' }}>
+              <ReceiptLongIcon sx={{ fontSize: 40, color: 'grey.300', mb: 1 }} />
+              <Typography color="text.secondary" variant="body2">No hay movimientos</Typography>
+            </Box>
+          ) : (
+            <Box sx={{ overflowX: 'auto' }}>
+              <Table size="small" sx={{ '& td, & th': { px: 0.75, py: 0.4, fontSize: '0.7rem', borderColor: 'grey.100' } }}>
+                <TableHead>
+                  <TableRow sx={{ '& th': { fontWeight: 700, fontSize: '0.65rem', color: 'text.secondary', whiteSpace: 'nowrap' } }}>
+                    <TableCell sx={{ width: 28 }} />
+                    <TableCell>Fecha</TableCell>
+                    <TableCell>Detalle</TableCell>
+                    <TableCell align="right">Monto</TableCell>
+                    <TableCell align="right">Acumulado</TableCell>
+                    {movDrawerEquiv.usd && <TableCell align="right" sx={{ color: 'success.main' }}>USD</TableCell>}
+                    {movDrawerEquiv.cac && <TableCell align="right" sx={{ color: 'secondary.main' }}>CAC</TableCell>}
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {(() => {
+                    const sorted = [...movDrawerData].sort((a, b) => {
+                      const ta = a.fecha_factura?._seconds || a.fecha_factura?.seconds || 0;
+                      const tb = b.fecha_factura?._seconds || b.fecha_factura?.seconds || 0;
+                      return movDrawerOrdenAsc ? ta - tb : tb - ta;
+                    });
+                    // Acumulado siempre cronológico
+                    const crono = movDrawerOrdenAsc ? sorted : [...sorted].reverse();
+                    const acumMap = {};
+                    let runARS = 0, runUSD = 0;
+                    crono.forEach(m => {
+                      const monto = m.total || 0;
+                      if ((m.moneda || 'ARS') === 'USD') runUSD += monto; else runARS += monto;
+                      acumMap[m.id] = { ars: runARS, usd: runUSD };
+                    });
+                    return sorted.map(mov => {
+                      const montoNativo = mov.total || 0;
+                      const monedaMov = mov.moneda || 'ARS';
+                      const acum = acumMap[mov.id] || { ars: 0, usd: 0 };
+                      const acumuladoDisplay = monedaMov === 'USD'
+                        ? `USD ${Number(acum.usd).toLocaleString('es-AR', { maximumFractionDigits: 0 })}`
+                        : `$${Number(acum.ars).toLocaleString('es-AR', { maximumFractionDigits: 0 })}`;
+                      const fechaSecs = mov.fecha_factura?._seconds || mov.fecha_factura?.seconds;
+                      const fechaStr = fechaSecs
+                        ? dayjs.unix(fechaSecs).format('DD/MM/YY')
+                        : mov.fecha_factura ? dayjs(mov.fecha_factura).format('DD/MM/YY') : '—';
+                      const eq = mov.equivalencias?.total || {};
+                      const detalle = mov.nombre_proveedor || 'Sin proveedor';
+                      const obs = mov.observacion;
+                      const comprobante = mov.tipo_comprobante ? `${mov.tipo_comprobante}${mov.nro_comprobante ? ` ${mov.nro_comprobante}` : ''}` : '';
+                      const tipoColor = mov.type === 'ingreso' ? 'success.main' : 'error.main';
+                      return (
+                        <Fragment key={mov.id}>
+                          <TableRow sx={{ '&:hover': { bgcolor: 'grey.50' } }}>
+                            <TableCell sx={{ p: 0, pl: 0.25, width: 28 }}>
+                              <Tooltip title="Editar movimiento" arrow>
+                                <IconButton
+                                  size="small"
+                                  color="primary"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    router.push({
+                                      pathname: '/movementForm',
+                                      query: {
+                                        movimientoId: mov.id,
+                                        proyectoId: proyectoSeleccionado,
+                                        lastPageUrl: router.asPath,
+                                      },
+                                    });
+                                  }}
+                                  sx={{ p: 0.25 }}
+                                >
+                                  <EditIcon sx={{ fontSize: 14 }} />
+                                </IconButton>
+                              </Tooltip>
+                            </TableCell>
+                            <TableCell sx={{ whiteSpace: 'nowrap', color: 'text.secondary' }}>{fechaStr}</TableCell>
+                            <TableCell sx={{ maxWidth: 200 }}>
+                              <Typography variant="caption" fontWeight={600} noWrap sx={{ display: 'block', fontSize: '0.7rem' }}>
+                                {detalle}
+                              </Typography>
+                              <Typography variant="caption" noWrap sx={{ display: 'block', fontSize: '0.6rem', lineHeight: 1.2 }}>
+                                <Box component="span" sx={{ color: tipoColor, fontWeight: 600 }}>{mov.type === 'ingreso' ? '↑' : '↓'}</Box>
+                                {' '}{[mov.categoria, mov.etapa, comprobante].filter(Boolean).join(' · ') || mov.type}
+                              </Typography>
+                            </TableCell>
+                            <TableCell align="right" sx={{ fontWeight: 600, whiteSpace: 'nowrap', color: mov.type === 'ingreso' ? 'success.main' : 'text.primary' }}>
+                              {monedaMov === 'USD' ? 'USD ' : '$'}
+                              {Number(montoNativo).toLocaleString('es-AR', { maximumFractionDigits: monedaMov === 'USD' ? 2 : 0 })}
+                            </TableCell>
+                            <TableCell align="right" sx={{ whiteSpace: 'nowrap', color: 'text.secondary', fontWeight: 500 }}>
+                              {acumuladoDisplay}
+                            </TableCell>
+                            {movDrawerEquiv.usd && (
+                              <TableCell align="right" sx={{ whiteSpace: 'nowrap', color: 'success.main' }}>
+                                {monedaMov === 'USD' ? `$${Number(eq.ars || 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })}` : (eq.usd_blue != null ? Number(eq.usd_blue).toLocaleString('es-AR', { maximumFractionDigits: 1 }) : '—')}
+                              </TableCell>
+                            )}
+                            {movDrawerEquiv.cac && (
+                              <TableCell align="right" sx={{ whiteSpace: 'nowrap', color: 'secondary.main' }}>
+                                {eq.cac != null ? Number(eq.cac).toLocaleString('es-AR', { maximumFractionDigits: 2 }) : '—'}
+                              </TableCell>
+                            )}
+                          </TableRow>
+                          {obs && (
+                            <TableRow>
+                              <TableCell colSpan={5 + (movDrawerEquiv.usd ? 1 : 0) + (movDrawerEquiv.cac ? 1 : 0)} sx={{ pt: 0, pb: 0.5, borderBottom: 0 }}>
+                                <Typography variant="caption" color="text.disabled" sx={{ fontSize: '0.6rem', fontStyle: 'italic', pl: 0.5 }}>
+                                  💬 {obs}
+                                </Typography>
+                              </TableCell>
+                            </TableRow>
+                          )}
+                        </Fragment>
+                      );
+                    });
+                  })()}
+                  {/* Fila total */}
+                  {(() => {
+                    const tots = { ars: 0, usd: 0 };
+                    movDrawerData.forEach(m => {
+                      if (m.moneda === 'USD') tots.usd += (m.total || 0); else tots.ars += (m.total || 0);
+                    });
+                    return (
+                      <TableRow sx={{ '& td': { borderTop: 2, borderColor: 'divider', fontWeight: 700, fontSize: '0.72rem' } }}>
+                        <TableCell />
+                        <TableCell>Total</TableCell>
+                        <TableCell />
+                        <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
+                          {tots.ars !== 0 && `$${Number(tots.ars).toLocaleString('es-AR', { maximumFractionDigits: 0 })}`}
+                          {tots.ars !== 0 && tots.usd !== 0 && <br />}
+                          {tots.usd !== 0 && <Typography component="span" sx={{ color: 'success.main', fontSize: 'inherit', fontWeight: 'inherit' }}>USD {Number(tots.usd).toLocaleString('es-AR', { maximumFractionDigits: 2 })}</Typography>}
+                        </TableCell>
+                        <TableCell />
+                        {movDrawerEquiv.usd && <TableCell />}
+                        {movDrawerEquiv.cac && <TableCell />}
+                      </TableRow>
+                    );
+                  })()}
+                </TableBody>
+              </Table>
+            </Box>
+          )}
+        </Box>
+      </Drawer>
 
       {/* Modal de Agregar Proveedor */}
       <Dialog open={proveedorModal} onClose={() => setProveedorModal(false)}>

@@ -21,7 +21,12 @@ import {
     Schedule as ScheduleIcon,
     CheckCircle as CheckCircleIcon,
     NavigateNext as NavigateNextIcon,
-    AccessTime as AccessTimeIcon
+    AccessTime as AccessTimeIcon,
+    Instagram as InstagramIcon,
+    Link as LinkIcon,
+    Description as DescriptionIcon,
+    Handshake as HandshakeIcon,
+    Email as EmailIcon
 } from '@mui/icons-material';
 import SDRService from '../../services/sdrService';
 
@@ -78,6 +83,51 @@ const TIPOS_ACCION = [
         icon: <CommentIcon />, 
         color: 'default',
         requiereSeguimiento: false
+    },
+    { 
+        id: 'instagram_contacto', 
+        label: 'Contacto por Instagram', 
+        shortLabel: 'Instagram',
+        icon: <InstagramIcon />, 
+        color: 'secondary',
+        requiereSeguimiento: true,
+        seguimientoDefault: '24h'
+    },
+    { 
+        id: 'email_enviado', 
+        label: 'Email enviado', 
+        shortLabel: 'Email',
+        icon: <EmailIcon />, 
+        color: 'info',
+        requiereSeguimiento: true,
+        seguimientoDefault: '24h'
+    },
+    { 
+        id: 'presupuesto_enviado', 
+        label: 'Presupuesto enviado', 
+        shortLabel: 'Presupuesto',
+        icon: <DescriptionIcon />, 
+        color: 'primary',
+        requiereSeguimiento: true,
+        seguimientoDefault: '3d'
+    },
+    { 
+        id: 'link_pago_enviado', 
+        label: 'Link de pago enviado', 
+        shortLabel: 'Link pago',
+        icon: <LinkIcon />, 
+        color: 'success',
+        requiereSeguimiento: true,
+        seguimientoDefault: '24h'
+    },
+    { 
+        id: 'negociacion_iniciada', 
+        label: 'Negociación iniciada', 
+        shortLabel: 'Negociación',
+        icon: <HandshakeIcon />, 
+        color: 'warning',
+        requiereSeguimiento: true,
+        seguimientoDefault: '3d'
     },
 ];
 
@@ -236,10 +286,18 @@ const ModalRegistrarAccion = ({
                 }
             } else {
                 // Registrar intento (llamada, whatsapp, etc)
+                // Mapear resultado explícito según tipo de acción
+                let resultado;
+                if (tipoSeleccionado.id === 'llamada_atendida') resultado = 'atendio';
+                else if (tipoSeleccionado.id === 'llamada_no_atendida') resultado = 'no_atendio';
+                else if (tipoSeleccionado.id === 'whatsapp_enviado') resultado = 'pendiente';
+                else resultado = 'pendiente';
+
                 await SDRService.registrarIntento(contacto._id, {
                     tipo: tipoSeleccionado.id,
                     canal: tipoSeleccionado.id.includes('llamada') ? 'llamada' : 
                            tipoSeleccionado.id.includes('whatsapp') ? 'whatsapp' : 'otro',
+                    resultado,
                     nota: nota.trim() || undefined,
                     empresaId
                 });

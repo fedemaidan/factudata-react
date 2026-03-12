@@ -1,11 +1,35 @@
 import React, { useEffect, useMemo, useState, useCallback } from "react";
 import Head from "next/head";
-import { Container, Button, Dialog, DialogTitle, DialogContent, DialogActions, TextField, Stack, Box, Typography, IconButton, Paper, alpha, Snackbar, Alert } from "@mui/material";
+import {
+  Container,
+  Button,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  Stack,
+  Box,
+  Typography,
+  IconButton,
+  Paper,
+  alpha,
+  Chip,
+  Tooltip,
+  InputAdornment,
+} from "@mui/material";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
 import ClearIcon from "@mui/icons-material/Clear";
+import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
+import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
+import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
+import { DatePicker } from "@mui/x-date-pickers/DatePicker";
+import dayjs from "dayjs";
+import "dayjs/locale/es";
 import { Layout as DashboardLayout } from "src/layouts/dashboard/layout";
 import DataTable from "src/components/celulandia/DataTable";
 import conciliacionService from "src/services/dhn/conciliacionService";
+import Alerts from "src/components/alerts";
 import { useRouter } from "next/router";
 
 const DropZone = ({ label, file, onFileChange, accept, disabled }) => {
@@ -56,10 +80,12 @@ const DropZone = ({ label, file, onFileChange, accept, disabled }) => {
         transition: "all 0.2s ease-in-out",
         cursor: disabled ? "not-allowed" : "pointer",
         opacity: disabled ? 0.6 : 1,
-        "&:hover": disabled ? {} : {
-          borderColor: "primary.main",
-          backgroundColor: (theme) => alpha(theme.palette.primary.main, 0.05),
-        },
+        "&:hover": disabled
+          ? {}
+          : {
+              borderColor: "primary.main",
+              backgroundColor: (theme) => alpha(theme.palette.primary.main, 0.05),
+            },
       }}
     >
       <Stack spacing={2} alignItems="center">
@@ -84,11 +110,7 @@ const DropZone = ({ label, file, onFileChange, accept, disabled }) => {
         </Box>
 
         <Box sx={{ textAlign: "center" }}>
-          <Typography
-            variant="subtitle2"
-            color={file ? "success.main" : "text.primary"}
-            gutterBottom
-          >
+          <Typography variant="subtitle2" color={file ? "success.main" : "text.primary"} gutterBottom>
             {label}
           </Typography>
           <Typography variant="body2" color="text.secondary">
@@ -145,13 +167,26 @@ const DropZone = ({ label, file, onFileChange, accept, disabled }) => {
   );
 };
 
+const getErrorMessage = (error) => {
+  const apiError = error?.response?.data?.error;
+  if (apiError) return apiError;
+  return error?.message || "Ocurrió un error procesando la conciliación.";
+};
+
 const ConciliacionPage = () => {
   const router = useRouter();
   const [items, setItems] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [sheetLink, setSheetLink] = useState("");
   const [archivoExcel, setArchivoExcel] = useState(null);
+  const [sheetName, setSheetName] = useState("");
+  const [dateFrom, setDateFrom] = useState(null);
+  const [dateTo, setDateTo] = useState(null);
+  const [pendingConciliacionId, setPendingConciliacionId] = useState(null);
+  const [pendingConciliacionStatus, setPendingConciliacionStatus] = useState(null);
+  const [pendingConciliacionError, setPendingConciliacionError] = useState(null);
   const [alert, setAlert] = useState({
     open: false,
     message: "",
@@ -170,8 +205,12 @@ const ConciliacionPage = () => {
         stats: statsMap[item._id] || {},
       }));
       setItems(enriched);
-    } catch (e) {
-      console.error("Error cargando conciliaciones", e);
+    } catch (error) {
+      setAlert({
+        open: true,
+        message: getErrorMessage(error),
+        severity: "error",
+      });
     } finally {
       setIsLoading(false);
     }
@@ -181,97 +220,204 @@ const ConciliacionPage = () => {
     fetchConciliaciones();
   }, [fetchConciliaciones]);
 
+  useEffect(() => {
+    if (!pendingConciliacionId) return undefined;
+    let intervalId = null;
+    let cancelled = false;
+    const fetchStatus = async () => {
+      try {
+        const payload = await conciliacionService.getConciliacionStatus(pendingConciliacionId);
+        if (cancelled) return;
+        const status = payload?.status || "pending";
+        setPendingConciliacionStatus(status);
+        if (status === "done") {
+          setPendingConciliacionId(null);
+          setPendingConciliacionError(null);
+          setAlert({
+            open: true,
+            message: "La conciliación finalizó correctamente.",
+            severity: "success",
+          });
+          await fetchConciliaciones();
+        }
+        if (status === "error") {
+          const message = payload?.errorMessage || "Error procesando conciliación.";
+          setPendingConciliacionError(message);
+          setPendingConciliacionId(null);
+          setAlert({
+            open: true,
+            message,
+            severity: "error",
+          });
+          await fetchConciliaciones();
+        }
+      } catch (error) {
+        if (cancelled) return;
+        setPendingConciliacionError(getErrorMessage(error));
+        setPendingConciliacionId(null);
+        setAlert({
+          open: true,
+          message: "Error consultando estado de conciliación.",
+          severity: "error",
+        });
+      }
+    };
+    fetchStatus();
+    intervalId = setInterval(fetchStatus, 10000);
+    return () => {
+      cancelled = true;
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [pendingConciliacionId, fetchConciliaciones]);
+
   const handleRowClick = (item) => {
     if (!item?._id) return;
     router.push(`/dhn/conciliacion/${item._id}`);
   };
 
-  const columns = useMemo(() => ([
-    { key: "seleccionar", label: "", sortable: false, onRowClick: handleRowClick },
-    { key: "periodo", label: "Periodo (YYYY-MM)", sortable: true },
-    { key: "procesados", label: "Procesados", sortable: true, render: (row) => row?.stats?.procesados ?? 0 },
-    { key: "okAutomatico", label: "OK Automático", sortable: true, render: (row) => row?.stats?.okAutomatico ?? 0 },
-    { key: "advertencia", label: "Advertencias", sortable: true, render: (row) => row?.stats?.advertencia ?? 0 },
-    { key: "created_at", label: "Creada", sortable: true, render: (row) => {
-      const d = row?.created_at ? new Date(row.created_at) : null;
-      return d ? d.toLocaleString() : "-";
-    }},
-  ]), []);
+  const columns = useMemo(
+    () => [
+      { key: "seleccionar", label: "", sortable: false, onRowClick: handleRowClick },
+      { key: "periodo", label: "Periodo (YYYY-MM)", sortable: true },
+      { key: "procesados", label: "Procesados", sortable: true, render: (row) => row?.stats?.procesados ?? 0 },
+      { key: "okAutomatico", label: "OK Automático", sortable: true, render: (row) => row?.stats?.okAutomatico ?? 0 },
+      { key: "advertencia", label: "Advertencias", sortable: true, render: (row) => row?.stats?.advertencia ?? 0 },
+      {
+        key: "created_at",
+        label: "Creada",
+        sortable: true,
+        render: (row) => {
+          const d = row?.created_at ? new Date(row.created_at) : null;
+          return d ? d.toLocaleString() : "-";
+        },
+      },
+    ],
+    []
+  );
 
-  const handleOpenAdd = () => {
+  const resetModal = () => {
     setSheetLink("");
     setArchivoExcel(null);
+    setSheetName("");
+    setDateFrom(null);
+    setDateTo(null);
+  };
+
+  const handleOpenAdd = () => {
+    resetModal();
     setAddOpen(true);
   };
 
   const handleCloseAdd = () => {
     setAddOpen(false);
-    setSheetLink("");
-    setArchivoExcel(null);
+    resetModal();
   };
 
   const handleSheetLinkChange = (value) => {
     setSheetLink(value);
-    if (value?.trim()) {
-      setArchivoExcel(null);
-    }
+    if (value?.trim()) setArchivoExcel(null);
   };
 
   const handleFileChange = (file) => {
     setArchivoExcel(file);
-    if (file) {
-      setSheetLink("");
+    if (file) setSheetLink("");
+  };
+
+  const validate = () => {
+    const tieneLink = Boolean(sheetLink?.trim());
+    const tieneArchivo = Boolean(archivoExcel);
+    if (!tieneLink && !tieneArchivo) {
+      setAlert({ open: true, message: "Debés informar un link o subir un archivo.", severity: "error" });
+      return false;
     }
+    if (!sheetName?.trim()) {
+      setAlert({ open: true, message: "El nombre de la hoja es obligatorio.", severity: "error" });
+      return false;
+    }
+    if ((dateFrom && !dateTo) || (!dateFrom && dateTo)) {
+      setAlert({
+        open: true,
+        message: "Para usar rango de fechas, completá fecha desde y fecha hasta.",
+        severity: "error",
+      });
+      return false;
+    }
+    if (dateFrom && dateTo && dayjs(dateFrom).isAfter(dayjs(dateTo))) {
+      setAlert({ open: true, message: "La fecha desde no puede ser mayor a la fecha hasta.", severity: "error" });
+      return false;
+    }
+    return true;
   };
 
   const handleCreate = async () => {
-    const tieneLink = sheetLink?.trim();
-    const tieneArchivo = archivoExcel;
-    
-    if (!tieneLink && !tieneArchivo) return;
-    
-    setIsLoading(true);
+    if (!validate()) return;
+    const payload = {
+      sheetName: sheetName.trim(),
+      dateFrom: dateFrom ? dayjs(dateFrom).format("YYYY-MM-DD") : undefined,
+      dateTo: dateTo ? dayjs(dateTo).format("YYYY-MM-DD") : undefined,
+    };
+    setIsCreating(true);
     try {
-      if (tieneArchivo) {
-        // Enviar archivo Excel usando FormData
-        await conciliacionService.crearConciliacionConArchivo(archivoExcel);
+      let created;
+      if (archivoExcel) {
+        created = await conciliacionService.crearConciliacionConArchivo({
+          archivoExcel,
+          ...payload,
+        });
       } else {
-        // Enviar link de Google Sheet (comportamiento existente)
-        await conciliacionService.crearConciliacion(sheetLink.trim());
+        created = await conciliacionService.crearConciliacion({
+          sheetLink: sheetLink.trim(),
+          ...payload,
+        });
       }
-      await fetchConciliaciones();
-      handleCloseAdd();
-    } catch (e) {
-      console.error("Error creando conciliación", e);
+      const pendingId = created?._id;
+      if (!pendingId) {
+        throw new Error("No se recibió ID de conciliación para seguimiento.");
+      }
+      setPendingConciliacionId(pendingId);
+      setPendingConciliacionStatus(created?.status || "pending");
+      setPendingConciliacionError(null);
       setAlert({
         open: true,
-        message: e.response?.data?.error || "Error al crear la conciliación",
+        message: "Conciliación iniciada. Te avisamos cuando termine.",
+        severity: "info",
+      });
+      handleCloseAdd();
+      await fetchConciliaciones();
+    } catch (error) {
+      setAlert({
+        open: true,
+        message: getErrorMessage(error),
         severity: "error",
       });
-      setIsLoading(false);
+    } finally {
+      setIsCreating(false);
     }
-  };
-
-  const handleCloseAlert = (event, reason) => {
-    if (reason === "clickaway") {
-      return;
-    }
-    setAlert({ ...alert, open: false });
   };
 
   return (
     <DashboardLayout title="Conciliación DHN">
       <Head>Conciliación DHN</Head>
-      <Snackbar anchorOrigin={{ vertical: "top", horizontal: "center" }} open={alert.open} autoHideDuration={6000} onClose={handleCloseAlert}>
-        <Alert onClose={handleCloseAlert} severity={alert.severity} sx={{ width: "100%" }}>
-          {alert.message}
-        </Alert>
-      </Snackbar>
+      <Alerts
+        alert={alert}
+        onClose={() => setAlert((prev) => ({ ...prev, open: false }))}
+      />
       <Container maxWidth="xl">
-        <Stack direction="row" justifyContent="flex-start" mb={1}>
+        <Stack direction="row" justifyContent="space-between" mb={1} alignItems="center">
           <Button variant="contained" color="primary" onClick={handleOpenAdd}>
             Agregar conciliación
           </Button>
+          {pendingConciliacionStatus && (
+            <Chip
+              color={pendingConciliacionStatus === "error" ? "error" : "warning"}
+              label={
+                pendingConciliacionStatus === "error"
+                  ? `Error en proceso: ${pendingConciliacionError || "Sin detalle"}`
+                  : "Procesando conciliación..."
+              }
+              variant="outlined"
+            />
+          )}
         </Stack>
 
         <DataTable
@@ -296,6 +442,56 @@ const ConciliacionPage = () => {
         <DialogContent>
           <Stack spacing={3} sx={{ mt: 1 }}>
             <Box>
+              <Typography variant="subtitle2" gutterBottom sx={{ mb: 0}}>
+                Nombre de la hoja
+              </Typography>
+              <TextField
+                label="Nombre de la hoja"
+                fullWidth
+                required
+                value={sheetName}
+                onChange={(e) => setSheetName(e.target.value)}
+                margin="dense"
+                placeholder="Ej: Foja medición Jornales IZRC 2Q"
+              />
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5, fontSize: 12 }}>
+                Debe ser exactamente el mismo nombre que aparece en la pestaña del Excel o Google Sheet.
+              </Typography>
+            </Box>
+            <Box>
+              <Typography variant="subtitle2" gutterBottom sx={{ mb: 1 }}>
+                Rango de fechas (opcional)
+              </Typography>
+              <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale="es">
+                <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+                  <DatePicker
+                    label="Fecha desde"
+                    value={dateFrom}
+                    onChange={(v) => setDateFrom(v)}
+                    format="DD/MM/YYYY"
+                    slotProps={{
+                      textField: {
+                        fullWidth: true,
+                        size: "small",
+                      },
+                    }}
+                  />
+                  <DatePicker
+                    label="Fecha hasta"
+                    value={dateTo}
+                    onChange={(v) => setDateTo(v)}
+                    format="DD/MM/YYYY"
+                    slotProps={{
+                      textField: {
+                        fullWidth: true,
+                        size: "small",
+                      },
+                    }}
+                  />
+                </Stack>
+              </LocalizationProvider>
+            </Box>
+            <Box>
               <Typography variant="subtitle2" gutterBottom sx={{ mb: 1 }}>
                 Opción 1: Link de Google Sheet
               </Typography>
@@ -306,10 +502,10 @@ const ConciliacionPage = () => {
                 onChange={(e) => handleSheetLinkChange(e.target.value)}
                 margin="dense"
                 placeholder="Pega el enlace del Google Sheet"
-                disabled={!!archivoExcel}
+                disabled={Boolean(archivoExcel)}
               />
             </Box>
-            
+
             <Box>
               <Typography variant="subtitle2" gutterBottom sx={{ mb: 1 }}>
                 Opción 2: Archivo Excel
@@ -319,19 +515,26 @@ const ConciliacionPage = () => {
                 file={archivoExcel}
                 onFileChange={handleFileChange}
                 accept=".xlsx,.xls,.xlsb,.xlsm"
-                disabled={!!sheetLink}
+                disabled={Boolean(sheetLink)}
               />
             </Box>
+
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleCloseAdd}>Cancelar</Button>
-          <Button 
-            variant="contained" 
-            onClick={handleCreate} 
-            disabled={isLoading || (!sheetLink?.trim() && !archivoExcel)}
+          <Button onClick={handleCloseAdd} disabled={isCreating}>
+            Cancelar
+          </Button>
+          <Button
+            variant="contained"
+            onClick={handleCreate}
+            disabled={
+              isCreating ||
+              !sheetName?.trim() ||
+              (!sheetLink?.trim() && !archivoExcel)
+            }
           >
-            Guardar
+            {isCreating ? "Creando..." : "Crear conciliación"}
           </Button>
         </DialogActions>
       </Dialog>

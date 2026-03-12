@@ -195,9 +195,22 @@ const DhnDriveService = {
     }
   },
 
-  updateSyncSheet: async (googleSheetLink) => {
-    const response = await api.put(`/dhn/sync-sheet`, { googleSheetLink });
-    return response.data;
+  updateSyncSheet: async ({ googleSheetLink, sheetName, dateFrom, dateTo } = {}) => {
+    const payload = { googleSheetLink, sheetName };
+    if (dateFrom) payload.dateFrom = dateFrom;
+    if (dateTo) payload.dateTo = dateTo;
+    try {
+      const response = await api.put(`/dhn/sync-sheet`, payload);
+      return response.data;
+    } catch (error) {
+      const code = error?.response?.status ?? 0;
+      const message =
+        error?.response?.data?.error?.message ||
+        error?.response?.data?.message ||
+        error?.message ||
+        "Error de red";
+      return { ok: false, error: { code, message } };
+    }
   },
 
   resolveDuplicate: async (urlStorageId, action, manualPatch) => {

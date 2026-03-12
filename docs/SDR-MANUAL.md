@@ -1,154 +1,255 @@
-# Manual del Módulo SDR
+# Manual de Usuario — Módulo SDR
 
-## Descripción General
-
-El módulo SDR (Sales Development Representative) permite gestionar contactos de manera eficiente desde dispositivos móviles. El flujo principal es:
-
-**Llamar → WhatsApp → Registrar acción → Siguiente**
+> Este manual está dirigido a los SDRs (representantes de desarrollo de ventas) que usan el sistema diariamente.
 
 ---
 
-## Funcionalidades Principales
+## 1. Acceso
 
-### 1. Lista de Contactos
+### Vista SDR Individual: `/contactosSDR`
+Tu lista personal de contactos asignados. Desde acá trabajás el día a día.
 
-Los contactos se muestran ordenados por prioridad:
-1. **Vencidos primero**: Contactos cuya fecha de "próximo contacto" ya pasó
+### Vista Admin: `/gestionSDR`
+Panel de administración con métricas generales, todos los contactos y reuniones.
+
+### Detalle de Contacto: `/sdr/contacto/[id]`
+Vista completa de un contacto con 3 tabs: Info, Historial y Chat.
+
+### Gestión de Cadencias: `/sdr/cadencias`
+ABM de cadencias de contacto (crear, editar, duplicar, eliminar).
+
+### Mis Reuniones: `/sdr/reuniones`
+Página dedicada para gestionar reuniones del día, registrar resultados y hacer seguimiento post-reunión. Acceso directo desde el sidebar (ícono de calendario).
+
+---
+
+## 2. Flujo Diario
+
+```
+1. Abrí /sdr/reuniones → Tab "Hoy" → leé el resumen IA de cada contacto
+2. Enviá recordatorio WA a cada contacto del día
+3. Post-reunión → "✅ Realizada" → comentario + transcripción + módulos + próximo contacto
+4. Abrí /contactosSDR
+5. Filtrá por "Vencidos" para ver los contactos pendientes
+6. Tocá un contacto para abrirlo
+7. Llamá (botón verde 📞)
+   ├── Si atiende → Registrar llamada → Programar siguiente / Coordinar reunión
+   └── Si no atiende → Registrar → WhatsApp (template contextual) → Siguiente
+8. Repetí con el siguiente contacto
+```
+
+---
+
+## 3. Lista de Contactos (`/contactosSDR`)
+
+### Filtros Disponibles
+
+| Filtro | Opciones |
+|--------|----------|
+| **Tipo** | Activos, Vencidos, No calificados, Todos |
+| **Estado** | Nuevos, Contactados, Calificados, En Cierre, Ganados, No Responde, etc. |
+| **Próximo contacto** | Sin fecha, Vencidos, Pendientes |
+| **Segmento** | 🔵 Inbound (vienen del bot), 🟠 Outbound (importados/manuales) |
+| **Búsqueda** | Por nombre, empresa o teléfono |
+
+### Cards de Contacto
+
+Cada card muestra:
+- **Nombre** + chip de estado (color)
+- **Empresa** o teléfono
+- **Badges**: precalificación bot, prioridad, segmento (In/Out)
+- **Próximo contacto**: verde = pendiente, rojo = vencido
+- **Botones**: 📞 Llamar directo, 💬 WhatsApp directo
+
+### Ordenamiento
+
+Los contactos se muestran priorizados:
+1. **Vencidos primero** (fecha de próximo contacto ya pasó)
 2. **Por fecha de próximo contacto** (ascendente)
 3. **Sin fecha** al final
 
-#### Filtros Disponibles
+### Acciones Masivas
 
-| Filtro | Descripción |
-|--------|-------------|
-| **Activos** | Todos los contactos excepto los marcados como "No califica" |
-| **Vencidos** | Solo contactos con próximo contacto vencido |
-| **No calificados** | Contactos descartados (no se muestran por defecto) |
-| **Todos** | Vista completa sin filtros |
+1. Seleccioná varios contactos con los checkboxes
+2. Aparece la barra de acciones:
+   - 📅 **Fecha**: Programar próximo contacto para todos
+   - 🔄 **Cadencia**: Asignar cadencia a todos
 
----
+### Vistas Guardadas
 
-### 2. Acciones Rápidas
-
-#### Desde la lista
-- **Tap en teléfono**: Inicia llamada directa
-- **Tap en WhatsApp**: Abre WhatsApp sin template
-
-#### Desde el drawer de detalle
-- **Botón Llamar**: Inicia llamada
-- **Botón WhatsApp**: Abre selector de templates por paso de cadencia
+Podés guardar una combinación de filtros para reutilizar:
+1. Aplicá los filtros que querés
+2. Tocá **"Guardar"**
+3. Poné un nombre descriptivo (ej: "Leads calientes inbound")
+4. Elegí si es privada (solo vos) o compartida (todo el equipo)
+5. La vista aparece como chip rápido
 
 ---
 
-### 3. Templates de WhatsApp
+## 4. Detalle de Contacto (`/sdr/contacto/[id]`)
 
-Los templates están organizados por **paso de cadencia**:
+### Tab Info
+- Datos del contacto (nombre, empresa, cargo, teléfono, email)
+- **Estado**: editable tocando el chip
+- **Plan estimado** y **Intención de compra**: seleccionables
+- **Próximo contacto**: fecha/hora programada
+- **Cadencia activa**: muestra el paso actual
+- **Reuniones**: lista de reuniones coordinadas
 
-| Paso | Descripción |
+### Tab Historial
+- Timeline de todas las acciones (llamadas, WhatsApp, cambios de estado, etc.)
+- Cada evento muestra: tipo (ícono color), descripción, nota (si hay), fecha y SDR
+- **Eliminar evento**: botón 🗑️ en cada evento para eliminar registros erróneos (con confirmación)
+- **Agregar comentario**: campo de texto al inicio del historial
+
+### Tab Chat
+- Visor en tiempo real del chat de WhatsApp con el contacto
+- Solo lectura (los mensajes se envían desde la app de WhatsApp)
+
+### Barra Fija (Mobile)
+Siempre visible en la parte inferior. Muestra:
+- Paso actual de la cadencia (ej: "Paso 2/4 — Entregar valor")
+- Botones de acción rápida según la cadencia
+
+### Navegación
+- Botones **← Anterior** / **Siguiente →** para recorrer contactos sin salir
+- Atajos de teclado en desktop: `←` y `→`
+- Si el contacto no tiene próximo contacto o está vencido, se pregunta si querés programar uno al navegar
+
+---
+
+## 5. Registrar Acción
+
+### Tipos de Acciones
+
+| Tipo | Descripción |
 |------|-------------|
-| 1 | Primer contacto (presentación) |
-| 2 | Follow-up (segundo intento) |
-| 3 | Último intento |
+| 📞✓ Llamada atendida | Se atendió la llamada |
+| 📞✗ Llamada no atendida | No atendió |
+| 💬 WhatsApp enviado | Se envió mensaje de WhatsApp |
+| 📅 Reunión coordinada | Se agendó una reunión |
+| 🔕 No responde | Sin respuesta múltiple |
+| ⛔ No califica | Descarta el contacto |
+| 📝 Nota | Solo agregar una nota |
 
-#### Variables disponibles en templates
-
-| Variable | Se reemplaza por |
-|----------|-----------------|
-| `{{first_name}}` | Nombre del contacto |
-| `{{company}}` | Empresa del contacto |
-| `{{assigned_to}}` | Nombre del SDR asignado |
-
-#### Ejemplo de template
-```
-Hola {{first_name}}! 👋
-
-Soy {{assigned_to}} de FactuData. Vi que trabajan en {{company}} y quería comentarles sobre nuestra solución...
-```
-
----
-
-### 4. Registrar Acción
-
-El botón **"Registrar Acción"** está siempre visible en la parte inferior de la pantalla móvil (sticky).
-
-#### Tipos de acciones
-
-| Tipo | Icono | Descripción |
-|------|-------|-------------|
-| `llamada_atendida` | 📞✓ | Llamada con respuesta |
-| `llamada_no_atendida` | 📞✗ | Llamada sin respuesta |
-| `whatsapp_enviado` | 💬 | Mensaje de WhatsApp enviado |
-| `reunion_coordinada` | 📅 | Reunión agendada |
-| `no_responde` | 🔕 | Sin respuesta múltiple |
-| `no_califica` | ⛔ | Descarta el contacto |
-| `nota` | 📝 | Solo agregar nota |
-
-#### Flujo post-acción
+### Flujo
 1. Seleccionar tipo de acción
 2. (Opcional) Agregar nota
 3. (Opcional) Programar próximo contacto
 4. Confirmar
-5. Opción de "Siguiente contacto" para continuar el loop
+5. Opción de ir al "Siguiente contacto" para continuar el loop
 
 ---
 
-### 5. Alta de Contactos
+## 6. Templates de WhatsApp
 
-#### Manual (botón "+")
+Los templates se seleccionan automáticamente según el **contexto del contacto** (etapa, segmento, actividad reciente). Al tocar el botón de WhatsApp, el sistema detecta la situación del contacto y muestra los templates más relevantes con las variables ya resueltas.
+
+Ejemplos de contexto:
+- **Primer contacto inbound**: template de bienvenida para leads del bot
+- **Primer contacto outbound**: template de presentación en frío
+- **Post llamada no atendida**: template de seguimiento
+- **Follow-up**: template de re-engagement
+- **Post reunión**: template con resumen y próximos pasos
+
+### Variables Disponibles
+
+| Variable | Se reemplaza por |
+|----------|-----------------|
+| `{{nombre}}` | Nombre del contacto |
+| `{{rubro_texto}}` | Rubro del contacto |
+| `{{sdr_nombre}}` | Tu nombre |
+| `{{momento_bot}}` | Cuándo interactuó con el bot |
+
+El sistema elige automáticamente la variante del template según el rubro del contacto (constructora, estudio, general, etc.).
+
+---
+
+## 7. Cadencias
+
+Una cadencia es una secuencia automática de pasos para contactar a un lead.
+
+### Ver la Cadencia Actual
+- En mobile: la **barra fija inferior** muestra el paso actual
+- En desktop: sección "Cadencia" en el tab Info
+
+### Avanzar Paso
+Después de completar las acciones del paso actual, tocá **"Avanzar"** para pasar al siguiente paso. El sistema programa automáticamente la fecha del próximo contacto.
+
+### Detener Cadencia
+Si el contacto ya respondió o no corresponde seguir, tocá **"Detener cadencia"**.
+
+### Cadencias por Segmento
+- Las cadencias pueden ser **default para Inbound** (leads del bot) o **default para Outbound** (contactos importados)
+- Se asignan automáticamente o manualmente
+
+---
+
+## 9. Mis Reuniones (`/sdr/reuniones`)
+
+Página dedicada para gestionar el ciclo completo de reuniones. Acceso desde el sidebar (ícono de calendario "📅 Mis Reuniones").
+
+### Tabs
+
+| Tab | Contenido | Qué hacer |
+|-----|-----------|----------|
+| **Hoy** | Reuniones del día con countdown y resumen IA | Prepararse, enviar recordatorio, registrar resultado |
+| **Próximas** | Agendadas para los próximos días, agrupadas por día | Ver pipeline de reuniones |
+| **Sin registrar** | Fecha pasada pero siguen en "agendada" | ⚠️ Registrar qué pasó (no debe quedar ninguna) |
+| **Realizadas** | Ya marcadas como realizadas | Verificar que tengan próximo paso definido |
+| **No show** | El contacto no se presentó | Reagendar o descartar |
+| **Propuestas** | Contactos en fase de cierre | Pipeline de propuestas |
+
+### Registrar Resultado de una Reunión
+
+Al tocar "✅ Realizada" se abre un modal con 5 pasos:
+
+1. **Estado**: Realizada / No show / Cancelada
+2. **Comentario** (obligatorio para "realizada"): Qué se habló, conclusiones
+3. **Transcripción** (opcional): Pegar o subir texto de la reunión
+4. **Detalles**: Módulos de interés (checkboxes) + Calificación rápida (Frío/Tibio/Caliente/Listo)
+5. **Próximo contacto** (obligatorio): Tipo + Fecha + Nota
+
+Si subiste una transcripción de +50 caracteres, el sistema genera automáticamente un **resumen IA** con: clasificación del lead, puntos de interés, objeciones, pasos acordados.
+
+### Resumen SDR (IA)
+
+Desde la ficha de cada contacto (`/sdr/contacto/[id]`), podés generar un resumen ejecutivo con IA:
+1. Tocá **"Generar resumen"** en la card "Resumen SDR (IA)"
+2. El sistema analiza todo: datos, historial, chat, reuniones
+3. GPT-4o genera: clasificación, motivación, datos clave, resumen de interacciones
+4. El resumen aparece en la ficha del contacto y también en la card de "Hoy" en Mis Reuniones
+
+### Flujo recomendado
+
+```
+☀️ Arranca el día
+  → Tab "Hoy" → Leé resumen SDR, copiá link Zoom, enviá recordatorio WA
+  → Después de cada reunión → "✅ Realizada" → Comentario + Módulos + Próximo contacto
+  → Tab "Sin registrar" → Verificá que no quede ninguna
+  → Tab "Realizadas" → Verificá que todas tengan next step
+  → Tab "No show" → Reagendar o descartar
+```
+
+### Manual (botón "+")
 Campos:
-- **Nombre** (requerido)
-- **Teléfono** (requerido) - Se normaliza automáticamente a formato E.164
-- **Email** (opcional)
-- **Empresa** (opcional)
-- **Cargo** (opcional)
-- **Notas iniciales** (opcional)
+- **Nombre** (obligatorio)
+- **Teléfono** (obligatorio) — se normaliza automáticamente
+- Email, Empresa, Cargo, Notas (opcionales)
 
-#### Importación Excel (botón 📄)
-
-##### Formato esperado del Excel
-
-| Columna | Requerido | Descripción |
-|---------|-----------|-------------|
-| Nombre | ✅ | Nombre completo del contacto |
-| Teléfono | ✅ | Número de teléfono (cualquier formato) |
-| Email | ❌ | Correo electrónico |
-| Empresa | ❌ | Nombre de la empresa |
-| Cargo | ❌ | Cargo del contacto |
-| Notas | ❌ | Notas iniciales |
-| Próximo contacto | ❌ | Fecha en formato DD/MM/YYYY |
-
-##### Proceso de importación
-1. Descargar plantilla (botón "Descargar plantilla")
-2. Completar datos
-3. Subir archivo (.xlsx o .xls)
-4. Revisar vista previa con errores
+### Importación Excel
+1. Descargar plantilla
+2. Completar datos (mínimo: Nombre y Teléfono)
+3. Subir archivo .xlsx o .xls
+4. Revisar vista previa (se marcan errores y duplicados)
 5. Confirmar importación
 
-##### Validaciones automáticas
-- **Duplicados internos**: Detecta teléfonos repetidos en el mismo Excel
-- **Duplicados en base de datos**: Identifica teléfonos que ya existen
-- **Formato de teléfono**: Valida y normaliza a E.164
+### Normalización de Teléfonos
 
----
+El sistema normaliza automáticamente a formato E.164 argentino:
 
-### 6. Navegación entre Contactos
-
-Los botones **Anterior / Siguiente** permiten navegar sin salir del detalle.
-
-**Importante**: Si el contacto actual no tiene "próximo contacto" o está vencido, al navegar se preguntará si desea programar uno.
-
-#### Atajos de teclado (desktop)
-- `←` Anterior
-- `→` Siguiente
-
----
-
-## Normalización de Teléfonos
-
-El sistema normaliza automáticamente los teléfonos al formato **E.164** para Argentina:
-
-| Entrada | Salida |
-|---------|--------|
+| Entrada | Resultado |
+|---------|-----------|
 | `011 4567-8900` | `+5491145678900` |
 | `15 4567-8900` | `+5491145678900` |
 | `+54 9 11 4567-8900` | `+5491145678900` |
@@ -156,86 +257,47 @@ El sistema normaliza automáticamente los teléfonos al formato **E.164** para A
 
 ---
 
-## Importación desde Notion
+## 10. Gestión SDR (`/gestionSDR`) — Solo Admin
 
-El sistema soporta dos formatos de comentarios:
+### Tab Dashboard
+- **Métricas del día**: llamadas realizadas, WhatsApp enviados, reuniones coordinadas, pendientes, sin asignar
+- **Actividad por SDR**: tabla con métricas de cada SDR
+- **Últimas reuniones**: tabla con las 5 reuniones más recientes
 
-### Formato viejo (string)
-```
-"Comentario 1\n---\nComentario 2\n---\nComentario 3"
-```
+### Tab Contactos
+- **Tabla de todos los contactos** (no solo los tuyos)
+- **Filtros**: búsqueda, estado, Status Notion, **SDR** (dropdown), sin asignar
+- **Acciones masivas**: asignar a SDR, desasignar, eliminar
 
-### Formato nuevo (array de items)
-```json
-{
-  "items": [
-    { "text": "Comentario 1", "date": "2024-01-15", "author": "SDR" },
-    { "text": "Comentario 2", "date": "2024-01-16", "author": "SDR" }
-  ]
-}
-```
-
-Ambos formatos son detectados y parseados automáticamente. Se importan máximo las **últimas 10 notas**.
+### Tab Reuniones
+- Lista de reuniones agendadas
+- Evaluar: marcar como realizada, no_show o cancelada
 
 ---
 
-## API Endpoints
+## 11. Troubleshooting
 
-### Templates WhatsApp
-```
-GET  /api/sdr/whatsapp/templates
-POST /api/sdr/whatsapp/templates
-PUT  /api/sdr/whatsapp/templates/:id
-DELETE /api/sdr/whatsapp/templates/:id
-```
+### No veo mis contactos
+- Verificá que estés logueado con el usuario correcto
+- Los contactos deben estar asignados a tu usuario
 
-### Importación Excel
-```
-POST /api/sdr/contactos/importar-excel
-  Body: { contactos: [], empresaId, sdrId, options: { normalizePhone, deduplicateByPhone, upsert } }
+### La cadencia no avanza
+- Verificá que la cadencia esté activa
+- Revisá si se detuvo automáticamente (el contacto pasó a estado calificado/cierre/ganado)
 
-POST /api/sdr/contactos/validar-excel
-  Body: { telefonos: [] }
-```
+### No veo templates al enviar WhatsApp
+- Los templates se seleccionan por contexto (tags que coincidan con la situación del contacto)
+- Si no hay tags que coincidan, se muestran todos los templates disponibles
 
----
-
-## Arquitectura de Componentes
-
-```
-src/
-├── pages/
-│   └── contactosSDR.js          # Página principal
-├── components/sdr/
-│   ├── DrawerDetalleContactoSDR.js  # Drawer de detalle del contacto
-│   ├── ModalSelectorTemplate.js     # Selector de templates WhatsApp
-│   ├── ModalRegistrarAccion.js      # Modal de registro de acción
-│   ├── ModalAgregarContacto.js      # Modal para crear contacto manual
-│   └── ModalImportarExcel.js        # Modal para importar Excel
-├── services/
-│   └── sdrService.js            # Servicio de API
-└── utils/
-    ├── phoneUtils.js            # Normalización de teléfonos
-    └── notionMapper.js          # Mapper de comentarios Notion
-```
-
----
-
-## Troubleshooting
-
-### El botón "Registrar Acción" no aparece
-- Verificar que se está en vista móvil (< 900px)
-- El botón solo aparece dentro del drawer de detalle
-
-### Los templates no cargan
-- El sistema usa templates por defecto si el endpoint no responde
-- Verificar configuración de `sdrService.js`
+### No se genera el resumen IA
+- La transcripción debe tener al menos 50 caracteres
+- Verificá que no haya un error de red (el resumen se genera con GPT-4o)
 
 ### Error al importar Excel
-- Verificar que las columnas se llamen exactamente como en la plantilla
-- Asegurarse que el archivo sea .xlsx o .xls
-- Revisar errores por fila en la vista previa
+- Verificá que las columnas se llamen exactamente como en la plantilla
+- El archivo debe ser .xlsx o .xls
+- Revisá los errores por fila en la vista previa
 
-### Los teléfonos no se normalizan
+### Los teléfonos no se normalizan correctamente
 - El sistema espera números argentinos
-- Para números internacionales, ingresar con código de país completo (+XX...)
+- Para internacionales, ingresá con código de país completo (+XX...)

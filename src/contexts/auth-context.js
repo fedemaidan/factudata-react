@@ -419,6 +419,7 @@ export const AuthProvider = (props) => {
         type: HANDLERS.UPDATE_USER,
         payload: {
           ...targetUserData,
+          id: user.id,
           credit,
           admin: targetUserData.admin || false,
         },

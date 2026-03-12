@@ -121,6 +121,13 @@ const TrabajoRegistradoService = {
     );
     return response.data;
   },
+  getRegistroById: async (registroId) => {
+    if (!registroId) {
+      throw new Error("registroId es requerido");
+    }
+    const response = await api.get(`/dhn/trabajo-diario-registrado/registro/${registroId}`);
+    return response.data;
+  },
 };
 
 export default TrabajoRegistradoService;

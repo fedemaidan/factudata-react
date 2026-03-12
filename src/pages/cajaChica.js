@@ -4,6 +4,8 @@ import { Box, Container, Typography, Stack, Select, MenuItem, TextField, InputAd
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import SearchIcon from '@mui/icons-material/Search';
+import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
+import RemoveCircleOutlineIcon from '@mui/icons-material/RemoveCircleOutline';
 import Head from 'next/head';
 import { useAuthContext } from 'src/contexts/auth-context';
 import ticketService from 'src/services/ticketService';
@@ -13,6 +15,9 @@ import { useRouter } from 'next/router';
 import profileService from 'src/services/profileService';
 import cajaChicaService from 'src/services/cajaChica/cajaChicaService';
 import TransferenciaModal from 'src/components/cajaChica/TransferenciaModal';
+import MovimientoCajaChicaModal from 'src/components/cajaChica/MovimientoCajaChicaModal';
+import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
+import { getProyectosByEmpresa } from 'src/services/proyectosService';
 import { set } from 'nprogress';
 import { formatTimestamp } from 'src/utils/formatters';
 
@@ -39,6 +44,13 @@ const CajaChicaPage = () => {
   const [profiles, setProfiles] = useState([]);
   const [isTransferLoading, setIsTransferLoading] = useState(false);
   const [transferModalOpen, setTransferModalOpen] = useState(false);
+
+  // Estados para modal de movimiento caja chica
+  const [movModalOpen, setMovModalOpen] = useState(false);
+  const [movModalTipo, setMovModalTipo] = useState('egreso');
+  const [isMovLoading, setIsMovLoading] = useState(false);
+  const [proyectosEmpresa, setProyectosEmpresa] = useState([]);
+  const [categoriasEmpresa, setCategoriasEmpresa] = useState([]);
 
 
   const [deletingElement, setDeletingElement] = useState(null);
@@ -97,6 +109,53 @@ const CajaChicaPage = () => {
         console.error('Error cargando perfiles:', err);
       }
     }
+
+    // Cargar proyectos y categorías para el modal de movimiento
+    try {
+      const empresa = await getEmpresaDetailsFromUser(user);
+      if (empresa) {
+        const pys = await getProyectosByEmpresa(empresa);
+        setProyectosEmpresa(pys);
+        const cats = empresa.categorias || [];
+        setCategoriasEmpresa(cats);
+      }
+    } catch (err) {
+      console.error('Error cargando proyectos/categorías:', err);
+    }
+  };
+
+  const handleOpenMovModal = (tipo) => {
+    setMovModalTipo(tipo);
+    setMovModalOpen(true);
+  };
+
+  const handleCloseMovModal = () => {
+    setMovModalOpen(false);
+  };
+
+  const handleCreateMovimiento = async (movimientoData) => {
+    setIsMovLoading(true);
+    try {
+      const targetUser = userById || user;
+      const dataToSend = {
+        ...movimientoData,
+        user_phone: targetUser.phone || targetUser.telefono,
+        empresa_id: user.empresa?.id,
+      };
+      const result = await movimientosService.addMovimiento(dataToSend);
+      if (result.error) {
+        setAlert({ open: true, message: 'Error al crear el movimiento', severity: 'error' });
+      } else {
+        setAlert({ open: true, message: `${movimientoData.type === 'ingreso' ? 'Ingreso' : 'Egreso'} creado exitosamente`, severity: 'success' });
+        setMovModalOpen(false);
+        await fetchMovimientos();
+      }
+    } catch (error) {
+      console.error('Error al crear movimiento:', error);
+      setAlert({ open: true, message: error.message || 'Error al crear el movimiento', severity: 'error' });
+    } finally {
+      setIsMovLoading(false);
+    }
   };
 
   const handleCreateTransfer = async (transferData) => {
@@ -129,14 +188,16 @@ const CajaChicaPage = () => {
   };
             
   useEffect(() => {
+    if (!router.isReady) return;
     fetchMovimientos();
-  }, [user, userId]);
+  }, [user, userId, router.isReady]);
 
   const handleCloseAlert = () => setAlert({ ...alert, open: false });
 
   const saldoTotalCaja = useMemo(() => {
     return movimientos.reduce((acc, mov) => {
-      return acc + (mov.type === 'ingreso' ? mov.total : -mov.total);
+      const total = Number(mov.total) || 0;
+      return acc + (mov.type === 'ingreso' ? total : -total);
     }, 0);
   }, [movimientos]);
 
@@ -163,7 +224,8 @@ const CajaChicaPage = () => {
   
   const saldoFiltrado = useMemo(() => {
     return movimientosFiltrados.reduce((acc, mov) => {
-      return acc + (mov.type === 'ingreso' ? mov.total : -mov.total);
+      const total = Number(mov.total) || 0;
+      return acc + (mov.type === 'ingreso' ? total : -total);
     }, 0);
   }, [movimientosFiltrados]);
   
@@ -177,9 +239,16 @@ const CajaChicaPage = () => {
       <Box component="main" sx={{ flexGrow: 1, py: 8 }}>
         <Container maxWidth="xl">
           <Stack spacing={3}>
-            <Typography variant="h4">
-            { userById ? "Caja chica de " + userById.firstName + " " + userById.lastName : "Mi Caja Chica"}
-            </Typography>
+            <Box display="flex" justifyContent="space-between" alignItems="center">
+              <Typography variant="h4">
+              { userById ? "Caja chica de " + userById.firstName + " " + userById.lastName : "Mi Caja Chica"}
+              </Typography>
+              {userId && (
+                <Button variant="outlined" onClick={() => router.push('/perfilesEmpresa')}>
+                  ← Volver a Cajas Chicas
+                </Button>
+              )}
+            </Box>
             
             <Box display="flex" justifyContent="space-between" alignItems="center">
               <Box>
@@ -189,14 +258,36 @@ const CajaChicaPage = () => {
                 </Typography>
               </Box>
               
-              <Button 
-                variant="contained" 
-                color="primary"
-                onClick={handleOpenTransferModal}
-                disabled={profiles.length < 2}
-              >
-                Nueva Transferencia
-              </Button>
+              <Box display="flex" gap={1}>
+                {true && (
+                  <>
+                    <Button 
+                      variant="contained" 
+                      color="success"
+                      startIcon={<AddCircleOutlineIcon />}
+                      onClick={() => handleOpenMovModal('ingreso')}
+                    >
+                      Ingreso
+                    </Button>
+                    <Button 
+                      variant="contained" 
+                      color="error"
+                      startIcon={<RemoveCircleOutlineIcon />}
+                      onClick={() => handleOpenMovModal('egreso')}
+                    >
+                      Egreso
+                    </Button>
+                  </>
+                )}
+                <Button 
+                  variant="contained" 
+                  color="primary"
+                  onClick={handleOpenTransferModal}
+                  disabled={profiles.length < 2}
+                >
+                  Nueva Transferencia
+                </Button>
+              </Box>
             </Box>
 
 
@@ -282,7 +373,11 @@ const CajaChicaPage = () => {
                             <Button
                               color="primary"
                               startIcon={<EditIcon />}
-                              onClick={() => router.push('/movementForm?movimientoId=' + mov.id + '&lastPageUrl=/cajaChica&lastPageName=Caja Chica')}
+                              onClick={() => {
+                                const backUrl = userId ? `/cajaChica?userId=${userId}` : '/cajaChica';
+                                const backName = userById ? `Caja chica de ${userById.firstName} ${userById.lastName}` : 'Mi Caja Chica';
+                                router.push(`/movementForm?movimientoId=${mov.id}&lastPageUrl=${encodeURIComponent(backUrl)}&lastPageName=${encodeURIComponent(backName)}`);
+                              }}
                             >
                               Ver / Editar
                             </Button>
@@ -310,6 +405,17 @@ const CajaChicaPage = () => {
           userActual={user}
           isLoading={isTransferLoading}
           usuarioFijo={userById || user} // Usuario fijo es el de la caja actual
+        />
+
+        <MovimientoCajaChicaModal
+          open={movModalOpen}
+          onClose={handleCloseMovModal}
+          onSubmit={handleCreateMovimiento}
+          proyectos={proyectosEmpresa}
+          categorias={categoriasEmpresa}
+          usuarioDestino={userById || user}
+          isLoading={isMovLoading}
+          tipoInicial={movModalTipo}
         />
 
         <Snackbar open={alert.open} autoHideDuration={6000} onClose={handleCloseAlert}>

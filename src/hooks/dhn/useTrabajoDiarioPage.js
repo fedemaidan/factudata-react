@@ -5,6 +5,7 @@ import TrabajoRegistradoService from 'src/services/dhn/TrabajoRegistradoService'
 import useFetch from 'src/hooks/useFetch';
 import { formatDateDDMMYYYY } from 'src/utils/handleDates';
 import useTrabajoDiarioFilters from 'src/hooks/dhn/useTrabajoDiarioFilters';
+import { useExportTrabajoDiarioPdf } from 'src/hooks/dhn/useExportTrabajoDiarioPdf';
 
 const DEFAULT_STATS = {
   total: 0,
@@ -28,9 +29,32 @@ const buildInitialData = {
   stats: DEFAULT_STATS,
 };
 
+const getMonthRange = (mesParam) => {
+  if (!mesParam || typeof mesParam !== 'string') return null;
+  const [yearStr, monthStr] = mesParam.split('-');
+  const year = parseInt(yearStr, 10);
+  const month = parseInt(monthStr, 10);
+  if (!Number.isFinite(year) || !Number.isFinite(month) || month < 1 || month > 12) return null;
+  const start = new Date(year, month - 1, 1, 0, 0, 0, 0);
+  const end = new Date(year, month, 0, 23, 59, 59, 999);
+  return { from: start.toISOString(), to: end.toISOString() };
+};
+
+const getDayRange = (diaISO) => {
+  if (!diaISO) return null;
+  const d = new Date(diaISO);
+  if (Number.isNaN(d.getTime())) return null;
+  const start = new Date(d);
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(d);
+  end.setHours(23, 59, 59, 999);
+  return { from: start.toISOString(), to: end.toISOString() };
+};
+
 export default function useTrabajoDiarioPage(options = {}) {
   const {
     enabled = true,
+    mesParam,
     diaISO,
     trabajadorId,
     incluirTrabajador = true,
@@ -61,6 +85,8 @@ export default function useTrabajoDiarioPage(options = {}) {
   const [editarModalOpen, setEditarModalOpen] = useState(false);
   const [trabajoDiarioSeleccionado, setTrabajoDiarioSeleccionado] = useState(null);
 
+  const { handleExportPdf, exportingRowId } = useExportTrabajoDiarioPdf();
+
   const handleOpenLogs = (item) => {
     if (!item?._id) return;
     setLogsTrabajo(item);
@@ -83,9 +109,13 @@ export default function useTrabajoDiarioPage(options = {}) {
     setTrabajoDiarioSeleccionado(null);
   };
 
+  const monthRange = getMonthRange(mesParam);
+  const dayRange = getDayRange(diaISO);
+  const range = monthRange || dayRange;
+
   const fetchData = async () => {
     if (!enabled) return buildInitialData;
-    if (!diaISO) return buildInitialData;
+    if (!range) return buildInitialData;
 
     const params = {
       limit,
@@ -97,18 +127,17 @@ export default function useTrabajoDiarioPage(options = {}) {
     };
 
     if (trabajadorId) {
-      const start = new Date(diaISO);
-      start.setHours(0, 0, 0, 0);
-      const end = new Date(diaISO);
-      end.setHours(23, 59, 59, 999);
       return await TrabajoRegistradoService.getTrabajoRegistradoByTrabajadorId(trabajadorId, {
         ...params,
-        from: start.toISOString(),
-        to: end.toISOString(),
+        from: range.from,
+        to: range.to,
       });
     }
 
-    return await TrabajoRegistradoService.getByDay(diaISO, params);
+    if (dayRange) {
+      return await TrabajoRegistradoService.getByDay(diaISO, params);
+    }
+    return await TrabajoRegistradoService.getByRange(range.from, range.to, params);
   };
 
   const {
@@ -119,7 +148,7 @@ export default function useTrabajoDiarioPage(options = {}) {
     refetch,
   } = useFetch(
     fetchData,
-    [enabled, diaISO, trabajadorId, estado, filtro, limit, offset, sort, q],
+    [enabled, mesParam, diaISO, range?.from, range?.to, trabajadorId, estado, filtro, limit, offset, sort, q],
     {
       enabled,
       initialData: buildInitialData,
@@ -143,12 +172,14 @@ export default function useTrabajoDiarioPage(options = {}) {
             item={item}
             onEdit={handleEdit}
             onOpenLogs={handleOpenLogs}
+            onExportPdf={handleExportPdf}
+            exportingRowId={exportingRowId}
           />
         ),
         incluirTrabajador,
         onOpenComprobante
       ),
-    [incluirTrabajador, onOpenComprobante]
+    [incluirTrabajador, onOpenComprobante, handleExportPdf, exportingRowId]
   );
 
   const pagination = {

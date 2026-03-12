@@ -11,7 +11,7 @@ const ControlQuincenalDiasPage = () => {
   const router = useRouter();
   const { quincena } = router.query;
 
-  const quincenaParsed = quincena.split('-').reverse().join('-')
+  const quincenaParsed = quincena ? quincena.split('-').reverse().join('-') : '';
 
   const [data, setData] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
