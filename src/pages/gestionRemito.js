@@ -30,6 +30,7 @@ import { formatCurrency } from 'src/utils/formatters';
 import DestinoDesacopioDialog from 'src/components/acopio/DestinoDesacopioDialog';
 import { useAuth } from 'src/hooks/use-auth';
 import { getProyectosFromUser } from 'src/services/proyectosService';
+import { getEmpresaById } from 'src/services/empresaService';
 
 function normalizar(t) {
   return (t || '').toString().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
@@ -97,6 +98,7 @@ const GestionRemitoPage = () => {
 
   // Fase 2 — Destino desacopio dialog
   const [destinoDialogOpen, setDestinoDialogOpen] = useState(false);
+  const [destinoDesacopioActivo, setDestinoDesacopioActivo] = useState(false);
   const [proyectos, setProyectos] = useState([]);
 
   // Cargar proyectos para el selector de destino
@@ -144,6 +146,15 @@ const GestionRemitoPage = () => {
         const acopioData = await AcopioService.obtenerAcopio(acopioId);
         setAcopio(acopioData);
         setTipoAcopio((acopioData && acopioData.tipo) || 'materiales');
+
+        // Cargar flag destino_desacopio de la empresa
+        const empId = acopioData?.empresaId || acopioData?.empresa_id;
+        if (empId) {
+          try {
+            const emp = await getEmpresaById(empId);
+            setDestinoDesacopioActivo(emp?.stock_config?.destino_desacopio === true);
+          } catch { /* best effort */ }
+        }
 
         // Base para fuzzy matching
         const disponibles = await AcopioService.getMaterialesAcopiados(acopioId);
@@ -275,8 +286,8 @@ const GestionRemitoPage = () => {
         return;
       }
 
-      // Para creación nueva: mostrar diálogo de destino primero
-      if (!remitoId && !destinoOpts) {
+      // Para creación nueva: mostrar diálogo de destino primero (solo si la empresa lo tiene habilitado)
+      if (!remitoId && !destinoOpts && destinoDesacopioActivo) {
         setDestinoDialogOpen(true);
         return;
       }

@@ -957,8 +957,8 @@ const createdAtStr = (() => {
                       onChange={(next) => formik.setFieldValue('materiales', next)}
                     />
 
-                    {/* Acciones de destino para materiales (solo en modo edición con movimiento guardado) */}
-                    {isEditMode && movimientoId && (
+                    {/* Acciones de destino para materiales (solo en modo edición con movimiento guardado y flag activo) */}
+                    {isEditMode && movimientoId && empresa?.stock_config?.caja_a_stock === true && (
                       <MaterialesFacturaActions
                         materiales={formik.values.materiales || []}
                         empresaId={empresa?.id}

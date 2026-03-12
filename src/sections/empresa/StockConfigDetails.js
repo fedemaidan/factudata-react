@@ -22,6 +22,8 @@ import SmartToyIcon from '@mui/icons-material/SmartToy';
 
 const STOCK_CONFIG_DEFAULT = {
   acopio_habilitado: false,
+  caja_a_stock: false,
+  destino_desacopio: false,
   distribucion_por_linea: false,
   validacion_movimientos: false,
   extraccion_automatica: false,
@@ -82,6 +84,18 @@ const StockConfigDetails = ({ empresa, updateEmpresaData }) => {
       label: 'Acopio habilitado',
       description: 'Permite crear acopios desde facturas y habilita el desacopio con destino.',
       icon: <InventoryIcon fontSize="small" />,
+    },
+    {
+      key: 'caja_a_stock',
+      label: 'Caja → Stock / Acopio',
+      description: 'Al cargar una factura de materiales en caja, muestra opciones para enviar los materiales a stock, obra o acopio.',
+      icon: <WarehouseIcon fontSize="small" />,
+    },
+    {
+      key: 'destino_desacopio',
+      label: 'Destino al desacopiar',
+      description: 'Al desacopiar, pregunta a dónde van los materiales (depósito, obra) y los registra en stock.',
+      icon: <WarehouseIcon fontSize="small" />,
     },
     {
       key: 'distribucion_por_linea',
