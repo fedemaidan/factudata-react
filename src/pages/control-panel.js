@@ -26,6 +26,7 @@ import SupportAgentIcon from '@mui/icons-material/SupportAgent';
 import AnalyticsIcon from '@mui/icons-material/Analytics';
 import RocketLaunchIcon from '@mui/icons-material/RocketLaunch';
 import AssessmentIcon from '@mui/icons-material/Assessment';
+import ScienceIcon from '@mui/icons-material/Science';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import BotService from 'src/services/botService';
 import ChatGptUsageService from 'src/services/chatGptUsageService';
@@ -156,6 +157,15 @@ const ControlPanelPage = () => {
           icon: RocketLaunchIcon,
           color: 'success',
           path: '/analyticsOnboarding',
+          metric: null,
+          metricLabel: null
+        },
+        {
+          title: 'A/B Test Activación',
+          description: 'Resultados del test de activación rápida vs flow normal',
+          icon: ScienceIcon,
+          color: 'warning',
+          path: '/abTestContactActivation',
           metric: null,
           metricLabel: null
         }

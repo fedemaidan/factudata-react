@@ -201,6 +201,7 @@ const MovementFormPage = () => {
   // Prorrateo
   const [prorrateoOpen, setProrrateoOpen] = useState(false);
 
+  const syncingRef = useRef(false);
 
   const savePayload = async (payload) => {
     try {
