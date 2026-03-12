@@ -11,6 +11,17 @@
 
 ## Convenciones del Proyecto (leer antes de cada ticket)
 
+> **⚠️ Estado de implementación (Febrero 2026):**  
+> Todas las Olas 1, 2 y 3 están **✅ implementadas** (53 tests pasando, 5 suites).  
+> Además se implementaron funcionalidades adicionales no previstas en los tickets originales:
+> - **Progreso por WhatsApp:** `_enviarProgresoAlUsuario` envía notificación tras cada paso completado
+> - **Comando "mi progreso":** `VER_MI_PROGRESO` en el bot permite al usuario ver su avance
+> - **Endpoint progreso:** `GET /onboarding/:profileId/progreso` con datos formateados
+> - **OnboardingProgress:** Componente React integrado en cajaSimple y cajaProyecto
+> - **Creación automática:** `onboardingCreaInicio` crea onboarding + cadena + envía bienvenida (fire-and-forget)
+> - **Alertas reales:** `onTransicion` envía alertas WA reales al grupo CS (no solo logging)
+> - **Resumen mensual:** `getResumenMensual` con ventana rolling 30 días (no getResumenSemanal)
+
 ### Stack y dependencias
 
 | Componente | Versión/Detalle |
@@ -104,40 +115,49 @@ function start() { setInterval(ejecutar, INTERVALO_MS); }
 
 ## Estructura de Olas
 
+> **Todas las olas están ✅ completadas.** 53 tests pasando en 5 suites.
+
 ```
-OLA 1 — Fundamentos (Tickets 1.1 → 1.8)
-  ├── 1.1  Métodos de métricas en analyticsService
-  ├── 1.2  Modelo EstadoSaludEmpresa
-  ├── 1.3  estadoSaludService
-  ├── 1.4  Scheduler de estado de salud
-  ├── 1.5  reporteInternoService
-  ├── 1.6  Rutas API onboarding + estadoSalud
-  ├── 1.7  Hook de acceso web (onboarding)
-  └── 1.8  Tests unitarios Ola 1
+OLA 1 — Fundamentos ✅ (Tickets 1.1 → 1.8)
+  ├── 1.1  ✅ Métodos de métricas en analyticsService
+  ├── 1.2  ✅ Modelo EstadoSaludEmpresa
+  ├── 1.3  ✅ estadoSaludService (con alertas WA reales)
+  ├── 1.4  ✅ Scheduler de estado de salud
+  ├── 1.5  ✅ reporteInternoService
+  ├── 1.6  ✅ Rutas API onboarding + estadoSalud
+  ├── 1.7  ✅ Hook de acceso web (caja + notas + acopio)
+  └── 1.8  ✅ Tests unitarios Ola 1
 
-OLA 2 — Calidad WA + Automatizaciones (Tickets 2.1 → 2.9)
-  ├── 2.1  Modelo FlowSession
-  ├── 2.2  flowSessionService
-  ├── 2.3  Hooks en flujos del bot
-  ├── 2.4  Scheduler cerrar sesiones abandonadas
-  ├── 2.5  Modelo CadenaPostVenta
-  ├── 2.6  Cadena post-venta (A1→A13)
-  ├── 2.7  nudgeService
-  ├── 2.8  Rutas API sesiones + métricas
-  └── 2.9  Tests unitarios Ola 2
+OLA 2 — Calidad WA + Automatizaciones ✅ (Tickets 2.1 → 2.9)
+  ├── 2.1  ✅ Modelo FlowSession
+  ├── 2.2  ✅ flowSessionService
+  ├── 2.3  ✅ Hooks en flujos del bot
+  ├── 2.4  ✅ Scheduler cerrar sesiones abandonadas
+  ├── 2.5  ✅ Modelo CadenaPostVenta
+  ├── 2.6  ✅ Cadena post-venta (auto-creada desde onboardingCreaInicio)
+  ├── 2.7  ✅ nudgeService
+  ├── 2.8  ✅ Rutas API sesiones + métricas
+  └── 2.9  ✅ Tests unitarios Ola 2
 
-OLA 3 — Expansión y Valor (Tickets 3.1 → 3.6)
-  ├── 3.1  Módulos onboarding: Nota Pedido + Acopio + TomaDecisión
-  ├── 3.2  Score empresa multi-módulo ponderado
-  ├── 3.3  Mensajes de valor al dueño (semanal + mensual)
-  ├── 3.4  Vista empresa en frontend (Panel CS)
-  ├── 3.5  Dashboard matutino CS (frontend)
-  └── 3.6  Tests integración E2E
+OLA 3 — Expansión y Valor ✅ (Tickets 3.1 → 3.6)
+  ├── 3.1  ✅ Módulos onboarding: Nota Pedido + Acopio + TomaDecisión
+  ├── 3.2  ✅ Score empresa multi-módulo ponderado
+  ├── 3.3  ✅ Mensajes de valor al dueño (getResumenMensual 30d)
+  ├── 3.4  ✅ Vista empresa en frontend (Panel CS)
+  ├── 3.5  ✅ Dashboard matutino CS (frontend)
+  └── 3.6  ✅ Tests integración E2E
+
+EXTRAS (no previstos en tickets originales):
+  ├── ✅ Progreso por WhatsApp (_enviarProgresoAlUsuario)
+  ├── ✅ Comando "mi progreso" (VER_MI_PROGRESO)
+  ├── ✅ Endpoint GET /onboarding/:profileId/progreso
+  ├── ✅ OnboardingProgress componente React
+  └── ✅ Creación automática onboarding+cadena+bienvenida
 ```
 
 ---
 
-## OLA 1 — Fundamentos
+## OLA 1 — Fundamentos (✅ Completada)
 
 ---
 
@@ -252,6 +272,8 @@ static async getResumenSemanal(empresaId)
 ---
 
 ### Ticket 1.3 — estadoSaludService
+
+> **✅ IMPLEMENTADO** — Nota: `onTransicion` envía alertas WA reales al grupo CS (variable `GRUPO_CS_PHONE`) para 3 transiciones: onboarding→en_riesgo, activo→en_riesgo, en_riesgo→inactivo. No usa logging temporal.
 
 **Objetivo:** Crear el servicio que calcula el estado de salud de cada empresa, detecta transiciones y dispara acciones.
 
@@ -554,6 +576,8 @@ router.use('/salud', estadoSaludRoutes);
 
 ### Ticket 1.7 — Hook de acceso web (onboarding)
 
+> **✅ IMPLEMENTADO** — Nota: `useTrackPrimeraVisita` insertado en 3 páginas: cajaSimple (`caja`), notaPedido (`notaPedido`) y acopios (`acopio`). Usa localStorage como cache.
+
 **Objetivo:** Detectar cuando un usuario accede por primera vez a una sección de la web y registrar el paso correspondiente en su onboarding.
 
 **Archivos a modificar:**
@@ -655,7 +679,7 @@ describe('recalcularScoreEmpresa')
 
 ---
 
-## OLA 2 — Calidad WA + Automatizaciones
+## OLA 2 — Calidad WA + Automatizaciones (✅ Completada)
 
 ---
 
@@ -903,6 +927,8 @@ const CadenaPostVentaSchema = new mongoose.Schema({
 
 ### Ticket 2.6 — Cadena post-venta (A1→A13)
 
+> **✅ IMPLEMENTADO** — Nota: La cadena se crea automáticamente desde `onboardingService.onboardingCreaInicio` junto con el onboarding del usuario y el envío de bienvenida (fire-and-forget).
+
 **Objetivo:** Implementar el servicio que ejecuta las 13 automatizaciones post-venta y el scheduler que las evalúa diariamente.
 
 **Archivo a crear:** `backend/src/services/cadenaPostVentaService.js`
@@ -1108,7 +1134,7 @@ describe('cadenaPostVentaService')
 
 ---
 
-## OLA 3 — Expansión y Valor
+## OLA 3 — Expansión y Valor (✅ Completada)
 
 ---
 
@@ -1192,6 +1218,8 @@ Detectar qué módulos están activos en la empresa (mirando los onboardings de 
 ---
 
 ### Ticket 3.3 — Mensajes de valor al dueño
+
+> **✅ IMPLEMENTADO** — Nota: `enviarResumenesMensual` usa `analyticsService.getResumenMensual` (ventana rolling 30 días) en lugar de `getResumenSemanal`. Clave corregida: `cantGastos` (no `cantidadGastos`).
 
 **Objetivo:** Implementar envío semanal y mensual de resúmenes de valor al dueño de cada empresa.
 
@@ -1314,7 +1342,7 @@ async function enviarResumenesMensual()
 
 ```
 describe('Ciclo de vida de un cliente')
-  ✓ Crear empresa → se crea cadena post-venta + onboardings
+  ✓ Agregar usuario → se crea cadena post-venta + onboarding individual
   ✓ Crear movimiento → registra paso crearGasto en onboarding
   ✓ Editar movimiento → registra paso editarGasto
   ✓ Recalcular score empresa → refleja progreso

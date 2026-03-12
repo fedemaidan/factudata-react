@@ -3,7 +3,7 @@ import profileService from 'src/services/profileService';
 import {
   Typography, Button, Card, CardContent, CardActions, CardHeader, Divider, IconButton, LinearProgress, TextField, Select, MenuItem, InputLabel, FormControl,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Dialog, DialogActions, DialogContent, DialogTitle, Snackbar, Alert, Box, Autocomplete,
-  Checkbox, Toolbar, alpha, Chip, TableSortLabel, TablePagination, Stack, useMediaQuery, useTheme, Collapse
+  Checkbox, Toolbar, alpha, Chip, TableSortLabel, TablePagination, Stack, useMediaQuery, useTheme, Collapse, FormControlLabel, Switch
 } from '@mui/material';
 import AddCircleIcon from '@mui/icons-material/AddCircle';
 import EditIcon from '@mui/icons-material/Edit';
@@ -25,6 +25,7 @@ import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import FilterListIcon from '@mui/icons-material/FilterList';
+import RocketLaunchIcon from '@mui/icons-material/RocketLaunch';
 import { useFormik } from 'formik';
 import * as Yup from 'yup';
 import { getProyectosByEmpresa, getProyectosFromUser } from 'src/services/proyectosService';
@@ -288,6 +289,7 @@ export const UsuariosDetails = ({ empresa }) => {
       tipo_validacion_remito: editingUsuario ? editingUsuario.tipo_validacion_remito : "",
       default_caja_chica: editingUsuario ? editingUsuario.default_caja_chica : null,
       notificacion_nota_pedido: editingUsuario ? editingUsuario.notificacion_nota_pedido : false,
+      iniciarOnboarding: editingUsuario ? false : true,
     },
     enableReinitialize: true,
     validationSchema: Yup.object({
@@ -330,6 +332,7 @@ export const UsuariosDetails = ({ empresa }) => {
           const result = await profileService.updateProfile(editingUsuario.id, updatedUsuario);
           console.log(result, "result")
           setSnackbarMessage('Usuario actualizado con éxito');
+          setSnackbarSeverity('success');
         } else {
           const newUsuario = {
             email: values.email.trim(),
@@ -344,9 +347,34 @@ export const UsuariosDetails = ({ empresa }) => {
           };
           const createdUsuario = await profileService.createProfile(newUsuario, empresa);
           setUsuarios([...usuarios, createdUsuario]);
-          setSnackbarMessage('Usuario agregado con éxito');
+
+          // Iniciar onboarding si se solicitó
+          if (values.iniciarOnboarding && createdUsuario?.id) {
+            try {
+              const primerProyecto = proyectos.find(p => values.proyectos.includes(p?.id));
+              await templateService.iniciarOnboarding({
+                profileId: createdUsuario.id,
+                empresaId: empresa.id,
+                phone: normalizePhone(phoneTrim),
+                nombre: values.firstName || 'Usuario',
+                rol: 'cargador',
+                modulosActivos: ['caja'],
+                enviarBienvenida: true,
+                proveedorEjemplo: proveedoresOptions[0] || 'Proveedor Ejemplo',
+                proyectoEjemplo: primerProyecto?.nombre || 'Proyecto Ejemplo',
+              });
+              setSnackbarMessage('Usuario agregado + onboarding iniciado 🚀');
+              setSnackbarSeverity('success');
+            } catch (onbError) {
+              console.error('Error iniciando onboarding:', onbError);
+              setSnackbarMessage('Usuario creado, pero falló el onboarding. Podés iniciarlo manualmente.');
+              setSnackbarSeverity('warning');
+            }
+          } else {
+            setSnackbarMessage('Usuario agregado con éxito');
+            setSnackbarSeverity('success');
+          }
         }
-        setSnackbarSeverity('success');
       } catch (error) {
         console.error('Error al actualizar/agregar el usuario:', error);
         setSnackbarMessage('Error al actualizar/agregar el usuario');
@@ -445,6 +473,34 @@ export const UsuariosDetails = ({ empresa }) => {
   const closeTemplateDialog = () => {
     setTemplateDialogOpen(false);
     setTemplateUsuario(null);
+  };
+
+  // Iniciar onboarding para un usuario existente
+  const handleIniciarOnboarding = async (usuario) => {
+    setIsLoading(true);
+    try {
+      const primerProyecto = usuario.proyectosData?.find(p => p?.nombre)?.nombre || 'Proyecto Ejemplo';
+      await templateService.iniciarOnboarding({
+        profileId: usuario.id,
+        empresaId: empresa.id,
+        phone: normalizePhone(usuario.phone),
+        nombre: usuario.firstName || 'Usuario',
+        rol: 'cargador',
+        modulosActivos: ['caja'],
+        enviarBienvenida: true,
+        proveedorEjemplo: empresa?.proveedores?.[0]?.nombre || 'Proveedor Ejemplo',
+        proyectoEjemplo: primerProyecto,
+      });
+      setSnackbarMessage('Onboarding iniciado correctamente 🚀');
+      setSnackbarSeverity('success');
+    } catch (error) {
+      console.error('Error iniciando onboarding:', error);
+      setSnackbarMessage('Error al iniciar onboarding');
+      setSnackbarSeverity('error');
+    } finally {
+      setSnackbarOpen(true);
+      setIsLoading(false);
+    }
   };
 
   const handleTemplateFormChange = (field) => (e) => {
@@ -1251,6 +1307,13 @@ export const UsuariosDetails = ({ empresa }) => {
                             </IconButton>
                           </Tooltip>
                         )}
+                        {!isMobile && (
+                          <Tooltip title="Iniciar onboarding (crear tracking + bienvenida)">
+                            <IconButton size="small" onClick={() => handleIniciarOnboarding(usuario)} color="success">
+                              <RocketLaunchIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                        )}
                         <Tooltip title="Eliminar">
                           <IconButton size="small" onClick={() => eliminarUsuario(usuario.id)} color="error">
                             <DeleteIcon fontSize="small" />
@@ -1396,6 +1459,31 @@ export const UsuariosDetails = ({ empresa }) => {
                 <MenuItem value={null}>Ninguno</MenuItem>
               </Select>
             </FormControl>
+
+            {/* Solo mostrar opción de onboarding al crear usuario nuevo */}
+            {!editingUsuario && (
+              <Box sx={{ mt: 2, p: 2, bgcolor: 'primary.50', borderRadius: 1, border: '1px solid', borderColor: 'primary.200' }}>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={formik.values.iniciarOnboarding}
+                      onChange={(e) => formik.setFieldValue('iniciarOnboarding', e.target.checked)}
+                      color="primary"
+                    />
+                  }
+                  label={
+                    <Box>
+                      <Typography variant="body2" fontWeight={500}>
+                        🚀 Iniciar onboarding y enviar bienvenida
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        Crea el tracking de onboarding y envía el mensaje de bienvenida por WhatsApp
+                      </Typography>
+                    </Box>
+                  }
+                />
+              </Box>
+            )}
 
           </DialogContent>
           <DialogActions>

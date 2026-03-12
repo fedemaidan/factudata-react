@@ -77,11 +77,13 @@ import { Router } from 'react-router-dom';
 import { useRouter } from 'next/router';
 import { NotaPedidoAddDialog } from 'src/components/NotaPedidoAddDialog';
 import { useBreadcrumbs } from 'src/contexts/breadcrumbs-context';
+import { useTrackPrimeraVisita } from 'src/hooks/useTrackPrimeraVisita';
 
 const NotaPedidoPage = () => {
   const router = useRouter();
   const { user, isSpying } = useAuthContext();
   const { setBreadcrumbs } = useBreadcrumbs();
+  useTrackPrimeraVisita('notaPedido', 'accederWeb');
   const [notas, setNotas] = useState([]);
   const [filteredNotas, setFilteredNotas] = useState([]);
   const [loading, setLoading] = useState(true);

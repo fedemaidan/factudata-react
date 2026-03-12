@@ -44,11 +44,13 @@ import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
 import TooltipHelp from 'src/components/TooltipHelp';
 import { TOOLTIP_ACOPIOS } from 'src/constant/tooltipTexts';
+import { useTrackPrimeraVisita } from 'src/hooks/useTrackPrimeraVisita';
 
 const AcopiosPage = () => {
   const { user } = useAuthContext();
   const { setBreadcrumbs } = useBreadcrumbs();
   const router = useRouter();
+  useTrackPrimeraVisita('acopio', 'accederWeb');
   const { empresaId } = router.query; 
   const [acopios, setAcopios] = useState([]);
   const [alert, setAlert] = useState({ open: false, message: '', severity: 'info' });

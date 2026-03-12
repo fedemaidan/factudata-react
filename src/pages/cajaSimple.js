@@ -14,6 +14,8 @@ import { useRouter } from 'next/router';
 
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import { useAuthContext } from 'src/contexts/auth-context';
+import { useTrackPrimeraVisita } from 'src/hooks/useTrackPrimeraVisita';
+import { OnboardingProgress } from 'src/components/OnboardingProgress';
 import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
 import { getProyectosByEmpresa } from 'src/services/proyectosService';
 import ticketService from 'src/services/ticketService';
@@ -47,6 +49,7 @@ const colorFor = (val) => (val >= 0 ? 'success.main' : 'error.main');
 const CajaSimplePage = () => {
   const router = useRouter();
   const { user } = useAuthContext();
+  useTrackPrimeraVisita('caja', 'accederWeb');
 
   // Datos base
   const [empresa, setEmpresa] = useState(null);
@@ -331,6 +334,8 @@ const CajaSimplePage = () => {
     <DashboardLayout>
       <Head><title>Estado de Caja</title></Head>
       <Box component="main" sx={{ flexGrow: 1, py: 2 }}>
+        {/* ── Progreso de Onboarding ────────────────────────────── */}
+        <OnboardingProgress />
         {/* ── Header: Totales + Filtros ─────────────────────────────── */}
         <Paper sx={{ p: 2, mb: 2 }}>
           <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems={{ xs: 'flex-start', md: 'center' }} justifyContent="space-between">
