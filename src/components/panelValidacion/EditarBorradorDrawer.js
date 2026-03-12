@@ -1,85 +1,234 @@
 import {
-  Box, Button, Drawer, FormControl, InputLabel, MenuItem, Select, Stack, TextField, Typography,
+  Autocomplete,
+  Box,
+  Button,
+  Drawer,
+  FormControl,
+  InputLabel,
+  MenuItem,
+  Select,
+  Stack,
+  TextField,
+  Typography,
 } from '@mui/material';
+import React, { useMemo } from 'react';
 import ImagenModal from 'src/components/ImagenModal';
+import ImpuestosEditor from 'src/components/impuestosEditor';
+import {
+  getCamposConfig,
+  getCamposVisibles,
+  getOptionsFromContext,
+} from 'src/components/movementFieldsConfig';
 import { formatNumberWithThousands, parsearMonto } from 'src/utils/celulandia/separacionMiles';
 
 const DRAWER_WIDTH = 720;
 
-const CAMPOS_EDITABLES = [
-  'proyecto_id',
-  'nombre_proveedor',
-  'observacion',
-  'categoria',
-  'subcategoria',
-  'total',
-  'numero_factura',
-  'medio_pago',
-  'fecha_factura',
-];
-
-const LABELS = {
-  proyecto_id: 'Proyecto',
-  nombre_proveedor: 'Proveedor',
-  observacion: 'Observación',
-  categoria: 'Categoría',
-  subcategoria: 'Subcategoría',
-  total: 'Total',
-  numero_factura: 'Número de factura',
-  medio_pago: 'Medio de pago',
-  fecha_factura: 'Fecha de factura',
-};
+const MONEY_FIELDS = new Set(['total', 'subtotal', 'total_original', 'dolar_referencia', 'subtotal_dolar', 'total_dolar']);
 
 function EditarBorradorFormContent({
   form,
   proyectos,
+  empresa,
+  comprobanteInfo,
+  ingresoInfo,
+  proveedores,
+  categorias,
+  tagsExtra,
+  mediosPago,
+  etapas,
+  obrasOptions,
+  clientesOptions,
   onFormChange,
   onSave,
   onClose,
   saving,
   formatFecha,
 }) {
-  const camposSinProyecto = CAMPOS_EDITABLES.filter((k) => k !== 'proyecto_id');
+  const categoriaSeleccionada = useMemo(
+    () => (categorias || []).find((c) => c.name === form.categoria),
+    [categorias, form.categoria],
+  );
+  const camposConfig = useMemo(
+    () => getCamposConfig(comprobanteInfo, ingresoInfo, 'egreso'),
+    [comprobanteInfo, ingresoInfo],
+  );
+  const camposVisibles = useMemo(
+    () => getCamposVisibles(comprobanteInfo, empresa, ingresoInfo, 'egreso').filter((campo) => campo.name !== 'type'),
+    [comprobanteInfo, empresa, ingresoInfo],
+  );
+  const optionsContext = useMemo(
+    () => ({
+      proveedores,
+      categorias,
+      categoriaSeleccionada,
+      tagsExtra,
+      mediosPago,
+      empresa,
+      etapas,
+      obrasOptions,
+      clientesOptions,
+    }),
+    [proveedores, categorias, categoriaSeleccionada, tagsExtra, mediosPago, empresa, etapas, obrasOptions, clientesOptions],
+  );
+  const shouldShowProyecto = Boolean(camposConfig.proyecto);
 
-  const renderCampo = (key) => {
-    if (key === 'total') {
-      const displayValue = (form[key] === '' || form[key] === undefined || form[key] === null)
-        ? ''
-        : formatNumberWithThousands(form[key]);
+  const handleFieldChange = (name, value) => onFormChange({ ...form, [name]: value });
+
+  const renderCampo = (campo) => {
+    const value = form[campo.name] ?? (campo.type === 'boolean' ? false : '');
+
+    if (campo.type === 'text' || campo.type === 'date' || campo.type === 'number') {
+      const isMoneyField = MONEY_FIELDS.has(campo.name);
+      const displayValue = isMoneyField && value !== '' && value !== null && value !== undefined
+        ? formatNumberWithThousands(value)
+        : (campo.type === 'date' ? formatFecha(value) : value);
       return (
         <TextField
-          key={key}
+          key={campo.name}
           fullWidth
           size="small"
-          label={LABELS[key]}
-          type="text"
+          label={campo.label}
+          type={campo.type === 'date' ? 'date' : (isMoneyField ? 'text' : campo.type)}
           value={displayValue}
           onChange={(e) => {
-            const valorParseado = parsearMonto(e.target.value).replace(',', '.');
-            if (valorParseado === '') {
-              onFormChange({ ...form, [key]: '' });
-            } else {
-              const num = parseFloat(valorParseado);
-              if (!isNaN(num)) {
-                onFormChange({ ...form, [key]: num });
-              }
+            if (campo.type === 'date') {
+              handleFieldChange(campo.name, e.target.value);
+              return;
+            }
+            if (campo.type !== 'number') {
+              handleFieldChange(campo.name, e.target.value);
+              return;
+            }
+            if (!isMoneyField) {
+              const next = e.target.value === '' ? '' : Number(e.target.value);
+              handleFieldChange(campo.name, Number.isNaN(next) ? '' : next);
+              return;
+            }
+            const raw = parsearMonto(e.target.value).replace(',', '.');
+            if (raw === '') {
+              handleFieldChange(campo.name, '');
+              return;
+            }
+            const parsed = parseFloat(raw);
+            if (!Number.isNaN(parsed)) {
+              handleFieldChange(campo.name, parsed);
             }
           }}
+          InputLabelProps={campo.type === 'date' ? { shrink: true } : undefined}
+          InputProps={campo.readonly ? { readOnly: true } : undefined}
+          disabled={Boolean(campo.readonly)}
         />
       );
     }
-    return (
-      <TextField
-        key={key}
-        fullWidth
-        size="small"
-        label={LABELS[key] || key.replace(/_/g, ' ')}
-        value={key === 'fecha_factura' ? formatFecha(form[key]) : (form[key] ?? '')}
-        onChange={(e) => onFormChange({ ...form, [key]: e.target.value })}
-        type={key === 'fecha_factura' ? 'date' : 'text'}
-        InputLabelProps={key === 'fecha_factura' ? { shrink: true } : undefined}
-      />
-    );
+
+    if (campo.type === 'textarea') {
+      return (
+        <TextField
+          key={campo.name}
+          fullWidth
+          size="small"
+          multiline
+          rows={3}
+          label={campo.label}
+          value={value}
+          onChange={(e) => handleFieldChange(campo.name, e.target.value)}
+        />
+      );
+    }
+
+    if (campo.type === 'select') {
+      const options = campo.options || getOptionsFromContext(campo.optionsKey, optionsContext);
+      return (
+        <FormControl fullWidth size="small" key={campo.name}>
+          <InputLabel>{campo.label}</InputLabel>
+          <Select
+            label={campo.label}
+            value={value}
+            onChange={(e) => handleFieldChange(campo.name, e.target.value)}
+          >
+            <MenuItem value="">
+              <em>Seleccionar</em>
+            </MenuItem>
+            {options.map((opt) => (
+              <MenuItem key={`${campo.name}-${opt}`} value={opt}>
+                {opt}
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+      );
+    }
+
+    if (campo.type === 'autocomplete') {
+      const options = getOptionsFromContext(campo.optionsKey, optionsContext);
+      return (
+        <Autocomplete
+          key={campo.name}
+          freeSolo
+          options={options}
+          value={value || ''}
+          onChange={(_, val) => handleFieldChange(campo.name, val || '')}
+          onInputChange={(_, val, reason) => {
+            if (reason === 'input') {
+              handleFieldChange(campo.name, val || '');
+            }
+          }}
+          renderInput={(params) => (
+            <TextField {...params} size="small" label={campo.label} fullWidth />
+          )}
+        />
+      );
+    }
+
+    if (campo.type === 'tags') {
+      const options = getOptionsFromContext(campo.optionsKey, optionsContext);
+      return (
+        <Autocomplete
+          key={campo.name}
+          multiple
+          freeSolo
+          options={options}
+          value={Array.isArray(value) ? value : []}
+          onChange={(_, val) => handleFieldChange(campo.name, val)}
+          renderInput={(params) => (
+            <TextField {...params} size="small" label={campo.label} fullWidth />
+          )}
+        />
+      );
+    }
+
+    if (campo.type === 'boolean') {
+      return (
+        <FormControl fullWidth size="small" key={campo.name}>
+          <InputLabel>{campo.label}</InputLabel>
+          <Select
+            label={campo.label}
+            value={Boolean(value)}
+            onChange={(e) => handleFieldChange(campo.name, e.target.value === 'true' ? true : Boolean(e.target.value))}
+          >
+            <MenuItem value={true}>Si</MenuItem>
+            <MenuItem value={false}>No</MenuItem>
+          </Select>
+        </FormControl>
+      );
+    }
+
+    if (campo.type === 'impuestos') {
+      return (
+        <Box key={campo.name} sx={{ width: '100%' }}>
+          <ImpuestosEditor
+            formik={{
+              values: form,
+              setFieldValue: (field, val) => handleFieldChange(field, val),
+            }}
+            impuestosDisponibles={(empresa?.impuestos_data || []).filter((i) => i.activo)}
+            subtotal={form.subtotal}
+          />
+        </Box>
+      );
+    }
+
+    return null;
   };
 
   return (
@@ -87,24 +236,26 @@ function EditarBorradorFormContent({
       <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 0.5 }}>
         Editar borrador
       </Typography>
-      <FormControl fullWidth size="small">
-        <InputLabel id="edit-proyecto-label">Proyecto</InputLabel>
-        <Select
-          labelId="edit-proyecto-label"
-          label="Proyecto"
-          value={form.proyecto_id ?? ''}
-          onChange={(e) => onFormChange({ ...form, proyecto_id: e.target.value || '' })}
-        >
-          <MenuItem value="">Sin proyecto</MenuItem>
-          {proyectos.map((p) => (
-            <MenuItem key={p.id} value={p.id}>
-              {p.nombre || p.name || p.id}
-            </MenuItem>
-          ))}
-        </Select>
-      </FormControl>
+      {shouldShowProyecto && (
+        <FormControl fullWidth size="small">
+          <InputLabel id="edit-proyecto-label">Proyecto</InputLabel>
+          <Select
+            labelId="edit-proyecto-label"
+            label="Proyecto"
+            value={form.proyecto_id ?? ''}
+            onChange={(e) => onFormChange({ ...form, proyecto_id: e.target.value || '' })}
+          >
+            <MenuItem value="">Sin proyecto</MenuItem>
+            {proyectos.map((p) => (
+              <MenuItem key={p.id} value={p.id}>
+                {p.nombre || p.name || p.id}
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+      )}
 
-      {camposSinProyecto.map((key) => renderCampo(key))}
+      {camposVisibles.map((campo) => renderCampo(campo))}
 
       <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
         <Button
@@ -112,7 +263,7 @@ function EditarBorradorFormContent({
           onClick={onSave}
           disabled={
             saving ||
-            !form.proyecto_id ||
+            (shouldShowProyecto && !form.proyecto_id) ||
             form.total === '' ||
             form.total === undefined ||
             form.total === null ||
@@ -134,6 +285,16 @@ function EditarBorradorDrawer({
   mov,
   form,
   proyectos = [],
+  empresa = null,
+  comprobanteInfo = {},
+  ingresoInfo = {},
+  proveedores = [],
+  categorias = [],
+  tagsExtra = [],
+  mediosPago = [],
+  etapas = [],
+  obrasOptions = [],
+  clientesOptions = [],
   onClose,
   onSave,
   onFormChange,
@@ -155,6 +316,16 @@ function EditarBorradorDrawer({
     <EditarBorradorFormContent
       form={form}
       proyectos={proyectos}
+      empresa={empresa}
+      comprobanteInfo={comprobanteInfo}
+      ingresoInfo={ingresoInfo}
+      proveedores={proveedores}
+      categorias={categorias}
+      tagsExtra={tagsExtra}
+      mediosPago={mediosPago}
+      etapas={etapas}
+      obrasOptions={obrasOptions}
+      clientesOptions={clientesOptions}
       onFormChange={onFormChange}
       onSave={onSave}
       onClose={onClose}

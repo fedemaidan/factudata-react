@@ -209,9 +209,6 @@ const MovementFormPage = () => {
   // Prorrateo
   const [prorrateoOpen, setProrrateoOpen] = useState(false);
 
-  // Flags y utilidades para sincronizar Materiales <-> MM
-  const SYNC_DEBOUNCE_MS = 500;
-  const syncTimer = useRef(null);
   const syncingRef = useRef(false);
 
   const savePayload = async (payload) => {

@@ -29,16 +29,24 @@ const PanelValidacionPage = () => {
   const [imgPreview, setImgPreview] = useState({ open: false, url: null });
   const [editDrawer, setEditDrawer] = useState({ open: false, mov: null, form: {} });
   const [proyectos, setProyectos] = useState([]);
+  const [empresa, setEmpresa] = useState(null);
+  const [drawerCatalogos, setDrawerCatalogos] = useState({
+    comprobanteInfo: {},
+    ingresoInfo: {},
+    proveedores: [],
+    categorias: [],
+    tagsExtra: [],
+    mediosPago: ['Efectivo', 'Transferencia', 'Tarjeta', 'Mercado Pago', 'Cheque'],
+    etapas: [],
+    obrasOptions: [],
+    clientesOptions: [],
+  });
   const [confirming, setConfirming] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
 
-  const hoy = new Date();
-  const hace30Dias = new Date();
-  hace30Dias.setDate(hoy.getDate() - 30);
-
   const [filtros, setFiltros] = useState({
-    fechaDesde: hace30Dias.toISOString().split('T')[0],
-    fechaHasta: hoy.toISOString().split('T')[0],
+    fechaDesde: '',
+    fechaHasta: '',
     proveedor: '',
     nombre_user: '',
     texto: '',
@@ -119,16 +127,32 @@ const PanelValidacionPage = () => {
 
   const handleEditar = async (mov) => {
     let proys = [];
+    let empresaData = null;
 
     if (empresaId) {
       try {
-        const empresa = await getEmpresaById(empresaId);
-        if (empresa?.proyectosIds?.length) proys = await getProyectosByEmpresa(empresa);
+        empresaData = await getEmpresaById(empresaId);
+        if (empresaData?.proyectosIds?.length) proys = await getProyectosByEmpresa(empresaData);
       } catch (e) {
         console.warn('Error cargando proyectos:', e);
       }
     }
+    setEmpresa(empresaData);
     setProyectos(proys);
+    if (empresaData) {
+      const obras = Array.isArray(empresaData.obras) ? empresaData.obras : [];
+      setDrawerCatalogos({
+        comprobanteInfo: empresaData.comprobante_info || {},
+        ingresoInfo: empresaData.ingreso_info || {},
+        proveedores: [...(empresaData.proveedores || []), 'Ajuste'],
+        categorias: [...(empresaData.categorias || []), { name: 'Ingreso dinero', subcategorias: [] }, { name: 'Ajuste', subcategorias: ['Ajuste'] }],
+        tagsExtra: empresaData.tags_extra || [],
+        mediosPago: empresaData.medios_pago?.length ? empresaData.medios_pago : ['Efectivo', 'Transferencia', 'Tarjeta', 'Mercado Pago', 'Cheque'],
+        etapas: empresaData.etapas || [],
+        obrasOptions: obras.map((o) => o.nombre).filter(Boolean),
+        clientesOptions: [...new Set(obras.map((o) => o.cliente).filter(Boolean))],
+      });
+    }
 
     const fechaVal = mov.fecha_factura;
     const fechaStr =
@@ -144,15 +168,20 @@ const PanelValidacionPage = () => {
       open: true,
       mov,
       form: {
+        ...mov,
+        type: 'egreso',
         proyecto_id: mov.proyecto_id || '',
-        nombre_proveedor: mov.nombre_proveedor || '',
-        observacion: mov.observacion || '',
-        categoria: mov.categoria || '',
-        subcategoria: mov.subcategoria || '',
-        total: mov.total ?? '',
-        numero_factura: mov.numero_factura || '',
-        medio_pago: mov.medio_pago || '',
         fecha_factura: fechaStr,
+        fecha_pago:
+          typeof mov.fecha_pago === 'string' && mov.fecha_pago.includes('T')
+            ? mov.fecha_pago.split('T')[0]
+            : typeof mov.fecha_pago === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(mov.fecha_pago)
+              ? mov.fecha_pago
+              : mov.fecha_pago?.toDate
+                ? mov.fecha_pago.toDate().toISOString().split('T')[0]
+                : (mov.fecha_pago || ''),
+        impuestos: Array.isArray(mov.impuestos) ? mov.impuestos : [],
+        tags_extra: Array.isArray(mov.tags_extra) ? mov.tags_extra : [],
       },
     });
   };
@@ -226,8 +255,8 @@ const PanelValidacionPage = () => {
                 onFiltrar={() => fetchBorradores(filtros)}
                 onRestablecer={() => {
                   const defaultFiltros = {
-                    fechaDesde: hace30Dias.toISOString().split('T')[0],
-                    fechaHasta: hoy.toISOString().split('T')[0],
+                    fechaDesde: '',
+                    fechaHasta: '',
                     proveedor: '',
                     nombre_user: '',
                     texto: '',
@@ -377,6 +406,16 @@ const PanelValidacionPage = () => {
         mov={editDrawer.mov}
         form={editDrawer.form}
         proyectos={proyectos}
+        empresa={empresa}
+        comprobanteInfo={drawerCatalogos.comprobanteInfo}
+        ingresoInfo={drawerCatalogos.ingresoInfo}
+        proveedores={drawerCatalogos.proveedores}
+        categorias={drawerCatalogos.categorias}
+        tagsExtra={drawerCatalogos.tagsExtra}
+        mediosPago={drawerCatalogos.mediosPago}
+        etapas={drawerCatalogos.etapas}
+        obrasOptions={drawerCatalogos.obrasOptions}
+        clientesOptions={drawerCatalogos.clientesOptions}
         onClose={() => setEditDrawer({ open: false, mov: null, form: {} })}
         onSave={handleGuardarEdicion}
         onFormChange={(form) => setEditDrawer((d) => ({ ...d, form }))}
