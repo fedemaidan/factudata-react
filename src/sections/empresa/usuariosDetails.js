@@ -29,6 +29,7 @@ import { useFormik } from 'formik';
 import * as Yup from 'yup';
 import { getProyectosByEmpresa, getProyectosFromUser } from 'src/services/proyectosService';
 import { useAuthContext } from 'src/contexts/auth-context';
+import api from 'src/services/axiosConfig';
 import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
@@ -88,6 +89,7 @@ export const UsuariosDetails = ({ empresa }) => {
     tipo_validacion_remito: '',
     default_caja_chica: null,
     notificacion_nota_pedido: null,
+    modo_estado_carga_bot: '',
     proyectos: []
   });
   
@@ -288,6 +290,7 @@ export const UsuariosDetails = ({ empresa }) => {
       tipo_validacion_remito: editingUsuario ? editingUsuario.tipo_validacion_remito : "",
       default_caja_chica: editingUsuario ? editingUsuario.default_caja_chica : null,
       notificacion_nota_pedido: editingUsuario ? editingUsuario.notificacion_nota_pedido : false,
+      modo_estado_carga_bot: editingUsuario ? (editingUsuario.modo_estado_carga_bot || '') : '',
     },
     enableReinitialize: true,
     validationSchema: Yup.object({
@@ -328,7 +331,10 @@ export const UsuariosDetails = ({ empresa }) => {
           );
           setUsuarios(updatedUsuarios);
           const result = await profileService.updateProfile(editingUsuario.id, updatedUsuario);
-          console.log(result, "result")
+          const phone = normalizePhone(editingUsuario.phone);
+          if (phone) {
+            try { await api.post('/cache/invalidate', { tipo: 'phone', id: phone }); } catch (e) { console.warn('Cache invalidation:', e); }
+          }
           setSnackbarMessage('Usuario actualizado con éxito');
         } else {
           const newUsuario = {
@@ -341,6 +347,7 @@ export const UsuariosDetails = ({ empresa }) => {
             tipo_validacion_remito: values.tipo_validacion_remito ?? "",
             default_caja_chica: values.default_caja_chica,
             notificacion_nota_pedido: values.notificacion_nota_pedido || false,
+            modo_estado_carga_bot: values.modo_estado_carga_bot || null,
           };
           const createdUsuario = await profileService.createProfile(newUsuario, empresa);
           setUsuarios([...usuarios, createdUsuario]);
@@ -386,7 +393,9 @@ export const UsuariosDetails = ({ empresa }) => {
       lastName: usuario.lastName,
       proyectos: usuario.proyectosData.map(proj => proj?.id),
       tipo_validacion_remito: usuario.tipo_validacion_remito ?? "",
+      default_caja_chica: usuario.default_caja_chica ?? null,
       notificacion_nota_pedido: usuario.notificacion_nota_pedido || false,
+      modo_estado_carga_bot: usuario.modo_estado_carga_bot ?? "",
     });
     setIsDialogOpen(true);
   };
@@ -521,6 +530,7 @@ export const UsuariosDetails = ({ empresa }) => {
       tipo_validacion_remito: '',
       default_caja_chica: null,
       notificacion_nota_pedido: null,
+      modo_estado_carga_bot: '',
       proyectos: []
     });
     setBulkConfigDialogOpen(true);
@@ -547,6 +557,9 @@ export const UsuariosDetails = ({ empresa }) => {
       if (bulkConfig.notificacion_nota_pedido !== null) {
         updates.notificacion_nota_pedido = bulkConfig.notificacion_nota_pedido;
       }
+      if (bulkConfig.modo_estado_carga_bot !== '') {
+        updates.modo_estado_carga_bot = bulkConfig.modo_estado_carga_bot;
+      }
       if (bulkConfig.proyectos.length > 0) {
         updates.proyectos = bulkConfig.proyectos;
       }
@@ -564,6 +577,15 @@ export const UsuariosDetails = ({ empresa }) => {
         profileService.updateProfile(userId, updates)
       );
       await Promise.all(updatePromises);
+
+      // Invalidar caché del bot para que tome el perfil actualizado
+      const phonesToInvalidate = usuarios
+        .filter(u => selectedUsers.includes(u.id) && u.phone)
+        .map(u => normalizePhone(u.phone))
+        .filter(Boolean);
+      for (const phone of [...new Set(phonesToInvalidate)]) {
+        try { await api.post('/cache/invalidate', { tipo: 'phone', id: phone }); } catch (e) { console.warn('Cache invalidation:', e); }
+      }
 
       // Actualizar estado local
       setUsuarios(prev => prev.map(user => {
@@ -1396,6 +1418,19 @@ export const UsuariosDetails = ({ empresa }) => {
                 <MenuItem value={null}>Ninguno</MenuItem>
               </Select>
             </FormControl>
+            <FormControl fullWidth margin="dense">
+              <InputLabel id="modo-estado-carga-label">Modo de validación bot</InputLabel>
+              <Select
+                labelId="modo-estado-carga-label"
+                name="modo_estado_carga_bot"
+                value={formik.values.modo_estado_carga_bot}
+                onChange={formik.handleChange}
+              >
+                <MenuItem value="">No Definido</MenuItem>
+                <MenuItem value="siempre_borrador">Siempre borrador (validar en panel)</MenuItem>
+                <MenuItem value="siempre_confirmar">Siempre confirmar (flujo actual)</MenuItem>
+              </Select>
+            </FormControl>
 
           </DialogContent>
           <DialogActions>
@@ -1599,6 +1634,19 @@ Probá ahora, te espero acá 👇`}
                 <MenuItem value={null}>-- No cambiar --</MenuItem>
                 <MenuItem value={true}>Sí</MenuItem>
                 <MenuItem value={false}>No</MenuItem>
+              </Select>
+            </FormControl>
+
+            <FormControl fullWidth margin="dense">
+              <InputLabel>Modo validación bot (registros pendientes)</InputLabel>
+              <Select
+                value={bulkConfig.modo_estado_carga_bot}
+                onChange={handleBulkConfigChange('modo_estado_carga_bot')}
+                label="Modo validación bot"
+              >
+                <MenuItem value="">-- No cambiar --</MenuItem>
+                <MenuItem value="siempre_borrador">Siempre borrador (validar en panel)</MenuItem>
+                <MenuItem value="siempre_confirmar">Siempre confirmar (flujo actual)</MenuItem>
               </Select>
             </FormControl>
 

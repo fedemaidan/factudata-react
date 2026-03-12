@@ -212,6 +212,7 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
     "VER_INVENTARIO_PRODUCTOS",
     "ODOO_GUARDAR_CONFIRMANDO",
     "ODOO_FACTURAS_PROVEEDOR_NO_EDI",
+    "VER_VALIDACION_BORRADORES",
   ];
 
   const celulandiaAcciones = [
