@@ -1,4 +1,4 @@
-import { Badge, Box, IconButton, Paper, Tooltip, Typography, CircularProgress, Divider } from '@mui/material';
+import { Badge, Box, Chip, IconButton, Paper, Stack, Tooltip, Typography, CircularProgress, Divider } from '@mui/material';
 import AudioPlayer from './AudioPlayer';
 import ImageIcon from '@mui/icons-material/Image';
 import VideocamIcon from '@mui/icons-material/Videocam';
@@ -14,6 +14,37 @@ const isValidMediaUrl = (src) => {
   return src.startsWith('http') || src.startsWith('data:') || src.startsWith('blob:') || src.startsWith('/');
 };
 
+/**
+ * Extrae botones con formato [Texto] de un mensaje y devuelve { cleanText, buttons }.
+ * Ejemplo: "¿Qué querés?\n[Opción A] [Opción B]" → { cleanText: "¿Qué querés?", buttons: ["Opción A", "Opción B"] }
+ */
+const extractButtons = (text) => {
+  if (!text) return { cleanText: '', buttons: [] };
+  const buttons = [];
+  let match;
+  // Buscar botones solo en la última línea no-vacía
+  const lines = text.split('\n');
+  let lastButtonLineIdx = -1;
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i].trim();
+    if (!line) continue;
+    // Si la línea es solo botones [X] [Y] [Z] (sin otro texto fuera de brackets)
+    const stripped = line.replace(/\[[^\]]{1,30}\]/g, '').trim();
+    if (stripped === '' && line.includes('[')) {
+      lastButtonLineIdx = i;
+    }
+    break; // Solo evaluar la última línea no-vacía
+  }
+  if (lastButtonLineIdx === -1) return { cleanText: text, buttons: [] };
+  // Extraer botones de la línea
+  const btnRegex = /\[([^\]]{1,30})\]/g;
+  while ((match = btnRegex.exec(lines[lastButtonLineIdx])) !== null) {
+    buttons.push(match[1]);
+  }
+  const cleanText = lines.slice(0, lastButtonLineIdx).join('\n').trimEnd();
+  return { cleanText, buttons };
+};
+
 export default function MessageBubble({
   message,
   isMine,
@@ -25,7 +56,8 @@ export default function MessageBubble({
   notes = [],
   isLoadingNote = false,
 }) {
-  const text = message?.type === 'text' || message?.type === 'text_extended' ? message?.message || '' : '';
+  const rawText = message?.type === 'text' || message?.type === 'text_extended' || message?.type === 'interactive' || message?.type === 'button' ? message?.message || '' : '';
+  const { cleanText: text, buttons: msgButtons } = extractButtons(rawText);
   const date = message?.fecha ? new Date(message.fecha) : null;
   const pad = (n) => String(n).padStart(2, '0');
 
@@ -311,6 +343,16 @@ export default function MessageBubble({
           <Typography variant="body2" whiteSpace="pre-wrap">
             {text}
           </Typography>
+        ) : null}
+
+        {msgButtons.length > 0 ? (
+          <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap mt={1}
+            sx={{ borderTop: 1, borderColor: 'divider', pt: 1 }}>
+            {msgButtons.map((btn, i) => (
+              <Chip key={i} label={btn} size="small" variant="outlined"
+                sx={{ fontSize: '0.75rem', height: 26, borderColor: 'rgba(0,0,0,0.2)', color: 'text.secondary' }} />
+            ))}
+          </Stack>
         ) : null}
           <Box mt={0.5} display="flex" justifyContent="flex-end" gap={1}>
             {dateStr ? (
