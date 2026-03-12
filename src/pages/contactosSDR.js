@@ -1628,6 +1628,26 @@ const ContactosSDRPage = () => {
                                                     sx={{ height: 20, fontSize: '0.65rem' }}
                                                 />
                                             )}
+                                            {contacto.ab_test_variante && (
+                                                <Chip
+                                                    size="small"
+                                                    label={`AB:${contacto.ab_test_variante}`}
+                                                    color={contacto.ab_test_variante === 'B' ? 'secondary' : 'default'}
+                                                    variant="outlined"
+                                                    sx={{ height: 20, fontSize: '0.65rem' }}
+                                                />
+                                            )}
+                                            {contacto.datosBot?.agendarClickeado && (
+                                                <Tooltip title="Tocó el link de agendar demo">
+                                                    <Chip
+                                                        size="small"
+                                                        label="📅 Agendar"
+                                                        color="success"
+                                                        variant="outlined"
+                                                        sx={{ height: 20, fontSize: '0.65rem' }}
+                                                    />
+                                                </Tooltip>
+                                            )}
                                         </Stack>
                                         {/* Contadores de actividad */}
                                         <ContadoresActividad contadores={contacto.contadores} size="small" />
@@ -2418,6 +2438,26 @@ const ContactosSDRPage = () => {
                                                             color={contacto.segmento === 'inbound' ? 'info' : 'warning'}
                                                             sx={{ height: 18, fontSize: '0.6rem' }}
                                                         />
+                                                    )}
+                                                    {contacto.ab_test_variante && (
+                                                        <Chip
+                                                            size="small"
+                                                            label={`AB:${contacto.ab_test_variante}`}
+                                                            color={contacto.ab_test_variante === 'B' ? 'secondary' : 'default'}
+                                                            variant="outlined"
+                                                            sx={{ height: 18, fontSize: '0.6rem' }}
+                                                        />
+                                                    )}
+                                                    {contacto.datosBot?.agendarClickeado && (
+                                                        <Tooltip title="Tocó el link de agendar demo">
+                                                            <Chip
+                                                                size="small"
+                                                                label="📅"
+                                                                color="success"
+                                                                variant="outlined"
+                                                                sx={{ height: 18, fontSize: '0.6rem' }}
+                                                            />
+                                                        </Tooltip>
                                                     )}
                                                 </Stack>
                                                 {contacto.empresa && (

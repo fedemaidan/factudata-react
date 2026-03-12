@@ -1491,34 +1491,73 @@ const ContactoSDRDetailPage = () => {
                                         )}
                                     </Stack>
 
-                                    {/* Datos del Bot — inline key:value */}
-                                    {contacto.datosBot && (contacto.datosBot.rubro || contacto.datosBot.interes || contacto.datosBot.saludoInicial || contacto.datosBot.cantidadObras) && (
+                                    {/* Datos del Bot — inline key:value + A/B + agendar */}
+                                    {(contacto.ab_test_variante || contacto.datosBot?.agendarClickeado ||
+                                        (contacto.datosBot && (contacto.datosBot.rubro || contacto.datosBot.interes || contacto.datosBot.saludoInicial || contacto.datosBot.cantidadObras))) && (
                                         <Box sx={{ mt: 1, pt: 1, borderTop: 1, borderColor: 'divider' }}>
-                                            <Typography variant="caption" color="text.disabled" fontWeight={600} fontSize="0.68rem" textTransform="uppercase" letterSpacing={0.5}>
-                                                🤖 Bot
-                                            </Typography>
-                                            <Stack spacing={0.2} sx={{ mt: 0.3 }}>
-                                                {contacto.datosBot.rubro && (
-                                                    <Typography variant="caption" color="text.secondary" fontSize="0.75rem">
-                                                        <Box component="span" sx={{ color: 'text.disabled', fontWeight: 500 }}>Rubro:</Box> {contacto.datosBot.rubro}
-                                                    </Typography>
+                                            <Stack direction="row" spacing={1} alignItems="center" mb={0.5} flexWrap="wrap" useFlexGap>
+                                                <Typography variant="caption" color="text.disabled" fontWeight={600} fontSize="0.68rem" textTransform="uppercase" letterSpacing={0.5}>
+                                                    🤖 Bot
+                                                </Typography>
+                                                {contacto.ab_test_variante && (
+                                                    <Tooltip title={`A/B Test: Variante ${contacto.ab_test_variante}${contacto.ab_test_name ? ` — ${contacto.ab_test_name}` : ''}`}>
+                                                        <Chip
+                                                            size="small"
+                                                            label={`AB:${contacto.ab_test_variante}`}
+                                                            color={contacto.ab_test_variante === 'B' ? 'secondary' : 'default'}
+                                                            variant={contacto.ab_test_variante === 'B' ? 'filled' : 'outlined'}
+                                                            sx={{ height: 20, fontSize: '0.65rem', fontWeight: 700 }}
+                                                        />
+                                                    </Tooltip>
                                                 )}
-                                                {contacto.datosBot.cantidadObras && (
-                                                    <Typography variant="caption" color="text.secondary" fontSize="0.75rem">
-                                                        <Box component="span" sx={{ color: 'text.disabled', fontWeight: 500 }}>Obras:</Box> {contacto.datosBot.cantidadObras}
-                                                    </Typography>
-                                                )}
-                                                {contacto.datosBot.interes && (
-                                                    <Typography variant="caption" color="text.secondary" fontSize="0.75rem">
-                                                        <Box component="span" sx={{ color: 'text.disabled', fontWeight: 500 }}>Interés:</Box> {contacto.datosBot.interes}
-                                                    </Typography>
-                                                )}
-                                                {contacto.datosBot.saludoInicial && (
-                                                    <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic', fontSize: '0.72rem', mt: 0.2, lineHeight: 1.3 }}>
-                                                        "{contacto.datosBot.saludoInicial}"
-                                                    </Typography>
+                                                {contacto.datosBot?.agendarClickeado ? (
+                                                    <Tooltip title="✅ Objetivo alcanzado: tocó el link de agendar demo">
+                                                        <Chip
+                                                            size="small"
+                                                            icon={<EventIcon sx={{ fontSize: 12 }} />}
+                                                            label="Agendó"
+                                                            color="success"
+                                                            variant="filled"
+                                                            sx={{ height: 20, fontSize: '0.65rem', fontWeight: 700 }}
+                                                        />
+                                                    </Tooltip>
+                                                ) : contacto.ab_test_variante && (
+                                                    <Tooltip title="Aún no tocó el link de agendar demo">
+                                                        <Chip
+                                                            size="small"
+                                                            icon={<EventIcon sx={{ fontSize: 12 }} />}
+                                                            label="No agendó por link"
+                                                            color="default"
+                                                            variant="outlined"
+                                                            sx={{ height: 20, fontSize: '0.65rem' }}
+                                                        />
+                                                    </Tooltip>
                                                 )}
                                             </Stack>
+                                            {contacto.datosBot && (contacto.datosBot.rubro || contacto.datosBot.interes || contacto.datosBot.saludoInicial || contacto.datosBot.cantidadObras) && (
+                                                <Stack spacing={0.2} sx={{ mt: 0.3 }}>
+                                                    {contacto.datosBot.rubro && (
+                                                        <Typography variant="caption" color="text.secondary" fontSize="0.75rem">
+                                                            <Box component="span" sx={{ color: 'text.disabled', fontWeight: 500 }}>Rubro:</Box> {contacto.datosBot.rubro}
+                                                        </Typography>
+                                                    )}
+                                                    {contacto.datosBot.cantidadObras && (
+                                                        <Typography variant="caption" color="text.secondary" fontSize="0.75rem">
+                                                            <Box component="span" sx={{ color: 'text.disabled', fontWeight: 500 }}>Obras:</Box> {contacto.datosBot.cantidadObras}
+                                                        </Typography>
+                                                    )}
+                                                    {contacto.datosBot.interes && (
+                                                        <Typography variant="caption" color="text.secondary" fontSize="0.75rem">
+                                                            <Box component="span" sx={{ color: 'text.disabled', fontWeight: 500 }}>Interés:</Box> {contacto.datosBot.interes}
+                                                        </Typography>
+                                                    )}
+                                                    {contacto.datosBot.saludoInicial && (
+                                                        <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic', fontSize: '0.72rem', mt: 0.2, lineHeight: 1.3 }}>
+                                                            "{contacto.datosBot.saludoInicial}"
+                                                        </Typography>
+                                                    )}
+                                                </Stack>
+                                            )}
                                         </Box>
                                     )}
                                 </CardContent>
@@ -1654,6 +1693,29 @@ const ContactoSDRDetailPage = () => {
                                                 color={PRECALIFICACION_BOT[contacto.precalificacionBot]?.color || 'default'}
                                                 variant="outlined"
                                             />
+                                        )}
+                                        {contacto.ab_test_variante && (
+                                            <Tooltip title={`A/B Test: Variante ${contacto.ab_test_variante}`}>
+                                                <Chip
+                                                    size="small"
+                                                    label={`AB:${contacto.ab_test_variante}`}
+                                                    color={contacto.ab_test_variante === 'B' ? 'secondary' : 'default'}
+                                                    variant={contacto.ab_test_variante === 'B' ? 'filled' : 'outlined'}
+                                                    sx={{ fontWeight: 700 }}
+                                                />
+                                            </Tooltip>
+                                        )}
+                                        {contacto.datosBot?.agendarClickeado && (
+                                            <Tooltip title="✅ Objetivo: tocó el link de agendar demo">
+                                                <Chip
+                                                    size="small"
+                                                    icon={<EventIcon sx={{ fontSize: 14 }} />}
+                                                    label="Agendó"
+                                                    color="success"
+                                                    variant="filled"
+                                                    sx={{ fontWeight: 700 }}
+                                                />
+                                            </Tooltip>
                                         )}
                                     </Stack>
                                 </CardContent>
