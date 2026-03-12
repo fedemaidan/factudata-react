@@ -234,6 +234,22 @@ const ReportFiltersBar = ({
             />
           )}
 
+          {/* Factura cliente */}
+          {filtrosSchema.factura_cliente?.enabled && (
+            <FormControl size="small" sx={{ minWidth: 160 }}>
+              <InputLabel>Factura cliente</InputLabel>
+              <Select
+                value={filters.factura_cliente ?? ''}
+                label="Factura cliente"
+                onChange={(e) => handleChange('factura_cliente', e.target.value === '' ? null : e.target.value)}
+              >
+                <MenuItem value="">Todos</MenuItem>
+                <MenuItem value="cliente">Cliente</MenuItem>
+                <MenuItem value="propia">Propia</MenuItem>
+              </Select>
+            </FormControl>
+          )}
+
           {/* Moneda equivalente (en qué moneda VER los valores) */}
           {filtrosSchema.moneda_equivalente?.enabled !== false && (
             <Box>

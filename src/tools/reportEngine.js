@@ -151,6 +151,13 @@ export function filterMovimientos(movimientos, filters = {}) {
     );
   }
 
+  // Factura cliente (boolean)
+  if (filters.factura_cliente === 'cliente') {
+    result = result.filter((m) => m.factura_cliente === true);
+  } else if (filters.factura_cliente === 'propia') {
+    result = result.filter((m) => !m.factura_cliente);
+  }
+
   return result;
 }
 
