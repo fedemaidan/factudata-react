@@ -271,6 +271,51 @@ const movimientosService = {
     }
   },
 
+  // Panel de validación: listar borradores
+  getBorradores: async (empresaId, filters = {}) => {
+    try {
+      const params = new URLSearchParams({ empresa_id: empresaId });
+      if (filters.fechaDesde) params.append('fechaDesde', filters.fechaDesde);
+      if (filters.fechaHasta) params.append('fechaHasta', filters.fechaHasta);
+      if (filters.proveedor) params.append('proveedor', filters.proveedor);
+      if (filters.nombre_user) params.append('nombre_user', filters.nombre_user);
+      if (filters.texto) params.append('texto', filters.texto);
+      if (filters.sin_proyecto) params.append('sin_proyecto', 'true');
+      if (filters.estado_procesamiento) params.append('estado_procesamiento', filters.estado_procesamiento);
+      if (filters.estado_borrador) params.append('estado_borrador', filters.estado_borrador);
+      if (filters.limit) params.append('limit', filters.limit);
+      if (filters.offset) params.append('offset', filters.offset);
+      const response = await api.get(`panel-validacion/borradores?${params.toString()}`);
+      return response.data;
+    } catch (err) {
+      console.error('Error listando borradores:', err);
+      const msg = err?.response?.data?.error || err?.message || 'Error al cargar borradores';
+      throw new Error(msg);
+    }
+  },
+
+  // Panel de validación: editar borrador
+  updateBorrador: async (movimientoId, campos) => {
+    try {
+      const response = await api.put(`panel-validacion/borrador/${movimientoId}`, campos);
+      return { error: false, data: response.data };
+    } catch (err) {
+      console.error('Error editando borrador:', err);
+      return { error: true, message: err.response?.data?.error || err.message };
+    }
+  },
+
+  // Panel de validación: confirmar borradores (individual o masivo)
+  confirmarBorradores: async (ids) => {
+    try {
+      const response = await api.post('panel-validacion/confirmar', { ids });
+      return { error: false, data: response.data };
+    } catch (err) {
+      console.error('Error confirmando borradores:', err);
+      return { error: true, message: err.response?.data?.error || err.message };
+    }
+  },
+
   // Obtener movimientos por grupo de prorrateo
   getMovimientosByGrupoProrrateo: async (grupoId) => {
     try {

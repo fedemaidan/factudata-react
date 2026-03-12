@@ -647,7 +647,20 @@ export const SideNav = (props) => {
           ),
         };
 
+        
         baseItems = [ todos, revision, ...baseItems];
+        
+        if (permisosUsuario.includes("VER_VALIDACION_BORRADORES")) {
+          baseItems.push({
+          title: "Validacion borradores",
+          path: "/panelValidacion?empresaId=" + emp.id,
+          icon: (
+            <SvgIcon fontSize="small">
+              <Checklist />
+            </SvgIcon>
+          ),
+        });
+        }
 
         // proyectos activos
         let proys = await getProyectosFromUser(user);
