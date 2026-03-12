@@ -270,7 +270,7 @@ function EditarBorradorFormContent({
             !form.fecha_factura
           }
         >
-          {saving ? 'Guardando...' : 'Guardar'}
+          {saving ? 'Confirmando...' : 'Confirmar'}
         </Button>
         <Button variant="outlined" onClick={onClose}>
           Cancelar

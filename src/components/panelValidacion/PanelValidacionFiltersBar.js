@@ -54,7 +54,7 @@ const PanelValidacionFiltersBar = ({
   };
 
   return (
-    <Box sx={{ mb: 1 }}>
+    <Box sx={{ mb: 0, display: 'flex', alignItems: 'center' }}>
       <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
         <TextField
           inputRef={anchorRef}

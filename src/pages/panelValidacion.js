@@ -3,12 +3,12 @@ import Head from 'next/head';
 import { useRouter } from 'next/router';
 import {
   Box, Container, Typography, Table, TableBody, TableCell, TableHead, TableRow,
-  CircularProgress, Button, Stack, Checkbox, Snackbar, Alert,
-  Dialog, DialogTitle, DialogContent, IconButton, Chip
+  CircularProgress, Button, Stack, Snackbar, Alert,
+  Dialog, DialogTitle, DialogContent, IconButton, Tooltip, Chip
 } from '@mui/material';
 import ImageIcon from '@mui/icons-material/Image';
-import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import EditIcon from '@mui/icons-material/Edit';
+import RefreshIcon from '@mui/icons-material/Refresh';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import movimientosService from 'src/services/movimientosService';
 import { getEmpresaById } from 'src/services/empresaService';
@@ -24,8 +24,7 @@ const PanelValidacionPage = () => {
   const [items, setItems] = useState([]);
   const [total, setTotal] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
-  const [selected, setSelected] = useState([]);
-  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
+  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success', autoHideDuration: 4000 });
   const [imgPreview, setImgPreview] = useState({ open: false, url: null });
   const [editDrawer, setEditDrawer] = useState({ open: false, mov: null, form: {} });
   const [proyectos, setProyectos] = useState([]);
@@ -41,7 +40,6 @@ const PanelValidacionPage = () => {
     obrasOptions: [],
     clientesOptions: [],
   });
-  const [confirming, setConfirming] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
 
   const [filtros, setFiltros] = useState({
@@ -92,38 +90,13 @@ const PanelValidacionPage = () => {
     }
   }, [empresaId, buildApiFilters]);
 
+  const handleActualizar = useCallback(() => {
+    fetchBorradores();
+  }, [fetchBorradores]);
+
   useEffect(() => {
     if (empresaId) fetchBorradores();
   }, [empresaId, fetchBorradores]);
-
-  const handleSelectAll = (e) => {
-    if (e.target.checked) setSelected(items.map((m) => m.id));
-    else setSelected([]);
-  };
-
-  const handleSelectOne = (id) => {
-    setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
-  };
-
-  const handleConfirmar = async (idsOverride = null) => {
-    const ids = idsOverride ?? selected;
-    if (ids.length === 0) {
-      setSnackbar({ open: true, message: 'Seleccioná al menos un movimiento', severity: 'warning' });
-      return;
-    }
-    setConfirming(true);
-    try {
-      const res = await movimientosService.confirmarBorradores(ids);
-      if (res.error) throw new Error(res.message);
-      setSnackbar({ open: true, message: `Confirmados ${res.data?.ok ?? ids.length} movimientos`, severity: 'success' });
-      setSelected((prev) => prev.filter((id) => !ids.includes(id)));
-      fetchBorradores();
-    } catch (e) {
-      setSnackbar({ open: true, message: e.message || 'Error al confirmar', severity: 'error' });
-    } finally {
-      setConfirming(false);
-    }
-  };
 
   const handleEditar = async (mov) => {
     let proys = [];
@@ -189,6 +162,7 @@ const PanelValidacionPage = () => {
   const handleGuardarEdicion = async () => {
     const { mov, form } = editDrawer;
     if (!mov?.id) return;
+
     const payload = { ...form };
     if (form.proyecto_id) {
       const proy = proyectos.find((p) => p.id === form.proyecto_id);
@@ -197,15 +171,33 @@ const PanelValidacionPage = () => {
       payload.proyecto_id = null;
       payload.proyecto_nombre = null;
     }
+
+    const previousItems = items;
+    const optimisticItem = {
+      ...mov,
+      ...payload,
+      estado_borrador: 'confirmado',
+      estado_carga: 'confirmado',
+      estado_procesamiento: 'completado',
+      procesamiento_error: null,
+    };
+
     setSavingEdit(true);
+    setSnackbar({ open: true, message: 'Guardando movimiento...', severity: 'info', autoHideDuration: 3000 });
+    setItems((prev) => prev.map((item) => (item.id === mov.id ? optimisticItem : item)));
+    setEditDrawer({ open: false, mov: null, form: {} });
+
     try {
       const res = await movimientosService.updateBorrador(mov.id, payload);
       if (res.error) throw new Error(res.message);
-      setSnackbar({ open: true, message: 'Movimiento actualizado', severity: 'success' });
-      setEditDrawer({ open: false, mov: null, form: {} });
-      fetchBorradores();
+
+      const confirmRes = await movimientosService.confirmarBorradores([mov.id]);
+      if (confirmRes.error) throw new Error(confirmRes.message);
+
+      setSnackbar({ open: true, message: 'Movimiento revisado y confirmado', severity: 'success', autoHideDuration: 4000 });
     } catch (e) {
-      setSnackbar({ open: true, message: e.message || 'Error al guardar', severity: 'error' });
+      setItems(previousItems);
+      setSnackbar({ open: true, message: e.message || 'Error al guardar', severity: 'error', autoHideDuration: 4000 });
     } finally {
       setSavingEdit(false);
     }
@@ -267,27 +259,30 @@ const PanelValidacionPage = () => {
                   fetchBorradores(defaultFiltros);
                 }}
               />
+              <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                <Tooltip title="Actualizar lista">
+                  <IconButton
+                    size="small"
+                    aria-label="Actualizar borradores"
+                    onClick={handleActualizar}
+                    disabled={isLoading || !empresaId}
+                    sx={{
+                      borderRadius: 2,
+                      border: '1px solid',
+                      borderColor: 'divider',
+                      boxShadow: 1,
+                      '&:hover': { boxShadow: 2 },
+                      p: 0.75,
+                    }}
+                  >
+                    <RefreshIcon sx={{ fontSize: 18 }} />
+                  </IconButton>
+                </Tooltip>
+              </Box>
               <Typography variant="body2">
                 Total: {total} borradores
               </Typography>
             </Stack>
-
-            {selected.length > 0 && (
-              <Stack direction="row" alignItems="center" spacing={2}>
-                <Button
-                  variant="contained"
-                  color="primary"
-                  startIcon={<CheckCircleIcon />}
-                  onClick={handleConfirmar}
-                  disabled={confirming}
-                >
-                  {confirming ? <CircularProgress size={20} /> : `Confirmar ${selected.length} seleccionados`}
-                </Button>
-                <Button variant="outlined" size="small" onClick={() => setSelected([])}>
-                  Deseleccionar
-                </Button>
-              </Stack>
-            )}
 
             {isLoading ? (
               <Box display="flex" justifyContent="center" alignItems="center" minHeight={200}>
@@ -299,13 +294,6 @@ const PanelValidacionPage = () => {
               <Table size="small">
                 <TableHead>
                   <TableRow>
-                    <TableCell padding="checkbox">
-                      <Checkbox
-                        checked={items.length > 0 && selected.length === items.length}
-                        indeterminate={selected.length > 0 && selected.length < items.length}
-                        onChange={handleSelectAll}
-                      />
-                    </TableCell>
                     <TableCell>Fecha</TableCell>
                     <TableCell>Proyecto</TableCell>
                     <TableCell>Proveedor</TableCell>
@@ -319,12 +307,6 @@ const PanelValidacionPage = () => {
                 <TableBody>
                   {items.map((m) => (
                     <TableRow key={m.id} hover>
-                      <TableCell padding="checkbox">
-                        <Checkbox
-                          checked={selected.includes(m.id)}
-                          onChange={() => handleSelectOne(m.id)}
-                        />
-                      </TableCell>
                       <TableCell>{formatTimestamp(m.fecha_factura)}</TableCell>
                       <TableCell>{getProyectoNombre(m)}</TableCell>
                       <TableCell>{m.nombre_proveedor || '-'}</TableCell>
@@ -362,19 +344,9 @@ const PanelValidacionPage = () => {
                         {(m?.estado_borrador === 'confirmado' || m?.estado_carga === 'confirmado') ? (
                           <Typography variant="caption" color="text.secondary">-</Typography>
                         ) : (
-                          <Stack direction="row" spacing={0.5}>
-                            <Button size="small" variant="outlined" startIcon={<EditIcon />} onClick={() => handleEditar(m)}>
-                              Editar
-                            </Button>
-                            <Button
-                              size="small"
-                              variant="contained"
-                              onClick={() => handleConfirmar([m.id])}
-                              disabled={confirming}
-                            >
-                              Confirmar
-                            </Button>
-                          </Stack>
+                          <Button size="small" variant="outlined" startIcon={<EditIcon />} onClick={() => handleEditar(m)}>
+                            Revisar
+                          </Button>
                         )}
                       </TableCell>
                     </TableRow>
@@ -422,7 +394,12 @@ const PanelValidacionPage = () => {
         saving={savingEdit}
       />
 
-      <Snackbar open={snackbar.open} autoHideDuration={4000} onClose={() => setSnackbar((s) => ({ ...s, open: false }))} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={snackbar.autoHideDuration}
+        onClose={() => setSnackbar((s) => ({ ...s, open: false }))}
+        anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+      >
         <Alert severity={snackbar.severity} onClose={() => setSnackbar((s) => ({ ...s, open: false }))}>
           {snackbar.message}
         </Alert>
