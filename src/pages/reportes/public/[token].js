@@ -24,6 +24,32 @@ import {
  * Obtiene del backend: { report, movimientos, presupuestos }
  * y renderiza directamente con ReportView.
  */
+/**
+ * Parsea los query params de la URL y devuelve un objeto de filtros.
+ * Arrays se asumen separados por coma.
+ * Las keys conocidas como arrays se convierten siempre a array.
+ */
+function parseFiltersFromURL() {
+  if (typeof window === 'undefined') return {};
+  const params = new URLSearchParams(window.location.search);
+  if (params.toString() === '') return {};
+
+  const ARRAY_KEYS = new Set([
+    'proyectos', 'categorias', 'proveedores', 'etapas',
+    'medio_pago', 'moneda_movimiento', 'moneda_equivalente', 'usuarios',
+  ]);
+  const filters = {};
+  for (const [key, value] of params.entries()) {
+    if (!value) continue;
+    if (ARRAY_KEYS.has(key)) {
+      filters[key] = value.split(',').filter(Boolean);
+    } else {
+      filters[key] = value;
+    }
+  }
+  return filters;
+}
+
 const PublicReportPage = () => {
   const [report, setReport] = useState(null);
   const [allMovimientos, setAllMovimientos] = useState([]);
@@ -35,7 +61,10 @@ const PublicReportPage = () => {
   const [filters, setFilters] = useState({});
   const [filtersExpanded, setFiltersExpanded] = useState(true);
 
-  // Obtener token de la URL
+  // Filtros fijos que vienen en la URL (no editables por el cliente)
+  const [lockedFilters, setLockedFilters] = useState(null);
+
+  // Obtener token y filtros de la URL
   const [token, setToken] = useState(null);
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -44,6 +73,10 @@ const PublicReportPage = () => {
       const idx = parts.indexOf('public');
       if (idx >= 0 && parts[idx + 1]) {
         setToken(parts[idx + 1]);
+        const urlFilters = parseFiltersFromURL();
+        if (Object.keys(urlFilters).length > 0) {
+          setLockedFilters(urlFilters);
+        }
       } else {
         setError('Token no válido');
         setLoading(false);
@@ -73,14 +106,19 @@ const PublicReportPage = () => {
           setReport(rpt);
           setAllMovimientos(movs);
           setPresupuestos(Array.isArray(data.presupuestos) ? data.presupuestos : []);
-          // Inicializar filtros por defecto del reporte
+          // Inicializar filtros: si hay filtros en la URL, usarlos; sino, defaults del reporte
           if (rpt?.filtros_schema) {
             const defaults = buildDefaultFilters(rpt.filtros_schema);
-            // Si tiene proyectos fijos, forzarlos en el filtro
             if (rpt.filtros_schema?.proyectos?.fijos && rpt.filtros_schema?.proyectos?.proyecto_ids?.length > 0) {
               defaults.proyectos = rpt.filtros_schema.proyectos.proyecto_ids;
             }
-            setFilters(defaults);
+            // Mergear filtros de URL sobre los defaults (URL tiene prioridad)
+            const urlFilters = parseFiltersFromURL();
+            if (Object.keys(urlFilters).length > 0) {
+              setFilters({ ...defaults, ...urlFilters });
+            } else {
+              setFilters(defaults);
+            }
           }
         }
       } catch (err) {
@@ -232,8 +270,8 @@ const PublicReportPage = () => {
           </Button>
         </Stack>
 
-        {/* Filtros */}
-        {report.filtros_schema && Object.keys(report.filtros_schema).length > 0 && (
+        {/* Filtros — solo si NO hay filtros fijados desde la URL */}
+        {!lockedFilters && report.filtros_schema && Object.keys(report.filtros_schema).length > 0 && (
           <Paper sx={{ p: 2, mb: 3 }}>
             <ReportFiltersBar
               filtrosSchema={report.filtros_schema}

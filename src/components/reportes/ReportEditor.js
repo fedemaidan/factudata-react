@@ -38,6 +38,7 @@ const FILTRO_FIELDS = [
   { key: 'usuarios', label: 'Usuarios' },
   { key: 'medio_pago', label: 'Medio de pago' },
   { key: 'moneda_movimiento', label: 'Moneda del movimiento' },
+  { key: 'factura_cliente', label: 'Factura cliente' },
   { key: 'moneda_equivalente', label: 'Selector de moneda equivalente' },
 ];
 
@@ -147,7 +148,7 @@ const ReportEditor = ({
   };
 
   const isFiltroEnabled = (key) => {
-    return config.filtros_schema?.[key]?.enabled !== false;
+    return config.filtros_schema?.[key]?.enabled === true;
   };
 
   // Layout / Bloques
@@ -520,41 +521,6 @@ const ReportEditor = ({
                 />
               )}
             />
-            <Divider />
-            <FormControlLabel
-              control={
-                <Switch
-                  size="small"
-                  checked={config.permisos?.publico || false}
-                  onChange={(e) => handleTogglePublico(e.target.checked)}
-                />
-              }
-              label={
-                <Stack>
-                  <Typography variant="body2">Acceso publico</Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    Compartir con clientes/terceros sin login
-                  </Typography>
-                </Stack>
-              }
-            />
-            {config.permisos?.publico && config.permisos?.link_token && (
-              <Alert
-                severity="info"
-                icon={<LinkIcon fontSize="small" />}
-                action={
-                  <Tooltip title={linkCopied ? 'Copiado!' : 'Copiar link'}>
-                    <IconButton size="small" onClick={handleCopyLink}>
-                      <ContentCopyOutlinedIcon fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
-                }
-              >
-                <Typography variant="caption" sx={{ wordBreak: 'break-all' }}>
-                  {typeof window !== 'undefined' ? window.location.origin : ''}/reportes/public/{config.permisos.link_token}
-                </Typography>
-              </Alert>
-            )}
           </Stack>
         </AccordionDetails>
       </Accordion>

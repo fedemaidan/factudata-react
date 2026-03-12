@@ -53,7 +53,8 @@ import {
     GraphicEq as GraphicEqIcon,
     DeleteOutline as DeleteOutlineIcon,
     FileUpload as FileUploadIcon,
-    Download as DownloadIcon
+    Download as DownloadIcon,
+    AttachFile as AttachFileIcon
 } from '@mui/icons-material';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
 import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
@@ -90,6 +91,28 @@ const resolveAudioUrl = (url) => {
     return `${baseUrl}${url}`;
 };
 
+// Helper: convierte URL relativa de documento (/api/sdr/documentos/...) a URL absoluta del backend
+const resolveDocumentoUrl = (url) => {
+    if (!url) return '';
+    if (url.startsWith('http')) return url;
+    const baseUrl = config.apiUrl.replace(/\/api\/?$/, '');
+    return `${baseUrl}${url}`;
+};
+
+// Helper: obtiene un icono emoji según el tipo de archivo
+const getDocumentoIcono = (mimeType, nombre) => {
+    if (!mimeType && !nombre) return '📄';
+    const ext = nombre ? nombre.split('.').pop().toLowerCase() : '';
+    if (mimeType?.includes('pdf') || ext === 'pdf') return '📕';
+    if (mimeType?.includes('image') || ['jpg','jpeg','png','gif','webp','svg'].includes(ext)) return '🖼️';
+    if (mimeType?.includes('spreadsheet') || mimeType?.includes('excel') || ['xls','xlsx','csv'].includes(ext)) return '📊';
+    if (mimeType?.includes('presentation') || mimeType?.includes('powerpoint') || ['ppt','pptx'].includes(ext)) return '📽️';
+    if (mimeType?.includes('word') || mimeType?.includes('document') || ['doc','docx'].includes(ext)) return '📝';
+    if (mimeType?.includes('zip') || mimeType?.includes('rar') || mimeType?.includes('compressed') || ['zip','rar','7z','tar','gz'].includes(ext)) return '📦';
+    if (mimeType?.includes('text') || ['txt','md','json','xml','csv'].includes(ext)) return '📄';
+    return '📎';
+};
+
 // ==================== CONSTANTES ====================
 
 const getEventoColor = (tipo) => {
@@ -115,6 +138,7 @@ const getEventoColor = (tipo) => {
         'nota_agregada': { bg: '#fffde7', border: '#ffee58', icon: '#f9a825' },
         'comentario': { bg: '#fffde7', border: '#ffee58', icon: '#f9a825' },
         'audio_grabado': { bg: '#fce4ec', border: '#f48fb1', icon: '#c2185b' },
+        'documento_adjunto': { bg: '#e8eaf6', border: '#7986cb', icon: '#3949ab' },
         'proximo_contacto_programado': { bg: '#e1f5fe', border: '#29b6f6', icon: '#0277bd' },
         'contacto_editado': { bg: '#eceff1', border: '#90a4ae', icon: '#546e7a' },
         'estado_cambiado': { bg: '#e8eaf6', border: '#5c6bc0', icon: '#3949ab' },
@@ -147,6 +171,7 @@ const getEventoIcon = (tipo) => {
         'nota_agregada': <CommentIcon fontSize="small" />,
         'comentario': <CommentIcon fontSize="small" />,
         'audio_grabado': <GraphicEqIcon fontSize="small" />,
+        'documento_adjunto': <AttachFileIcon fontSize="small" />,
         'proximo_contacto_programado': <EventIcon fontSize="small" />,
         'contacto_editado': <PersonIcon fontSize="small" />,
         'estado_cambiado': <EditIcon fontSize="small" />,
@@ -175,6 +200,7 @@ const FILTROS_HISTORIAL = [
     { key: 'email', label: 'Email / LinkedIn', icon: '✉️', tipos: ['email_enviado', 'linkedin_enviado'] },
     { key: 'reuniones', label: 'Reuniones', icon: '📅', tipos: ['reunion_coordinada', 'reunion_aprobada', 'reunion_rechazada'] },
     { key: 'audio', label: 'Audios', icon: '🎙️', tipos: ['audio_grabado'] },
+    { key: 'documentos', label: 'Documentos', icon: '📎', tipos: ['documento_adjunto'] },
     { key: 'sistema', label: 'Sistema', icon: '⚙️', tipos: ['contacto_creado', 'contacto_asignado', 'contacto_desasignado', 'contacto_reasignado', 'importado_excel', 'importado_notion', 'contacto_editado', 'estado_cambiado', 'plan_estimado_actualizado', 'intencion_compra_actualizada', 'proximo_contacto_programado', 'marcado_no_califica', 'marcado_no_responde', 'cadencia_iniciada', 'cadencia_paso_completado', 'cadencia_completada', 'cadencia_detenida'] },
 ];
 
@@ -338,6 +364,10 @@ const ContactoSDRDetailPage = () => {
     const [subiendoArchivo, setSubiendoArchivo] = useState(false);
     const [reanalizandoEvento, setReanalizandoEvento] = useState(null); // eventoId que se está re-analizando
     const fileInputRef = useRef(null);
+
+    // Documentos adjuntos
+    const [subiendoDocumento, setSubiendoDocumento] = useState(false);
+    const docInputRef = useRef(null);
 
     // Navegación entre contactos (IDs guardados en sessionStorage)
     const [contactoIds, setContactoIds] = useState([]);
@@ -696,6 +726,42 @@ const ContactoSDRDetailPage = () => {
             mostrarSnackbar('Error al re-analizar el audio', 'error');
         } finally {
             setReanalizandoEvento(null);
+        }
+    };
+
+    const handleSubirDocumento = async (e) => {
+        const file = e.target.files?.[0];
+        if (!file || !contacto?._id) return;
+        e.target.value = '';
+        
+        const nota = prompt('💬 Nota sobre este documento (opcional):', '');
+        if (nota === null) return; // Canceló
+        
+        setSubiendoDocumento(true);
+        try {
+            await SDRService.subirDocumento(contacto._id, file, {
+                nota: nota.trim() || '',
+                empresaId
+            });
+            mostrarSnackbar('📎 Documento adjunto guardado', 'success');
+            await cargarContacto();
+        } catch (err) {
+            console.error('Error subiendo documento:', err);
+            mostrarSnackbar('Error al subir el documento', 'error');
+        } finally {
+            setSubiendoDocumento(false);
+        }
+    };
+
+    const handleEliminarDocumento = async (eventoId) => {
+        if (!window.confirm('¿Eliminar este documento adjunto?')) return;
+        try {
+            await SDRService.eliminarDocumento(eventoId);
+            setHistorial(prev => prev.filter(e => e._id !== eventoId));
+            mostrarSnackbar('Documento eliminado');
+        } catch (err) {
+            console.error('Error eliminando documento:', err);
+            mostrarSnackbar('Error al eliminar documento', 'error');
         }
     };
 
@@ -1425,34 +1491,73 @@ const ContactoSDRDetailPage = () => {
                                         )}
                                     </Stack>
 
-                                    {/* Datos del Bot — inline key:value */}
-                                    {contacto.datosBot && (contacto.datosBot.rubro || contacto.datosBot.interes || contacto.datosBot.saludoInicial || contacto.datosBot.cantidadObras) && (
+                                    {/* Datos del Bot — inline key:value + A/B + agendar */}
+                                    {(contacto.ab_test_variante || contacto.datosBot?.agendarClickeado ||
+                                        (contacto.datosBot && (contacto.datosBot.rubro || contacto.datosBot.interes || contacto.datosBot.saludoInicial || contacto.datosBot.cantidadObras))) && (
                                         <Box sx={{ mt: 1, pt: 1, borderTop: 1, borderColor: 'divider' }}>
-                                            <Typography variant="caption" color="text.disabled" fontWeight={600} fontSize="0.68rem" textTransform="uppercase" letterSpacing={0.5}>
-                                                🤖 Bot
-                                            </Typography>
-                                            <Stack spacing={0.2} sx={{ mt: 0.3 }}>
-                                                {contacto.datosBot.rubro && (
-                                                    <Typography variant="caption" color="text.secondary" fontSize="0.75rem">
-                                                        <Box component="span" sx={{ color: 'text.disabled', fontWeight: 500 }}>Rubro:</Box> {contacto.datosBot.rubro}
-                                                    </Typography>
+                                            <Stack direction="row" spacing={1} alignItems="center" mb={0.5} flexWrap="wrap" useFlexGap>
+                                                <Typography variant="caption" color="text.disabled" fontWeight={600} fontSize="0.68rem" textTransform="uppercase" letterSpacing={0.5}>
+                                                    🤖 Bot
+                                                </Typography>
+                                                {contacto.ab_test_variante && (
+                                                    <Tooltip title={`A/B Test: Variante ${contacto.ab_test_variante}${contacto.ab_test_name ? ` — ${contacto.ab_test_name}` : ''}`}>
+                                                        <Chip
+                                                            size="small"
+                                                            label={`AB:${contacto.ab_test_variante}`}
+                                                            color={contacto.ab_test_variante === 'B' ? 'secondary' : 'default'}
+                                                            variant={contacto.ab_test_variante === 'B' ? 'filled' : 'outlined'}
+                                                            sx={{ height: 20, fontSize: '0.65rem', fontWeight: 700 }}
+                                                        />
+                                                    </Tooltip>
                                                 )}
-                                                {contacto.datosBot.cantidadObras && (
-                                                    <Typography variant="caption" color="text.secondary" fontSize="0.75rem">
-                                                        <Box component="span" sx={{ color: 'text.disabled', fontWeight: 500 }}>Obras:</Box> {contacto.datosBot.cantidadObras}
-                                                    </Typography>
-                                                )}
-                                                {contacto.datosBot.interes && (
-                                                    <Typography variant="caption" color="text.secondary" fontSize="0.75rem">
-                                                        <Box component="span" sx={{ color: 'text.disabled', fontWeight: 500 }}>Interés:</Box> {contacto.datosBot.interes}
-                                                    </Typography>
-                                                )}
-                                                {contacto.datosBot.saludoInicial && (
-                                                    <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic', fontSize: '0.72rem', mt: 0.2, lineHeight: 1.3 }}>
-                                                        "{contacto.datosBot.saludoInicial}"
-                                                    </Typography>
+                                                {contacto.datosBot?.agendarClickeado ? (
+                                                    <Tooltip title="✅ Objetivo alcanzado: tocó el link de agendar demo">
+                                                        <Chip
+                                                            size="small"
+                                                            icon={<EventIcon sx={{ fontSize: 12 }} />}
+                                                            label="Agendó"
+                                                            color="success"
+                                                            variant="filled"
+                                                            sx={{ height: 20, fontSize: '0.65rem', fontWeight: 700 }}
+                                                        />
+                                                    </Tooltip>
+                                                ) : contacto.ab_test_variante && (
+                                                    <Tooltip title="Aún no tocó el link de agendar demo">
+                                                        <Chip
+                                                            size="small"
+                                                            icon={<EventIcon sx={{ fontSize: 12 }} />}
+                                                            label="No agendó por link"
+                                                            color="default"
+                                                            variant="outlined"
+                                                            sx={{ height: 20, fontSize: '0.65rem' }}
+                                                        />
+                                                    </Tooltip>
                                                 )}
                                             </Stack>
+                                            {contacto.datosBot && (contacto.datosBot.rubro || contacto.datosBot.interes || contacto.datosBot.saludoInicial || contacto.datosBot.cantidadObras) && (
+                                                <Stack spacing={0.2} sx={{ mt: 0.3 }}>
+                                                    {contacto.datosBot.rubro && (
+                                                        <Typography variant="caption" color="text.secondary" fontSize="0.75rem">
+                                                            <Box component="span" sx={{ color: 'text.disabled', fontWeight: 500 }}>Rubro:</Box> {contacto.datosBot.rubro}
+                                                        </Typography>
+                                                    )}
+                                                    {contacto.datosBot.cantidadObras && (
+                                                        <Typography variant="caption" color="text.secondary" fontSize="0.75rem">
+                                                            <Box component="span" sx={{ color: 'text.disabled', fontWeight: 500 }}>Obras:</Box> {contacto.datosBot.cantidadObras}
+                                                        </Typography>
+                                                    )}
+                                                    {contacto.datosBot.interes && (
+                                                        <Typography variant="caption" color="text.secondary" fontSize="0.75rem">
+                                                            <Box component="span" sx={{ color: 'text.disabled', fontWeight: 500 }}>Interés:</Box> {contacto.datosBot.interes}
+                                                        </Typography>
+                                                    )}
+                                                    {contacto.datosBot.saludoInicial && (
+                                                        <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic', fontSize: '0.72rem', mt: 0.2, lineHeight: 1.3 }}>
+                                                            "{contacto.datosBot.saludoInicial}"
+                                                        </Typography>
+                                                    )}
+                                                </Stack>
+                                            )}
                                         </Box>
                                     )}
                                 </CardContent>
@@ -1588,6 +1693,29 @@ const ContactoSDRDetailPage = () => {
                                                 color={PRECALIFICACION_BOT[contacto.precalificacionBot]?.color || 'default'}
                                                 variant="outlined"
                                             />
+                                        )}
+                                        {contacto.ab_test_variante && (
+                                            <Tooltip title={`A/B Test: Variante ${contacto.ab_test_variante}`}>
+                                                <Chip
+                                                    size="small"
+                                                    label={`AB:${contacto.ab_test_variante}`}
+                                                    color={contacto.ab_test_variante === 'B' ? 'secondary' : 'default'}
+                                                    variant={contacto.ab_test_variante === 'B' ? 'filled' : 'outlined'}
+                                                    sx={{ fontWeight: 700 }}
+                                                />
+                                            </Tooltip>
+                                        )}
+                                        {contacto.datosBot?.agendarClickeado && (
+                                            <Tooltip title="✅ Objetivo: tocó el link de agendar demo">
+                                                <Chip
+                                                    size="small"
+                                                    icon={<EventIcon sx={{ fontSize: 14 }} />}
+                                                    label="Agendó"
+                                                    color="success"
+                                                    variant="filled"
+                                                    sx={{ fontWeight: 700 }}
+                                                />
+                                            </Tooltip>
                                         )}
                                     </Stack>
                                 </CardContent>
@@ -2036,6 +2164,18 @@ const ContactoSDRDetailPage = () => {
                                             </IconButton>
                                         </Tooltip>
                                     )}
+                                    {grabador.estado === 'inactivo' && (
+                                        <Tooltip title="Adjuntar documento">
+                                            <IconButton
+                                                color="secondary"
+                                                onClick={() => docInputRef.current?.click()}
+                                                disabled={subiendoDocumento}
+                                                sx={{ bgcolor: '#ede7f6', '&:hover': { bgcolor: '#d1c4e9' } }}
+                                            >
+                                                {subiendoDocumento ? <CircularProgress size={24} /> : <AttachFileIcon />}
+                                            </IconButton>
+                                        </Tooltip>
+                                    )}
                                     <Button
                                         variant="contained"
                                         size="small"
@@ -2169,6 +2309,34 @@ const ContactoSDRDetailPage = () => {
                                                                                     </IconButton>
                                                                                 </Tooltip>
                                                                             </Stack>
+                                                                        )}
+                                                                        {/* Documento adjunto */}
+                                                                        {(evento.documentoUrl || evento.metadata?.documentoUrl) && (
+                                                                            <Box sx={{ mt: 0.5, p: 0.8, bgcolor: '#e8eaf6', borderRadius: 1, border: '1px solid #c5cae9' }}>
+                                                                                <Stack direction="row" alignItems="center" spacing={0.8}>
+                                                                                    <Typography fontSize="1.2rem">{getDocumentoIcono(evento.documentoMimeType || evento.metadata?.documentoMimeType, evento.documentoNombre || evento.metadata?.documentoNombre)}</Typography>
+                                                                                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                                                                                        <Typography variant="caption" fontWeight={600} noWrap sx={{ display: 'block', fontSize: '0.76rem' }}>
+                                                                                            {evento.documentoNombre || evento.metadata?.documentoNombre || 'Documento'}
+                                                                                        </Typography>
+                                                                                        {(evento.documentoTamano || evento.metadata?.documentoTamano) && (
+                                                                                            <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.68rem' }}>
+                                                                                                {(evento.documentoTamano || evento.metadata?.documentoTamano) < 1024 * 1024 ? Math.round((evento.documentoTamano || evento.metadata?.documentoTamano) / 1024) + ' KB' : ((evento.documentoTamano || evento.metadata?.documentoTamano) / (1024 * 1024)).toFixed(1) + ' MB'}
+                                                                                            </Typography>
+                                                                                        )}
+                                                                                    </Box>
+                                                                                    <Tooltip title="Descargar">
+                                                                                        <IconButton size="small" component="a" href={resolveDocumentoUrl(evento.documentoUrl || evento.metadata?.documentoUrl)} download={evento.documentoNombre || evento.metadata?.documentoNombre || 'documento'} target="_blank" sx={{ color: 'primary.main' }}>
+                                                                                            <DownloadIcon sx={{ fontSize: 18 }} />
+                                                                                        </IconButton>
+                                                                                    </Tooltip>
+                                                                                    <Tooltip title="Eliminar documento">
+                                                                                        <IconButton size="small" onClick={() => handleEliminarDocumento(evento._id)} sx={{ color: 'error.main', p: 0.3 }}>
+                                                                                            <DeleteOutlineIcon sx={{ fontSize: 16 }} />
+                                                                                        </IconButton>
+                                                                                    </Tooltip>
+                                                                                </Stack>
+                                                                            </Box>
                                                                         )}
                                                                         {!esGrupoMultiple && (
                                                                             <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.68rem' }}>
@@ -2818,6 +2986,18 @@ const ContactoSDRDetailPage = () => {
                                             </IconButton>
                                         </Tooltip>
                                     )}
+                                    {grabador.estado === 'inactivo' && (
+                                        <Tooltip title="Adjuntar documento">
+                                            <IconButton
+                                                color="secondary"
+                                                onClick={() => docInputRef.current?.click()}
+                                                disabled={subiendoDocumento}
+                                                sx={{ bgcolor: '#ede7f6', '&:hover': { bgcolor: '#d1c4e9' } }}
+                                            >
+                                                {subiendoDocumento ? <CircularProgress size={24} /> : <AttachFileIcon />}
+                                            </IconButton>
+                                        </Tooltip>
+                                    )}
                                     <Button
                                         variant="contained"
                                         size="small"
@@ -2950,6 +3130,34 @@ const ContactoSDRDetailPage = () => {
                                                                                 </Tooltip>
                                                                             </Stack>
                                                                         )}
+                                                                        {/* Documento adjunto */}
+                                                                        {(evento.documentoUrl || evento.metadata?.documentoUrl) && (
+                                                                            <Box sx={{ mt: 0.5, p: 0.8, bgcolor: '#e8eaf6', borderRadius: 1, border: '1px solid #c5cae9' }}>
+                                                                                <Stack direction="row" alignItems="center" spacing={0.8}>
+                                                                                    <Typography fontSize="1.2rem">{getDocumentoIcono(evento.documentoMimeType || evento.metadata?.documentoMimeType, evento.documentoNombre || evento.metadata?.documentoNombre)}</Typography>
+                                                                                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                                                                                        <Typography variant="caption" fontWeight={600} noWrap sx={{ display: 'block', fontSize: '0.76rem' }}>
+                                                                                            {evento.documentoNombre || evento.metadata?.documentoNombre || 'Documento'}
+                                                                                        </Typography>
+                                                                                        {(evento.documentoTamano || evento.metadata?.documentoTamano) && (
+                                                                                            <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.68rem' }}>
+                                                                                                {(evento.documentoTamano || evento.metadata?.documentoTamano) < 1024 * 1024 ? Math.round((evento.documentoTamano || evento.metadata?.documentoTamano) / 1024) + ' KB' : ((evento.documentoTamano || evento.metadata?.documentoTamano) / (1024 * 1024)).toFixed(1) + ' MB'}
+                                                                                            </Typography>
+                                                                                        )}
+                                                                                    </Box>
+                                                                                    <Tooltip title="Descargar">
+                                                                                        <IconButton size="small" component="a" href={resolveDocumentoUrl(evento.documentoUrl || evento.metadata?.documentoUrl)} download={evento.documentoNombre || evento.metadata?.documentoNombre || 'documento'} target="_blank" sx={{ color: 'primary.main' }}>
+                                                                                            <DownloadIcon sx={{ fontSize: 18 }} />
+                                                                                        </IconButton>
+                                                                                    </Tooltip>
+                                                                                    <Tooltip title="Eliminar documento">
+                                                                                        <IconButton size="small" onClick={() => handleEliminarDocumento(evento._id)} sx={{ color: 'error.main', p: 0.3 }}>
+                                                                                            <DeleteOutlineIcon sx={{ fontSize: 16 }} />
+                                                                                        </IconButton>
+                                                                                    </Tooltip>
+                                                                                </Stack>
+                                                                            </Box>
+                                                                        )}
                                                                         {!esGrupoMultiple && (
                                                                             <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem' }}>
                                                                                 {new Date(evento.createdAt).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
@@ -3048,6 +3256,13 @@ const ContactoSDRDetailPage = () => {
                                         <Tooltip title="Subir grabación">
                                             <IconButton color="primary" onClick={() => fileInputRef.current?.click()} disabled={subiendoArchivo} sx={{ bgcolor: '#e3f2fd', '&:hover': { bgcolor: '#bbdefb' } }}>
                                                 {subiendoArchivo ? <CircularProgress size={24} /> : <FileUploadIcon />}
+                                            </IconButton>
+                                        </Tooltip>
+                                    )}
+                                    {grabador.estado === 'inactivo' && (
+                                        <Tooltip title="Adjuntar documento">
+                                            <IconButton color="secondary" onClick={() => docInputRef.current?.click()} disabled={subiendoDocumento} sx={{ bgcolor: '#ede7f6', '&:hover': { bgcolor: '#d1c4e9' } }}>
+                                                {subiendoDocumento ? <CircularProgress size={24} /> : <AttachFileIcon />}
                                             </IconButton>
                                         </Tooltip>
                                     )}
@@ -3167,6 +3382,34 @@ const ContactoSDRDetailPage = () => {
                                                                                     </IconButton>
                                                                                 </Tooltip>
                                                                             </Stack>
+                                                                        )}
+                                                                        {/* Documento adjunto */}
+                                                                        {(evento.documentoUrl || evento.metadata?.documentoUrl) && (
+                                                                            <Box sx={{ mt: 0.5, p: 1, bgcolor: '#e8eaf6', borderRadius: 1, border: '1px solid #c5cae9' }}>
+                                                                                <Stack direction="row" alignItems="center" spacing={1}>
+                                                                                    <Typography fontSize="1.4rem">{getDocumentoIcono(evento.documentoMimeType || evento.metadata?.documentoMimeType, evento.documentoNombre || evento.metadata?.documentoNombre)}</Typography>
+                                                                                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                                                                                        <Typography variant="body2" fontWeight={600} noWrap>
+                                                                                            {evento.documentoNombre || evento.metadata?.documentoNombre || 'Documento'}
+                                                                                        </Typography>
+                                                                                        {(evento.documentoTamano || evento.metadata?.documentoTamano) && (
+                                                                                            <Typography variant="caption" color="text.secondary">
+                                                                                                {(evento.documentoTamano || evento.metadata?.documentoTamano) < 1024 * 1024 ? Math.round((evento.documentoTamano || evento.metadata?.documentoTamano) / 1024) + ' KB' : ((evento.documentoTamano || evento.metadata?.documentoTamano) / (1024 * 1024)).toFixed(1) + ' MB'}
+                                                                                            </Typography>
+                                                                                        )}
+                                                                                    </Box>
+                                                                                    <Tooltip title="Descargar">
+                                                                                        <IconButton size="small" component="a" href={resolveDocumentoUrl(evento.documentoUrl || evento.metadata?.documentoUrl)} download={evento.documentoNombre || evento.metadata?.documentoNombre || 'documento'} target="_blank" sx={{ color: 'primary.main' }}>
+                                                                                            <DownloadIcon sx={{ fontSize: 20 }} />
+                                                                                        </IconButton>
+                                                                                    </Tooltip>
+                                                                                    <Tooltip title="Eliminar documento">
+                                                                                        <IconButton size="small" onClick={() => handleEliminarDocumento(evento._id)} sx={{ color: 'error.main', p: 0.4 }}>
+                                                                                            <DeleteOutlineIcon sx={{ fontSize: 18 }} />
+                                                                                        </IconButton>
+                                                                                    </Tooltip>
+                                                                                </Stack>
+                                                                            </Box>
                                                                         )}
                                                                         {!esGrupoMultiple && (
                                                                             <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
@@ -3635,6 +3878,15 @@ const ContactoSDRDetailPage = () => {
                 accept="audio/*,.m4a,.mp3,.wav,.ogg,.webm,.aac,.amr,.3gp"
                 style={{ display: 'none' }}
                 onChange={handleSubirGrabacion}
+            />
+
+            {/* Input file oculto para subir documentos */}
+            <input
+                type="file"
+                ref={docInputRef}
+                accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.ppt,.pptx,.txt,.md,.jpg,.jpeg,.png,.gif,.webp,.zip,.rar,.7z"
+                style={{ display: 'none' }}
+                onChange={handleSubirDocumento}
             />
 
             {/* Snackbar */}
