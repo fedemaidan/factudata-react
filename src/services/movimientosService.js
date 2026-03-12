@@ -93,6 +93,20 @@ const movimientosService = {
         return false;
     }
   },
+
+  addComentario: async (movimientoId, comment) => {
+    try {
+      const response = await api.post(`movimiento/${movimientoId}/comentarios`, { comment });
+      if (response.status === 201) {
+        return response.data?.comentario ?? response.data;
+      }
+      return null;
+    } catch (err) {
+      console.error('Error al agregar comentario:', err);
+      throw err;
+    }
+  },
+
   comprarDolares: async (data) => {
     try {
       const response = await api.post('intercambio-monedas/comprar-dolares', data);

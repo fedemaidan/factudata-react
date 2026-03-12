@@ -43,6 +43,7 @@ import CallSplitIcon from '@mui/icons-material/CallSplit';
 import WhatsAppIcon from '@mui/icons-material/WhatsApp';
 import LanguageIcon from '@mui/icons-material/Language';
 import SyncIcon from '@mui/icons-material/Sync';
+import MovimientoLogsPanel from 'src/components/movimientos/MovimientoLogsPanel';
 
 // Componente para mostrar información de prorrateo
 const ProrrateoInfo = ({ movimiento, onVerRelacionados }) => {
@@ -213,8 +214,10 @@ const MovementFormPage = () => {
 
   const savePayload = async (payload) => {
     try {
+      const nombreUsuario =
+        [user?.firstName, user?.lastName].filter(Boolean).join(' ') || user?.email || null;
       const result = isEditMode
-        ? await movimientosService.updateMovimiento(movimientoId, { ...movimiento, ...payload })
+        ? await movimientosService.updateMovimiento(movimientoId, { ...movimiento, ...payload }, nombreUsuario)
         : await movimientosService.addMovimiento({ ...payload, user_phone: user.phone });
 
       if (result?.id && !isEditMode) {
@@ -228,6 +231,14 @@ const MovementFormPage = () => {
       }
 
       if (result.error) throw new Error('Error al agregar o editar el movimiento');
+
+      if (isEditMode) {
+        const updatedMovimiento = await movimientosService.getMovimientoById(movimientoId);
+        if (updatedMovimiento) {
+          setMovimiento(updatedMovimiento);
+        }
+      }
+
       setAlert({ open: true, message: 'Movimiento guardado con éxito!', severity: 'success' });
     } catch (err) {
       setAlert({ open: true, message: err.message, severity: 'error' });
@@ -831,6 +842,9 @@ function syncMaterialesWithMovs(currentMateriales = [], mmRows = [], { proyecto_
     }
   };
 
+  const hasMaterialesTab = formik.values.categoria === 'Materiales';
+  const logsTabIndex = hasMaterialesTab ? 4 : 3;
+
   return (
     <>
       <Head><title>{titulo}</title></Head>
@@ -1057,7 +1071,8 @@ function syncMaterialesWithMovs(currentMateriales = [], mmRows = [], { proyecto_
                   <Tab label="Info general" />
                   <Tab label="Importes e impuestos" />
                   <Tab label="Imagen de la factura" />
-                  {formik.values.categoria === 'Materiales' && <Tab label="Materiales" />}
+                  {hasMaterialesTab && <Tab label="Materiales" />}
+                  <Tab label="Auditoria" />
                 </Tabs>
 
                 {tab === 0 && (
@@ -1157,7 +1172,7 @@ function syncMaterialesWithMovs(currentMateriales = [], mmRows = [], { proyecto_
                   </Box>
                 )}
 
-                {formik.values.categoria === 'Materiales' && tab === 3 && (
+                {hasMaterialesTab && tab === 3 && (
                   <Box sx={{ p: 2 }}>
                     <Typography variant="subtitle2" sx={{ mb: 1 }}>Materiales</Typography>
                     <Divider sx={{ mb: 2 }} />
@@ -1166,6 +1181,14 @@ function syncMaterialesWithMovs(currentMateriales = [], mmRows = [], { proyecto_
                       proyecto_id={proyectoId}
                       onChange={(next) => formik.setFieldValue('materiales', next)}
                     />
+                  </Box>
+                )}
+
+                {tab === logsTabIndex && (
+                  <Box sx={{ p: 2 }}>
+                    <Typography variant="subtitle2" sx={{ mb: 1 }}>Auditoria de cambios</Typography>
+                    <Divider sx={{ mb: 2 }} />
+                    <MovimientoLogsPanel logs={movimiento?.logs || []} />
                   </Box>
                 )}
               </Paper>
