@@ -1,7 +1,7 @@
 # Onboarding: Activación Rápida — Documento Funcional
 
 **Fecha:** Marzo 2026
-**Estado:** Propuesta
+**Estado:** En producción (A/B activo — branch `feature/onboarding-activacion-rapida`)
 **Área:** Bot WhatsApp — Onboarding / Activación
 **Objetivo:** Aumentar la cantidad de leads inbound que llegan al **primer movimiento exitoso**, reduciendo fricción inicial y dependencia del equipo comercial.
 
@@ -277,9 +277,9 @@ Cada empresa demo incluye:
   - Egreso: Arena y piedra — $85.000 (Materiales, Corralón López)
   - Egreso: Jornales albañilería semana 1 — $320.000 (Mano de Obra)
   - Ingreso: Aporte inicial del cliente — $2.000.000
-- **Presupuestos asignados:**
-  - Materiales: $3.000.000
-  - Mano de Obra: $5.000.000
+- **Presupuestos asignados (indexados por CAC):**
+  - Materiales: $3.000.000 — indexado por CAC subíndice materiales
+  - Mano de Obra: $5.000.000 — indexado por CAC subíndice mano de obra
 
 **Beneficio:** El usuario ve una obra "viva" con caja positiva, gastos reales y presupuestos con ejecución parcial desde el primer momento. Si pide un resumen, hay datos para mostrar.
 
@@ -326,35 +326,44 @@ Escribí: resumen de gastos
 **Paso 4** — Ofrecer siguientes caminos:
 
 ```text
-¿Querés configurarlo para tus obras reales?
-1️⃣ Sí, configurar mi empresa
+¿Qué querés hacer ahora?
+1️⃣ Cargar mis obras
 2️⃣ Agendar demo de 20 min
-3️⃣ Seguir probando
+3️⃣ Continuar prueba
 ```
 
 **Objetivo:** No dejar que el usuario "descubra solo" cómo seguir. Guiarlo secuencialmente hasta cerrar el ciclo de valor (registrar gasto + pedir resumen).
 
 ---
 
-### Cambio 4 — Mover la calificación real después de la activación
+### Cambio 4 — Configurar la cuenta real sin borrar la demo
 
-**Hoy:** Se piden datos de empresa y obras antes de que el usuario pruebe el producto.
+**Hoy (doc original):** Se planteó pedir datos y crear empresa nueva reemplazando la demo.
 
-**Propuesta:** Pedir esos datos recién cuando el usuario ya probó y elige "Configurar mi empresa":
+**Implementado:** El flujo `flowCargarObras` renombra la empresa demo con los datos reales y la marca como no-demo, sin borrar ningún dato ni movimiento. El usuario no pierde el historial que ya generaron.
+
+Secuencia real implementada:
 
 ```text
-¡Genial! Para configurar tus obras reales:
-
-¿Cómo se llama tu empresa?
+¿Cuál es el nombre de tu empresa?
 → responde
-¿Cuántas obras activas tenés?
+¿Cómo se llaman tus obras? (separadas por coma)
 → responde
-¿Cómo se llaman?
-→ responde
-Listo. Ahora podés registrar gastos en tus obras reales.
+¿Conformás estos datos? (Empresa + lista de obras)
+→ [Confirmar] / [Modificar obras]
+Listo. ¡Lala Construcción está configurada! Se crearon N obra(s).
 ```
 
-**Beneficio:** Se reserva el esfuerzo de configuración para usuarios que ya demostraron intención real. Se eliminan preguntas innecesarias para la demo (rol, tipo de obras).
+Despues muestra un menú con 6 opciones de activación avanzada (cada una lleva a agendar con soporte):
+
+- 👥 Crear usuarios
+- 📂 Carga masiva de datos
+- 📦 Acopio
+- 📋 Nota de pedido
+- 🏪 Depósito
+- 🗂️ Inventario
+
+**Beneficio respecto al plan original:** No se pierde el historial demo. El usuario que ya registró un gasto ve cómo eso mismo queda en su empresa real.
 
 ---
 
@@ -600,10 +609,10 @@ Y mirá lo que pasa 👇
 Se crea empresa demo automática en background. Se guía al primer gasto y primer resumen. Después se ofrecen opciones:
 
 ```text
-¿Querés configurarlo para tus obras reales?
-1️⃣ Sí, configurar mi empresa
+¿Qué querés hacer ahora?
+1️⃣ Cargar mis obras
 2️⃣ Agendar demo de 20 min
-3️⃣ Seguir probando
+3️⃣ Continuar prueba
 ```
 
 Si no responde en 1h → mensaje con Calendly (N1).
@@ -612,8 +621,8 @@ Si escribe keywords de usuario existente → redirige (N4).
 
 ### 9.3 Asignación
 
-- **Método:** Aleatorio, 50/50.
-- **Implementación:** Al recibir el primer mensaje de un contacto nuevo, se asigna aleatoriamente a variante A o B (`Math.random() < 0.5`). La variante asignada se guarda en el lead/estado para que sea consistente si el usuario vuelve a escribir.
+- **Método:** Aleatorio ponderado y balanceado.
+- **Implementación:** `abTestService.getVariante(phone)`. En la primera asignación usa `Math.random()` ponderado por los pesos configurados (default 50/50). En asignaciones posteriores corrige hacia la variante que esté más por debajo de su peso objetivo (algoritmo de balanceo dinámico). La variante asignada se guarda en `ContactoSDR.varianteAB` para consistencia si el usuario vuelve.
 - **Criterio de inclusión:** Solo contactos nuevos inbound (no outbound, no usuarios existentes).
 
 ### 9.4 Métrica ganadora
@@ -919,12 +928,14 @@ Si se cumple: se mantiene flujo actual y se revisan hipótesis.
 |---|----------|---------|
 | 1 | **Empresa demo: campo `esDemo`** | Se agrega `esDemo: true` en Firestore. NO se cambia el campo `tipo` (sigue siendo `'Constructora'`). Así toda la lógica existente funciona sin modificaciones. |
 | 2 | **Pool de 2 demos** | Siempre hay 2 empresas demo pre-creadas con datos. Al asignar una, se repone en background. Si no hay disponible, se crea una en el momento (fallback sincrónico). |
-| 3 | **Datos precargados** | Cada demo tiene 4 movimientos (3 egresos + 1 ingreso) y 2 presupuestos (Materiales + Mano de Obra). Se crean con `createMovimiento(actualizaSheets=true)` y `crearPresupuesto()`. |
+| 3 | **Datos precargados** | Cada demo tiene 4 movimientos (3 egresos + 1 ingreso) y 2 presupuestos indexados por CAC: Materiales (`cac_tipo: 'materiales'`) y Mano de Obra (`cac_tipo: 'mano_obra'`). Se crean con `createMovimiento(actualizaSheets=true)` y `crearPresupuesto({ indexacion: 'CAC', cac_tipo })`. |
 | 4 | **Procesamiento de gasto en Variante B** | Se intercepta dentro del flow con `capture` y se llama a `accionarSegunEmpresa()` directamente. Así se mantiene la secuencia guiada sin perder contexto. |
 | 5 | **Referencia a empresa del contacto** | Se usa `datosBot.empresaFirestoreId` en ContactoSDR. El campo `empresaId` en la raíz es del tenant SDR, no del lead. |
 | 6 | **Calendly** | Se configura por variable de entorno `CALENDLY_DEMO_URL`. |
 | 7 | **Template de Meta** | Hay template aprobado para el timeout de 1h. Es backup — la ventana de 24h debería estar abierta. |
 | 8 | **Página A/B** | Ruta: `/abTestContactActivation`. Archivo: `app-web/src/pages/abTestContactActivation.js`. |
+| 9 | **Configuración de cuenta real** | Implementado como `flowCargarObras.js` (no `flowCalificacionPost.js`). Renombra la empresa demo y la marca como `empresa_demo: false` sin borrar el historial. Incluye paso de confirmación antes de guardar y menú de 6 funcionalidades avanzadas post-configuración. |
+| 10 | **Follow-up agendar demo** | Cuando el usuario hace clic en "Agendar demo", se programa automáticamente un mensaje a los 5 minutos preguntando si pudo agendar (`mensajesProgramadosService`). Si responde que no, se reenvía el link. |
 
 ---
 

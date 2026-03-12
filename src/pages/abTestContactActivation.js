@@ -88,7 +88,7 @@ function MetricasResumen({ test }) {
         { label: 'Asignados', key: 'contactos' },
         { label: 'Probaron', key: 'probaron' },
         { label: 'Completaron gasto', key: 'completaron' },
-        { label: 'Agendaron demo', key: 'agendaron' },
+        { label: 'Abrieron link agendar', key: 'abrieronLink' },
         { label: 'Timeouts (1h)', key: 'timeouts' },
     ];
 
@@ -195,8 +195,8 @@ function GraficoFunnel({ test }) {
     if (!test?.metricas) return null;
 
     const { metricas } = test;
-    const steps = ['contactos', 'probaron', 'completaron', 'agendaron'];
-    const labels = ['Asignados', 'Probaron', 'Completaron', 'Agendaron'];
+    const steps = ['contactos', 'probaron', 'completaron', 'abrieronLink'];
+    const labels = ['Asignados', 'Probaron', 'Completaron', 'Abrieron link'];
 
     const seriesA = steps.map((s) => safeMetric(metricas, 'A', s));
     const seriesB = steps.map((s) => safeMetric(metricas, 'B', s));
@@ -254,23 +254,23 @@ function GraficoConversion({ test }) {
     const totalB = safeMetric(metricas, 'B', 'contactos');
     const compA = safeMetric(metricas, 'A', 'completaron');
     const compB = safeMetric(metricas, 'B', 'completaron');
-    const agA = safeMetric(metricas, 'A', 'agendaron');
-    const agB = safeMetric(metricas, 'B', 'agendaron');
+    const agA = safeMetric(metricas, 'A', 'abrieronLink');
+    const agB = safeMetric(metricas, 'B', 'abrieronLink');
 
     const convRateA = totalA > 0 ? ((compA + agA) / totalA * 100) : 0;
     const convRateB = totalB > 0 ? ((compB + agB) / totalB * 100) : 0;
 
-    // Si no hay datos aún, mostrar placeholder
-    if (totalA === 0 && totalB === 0) {
+    // radialBar de ApexCharts crashea con series [0, 0] en algunas versiones
+    if (convRateA === 0 && convRateB === 0) {
         return (
             <Card>
                 <CardHeader
                     title="🎯 Tasa de conversión"
-                    subheader="Completaron + Agendaron / Total asignados"
+                    subheader="Completaron + Abrieron link / Total asignados"
                 />
                 <CardContent>
                     <Typography variant="body2" color="text.secondary" sx={{ py: 4, textAlign: 'center' }}>
-                        Sin datos suficientes para mostrar el gráfico.
+                        Sin conversiones aún — el gráfico se mostrará cuando haya datos.
                     </Typography>
                 </CardContent>
             </Card>
@@ -301,7 +301,7 @@ function GraficoConversion({ test }) {
         <Card>
             <CardHeader
                 title="🎯 Tasa de conversión"
-                subheader="Completaron + Agendaron / Total asignados"
+                subheader="Completaron + Abrieron link / Total asignados"
             />
             <CardContent>
                 <Chart options={options} series={[convRateA, convRateB]} type="radialBar" height={300} />

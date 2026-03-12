@@ -1,7 +1,7 @@
 # Onboarding: Activación Rápida — Plan de Implementación
 
 > **Fecha**: Marzo 2026  
-> **Estado**: Borrador  
+> **Estado**: Implementado — branch `feature/onboarding-activacion-rapida`  
 > **Documento de referencia**: [ONBOARDING-ACTIVACION-RAPIDA-FUNCIONAL.md](ONBOARDING-ACTIVACION-RAPIDA-FUNCIONAL.md)  
 > **Objetivo**: Plan técnico de implementación con A/B test para validar el flujo de activación rápida vs. el flujo actual.
 
@@ -54,13 +54,17 @@ El A/B testea solo el flujo del bot. Estos cambios se aplican a **todos** los co
 
 | Archivo | Acción | Descripción |
 |---------|--------|-------------|
-| `flows/onboardingFlows/flowInicioGeneral.js` | **Modificar** | Agregar split A/B antes del menú. Variante A → flujo actual. Variante B → nuevo flujo. |
-| `flows/onboardingFlows/flowActivacionDirecta.js` | **Crear** | Flujo nuevo: mensaje de activación + captura del primer gasto + opciones post-activación |
-| `flows/onboardingFlows/flowCalificacionPost.js` | **Crear** | Calificación simplificada post-activación (nombre empresa → obras → crear cuenta real) |
-| `src/services/demoAccountService.js` | **Crear** | Lógica para crear empresa demo automática (wrapper de `onboardingCreaInicioConstructora`) |
-| `src/services/abTestService.js` | **Crear** | `getVariante(phone)`, `registrarVariante()`, `getEstadisticasAB()` |
-| `utils/sendSafe.js` | **Sin cambios** | Ya soporta todo lo necesario |
-| `flows/onboardingFlows/flowOnboardingInfo.js` | **Modificar (Fase 2)** | Al final del flujo info, invitar a probar en vez de cerrar |
+| `flows/onboardingFlows/flowInicioGeneral.js` | **Modificado** | Split A/B antes del menú. Variante A → flujo actual. Variante B → `flowActivacionDirecta`. |
+| `flows/onboardingFlows/flowActivacionDirecta.js` | **Modificado** | Flujo Variante B: mensaje de activación + empresa demo + pasos demo guiados. |
+| `flows/onboardingFlows/flowCargarObras.js` | **Creado** | Reemplaza el `flowCalificacionPost.js` planeado. Pide nombre empresa + obras + confirmación, renombra empresa demo sin borrarla, muestra menú de 6 funcionalidades avanzadas. |
+| `src/services/empresaDemoService.js` | **Modificado** | Lógica del pool de demos (2 disponibles). Presupuestos indexados por CAC. Fue creado como `empresaDemoService.js` (no `demoAccountService.js` como se planificó). |
+| `src/services/abTestService.js` | **Modificado** | `getVariante(phone)` con balanceo dinámico, `registrarVariante()`, `getEstadisticasAB()`. |
+| `src/services/onboardingService.js` | **Modificado** | Pasos demo (`pasosDemo`, `pasosDemoSugerencias`), flag `esperaAccion: true` en sugerenciaIngreso y sugerenciaPresupuesto. |
+| `src/services/mensajesProgramadosScheduler.js` | **Modificado** | Soporte de campo `buttons` para mensajes programados interactivos. |
+| `utils/sendSafe.js` | **Modificado** | Agregado `sendButtonUrl()` (botón CTA con URL). |
+| `utils/demoHelper.js` | **Creado** (nuevo) | Helper centralizado para botones/mensajes del demo flow. Evita deps circulares. |
+| `utils/acciones.js` | **Modificado** | Handlers para `cargar_obras`, `agendar_demo`, `si_agende`, `no_agende`, `activar_*`, pasos demo. |
+| `scripts/regenerar-pool-demos.js` | **Creado** (nuevo) | Script para reconstruir el pool: borra solo demos disponibles, repone hasta `POOL_SIZE`. |
 
 ### 2.2 Flujo de decisión
 
@@ -111,28 +115,19 @@ src/services/abTestService.js
 
 ---
 
-### Paso 2 — Servicio de cuenta demo (`demoAccountService.js`)
+### Paso 2 — Servicio de empresa demo (`empresaDemoService.js`)
 
 ```
-src/services/demoAccountService.js
+src/services/empresaDemoService.js
 ```
 
 **Responsabilidades:**
-- `crearCuentaDemo(phone, nombre)` → crea empresa demo + proyecto "Obra Demo"
-- Reutiliza `onboardingCreaInicioConstructora(phone, null, nombre + ' - Demo')`
-- Marca la empresa con flag `tipo: 'demo'` para distinguir en reportes y cleanup
-- Retorna `{ empresaId, proyectoId, proyectoNombre }`
+- Mantiene un pool de `POOL_SIZE` (2) empresas demo pre-creadas y disponibles en MongoDB (`EmpresaDemo`)
+- `crearEmpresaDemoCompleta()` → crea empresa en Firestore con `esDemo: true`, perfil placeholder, proyecto "Obra Demo", 4 movimientos y 2 presupuestos indexados por CAC
+- Al asignar una demo a un usuario, se la marca como `estado: 'asignada'` y se repone el pool en background
+- Script de mantenimiento: `scripts/regenerar-pool-demos.js` — borra solo demos `disponibles` y repone el pool
 
-**Lógica:**
-```
-1. nombre = pushName || notifyName || 'WA ' + phone.slice(-4)
-2. empresaNombre = nombre + ' - Demo'
-3. await onboardingCreaInicioConstructora(phone, null, empresaNombre)
-4. Marcar empresa como tipo: 'demo' en Firestore
-5. Retornar ids
-```
-
-**Dependencias:** `flowOnboarding.onboardingCreaInicioConstructora`
+**Nota:** Se implementó como `empresaDemoService.js` (no `demoAccountService.js` como se planeaba). El campo demo en Firestore es `esDemo: true` al crear; cuando el usuario configura su empresa real se actualiza con `empresa_demo: false` vía `updateEmpresaDetails`.
 
 ---
 
@@ -232,30 +227,38 @@ Step 5: Capturar elección post-activación
 
 ---
 
-### Paso 5 — Crear `flowCalificacionPost.js`
+### Paso 5 — Crear `flowCargarObras.js` (reemplaza `flowCalificacionPost.js`)
 
 ```
-flows/onboardingFlows/flowCalificacionPost.js
+flows/onboardingFlows/flowCargarObras.js
 ```
 
-Calificación simplificada para después de que el usuario ya probó:
+En vez del `flowCalificacionPost.js` planeado (que eliminaba la demo), se implementó `flowCargarObras.js` que **renombra** la empresa demo y la convierte en real sin borrar historial:
 
 ```
-Step 1: "¿Cómo se llama tu empresa?"
+Step 1: "¿Cuál es el nombre de tu empresa?"
     → capturar nombre
 
-Step 2: "¿Cuántas obras activas tenés?"
-    → capturar número
+Step 2: "¿Cómo se llaman tus obras? (separadas por coma)"
+    → capturar lista, guardar en state
 
-Step 3: "¿Cómo se llaman?"
-    → capturar nombres (texto libre, GPT puede parsear)
+Step 3: Mostrar resumen para confirmación
+    → [Confirmar] / [Modificar obras]
+    → Si modifica: fallBack() al step 2
 
-Step 4: Crear empresa real (reemplazar la demo)
-    → onboardingCreaInicioConstructora(phone, proyectos, nombreEmpresa)
-    → "Listo. Ahora podés registrar gastos en tus obras reales."
+Step 4 (confirmado): Crear en DB
+    → updateEmpresaDetails({ nombre, empresa_demo: false, onboarding: [] })
+    → crearProyecto() por cada obra
+    → notificarCambioCache()
+    → Mostrar sendListMenu con 6 opciones de activación avanzada
+       (todas llevan a agendar reunión con soporte)
 ```
 
-**Diferencia vs. flujo actual:** No pregunta rol, no pregunta tipo de obra. Solo 3 preguntas vs. 5-8 del asistente GPT.
+**Diferencia vs. plan original:**
+- No borra ni reemplaza la empresa demo
+- Incluye paso de confirmación antes de guardar
+- No pregunta "cuántas obras" — directamente pide los nombres
+- Ofrece 6 funcionalidades activables post-configuración vía `sendListMenu`
 
 ---
 
@@ -400,19 +403,20 @@ Los eventos detallados (primer gasto, pidió resumen, etc.) se cruzan desde `eve
 
 ## 7. Checklist pre-deploy
 
-- [ ] `abTestService.js` creado y testeado
-- [ ] `demoAccountService.js` creado — empresa demo se crea correctamente con flag `tipo: 'demo'`
-- [ ] `flowActivacionDirecta.js` completo — los 5 steps funcionan
-- [ ] `flowCalificacionPost.js` completo — crea empresa real reemplazando la demo
-- [ ] `flowInicioGeneral.js` modificado — split A/B funciona, keywords detectados
-- [ ] Typing nativo (`presenceUpdate`) funciona en variante B
-- [ ] Auto-agenda Calendly funciona en ambas variantes
-- [ ] Alerta push al SDR funciona
-- [ ] Campo `varianteAB` se guarda en Lead y ContactoSDR
-- [ ] Todos los eventos nuevos se disparan correctamente con `addEvent`
-- [ ] Probado end-to-end con número de prueba: variante A → flujo actual intacto
-- [ ] Probado end-to-end con número de prueba: variante B → activación → gasto → opciones
-- [ ] Probado: usuario que escribe "ya tengo cuenta" → redirige correctamente (ambas variantes)
-- [ ] Probado: usuario que escribe "quiero hablar con alguien" → Calendly + notificación
-- [ ] Dashboard/query de MongoDB preparado para monitoreo diario
-- [ ] Calendly link configurado como variable de entorno
+- [x] `abTestService.js` implementado con balanceo dinámico
+- [x] `empresaDemoService.js` — pool de 2 demos, presupuestos con CAC, script `regenerar-pool-demos.js`
+- [x] `flowActivacionDirecta.js` completo — pasos demo guiados con `esperaAccion` en sugerenciaIngreso/Presupuesto
+- [x] `flowCargarObras.js` — renombra empresa, crea obras con confirmación, menú 6 funcionalidades avanzadas
+- [x] `flowInicioGeneral.js` modificado — split A/B activo, keywords detectados
+- [x] `sendButtonUrl()` en `sendSafe.js` — botón CTA con URL
+- [x] `demoHelper.js` — helper centralizado para pasos demo y botones
+- [x] Auto-agenda Calendly en `agendar_demo` con follow-up de 5 min
+- [x] Scheduler soporta campo `buttons` para mensajes programados interactivos
+- [x] `sugerenciaLinkWeb` — mensaje + botón CTA en un solo envío
+- [x] Campo `varianteAB` se guarda en `ContactoSDR`
+- [x] Probado end-to-end variante A: flujo actual intacto
+- [x] Probado end-to-end variante B: activación → gasto → sugerencias → cargar obras → menú avanzado
+- [ ] Typing nativo (`presenceUpdate`) en variante B
+- [ ] Alerta push al SDR con datos enriquecidos para leads activados
+- [ ] Dashboard `/abTestContactActivation` completo con gráfico de evolución
+- [ ] Limpieza automática de empresas demo inactivas (ver Sección 15 del funcional)
