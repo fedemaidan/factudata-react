@@ -29,6 +29,8 @@ const PanelValidacionPage = () => {
   const [total, setTotal] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success', autoHideDuration: 4000 });
+  const [notifications, setNotifications] = useState([]);
+  const notificationIdRef = useRef(0);
   const [imgPreview, setImgPreview] = useState({ open: false, url: null });
   const [editDrawer, setEditDrawer] = useState({ open: false, mov: null, form: {} });
   const [proyectos, setProyectos] = useState([]);
@@ -57,6 +59,20 @@ const PanelValidacionPage = () => {
 
   const filtrosRef = useRef(filtros);
   filtrosRef.current = filtros;
+
+  const addNotification = useCallback(({ message, severity = 'info', autoHideDuration = 4000 }) => {
+    const id = (notificationIdRef.current += 1);
+    setNotifications((prev) => [...prev, { id, message, severity, autoHideDuration, open: true }]);
+    return id;
+  }, []);
+
+  const updateNotification = useCallback((id, patch) => {
+    setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, ...patch } : n)));
+  }, []);
+
+  const removeNotification = useCallback((id) => {
+    setNotifications((prev) => prev.filter((n) => n.id !== id));
+  }, []);
 
   const panelCorreccionStrategies = useMemo(
     () => ({
@@ -188,19 +204,26 @@ const PanelValidacionPage = () => {
     });
   };
 
-  const handleGuardarEdicion = async () => {
+  const buildPayloadFromForm = useCallback(
+    (form) => {
+      const payload = { ...form };
+      if (form.proyecto_id) {
+        const proy = proyectos.find((p) => p.id === form.proyecto_id);
+        if (proy) payload.proyecto_nombre = proy.nombre;
+      } else {
+        payload.proyecto_id = null;
+        payload.proyecto_nombre = null;
+      }
+      return payload;
+    },
+    [proyectos]
+  );
+
+  const handleGuardarEdicion = useCallback(async () => {
     const { mov, form } = editDrawer;
     if (!mov?.id) return;
 
-    const payload = { ...form };
-    if (form.proyecto_id) {
-      const proy = proyectos.find((p) => p.id === form.proyecto_id);
-      if (proy) payload.proyecto_nombre = proy.nombre;
-    } else {
-      payload.proyecto_id = null;
-      payload.proyecto_nombre = null;
-    }
-
+    const payload = buildPayloadFromForm(form);
     const previousItems = items;
     const optimisticItem = {
       ...mov,
@@ -223,7 +246,13 @@ const PanelValidacionPage = () => {
       const confirmRes = await movimientosService.confirmarBorradores([mov.id]);
       if (confirmRes.error) throw new Error(confirmRes.message);
 
-      setSnackbar({ open: true, message: 'Movimiento revisado y confirmado', severity: 'success', autoHideDuration: 4000 });
+      const codigo = confirmRes.data?.ok?.[0]?.codigoOperacion;
+      setSnackbar({
+        open: true,
+        message: codigo ? `Movimiento confirmado: ${codigo}` : 'Movimiento revisado y confirmado',
+        severity: 'success',
+        autoHideDuration: 4000,
+      });
     } catch (e) {
       setItems(previousItems);
       setSnackbar({ open: true, message: e.message || 'Error al guardar', severity: 'error', autoHideDuration: 4000 });
@@ -231,28 +260,93 @@ const PanelValidacionPage = () => {
     } finally {
       setSavingEdit(false);
     }
-  };
+  }, [editDrawer, items, buildPayloadFromForm]);
 
   const handleCloseCorreccionFlow = useCallback(() => {
     detenerCorreccion();
     setEditDrawer({ open: false, mov: null, form: {} });
   }, [detenerCorreccion]);
 
-  const handleGuardarEdicionConAvance = useCallback(async () => {
-    try {
-      await handleGuardarEdicion();
-      const next = correccionConfirmarYAvanzar();
-      if (next) {
-        handleEditar(next);
-      } else {
-        handleCloseCorreccionFlow();
-        fetchBorradores();
-      }
-    } catch {
-      // handleGuardarEdicion ya mostró snackbar de error
+  const handleGuardarEdicionConAvance = useCallback(() => {
+    const { mov, form } = editDrawer;
+    if (!mov?.id) return;
+
+    const payload = buildPayloadFromForm(form);
+    const previousItems = items;
+    const optimisticItem = {
+      ...mov,
+      ...payload,
+      estado_borrador: 'confirmado',
+      estado_carga: 'confirmado',
+      estado_procesamiento: 'completado',
+      procesamiento_error: null,
+    };
+
+    const notificationId = addNotification({
+      message: 'Confirmando movimiento...',
+      severity: 'info',
+      autoHideDuration: null,
+    });
+
+    setItems((prev) => prev.map((item) => (item.id === mov.id ? optimisticItem : item)));
+    setEditDrawer({ open: false, mov: null, form: {} });
+
+    const next = correccionConfirmarYAvanzar();
+    if (next) {
+      handleEditar(next);
+    } else {
+      handleCloseCorreccionFlow();
+      fetchBorradores();
     }
+
+    (async () => {
+      try {
+        const updateRes = await movimientosService.updateBorrador(mov.id, payload);
+        if (updateRes.error) throw new Error(updateRes.message);
+
+        const confirmRes = await movimientosService.confirmarBorradores([mov.id]);
+        if (confirmRes.error) throw new Error(confirmRes.message);
+
+        const okList = confirmRes.data?.ok || [];
+        const erroresList = confirmRes.data?.errores || [];
+        const firstOk = okList.find((o) => o.borradorId === mov.id);
+        const firstErr = erroresList.find((e) => e.borradorId === mov.id);
+
+        if (firstOk?.codigoOperacion) {
+          updateNotification(notificationId, {
+            message: `Movimiento confirmado: ${firstOk.codigoOperacion}`,
+            severity: 'success',
+            autoHideDuration: 3000,
+          });
+        } else if (firstErr) {
+          updateNotification(notificationId, {
+            message: `Error al confirmar: ${firstErr.error}`,
+            severity: 'error',
+            autoHideDuration: 4000,
+          });
+          setItems(previousItems);
+        } else {
+          updateNotification(notificationId, {
+            message: 'Movimiento confirmado',
+            severity: 'success',
+            autoHideDuration: 3000,
+          });
+        }
+      } catch (e) {
+        updateNotification(notificationId, {
+          message: `Error al confirmar: ${e.message || 'Error desconocido'}`,
+          severity: 'error',
+          autoHideDuration: 4000,
+        });
+        setItems(previousItems);
+      }
+    })();
   }, [
-    handleGuardarEdicion,
+    editDrawer,
+    items,
+    buildPayloadFromForm,
+    addNotification,
+    updateNotification,
     correccionConfirmarYAvanzar,
     handleCloseCorreccionFlow,
     fetchBorradores,
@@ -531,6 +625,21 @@ const PanelValidacionPage = () => {
           {snackbar.message}
         </Alert>
       </Snackbar>
+
+      {notifications.map((n, idx) => (
+        <Snackbar
+          key={n.id}
+          open={n.open}
+          autoHideDuration={n.autoHideDuration}
+          onClose={() => removeNotification(n.id)}
+          anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+          sx={{ bottom: 16 + idx * 56 }}
+        >
+          <Alert severity={n.severity} onClose={() => removeNotification(n.id)}>
+            {n.message}
+          </Alert>
+        </Snackbar>
+      ))}
     </>
   );
 };
