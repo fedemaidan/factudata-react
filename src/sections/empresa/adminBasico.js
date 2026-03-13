@@ -3,8 +3,10 @@ import {
   Card, CardHeader, Divider, CardContent, TextField, Button, Snackbar, Alert,
   FormControl, InputLabel, Select, MenuItem, Checkbox, ListItemText,
   Dialog, DialogTitle, DialogContent, DialogActions, Typography, Table, TableHead,
-  TableRow, TableCell, TableBody, IconButton, Collapse, FormHelperText, Box
+  TableRow, TableCell, TableBody, IconButton, Collapse, FormHelperText, Box,
+  Tabs, Tab
 } from '@mui/material';
+import { SubEmpresasDetails } from 'src/sections/empresa/subEmpresasDetails';
 import { useFormik } from 'formik';
 import * as Yup from 'yup';
 import profileService from 'src/services/profileService';
@@ -14,11 +16,14 @@ import EditIcon from '@mui/icons-material/Edit';
 import AddCircleIcon from '@mui/icons-material/AddCircle';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import CorporateFareIcon from '@mui/icons-material/CorporateFare';
+import PeopleIcon from '@mui/icons-material/People';
 import Link from '@mui/material/Link';
 import Tooltip from '@mui/material/Tooltip';
 import { green } from '@mui/material/colors';
 
 export const AdminBasico = ({ empresa }) => {
+  const [currentTab, setCurrentTab] = useState('usuarios');
   const [usuarios, setUsuarios] = useState([]);
   const [proyectos, setProyectos] = useState([]);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
@@ -146,6 +151,17 @@ export const AdminBasico = ({ empresa }) => {
   };
 
   return (
+    <>
+    <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
+      <Tabs value={currentTab} onChange={(_, v) => setCurrentTab(v)}>
+        <Tab icon={<PeopleIcon />} iconPosition="start" label="Usuarios" value="usuarios" />
+        <Tab icon={<CorporateFareIcon />} iconPosition="start" label="SubEmpresas" value="sub_empresas" />
+      </Tabs>
+    </Box>
+
+    {currentTab === 'sub_empresas' && <SubEmpresasDetails empresa={empresa} />}
+
+    {currentTab === 'usuarios' && (
     <Card>
       <CardHeader title="Gestión de Usuarios" />
       <Divider />
@@ -315,5 +331,7 @@ export const AdminBasico = ({ empresa }) => {
         <Alert severity={snackbar.severity} sx={{ width: '100%' }}>{snackbar.message}</Alert>
       </Snackbar>
     </Card>
+    )}
+    </>
   );
 };
