@@ -48,6 +48,8 @@ import SortIcon from '@mui/icons-material/Sort';
 import OrdenarColumnasDialog from 'src/components/OrdenarColumnasDialog';
 import { getCajaColumnasConfig, applyColumnOrder, getHeaderLabel, getHeaderCellSx } from 'src/components/cajaProyecto/cajaColumnasConfig';
 import CajaTablaCell from 'src/components/cajaProyecto/CajaTablaCell';
+import ProyectoConfigDrawer from 'src/components/cajaProyecto/ProyectoConfigDrawer';
+import SettingsIcon from '@mui/icons-material/Settings';
 
 
 // tamaños mínimos por columna (px)
@@ -288,6 +290,7 @@ const ProyectoMovimientosPage = () => {
   // ── Selección masiva ──
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [bulkDialogOpen, setBulkDialogOpen] = useState(false);
+  const [configDrawerOpen, setConfigDrawerOpen] = useState(false);
   const openImg = (url) => setImgPreview({ open: true, url });
   const closeImg = () => setImgPreview({ open: false, url: null });
   const openMobileActions = (event, mov) => {
@@ -2299,6 +2302,14 @@ useEffect(() => {
   </MenuOption>
   
   <Divider sx={{ my: 1 }} />
+
+  <MenuOption onClick={() => {
+    setConfigDrawerOpen(true);
+    handleCloseMenu();
+  }}>
+    <SettingsIcon sx={{ mr: 1 }} />
+    Configurar proyecto
+  </MenuOption>
   
   <MenuOption onClick={() => {
     exportarCSVAnalisis();
@@ -2582,6 +2593,15 @@ useEffect(() => {
   onDone={handleBulkDone}
   options={options}
   empresa={empresa}
+/>
+
+{/* Drawer de configuración del proyecto */}
+<ProyectoConfigDrawer
+  open={configDrawerOpen}
+  onClose={() => setConfigDrawerOpen(false)}
+  proyecto={proyecto}
+  empresa={empresa}
+  onProyectoUpdated={(updated) => setProyecto((prev) => ({ ...prev, ...updated }))}
 />
 
 
