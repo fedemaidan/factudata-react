@@ -24,13 +24,16 @@ const TransferenciaInternaDialog = ({
   proyectos = [], 
   onSuccess,
   defaultProyectoEmisor = null,
-  userPhone = null
+  userPhone = null,
+  mediosPago = [],
+  showMedioPago = false
 }) => {
   const [proyectoEmisor, setProyectoEmisor] = useState(defaultProyectoEmisor);
   const [proyectoReceptor, setProyectoReceptor] = useState(null);
   const [monto, setMonto] = useState('');
   const [moneda, setMoneda] = useState('ARS');
   const [observacion, setObservacion] = useState('');
+  const [medioPago, setMedioPago] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -40,6 +43,8 @@ const TransferenciaInternaDialog = ({
     { value: 'USD', label: 'Dólares (USD)' }
   ];
 
+  const hasMediosPago = showMedioPago && mediosPago.length > 0;
+
   // Reset form when dialog opens
   useEffect(() => {
     if (open) {
@@ -47,6 +52,7 @@ const TransferenciaInternaDialog = ({
       setProyectoReceptor(null);
       setMonto('');
       setMoneda('ARS');
+      setMedioPago(mediosPago.length > 0 ? mediosPago[0] : '');
       setObservacion('');
       setError('');
     }
@@ -95,6 +101,7 @@ const TransferenciaInternaDialog = ({
         proyecto_receptor_nombre: proyectoReceptor.nombre,
         total: parseFloat(monto),
         moneda: moneda,
+        ...(medioPago ? { medio_pago: medioPago } : {}),
         user_phone: userPhone,
         observacion: observacion || `Transferencia de ${proyectoEmisor.nombre} a ${proyectoReceptor.nombre}`
       };
@@ -221,7 +228,7 @@ const TransferenciaInternaDialog = ({
               <Divider sx={{ my: 2 }} />
             </Grid>
 
-            {/* Monto y Moneda */}
+            {/* Monto, Moneda y Medio de pago */}
             <Grid item xs={12} md={6}>
               <TextField
                 label="Monto a transferir"
@@ -241,7 +248,7 @@ const TransferenciaInternaDialog = ({
               />
             </Grid>
 
-            <Grid item xs={12} md={6}>
+            <Grid item xs={hasMediosPago ? 6 : 12} md={hasMediosPago ? 3 : 6}>
               <Autocomplete
                 value={monedasOptions.find(m => m.value === moneda) || monedasOptions[0]}
                 onChange={(event, newValue) => setMoneda(newValue?.value || 'ARS')}
@@ -257,6 +264,23 @@ const TransferenciaInternaDialog = ({
                 )}
               />
             </Grid>
+
+            {hasMediosPago && (
+              <Grid item xs={6} md={3}>
+                <Autocomplete
+                  value={medioPago}
+                  onChange={(event, newValue) => setMedioPago(newValue || '')}
+                  options={mediosPago}
+                  renderInput={(params) => (
+                    <TextField
+                      {...params}
+                      label="Medio de pago"
+                      required
+                    />
+                  )}
+                />
+              </Grid>
+            )}
 
             {/* Observación */}
             <Grid item xs={12}>
@@ -287,6 +311,11 @@ const TransferenciaInternaDialog = ({
                   <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
                     Se creará un egreso por {formatMontoDisplay(monto)} en "{proyectoEmisor.nombre}" y un ingreso por el mismo monto en "{proyectoReceptor.nombre}".
                   </Typography>
+                  {hasMediosPago && medioPago && (
+                    <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                      Medio de pago: <strong>{medioPago}</strong>
+                    </Typography>
+                  )}
                 </Paper>
               </Grid>
             )}

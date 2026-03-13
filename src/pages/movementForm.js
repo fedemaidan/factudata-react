@@ -1290,6 +1290,8 @@ const createdAtStr = (() => {
           onSuccess={handleTransferenciaSuccess}
           defaultProyectoEmisor={proyectoId && proyectoName ? { id: proyectoId, nombre: proyectoName } : null}
           userPhone={user?.phone}
+          mediosPago={empresa?.medios_pago || []}
+          showMedioPago={!!empresa?.comprobante_info?.medio_pago}
         />
 
         {/* Diálogo de Egreso con Caja Pagadora */}

@@ -2516,6 +2516,8 @@ useEffect(() => {
   onSuccess={handleTransferenciaSuccess}
   defaultProyectoEmisor={proyecto ? { id: proyecto.id, nombre: proyecto.nombre } : null}
   userPhone={user?.phone}
+  mediosPago={empresa?.medios_pago || []}
+  showMedioPago={!!empresa?.comprobante_info?.medio_pago}
 />
 
 {/* Dialog de Intercambio de Moneda */}
