@@ -21,6 +21,7 @@ function buildParams(raw = {}) {
   if (raw.estados) out.estados = raw.estados;  // ✅ Filtro por múltiples estados (CSV)
   if (raw.responsable?.trim()) out.responsable = raw.responsable.trim(); // email
   if (raw.proveedor?.trim()) out.proveedor = raw.proveedor.trim();
+  if (raw.proyecto_id) out.proyecto_id = String(raw.proyecto_id);
   if (raw.fecha_desde) out.fecha_desde = raw.fecha_desde;
   if (raw.fecha_hasta) out.fecha_hasta = raw.fecha_hasta;
   if (typeof raw.sort === 'string' && raw.sort.includes(':')) out.sort = raw.sort;

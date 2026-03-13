@@ -16,6 +16,8 @@ import HourglassEmptyIcon from '@mui/icons-material/HourglassEmpty';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import FilterListIcon from '@mui/icons-material/FilterList';
+import HomeWorkIcon from '@mui/icons-material/HomeWork';
+import LocalShippingIcon from '@mui/icons-material/LocalShipping';
 
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import { useAuthContext } from 'src/contexts/auth-context';
@@ -25,7 +27,7 @@ import VistaObraService from 'src/services/stock/vistaObraService';
 
 /* ═══════════════════════════════════════════════════════════
    Página: Vista unificada de materiales por obra
-   Fase 1 — Stock V2
+   Página: Vista unificada de materiales por obra
    ═══════════════════════════════════════════════════════════ */
 
 const fmtMoney = (n) => {
@@ -41,7 +43,7 @@ const fmtDate = (d) => {
 };
 
 const ORIGEN_COLORS = {
-  stock_v2: { bg: '#e3f2fd', color: '#1565c0', label: 'Stock V2' },
+  stock_v2: { bg: '#e3f2fd', color: '#1565c0', label: 'Depósito' },
   acopio: { bg: '#fff3e0', color: '#e65100', label: 'Acopio' },
 };
 
@@ -50,6 +52,11 @@ const ESTADO_COLORS = {
   PENDIENTE: { bg: '#fff8e1', color: '#f57f17' },
   PENDIENTE_CONFIRMACION: { bg: '#fce4ec', color: '#c62828' },
   PARCIALMENTE_ENTREGADO: { bg: '#e0f2f1', color: '#00695c' },
+};
+
+const CLASIFICACION_COLORS = {
+  asignado: { bg: '#e3f2fd', color: '#1565c0', label: 'Asignado', icon: 'warehouse' },
+  en_obra: { bg: '#e8f5e9', color: '#2e7d32', label: 'En obra', icon: 'homeWork' },
 };
 
 export default function StockVistaObra() {
@@ -67,6 +74,7 @@ export default function StockVistaObra() {
   // ===== Filtros
   const [filtroOrigen, setFiltroOrigen] = useState('todos');
   const [filtroEstado, setFiltroEstado] = useState('todos');
+  const [filtroClasificacion, setFiltroClasificacion] = useState('todos');
   const [busqueda, setBusqueda] = useState('');
 
   // ───── Cargar empresa y proyectos ─────
@@ -122,6 +130,7 @@ export default function StockVistaObra() {
     return data.items.filter((item) => {
       if (filtroOrigen !== 'todos' && item.origen !== filtroOrigen) return false;
       if (filtroEstado !== 'todos' && item.estado !== filtroEstado) return false;
+      if (filtroClasificacion !== 'todos' && item.clasificacion !== filtroClasificacion) return false;
       if (busqueda.trim()) {
         const q = busqueda.toLowerCase();
         if (
@@ -131,7 +140,7 @@ export default function StockVistaObra() {
       }
       return true;
     });
-  }, [data, filtroOrigen, filtroEstado, busqueda]);
+  }, [data, filtroOrigen, filtroEstado, filtroClasificacion, busqueda]);
 
   // ───── Totales filtrados ─────
   const totalesFiltrados = useMemo(() => {
@@ -230,12 +239,23 @@ export default function StockVistaObra() {
                   </Stack>
                   <Typography variant="body2" color="text.secondary">Total valorizado</Typography>
                 </Paper>
-                <Paper sx={{ p: 2, flex: 1, textAlign: 'center' }}>
+                <Paper sx={{ p: 2, flex: 1, textAlign: 'center', border: '1px solid', borderColor: '#1565c0' }}>
                   <Stack direction="row" spacing={1} justifyContent="center" alignItems="center">
-                    <InventoryIcon color="primary" />
-                    <Typography variant="h6">{data.items?.length || 0}</Typography>
+                    <LocalShippingIcon sx={{ color: '#1565c0' }} />
+                    <Typography variant="h6">{data.por_clasificacion?.asignado?.items || 0}</Typography>
                   </Stack>
-                  <Typography variant="body2" color="text.secondary">Items totales</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Asignado {data.por_clasificacion?.asignado?.total_valorizado ? `• ${fmtMoney(data.por_clasificacion.asignado.total_valorizado)}` : ''}
+                  </Typography>
+                </Paper>
+                <Paper sx={{ p: 2, flex: 1, textAlign: 'center', border: '1px solid', borderColor: '#2e7d32' }}>
+                  <Stack direction="row" spacing={1} justifyContent="center" alignItems="center">
+                    <HomeWorkIcon sx={{ color: '#2e7d32' }} />
+                    <Typography variant="h6">{data.por_clasificacion?.en_obra?.items || 0}</Typography>
+                  </Stack>
+                  <Typography variant="body2" color="text.secondary">
+                    En obra {data.por_clasificacion?.en_obra?.total_valorizado ? `• ${fmtMoney(data.por_clasificacion.en_obra.total_valorizado)}` : ''}
+                  </Typography>
                 </Paper>
                 {data.items_sin_precio > 0 && (
                   <Paper sx={{ p: 2, flex: 1, textAlign: 'center', border: '1px solid', borderColor: 'warning.main' }}>
@@ -260,7 +280,7 @@ export default function StockVistaObra() {
                     <WarehouseIcon sx={{ color: ORIGEN_COLORS.stock_v2.color }} />
                     <Typography variant="body1">{data.fuentes?.stock_v2 || 0}</Typography>
                   </Stack>
-                  <Typography variant="body2" color="text.secondary">Stock V2</Typography>
+                  <Typography variant="body2" color="text.secondary">Depósito</Typography>
                 </Paper>
                 <Paper sx={{ p: 2, textAlign: 'center' }}>
                   <Stack direction="row" spacing={1} justifyContent="center" alignItems="center">
@@ -276,10 +296,18 @@ export default function StockVistaObra() {
                 <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="center">
                   <FilterListIcon color="action" />
                   <FormControl size="small" sx={{ minWidth: 140 }}>
+                    <InputLabel>Clasificación</InputLabel>
+                    <Select value={filtroClasificacion} label="Clasificación" onChange={(e) => setFiltroClasificacion(e.target.value)}>
+                      <MenuItem value="todos">Todos</MenuItem>
+                      <MenuItem value="asignado">Asignado</MenuItem>
+                      <MenuItem value="en_obra">En obra</MenuItem>
+                    </Select>
+                  </FormControl>
+                  <FormControl size="small" sx={{ minWidth: 140 }}>
                     <InputLabel>Origen</InputLabel>
                     <Select value={filtroOrigen} label="Origen" onChange={(e) => setFiltroOrigen(e.target.value)}>
                       <MenuItem value="todos">Todos</MenuItem>
-                      <MenuItem value="stock_v2">Stock V2</MenuItem>
+                      <MenuItem value="stock_v2">Depósito</MenuItem>
                       <MenuItem value="acopio">Acopio</MenuItem>
                     </Select>
                   </FormControl>
@@ -300,10 +328,10 @@ export default function StockVistaObra() {
                     onChange={(e) => setBusqueda(e.target.value)}
                     sx={{ minWidth: 200 }}
                   />
-                  {(filtroOrigen !== 'todos' || filtroEstado !== 'todos' || busqueda) && (
+                  {(filtroOrigen !== 'todos' || filtroEstado !== 'todos' || filtroClasificacion !== 'todos' || busqueda) && (
                     <Button
                       size="small"
-                      onClick={() => { setFiltroOrigen('todos'); setFiltroEstado('todos'); setBusqueda(''); }}
+                      onClick={() => { setFiltroOrigen('todos'); setFiltroEstado('todos'); setFiltroClasificacion('todos'); setBusqueda(''); }}
                     >
                       Limpiar filtros
                     </Button>
@@ -320,6 +348,7 @@ export default function StockVistaObra() {
                   <TableHead>
                     <TableRow>
                       <TableCell sx={{ fontWeight: 700 }}>Material</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>Ubicación</TableCell>
                       <TableCell sx={{ fontWeight: 700 }} align="right">Cantidad</TableCell>
                       <TableCell sx={{ fontWeight: 700 }}>Tipo</TableCell>
                       <TableCell sx={{ fontWeight: 700 }}>Origen</TableCell>
@@ -333,7 +362,7 @@ export default function StockVistaObra() {
                   <TableBody>
                     {itemsFiltrados.length === 0 && (
                       <TableRow>
-                        <TableCell colSpan={9} align="center" sx={{ py: 4 }}>
+                        <TableCell colSpan={10} align="center" sx={{ py: 4 }}>
                           <Typography color="text.secondary">
                             {data.items?.length === 0
                               ? 'No hay materiales registrados para esta obra.'
@@ -357,6 +386,18 @@ export default function StockVistaObra() {
                             {item.precio_source === null && (
                               <Typography variant="caption" color="error">⚠️ sin precio</Typography>
                             )}
+                          </TableCell>
+                          <TableCell>
+                            {(() => {
+                              const clStyle = CLASIFICACION_COLORS[item.clasificacion] || CLASIFICACION_COLORS.asignado;
+                              return (
+                                <Chip
+                                  label={clStyle.label}
+                                  size="small"
+                                  sx={{ bgcolor: clStyle.bg, color: clStyle.color, fontWeight: 600, fontSize: '0.7rem' }}
+                                />
+                              );
+                            })()}
                           </TableCell>
                           <TableCell align="right">
                             <Typography variant="body2" fontWeight={500}>

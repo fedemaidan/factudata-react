@@ -20,8 +20,8 @@ import FolderIcon from '@mui/icons-material/Folder';
 import ReceiptIcon from '@mui/icons-material/Receipt';
 import MovementFields from 'src/components/movementFields';
 import profileService from 'src/services/profileService';
-import MaterialesEditor from 'src/components/materiales/MaterialesEditor';
 import OpenInFullIcon from '@mui/icons-material/OpenInFull';
+import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import RemoveIcon from '@mui/icons-material/Remove';
 import AddIcon from '@mui/icons-material/Add';
 import { Dialog, DialogTitle, DialogContent, DialogActions } from '@mui/material';
@@ -148,7 +148,7 @@ const MovementFormPage = () => {
   const { user, signOut } = useAuthContext();
   const { setBreadcrumbs } = useBreadcrumbs();
   const router = useRouter();
-  const { movimientoId, proyectoId, proyectoName, lastPageUrl, lastPageName } = router.query;
+  const { movimientoId, proyectoId, proyectoName, lastPageUrl, lastPageName, showStockPopup } = router.query;
   const isEditMode = Boolean(movimientoId);
 
   const [isInitialLoading, setIsInitialLoading] = useState(true);
@@ -200,8 +200,7 @@ const MovementFormPage = () => {
   
   // Prorrateo
   const [prorrateoOpen, setProrrateoOpen] = useState(false);
-
-  const syncingRef = useRef(false);
+  const [stockPopupOpen, setStockPopupOpen] = useState(false);
 
   const savePayload = async (payload) => {
     try {
@@ -209,14 +208,16 @@ const MovementFormPage = () => {
         ? await movimientosService.updateMovimiento(movimientoId, { ...movimiento, ...payload })
         : await movimientosService.addMovimiento({ ...payload, user_phone: user.phone });
 
-      if (result?.id && !isEditMode) {
-        // si recién se crea, redirigimos al mismo form con el id para habilitar asignaciones
-        router.replace({ pathname: router.pathname, query: { ...router.query, movimientoId: result.id } });
-      }
+      // Determinar si debe abrir el popup de stock después de crear
+      const shouldShowStockPopup = !isEditMode
+        && payload.categoria === 'Materiales'
+        && empresa?.stock_config?.caja_a_stock === true;
 
-      if (result?.data?.movimiento?.id) {
-        // si recién se crea, redirigimos al mismo form con el id para habilitar asignaciones
-        router.replace({ pathname: router.pathname, query: { ...router.query, movimientoId: result?.data?.movimiento?.id } });
+      const newMovId = result?.id || result?.data?.movimiento?.id;
+
+      if (newMovId && !isEditMode) {
+        const extraQuery = shouldShowStockPopup ? { showStockPopup: 'true' } : {};
+        router.replace({ pathname: router.pathname, query: { ...router.query, movimientoId: newMovId, ...extraQuery } });
       }
 
       if (result.error) throw new Error('Error al agregar o editar el movimiento');
@@ -486,7 +487,6 @@ const createdAtStr = (() => {
       medio_pago: '',
       observacion: '',
       impuestos: [],
-      materiales: [],
       empresa_facturacion: '',
       fecha_pago: '',
       dolar_referencia: '',
@@ -537,6 +537,13 @@ const createdAtStr = (() => {
     loadInitialData(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [movimientoId]);
+
+  // Abrir popup de stock automáticamente si viene showStockPopup=true y no fue procesado
+  useEffect(() => {
+    if (showStockPopup === 'true' && movimiento && !movimiento.stock_procesado && !movimiento.solicitud_stock_id && !movimiento.acopio_id) {
+      setStockPopupOpen(true);
+    }
+  }, [showStockPopup, movimiento]);
   
   useEffect(() => {
     if (!formik.values.obra) return;
@@ -553,6 +560,34 @@ const createdAtStr = (() => {
   }, [formik.values.categoria, categorias]);
 
   const titulo = isEditMode ? `Editar Movimiento (${movimiento?.codigo_operacion || '-'})` : 'Agregar Movimiento';
+
+  const handleCloseStockPopup = () => {
+    setStockPopupOpen(false);
+    // Limpiar query param showStockPopup
+    const { showStockPopup: _, ...restQuery } = router.query;
+    router.replace({ pathname: router.pathname, query: restQuery }, undefined, { shallow: true });
+  };
+
+  const handleStockComplete = (result) => {
+    if (result.solicitud_stock_id) {
+      setMovimiento(prev => ({ ...prev, solicitud_stock_id: result.solicitud_stock_id }));
+    } else if (result.acopio_id) {
+      setMovimiento(prev => ({ ...prev, acopio_id: result.acopio_id }));
+    }
+    setAlert({ open: true, message: 'Materiales procesados correctamente', severity: 'success' });
+    handleCloseStockPopup();
+  };
+
+  const handleStockDismiss = async () => {
+    // Marcar como procesado para no volver a preguntar
+    try {
+      await movimientosService.updateMovimiento(movimientoId, { ...movimiento, stock_procesado: true });
+      setMovimiento(prev => ({ ...prev, stock_procesado: true }));
+    } catch (err) {
+      console.error('Error al marcar stock_procesado:', err);
+    }
+    handleCloseStockPopup();
+  };
 
   const handleOpenTransferencia = () => {
     setOpenTransferencia(true);
@@ -848,7 +883,6 @@ const createdAtStr = (() => {
                   <Tab label="Info general" />
                   <Tab label="Importes e impuestos" />
                   <Tab label="Imagen de la factura" />
-                  {formik.values.categoria === 'Materiales' && empresa?.stock_config && <Tab label="Materiales" />}
                 </Tabs>
 
                 {tab === 0 && (
@@ -948,41 +982,7 @@ const createdAtStr = (() => {
                   </Box>
                 )}
 
-                {formik.values.categoria === 'Materiales' && empresa?.stock_config && tab === 3 && (
-                  <Box sx={{ p: 2 }}>
-                    <Typography variant="subtitle2" sx={{ mb: 1 }}>Materiales</Typography>
-                    <Divider sx={{ mb: 2 }} />
-                    <MaterialesEditor
-                      items={formik.values.materiales || []}
-                      proyecto_id={proyectoId}
-                      onChange={(next) => formik.setFieldValue('materiales', next)}
-                    />
 
-                    {/* Acciones de destino para materiales (solo en modo edición con movimiento guardado y flag activo) */}
-                    {isEditMode && movimientoId && empresa?.stock_config?.caja_a_stock === true && (
-                      <MaterialesFacturaActions
-                        materiales={formik.values.materiales || []}
-                        empresaId={empresa?.id}
-                        empresaNombre={empresa?.nombre}
-                        movimientoId={movimientoId}
-                        movimiento={movimiento}
-                        stockConfig={empresa?.stock_config || {}}
-                        proyectos={proyectos}
-                        proveedores={proveedores}
-                        nombreProveedor={formik.values.nombre_proveedor || ''}
-                        onComplete={(result) => {
-                          if (result.solicitud_stock_id) {
-                            setMovimiento(prev => ({ ...prev, solicitud_stock_id: result.solicitud_stock_id }));
-                          } else if (result.acopio_id) {
-                            setMovimiento(prev => ({ ...prev, acopio_id: result.acopio_id }));
-                          }
-                          setAlert({ open: true, message: 'Materiales procesados correctamente', severity: 'success' });
-                        }}
-                        onError={(msg) => setAlert({ open: true, message: msg, severity: 'error' })}
-                      />
-                    )}
-                  </Box>
-                )}
               </Paper>
 
 
@@ -1081,17 +1081,58 @@ const createdAtStr = (() => {
                         </Stack>
                       ) : null;
 
-                      const materialesList = (formik.values.categoria === 'Materiales') && (
-                        <Stack key="__materiales" spacing={0.5}>
-                          <Typography variant="body2" sx={{ fontWeight: 700 }}>Materiales:</Typography>
-                          {(formik.values.materiales || []).length > 0 ? (
-                            <Box sx={{ pl: 2 }}>
-                              {formik.values.materiales.map((m, idx) => (
-                                <Typography key={idx} variant="body2">• {m.descripcion || '—'}  {m.cantidad || 0} {m.valorUnitario || ''}</Typography>
-                              ))}
-                            </Box>
+                      const stockRefId = movimiento?.acopio_id || movimiento?.solicitud_stock_id;
+                      const stockRefTipo = movimiento?.acopio_id ? 'acopio' : (movimiento?.solicitud_stock_id ? 'solicitud' : null);
+                      const showStockSection = isEditMode && formik.values.categoria === 'Materiales' && empresa?.stock_config?.caja_a_stock === true;
+
+                      const materialesList = showStockSection && (
+                        <Stack key="__materiales_stock" spacing={1} sx={{ mt: 1 }}>
+                          <Divider />
+                          <Typography variant="body2" sx={{ fontWeight: 700 }}>📦 Stock:</Typography>
+                          {stockRefId ? (
+                            <Stack spacing={0.5} sx={{ pl: 1 }}>
+                              <Stack direction="row" alignItems="center" spacing={0.5}>
+                                <CheckCircleOutlineIcon color="success" sx={{ fontSize: 16 }} />
+                                <Typography variant="body2" color="success.dark">
+                                  {stockRefTipo === 'acopio' ? 'Acopio creado' : 'Solicitud de stock creada'}
+                                </Typography>
+                              </Stack>
+                              <Button
+                                size="small"
+                                variant="text"
+                                href={stockRefTipo === 'acopio'
+                                  ? `/movimientosAcopio?acopioId=${stockRefId}`
+                                  : `/stockSolicitudes?solicitudId=${stockRefId}`}
+                                sx={{ justifyContent: 'flex-start', textTransform: 'none', pl: 0 }}
+                              >
+                                {stockRefTipo === 'acopio' ? 'Ver acopio →' : 'Ver solicitud →'}
+                              </Button>
+                              <Button
+                                size="small"
+                                variant="text"
+                                color="warning"
+                                onClick={() => setStockPopupOpen(true)}
+                                sx={{ justifyContent: 'flex-start', textTransform: 'none', pl: 0 }}
+                              >
+                                Reprocesar materiales
+                              </Button>
+                            </Stack>
                           ) : (
-                            <Typography variant="body2" sx={{ pl: 2 }}>Sin materiales</Typography>
+                            <Stack spacing={0.5} sx={{ pl: 1 }}>
+                              <Typography variant="caption" color="text.secondary">
+                                {movimiento?.stock_procesado
+                                  ? 'Se eligió no procesar. Podés procesarlos cuando quieras.'
+                                  : 'Materiales pendientes de procesar.'}
+                              </Typography>
+                              <Button
+                                size="small"
+                                variant="outlined"
+                                onClick={() => setStockPopupOpen(true)}
+                                sx={{ justifyContent: 'flex-start', textTransform: 'none' }}
+                              >
+                                Procesar materiales
+                              </Button>
+                            </Stack>
                           )}
                         </Stack>
                       );
@@ -1244,6 +1285,25 @@ const createdAtStr = (() => {
           proyectos={proyectos}
           onSuccess={handleEgresoConCajaPagadoraSuccess}
         />
+
+        {/* Diálogo de Stock — Destino de materiales */}
+        {empresa?.stock_config?.caja_a_stock === true && isEditMode && movimientoId && (
+          <MaterialesFacturaActions
+            open={stockPopupOpen}
+            onClose={handleCloseStockPopup}
+            empresaId={empresa?.id}
+            empresaNombre={empresa?.nombre}
+            movimientoId={movimientoId}
+            movimiento={movimiento}
+            stockConfig={empresa?.stock_config || {}}
+            proyectos={proyectos}
+            proveedores={proveedores}
+            nombreProveedor={formik.values.nombre_proveedor || ''}
+            onComplete={handleStockComplete}
+            onDismiss={handleStockDismiss}
+            onError={(msg) => setAlert({ open: true, message: msg, severity: 'error' })}
+          />
+        )}
 
         <Snackbar open={alert.open} autoHideDuration={6000} onClose={handleCloseAlert}>
           <Alert severity={alert.severity}>{alert.message}</Alert>

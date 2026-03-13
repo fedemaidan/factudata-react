@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
   Box,
   Stack,
@@ -6,42 +6,73 @@ import {
   Button,
   Alert,
   CircularProgress,
-  Divider,
-  Chip,
   Paper,
   Autocomplete,
   TextField,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  IconButton,
+  LinearProgress,
+  Collapse,
+  Radio,
+  RadioGroup,
+  FormControlLabel,
+  FormControl,
+  FormLabel,
 } from '@mui/material';
 import WarehouseIcon from '@mui/icons-material/Warehouse';
 import HomeWorkIcon from '@mui/icons-material/HomeWork';
 import InventoryIcon from '@mui/icons-material/Inventory';
-import HourglassEmptyIcon from '@mui/icons-material/HourglassEmpty';
 import CloseIcon from '@mui/icons-material/Close';
 import LinkIcon from '@mui/icons-material/Link';
-import UndoIcon from '@mui/icons-material/Undo';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import api from 'src/services/axiosConfig';
+import AcopioService from 'src/services/acopioService';
+import movimientosService from 'src/services/movimientosService';
 
 /**
- * MaterialesFacturaActions
+ * Pasos del Dialog:
+ * 0 - Elegir destino principal (Acopio / Deposito / Directo Obra / Nada)
+ * 1 - Sub-opciones segun destino
+ * 2 - Extraccion de materiales (spinner/progreso)
+ * 3 - Resolucion de discrepancias (si las hay)
+ * 4 - Resultado final (link al ticket/acopio)
+ */
+const STEP_DESTINO = 0;
+const STEP_SUBOPCIONES = 1;
+const STEP_EXTRACCION = 2;
+const STEP_DISCREPANCIAS = 3;
+const STEP_RESULTADO = 4;
+
+const DESTINOS = {
+  ACOPIO: 'acopio',
+  DEPOSITO: 'deposito',
+  DIRECTO_OBRA: 'directo_obra',
+  NADA: 'nada',
+};
+
+const SUB_ACOPIO = {
+  TODOS: 'disponible_todos',
+  OBRA: 'para_obra',
+};
+
+const SUB_DEPOSITO = {
+  PENDIENTE: 'pendiente',
+  RESERVADO_OBRA: 'reservado_obra',
+};
+
+/**
+ * MaterialesFacturaActions — Dialog de destino de materiales post-creacion de egreso.
  *
- * Muestra las opciones de destino para materiales extraídos de una factura de caja.
- * Solo se renderiza si la empresa tiene stock_config.
- *
- * Props:
- *  - materiales: array de { descripcion, cantidad, valorUnitario?, SKU? }
- *  - empresaId: string
- *  - empresaNombre: string (optional)
- *  - movimientoId: string (ID del movimiento de caja en Firestore)
- *  - movimiento: object (movimiento de caja completo, para leer referencias existentes)
- *  - stockConfig: object { acopio_habilitado, validacion_movimientos, ... }
- *  - proyectos: array de { id, nombre } (proyectos de la empresa)
- *  - proveedores: array de strings (nombres de proveedores)
- *  - nombreProveedor: string (proveedor de la factura, pre-seleccionar para acopio)
- *  - onComplete: (result) => void — callback después de una acción exitosa
- *  - onError: (errorMsg) => void — callback en caso de error
+ * Flujo: Elegir destino -> sub-opcion -> extraer materiales con IA (modo preciso) ->
+ *        resolver discrepancias -> crear ticket/acopio -> mostrar resultado.
  */
 const MaterialesFacturaActions = ({
-  materiales = [],
+  open = false,
+  onClose,
   empresaId,
   empresaNombre = null,
   movimientoId,
@@ -51,334 +82,722 @@ const MaterialesFacturaActions = ({
   proveedores = [],
   nombreProveedor = '',
   onComplete,
+  onDismiss,
   onError,
 }) => {
-  const [loading, setLoading] = useState(false);
-  const [accion, setAccion] = useState(null); // 'deposito' | 'obra' | 'acopio' | 'pendiente'
+  const [step, setStep] = useState(STEP_DESTINO);
+  const [destino, setDestino] = useState(null);
+  const [subOpcion, setSubOpcion] = useState(null);
   const [proyectoSeleccionado, setProyectoSeleccionado] = useState(null);
   const [proveedorAcopio, setProveedorAcopio] = useState(nombreProveedor || '');
-  const [resultado, setResultado] = useState(null); // { tipo, id, ... } después de ejecutar acción
+  const [loading, setLoading] = useState(false);
+  const [progreso, setProgreso] = useState(0);
+  const [materialesExtraidos, setMaterialesExtraidos] = useState([]);
+  const [tieneDiscrepancias, setTieneDiscrepancias] = useState(false);
+  const [resoluciones, setResoluciones] = useState({});
+  const [resultado, setResultado] = useState(null);
+  const [error, setError] = useState(null);
 
-  // Detectar si ya tiene referencia cruzada (ya se asignó destino)
-  const solicitudStockId = movimiento?.solicitud_stock_id || null;
-  const acopioId = movimiento?.acopio_id || null;
-  const yaVinculado = Boolean(solicitudStockId || acopioId);
+  const urlImagen = movimiento?.url_imagen || null;
 
-  const materialesValidos = (materiales || []).filter(
-    (m) => (m.descripcion || m.nombre) && parseFloat(m.cantidad) > 0
+  // --- Helpers ---
+
+  const handleBack = useCallback(() => {
+    if (step === STEP_SUBOPCIONES) {
+      setStep(STEP_DESTINO);
+      setSubOpcion(null);
+      setProyectoSeleccionado(null);
+    }
+  }, [step]);
+
+  // --- Step 0: Elegir destino ---
+  const handleSelectDestino = useCallback((dest) => {
+    if (dest === DESTINOS.NADA) {
+      onDismiss?.();
+      return;
+    }
+    setDestino(dest);
+    setStep(STEP_SUBOPCIONES);
+  }, [onDismiss]);
+
+  // --- Crear ticket/acopio con materiales extraidos ---
+  const crearDestinoConMateriales = useCallback(async (materiales) => {
+    setLoading(true);
+    setStep(STEP_RESULTADO);
+
+    try {
+      // Limpiar campos internos de verificacion y normalizar nombres de campos
+      // La extraccion IA devuelve Nombre (mayusc), SKU, precio_unitario
+      // Los endpoints from-caja esperan descripcion/nombre, codigo, valorUnitario
+      const materialesLimpios = materiales.map(
+        ({ _verificacion, _extraccion_inicial, _requiere_confirmacion_usuario, ...rest }) => {
+          const m = { ...rest };
+          // Normalizar Nombre → nombre
+          if (m.Nombre && !m.nombre && !m.descripcion) {
+            m.nombre = m.Nombre;
+          }
+          // Normalizar SKU → codigo
+          if (m.SKU && !m.codigo) {
+            m.codigo = m.SKU;
+          }
+          // Normalizar precio_unitario → valorUnitario
+          if (m.precio_unitario != null && m.valorUnitario == null) {
+            m.valorUnitario = m.precio_unitario;
+          }
+          return m;
+        }
+      );
+      const materialesValidos = materialesLimpios.filter(
+        (m) => (m.descripcion || m.nombre) && parseFloat(m.cantidad) > 0
+      );
+
+      if (materialesValidos.length === 0) {
+        throw new Error('No se detectaron materiales validos en la factura.');
+      }
+
+      let resultData = null;
+
+      if (destino === DESTINOS.ACOPIO) {
+        const proyId = subOpcion === SUB_ACOPIO.OBRA
+          ? (proyectoSeleccionado?.id || proyectoSeleccionado?._id)
+          : null;
+        const res = await api.post('/acopio/from-caja', {
+          empresa_id: empresaId,
+          proveedor: proveedorAcopio,
+          proyecto_id: proyId,
+          materiales: materialesValidos,
+          movimiento_caja_id: movimientoId,
+          url_imagen_compra: urlImagen ? [urlImagen] : [],
+        });
+        resultData = { tipo: 'acopio', id: res.data?.acopio_id, data: res.data };
+
+        // Persistir acopio_id en Firestore (solo campos nuevos, no spread completo)
+        await movimientosService.updateMovimiento(movimientoId, {
+          acopio_id: res.data?.acopio_id,
+          stock_procesado: true,
+        });
+      } else {
+        // Solicitud de stock (deposito, directo obra, o pendiente)
+        // destino_stock: 'deposito' = reservado en deposito, 'obra' = consumido/entregado en obra
+        // subtipo: COMPRA = compra normal, COMPRA_DIRECTA = directo a obra, PENDIENTE_ASIGNAR = sin obra
+        let subtipo = 'COMPRA';
+        let destinoStock = 'deposito';
+        let proyId = null;
+        let proyNombre = null;
+
+        if (destino === DESTINOS.DEPOSITO && subOpcion === SUB_DEPOSITO.PENDIENTE) {
+          subtipo = 'PENDIENTE_ASIGNAR';
+          destinoStock = 'pendiente_asignar';
+        } else if (destino === DESTINOS.DEPOSITO && subOpcion === SUB_DEPOSITO.RESERVADO_OBRA) {
+          subtipo = 'COMPRA';
+          destinoStock = 'deposito';
+          proyId = proyectoSeleccionado?.id || proyectoSeleccionado?._id;
+          proyNombre = proyectoSeleccionado?.nombre;
+        } else if (destino === DESTINOS.DIRECTO_OBRA) {
+          subtipo = 'COMPRA_DIRECTA';
+          destinoStock = 'obra';
+          proyId = proyectoSeleccionado?.id || proyectoSeleccionado?._id;
+          proyNombre = proyectoSeleccionado?.nombre;
+        }
+
+        const res = await api.post('/solicitud-material/from-caja', {
+          empresa_id: empresaId,
+          empresa_nombre: empresaNombre,
+          movimiento_caja_id: movimientoId,
+          materiales: materialesValidos,
+          proyecto_id: proyId,
+          proyecto_nombre: proyNombre,
+          subtipo,
+          destino: destinoStock,
+          proveedor: nombreProveedor ? { nombre: nombreProveedor } : null,
+          validacion_movimientos: stockConfig.validacion_movimientos || false,
+        });
+        const data = res.data?.data || res.data;
+        resultData = { tipo: 'solicitud', id: data.solicitud_id, data };
+
+        // Persistir solicitud_stock_id en Firestore (solo campos nuevos, no spread completo)
+        await movimientosService.updateMovimiento(movimientoId, {
+          solicitud_stock_id: data.solicitud_id,
+          stock_procesado: true,
+        });
+      }
+
+      setResultado(resultData);
+      setLoading(false);
+    } catch (err) {
+      setLoading(false);
+      const msg = err?.response?.data?.error?.message || err?.response?.data?.error || err.message || 'Error al procesar materiales.';
+      setError(msg);
+      onError?.(msg);
+    }
+  }, [destino, subOpcion, proyectoSeleccionado, proveedorAcopio, empresaId, empresaNombre, movimientoId, movimiento, urlImagen, nombreProveedor, stockConfig, onError]);
+
+  // --- Step 1: Confirmar sub-opcion y lanzar extraccion ---
+  const handleConfirmSubOpcion = useCallback(async () => {
+    if (!urlImagen) {
+      setError('El movimiento no tiene imagen para extraer materiales.');
+      return;
+    }
+
+    // Validaciones segun destino
+    if (destino === DESTINOS.ACOPIO && subOpcion === SUB_ACOPIO.OBRA && !proyectoSeleccionado) {
+      setError('Selecciona una obra para el acopio.');
+      return;
+    }
+    if (destino === DESTINOS.DEPOSITO && subOpcion === SUB_DEPOSITO.RESERVADO_OBRA && !proyectoSeleccionado) {
+      setError('Selecciona una obra para reservar.');
+      return;
+    }
+    if (destino === DESTINOS.DIRECTO_OBRA && !proyectoSeleccionado) {
+      setError('Selecciona la obra de destino.');
+      return;
+    }
+    if (destino === DESTINOS.ACOPIO && !proveedorAcopio) {
+      setError('Ingresa un proveedor para el acopio.');
+      return;
+    }
+
+    setError(null);
+    setStep(STEP_EXTRACCION);
+    setLoading(true);
+    setProgreso(5);
+
+    try {
+      // Extraer materiales con modo preciso via url_imagen
+      const initRes = await api.post('/acopio/compra/extraer/init', {
+        archivo_url: urlImagen,
+        modo: 'preciso',
+        tipoLista: 'factura',
+      });
+
+      const taskId = initRes.data?.taskId;
+      if (!taskId) throw new Error('No se recibio taskId del backend.');
+
+      setProgreso(15);
+
+      // Polling
+      const maxIntentos = 360;
+      let intentos = 0;
+      const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+
+      while (intentos < maxIntentos) {
+        const statusRes = await AcopioService.consultarEstadoExtraccion(taskId);
+        const pct = 15 + Math.min(75, Math.floor((intentos / 60) * 75));
+        setProgreso(pct);
+
+        if (statusRes.status === 'completado' && Array.isArray(statusRes.materiales)) {
+          setMaterialesExtraidos(statusRes.materiales);
+          setTieneDiscrepancias(statusRes.tieneDiscrepancias || false);
+          setProgreso(100);
+          setLoading(false);
+
+          if (statusRes.tieneDiscrepancias) {
+            // Inicializar resoluciones con valores verificados por defecto
+            const resDefault = {};
+            statusRes.materiales.forEach((mat, idx) => {
+              if (!mat._verificacion?.requiere_input) return;
+              resDefault[idx] = {};
+              if (mat._verificacion.requiere_cantidad_input) {
+                resDefault[idx].cantidad = String(mat._verificacion.cantidad_verificada ?? mat.cantidad);
+              }
+              if (mat._verificacion.requiere_precio_input) {
+                resDefault[idx].precio = String(mat._verificacion.precio_verificado ?? mat.valorUnitario);
+              }
+              if (mat._verificacion.requiere_codigo_input) {
+                resDefault[idx].codigo = mat._verificacion.codigo_verificado ?? mat.codigo;
+              }
+            });
+            setResoluciones(resDefault);
+            setStep(STEP_DISCREPANCIAS);
+          } else {
+            await crearDestinoConMateriales(statusRes.materiales);
+          }
+          return;
+        }
+
+        if (statusRes.status === 'error') {
+          throw new Error(statusRes.error || 'Error en la extraccion.');
+        }
+
+        intentos += 1;
+        await wait(5000);
+      }
+
+      throw new Error('Tiempo de espera agotado. La extraccion esta tardando demasiado.');
+    } catch (err) {
+      setLoading(false);
+      setProgreso(0);
+      setError(err.message || 'Error al extraer materiales.');
+      setStep(STEP_SUBOPCIONES);
+    }
+  }, [destino, subOpcion, proyectoSeleccionado, proveedorAcopio, urlImagen, crearDestinoConMateriales]);
+
+  // --- Step 3: Aplicar resoluciones y crear ---
+  const handleConfirmDiscrepancias = useCallback(async () => {
+    const materialesResueltos = materialesExtraidos.map((mat, idx) => {
+      const res = resoluciones[idx];
+      if (!res) return mat;
+      const copia = { ...mat };
+      if (res.cantidad !== undefined) copia.cantidad = parseFloat(res.cantidad) || mat.cantidad;
+      if (res.precio !== undefined) copia.valorUnitario = parseFloat(res.precio) || mat.valorUnitario;
+      if (res.codigo !== undefined) copia.codigo = res.codigo || mat.codigo;
+      return copia;
+    });
+    await crearDestinoConMateriales(materialesResueltos);
+  }, [materialesExtraidos, resoluciones, crearDestinoConMateriales]);
+
+  // --- Destinos disponibles segun stock_config ---
+  const destinosDisponibles = useMemo(() => {
+    const items = [];
+    if (stockConfig.acopio_habilitado) {
+      items.push({
+        key: DESTINOS.ACOPIO,
+        label: 'Acopio',
+        icon: <InventoryIcon />,
+        description: 'Crear un acopio de materiales',
+      });
+    }
+    items.push({
+      key: DESTINOS.DEPOSITO,
+      label: 'Deposito',
+      icon: <WarehouseIcon />,
+      description: 'Enviar materiales al deposito',
+    });
+    items.push({
+      key: DESTINOS.DIRECTO_OBRA,
+      label: 'Directo a obra',
+      icon: <HomeWorkIcon />,
+      description: 'Enviar materiales directamente a una obra',
+    });
+    items.push({
+      key: DESTINOS.NADA,
+      label: 'No hacer nada',
+      icon: <CloseIcon />,
+      description: 'Ignorar los materiales por ahora',
+    });
+    return items;
+  }, [stockConfig.acopio_habilitado]);
+
+  // --- Materiales con discrepancias ---
+  const materialesConDiscrepancia = useMemo(() => {
+    return materialesExtraidos
+      .map((mat, idx) => ({ ...mat, _idx: idx }))
+      .filter((mat) => mat._verificacion?.requiere_input);
+  }, [materialesExtraidos]);
+
+  // --- Puede confirmar sub-opciones ---
+  const canConfirmSub = useMemo(() => {
+    if (destino === DESTINOS.ACOPIO) {
+      if (!subOpcion || !proveedorAcopio) return false;
+      if (subOpcion === SUB_ACOPIO.OBRA && !proyectoSeleccionado) return false;
+      return true;
+    }
+    if (destino === DESTINOS.DEPOSITO) {
+      if (!subOpcion) return false;
+      if (subOpcion === SUB_DEPOSITO.RESERVADO_OBRA && !proyectoSeleccionado) return false;
+      return true;
+    }
+    if (destino === DESTINOS.DIRECTO_OBRA) return Boolean(proyectoSeleccionado);
+    return false;
+  }, [destino, subOpcion, proveedorAcopio, proyectoSeleccionado]);
+
+  // --- Titulo del Dialog segun step ---
+  const dialogTitle = useMemo(() => {
+    if (step === STEP_DESTINO) return 'Que hacer con los materiales?';
+    if (step === STEP_SUBOPCIONES) {
+      if (destino === DESTINOS.ACOPIO) return 'Acopio - Opciones';
+      if (destino === DESTINOS.DEPOSITO) return 'Deposito - Opciones';
+      if (destino === DESTINOS.DIRECTO_OBRA) return 'Directo a obra';
+      return 'Opciones';
+    }
+    if (step === STEP_EXTRACCION) return 'Extrayendo materiales...';
+    if (step === STEP_DISCREPANCIAS) return 'Verificacion de materiales';
+    if (step === STEP_RESULTADO) return 'Resultado';
+    return '';
+  }, [step, destino]);
+
+  // --- RENDER por step ---
+
+  const renderStepDestino = () => (
+    <Stack spacing={1.5}>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+        Se detecto una factura de materiales. Que queres hacer con estos materiales?
+      </Typography>
+      {destinosDisponibles.map((d) => (
+        <Button
+          key={d.key}
+          variant={d.key === DESTINOS.NADA ? 'text' : 'outlined'}
+          startIcon={d.icon}
+          onClick={() => handleSelectDestino(d.key)}
+          fullWidth
+          sx={{
+            justifyContent: 'flex-start',
+            textTransform: 'none',
+            color: d.key === DESTINOS.NADA ? 'text.secondary' : undefined,
+          }}
+        >
+          <Stack alignItems="flex-start" sx={{ ml: 0.5 }}>
+            <Typography variant="body2" fontWeight={500}>{d.label}</Typography>
+            <Typography variant="caption" color="text.secondary">{d.description}</Typography>
+          </Stack>
+        </Button>
+      ))}
+    </Stack>
   );
 
-  // --- Acciones ---
-
-  const handleEnviarADeposito = useCallback(async () => {
-    setLoading(true);
-    setAccion('deposito');
-    try {
-      const res = await api.post('/solicitud-material/from-caja', {
-        empresa_id: empresaId,
-        empresa_nombre: empresaNombre,
-        movimiento_caja_id: movimientoId,
-        materiales: materialesValidos,
-        proyecto_id: null,
-        proyecto_nombre: null,
-        subtipo: 'COMPRA',
-        proveedor: nombreProveedor ? { nombre: nombreProveedor } : null,
-        validacion_movimientos: stockConfig.validacion_movimientos || false,
-      });
-      const data = res.data?.data || res.data;
-      setResultado({ tipo: 'solicitud', id: data.solicitud_id, data });
-      onComplete?.({ tipo: 'solicitud', solicitud_stock_id: data.solicitud_id });
-    } catch (err) {
-      const msg = err?.response?.data?.error?.message || err.message || 'Error al enviar a depósito';
-      onError?.(msg);
-    } finally {
-      setLoading(false);
-      setAccion(null);
-    }
-  }, [empresaId, empresaNombre, movimientoId, materialesValidos, nombreProveedor, stockConfig, onComplete, onError]);
-
-  const handleEnviarAObra = useCallback(async () => {
-    if (!proyectoSeleccionado) {
-      onError?.('Seleccioná un proyecto/obra primero.');
-      return;
-    }
-    setLoading(true);
-    setAccion('obra');
-    try {
-      const res = await api.post('/solicitud-material/from-caja', {
-        empresa_id: empresaId,
-        empresa_nombre: empresaNombre,
-        movimiento_caja_id: movimientoId,
-        materiales: materialesValidos,
-        proyecto_id: proyectoSeleccionado.id || proyectoSeleccionado._id,
-        proyecto_nombre: proyectoSeleccionado.nombre,
-        subtipo: 'COMPRA',
-        proveedor: nombreProveedor ? { nombre: nombreProveedor } : null,
-        validacion_movimientos: stockConfig.validacion_movimientos || false,
-      });
-      const data = res.data?.data || res.data;
-      setResultado({ tipo: 'solicitud', id: data.solicitud_id, data });
-      onComplete?.({ tipo: 'solicitud', solicitud_stock_id: data.solicitud_id });
-    } catch (err) {
-      const msg = err?.response?.data?.error?.message || err.message || 'Error al enviar a obra';
-      onError?.(msg);
-    } finally {
-      setLoading(false);
-      setAccion(null);
-    }
-  }, [empresaId, empresaNombre, movimientoId, materialesValidos, proyectoSeleccionado, nombreProveedor, stockConfig, onComplete, onError]);
-
-  const handleCrearAcopio = useCallback(async () => {
-    if (!proveedorAcopio) {
-      onError?.('Seleccioná un proveedor para el acopio.');
-      return;
-    }
-    setLoading(true);
-    setAccion('acopio');
-    try {
-      const res = await api.post('/acopio/from-caja', {
-        empresa_id: empresaId,
-        proveedor: proveedorAcopio,
-        proyecto_id: null,
-        materiales: materialesValidos,
-        movimiento_caja_id: movimientoId,
-        url_imagen_compra: movimiento?.url_imagen ? [movimiento.url_imagen] : [],
-      });
-      const data = res.data;
-      setResultado({ tipo: 'acopio', id: data.acopio_id, data });
-      onComplete?.({ tipo: 'acopio', acopio_id: data.acopio_id });
-    } catch (err) {
-      const msg = err?.response?.data?.error || err.message || 'Error al crear acopio';
-      onError?.(msg);
-    } finally {
-      setLoading(false);
-      setAccion(null);
-    }
-  }, [empresaId, proveedorAcopio, materialesValidos, movimientoId, movimiento, onComplete, onError]);
-
-  const handlePendienteAsignar = useCallback(async () => {
-    setLoading(true);
-    setAccion('pendiente');
-    try {
-      const res = await api.post('/solicitud-material/from-caja', {
-        empresa_id: empresaId,
-        empresa_nombre: empresaNombre,
-        movimiento_caja_id: movimientoId,
-        materiales: materialesValidos,
-        proyecto_id: null,
-        proyecto_nombre: null,
-        subtipo: 'PENDIENTE_ASIGNAR',
-        proveedor: nombreProveedor ? { nombre: nombreProveedor } : null,
-        validacion_movimientos: stockConfig.validacion_movimientos || false,
-      });
-      const data = res.data?.data || res.data;
-      setResultado({ tipo: 'solicitud', id: data.solicitud_id, data });
-      onComplete?.({ tipo: 'solicitud', solicitud_stock_id: data.solicitud_id });
-    } catch (err) {
-      const msg = err?.response?.data?.error?.message || err.message || 'Error al marcar como pendiente';
-      onError?.(msg);
-    } finally {
-      setLoading(false);
-      setAccion(null);
-    }
-  }, [empresaId, empresaNombre, movimientoId, materialesValidos, nombreProveedor, stockConfig, onComplete, onError]);
-
-  const handleDeshacer = useCallback(async () => {
-    // TODO: implementar deshacimiento (eliminar solicitud/acopio y limpiar referencia)
-    setResultado(null);
-    onComplete?.({ tipo: 'deshacer' });
-  }, [onComplete]);
-
-  // --- Sin materiales ---
-  if (materialesValidos.length === 0) {
-    return (
-      <Alert severity="info" variant="outlined" sx={{ mt: 2 }}>
-        No hay materiales detectados para procesar. Podés agregarlos manualmente arriba.
-      </Alert>
-    );
-  }
-
-  // --- Ya vinculado (tiene referencia cruzada) ---
-  if (yaVinculado || resultado) {
-    const refId = resultado?.id || solicitudStockId || acopioId;
-    const tipoRef = resultado?.tipo || (solicitudStockId ? 'solicitud' : 'acopio');
-
-    return (
-      <Paper variant="outlined" sx={{ p: 2, mt: 2, bgcolor: 'success.50', borderColor: 'success.light' }}>
-        <Stack spacing={1.5}>
-          <Stack direction="row" alignItems="center" spacing={1}>
-            <LinkIcon color="success" fontSize="small" />
-            <Typography variant="subtitle2" color="success.dark">
-              {tipoRef === 'solicitud'
-                ? '📦 Materiales enviados a stock'
-                : '📦 Acopio creado'}
-            </Typography>
-          </Stack>
-
-          <Typography variant="body2" color="text.secondary">
-            {tipoRef === 'solicitud'
-              ? `Solicitud de stock: ${refId}`
-              : `Acopio: ${refId}`}
-          </Typography>
-
-          {resultado?.data?.materiales_creados?.length > 0 && (
-            <Alert severity="info" variant="outlined" sx={{ py: 0.5 }}>
-              {resultado.data.materiales_creados.length} material(es) nuevo(s) creados en el catálogo.
-            </Alert>
-          )}
-
-          <Stack direction="row" spacing={1}>
-            <Button
-              size="small"
-              variant="outlined"
-              startIcon={<LinkIcon />}
-              href={
-                tipoRef === 'solicitud'
-                  ? `/stockSolicitudes?solicitudId=${refId}`
-                  : `/movimientosAcopio?acopioId=${refId}`
-              }
-            >
-              {tipoRef === 'solicitud' ? 'Ver solicitud' : 'Ver acopio'}
-            </Button>
-            <Button
-              size="small"
-              variant="outlined"
-              color="warning"
-              startIcon={<UndoIcon />}
-              onClick={handleDeshacer}
-            >
-              Deshacer
-            </Button>
-          </Stack>
-        </Stack>
-      </Paper>
-    );
-  }
-
-  // --- Opciones de destino ---
-  return (
-    <Paper variant="outlined" sx={{ p: 2, mt: 2 }}>
-      <Stack spacing={2}>
-        <Stack direction="row" alignItems="center" spacing={1}>
-          <WarehouseIcon color="primary" fontSize="small" />
-          <Typography variant="subtitle2">
-            ¿Qué hacer con estos materiales? ({materialesValidos.length} items)
-          </Typography>
-        </Stack>
-
-        <Divider />
-
-        {/* Resumen rápido */}
-        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-          {materialesValidos.slice(0, 5).map((m, idx) => (
-            <Chip
-              key={idx}
-              label={`${m.descripcion || m.nombre} × ${m.cantidad}`}
-              size="small"
-              variant="outlined"
-            />
-          ))}
-          {materialesValidos.length > 5 && (
-            <Chip label={`+${materialesValidos.length - 5} más`} size="small" />
-          )}
-        </Box>
-
-        <Divider />
-
-        {/* Opciones */}
-        <Stack spacing={1.5}>
-          {/* Enviar a depósito */}
-          <Button
-            variant="outlined"
-            startIcon={loading && accion === 'deposito' ? <CircularProgress size={18} /> : <WarehouseIcon />}
-            onClick={handleEnviarADeposito}
-            disabled={loading}
-            fullWidth
-            sx={{ justifyContent: 'flex-start', textTransform: 'none' }}
-          >
-            🏭 Enviar a depósito (stock)
-          </Button>
-
-          {/* Enviar a obra */}
+  const renderStepSubOpciones = () => {
+    if (destino === DESTINOS.ACOPIO) {
+      return (
+        <Stack spacing={2}>
+          <Typography variant="subtitle2">Acopio - Para quien?</Typography>
           <Stack spacing={1}>
+            <Button
+              variant={subOpcion === SUB_ACOPIO.TODOS ? 'contained' : 'outlined'}
+              onClick={() => { setSubOpcion(SUB_ACOPIO.TODOS); setProyectoSeleccionado(null); }}
+              fullWidth
+              sx={{ justifyContent: 'flex-start', textTransform: 'none' }}
+            >
+              Disponible para todos (sin obra asignada)
+            </Button>
+            <Button
+              variant={subOpcion === SUB_ACOPIO.OBRA ? 'contained' : 'outlined'}
+              onClick={() => setSubOpcion(SUB_ACOPIO.OBRA)}
+              fullWidth
+              sx={{ justifyContent: 'flex-start', textTransform: 'none' }}
+            >
+              Para una obra puntual
+            </Button>
+          </Stack>
+
+          <Collapse in={subOpcion === SUB_ACOPIO.OBRA}>
             <Autocomplete
               options={proyectos}
               getOptionLabel={(opt) => opt.nombre || ''}
               value={proyectoSeleccionado}
               onChange={(_, val) => setProyectoSeleccionado(val)}
-              renderInput={(params) => (
-                <TextField {...params} label="Seleccionar obra/proyecto" size="small" />
-              )}
+              renderInput={(params) => <TextField {...params} label="Seleccionar obra" size="small" />}
               size="small"
-              disabled={loading}
             />
+          </Collapse>
+
+          <Autocomplete
+            freeSolo
+            options={proveedores}
+            value={proveedorAcopio}
+            onChange={(_, val) => setProveedorAcopio(val || '')}
+            onInputChange={(_, val) => setProveedorAcopio(val || '')}
+            renderInput={(params) => <TextField {...params} label="Proveedor del acopio" size="small" />}
+            size="small"
+          />
+        </Stack>
+      );
+    }
+
+    if (destino === DESTINOS.DEPOSITO) {
+      return (
+        <Stack spacing={2}>
+          <Typography variant="subtitle2">Deposito - En que estado?</Typography>
+          <Stack spacing={1}>
             <Button
-              variant="outlined"
-              startIcon={loading && accion === 'obra' ? <CircularProgress size={18} /> : <HomeWorkIcon />}
-              onClick={handleEnviarAObra}
-              disabled={loading || !proyectoSeleccionado}
+              variant={subOpcion === SUB_DEPOSITO.PENDIENTE ? 'contained' : 'outlined'}
+              onClick={() => { setSubOpcion(SUB_DEPOSITO.PENDIENTE); setProyectoSeleccionado(null); }}
               fullWidth
               sx={{ justifyContent: 'flex-start', textTransform: 'none' }}
             >
-              🏗️ Enviar a obra{proyectoSeleccionado ? `: ${proyectoSeleccionado.nombre}` : ''}
+              Pendiente de asignar
+            </Button>
+            <Button
+              variant={subOpcion === SUB_DEPOSITO.RESERVADO_OBRA ? 'contained' : 'outlined'}
+              onClick={() => setSubOpcion(SUB_DEPOSITO.RESERVADO_OBRA)}
+              fullWidth
+              sx={{ justifyContent: 'flex-start', textTransform: 'none' }}
+            >
+              Reservado para una obra
             </Button>
           </Stack>
 
-          {/* Crear acopio — solo si acopio_habilitado */}
-          {stockConfig.acopio_habilitado && (
-            <Stack spacing={1}>
-              <Autocomplete
-                freeSolo
-                options={proveedores}
-                value={proveedorAcopio}
-                onChange={(_, val) => setProveedorAcopio(val || '')}
-                onInputChange={(_, val) => setProveedorAcopio(val || '')}
-                renderInput={(params) => (
-                  <TextField {...params} label="Proveedor para acopio" size="small" />
-                )}
-                size="small"
-                disabled={loading}
-              />
-              <Button
-                variant="outlined"
-                startIcon={loading && accion === 'acopio' ? <CircularProgress size={18} /> : <InventoryIcon />}
-                onClick={handleCrearAcopio}
-                disabled={loading || !proveedorAcopio}
-                fullWidth
-                sx={{ justifyContent: 'flex-start', textTransform: 'none' }}
-              >
-                📦 Crear acopio{proveedorAcopio ? `: ${proveedorAcopio}` : ''}
-              </Button>
-            </Stack>
+          <Collapse in={subOpcion === SUB_DEPOSITO.RESERVADO_OBRA}>
+            <Autocomplete
+              options={proyectos}
+              getOptionLabel={(opt) => opt.nombre || ''}
+              value={proyectoSeleccionado}
+              onChange={(_, val) => setProyectoSeleccionado(val)}
+              renderInput={(params) => <TextField {...params} label="Seleccionar obra" size="small" />}
+              size="small"
+            />
+          </Collapse>
+        </Stack>
+      );
+    }
+
+    if (destino === DESTINOS.DIRECTO_OBRA) {
+      return (
+        <Stack spacing={2}>
+          <Typography variant="subtitle2">Directo a obra - A cual?</Typography>
+          <Autocomplete
+            options={proyectos}
+            getOptionLabel={(opt) => opt.nombre || ''}
+            value={proyectoSeleccionado}
+            onChange={(_, val) => setProyectoSeleccionado(val)}
+            renderInput={(params) => <TextField {...params} label="Seleccionar obra" size="small" />}
+            size="small"
+          />
+        </Stack>
+      );
+    }
+
+    return null;
+  };
+
+  const renderStepExtraccion = () => (
+    <Stack spacing={2} alignItems="center" sx={{ py: 3 }}>
+      <CircularProgress size={48} />
+      <Typography variant="subtitle2">Extrayendo materiales de la factura...</Typography>
+      <Typography variant="caption" color="text.secondary">
+        Modo preciso (O3 + verificacion). Puede tardar ~1 min por hoja.
+      </Typography>
+      <Box sx={{ width: '100%' }}>
+        <LinearProgress variant="determinate" value={progreso} sx={{ height: 6, borderRadius: 3 }} />
+        <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block', textAlign: 'center' }}>
+          {progreso}%
+        </Typography>
+      </Box>
+    </Stack>
+  );
+
+  const renderStepDiscrepancias = () => (
+    <Stack spacing={2}>
+      <Alert severity="warning" variant="outlined">
+        Se encontraron {materialesConDiscrepancia.length} material(es) con discrepancias entre la extraccion y la verificacion.
+        Revisa y elegi el valor correcto para cada uno.
+      </Alert>
+
+      {materialesConDiscrepancia.map((mat) => {
+        const idx = mat._idx;
+        const v = mat._verificacion || {};
+        return (
+          <Paper key={idx} variant="outlined" sx={{ p: 2 }}>
+            <Typography variant="subtitle2" sx={{ mb: 1 }}>
+              {mat.descripcion || mat.nombre || 'Material ' + (idx + 1)}
+            </Typography>
+
+            {v.requiere_cantidad_input && (
+              <FormControl sx={{ mb: 1.5 }} fullWidth>
+                <FormLabel sx={{ fontSize: '0.8rem' }}>Cantidad</FormLabel>
+                <RadioGroup
+                  value={resoluciones[idx]?.cantidad ?? ''}
+                  onChange={(e) => setResoluciones((prev) => ({
+                    ...prev,
+                    [idx]: { ...prev[idx], cantidad: e.target.value },
+                  }))}
+                >
+                  <FormControlLabel
+                    value={String(v.cantidad_original)}
+                    control={<Radio size="small" />}
+                    label={'Extraccion: ' + v.cantidad_original}
+                  />
+                  <FormControlLabel
+                    value={String(v.cantidad_verificada)}
+                    control={<Radio size="small" />}
+                    label={'Verificacion: ' + v.cantidad_verificada}
+                  />
+                </RadioGroup>
+              </FormControl>
+            )}
+
+            {v.requiere_precio_input && (
+              <FormControl sx={{ mb: 1.5 }} fullWidth>
+                <FormLabel sx={{ fontSize: '0.8rem' }}>Precio unitario</FormLabel>
+                <RadioGroup
+                  value={resoluciones[idx]?.precio ?? ''}
+                  onChange={(e) => setResoluciones((prev) => ({
+                    ...prev,
+                    [idx]: { ...prev[idx], precio: e.target.value },
+                  }))}
+                >
+                  <FormControlLabel
+                    value={String(v.precio_original)}
+                    control={<Radio size="small" />}
+                    label={'Extraccion: $' + v.precio_original}
+                  />
+                  <FormControlLabel
+                    value={String(v.precio_verificado)}
+                    control={<Radio size="small" />}
+                    label={'Verificacion: $' + v.precio_verificado}
+                  />
+                </RadioGroup>
+              </FormControl>
+            )}
+
+            {v.requiere_codigo_input && (
+              <FormControl fullWidth>
+                <FormLabel sx={{ fontSize: '0.8rem' }}>Codigo</FormLabel>
+                <RadioGroup
+                  value={resoluciones[idx]?.codigo ?? ''}
+                  onChange={(e) => setResoluciones((prev) => ({
+                    ...prev,
+                    [idx]: { ...prev[idx], codigo: e.target.value },
+                  }))}
+                >
+                  <FormControlLabel
+                    value={v.codigo_original || ''}
+                    control={<Radio size="small" />}
+                    label={'Extraccion: ' + (v.codigo_original || '(vacio)')}
+                  />
+                  <FormControlLabel
+                    value={v.codigo_verificado || ''}
+                    control={<Radio size="small" />}
+                    label={'Verificacion: ' + (v.codigo_verificado || '(vacio)')}
+                  />
+                </RadioGroup>
+              </FormControl>
+            )}
+          </Paper>
+        );
+      })}
+    </Stack>
+  );
+
+  const renderStepResultado = () => {
+    if (loading) {
+      return (
+        <Stack spacing={2} alignItems="center" sx={{ py: 3 }}>
+          <CircularProgress size={40} />
+          <Typography variant="body2">
+            Creando {destino === DESTINOS.ACOPIO ? 'acopio' : 'solicitud de stock'}...
+          </Typography>
+        </Stack>
+      );
+    }
+
+    if (error) {
+      return <Alert severity="error" variant="outlined">{error}</Alert>;
+    }
+
+    if (!resultado) return null;
+
+    const refId = resultado.id;
+    const tipoRef = resultado.tipo;
+
+    return (
+      <Paper variant="outlined" sx={{ p: 2, bgcolor: 'success.50', borderColor: 'success.light' }}>
+        <Stack spacing={1.5}>
+          <Stack direction="row" alignItems="center" spacing={1}>
+            <CheckCircleIcon color="success" fontSize="small" />
+            <Typography variant="subtitle2" color="success.dark">
+              {tipoRef === 'acopio' ? 'Acopio creado exitosamente' : 'Solicitud de stock creada'}
+            </Typography>
+          </Stack>
+
+          <Typography variant="body2" color="text.secondary">
+            {materialesExtraidos.length} material(es) extraidos y procesados.
+          </Typography>
+
+          {resultado.data?.materiales_creados?.length > 0 && (
+            <Alert severity="info" variant="outlined" sx={{ py: 0.5 }}>
+              {resultado.data.materiales_creados.length} material(es) nuevo(s) agregados al catalogo.
+            </Alert>
           )}
 
-          <Divider />
-
-          {/* Pendiente de asignar */}
           <Button
-            variant="text"
-            startIcon={loading && accion === 'pendiente' ? <CircularProgress size={18} /> : <HourglassEmptyIcon />}
-            onClick={handlePendienteAsignar}
-            disabled={loading}
-            fullWidth
-            sx={{ justifyContent: 'flex-start', textTransform: 'none', color: 'text.secondary' }}
+            size="small"
+            variant="outlined"
+            startIcon={<LinkIcon />}
+            href={
+              tipoRef === 'solicitud'
+                ? '/stockSolicitudes?solicitudId=' + refId
+                : '/movimientosAcopio?acopioId=' + refId
+            }
           >
-            ⏳ Pendiente de asignar (no sé a dónde van todavía)
-          </Button>
-
-          {/* No hacer nada */}
-          <Button
-            variant="text"
-            startIcon={<CloseIcon />}
-            disabled={loading}
-            fullWidth
-            sx={{ justifyContent: 'flex-start', textTransform: 'none', color: 'text.disabled' }}
-          >
-            ❌ No hacer nada
+            {tipoRef === 'solicitud' ? 'Ver solicitud de stock' : 'Ver acopio'}
           </Button>
         </Stack>
-      </Stack>
-    </Paper>
+      </Paper>
+    );
+  };
+
+  // --- Dialog principal ---
+  return (
+    <Dialog
+      open={open}
+      onClose={step === STEP_EXTRACCION ? undefined : onClose}
+      maxWidth="sm"
+      fullWidth
+      PaperProps={{ sx: { minHeight: 300 } }}
+    >
+      <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+        {step === STEP_SUBOPCIONES && (
+          <IconButton size="small" onClick={handleBack} aria-label="Volver">
+            <ArrowBackIcon fontSize="small" />
+          </IconButton>
+        )}
+        <Typography variant="h6" sx={{ flex: 1 }}>{dialogTitle}</Typography>
+        {step !== STEP_EXTRACCION && (
+          <IconButton size="small" onClick={onClose} aria-label="Cerrar">
+            <CloseIcon fontSize="small" />
+          </IconButton>
+        )}
+      </DialogTitle>
+
+      <DialogContent dividers>
+        {error && step !== STEP_RESULTADO && (
+          <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
+            {error}
+          </Alert>
+        )}
+
+        {step === STEP_DESTINO && renderStepDestino()}
+        {step === STEP_SUBOPCIONES && renderStepSubOpciones()}
+        {step === STEP_EXTRACCION && renderStepExtraccion()}
+        {step === STEP_DISCREPANCIAS && renderStepDiscrepancias()}
+        {step === STEP_RESULTADO && renderStepResultado()}
+      </DialogContent>
+
+      {step === STEP_SUBOPCIONES && (
+        <DialogActions>
+          <Button onClick={handleBack} variant="outlined">Volver</Button>
+          <Button
+            onClick={handleConfirmSubOpcion}
+            variant="contained"
+            disabled={!canConfirmSub || loading}
+            startIcon={loading ? <CircularProgress size={16} /> : null}
+          >
+            Extraer materiales y crear
+          </Button>
+        </DialogActions>
+      )}
+
+      {step === STEP_DISCREPANCIAS && (
+        <DialogActions>
+          <Button onClick={() => setStep(STEP_SUBOPCIONES)} variant="outlined">Volver</Button>
+          <Button
+            onClick={handleConfirmDiscrepancias}
+            variant="contained"
+            disabled={loading}
+            startIcon={loading ? <CircularProgress size={16} /> : null}
+          >
+            Confirmar y crear
+          </Button>
+        </DialogActions>
+      )}
+
+      {step === STEP_RESULTADO && resultado && (
+        <DialogActions>
+          <Button
+            onClick={() => {
+              onComplete?.(
+                resultado.tipo === 'acopio'
+                  ? { tipo: 'acopio', acopio_id: resultado.id }
+                  : { tipo: 'solicitud', solicitud_stock_id: resultado.id }
+              );
+            }}
+            variant="contained"
+          >
+            Cerrar
+          </Button>
+        </DialogActions>
+      )}
+    </Dialog>
   );
 };
 

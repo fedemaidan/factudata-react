@@ -60,6 +60,7 @@ export default function SolicitudFormDialog({
   setTransProyectoIngreso,
   user,
   stockConfig = {},
+  proveedores = [],
 }) {
   const distribucionPorLinea = stockConfig.distribucion_por_linea || false;
   const acopioHabilitado = stockConfig.acopio_habilitado || false;
@@ -231,14 +232,35 @@ export default function SolicitudFormDialog({
             </Stack>
           )}
 
-          <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
-            {!editMode && !modalMode && (
-              <>
-                <TextField label="Proveedor (nombre)" value={form.proveedor_nombre} onChange={(e) => patchForm('proveedor_nombre', e.target.value)} sx={{ minWidth: 280 }} />
-                <TextField label="Proveedor (CUIT)" value={form.proveedor_cuit} onChange={(e) => patchForm('proveedor_cuit', e.target.value)} sx={{ minWidth: 220 }} />
-              </>
-            )}
-          </Stack>
+          {modalMode !== 'transferencia' && (
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+              <Autocomplete
+                options={proveedores}
+                getOptionLabel={(opt) => typeof opt === 'string' ? opt : opt.nombre || ''}
+                value={proveedores.find((p) => p.nombre === form.proveedor_nombre) || (form.proveedor_nombre ? { id: '', nombre: form.proveedor_nombre, cuit: form.proveedor_cuit || '' } : null)}
+                onChange={(_, newVal) => {
+                  if (newVal) {
+                    patchForm('proveedor_nombre', newVal.nombre || '');
+                    patchForm('proveedor_id', newVal.id || '');
+                    patchForm('proveedor_cuit', newVal.cuit || '');
+                  } else {
+                    patchForm('proveedor_nombre', '');
+                    patchForm('proveedor_id', '');
+                    patchForm('proveedor_cuit', '');
+                  }
+                }}
+                isOptionEqualToValue={(opt, val) => opt.nombre === val?.nombre}
+                freeSolo
+                onInputChange={(_, inputVal, reason) => {
+                  if (reason === 'input') {
+                    patchForm('proveedor_nombre', inputVal);
+                  }
+                }}
+                renderInput={(params) => <TextField {...params} label="Proveedor" />}
+                sx={{ minWidth: 320 }}
+              />
+            </Stack>
+          )}
 
           {!editMode && !modalMode && (
             <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>

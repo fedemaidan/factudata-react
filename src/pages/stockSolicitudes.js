@@ -71,6 +71,7 @@ export default function StockSolicitudes() {
   // ===== combos
   const [usuarios, setUsuarios] = useState([]);
   const [proyectos, setProyectos] = useState([]);
+  const [proveedores, setProveedores] = useState([]);
 
   // ===== filtros
   const [fTipo, setFTipo] = useState('');
@@ -148,6 +149,9 @@ export default function StockSolicitudes() {
         const empresa = await getEmpresaDetailsFromUser(user);
         // Leer stock_config de la empresa (Fase T / Fase 3)
         setStockConfig(empresa?.stock_config || {});
+        setProveedores(
+          (empresa?.proveedores_data || []).map((p) => ({ id: p.id || '', nombre: p.nombre || '', cuit: p.cuit || '' })).filter((p) => p.nombre)
+        );
         try {
           const lista = await StockSolicitudesService.listarUsuarios({ empresa_id: empresa.id });
           setUsuarios(
@@ -964,6 +968,7 @@ export default function StockSolicitudes() {
         setTransProyectoIngreso={setTransProyectoIngreso}
         user={user}
         stockConfig={stockConfig}
+        proveedores={proveedores}
       />
 
       <EntregaParcialDialog
