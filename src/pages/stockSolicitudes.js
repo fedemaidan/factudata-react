@@ -28,12 +28,15 @@ import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import TuneIcon from '@mui/icons-material/Tune';
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 import PendingActionsIcon from '@mui/icons-material/PendingActions';
+import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
+import BusinessIcon from '@mui/icons-material/Business';
 
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import { useAuthContext } from 'src/contexts/auth-context';
 import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
 import StockSolicitudesService from 'src/services/stock/stockSolicitudesService';
 import StockMovimientosService from 'src/services/stock/stockMovimientosService';
+import StockConfigService from 'src/services/stock/stockConfigService';
 import api from 'src/services/axiosConfig';
 import { getProyectosFromUser } from 'src/services/proyectosService';
 
@@ -68,6 +71,7 @@ export default function StockSolicitudes() {
   // ===== combos
   const [usuarios, setUsuarios] = useState([]);
   const [proyectos, setProyectos] = useState([]);
+  const [proveedores, setProveedores] = useState([]);
 
   // ===== filtros
   const [fTipo, setFTipo] = useState('');
@@ -75,6 +79,7 @@ export default function StockSolicitudes() {
   const [fDesde, setFDesde] = useState('');
   const [fHasta, setFHasta] = useState('');
   const [fEstado, setFEstado] = useState('');
+  const [fProyecto, setFProyecto] = useState('');
   const [fPendientes, setFPendientes] = useState(false);
 
   // ===== feedback
@@ -98,6 +103,9 @@ export default function StockSolicitudes() {
   // ===== modal ajuste de stock
   const [openAjusteModal, setOpenAjusteModal] = useState(false);
   const [ajusteLoading, setAjusteLoading] = useState(false);
+
+  // ===== stock config de la empresa (Fase T / Fase 3)
+  const [stockConfig, setStockConfig] = useState({});
 
   // ===== menús desplegables
   const [anchorElNuevo, setAnchorElNuevo] = useState(null);
@@ -139,6 +147,11 @@ export default function StockSolicitudes() {
     (async () => {
       try {
         const empresa = await getEmpresaDetailsFromUser(user);
+        // Leer stock_config de la empresa (Fase T / Fase 3)
+        setStockConfig(empresa?.stock_config || {});
+        setProveedores(
+          (empresa?.proveedores_data || []).map((p) => ({ id: p.id || '', nombre: p.nombre || '', cuit: p.cuit || '' })).filter((p) => p.nombre)
+        );
         try {
           const lista = await StockSolicitudesService.listarUsuarios({ empresa_id: empresa.id });
           setUsuarios(
@@ -165,7 +178,7 @@ export default function StockSolicitudes() {
 
   // ───── Filtros chips ─────
   const limpiarFiltros = () => {
-    setFTipo(''); setFSubtipo(''); setFDesde(''); setFHasta(''); setFEstado(''); setFPendientes(false); setPage(0);
+    setFTipo(''); setFSubtipo(''); setFDesde(''); setFHasta(''); setFEstado(''); setFProyecto(''); setFPendientes(false); setPage(0);
   };
 
   const chips = [
@@ -173,6 +186,7 @@ export default function StockSolicitudes() {
     fTipo && { k: 'Tipo', v: `${fTipo} (${total})`, onDelete: () => setFTipo('') },
     fSubtipo && { k: 'Subtipo', v: `${fSubtipo} (${total})`, onDelete: () => setFSubtipo('') },
     fEstado && { k: 'Estado', v: fEstado.replace('_', ' '), onDelete: () => setFEstado('') },
+    fProyecto && { k: 'Proyecto', v: proyectos.find((p) => p.id === fProyecto)?.nombre || fProyecto, onDelete: () => setFProyecto('') },
     fDesde && { k: 'Desde', v: fDesde, onDelete: () => setFDesde('') },
     fHasta && { k: 'Hasta', v: fHasta, onDelete: () => setFHasta('') },
   ].filter(Boolean);
@@ -218,6 +232,7 @@ export default function StockSolicitudes() {
         ...(fSubtipo?.trim() ? { subtipo: fSubtipo.trim() } : {}),
         ...(fDesde ? { fecha_desde: fDesde } : {}),
         ...(fHasta ? { fecha_hasta: fHasta } : {}),
+        ...(fProyecto ? { proyecto_id: fProyecto } : {}),
       };
       const resp = await StockSolicitudesService.listarSolicitudes(params);
       let items = resp.items || [];
@@ -239,7 +254,7 @@ export default function StockSolicitudes() {
     } finally { setLoading(false); }
   }
 
-  useEffect(() => { fetchAll(); }, [user, fTipo, fSubtipo, fEstado, fPendientes, fDesde, fHasta, sortParam, page, rpp]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { fetchAll(); }, [user, fTipo, fSubtipo, fEstado, fProyecto, fPendientes, fDesde, fHasta, sortParam, page, rpp]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ───── Helpers modal crear/editar ─────
   const resetModal = () => {
@@ -727,6 +742,13 @@ export default function StockSolicitudes() {
                       ))}
                     </Select>
                   </FormControl>
+                  <FormControl sx={{ minWidth: 200 }}>
+                    <InputLabel id="proyecto-label">Proyecto / Obra</InputLabel>
+                    <Select labelId="proyecto-label" label="Proyecto / Obra" value={fProyecto} onChange={(e) => { setFProyecto(e.target.value); setPage(0); }}>
+                      <MenuItem value=""><em>— Todos —</em></MenuItem>
+                      {proyectos.map((p) => <MenuItem key={p.id} value={p.id}>{p.nombre}</MenuItem>)}
+                    </Select>
+                  </FormControl>
                   <TextField label="Subtipo" value={fSubtipo} onChange={(e) => { setFSubtipo(e.target.value); setPage(0); }} sx={{ minWidth: 200 }} />
                   <TextField type="date" label="Desde" InputLabelProps={{ shrink: true }} value={fDesde} onChange={(e) => { setFDesde(e.target.value); setPage(0); }} sx={{ minWidth: 180 }} />
                   <TextField type="date" label="Hasta" InputLabelProps={{ shrink: true }} value={fHasta} onChange={(e) => { setFHasta(e.target.value); setPage(0); }} sx={{ minWidth: 180 }} />
@@ -758,6 +780,7 @@ export default function StockSolicitudes() {
                   <TableRow>
                     <TableCell><Stack direction="row" alignItems="center" spacing={1}><CategoryIcon fontSize="small" /><span>Tipo</span></Stack></TableCell>
                     <TableCell><Stack direction="row" alignItems="center" spacing={1}><LabelIcon fontSize="small" /><span>Subtipo</span></Stack></TableCell>
+                    <TableCell><Stack direction="row" alignItems="center" spacing={1}><BusinessIcon fontSize="small" /><span>Proveedor</span></Stack></TableCell>
                     <TableCell><Stack direction="row" alignItems="center" spacing={1}><LocalShippingIcon fontSize="small" /><span>Estado</span></Stack></TableCell>
                     <TableCell><Stack direction="row" alignItems="center" spacing={1}><CalendarTodayIcon fontSize="small" /><span>Fecha</span></Stack></TableCell>
                     <TableCell><Stack direction="row" alignItems="center" spacing={1}><UpdateIcon fontSize="small" /><span>Actualizado</span></Stack></TableCell>
@@ -780,6 +803,9 @@ export default function StockSolicitudes() {
                           </Box>
                         </TableCell>
                         <TableCell>{s.subtipo}</TableCell>
+                        <TableCell>
+                          <Typography variant="body2">{s.proveedor?.nombre || '—'}</Typography>
+                        </TableCell>
                         <TableCell>
                           {s.tipo === 'INGRESO' ? (() => {
                             const ei = getEstadoChip(s.estado);
@@ -843,6 +869,23 @@ export default function StockSolicitudes() {
                               </IconButton>
                             </Tooltip>
                           )}
+                          {s.estado === 'PENDIENTE_CONFIRMACION' && (
+                            <Tooltip title="Confirmar recepción (validación de movimientos)">
+                              <IconButton size="small" color="warning" onClick={async (ev) => {
+                                ev.stopPropagation();
+                                try {
+                                  await StockConfigService.confirmarSolicitud(s._id);
+                                  setSnackbar({ open: true, message: 'Solicitud confirmada correctamente', severity: 'success' });
+                                  // Recargar datos
+                                  setPage(0);
+                                } catch (err) {
+                                  setSnackbar({ open: true, message: err?.response?.data?.error?.message || 'Error al confirmar', severity: 'error' });
+                                }
+                              }}>
+                                <CheckCircleOutlineIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                          )}
                           <Tooltip title="Editar">
                             <IconButton onClick={() => openEdit(e)} size="small"><EditIcon /></IconButton>
                           </Tooltip>
@@ -858,7 +901,7 @@ export default function StockSolicitudes() {
 
                   {!loading && (!rows || rows.length === 0) && (
                     <TableRow>
-                      <TableCell colSpan={8} sx={{ textAlign: 'center', py: 4 }}>
+                      <TableCell colSpan={9} sx={{ textAlign: 'center', py: 4 }}>
                         <Stack spacing={2} alignItems="center">
                           <Typography variant="h6" color="text.secondary">
                             {chips.length > 0 ? 'No se encontraron tickets con estos filtros' : 'No hay tickets registrados'}
@@ -924,6 +967,8 @@ export default function StockSolicitudes() {
         transProyectoIngreso={transProyectoIngreso}
         setTransProyectoIngreso={setTransProyectoIngreso}
         user={user}
+        stockConfig={stockConfig}
+        proveedores={proveedores}
       />
 
       <EntregaParcialDialog

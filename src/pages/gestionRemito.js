@@ -27,6 +27,10 @@ import RemitoItemEditDialog from 'src/components/remitoItemEditDialog';
 import ProductosFormSelect from 'src/components/ProductosFormSelect';
 import { useBreadcrumbs } from 'src/contexts/breadcrumbs-context';
 import { formatCurrency } from 'src/utils/formatters';
+import DestinoDesacopioDialog from 'src/components/acopio/DestinoDesacopioDialog';
+import { useAuth } from 'src/hooks/use-auth';
+import { getProyectosFromUser } from 'src/services/proyectosService';
+import { getEmpresaById } from 'src/services/empresaService';
 
 function normalizar(t) {
   return (t || '').toString().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
@@ -53,6 +57,7 @@ const GestionRemitoPage = () => {
   const router = useRouter();
   const { acopioId, remitoId: ridQuery, empresaId } = router.query || {};
   const { setBreadcrumbs } = useBreadcrumbs();
+  const { user } = useAuth();
 
   // Datos del acopio
   const [acopio, setAcopio] = useState(null);
@@ -91,6 +96,24 @@ const GestionRemitoPage = () => {
   const [editIndex, setEditIndex] = useState(-1);
   const [editItem, setEditItem] = useState(null);
 
+  // Fase 2 — Destino desacopio dialog
+  const [destinoDialogOpen, setDestinoDialogOpen] = useState(false);
+  const [destinoDesacopioActivo, setDestinoDesacopioActivo] = useState(false);
+  const [proyectos, setProyectos] = useState([]);
+
+  // Cargar proyectos para el selector de destino
+  useEffect(() => {
+    if (!user) return;
+    (async () => {
+      try {
+        const projsRaw = await getProyectosFromUser(user);
+        setProyectos(
+          (projsRaw || []).map((p) => ({ id: p.id || p._id, nombre: p.nombre || p.name || p.id }))
+        );
+      } catch { setProyectos([]); }
+    })();
+  }, [user]);
+
   // Total calculado
   const valorTotal = useMemo(
     () => items.reduce((s, it) => s + (Number(it.valorUnitario || 0) * Number(it.cantidad || 0)), 0),
@@ -123,6 +146,15 @@ const GestionRemitoPage = () => {
         const acopioData = await AcopioService.obtenerAcopio(acopioId);
         setAcopio(acopioData);
         setTipoAcopio((acopioData && acopioData.tipo) || 'materiales');
+
+        // Cargar flag destino_desacopio de la empresa
+        const empId = acopioData?.empresaId || acopioData?.empresa_id;
+        if (empId) {
+          try {
+            const emp = await getEmpresaById(empId);
+            setDestinoDesacopioActivo(emp?.stock_config?.destino_desacopio === true);
+          } catch { /* best effort */ }
+        }
 
         // Base para fuzzy matching
         const disponibles = await AcopioService.getMaterialesAcopiados(acopioId);
@@ -247,12 +279,19 @@ const GestionRemitoPage = () => {
     }
   };
 
-  const guardarRemito = useCallback(async () => {
+  const guardarRemito = useCallback(async (destinoOpts = null) => {
     try {
       if (!fecha || items.length === 0) {
         setAlert({ open: true, message: 'Completá fecha y al menos un ítem.', severity: 'warning' });
         return;
       }
+
+      // Para creación nueva: mostrar diálogo de destino primero (solo si la empresa lo tiene habilitado)
+      if (!remitoId && !destinoOpts && destinoDesacopioActivo) {
+        setDestinoDialogOpen(true);
+        return;
+      }
+
       setLoadingProceso(true);
 
       if (remitoId) {
@@ -267,9 +306,12 @@ const GestionRemitoPage = () => {
         await AcopioService.crearRemitoConMovimientos(acopioId, items, {
           fecha,
           archivo: archivoRemitoFile || undefined,
-          numero_remito: numeroRemito
+          numero_remito: numeroRemito,
+          destino: destinoOpts?.destino || null,
+          destino_proyecto_id: destinoOpts?.proyecto_id || null,
+          destino_proyecto_nombre: destinoOpts?.proyecto_nombre || null,
         });
-        setAlert({ open: true, message: 'Remito creado con éxito', severity: 'success' });
+        setAlert({ open: true, message: 'Remito creado con éxito. Los materiales fueron registrados en Stock.', severity: 'success' });
         setTimeout(() => router.push(`/movimientosAcopio?acopioId=${acopioId}`), 500);
       }
     } catch (e) {
@@ -279,6 +321,11 @@ const GestionRemitoPage = () => {
       setLoadingProceso(false);
     }
   }, [fecha, items, remitoId, acopioId, valorTotal, numeroRemito, archivoRemitoFile, router]);
+
+  const handleDestinoConfirm = useCallback((destinoOpts) => {
+    setDestinoDialogOpen(false);
+    guardarRemito(destinoOpts);
+  }, [guardarRemito]);
 
   const handleVolver = useCallback(() => {
     if (hasUnsavedChanges) {
@@ -650,6 +697,15 @@ const GestionRemitoPage = () => {
             {alert.message}
           </Alert>
         </Snackbar>
+
+        {/* Fase 2 — Destino desacopio dialog */}
+        <DestinoDesacopioDialog
+          open={destinoDialogOpen}
+          onClose={() => setDestinoDialogOpen(false)}
+          onConfirm={handleDestinoConfirm}
+          proyectos={proyectos}
+          loading={loadingProceso}
+        />
 
         {/* Imagen fullscreen con controles */}
         <Dialog open={fullscreenOpen} onClose={() => setFullscreenOpen(false)} maxWidth={false} fullScreen>

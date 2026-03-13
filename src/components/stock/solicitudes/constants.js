@@ -8,11 +8,11 @@ import TuneIcon from '@mui/icons-material/Tune';
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 
 export const TIPO_OPCIONES = ['INGRESO', 'EGRESO', 'TRANSFERENCIA', 'AJUSTE', 'COMPRA'];
-export const ESTADO_OPCIONES = ['PENDIENTE', 'PARCIALMENTE_ENTREGADO', 'ENTREGADO'];
+export const ESTADO_OPCIONES = ['PENDIENTE', 'PARCIALMENTE_ENTREGADO', 'ENTREGADO', 'PENDIENTE_CONFIRMACION'];
 
 /** Opciones de subtipo según el tipo seleccionado */
 export const SUBTIPO_POR_TIPO = {
-  INGRESO: ['COMPRA', 'DONACION', 'GENERAL'],
+  INGRESO: ['COMPRA', 'DESACOPIO', 'DONACION', 'GENERAL'],
   EGRESO: ['RETIRO', 'ENTREGA', 'DEVOLUCION_RECHAZO', 'GENERAL'],
   TRANSFERENCIA: ['ENTRE_OBRAS'],
   AJUSTE: ['AJUSTE_POSITIVO', 'AJUSTE_NEGATIVO'],
@@ -22,8 +22,10 @@ export const SUBTIPO_POR_TIPO = {
 /** Labels legibles para subtipos */
 export const SUBTIPO_LABELS = {
   COMPRA: 'Compra',
+  DESACOPIO: 'Desacopio',
   DONACION: 'Donación',
   GENERAL: 'General',
+  PENDIENTE_ASIGNAR: 'Pendiente de asignar',
   RETIRO: 'Retiro',
   ENTREGA: 'Entrega',
   DEVOLUCION_RECHAZO: 'Devolución / Rechazo',
@@ -40,6 +42,8 @@ export const getEstadoChip = (estado) => {
       return { color: 'success', label: 'Entregado', icon: <CheckCircleIcon fontSize="small" /> };
     case 'PARCIALMENTE_ENTREGADO':
       return { color: 'warning', label: 'Parcial', icon: <HourglassEmptyIcon fontSize="small" /> };
+    case 'PENDIENTE_CONFIRMACION':
+      return { color: 'info', label: 'Pend. confirmación', icon: <PendingIcon fontSize="small" /> };
     case 'PENDIENTE':
     default:
       return { color: 'error', label: 'Pendiente', icon: <PendingIcon fontSize="small" /> };
