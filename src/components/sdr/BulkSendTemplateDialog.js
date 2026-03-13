@@ -112,7 +112,7 @@ export default function BulkSendTemplateDialog({ open, onClose, contacts = [], o
     return null;
   }, [selectedTemplate]);
 
-  const URL_DEFAULT = 'Fn6gVt3kqjsnymMs5';
+  const URL_DEFAULT = 'FbWSUoTVc82oDU6F9';
 
   const handleSelectTemplate = (e) => {
     const tplId = e.target.value;

@@ -101,7 +101,7 @@ export default function SendTemplateDialog({ open, onClose, phone, contactName, 
     return text;
   }, [selectedTemplate, paramValues]);
 
-  const URL_DEFAULT = 'Fn6gVt3kqjsnymMs5';
+  const URL_DEFAULT = 'FbWSUoTVc82oDU6F9';
 
   const handleSelectTemplate = (e) => {
     const tplId = e.target.value;
