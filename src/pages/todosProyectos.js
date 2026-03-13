@@ -3,6 +3,7 @@ import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import Papa from 'papaparse'; 
 import Head from 'next/head';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import SortIcon from '@mui/icons-material/Sort';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import TableViewIcon from '@mui/icons-material/TableView';
 import InsertDriveFileIcon from '@mui/icons-material/InsertDriveFile';
@@ -42,6 +43,7 @@ import {
   DialogActions,
 } from '@mui/material';
 import ticketService from 'src/services/ticketService';
+import profileService from 'src/services/profileService';
 import { getProyectosByEmpresa, getProyectosFromUser } from 'src/services/proyectosService';
 import { useAuthContext } from 'src/contexts/auth-context';
 import { formatCurrency, formatTimestamp } from 'src/utils/formatters';
@@ -55,7 +57,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { Tooltip } from '@mui/material';
 import { ColumnSelector } from 'src/components/columnSelector';
-import { match } from 'assert';
+import OrdenarColumnasDialog, { STORAGE_KEY as COLUMNAS_ORDEN_KEY } from 'src/components/OrdenarColumnasDialog';
 
 const TodosProyectosPage = () => {
   const { user } = useAuthContext();
@@ -86,7 +88,15 @@ const TodosProyectosPage = () => {
     }
     return null;
   });
+  const [columnasOrden, setColumnasOrden] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem(COLUMNAS_ORDEN_KEY);
+      return stored ? JSON.parse(stored) : null;
+    }
+    return null;
+  });
   const [open, setOpen] = useState(false);
+  const [openOrdenar, setOpenOrdenar] = useState(false);
   const [csvFile, setCsvFile] = useState(null);
   const [openImportDialog, setOpenImportDialog] = useState(false);
   const [importLoading, setImportLoading] = useState(false);
@@ -126,6 +136,7 @@ const TodosProyectosPage = () => {
     categoria: 'Categoría',
     subcategoria: 'Subcategoría',
     nombre_proveedor: 'Proveedor',
+    nombre_user: 'Usuario',
     // cuit_proveedor: 'CUIT Proveedor',
     observacion: 'Observación',
     total_original: 'Monto Original',
@@ -170,6 +181,7 @@ const TodosProyectosPage = () => {
 
     head_array.push(
       ['nombre_proveedor', 'Proveedor'],
+      ['nombre_user', 'Usuario'],
       ['etapa', 'Etapa'],
       ['observacion', 'Observación'],
       ['type', 'Tipo'],
@@ -280,8 +292,15 @@ const TodosProyectosPage = () => {
 
   const columnasFiltradas = useMemo(() => {
     const tableHeadArrayConf = tableHeadArray.filter(([key]) => key !== 'acciones');
-    return (tableHeadArrayConf || []).filter(([key]) => columnasVisibles?.[key]);
-  }, [tableHeadArray, columnasVisibles]);
+    const visibles = (tableHeadArrayConf || []).filter(([key]) => columnasVisibles?.[key]);
+    if (!columnasOrden?.length) return visibles;
+    const ordenMap = Object.fromEntries(columnasOrden.map((k, i) => [k, i]));
+    return [...visibles].sort((a, b) => {
+      const idxA = ordenMap[a[0]] ?? 999;
+      const idxB = ordenMap[b[0]] ?? 999;
+      return idxA - idxB;
+    });
+  }, [tableHeadArray, columnasVisibles, columnasOrden]);
 
   const exportToExcel = () => {
     const exportData = movimientosFiltrados.map((mov) => {
@@ -480,6 +499,24 @@ const TodosProyectosPage = () => {
         movimientosData.push(...movsConEquivalencias);
       }
 
+      const idsSinNombre = [...new Set(movimientosData
+        .filter((m) => m.id_user && !m.nombre_user)
+        .map((m) => m.id_user)
+      )];
+      const usuariosMap = {};
+      for (const id of idsSinNombre) {
+        const profile = await profileService.getProfileById(id)
+          || await profileService.getProfileByUserId(id);
+        if (profile) {
+          usuariosMap[id] = [profile.firstName, profile.lastName].filter(Boolean).join(' ').trim() || profile.email || '-';
+        }
+      }
+      for (const mov of movimientosData) {
+        if (mov.id_user && !mov.nombre_user && usuariosMap[mov.id_user]) {
+          mov.nombre_user = usuariosMap[mov.id_user];
+        }
+      }
+
       setMovimientos(movimientosData);
     } catch (error) {
       setAlert({ open: true, message: 'Error al cargar los movimientos.', severity: 'error' });
@@ -674,6 +711,25 @@ const TodosProyectosPage = () => {
 
       setColumnasVisibles(porDefecto);
       localStorage.setItem('columnasVisibles', JSON.stringify(porDefecto));
+
+      const keysTodas = todas.map(([k]) => k);
+      const storedOrden = localStorage.getItem(COLUMNAS_ORDEN_KEY);
+      let ordenFinal = keysTodas;
+      if (storedOrden) {
+        try {
+          const ordenParsed = JSON.parse(storedOrden);
+          const ordenSet = new Set(ordenParsed);
+          const enOrden = ordenParsed.filter((k) => keysTodas.includes(k));
+          const nuevas = keysTodas.filter((k) => !ordenSet.has(k));
+          ordenFinal = [...enOrden, ...nuevas];
+        } catch {
+          ordenFinal = keysTodas;
+        }
+      }
+      setColumnasOrden(ordenFinal);
+      if (!storedOrden) {
+        localStorage.setItem(COLUMNAS_ORDEN_KEY, JSON.stringify(ordenFinal));
+      }
     }
   }, [empresa]);
 
@@ -716,21 +772,25 @@ const TodosProyectosPage = () => {
   console.log('mov', movimientosFiltrados);
 
   return (
-    <>
+    <DashboardLayout title="Movimientos de Todos los Proyectos">
       <Head>
-        <title>Todos los Proyectos</title>
+        <title>Movimientos de Todos los Proyectos</title>
       </Head>
-      <Box component="main" sx={{ flexGrow: 1, py: 8 }}>
+      <Box component="main" sx={{ flexGrow: 1, pb: 8 }}>
         <Container maxWidth="xl">
-          <Stack spacing={3}>
-            <Typography variant="h4">Movimientos de Todos los Proyectos</Typography>
-
+          <Stack spacing={1}>
             <Accordion defaultExpanded>
               <AccordionSummary expandIcon={<ExpandMoreIcon />}>
                 <Typography variant="h6">Filtros</Typography>
               </AccordionSummary>
               <AccordionDetails>
-                <Stack direction="row" spacing={2} flexWrap="wrap">
+                <Stack
+                  direction="row"
+                  flexWrap="wrap"
+                  alignItems="flex-start"
+                  justifyContent="flex-start"
+                  sx={{ gap: 1 }}
+                >
                   {/* Filtros existentes */}
                   <FormControl sx={{ minWidth: 200 }}>
                     <InputLabel>Proyecto</InputLabel>
@@ -932,7 +992,7 @@ const TodosProyectosPage = () => {
                       </Select>
                     </FormControl>
 
-                  <Stack direction="row" spacing={1} alignItems="center">
+                  <Stack direction="row" alignItems="center" sx={{ gap: 1 }}>
                     <DatePicker
                       selected={filtroFechaDesde}
                       onChange={(date) => setFiltroFechaDesde(date)}
@@ -956,12 +1016,6 @@ const TodosProyectosPage = () => {
                   <Button variant="contained" onClick={fetchData}>
                     Actualizar
                   </Button>
-                  <Stack
-                    direction="row"
-                    spacing={2}
-                    justifyContent="space-between"
-                    alignItems="center"
-                  >
                     <div>
                       {user.admin && (
                         <Button
@@ -1022,7 +1076,6 @@ const TodosProyectosPage = () => {
                         </MenuItem>
                       </Menu>
                     </div>
-                  </Stack>
                 </Stack>
               </AccordionDetails>
             </Accordion>
@@ -1039,7 +1092,7 @@ const TodosProyectosPage = () => {
               </Box>
             ) : (
               <>
-                <Stack direction="row" spacing={4}>
+                <Stack direction="row" spacing={2} alignItems="center" sx={{ gap: 1 }}>
                   <Typography variant="h6">
                     Total en Pesos: {formatCurrency(totalesPorMoneda.ars)}
                   </Typography>
@@ -1047,6 +1100,9 @@ const TodosProyectosPage = () => {
                     Total en Dólares: {formatCurrency(totalesPorMoneda.usd)}
                   </Typography>
                   <Button onClick={() => setOpen(true)}>Columnas visibles</Button>
+                  <Button onClick={() => setOpenOrdenar(true)} startIcon={<SortIcon />}>
+                    Ordenar columnas
+                  </Button>
 
                   <ColumnSelector
                     open={open}
@@ -1054,6 +1110,19 @@ const TodosProyectosPage = () => {
                     columnasVisibles={columnasVisibles}
                     setColumnasVisibles={setColumnasVisibles}
                     tableHeadArray={tableHeadArray}
+                  />
+                  <OrdenarColumnasDialog
+                    open={openOrdenar}
+                    onClose={() => setOpenOrdenar(false)}
+                    columnasFiltradas={columnasFiltradas}
+                    columnasOrden={columnasOrden}
+                    onOrdenChange={(nuevoOrden) => {
+                      setColumnasOrden(nuevoOrden);
+                      localStorage.setItem(COLUMNAS_ORDEN_KEY, JSON.stringify(nuevoOrden));
+                    }}
+                    ordenPredeterminado={tableHeadArray
+                      .filter(([key]) => key !== 'acciones' && columnasVisibles?.[key])
+                      .map(([k]) => k)}
                   />
                 </Stack>
                 <Paper>
@@ -1152,9 +1221,8 @@ const TodosProyectosPage = () => {
           </Dialog>
         </Container>
       </Box>
-    </>
+    </DashboardLayout>
   );
 };
 
-TodosProyectosPage.getLayout = (page) => <DashboardLayout>{page}</DashboardLayout>;
 export default TodosProyectosPage;

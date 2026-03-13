@@ -54,7 +54,7 @@ const PanelValidacionPage = () => {
     proveedor: '',
     nombre_user: '',
     texto: '',
-    estado: '',
+    estado: 'completado',
   });
 
   const filtrosRef = useRef(filtros);
@@ -237,7 +237,6 @@ const PanelValidacionPage = () => {
     setSavingEdit(true);
     setSnackbar({ open: true, message: 'Guardando movimiento...', severity: 'info', autoHideDuration: 3000 });
     setItems((prev) => prev.map((item) => (item.id === mov.id ? optimisticItem : item)));
-    setEditDrawer({ open: false, mov: null, form: {} });
 
     try {
       const res = await movimientosService.updateBorrador(mov.id, payload);
@@ -440,7 +439,7 @@ const PanelValidacionPage = () => {
                     proveedor: '',
                     nombre_user: '',
                     texto: '',
-                    estado: '',
+                    estado: 'completado',
                   };
                   setFiltros(defaultFiltros);
                   filtrosRef.current = defaultFiltros;
