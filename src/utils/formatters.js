@@ -4,7 +4,23 @@ import { Timestamp } from 'firebase/firestore';
 const formatTimestamp = (timestamp, formato = 'ANO-MES-DIA') => {
   if (!timestamp) return "";
 
-  // Soportar tanto `seconds` como `_seconds`
+  // Soportar Date nativo (ej: desde MongoDB)
+  if (timestamp instanceof Date) {
+    const seconds = Math.floor(timestamp.getTime() / 1000);
+    return formatTimestamp({ seconds }, formato);
+  }
+
+  // Soportar ISO string (ej: "2025-03-15T12:00:00.000Z" desde MongoDB serializado)
+  if (typeof timestamp === 'string') {
+    const parsed = new Date(timestamp);
+    if (!isNaN(parsed.getTime())) {
+      const seconds = Math.floor(parsed.getTime() / 1000);
+      return formatTimestamp({ seconds }, formato);
+    }
+    return "";
+  }
+
+  // Soportar tanto `seconds` como `_seconds` (Firestore Timestamp)
   const seconds = timestamp.seconds !== undefined ? timestamp.seconds : timestamp._seconds;
   if (seconds === undefined) return "";
 

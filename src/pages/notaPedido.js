@@ -353,7 +353,7 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
     const nuevo = {
       texto,
       autor: `${user.firstName} ${user.lastName}`,
-      fecha: Timestamp.fromDate(new Date()),
+      fecha: new Date().toISOString(),
     };
   
     const comentariosActualizados = [...(comentariosDialogNota.comentarios || []), nuevo];
