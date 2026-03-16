@@ -139,6 +139,7 @@ const TodosProyectosPage = () => {
     nombre_user: 'Usuario',
     // cuit_proveedor: 'CUIT Proveedor',
     observacion: 'Observación',
+    detalle: 'Detalle',
     total_original: 'Monto Original',
     medio_pago: 'Medio de pago',
     tipo_factura: 'Tipo de factura',
@@ -184,6 +185,7 @@ const TodosProyectosPage = () => {
       ['nombre_user', 'Usuario'],
       ['etapa', 'Etapa'],
       ['observacion', 'Observación'],
+      ...(empresa.comprobante_info?.detalle ? [['detalle', 'Detalle']] : []),
       ['type', 'Tipo'],
       ['moneda', 'Moneda']
     );

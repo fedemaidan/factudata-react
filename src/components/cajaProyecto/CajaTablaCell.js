@@ -117,6 +117,8 @@ const CajaTablaCell = ({ colKey, mov, amountColor, ctx, isProrrateo = false }) =
       return cell(ellipsis(COLS.cliente), <Tooltip title={mov.cliente || ''}><span>{mov.cliente || '—'}</span></Tooltip>);
     case 'observacion':
       return cell(ellipsis(COLS.observacion), <Tooltip title={mov.observacion || ''}><span>{mov.observacion}</span></Tooltip>);
+    case 'detalle':
+      return cell(ellipsis(COLS.detalle), <Tooltip title={mov.detalle || ''}><span>{mov.detalle}</span></Tooltip>);
     case 'usuario':
       return cell(ellipsis(COLS.usuario), <Tooltip title={mov.nombre_user || ''}><span>{mov.nombre_user || '—'}</span></Tooltip>);
     case 'tc':
