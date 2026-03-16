@@ -58,13 +58,93 @@ import {
 } from './monedaAjusteConfig';
 
 const COEF_PATIOS_DEFAULT = 0.5;
+const COEF_VEREDA_DEFAULT = 0.25;
+const HEADER_BG_DEFAULT = '#0a4791';
+const HEADER_TEXT_DEFAULT = '#ffffff';
 
-const computeSupPonderada = (supCubierta, supPatios, coefPatios) => {
+const isValidHex = (v) => /^#[0-9A-Fa-f]{6}$/.test(v);
+const toHex = (v) => {
+  if (!v || typeof v !== 'string') return null;
+  const s = v.replace(/^#/, '').trim();
+  return /^[0-9A-Fa-f]{6}$/.test(s) ? `#${s.toLowerCase()}` : null;
+};
+
+const ColorInput = ({ label, value, onChange, defaultColor = HEADER_BG_DEFAULT }) => {
+  const hex = value || defaultColor;
+  const valid = isValidHex(hex);
+  const handleHexBlur = (e) => {
+    const result = toHex(e.target.value);
+    if (result) onChange(result);
+    else if (e.target.value.trim()) onChange(defaultColor);
+  };
+  return (
+    <Stack direction="row" spacing={1} alignItems="center">
+      <TextField
+        size="small"
+        label={label}
+        value={hex}
+        onChange={(e) => {
+          const v = e.target.value.replace(/[^0-9A-Fa-f#]/g, '');
+          if (v.startsWith('#')) {
+            if (v.length <= 7) onChange(v || defaultColor);
+          } else if (v.length <= 6) {
+            onChange(v ? `#${v}` : defaultColor);
+          }
+        }}
+        onBlur={handleHexBlur}
+        placeholder={defaultColor}
+        inputProps={{ maxLength: 7 }}
+        sx={{ minWidth: 120 }}
+      />
+      <Box
+        component="input"
+        type="color"
+        value={valid ? hex : defaultColor}
+        onChange={(e) => onChange(e.target.value)}
+        sx={{
+          width: 40,
+          height: 40,
+          p: 0,
+          border: '1px solid',
+          borderColor: 'divider',
+          borderRadius: 1,
+          cursor: 'pointer',
+          bgcolor: 'transparent',
+        }}
+      />
+    </Stack>
+  );
+};
+
+const HeaderColorBlock = ({ form, onFormChange }) => (
+  <Stack spacing={1.5}>
+    <Typography variant="subtitle2" color="text.secondary">
+      Colores de la cabecera del PDF
+    </Typography>
+    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} flexWrap="wrap">
+      <ColorInput
+        label="Fondo"
+        value={form.header_bg_color}
+        onChange={(v) => onFormChange({ ...form, header_bg_color: v })}
+      />
+      <ColorInput
+        label="Texto"
+        value={form.header_text_color}
+        onChange={(v) => onFormChange({ ...form, header_text_color: v })}
+        defaultColor={HEADER_TEXT_DEFAULT}
+      />
+    </Stack>
+  </Stack>
+);
+
+const computeSupPonderada = (supCubierta, supPatios, coefPatios, supVereda, coefVereda) => {
   const a = Number(supCubierta) || 0;
   const b = Number(supPatios) || 0;
   const c = Number(coefPatios) >= 0 ? (Number(coefPatios) || COEF_PATIOS_DEFAULT) : COEF_PATIOS_DEFAULT;
-  if (a < 0 || b < 0) return null;
-  const result = a + b * c;
+  const d = Number(supVereda) || 0;
+  const e = Number(coefVereda) >= 0 ? (Number(coefVereda) || COEF_VEREDA_DEFAULT) : COEF_VEREDA_DEFAULT;
+  if (a < 0 || b < 0 || d < 0) return null;
+  const result = a + b * c + d * e;
   return Math.round(result * 100) / 100;
 };
 
@@ -73,18 +153,22 @@ const AnalisisSuperficiesBlock = ({ form, onFormChange }) => {
   const supCubierta = as.sup_cubierta_m2 ?? '';
   const supPatios = as.sup_patios_m2 ?? '';
   const coefPatios = as.coef_patios ?? COEF_PATIOS_DEFAULT;
+  const supVereda = as.sup_vereda_m2 ?? '';
+  const coefVereda = as.coef_vereda ?? COEF_VEREDA_DEFAULT;
 
   const supPonderada = useMemo(() => {
-    const computed = computeSupPonderada(supCubierta, supPatios, coefPatios);
+    const computed = computeSupPonderada(supCubierta, supPatios, coefPatios, supVereda, coefVereda);
     return computed !== null ? computed : '';
-  }, [supCubierta, supPatios, coefPatios]);
+  }, [supCubierta, supPatios, coefPatios, supVereda, coefVereda]);
 
   const handleChange = (field, value) => {
     const next = { ...as, [field]: value };
     const nextSupCubierta = field === 'sup_cubierta_m2' ? value : supCubierta;
     const nextSupPatios = field === 'sup_patios_m2' ? value : supPatios;
     const nextCoefPatios = field === 'coef_patios' ? value : coefPatios;
-    const nextPonderada = computeSupPonderada(nextSupCubierta, nextSupPatios, nextCoefPatios);
+    const nextSupVereda = field === 'sup_vereda_m2' ? value : supVereda;
+    const nextCoefVereda = field === 'coef_vereda' ? value : coefVereda;
+    const nextPonderada = computeSupPonderada(nextSupCubierta, nextSupPatios, nextCoefPatios, nextSupVereda, nextCoefVereda);
     if (nextPonderada !== null) next.sup_ponderada_m2 = nextPonderada;
     onFormChange({ ...form, analisis_superficies: next });
   };
@@ -152,6 +236,41 @@ const AnalisisSuperficiesBlock = ({ form, onFormChange }) => {
           onBlur={(e) => handleBlur('coef_patios', e.target.value)}
           onKeyDown={handleNumericKeyDown}
           helperText="Ponderación de superficie de patios"
+          inputProps={{ inputMode: 'decimal', autoComplete: 'off' }}
+        />
+        <TextField
+          size="small"
+          label="Sup. vereda (m²)"
+          value={formatNumberForInput(supVereda, 2)}
+          onChange={(e) => {
+            const raw = e.target.value;
+            if (raw === '') {
+              handleChange('sup_vereda_m2', '');
+              return;
+            }
+            const v = parseNumberInput(raw);
+            if (v !== null) handleChange('sup_vereda_m2', v);
+          }}
+          onBlur={(e) => handleBlur('sup_vereda_m2', e.target.value)}
+          onKeyDown={handleNumericKeyDown}
+          inputProps={{ inputMode: 'decimal', autoComplete: 'off' }}
+        />
+        <TextField
+          size="small"
+          label="Coef. vereda"
+          value={formatNumberForInput(coefVereda, 2)}
+          onChange={(e) => {
+            const raw = e.target.value;
+            if (raw === '') {
+              handleChange('coef_vereda', '');
+              return;
+            }
+            const v = parseNumberInput(raw);
+            if (v !== null) handleChange('coef_vereda', v);
+          }}
+          onBlur={(e) => handleBlur('coef_vereda', e.target.value)}
+          onKeyDown={handleNumericKeyDown}
+          helperText="Ponderación de superficie de vereda"
           inputProps={{ inputMode: 'decimal', autoComplete: 'off' }}
         />
         <TextField
@@ -368,7 +487,7 @@ const MonedaAjusteBlock = ({ form, onFormChange }) => {
           </ToggleButtonGroup>
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
             {loadingCac ? 'Cargando…' : valorCac != null
-              ? `Índice ${CAC_LABELS[ajuste.cac_tipo]} (mes anterior): ${formatCurrency(valorCac, 'ARS')} — ${fechaCac || ''}`
+              ? `Índice ${CAC_LABELS[ajuste.cac_tipo]} (2 meses atrás): ${formatCurrency(valorCac, 'ARS')} — ${fechaCac || ''}`
               : '—'}
           </Typography>
         </Box>
@@ -506,6 +625,7 @@ const PresupuestoFormDialog = ({
   addTarea,
   removeTarea,
   updateTarea,
+  moveTarea,
   focusRef,
   logoUploading = false,
   logoPreviewUrl = '',
@@ -786,6 +906,24 @@ const PresupuestoFormDialog = ({
                         }
                       }}
                     />
+                    <Tooltip title="Subir">
+                      <span>
+                        <IconButton size="small" disabled={ti === 0} onClick={() => moveTarea?.(ri, ti, -1)}>
+                          <ArrowUpwardIcon fontSize="small" />
+                        </IconButton>
+                      </span>
+                    </Tooltip>
+                    <Tooltip title="Bajar">
+                      <span>
+                        <IconButton
+                          size="small"
+                          disabled={ti === (rubro.tareas || []).length - 1}
+                          onClick={() => moveTarea?.(ri, ti, 1)}
+                        >
+                          <ArrowDownwardIcon fontSize="small" />
+                        </IconButton>
+                      </span>
+                    </Tooltip>
                     <IconButton size="small" color="error" onClick={() => removeTarea(ri, ti)}>
                       <DeleteIcon fontSize="inherit" />
                     </IconButton>
@@ -899,6 +1037,8 @@ const PresupuestoFormDialog = ({
             />
             {logoUploading && <LinearProgress />}
           </Stack>
+          <Divider sx={{ my: 1 }} />
+          <HeaderColorBlock form={form} onFormChange={onFormChange} />
         </Paper>
       </Stack>
     </DialogContent>

@@ -16,6 +16,7 @@ import {
   TableHead,
   TableRow,
   Tabs,
+  Tooltip,
   Typography,
 } from '@mui/material';
 import { ESTADO_LABEL, ESTADO_COLOR, formatCurrency, formatDate, formatPct } from './constants';
@@ -294,14 +295,25 @@ const PresupuestoDetalleDialog = ({
             <Box>
               {onAgregarAnexo && (
                 <Stack direction="row" justifyContent="flex-end" mb={2}>
-                  <Button
-                    variant="outlined"
-                    size="small"
-                    startIcon={<PostAddIcon />}
-                    onClick={() => onAgregarAnexo(data)}
+                  <Tooltip
+                    title={
+                      data.estado === 'aceptado'
+                        ? 'Para agregar modificaciones, dirigite a la página de control de presupuestos.'
+                        : 'Agregar anexo'
+                    }
                   >
-                    Agregar anexo
-                  </Button>
+                    <span>
+                      <Button
+                        variant="outlined"
+                        size="small"
+                        startIcon={<PostAddIcon />}
+                        disabled={data.estado === 'aceptado'}
+                        onClick={() => onAgregarAnexo(data)}
+                      >
+                        Agregar anexo
+                      </Button>
+                    </span>
+                  </Tooltip>
                 </Stack>
               )}
               {(data.anexos || []).length === 0 ? (

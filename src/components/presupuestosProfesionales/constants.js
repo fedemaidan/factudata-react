@@ -126,7 +126,7 @@ export const PLANTILLA_SORBYDATA = {
   rubros: [
     {
       nombre: 'Demolición',
-      incidencia_pct_sugerida: null,
+      incidencia_pct_sugerida: 8,
       tareas: [
         { descripcion: 'Demolición de muros según plano' },
         { descripcion: 'Desmonte de artefactos sanitarios en baños, griferías, mesadas, muebles de cocina, puertas y roperos' },
@@ -136,7 +136,7 @@ export const PLANTILLA_SORBYDATA = {
     },
     {
       nombre: 'Albañilería General',
-      incidencia_pct_sugerida: null,
+      incidencia_pct_sugerida: 22,
       tareas: [
         { descripcion: 'Elevaciones de muros en mampostería según plano' },
         { descripcion: 'Revoque grueso de muros' },
@@ -147,7 +147,7 @@ export const PLANTILLA_SORBYDATA = {
     },
     {
       nombre: 'Instalación Sanitaria',
-      incidencia_pct_sugerida: null,
+      incidencia_pct_sugerida: 10,
       tareas: [
         { descripcion: 'Desmonte y retiro de distribuciones de cañerías de agua y desagües obsoletas' },
         { descripcion: 'Instalación de distribución interna de cañerías de desagües nuevas para baños, cocina y lavadero. Se tomarán desde acometidas existentes' },
@@ -157,7 +157,7 @@ export const PLANTILLA_SORBYDATA = {
     },
     {
       nombre: 'Instalación Eléctrica',
-      incidencia_pct_sugerida: null,
+      incidencia_pct_sugerida: 10,
       tareas: [
         { descripcion: 'Desinstalación y desarmado de bocas y cableados de electricidad existentes' },
         { descripcion: 'Instalación de bocas de electricidad e iluminación nuevas (Canaleteado, colocación de caños corrugados plásticos, amurado de cajas, cableado nuevo)' },
@@ -166,14 +166,14 @@ export const PLANTILLA_SORBYDATA = {
     },
     {
       nombre: 'Colocaciones de Placas de Porcelanato y/o Marmetas',
-      incidencia_pct_sugerida: null,
+      incidencia_pct_sugerida: 15,
       tareas: [
         { descripcion: 'Colocaciones de placas de porcelanatos y/o marmetas provistas por cliente en baños, área de servicio y en algunos sectores de patio' },
       ],
     },
     {
       nombre: 'Pintura',
-      incidencia_pct_sugerida: null,
+      incidencia_pct_sugerida: 10,
       tareas: [
         { descripcion: 'Aplicación de Enduido en todos los muros interiores del departamento' },
         { descripcion: 'Lijado' },
@@ -182,14 +182,14 @@ export const PLANTILLA_SORBYDATA = {
     },
     {
       nombre: 'Instalación de Toma Corrientes, Llaves de Enc. y Artef. de Iluminación',
-      incidencia_pct_sugerida: null,
+      incidencia_pct_sugerida: 8,
       tareas: [
         { descripcion: 'Colocación de artefactos de iluminación en todo el departamento. Provistos por cliente' },
       ],
     },
     {
       nombre: 'Colocación de Artefactos Sanitarios, Griferías y Accesorios',
-      incidencia_pct_sugerida: null,
+      incidencia_pct_sugerida: 7,
       tareas: [
         { descripcion: 'Instalación de vistas de griferías. Provistos por cliente' },
         { descripcion: 'Instalación de inodoros, bidets, desagües de bachas, bañadera y accesorios. Provistos por cliente' },
@@ -197,7 +197,7 @@ export const PLANTILLA_SORBYDATA = {
     },
     {
       nombre: 'Varios',
-      incidencia_pct_sugerida: null,
+      incidencia_pct_sugerida: 10,
       tareas: [
         { descripcion: 'Limpieza gruesa periódica' },
         { descripcion: 'Ayuda de gremios' },

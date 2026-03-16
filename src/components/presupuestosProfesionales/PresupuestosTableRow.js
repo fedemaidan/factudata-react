@@ -177,10 +177,22 @@ const PresupuestosTableRow = ({
                 </IconButton>
               </Tooltip>
             )}
-            <Tooltip title="Agregar anexo">
-              <IconButton size="small" onClick={() => onOpenAnexo(row)}>
-                <PostAddIcon fontSize="small" />
-              </IconButton>
+            <Tooltip
+              title={
+                estado === 'aceptado'
+                  ? 'Para agregar modificaciones, dirigite a la página de control de presupuestos.'
+                  : 'Agregar anexo'
+              }
+            >
+              <span>
+                <IconButton
+                  size="small"
+                  disabled={estado === 'aceptado'}
+                  onClick={() => onOpenAnexo(row)}
+                >
+                  <PostAddIcon fontSize="small" />
+                </IconButton>
+              </span>
             </Tooltip>
             {estado === 'borrador' && (
               <Tooltip title="Eliminar">

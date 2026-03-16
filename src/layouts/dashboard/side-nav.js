@@ -618,15 +618,18 @@ export const SideNav = (props) => {
           ),
         });
 
+
+     //   if (permisosUsuario.includes("VER_PRESUPUESTOS_PROFESIONALES")) {
         baseItems.push({
           title: "Presupuestos Profesionales",
           path: "/presupuestosProfesionales",
-          icon: (
-            <SvgIcon fontSize="small">
-              <NoteAltIcon />
-            </SvgIcon>
-          ),
-        });
+            icon: (
+              <SvgIcon fontSize="small">
+                <NoteAltIcon />
+              </SvgIcon>
+            ),
+          });
+     //   }
 
         const todos = {
           title: "Todos los movimientos",
