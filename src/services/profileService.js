@@ -153,6 +153,11 @@ const profileService = {
       const docRef = doc(db, 'profile', profileId);
       let data = { ...profileData };
 
+      // Sanitizar phone: eliminar caracteres no-dígitos (previene U+202C y similares)
+      if (data.phone) {
+        data.phone = String(data.phone).replace(/[^\d]/g, '');
+      }
+
       if (profileData.proyectos) {
         const proyectosRefs = Array.isArray(profileData.proyectos)
           ? profileData.proyectos.map(id => doc(db, 'proyectos', id))

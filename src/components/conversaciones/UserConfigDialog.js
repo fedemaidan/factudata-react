@@ -251,7 +251,7 @@ export default function UserConfigDialog({
         // Preparar datos para guardar
         const dataToSave = {
           email: cleanValues.email.trim(),
-          phone: phoneTrim,
+          phone: phoneNorm,
           firstName: cleanValues.firstName,
           lastName: cleanValues.lastName,
           proyectos: cleanValues.proyectos,
