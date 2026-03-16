@@ -5,9 +5,17 @@ import { loadImageAsDataUrl } from './loadLogoForPdf';
 const PAGE_WIDTH = 210; // mm (A4)
 const PAGE_HEIGHT = 297;
 const MARGIN = 20;
-const ACCENT_COLOR = [10, 71, 145];
+const ACCENT_COLOR_DEFAULT = [10, 71, 145];
+const TEXT_COLOR_DEFAULT = [255, 255, 255];
 const LIGHT_GREY = [245, 245, 245];
 const BORDER_COLOR = 200;
+
+const isValidHex = (v) => v && /^#[0-9A-Fa-f]{6}$/.test(v);
+const hexToRgb = (hex) => {
+  if (!hex || !/^#[0-9A-Fa-f]{6}$/.test(hex)) return null;
+  const n = parseInt(hex.slice(1), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+};
 
 const formatCurrency = (value, currency = 'ARS') => {
   const num = Number(value) || 0;
@@ -94,14 +102,19 @@ const buildSurfaceLines = (analisis, totalNeto, currency) => {
 
   const cubierta = Number(analisis.sup_cubierta_m2) || 0;
   const patios = Number(analisis.sup_patios_m2) || 0;
-  const coef = Number(analisis.coef_patios) >= 0 ? (Number(analisis.coef_patios) || 0.5) : 0.5;
+  const coefPatios = Number(analisis.coef_patios) >= 0 ? (Number(analisis.coef_patios) || 0.5) : 0.5;
+  const vereda = Number(analisis.sup_vereda_m2) || 0;
+  const coefVereda = Number(analisis.coef_vereda) >= 0 ? (Number(analisis.coef_vereda) || 0.25) : 0.25;
   const ponderadaOriginal = Number(analisis.sup_ponderada_m2) || 0;
-  const ponderada = ponderadaOriginal || cubierta + patios * coef;
+  const ponderada = ponderadaOriginal || cubierta + patios * coefPatios + vereda * coefVereda;
+  if (!cubierta && !patios && !vereda && !ponderada) return [];
+
   const promedio = ponderada > 0 ? totalNeto / ponderada : null;
 
   const lines = [
     `Superficie cubierta: ${cubierta ? `${Math.round(cubierta)} m²` : '—'}`,
     `Superficie patios: ${patios ? `${Math.round(patios)} m²` : '—'}`,
+    `Superficie vereda: ${vereda ? `${Math.round(vereda)} m²` : '—'}`,
     `Superficie ponderada: ${ponderada ? `${Math.round(ponderada)} m²` : '—'}`,
   ];
 
@@ -189,6 +202,13 @@ export async function exportPresupuestoToPdf(presupuesto, { empresa } = {}) {
     rubros.reduce((acc, rubro) => acc + (Number(rubro.monto) || 0), 0);
   const currency = presupuesto.moneda || 'ARS';
 
+  const accentRgb = isValidHex(presupuesto.header_bg_color)
+    ? hexToRgb(presupuesto.header_bg_color)
+    : ACCENT_COLOR_DEFAULT;
+  const textRgb = isValidHex(presupuesto.header_text_color)
+    ? hexToRgb(presupuesto.header_text_color)
+    : TEXT_COLOR_DEFAULT;
+
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
   doc.setFont('helvetica', 'normal');
 
@@ -200,11 +220,11 @@ export async function exportPresupuestoToPdf(presupuesto, { empresa } = {}) {
   const logoX = (PAGE_WIDTH - LOGO_WIDTH) / 2;
 
   const HEADER_HEIGHT = logoDataUrl ? 58 : 28;
-  doc.setFillColor(...ACCENT_COLOR);
+  doc.setFillColor(...accentRgb);
   doc.rect(0, 0, PAGE_WIDTH, HEADER_HEIGHT, 'F');
 
   doc.setFontSize(FONT_SIZE_HEADER);
-  doc.setTextColor(255);
+  doc.setTextColor(...textRgb);
   doc.text(presupuesto.obra_direccion || '—', MARGIN, 6);
   doc.text(formatFechaCabecera(presupuesto.fecha || presupuesto.createdAt), PAGE_WIDTH - MARGIN, 6, {
     align: 'right',
@@ -246,7 +266,7 @@ export async function exportPresupuestoToPdf(presupuesto, { empresa } = {}) {
     head: [['Item', 'Descripción', 'Total', 'Inc.']],
     body,
     theme: 'grid',
-    headStyles: { fillColor: [10, 71, 145], textColor: 255 },
+    headStyles: { fillColor: accentRgb, textColor: textRgb },
     styles: { fontSize: 10 },
     columnStyles: {
       0: { cellWidth: 20 },
@@ -263,15 +283,15 @@ export async function exportPresupuestoToPdf(presupuesto, { empresa } = {}) {
         data.cell.styles.textColor = 30;
       } else if (meta.type === 'total') {
         data.cell.styles.fontStyle = 'bold';
-        data.cell.styles.textColor = 255;
-        data.cell.styles.fillColor = ACCENT_COLOR;
+        data.cell.styles.textColor = textRgb;
+        data.cell.styles.fillColor = accentRgb;
         if (data.column.index === 1) {
           data.cell.styles.halign = 'left';
         }
       } else if (meta.type === 'equiv') {
         data.cell.styles.fontStyle = 'bold';
-        data.cell.styles.textColor = 255;
-        data.cell.styles.fillColor = ACCENT_COLOR;
+        data.cell.styles.textColor = textRgb;
+        data.cell.styles.fillColor = accentRgb;
       } else {
         data.cell.styles.textColor = 90;
         if (data.column.index === 1) {
