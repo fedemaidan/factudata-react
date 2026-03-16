@@ -64,6 +64,7 @@ const profileService = {
           id: doc.id,
           ...doc.data(),
         };
+        console.log(profile)
         profiles.push(profile);
       });
       return profiles;
@@ -119,7 +120,7 @@ const profileService = {
         firstName: profile.firstName,
         lastName: profile.lastName,
         email: profile.email,
-        phone: profile.phone,
+        phone: (profile.phone || '').replace(/[^\d]/g, ''),
         empresa: empresaDocRef,
         proyectos: proyectosRefs,
         created_at: serverTimestamp(),

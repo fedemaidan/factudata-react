@@ -325,7 +325,7 @@ export const UsuariosDetails = ({ empresa }) => {
       return;
     }
         if (editingUsuario) {
-          const updatedUsuario = { ...values };
+          const updatedUsuario = { ...values, phone: phoneNorm };
           const updatedUsuarios = usuarios.map((user) =>
             user.id === editingUsuario.id ? { ...user, ...updatedUsuario, proyectosData: values.proyectos.map(projId => proyectos.find(p => p.id === projId)) } : user
           );
@@ -339,7 +339,7 @@ export const UsuariosDetails = ({ empresa }) => {
         } else {
           const newUsuario = {
             email: values.email.trim(),
-            phone: phoneTrim,                 
+            phone: phoneNorm,                 
             firstName: values.firstName,
             lastName: values.lastName,
             proyectos: values.proyectos,

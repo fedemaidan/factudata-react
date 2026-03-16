@@ -79,7 +79,7 @@ export const AdminBasico = ({ empresa }) => {
         email: values.email,
         firstName: values.nombre,
         lastName: values.apellido,
-        phone: values.telefono,
+        phone: (values.telefono || '').replace(/[^\d]/g, ''),
         permisosOcultos,
         proyectos: proyectosIds,
         acciones: values.permisosAsignados
