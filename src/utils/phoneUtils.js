@@ -148,8 +148,9 @@ export const getWhatsAppLink = (phone, message = '') => {
  * @returns {string} - URL tel:
  */
 export const getTelLink = (phone) => {
-    const cleaned = cleanPhone(phone);
-    return cleaned ? `tel:${cleaned}` : '';
+    const normalized = normalizeToE164(phone);
+    const cleaned = cleanPhone(normalized);
+    return cleaned ? `tel:+${cleaned}` : '';
 };
 
 export default {

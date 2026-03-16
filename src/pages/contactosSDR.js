@@ -775,7 +775,7 @@ const ContactosSDRPage = () => {
     const handleLlamarDirecto = (e, contacto) => {
         e.stopPropagation();
         const tel = contacto.telefono?.replace(/\D/g, '');
-        window.location.href = `tel:${tel}`;
+        window.location.href = `tel:+${tel}`;
     };
     
     // WhatsApp directo
