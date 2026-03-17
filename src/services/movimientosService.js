@@ -158,8 +158,7 @@ const movimientosService = {
   reemplazarImagen: async (movimientoId, archivo) => {
     try {
       const formData = new FormData();
-      formData.append('nuevoArchivo', archivo);  // El archivo seleccionado por el usuario
-      console.log(archivo)
+      formData.append('nuevoArchivo', archivo);
       const response = await api.put(`/reemplazar-imagen/${movimientoId}`, formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
@@ -167,7 +166,6 @@ const movimientosService = {
       });
 
       if (response.status === 200) {
-        console.log('Imagen reemplazada con éxito');
         return response.data;
       } else {
         console.error('Error al reemplazar la imagen');
