@@ -1429,6 +1429,7 @@ export const UsuariosDetails = ({ empresa }) => {
                 <MenuItem value="">No Definido</MenuItem>
                 <MenuItem value="siempre_borrador">Siempre borrador (validar en panel)</MenuItem>
                 <MenuItem value="siempre_confirmar">Siempre confirmar (flujo actual)</MenuItem>
+                <MenuItem value="doble_verificacion">Doble verificación (validar en bot + panel)</MenuItem>
               </Select>
             </FormControl>
 
@@ -1647,6 +1648,7 @@ Probá ahora, te espero acá 👇`}
                 <MenuItem value="">-- No cambiar --</MenuItem>
                 <MenuItem value="siempre_borrador">Siempre borrador (validar en panel)</MenuItem>
                 <MenuItem value="siempre_confirmar">Siempre confirmar (flujo actual)</MenuItem>
+                <MenuItem value="doble_verificacion">Doble verificación (validar en bot + panel)</MenuItem>
               </Select>
             </FormControl>
 
