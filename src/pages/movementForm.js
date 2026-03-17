@@ -537,6 +537,7 @@ const createdAtStr = (() => {
       caja_chica: false,
       medio_pago: '',
       observacion: '',
+      detalle: '',
       impuestos: [],
       empresa_facturacion: '',
       fecha_pago: '',
@@ -1083,7 +1084,7 @@ const createdAtStr = (() => {
                         impuestos: false, numero_factura: false, subtotal: false,
                         cuenta_interna: false, etapa: false, empresa_facturacion: false,
                         fecha_pago: false, obra: false, cliente: false, factura_cliente: false,
-                        dolar_referencia: false,
+                        dolar_referencia: false, detalle: false,
                       };
                       const ingresoDefaults = {
                         observacion: true, medio_pago: false, categoria: false,
@@ -1121,6 +1122,8 @@ const createdAtStr = (() => {
                         { key: 'caja_chica',       label: 'Caja Chica', configKey: 'caja_chica', format: yesNo },
                         { key: 'cuenta_interna',   label: 'Cuenta Interna', configKey: 'cuenta_interna' },
                         { key: 'etapa',            label: 'Etapa', configKey: 'etapa' },
+                        { key: 'observacion',     label: 'Observación', configKey: 'observacion' },
+                        { key: 'detalle',         label: 'Detalle', configKey: 'detalle' },
                         { key: 'obra',    label: 'Obra', configKey: 'obra' },
                         { key: 'cliente', label: 'Cliente', configKey: 'cliente' },
                         { key: 'tags_extra',       label: 'Tags', configKey: 'tags_extra',

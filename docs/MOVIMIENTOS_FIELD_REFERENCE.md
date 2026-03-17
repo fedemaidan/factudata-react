@@ -35,6 +35,7 @@
 | `fecha_factura` | Timestamp | Firestore Timestamp | Fecha principal para ordenar/filtrar |
 | `fecha` | Timestamp | Firestore Timestamp | Fecha alternativa (legacy) |
 | `observacion` | String | `'Hierro 12mm'` | ⚠️ No `notas` ni `observaciones` |
+| `detalle` | String | `'Descripción adicional'` | Campo opcional, controlado por `comprobante_info.detalle` |
 | `empresa_id` | String | `'emp_456'` | ID de la empresa |
 | `moneda` | `'ARS'` \| `'USD'` | | Moneda nativa del movimiento |
 

@@ -65,6 +65,7 @@ const COLS = {
   medioPago: 150,
   proveedor: 220,
   observacion: 160,
+  detalle: 160,
   usuario: 140,
   tc: 120,
   usd: 160,
@@ -448,6 +449,7 @@ const handleSaveCols = async () => {
     obra: false,        // <-- NUEVO
     cliente: false,     // <-- NUEVO
     observacion: true,
+    detalle: !!empresa?.comprobante_info?.detalle,
     usuario: false,     // desactivada por defecto (igual que todosProyectos)
     tc: false,
     usd: true,
@@ -483,6 +485,7 @@ const applyPreset = (preset) => {
       empresaFacturacion: !!empresa?.comprobante_info?.empresa_facturacion,
       facturaCliente: !!empresa?.comprobante_info?.factura_cliente,
       observacion: false,
+      detalle: !!empresa?.comprobante_info?.detalle,
     });
   }
   if (preset === 'operativo') {
@@ -495,6 +498,7 @@ const applyPreset = (preset) => {
       obra: true,
       cliente: true,
       observacion: true,
+      detalle: !!empresa?.comprobante_info?.detalle,
       medioPago: !!empresa?.comprobante_info?.medio_pago,
       estado: !!empresa?.con_estados,
     });
@@ -519,6 +523,7 @@ const applyPreset = (preset) => {
       usd: true,
       mep: true,
       fechaPago: !!empresa?.comprobante_info?.fecha_pago,
+      detalle: !!empresa?.comprobante_info?.detalle,
     });
   }
   if (preset === 'reset') {
@@ -1885,6 +1890,9 @@ useEffect(() => {
     <FormControlLabel control={<Checkbox size="small" checked={visibleCols.obra} onChange={() => toggleCol('obra')} />} label="Obra" />
     <FormControlLabel control={<Checkbox size="small" checked={visibleCols.cliente} onChange={() => toggleCol('cliente')} />} label="Cliente" />
     <FormControlLabel control={<Checkbox size="small" checked={visibleCols.observacion}  onChange={() => toggleCol('observacion')} />}  label="Observación" />
+    {empresa?.comprobante_info?.detalle && (
+      <FormControlLabel control={<Checkbox size="small" checked={visibleCols.detalle} onChange={() => toggleCol('detalle')} />} label="Detalle" />
+    )}
     <FormControlLabel control={<Checkbox size="small" checked={visibleCols.usuario}      onChange={() => toggleCol('usuario')} />}      label="Usuario" />
     <FormControlLabel control={<Checkbox size="small" checked={visibleCols.tc}           onChange={() => toggleCol('tc')} />}           label="TC ejecutado" />
     <FormControlLabel control={<Checkbox size="small" checked={visibleCols.usd}          onChange={() => toggleCol('usd')} />}          label="USD blue" />
@@ -2461,6 +2469,9 @@ useEffect(() => {
             )}
             {detalleMov.observacion && (
               <ListItem><ListItemText primary="Observación" secondary={detalleMov.observacion} primaryTypographyProps={{ variant: 'caption' }} secondaryTypographyProps={{ variant: 'body2' }} /></ListItem>
+            )}
+            {empresa?.comprobante_info?.detalle && detalleMov.detalle && (
+              <ListItem><ListItemText primary="Detalle" secondary={detalleMov.detalle} primaryTypographyProps={{ variant: 'caption' }} secondaryTypographyProps={{ variant: 'body2' }} /></ListItem>
             )}
           </List>
           <Divider sx={{ my: 1 }} />

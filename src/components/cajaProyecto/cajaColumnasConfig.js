@@ -17,6 +17,7 @@ export const CAJA_COL_DEFAULT_ORDER = [
   'obra',
   'cliente',
   'observacion',
+  'detalle',
   'tc',
   'usd',
   'mep',
@@ -46,6 +47,7 @@ const LABELS = {
   obra: 'Obra',
   cliente: 'Cliente',
   observacion: 'Observación',
+  detalle: 'Detalle',
   usuario: 'Usuario',
   tc: 'TC ejecutado',
   usd: 'USD blue',
@@ -90,6 +92,9 @@ export function getCajaColumnasConfig(visibleCols, compactCols, empresa, options
   if (visibleCols?.obra) result.push(['obra', LABELS.obra]);
   if (visibleCols?.cliente) result.push(['cliente', LABELS.cliente]);
   if (visibleCols?.observacion) result.push(['observacion', LABELS.observacion]);
+  if (empresa?.comprobante_info?.detalle && visibleCols?.detalle) {
+    result.push(['detalle', LABELS.detalle]);
+  }
   if (visibleCols?.usuario) result.push(['usuario', LABELS.usuario]);
   if (visibleCols?.tc) result.push(['tc', LABELS.tc]);
   if (visibleCols?.usd) result.push(['usd', LABELS.usd]);
@@ -144,6 +149,7 @@ export function getHeaderLabel(key, compactCols) {
     obra: 'OBRA',
     cliente: 'CLIENTE',
     observacion: 'OBSERVACIÓN',
+    detalle: 'DETALLE',
     usuario: 'USUARIO',
     tc: 'TC EJECUTADO',
     usd: 'USD BLUE',
@@ -183,6 +189,7 @@ export function getHeaderCellSx(key, COLS, cellBase) {
     obra: { minWidth: COLS.obra },
     cliente: { minWidth: COLS.cliente },
     observacion: { minWidth: COLS.observacion },
+    detalle: { minWidth: COLS.detalle },
     usuario: { minWidth: COLS.usuario },
     tc: { minWidth: COLS.tc },
     usd: { minWidth: COLS.usd },

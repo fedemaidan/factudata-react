@@ -26,6 +26,7 @@ export const DEFINICION_CAMPOS = [
   { section: 'impuestos', name: 'impuestos', label: 'Impuestos', type: 'impuestos', visibleIf: (info) => info.impuestos },
   { section: 'extras', name: 'tags_extra', label: 'Tags Extra', type: 'tags', optionsKey: 'tagsExtra', visibleIf: (info) => info.tags_extra },
   { section: 'basicos', name: 'observacion', label: 'Observacion', type: 'textarea', visibleIf: (info) => info.observacion },
+  { section: 'basicos', name: 'detalle', label: 'Detalle', type: 'textarea', visibleIf: (info) => info.detalle },
 ];
 
 export const COMPROBANTE_INFO_DEFAULT = {
@@ -50,6 +51,7 @@ export const COMPROBANTE_INFO_DEFAULT = {
   cliente: false,
   factura_cliente: false,
   dolar_referencia: false,
+  detalle: false,
 };
 
 export const INGRESO_INFO_DEFAULT = {
