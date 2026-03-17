@@ -153,8 +153,8 @@ const MovementFormPage = () => {
   const isEditMode = Boolean(movimientoId);
 
   const [isInitialLoading, setIsInitialLoading] = useState(true);
-  const [isExtractingData, setIsExtractingData] = useState(false);
   const [movimiento, setMovimiento] = useState(null);
+  const [isExtractingData, setIsExtractingData] = useState(false);
   const [categorias, setCategorias] = useState([]);
   const [proveedores, setProveedores] = useState([]);
   const [comprobante_info, setComprobanteInfo] = useState([]);
@@ -179,16 +179,20 @@ const MovementFormPage = () => {
   const [isWide, setIsWide] = useState(false);
   const [fullOpen, setFullOpen] = useState(false);
 
+  // En edit mode, priorizar datos del movimiento sobre query params
+  const effectiveProyectoId = (isEditMode && movimiento?.proyecto_id) || proyectoId || null;
+  const effectiveProyectoName = (isEditMode && movimiento?.proyecto) || proyectoName || null;
+
   // Setear breadcrumbs
   useEffect(() => {
     const titulo = isEditMode ? `Editar (${movimiento?.codigo_operacion || ''})` : 'Nuevo Movimiento';
     setBreadcrumbs([
       { label: 'Inicio', href: '/', icon: <HomeIcon fontSize="small" /> },
-      { label: proyectoName || 'Proyecto', href: proyectoId ? `/cajaProyecto?proyectoId=${proyectoId}` : '/proyectos', icon: <FolderIcon fontSize="small" /> },
+      { label: effectiveProyectoName || 'Proyecto', href: effectiveProyectoId ? `/cajaProyecto?proyectoId=${effectiveProyectoId}` : '/proyectos', icon: <FolderIcon fontSize="small" /> },
       { label: titulo, icon: <ReceiptIcon fontSize="small" /> }
     ]);
     return () => setBreadcrumbs([]);
-  }, [isEditMode, movimiento?.codigo_operacion, proyectoId, proyectoName, setBreadcrumbs]);
+  }, [isEditMode, movimiento?.codigo_operacion, effectiveProyectoId, effectiveProyectoName, setBreadcrumbs]);
   const [tab, setTab] = useState(0);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [pendingPayload, setPendingPayload] = useState(null);
@@ -449,8 +453,8 @@ const MovementFormPage = () => {
           categorias,
           medios_pago: empresa.medios_pago?.length ? empresa.medios_pago : mediosPago,
           medio_pago_default: 'Efectivo',
-          proyecto_id: proyectoId,
-          proyecto_nombre: proyectoName
+          proyecto_id: effectiveProyectoId,
+          proyecto_nombre: effectiveProyectoName
         }
       );
       formik.setValues({ ...formik.values, ...result });
@@ -518,8 +522,8 @@ const createdAtStr = (() => {
         ...values,
         fecha_factura: dateToTimestamp(values.fecha_factura),
         fecha_pago: values.fecha_pago ? dateToTimestamp(values.fecha_pago) : null,
-        proyecto: proyectoName,
-        proyecto_id: proyectoId,
+        proyecto: effectiveProyectoName,
+        proyecto_id: effectiveProyectoId,
         tags_extra: values.tags_extra || [],
         url_imagen: movimiento?.url_imagen ?? values.url_imagen,
         impuestos: values.impuestos || [],
@@ -618,7 +622,7 @@ const createdAtStr = (() => {
 
   const handleOpenEgresoConCajaPagadora = () => {
     console.log('Debug - Estado para pago entre cajas:', {
-      proyectoId,
+      proyectoId: effectiveProyectoId,
       total: formik.values.total,
       type: formik.values.type,
       proyectosLength: proyectos.length,
@@ -639,7 +643,7 @@ const createdAtStr = (() => {
     });
     // Opcional: redirigir o refrescar datos
     setTimeout(() => {
-      router.push(lastPageUrl || `/cajaProyecto?proyectoId=${proyectoId}`);
+      router.push(lastPageUrl || `/cajaProyecto?proyectoId=${effectiveProyectoId}`);
     }, 1500);
   };
 
@@ -682,7 +686,7 @@ const createdAtStr = (() => {
             <Box>
               <Typography variant="h5" sx={{ mb: 0.5 }}>{titulo}</Typography>
               <Stack direction="row" spacing={1} flexWrap="wrap" alignItems="center">
-                {proyectoName && <Chip size="small" label={`${proyectoName}`} />}
+                {effectiveProyectoName && <Chip size="small" label={`${effectiveProyectoName}`} />}
                 {formik.values?.fecha_factura && <Chip size="small" label={`${formik.values.fecha_factura}`} />}
                 {formik.values.type && <Chip size="small" color={formik.values?.type === 'ingreso' ? 'success' : 'error'} label={`${formik.values.type.toUpperCase()}`} />}
                 {formik.values.caja_chica && <Chip size="small" color="info" label='Caja chica'/>}
@@ -759,7 +763,7 @@ const createdAtStr = (() => {
               >
                 <MenuItem 
                   onClick={() => handleAccionesMenuItemClick('transferencia')}
-                  disabled={!proyectoId}
+                  disabled={!effectiveProyectoId}
                 >
                   <ListItemIcon>
                     <SwapHorizIcon fontSize="small" />
@@ -770,7 +774,7 @@ const createdAtStr = (() => {
                 {!isEditMode && (
                   <MenuItem 
                     onClick={() => handleAccionesMenuItemClick('pagoOtraCaja')}
-                    disabled={!proyectoId || !formik.values.total || proyectos.length <= 1 || formik.values.type !== 'egreso'}
+                    disabled={!effectiveProyectoId || !formik.values.total || proyectos.length <= 1 || formik.values.type !== 'egreso'}
                   >
                     <ListItemIcon>
                       <AccountBalanceWalletIcon fontSize="small" />
@@ -778,7 +782,7 @@ const createdAtStr = (() => {
                     <ListItemText 
                       primary="Pagar desde otra caja" 
                       secondary={
-                        !proyectoId ? "Falta proyecto" :
+                        !effectiveProyectoId ? "Falta proyecto" :
                         !formik.values.total ? "Falta total" :
                         proyectos.length <= 1 ? "Faltan proyectos" :
                         formik.values.type !== 'egreso' ? "Solo para egresos" : null
@@ -1162,7 +1166,7 @@ const createdAtStr = (() => {
                         <>
                           <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap">
                             <Typography variant="body2" sx={{ fontWeight: 700, minWidth: 130 }}>Proyecto:</Typography>
-                            <Typography variant="body2">{proyectoName || '-'}</Typography>
+                            <Typography variant="body2">{effectiveProyectoName || '-'}</Typography>
                           </Stack>
                           {rows}
                           {impuestosRow}
@@ -1267,14 +1271,14 @@ const createdAtStr = (() => {
               });
               // Redirigir a la lista o mostrar éxito
               setTimeout(() => {
-                router.push(lastPageUrl || `/cajaProyecto?proyectoId=${proyectoId}`);
+                router.push(lastPageUrl || `/cajaProyecto?proyectoId=${effectiveProyectoId}`);
               }, 1500);
             }
           }}
           datosBase={{
             ...formik.values,
-            proyecto_id: proyectoId,
-            proyecto_nombre: proyectoName
+            proyecto_id: effectiveProyectoId,
+            proyecto_nombre: effectiveProyectoName
           }}
           proyectos={proyectos}
           onSuccess={(data) => {
@@ -1288,7 +1292,7 @@ const createdAtStr = (() => {
           onClose={handleCloseTransferencia}
           proyectos={proyectos}
           onSuccess={handleTransferenciaSuccess}
-          defaultProyectoEmisor={proyectoId && proyectoName ? { id: proyectoId, nombre: proyectoName } : null}
+          defaultProyectoEmisor={effectiveProyectoId && effectiveProyectoName ? { id: effectiveProyectoId, nombre: effectiveProyectoName } : null}
           userPhone={user?.phone}
           mediosPago={empresa?.medios_pago || []}
           showMedioPago={!!empresa?.comprobante_info?.medio_pago}
@@ -1300,8 +1304,8 @@ const createdAtStr = (() => {
           onClose={handleCloseEgresoConCajaPagadora}
           datosEgreso={{
             ...formik.values,
-            proyecto_id: proyectoId,
-            proyecto_nombre: proyectoName,
+            proyecto_id: effectiveProyectoId,
+            proyecto_nombre: effectiveProyectoName,
             user_phone: user?.phone,
             empresa_id: empresa?.id
           }}
