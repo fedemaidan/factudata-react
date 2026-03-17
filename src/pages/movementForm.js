@@ -6,7 +6,7 @@ import {
   Tooltip, Menu, ListItemIcon, ListItemText
 } from '@mui/material';
 import { useRouter } from 'next/router';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useFormik } from 'formik';
 import * as Yup from 'yup';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
@@ -174,6 +174,8 @@ const MovementFormPage = () => {
   const [accionesMenuAnchor, setAccionesMenuAnchor] = useState(null);
   const [mediosPago, setMediosPago] = useState(['Efectivo', 'Transferencia', 'Tarjeta', 'Mercado Pago', 'Cheque']);
   const [urlTemporal, setUrlTemporal] = useState(null);
+  const [previewUrl, setPreviewUrl] = useState(null);
+  const fileInputRef = useRef(null);
   const [createdUser, setCreatedUser] = useState(null);
   const [viewerHeightVh, setViewerHeightVh] = useState(70);
   const [isWide, setIsWide] = useState(false);
@@ -209,8 +211,30 @@ const MovementFormPage = () => {
 
   const savePayload = async (payload) => {
     try {
+      const payloadProyectoId = payload?.proyecto_id ?? formik.values?.proyecto_id ??
+        (isEditMode ? movimiento?.proyecto_id : null);
+      console.log('savePayload start', {
+        isEditMode,
+        movimientoProyectoId: movimiento?.proyecto_id,
+        payloadProyectoId,
+        payloadKeys: Object.keys(payload || {})
+      });
       const nombreUsuario =
         [user?.firstName, user?.lastName].filter(Boolean).join(' ') || user?.email || null;
+      if (isEditMode && nuevoArchivo) {
+        const replaceRes = await movimientosService.reemplazarImagen(movimientoId, nuevoArchivo);
+        const replaceData = replaceRes?.data ?? replaceRes;
+        if (!replaceData?.success || !replaceData?.url) {
+          throw new Error('No se pudo reemplazar el comprobante');
+        }
+        payload.url_imagen = replaceData.url;
+        if (replaceData?.googleDriveId) {
+          payload.googleDriveId = replaceData.googleDriveId;
+        }
+        setNuevoArchivo(null);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+      }
+
       const result = isEditMode
         ? await movimientosService.updateMovimiento(movimientoId, { ...movimiento, ...payload }, nombreUsuario)
         : await movimientosService.addMovimiento({ ...payload, user_phone: user.phone });
@@ -250,7 +274,25 @@ const MovementFormPage = () => {
   const decreaseHeight = () => setViewerHeightVh(h => Math.max(40, h - 10));
   const toggleWide = () => setIsWide(w => !w);
   const handleCloseAlert = () => setAlert({ ...alert, open: false });
-  const hasComprobante = Boolean(movimiento?.url_imagen || urlTemporal);
+  const handleFileInputClick = (event) => {
+    event.target.value = '';
+  };
+  const handleFileChange = (event) => {
+    const file = event.target.files?.[0] || null;
+    setNuevoArchivo(file);
+  };
+  const hasComprobante = Boolean(movimiento?.url_imagen || urlTemporal || previewUrl);
+
+  // Vista previa al seleccionar archivo (antes de subir)
+  useEffect(() => {
+    if (!nuevoArchivo) {
+      setPreviewUrl(null);
+      return;
+    }
+    const url = URL.createObjectURL(nuevoArchivo);
+    setPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [nuevoArchivo]);
 
   // Función para cargar todos los datos iniciales
   const loadInitialData = async (attempt = 1) => {
@@ -415,23 +457,17 @@ const MovementFormPage = () => {
   };
 
   const handleUploadImage = async () => {
-    if (!nuevoArchivo) return;
+    if (!nuevoArchivo || isEditMode) return;
     setIsReemplazandoImagen(true);
     try {
-      if (isEditMode && movimiento?.url_imagen) {
-        const res = await movimientosService.reemplazarImagen(movimientoId, nuevoArchivo);
-        // El backend devuelve { message, data: { url: ... } }
-        const nuevaUrl = res?.data?.url || res?.url || movimiento.url_imagen;
-        const separator = nuevaUrl.includes('?') ? '&' : '?';
-        setMovimiento(m => ({ ...m, url_imagen: `${nuevaUrl}${separator}t=${Date.now()}` }));
-      } else {
-        const res = await movimientosService.subirImagenTemporal(nuevoArchivo);
-        const nuevaUrl = res?.url_imagen || res?.url;
-        const separator = nuevaUrl.includes('?') ? '&' : '?';
-        const urlFinal = `${nuevaUrl}${separator}t=${Date.now()}`;
-        setMovimiento(m => ({ ...m, url_imagen: urlFinal }));
-        setUrlTemporal(urlFinal);
-      }
+      const res = await movimientosService.subirImagenTemporal(nuevoArchivo);
+      const nuevaUrl = res?.url_imagen || res?.url;
+      const separator = nuevaUrl.includes('?') ? '&' : '?';
+      const urlFinal = `${nuevaUrl}${separator}t=${Date.now()}`;
+      setMovimiento(m => ({ ...m, url_imagen: urlFinal }));
+      setUrlTemporal(urlFinal);
+      setNuevoArchivo(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
       setAlert({ open: true, message: 'Imagen cargada con éxito!', severity: 'success' });
     } catch (e) {
       setAlert({ open: true, message: 'Error al cargar imagen.', severity: 'error' });
@@ -524,6 +560,7 @@ const createdAtStr = (() => {
         fecha_pago: values.fecha_pago ? dateToTimestamp(values.fecha_pago) : null,
         proyecto: effectiveProyectoName,
         proyecto_id: effectiveProyectoId,
+        proyecto_nombre: effectiveProyectoName,
         tags_extra: values.tags_extra || [],
         url_imagen: movimiento?.url_imagen ?? values.url_imagen,
         impuestos: values.impuestos || [],
@@ -965,37 +1002,49 @@ const createdAtStr = (() => {
                       <Stack direction="row" spacing={1}>
                         <Button size="small" variant="outlined" startIcon={<RemoveIcon />} onClick={decreaseHeight}>Alto</Button>
                         <Button size="small" variant="outlined" startIcon={<AddIcon />} onClick={increaseHeight}>Alto</Button>
-                        <Button size="small" variant="contained" startIcon={<OpenInFullIcon />} onClick={() => setFullOpen(true)} disabled={!movimiento?.url_imagen && !urlTemporal}>Full</Button>
-                        <Button variant="outlined" size="small" onClick={handleExtraerDatos} disabled={isExtractingData || (!movimiento?.url_imagen && !urlTemporal)}>
+                        <Button size="small" variant="contained" startIcon={<OpenInFullIcon />} onClick={() => setFullOpen(true)} disabled={!hasComprobante}>Full</Button>
+                        <Button variant="outlined" size="small" onClick={handleExtraerDatos} disabled={isExtractingData || !hasComprobante}>
                           {isExtractingData ? <CircularProgress size={18} /> : 'Extraer datos'}
                         </Button>
                       </Stack>
                     </Stack>
 
-                    <input accept="image/*,application/pdf" type="file" onChange={(e) => setNuevoArchivo(e.target.files[0])} />
-                    <Button variant="contained" onClick={handleUploadImage} disabled={!nuevoArchivo || isReemplazandoImagen} sx={{ mt: 2 }}>
-                      {isReemplazandoImagen ? <CircularProgress size={22} /> : 'Subir comprobante'}
-                    </Button>
+                    <input
+                      ref={fileInputRef}
+                      accept="image/*,application/pdf"
+                      type="file"
+                      onClick={handleFileInputClick}
+                      onChange={handleFileChange}
+                    />
+                    {!isEditMode && (
+                      <Button variant="contained" onClick={handleUploadImage} disabled={!nuevoArchivo || isReemplazandoImagen} sx={{ mt: 2 }}>
+                        {isReemplazandoImagen ? <CircularProgress size={22} /> : 'Subir comprobante'}
+                      </Button>
+                    )}
 
-                    {(movimiento?.url_imagen || urlTemporal) && (
+                    {(movimiento?.url_imagen || urlTemporal || previewUrl) && (
                       <Box mt={2}>
-                        {String(movimiento?.url_imagen || urlTemporal).includes('.pdf') ? (
-                          <Box 
-                            sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, overflow: 'hidden', height: `${viewerHeightVh}vh` }} 
-                            onDoubleClick={() => setFullOpen(true)}
-                          >
-                            <embed src={movimiento?.url_imagen || urlTemporal} width="100%" height="100%"/>
-                          </Box>
-                        ) : (
-                          <Box
-                            sx={{
-                              width: '100%', height: `${viewerHeightVh}vh`, borderRadius: 1, border: '1px solid', borderColor: 'divider',
-                              backgroundImage: `url('${movimiento?.url_imagen || urlTemporal}')`,
-                              backgroundSize: 'contain', backgroundRepeat: 'no-repeat', backgroundPosition: 'center', cursor: 'zoom-in'
-                            }}
-                            onDoubleClick={() => setFullOpen(true)}
-                          />
-                        )}
+                        {(() => {
+                          const src = previewUrl || movimiento?.url_imagen || urlTemporal;
+                          const isPdf = String(src).includes('.pdf') || (nuevoArchivo?.type === 'application/pdf');
+                          return isPdf ? (
+                            <Box
+                              key={src}
+                              sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, overflow: 'hidden', height: `${viewerHeightVh}vh` }}
+                              onDoubleClick={() => setFullOpen(true)}
+                            >
+                              <embed src={src} width="100%" height="100%" />
+                            </Box>
+                          ) : (
+                            <Box
+                              key={src}
+                              sx={{ width: '100%', height: `${viewerHeightVh}vh`, borderRadius: 1, border: '1px solid', borderColor: 'divider', overflow: 'hidden', cursor: 'zoom-in' }}
+                              onDoubleClick={() => setFullOpen(true)}
+                            >
+                              <img src={src} alt="Comprobante" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                            </Box>
+                          );
+                        })()}
                       </Box>
                     )}
                   </Box>
@@ -1208,13 +1257,17 @@ const createdAtStr = (() => {
               <CloseIcon sx={{ color: 'white' }} />
             </IconButton>
           </Box>
-          {(movimiento?.url_imagen || urlTemporal) && (
+          {(movimiento?.url_imagen || urlTemporal || previewUrl) && (
             <Box sx={{ width: '100vw', height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', p: { xs: 1, md: 3 } }}>
-              {String(movimiento?.url_imagen || urlTemporal).includes('.pdf') ? (
-                <embed src={movimiento?.url_imagen || urlTemporal} width="100%" height="100%" style={{ border: 0 }} />
-              ) : (
-                <img src={movimiento?.url_imagen || urlTemporal} alt="Comprobante" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
-              )}
+              {(() => {
+                const src = previewUrl || movimiento?.url_imagen || urlTemporal;
+                const isPdf = String(src).includes('.pdf') || nuevoArchivo?.type === 'application/pdf';
+                return isPdf ? (
+                  <embed src={src} width="100%" height="100%" style={{ border: 0 }} />
+                ) : (
+                  <img src={src} alt="Comprobante" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+                );
+              })()}
             </Box>
           )}
         </Dialog>
