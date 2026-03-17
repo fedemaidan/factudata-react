@@ -37,6 +37,7 @@ import Link from '@mui/material/Link';
 import Tooltip from '@mui/material/Tooltip';
 import { green } from '@mui/material/colors';
 import templateService from 'src/services/templateService';
+import botService from 'src/services/botService';
 
 const normalizePhone = (phone) => (phone || '').toString().replace(/[^\d]/g, '');
 
@@ -60,6 +61,32 @@ function reemplazarUndefined(obj) {
   return obj;
 }
 
+function renderBotStateEntries(state) {
+  if (!state) return null;
+
+  return Object.entries(state)
+    .filter(([key]) => key !== '_id' && key !== 'from')
+    .map(([key, value]) => {
+      const serializedValue = typeof value === 'object'
+        ? JSON.stringify(value)
+        : String(value);
+      const displayValue = serializedValue.length > 40
+        ? `${serializedValue.slice(0, 40)}...`
+        : serializedValue;
+
+      return (
+        <Tooltip key={key} title={`${key}: ${serializedValue}`}>
+          <Chip
+            label={`${key}: ${displayValue}`}
+            size="small"
+            variant="outlined"
+            sx={{ maxWidth: 260 }}
+          />
+        </Tooltip>
+      );
+    });
+}
+
 
 export const UsuariosDetails = ({ empresa }) => {
   const theme = useTheme();
@@ -72,7 +99,10 @@ export const UsuariosDetails = ({ empresa }) => {
   const [editingUsuario, setEditingUsuario] = useState(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmTitle, setConfirmTitle] = useState('Confirmación');
   const [confirmMessage, setConfirmMessage] = useState('');
+  const [confirmButtonText, setConfirmButtonText] = useState('Confirmar');
+  const [confirmDetails, setConfirmDetails] = useState(null);
   const [confirmAction, setConfirmAction] = useState(null);
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
@@ -303,37 +333,45 @@ export const UsuariosDetails = ({ empresa }) => {
       setIsLoading(true);
       values = reemplazarUndefined(values);
       let existeDuplicado;
+      let resetFlowPhone = '';
+      let shouldPromptResetFlow = false;
       try {
         const phoneTrim = (values.phone || '').trim();
-    const phoneNorm = normalizePhone(phoneTrim);
+        const phoneNorm = normalizePhone(phoneTrim);
+        const previousPhoneNorm = editingUsuario ? normalizePhone(editingUsuario.phone) : '';
 
-    const otherProfile = await profileService.getProfileByPhone(phoneNorm);
-    existeDuplicado = otherProfile && (editingUsuario && otherProfile.id !== editingUsuario.id || !editingUsuario);
+        const otherProfile = await profileService.getProfileByPhone(phoneNorm);
+        existeDuplicado = otherProfile && (editingUsuario && otherProfile.id !== editingUsuario.id || !editingUsuario);
 
-    if (existeDuplicado) {
-      setSnackbarMessage('Ya existe un usuario con ese WhatsApp.');
-      setSnackbarSeverity('error');
-      setSnackbarOpen(true);
-      setIsLoading(false);
-      if (user?.admin) {
-        const empresa = await getEmpresaDetailsFromUser(otherProfile);
-        if (empresa?.id) {
-          setDupEmpresaLink(`https://admin.sorbydata.com/empresa/?empresaId=${empresa.id}`);
-          setDupEmpresaName(empresa?.nombre || '');
+        if (existeDuplicado) {
+          setSnackbarMessage('Ya existe un usuario con ese WhatsApp.');
+          setSnackbarSeverity('error');
+          setSnackbarOpen(true);
+          setIsLoading(false);
+          if (user?.admin) {
+            const empresa = await getEmpresaDetailsFromUser(otherProfile);
+            if (empresa?.id) {
+              setDupEmpresaLink(`https://admin.sorbydata.com/empresa/?empresaId=${empresa.id}`);
+              setDupEmpresaName(empresa?.nombre || '');
+            }
+          }
+          return;
         }
-      }
-      return;
-    }
+
         if (editingUsuario) {
           const updatedUsuario = { ...values, phone: phoneNorm };
           const updatedUsuarios = usuarios.map((user) =>
             user.id === editingUsuario.id ? { ...user, ...updatedUsuario, proyectosData: values.proyectos.map(projId => proyectos.find(p => p.id === projId)) } : user
           );
           setUsuarios(updatedUsuarios);
-          const result = await profileService.updateProfile(editingUsuario.id, updatedUsuario);
+          await profileService.updateProfile(editingUsuario.id, updatedUsuario);
           const phone = normalizePhone(editingUsuario.phone);
           if (phone) {
             try { await api.post('/cache/invalidate', { tipo: 'phone', id: phone }); } catch (e) { console.warn('Cache invalidation:', e); }
+          }
+          if (phoneNorm && phoneNorm !== previousPhoneNorm) {
+            shouldPromptResetFlow = true;
+            resetFlowPhone = phoneNorm;
           }
           setSnackbarMessage('Usuario actualizado con éxito');
         } else {
@@ -351,6 +389,10 @@ export const UsuariosDetails = ({ empresa }) => {
           };
           const createdUsuario = await profileService.createProfile(newUsuario, empresa);
           setUsuarios([...usuarios, createdUsuario]);
+          if (phoneNorm) {
+            shouldPromptResetFlow = true;
+            resetFlowPhone = phoneNorm;
+          }
           setSnackbarMessage('Usuario agregado con éxito');
         }
         setSnackbarSeverity('success');
@@ -364,6 +406,11 @@ export const UsuariosDetails = ({ empresa }) => {
         if (!existeDuplicado) {
           resetForm();
           setIsDialogOpen(false);
+          if (shouldPromptResetFlow && resetFlowPhone) {
+            window.setTimeout(() => {
+              ofrecerResetFlujo(resetFlowPhone);
+            }, 0);
+          }
         }
           
         setIsLoading(false);
@@ -400,8 +447,11 @@ export const UsuariosDetails = ({ empresa }) => {
     setIsDialogOpen(true);
   };
 
-  const confirmarEliminacion = (message, action) => {
+  const confirmarAccion = ({ title = 'Confirmación', message, confirmText = 'Confirmar', details = null, action }) => {
+    setConfirmTitle(title);
     setConfirmMessage(message);
+    setConfirmButtonText(confirmText);
+    setConfirmDetails(details);
     setConfirmAction(() => () => {
       action();
       setConfirmOpen(false);
@@ -409,22 +459,66 @@ export const UsuariosDetails = ({ empresa }) => {
     setConfirmOpen(true);
   };
 
-  const eliminarUsuario = async (id) => {
-    confirmarEliminacion(`¿Estás seguro de que deseas eliminar este usuario?`, async () => {
-      setIsLoading(true);
+  const ofrecerResetFlujo = (phone) => {
+    const openResetDialog = async () => {
       try {
-        const updatedUsuarios = usuarios.filter((user) => user.id !== id);
-        setUsuarios(updatedUsuarios);
-        await profileService.deleteProfile(id);
-        setSnackbarMessage('Usuario eliminado con éxito');
-        setSnackbarSeverity('success');
+        const states = await botService.listarUsuarios(phone);
+        const existingState = Array.isArray(states)
+          ? states.find((state) => normalizePhone(state?.from) === phone) || null
+          : null;
+
+        if (!existingState) {
+          return;
+        }
+
+        confirmarAccion({
+          title: 'Resetear flujo del bot',
+          message: `Existe un flujo activo para el teléfono ${phone}. ¿Querés resetearlo?`,
+          confirmText: 'Resetear flujo',
+          details: existingState,
+          action: async () => {
+            setIsLoading(true);
+            try {
+              await botService.resetearEstado(phone);
+              setSnackbarMessage(`Flujo reseteado correctamente para ${phone}`);
+              setSnackbarSeverity('success');
+            } catch (error) {
+              console.error('Error al resetear flujo del bot:', error);
+              setSnackbarMessage(error?.response?.data?.error || 'Error al resetear el flujo del bot');
+              setSnackbarSeverity('error');
+            } finally {
+              setSnackbarOpen(true);
+              setIsLoading(false);
+            }
+          }
+        });
       } catch (error) {
-        console.error('Error al eliminar usuario:', error);
-        setSnackbarMessage('Error al eliminar usuario');
-        setSnackbarSeverity('error');
-      } finally {
-        setSnackbarOpen(true);
-        setIsLoading(false);
+        console.error('Error al consultar flujo activo del bot:', error);
+      }
+    };
+
+    openResetDialog();
+  };
+
+  const eliminarUsuario = async (id) => {
+    confirmarAccion({
+      message: `¿Estás seguro de que deseas eliminar este usuario?`,
+      action: async () => {
+        setIsLoading(true);
+        try {
+          const updatedUsuarios = usuarios.filter((user) => user.id !== id);
+          setUsuarios(updatedUsuarios);
+          await profileService.deleteProfile(id);
+          setSnackbarMessage('Usuario eliminado con éxito');
+          setSnackbarSeverity('success');
+        } catch (error) {
+          console.error('Error al eliminar usuario:', error);
+          setSnackbarMessage('Error al eliminar usuario');
+          setSnackbarSeverity('error');
+        } finally {
+          setSnackbarOpen(true);
+          setIsLoading(false);
+        }
       }
     });
   };
@@ -615,9 +709,9 @@ export const UsuariosDetails = ({ empresa }) => {
 
   // === FUNCIONES PARA ELIMINACIÓN MASIVA ===
   const handleBulkDelete = () => {
-    confirmarEliminacion(
-      `¿Estás seguro de que deseas eliminar ${selectedUsers.length} usuario(s)?`,
-      async () => {
+    confirmarAccion({
+      message: `¿Estás seguro de que deseas eliminar ${selectedUsers.length} usuario(s)?`,
+      action: async () => {
         setIsLoading(true);
         try {
           const deletePromises = selectedUsers.map(userId => 
@@ -638,7 +732,7 @@ export const UsuariosDetails = ({ empresa }) => {
           setIsLoading(false);
         }
       }
-    );
+    });
   };
 
   // === FUNCIONES PARA ENVÍO MASIVO DE TEMPLATES ===
@@ -1445,10 +1539,21 @@ export const UsuariosDetails = ({ empresa }) => {
         </form>
       </Dialog>
 
-      <Dialog open={confirmOpen} onClose={() => setConfirmOpen(false)}>
-        <DialogTitle>Confirmación</DialogTitle>
+      <Dialog open={confirmOpen} onClose={() => setConfirmOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>{confirmTitle}</DialogTitle>
         <DialogContent>
           <Typography>{confirmMessage}</Typography>
+          {confirmDetails && (
+            <Box sx={{ mt: 2 }}>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                Estado actual detectado:
+              </Typography>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, maxHeight: 220, overflowY: 'auto' }}>
+                <Chip label={`from: ${confirmDetails.from || 'sin dato'}`} size="small" color="primary" variant="outlined" />
+                {renderBotStateEntries(confirmDetails)}
+              </Box>
+            </Box>
+          )}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setConfirmOpen(false)} color="primary">
@@ -1459,7 +1564,7 @@ export const UsuariosDetails = ({ empresa }) => {
             color="primary"
             variant="contained"
           >
-            Confirmar
+            {confirmButtonText}
           </Button>
         </DialogActions>
       </Dialog>
