@@ -363,6 +363,7 @@ const ContactoSDRDetailPage = () => {
     const [subiendoAudio, setSubiendoAudio] = useState(false);
     const [subiendoArchivo, setSubiendoArchivo] = useState(false);
     const [reanalizandoEvento, setReanalizandoEvento] = useState(null); // eventoId que se está re-analizando
+    const [retranscribiendoEvento, setRetranscribiendoEvento] = useState(null); // eventoId que se está re-transcribiendo
     const fileInputRef = useRef(null);
 
     // Documentos adjuntos
@@ -726,6 +727,23 @@ const ContactoSDRDetailPage = () => {
             mostrarSnackbar('Error al re-analizar el audio', 'error');
         } finally {
             setReanalizandoEvento(null);
+        }
+    };
+
+    const handleRetranscribirAudio = async (eventoId) => {
+        const comentario = prompt('💬 Contexto opcional para mejorar la re-transcripción y el resumen:\nEj: "Hablan de acopios y remitos", "Cliente de constructora mediana"', '');
+        if (comentario === null) return;
+
+        setRetranscribiendoEvento(eventoId);
+        try {
+            await SDRService.retranscribirAudio(eventoId, comentario.trim());
+            mostrarSnackbar('📝 Audio re-transcripto', 'success');
+            await cargarContacto();
+        } catch (err) {
+            console.error('Error re-transcribiendo:', err);
+            mostrarSnackbar(err?.response?.data?.error || 'Error al re-transcribir el audio', 'error');
+        } finally {
+            setRetranscribiendoEvento(null);
         }
     };
 
@@ -2278,6 +2296,11 @@ const ContactoSDRDetailPage = () => {
                                                                                             <DownloadIcon sx={{ fontSize: 18 }} />
                                                                                         </IconButton>
                                                                                     </Tooltip>
+                                                                                    <Tooltip title="Re-transcribir audio">
+                                                                                        <IconButton size="small" onClick={() => handleRetranscribirAudio(evento._id)} disabled={retranscribiendoEvento === evento._id} sx={{ color: 'info.main' }}>
+                                                                                            {retranscribiendoEvento === evento._id ? <CircularProgress size={18} /> : <GraphicEqIcon sx={{ fontSize: 18 }} />}
+                                                                                        </IconButton>
+                                                                                    </Tooltip>
                                                                                 </Stack>
                                                                             </Box>
                                                                         )}
@@ -3096,6 +3119,11 @@ const ContactoSDRDetailPage = () => {
                                                                                     <Tooltip title="Descargar audio">
                                                                                         <IconButton size="small" component="a" href={resolveAudioUrl(evento.audioUrl || evento.metadata?.audioUrl)} download={evento.audioNombre || evento.metadata?.audioNombre || 'audio.mp3'} sx={{ color: 'primary.main' }}>
                                                                                             <DownloadIcon sx={{ fontSize: 18 }} />
+                                                                                        </IconButton>
+                                                                                    </Tooltip>
+                                                                                    <Tooltip title="Re-transcribir audio">
+                                                                                        <IconButton size="small" onClick={() => handleRetranscribirAudio(evento._id)} disabled={retranscribiendoEvento === evento._id} sx={{ color: 'info.main' }}>
+                                                                                            {retranscribiendoEvento === evento._id ? <CircularProgress size={18} /> : <GraphicEqIcon sx={{ fontSize: 18 }} />}
                                                                                         </IconButton>
                                                                                     </Tooltip>
                                                                                 </Stack>

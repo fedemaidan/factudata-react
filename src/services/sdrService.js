@@ -3,6 +3,27 @@ import api from './axiosConfig';
 /**
  * Servicio para el módulo SDR - Gestión de Contactos
  */
+const extensionByMimeType = {
+    'audio/webm': '.webm',
+    'audio/webm;codecs=opus': '.webm',
+    'video/webm': '.webm',
+    'audio/mp4': '.m4a',
+    'audio/x-m4a': '.m4a',
+    'audio/m4a': '.m4a',
+    'audio/aac': '.aac',
+    'audio/ogg': '.ogg',
+    'audio/wav': '.wav',
+    'audio/x-wav': '.wav',
+    'audio/mpeg': '.mp3',
+    'audio/mp3': '.mp3',
+};
+
+const getAudioFileName = (audioBlob) => {
+    if (audioBlob?.name) return audioBlob.name;
+    const extension = extensionByMimeType[audioBlob?.type] || '.webm';
+    return `audio_${Date.now()}${extension}`;
+};
+
 const SDRService = {
     // ==================== CONTACTOS ====================
 
@@ -108,8 +129,7 @@ const SDRService = {
      */
     subirAudio: async (contactoId, audioBlob, opts = {}) => {
         const formData = new FormData();
-        // Si es un File (del input), usar su nombre original; si es Blob (de grabación), usar .webm
-        const fileName = audioBlob.name || `audio_${Date.now()}.webm`;
+        const fileName = getAudioFileName(audioBlob);
         formData.append('audio', audioBlob, fileName);
         formData.append('contactoId', contactoId);
         if (opts.duracion) formData.append('duracion', String(opts.duracion));
@@ -128,6 +148,14 @@ const SDRService = {
      */
     reanalizarAudio: async (eventoId, comentarioExtra = '') => {
         const res = await api.post('/sdr/acciones/audio/reanalizar', { eventoId, comentarioExtra }, { timeout: 120000 });
+        return res.data;
+    },
+
+    /**
+     * Re-transcribir un audio existente desde el archivo guardado
+     */
+    retranscribirAudio: async (eventoId, comentarioExtra = '') => {
+        const res = await api.post('/sdr/acciones/audio/retranscribir', { eventoId, comentarioExtra }, { timeout: 120000 });
         return res.data;
     },
 

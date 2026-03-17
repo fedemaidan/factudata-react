@@ -64,6 +64,9 @@ import ModalRegistrarAccion from './ModalRegistrarAccion';
 import { getWhatsAppLink, getTelLink } from '../../utils/phoneUtils';
 import { PLANES_SORBY, INTENCIONES_COMPRA, PRECALIFICACION_BOT } from '../../constant/sdrConstants';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
+import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
+import DownloadIcon from '@mui/icons-material/Download';
+import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import MiniChatViewer from './MiniChatViewer';
 import ContadoresActividad from './ContadoresActividad';
@@ -307,6 +310,8 @@ const DrawerDetalleContactoSDR = ({
     // Grabador de audio
     const grabador = useGrabadorAudio();
     const [subiendoAudio, setSubiendoAudio] = useState(false);
+    const [reanalizandoEvento, setReanalizandoEvento] = useState(null);
+    const [retranscribiendoEvento, setRetranscribiendoEvento] = useState(null);
     
     // Tab activo en vista desktop (0=Info, 1=Historial)
     const [drawerTab, setDrawerTab] = useState(0);
@@ -487,6 +492,40 @@ const DrawerDetalleContactoSDR = ({
             mostrarSnackbar?.('Error al subir el audio', 'error');
         } finally {
             setSubiendoAudio(false);
+        }
+    };
+
+    const handleReanalizarAudio = async (eventoId) => {
+        const comentario = prompt('💬 Indicación para el re-análisis (opcional):\nEj: "Enfocate en los problemas que mencionó"', '');
+        if (comentario === null) return;
+
+        setReanalizandoEvento(eventoId);
+        try {
+            await SDRService.reanalizarAudio(eventoId, comentario.trim());
+            mostrarSnackbar?.('🤖 Audio re-analizado', 'success');
+            await cargarHistorial();
+        } catch (err) {
+            console.error('Error re-analizando audio:', err);
+            mostrarSnackbar?.(err?.response?.data?.error || 'Error al re-analizar el audio', 'error');
+        } finally {
+            setReanalizandoEvento(null);
+        }
+    };
+
+    const handleRetranscribirAudio = async (eventoId) => {
+        const comentario = prompt('💬 Contexto opcional para mejorar la re-transcripción y el resumen:\nEj: "Hablan de acopios y remitos"', '');
+        if (comentario === null) return;
+
+        setRetranscribiendoEvento(eventoId);
+        try {
+            await SDRService.retranscribirAudio(eventoId, comentario.trim());
+            mostrarSnackbar?.('📝 Audio re-transcripto', 'success');
+            await cargarHistorial();
+        } catch (err) {
+            console.error('Error re-transcribiendo audio:', err);
+            mostrarSnackbar?.(err?.response?.data?.error || 'Error al re-transcribir el audio', 'error');
+        } finally {
+            setRetranscribiendoEvento(null);
         }
     };
 
@@ -1297,6 +1336,16 @@ const DrawerDetalleContactoSDR = ({
                                                                     style={{ width: '100%', height: 32 }} 
                                                                     preload="none"
                                                                 />
+                                                                <Stack direction="row" spacing={0.5} sx={{ mt: 0.5 }}>
+                                                                    <Button size="small" variant="text" onClick={() => handleRetranscribirAudio(evento._id)} disabled={retranscribiendoEvento === evento._id}>
+                                                                        {retranscribiendoEvento === evento._id ? 'Retranscribiendo...' : 'Re-transcribir'}
+                                                                    </Button>
+                                                                    {(evento.transcripcion || evento.metadata?.transcripcion) && (
+                                                                        <Button size="small" variant="text" onClick={() => handleReanalizarAudio(evento._id)} disabled={reanalizandoEvento === evento._id}>
+                                                                            {reanalizandoEvento === evento._id ? 'Analizando...' : 'Re-analizar IA'}
+                                                                        </Button>
+                                                                    )}
+                                                                </Stack>
                                                                 {(evento.transcripcion || evento.metadata?.transcripcion) && (
                                                                     <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5, fontStyle: 'italic', lineHeight: 1.3 }}>
                                                                         📝 {evento.transcripcion || evento.metadata?.transcripcion}
@@ -2119,6 +2168,16 @@ const DrawerDetalleContactoSDR = ({
                                                             style={{ width: '100%', height: 32 }} 
                                                             preload="none"
                                                         />
+                                                        <Stack direction="row" spacing={0.5} sx={{ mt: 0.5 }}>
+                                                            <Button size="small" variant="text" onClick={() => handleRetranscribirAudio(evento._id)} disabled={retranscribiendoEvento === evento._id}>
+                                                                {retranscribiendoEvento === evento._id ? 'Retranscribiendo...' : 'Re-transcribir'}
+                                                            </Button>
+                                                            {(evento.transcripcion || evento.metadata?.transcripcion) && (
+                                                                <Button size="small" variant="text" onClick={() => handleReanalizarAudio(evento._id)} disabled={reanalizandoEvento === evento._id}>
+                                                                    {reanalizandoEvento === evento._id ? 'Analizando...' : 'Re-analizar IA'}
+                                                                </Button>
+                                                            )}
+                                                        </Stack>
                                                         {(evento.transcripcion || evento.metadata?.transcripcion) && (
                                                             <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5, fontStyle: 'italic', lineHeight: 1.3 }}>
                                                                 📝 {evento.transcripcion || evento.metadata?.transcripcion}
