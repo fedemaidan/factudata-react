@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import Head from 'next/head';
-import { Box, Container, Stack, Typography, Tabs, Tab } from '@mui/material';
+import { Box, Container, Stack, Tabs, Tab } from '@mui/material';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import { useAuthContext } from 'src/contexts/auth-context';
 import { useRouter } from 'next/router';
@@ -53,12 +53,11 @@ const ConfiguracionBasicaPage = () => {
         component="main"
         sx={{
           flexGrow: 1,
-          py: { xs: 4, sm: 8 }
+          py: { xs: 1, sm: 2 }
         }}
       >
-        <Container maxWidth={false} sx={{ px: { xs: 2, sm: 6 } }}>
+        <Container maxWidth={false} sx={{ px: { xs: 1, sm: 3 } }}>
           <Stack spacing={{ xs: 2, sm: 3 }}>
-            <Typography variant="h4">Configuración Básica</Typography>
             <Tabs
               value={currentTab}
               onChange={handleTabChange}
@@ -100,7 +99,7 @@ const ConfiguracionBasicaPage = () => {
 };
 
 ConfiguracionBasicaPage.getLayout = (page) => (
-  <DashboardLayout>{page}</DashboardLayout>
+  <DashboardLayout title="Configuración Básica">{page}</DashboardLayout>
 );
 
 export default ConfiguracionBasicaPage;
