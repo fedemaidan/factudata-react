@@ -18,6 +18,8 @@ import {
   Typography,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
+import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
+import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
 import DeleteIcon from '@mui/icons-material/Delete';
 
 const sumaIncidenciasPlantilla = (rubros) =>
@@ -38,6 +40,7 @@ const PlantillaFormDialog = ({
   addTarea,
   removeTarea,
   updateTarea,
+  moveTarea,
   focusRef,
 }) => {
   const sumaIncidencias = useMemo(() => sumaIncidenciasPlantilla(form.rubros), [form.rubros]);
@@ -187,6 +190,24 @@ const PlantillaFormDialog = ({
                       }
                     }}
                   />
+                  <Tooltip title="Subir">
+                    <span>
+                      <IconButton size="small" disabled={ti === 0} onClick={() => moveTarea?.(ri, ti, -1)}>
+                        <ArrowUpwardIcon fontSize="small" />
+                      </IconButton>
+                    </span>
+                  </Tooltip>
+                  <Tooltip title="Bajar">
+                    <span>
+                      <IconButton
+                        size="small"
+                        disabled={ti === (rubro.tareas || []).length - 1}
+                        onClick={() => moveTarea?.(ri, ti, 1)}
+                      >
+                        <ArrowDownwardIcon fontSize="small" />
+                      </IconButton>
+                    </span>
+                  </Tooltip>
                   <IconButton size="small" color="error" onClick={() => removeTarea(ri, ti)}>
                     <DeleteIcon fontSize="inherit" />
                   </IconButton>

@@ -161,7 +161,7 @@ const capitalize = (str) => {
   return str.charAt(0).toUpperCase() + str.slice(1);
 };
 
-const renderRubros = (rubros = [], currency, totalNeto, costoM2Data, tieneAnexos, presupuesto) => {
+const renderRubros = (rubros = [], currency, totalNeto, costoM2Data, tieneAnexos, presupuesto, headerBg, headerText) => {
   const rows = [];
   rubros.forEach((rubro, idx) => {
     const monto = Number(rubro.monto) || 0;
@@ -195,28 +195,26 @@ const renderRubros = (rubros = [], currency, totalNeto, costoM2Data, tieneAnexos
       );
     });
   });
+  const accentStyle = { backgroundColor: headerBg, color: headerText };
   rows.push(
-    <View
-      style={[styles.tableRow, { backgroundColor: '#0a4791', color: '#fff' }]}
-      key="total-row"
-    >
+    <View style={[styles.tableRow, accentStyle]} key="total-row">
       <Text style={styles.tableCell} />
-      <Text style={[styles.tableCellDesc, { color: '#fff', textAlign: 'left' }]}>TOTAL PRESUPUESTO</Text>
-      <Text style={[styles.tableCellRight, { color: '#fff' }]}>
+      <Text style={[styles.tableCellDesc, { color: headerText, textAlign: 'left' }]}>TOTAL PRESUPUESTO</Text>
+      <Text style={[styles.tableCellRight, { color: headerText }]}>
         {formatCurrency(totalNeto, currency)}
       </Text>
-      <Text style={[styles.tableCellRight, { flex: 0.6, color: '#fff' }]}>100%</Text>
+      <Text style={[styles.tableCellRight, { flex: 0.6, color: headerText }]}>100%</Text>
     </View>
   );
 
   const equivRow = !tieneAnexos && presupuesto ? buildTotalEquivalenteRow(presupuesto, totalNeto) : null;
   if (equivRow) {
     rows.push(
-      <View style={[styles.tableRow, { backgroundColor: '#0a4791', color: '#fff' }]} key="equiv-row">
+      <View style={[styles.tableRow, accentStyle]} key="equiv-row">
         <Text style={styles.tableCellItem} />
-        <Text style={[styles.tableCellDesc, { color: '#fff' }]}>Total en {equivRow.tipo}</Text>
-        <Text style={[styles.tableCellRight, { color: '#fff' }]}>{equivRow.value}</Text>
-        <Text style={[styles.tableCellRight, { flex: 0.6, color: '#fff' }]} />
+        <Text style={[styles.tableCellDesc, { color: headerText }]}>Total en {equivRow.tipo}</Text>
+        <Text style={[styles.tableCellRight, { color: headerText }]}>{equivRow.value}</Text>
+        <Text style={[styles.tableCellRight, { flex: 0.6, color: headerText }]} />
       </View>
     );
   }
@@ -236,13 +234,17 @@ const buildSurfaceLines = (analisis, totalNeto, currency) => {
   if (!analisis) return [];
   const cubierta = Number(analisis.sup_cubierta_m2) || 0;
   const patios = Number(analisis.sup_patios_m2) || 0;
-  const coef = Number(analisis.coef_patios) >= 0 ? (Number(analisis.coef_patios) || 0.5) : 0.5;
+  const coefPatios = Number(analisis.coef_patios) >= 0 ? (Number(analisis.coef_patios) || 0.5) : 0.5;
+  const vereda = Number(analisis.sup_vereda_m2) || 0;
+  const coefVereda = Number(analisis.coef_vereda) >= 0 ? (Number(analisis.coef_vereda) || 0.25) : 0.25;
   const ponderadaOriginal = Number(analisis.sup_ponderada_m2) || 0;
-  const ponderada = ponderadaOriginal || cubierta + patios * coef;
+  const ponderada = ponderadaOriginal || cubierta + patios * coefPatios + vereda * coefVereda;
+  if (!cubierta && !patios && !vereda && !ponderada) return [];
   const promedio = ponderada > 0 ? totalNeto / ponderada : null;
   const lines = [
     `Superficie cubierta: ${cubierta ? `${Math.round(cubierta)} m²` : '—'}`,
     `Superficie patios: ${patios ? `${Math.round(patios)} m²` : '—'}`,
+    `Superficie vereda: ${vereda ? `${Math.round(vereda)} m²` : '—'}`,
     `Superficie ponderada: ${ponderada ? `${Math.round(ponderada)} m²` : '—'}`,
   ];
   if (promedio !== null && Number.isFinite(promedio)) {
@@ -306,17 +308,17 @@ const TIPO_ANEXO_LABEL = {
   modificacion: 'Modificación',
 };
 
-const renderAnexos = (anexos = [], currency) => {
+const renderAnexos = (anexos = [], currency, headerBg, headerText) => {
   if (!anexos.length) return null;
   const sorted = [...anexos].sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
   return (
     <View style={{ marginTop: 10 }} wrap>
       <Text style={styles.sectionTitle}>ANEXOS</Text>
-      <View style={[styles.tableHeader, { marginTop: 4 }]}>
-        <Text style={[styles.tableCellDesc, { flex: 1.2 }]}>Fecha</Text>
-        <Text style={[styles.tableCellDesc, { flex: 1.2 }]}>Tipo</Text>
-        <Text style={styles.tableCellDesc}>Motivo</Text>
-        <Text style={[styles.tableCellRight, { flex: 1 }]}>Impacto</Text>
+      <View style={[styles.tableHeader, { marginTop: 4, backgroundColor: headerBg, color: headerText }]}>
+        <Text style={[styles.tableCellDesc, { flex: 1.2, color: headerText }]}>Fecha</Text>
+        <Text style={[styles.tableCellDesc, { flex: 1.2, color: headerText }]}>Tipo</Text>
+        <Text style={[styles.tableCellDesc, { color: headerText }]}>Motivo</Text>
+        <Text style={[styles.tableCellRight, { flex: 1, color: headerText }]}>Impacto</Text>
       </View>
       {sorted.map((ax, i) => (
         <View style={styles.tableRow} key={i}>
@@ -336,8 +338,10 @@ const renderAnexos = (anexos = [], currency) => {
   );
 };
 
-const renderResumenContractual = (totalOriginal, impactoAnexos, totalActualizado, currency, costoM2Data, presupuesto) => {
+const renderResumenContractual = (totalOriginal, impactoAnexos, totalActualizado, currency, costoM2Data, presupuesto, headerBg, headerText) => {
   const equivRow = presupuesto ? buildTotalEquivalenteRow(presupuesto, totalActualizado) : null;
+  const accentRowStyle = { backgroundColor: headerBg, flexDirection: 'row', justifyContent: 'space-between' };
+  const accentTextStyle = { color: headerText, fontWeight: 'bold' };
   return (
     <View style={[styles.notesBox, { marginTop: 10 }]} wrap>
       <Text style={styles.sectionTitle}>RESUMEN CONTRACTUAL</Text>
@@ -349,24 +353,26 @@ const renderResumenContractual = (totalOriginal, impactoAnexos, totalActualizado
         <Text style={styles.tableCellDesc}>Impacto anexos</Text>
         <Text style={styles.tableCellRight}>{formatCurrency(impactoAnexos, currency)}</Text>
       </View>
-      <View style={[styles.tableRow, { backgroundColor: '#0a4791', flexDirection: 'row', justifyContent: 'space-between' }]}>
-        <Text style={[styles.tableCellDesc, { color: '#fff', fontWeight: 'bold' }]}>
+      <View style={[styles.tableRow, accentRowStyle]}>
+        <Text style={[styles.tableCellDesc, accentTextStyle]}>
           Total actualizado (incluye anexos)
         </Text>
-        <Text style={[styles.tableCellRight, { color: '#fff', fontWeight: 'bold' }]}>
+        <Text style={[styles.tableCellRight, accentTextStyle]}>
           {formatCurrency(totalActualizado, currency)}
         </Text>
       </View>
       {equivRow && (
-        <View style={[styles.tableRow, { backgroundColor: '#0a4791', flexDirection: 'row', justifyContent: 'space-between' }]}>
-          <Text style={[styles.tableCellDesc, { color: '#fff', fontWeight: 'bold' }]}>Total en {equivRow.tipo}</Text>
-          <Text style={[styles.tableCellRight, { color: '#fff', fontWeight: 'bold' }]}>{equivRow.value}</Text>
+        <View style={[styles.tableRow, accentRowStyle]}>
+          <Text style={[styles.tableCellDesc, accentTextStyle]}>Total en {equivRow.tipo}</Text>
+          <Text style={[styles.tableCellRight, accentTextStyle]}>{equivRow.value}</Text>
         </View>
       )}
       {costoM2Data && renderCostoM2Rows(costoM2Data)}
     </View>
   );
 };
+
+const isValidHex = (v) => v && /^#[0-9A-Fa-f]{6}$/.test(v);
 
 export const PresupuestoPdfDocument = ({ presupuesto, empresa, costoM2Data = {}, logoDataUrl = null }) => {
   const rubros = presupuesto?.rubros || [];
@@ -380,38 +386,40 @@ export const PresupuestoPdfDocument = ({ presupuesto, empresa, costoM2Data = {},
   const impactoAnexos = anexos.reduce((s, a) => s + (Number(a.monto_diferencia) || 0), 0);
   const totalActualizado = totalNeto + impactoAnexos;
   const tieneAnexos = anexos.length > 0;
+  const headerBg = isValidHex(presupuesto?.header_bg_color) ? presupuesto.header_bg_color : '#0a4791';
+  const headerText = isValidHex(presupuesto?.header_text_color) ? presupuesto.header_text_color : '#ffffff';
 
   return (
     <Document>
       <Page size="A4" style={styles.page}>
-        <View fixed style={styles.header}>
+        <View fixed style={[styles.header, { backgroundColor: headerBg }]}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
-            <Text style={styles.headerObra}>
+            <Text style={[styles.headerObra, { color: headerText }]}>
               {presupuesto?.obra_direccion || '—'}
             </Text>
-            <Text style={styles.headerFecha}>
+            <Text style={[styles.headerFecha, { color: headerText }]}>
               {formatFecha(presupuesto?.fecha || presupuesto?.createdAt)}
             </Text>
           </View>
           {logoDataUrl ? (
             <Image src={logoDataUrl} style={styles.headerLogo} />
           ) : (
-            <Text style={styles.headerNombreEmpresa}>
+            <Text style={[styles.headerNombreEmpresa, { color: headerText }]}>
               {empresa?.nombre || presupuesto?.empresa_nombre || 'Empresa'}
             </Text>
           )}
         </View>
         <View style={{ marginTop: 6 }}>
-          <View style={styles.tableHeader}>
-            <Text style={styles.tableCellItem}>Item</Text>
-            <Text style={styles.tableCellDesc}>Descripción</Text>
-            <Text style={styles.tableCellRight}>Total</Text>
-            <Text style={[styles.tableCellRight, { flex: 0.6 }]}>Inc.</Text>
+          <View style={[styles.tableHeader, { backgroundColor: headerBg, color: headerText }]}>
+            <Text style={[styles.tableCellItem, { color: headerText }]}>Item</Text>
+            <Text style={[styles.tableCellDesc, { color: headerText }]}>Descripción</Text>
+            <Text style={[styles.tableCellRight, { color: headerText }]}>Total</Text>
+            <Text style={[styles.tableCellRight, { flex: 0.6, color: headerText }]}>Inc.</Text>
           </View>
-          {renderRubros(rubros, currency, totalNeto, costoM2Data, tieneAnexos, presupuesto)}
+          {renderRubros(rubros, currency, totalNeto, costoM2Data, tieneAnexos, presupuesto, headerBg, headerText)}
         </View>
-        {tieneAnexos && renderAnexos(anexos, currency)}
-        {tieneAnexos && renderResumenContractual(totalNeto, impactoAnexos, totalActualizado, currency, costoM2Data, presupuesto)}
+        {tieneAnexos && renderAnexos(anexos, currency, headerBg, headerText)}
+        {tieneAnexos && renderResumenContractual(totalNeto, impactoAnexos, totalActualizado, currency, costoM2Data, presupuesto, headerBg, headerText)}
         {(notes || surfaceLines.length > 0) && (
           <View style={styles.notesBox} wrap>
             {notes ? (

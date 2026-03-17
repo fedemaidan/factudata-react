@@ -29,6 +29,7 @@ import { useAuth } from "src/hooks/use-auth";
 import { useAuthContext } from "src/contexts/auth-context";
 import { SpyAccountModal } from "src/components/spyAccountModal";
 import SDRService from "src/services/sdrService";
+import { clearAllBrowserStorage } from "src/utils/clearBrowserStorage";
 
 export const AccountPopover = (props) => {
   const { anchorEl, onClose, open } = props;
@@ -49,6 +50,7 @@ export const AccountPopover = (props) => {
     onClose?.();
     auth.signOut();
     router.push("/auth/login");
+    clearAllBrowserStorage().catch(() => {});
   }, [onClose, auth, router]);
 
   // --- Cambiar email (UI estado) ---

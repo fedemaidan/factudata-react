@@ -78,12 +78,16 @@ const emptyPresupuesto = {
   usd_fuente: USD_FUENTES.OFICIAL,
   usd_valor: USD_VALORES.PROMEDIO,
   empresa_logo_url: '',
+  header_bg_color: '#0a4791',
+  header_text_color: '#ffffff',
   rubros: [],
   notas_texto: '',
   analisis_superficies: {
     sup_cubierta_m2: '',
     sup_patios_m2: '',
     coef_patios: 0.5,
+    sup_vereda_m2: '',
+    coef_vereda: 0.25,
     sup_ponderada_m2: '',
   },
   plantilla_id: '',
@@ -395,6 +399,8 @@ const PresupuestosProfesionales = () => {
         cotizacion_snapshot: full.cotizacion_snapshot || null,
         plantilla_notas_id: '',
         empresa_logo_url: full.empresa_logo_url || '',
+        header_bg_color: full.header_bg_color || '#0a4791',
+        header_text_color: full.header_text_color || '#ffffff',
         rubros: (full.rubros || []).map((r) => ({
           nombre: r.nombre || '',
           monto: r.monto || 0,
@@ -411,11 +417,17 @@ const PresupuestosProfesionales = () => {
           const c = Number(full.analisis_superficies?.coef_patios) >= 0
             ? (Number(full.analisis_superficies?.coef_patios) || 0.5)
             : 0.5;
-          const computed = a >= 0 && b >= 0 ? Math.round((a + b * c) * 100) / 100 : '';
+          const d = Number(full.analisis_superficies?.sup_vereda_m2) || 0;
+          const e = Number(full.analisis_superficies?.coef_vereda) >= 0
+            ? (Number(full.analisis_superficies?.coef_vereda) || 0.25)
+            : 0.25;
+          const computed = a >= 0 && b >= 0 && d >= 0 ? Math.round((a + b * c + d * e) * 100) / 100 : '';
           return {
             sup_cubierta_m2: full.analisis_superficies?.sup_cubierta_m2 ?? '',
             sup_patios_m2: full.analisis_superficies?.sup_patios_m2 ?? '',
             coef_patios: full.analisis_superficies?.coef_patios ?? 0.5,
+            sup_vereda_m2: full.analisis_superficies?.sup_vereda_m2 ?? '',
+            coef_vereda: full.analisis_superficies?.coef_vereda ?? 0.25,
             sup_ponderada_m2: computed,
           };
         })(),
@@ -464,6 +476,8 @@ const PresupuestosProfesionales = () => {
         usd_valor: (ajuste.moneda === 'USD' || ajuste.indexacion === INDEXACION_VALUES.USD) ? ajuste.usd_valor : null,
         cotizacion_snapshot: cotizacionSnapshot,
         empresa_logo_url: ppForm.empresa_logo_url || null,
+        header_bg_color: ppForm.header_bg_color || '#0a4791',
+        header_text_color: ppForm.header_text_color || '#ffffff',
         rubros: ppForm.rubros
           .filter((r) => r.nombre?.trim())
           .map((r) => ({
@@ -483,12 +497,16 @@ const PresupuestosProfesionales = () => {
           const a = Number(as.sup_cubierta_m2) || 0;
           const b = Number(as.sup_patios_m2) || 0;
           const c = Number(as.coef_patios) >= 0 ? (Number(as.coef_patios) || 0.5) : 0.5;
-          const supPonderada = a >= 0 && b >= 0 ? Math.round((a + b * c) * 100) / 100 : null;
+          const d = Number(as.sup_vereda_m2) || 0;
+          const e = Number(as.coef_vereda) >= 0 ? (Number(as.coef_vereda) || 0.25) : 0.25;
+          const supPonderada = a >= 0 && b >= 0 && d >= 0 ? Math.round((a + b * c + d * e) * 100) / 100 : null;
           return {
             ...as,
             sup_cubierta_m2: as.sup_cubierta_m2 !== '' && as.sup_cubierta_m2 != null ? Number(as.sup_cubierta_m2) : null,
             sup_patios_m2: as.sup_patios_m2 !== '' && as.sup_patios_m2 != null ? Number(as.sup_patios_m2) : null,
             coef_patios: c,
+            sup_vereda_m2: as.sup_vereda_m2 !== '' && as.sup_vereda_m2 != null ? Number(as.sup_vereda_m2) : null,
+            coef_vereda: e,
             sup_ponderada_m2: supPonderada,
           };
         })(),
@@ -565,6 +583,42 @@ const PresupuestosProfesionales = () => {
     return null;
   };
 
+  const aplicarAnexosAControl = async (anexos, rubros, totalNeto, rubroToControlId, creadoPor) => {
+    if (!anexos?.length || !rubros?.length) return;
+    for (const anexo of anexos) {
+      const concepto = anexo.motivo || 'Anexo';
+      const rubrosAfectados = anexo.rubros_afectados || [];
+      const montoDiferencia = Number(anexo.monto_diferencia) || 0;
+
+      if (rubrosAfectados.length > 0) {
+        for (const af of rubrosAfectados) {
+          const presupuestoId = rubroToControlId[af.rubro_nombre];
+          if (!presupuestoId) continue;
+          const monto = (Number(af.monto_nuevo) || 0) - (Number(af.monto_anterior) || 0);
+          if (monto === 0) continue;
+          try {
+            await presupuestoService.agregarAdicional(presupuestoId, { concepto, monto, creadoPor });
+          } catch (e) {
+            console.warn('Error al agregar anexo al control:', e);
+          }
+        }
+      } else if (montoDiferencia !== 0 && totalNeto > 0) {
+        for (const rubro of rubros) {
+          const presupuestoId = rubroToControlId[rubro.nombre];
+          if (!presupuestoId) continue;
+          const montoRubro = Number(rubro.monto) || 0;
+          const monto = (montoDiferencia * montoRubro) / totalNeto;
+          if (Math.abs(monto) < 0.01) continue;
+          try {
+            await presupuestoService.agregarAdicional(presupuestoId, { concepto, monto, creadoPor });
+          } catch (e) {
+            console.warn('Error al agregar anexo al control:', e);
+          }
+        }
+      }
+    }
+  };
+
   const handleConfirmarAceptar = async (proyectoId, tipo = 'ingreso') => {
     const row = aceptarModal.row;
     if (!row?._id || !proyectoId || !empresaId) return;
@@ -576,7 +630,8 @@ const PresupuestosProfesionales = () => {
     try {
       const full = await PresupuestoProfesionalService.obtenerPorId(row._id);
       const cotizacionOverride = mapCotizacionOverride(full.cotizacion_snapshot);
-      const presupuestosToCreate = (full.rubros || row.rubros).map((rubro) => ({
+      const rubros = full.rubros || row.rubros;
+      const presupuestosToCreate = rubros.map((rubro) => ({
         empresa_id: empresaId,
         proyecto_id: proyectoId,
         tipo,
@@ -591,7 +646,22 @@ const PresupuestosProfesionales = () => {
         subcategoria: null,
         cotizacion_override: cotizacionOverride,
       }));
-      await Promise.all(presupuestosToCreate.map((p) => presupuestoService.crearPresupuesto(p)));
+      const results = await Promise.all(presupuestosToCreate.map((p) => presupuestoService.crearPresupuesto(p)));
+      const rubroToControlId = {};
+      rubros.forEach((rubro, i) => {
+        const presup = results[i]?.presupuesto;
+        if (presup?.id) rubroToControlId[rubro.nombre] = presup.id;
+      });
+      const totalNeto = Number(full.total_neto) || rubros.reduce((s, r) => s + (Number(r.monto) || 0), 0);
+      if (full.anexos?.length > 0) {
+        await aplicarAnexosAControl(
+          full.anexos,
+          rubros,
+          totalNeto,
+          rubroToControlId,
+          user?.email || null
+        );
+      }
       await PresupuestoProfesionalService.cambiarEstado(row._id, 'aceptado', user?.email ? { user_id: user.email } : {});
       showAlert(`Presupuesto aceptado. Se crearon ${presupuestosToCreate.length} presupuestos de control.`);
       setAceptarModal({ open: false, row: null });
@@ -829,6 +899,18 @@ const PresupuestosProfesionales = () => {
       const rubros = [...f.rubros];
       const tareas = [...rubros[rubroIdx].tareas];
       tareas[tareaIdx] = { ...tareas[tareaIdx], descripcion: value };
+      rubros[rubroIdx] = { ...rubros[rubroIdx], tareas };
+      return { ...f, rubros };
+    });
+  };
+
+  const ppMoveTarea = (rubroIdx, tareaIdx, dir) => {
+    setPpForm((f) => {
+      const rubros = [...f.rubros];
+      const tareas = [...(rubros[rubroIdx].tareas || [])];
+      const newIdx = tareaIdx + dir;
+      if (newIdx < 0 || newIdx >= tareas.length) return f;
+      [tareas[tareaIdx], tareas[newIdx]] = [tareas[newIdx], tareas[tareaIdx]];
       rubros[rubroIdx] = { ...rubros[rubroIdx], tareas };
       return { ...f, rubros };
     });
@@ -1091,6 +1173,18 @@ const PresupuestosProfesionales = () => {
     });
   };
 
+  const plMoveTarea = (rubroIdx, tareaIdx, dir) => {
+    setPlForm((f) => {
+      const rubros = [...f.rubros];
+      const tareas = [...(rubros[rubroIdx].tareas || [])];
+      const newIdx = tareaIdx + dir;
+      if (newIdx < 0 || newIdx >= tareas.length) return f;
+      [tareas[tareaIdx], tareas[newIdx]] = [tareas[newIdx], tareas[tareaIdx]];
+      rubros[rubroIdx] = { ...rubros[rubroIdx], tareas };
+      return { ...f, rubros };
+    });
+  };
+
   /* ================================================================
      Toggle rubros expandidos en tabla
      ================================================================ */
@@ -1299,6 +1393,7 @@ const PresupuestosProfesionales = () => {
         addTarea={ppAddTarea}
         removeTarea={ppRemoveTarea}
         updateTarea={ppUpdateTarea}
+        moveTarea={ppMoveTarea}
         focusRef={ppFocusRef}
         logoUploading={ppSaving}
         logoPreviewUrl={ppLogoPreviewUrl}
@@ -1362,6 +1457,7 @@ const PresupuestosProfesionales = () => {
         addTarea={plAddTarea}
         removeTarea={plRemoveTarea}
         updateTarea={plUpdateTarea}
+        moveTarea={plMoveTarea}
         focusRef={plFocusRef}
       />
 

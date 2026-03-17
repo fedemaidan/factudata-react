@@ -27,9 +27,11 @@ const getM2Base = (presupuesto) => {
   if (!analisis) return 0;
   const cubierta = Number(analisis.sup_cubierta_m2) || 0;
   const patios = Number(analisis.sup_patios_m2) || 0;
-  const coef = Number(analisis.coef_patios) >= 0 ? (Number(analisis.coef_patios) || 0.5) : 0.5;
+  const coefPatios = Number(analisis.coef_patios) >= 0 ? (Number(analisis.coef_patios) || 0.5) : 0.5;
+  const vereda = Number(analisis.sup_vereda_m2) || 0;
+  const coefVereda = Number(analisis.coef_vereda) >= 0 ? (Number(analisis.coef_vereda) || 0.25) : 0.25;
   const ponderadaOriginal = Number(analisis.sup_ponderada_m2) || 0;
-  return ponderadaOriginal || cubierta + patios * coef || 0;
+  return ponderadaOriginal || cubierta + patios * coefPatios + vereda * coefVereda || 0;
 };
 
 const formatFechaMes = (fechaRef) => {
@@ -80,26 +82,26 @@ const calcularCostoM2Data = async (presupuesto) => {
 
   const fechaRef = presupuesto?.fecha || presupuesto?.createdAt;
   const fechaMes = formatFechaMes(fechaRef);
-  const mesAnterior = (() => {
+  const mesCacRef = (() => {
     const m = fechaMes;
     if (!m || m.length < 7) return '';
     const [y, mo] = m.split('-').map(Number);
-    const d = new Date(y, mo - 2, 1);
+    const d = new Date(y, mo - 3, 1);
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
   })();
   if (snapshot?.tipo === 'CAC') {
     valorCac = Number(snapshot?.valor) || null;
   } else {
     try {
-      const cacData = mesAnterior ? await cacService.getCacPorFecha(mesAnterior) : null;
+      const cacData = mesCacRef ? await cacService.getCacPorFecha(mesCacRef) : null;
       valorCac = cacData?.general ?? null;
     } catch (err) {
       console.warn('No se pudo obtener CAC para PDF:', err);
     }
   }
 
-  // Formato legible del mes CAC para el PDF (ej: "02/2025") — siempre mes anterior
-  const mesRefCac = snapshot?.tipo === 'CAC' ? (snapshot.fecha_origen || mesAnterior) : mesAnterior;
+  // Formato legible del mes CAC para el PDF (ej: "02/2025") — 2 meses atrás
+  const mesRefCac = snapshot?.tipo === 'CAC' ? (snapshot.fecha_origen || mesCacRef) : mesCacRef;
   const cacMesReferencia = mesRefCac && mesRefCac.length >= 7 ? `${mesRefCac.slice(5, 7)}/${mesRefCac.slice(0, 4)}` : null;
 
   const totalFinalArs = currency === 'USD' && tipoCambio
