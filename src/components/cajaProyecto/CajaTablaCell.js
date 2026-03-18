@@ -55,11 +55,6 @@ const CajaTablaCell = ({ colKey, mov, amountColor, ctx, isProrrateo = false }) =
             <Chip size="small" label="P" variant="outlined" color="info" sx={{ fontSize: '0.7rem', height: 16 }} />
           )}
           <Typography variant="body2">{codigoText}</Typography>
-          {fueModificado && (
-            <Tooltip title="Este movimiento ha sido modificado. Revisá el registro de auditoría en el panel de cambios." arrow>
-              <ErrorOutlineIcon sx={{ fontSize: 16, color: 'error.main' }} />
-            </Tooltip>
-          )}
         </Stack>
       );
     }
