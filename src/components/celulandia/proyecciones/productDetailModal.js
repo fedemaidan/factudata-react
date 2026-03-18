@@ -72,6 +72,11 @@ const formatNum2Dec = (n, useAbsolute = false) => {
   return num % 1 === 0 ? String(num) : num.toFixed(2);
 };
 
+const formatNumFloor = (n) => {
+  if (n == null || !Number.isFinite(Number(n))) return "-";
+  return String(Math.floor(Number(n)));
+};
+
 const TabCalculoContent = ({ producto, calculo, formatDateDDMMYYYY, theme }) => {
   const inputs = calculo?.inputs || {};
   const intermedios = calculo?.resultadosIntermedios || {};
@@ -152,7 +157,7 @@ const TabCalculoContent = ({ producto, calculo, formatDateDDMMYYYY, theme }) => 
             Resultado de la simulación al final del horizonte de 90 días (stock + arribos de pedidos - ventas). Mas detalle en la pestaña (Tabla Completa).
           </Typography>
           <Box sx={{ p: 1.5, bgcolor: theme.palette.action.hover, borderRadius: 1 }}>
-            <Typography variant="body2">{formatNum(stockProyectado)} unidades</Typography>
+            <Typography variant="body2">{formatNumFloor(stockProyectado)} unidades</Typography>
           </Box>
         </CardContent>
       </Card>
@@ -234,10 +239,10 @@ const buildTooltip = (day, isFinalDay) => {
   return [
     { label: "Día", value: day.displayDay ?? day.dia ?? "-" },
     { label: "Fecha", value: fechaLabel ?? "-" },
-    { label: "Stock", value: formatNum2Dec(day.stockInicial) },
+    { label: "Stock", value: formatNumFloor(day.stockInicial) },
     { label: "Ventas", value: formatNum2Dec(day.ventasDiarias, true) },
     { label: "Ingreso pedido", value: `+${day.ingresosPedido}` },
-    { label: isFinalDay ? "Stock proyectado (día 90)" : "Stock final", value: day.stockFinal },
+    { label: isFinalDay ? "Stock proyectado (día 90)" : "Stock final", value: formatNumFloor(day.stockFinal) },
   ];
 };
 
@@ -443,7 +448,7 @@ const ProductDetailModal = ({ open, onClose, producto }) => {
                           Stock inicial
                         </Typography>
                         <Typography variant="h5" sx={{ fontWeight: 600 }}>
-                          {formatNum2Dec(firstDay?.stockInicial)}
+                          {formatNumFloor(firstDay?.stockInicial)}
                         </Typography>
                         <Typography variant="body2" color="text.secondary">
                           {getFechaLabel(firstDay) || "Día 1"}
@@ -467,7 +472,7 @@ const ProductDetailModal = ({ open, onClose, producto }) => {
                           Stock proyectado
                         </Typography>
                         <Typography variant="h5" sx={{ fontWeight: 600 }}>
-                          {lastDay?.stockFinal ?? "-"}
+                          {formatNumFloor(lastDay?.stockFinal)}
                         </Typography>
                         <Typography variant="body2" color="text.secondary">
                           {getFechaLabel(lastDay) || `Día ${lastDay?.displayDay ?? "-"}`}
@@ -635,7 +640,7 @@ const ProductDetailModal = ({ open, onClose, producto }) => {
                                   Stock
                                 </Typography>
                                 <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                                  {formatNum2Dec(event.stockInicial)} → {formatNum2Dec(event.stockFinal)}
+                                  {formatNumFloor(event.stockInicial)} → {formatNumFloor(event.stockFinal)}
                                 </Typography>
                               </Stack>
                             </Stack>
@@ -745,10 +750,10 @@ const ProductDetailModal = ({ open, onClose, producto }) => {
                       <TableRow key={`row-${day.dia}`}>
                         <TableCell>{day.displayDay ?? day.dia}</TableCell>
                         <TableCell>{getFechaLabel(day) ?? "-"}</TableCell>
-                        <TableCell align="right">{formatNum2Dec(day.stockInicial)}</TableCell>
+                        <TableCell align="right">{formatNumFloor(day.stockInicial)}</TableCell>
                         <TableCell align="right">{formatNum2Dec(day.ventasDiarias, true)}</TableCell>
                         <TableCell align="right">+{day.ingresosPedido}</TableCell>
-                        <TableCell align="right">{day.stockFinal}</TableCell>
+                        <TableCell align="right">{formatNumFloor(day.stockFinal)}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
