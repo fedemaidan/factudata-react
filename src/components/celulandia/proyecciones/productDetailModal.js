@@ -59,16 +59,190 @@ const getFechaLabel = (day) => {
   return null;
 };
 
+const formatNum = (n) => {
+  if (n == null || !Number.isFinite(Number(n))) return "-";
+  const num = Number(n);
+  return num % 1 === 0 ? String(num) : num.toFixed(2);
+};
+
+const formatNum2Dec = (n, useAbsolute = false) => {
+  if (n == null || !Number.isFinite(Number(n))) return "-";
+  let num = Number(n);
+  if (useAbsolute) num = Math.abs(num);
+  return num % 1 === 0 ? String(num) : num.toFixed(2);
+};
+
+const formatNumFloor = (n) => {
+  if (n == null || !Number.isFinite(Number(n))) return "-";
+  return String(Math.floor(Number(n)));
+};
+
+const TabCalculoContent = ({ producto, calculo, formatDateDDMMYYYY, theme }) => {
+  const inputs = calculo?.inputs || {};
+  const intermedios = calculo?.resultadosIntermedios || {};
+  const flags = calculo?.flags || {};
+  const arribos = Array.isArray(calculo?.arribos) ? calculo.arribos : [];
+
+  const ventasDiarias = Number(inputs.ventasDiarias) || 0;
+  const ventasPeriodo = Number(inputs.ventasPeriodo) || 0;
+  const diasPeriodo = Number(inputs.diasPeriodo) || 0;
+  const diasConStock = Number(inputs.diasConStock) || 0;
+  const stockInicial = Number(inputs.stockInicial) || 0;
+  const horizonte90 = Number(inputs.horizonte90) || 90;
+  const demanda90 = Number(intermedios.demanda90) || 0;
+  const demanda200 = Number(intermedios.demanda200) || 0;
+  const oferta200 = Number(intermedios.oferta200) || 0;
+  const faltanteNeto = Number(intermedios.faltanteNeto) || 0;
+  const stockAlDia90 = Number(intermedios.stockAlDia90) ?? 0;
+  const diaAgotamiento = intermedios.diaAgotamiento;
+  const diasAnticipacion = Number(inputs.diasAnticipacion100) || 100;
+  const fechaBase = inputs.fechaBase ? new Date(inputs.fechaBase) : null;
+
+  const ventasProyectadas = producto?.ventasProyectadas ?? Math.round(demanda90);
+  const diasHastaAgotar = producto?.diasHastaAgotarStock ?? diaAgotamiento;
+  const stockProyectado = producto?.stockProyectado ?? Math.round(stockAlDia90);
+  const fechaAgotamiento = producto?.fechaAgotamientoStock;
+  const cantidadCompra = producto?.cantidadCompraSugerida ?? faltanteNeto;
+  const fechaCompraSugerida = producto?.fechaCompraSugerida;
+
+  const cardSx = {
+    borderRadius: 2,
+    border: `1px solid ${theme.palette.divider}`,
+    bgcolor: theme.palette.background.paper,
+    overflow: "hidden",
+  };
+
+  return (
+    <Stack spacing={2} sx={{ mt: 2 }}>
+      <Card sx={cardSx}>
+        <CardContent sx={{ p: 2 }}>
+          <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
+            1. Ventas proyectadas (90 días)
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            Tomamos tus ventas del período ({formatNum(ventasPeriodo)} unidades en {diasConStock > 0 ? diasConStock : diasPeriodo} días) y calculamos el promedio diario.
+          </Typography>
+          <Box sx={{ p: 1.5, bgcolor: theme.palette.action.hover, borderRadius: 1, fontFamily: "monospace", fontSize: 14 }}>
+            {formatNum2Dec(ventasDiarias, true)} ventas/día × {horizonte90} días = {formatNum(ventasProyectadas)} unidades
+          </Box>
+        </CardContent>
+      </Card>
+
+      <Card sx={cardSx}>
+        <CardContent sx={{ p: 2 }}>
+          <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
+            2. Días hasta agotar stock
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            Simulamos día a día: stock + arribos de pedidos - ventas. El primer día en que el stock llega a 0 es el resultado.
+          </Typography>
+          <Box sx={{ p: 1.5, bgcolor: theme.palette.action.hover, borderRadius: 1 }}>
+            {flags.seAgota ? (
+              <Typography variant="body2">Stock en 0 en el día {formatNum(diaAgotamiento)} → {formatNum(diasHastaAgotar)} días desde la fecha {fechaBase ? formatDateDDMMYYYY(fechaBase) : "-"}</Typography>
+            ) : flags.agotamientoExcede365Dias ? (
+              <Typography variant="body2" color="success.main">No se agota en el próximo año</Typography>
+            ) : (
+              <Typography variant="body2">{formatNum(diasHastaAgotar)} días</Typography>
+            )}
+          </Box>
+        </CardContent>
+      </Card>
+
+      <Card sx={cardSx}>
+        <CardContent sx={{ p: 2 }}>
+          <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
+            3. Stock proyectado (día 90)
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            Resultado de la simulación al final del horizonte de 90 días (stock + arribos de pedidos - ventas). Mas detalle en la pestaña (Tabla Completa).
+          </Typography>
+          <Box sx={{ p: 1.5, bgcolor: theme.palette.action.hover, borderRadius: 1 }}>
+            <Typography variant="body2">{formatNumFloor(stockProyectado)} unidades</Typography>
+          </Box>
+        </CardContent>
+      </Card>
+
+      <Card sx={cardSx}>
+        <CardContent sx={{ p: 2 }}>
+          <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
+            4. Fecha agotamiento (Stock 0)
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            Fecha en la que el stock llegaría a 0 según la simulación.
+          </Typography>
+          <Box sx={{ p: 1.5, bgcolor: theme.palette.action.hover, borderRadius: 1 }}>
+            <Typography variant="body2">{fechaAgotamiento ? formatDateDDMMYYYY(fechaAgotamiento) : (flags.agotamientoExcede365Dias ? "Más de 1 año" : "-")}</Typography>
+          </Box>
+        </CardContent>
+      </Card>
+
+      <Card sx={cardSx}>
+        <CardContent sx={{ p: 2 }}>
+          <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
+            5. Cantidad a comprar (200 días)
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            Ventas que proyectamos en 200 días menos lo que ya tenés (stock + pedidos en camino).
+          </Typography>
+          <Box sx={{ p: 1.5, bgcolor: theme.palette.action.hover, borderRadius: 1 }}>
+            <Typography variant="body2" component="span">
+              {formatNum(demanda200)} (Ventas proyectadas) − {formatNum(oferta200)} (Stock + pedidos en camino) = {formatNum(faltanteNeto)} → sugerir comprar {formatNum(cantidadCompra)}
+            </Typography>
+          </Box>
+        </CardContent>
+      </Card>
+
+      <Card sx={cardSx}>
+        <CardContent sx={{ p: 2 }}>
+          <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
+            6. Fecha compra sugerida
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            {diasAnticipacion} días antes de que se agote el stock, para que llegue a tiempo.
+          </Typography>
+          <Box sx={{ p: 1.5, bgcolor: theme.palette.action.hover, borderRadius: 1 }}>
+            <Typography variant="body2">{fechaCompraSugerida ? formatDateDDMMYYYY(fechaCompraSugerida) : "-"}</Typography>
+          </Box>
+        </CardContent>
+      </Card>
+
+      {arribos.length > 0 && (
+        <Card sx={cardSx}>
+          <CardContent sx={{ p: 2 }}>
+            <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
+              7. Pedidos considerados
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+              Arribos en camino que se suman al stock en la simulación.
+            </Typography>
+            <Stack direction="row" spacing={1} flexWrap="wrap">
+              {arribos.map((a, index) => (
+                <Chip
+                  key={`arribo-${index}`}
+                  label={`+${formatNum(a.cantidad)} día ${a.dia}${a.atrasado ? " (atrasado, al inicio)" : ""}`}
+                  size="small"
+                  color={a.atrasado ? "warning" : "success"}
+                  variant="outlined"
+                />
+              ))}
+            </Stack>
+          </CardContent>
+        </Card>
+      )}
+    </Stack>
+  );
+};
+
 const buildTooltip = (day, isFinalDay) => {
   if (!day) return [];
   const fechaLabel = getFechaLabel(day);
   return [
     { label: "Día", value: day.displayDay ?? day.dia ?? "-" },
     { label: "Fecha", value: fechaLabel ?? "-" },
-    { label: "Stock", value: day.stockInicial },
-    { label: "Ventas", value: `-${day.ventasDiarias}` },
+    { label: "Stock", value: formatNumFloor(day.stockInicial) },
+    { label: "Ventas", value: formatNum2Dec(day.ventasDiarias, true) },
     { label: "Ingreso pedido", value: `+${day.ingresosPedido}` },
-    { label: isFinalDay ? "Stock proyectado (día 90)" : "Stock final", value: day.stockFinal },
+    { label: isFinalDay ? "Stock proyectado (día 90)" : "Stock final", value: formatNumFloor(day.stockFinal) },
   ];
 };
 
@@ -85,6 +259,8 @@ const ProductDetailModal = ({ open, onClose, producto }) => {
     [producto]
   );
   const hasDetalle = detalle.length > 0;
+  const calculo = producto?.proyeccionCalculo || null;
+  const hasCalculo = Boolean(calculo?.inputs);
   const [tabIndex, setTabIndex] = useState(1);
   const [showAllEvents, setShowAllEvents] = useState(false);
 
@@ -238,7 +414,7 @@ const ProductDetailModal = ({ open, onClose, producto }) => {
           overflowY: "auto",
         }}
       >
-        {!hasDetalle ? (
+        {!hasDetalle && !hasCalculo ? (
           <Box sx={{ py: 6 }}>
             <Typography variant="body2" align="center" color="text.secondary">
               Sin datos de proyección disponibles
@@ -248,9 +424,12 @@ const ProductDetailModal = ({ open, onClose, producto }) => {
           <>
             <Tabs value={tabIndex} onChange={(_, value) => setTabIndex(value)} sx={{ mb: 2 }}>
               <Tab label="Resumen" value={0} sx={{ display: "none" }} />
-              <Tab label="Tabla completa" value={1} />
+              <Tab label="Tabla completa" value={1} disabled={!hasDetalle} />
+              <Tab label="Cálculo" value={2} disabled={!hasCalculo} />
             </Tabs>
-            {tabIndex === 0 ? (
+            {tabIndex === 2 && hasCalculo ? (
+              <TabCalculoContent producto={producto} calculo={calculo} formatDateDDMMYYYY={formatDateDDMMYYYY} theme={theme} />
+            ) : tabIndex === 0 ? (
               <>
                 <Grid container spacing={2} sx={{ mb: 2 }}>
                   <Grid item xs={12} md={6}>
@@ -269,7 +448,7 @@ const ProductDetailModal = ({ open, onClose, producto }) => {
                           Stock inicial
                         </Typography>
                         <Typography variant="h5" sx={{ fontWeight: 600 }}>
-                          {firstDay?.stockInicial ?? "-"}
+                          {formatNumFloor(firstDay?.stockInicial)}
                         </Typography>
                         <Typography variant="body2" color="text.secondary">
                           {getFechaLabel(firstDay) || "Día 1"}
@@ -293,7 +472,7 @@ const ProductDetailModal = ({ open, onClose, producto }) => {
                           Stock proyectado
                         </Typography>
                         <Typography variant="h5" sx={{ fontWeight: 600 }}>
-                          {lastDay?.stockFinal ?? "-"}
+                          {formatNumFloor(lastDay?.stockFinal)}
                         </Typography>
                         <Typography variant="body2" color="text.secondary">
                           {getFechaLabel(lastDay) || `Día ${lastDay?.displayDay ?? "-"}`}
@@ -461,7 +640,7 @@ const ProductDetailModal = ({ open, onClose, producto }) => {
                                   Stock
                                 </Typography>
                                 <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                                  {event.stockInicial} → {event.stockFinal}
+                                  {formatNumFloor(event.stockInicial)} → {formatNumFloor(event.stockFinal)}
                                 </Typography>
                               </Stack>
                             </Stack>
@@ -571,10 +750,10 @@ const ProductDetailModal = ({ open, onClose, producto }) => {
                       <TableRow key={`row-${day.dia}`}>
                         <TableCell>{day.displayDay ?? day.dia}</TableCell>
                         <TableCell>{getFechaLabel(day) ?? "-"}</TableCell>
-                        <TableCell align="right">{day.stockInicial}</TableCell>
-                        <TableCell align="right">-{day.ventasDiarias}</TableCell>
+                        <TableCell align="right">{formatNumFloor(day.stockInicial)}</TableCell>
+                        <TableCell align="right">{formatNum2Dec(day.ventasDiarias, true)}</TableCell>
                         <TableCell align="right">+{day.ingresosPedido}</TableCell>
-                        <TableCell align="right">{day.stockFinal}</TableCell>
+                        <TableCell align="right">{formatNumFloor(day.stockFinal)}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
