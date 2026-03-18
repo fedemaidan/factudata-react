@@ -31,6 +31,7 @@ import {
     PlayArrow as PlayIcon,
     Pause as PauseIcon,
     Stop as StopIcon,
+    InfoOutlined as InfoIcon,
 } from '@mui/icons-material';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import abTestService from 'src/services/abTestService';
@@ -85,17 +86,49 @@ function MetricasResumen({ test }) {
     const variantes = ['A', 'B'];
 
     const primaryRows = [
-        { label: 'Asignados', key: 'contactos' },
-        { label: 'Probaron', key: 'probaron' },
-        { label: 'Completaron gasto', key: 'completaron' },
-        { label: 'Abrieron link agendar', key: 'abrieronLink' },
-        { label: 'Timeouts (1h)', key: 'timeouts' },
+        {
+            label: 'Asignados',
+            key: 'contactos',
+            tooltip: 'Contactos que eligieron "Probar" en el menú de bienvenida y fueron asignados a esta variante por el sistema de A/B test.',
+        },
+        {
+            label: 'Probaron',
+            key: 'probaron',
+            tooltip: 'A: El contacto inició la conversación con el asistente IA.\nB: El contacto entró al flow de demo directa y se le asignó una empresa demo del pool.',
+        },
+        {
+            label: 'Completaron gasto',
+            key: 'completaron',
+            tooltip: 'A: El asistente IA calificó al contacto como "calificado" o "quiere_meet" al finalizar el flujo conversacional.\nB: El contacto registró exitosamente su primer gasto en la empresa demo.',
+        },
+        {
+            label: 'Abrieron link agendar',
+            key: 'abrieronLink',
+            tooltip: 'El contacto hizo click en el link de Google Calendar para agendar una demo. Medición idéntica en ambas variantes (evento calendario_click).',
+        },
+        {
+            label: 'Timeouts (1h)',
+            key: 'timeouts',
+            tooltip: 'A: No se mide (el bot usa mensajes programados, difícil de detectar).\nB: El contacto recibió hasta 3 recordatorios y nunca registró ningún gasto.',
+        },
     ];
 
     const secondaryRows = [
-        { label: 'Pidieron demo (voluntario)', key: 'pidieronDemo' },
-        { label: 'Generaron movimiento', key: 'generaronMovimiento' },
-        { label: 'Crearon empresa real', key: 'crearonEmpresaReal' },
+        {
+            label: 'Pidieron demo (voluntario)',
+            key: 'pidieronDemo',
+            tooltip: 'A: Eligió "Agendar demo" en el menú o escribió palabras clave de humano/agendar antes de ser asignado.\nB: Pidió demo dentro del flujo (keywords "agendar"), hizo click en "Agendar demo" en el menú, o lo solicitó después de la demo.',
+        },
+        {
+            label: 'Generaron movimiento',
+            key: 'generaronMovimiento',
+            tooltip: 'Registraron al menos 1 movimiento en una empresa real (no demo) usando el bot en producción. Trackeado en tiempo real — no se recalcula.',
+        },
+        {
+            label: 'Crearon empresa real',
+            key: 'crearonEmpresaReal',
+            tooltip: 'A: No aplica — el flujo conversacional no crea empresa demo.\nB: El contacto convirtió su empresa demo a real: configuró nombre y obras (empresa_demo = false en Firestore).',
+        },
     ];
 
     // Fila especial: promedio de mensajes
@@ -113,7 +146,24 @@ function MetricasResumen({ test }) {
         const tB = safeMetric(metricas, 'B', 'contactos');
         return (
             <TableRow key={row.key}>
-                <TableCell>{row.label}</TableCell>
+                <TableCell>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                        {row.label}
+                        {row.tooltip && (
+                            <Tooltip
+                                title={
+                                    <Typography variant="caption" sx={{ whiteSpace: 'pre-line' }}>
+                                        {row.tooltip}
+                                    </Typography>
+                                }
+                                placement="right"
+                                arrow
+                            >
+                                <InfoIcon sx={{ fontSize: 14, color: 'text.disabled', cursor: 'help' }} />
+                            </Tooltip>
+                        )}
+                    </Box>
+                </TableCell>
                 <TableCell align="center">
                     <strong>{valA}</strong>
                     {row.key !== 'contactos' && (
@@ -167,7 +217,22 @@ function MetricasResumen({ test }) {
 
                             {/* Promedio de mensajes */}
                             <TableRow>
-                                <TableCell>Promedio mensajes/cliente</TableCell>
+                                <TableCell>
+                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                        Promedio mensajes/cliente
+                                        <Tooltip
+                                            title={
+                                                <Typography variant="caption">
+                                                    Mensajes enviados por el usuario al bot (excluye mensajes del bot). Indica el nivel de fricción o engagement del flujo.
+                                                </Typography>
+                                            }
+                                            placement="right"
+                                            arrow
+                                        >
+                                            <InfoIcon sx={{ fontSize: 14, color: 'text.disabled', cursor: 'help' }} />
+                                        </Tooltip>
+                                    </Box>
+                                </TableCell>
                                 <TableCell align="center">
                                     <strong>{avgA}</strong>
                                     <Typography variant="caption" color="text.secondary" sx={{ ml: 0.5 }}>
