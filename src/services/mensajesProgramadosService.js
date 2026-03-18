@@ -9,6 +9,10 @@ const mensajesProgramadosService = {
     const response = await api.get('/mensajes-programados', { params });
     return response.data;
   },
+  getStats: async () => {
+    const response = await api.get('/mensajes-programados/stats');
+    return response.data;
+  },
   updateMensaje: async (id, data) => {
     const response = await api.patch(`/mensajes-programados/${id}`, data);
     return response.data;
