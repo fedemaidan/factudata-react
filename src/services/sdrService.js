@@ -135,6 +135,8 @@ const SDRService = {
         if (opts.duracion) formData.append('duracion', String(opts.duracion));
         if (opts.nota) formData.append('nota', opts.nota);
         if (opts.empresaId) formData.append('empresaId', opts.empresaId);
+        if (opts.promptOverride) formData.append('promptOverride', opts.promptOverride);
+        if (opts.guardarComoDefault) formData.append('guardarComoDefault', 'true');
         
         const res = await api.post('/sdr/acciones/audio', formData, {
             headers: { 'Content-Type': 'multipart/form-data' },
@@ -146,16 +148,24 @@ const SDRService = {
     /**
      * Re-analizar un audio existente con GPT-4o
      */
-    reanalizarAudio: async (eventoId, comentarioExtra = '') => {
-        const res = await api.post('/sdr/acciones/audio/reanalizar', { eventoId, comentarioExtra }, { timeout: 120000 });
+    reanalizarAudio: async (eventoId, comentarioExtra = '', opts = {}) => {
+        const res = await api.post('/sdr/acciones/audio/reanalizar', {
+            eventoId, comentarioExtra,
+            promptOverride: opts.promptOverride || undefined,
+            guardarComoDefault: opts.guardarComoDefault || undefined
+        }, { timeout: 120000 });
         return res.data;
     },
 
     /**
      * Re-transcribir un audio existente desde el archivo guardado
      */
-    retranscribirAudio: async (eventoId, comentarioExtra = '') => {
-        const res = await api.post('/sdr/acciones/audio/retranscribir', { eventoId, comentarioExtra }, { timeout: 120000 });
+    retranscribirAudio: async (eventoId, comentarioExtra = '', opts = {}) => {
+        const res = await api.post('/sdr/acciones/audio/retranscribir', {
+            eventoId, comentarioExtra,
+            promptOverride: opts.promptOverride || undefined,
+            guardarComoDefault: opts.guardarComoDefault || undefined
+        }, { timeout: 120000 });
         return res.data;
     },
 
@@ -244,16 +254,22 @@ const SDRService = {
     /**
      * Procesar transcripción de reunión con IA (GPT-4o)
      */
-    procesarTranscripcion: async (reunionId) => {
-        const res = await api.post(`/sdr/reuniones/${reunionId}/procesar-transcripcion`);
+    procesarTranscripcion: async (reunionId, opts = {}) => {
+        const res = await api.post(`/sdr/reuniones/${reunionId}/procesar-transcripcion`, {
+            promptOverride: opts.promptOverride || undefined,
+            guardarComoDefault: opts.guardarComoDefault || undefined
+        });
         return res.data;
     },
 
     /**
      * Generar resumen SDR de un contacto con IA (GPT-4o)
      */
-    generarResumenContacto: async (contactoId) => {
-        const res = await api.post(`/sdr/contactos/${contactoId}/generar-resumen`);
+    generarResumenContacto: async (contactoId, opts = {}) => {
+        const res = await api.post(`/sdr/contactos/${contactoId}/generar-resumen`, {
+            promptOverride: opts.promptOverride || undefined,
+            guardarComoDefault: opts.guardarComoDefault || undefined
+        });
         return res.data;
     },
 
@@ -844,6 +860,24 @@ const SDRService = {
      */
     eliminarDocumento: async (eventoId) => {
         const res = await api.delete(`/sdr/acciones/documento/${eventoId}`);
+        return res.data;
+    },
+
+    // ==================== CONFIGURACIÓN ====================
+
+    /**
+     * Obtener configuración SDR de la empresa
+     */
+    obtenerConfig: async (empresaId) => {
+        const res = await api.get('/sdr/config', { params: { empresaId } });
+        return res.data;
+    },
+
+    /**
+     * Actualizar configuración SDR de la empresa
+     */
+    actualizarConfig: async (data) => {
+        const res = await api.put('/sdr/config', data);
         return res.data;
     }
 };

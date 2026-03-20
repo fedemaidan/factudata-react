@@ -7,7 +7,7 @@ import {
     Snackbar, Alert, Avatar, Tooltip, Divider, Grid,
     Tabs, Tab,
     Dialog, DialogTitle, DialogContent, DialogActions,
-    Select, MenuItem, FormControl, InputLabel,
+    Select, MenuItem, FormControl, InputLabel, FormControlLabel, Switch,
     useTheme, useMediaQuery, Skeleton,
     Menu, ListItemIcon, ListItemText
 } from '@mui/material';
@@ -71,6 +71,7 @@ import ModalRegistrarAccion from 'src/components/sdr/ModalRegistrarAccion';
 import ModalSelectorTemplate, { replaceVariables } from 'src/components/sdr/ModalSelectorTemplate';
 import ModalCrearReunion from 'src/components/sdr/ModalCrearReunion';
 import ModalResultadoReunion from 'src/components/sdr/ModalResultadoReunion';
+import ModalPromptIA from 'src/components/sdr/ModalPromptIA';
 import { detectarContextoTemplate, obtenerMejorTemplate } from 'src/utils/templateContexto';
 import { getWhatsAppLink, getTelLink } from 'src/utils/phoneUtils';
 import {
@@ -391,6 +392,7 @@ const ContactoSDRDetailPage = () => {
     const [proximoContactoWizard, setProximoContactoWizard] = useState(null); // Date or null
     const [tipoTareaWizard, setTipoTareaWizard] = useState(null); // 'llamada' | 'whatsapp' | 'email' | 'recordatorio'
     const [notaTareaWizard, setNotaTareaWizard] = useState(''); // nota de la próxima tarea
+    const [estrictoWizard, setEstrictoWizard] = useState(false); // compromiso con el contacto
 
     // Audio
     const grabador = useGrabadorAudio();
@@ -404,6 +406,12 @@ const ContactoSDRDetailPage = () => {
     const [subiendoDocumento, setSubiendoDocumento] = useState(false);
     const docInputRef = useRef(null);
 
+    // Modal Prompt IA (pre-análisis)
+    const [modalPromptIA, setModalPromptIA] = useState(false);
+    const [promptIATipo, setPromptIATipo] = useState('audio'); // 'audio' | 'resumen'
+    const [promptIALoading, setPromptIALoading] = useState(false);
+    const promptIACallbackRef = useRef(null); // función a ejecutar con (promptOverride, guardarComoDefault)
+
     // Navegación entre contactos (IDs guardados en sessionStorage)
     const [contactoIds, setContactoIds] = useState([]);
     const [indiceActual, setIndiceActual] = useState(-1);
@@ -414,6 +422,25 @@ const ContactoSDRDetailPage = () => {
 
     const mostrarSnackbar = (message, severity = 'success') => {
         setSnackbar({ open: true, message, severity });
+    };
+
+    // Abre el modal de prompt IA y al confirmar ejecuta el callback
+    const abrirPromptIA = (tipo, callback) => {
+        setPromptIATipo(tipo);
+        promptIACallbackRef.current = callback;
+        setModalPromptIA(true);
+    };
+
+    const handlePromptIAConfirm = async (promptOverride, guardarComoDefault) => {
+        if (!promptIACallbackRef.current) return;
+        setPromptIALoading(true);
+        try {
+            await promptIACallbackRef.current(promptOverride, guardarComoDefault);
+        } finally {
+            setPromptIALoading(false);
+            setModalPromptIA(false);
+            promptIACallbackRef.current = null;
+        }
     };
 
     // Historial filtrado por categoría
@@ -565,6 +592,7 @@ const ContactoSDRDetailPage = () => {
             setTipoTareaWizard(null);
             setNotaTareaWizard('');
             setNotaWizard('');
+            setEstrictoWizard(false);
             setMensajeWA('');
         } else {
             setSubPasoIdx(0);
@@ -576,6 +604,7 @@ const ContactoSDRDetailPage = () => {
             setTipoTareaWizard(null);
             setNotaTareaWizard('');
             setNotaWizard('');
+            setEstrictoWizard(false);
             const primeraAccion = pasoActual?.acciones?.[0];
             setMensajeWA(primeraAccion?.templateResuelto || primeraAccion?.varianteSeleccionada?.templateTexto || '');
         }
@@ -746,14 +775,15 @@ const ContactoSDRDetailPage = () => {
         }
     };
 
-    const handleEnviarAudio = async () => {
+    const handleEnviarAudio = async (promptOpts = {}) => {
         if (!grabador.audioBlob || !contacto?._id) return;
         setSubiendoAudio(true);
         try {
             await SDRService.subirAudio(contacto._id, grabador.audioBlob, {
                 duracion: grabador.duracion,
                 nota: nuevoComentario.trim() || '',
-                empresaId
+                empresaId,
+                ...promptOpts
             });
             mostrarSnackbar('🎙️ Audio guardado y transcrito', 'success');
             grabador.limpiar();
@@ -776,59 +806,68 @@ const ContactoSDRDetailPage = () => {
         // Pedir comentario opcional para contexto del análisis IA
         const comentario = prompt('💬 Comentario para el análisis IA (opcional):\nEj: "Llamada de seguimiento, le interesaba el módulo de stock"', '');
         if (comentario === null) return; // Canceló
-        
-        setSubiendoArchivo(true);
-        try {
-            const notaFinal = comentario.trim() 
-                ? `📁 ${file.name} — ${comentario.trim()}`
-                : `📁 Archivo subido: ${file.name}`;
-            await SDRService.subirAudio(contacto._id, file, {
-                duracion: null,
-                nota: notaFinal,
-                empresaId
-            });
-            mostrarSnackbar('📁 Grabación subida y analizada', 'success');
-            await cargarContacto();
-        } catch (err) {
-            console.error('Error subiendo grabación:', err);
-            mostrarSnackbar('Error al subir la grabación', 'error');
-        } finally {
-            setSubiendoArchivo(false);
-        }
+
+        const notaFinal = comentario.trim() 
+            ? `📁 ${file.name} — ${comentario.trim()}`
+            : `📁 Archivo subido: ${file.name}`;
+
+        abrirPromptIA('audio', async (promptOverride, guardarComoDefault) => {
+            setSubiendoArchivo(true);
+            try {
+                await SDRService.subirAudio(contacto._id, file, {
+                    duracion: null,
+                    nota: notaFinal,
+                    empresaId,
+                    promptOverride,
+                    guardarComoDefault
+                });
+                mostrarSnackbar('📁 Grabación subida y analizada', 'success');
+                await cargarContacto();
+            } catch (err) {
+                console.error('Error subiendo grabación:', err);
+                mostrarSnackbar('Error al subir la grabación', 'error');
+            } finally {
+                setSubiendoArchivo(false);
+            }
+        });
     };
 
     const handleReanalizarAudio = async (eventoId) => {
         const comentario = prompt('💬 Indicación para el re-análisis (opcional):\nEj: "Enfocate en los problemas que mencionó", "Es una constructora grande"', '');
         if (comentario === null) return; // Canceló
-        
-        setReanalizandoEvento(eventoId);
-        try {
-            await SDRService.reanalizarAudio(eventoId, comentario.trim());
-            mostrarSnackbar('🤖 Audio re-analizado', 'success');
-            await cargarContacto();
-        } catch (err) {
-            console.error('Error re-analizando:', err);
-            mostrarSnackbar('Error al re-analizar el audio', 'error');
-        } finally {
-            setReanalizandoEvento(null);
-        }
+
+        abrirPromptIA('audio', async (promptOverride, guardarComoDefault) => {
+            setReanalizandoEvento(eventoId);
+            try {
+                await SDRService.reanalizarAudio(eventoId, comentario.trim(), { promptOverride, guardarComoDefault });
+                mostrarSnackbar('🤖 Audio re-analizado', 'success');
+                await cargarContacto();
+            } catch (err) {
+                console.error('Error re-analizando:', err);
+                mostrarSnackbar('Error al re-analizar el audio', 'error');
+            } finally {
+                setReanalizandoEvento(null);
+            }
+        });
     };
 
     const handleRetranscribirAudio = async (eventoId) => {
         const comentario = prompt('💬 Contexto opcional para mejorar la re-transcripción y el resumen:\nEj: "Hablan de acopios y remitos", "Cliente de constructora mediana"', '');
         if (comentario === null) return;
 
-        setRetranscribiendoEvento(eventoId);
-        try {
-            await SDRService.retranscribirAudio(eventoId, comentario.trim());
-            mostrarSnackbar('📝 Audio re-transcripto', 'success');
-            await cargarContacto();
-        } catch (err) {
-            console.error('Error re-transcribiendo:', err);
-            mostrarSnackbar(err?.response?.data?.error || 'Error al re-transcribir el audio', 'error');
-        } finally {
-            setRetranscribiendoEvento(null);
-        }
+        abrirPromptIA('audio', async (promptOverride, guardarComoDefault) => {
+            setRetranscribiendoEvento(eventoId);
+            try {
+                await SDRService.retranscribirAudio(eventoId, comentario.trim(), { promptOverride, guardarComoDefault });
+                mostrarSnackbar('📝 Audio re-transcripto', 'success');
+                await cargarContacto();
+            } catch (err) {
+                console.error('Error re-transcribiendo:', err);
+                mostrarSnackbar(err?.response?.data?.error || 'Error al re-transcribir el audio', 'error');
+            } finally {
+                setRetranscribiendoEvento(null);
+            }
+        });
     };
 
     const handleSubirDocumento = async (e) => {
@@ -1070,15 +1109,28 @@ const ContactoSDRDetailPage = () => {
                     calificacionRapida: data.calificacionRapida
                 });
 
-                // 3. Si hay transcripción, procesar con IA
+                // 3. Si hay transcripción, abrir modal de prompt IA para procesar
                 if (data.transcripcion && data.transcripcion.trim().length >= 50) {
-                    try {
-                        await SDRService.procesarTranscripcion(reunionSeleccionadaResultado._id);
-                        mostrarSnackbar('Reunión registrada y resumen IA generado ✨');
-                    } catch (iaError) {
-                        console.warn('Error procesando transcripción con IA:', iaError);
-                        mostrarSnackbar('Reunión registrada (error al generar resumen IA)', 'warning');
-                    }
+                    const reunionIdParaIA = reunionSeleccionadaResultado._id;
+                    // Cerrar modal de resultado antes de abrir el de prompt
+                    setModalResultadoReunion(false);
+                    setReunionSeleccionadaResultado(null);
+                    mostrarSnackbar('Reunión registrada. Configurá el prompt para el análisis IA...');
+                    
+                    abrirPromptIA('transcripcion', async (promptOverride, guardarComoDefault) => {
+                        try {
+                            await SDRService.procesarTranscripcion(reunionIdParaIA, { promptOverride, guardarComoDefault });
+                            mostrarSnackbar('Resumen IA generado ✨');
+                        } catch (iaError) {
+                            console.warn('Error procesando transcripción con IA:', iaError);
+                            mostrarSnackbar('Error al generar resumen IA', 'warning');
+                        }
+                        await cargarContacto();
+                    });
+                    
+                    // Saltar el cierre normal del modal (ya lo cerramos arriba)
+                    setResultadoLoading(false);
+                    return;
                 }
             }
 
@@ -1252,7 +1304,8 @@ const ContactoSDRDetailPage = () => {
             tipo: tipo || 'recordatorio',
             fecha: proximoContactoWizard,
             nota: notaTareaWizard?.trim() || null,
-            autoGenerada: false
+            autoGenerada: false,
+            estricto: estrictoWizard
         };
     };
 
@@ -1393,6 +1446,7 @@ const ContactoSDRDetailPage = () => {
             setProximoContactoWizard(null);
             setTipoTareaWizard(null);
             setNotaTareaWizard('');
+            setEstrictoWizard(false);
             setSeguimientoWizard(null);
         } catch (err) {
             mostrarSnackbar(err.response?.data?.error || 'Error al registrar', 'error');
@@ -1513,8 +1567,9 @@ const ContactoSDRDetailPage = () => {
                 </Stack>
             )}
 
-            {/* Nota de tarea (opcional) */}
+            {/* Nota de tarea + estricto */}
             {(proximoContactoWizard || tipoTareaActual) && (
+                <>
                 <input
                     type="text"
                     placeholder="Nota para la tarea (opcional)..."
@@ -1522,6 +1577,27 @@ const ContactoSDRDetailPage = () => {
                     onChange={(e) => setNotaTareaWizard(e.target.value)}
                     style={{ fontSize: compact ? '0.7rem' : '0.8rem', padding: '4px 8px', borderRadius: 4, border: '1px solid #ccc', width: '100%', boxSizing: 'border-box', marginTop: 6 }}
                 />
+                <Stack direction="row" spacing={0.5} sx={{ mt: 0.5 }}>
+                    <Chip
+                        size="small"
+                        icon={<span style={{ fontSize: '0.8rem' }}>📅</span>}
+                        label="Flexible"
+                        color={!estrictoWizard ? 'default' : 'default'}
+                        variant={!estrictoWizard ? 'filled' : 'outlined'}
+                        onClick={() => setEstrictoWizard(false)}
+                        sx={{ cursor: 'pointer', fontSize: compact ? '0.65rem' : '0.7rem', fontWeight: !estrictoWizard ? 600 : 400 }}
+                    />
+                    <Chip
+                        size="small"
+                        icon={<span style={{ fontSize: '0.8rem' }}>🔔</span>}
+                        label="Compromiso"
+                        color={estrictoWizard ? 'warning' : 'default'}
+                        variant={estrictoWizard ? 'filled' : 'outlined'}
+                        onClick={() => setEstrictoWizard(true)}
+                        sx={{ cursor: 'pointer', fontSize: compact ? '0.65rem' : '0.7rem', fontWeight: estrictoWizard ? 600 : 400 }}
+                    />
+                </Stack>
+                </>
             )}
         </Box>
         );
@@ -3191,7 +3267,7 @@ const ContactoSDRDetailPage = () => {
                                 </Button>
                                 {wizardFase !== 'accion' && (
                                     <Button size="small" variant="text" color="inherit"
-                                        onClick={() => { setWizardFase('accion'); setResultadoLlamada(null); setResultadoWA(null); setSeguimientoWizard(null); setNotaWizard(''); setProximoContactoWizard(null); setTipoTareaWizard(null); setNotaTareaWizard(''); setMensajeWA(''); }}
+                                        onClick={() => { setWizardFase('accion'); setResultadoLlamada(null); setResultadoWA(null); setSeguimientoWizard(null); setNotaWizard(''); setProximoContactoWizard(null); setTipoTareaWizard(null); setNotaTareaWizard(''); setEstrictoWizard(false); setMensajeWA(''); }}
                                         sx={{ fontSize: '0.75rem', textTransform: 'none', color: 'text.secondary', ml: 1 }}>
                                         ← Volver al inicio
                         {/* ==================== MINI-LISTADO ÚLTIMOS 5 COMUNICACIONES ==================== */}
@@ -3972,17 +4048,19 @@ const ContactoSDRDetailPage = () => {
                                     <Typography variant="subtitle2" color="text.secondary">Resumen SDR (IA)</Typography>
                                 </Stack>
                                 <Button size="small" variant={contacto.resumenSDR ? 'outlined' : 'contained'}
-                                    onClick={async () => {
-                                        try {
-                                            setGuardandoScoring(true);
-                                            const data = await SDRService.generarResumenContacto(contacto._id);
-                                            setContacto(prev => ({ ...prev, resumenSDR: data.resumenSDR }));
-                                            mostrarSnackbar('Resumen generado con IA ✨');
-                                        } catch (err) {
-                                            mostrarSnackbar(err.response?.data?.error || 'Error al generar resumen', 'error');
-                                        } finally {
-                                            setGuardandoScoring(false);
-                                        }
+                                    onClick={() => {
+                                        abrirPromptIA('resumen', async (promptOverride, guardarComoDefault) => {
+                                            try {
+                                                setGuardandoScoring(true);
+                                                const data = await SDRService.generarResumenContacto(contacto._id, { promptOverride, guardarComoDefault });
+                                                setContacto(prev => ({ ...prev, resumenSDR: data.resumenSDR }));
+                                                mostrarSnackbar('Resumen generado con IA ✨');
+                                            } catch (err) {
+                                                mostrarSnackbar(err.response?.data?.error || 'Error al generar resumen', 'error');
+                                            } finally {
+                                                setGuardandoScoring(false);
+                                            }
+                                        });
                                     }}
                                     disabled={guardandoScoring}
                                     sx={{ textTransform: 'none', fontSize: '0.78rem' }}>
@@ -4093,7 +4171,7 @@ const ContactoSDRDetailPage = () => {
                                     )}
                                     {wizardFase !== 'accion' && (
                                         <Button size="small" variant="text" color="inherit"
-                                            onClick={() => { setWizardFase('accion'); setResultadoLlamada(null); setResultadoWA(null); setSeguimientoWizard(null); setNotaWizard(''); setProximoContactoWizard(null); setTipoTareaWizard(null); setNotaTareaWizard(''); setMensajeWA(''); }}
+                                            onClick={() => { setWizardFase('accion'); setResultadoLlamada(null); setResultadoWA(null); setSeguimientoWizard(null); setNotaWizard(''); setProximoContactoWizard(null); setTipoTareaWizard(null); setNotaTareaWizard(''); setEstrictoWizard(false); setMensajeWA(''); }}
                                             sx={{ fontSize: '0.65rem', textTransform: 'none', color: 'text.secondary', py: 0, minWidth: 'auto' }}>
                                             ← Inicio
                                         </Button>
@@ -4438,6 +4516,16 @@ const ContactoSDRDetailPage = () => {
                 reunion={reunionSeleccionadaResultado}
                 onSubmit={handleSubmitResultadoReunion}
                 loading={resultadoLoading}
+            />
+
+            {/* Modal Prompt IA (pre-análisis) */}
+            <ModalPromptIA
+                open={modalPromptIA}
+                onClose={() => { setModalPromptIA(false); promptIACallbackRef.current = null; }}
+                empresaId={empresaId}
+                tipo={promptIATipo}
+                onConfirm={handlePromptIAConfirm}
+                loading={promptIALoading}
             />
 
             {/* Dialog No Show con comentario */}
