@@ -119,6 +119,7 @@ const getEventoColor = (tipo) => {
     const colores = {
         'llamada_atendida': { bg: '#e8f5e9', border: '#4caf50', icon: '#2e7d32' },
         'llamada_no_atendida': { bg: '#fff3e0', border: '#ff9800', icon: '#e65100' },
+        'llamada_atendio_y_corto': { bg: '#fff8e1', border: '#ffa726', icon: '#ef6c00' },
         'whatsapp_enviado': { bg: '#e3f2fd', border: '#2196f3', icon: '#1565c0' },
         'whatsapp_respuesta_confirmada': { bg: '#e8f5e9', border: '#66bb6a', icon: '#388e3c' },
         'email_enviado': { bg: '#e8eaf6', border: '#3f51b5', icon: '#283593' },
@@ -152,6 +153,7 @@ const getEventoIcon = (tipo) => {
     const iconos = {
         'llamada_atendida': <PhoneIcon fontSize="small" />,
         'llamada_no_atendida': <PhoneMissedIcon fontSize="small" />,
+        'llamada_atendio_y_corto': <PhoneCallbackIcon fontSize="small" />,
         'whatsapp_enviado': <WhatsAppIcon fontSize="small" />,
         'whatsapp_respuesta_confirmada': <WhatsAppIcon fontSize="small" />,
         'email_enviado': <EmailIcon fontSize="small" />,
@@ -195,7 +197,7 @@ const botonesProximoContacto = [
 const FILTROS_HISTORIAL = [
     { key: 'todos', label: 'Todos', icon: '📋', tipos: null },
     { key: 'comentarios', label: 'Comentarios', icon: '💭', tipos: ['comentario', 'nota_agregada', 'contexto_inicial'] },
-    { key: 'llamadas', label: 'Llamadas', icon: '📞', tipos: ['llamada_atendida', 'llamada_no_atendida'] },
+    { key: 'llamadas', label: 'Llamadas', icon: '📞', tipos: ['llamada_atendida', 'llamada_no_atendida', 'llamada_atendio_y_corto'] },
     { key: 'whatsapp', label: 'WhatsApp', icon: '💬', tipos: ['whatsapp_enviado', 'whatsapp_respuesta_confirmada'] },
     { key: 'email', label: 'Email / LinkedIn', icon: '✉️', tipos: ['email_enviado', 'linkedin_enviado'] },
     { key: 'reuniones', label: 'Reuniones', icon: '📅', tipos: ['reunion_coordinada', 'reunion_aprobada', 'reunion_rechazada'] },
@@ -273,6 +275,22 @@ const calcularFecha = (cantidad, unidad) => {
     return ahora;
 };
 
+const getFechaRelativa = (fecha) => {
+    if (!fecha) return '—';
+    const ahora = new Date();
+    const diff = ahora - new Date(fecha);
+    const mins = Math.floor(diff / 60000);
+    const horas = Math.floor(diff / 3600000);
+    const dias = Math.floor(diff / 86400000);
+    if (mins < 1) return 'ahora';
+    if (mins < 60) return `hace ${mins} min`;
+    if (horas < 24) return `hace ${horas}h`;
+    if (dias === 1) return 'ayer';
+    if (dias < 7) return `hace ${dias} días`;
+    if (dias < 30) return `hace ${Math.floor(dias / 7)} sem`;
+    return new Date(fecha).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' });
+};
+
 // ==================== PÁGINA ====================
 
 const ContactoSDRDetailPage = () => {
@@ -328,8 +346,13 @@ const ContactoSDRDetailPage = () => {
 
     // Tab mobile para chat/historial
     const [tabMobile, setTabMobile] = useState(0);
-    // Tab desktop (Info / Historial / Chat)
+    // Tab desktop (Info / Historial / Reuniones / Chat)
     const [tabDesktop, setTabDesktop] = useState(0);
+
+    // NO SHOW dialog
+    const [noShowDialog, setNoShowDialog] = useState(false);
+    const [noShowComentario, setNoShowComentario] = useState('');
+    const [reunionNoShow, setReunionNoShow] = useState(null);
     // Filtro de historial por categoría
     const [filtroHistorial, setFiltroHistorial] = useState('todos');
 
@@ -373,6 +396,10 @@ const ContactoSDRDetailPage = () => {
     // Navegación entre contactos (IDs guardados en sessionStorage)
     const [contactoIds, setContactoIds] = useState([]);
     const [indiceActual, setIndiceActual] = useState(-1);
+
+    // Modo secuencial (▶ Comenzar desde la lista)
+    const [secuencialIds, setSecuencialIds] = useState([]);
+    const [indiceSecuencial, setIndiceSecuencial] = useState(-1);
 
     const mostrarSnackbar = (message, severity = 'success') => {
         setSnackbar({ open: true, message, severity });
@@ -556,6 +583,21 @@ const ContactoSDRDetailPage = () => {
         } catch { /* ignore */ }
     }, [id]);
 
+    // Cargar IDs secuenciales cuando modo=secuencial
+    useEffect(() => {
+        if (router.query.modo === 'secuencial' && id) {
+            try {
+                const stored = sessionStorage.getItem('sdr_secuencial_ids');
+                if (stored) {
+                    const ids = JSON.parse(stored);
+                    setSecuencialIds(ids);
+                    const idx = ids.indexOf(id);
+                    setIndiceSecuencial(idx);
+                }
+            } catch { /* ignore */ }
+        }
+    }, [id, router.query.modo]);
+
     // Atajos de teclado ← →
     useEffect(() => {
         const handleKeyDown = (e) => {
@@ -579,6 +621,37 @@ const ContactoSDRDetailPage = () => {
         }
     };
 
+    // ── Navegación secuencial ──
+    const modoSecuencial = router.query.modo === 'secuencial';
+    const puedeAnteriorSecuencial = indiceSecuencial > 0;
+    const puedeSiguienteSecuencial = indiceSecuencial >= 0 && indiceSecuencial < secuencialIds.length - 1;
+
+    const handleAnteriorSecuencial = () => {
+        if (!puedeAnteriorSecuencial) return;
+        const nuevoId = secuencialIds[indiceSecuencial - 1];
+        router.push(`/sdr/contacto/${nuevoId}?modo=secuencial`);
+    };
+
+    const handleSiguienteSecuencial = () => {
+        if (!puedeSiguienteSecuencial) return;
+        const nuevoId = secuencialIds[indiceSecuencial + 1];
+        router.push(`/sdr/contacto/${nuevoId}?modo=secuencial`);
+    };
+
+    /** Construir URL de vuelta a la lista preservando query params guardados */
+    const getVolverUrl = () => {
+        try {
+            const qs = sessionStorage.getItem('sdr_lista_query');
+            if (qs) return `/contactosSDR?${qs}`;
+        } catch { /* ignore */ }
+        return '/contactosSDR';
+    };
+
+    const handleSalirSecuencial = () => {
+        try { sessionStorage.removeItem('sdr_secuencial_ids'); } catch { /* ignore */ }
+        router.push(getVolverUrl());
+    };
+
     /** Ir al siguiente contacto o al listado, validando que tenga próximo contacto futuro. */
     const handleSiguienteContacto = () => {
         const prox = contacto?.proximoContacto ? new Date(contacto.proximoContacto) : null;
@@ -587,7 +660,7 @@ const ContactoSDRDetailPage = () => {
             if (puedeSiguiente) {
                 navegar('siguiente');
             } else {
-                router.push('/contactosSDR');
+                router.push(getVolverUrl());
             }
         } else {
             mostrarSnackbar('Definí una fecha de próximo contacto antes de continuar', 'warning');
@@ -926,6 +999,51 @@ const ContactoSDRDetailPage = () => {
         }
     };
 
+    // ==================== HANDLERS REUNIONES TAB ====================
+
+    const handleReunionRealizada = async (reunion) => {
+        try {
+            await SDRService.evaluarReunion(reunion._id, { estado: 'realizada' });
+            mostrarSnackbar('Reunión marcada como realizada');
+            cargarContacto();
+        } catch (err) {
+            mostrarSnackbar(err.response?.data?.error || 'Error', 'error');
+        }
+    };
+
+    const handleReunionNoShow = (reunion) => {
+        setReunionNoShow(reunion);
+        setNoShowComentario('');
+        setNoShowDialog(true);
+    };
+
+    const handleConfirmarNoShow = async () => {
+        if (!reunionNoShow) return;
+        try {
+            await SDRService.evaluarReunion(reunionNoShow._id, {
+                estado: 'no_show',
+                comentario: noShowComentario || undefined
+            });
+            mostrarSnackbar('Reunión marcada como no show');
+            setNoShowDialog(false);
+            setReunionNoShow(null);
+            setNoShowComentario('');
+            cargarContacto();
+        } catch (err) {
+            mostrarSnackbar(err.response?.data?.error || 'Error', 'error');
+        }
+    };
+
+    const handleReunionCancelada = async (reunion) => {
+        try {
+            await SDRService.evaluarReunion(reunion._id, { estado: 'cancelada' });
+            mostrarSnackbar('Reunión cancelada');
+            cargarContacto();
+        } catch (err) {
+            mostrarSnackbar(err.response?.data?.error || 'Error', 'error');
+        }
+    };
+
     // ==================== HANDLERS CADENCIA ====================
 
     const handleAsignarCadencia = async (cadenciaId) => {
@@ -1047,20 +1165,44 @@ const ContactoSDRDetailPage = () => {
         setRegistrandoWizard(true);
         try {
             const proximaTarea = buildProximaTarea();
+            const tipoEvento = resultadoLlamada === 'atendio'
+                ? 'llamada_atendida'
+                : resultadoLlamada === 'atendio_y_corto'
+                    ? 'llamada_atendio_y_corto'
+                    : 'llamada_no_atendida';
             await SDRService.registrarIntento(contacto._id, {
-                tipo: resultadoLlamada === 'atendio' ? 'llamada_atendida' : 'llamada_no_atendida',
+                tipo: tipoEvento,
                 canal: 'llamada',
                 resultado: resultadoLlamada,
                 seguimiento: seguimientoWizard || undefined,
+                nota: notaWizard.trim() || undefined,
                 proximoContacto: proximoContactoWizard || undefined,
                 proximaTarea,
                 empresaId
             });
+            // Subir audio si el grabador tiene un blob listo
+            if (grabador.audioBlob) {
+                try {
+                    await SDRService.subirAudio(contacto._id, grabador.audioBlob, {
+                        duracion: grabador.duracion,
+                        nota: notaWizard.trim() || '',
+                        empresaId
+                    });
+                    grabador.limpiar();
+                } catch {
+                    mostrarSnackbar('Acción registrada, pero hubo un error al subir el audio', 'warning');
+                }
+            }
             // Actualizar próximo contacto y tarea en el contacto local
             if (proximoContactoWizard) {
                 setContacto(prev => ({ ...prev, proximoContacto: proximoContactoWizard, proximaTarea: proximaTarea || prev.proximaTarea }));
             }
-            mostrarSnackbar(resultadoLlamada === 'atendio' ? 'Llamada atendida ✓' : 'Llamada no atendida ✓');
+            const msgSnack = resultadoLlamada === 'atendio'
+                ? 'Llamada atendida ✓'
+                : resultadoLlamada === 'atendio_y_corto'
+                    ? 'Atendió y cortó ✓'
+                    : 'Llamada no atendida ✓';
+            mostrarSnackbar(msgSnack);
             if (seguimientoWizard === 'coordinar_reunion') {
                 setModalReunion(true);
             }
@@ -1321,7 +1463,7 @@ const ContactoSDRDetailPage = () => {
                 startIcon={<ArrowBackIcon />}
                 size="small"
                 variant="outlined"
-                onClick={() => router.push('/contactosSDR')}
+                onClick={() => router.push(getVolverUrl())}
                 sx={{ textTransform: 'none', ml: 0.5 }}
             >
                 Volver a contactos
@@ -1367,6 +1509,51 @@ const ContactoSDRDetailPage = () => {
             <Head>
                 <title>{contacto.nombre} | SDR</title>
             </Head>
+            {/* ── Barra de navegación secuencial ── */}
+            {modoSecuencial && secuencialIds.length > 0 && (
+                <Box sx={{
+                    bgcolor: 'primary.main',
+                    color: 'primary.contrastText',
+                    px: 2,
+                    py: 0.75,
+                    position: 'sticky',
+                    top: 0,
+                    zIndex: 1200,
+                }}>
+                    <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1}>
+                        <Button
+                            size="small"
+                            variant="outlined"
+                            onClick={handleAnteriorSecuencial}
+                            disabled={!puedeAnteriorSecuencial}
+                            sx={{ color: 'inherit', borderColor: 'rgba(255,255,255,0.5)', textTransform: 'none', minWidth: 90 }}
+                            startIcon={<ChevronLeftIcon />}
+                        >
+                            Anterior
+                        </Button>
+                        <Typography variant="body2" fontWeight={600}>
+                            {indiceSecuencial >= 0 ? `${indiceSecuencial + 1} / ${secuencialIds.length}` : `? / ${secuencialIds.length}`}
+                        </Typography>
+                        <Button
+                            size="small"
+                            variant="outlined"
+                            onClick={handleSiguienteSecuencial}
+                            disabled={!puedeSiguienteSecuencial}
+                            sx={{ color: 'inherit', borderColor: 'rgba(255,255,255,0.5)', textTransform: 'none', minWidth: 90 }}
+                            endIcon={<ChevronRightIcon />}
+                        >
+                            Siguiente
+                        </Button>
+                        <Button
+                            size="small"
+                            onClick={handleSalirSecuencial}
+                            sx={{ color: 'inherit', textTransform: 'none', ml: 1 }}
+                        >
+                            ✕ Salir
+                        </Button>
+                    </Stack>
+                </Box>
+            )}
             <Box sx={{ py: { xs: 1, md: 3 }, pb: { xs: 28, md: 3 } }}>
                 <Container maxWidth="lg">
 
@@ -1380,6 +1567,8 @@ const ContactoSDRDetailPage = () => {
                         >
                             <Tab icon={<PersonIcon sx={{ fontSize: 18 }} />} iconPosition="start" label="Info" sx={{ minHeight: 40, fontSize: '0.8rem', textTransform: 'none' }} />
                             <Tab icon={<HistoryIcon sx={{ fontSize: 18 }} />} iconPosition="start" label={`Historial (${historial.length})`} sx={{ minHeight: 40, fontSize: '0.8rem', textTransform: 'none' }} />
+                            <Tab icon={<EventIcon sx={{ fontSize: 18 }} />} iconPosition="start" label={`Reuniones (${reuniones.length})`} sx={{ minHeight: 40, fontSize: '0.8rem', textTransform: 'none' }} />
+                            <Tab icon={<AutoFixHighIcon sx={{ fontSize: 18 }} />} iconPosition="start" label="Resumen IA 🤖" sx={{ minHeight: 40, fontSize: '0.72rem', textTransform: 'none' }} />
                             <Tab icon={<ChatBubbleOutlineIcon sx={{ fontSize: 18 }} />} iconPosition="start" label="Chat" sx={{ minHeight: 40, fontSize: '0.8rem', textTransform: 'none' }} />
                         </Tabs>
                     ) : (
@@ -1390,12 +1579,34 @@ const ContactoSDRDetailPage = () => {
                         >
                             <Tab icon={<PersonIcon />} iconPosition="start" label="Info" sx={{ textTransform: 'none', minHeight: 48 }} />
                             <Tab icon={<HistoryIcon />} iconPosition="start" label={`Historial (${historial.length})`} sx={{ textTransform: 'none', minHeight: 48 }} />
+                            <Tab icon={<EventIcon />} iconPosition="start" label={`Reuniones (${reuniones.length})`} sx={{ textTransform: 'none', minHeight: 48 }} />
+                            <Tab icon={<AutoFixHighIcon />} iconPosition="start" label="Resumen IA 🤖" sx={{ textTransform: 'none', minHeight: 48 }} />
                             <Tab icon={<ChatBubbleOutlineIcon />} iconPosition="start" label="Chat" sx={{ textTransform: 'none', minHeight: 48 }} />
                         </Tabs>
                     )}
 
                     {/* ===== TAB INFO ===== */}
                     {((isMobile && tabMobile === 0) || (!isMobile && tabDesktop === 0)) && (<>
+
+                    {/* ==================== BARRA FECHAS CLAVE ==================== */}
+                    <Stack direction="row" spacing={1} sx={{ mb: 2, flexWrap: 'wrap', gap: 1 }}>
+                        <Chip
+                            size="small"
+                            label={`📅 Added: ${contacto.createdAt ? new Date(contacto.createdAt).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—'}`}
+                            variant="outlined"
+                        />
+                        <Chip
+                            size="small"
+                            label={`📞 Últ. contacto: ${contacto.ultimaAccion ? getFechaRelativa(contacto.ultimaAccion) : '—'}`}
+                            variant="outlined"
+                        />
+                        <Chip
+                            size="small"
+                            label={`${contacto.proximaTarea?.estricto ? '🔔' : '📅'} Próximo: ${(contacto.proximaTarea?.fecha || contacto.proximoContacto) ? new Date(contacto.proximaTarea?.fecha || contacto.proximoContacto).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'}`}
+                            variant="outlined"
+                            color={contacto.proximaTarea?.estricto ? 'warning' : 'default'}
+                        />
+                    </Stack>
 
                     {/* ==================== FILA DE CARDS ==================== */}
                     <Grid container spacing={2} sx={{ mb: 3 }}>
@@ -1929,6 +2140,22 @@ const ContactoSDRDetailPage = () => {
                                                     <PhoneIcon fontSize="small" />
                                                 </Button>
                                             </Tooltip>
+                                            <Tooltip title="Atendiĺó y Cortó">
+                                                <Button size="small" variant="outlined" color="warning"
+                                                    onClick={async () => {
+                                                        try {
+                                                            await SDRService.registrarIntento(contacto._id, { tipo: 'llamada_atendio_y_corto', canal: 'llamada', resultado: 'atendio_y_corto', empresaId });
+                                                            mostrarSnackbar('Atendiĺó y cortó registrado');
+                                                            cargarContacto();
+                                                        } catch (err) {
+                                                            mostrarSnackbar(err.response?.data?.error || 'Error', 'error');
+                                                        }
+                                                    }}
+                                                    sx={{ color: '#ef6c00', borderColor: '#ffa726' }}
+                                                >
+                                                    <PhoneCallbackIcon fontSize="small" />
+                                                </Button>
+                                            </Tooltip>
                                             <Tooltip title="Llamada no atendida">
                                                 <Button size="small" variant="outlined" color="warning" onClick={() => handleAccion('llamada', false)}>
                                                     <PhoneMissedIcon fontSize="small" />
@@ -1965,50 +2192,6 @@ const ContactoSDRDetailPage = () => {
                             </Card>
                         </Grid>
 
-                        {/* Card: Resumen SDR (IA) */}
-                        <Grid item xs={12}>
-                            <Card variant="outlined">
-                                <CardContent>
-                                    <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between" mb={1}>
-                                        <Stack direction="row" spacing={1} alignItems="center">
-                                            <AutoFixHighIcon fontSize="small" color="action" />
-                                            <Typography variant="subtitle2" color="text.secondary">
-                                                Resumen SDR (IA)
-                                            </Typography>
-                                        </Stack>
-                                        <Button
-                                            size="small"
-                                            variant={contacto.resumenSDR ? 'outlined' : 'contained'}
-                                            onClick={async () => {
-                                                try {
-                                                    setGuardandoScoring(true);
-                                                    const data = await SDRService.generarResumenContacto(contacto._id);
-                                                    setContacto(prev => ({ ...prev, resumenSDR: data.resumenSDR }));
-                                                    mostrarSnackbar('Resumen generado con IA ✨');
-                                                } catch (err) {
-                                                    mostrarSnackbar(err.response?.data?.error || 'Error al generar resumen', 'error');
-                                                } finally {
-                                                    setGuardandoScoring(false);
-                                                }
-                                            }}
-                                            disabled={guardandoScoring}
-                                            sx={{ textTransform: 'none', fontSize: '0.78rem' }}
-                                        >
-                                            {guardandoScoring ? <CircularProgress size={16} /> : contacto.resumenSDR ? '🔄 Regenerar' : '✨ Generar resumen'}
-                                        </Button>
-                                    </Stack>
-                                    {contacto.resumenSDR ? (
-                                        <Typography variant="body2" sx={{ whiteSpace: 'pre-line', fontSize: '0.82rem', lineHeight: 1.6 }}>
-                                            {contacto.resumenSDR}
-                                        </Typography>
-                                    ) : (
-                                        <Typography variant="body2" color="text.disabled" sx={{ fontStyle: 'italic' }}>
-                                            Sin resumen generado. Hacé click en "Generar resumen" para que la IA analice el historial del contacto.
-                                        </Typography>
-                                    )}
-                                </CardContent>
-                            </Card>
-                        </Grid>
                     </Grid>
 
                     {/* ==================== REUNIONES (si existen) ==================== */}
@@ -2283,8 +2466,8 @@ const ContactoSDRDetailPage = () => {
                                                                             {evento.descripcion}
                                                                         </Typography>
                                                                         {evento.nota && (
-                                                                            <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic', display: 'block', fontSize: '0.7rem' }}>
-                                                                                &ldquo;{evento.nota.length > 100 ? evento.nota.substring(0, 100) + '...' : evento.nota}&rdquo;
+                                                                            <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic', display: 'block', fontSize: '0.7rem', whiteSpace: 'pre-line' }}>
+                                                                                &ldquo;{evento.nota}&rdquo;
                                                                             </Typography>
                                                                         )}
                                                                         {(evento.audioUrl || evento.metadata?.audioUrl) && (
@@ -2505,7 +2688,14 @@ const ContactoSDRDetailPage = () => {
                                                 sx={{ flex: 1, py: 1 }}>
                                                 Atendió
                                             </Button>
-                                            <Button variant="contained" color="warning" startIcon={<PhoneMissedIcon />}
+                                            <Tooltip title="Atendió y Cortó">
+                                                <Button variant="contained" color="warning" startIcon={<PhoneCallbackIcon />}
+                                                    onClick={() => { setResultadoLlamada('atendio_y_corto'); setWizardFase('nota'); }}
+                                                    sx={{ flex: 1, py: 1, bgcolor: '#ffa726', '&:hover': { bgcolor: '#ef6c00' } }}>
+                                                    AyC
+                                                </Button>
+                                            </Tooltip>
+                                            <Button variant="contained" color="error" startIcon={<PhoneMissedIcon />}
                                                 onClick={() => { setResultadoLlamada('no_atendio'); setWizardFase('nota'); }}
                                                 sx={{ flex: 1, py: 1 }}>
                                                 No atendió
@@ -2545,13 +2735,53 @@ const ContactoSDRDetailPage = () => {
                                     <Box>
                                         <Stack direction="row" spacing={0.5} sx={{ mb: 1.5, flexWrap: 'wrap', gap: 0.5 }}>
                                             <Chip size="small"
-                                                label={resultadoLlamada === 'atendio' ? '✅ Atendió' : '❌ No atendió'}
-                                                color={resultadoLlamada === 'atendio' ? 'success' : 'warning'} />
+                                                label={resultadoLlamada === 'atendio' ? '✅ Atendió' : resultadoLlamada === 'atendio_y_corto' ? '⚡ AyC' : '❌ No atendió'}
+                                                color={resultadoLlamada === 'atendio' ? 'success' : resultadoLlamada === 'atendio_y_corto' ? 'warning' : 'error'} />
                                             {seguimientoWizard && (
                                                 <Chip size="small"
                                                     label={seguimientoWizard === 'llamar_despues' ? '📞 Llamar después' : seguimientoWizard === 'mensaje_despues' ? '💬 Mensaje después' : '📅 Coordinar reunión'}
                                                     color="info" variant="outlined"
                                                     onDelete={() => { setSeguimientoWizard(null); setWizardFase('seguimiento'); }} />
+                                            )}
+                                        </Stack>
+                                        {/* Nota inline */}
+                                        <Stack direction="row" spacing={1} sx={{ mb: 1 }}>
+                                            <TextField
+                                                fullWidth
+                                                size="small"
+                                                multiline
+                                                rows={2}
+                                                placeholder="Nota sobre la llamada (opcional)..."
+                                                value={notaWizard}
+                                                onChange={(e) => setNotaWizard(e.target.value)}
+                                            />
+                                            {grabador.estado === 'inactivo' && (
+                                                <Tooltip title="Grabar audio">
+                                                    <IconButton size="small" color="error" onClick={grabador.iniciar}
+                                                        sx={{ bgcolor: '#ffebee', '&:hover': { bgcolor: '#ffcdd2' }, alignSelf: 'flex-start', mt: 0.5 }}>
+                                                        <MicIcon fontSize="small" />
+                                                    </IconButton>
+                                                </Tooltip>
+                                            )}
+                                            {(grabador.estado === 'grabando' || grabador.estado === 'pausado') && (
+                                                <Stack alignItems="center" spacing={0.3} sx={{ flexShrink: 0 }}>
+                                                    <Typography variant="caption" color="error.main" fontWeight={700} sx={{ fontFamily: 'monospace', fontSize: '0.7rem' }}>
+                                                        {grabador.duracionFormateada}
+                                                    </Typography>
+                                                    <IconButton size="small" color="error" onClick={grabador.detener}>
+                                                        <StopIcon fontSize="small" />
+                                                    </IconButton>
+                                                </Stack>
+                                            )}
+                                            {grabador.estado === 'detenido' && grabador.audioBlob && (
+                                                <Stack alignItems="center" spacing={0.3} sx={{ flexShrink: 0 }}>
+                                                    <Typography variant="caption" color="success.main" fontWeight={600} sx={{ fontSize: '0.65rem' }}>
+                                                        🎙️ {grabador.duracionFormateada}
+                                                    </Typography>
+                                                    <IconButton size="small" onClick={grabador.limpiar}>
+                                                        <DeleteOutlineIcon fontSize="small" />
+                                                    </IconButton>
+                                                </Stack>
                                             )}
                                         </Stack>
                                         {renderProximoContactoPicker()}
@@ -2868,6 +3098,53 @@ const ContactoSDRDetailPage = () => {
                                         onClick={() => { setWizardFase('accion'); setResultadoLlamada(null); setResultadoWA(null); setSeguimientoWizard(null); setNotaWizard(''); setProximoContactoWizard(null); setTipoTareaWizard(null); setNotaTareaWizard(''); setMensajeWA(''); }}
                                         sx={{ fontSize: '0.75rem', textTransform: 'none', color: 'text.secondary', ml: 1 }}>
                                         ← Volver al inicio
+                        {/* ==================== MINI-LISTADO ÚLTIMOS 5 COMUNICACIONES ==================== */}
+                        {(() => {
+                            const TIPOS_COMUNICACION = ['llamada_atendida', 'llamada_no_atendida', 'llamada_atendio_y_corto', 'whatsapp_enviado', 'whatsapp_respuesta_confirmada', 'email_enviado', 'linkedin_enviado'];
+                            const ultimosComunicacion = historial.filter(e => TIPOS_COMUNICACION.includes(e.tipo)).slice(0, 5);
+                            if (ultimosComunicacion.length === 0) return null;
+                            return (
+                                <Paper variant="outlined" sx={{ p: 1.5, mt: 1.5 }}>
+                                    <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1}>
+                                        <Stack direction="row" spacing={0.5} alignItems="center">
+                                            <HistoryIcon sx={{ fontSize: 16, color: 'text.secondary' }} />
+                                            <Typography variant="caption" color="text.secondary" fontWeight={600}>
+                                                Últimos contactos
+                                            </Typography>
+                                        </Stack>
+                                        <Button size="small" variant="text" onClick={() => setTabDesktop(1)}
+                                            sx={{ fontSize: '0.72rem', textTransform: 'none', py: 0, minHeight: 'auto' }}>
+                                            Ver historial completo →
+                                        </Button>
+                                    </Stack>
+                                    <Stack spacing={0.5}>
+                                        {ultimosComunicacion.map((evento) => {
+                                            const colors = getEventoColor(evento.tipo);
+                                            return (
+                                                <Stack key={evento._id} direction="row" spacing={0.8} alignItems="center"
+                                                    sx={{ p: 0.6, bgcolor: colors.bg, borderLeft: 2, borderColor: colors.border, borderRadius: '0 4px 4px 0' }}>
+                                                    <Avatar sx={{ width: 18, height: 18, bgcolor: colors.border, color: 'white', '& .MuiSvgIcon-root': { fontSize: '0.65rem' } }}>
+                                                        {getEventoIcon(evento.tipo)}
+                                                    </Avatar>
+                                                    <Typography variant="caption" fontWeight={500} sx={{ flex: 1, minWidth: 0 }} noWrap>
+                                                        {evento.descripcion}
+                                                    </Typography>
+                                                    {evento.nota && (
+                                                        <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic', fontSize: '0.65rem', maxWidth: 100 }} noWrap>
+                                                            {evento.nota}
+                                                        </Typography>
+                                                    )}
+                                                    <Typography variant="caption" color="text.disabled" sx={{ fontSize: '0.65rem', flexShrink: 0 }}>
+                                                        {getFechaRelativa(evento.createdAt)}
+                                                    </Typography>
+                                                </Stack>
+                                            );
+                                        })}
+                                    </Stack>
+                                </Paper>
+                            );
+                        })()}
+
                                     </Button>
                                 )}
                             </Box>
@@ -3108,8 +3385,8 @@ const ContactoSDRDetailPage = () => {
                                                                             {evento.descripcion}
                                                                         </Typography>
                                                                         {evento.nota && (
-                                                                            <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic', display: 'block', fontSize: '0.68rem' }}>
-                                                                                &ldquo;{evento.nota.length > 80 ? evento.nota.substring(0, 80) + '...' : evento.nota}&rdquo;
+                                                                            <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic', display: 'block', fontSize: '0.68rem', whiteSpace: 'pre-line' }}>
+                                                                                &ldquo;{evento.nota}&rdquo;
                                                                             </Typography>
                                                                         )}
                                                                         {(evento.audioUrl || evento.metadata?.audioUrl) && (
@@ -3366,8 +3643,8 @@ const ContactoSDRDetailPage = () => {
                                                                             {evento.descripcion}
                                                                         </Typography>
                                                                         {evento.nota && (
-                                                                            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.3, fontStyle: 'italic', fontSize: esGrupoMultiple ? '0.78rem' : undefined }}>
-                                                                                &ldquo;{evento.nota.length > 200 ? evento.nota.substring(0, 200) + '...' : evento.nota}&rdquo;
+                                                                            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.3, fontStyle: 'italic', fontSize: esGrupoMultiple ? '0.78rem' : undefined, whiteSpace: 'pre-line' }}>
+                                                                                &ldquo;{evento.nota}&rdquo;
                                                                             </Typography>
                                                                         )}
                                                                         {(evento.audioUrl || evento.metadata?.audioUrl) && (
@@ -3468,8 +3745,168 @@ const ContactoSDRDetailPage = () => {
                         </Paper>
                     )}
 
-                    {/* ==================== TAB CHAT ==================== */}
+                    {/* ==================== TAB REUNIONES ==================== */}
                     {((isMobile && tabMobile === 2) || (!isMobile && tabDesktop === 2)) && (
+                        <Paper variant="outlined" sx={{ p: 2 }}>
+                            <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
+                                <Typography variant="subtitle1" fontWeight={600}>📅 Reuniones</Typography>
+                                <Button variant="contained" size="small" startIcon={<EventIcon />} onClick={() => setModalReunion(true)}>
+                                    Crear reunión
+                                </Button>
+                            </Stack>
+
+                            {reuniones.length === 0 ? (
+                                <Box sx={{ textAlign: 'center', py: 4 }}>
+                                    <Typography variant="body2" color="text.secondary">No hay reuniones registradas</Typography>
+                                </Box>
+                            ) : (() => {
+                                const ahora = new Date();
+                                const proximas = reuniones.filter(r => {
+                                    const fecha = new Date(r.fecha || r.fechaHora);
+                                    return r.estado === 'agendada' && fecha >= ahora;
+                                }).sort((a, b) => new Date(a.fecha || a.fechaHora) - new Date(b.fecha || b.fechaHora));
+                                const pasadas = reuniones.filter(r => {
+                                    const fecha = new Date(r.fecha || r.fechaHora);
+                                    return r.estado !== 'agendada' || fecha < ahora;
+                                }).sort((a, b) => new Date(b.fecha || b.fechaHora) - new Date(a.fecha || a.fechaHora));
+
+                                const resultadoLabel = { realizada: '✅ Realizada', no_show: '❌ No show', cancelada: '🚫 Cancelada' };
+                                const resultadoColor = { realizada: 'success', no_show: 'error', cancelada: 'default' };
+
+                                return (
+                                    <Stack spacing={3}>
+                                        {/* Próximas */}
+                                        <Box>
+                                            <Typography variant="subtitle2" color="primary" sx={{ mb: 1 }}>
+                                                Próximas ({proximas.length})
+                                            </Typography>
+                                            {proximas.length === 0 ? (
+                                                <Typography variant="body2" color="text.secondary">Sin reuniones próximas</Typography>
+                                            ) : (
+                                                <Stack spacing={1}>
+                                                    {proximas.map(r => {
+                                                        const fecha = r.fecha || r.fechaHora;
+                                                        return (
+                                                            <Paper key={r._id} variant="outlined" sx={{ p: 1.5, borderLeft: '4px solid #2196f3' }}>
+                                                                <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                                                                    <Chip icon={<EventIcon />} label={new Date(fecha).toLocaleDateString('es-AR', { weekday: 'short', day: 'numeric', month: 'short' })} size="small" variant="outlined" />
+                                                                    <Typography variant="body2" fontWeight={600}>
+                                                                        {new Date(fecha).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
+                                                                    </Typography>
+                                                                    <Chip label="Agendada" size="small" color="info" />
+                                                                    {r.link && (
+                                                                        <Chip label="Link" size="small" icon={<OpenInNewIcon />} onClick={() => window.open(r.link, '_blank')} clickable color="primary" variant="outlined" />
+                                                                    )}
+                                                                </Stack>
+                                                            </Paper>
+                                                        );
+                                                    })}
+                                                </Stack>
+                                            )}
+                                        </Box>
+
+                                        <Divider />
+
+                                        {/* Pasadas */}
+                                        <Box>
+                                            <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
+                                                Pasadas ({pasadas.length})
+                                            </Typography>
+                                            {pasadas.length === 0 ? (
+                                                <Typography variant="body2" color="text.secondary">Sin reuniones pasadas</Typography>
+                                            ) : (
+                                                <Stack spacing={1}>
+                                                    {pasadas.map(r => {
+                                                        const fecha = r.fecha || r.fechaHora;
+                                                        const esPendiente = r.estado === 'agendada';
+                                                        const borderColor = esPendiente ? '#ff9800' : (resultadoColor[r.estado] === 'success' ? '#4caf50' : resultadoColor[r.estado] === 'error' ? '#f44336' : '#9e9e9e');
+                                                        return (
+                                                            <Paper key={r._id} variant="outlined" sx={{ p: 1.5, borderLeft: `4px solid ${borderColor}` }}>
+                                                                <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                                                                    <Chip icon={<EventIcon />} label={new Date(fecha).toLocaleDateString('es-AR', { weekday: 'short', day: 'numeric', month: 'short' })} size="small" variant="outlined" />
+                                                                    <Typography variant="body2" fontWeight={600}>
+                                                                        {new Date(fecha).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
+                                                                    </Typography>
+                                                                    {esPendiente ? (
+                                                                        <Chip label="⏳ Vencida" size="small" color="warning" />
+                                                                    ) : (
+                                                                        <Chip label={resultadoLabel[r.estado] || r.estado} size="small" color={resultadoColor[r.estado] || 'default'} />
+                                                                    )}
+                                                                    {r.link && (
+                                                                        <Chip label="Link" size="small" icon={<OpenInNewIcon />} onClick={() => window.open(r.link, '_blank')} clickable color="primary" variant="outlined" />
+                                                                    )}
+                                                                </Stack>
+                                                                {r.comentario && (
+                                                                    <Typography variant="body2" sx={{ mt: 0.5, fontStyle: 'italic', color: 'text.secondary' }}>
+                                                                        💬 {r.comentario}
+                                                                    </Typography>
+                                                                )}
+                                                                {r.estado === 'no_show' && r.notasEvaluador && (
+                                                                    <Typography variant="body2" sx={{ mt: 0.5, color: 'error.main' }}>
+                                                                        ❌ {r.notasEvaluador}
+                                                                    </Typography>
+                                                                )}
+                                                                {esPendiente && (
+                                                                    <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
+                                                                        <Button size="small" color="success" variant="contained" onClick={() => handleReunionRealizada(r)}>
+                                                                            ✅ Realizada
+                                                                        </Button>
+                                                                        <Button size="small" color="error" variant="outlined" onClick={() => handleReunionNoShow(r)}>
+                                                                            ❌ No show
+                                                                        </Button>
+                                                                        <Button size="small" variant="outlined" onClick={() => handleReunionCancelada(r)}>
+                                                                            Cancelada
+                                                                        </Button>
+                                                                    </Stack>
+                                                                )}
+                                                            </Paper>
+                                                        );
+                                                    })}
+                                                </Stack>
+                                            )}
+                                        </Box>
+                                    </Stack>
+                                );
+                            })()}
+                        </Paper>
+                    )}
+
+                    {/* ==================== TAB RESUMEN IA ==================== */}
+                    {((isMobile && tabMobile === 3) || (!isMobile && tabDesktop === 3)) && (
+                        <Paper variant="outlined" sx={{ p: 2 }}>
+                            <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between" mb={2}>
+                                <Stack direction="row" spacing={1} alignItems="center">
+                                    <AutoFixHighIcon fontSize="small" color="action" />
+                                    <Typography variant="subtitle2" color="text.secondary">Resumen SDR (IA)</Typography>
+                                </Stack>
+                                <Button size="small" variant={contacto.resumenSDR ? 'outlined' : 'contained'}
+                                    onClick={async () => {
+                                        try {
+                                            setGuardandoScoring(true);
+                                            const data = await SDRService.generarResumenContacto(contacto._id);
+                                            setContacto(prev => ({ ...prev, resumenSDR: data.resumenSDR }));
+                                            mostrarSnackbar('Resumen generado con IA ✨');
+                                        } catch (err) {
+                                            mostrarSnackbar(err.response?.data?.error || 'Error al generar resumen', 'error');
+                                        } finally {
+                                            setGuardandoScoring(false);
+                                        }
+                                    }}
+                                    disabled={guardandoScoring}
+                                    sx={{ textTransform: 'none', fontSize: '0.78rem' }}>
+                                    {guardandoScoring ? <CircularProgress size={16} /> : contacto.resumenSDR ? '🔄 Regenerar' : '✨ Generar resumen'}
+                                </Button>
+                            </Stack>
+                            {contacto.resumenSDR ? (
+                                <Typography variant="body2" sx={{ whiteSpace: 'pre-line', fontSize: '0.82rem', lineHeight: 1.6 }}>{contacto.resumenSDR}</Typography>
+                            ) : (
+                                <Typography variant="body2" color="text.disabled" sx={{ fontStyle: 'italic' }}>Sin resumen generado. Hacé click en "Generar resumen" para que la IA analice el historial.</Typography>
+                            )}
+                        </Paper>
+                    )}
+
+                    {/* ==================== TAB CHAT ==================== */}
+                    {((isMobile && tabMobile === 4) || (!isMobile && tabDesktop === 4)) && (
                         <Paper variant="outlined" sx={{ overflow: 'hidden', height: { xs: 400, md: 600 } }}>
                             {contacto.telefono ? (
                                 <MiniChatViewer telefono={contacto.telefono} />
@@ -3586,7 +4023,12 @@ const ContactoSDRDetailPage = () => {
                                     <Stack direction="row" spacing={1}>
                                         <Button variant="contained" color="success" startIcon={<CheckCircleIcon />}
                                             onClick={() => { setResultadoLlamada('atendio'); setWizardFase('seguimiento'); }} sx={{ flex: 1 }}>Atendió</Button>
-                                        <Button variant="contained" color="warning" startIcon={<PhoneMissedIcon />}
+                                        <Tooltip title="Atendió y Cortó">
+                                            <Button variant="contained" color="warning" startIcon={<PhoneCallbackIcon />}
+                                                onClick={() => { setResultadoLlamada('atendio_y_corto'); setWizardFase('nota'); }}
+                                                sx={{ flex: 1, bgcolor: '#ffa726', '&:hover': { bgcolor: '#ef6c00' } }}>AyC</Button>
+                                        </Tooltip>
+                                        <Button variant="contained" color="error" startIcon={<PhoneMissedIcon />}
                                             onClick={() => { setResultadoLlamada('no_atendio'); setWizardFase('nota'); }} sx={{ flex: 1 }}>No atendió</Button>
                                     </Stack>
                                 )}
@@ -3606,10 +4048,49 @@ const ContactoSDRDetailPage = () => {
                                 {wizardFase === 'nota' && (
                                     <Box>
                                         <Stack direction="row" spacing={0.5} alignItems="center" sx={{ mb: 1, flexWrap: 'wrap', gap: 0.5 }}>
-                                            <Chip size="small" label={resultadoLlamada === 'atendio' ? '✅ Atendió' : '❌ No atendió'} color={resultadoLlamada === 'atendio' ? 'success' : 'warning'} />
+                                            <Chip size="small"
+                                                label={resultadoLlamada === 'atendio' ? '✅ Atendió' : resultadoLlamada === 'atendio_y_corto' ? '⚡ AyC' : '❌ No atendió'}
+                                                color={resultadoLlamada === 'atendio' ? 'success' : resultadoLlamada === 'atendio_y_corto' ? 'warning' : 'error'} />
                                             {seguimientoWizard && (
                                                 <Chip size="small" label={seguimientoWizard === 'llamar_despues' ? '📞' : seguimientoWizard === 'mensaje_despues' ? '💬' : '📅'}
                                                     color="info" variant="outlined" onDelete={() => { setSeguimientoWizard(null); setWizardFase('seguimiento'); }} sx={{ height: 22 }} />
+                                            )}
+                                        </Stack>
+                                        {/* Nota inline (mobile) */}
+                                        <Stack direction="row" spacing={0.5} sx={{ mb: 1 }}>
+                                            <TextField
+                                                fullWidth size="small" multiline rows={2}
+                                                placeholder="Nota (opcional)..."
+                                                value={notaWizard}
+                                                onChange={(e) => setNotaWizard(e.target.value)}
+                                            />
+                                            {grabador.estado === 'inactivo' && (
+                                                <Tooltip title="Grabar audio">
+                                                    <IconButton size="small" color="error" onClick={grabador.iniciar}
+                                                        sx={{ bgcolor: '#ffebee', '&:hover': { bgcolor: '#ffcdd2' }, alignSelf: 'flex-start' }}>
+                                                        <MicIcon sx={{ fontSize: 18 }} />
+                                                    </IconButton>
+                                                </Tooltip>
+                                            )}
+                                            {(grabador.estado === 'grabando' || grabador.estado === 'pausado') && (
+                                                <Stack alignItems="center" spacing={0.3} sx={{ flexShrink: 0 }}>
+                                                    <Typography variant="caption" color="error.main" fontWeight={700} sx={{ fontFamily: 'monospace', fontSize: '0.65rem' }}>
+                                                        {grabador.duracionFormateada}
+                                                    </Typography>
+                                                    <IconButton size="small" color="error" onClick={grabador.detener}>
+                                                        <StopIcon sx={{ fontSize: 16 }} />
+                                                    </IconButton>
+                                                </Stack>
+                                            )}
+                                            {grabador.estado === 'detenido' && grabador.audioBlob && (
+                                                <Stack alignItems="center" spacing={0.3} sx={{ flexShrink: 0 }}>
+                                                    <Typography variant="caption" color="success.main" sx={{ fontSize: '0.6rem' }}>
+                                                        🎙️ {grabador.duracionFormateada}
+                                                    </Typography>
+                                                    <IconButton size="small" onClick={grabador.limpiar}>
+                                                        <DeleteOutlineIcon sx={{ fontSize: 16 }} />
+                                                    </IconButton>
+                                                </Stack>
                                             )}
                                         </Stack>
                                         {renderProximoContactoPicker(true)}
@@ -3843,6 +4324,29 @@ const ContactoSDRDetailPage = () => {
                 onSubmit={handleRegistrarReunion}
                 loading={guardandoReunion}
             />
+
+            {/* Dialog No Show con comentario */}
+            <Dialog open={noShowDialog} onClose={() => setNoShowDialog(false)} maxWidth="sm" fullWidth>
+                <DialogTitle>Registrar No Show</DialogTitle>
+                <DialogContent>
+                    <TextField
+                        autoFocus
+                        fullWidth
+                        multiline
+                        rows={3}
+                        value={noShowComentario}
+                        onChange={(e) => setNoShowComentario(e.target.value)}
+                        placeholder="¿Qué pasó? ej: me dejó en visto, no se conectó..."
+                        sx={{ mt: 1 }}
+                    />
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => setNoShowDialog(false)}>Cancelar</Button>
+                    <Button variant="contained" color="error" onClick={handleConfirmarNoShow}>
+                        Confirmar
+                    </Button>
+                </DialogActions>
+            </Dialog>
 
             {/* Menú de re-asignación SDR */}
             <Menu
