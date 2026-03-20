@@ -165,14 +165,13 @@ const ContactosSDRPage = () => {
     const [modalCambiarEstadoMasivo, setModalCambiarEstadoMasivo] = useState(false);
     const [actionLoading, setActionLoading] = useState(false);
 
-    // Config prompt audio
+    // Config prompt IA
     const [modalConfigPrompt, setModalConfigPrompt] = useState(false);
-    const [promptAudioCustom, setPromptAudioCustom] = useState('');
-    const [promptAudioDefault, setPromptAudioDefault] = useState('');
-    const [promptTranscripcionCustom, setPromptTranscripcionCustom] = useState('');
-    const [promptTranscripcionDefault, setPromptTranscripcionDefault] = useState('');
-    const [promptResumenCustom, setPromptResumenCustom] = useState('');
-    const [promptResumenDefault, setPromptResumenDefault] = useState('');
+    const [promptConfigs, setPromptConfigs] = useState({
+        audio: { custom: '', default: '' },
+        transcripcion: { custom: '', default: '' },
+        resumen: { custom: '', default: '' }
+    });
     const [loadingConfig, setLoadingConfig] = useState(false);
 
     // Permiso para enviar templates via bot
@@ -1288,12 +1287,11 @@ const ContactosSDRPage = () => {
                                 setModalConfigPrompt(true);
                                 try {
                                     const config = await SDRService.obtenerConfig(empresaId);
-                                    setPromptAudioCustom(config.promptAudioResumen || '');
-                                    setPromptAudioDefault(config.promptAudioDefault || '');
-                                    setPromptTranscripcionCustom(config.promptTranscripcionReunion || '');
-                                    setPromptTranscripcionDefault(config.promptTranscripcionReunionDefault || '');
-                                    setPromptResumenCustom(config.promptResumenContacto || '');
-                                    setPromptResumenDefault(config.promptResumenContactoDefault || '');
+                                    setPromptConfigs({
+                                        audio: { custom: config.promptAudioResumen || '', default: config.promptAudioDefault || '' },
+                                        transcripcion: { custom: config.promptTranscripcionReunion || '', default: config.promptTranscripcionReunionDefault || '' },
+                                        resumen: { custom: config.promptResumenContacto || '', default: config.promptResumenContactoDefault || '' }
+                                    });
                                 } catch (err) {
                                     console.error('Error cargando config:', err);
                                 }
@@ -2082,12 +2080,11 @@ const ContactosSDRPage = () => {
                                 setModalConfigPrompt(true);
                                 try {
                                     const config = await SDRService.obtenerConfig(empresaId);
-                                    setPromptAudioCustom(config.promptAudioResumen || '');
-                                    setPromptAudioDefault(config.promptAudioDefault || '');
-                                    setPromptTranscripcionCustom(config.promptTranscripcionReunion || '');
-                                    setPromptTranscripcionDefault(config.promptTranscripcionReunionDefault || '');
-                                    setPromptResumenCustom(config.promptResumenContacto || '');
-                                    setPromptResumenDefault(config.promptResumenContactoDefault || '');
+                                    setPromptConfigs({
+                                        audio: { custom: config.promptAudioResumen || '', default: config.promptAudioDefault || '' },
+                                        transcripcion: { custom: config.promptTranscripcionReunion || '', default: config.promptTranscripcionReunionDefault || '' },
+                                        resumen: { custom: config.promptResumenContacto || '', default: config.promptResumenContactoDefault || '' }
+                                    });
                                 } catch (err) {
                                     console.error('Error cargando config:', err);
                                 }
@@ -3094,88 +3091,39 @@ const ContactosSDRPage = () => {
             <Dialog open={modalConfigPrompt} onClose={() => setModalConfigPrompt(false)} maxWidth="md" fullWidth>
                 <DialogTitle>Configurar Prompts IA</DialogTitle>
                 <DialogContent>
-                    <Typography variant="subtitle2" sx={{ mb: 1, mt: 1 }}>
-                        🎙️ Prompt para análisis de audio grabado
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                        Instrucciones que recibe la IA al analizar audios grabados.
-                        Dejá vacío para usar el prompt por defecto.
-                    </Typography>
-                    <TextField
-                        fullWidth
-                        multiline
-                        rows={6}
-                        value={promptAudioCustom}
-                        onChange={(e) => setPromptAudioCustom(e.target.value)}
-                        placeholder={promptAudioDefault || 'Cargando prompt por defecto...'}
-                        sx={{ fontFamily: 'monospace', fontSize: '0.85rem', mb: 1 }}
-                    />
-                    {promptAudioCustom && (
-                        <Button 
-                            size="small" 
-                            onClick={() => setPromptAudioCustom('')} 
-                            sx={{ mb: 2 }}
-                        >
-                            Restaurar prompt por defecto
-                        </Button>
-                    )}
-
-                    <Divider sx={{ my: 2 }} />
-
-                    <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                        📝 Prompt para transcripción de reuniones
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                        Instrucciones que recibe la IA al analizar transcripciones de reuniones.
-                        Los datos del contacto y la transcripción se agregan automáticamente.
-                        Dejá vacío para usar el prompt por defecto.
-                    </Typography>
-                    <TextField
-                        fullWidth
-                        multiline
-                        rows={6}
-                        value={promptTranscripcionCustom}
-                        onChange={(e) => setPromptTranscripcionCustom(e.target.value)}
-                        placeholder={promptTranscripcionDefault || 'Cargando prompt por defecto...'}
-                        sx={{ fontFamily: 'monospace', fontSize: '0.85rem', mb: 1 }}
-                    />
-                    {promptTranscripcionCustom && (
-                        <Button 
-                            size="small" 
-                            onClick={() => setPromptTranscripcionCustom('')} 
-                            sx={{ mb: 2 }}
-                        >
-                            Restaurar prompt por defecto
-                        </Button>
-                    )}
-
-                    <Divider sx={{ my: 2 }} />
-
-                    <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                        📊 Prompt para resumen ejecutivo del contacto
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                        Instrucciones para generar el resumen IA del contacto (tab "Resumen IA").
-                        Los datos del contacto, historial y reuniones se agregan automáticamente.
-                        Dejá vacío para usar el prompt por defecto.
-                    </Typography>
-                    <TextField
-                        fullWidth
-                        multiline
-                        rows={8}
-                        value={promptResumenCustom}
-                        onChange={(e) => setPromptResumenCustom(e.target.value)}
-                        placeholder={promptResumenDefault || 'Cargando prompt por defecto...'}
-                        sx={{ fontFamily: 'monospace', fontSize: '0.85rem', mb: 1 }}
-                    />
-                    {promptResumenCustom && (
-                        <Button 
-                            size="small" 
-                            onClick={() => setPromptResumenCustom('')}
-                        >
-                            Restaurar prompt por defecto
-                        </Button>
-                    )}
+                    {[
+                        { key: 'audio', icon: '🎙️', label: 'Prompt para análisis de audio grabado', desc: 'Instrucciones que recibe la IA al analizar audios grabados. Dejá vacío para usar el prompt por defecto.' },
+                        { key: 'transcripcion', icon: '📝', label: 'Prompt para transcripción de reuniones', desc: 'Instrucciones que recibe la IA al analizar transcripciones de reuniones. Los datos del contacto y la transcripción se agregan automáticamente. Dejá vacío para usar el prompt por defecto.' },
+                        { key: 'resumen', icon: '📊', label: 'Prompt para resumen ejecutivo del contacto', desc: 'Instrucciones para generar el resumen IA del contacto (tab "Resumen IA"). Los datos del contacto, historial y reuniones se agregan automáticamente. Dejá vacío para usar el prompt por defecto.' }
+                    ].map(({ key, icon, label, desc }, idx) => (
+                        <React.Fragment key={key}>
+                            {idx > 0 && <Divider sx={{ my: 2 }} />}
+                            <Typography variant="subtitle2" sx={{ mb: 1, mt: idx === 0 ? 1 : 0 }}>
+                                {icon} {label}
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                                {desc}
+                            </Typography>
+                            <TextField
+                                fullWidth
+                                multiline
+                                rows={6}
+                                value={promptConfigs[key].custom}
+                                onChange={(e) => setPromptConfigs(prev => ({ ...prev, [key]: { ...prev[key], custom: e.target.value } }))}
+                                placeholder={promptConfigs[key].default || 'Cargando prompt por defecto...'}
+                                sx={{ fontFamily: 'monospace', fontSize: '0.85rem', mb: 1 }}
+                            />
+                            {promptConfigs[key].custom && (
+                                <Button 
+                                    size="small" 
+                                    onClick={() => setPromptConfigs(prev => ({ ...prev, [key]: { ...prev[key], custom: '' } }))}
+                                    sx={{ mb: idx < 2 ? 2 : 0 }}
+                                >
+                                    Restaurar prompt por defecto
+                                </Button>
+                            )}
+                        </React.Fragment>
+                    ))}
                 </DialogContent>
                 <DialogActions>
                     <Button onClick={() => setModalConfigPrompt(false)}>Cancelar</Button>
@@ -3187,9 +3135,9 @@ const ContactosSDRPage = () => {
                             try {
                                 await SDRService.actualizarConfig({ 
                                     empresaId, 
-                                    promptAudioResumen: promptAudioCustom || null,
-                                    promptTranscripcionReunion: promptTranscripcionCustom || null,
-                                    promptResumenContacto: promptResumenCustom || null
+                                    promptAudioResumen: promptConfigs.audio.custom || null,
+                                    promptTranscripcionReunion: promptConfigs.transcripcion.custom || null,
+                                    promptResumenContacto: promptConfigs.resumen.custom || null
                                 });
                                 setSnackbar({ open: true, message: 'Prompts actualizados', severity: 'success' });
                                 setModalConfigPrompt(false);
