@@ -879,6 +879,24 @@ const SDRService = {
     actualizarConfig: async (data) => {
         const res = await api.put('/sdr/config', data);
         return res.data;
+    },
+
+    // ==================== DISTRIBUCIÓN AUTOMÁTICA ====================
+
+    /**
+     * Obtener configuración de distribución de leads
+     */
+    obtenerDistribucion: async (empresaId) => {
+        const res = await api.get('/sdr/distribucion', { params: { empresaId } });
+        return res.data;
+    },
+
+    /**
+     * Actualizar configuración de distribución de leads
+     */
+    actualizarDistribucion: async (data) => {
+        const res = await api.put('/sdr/distribucion', data);
+        return res.data;
     }
 };
 

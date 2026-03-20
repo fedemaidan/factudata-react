@@ -60,6 +60,8 @@ import SortIcon from '@mui/icons-material/Sort';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
 import DateRangeIcon from '@mui/icons-material/DateRange';
 import BulkSendTemplateDialog from 'src/components/sdr/BulkSendTemplateDialog';
+import ModalDistribucionSDR from 'src/components/sdr/ModalDistribucionSDR';
+import ShuffleIcon from '@mui/icons-material/Shuffle';
 
 // ==================== CONSTANTES ====================
 
@@ -193,6 +195,7 @@ const GestionSDRPage = () => {
     const [modalNota, setModalNota] = useState({ open: false, contacto: null, tipo: '', atendida: null });
     const [modalEditarReunion, setModalEditarReunion] = useState({ open: false, reunion: null });
     const [modalBulkTemplate, setModalBulkTemplate] = useState(false);
+    const [modalDistribucion, setModalDistribucion] = useState(false);
     
     // Estado para importación
     const [importTab, setImportTab] = useState(0);
@@ -1007,6 +1010,7 @@ const GestionSDRPage = () => {
                             <Button size="small" startIcon={<RefreshIcon />} onClick={refrescar}>Actualizar</Button>
                             <Button size="small" startIcon={<DownloadIcon />} onClick={handleExportar}>Exportar</Button>
                             <Button size="small" startIcon={<UploadFileIcon />} onClick={() => setModalImportar(true)}>Importar</Button>
+                            <Button size="small" startIcon={<ShuffleIcon />} onClick={() => setModalDistribucion(true)}>Distribución</Button>
                             <Button size="small" variant="contained" startIcon={<AddIcon />} onClick={() => setModalCrear(true)}>Nuevo</Button>
                         </Stack>
                     </Stack>
@@ -2581,6 +2585,14 @@ const GestionSDRPage = () => {
             <ModalImportar />
             <ModalAsignar />
             <ModalAgregarSDR />
+
+            {/* Modal Distribución de Leads */}
+            <ModalDistribucionSDR
+                open={modalDistribucion}
+                onClose={(saved) => { setModalDistribucion(false); if (saved) refrescar(); }}
+                empresaId={empresaId}
+                sdrsDisponibles={sdrsDisponibles}
+            />
 
             {/* Modal Envío Masivo de Template Meta via Bot */}
             {tienePermisoEnviarBot && (
