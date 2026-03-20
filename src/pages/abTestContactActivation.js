@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import Head from 'next/head';
-import dynamic from 'next/dynamic';
+import NextLink from 'next/link';
 import {
     Box,
     Container,
@@ -25,6 +25,7 @@ import {
     IconButton,
     Tooltip,
     Slider,
+    Link,
 } from '@mui/material';
 import {
     Refresh as RefreshIcon,
@@ -32,12 +33,16 @@ import {
     Pause as PauseIcon,
     Stop as StopIcon,
     InfoOutlined as InfoIcon,
+    CompareArrows as CompareIcon,
+    PictureAsPdf as PdfIcon,
+    TextSnippet as TxtIcon,
+    OpenInNew as OpenInNewIcon,
+    VisibilityOff as IgnorarIcon,
+    Visibility as RestaurarIcon,
 } from '@mui/icons-material';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import abTestService from 'src/services/abTestService';
-
-// ApexCharts SSR-safe import
-const Chart = dynamic(() => import('react-apexcharts'), { ssr: false });
+import { exportTestToPDF, exportTestToTXT } from 'src/utils/abTest/exportAbTest';
 
 const TEST_NAME = 'onboarding_activacion_rapida';
 
@@ -51,14 +56,6 @@ function getEstadoChip(estado) {
     };
     const config = map[estado] || { color: 'default', label: estado };
     return <Chip size="small" color={config.color} label={config.label} />;
-}
-
-function safeMetric(metricas, variante, key) {
-    if (!metricas) return 0;
-    const v = metricas[variante] || metricas.get?.(variante);
-    if (!v) return 0;
-    const val = Number(v[key]);
-    return isFinite(val) ? val : 0;
 }
 
 function pct(numerador, denominador) {
@@ -79,175 +76,237 @@ function formatDate(dateStr) {
 
 // ─── Componentes ──────────────────────────────────────────
 
-function MetricasResumen({ test }) {
-    if (!test) return null;
+function computeAgg(lista) {
+    const activos = lista.filter(c => !c.ab_test_ignorado);
+    const f = (key) => activos.filter(c => c._flags?.[key]).length;
+    const sum = (key) => activos.reduce((s, c) => s + (c._flags?.[key] || 0), 0);
+    return {
+        contactos: activos.length,
+        completaron: f('completaron'),
+        abrieronLink: f('abrieronLink'),
+        agendaronReunion: f('agendaronReunion'),
+        crearonEmpresaReal: f('crearonEmpresaReal'),
+        generaronMovimiento: f('generaronMovimiento'),
+        mensajesMas3: f('mensajesMas3'),
+        mensajesMas6: f('mensajesMas6'),
+        mensajesMas10: f('mensajesMas10'),
+        mensajes: lista.reduce((s, c) => s + (c._flags?.mensajes || 0), 0),
+        llamadasAtendidas: sum('llamadasAtendidas'),
+        llamadasNoAtendidas: sum('llamadasNoAtendidas'),
+        mensajesWA: sum('mensajesWA'),
+    };
+}
 
-    const { metricas, contadores } = test;
-    const variantes = ['A', 'B'];
+const ROWS_RESUMEN = [
+    {
+        key: 'contactos',
+        label: 'Asignados',
+        tooltip: 'Contactos asignados a esta variante por el sistema de A/B test.',
+        filtrable: false,
+    },
+    {
+        key: 'completaron',
+        label: 'Completaron',
+        tooltip: 'A: precalificacionBot = calificado/quiere_meet.\nB: Registró al menos 1 movimiento en Firestore.',
+        filtrable: true,
+    },
+    {
+        key: 'abrieronLink',
+        label: 'Abrieron link agendar',
+        tooltip: 'Hicieron click en el link de Google Calendar (evento calendario_click en Firestore).',
+        filtrable: true,
+    },
+    {
+        key: 'agendaronReunion',
+        label: 'Agendaron reunión real',
+        tooltip: 'Tienen al menos 1 ReunionSDR con estado ≠ cancelada.',
+        filtrable: true,
+    },
+    null,
+    {
+        key: 'crearonEmpresaReal',
+        label: 'Crearon empresa real',
+        tooltip: 'Tienen empresa en Firestore con esDemo!==true y empresa_demo!==true.',
+        filtrable: true,
+    },
+    {
+        key: 'generaronMovimiento',
+        label: 'Generaron movimiento',
+        tooltip: 'Al menos 1 movimiento en una empresa real via el bot.',
+        filtrable: true,
+    },
+    {
+        key: 'mensajesMas3',
+        label: 'Enviaron > 3 mensajes',
+        tooltip: 'Contactos con más de 3 mensajes al bot (excluye mensajes del bot).',
+        filtrable: true,
+    },
+    {
+        key: 'mensajesMas6',
+        label: 'Enviaron > 6 mensajes',
+        tooltip: 'Contactos con más de 6 mensajes al bot (excluye mensajes del bot).',
+        filtrable: true,
+    },
+    {
+        key: 'mensajesMas10',
+        label: 'Enviaron > 10 mensajes',
+        tooltip: 'Contactos con más de 10 mensajes al bot (excluye mensajes del bot).',
+        filtrable: true,
+    },
+    {
+        key: 'mensajes',
+        label: 'Mensajes totales',
+        tooltip: 'Total de mensajes recibidos del usuario (fromMe=false) en MongoDB.',
+        filtrable: false,
+        isText: true,
+    },
+    null,
+    {
+        key: 'llamadasAtendidas',
+        label: 'Llamadas atendidas',
+        tooltip: 'Total de llamadas atendidas por el SDR a contactos de esta variante.',
+        filtrable: false,
+        isText: true,
+    },
+    {
+        key: 'llamadasNoAtendidas',
+        label: 'Llamadas no atendidas',
+        tooltip: 'Total de llamadas no atendidas por el SDR a contactos de esta variante.',
+        filtrable: false,
+        isText: true,
+    },
+    {
+        key: 'mensajesWA',
+        label: 'Mensajes WA (SDR)',
+        tooltip: 'Total de mensajes WhatsApp enviados por el SDR a contactos de esta variante.',
+        filtrable: false,
+        isText: true,
+    },
+];
 
-    const primaryRows = [
-        {
-            label: 'Asignados',
-            key: 'contactos',
-            tooltip: 'Contactos que eligieron "Probar" en el menú de bienvenida y fueron asignados a esta variante por el sistema de A/B test.',
-        },
-        {
-            label: 'Probaron',
-            key: 'probaron',
-            tooltip: 'A: El contacto inició la conversación con el asistente IA.\nB: El contacto entró al flow de demo directa y se le asignó una empresa demo del pool.',
-        },
-        {
-            label: 'Completaron gasto',
-            key: 'completaron',
-            tooltip: 'A: El asistente IA calificó al contacto como "calificado" o "quiere_meet" al finalizar el flujo conversacional.\nB: El contacto registró exitosamente su primer gasto en la empresa demo.',
-        },
-        {
-            label: 'Abrieron link agendar',
-            key: 'abrieronLink',
-            tooltip: 'El contacto hizo click en el link de Google Calendar para agendar una demo. Medición idéntica en ambas variantes (evento calendario_click).',
-        },
-        {
-            label: 'Timeouts (1h)',
-            key: 'timeouts',
-            tooltip: 'A: No se mide (el bot usa mensajes programados, difícil de detectar).\nB: El contacto recibió hasta 3 recordatorios y nunca registró ningún gasto.',
-        },
-    ];
-
-    const secondaryRows = [
-        {
-            label: 'Pidieron demo (voluntario)',
-            key: 'pidieronDemo',
-            tooltip: 'A: Eligió "Agendar demo" en el menú o escribió palabras clave de humano/agendar antes de ser asignado.\nB: Pidió demo dentro del flujo (keywords "agendar"), hizo click en "Agendar demo" en el menú, o lo solicitó después de la demo.',
-        },
-        {
-            label: 'Generaron movimiento',
-            key: 'generaronMovimiento',
-            tooltip: 'Registraron al menos 1 movimiento en una empresa real (no demo) usando el bot en producción. Trackeado en tiempo real — no se recalcula.',
-        },
-        {
-            label: 'Crearon empresa real',
-            key: 'crearonEmpresaReal',
-            tooltip: 'A: No aplica — el flujo conversacional no crea empresa demo.\nB: El contacto convirtió su empresa demo a real: configuró nombre y obras (empresa_demo = false en Firestore).',
-        },
-    ];
-
-    // Fila especial: promedio de mensajes
-    const msgA = safeMetric(metricas, 'A', 'mensajesEnviados');
-    const msgB = safeMetric(metricas, 'B', 'mensajesEnviados');
-    const totalA = safeMetric(metricas, 'A', 'contactos');
-    const totalB = safeMetric(metricas, 'B', 'contactos');
-    const avgA = totalA > 0 ? (msgA / totalA).toFixed(1) : '0';
-    const avgB = totalB > 0 ? (msgB / totalB).toFixed(1) : '0';
-
-    const renderRows = (rows) => rows.map((row) => {
-        const valA = safeMetric(metricas, 'A', row.key);
-        const valB = safeMetric(metricas, 'B', row.key);
-        const tA = safeMetric(metricas, 'A', 'contactos');
-        const tB = safeMetric(metricas, 'B', 'contactos');
-        return (
-            <TableRow key={row.key}>
-                <TableCell>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                        {row.label}
-                        {row.tooltip && (
-                            <Tooltip
-                                title={
-                                    <Typography variant="caption" sx={{ whiteSpace: 'pre-line' }}>
-                                        {row.tooltip}
-                                    </Typography>
-                                }
-                                placement="right"
-                                arrow
-                            >
-                                <InfoIcon sx={{ fontSize: 14, color: 'text.disabled', cursor: 'help' }} />
-                            </Tooltip>
-                        )}
-                    </Box>
-                </TableCell>
-                <TableCell align="center">
-                    <strong>{valA}</strong>
-                    {row.key !== 'contactos' && (
-                        <Typography variant="caption" color="text.secondary" sx={{ ml: 0.5 }}>
-                            ({pct(valA, tA)})
-                        </Typography>
-                    )}
-                </TableCell>
-                <TableCell align="center">
-                    <strong>{valB}</strong>
-                    {row.key !== 'contactos' && (
-                        <Typography variant="caption" color="text.secondary" sx={{ ml: 0.5 }}>
-                            ({pct(valB, tB)})
-                        </Typography>
-                    )}
-                </TableCell>
-            </TableRow>
-        );
-    });
+function MetricasResumen({ contactos, filtroMetrica, onFiltroChange }) {
+    const aggA = computeAgg(contactos.A || []);
+    const aggB = computeAgg(contactos.B || []);
 
     return (
         <Card>
-            <CardHeader title="📊 Métricas por variante" />
+            <CardHeader
+                title="📊 Métricas por variante"
+                subheader={filtroMetrica ? `Filtrando contactos por: ${filtroMetrica}` : 'Hacé click en una métrica para filtrar los contactos'}
+            />
             <CardContent>
                 <TableContainer>
                     <Table size="small">
                         <TableHead>
                             <TableRow>
                                 <TableCell>Métrica</TableCell>
-                                {variantes.map((v) => (
-                                    <TableCell key={v} align="center">
-                                        <strong>Variante {v}</strong>
-                                        <Typography variant="caption" display="block" color="text.secondary">
-                                            {v === 'A' ? '(Control — Asistente IA)' : '(Tratamiento — Demo directa)'}
-                                        </Typography>
-                                    </TableCell>
-                                ))}
+                                <TableCell align="center">
+                                    <strong>Variante A</strong>
+                                    <Typography variant="caption" display="block" color="text.secondary">
+                                        (Control — Asistente IA)
+                                    </Typography>
+                                </TableCell>
+                                <TableCell align="center">
+                                    <strong>Variante B</strong>
+                                    <Typography variant="caption" display="block" color="text.secondary">
+                                        (Tratamiento — Demo directa)
+                                    </Typography>
+                                </TableCell>
                             </TableRow>
                         </TableHead>
                         <TableBody>
-                            {renderRows(primaryRows)}
-
-                            {/* Separador visual */}
-                            <TableRow>
-                                <TableCell colSpan={3} sx={{ py: 0.5 }}>
-                                    <Divider>
-                                        <Chip label="Métricas secundarias" size="small" variant="outlined" />
-                                    </Divider>
-                                </TableCell>
-                            </TableRow>
-
-                            {/* Promedio de mensajes */}
-                            <TableRow>
-                                <TableCell>
-                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                                        Promedio mensajes/cliente
-                                        <Tooltip
-                                            title={
-                                                <Typography variant="caption">
-                                                    Mensajes enviados por el usuario al bot (excluye mensajes del bot). Indica el nivel de fricción o engagement del flujo.
-                                                </Typography>
-                                            }
-                                            placement="right"
-                                            arrow
-                                        >
-                                            <InfoIcon sx={{ fontSize: 14, color: 'text.disabled', cursor: 'help' }} />
-                                        </Tooltip>
-                                    </Box>
-                                </TableCell>
-                                <TableCell align="center">
-                                    <strong>{avgA}</strong>
-                                    <Typography variant="caption" color="text.secondary" sx={{ ml: 0.5 }}>
-                                        ({msgA} total)
-                                    </Typography>
-                                </TableCell>
-                                <TableCell align="center">
-                                    <strong>{avgB}</strong>
-                                    <Typography variant="caption" color="text.secondary" sx={{ ml: 0.5 }}>
-                                        ({msgB} total)
-                                    </Typography>
-                                </TableCell>
-                            </TableRow>
-
-                            {renderRows(secondaryRows)}
+                            {ROWS_RESUMEN.map((row, i) => {
+                                if (!row) {
+                                    const labels = [
+                                        'Métricas adicionales',
+                                        'Comunicación SDR',
+                                    ];
+                                    // Contar cuántos separadores van antes de este índice
+                                    const sepIndex = ROWS_RESUMEN.slice(0, i).filter(r => r === null).length;
+                                    const label = labels[sepIndex] || 'Más métricas';
+                                    return (
+                                        <TableRow key={`sep-${i}`}>
+                                            <TableCell colSpan={3} sx={{ py: 0.5 }}>
+                                                <Divider>
+                                                    <Chip label={label} size="small" variant="outlined" />
+                                                </Divider>
+                                            </TableCell>
+                                        </TableRow>
+                                    );
+                                }
+                                const valA = aggA[row.key] ?? 0;
+                                const valB = aggB[row.key] ?? 0;
+                                const tA = aggA.contactos;
+                                const tB = aggB.contactos;
+                                const selected = filtroMetrica === row.key;
+                                return (
+                                    <TableRow
+                                        key={row.key}
+                                        onClick={row.filtrable ? () => onFiltroChange(selected ? null : row.key) : undefined}
+                                        sx={{
+                                            cursor: row.filtrable ? 'pointer' : 'default',
+                                            bgcolor: selected ? 'action.selected' : 'inherit',
+                                            '&:hover': row.filtrable ? { bgcolor: 'action.hover' } : {},
+                                        }}
+                                    >
+                                        <TableCell>
+                                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                                {row.label}
+                                                {row.filtrable && (
+                                                    <Chip
+                                                        label={selected ? 'filtrando ✕' : 'filtrar'}
+                                                        size="small"
+                                                        variant={selected ? 'filled' : 'outlined'}
+                                                        color={selected ? 'primary' : 'default'}
+                                                        sx={{ fontSize: '0.65rem', height: 18, ml: 0.5 }}
+                                                    />
+                                                )}
+                                                {row.tooltip && (
+                                                    <Tooltip
+                                                        title={
+                                                            <Typography variant="caption" sx={{ whiteSpace: 'pre-line' }}>
+                                                                {row.tooltip}
+                                                            </Typography>
+                                                        }
+                                                        placement="right"
+                                                        arrow
+                                                    >
+                                                        <InfoIcon sx={{ fontSize: 14, color: 'text.disabled', cursor: 'help' }} />
+                                                    </Tooltip>
+                                                )}
+                                            </Box>
+                                        </TableCell>
+                                        <TableCell align="center">
+                                            {row.isText ? (
+                                                <strong>{valA}</strong>
+                                            ) : (
+                                                <>
+                                                    <strong>{valA}</strong>
+                                                    {row.key !== 'contactos' && (
+                                                        <Typography variant="caption" color="text.secondary" sx={{ ml: 0.5 }}>
+                                                            ({pct(valA, tA)})
+                                                        </Typography>
+                                                    )}
+                                                </>
+                                            )}
+                                        </TableCell>
+                                        <TableCell align="center">
+                                            {row.isText ? (
+                                                <strong>{valB}</strong>
+                                            ) : (
+                                                <>
+                                                    <strong>{valB}</strong>
+                                                    {row.key !== 'contactos' && (
+                                                        <Typography variant="caption" color="text.secondary" sx={{ ml: 0.5 }}>
+                                                            ({pct(valB, tB)})
+                                                        </Typography>
+                                                    )}
+                                                </>
+                                            )}
+                                        </TableCell>
+                                    </TableRow>
+                                );
+                            })}
                         </TableBody>
                     </Table>
                 </TableContainer>
@@ -256,163 +315,186 @@ function MetricasResumen({ test }) {
     );
 }
 
-function GraficoFunnel({ test }) {
-    if (!test?.metricas) return null;
+const FLAG_COLS = [
+    { key: 'completaron', label: 'Completó', tooltip: 'A: calificado/quiere_meet. B: 1er movimiento en Firestore.' },
+    { key: 'abrieronLink', label: 'Link agenda', tooltip: 'Evento calendario_click en Firestore.' },
+    { key: 'agendaronReunion', label: 'Reunión', tooltip: 'ReunionSDR con estado ≠ cancelada.' },
+    { key: 'crearonEmpresaReal', label: 'Emp. real', tooltip: 'Empresa Firestore con esDemo!==true.' },
+    { key: 'generaronMovimiento', label: 'Movimiento', tooltip: 'Al menos 1 movimiento en empresa real.' },
+];
 
-    const { metricas } = test;
-    const steps = ['contactos', 'probaron', 'completaron', 'abrieronLink'];
-    const labels = ['Asignados', 'Probaron', 'Completaron', 'Abrieron link'];
-
-    const seriesA = steps.map((s) => safeMetric(metricas, 'A', s));
-    const seriesB = steps.map((s) => safeMetric(metricas, 'B', s));
-
-    // Si todo es cero, mostrar placeholder
-    const totalSum = [...seriesA, ...seriesB].reduce((a, b) => a + b, 0);
-    if (totalSum === 0) {
-        return (
-            <Card>
-                <CardHeader title="📈 Funnel de conversión" />
-                <CardContent>
-                    <Typography variant="body2" color="text.secondary" sx={{ py: 4, textAlign: 'center' }}>
-                        Sin datos suficientes para mostrar el funnel.
-                    </Typography>
-                </CardContent>
-            </Card>
-        );
+function FlagCell({ value }) {
+    if (!value || value === 0) {
+        return <Typography variant="body2" color="text.disabled">—</Typography>;
     }
-
-    const options = {
-        chart: { type: 'bar', toolbar: { show: false } },
-        plotOptions: {
-            bar: { horizontal: false, columnWidth: '55%', borderRadius: 4 },
-        },
-        xaxis: { categories: labels },
-        yaxis: { title: { text: 'Contactos' } },
-        colors: ['#3f51b5', '#f44336'],
-        legend: { position: 'top' },
-        dataLabels: { enabled: true },
-        tooltip: {
-            y: { formatter: (val) => `${val != null ? val : 0} contactos` },
-        },
-    };
-
-    const series = [
-        { name: 'Variante A (Control)', data: seriesA },
-        { name: 'Variante B (Demo directa)', data: seriesB },
-    ];
-
-    return (
-        <Card>
-            <CardHeader title="📈 Funnel de conversión" />
-            <CardContent>
-                <Chart options={options} series={series} type="bar" height={350} />
-            </CardContent>
-        </Card>
-    );
+    if (value === 1) {
+        return <Chip size="small" label="✓" color="success" sx={{ minWidth: 32, fontSize: '0.75rem' }} />;
+    }
+    return <Chip size="small" label={`×${value}`} color="error" sx={{ minWidth: 32, fontSize: '0.75rem' }} />;
 }
 
-function GraficoConversion({ test }) {
-    if (!test?.metricas) return null;
-
-    const { metricas } = test;
-    const totalA = safeMetric(metricas, 'A', 'contactos');
-    const totalB = safeMetric(metricas, 'B', 'contactos');
-    const compA = safeMetric(metricas, 'A', 'completaron');
-    const compB = safeMetric(metricas, 'B', 'completaron');
-    const agA = safeMetric(metricas, 'A', 'abrieronLink');
-    const agB = safeMetric(metricas, 'B', 'abrieronLink');
-
-    const convRateA = totalA > 0 ? ((compA + agA) / totalA * 100) : 0;
-    const convRateB = totalB > 0 ? ((compB + agB) / totalB * 100) : 0;
-
-    // radialBar de ApexCharts crashea con series [0, 0] en algunas versiones
-    if (convRateA === 0 && convRateB === 0) {
-        return (
-            <Card>
-                <CardHeader
-                    title="🎯 Tasa de conversión"
-                    subheader="Completaron + Abrieron link / Total asignados"
-                />
-                <CardContent>
-                    <Typography variant="body2" color="text.secondary" sx={{ py: 4, textAlign: 'center' }}>
-                        Sin conversiones aún — el gráfico se mostrará cuando haya datos.
-                    </Typography>
-                </CardContent>
-            </Card>
-        );
-    }
-
-    const options = {
-        chart: { type: 'radialBar' },
-        plotOptions: {
-            radialBar: {
-                dataLabels: {
-                    name: { fontSize: '14px' },
-                    value: {
-                        fontSize: '20px',
-                        formatter: (val) => {
-                            const n = parseFloat(val);
-                            return (isFinite(n) ? n.toFixed(1) : '0.0') + '%';
-                        },
-                    },
-                },
-            },
-        },
-        labels: ['Variante A', 'Variante B'],
-        colors: ['#3f51b5', '#f44336'],
-    };
+function TablaUnificada({ contactos, filtroMetrica, filtroVariante, onFiltroChange, onVarianteChange, onToggleIgnorar }) {
+    const listaA = (contactos.A || []).map(c => ({ ...c, variante: 'A' }));
+    const listaB = (contactos.B || []).map(c => ({ ...c, variante: 'B' }));
+    const listaBase = filtroVariante === 'A' ? listaA : filtroVariante === 'B' ? listaB : [...listaA, ...listaB];
+    const lista = filtroMetrica ? listaBase.filter(c => c._flags?.[filtroMetrica]) : listaBase;
 
     return (
         <Card>
             <CardHeader
-                title="🎯 Tasa de conversión"
-                subheader="Completaron + Abrieron link / Total asignados"
+                title="👥 Contactos del test"
+                subheader={
+                    <Stack direction="row" spacing={1} alignItems="center" mt={0.5} flexWrap="wrap">
+                        <Typography variant="caption" color="text.secondary">Variante:</Typography>
+                        {['todos', 'A', 'B'].map(v => (
+                            <Chip
+                                key={v}
+                                label={v === 'todos' ? 'Todos' : `Variante ${v}`}
+                                size="small"
+                                variant={filtroVariante === v ? 'filled' : 'outlined'}
+                                color={filtroVariante === v ? (v === 'A' ? 'primary' : v === 'B' ? 'error' : 'default') : 'default'}
+                                onClick={() => onVarianteChange(v)}
+                                sx={{ cursor: 'pointer' }}
+                            />
+                        ))}
+                        {filtroMetrica && (
+                            <>
+                                <Divider orientation="vertical" flexItem />
+                                <Typography variant="caption" color="text.secondary">Filtro:</Typography>
+                                <Chip
+                                    size="small"
+                                    label={`${filtroMetrica} ✕`}
+                                    color="primary"
+                                    variant="filled"
+                                    onClick={() => onFiltroChange(null)}
+                                    sx={{ cursor: 'pointer', fontSize: '0.65rem' }}
+                                />
+                            </>
+                        )}
+                        <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
+                            {lista.length} contactos
+                        </Typography>
+                    </Stack>
+                }
             />
-            <CardContent>
-                <Chart options={options} series={[convRateA, convRateB]} type="radialBar" height={300} />
+            <CardContent sx={{ pt: 0 }}>
+                {lista.length === 0 ? (
+                    <Typography variant="body2" color="text.secondary" sx={{ py: 3, textAlign: 'center' }}>
+                        No hay contactos con los filtros actuales.
+                    </Typography>
+                ) : (
+                    <TableContainer component={Paper} variant="outlined" sx={{ maxHeight: 520 }}>
+                        <Table size="small" stickyHeader>
+                            <TableHead>
+                                <TableRow>
+                                    <TableCell>Nombre</TableCell>
+                                    <TableCell>Teléfono</TableCell>
+                                    <TableCell align="center">Variante</TableCell>
+                                    <TableCell>Estado</TableCell>
+                                    {FLAG_COLS.map(col => (
+                                        <TableCell key={col.key} align="center">
+                                            <Tooltip
+                                                title={<Typography variant="caption">{col.tooltip}</Typography>}
+                                                placement="top"
+                                                arrow
+                                            >
+                                                <span>{col.label}</span>
+                                            </Tooltip>
+                                        </TableCell>
+                                    ))}
+                                    <TableCell align="center">Msj</TableCell>
+                                    <TableCell align="center">
+                                        <Tooltip
+                                            title={<Typography variant="caption">Atendidas / No atendidas</Typography>}
+                                            placement="top"
+                                            arrow
+                                        >
+                                            <span>Llamadas</span>
+                                        </Tooltip>
+                                    </TableCell>
+                                    <TableCell align="center">
+                                        <Tooltip
+                                            title={<Typography variant="caption">Mensajes WhatsApp (contador SDR)</Typography>}
+                                            placement="top"
+                                            arrow
+                                        >
+                                            <span>WA</span>
+                                        </Tooltip>
+                                    </TableCell>
+                                    <TableCell align="center"></TableCell>
+                                </TableRow>
+                            </TableHead>
+                            <TableBody>
+                                {lista.map((c) => (
+                                <TableRow
+                                        key={c._id}
+                                        sx={c.ab_test_ignorado ? { opacity: 0.4, background: '#f5f5f5', textDecoration: 'line-through' } : {}}
+                                    >
+                                        <TableCell>
+                                            <Link
+                                                href={`/sdr/contacto/${c._id}`}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}
+                                            >
+                                                {c.nombre}
+                                                <OpenInNewIcon sx={{ fontSize: 12 }} />
+                                            </Link>
+                                        </TableCell>
+                                        <TableCell>{c.telefono}</TableCell>
+                                        <TableCell align="center">
+                                            <Chip
+                                                size="small"
+                                                label={`V${c.variante}`}
+                                                color={c.variante === 'A' ? 'primary' : 'error'}
+                                                variant="outlined"
+                                            />
+                                        </TableCell>
+                                        <TableCell>
+                                            <Chip size="small" label={c.estado} variant="outlined" />
+                                        </TableCell>
+                                        {FLAG_COLS.map(col => (
+                                            <TableCell key={col.key} align="center">
+                                                <FlagCell value={c._flags?.[col.key]} />
+                                            </TableCell>
+                                        ))}
+                                        <TableCell align="center">
+                                            <Typography variant="caption">
+                                                {c._flags?.mensajes ?? '—'}
+                                            </Typography>
+                                        </TableCell>
+                                        <TableCell align="center">
+                                            <Typography variant="caption">
+                                                {(c._flags?.llamadasAtendidas || c._flags?.llamadasNoAtendidas)
+                                                    ? `${c._flags.llamadasAtendidas}/${c._flags.llamadasNoAtendidas}`
+                                                    : '—'}
+                                            </Typography>
+                                        </TableCell>
+                                        <TableCell align="center">
+                                            <Typography variant="caption">
+                                                {c._flags?.mensajesWA ?? '—'}
+                                            </Typography>
+                                        </TableCell>
+                                        <TableCell align="center" sx={{ px: 0.5 }}>
+                                            <Tooltip title={c.ab_test_ignorado ? 'Restaurar (incluir en métricas)' : 'Ignorar (excluir de métricas, es de prueba)'} placement="left">
+                                                <IconButton
+                                                    size="small"
+                                                    color={c.ab_test_ignorado ? 'success' : 'default'}
+                                                    onClick={() => onToggleIgnorar(c._id, !c.ab_test_ignorado)}
+                                                    sx={{ opacity: 0.7 }}
+                                                >
+                                                    {c.ab_test_ignorado ? <RestaurarIcon fontSize="small" /> : <IgnorarIcon fontSize="small" />}
+                                                </IconButton>
+                                            </Tooltip>
+                                        </TableCell>
+                                    </TableRow>
+                                ))}
+                            </TableBody>
+                        </Table>
+                    </TableContainer>
+                )}
             </CardContent>
         </Card>
-    );
-}
-
-function TablaContactos({ contactos, variante }) {
-    const lista = contactos?.[variante] || [];
-
-    if (lista.length === 0) {
-        return (
-            <Typography variant="body2" color="text.secondary" sx={{ py: 2, textAlign: 'center' }}>
-                No hay contactos en Variante {variante} aún.
-            </Typography>
-        );
-    }
-
-    return (
-        <TableContainer component={Paper} variant="outlined" sx={{ maxHeight: 400 }}>
-            <Table size="small" stickyHeader>
-                <TableHead>
-                    <TableRow>
-                        <TableCell>Nombre</TableCell>
-                        <TableCell>Teléfono</TableCell>
-                        <TableCell>Estado</TableCell>
-                        <TableCell>Pre-calificación</TableCell>
-                        <TableCell>Fecha</TableCell>
-                    </TableRow>
-                </TableHead>
-                <TableBody>
-                    {lista.map((c) => (
-                        <TableRow key={c._id}>
-                            <TableCell>{c.nombre}</TableCell>
-                            <TableCell>{c.telefono}</TableCell>
-                            <TableCell>
-                                <Chip size="small" label={c.estado} variant="outlined" />
-                            </TableCell>
-                            <TableCell>{c.precalificacionBot || '—'}</TableCell>
-                            <TableCell>{formatDate(c.createdAt)}</TableCell>
-                        </TableRow>
-                    ))}
-                </TableBody>
-            </Table>
-        </TableContainer>
     );
 }
 
@@ -425,6 +507,30 @@ const AbTestContactActivationPage = () => {
     const [error, setError] = useState(null);
     const [pesoA, setPesoA] = useState(50);
     const [savingPesos, setSavingPesos] = useState(false);
+    const [filtroMetrica, setFiltroMetrica] = useState(null);
+    const [filtroVariante, setFiltroVariante] = useState('todos');
+
+    const handleToggleIgnorar = async (contactoId, ignorar) => {
+        // Actualización optimista
+        setContactos(prev => {
+            const update = (lista) => lista.map(c =>
+                String(c._id) === String(contactoId) ? { ...c, ab_test_ignorado: ignorar } : c
+            );
+            return { A: update(prev.A), B: update(prev.B) };
+        });
+        try {
+            await abTestService.toggleIgnorar(TEST_NAME, contactoId, ignorar);
+        } catch (err) {
+            // Revertir si falla
+            setContactos(prev => {
+                const revert = (lista) => lista.map(c =>
+                    String(c._id) === String(contactoId) ? { ...c, ab_test_ignorado: !ignorar } : c
+                );
+                return { A: revert(prev.A), B: revert(prev.B) };
+            });
+            console.error('Error marcando ignorado:', err);
+        }
+    };
 
     const fetchData = useCallback(async () => {
         try {
@@ -496,6 +602,41 @@ const AbTestContactActivationPage = () => {
                         </Box>
                         <Stack direction="row" spacing={1} alignItems="center">
                             {test && getEstadoChip(test.estado)}
+                            <NextLink href="/abTestComparacion" passHref legacyBehavior>
+                                <Button
+                                    component="a"
+                                    size="small"
+                                    variant="outlined"
+                                    startIcon={<CompareIcon />}
+                                >
+                                    Comparación histórica
+                                </Button>
+                            </NextLink>
+                            {test && (
+                                <>
+                                    <Tooltip title="Exportar PDF">
+                                        <Button
+                                            size="small"
+                                            variant="outlined"
+                                            color="error"
+                                            startIcon={<PdfIcon />}
+                                            onClick={() => exportTestToPDF(test, contactos)}
+                                        >
+                                            PDF
+                                        </Button>
+                                    </Tooltip>
+                                    <Tooltip title="Exportar TXT">
+                                        <Button
+                                            size="small"
+                                            variant="outlined"
+                                            startIcon={<TxtIcon />}
+                                            onClick={() => exportTestToTXT(test, contactos)}
+                                        >
+                                            TXT
+                                        </Button>
+                                    </Tooltip>
+                                </>
+                            )}
                             <Tooltip title="Refrescar datos">
                                 <IconButton onClick={fetchData} disabled={loading}>
                                     <RefreshIcon />
@@ -612,46 +753,24 @@ const AbTestContactActivationPage = () => {
                                 </CardContent>
                             </Card>
 
-                            {/* Gráficos */}
-                            <Grid container spacing={3} sx={{ mb: 3 }}>
-                                <Grid item xs={12} md={8}>
-                                    <GraficoFunnel test={test} />
-                                </Grid>
-                                <Grid item xs={12} md={4}>
-                                    <GraficoConversion test={test} />
-                                </Grid>
-                            </Grid>
-
-                            {/* Tabla de métricas */}
+                            {/* Métricas resumen */}
                             <Box sx={{ mb: 3 }}>
-                                <MetricasResumen test={test} />
+                                <MetricasResumen
+                                    contactos={contactos}
+                                    filtroMetrica={filtroMetrica}
+                                    onFiltroChange={setFiltroMetrica}
+                                />
                             </Box>
 
-                            {/* Contactos por variante */}
-                            <Grid container spacing={3}>
-                                <Grid item xs={12} md={6}>
-                                    <Card>
-                                        <CardHeader
-                                            title="Variante A — Control"
-                                            subheader={`${contactos.A.length} contactos`}
-                                        />
-                                        <CardContent>
-                                            <TablaContactos contactos={contactos} variante="A" />
-                                        </CardContent>
-                                    </Card>
-                                </Grid>
-                                <Grid item xs={12} md={6}>
-                                    <Card>
-                                        <CardHeader
-                                            title="Variante B — Demo directa"
-                                            subheader={`${contactos.B.length} contactos`}
-                                        />
-                                        <CardContent>
-                                            <TablaContactos contactos={contactos} variante="B" />
-                                        </CardContent>
-                                    </Card>
-                                </Grid>
-                            </Grid>
+                            {/* Tabla unificada */}
+                            <TablaUnificada
+                                contactos={contactos}
+                                filtroMetrica={filtroMetrica}
+                                filtroVariante={filtroVariante}
+                                onFiltroChange={setFiltroMetrica}
+                                onVarianteChange={setFiltroVariante}
+                                onToggleIgnorar={handleToggleIgnorar}
+                            />
                         </>
                     )}
                 </Container>

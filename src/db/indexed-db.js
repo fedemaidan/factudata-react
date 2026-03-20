@@ -266,8 +266,6 @@ const matchesQuery = (conversation, query) => {
     conversation?.empresa?.nombre,
     conversation?.wPid,
     conversation?.lid,
-    conversation?.ultimoMensaje?.message,
-    conversation?.ultimoMensaje?.caption,
   ]
     .filter(Boolean)
     .map((value) => value.toString().toLowerCase())
@@ -307,10 +305,10 @@ export const searchCachedMessages = async (
   { filters = {}, limit = 100 } = {}
 ) => {
   const normalizedQuery = normalizeSearchText(query);
-  const startDate = filters.fechaDesde ? new Date(filters.fechaDesde) : null;
-  const endDate = filters.fechaHasta ? new Date(filters.fechaHasta) : null;
+  const startDate = filters.fechaDesde ? parseDateRange(filters.fechaDesde, false) : null;
+  const endDate = filters.fechaHasta ? parseDateRange(filters.fechaHasta, true) : null;
   const conversations = await db.conversations.toArray();
-  const conversationMap = new Map(conversations.map((c) => [c.id, c]));
+  const conversationMap = new Map(conversations.map((c) => [String(c.id), c]));
   const allMessages = await db.messages.orderBy("createdAt").reverse().toArray();
   const matches = [];
   for (const message of allMessages) {
@@ -318,16 +316,22 @@ export const searchCachedMessages = async (
       const haystack = [
         message.message,
         message.caption,
+        message.mensaje,
         message.profile?.name,
         message.empresa?.nombre,
       ]
         .filter(Boolean)
+        .map((v) => String(v))
         .join(" ")
         .toLowerCase();
       if (!haystack.includes(normalizedQuery)) continue;
     }
-    if (startDate && message.createdAt < startDate) continue;
-    if (endDate && message.createdAt > endDate) continue;
+    const msgDate = message.createdAt || message.fecha;
+    const msgDateObj = msgDate instanceof Date ? msgDate : msgDate ? new Date(msgDate) : null;
+    if (msgDateObj && !Number.isNaN(msgDateObj.getTime())) {
+      if (startDate && msgDateObj < startDate) continue;
+      if (endDate && msgDateObj > endDate) continue;
+    }
     matches.push({
       conversationId: message.conversationId,
       matchMessage: message,

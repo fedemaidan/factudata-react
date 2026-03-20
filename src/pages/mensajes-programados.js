@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import Head from 'next/head';
-import { Box, Container, Stack, Typography, Button, TextField, FormControl, InputLabel, Select, MenuItem, Paper, Collapse, InputAdornment } from '@mui/material';
+import { Box, Container, Stack, Typography, Button, TextField, FormControl, InputLabel, Select, MenuItem, Paper, Collapse, InputAdornment, Chip } from '@mui/material';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import { MensajesProgramadosTable } from 'src/sections/mensajes-programados/mensajes-programados-table';
 import { MensajeProgramadoDialog } from 'src/components/MensajeProgramadoDialog';
@@ -12,6 +12,13 @@ import SearchIcon from '@mui/icons-material/Search';
 import { SvgIcon } from '@mui/material';
 import { useAuthContext } from 'src/contexts/auth-context';
 
+const ESTADO_COLORS = {
+  PENDIENTE: 'warning',
+  ENVIADO: 'success',
+  CANCELADO: 'error',
+  ERROR: 'error',
+};
+
 const Page = () => {
   const { user } = useAuthContext();
   const [mensajes, setMensajes] = useState([]);
@@ -19,6 +26,7 @@ const Page = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [currentMensaje, setCurrentMensaje] = useState(null);
+  const [stats, setStats] = useState({ byEstado: [], byCreatedFor: [] });
   
   // Filtros
   const [filtersVisible, setFiltersVisible] = useState(true);
@@ -26,10 +34,20 @@ const Page = () => {
   const [filterFechaHasta, setFilterFechaHasta] = useState('');
   const [filterEstado, setFilterEstado] = useState('');
   const [filterTelefono, setFilterTelefono] = useState('');
+  const [filterCreatedFor, setFilterCreatedFor] = useState('');
   
   // Paginación
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
+
+  const fetchStats = useCallback(async () => {
+    try {
+      const data = await mensajesProgramadosService.getStats();
+      setStats(data);
+    } catch (err) {
+      console.error(err);
+    }
+  }, []);
 
   const fetchMensajes = useCallback(async () => {
     try {
@@ -40,7 +58,8 @@ const Page = () => {
         estado: filterEstado || undefined,
         telefono: filterTelefono || undefined,
         fechaDesde: filterFechaDesde || undefined,
-        fechaHasta: filterFechaHasta || undefined
+        fechaHasta: filterFechaHasta || undefined,
+        createdFor: filterCreatedFor || undefined
       });
       setMensajes(data.items || []);
       setTotalMensajes(data.total || 0);
@@ -49,7 +68,11 @@ const Page = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [page, rowsPerPage, filterEstado, filterTelefono, filterFechaDesde, filterFechaHasta]);
+  }, [page, rowsPerPage, filterEstado, filterTelefono, filterFechaDesde, filterFechaHasta, filterCreatedFor]);
+
+  useEffect(() => {
+    fetchStats();
+  }, [fetchStats]);
 
   useEffect(() => {
     fetchMensajes();
@@ -69,13 +92,14 @@ const Page = () => {
     setFilterFechaHasta('');
     setFilterEstado('');
     setFilterTelefono('');
+    setFilterCreatedFor('');
     setPage(0);
   };
 
   // Reset page cuando cambian los filtros
   useEffect(() => {
     setPage(0);
-  }, [filterFechaDesde, filterFechaHasta, filterEstado, filterTelefono]);
+  }, [filterFechaDesde, filterFechaHasta, filterEstado, filterTelefono, filterCreatedFor]);
 
   const handleCreate = () => {
     setCurrentMensaje(null);
@@ -111,6 +135,9 @@ const Page = () => {
       console.error(err);
     }
   };
+
+  const sortedByEstado = [...stats.byEstado].sort((a, b) => b.count - a.count);
+  const sortedByCreatedFor = [...stats.byCreatedFor].sort((a, b) => b.count - a.count);
 
   return (
     <>
@@ -157,6 +184,44 @@ const Page = () => {
                 </Button>
               </Stack>
             </Stack>
+
+            {/* Contadores por estado y creado por */}
+            <Paper sx={{ p: 2 }}>
+              <Stack spacing={1.5}>
+                <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                  <Typography variant="caption" color="text.secondary" sx={{ minWidth: 80 }}>
+                    Por estado:
+                  </Typography>
+                  {sortedByEstado.map(({ _id, count }) => (
+                    <Chip
+                      key={_id}
+                      label={`${_id} (${count})`}
+                      size="small"
+                      color={ESTADO_COLORS[_id] || 'default'}
+                      variant={filterEstado === _id ? 'filled' : 'outlined'}
+                      onClick={() => setFilterEstado(filterEstado === _id ? '' : _id)}
+                      sx={{ cursor: 'pointer', fontWeight: filterEstado === _id ? 700 : 400 }}
+                    />
+                  ))}
+                </Stack>
+                <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                  <Typography variant="caption" color="text.secondary" sx={{ minWidth: 80 }}>
+                    Creado por:
+                  </Typography>
+                  {sortedByCreatedFor.map(({ _id, count }) => (
+                    <Chip
+                      key={_id}
+                      label={`${_id} (${count})`}
+                      size="small"
+                      variant={filterCreatedFor === _id ? 'filled' : 'outlined'}
+                      color={filterCreatedFor === _id ? 'primary' : 'default'}
+                      onClick={() => setFilterCreatedFor(filterCreatedFor === _id ? '' : _id)}
+                      sx={{ cursor: 'pointer', fontWeight: filterCreatedFor === _id ? 700 : 400 }}
+                    />
+                  ))}
+                </Stack>
+              </Stack>
+            </Paper>
             
             {/* Filtros */}
             <Collapse in={filtersVisible}>
@@ -203,10 +268,10 @@ const Page = () => {
                       label="Estado"
                     >
                       <MenuItem value="">Todos</MenuItem>
-                      <MenuItem value="pendiente">Pendiente</MenuItem>
-                      <MenuItem value="enviado">Enviado</MenuItem>
-                      <MenuItem value="cancelado">Cancelado</MenuItem>
-                      <MenuItem value="error">Error</MenuItem>
+                      <MenuItem value="PENDIENTE">Pendiente</MenuItem>
+                      <MenuItem value="ENVIADO">Enviado</MenuItem>
+                      <MenuItem value="CANCELADO">Cancelado</MenuItem>
+                      <MenuItem value="ERROR">Error</MenuItem>
                     </Select>
                   </FormControl>
                   <Button
@@ -252,3 +317,4 @@ const Page = () => {
 Page.getLayout = (page) => <DashboardLayout>{page}</DashboardLayout>;
 
 export default Page;
+

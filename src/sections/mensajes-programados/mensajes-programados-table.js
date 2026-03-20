@@ -93,11 +93,18 @@ export const MensajesProgramadosTable = (props) => {
                   <TableCell>{formatDate(mensaje.fechaEnvioProgramada)}</TableCell>
                   <TableCell>{formatDate(mensaje.fechaEnvioReal)}</TableCell>
                   <TableCell>
-                    <Chip 
-                      label={mensaje.estado} 
-                      color={getEstadoColor(mensaje.estado)} 
-                      size="small"
-                    />
+                    <Tooltip title={mensaje.estado === 'CANCELADO' && mensaje.razonCancelacion ? `Razón: ${mensaje.razonCancelacion}` : ''}>
+                      <Chip 
+                        label={mensaje.estado} 
+                        color={getEstadoColor(mensaje.estado)} 
+                        size="small"
+                      />
+                    </Tooltip>
+                    {mensaje.estado === 'CANCELADO' && mensaje.razonCancelacion && (
+                      <Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 0.5, maxWidth: 150 }}>
+                        {mensaje.razonCancelacion}
+                      </Typography>
+                    )}
                   </TableCell>
                   <TableCell>
                     <Tooltip title="Editar">

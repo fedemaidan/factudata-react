@@ -55,6 +55,28 @@ const abTestService = {
         const { data } = await api.patch(`/ab-tests/${encodeURIComponent(name)}/pesos`, { pesos });
         return data;
     },
+    /**
+     * Obtiene comparación pre-test vs Variante A vs Variante B.
+     * @param {string} name - Nombre del test
+     */
+    getPretest: async (name) => {
+        const { data } = await api.get(`/ab-tests/${encodeURIComponent(name)}/pretest`);
+        return data;
+    },
+
+    /**
+     * Marca o desmarca un contacto como ignorado en el test.
+     * @param {string} name - Nombre del test
+     * @param {string} contactoId - ID del ContactoSDR
+     * @param {boolean} ignorar
+     */
+    toggleIgnorar: async (name, contactoId, ignorar) => {
+        const { data } = await api.patch(
+            `/ab-tests/${encodeURIComponent(name)}/contactos/${encodeURIComponent(contactoId)}/ignorar`,
+            { ignorar }
+        );
+        return data;
+    },
 };
 
 export default abTestService;

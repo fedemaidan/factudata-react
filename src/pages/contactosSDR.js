@@ -1,15 +1,16 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef, Fragment } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import NextLink from 'next/link';
 import {
     Box, Container, Stack, Typography, Button, TextField, Chip,
-    Table, TableBody, TableCell, TableHead, TableRow,
+    Table, TableBody, TableCell, TableHead, TableRow, TableSortLabel,
     CircularProgress, MenuItem, Select, FormControl, InputLabel,
     Snackbar, Alert, Paper, InputAdornment, Grid, IconButton,
     Card, CardContent, CardActions, Divider, useTheme, useMediaQuery,
     Avatar, Badge, Fab, Dialog, DialogTitle, DialogContent, DialogActions,
-    Checkbox, Tooltip, Tabs, Tab
+    Checkbox, Tooltip, Tabs, Tab, Collapse,
+    Popover, FormControlLabel
 } from '@mui/material';
 import {
     Search as SearchIcon,
@@ -32,7 +33,8 @@ import {
     BookmarkBorder as BookmarkBorderIcon,
     Bookmark as BookmarkIcon,
     Save as SaveIcon,
-    Delete as DeleteIcon
+    Delete as DeleteIcon,
+    ViewColumn as ViewColumnIcon
 } from '@mui/icons-material';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import InboxIcon from '@mui/icons-material/Inbox';
@@ -53,6 +55,7 @@ import ContadoresActividad from 'src/components/sdr/ContadoresActividad';
 import SettingsIcon from '@mui/icons-material/Settings';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
 import SortIcon from '@mui/icons-material/Sort';
+import FilterListIcon from '@mui/icons-material/FilterList';
 import BulkSendTemplateDialog from 'src/components/sdr/BulkSendTemplateDialog';
 import BulkRegistrarAccionDialog from 'src/components/sdr/BulkRegistrarAccionDialog';
 import EditNoteIcon from '@mui/icons-material/EditNote';
@@ -62,9 +65,41 @@ import NavigateBeforeIcon from '@mui/icons-material/NavigateBefore';
 import NavigateNextIcon from '@mui/icons-material/NavigateNext';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import LinkIcon from '@mui/icons-material/Link';
+import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
+
 import { PRECALIFICACION_BOT, PLANES_SORBY } from 'src/constant/sdrConstants';
 
 const ITEMS_PER_PAGE = 50;
+
+const COLUMNAS_LABELS = {
+    empresa: 'Empresa',
+    estado: 'Estado',
+    calificado: 'Calif.',
+    reunion: 'Reunión',
+    plan: 'Plan',
+    prioridad: 'Prior.',
+    actividad: 'Actividad',
+    proximaTarea: 'Próx. tarea',
+    fechaAdded: 'Added',
+    ultimaAccion: 'Últ. contacto',
+    proximoContacto: 'Próx. contacto',
+};
+
+const DEFAULT_COLUMNAS = {
+    empresa: true,
+    estado: true,
+    calificado: false,
+    reunion: false,
+    plan: true,
+    prioridad: true,
+    actividad: true,
+    proximaTarea: true,
+    fechaAdded: false,
+    ultimaAccion: true,
+    proximoContacto: true,
+};
+
+const DEFAULT_COLUMNAS_ORDEN = Object.keys(DEFAULT_COLUMNAS);
 
 const ContactosSDRPage = () => {
     const { user } = useAuthContext();
@@ -97,7 +132,15 @@ const ContactosSDRPage = () => {
     const [filtroQuiereReunion, setFiltroQuiereReunion] = useState(''); // '' | 'si' | 'no'
     const [filtroProximaTarea, setFiltroProximaTarea] = useState(''); // '' | 'llamada' | 'whatsapp' | 'email' | 'recordatorio' | 'sin_tarea'
     const [filtroExcluirConReunion, setFiltroExcluirConReunion] = useState(false); // true = excluir contactos con reunión
+    const [filtroSoloCompromisos, setFiltroSoloCompromisos] = useState(false); // true = solo contactos con proximaTarea.estricto
     const [ordenarPor, setOrdenarPor] = useState(''); // vacío = el backend elige según bandeja
+    const [ordenDir, setOrdenDir] = useState('asc'); // 'asc' | 'desc'
+    const [columnasVisibles, setColumnasVisibles] = useState(DEFAULT_COLUMNAS);
+    const [columnasOrden, setColumnasOrden] = useState(DEFAULT_COLUMNAS_ORDEN);
+    const [anchorColumnas, setAnchorColumnas] = useState(null);
+
+    // Filtros expandidos/colapsados
+    const [filtrosExpandidos, setFiltrosExpandidos] = useState(false);
     
     // Contadores de bandejas (para badges)
     const [contadoresBandejas, setContadoresBandejas] = useState({ nuevos: 0, reintentos: 0, seguimiento: 0, reunionesPendientes: 0, reunionesPasadas: 0 });
@@ -122,6 +165,15 @@ const ContactosSDRPage = () => {
     const [modalCambiarEstadoMasivo, setModalCambiarEstadoMasivo] = useState(false);
     const [actionLoading, setActionLoading] = useState(false);
 
+    // Config prompt IA
+    const [modalConfigPrompt, setModalConfigPrompt] = useState(false);
+    const [promptConfigs, setPromptConfigs] = useState({
+        audio: { custom: '', default: '' },
+        transcripcion: { custom: '', default: '' },
+        resumen: { custom: '', default: '' }
+    });
+    const [loadingConfig, setLoadingConfig] = useState(false);
+
     // Permiso para enviar templates via bot
     const tienePermisoEnviarBot = user?.admin || (user?.empresa?.acciones || []).includes('ENVIAR_MENSAJE_BOT');
     
@@ -142,6 +194,9 @@ const ContactosSDRPage = () => {
     const [modalGuardarVista, setModalGuardarVista] = useState(false);
     const [nombreVista, setNombreVista] = useState('');
     const [vistaCompartida, setVistaCompartida] = useState(false);
+
+    // Inicialización desde URL
+    const initialized = useRef(false);
 
     // Refrescar contacto individual seleccionado
     const refrescarContactoSeleccionado = useCallback(async () => {
@@ -183,19 +238,23 @@ const ContactosSDRPage = () => {
             
             // Mapear ordenamiento al formato del backend
             if (ordenarPor) {
+                // Claves legacy con dirección fija
                 const ordenMap = {
-                    'vencidos': { ordenarPor: 'proximoContacto', ordenDir: 'asc' },
-                    'nuevo': { ordenarPor: 'createdAt', ordenDir: 'desc' },
-                    'fecha': { ordenarPor: 'ultimaAccion', ordenDir: 'desc' },
-                    'estado': { ordenarPor: 'estado', ordenDir: 'asc' },
-                    'prioridad': { ordenarPor: 'prioridad', ordenDir: 'desc' },
-                    'proximo_contacto': { ordenarPor: 'proximoContacto', ordenDir: 'asc' },
-                    'fecha_creacion': { ordenarPor: 'createdAt', ordenDir: 'desc' },
+                    'vencidos':        { backend: 'proximoContacto', dir: 'asc' },
+                    'nuevo':           { backend: 'createdAt',       dir: 'desc' },
+                    'fecha':           { backend: 'ultimaAccion',    dir: 'desc' },
+                    'prioridad':       { backend: 'prioridad',       dir: 'desc' },
+                    'proximo_contacto':{ backend: 'proximoContacto', dir: 'asc' },
+                    'fecha_creacion':  { backend: 'createdAt',       dir: 'desc' },
                 };
-                const orden = ordenMap[ordenarPor];
-                if (orden) {
-                    params.ordenarPor = orden.ordenarPor;
-                    params.ordenDir = orden.ordenDir;
+                const mapped = ordenMap[ordenarPor];
+                if (mapped) {
+                    params.ordenarPor = mapped.backend;
+                    params.ordenDir = mapped.dir;
+                } else {
+                    // Campo directo desde headers de la tabla (usa ordenDir del estado)
+                    params.ordenarPor = ordenarPor;
+                    params.ordenDir = ordenDir;
                 }
             }
             // Si no hay ordenarPor, el backend elige según la bandeja
@@ -209,7 +268,7 @@ const ContactosSDRPage = () => {
         } finally {
             setLoading(false);
         }
-    }, [empresaId, sdrId, filtroEstado, bandejaActiva, busqueda, filtroSegmento, filtroExcluirConReunion, ordenarPor, page]);
+    }, [empresaId, sdrId, filtroEstado, bandejaActiva, busqueda, filtroSegmento, filtroExcluirConReunion, ordenarPor, ordenDir, page]);
 
     // Cargar métricas del SDR - soporta día, semana y mes
     const cargarMetricas = useCallback(async () => {
@@ -273,16 +332,51 @@ const ContactosSDRPage = () => {
         }
     }, [sdrId]);
 
-    // Resetear página a 1 cuando cambian los filtros u ordenamiento
+    // Inicializar filtros desde query params de la URL (una sola vez al montar)
     useEffect(() => {
-        setPage(1);
-        setFiltroEstado(''); // Limpiar filtro de estado al cambiar de bandeja
+        if (!router.isReady || initialized.current) return;
+        const q = router.query;
+        // Intentar restaurar desde sessionStorage si no hay query params (volver sin params)
+        let src = q;
+        if (!q.bandeja && !q.estado && !q.actividad) {
+            try {
+                const saved = sessionStorage.getItem('sdr_lista_query');
+                if (saved) {
+                    const sp = new URLSearchParams(saved);
+                    src = Object.fromEntries(sp.entries());
+                }
+            } catch { /* ignore */ }
+        }
+        setBandejaActiva(src.bandeja || 'nuevos');
+        setFiltroEstado(src.estado || '');
+        setFiltroSegmento(src.segmento || '');
+        setFiltroActividad(src.actividad || '');
+        setFiltroCalificadoBot(src.calificadoBot || '');
+        setFiltroQuiereReunion(src.quiereReunion || '');
+        setFiltroProximaTarea(src.proximaTarea || '');
+        setFiltroProximoContacto(src.proximoContacto || '');
+        setFiltroExcluirConReunion(src.excluirConReunion === 'true');
+        setFiltroSoloCompromisos(src.soloCompromisos === 'true');
+        setOrdenarPor(src.ordenarPor || '');
+        setOrdenDir(src.ordenDir || 'asc');
+        setBusqueda(src.busqueda || '');
+        setPage(src.page ? parseInt(src.page, 10) : 1);
+        initialized.current = true;
+    }, [router.isReady]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // Cambiar bandeja: limpia los filtros que dependen de ella
+    const handleCambiarBandeja = (v) => {
+        setBandejaActiva(v);
+        setFiltroEstado('');
         setFiltroCalificadoBot('');
         setFiltroQuiereReunion('');
         setFiltroProximaTarea('');
-    }, [bandejaActiva]);
-    
+        setPage(1);
+    };
+
+    // Resetear página a 1 cuando cambian filtros (sin skip — la init ya setea page directamente)
     useEffect(() => {
+        if (!initialized.current) return;
         setPage(1);
     }, [filtroEstado, busqueda, filtroSegmento, ordenarPor]);
 
@@ -309,6 +403,37 @@ const ContactosSDRPage = () => {
             .then(data => setVistas(data || []))
             .catch(() => setVistas([]));
     }, [empresaId]);
+
+    // Sincronizar filtros → URL (después de inicializado)
+    useEffect(() => {
+        if (!initialized.current) return;
+        const params = {};
+        if (bandejaActiva && bandejaActiva !== 'nuevos') params.bandeja = bandejaActiva;
+        if (filtroEstado) params.estado = filtroEstado;
+        if (filtroSegmento) params.segmento = filtroSegmento;
+        if (filtroActividad) params.actividad = filtroActividad;
+        if (filtroCalificadoBot) params.calificadoBot = filtroCalificadoBot;
+        if (filtroQuiereReunion) params.quiereReunion = filtroQuiereReunion;
+        if (filtroProximaTarea) params.proximaTarea = filtroProximaTarea;
+        if (filtroProximoContacto) params.proximoContacto = filtroProximoContacto;
+        if (filtroExcluirConReunion) params.excluirConReunion = 'true';
+        if (filtroSoloCompromisos) params.soloCompromisos = 'true';
+        if (ordenarPor) params.ordenarPor = ordenarPor;
+        if (ordenDir && ordenDir !== 'asc') params.ordenDir = ordenDir;
+        if (busqueda) params.busqueda = busqueda;
+        if (page > 1) params.page = String(page);
+        // Preservar param contacto si está abierto el drawer
+        if (router.query.contacto) params.contacto = router.query.contacto;
+        router.replace({ query: params }, undefined, { shallow: true });
+        // Guardar siempre en sessionStorage para restaurar al volver desde detalle
+        try {
+            const forSession = { ...params };
+            delete forSession.contacto;
+            const qs = new URLSearchParams(forSession).toString();
+            if (qs) sessionStorage.setItem('sdr_lista_query', qs);
+            else sessionStorage.removeItem('sdr_lista_query');
+        } catch { /* ignore */ }
+    }, [bandejaActiva, filtroEstado, filtroSegmento, filtroActividad, filtroCalificadoBot, filtroQuiereReunion, filtroProximaTarea, filtroProximoContacto, filtroExcluirConReunion, filtroSoloCompromisos, ordenarPor, ordenDir, busqueda, page]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Abrir contacto desde query param si existe
     useEffect(() => {
@@ -337,6 +462,17 @@ const ContactosSDRPage = () => {
         }
     }, [router.query.contacto, contactos]);
 
+    // Guardar query params actuales en sessionStorage para restaurar al volver
+    const guardarQueryParamsEnSession = () => {
+        try {
+            const params = new URLSearchParams(window.location.search);
+            params.delete('contacto'); // No guardar el drawer abierto
+            const qs = params.toString();
+            if (qs) sessionStorage.setItem('sdr_lista_query', qs);
+            else sessionStorage.removeItem('sdr_lista_query');
+        } catch { /* ignore */ }
+    };
+
     // Abrir página de detalle del contacto con contexto de navegación
     const handleOpenDrawer = (contacto) => {
         // Guardar IDs de contactos en sessionStorage para navegación ← →
@@ -344,6 +480,7 @@ const ContactosSDRPage = () => {
             const ids = contactosOrdenados.map(c => c._id);
             sessionStorage.setItem('sdr_contacto_ids', JSON.stringify(ids));
         } catch { /* ignore */ }
+        guardarQueryParamsEnSession();
         router.push(`/sdr/contacto/${contacto._id}`);
     };
 
@@ -354,6 +491,7 @@ const ContactosSDRPage = () => {
             const ids = contactosOrdenados.map(c => c._id);
             sessionStorage.setItem('sdr_contacto_ids', JSON.stringify(ids));
         } catch { /* ignore */ }
+        guardarQueryParamsEnSession();
         router.push(`/sdr/contacto/${contactosOrdenados[0]._id}`);
     };
 
@@ -677,11 +815,22 @@ const ContactosSDRPage = () => {
         setVistaActiva(vista);
         // Aplicar filtros de la vista
         const f = vista.filtros || {};
-        setFiltroEstado(f.estados?.length === 1 ? f.estados[0] : '');
+        setBandejaActiva(f.bandejaActiva || 'todos');
+        setFiltroEstado(f.filtroEstado || (f.estados?.length === 1 ? f.estados[0] : ''));
         setFiltroProximoContacto(f.proximoContacto || '');
+        setFiltroSegmento(f.filtroSegmento || '');
+        setFiltroActividad(f.filtroActividad || '');
+        setFiltroCalificadoBot(f.filtroCalificadoBot || '');
+        setFiltroQuiereReunion(f.filtroQuiereReunion || '');
+        setFiltroProximaTarea(f.filtroProximaTarea || '');
+        setFiltroExcluirConReunion(f.filtroExcluirConReunion || false);
+        setFiltroSoloCompromisos(f.filtroSoloCompromisos || false);
+        setOrdenarPor(f.ordenarPor || '');
+        setOrdenDir(f.ordenDir || 'asc');
         setBusqueda(f.busqueda || '');
-        // Las vistas se aplican sobre 'todos' para no chocar con bandejas
-        setBandejaActiva('todos');
+        setColumnasVisibles({ ...DEFAULT_COLUMNAS, ...(f.columnasVisibles || {}) });
+        setColumnasOrden(f.columnasOrden || DEFAULT_COLUMNAS_ORDEN);
+        setPage(1);
     };
 
     const handleGuardarVista = async () => {
@@ -692,12 +841,24 @@ const ContactosSDRPage = () => {
                 empresaId,
                 compartida: vistaCompartida,
                 filtros: {
+                    bandejaActiva,
+                    filtroEstado,
                     estados: filtroEstado ? [filtroEstado] : [],
                     proximoContacto: filtroProximoContacto || null,
-                    busqueda: busqueda || ''
+                    busqueda: busqueda || '',
+                    filtroSegmento,
+                    filtroActividad,
+                    filtroCalificadoBot,
+                    filtroQuiereReunion,
+                    filtroProximaTarea,
+                    filtroExcluirConReunion,
+                    filtroSoloCompromisos,
+                    ordenarPor,
+                    columnasVisibles,
+                    columnasOrden
                 },
-                ordenarPor: 'prioridadScore',
-                ordenDir: 'desc'
+                ordenarPor,
+                ordenDir
             };
             const nuevaVista = await SDRService.crearVista(data);
             setVistas(prev => [nuevaVista, ...prev]);
@@ -732,14 +893,67 @@ const ContactosSDRPage = () => {
         setFiltroQuiereReunion('');
         setFiltroProximaTarea('');
         setFiltroExcluirConReunion(false);
+        setFiltroSoloCompromisos(false);
         setBusqueda('');
+        setColumnasOrden(DEFAULT_COLUMNAS_ORDEN);
     };
     
     // Los contactos ya vienen ordenados del backend según ordenarPor/ordenDir
     // Aplicamos filtros locales: próximo contacto + actividad + calificación bot + quiere reunión
-    const contactosOrdenados = filtrarPorProximaTarea(filtrarPorQuiereReunion(filtrarPorCalificadoBot(filtrarPorActividad(filtrarPorProximoContacto(contactos)))));
+    // Filtrar por compromisos (estricto)
+    const filtrarPorCompromisos = (lista) => {
+        if (!filtroSoloCompromisos) return lista;
+        return lista.filter(c => c.proximaTarea?.estricto === true);
+    };
+
+    const contactosOrdenados = filtrarPorCompromisos(filtrarPorProximaTarea(filtrarPorQuiereReunion(filtrarPorCalificadoBot(filtrarPorActividad(filtrarPorProximoContacto(contactos))))));
     
     // Formatear próximo contacto para mostrar
+    const formatearFechaCorta = (fecha) => {
+        if (!fecha) return '—';
+        return new Date(fecha).toLocaleDateString('es-AR', { day: 'numeric', month: 'short' });
+    };
+
+    const formatearRelativo = (fecha) => {
+        if (!fecha) return '—';
+        const ahora = new Date();
+        const d = new Date(fecha);
+        const diff = ahora - d;
+        const hora = d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+        if (diff < 0) {
+            // Fecha futura
+            const dias = Math.floor(Math.abs(diff) / 86400000);
+            if (dias === 0) return `hoy ${hora}`;
+            if (dias === 1) return `mañana ${hora}`;
+            return `en ${dias}d`;
+        }
+        const dias = Math.floor(diff / 86400000);
+        if (dias === 0) return `hoy ${hora}`;
+        if (dias === 1) return 'ayer';
+        if (dias < 7) return `hace ${dias}d`;
+        if (dias < 30) return `hace ${Math.floor(dias / 7)}sem`;
+        return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' });
+    };
+
+    const handleSortHeader = (campo) => {
+        if (ordenarPor === campo) {
+            setOrdenDir(d => d === 'asc' ? 'desc' : 'asc');
+        } else {
+            setOrdenarPor(campo);
+            setOrdenDir('asc');
+        }
+    };
+
+    const handleComenzarSecuencial = () => {
+        if (contactosOrdenados.length === 0) return;
+        try {
+            const ids = contactosOrdenados.map(c => c._id);
+            sessionStorage.setItem('sdr_secuencial_ids', JSON.stringify(ids));
+        } catch { /* ignore */ }
+        guardarQueryParamsEnSession();
+        router.push(`/sdr/contacto/${contactosOrdenados[0]._id}?modo=secuencial`);
+    };
+
     const formatearProximo = (fecha) => {
         if (!fecha) return null;
         const d = new Date(fecha);
@@ -870,7 +1084,7 @@ const ContactosSDRPage = () => {
                                         </Typography>
                                     </TableCell>
                                     <TableCell>
-                                        <EstadoChip estado={contacto.estado} />
+                                        <EstadoChip estado={contacto.estado} quiereReunion={contacto.quiereReunion} />
                                     </TableCell>
                                     {bandejaActiva === 'reunionesPasadas' && (
                                         <TableCell>
@@ -1036,13 +1250,13 @@ const ContactosSDRPage = () => {
                         <Button
                             size="small"
                             variant="contained"
-                            color="primary"
-                            endIcon={<ChevronRightIcon />}
-                            onClick={handleSiguienteContacto}
+                            color="success"
+                            startIcon={<PlayArrowIcon />}
+                            onClick={handleComenzarSecuencial}
                             disabled={contactosOrdenados.length === 0}
                             sx={{ mr: 0.5, textTransform: 'none', minWidth: 'auto', px: 1.5 }}
                         >
-                            Siguiente
+                            Comenzar
                         </Button>
                         <IconButton 
                             onClick={() => setModalAgregarContacto(true)} 
@@ -1067,6 +1281,26 @@ const ContactosSDRPage = () => {
                             title="Configurar templates WhatsApp"
                         >
                             <SettingsIcon />
+                        </IconButton>
+                        <IconButton 
+                            onClick={async () => {
+                                setModalConfigPrompt(true);
+                                try {
+                                    const config = await SDRService.obtenerConfig(empresaId);
+                                    setPromptConfigs({
+                                        audio: { custom: config.promptAudioResumen || '', default: config.promptAudioDefault || '' },
+                                        transcripcion: { custom: config.promptTranscripcionReunion || '', default: config.promptTranscripcionReunionDefault || '' },
+                                        resumen: { custom: config.promptResumenContacto || '', default: config.promptResumenContactoDefault || '' }
+                                    });
+                                } catch (err) {
+                                    console.error('Error cargando config:', err);
+                                }
+                            }} 
+                            size="small"
+                            color="default"
+                            title="Configurar prompt IA (audio y reuniones)"
+                        >
+                            <SmartToyIcon />
                         </IconButton>
                         <IconButton onClick={() => { cargarContactos(); cargarMetricas(); }} size="small">
                             <RefreshIcon />
@@ -1106,7 +1340,7 @@ const ContactosSDRPage = () => {
             <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
                 <Tabs
                     value={bandejaActiva}
-                    onChange={(_, v) => setBandejaActiva(v)}
+                    onChange={(_, v) => handleCambiarBandeja(v)}
                     variant="scrollable"
                     scrollButtons={false}
                     sx={{ minHeight: 40, '& .MuiTab-root': { minHeight: 40, py: 0.5, textTransform: 'none', fontSize: '0.8rem' } }}
@@ -1199,11 +1433,52 @@ const ContactosSDRPage = () => {
             </Box>
             )}
 
+            {/* ── Barra de filtros colapsable ── */}
+            {(() => {
+                const filtrosActivos = [];
+                if (filtroProximoContacto) filtrosActivos.push({ label: filtroProximoContacto === 'sin_proximo' ? 'Sin fecha' : filtroProximoContacto === 'vencido' ? 'Vencidos' : filtroProximoContacto === 'vencido_hoy' ? '🔥 Hoy' : 'Pendientes', onDelete: () => setFiltroProximoContacto('') });
+                if (filtroSegmento) filtrosActivos.push({ label: filtroSegmento === 'inbound' ? '🔵 Inbound' : '🟠 Outbound', onDelete: () => setFiltroSegmento('') });
+                if (filtroCalificadoBot) filtrosActivos.push({ label: filtroCalificadoBot === 'calificado' ? '🤖 Calificado' : filtroCalificadoBot === 'quiere_meet' ? '🤝 Quiere meet' : filtroCalificadoBot === 'no_llego' ? 'No llegó' : 'No calificado', onDelete: () => setFiltroCalificadoBot('') });
+                if (filtroQuiereReunion) filtrosActivos.push({ label: filtroQuiereReunion === 'si' ? '📅 Quiere reunión' : '📅 No quiere', onDelete: () => setFiltroQuiereReunion('') });
+                if (filtroProximaTarea) filtrosActivos.push({ label: filtroProximaTarea === 'sin_tarea' ? 'Sin tarea' : `Tarea: ${filtroProximaTarea}`, onDelete: () => setFiltroProximaTarea('') });
+                if (filtroActividad) filtrosActivos.push({ label: filtroActividad.replace(/_/g, ' ').replace('con ', '').replace('sin ', 'Sin '), onDelete: () => setFiltroActividad('') });
+                if (filtroExcluirConReunion) filtrosActivos.push({ label: '🚫 Sin reunión', onDelete: () => setFiltroExcluirConReunion(false) });
+                if (filtroSoloCompromisos) filtrosActivos.push({ label: '🔔 Compromisos', onDelete: () => setFiltroSoloCompromisos(false) });
+                if (ordenarPor) filtrosActivos.push({ label: `Orden: ${ordenarPor === 'proximo_contacto' ? 'Próximo' : ordenarPor === 'fecha_creacion' ? 'Más nuevo' : ordenarPor}`, onDelete: () => setOrdenarPor('') });
+
+                return (
+                    <>
+                        <Box sx={{ px: 2, pb: 1 }}>
+                            <Stack direction="row" spacing={1} alignItems="center" sx={{ flexWrap: 'wrap', gap: 0.5 }}>
+                                <Chip
+                                    icon={<FilterListIcon sx={{ fontSize: 16 }} />}
+                                    label={`Filtros${filtrosActivos.length > 0 ? ` (${filtrosActivos.length})` : ''}`}
+                                    size="small"
+                                    color={filtrosActivos.length > 0 ? 'primary' : 'default'}
+                                    variant={filtrosExpandidos ? 'filled' : 'outlined'}
+                                    onClick={() => setFiltrosExpandidos(!filtrosExpandidos)}
+                                    sx={{ fontWeight: 600 }}
+                                />
+                                {!filtrosExpandidos && filtrosActivos.map((f, i) => (
+                                    <Chip key={i} label={f.label} size="small" color="primary" variant="outlined" onDelete={f.onDelete} sx={{ fontSize: '0.75rem' }} />
+                                ))}
+                                {!filtrosExpandidos && filtrosActivos.length > 0 && (
+                                    <Chip label="Limpiar" size="small" variant="outlined" onClick={() => {
+                                        setFiltroProximoContacto(''); setFiltroSegmento(''); setFiltroCalificadoBot('');
+                                        setFiltroQuiereReunion(''); setFiltroProximaTarea(''); setFiltroActividad('');
+                                        setFiltroExcluirConReunion(false); setFiltroSoloCompromisos(false); setOrdenarPor('');
+                                    }} sx={{ fontSize: '0.75rem', color: 'text.secondary' }} />
+                                )}
+                            </Stack>
+                        </Box>
+
+                        <Collapse in={filtrosExpandidos}>
+
             {/* Filtros por próximo contacto */}
             <Box sx={{ px: 2, pb: 1, overflowX: 'auto' }}>
                 <Stack direction="row" spacing={1} sx={{ minWidth: 'max-content' }}>
                     <Typography variant="caption" color="text.secondary" sx={{ alignSelf: 'center', mr: 0.5 }}>
-                        Próximo:
+                        Próximo contacto:
                     </Typography>
                     <Chip 
                         label={`Sin fecha (${contarSinProximo()})`}
@@ -1430,6 +1705,13 @@ const ContactosSDRPage = () => {
                         variant={filtroExcluirConReunion ? 'filled' : 'outlined'}
                         onClick={() => setFiltroExcluirConReunion(!filtroExcluirConReunion)}
                     />
+                    <Chip 
+                        label="🔔 Solo compromisos"
+                        size="small"
+                        color={filtroSoloCompromisos ? 'warning' : 'default'}
+                        variant={filtroSoloCompromisos ? 'filled' : 'outlined'}
+                        onClick={() => setFiltroSoloCompromisos(!filtroSoloCompromisos)}
+                    />
                 </Stack>
             </Box>
 
@@ -1445,6 +1727,11 @@ const ContactosSDRPage = () => {
                     <Chip label="Estado" size="small" color={ordenarPor === 'estado' ? 'primary' : 'default'} variant={ordenarPor === 'estado' ? 'filled' : 'outlined'} onClick={() => setOrdenarPor('estado')} />
                 </Stack>
             </Box>
+
+                        </Collapse>
+                    </>
+                );
+            })()}
 
             {/* Barra de acciones masivas */}
             {seleccionados.length > 0 && (
@@ -1593,7 +1880,7 @@ const ContactosSDRPage = () => {
                                             <Typography variant="subtitle1" fontWeight={600} noWrap>
                                                 {contacto.nombre}
                                             </Typography>
-                                            <EstadoChip estado={contacto.estado} />
+                                            <EstadoChip estado={contacto.estado} quiereReunion={contacto.quiereReunion} />
                                         </Stack>
                                         <Typography variant="body2" color="text.secondary" noWrap>
                                             {contacto.empresa || contacto.telefono}
@@ -1788,6 +2075,26 @@ const ContactosSDRPage = () => {
                             Templates
                         </Button>
                         <Button
+                            startIcon={<SmartToyIcon />}
+                            onClick={async () => {
+                                setModalConfigPrompt(true);
+                                try {
+                                    const config = await SDRService.obtenerConfig(empresaId);
+                                    setPromptConfigs({
+                                        audio: { custom: config.promptAudioResumen || '', default: config.promptAudioDefault || '' },
+                                        transcripcion: { custom: config.promptTranscripcionReunion || '', default: config.promptTranscripcionReunionDefault || '' },
+                                        resumen: { custom: config.promptResumenContacto || '', default: config.promptResumenContactoDefault || '' }
+                                    });
+                                } catch (err) {
+                                    console.error('Error cargando config:', err);
+                                }
+                            }}
+                            variant="outlined"
+                            color="inherit"
+                        >
+                            Prompt IA
+                        </Button>
+                        <Button
                             startIcon={<RefreshIcon />}
                             onClick={() => { cargarContactos(); cargarMetricas(); }}
                             disabled={loading}
@@ -1917,9 +2224,10 @@ const ContactosSDRPage = () => {
 
                 {/* ── Bandejas (Tabs) ── */}
                 <Paper sx={{ borderRadius: 2 }}>
+                    <Stack direction="row" alignItems="center" justifyContent="space-between">
                     <Tabs
                         value={bandejaActiva}
-                        onChange={(_, v) => setBandejaActiva(v)}
+                        onChange={(_, v) => handleCambiarBandeja(v)}
                         sx={{ '& .MuiTab-root': { textTransform: 'none', fontWeight: 600 } }}
                     >
                         <Tab 
@@ -1959,6 +2267,20 @@ const ContactosSDRPage = () => {
                             label="Todos"
                         />
                     </Tabs>
+                    <Box sx={{ px: 1.5 }}>
+                        <Button
+                            startIcon={<PlayArrowIcon />}
+                            onClick={handleComenzarSecuencial}
+                            variant="contained"
+                            color="success"
+                            size="small"
+                            disabled={contactosOrdenados.length === 0}
+                            sx={{ textTransform: 'none', whiteSpace: 'nowrap' }}
+                        >
+                            Comenzar
+                        </Button>
+                    </Box>
+                    </Stack>
                 </Paper>
 
                 {/* Filtros por estado (solo en bandeja 'todos') */}
@@ -2115,6 +2437,12 @@ const ContactosSDRPage = () => {
                         color={filtroExcluirConReunion ? 'error' : 'default'}
                         variant={filtroExcluirConReunion ? 'filled' : 'outlined'}
                         onClick={() => setFiltroExcluirConReunion(!filtroExcluirConReunion)}
+                    />
+                    <Chip 
+                        label="🔔 Solo compromisos"
+                        color={filtroSoloCompromisos ? 'warning' : 'default'}
+                        variant={filtroSoloCompromisos ? 'filled' : 'outlined'}
+                        onClick={() => setFiltroSoloCompromisos(!filtroSoloCompromisos)}
                     />
                     {filtroActividad && (
                         <Chip 
@@ -2349,6 +2677,69 @@ const ContactosSDRPage = () => {
                                 />
                             ))}
                         </Stack>
+                        <Tooltip title="Mostrar/ocultar columnas">
+                            <IconButton size="small" onClick={(e) => setAnchorColumnas(e.currentTarget)} color={Object.values(columnasVisibles).some(v => !v) ? 'primary' : 'default'}>
+                                <ViewColumnIcon fontSize="small" />
+                            </IconButton>
+                        </Tooltip>
+                        <Popover
+                            open={Boolean(anchorColumnas)}
+                            anchorEl={anchorColumnas}
+                            onClose={() => setAnchorColumnas(null)}
+                            anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+                            transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+                        >
+                            <Box sx={{ p: 2, minWidth: 240 }}>
+                                <Typography variant="subtitle2" gutterBottom>Columnas visibles y orden</Typography>
+                                {columnasOrden.map((key, idx) => (
+                                    <Stack key={key} direction="row" alignItems="center" spacing={0.5} sx={{ py: 0.2 }}>
+                                        <IconButton
+                                            size="small"
+                                            disabled={idx === 0}
+                                            onClick={() => setColumnasOrden(prev => {
+                                                const arr = [...prev];
+                                                [arr[idx - 1], arr[idx]] = [arr[idx], arr[idx - 1]];
+                                                return arr;
+                                            })}
+                                            sx={{ p: 0.3 }}
+                                        >
+                                            <ArrowUpwardIcon sx={{ fontSize: 16 }} />
+                                        </IconButton>
+                                        <IconButton
+                                            size="small"
+                                            disabled={idx === columnasOrden.length - 1}
+                                            onClick={() => setColumnasOrden(prev => {
+                                                const arr = [...prev];
+                                                [arr[idx], arr[idx + 1]] = [arr[idx + 1], arr[idx]];
+                                                return arr;
+                                            })}
+                                            sx={{ p: 0.3 }}
+                                        >
+                                            <ArrowDownwardIcon sx={{ fontSize: 16 }} />
+                                        </IconButton>
+                                        <FormControlLabel
+                                            control={
+                                                <Checkbox
+                                                    size="small"
+                                                    checked={columnasVisibles[key] ?? true}
+                                                    onChange={() => setColumnasVisibles(prev => ({ ...prev, [key]: !prev[key] }))}
+                                                />
+                                            }
+                                            label={<Typography variant="body2">{COLUMNAS_LABELS[key]}</Typography>}
+                                            sx={{ flex: 1, m: 0 }}
+                                        />
+                                    </Stack>
+                                ))}
+                                <Button
+                                    size="small"
+                                    onClick={() => { setColumnasOrden(DEFAULT_COLUMNAS_ORDEN); setColumnasVisibles(DEFAULT_COLUMNAS); }}
+                                    sx={{ mt: 1, textTransform: 'none' }}
+                                    fullWidth
+                                >
+                                    Restablecer
+                                </Button>
+                            </Box>
+                        </Popover>
                     </Stack>
                 </Paper>
 
@@ -2389,15 +2780,33 @@ const ContactosSDRPage = () => {
                                             onChange={handleSeleccionarTodos}
                                         />
                                     </TableCell>
-                                    <TableCell>Nombre</TableCell>
-                                    <TableCell>Empresa</TableCell>
-                                    <TableCell>Estado</TableCell>
-                                    <TableCell>Calificado</TableCell>
-                                    <TableCell>Quiere reunión</TableCell>
-                                    <TableCell>Plan</TableCell>
-                                    <TableCell>Prior.</TableCell>
-                                    <TableCell>Actividad</TableCell>
-                                    <TableCell>Próxima tarea</TableCell>
+                                    <TableCell sx={{ minWidth: 160 }}>
+                                        <TableSortLabel
+                                            active={ordenarPor === 'nombre'}
+                                            direction={ordenarPor === 'nombre' ? ordenDir : 'asc'}
+                                            onClick={() => handleSortHeader('nombre')}
+                                        >
+                                            Nombre
+                                        </TableSortLabel>
+                                    </TableCell>
+                                    {columnasOrden.filter(k => columnasVisibles[k]).map(key => {
+                                        const SORT_CAMPOS = { estado: 'estado', prioridad: 'prioridadScore', fechaAdded: 'createdAt', ultimaAccion: 'ultimaAccion', proximoContacto: 'proximoContacto' };
+                                        const MIN_WIDTHS = { empresa: 100, estado: 100, calificado: 80, reunion: 70, plan: 90, prioridad: 60, actividad: 90, proximaTarea: 110, fechaAdded: 70, ultimaAccion: 90, proximoContacto: 90 };
+                                        const sortCampo = SORT_CAMPOS[key];
+                                        return (
+                                            <TableCell key={key} sx={{ minWidth: MIN_WIDTHS[key] || 80 }}>
+                                                {sortCampo ? (
+                                                    <TableSortLabel
+                                                        active={ordenarPor === sortCampo}
+                                                        direction={ordenarPor === sortCampo ? ordenDir : 'asc'}
+                                                        onClick={() => handleSortHeader(sortCampo)}
+                                                    >
+                                                        {COLUMNAS_LABELS[key]}
+                                                    </TableSortLabel>
+                                                ) : COLUMNAS_LABELS[key]}
+                                            </TableCell>
+                                        );
+                                    })}
                                 </TableRow>
                             </TableHead>
                             <TableBody>
@@ -2415,7 +2824,8 @@ const ContactosSDRPage = () => {
                                             selected={seleccionado}
                                             sx={{ 
                                                 cursor: 'pointer',
-                                                bgcolor: vencido ? 'error.50' : (seleccionado ? 'primary.50' : 'inherit')
+                                                bgcolor: (contacto.proximaTarea?.estricto && vencido) ? '#fff3e0' : vencido ? 'error.50' : (seleccionado ? 'primary.50' : 'inherit'),
+                                                borderLeft: (contacto.proximaTarea?.estricto && vencido) ? '3px solid #ff9800' : 'none'
                                             }}
                                             onClick={() => handleOpenDrawer(contacto)}
                                         >
@@ -2427,6 +2837,15 @@ const ContactosSDRPage = () => {
                                             </TableCell>
                                             <TableCell>
                                                 <Stack direction="row" spacing={0.5} alignItems="center">
+                                                    <Tooltip title="Abrir en nueva pestaña">
+                                                        <IconButton
+                                                            size="small"
+                                                            onClick={(e) => { e.stopPropagation(); window.open(`/sdr/contacto/${contacto._id}`, '_blank'); }}
+                                                            sx={{ p: 0.3, color: 'action.active' }}
+                                                        >
+                                                            <OpenInNewIcon sx={{ fontSize: 16 }} />
+                                                        </IconButton>
+                                                    </Tooltip>
                                                     <Typography variant="body2" fontWeight={contacto.estado === 'nuevo' ? 600 : 400}>
                                                         {contacto.nombre}
                                                     </Typography>
@@ -2466,96 +2885,79 @@ const ContactosSDRPage = () => {
                                                     </Typography>
                                                 )}
                                             </TableCell>
-                                            <TableCell>
-                                                <Typography variant="caption">{contacto.telefono}</Typography>
-                                            </TableCell>
-                                            <TableCell>
-                                                <EstadoChip estado={contacto.estado} />
-                                            </TableCell>
-                                            <TableCell>
-                                                {esCalificado ? (
-                                                    <Chip 
-                                                        size="small" 
-                                                        label="✅ Sí"
-                                                        color="success"
-                                                        variant="outlined"
-                                                        sx={{ height: 22, fontSize: '0.7rem' }}
-                                                    />
-                                                ) : contacto.precalificacionBot === 'no_llego' ? (
-                                                    <Chip 
-                                                        size="small" 
-                                                        label="No llegó"
-                                                        color="default"
-                                                        variant="outlined"
-                                                        sx={{ height: 22, fontSize: '0.7rem' }}
-                                                    />
-                                                ) : (
-                                                    <Typography variant="caption" color="text.secondary">—</Typography>
-                                                )}
-                                            </TableCell>
-                                            <TableCell>
-                                                {quiereReunion ? (
-                                                    <Chip 
-                                                        size="small" 
-                                                        label="📅 Sí"
-                                                        color="primary"
-                                                        variant="filled"
-                                                        sx={{ height: 22, fontSize: '0.7rem' }}
-                                                    />
-                                                ) : (
-                                                    <Typography variant="caption" color="text.secondary">—</Typography>
-                                                )}
-                                            </TableCell>
-                                            <TableCell>
-                                                {contacto.planEstimado ? (
-                                                    <Chip 
-                                                        size="small" 
-                                                        label={`${PLANES_SORBY[contacto.planEstimado]?.icon || ''} ${PLANES_SORBY[contacto.planEstimado]?.label || contacto.planEstimado}`}
-                                                        color={PLANES_SORBY[contacto.planEstimado]?.color || 'default'}
-                                                        variant="outlined"
-                                                        sx={{ height: 22, fontSize: '0.7rem' }}
-                                                    />
-                                                ) : (
-                                                    <Typography variant="caption" color="text.secondary">—</Typography>
-                                                )}
-                                            </TableCell>
-                                            <TableCell>
-                                                {contacto.prioridadScore > 0 ? (
-                                                    <Chip 
-                                                        size="small" 
-                                                        label={contacto.prioridadScore}
-                                                        color={contacto.prioridadScore >= 70 ? 'error' : contacto.prioridadScore >= 40 ? 'warning' : 'default'}
-                                                        variant="filled"
-                                                        sx={{ height: 22, fontWeight: 700 }}
-                                                    />
-                                                ) : (
-                                                    <Typography variant="caption" color="text.secondary">—</Typography>
-                                                )}
-                                            </TableCell>
-                                            <TableCell>
-                                                <ContadoresActividad contadores={contacto.contadores} size="small" />
-                                            </TableCell>
-                                            <TableCell>
-                                                {proximo ? (
-                                                    <Stack direction="row" spacing={0.5} alignItems="center">
-                                                        <Typography sx={{ fontSize: 12 }}>
-                                                            {contacto.proximaTarea?.tipo === 'llamada' ? '📞' : contacto.proximaTarea?.tipo === 'whatsapp' ? '💬' : contacto.proximaTarea?.tipo === 'email' ? '✉️' : '📅'}
-                                                        </Typography>
-                                                        <Chip 
-                                                            size="small" 
-                                                            label={`${contacto.proximaTarea?.tipo === 'llamada' ? 'Llamada' : contacto.proximaTarea?.tipo === 'whatsapp' ? 'WhatsApp' : contacto.proximaTarea?.tipo === 'email' ? 'Email' : 'Tarea'} · ${proximo.texto}`}
-                                                            color={proximo.color}
-                                                            variant="outlined"
-                                                        />
-                                                    </Stack>
-                                                ) : '-'}
-                                            </TableCell>
+                                            {columnasOrden.filter(k => columnasVisibles[k]).map(key => {
+                                                switch (key) {
+                                                    case 'empresa': return <TableCell key={key}><Typography variant="caption">{contacto.telefono}</Typography></TableCell>;
+                                                    case 'estado': return <TableCell key={key}><EstadoChip estado={contacto.estado} quiereReunion={contacto.quiereReunion} /></TableCell>;
+                                                    case 'calificado': return <TableCell key={key}>
+                                                        {esCalificado ? (
+                                                            <Chip size="small" label="✅ Sí" color="success" variant="outlined" sx={{ height: 22, fontSize: '0.7rem' }} />
+                                                        ) : contacto.precalificacionBot === 'no_llego' ? (
+                                                            <Chip size="small" label="No llegó" color="default" variant="outlined" sx={{ height: 22, fontSize: '0.7rem' }} />
+                                                        ) : (
+                                                            <Typography variant="caption" color="text.secondary">—</Typography>
+                                                        )}
+                                                    </TableCell>;
+                                                    case 'reunion': return <TableCell key={key}>
+                                                        {quiereReunion ? (
+                                                            <Chip size="small" label="📅 Sí" color="primary" variant="filled" sx={{ height: 22, fontSize: '0.7rem' }} />
+                                                        ) : (
+                                                            <Typography variant="caption" color="text.secondary">—</Typography>
+                                                        )}
+                                                    </TableCell>;
+                                                    case 'plan': return <TableCell key={key}>
+                                                        {contacto.planEstimado ? (
+                                                            <Chip size="small" label={`${PLANES_SORBY[contacto.planEstimado]?.icon || ''} ${PLANES_SORBY[contacto.planEstimado]?.label || contacto.planEstimado}`} color={PLANES_SORBY[contacto.planEstimado]?.color || 'default'} variant="outlined" sx={{ height: 22, fontSize: '0.7rem' }} />
+                                                        ) : (
+                                                            <Typography variant="caption" color="text.secondary">—</Typography>
+                                                        )}
+                                                    </TableCell>;
+                                                    case 'prioridad': return <TableCell key={key}>
+                                                        {contacto.prioridadScore > 0 ? (
+                                                            <Chip size="small" label={contacto.prioridadScore} color={contacto.prioridadScore >= 70 ? 'error' : contacto.prioridadScore >= 40 ? 'warning' : 'default'} variant="filled" sx={{ height: 22, fontWeight: 700 }} />
+                                                        ) : (
+                                                            <Typography variant="caption" color="text.secondary">—</Typography>
+                                                        )}
+                                                    </TableCell>;
+                                                    case 'actividad': return <TableCell key={key}><ContadoresActividad contadores={contacto.contadores} size="small" /></TableCell>;
+                                                    case 'proximaTarea': return <TableCell key={key}>
+                                                        {proximo ? (
+                                                            <Stack direction="row" spacing={0.5} alignItems="center">
+                                                                <Typography sx={{ fontSize: 12 }}>
+                                                                    {contacto.proximaTarea?.estricto ? '🔔' : (contacto.proximaTarea?.tipo === 'llamada' ? '📞' : contacto.proximaTarea?.tipo === 'whatsapp' ? '💬' : contacto.proximaTarea?.tipo === 'email' ? '✉️' : '📅')}
+                                                                </Typography>
+                                                                <Chip size="small" label={`${contacto.proximaTarea?.tipo === 'llamada' ? 'Llamada' : contacto.proximaTarea?.tipo === 'whatsapp' ? 'WhatsApp' : contacto.proximaTarea?.tipo === 'email' ? 'Email' : 'Tarea'} · ${proximo.texto}`} color={contacto.proximaTarea?.estricto ? 'warning' : proximo.color} variant={contacto.proximaTarea?.estricto ? 'filled' : 'outlined'} />
+                                                            </Stack>
+                                                        ) : '-'}
+                                                    </TableCell>;
+                                                    case 'fechaAdded': return <TableCell key={key}>
+                                                        <Tooltip title={contacto.createdAt ? new Date(contacto.createdAt).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : ''}>
+                                                            <Typography variant="caption" color="text.secondary">{formatearFechaCorta(contacto.createdAt)}</Typography>
+                                                        </Tooltip>
+                                                    </TableCell>;
+                                                    case 'ultimaAccion': return <TableCell key={key}>
+                                                        <Tooltip title={contacto.ultimaAccion ? new Date(contacto.ultimaAccion).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''}>
+                                                            <Typography variant="caption" color="text.secondary">{formatearRelativo(contacto.ultimaAccion)}</Typography>
+                                                        </Tooltip>
+                                                    </TableCell>;
+                                                    case 'proximoContacto': return <TableCell key={key}>
+                                                        <Tooltip title={contacto.proximaTarea?.fecha ? new Date(contacto.proximaTarea.fecha).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''}>
+                                                            <Typography variant="caption" color={contacto.proximaTarea?.fecha && new Date(contacto.proximaTarea.fecha) < new Date() ? 'error.main' : 'text.secondary'}>
+                                                                {contacto.proximaTarea?.fecha ? (
+                                                                    <>{formatearRelativo(contacto.proximaTarea.fecha)}{contacto.proximaTarea?.estricto && ' 🔔'}</>
+                                                                ) : '—'}
+                                                            </Typography>
+                                                        </Tooltip>
+                                                    </TableCell>;
+                                                    default: return null;
+                                                }
+                                            })}
                                         </TableRow>
                                     );
                                 })}
                                 {contactos.length === 0 && (
                                     <TableRow>
-                                        <TableCell colSpan={11} align="center" sx={{ py: 4 }}>
+                                        <TableCell colSpan={2 + Object.values(columnasVisibles).filter(Boolean).length} align="center" sx={{ py: 4 }}>
                                             <Typography color="text.secondary">
                                                 {filtroEstado 
                                                     ? `No hay contactos con estado "${filtroEstado}"`
@@ -2684,6 +3086,72 @@ const ContactosSDRPage = () => {
                 onClose={() => setModalAdminTemplates(false)}
                 empresaId={empresaId}
             />
+
+            {/* Modal Config Prompt IA */}
+            <Dialog open={modalConfigPrompt} onClose={() => setModalConfigPrompt(false)} maxWidth="md" fullWidth>
+                <DialogTitle>Configurar Prompts IA</DialogTitle>
+                <DialogContent>
+                    {[
+                        { key: 'audio', icon: '🎙️', label: 'Prompt para análisis de audio grabado', desc: 'Instrucciones que recibe la IA al analizar audios grabados. Dejá vacío para usar el prompt por defecto.' },
+                        { key: 'transcripcion', icon: '📝', label: 'Prompt para transcripción de reuniones', desc: 'Instrucciones que recibe la IA al analizar transcripciones de reuniones. Los datos del contacto y la transcripción se agregan automáticamente. Dejá vacío para usar el prompt por defecto.' },
+                        { key: 'resumen', icon: '📊', label: 'Prompt para resumen ejecutivo del contacto', desc: 'Instrucciones para generar el resumen IA del contacto (tab "Resumen IA"). Los datos del contacto, historial y reuniones se agregan automáticamente. Dejá vacío para usar el prompt por defecto.' }
+                    ].map(({ key, icon, label, desc }, idx) => (
+                        <Fragment key={key}>
+                            {idx > 0 && <Divider sx={{ my: 2 }} />}
+                            <Typography variant="subtitle2" sx={{ mb: 1, mt: idx === 0 ? 1 : 0 }}>
+                                {icon} {label}
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                                {desc}
+                            </Typography>
+                            <TextField
+                                fullWidth
+                                multiline
+                                rows={6}
+                                value={promptConfigs[key].custom}
+                                onChange={(e) => setPromptConfigs(prev => ({ ...prev, [key]: { ...prev[key], custom: e.target.value } }))}
+                                placeholder={promptConfigs[key].default || 'Cargando prompt por defecto...'}
+                                sx={{ fontFamily: 'monospace', fontSize: '0.85rem', mb: 1 }}
+                            />
+                            {promptConfigs[key].custom && (
+                                <Button 
+                                    size="small" 
+                                    onClick={() => setPromptConfigs(prev => ({ ...prev, [key]: { ...prev[key], custom: '' } }))}
+                                    sx={{ mb: idx < 2 ? 2 : 0 }}
+                                >
+                                    Restaurar prompt por defecto
+                                </Button>
+                            )}
+                        </Fragment>
+                    ))}
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => setModalConfigPrompt(false)}>Cancelar</Button>
+                    <Button 
+                        variant="contained" 
+                        disabled={loadingConfig}
+                        onClick={async () => {
+                            setLoadingConfig(true);
+                            try {
+                                await SDRService.actualizarConfig({ 
+                                    empresaId, 
+                                    promptAudioResumen: promptConfigs.audio.custom || null,
+                                    promptTranscripcionReunion: promptConfigs.transcripcion.custom || null,
+                                    promptResumenContacto: promptConfigs.resumen.custom || null
+                                });
+                                setSnackbar({ open: true, message: 'Prompts actualizados', severity: 'success' });
+                                setModalConfigPrompt(false);
+                            } catch (err) {
+                                setSnackbar({ open: true, message: 'Error guardando prompts', severity: 'error' });
+                            } finally {
+                                setLoadingConfig(false);
+                            }
+                        }}
+                    >
+                        {loadingConfig ? <CircularProgress size={20} /> : 'Guardar'}
+                    </Button>
+                </DialogActions>
+            </Dialog>
 
             {/* Modal Envío Masivo de Template Meta via Bot */}
             {tienePermisoEnviarBot && (
@@ -2873,7 +3341,7 @@ const ContactosSDRPage = () => {
                             <Typography variant="body2">Compartir con el equipo</Typography>
                         </Stack>
                         <Typography variant="caption" color="text.secondary">
-                            Se guardarán los filtros actuales: estado, tipo, próximo contacto y búsqueda.
+                            Se guardarán los filtros actuales: estado, tipo, próximo contacto, búsqueda y columnas visibles.
                         </Typography>
                     </Stack>
                 </DialogContent>

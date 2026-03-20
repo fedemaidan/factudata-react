@@ -172,8 +172,16 @@ const ESTADOS_CONFIG = {
     'perdido': { color: 'error', label: 'Perdido', icon: <CancelIcon fontSize="small" /> },
 };
 
-export const EstadoChip = ({ estado }) => {
+export const EstadoChip = ({ estado, quiereReunion }) => {
     const { color, label } = ESTADOS_CONFIG[estado] || { color: 'default', label: estado };
+    if (estado === 'calificado' && quiereReunion) {
+        return (
+            <Stack direction="row" spacing={0.5} alignItems="center" sx={{ display: 'inline-flex' }}>
+                <Chip size="small" color={color} label={label} />
+                <Typography component="span" sx={{ fontSize: '0.9rem', lineHeight: 1 }}>🎯</Typography>
+            </Stack>
+        );
+    }
     return <Chip size="small" color={color} label={label} />;
 };
 
@@ -1354,7 +1362,7 @@ const DrawerDetalleContactoSDR = ({
                                                             </Box>
                                                         )}
                                                         {evento.nota && (
-                                                            <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic', mt: 0.5 }}>
+                                                            <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic', mt: 0.5, whiteSpace: 'pre-line' }}>
                                                                 "{evento.nota}"
                                                             </Typography>
                                                         )}
@@ -2189,7 +2197,7 @@ const DrawerDetalleContactoSDR = ({
                                                     <Typography 
                                                         variant="body2" 
                                                         color="text.secondary"
-                                                        sx={{ mt: 0.5, fontStyle: 'italic' }}
+                                                        sx={{ mt: 0.5, fontStyle: 'italic', whiteSpace: 'pre-line' }}
                                                     >
                                                         "{evento.nota}"
                                                     </Typography>

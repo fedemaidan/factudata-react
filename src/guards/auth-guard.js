@@ -6,7 +6,7 @@ import { useAuthContext } from 'src/contexts/auth-context';
 export const AuthGuard = (props) => {
   const { children } = props;
   const router = useRouter();
-  const { isAuthenticated } = useAuthContext();
+  const { isAuthenticated, isLoading } = useAuthContext();
   const { user } = useAuthContext();
   const ignore = useRef(false);
   const [checked, setChecked] = useState(false);
@@ -21,11 +21,19 @@ export const AuthGuard = (props) => {
         return;
       }
 
+      if (isLoading) {
+        return;
+      }
+
+      if (isAuthenticated) {
+        setChecked(true);
+        return;
+      }
+
       // Prevent from calling twice in development mode with React.StrictMode enabled
       if (ignore.current) {
         return;
       }
-
       ignore.current = true;
 
       if (!isAuthenticated) {
@@ -36,12 +44,9 @@ export const AuthGuard = (props) => {
             query: router.asPath !== '/' ? { continueUrl: router.asPath } : undefined
           })
           .catch(console.error);
-      } else {
-        setChecked(true);
       }
-
     },
-    [router.isReady]
+    [router.isReady, isAuthenticated, isLoading, checked, router, user]
   );
 
   if (!checked) {

@@ -18,7 +18,8 @@ export const MensajeProgramadoDialog = ({ open, onClose, onSave, mensaje, curren
     mensaje: '',
     fechaEnvioProgramada: '',
     archivosAdjuntos: '',
-    estado: 'PENDIENTE'
+    estado: 'PENDIENTE',
+    razonCancelacion: ''
   });
 
   useEffect(() => {
@@ -30,7 +31,8 @@ export const MensajeProgramadoDialog = ({ open, onClose, onSave, mensaje, curren
         mensaje: mensaje.mensaje || '',
         fechaEnvioProgramada: mensaje.fechaEnvioProgramada ? new Date(mensaje.fechaEnvioProgramada).toISOString().slice(0, 16) : '',
         archivosAdjuntos: mensaje.archivosAdjuntos ? mensaje.archivosAdjuntos.join(', ') : '',
-        estado: mensaje.estado || 'PENDIENTE'
+        estado: mensaje.estado || 'PENDIENTE',
+        razonCancelacion: mensaje.razonCancelacion || ''
       });
     } else {
       setFormData({
@@ -40,7 +42,8 @@ export const MensajeProgramadoDialog = ({ open, onClose, onSave, mensaje, curren
         mensaje: '',
         fechaEnvioProgramada: '',
         archivosAdjuntos: '',
-        estado: 'PENDIENTE'
+        estado: 'PENDIENTE',
+        razonCancelacion: ''
       });
     }
   }, [mensaje, open, currentUser]);
@@ -53,7 +56,8 @@ export const MensajeProgramadoDialog = ({ open, onClose, onSave, mensaje, curren
   const handleSubmit = () => {
     const payload = {
       ...formData,
-      archivosAdjuntos: formData.archivosAdjuntos.split(',').map(s => s.trim()).filter(s => s)
+      archivosAdjuntos: formData.archivosAdjuntos.split(',').map(s => s.trim()).filter(s => s),
+      razonCancelacion: formData.estado === 'CANCELADO' ? (formData.razonCancelacion || null) : null
     };
     onSave(payload);
   };
@@ -132,6 +136,18 @@ export const MensajeProgramadoDialog = ({ open, onClose, onSave, mensaje, curren
             <MenuItem value="ENVIADO">Enviado</MenuItem>
             <MenuItem value="CANCELADO">Cancelado</MenuItem>
           </TextField>
+          {formData.estado === 'CANCELADO' && (
+            <TextField
+              label="Razón de cancelación"
+              name="razonCancelacion"
+              value={formData.razonCancelacion}
+              onChange={handleChange}
+              fullWidth
+              multiline
+              rows={2}
+              placeholder="¿Por qué se cancela este mensaje?"
+            />
+          )}
         </Stack>
       </DialogContent>
       <DialogActions>
