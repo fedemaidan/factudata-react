@@ -54,7 +54,8 @@ import {
     DeleteOutline as DeleteOutlineIcon,
     FileUpload as FileUploadIcon,
     Download as DownloadIcon,
-    AttachFile as AttachFileIcon
+    AttachFile as AttachFileIcon,
+    MoreVert as MoreVertIcon
 } from '@mui/icons-material';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
 import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
@@ -69,6 +70,7 @@ import { EstadoChip, EstadoChipEditable, ModalEditarContacto } from 'src/compone
 import ModalRegistrarAccion from 'src/components/sdr/ModalRegistrarAccion';
 import ModalSelectorTemplate, { replaceVariables } from 'src/components/sdr/ModalSelectorTemplate';
 import ModalCrearReunion from 'src/components/sdr/ModalCrearReunion';
+import ModalResultadoReunion from 'src/components/sdr/ModalResultadoReunion';
 import { detectarContextoTemplate, obtenerMejorTemplate } from 'src/utils/templateContexto';
 import { getWhatsAppLink, getTelLink } from 'src/utils/phoneUtils';
 import {
@@ -353,6 +355,15 @@ const ContactoSDRDetailPage = () => {
     const [noShowDialog, setNoShowDialog] = useState(false);
     const [noShowComentario, setNoShowComentario] = useState('');
     const [reunionNoShow, setReunionNoShow] = useState(null);
+
+    // Editar reunión
+    const [modalEditarReunionOpen, setModalEditarReunionOpen] = useState(false);
+    const [reunionEditando, setReunionEditando] = useState(null);
+
+    // Modal resultado reunión (misma experiencia que reuniones.js)
+    const [modalResultadoReunion, setModalResultadoReunion] = useState(false);
+    const [reunionSeleccionadaResultado, setReunionSeleccionadaResultado] = useState(null);
+    const [resultadoLoading, setResultadoLoading] = useState(false);
     // Filtro de historial por categoría
     const [filtroHistorial, setFiltroHistorial] = useState('todos');
 
@@ -1001,13 +1012,98 @@ const ContactoSDRDetailPage = () => {
 
     // ==================== HANDLERS REUNIONES TAB ====================
 
-    const handleReunionRealizada = async (reunion) => {
+    const handleEditarReunion = (reunion) => {
+        // Abrir el modal de crear reunión pre-llenado para editar
+        setReunionEditando(reunion);
+        setModalEditarReunionOpen(true);
+    };
+
+    const handleGuardarEdicionReunion = async (formData) => {
+        if (!reunionEditando) return;
+        setGuardandoReunion(true);
         try {
-            await SDRService.evaluarReunion(reunion._id, { estado: 'realizada' });
-            mostrarSnackbar('Reunión marcada como realizada');
+            await SDRService.actualizarReunion(reunionEditando._id, formData);
+            mostrarSnackbar('Reunión actualizada');
+            setModalEditarReunionOpen(false);
+            setReunionEditando(null);
             cargarContacto();
         } catch (err) {
-            mostrarSnackbar(err.response?.data?.error || 'Error', 'error');
+            mostrarSnackbar(err.response?.data?.error || 'Error al actualizar', 'error');
+        } finally {
+            setGuardandoReunion(false);
+        }
+    };
+
+    const handleEliminarReunion = async (reunion) => {
+        if (!window.confirm('¿Estás seguro de eliminar esta reunión?')) return;
+        try {
+            await SDRService.eliminarReunion(reunion._id);
+            mostrarSnackbar('Reunión eliminada');
+            cargarContacto();
+        } catch (err) {
+            mostrarSnackbar(err.response?.data?.error || 'Error al eliminar', 'error');
+        }
+    };
+
+    const handleReunionRealizada = (reunion) => {
+        setReunionSeleccionadaResultado(reunion);
+        setModalResultadoReunion(true);
+    };
+
+    const handleSubmitResultadoReunion = async (data) => {
+        if (!reunionSeleccionadaResultado) return;
+        setResultadoLoading(true);
+        try {
+            // 1. Cambiar estado de la reunión
+            await SDRService.evaluarReunion(reunionSeleccionadaResultado._id, {
+                estado: data.estado,
+                motivoRechazo: data.estado === 'cancelada' ? data.comentario : undefined,
+                notasEvaluador: data.comentario
+            });
+
+            // 2. Actualizar campos adicionales si fue realizada
+            if (data.estado === 'realizada') {
+                await SDRService.actualizarReunion(reunionSeleccionadaResultado._id, {
+                    comentario: data.comentario,
+                    transcripcion: data.transcripcion,
+                    modulosInteres: data.modulosInteres,
+                    calificacionRapida: data.calificacionRapida
+                });
+
+                // 3. Si hay transcripción, procesar con IA
+                if (data.transcripcion && data.transcripcion.trim().length >= 50) {
+                    try {
+                        await SDRService.procesarTranscripcion(reunionSeleccionadaResultado._id);
+                        mostrarSnackbar('Reunión registrada y resumen IA generado ✨');
+                    } catch (iaError) {
+                        console.warn('Error procesando transcripción con IA:', iaError);
+                        mostrarSnackbar('Reunión registrada (error al generar resumen IA)', 'warning');
+                    }
+                }
+            }
+
+            // 4. Establecer próxima tarea si se definió
+            if (data.proximoContacto?.tipo && data.proximoContacto?.fecha) {
+                const contactoId = reunionSeleccionadaResultado.contactoId?._id || reunionSeleccionadaResultado.contactoId;
+                if (contactoId) {
+                    await SDRService.actualizarProximoContacto(contactoId, null, null, {
+                        tipo: data.proximoContacto.tipo,
+                        fecha: data.proximoContacto.fecha,
+                        nota: data.proximoContacto.nota || ''
+                    });
+                }
+            }
+
+            if (!data.transcripcion || data.transcripcion.trim().length < 50) {
+                mostrarSnackbar('Reunión registrada ✅');
+            }
+            setModalResultadoReunion(false);
+            setReunionSeleccionadaResultado(null);
+            cargarContacto();
+        } catch (err) {
+            mostrarSnackbar(err.response?.data?.error || 'Error al registrar resultado', 'error');
+        } finally {
+            setResultadoLoading(false);
         }
     };
 
@@ -3770,8 +3866,22 @@ const ContactoSDRDetailPage = () => {
                                     return r.estado !== 'agendada' || fecha < ahora;
                                 }).sort((a, b) => new Date(b.fecha || b.fechaHora) - new Date(a.fecha || a.fechaHora));
 
-                                const resultadoLabel = { realizada: '✅ Realizada', no_show: '❌ No show', cancelada: '🚫 Cancelada' };
-                                const resultadoColor = { realizada: 'success', no_show: 'error', cancelada: 'default' };
+                                const borderColorMap = {
+                                    realizada: '#4caf50',
+                                    no_show: '#f44336',
+                                    cancelada: '#9e9e9e',
+                                    agendada: '#2196f3'
+                                };
+                                const calificacionMap = {
+                                    frio: { label: '❄️ Frío', color: 'info' },
+                                    tibio: { label: '🌤️ Tibio', color: 'warning' },
+                                    caliente: { label: '🔥 Caliente', color: 'error' },
+                                    listo_para_cerrar: { label: '🎯 Listo para cerrar', color: 'success' }
+                                };
+                                const onCopyReunion = (text, label) => {
+                                    navigator.clipboard.writeText(text);
+                                    mostrarSnackbar(`${label} copiado al portapapeles`);
+                                };
 
                                 return (
                                     <Stack spacing={3}>
@@ -3785,20 +3895,24 @@ const ContactoSDRDetailPage = () => {
                                             ) : (
                                                 <Stack spacing={1}>
                                                     {proximas.map(r => {
-                                                        const fecha = r.fecha || r.fechaHora;
+                                                        const fechaR = r.fecha || r.fechaHora;
+                                                        const estadoConf = ESTADOS_REUNION[r.estado] || {};
+                                                        const calChip = r.calificacionRapida ? calificacionMap[r.calificacionRapida] : null;
                                                         return (
-                                                            <Paper key={r._id} variant="outlined" sx={{ p: 1.5, borderLeft: '4px solid #2196f3' }}>
-                                                                <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
-                                                                    <Chip icon={<EventIcon />} label={new Date(fecha).toLocaleDateString('es-AR', { weekday: 'short', day: 'numeric', month: 'short' })} size="small" variant="outlined" />
-                                                                    <Typography variant="body2" fontWeight={600}>
-                                                                        {new Date(fecha).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
-                                                                    </Typography>
-                                                                    <Chip label="Agendada" size="small" color="info" />
-                                                                    {r.link && (
-                                                                        <Chip label="Link" size="small" icon={<OpenInNewIcon />} onClick={() => window.open(r.link, '_blank')} clickable color="primary" variant="outlined" />
-                                                                    )}
-                                                                </Stack>
-                                                            </Paper>
+                                                            <ReunionCard
+                                                                key={r._id}
+                                                                reunion={r}
+                                                                estadoConf={estadoConf}
+                                                                fechaReunion={fechaR}
+                                                                calChip={calChip}
+                                                                borderColorMap={borderColorMap}
+                                                                onCopy={onCopyReunion}
+                                                                onEdit={() => handleEditarReunion(r)}
+                                                                onDelete={() => handleEliminarReunion(r)}
+                                                                onRealizada={() => handleReunionRealizada(r)}
+                                                                onNoShow={() => handleReunionNoShow(r)}
+                                                                onCancelada={() => handleReunionCancelada(r)}
+                                                            />
                                                         );
                                                     })}
                                                 </Stack>
@@ -3817,49 +3931,27 @@ const ContactoSDRDetailPage = () => {
                                             ) : (
                                                 <Stack spacing={1}>
                                                     {pasadas.map(r => {
-                                                        const fecha = r.fecha || r.fechaHora;
+                                                        const fechaR = r.fecha || r.fechaHora;
                                                         const esPendiente = r.estado === 'agendada';
-                                                        const borderColor = esPendiente ? '#ff9800' : (resultadoColor[r.estado] === 'success' ? '#4caf50' : resultadoColor[r.estado] === 'error' ? '#f44336' : '#9e9e9e');
+                                                        const estadoConf = esPendiente
+                                                            ? { icon: '⏳', label: 'Vencida', color: 'warning' }
+                                                            : (ESTADOS_REUNION[r.estado] || {});
+                                                        const calChip = r.calificacionRapida ? calificacionMap[r.calificacionRapida] : null;
                                                         return (
-                                                            <Paper key={r._id} variant="outlined" sx={{ p: 1.5, borderLeft: `4px solid ${borderColor}` }}>
-                                                                <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
-                                                                    <Chip icon={<EventIcon />} label={new Date(fecha).toLocaleDateString('es-AR', { weekday: 'short', day: 'numeric', month: 'short' })} size="small" variant="outlined" />
-                                                                    <Typography variant="body2" fontWeight={600}>
-                                                                        {new Date(fecha).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
-                                                                    </Typography>
-                                                                    {esPendiente ? (
-                                                                        <Chip label="⏳ Vencida" size="small" color="warning" />
-                                                                    ) : (
-                                                                        <Chip label={resultadoLabel[r.estado] || r.estado} size="small" color={resultadoColor[r.estado] || 'default'} />
-                                                                    )}
-                                                                    {r.link && (
-                                                                        <Chip label="Link" size="small" icon={<OpenInNewIcon />} onClick={() => window.open(r.link, '_blank')} clickable color="primary" variant="outlined" />
-                                                                    )}
-                                                                </Stack>
-                                                                {r.comentario && (
-                                                                    <Typography variant="body2" sx={{ mt: 0.5, fontStyle: 'italic', color: 'text.secondary' }}>
-                                                                        💬 {r.comentario}
-                                                                    </Typography>
-                                                                )}
-                                                                {r.estado === 'no_show' && r.notasEvaluador && (
-                                                                    <Typography variant="body2" sx={{ mt: 0.5, color: 'error.main' }}>
-                                                                        ❌ {r.notasEvaluador}
-                                                                    </Typography>
-                                                                )}
-                                                                {esPendiente && (
-                                                                    <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
-                                                                        <Button size="small" color="success" variant="contained" onClick={() => handleReunionRealizada(r)}>
-                                                                            ✅ Realizada
-                                                                        </Button>
-                                                                        <Button size="small" color="error" variant="outlined" onClick={() => handleReunionNoShow(r)}>
-                                                                            ❌ No show
-                                                                        </Button>
-                                                                        <Button size="small" variant="outlined" onClick={() => handleReunionCancelada(r)}>
-                                                                            Cancelada
-                                                                        </Button>
-                                                                    </Stack>
-                                                                )}
-                                                            </Paper>
+                                                            <ReunionCard
+                                                                key={r._id}
+                                                                reunion={r}
+                                                                estadoConf={estadoConf}
+                                                                fechaReunion={fechaR}
+                                                                calChip={calChip}
+                                                                borderColorMap={{ ...borderColorMap, agendada: '#ff9800' }}
+                                                                onCopy={onCopyReunion}
+                                                                onEdit={esPendiente ? () => handleEditarReunion(r) : undefined}
+                                                                onDelete={() => handleEliminarReunion(r)}
+                                                                onRealizada={esPendiente ? () => handleReunionRealizada(r) : undefined}
+                                                                onNoShow={esPendiente ? () => handleReunionNoShow(r) : undefined}
+                                                                onCancelada={esPendiente ? () => handleReunionCancelada(r) : undefined}
+                                                            />
                                                         );
                                                     })}
                                                 </Stack>
@@ -4325,6 +4417,29 @@ const ContactoSDRDetailPage = () => {
                 loading={guardandoReunion}
             />
 
+            {/* Modal Editar/Reagendar Reunión */}
+            <ModalCrearReunion
+                open={modalEditarReunionOpen}
+                onClose={() => { setModalEditarReunionOpen(false); setReunionEditando(null); }}
+                contacto={reunionEditando ? {
+                    empresa: reunionEditando.empresaNombre,
+                    tamanoEmpresa: reunionEditando.tamanoEmpresa,
+                    nombre: reunionEditando.contactoPrincipal,
+                    cargo: reunionEditando.rolContacto
+                } : contacto}
+                onSubmit={handleGuardarEdicionReunion}
+                loading={guardandoReunion}
+            />
+
+            {/* Modal Resultado Reunión (mismo flujo que reuniones.js) */}
+            <ModalResultadoReunion
+                open={modalResultadoReunion}
+                onClose={() => { setModalResultadoReunion(false); setReunionSeleccionadaResultado(null); }}
+                reunion={reunionSeleccionadaResultado}
+                onSubmit={handleSubmitResultadoReunion}
+                loading={resultadoLoading}
+            />
+
             {/* Dialog No Show con comentario */}
             <Dialog open={noShowDialog} onClose={() => setNoShowDialog(false)} maxWidth="sm" fullWidth>
                 <DialogTitle>Registrar No Show</DialogTitle>
@@ -4461,9 +4576,12 @@ const ContactoSDRDetailPage = () => {
 };
 
 // ==================== COMPONENTE REUNION CARD ====================
-const ReunionCard = ({ reunion, estadoConf, fechaReunion, calChip, borderColorMap, onCopy }) => {
+const ReunionCard = ({ reunion, estadoConf, fechaReunion, calChip, borderColorMap, onCopy, onEdit, onDelete, onRealizada, onNoShow, onCancelada }) => {
     const [expandResumen, setExpandResumen] = useState(false);
     const [expandTranscripcion, setExpandTranscripcion] = useState(false);
+    const [menuAnchor, setMenuAnchor] = useState(null);
+
+    const tieneAcciones = onEdit || onDelete || onRealizada || onNoShow || onCancelada;
 
     return (
         <Paper
@@ -4477,7 +4595,7 @@ const ReunionCard = ({ reunion, estadoConf, fechaReunion, calChip, borderColorMa
                     : 'transparent'
             }}
         >
-            {/* Fila principal: fecha + estado + calificación */}
+            {/* Fila principal: fecha + estado + calificación + menú */}
             <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
                 <Chip
                     icon={<EventIcon />}
@@ -4508,6 +4626,45 @@ const ReunionCard = ({ reunion, estadoConf, fechaReunion, calChip, borderColorMa
                     <Typography variant="caption" color="text.secondary" fontWeight={600}>
                         Meet #{reunion.numero}
                     </Typography>
+                )}
+                {tieneAcciones && (
+                    <Box sx={{ ml: 'auto' }}>
+                        <IconButton size="small" onClick={(e) => setMenuAnchor(e.currentTarget)}>
+                            <MoreVertIcon fontSize="small" />
+                        </IconButton>
+                        <Menu anchorEl={menuAnchor} open={Boolean(menuAnchor)} onClose={() => setMenuAnchor(null)}>
+                            {onRealizada && (
+                                <MenuItem onClick={() => { setMenuAnchor(null); onRealizada(); }}>
+                                    <ListItemIcon><CheckCircleIcon fontSize="small" color="success" /></ListItemIcon>
+                                    <ListItemText>Registrar resultado</ListItemText>
+                                </MenuItem>
+                            )}
+                            {onNoShow && (
+                                <MenuItem onClick={() => { setMenuAnchor(null); onNoShow(); }}>
+                                    <ListItemIcon><CancelIcon fontSize="small" color="error" /></ListItemIcon>
+                                    <ListItemText>No show</ListItemText>
+                                </MenuItem>
+                            )}
+                            {onEdit && (
+                                <MenuItem onClick={() => { setMenuAnchor(null); onEdit(); }}>
+                                    <ListItemIcon><EditIcon fontSize="small" /></ListItemIcon>
+                                    <ListItemText>Reagendar</ListItemText>
+                                </MenuItem>
+                            )}
+                            {onCancelada && (
+                                <MenuItem onClick={() => { setMenuAnchor(null); onCancelada(); }}>
+                                    <ListItemIcon><BlockIcon fontSize="small" /></ListItemIcon>
+                                    <ListItemText>Cancelar</ListItemText>
+                                </MenuItem>
+                            )}
+                            {onDelete && (
+                                <MenuItem onClick={() => { setMenuAnchor(null); onDelete(); }}>
+                                    <ListItemIcon><DeleteIcon fontSize="small" color="error" /></ListItemIcon>
+                                    <ListItemText sx={{ color: 'error.main' }}>Eliminar</ListItemText>
+                                </MenuItem>
+                            )}
+                        </Menu>
+                    </Box>
                 )}
             </Stack>
 
