@@ -228,7 +228,7 @@ export const AccountPopover = (props) => {
           }}
         >
           <MenuItem onClick={handleOpenChangeEmail}>Cambiar email</MenuItem>
-          {originalUser.admin &&
+          {originalUser?.admin &&
             (!isSpying() ? (
               <MenuItem onClick={handleOpenSpyUser}>Espiar cuenta</MenuItem>
             ) : (
