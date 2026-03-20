@@ -44,21 +44,42 @@ const initialState = {
 
 const handlers = {
   [HANDLERS.INITIALIZE]: (state, action) => {
-    const user = action.payload?.user || action.payload || null;
-    const originalUser = action.payload?.originalUser || state.originalUser || user;
+    const payload = action.payload;
+    const hasUserField =
+      payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, 'user');
+    const hasOriginalUserField =
+      payload &&
+      typeof payload === 'object' &&
+      Object.prototype.hasOwnProperty.call(payload, 'originalUser');
+    const hasClearStorageField =
+      payload &&
+      typeof payload === 'object' &&
+      Object.prototype.hasOwnProperty.call(payload, 'clearStorage');
+
+    const user = hasUserField ? payload.user : payload || null;
+    const originalUser = hasOriginalUserField ? payload.originalUser : state.originalUser || user;
+    const clearStorage = hasClearStorageField ? !!payload.clearStorage : false;
+
+    if (!user) {
+      if (clearStorage) {
+        window.localStorage.removeItem('MY_APP_STATE');
+        window.localStorage.removeItem('authToken');
+      }
+      return {
+        ...state,
+        isAuthenticated: false,
+        isLoading: false,
+        user: null,
+        originalUser: null,
+      };
+    }
 
     return {
       ...state,
-      ...(user
-        ? {
-            isAuthenticated: true,
-            isLoading: false,
-            user,
-            originalUser,
-          }
-        : {
-            isLoading: false,
-          }),
+      isAuthenticated: true,
+      isLoading: false,
+      user,
+      originalUser,
     };
   },
   [HANDLERS.UPDATE_USER]: (state, action) => {
@@ -67,6 +88,7 @@ const handlers = {
     const newState = {
       ...state,
       isAuthenticated: true,
+      isLoading: false,
       user,
       originalUser,
     };
@@ -101,6 +123,11 @@ export const AuthProvider = (props) => {
   const { children } = props;
   const [state, dispatch] = useReducer(reducer, initialState);
   const initialized = useRef(false);
+  const stateRef = useRef(initialState);
+
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
 
   const initialize = async () => {
     if (initialized.current) {
@@ -108,19 +135,21 @@ export const AuthProvider = (props) => {
     }
 
     initialized.current = true;
-    const storageState = window.localStorage.getItem('MY_APP_STATE');
+    if (typeof auth.authStateReady === 'function') {
+      await auth.authStateReady();
+    }
 
+    const storageState = window.localStorage.getItem('MY_APP_STATE');
     if (storageState) {
-      const savedState = JSON.parse(storageState);
-      dispatch({
-        type: HANDLERS.INITIALIZE,
-        payload: { user: savedState.user, originalUser: savedState.originalUser },
-      });
-    } else {
-      dispatch({
-        type: HANDLERS.INITIALIZE,
-        payload: null,
-      });
+      try {
+        const savedState = JSON.parse(storageState);
+        if (savedState?.user) {
+          dispatch({
+            type: HANDLERS.UPDATE_USER,
+            payload: { user: savedState.user, originalUser: savedState.originalUser || savedState.user },
+          });
+        }
+      } catch (_) {}
     }
 
     onAuthStateChanged(auth, async (user) => {
@@ -135,9 +164,15 @@ export const AuthProvider = (props) => {
           payload: updatedUser,
         });
       } else {
+        const shouldIgnoreNullEvent =
+          stateRef.current.isAuthenticated &&
+          (!!stateRef.current.user?.id || !!stateRef.current.user?.user_id);
+        if (shouldIgnoreNullEvent) {
+          return;
+        }
         dispatch({
           type: HANDLERS.INITIALIZE,
-          payload: null,
+          payload: { user: null, originalUser: null, clearStorage: false },
         });
       }
     });
@@ -438,7 +473,7 @@ export const AuthProvider = (props) => {
   };
 
   const isSpying = () => {
-    return state.user && state.user.email !== state.originalUser.email;
+    return !!state.user && !!state.originalUser && state.user.email !== state.originalUser.email;
   };
 
   return (

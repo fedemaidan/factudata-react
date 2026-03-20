@@ -44,6 +44,7 @@ export const AccountPopover = (props) => {
     returnToOriginalUser,
     originalUser,
   } = useAuthContext();
+  const canSpy = !!originalUser?.admin;
 
   // --- Sign out ---
   const handleSignOut = useCallback(() => {
@@ -228,7 +229,7 @@ export const AccountPopover = (props) => {
           }}
         >
           <MenuItem onClick={handleOpenChangeEmail}>Cambiar email</MenuItem>
-          {originalUser.admin &&
+          {canSpy &&
             (!isSpying() ? (
               <MenuItem onClick={handleOpenSpyUser}>Espiar cuenta</MenuItem>
             ) : (
