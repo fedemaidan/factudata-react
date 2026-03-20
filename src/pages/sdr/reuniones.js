@@ -6,7 +6,8 @@ import {
     Box, Container, Stack, Typography, Button, Chip, Grid,
     CircularProgress, Paper, IconButton, Card, CardContent, CardActions,
     Snackbar, Alert, Divider, Tabs, Tab, Badge, Switch, FormControlLabel,
-    Tooltip, useTheme, useMediaQuery, Skeleton
+    Tooltip, useTheme, useMediaQuery, Skeleton,
+    Dialog, DialogTitle, DialogContent, DialogActions, TextField
 } from '@mui/material';
 import {
     Refresh as RefreshIcon,
@@ -327,6 +328,11 @@ const ReunionesSDRPage = () => {
     const [modalResultado, setModalResultado] = useState(false);
     const [reunionSeleccionada, setReunionSeleccionada] = useState(null);
 
+    // No Show dialog
+    const [noShowDialog, setNoShowDialog] = useState(false);
+    const [noShowComentario, setNoShowComentario] = useState('');
+    const [reunionNoShow, setReunionNoShow] = useState(null);
+
     const mostrarSnackbar = (message, severity = 'success') => {
         setSnackbar({ open: true, message, severity });
     };
@@ -413,11 +419,24 @@ const ReunionesSDRPage = () => {
         setModalResultado(true);
     };
 
-    const handleMarcarNoShow = async (reunion) => {
+    const handleMarcarNoShow = (reunion) => {
+        setReunionNoShow(reunion);
+        setNoShowComentario('');
+        setNoShowDialog(true);
+    };
+
+    const handleConfirmarNoShow = async () => {
+        if (!reunionNoShow) return;
         setActionLoading(true);
         try {
-            await SDRService.evaluarReunion(reunion._id, { estado: 'no_show' });
+            await SDRService.evaluarReunion(reunionNoShow._id, {
+                estado: 'no_show',
+                comentario: noShowComentario || undefined
+            });
             mostrarSnackbar('Reunión marcada como no show');
+            setNoShowDialog(false);
+            setReunionNoShow(null);
+            setNoShowComentario('');
             cargarReuniones();
         } catch (error) {
             mostrarSnackbar(error.response?.data?.error || 'Error', 'error');
@@ -697,6 +716,29 @@ const ReunionesSDRPage = () => {
                 onSubmit={handleSubmitResultado}
                 loading={actionLoading}
             />
+
+            {/* Dialog No Show con comentario */}
+            <Dialog open={noShowDialog} onClose={() => setNoShowDialog(false)} maxWidth="sm" fullWidth>
+                <DialogTitle>Registrar No Show</DialogTitle>
+                <DialogContent>
+                    <TextField
+                        autoFocus
+                        fullWidth
+                        multiline
+                        rows={3}
+                        value={noShowComentario}
+                        onChange={(e) => setNoShowComentario(e.target.value)}
+                        placeholder="¿Qué pasó? ej: me dejó en visto, no se conectó..."
+                        sx={{ mt: 1 }}
+                    />
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => setNoShowDialog(false)}>Cancelar</Button>
+                    <Button variant="contained" color="error" onClick={handleConfirmarNoShow} disabled={actionLoading}>
+                        {actionLoading ? <CircularProgress size={20} /> : 'Confirmar'}
+                    </Button>
+                </DialogActions>
+            </Dialog>
 
             {/* Snackbar */}
             <Snackbar

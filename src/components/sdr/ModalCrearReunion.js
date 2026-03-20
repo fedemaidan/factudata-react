@@ -45,7 +45,17 @@ const ModalCrearReunion = ({ open, onClose, contacto, onSubmit, loading }) => {
     }, [contacto, open]);
 
     const handleSubmit = () => {
-        onSubmit(form);
+        // Agregar timezone offset del navegador al datetime-local para evitar desfase UTC
+        const offset = new Date().getTimezoneOffset();
+        const sign = offset > 0 ? '-' : '+';
+        const absOffset = Math.abs(offset);
+        const hours = String(Math.floor(absOffset / 60)).padStart(2, '0');
+        const minutes = String(absOffset % 60).padStart(2, '0');
+        const tzSuffix = `${sign}${hours}:${minutes}`;
+        const fechaConZona = form.fechaHora.length === 16
+            ? form.fechaHora + ':00' + tzSuffix
+            : form.fechaHora + tzSuffix;
+        onSubmit({ ...form, fechaHora: fechaConZona });
     };
 
     return (

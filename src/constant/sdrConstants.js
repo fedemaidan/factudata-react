@@ -36,10 +36,11 @@ export const ESTADOS_CONTACTO = {
 // Planes de Sorby
 // ─────────────────────────────────────────────
 export const PLANES_SORBY = {
-    basico:   { label: 'Básico',   color: 'success',   precio: 250000, icon: '🟢' },
-    avanzado: { label: 'Avanzado', color: 'primary',   precio: 375000, icon: '🔵' },
-    premium:  { label: 'Premium',  color: 'secondary', precio: 625000, icon: '🟣' },
-    a_medida: { label: 'A medida', color: 'warning',   precio: null,   icon: '🟡' },
+    independiente: { label: 'Independiente', color: 'default',   precio: null,   icon: '⚪' },
+    basico:        { label: 'Básico',        color: 'success',   precio: 250000, icon: '🟢' },
+    avanzado:      { label: 'Avanzado',      color: 'primary',   precio: 375000, icon: '🔵' },
+    premium:       { label: 'Premium',       color: 'secondary', precio: 625000, icon: '🟣' },
+    a_medida:      { label: 'A medida',      color: 'warning',   precio: null,   icon: '🟡' },
 };
 
 // ─────────────────────────────────────────────
