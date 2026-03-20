@@ -886,8 +886,8 @@ const SDRService = {
     /**
      * Obtener configuración de distribución de leads
      */
-    obtenerDistribucion: async (empresaId) => {
-        const res = await api.get('/sdr/distribucion', { params: { empresaId } });
+    obtenerDistribucion: async () => {
+        const res = await api.get('/sdr/distribucion');
         return res.data;
     },
 

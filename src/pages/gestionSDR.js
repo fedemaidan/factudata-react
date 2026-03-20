@@ -2590,7 +2590,6 @@ const GestionSDRPage = () => {
             <ModalDistribucionSDR
                 open={modalDistribucion}
                 onClose={(saved) => { setModalDistribucion(false); if (saved) refrescar(); }}
-                empresaId={empresaId}
                 sdrsDisponibles={sdrsDisponibles}
             />
 

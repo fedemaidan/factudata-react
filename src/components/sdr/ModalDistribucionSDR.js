@@ -13,10 +13,9 @@ import SDRService from '../../services/sdrService';
  * 
  * @param {boolean} open
  * @param {Function} onClose
- * @param {string} empresaId
- * @param {Array} sdrsDisponibles - Lista de SDRs de la empresa [{ id, nombre }]
+ * @param {Array} sdrsDisponibles - Lista de SDRs [{ id, nombre }]
  */
-const ModalDistribucionSDR = ({ open, onClose, empresaId, sdrsDisponibles = [] }) => {
+const ModalDistribucionSDR = ({ open, onClose, sdrsDisponibles = [] }) => {
     const [activa, setActiva] = useState(false);
     const [sdrs, setSdrs] = useState([]);
     const [cargando, setCargando] = useState(false);
@@ -24,11 +23,10 @@ const ModalDistribucionSDR = ({ open, onClose, empresaId, sdrsDisponibles = [] }
     const [error, setError] = useState('');
 
     const cargarDistribucion = useCallback(async () => {
-        if (!empresaId) return;
         setCargando(true);
         setError('');
         try {
-            const data = await SDRService.obtenerDistribucion(empresaId);
+            const data = await SDRService.obtenerDistribucion();
             setActiva(data.activa || false);
             setSdrs(data.sdrs || []);
         } catch (err) {
@@ -37,7 +35,7 @@ const ModalDistribucionSDR = ({ open, onClose, empresaId, sdrsDisponibles = [] }
         } finally {
             setCargando(false);
         }
-    }, [empresaId]);
+    }, []);
 
     useEffect(() => {
         if (open) cargarDistribucion();
@@ -65,7 +63,7 @@ const ModalDistribucionSDR = ({ open, onClose, empresaId, sdrsDisponibles = [] }
         setGuardando(true);
         setError('');
         try {
-            await SDRService.actualizarDistribucion({ empresaId, activa, sdrs });
+            await SDRService.actualizarDistribucion({ activa, sdrs });
             onClose(true);
         } catch (err) {
             console.error('Error guardando distribución:', err);
